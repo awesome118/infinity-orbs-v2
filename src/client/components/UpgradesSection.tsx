@@ -137,7 +137,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       level: state.upgrades.speed ?? 0,
       currentVal: `${(currentCd / 1000).toFixed(1)}s`,
       nextVal: `${(nextCd / 1000).toFixed(1)}s`,
-      desc: 'Reduces roll cooldown by 3.0s, 2.5s, 2.0s... down to floor.',
+      desc: '20 levels total. Each level reduces cooldown by 0.15s, for 3.0s maximum from this upgrade.',
       cost: upgradeCost('speed', state.upgrades.speed ?? 0),
     },
     {
