@@ -100,6 +100,7 @@ debugRouter.post('/unlock-upgrades', async (req, res) => {
     s.upgrades = {
       speed: 20,
       multi: 6,
+      clusterRoll: 6,
       auto: 1,
       luck: 20,
       coinBonus: 10,
