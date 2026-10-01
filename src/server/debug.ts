@@ -1,9 +1,35 @@
 import { Router } from 'express';
 import { loadRaw, save, applyRolls } from './game.js';
+import { context } from './devvit-mock.js';
+import { setCommunityEventConfig } from './social.js';
 import { cooldownMs } from '../shared/game.js';
 import { recordLeaderboard } from './social.js';
 
+const DEBUG_USERNAME = 'shadow_fen';
+
+export function isDebugUser(): boolean {
+  return context.username === DEBUG_USERNAME;
+}
+
 export const debugRouter = Router();
+
+// Never trust the client to decide whether the debug menu is available. This
+// middleware protects every debug endpoint, including any future ones added here.
+debugRouter.use((_req, res, next) => {
+  if (!isDebugUser()) return res.status(404).json({ error: 'Not found.' });
+  next();
+});
+
+
+debugRouter.post('/event', async (req, res) => {
+  try {
+    const { goal, progress, addRolls, tier, buffMultiplier, reset } = req.body || {};
+    const updated = await setCommunityEventConfig({ goal, progress, addRolls, tier, buffMultiplier, reset });
+    res.json({ event: updated });
+  } catch (e: any) {
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Failed to update community event.' });
+  }
+});
 
 // Add currencies
 debugRouter.post('/currency', async (req, res) => {
