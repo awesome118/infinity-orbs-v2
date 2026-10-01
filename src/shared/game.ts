@@ -353,15 +353,15 @@ export interface ContinuumTierMilestone {
 }
 
 export const CONTINUUM_TIERS: ContinuumTierMilestone[] = [
-  { tier: 'Common', minRarity: 2, label: '1 / 2+', approxChance: '~50.0%', coinsPerOrb: '2 - 9 Coins', color: '#94a3b8' },
-  { tier: 'Uncommon', minRarity: 10, label: '1 / 10+', approxChance: '~20.0%', coinsPerOrb: '10 - 99 Coins', color: '#38bdf8' },
-  { tier: 'Rare', minRarity: 100, label: '1 / 100+', approxChance: '~2.0%', coinsPerOrb: '100 - 999 Coins', color: '#c084fc' },
-  { tier: 'Epic', minRarity: 1000, label: '1 / 1,000+', approxChance: '~0.2% (1 in 500)', coinsPerOrb: '1,000 - 9,999 Coins', color: '#fb923c' },
-  { tier: 'Legendary', minRarity: 10000, label: '1 / 10,000+', approxChance: '~0.02% (1 in 5,000)', coinsPerOrb: '10,000 - 99,999 Coins', color: '#4ade80' },
-  { tier: 'Mythic', minRarity: 100000, label: '1 / 100,000+', approxChance: '~0.002% (1 in 50,000)', coinsPerOrb: '100,000 - 999,999 Coins', color: '#a855f7' },
-  { tier: 'Relic', minRarity: 1000000, label: '1 / 1,000,000+', approxChance: '~0.0002% (1 in 500,000)', coinsPerOrb: '1,000,000 - 9,999,999 Coins', color: '#f59e0b' },
-  { tier: 'Divine', minRarity: 10000000, label: '1 / 10,000,000+', approxChance: '~0.00002% (1 in 5,000,000)', coinsPerOrb: '10,000,000 - 99,999,999 Coins', color: '#38bdf8' },
-  { tier: 'Transcendent', minRarity: 100000000, label: '1 / 100,000,000+', approxChance: '~0.000002% (1 in 50,000,000)', coinsPerOrb: '100,000,000+ Coins', color: '#ffffff' },
+  { tier: 'Common', minRarity: 2, label: '1 / 2 - 1 / 9', approxChance: '~80.0%', coinsPerOrb: '2 - 9 Coins', color: '#94a3b8' },
+  { tier: 'Uncommon', minRarity: 10, label: '1 / 10 - 1 / 99', approxChance: '~18.0%', coinsPerOrb: '10 - 99 Coins', color: '#38bdf8' },
+  { tier: 'Rare', minRarity: 100, label: '1 / 100 - 1 / 999', approxChance: '~1.8%', coinsPerOrb: '100 - 999 Coins', color: '#c084fc' },
+  { tier: 'Epic', minRarity: 1000, label: '1 / 1,000 - 1 / 9,999', approxChance: '~0.18%', coinsPerOrb: '1,000 - 9,999 Coins', color: '#fb923c' },
+  { tier: 'Legendary', minRarity: 10000, label: '1 / 10,000 - 1 / 99,999', approxChance: '~0.018%', coinsPerOrb: '10,000 - 99,999 Coins', color: '#4ade80' },
+  { tier: 'Mythic', minRarity: 100000, label: '1 / 100,000 - 1 / 999,999', approxChance: '~0.0018%', coinsPerOrb: '100,000 - 999,999 Coins', color: '#a855f7' },
+  { tier: 'Relic', minRarity: 1000000, label: '1 / 1,000,000 - 1 / 9,999,999', approxChance: '~0.00018%', coinsPerOrb: '1,000,000 - 9,999,999 Coins', color: '#f59e0b' },
+  { tier: 'Divine', minRarity: 10000000, label: '1 / 10,000,000 - 1 / 99,999,999', approxChance: '~0.000018%', coinsPerOrb: '10,000,000 - 99,999,999 Coins', color: '#38bdf8' },
+  { tier: 'Transcendent', minRarity: 100000000, label: '1 / 100,000,000+', approxChance: '~0.000002%', coinsPerOrb: '100,000,000+ Coins', color: '#ffffff' },
 ];
 
 export interface CosmeticItem {
