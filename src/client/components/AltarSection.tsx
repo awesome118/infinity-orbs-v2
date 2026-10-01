@@ -67,7 +67,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
     if (sacrificing || (selectedCoinOffer <= 0 && selectedShardOffer <= 0)) return;
 
     setSacrificing(true);
-    sound.playSacrificeFanfare();
+    sound.playSacrificeSound();
 
     try {
       await onSacrifice(selectedCoinOffer, selectedShardOffer);
