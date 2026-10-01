@@ -13,12 +13,22 @@ import {
 } from 'lucide-react';
 import type {
   AutomationId,
+  GlobalBoosterId,
+  GlobalBoosterSnapshot,
   PlayerState,
   PremiumBoosterId,
 } from '../../shared/game.js';
 import {
   AUTOMATIONS,
   FREE_SHARD_DAILY_CAP,
+  GLOBAL_BOOSTERS,
+  GLOBAL_BOOSTER_STACK_MS,
+  decayGlobalBoosterState,
+  globalBoosterProgress,
+  globalBoosterLuckMultiplier,
+  globalBoosterSpeedMultiplier,
+  globalBoosterCritChanceBonus,
+  globalBoosterCritDamageBonus,
   PREMIUM_BOOSTERS,
   onlinePlayerLuckMultiplier,
   premiumBoosterRemainingMs,
@@ -28,6 +38,8 @@ interface BoostersAndAutomationProps {
   state: PlayerState;
   busy: boolean;
   onActivateBooster: (id: PremiumBoosterId) => Promise<void>;
+  globalBoosters: GlobalBoosterSnapshot;
+  onActivateGlobalBooster: (id: GlobalBoosterId, useCredit: boolean) => Promise<void>;
   onBuyAutomation: (id: AutomationId) => Promise<void>;
   onClaimCommunityReward: () => Promise<void>;
 }
@@ -60,7 +72,9 @@ function formatDuration(ms: number): string {
 export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   state,
   busy,
+  globalBoosters,
   onActivateBooster,
+  onActivateGlobalBooster,
   onBuyAutomation,
   onClaimCommunityReward,
 }) => {
@@ -115,6 +129,86 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
           <div className="text-slate-400">
             {state.shards.toLocaleString()} Shards available
           </div>
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-fuchsia-500/20 bg-gradient-to-br from-slate-900 via-fuchsia-950/10 to-slate-900 p-5 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-black text-white">World Boosters</h3>
+              <Users className="w-4 h-4 text-fuchsia-300" />
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Anyone can spend 25 Shards to boost every player. Stacks add time, never strength.
+              Each stack adds 30 minutes of charge. Crossing another full bar tier increases the effect,
+              while the timer drains faster. Tier 5 drains at 3× speed.
+            </p>
+          </div>
+          <div className="text-[11px] font-bold text-fuchsia-200">
+            Free World Boosts: {state.globalBoosterCredits ?? 0}
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
+          {(Object.keys(GLOBAL_BOOSTERS) as GlobalBoosterId[]).map(id => {
+            const raw = globalBoosters[id];
+            const displayed = decayGlobalBoosterState(raw, now);
+            const active = displayed.remainingMs > 0 && displayed.tier > 0;
+            const progress = globalBoosterProgress(displayed);
+            const drain = displayed.tier > 0 ? (1 + (displayed.tier - 1) * 0.5) : 1;
+            const effect = id === 'luck'
+              ? '×' + globalBoosterLuckMultiplier(displayed).toFixed(2) + ' Luck'
+              : id === 'speed'
+                ? Math.round((1 - globalBoosterSpeedMultiplier(displayed)) * 100) + '% faster cooldown'
+                : '+' + Math.round(globalBoosterCritChanceBonus(displayed) * 100) + '% Crit, +' +
+                  globalBoosterCritDamageBonus(displayed).toFixed(1) + '× damage';
+
+            return (
+              <div key={id} className="rounded-2xl border border-slate-800 bg-slate-950/65 p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-white">{GLOBAL_BOOSTERS[id].name}</span>
+                  <span className="text-[10px] font-black text-fuchsia-300">
+                    {active ? 'Tier ' + displayed.tier : 'Inactive'}
+                  </span>
+                </div>
+                <div className="mt-2">
+                  <div className="h-2.5 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
+                    <div
+                      className="h-full bg-gradient-to-r from-fuchsia-500 via-purple-500 to-cyan-400 transition-all duration-700"
+                      style={{ width: (active ? Math.min(100, progress) : 0) + '%' }}
+                    />
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-[10px]">
+                    <span className="text-slate-400">
+                      {active ? formatDuration(displayed.remainingMs / drain) + ' real time left' : 'No active boost'}
+                    </span>
+                    <span className="text-fuchsia-300 font-bold">
+                      {active ? effect : 'Base effect available'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={() => void onActivateGlobalBooster(id, false)}
+                    disabled={busy || state.shards < GLOBAL_BOOSTERS[id].costShards}
+                    className="flex-1 px-2.5 py-2 rounded-xl text-[10px] font-black bg-slate-800 hover:bg-slate-700 text-white disabled:text-slate-500 disabled:cursor-not-allowed"
+                  >
+                    +30m • 25 💎
+                  </button>
+                  <button
+                    onClick={() => void onActivateGlobalBooster(id, true)}
+                    disabled={busy || (state.globalBoosterCredits ?? 0) <= 0}
+                    className="px-2.5 py-2 rounded-xl text-[10px] font-black bg-fuchsia-600/20 border border-fuchsia-500/25 text-fuchsia-200 hover:bg-fuchsia-600/30 disabled:text-slate-600 disabled:cursor-not-allowed"
+                    title="Use one free World Booster activation from a purchased Shard pack"
+                  >
+                    Free
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
 
