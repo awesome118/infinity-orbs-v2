@@ -43,6 +43,7 @@ import {
   globalBoosterCritChanceBonus,
   PURCHASE_PACKS,
   grantFreeShards,
+  spendShards,
   resetFreeShardBudgetIfNeeded,
   isPremiumBoosterActive,
   MASTERY_SKILLS,
@@ -198,8 +199,7 @@ async function claimWorldBoosterActivation(
     if ((s.globalBoosterCredits ?? 0) <= 0) throw new Error('No free World Booster activations remain.');
     s.globalBoosterCredits--;
   } else {
-    if ((s.shards ?? 0) < cost) throw new Error('Not enough Shards.');
-    s.shards -= cost;
+    spendShards(s, cost);
   }
 
   try {
@@ -988,7 +988,7 @@ export async function synthesizeDust(): Promise<{ state: PlayerState; dustEarned
     throw new Error(`Synthesizing requires at least ${SHARD_SYNTHESIS_COST} Shards.`);
   }
 
-  s.shards -= SHARD_SYNTHESIS_COST;
+  spendShards(s, SHARD_SYNTHESIS_COST);
   s.cosmicDust = (s.cosmicDust ?? 0) + 1;
   await save(s);
   return { state: s, dustEarned: 1 };
@@ -1009,7 +1009,7 @@ export async function buyCosmetic(id: string): Promise<PlayerState> {
   }
 
   s.coins -= cosmetic.costCoins;
-  s.shards -= cosmetic.costShards;
+  spendShards(s, cosmetic.costShards);
   s.unlockedCosmetics.push(id);
   s.activeCosmetic = id;
   await save(s);
@@ -1032,7 +1032,7 @@ export async function activatePremiumBooster(id: PremiumBoosterId): Promise<Play
   }
 
   const now = Date.now();
-  s.shards -= info.costShards;
+  spendShards(s, info.costShards);
   s.activeBoosters[id] = Math.max(now, s.activeBoosters[id] ?? 0) + info.durationMs;
   await save(s);
   return s;
@@ -1333,7 +1333,7 @@ export async function activateTurbo(): Promise<PlayerState> {
   if (s.shards < costShards) {
     throw new Error('Turbo Roll requires 5 Shards.');
   }
-  s.shards -= costShards;
+  spendShards(s, costShards);
   const durationMs = (s.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 60 * 60 * 1000 : 30 * 60 * 1000;
   s.turboRollUntil = Math.max(Date.now(), s.turboRollUntil ?? 0) + durationMs;
   await save(s);
