@@ -88,8 +88,11 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   const nextCd = cooldownMs({ ...state, upgrades: { ...state.upgrades, speed: (state.upgrades.speed ?? 0) + 1 } });
   const currentMulti = rollsPerActivation(state);
   const nextMulti = currentMulti + 1;
-  const currentLuckPct = Math.round((luckMultiplier(state) - 1) * 100);
-  const nextLuckPct = currentLuckPct + 10;
+  const currentLuckMultiplier = luckMultiplier(state);
+  const nextLuckMultiplier = luckMultiplier({
+    ...state,
+    upgrades: { ...state.upgrades, luck: (state.upgrades.luck ?? 0) + 1 },
+  });
 
   const isAutoUnlocked = (state.upgrades.auto ?? 0) > 0;
   const canUnlockAuto = state.totalRolls >= 10;
@@ -162,9 +165,9 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       title: 'Luck Multiplier',
       icon: <Clover className="w-5 h-5 text-emerald-400" />,
       level: state.upgrades.luck ?? 0,
-      currentVal: `+${currentLuckPct}%`,
-      nextVal: `+${nextLuckPct}%`,
-      desc: '+10% Multiplicative Luck per level.',
+      currentVal: `${currentLuckMultiplier.toFixed(2)}×`,
+      nextVal: `${nextLuckMultiplier.toFixed(2)}×`,
+      desc: '+10% multiplicative luck factor per level.',
       cost: upgradeCost('luck', state.upgrades.luck ?? 0),
     },
     {
@@ -320,7 +323,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
               Total Multiplicative Luck
             </span>
             <span className="text-sm font-black text-emerald-300 font-mono">
-              +{currentLuckPct}%
+              {currentLuckMultiplier.toFixed(2)}×
             </span>
           </div>
 
