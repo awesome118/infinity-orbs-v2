@@ -1135,103 +1135,167 @@ export async function claimOrbFrenzy(): Promise<RollResponse> {
   if (!postId) throw new Error('This is not an Orb Frenzy post.');
   const raw = await redis.get(FRENZY_POST_PREFIX + postId);
   if (!raw) throw new Error('Orb Frenzy post data was not found.');
+
   const data = JSON.parse(raw) as {
-    ownerId: string; ownerUsername: string; rarity: number; subredditName: string;
+    ownerId: string;
+    ownerUsername: string;
+    rarity: number;
+    subredditName: string;
   };
-  if (data.ownerId === (context.userId ?? 'unknown')) throw new Error('You cannot claim your own Orb Frenzy.');
+
+  if (data.ownerId === (context.userId ?? 'unknown')) {
+    throw new Error('You cannot claim your own Orb Frenzy.');
+  }
 
   const s = await settleOffline(await loadRaw());
   const today = new Date().toISOString().slice(0, 10);
-  if (s.lastFrenzyClaimDate === today) throw new Error('You already claimed a Frenzy reward today.');
+  if (s.lastFrenzyClaimDate === today) {
+    throw new Error('You already claimed a Frenzy reward today.');
+  }
 
-  const baseCount = data.rarity;
-  const multiballEfficiency = (s.prestigeUpgrades?.frenzyVolley ?? 0) > 0
+  const baseCount = Math.max(1, data.rarity);
+  const frenzyVolleyEfficiency = (s.prestigeUpgrades?.frenzyVolley ?? 0) > 0
     ? Math.max(0, rollsPerActivation(s) - 1) * 0.20
     : 0;
-  const count = Math.max(1, Math.min(50_000_000, Math.floor(baseCount * (1 + multiballEfficiency))));
+  const count = Math.max(
+    1,
+    Math.min(50_000_000, Math.floor(baseCount * (1 + frenzyVolleyEfficiency))),
+  );
 
-  // Aggregate forced-rarity Frenzy outcomes instead of looping millions of identical
-  // orbs. Crit and Shard procs retain the normal probabilities using aggregate draws.
+  const globalCritChance = s.globalBoosters?.crit
+    ? globalBoosterCritChanceBonus(s.globalBoosters.crit)
+    : 0;
   const critChance = Math.min(
     1,
     (s.upgrades.critChance ?? 0) * 0.03 +
     (s.masterySkills?.critMastery ?? 0) * 0.03 +
     (s.guildPerks?.critRank ?? 0) * 0.015 +
-    (s.globalBoosters?.crit ? globalBoosterCritChanceBonus(s.globalBoosters.crit) : 0),
+    globalCritChance,
   );
   const critCount = sampleBinomial(count, critChance);
-  const critMultiplierValue = critMultiplier(s);
-  const baseValue = Math.min(10_000_000_000, data.rarity);
-  const totalVal = Math.min(
-    Number.MAX_SAFE_INTEGER,
-    Math.round(baseValue * (count - critCount) + baseValue * critCount * critMultiplierValue),
-  );
-  const valueMul = 1 + (s.upgrades.valueBonus ?? 0) * 0.10;
-  const finalValue = Math.min(Number.MAX_SAFE_INTEGER, Math.round(totalVal * valueMul));
 
-  const coinPer = Math.max(1, Math.round(coinsForRarity(data.rarity)));
-  let coinsGained = Math.round((coinPer + Math.max(0, count - 1) * coinPer * 0.20));
+  const supernovaLevel = s.prestigeUpgrades?.supernova ?? 0;
+  const supernovaCount = supernovaLevel > 0
+    ? sampleBinomial(critCount, Math.min(1, supernovaLevel * 0.10))
+    : 0;
+
+  const normalCritCount = Math.max(0, critCount - supernovaCount);
+  const normalCritRarity = Math.min(10_000_000_000, Math.round(data.rarity * critMultiplier(s)));
+  const supernovaRarity = Math.min(10_000_000_000, Math.round(data.rarity * critMultiplier(s) * 2.5));
+
+  const groups = [
+    { count: count - critCount, rarity: data.rarity },
+    { count: normalCritCount, rarity: normalCritRarity },
+    { count: supernovaCount, rarity: supernovaRarity },
+  ].filter(group => group.count > 0);
+
+  const valueMul = 1 + (s.upgrades.valueBonus ?? 0) * 0.10;
+  const rawValue = groups.reduce(
+    (sum, group) => sum + group.count * group.rarity,
+    0,
+  );
+  const finalValue = Math.min(Number.MAX_SAFE_INTEGER, Math.round(rawValue * valueMul));
+
+  const coinTotals = groups.reduce(
+    (sum, group) => sum + group.count * Math.max(1, Math.round(coinsForRarity(group.rarity))),
+    0,
+  );
+  const topRarity = Math.max(...groups.map(group => group.rarity));
+  const topCoin = Math.max(1, Math.round(coinsForRarity(topRarity)));
+  let coinsGained = Math.max(
+    1,
+    Math.round(topCoin + Math.max(0, coinTotals - topCoin) * 0.20),
+  );
+
   const levelBenefits = getLevelBenefits(calculateLevelFromXp(s.xp || 0).level);
-  coinsGained = Math.round(coinsGained *
+  coinsGained = Math.round(
+    coinsGained *
     levelBenefits.coinsMultiplier *
     (1 + (s.upgrades.coinBonus ?? 0) * 0.15) *
     (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
     (1 + (s.guildPerks?.coinRank ?? 0) * 0.10) *
-    (isPremiumBoosterActive(s, 'prosperity') ? 10 : 1));
+    (isPremiumBoosterActive(s, 'prosperity') ? 10 : 1),
+  );
 
-  const xpEach = Math.round(Math.min(200, 5 + Math.floor(Math.log10(data.rarity + 1) * 8)) *
-    (1 + (s.upgrades.xpBonus ?? 0) * 0.20) *
-    levelBenefits.xpMultiplier *
-    (isPremiumBoosterActive(s, 'ascension') ? 10 : 1));
-  const xpGained = Math.min(Number.MAX_SAFE_INTEGER, xpEach * count);
+  const xpForRarity = (rarity: number) =>
+    Math.round(
+      Math.min(200, 5 + Math.floor(Math.log10(rarity + 1) * 8)) *
+      (1 + (s.upgrades.xpBonus ?? 0) * 0.20) *
+      levelBenefits.xpMultiplier *
+      (isPremiumBoosterActive(s, 'ascension') ? 10 : 1),
+    );
+  const xpGained = Math.min(
+    Number.MAX_SAFE_INTEGER,
+    groups.reduce((sum, group) => sum + group.count * xpForRarity(group.rarity), 0),
+  );
 
-  let shardChance =
+  const shardChance = Math.min(
+    1,
     (s.upgrades.shardChance ?? 0) * 0.0015 +
     (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
     (s.guildPerks?.shardRank ?? 0) * 0.0005 +
-    levelBenefits.shardChance;
-  shardChance = Math.min(1, shardChance);
+    levelBenefits.shardChance,
+  );
   const procShards = sampleBinomial(count, shardChance);
-  let rarityShards = 0;
-  if (data.rarity >= 1_000_000) rarityShards = count * 10;
-  else if (data.rarity >= 100_000) rarityShards = count * 5;
-  else if (data.rarity >= 10_000) rarityShards = count * 2;
-  else if (data.rarity >= 1_000) rarityShards = count;
+  const rarityShards = groups.reduce((sum, group) => {
+    if (group.rarity >= 1_000_000) return sum + group.count * 10;
+    if (group.rarity >= 100_000) return sum + group.count * 5;
+    if (group.rarity >= 10_000) return sum + group.count * 2;
+    if (group.rarity >= 1_000) return sum + group.count;
+    return sum;
+  }, 0);
   const shardsGained = grantFreeShards(s, rarityShards + procShards);
 
+  const previousHighest = s.highestRarity;
   s.totalRolls += count;
   s.currentRunRolls = (s.currentRunRolls ?? 0) + count;
   s.collectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.collectionValue ?? 0) + finalValue);
   s.lifetimeCollectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.lifetimeCollectionValue ?? 0) + finalValue);
-  const critRarity = Math.min(10_000_000_000, Math.round(data.rarity * critMultiplierValue));
-  s.collection[String(data.rarity)] = (s.collection[String(data.rarity)] ?? 0) + (count - critCount);
-  if (critCount > 0) {
-    s.collection[String(critRarity)] = (s.collection[String(critRarity)] ?? 0) + critCount;
-  }
-  s.highestRarity = Math.max(s.highestRarity, critCount > 0 ? critRarity : data.rarity);
   s.totalCrits = (s.totalCrits ?? 0) + critCount;
   s.coins += coinsGained;
-  s.xp += xpGained;
+  s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
   s.lastFrenzyClaimDate = today;
+
+  for (const group of groups) {
+    const keyForRarity = String(group.rarity);
+    s.collection[keyForRarity] = (s.collection[keyForRarity] ?? 0) + group.count;
+  }
+
+  const bestRarity = topRarity;
+  s.highestRarity = Math.max(s.highestRarity, bestRarity);
+  s.rollsSinceBest = bestRarity > previousHighest ? 0 : (s.rollsSinceBest ?? 0) + count;
+
+  const oldLevel = s.level || 1;
+  s.xp += xpGained;
+  const newLevel = calculateLevelFromXp(s.xp).level;
+  s.level = newLevel;
+  if (newLevel > oldLevel) {
+    s.masteryPoints = (s.masteryPoints ?? 0) + (newLevel - oldLevel);
+  }
+
+  advanceQuestProgress(s, 'roll', count);
+  advanceQuestProgress(s, 'rare', bestRarity);
+  advanceQuestProgress(s, 'value', finalValue);
+  advanceQuestProgress(s, 'unique', 0);
+  void contribute(finalValue, count);
+  void addCommunityRolls(count);
+
   s.globalBoosters = await getGlobalBoosters();
   await save(s);
 
-  const orbInfo = getOrbInfo(data.rarity);
+  const orbInfo = getOrbInfo(bestRarity);
+  const bestOrb: Orb = {
+    rarity: bestRarity,
+    rolledAt: Date.now(),
+    tier: orbInfo.tier,
+    name: orbInfo.name,
+    isNew: true,
+    isCrit: bestRarity > data.rarity,
+  };
+
   return {
-    orb: {
-      rarity: data.rarity,
-      rolledAt: Date.now(),
-      tier: orbInfo.tier,
-      name: orbInfo.name,
-      isNew: true,
-    },
-    batch: [{
-      rarity: data.rarity,
-      rolledAt: Date.now(),
-      tier: orbInfo.tier,
-      name: orbInfo.name,
-      isNew: false,
-    }],
+    orb: bestOrb,
+    batch: [bestOrb],
     totalValueGained: finalValue,
     totalRollValue: finalValue,
     coinsGained,
@@ -1239,9 +1303,11 @@ export async function claimOrbFrenzy(): Promise<RollResponse> {
     xpGained,
     state: s,
     rollsRemainingUntilNext: cooldownMs(s),
-    dramaticReveal: data.rarity >= 100,
+    dramaticReveal: bestRarity >= 100,
+    frenzyCount: count,
   };
 }
+
 
 function sampleBinomial(n: number, p: number): number {
   if (n <= 0 || p <= 0) return 0;
