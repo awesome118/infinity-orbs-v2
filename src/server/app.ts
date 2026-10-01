@@ -55,34 +55,36 @@ export function createApp() {
   // Keep the enormous Codex collection out of ordinary client-state payloads.
   // The collection itself remains server-side and is fetched through /api/collection
   // in small pages when the Codex is opened.
-  const originalJson = express.response.json;
-  express.response.json = function (body: any) {
-    const stripPlayerCollection = (value: any): any => {
-      if (!value || typeof value !== 'object') return value;
-      if (
-        !Array.isArray(value) &&
-        'collection' in value &&
-        'coins' in value &&
-        'shards' in value &&
-        'totalRolls' in value &&
-        'highestRarity' in value
-      ) {
-        const copy = { ...value };
-        delete copy.collection;
-        copy.collectionCount = Object.keys(value.collection ?? {}).length;
-        return copy;
-      }
-      if (!Array.isArray(value) && value.state && typeof value.state === 'object') {
-        return { ...value, state: stripPlayerCollection(value.state) };
-      }
-      if (!Array.isArray(value) && value.state?.state && typeof value.state.state === 'object') {
-        return { ...value, state: { ...value.state, state: stripPlayerCollection(value.state.state) } };
-      }
-      return value;
-    };
-
-    return originalJson.call(this, stripPlayerCollection(body));
+  const stripPlayerCollection = (value: any): any => {
+    if (!value || typeof value !== 'object') return value;
+    if (
+      !Array.isArray(value) &&
+      'collection' in value &&
+      'coins' in value &&
+      'shards' in value &&
+      'totalRolls' in value &&
+      'highestRarity' in value
+    ) {
+      const copy = { ...value };
+      delete copy.collection;
+      copy.collectionCount = Object.keys(value.collection ?? {}).length;
+      return copy;
+    }
+    if (!Array.isArray(value) && value.state && typeof value.state === 'object') {
+      return { ...value, state: stripPlayerCollection(value.state) };
+    }
+    if (!Array.isArray(value) && value.state?.state && typeof value.state.state === 'object') {
+      return { ...value, state: { ...value.state, state: stripPlayerCollection(value.state.state) } };
+    }
+    return value;
   };
+
+  app.use((req, res, next) => {
+    if (!req.path.startsWith('/api')) return next();
+    const originalJson = res.json.bind(res);
+    res.json = ((body: any) => originalJson(stripPlayerCollection(body))) as typeof res.json;
+    next();
+  });
 
   // Serialize state-changing requests per player. The client is untrusted and may
   // double-submit buttons or send concurrent requests, so mutations must not race.
