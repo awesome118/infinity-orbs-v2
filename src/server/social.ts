@@ -7,21 +7,15 @@ import { cooldownMs, grantFreeShards } from '../shared/game.js';
 const user = () => context.userId ?? 'unknown';
 const username = () => context.username ?? `reddit-user-${user().slice(-8)}`;
 const key = (name: string) => `io:${name}`;
+const GUILDS_KEY = key('guilds');
+const COMMUNITY_EVENT_KEY = key('community_event');
+const COMMUNITY_EVENT_TICK_KEY = key('community_event_tick');
 
-async function loadGuilds(): Promise<Guild[]> {
-  const raw = await redis.get(key('guilds'));
-  const list: Guild[] = raw ? JSON.parse(raw) : [];
-  const currentWeek = Math.floor(Date.now() / 604_800_000);
-  list.forEach(g => {
+function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
+  const currentWeek = weekKey(now);
+  for (const g of guilds) {
     if (!g.perks) {
-      g.perks = {
-        luckRank: 0,
-        speedRank: 0,
-        vaultRank: 0,
-        shardRank: 0,
-        critRank: 0,
-        coinRank: 0,
-      };
+      g.perks = { luckRank: 0, speedRank: 0, vaultRank: 0, shardRank: 0, critRank: 0, coinRank: 0 };
     }
     if (!g.boss || (g as any).bossWeek !== currentWeek) {
       g.boss = createInitialGuildBoss(Math.max(1, Math.min(10, g.level || 1)));
@@ -31,12 +25,37 @@ async function loadGuilds(): Promise<Guild[]> {
       g.challenge = challengeForWeek();
       (g as any).challengeWeek = currentWeek;
     }
-  });
-  return list;
+  }
+  return guilds;
+}
+
+async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Promise<T> {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const txn = await redis.watch(GUILDS_KEY);
+    const raw = await txn.get(GUILDS_KEY);
+    const guilds: Guild[] = normalizeGuilds(raw ? JSON.parse(raw) : []);
+    try {
+      const result = await mutator(guilds);
+      await txn.multi();
+      await txn.set(GUILDS_KEY, JSON.stringify(guilds));
+      const committed = await txn.exec();
+      if (committed !== null) return result;
+    } catch (error) {
+      await txn.unwatch();
+      throw error;
+    }
+  }
+  throw new Error('Guild data changed while processing the request. Please retry.');
+}
+
+
+async function loadGuilds(): Promise<Guild[]> {
+  const raw = await redis.get(GUILDS_KEY);
+  return normalizeGuilds(raw ? JSON.parse(raw) : []);
 }
 
 async function saveGuilds(guilds: Guild[]) {
-  await redis.set(key('guilds'), JSON.stringify(guilds));
+  await redis.set(GUILDS_KEY, JSON.stringify(guilds));
 }
 
 export async function guildInfo() {
@@ -282,7 +301,7 @@ export async function postGuildMessage(text: string) {
 export async function contribute(value: number, rollCount = 1) {
   try {
     if (value <= 0) return;
-    const guilds = await loadGuilds();
+    await updateGuilds(guilds => {
     const guild = guilds.find(g => g.members.some(m => m.username === username()));
     if (!guild) return;
     const member = guild.members.find(m => m.username === username());
@@ -343,7 +362,8 @@ export async function contribute(value: number, rollCount = 1) {
       }
     }
 
-    await saveGuilds(guilds);
+      return;
+    });
   } catch (err) {
     console.error('Error in guild contribution:', err);
   }
@@ -403,16 +423,44 @@ export async function getCommunityEvent(): Promise<WorldEvent> {
 }
 
 export async function addCommunityRolls(rolls: number): Promise<WorldEvent> {
-  const ev = await getCommunityEvent();
-  ev.currentProgress += rolls;
-  while (ev.currentProgress >= ev.goal) {
-    ev.tier = (ev.tier || 1) + 1;
-    ev.goal = Math.round(ev.goal * 2.2);
-    ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
-    ev.buffDescription = `+${Math.round((ev.buffMultiplier - 1) * 100)}% Global Luck Active`;
+  const amount = Math.max(0, Math.floor(Number(rolls)));
+  if (amount <= 0) return getCommunityEvent();
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const txn = await redis.watch(COMMUNITY_EVENT_KEY);
+    const raw = await txn.get(COMMUNITY_EVENT_KEY);
+    const now = Date.now();
+    const currentWeekNumber = weekKey(now);
+    const ev: WorldEvent = raw
+      ? JSON.parse(raw) as WorldEvent
+      : { ...COMMUNITY_WORLD_EVENT };
+    if (ev.weekId !== currentWeekNumber || now >= ev.endsAt) {
+      ev.id = `world-event-w${currentWeekNumber}`;
+      ev.title = 'Weekly Community Milestone';
+      ev.description = 'Community rolls contributed this week toward dynamic tier goals.';
+      ev.goal = 100_000;
+      ev.currentProgress = 0;
+      ev.tier = 1;
+      ev.buffMultiplier = 1.15;
+      ev.buffDescription = '+15% Global Luck Active';
+      ev.endsAt = (currentWeekNumber + 1) * 604_800_000;
+      ev.completed = false;
+      ev.weekId = currentWeekNumber;
+    }
+    ev.currentProgress += amount;
+    while (ev.currentProgress >= ev.goal) {
+      ev.tier = (ev.tier || 1) + 1;
+      ev.goal = Math.round(ev.goal * 2.2);
+      ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
+      ev.buffDescription = `+${Math.round((ev.buffMultiplier - 1) * 100)}% Global Luck Active`;
+    }
+
+    await txn.multi();
+    await txn.set(COMMUNITY_EVENT_KEY, JSON.stringify(ev));
+    const committed = await txn.exec();
+    if (committed !== null) return ev;
   }
-  await redis.set(key('community_event'), JSON.stringify(ev));
-  return ev;
+  throw new Error('Community progress changed while processing rolls. Please retry.');
 }
 
 export async function setCommunityEventConfig(config: {
@@ -461,11 +509,11 @@ export async function setCommunityEventConfig(config: {
 export async function leaderboard(): Promise<LeaderboardEntry[]> {
   const raw = await redis.get(key('leaderboard'));
   const board: LeaderboardEntry[] = raw ? JSON.parse(raw) : [];
-  return board.sort((a, b) => b.value - a.value).slice(0, 25);
+  return [...board].sort((a, b) => b.value - a.value).slice(0, 25);
 }
 
 export async function recordLeaderboard(s: PlayerState) {
-  const board = await leaderboard();
+  const leaderboardKey = key('leaderboard');
   const name = username();
   const next: LeaderboardEntry = {
     username: name,
@@ -474,11 +522,22 @@ export async function recordLeaderboard(s: PlayerState) {
     totalRolls: s.totalRolls,
     level: s.level,
   };
-  const existing = board.find(e => e.username === name);
-  if (existing) Object.assign(existing, next);
-  else board.push(next);
-  board.sort((a, b) => b.value - a.value);
-  await redis.set(key('leaderboard'), JSON.stringify(board.slice(0, 100)));
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const txn = await redis.watch(leaderboardKey);
+    const raw = await txn.get(leaderboardKey);
+    const board: LeaderboardEntry[] = raw ? JSON.parse(raw) : [];
+    const existing = board.find(e => e.username === name);
+    if (existing) Object.assign(existing, next);
+    else board.push(next);
+    board.sort((a, b) => b.value - a.value);
+
+    await txn.multi();
+    await txn.set(leaderboardKey, JSON.stringify(board.slice(0, 100)));
+    const committed = await txn.exec();
+    if (committed !== null) return;
+  }
+  throw new Error('Leaderboard changed while recording the result. Please retry.');
 }
 
 function unlocked(a: { id: string }, s: PlayerState): boolean {
