@@ -40,6 +40,33 @@ export function createApp() {
   const app = express();
   app.use(express.json());
 
+  // Serialize state-changing requests per player. The client is untrusted and may
+  // double-submit buttons or send concurrent requests, so mutations must not race.
+  const mutationQueues = new Map<string, Promise<void>>();
+  app.use('/api', async (req, res, next) => {
+    if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+    const playerKey = context.userId ?? req.ip ?? 'unknown';
+    const previous = mutationQueues.get(playerKey) ?? Promise.resolve();
+
+    let release!: () => void;
+    const current = new Promise<void>(resolve => { release = resolve; });
+    const chain = previous.then(() => current);
+    mutationQueues.set(playerKey, chain);
+
+    await previous;
+
+    let released = false;
+    const releaseOnce = () => {
+      if (released) return;
+      released = true;
+      release();
+      if (mutationQueues.get(playerKey) === chain) mutationQueues.delete(playerKey);
+    };
+    res.once('finish', releaseOnce);
+    res.once('close', releaseOnce);
+    next();
+  });
+
   app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
   app.get('/api/me', async (_req, res) => {
@@ -51,7 +78,7 @@ export function createApp() {
     try {
       const lb = await leaderboard();
       const s = await getMe();
-      recordSocialVisit(s);
+      await recordSocialVisit(s);
       res.json(lb);
     } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch leaderboard.' }); }
   });
@@ -60,7 +87,7 @@ export function createApp() {
     try {
       const gd = await guildInfo();
       const s = await getMe();
-      recordSocialVisit(s);
+      await recordSocialVisit(s);
       res.json(gd);
     } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch guilds.' }); }
   });
@@ -74,7 +101,12 @@ export function createApp() {
     }
   });
 
+  if (process.env.NODE_ENV !== 'production') {
+    app.use('/api/dev', debugRouter);
+  }
+
   app.post('/api/dev/event', async (req, res) => {
+    if (process.env.NODE_ENV === 'production') return res.status(404).json({ error: 'Not found.' });
     try {
       const { goal, progress, addRolls, tier, buffMultiplier, reset } = req.body || {};
       const updated = await setCommunityEventConfig({ goal, progress, addRolls, tier, buffMultiplier, reset });
@@ -156,7 +188,14 @@ export function createApp() {
   app.post('/api/altar/sacrifice', async (req, res) => {
     try {
       const { coins = 0, shards = 0 } = req.body || {};
-      const result = await sacrificeToAltar(Number(coins), Number(shards));
+      const numCoins = Number(coins);
+      const numShards = Number(shards);
+      if (!Number.isFinite(numCoins) || !Number.isFinite(numShards) ||
+          numCoins < 0 || numShards < 0 ||
+          !Number.isSafeInteger(Math.floor(numCoins)) || !Number.isSafeInteger(Math.floor(numShards))) {
+        return res.status(400).json({ error: 'Invalid offering amounts.' });
+      }
+      const result = await sacrificeToAltar(numCoins, numShards);
       res.json(result);
     } catch (e) {
       badRequest(res, e, 'Sacrifice to altar failed.');
@@ -172,8 +211,6 @@ export function createApp() {
       badRequest(res, e, 'Mastery upgrade failed.');
     }
   });
-
-  app.use('/api/dev', debugRouter);
 
   app.post('/api/cosmetics/buy', async (req, res) => {
     try { res.json({ state: await buyCosmetic(req.body?.id) }); } catch (e) { badRequest(res, e, 'Cosmetic purchase failed.'); }
@@ -239,7 +276,9 @@ export function createApp() {
     try {
       const s = await getMe();
       const value = Number(req.body?.rarity);
-      if (!Number.isInteger(value) || value <= 0 || value > s.highestRarity) return res.status(400).json({ error: 'Invalid Orb.' });
+      if (!Number.isSafeInteger(value) || value <= 0 || (s.collection[String(value)] ?? 0) <= 0) {
+        return res.status(400).json({ error: 'You can only share an orb you actually own.' });
+      }
       const subredditName = context.subredditName;
       const text = shareText(s, value);
       let postId = `share-${Date.now()}`;
@@ -253,7 +292,7 @@ export function createApp() {
         });
         postId = post.id;
       }
-      recordShareAction(s);
+      await recordShareAction(s);
       res.json({ success: true, id: postId, text });
     } catch (e) { badRequest(res, e, 'Could not create Reddit post.'); }
   });
