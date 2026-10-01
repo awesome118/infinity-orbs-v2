@@ -50,7 +50,7 @@
     "payments": true
   },
   "payments": {
-    "productsFile": "products.json",
+    "productsFile": "./products.json",
     "endpoints": {
       "fulfillOrder": "/internal/payments/fulfill",
       "refundOrder": "/internal/payments/refund"
