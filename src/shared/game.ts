@@ -1039,6 +1039,8 @@ export function luckMultiplier(s: PlayerState): number {
   }
 
   // ALL SOURCES OF LUCK ARE MULTIPLICATIVE WITH EACH OTHER!
+  const onlineLuck = onlinePlayerLuckMultiplier(s.onlinePlayers ?? 1);
+  const premiumLuck = isPremiumBoosterActive(s, 'fortune') ? 10 : 1;
   const total =
     upgradeLuck *
     prestigeLuck *
@@ -1046,7 +1048,9 @@ export function luckMultiplier(s: PlayerState): number {
     totalAltarMultiplier *
     totalMasteryLuck *
     guildLuck *
-    resonanceLuck;
+    resonanceLuck *
+    onlineLuck *
+    premiumLuck;
 
   return Math.round(total * 100) / 100;
 }
