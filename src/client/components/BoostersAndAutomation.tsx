@@ -22,7 +22,6 @@ import {
   AUTOMATIONS,
   FREE_SHARD_DAILY_CAP,
   GLOBAL_BOOSTERS,
-  GLOBAL_BOOSTER_STACK_MS,
   decayGlobalBoosterState,
   globalBoosterProgress,
   globalBoosterLuckMultiplier,
@@ -274,28 +273,29 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
               <h3 className="text-base font-black text-white">Community Reward</h3>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              A claimable community cache refreshes every 5 minutes while you are around.
-              It rewards Coins and XP based on the current community event tier.
+              The community milestone remains global and weekly. Each time the community reaches a new
+              reward tier, every player gets one claim for that tier. The global Luck buff itself still
+              works exactly as before.
             </p>
           </div>
 
           <div className="flex items-center gap-3">
             <div className="text-right">
-              <span className="block text-[10px] uppercase font-black text-slate-500">Next claim</span>
-              <span className={communityReady ? 'text-sm font-black text-emerald-300' : 'text-sm font-black text-slate-200'}>
-                {communityReady ? 'READY' : formatDuration(nextCommunityClaim)}
+              <span className="block text-[10px] uppercase font-black text-slate-500">Reward tier</span>
+              <span className="text-sm font-black text-emerald-300">
+                {worldEvent?.tier ?? 1}
               </span>
             </div>
             <button
               onClick={() => void onClaimCommunityReward()}
-              disabled={busy || !communityReady}
+              disabled={busy || (worldEvent?.tier ?? 1) <= (state.communityRewardClaimedTier ?? 0)}
               className={
-                communityReady
+                (worldEvent?.tier ?? 1) > (state.communityRewardClaimedTier ?? 0)
                   ? 'px-4 py-2.5 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95'
                   : 'px-4 py-2.5 rounded-xl text-xs font-black bg-slate-800 text-slate-500 cursor-not-allowed'
               }
             >
-              Claim
+              {(worldEvent?.tier ?? 1) > (state.communityRewardClaimedTier ?? 0) ? 'Claim Reward' : 'Claimed'}
             </button>
           </div>
         </div>
