@@ -108,6 +108,7 @@ export function App() {
   const [shareRarity, setShareRarity] = useState<number | null>(null);
   const [showOddsModal, setShowOddsModal] = useState<boolean>(false);
   const [showDevModal, setShowDevModal] = useState<boolean>(false);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(sound.enabled);
   const [newBestModalData, setNewBestModalData] = useState<{ orb: Orb; prevBest: number } | null>(null);
 
@@ -120,14 +121,16 @@ export function App() {
 
   const refreshAll = useCallback(async () => {
     try {
-      const [me, lb, gd, ach, we] = await Promise.all([
+      const [me, lb, gd, ach, we, adminStatus] = await Promise.all([
         getJson<PlayerState>('/api/me'),
         getJson<LeaderboardEntry[]>('/api/leaderboard'),
         getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds'),
         getJson<Achievement[]>('/api/achievements'),
         getJson<WorldEvent>('/api/world-event').catch(() => null),
+        getJson<{ isAdmin: boolean }>('/api/dev/status').catch(() => ({ isAdmin: false })),
       ]);
       setState(me);
+      setIsAdmin(adminStatus.isAdmin === true);
       setLeaderboardData(lb);
       setGuildData(gd);
       setAchievementsData(ach);
@@ -740,7 +743,7 @@ export function App() {
         onToggleSound={() => setSoundEnabled(sound.toggle())}
         onOpenOdds={() => setShowOddsModal(true)}
         onClaimOffline={handleClaimOffline}
-        onOpenDevDebug={['shadow_fen', 'u/shadow_fen', '/u/shadow_fen'].includes(state.username ?? '') ? () => setShowDevModal(true) : undefined}
+        onOpenDevDebug={isAdmin ? () => setShowDevModal(true) : undefined}
         onOpenProfile={() => setTab('profile')}
       />
 
@@ -1095,8 +1098,8 @@ export function App() {
         <RarityTableModal onClose={() => setShowOddsModal(false)} />
       )}
 
-      {/* Developer Debug Modal */}
-      {showDevModal && ['shadow_fen', 'u/shadow_fen', '/u/shadow_fen'].includes(state.username ?? '') && (
+      {/* Admin Console */}
+      {showDevModal && isAdmin && (
         <DevDebugModal
           onClose={() => setShowDevModal(false)}
           onRefresh={refreshAll}
