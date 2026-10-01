@@ -843,7 +843,8 @@ export function calculateAltarMultipliers(s: PlayerState): {
   };
 }
 
-// Paced cooldown: Roll speed starts at 15s; coin upgrades reduce by 3s, 2.5s, 2s, etc.
+// Roll speed is deliberately a long-term investment: 20 levels, 150ms per level,
+ // for a maximum 3.0s reduction from this run upgrade.
 export const BASE_COOLDOWN_MS = 15_000;
 export const AUTO_UNLOCK_COST = 200;
 export const MAX_OFFLINE_ROLLS = 1_000;
@@ -870,15 +871,9 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
   const levelBenefits = getLevelBenefits(calculateLevelFromXp(s.xp || 0).level);
   const levelReduction = levelBenefits.cooldownReductionMs;
 
-  // Roll speed upgrade reduces by 3 seconds on first level, then 2.5s, 2s, etc.
-  const speedLevel = s.upgrades.speed ?? 0;
-  let coinReduction = 0;
-  if (speedLevel >= 1) coinReduction += 3000; // 3 seconds reduction!
-  if (speedLevel >= 2) coinReduction += 2500;
-  if (speedLevel >= 3) coinReduction += 2000;
-  if (speedLevel >= 4) coinReduction += 1500;
-  if (speedLevel >= 5) coinReduction += 1000;
-  if (speedLevel > 5) coinReduction += (speedLevel - 5) * 400;
+  // Roll speed: 20 levels × 150ms = 3.0s total maximum reduction.
+  const speedLevel = Math.min(20, Math.max(0, s.upgrades.speed ?? 0));
+  const coinReduction = speedLevel * 150;
 
   const floor = Math.max(800, 2000 - permReduction - guildSpeedReduction - masteryChronoReduction - steadyHandsReduction - levelReduction);
   let cd = Math.max(floor, BASE_COOLDOWN_MS - coinReduction);
@@ -990,6 +985,8 @@ export function coinsForRarity(rarity: number): number {
  */
 export function upgradeCost(id: UpgradeId, level: number): number {
   if (id === 'auto') return level ? Infinity : AUTO_UNLOCK_COST;
+  // Roll Speed has a deliberate cap: 20 levels, totaling at most 3 seconds.
+  if (id === 'speed' && level >= 20) return Infinity;
   const configs: Record<Exclude<UpgradeId, 'auto'>, { base: number; mult: number }> = {
     speed: { base: 45, mult: 1.65 },
     multi: { base: 120, mult: 1.75 },
