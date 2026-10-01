@@ -184,6 +184,15 @@ export function App() {
     return () => clearInterval(presenceInterval);
   }, []);
 
+  // Social quests count only when the player actually opens the social area.
+  // Background leaderboard/guild refreshes must not award the visit quest.
+  useEffect(() => {
+    if (tab !== 'social') return;
+    void getJson<{ ok: boolean; state: PlayerState }>('/api/social/visit', { method: 'POST' })
+      .then(result => setState(result.state))
+      .catch(() => null);
+  }, [tab]);
+
   // Roll action
   const handleRoll = useCallback(async () => {
     if (isRolling) return;
