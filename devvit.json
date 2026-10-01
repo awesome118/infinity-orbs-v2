@@ -38,6 +38,7 @@
   "permissions": {
     "redis": true,
     "reddit": {
+      "enable": true,
       "asUser": [
         "SUBMIT_POST"
       ]
