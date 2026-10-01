@@ -455,6 +455,7 @@ export interface RollResponse {
   state: PlayerState;
   rollsRemainingUntilNext: number;
   dramaticReveal: boolean;
+  frenzyCount?: number;
 }
 
 export type RarityTierName =
@@ -806,6 +807,14 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
     category: 'qol',
     maxLevel: 5,
     costPerLevel: 3,
+    qol: true,
+  },
+  frenzyVolley: {
+    name: 'Frenzy Volley',
+    desc: 'Very high-tier upgrade: every additional multiball counts at 20% efficiency during Orb Frenzy.',
+    category: 'core',
+    maxLevel: 1,
+    costPerLevel: 2500,
     qol: true,
   },
   offlineFortune: {
@@ -1306,6 +1315,7 @@ export function prestigeUpgradeCost(id: PrestigeUpgradeId, level: number): numbe
     masteryEngine: 4,
     steadyHands: 3,
     offlineFortune: 3,
+    frenzyVolley: 2500,
   };
   const base = bases[id] ?? 2;
   return Math.round(base * Math.pow(1.5, level));
