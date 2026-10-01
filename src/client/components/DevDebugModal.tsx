@@ -334,6 +334,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
             />
             <button
+              title="Create a new test Frenzy post. The optional rarity forces its starting rarity and bypasses the daily limit."
               disabled={loading}
               onClick={async () => {
                 const data = await sendAdminAction('/api/dev/frenzy/start', frenzyRarity.trim() ? { rarity: Number(frenzyRarity) } : {});
@@ -357,6 +358,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 </a>
               )}
               <button
+                title="Claim the latest admin test Frenzy as the owner to test the reward flow."
                 disabled={loading}
                 onClick={() => {
                   if (!confirmation('Claim the latest admin test Frenzy with this admin account?')) return;
@@ -491,6 +493,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
             <button
+              title="Ban the selected account from Infinity Orbs only. This does not affect Reddit."
               disabled={loading || !targetUser.trim()}
               onClick={() => void sendAdminAction('/api/dev/moderation/ban', {
                 username: targetUser,
@@ -502,6 +505,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               <Ban className="inline w-3.5 h-3.5 mr-1" /> Ban in Game
             </button>
             <button
+              title="Remove the selected account's Infinity Orbs game ban."
               disabled={loading || !targetUser.trim()}
               onClick={() => void sendAdminAction('/api/dev/moderation/unban', { username: targetUser })}
               className={`${buttonBase} bg-rose-600 hover:bg-rose-500 border-rose-500 text-white px-3 py-2`}
@@ -509,6 +513,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               <CheckCircle2 className="inline w-3.5 h-3.5 mr-1" /> Unban Game
             </button>
             <button
+              title="Delete the selected player's Infinity Orbs save. This does not change their game-ban record."
               disabled={loading || !targetUser.trim()}
               onClick={() => {
                 if (!confirmation(`Delete all Infinity Orbs save data for u/${targetUser.replace(/^u\\//i, '')}?`)) return;
@@ -519,6 +524,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               <UserX className="inline w-3.5 h-3.5 mr-1" /> Wipe Save
             </button>
             <button
+              title="Delete the selected save and then apply the selected Infinity Orbs game ban."
               disabled={loading || !targetUser.trim()}
               onClick={() => {
                 if (!confirmation(`Wipe game data and game-ban u/${targetUser.replace(/^u\\//i, '')}?`)) return;
@@ -533,6 +539,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               <Ban className="inline w-3.5 h-3.5 mr-1" /> Wipe + Ban
             </button>
             <button
+              title="Delete the selected save and remove the selected Infinity Orbs game ban."
               disabled={loading || !targetUser.trim()}
               onClick={() => {
                 if (!confirmation(`Wipe game data and unban u/${targetUser.replace(/^u\\//i, '')}?`)) return;
@@ -546,6 +553,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
 
           <div className="flex flex-wrap gap-2">
             <button
+              title="Load the current list of active Infinity Orbs game bans."
               disabled={loading}
               onClick={() => void getBannedUsers()}
               className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}
@@ -553,6 +561,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               <RefreshCw className="inline w-3.5 h-3.5 mr-1" /> Load Banned Game Accounts
             </button>
             <button
+              title="Delete your own Infinity Orbs save while keeping your game-ban record unchanged."
               disabled={loading}
               onClick={() => {
                 const self = contextInfo?.username ?? '';
@@ -565,6 +574,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               Wipe My Save
             </button>
             <button
+              title="Remove your own Infinity Orbs game ban. This is also available from the ban screen."
               disabled={loading}
               onClick={() => {
                 const self = contextInfo?.username ?? '';
@@ -588,6 +598,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                     </div>
                   </div>
                   <button
+                    title="Remove this listed player's Infinity Orbs game ban."
                     disabled={loading}
                     onClick={() => void sendAdminAction('/api/dev/moderation/unban', { username: user.username })}
                     className={`${buttonBase} bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-300 px-3 py-2`}
@@ -606,6 +617,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
           <div className="flex flex-wrap gap-2">
             <button
+              title="Erase the entire current Infinity Orbs save and restore the normal starting state."
               disabled={loading}
               onClick={() => {
                 if (!confirmation('Reset your entire Infinity Orbs save to a fresh state?')) return;
@@ -615,7 +627,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             >
               <RotateCcw className="inline w-3.5 h-3.5 mr-1" /> Reset My Save
             </button>
-            <button disabled={loading} onClick={() => void sendAdminAction('/api/dev/preset', { preset: 'fresh' })} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}>
+            <button title="Reset the current test account to the ordinary new-player starting state." disabled={loading} onClick={() => void sendAdminAction('/api/dev/preset', { preset: 'fresh' })} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}>
               <Database className="inline w-3.5 h-3.5 mr-1" /> Fresh State
             </button>
           </div>
