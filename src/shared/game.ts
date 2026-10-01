@@ -394,6 +394,7 @@ export interface PlayerStreak {
 }
 
 export interface PlayerState {
+  username?: string;
   coins: number;
   shards: number;
   cosmicDust: number;
