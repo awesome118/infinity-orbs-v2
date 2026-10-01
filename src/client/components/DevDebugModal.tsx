@@ -18,6 +18,7 @@ type AdminContext = {
   userId: string | null;
   subredditName: string | null;
   postId: string | null;
+  gameModerationVersion?: string;
   gameBan?: {
     active: true;
     bannedAt: number;
@@ -163,6 +164,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <div>
               <h3 className="text-base font-black text-white">Admin Console</h3>
               <p className="text-xs text-slate-400">Server-authorized testing and moderation controls.</p>
+              <p className="text-[10px] text-emerald-400/70 font-mono">Game moderation: {contextInfo?.gameModerationVersion ?? "loading"}</p>
             </div>
           </div>
           <button title="Close the admin console." onClick={onClose} className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
