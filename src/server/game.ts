@@ -32,7 +32,6 @@ import {
   MASTERY_SKILLS,
   masterySkillCost,
   getLevelBenefits,
-  calculateLevelFromXp,
 } from '../shared/game.js';
 import {
   contribute,
@@ -101,11 +100,16 @@ function advanceQuestProgress(s: PlayerState, type: 'roll' | 'rare' | 'value' | 
     if (type === 'social' && q.id.includes('social')) q.progress = Math.min(q.target, q.progress + 1);
   }
   for (const q of s.weeklyQuests) {
+    if (type === 'rare' && amount >= 100) {
+      const shareQuest = s.weeklyQuests.find(weekly => weekly.id === 'weekly-share');
+      if (shareQuest) shareQuest.unlocked = true;
+    }
+    if (!q.unlocked) continue;
     if (q.claimed) continue;
     if (type === 'roll' && q.id.includes('grind')) q.progress = Math.min(q.target, q.progress + amount);
     if (type === 'rare' && q.id.includes('epic') && amount >= 1000) q.progress = Math.min(q.target, q.progress + 1);
     if (type === 'value' && q.id.includes('guild')) q.progress = Math.min(q.target, q.progress + amount);
-    // Fixed: Only genuine share action advances the share quest!
+    // Only a genuine server-created share advances the share quest.
     if (type === 'share' && q.id.includes('share')) q.progress = Math.min(q.target, q.progress + 1);
   }
 }
@@ -563,6 +567,7 @@ export async function claimQuest(type: 'daily' | 'weekly', id: string): Promise<
   const list = type === 'daily' ? s.dailyQuests : s.weeklyQuests;
   const quest = list.find(q => q.id === id);
   if (!quest) throw new Error('Quest not found.');
+  if (quest.unlocked === false) throw new Error('Quest is not unlocked yet.');
   if (quest.claimed) throw new Error('Quest already claimed.');
   if (quest.progress < quest.target) throw new Error('Quest requirement not met.');
 
