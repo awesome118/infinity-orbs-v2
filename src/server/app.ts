@@ -43,7 +43,6 @@ import {
   leaderboard,
   shareText,
   getCommunityEvent,
-  setCommunityEventConfig,
 } from './social.js';
 import { context, reddit } from './devvit-mock.js';
 import { spendShards } from '../shared/game.js';
@@ -213,20 +212,9 @@ export function createApp() {
     }
   });
 
-  if (process.env.NODE_ENV !== 'production') {
-    app.use('/api/dev', debugRouter);
-  }
-
-  app.post('/api/dev/event', async (req, res) => {
-    if (process.env.NODE_ENV === 'production') return res.status(404).json({ error: 'Not found.' });
-    try {
-      const { goal, progress, addRolls, tier, buffMultiplier, reset } = req.body || {};
-      const updated = await setCommunityEventConfig({ goal, progress, addRolls, tier, buffMultiplier, reset });
-      res.json({ event: updated });
-    } catch (e: any) {
-      res.status(400).json({ error: e instanceof Error ? e.message : 'Failed to update community event.' });
-    }
-  });
+  // Debug routes are always mounted, but debug.ts rejects every request unless
+  // the trusted Devvit username is exactly "shadow_fen".
+  app.use('/api/dev', debugRouter);
 
   app.get('/api/achievements', async (_req, res) => {
     try { res.json(await achievements(await getMe())); }
