@@ -49,6 +49,26 @@ const localRedis = {
     return 'OK';
   },
   del: async (key: string): Promise<boolean> => store.delete(key),
+  watch: async (...keys: string[]) => {
+    const snapshot = new Map(keys.map(key => [key, store.get(key)]));
+    const staged: Array<[string, string]> = [];
+    return {
+      get: async (key: string): Promise<string | null> => store.get(key) ?? null,
+      multi: async () => undefined,
+      set: async (key: string, value: string) => {
+        staged.push([key, value]);
+        return 'QUEUED';
+      },
+      exec: async () => {
+        for (const key of keys) {
+          if ((store.get(key) ?? null) !== (snapshot.get(key) ?? null)) return null;
+        }
+        for (const [key, value] of staged) store.set(key, value);
+        return [];
+      },
+      unwatch: async () => undefined,
+    };
+  },
   incr: async (key: string): Promise<number> => {
     const value = Number.parseInt(store.get(key) ?? '0', 10) + 1;
     store.set(key, String(value));
