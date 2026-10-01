@@ -90,12 +90,6 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   const onlinePlayers = Math.max(1, state.onlinePlayers ?? 1);
   const onlineLuck = onlinePlayerLuckMultiplier(onlinePlayers);
   const freeShards = Math.min(FREE_SHARD_DAILY_CAP, state.freeShardsEarnedToday ?? 0);
-  const nextCommunityClaim = Math.max(
-    0,
-    (state.communityRewardClaimedAt ?? 0) + 5 * 60 * 1000 - now,
-  );
-  const communityReady = nextCommunityClaim <= 0;
-
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <section className="rounded-3xl border border-indigo-500/25 bg-gradient-to-br from-slate-900 via-indigo-950/20 to-slate-900 p-5 shadow-xl">
@@ -105,10 +99,6 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
               <h2 className="text-xl font-black text-white">Boosters & Automation</h2>
               <Sparkles className="w-4 h-4 text-purple-300 animate-pulse" />
             </div>
-            <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-              Spend Shards for huge temporary power spikes and permanent quality-of-life
-              automation. Boosters change your odds and output, but every orb is still RNG.
-            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs">
@@ -138,17 +128,13 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-black text-white">World Boosters</h3>
+              <h3 className="text-base font-black text-white">Global Boosters</h3>
               <Users className="w-4 h-4 text-fuchsia-300" />
             </div>
-            <p className="text-xs text-slate-400 mt-1">
-              Anyone can spend 25 Shards to boost every player. Stacks add time, never strength.
-              Each stack adds 30 minutes of charge. Crossing another full bar tier increases the effect,
-              while the timer drains faster. Tier 5 drains at 3× speed.
-            </p>
+
           </div>
           <div className="text-[11px] font-bold text-fuchsia-200">
-            Free World Boosts: {state.globalBoosterCredits ?? 0}
+            Free Global Boosts: {state.globalBoosterCredits ?? 0}
           </div>
         </div>
 
@@ -183,10 +169,10 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                   </div>
                   <div className="mt-1 flex items-center justify-between text-[10px]">
                     <span className="text-slate-400">
-                      {active ? formatDuration(displayed.remainingMs / drain) + ' real time left' : 'No active boost'}
+                      {active ? formatDuration(displayed.remainingMs / drain) + ' left' : 'Inactive'}
                     </span>
                     <span className="text-fuchsia-300 font-bold">
-                      {active ? effect : 'Base effect available'}
+                      {active ? effect : ''}
                     </span>
                   </div>
                 </div>
@@ -203,7 +189,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                     onClick={() => void onActivateGlobalBooster(id, true)}
                     disabled={busy || (state.globalBoosterCredits ?? 0) <= 0}
                     className="px-2.5 py-2 rounded-xl text-[10px] font-black bg-fuchsia-600/20 border border-fuchsia-500/25 text-fuchsia-200 hover:bg-fuchsia-600/30 disabled:text-slate-600 disabled:cursor-not-allowed"
-                    title="Use one free World Booster activation from a purchased Shard pack"
+                    title="Use one free Global Booster activation"
                   >
                     Free
                   </button>
@@ -346,7 +332,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                 <div className="mt-3 flex items-center justify-between gap-2">
                   <span className="text-[11px] text-slate-500">
                     {id === 'autoCommunityClaim'
-                      ? 'Never miss the 5-minute community cache.'
+                      ? 'Claims community rewards as they become available.'
                       : id === 'autoQuestClaim'
                         ? 'Claims rewards as soon as objectives finish.'
                         : id === 'autoStreakClaim'
