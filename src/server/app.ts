@@ -276,7 +276,7 @@ export function createApp() {
   app.post('/api/automation/buy', async (req, res) => {
     try {
       const id = req.body?.id;
-      const validIds = ['autoQuestClaim', 'autoStreakClaim', 'autoCommunityClaim', 'autoUpgrade'];
+      const validIds = ['autoQuestClaim', 'autoStreakClaim', 'autoCommunityClaim', 'autoOfflineClaim', 'autoUpgrade'];
       if (!validIds.includes(id)) return res.status(400).json({ error: 'Invalid automation.' });
       res.json({ state: await buyAutomation(id) });
     } catch (e) { badRequest(res, e, 'Failed to unlock automation.'); }
