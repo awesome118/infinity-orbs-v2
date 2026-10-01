@@ -243,11 +243,12 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
           <div className="flex gap-2">
             <input
+              title="Exact rarity denominator for the forced roll. For example, 100000 means 1/100,000."
               type="number"
               value={customRarity}
               onChange={e => setCustomRarity(e.target.value)}
               className="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
-              placeholder="Rarity denominator"
+              title="Enter the exact rarity to force for a test roll." placeholder="Rarity denominator"
             />
             <button title="Perform one roll at the exact rarity entered in the field." onClick={() => void handleForceRoll(Number(customRarity))} disabled={loading} className={`${buttonBase} bg-cyan-600 hover:bg-cyan-500 border-cyan-500 text-white px-4`}>
               Roll Exact
@@ -299,7 +300,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                   type="number"
                   value={value}
                   onChange={e => setStateInputs(prev => ({ ...prev, [key]: e.target.value }))}
-                  placeholder="leave blank"
+                  title="Set this field directly for testing. Leave blank to keep its current value." placeholder="leave blank"
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white font-mono"
                 />
               </label>
@@ -387,15 +388,15 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <Power className="w-4 h-4" /> Global Booster Control
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <select value={globalBooster} onChange={e => setGlobalBooster(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white">
+            <select title="Choose the Global Booster to edit." value={globalBooster} onChange={e => setGlobalBooster(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white">
               <option value="luck">Global Luck</option>
               <option value="speed">Global Speed</option>
               <option value="crit">Global Crit</option>
             </select>
-            <select value={globalTier} onChange={e => setGlobalTier(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white">
+            <select title="Choose the tier to force. Off disables the booster." value={globalTier} onChange={e => setGlobalTier(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white">
               {[0, 1, 5, 10].map(v => <option key={v} value={v}>{v === 0 ? 'Off' : `Tier ${v}`}</option>)}
             </select>
-            <input value={globalMinutes} onChange={e => setGlobalMinutes(e.target.value)} type="number" min="1" className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white font-mono" placeholder="minutes" />
+            <input value={globalMinutes} onChange={e => setGlobalMinutes(e.target.value)} type="number" min="1" title="How many minutes the forced Global Booster state should remain active." className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white font-mono" placeholder="minutes" />
             <button
               title="Set a Global Booster's tier and duration directly without spending Shards."
               disabled={loading}
@@ -447,10 +448,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <input
               value={targetUser}
               onChange={e => setTargetUser(e.target.value)}
-              placeholder="Reddit username, without u/"
+              title="Enter the Reddit username whose Infinity Orbs game account you want to manage." placeholder="Reddit username, without u/"
               className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
             />
             <select
+              title="Choose the duration of a game-only ban. Permanent stays until manually unbanned."
               value={banDuration}
               onChange={e => setBanDuration(e.target.value)}
               className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
@@ -467,7 +469,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <input
               value={banReason}
               onChange={e => setBanReason(e.target.value)}
-              placeholder="Game ban reason"
+              title="This reason is shown to the player on the Infinity Orbs ban screen." placeholder="Game ban reason"
               className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
             />
             <button
