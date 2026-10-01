@@ -157,7 +157,7 @@ export async function applyRolls(
   const baseLuck = luckMultiplier(s) * communityLuck;
 
   // Apex Fortune Mastery: chance on multi-roll to double the luck of that activation
-  const apexChance = (s.masterySkills?.apexFortune ?? 0) * 0.04;
+  const apexChance = Math.min(1, (s.masterySkills?.apexFortune ?? 0) * 0.05);
   const isApex = rollCount > 1 && rng() < apexChance;
   const effectiveLuck = isApex ? baseLuck * 2 : baseLuck;
 
@@ -225,7 +225,7 @@ export async function applyRolls(
     const shardProcChance = Math.min(
       1,
       (s.upgrades.shardChance ?? 0) * 0.005 +
-      (s.masterySkills?.shardAttunement ?? 0) * 0.003 +
+      (s.masterySkills?.shardAttunement ?? 0) * 0.005 +
       (s.guildPerks?.shardRank ?? 0) * 0.002 +
       levelBenefits.shardChance
     );
@@ -250,23 +250,22 @@ export async function applyRolls(
   }
 
   // Balanced Gold progression: top rolled orb gives 100% coins; extra orbs in multi-roll give 20% bonus coins
-  const dustBountyMul = 1 + (s.prestigeUpgrades?.dustBounty ?? 0) * 0.1;
   rarities.sort((a, b) => b - a);
-  const topCoins = Math.round(coinsForRarity(rarities[0]) * dustBountyMul);
-  const extraCoins = rarities.slice(1).reduce((acc, r) => acc + Math.max(1, Math.round(coinsForRarity(r) * dustBountyMul * 0.20)), 0);
+  const topCoins = Math.round(coinsForRarity(rarities[0]));
+  const extraCoins = rarities.slice(1).reduce((acc, r) => acc + Math.max(1, Math.round(coinsForRarity(r) * 0.20)), 0);
   coinsGained = topCoins + extraCoins;
 
   // Level passives and other coin modifiers stack multiplicatively by source.
   const coinBonusMul =
     levelBenefits.coinsMultiplier *
     (1 + (s.upgrades.coinBonus ?? 0) * 0.15) *
-    (1 + (s.masterySkills?.prosperity ?? 0) * 0.10) *
+    (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
     (1 + (s.guildPerks?.coinRank ?? 0) * 0.10);
   coinsGained = Math.round(coinsGained * coinBonusMul);
 
   const lowRarityCoins = rarities
     .filter(r => r < 100)
-    .reduce((sum, r) => sum + Math.max(1, Math.round(coinsForRarity(r) * dustBountyMul)), 0);
+    .reduce((sum, r) => sum + Math.max(1, Math.round(coinsForRarity(r))), 0);
 
   // Singularity Filter: +25% only to Common/Uncommon coin yield.
   const hasFilter = (s.prestigeUpgrades?.autoFilter ?? 0) > 0;
