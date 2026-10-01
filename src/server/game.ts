@@ -1,4 +1,3 @@
-import { randomInt } from 'node:crypto';
 import { redis, context } from './devvit-mock.js';
 import {
   createInitialState,
@@ -83,7 +82,9 @@ export async function save(s: PlayerState) {
 }
 
 function serverRandom(): number {
-  return randomInt(0, 1_000_000_000) / 1_000_000_000;
+  const sample = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(sample);
+  return sample[0] / 4_294_967_296;
 }
 
 function finiteNonNegativeInteger(value: unknown, fallback = 0): number {
