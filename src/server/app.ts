@@ -66,7 +66,7 @@ export function createApp() {
       'highestRarity' in value
     ) {
       const copy = { ...value };
-      delete copy.collection;
+      copy.collection = {};
       copy.collectionCount = Object.keys(value.collection ?? {}).length;
       return copy;
     }
