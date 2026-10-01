@@ -46,6 +46,7 @@ import {
   setCommunityEventConfig,
 } from './social.js';
 import { context, reddit } from './devvit-mock.js';
+import { spendShards } from '../shared/game.js';
 import { payments } from '@devvit/web/server';
 import type { Order, PaymentHandlerResponse } from '@devvit/web/server';
 
