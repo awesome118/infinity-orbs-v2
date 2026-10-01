@@ -18,6 +18,12 @@ type AdminContext = {
   userId: string | null;
   subredditName: string | null;
   postId: string | null;
+  gameBan?: {
+    active: true;
+    bannedAt: number;
+    bannedUntil: number | null;
+    reason: string;
+  } | null;
 };
 
 const buttonBase =
@@ -37,8 +43,6 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [targetUser, setTargetUser] = useState('');
   const [banDuration, setBanDuration] = useState('permanent');
   const [banReason, setBanReason] = useState('Infinity Orbs admin action');
-  const [banNote, setBanNote] = useState('Infinity Orbs admin console');
-  const [banMessage, setBanMessage] = useState('');
 
   const [frenzyRarity, setFrenzyRarity] = useState('');
   const [frenzyPostId, setFrenzyPostId] = useState('');
@@ -102,7 +106,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     }
   };
 
-  const [bannedUsers, setBannedUsers] = useState<Array<{ username: string; id?: string | null }>>([]);
+  const [bannedUsers, setBannedUsers] = useState<Array<{
+    username: string;
+    userId?: string;
+    bannedAt: number;
+    bannedUntil: number | null;
+    reason: string;
+  }>>([]);
 
   useEffect(() => {
     void fetch('/api/dev/status')
