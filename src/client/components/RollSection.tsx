@@ -161,11 +161,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
       setTimeout(() => setIsShaking(false), 450);
     }
 
-    // New Best Ball Milestone celebration check
-    if (onNewBest && state.highestRarity > 0 && lastOrb.rarity > state.highestRarity) {
-      onNewBest(lastOrb, state.highestRarity);
-    }
-
     // Audio & celebratory fanfare (throttled to avoid stutter at high speeds)
     const nowTs = Date.now();
     const isSilentSonar = hasSonarUpgrade && sound.sonarMode;
@@ -371,6 +366,22 @@ export const RollSection: React.FC<RollSectionProps> = ({
         {sonarPinging && (
           <div className="absolute z-0 w-48 h-48 rounded-full border-4 border-cyan-400/90 animate-ping pointer-events-none" />
         )}
+
+        {/* Layered celestial animation field */}
+        <div className="absolute w-60 h-60 rounded-full border border-cyan-400/10 animate-celestial-spin pointer-events-none" />
+        <div className="absolute w-52 h-52 rounded-full border border-purple-400/10 animate-celestial-spin-reverse pointer-events-none" />
+        <div className="absolute w-48 h-48 rounded-full overflow-hidden pointer-events-none animate-energy-sweep opacity-50">
+          <div className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-cyan-300/40 to-transparent" />
+        </div>
+        <div className="absolute w-72 h-72 pointer-events-none">
+          {[0,1,2,3,4,5].map(i => (
+            <span
+              key={i}
+              className="absolute left-1/2 top-1/2 w-1 h-1 rounded-full bg-white/60 animate-star-drift"
+              style={{ animationDelay: `${i * -0.55}s`, transform: `rotate(${i * 60}deg) translateY(-${112 + (i % 2) * 18}px)` }}
+            />
+          ))}
+        </div>
 
         {/* The Central Main Orb */}
         <div
