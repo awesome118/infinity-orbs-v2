@@ -1,3 +1,5 @@
+import { weekKey } from './game.js';
+
 export type GuildRole = 'owner' | 'officer' | 'member';
 export type ChallengeType = 'rolls' | 'value' | 'rare';
 
