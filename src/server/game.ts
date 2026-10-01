@@ -32,6 +32,7 @@ import {
   type AutomationId,
   type GlobalBoosterId,
   type GlobalBoosterSnapshot,
+  type GlobalBoosterState,
   PREMIUM_BOOSTERS,
   AUTOMATIONS,
   GLOBAL_BOOSTERS,
