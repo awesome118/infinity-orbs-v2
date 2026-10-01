@@ -35,8 +35,6 @@ import {
   PREMIUM_BOOSTERS,
   AUTOMATIONS,
   GLOBAL_BOOSTERS,
-  GLOBAL_BOOSTER_STACK_MS,
-  GLOBAL_BOOSTER_MAX_TIER,
   createInitialGlobalBoosters,
   decayGlobalBoosterState,
   activateGlobalBoosterStack,
@@ -1063,7 +1061,7 @@ export async function buyAutomation(id: AutomationId): Promise<PlayerState> {
     throw new Error(info.name + ' requires ' + info.costShards + ' Shards.');
   }
 
-  s.shards -= info.costShards;
+  spendShards(s, info.costShards);
   s.automations = { ...(s.automations ?? {}), [id]: true };
   await save(s);
   return s;
