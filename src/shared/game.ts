@@ -275,11 +275,21 @@ export function activateGlobalBoosterStack(
   now = Date.now(),
 ): GlobalBoosterState {
   const decayed = decayGlobalBoosterState(state, now);
-  let tier = decayed.tier <= 0 ? 1 : decayed.tier;
+
+  // The first activation creates Tier 1 with a full 30-minute charge.
+  // Later activations add charge to the current tier. Once that tier's bar is
+  // completely filled, the booster promotes exactly once per completed tier.
+  if (decayed.tier <= 0) {
+    return {
+      tier: 1,
+      remainingMs: GLOBAL_BOOSTER_STACK_MS,
+      updatedAt: now,
+    };
+  }
+
+  let tier = decayed.tier;
   const remainingMs = decayed.remainingMs + GLOBAL_BOOSTER_STACK_MS;
 
-  // A stack adds exactly 30 minutes of charge. When that fills the current
-  // tier's bar, the booster tiers up. Overflow carries into the new tier.
   while (tier < GLOBAL_BOOSTER_MAX_TIER && remainingMs >= tier * GLOBAL_BOOSTER_STACK_MS) {
     tier++;
   }
