@@ -121,16 +121,25 @@ export function App() {
 
   const refreshAll = useCallback(async () => {
     try {
-      const [me, lb, gd, ach, we, adminStatus] = await Promise.all([
+      const [me, adminStatus] = await Promise.all([
         getJson<PlayerState>('/api/me'),
+        getJson<{ isAdmin: boolean }>('/api/dev/status').catch(() => ({ isAdmin: false })),
+      ]);
+
+      setState(me);
+      setIsAdmin(adminStatus.isAdmin === true);
+
+      // A banned non-admin only needs their own state so the ban screen can load.
+      // The admin may continue to use the normal game endpoints while testing a ban.
+      if (me.gameBan?.active && !adminStatus.isAdmin) return;
+
+      const [lb, gd, ach, we] = await Promise.all([
         getJson<LeaderboardEntry[]>('/api/leaderboard'),
         getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds'),
         getJson<Achievement[]>('/api/achievements'),
         getJson<WorldEvent>('/api/world-event').catch(() => null),
-        getJson<{ isAdmin: boolean }>('/api/dev/status').catch(() => ({ isAdmin: false })),
       ]);
-      setState(me);
-      setIsAdmin(adminStatus.isAdmin === true);
+
       setLeaderboardData(lb);
       setGuildData(gd);
       setAchievementsData(ach);
@@ -721,6 +730,66 @@ export function App() {
       <main className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 space-y-3">
         <RefreshCw className="w-8 h-8 animate-spin text-purple-500" />
         <p className="text-sm font-semibold">Connecting to Infinity Orbs...</p>
+      </main>
+    );
+  }
+
+  if (state.gameBan?.active) {
+    const banEnds = state.gameBan.bannedUntil;
+    const permanent = banEnds === null;
+    const banDate = banEnds ? new Date(banEnds).toLocaleString() : '';
+
+    return (
+      <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
+        <div className="w-full max-w-lg">
+          <div className="bg-slate-900 border border-rose-500/40 rounded-3xl p-8 shadow-2xl text-center">
+            <div className="mx-auto w-16 h-16 rounded-full bg-rose-500/15 border border-rose-500/30 flex items-center justify-center">
+              <Shield className="w-8 h-8 text-rose-400" />
+            </div>
+            <h1 className="mt-5 text-2xl font-black text-white">Infinity Orbs Account Banned</h1>
+            <p className="mt-2 text-sm text-slate-400">
+              Access to the game has been disabled for this account.
+            </p>
+
+            <div className="mt-6 text-left space-y-3 rounded-2xl bg-slate-950/70 border border-slate-800 p-4">
+              <div>
+                <div className="text-[10px] uppercase font-bold text-slate-500">Reason</div>
+                <div className="text-sm text-slate-200">{state.gameBan.reason}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase font-bold text-slate-500">Duration</div>
+                <div className="text-sm text-rose-300">
+                  {permanent ? 'Permanent' : `Until ${banDate}`}
+                </div>
+              </div>
+            </div>
+
+            {isAdmin ? (
+              <div className="mt-6">
+                <div className="mb-3 text-xs text-emerald-400 font-semibold">
+                  Admin access remains available while this account is game-banned.
+                </div>
+                <button
+                  onClick={() => setShowDevModal(true)}
+                  className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm"
+                >
+                  Open Admin Console
+                </button>
+              </div>
+            ) : (
+              <div className="mt-6 text-xs text-slate-500">
+                Contact an Infinity Orbs administrator if you believe this was a mistake.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {showDevModal && isAdmin && (
+          <DevDebugModal
+            onClose={() => setShowDevModal(false)}
+            onRefresh={refreshAll}
+          />
+        )}
       </main>
     );
   }
