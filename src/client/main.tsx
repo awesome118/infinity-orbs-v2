@@ -132,7 +132,7 @@ export function App() {
 
       // A banned non-admin only needs their own state so the ban screen can load.
       // The admin may continue to use the normal game endpoints while testing a ban.
-      if (me.gameBan?.active && !adminStatus.isAdmin) return;
+      if (me.gameBan?.active) return;
 
       const [lb, gd, ach, we] = await Promise.all([
         getJson<LeaderboardEntry[]>('/api/leaderboard'),
