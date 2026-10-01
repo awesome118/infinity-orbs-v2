@@ -100,7 +100,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
               <span>Crucible of Perpetual Devotion</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Sacrifice your wealth to the cosmos. Coin and Shard devotion compound <span className="text-amber-300 font-bold">multiplicatively</span> with each other to exponentially scale your luck!
+              Sacrifice Coins and Shards to build permanent luck multipliers. Coin devotion and Shard infusion combine <span className="text-amber-300 font-bold">multiplicatively</span>, while the temporary Surge multiplies the result again.
             </p>
           </div>
 
