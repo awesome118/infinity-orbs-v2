@@ -147,11 +147,11 @@ export function createInitialGuildBoss(tier = 1): GuildBoss {
 }
 
 export function challengeForWeek() {
-  const week = Math.floor(Date.now() / 604_800_000);
+  const week = weekKey();
   return { ...CHALLENGE_POOL[week % CHALLENGE_POOL.length] };
 }
 
-const currentWeekNumber = Math.floor(Date.now() / 604_800_000);
+const currentWeekNumber = weekKey();
 
 export const COMMUNITY_WORLD_EVENT: WorldEvent = {
   id: 'world-event-1',
