@@ -9,7 +9,6 @@
     "src/client/**/*.ts",
     "src/client/**/*.tsx",
     "src/shared/**/*.ts",
-    "vite.config.ts",
     "vite.local.config.ts"
   ]
 }
