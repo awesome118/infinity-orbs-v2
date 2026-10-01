@@ -28,6 +28,13 @@ import {
   critMultiplier,
   calculateLevelFromXp,
   type MasterySkillId,
+  type PremiumBoosterId,
+  type AutomationId,
+  PREMIUM_BOOSTERS,
+  AUTOMATIONS,
+  grantFreeShards,
+  resetFreeShardBudgetIfNeeded,
+  isPremiumBoosterActive,
   MASTERY_SKILLS,
   masterySkillCost,
   getLevelBenefits,
@@ -41,7 +48,24 @@ import {
   getCommunityEvent,
 } from './social.js';
 
+
 const key = () => `player:${context.userId ?? 'unknown'}`;
+const ONLINE_PLAYERS_KEY = 'io:online:players';
+const ONLINE_WINDOW_MS = 30_000;
+const COMMUNITY_REWARD_INTERVAL_MS = 5 * 60 * 1000;
+
+async function touchOnlinePresence(): Promise<number> {
+  const userId = context.userId;
+  if (!userId) return 1;
+  const now = Date.now();
+  await redis.zAdd(ONLINE_PLAYERS_KEY, { member: userId, score: now });
+  await redis.zRemRangeByScore(ONLINE_PLAYERS_KEY, 0, now - ONLINE_WINDOW_MS);
+  return Math.max(1, await redis.zCard(ONLINE_PLAYERS_KEY));
+}
+
+export async function getOnlinePlayers(): Promise<number> {
+  return touchOnlinePresence();
+}
 
 export async function loadRaw(): Promise<PlayerState> {
   const raw = await redis.get(key());
@@ -75,6 +99,99 @@ export async function loadRaw(): Promise<PlayerState> {
     masteryPoints: parsed.masteryPoints ?? base.masteryPoints ?? 1,
     guildPerks: perks,
   };
+}
+
+function applyXp(s: PlayerState, amount: number): void {
+  const oldLevel = s.level || 1;
+  s.xp += Math.max(0, Math.floor(amount));
+  const levelInfo = calculateLevelFromXp(s.xp);
+  s.level = levelInfo.level;
+  if (s.level > oldLevel) {
+    s.masteryPoints = (s.masteryPoints ?? 0) + (s.level - oldLevel);
+  }
+}
+
+function applyQuestReward(s: PlayerState, quest: { rewardCoins: number; rewardShards?: number; rewardTokens?: number; rewardXp?: number; claimed: boolean }): { rewardCoins: number; rewardShards: number; rewardTokens: number } {
+  quest.claimed = true;
+  s.questsCompleted = (s.questsCompleted ?? 0) + 1;
+  s.coins += quest.rewardCoins;
+  const rewardShards = grantFreeShards(s, quest.rewardShards ?? 0);
+  applyXp(s, quest.rewardXp ?? 0);
+  return {
+    rewardCoins: quest.rewardCoins,
+    rewardShards,
+    rewardTokens: quest.rewardTokens ?? 0,
+  };
+}
+
+async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins: number; rewardShards: number; day: number }> {
+  const today = new Date().toISOString().slice(0, 10);
+  if (s.streak.lastClaimDate === today) throw new Error('Already claimed daily reward for today.');
+
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (s.streak.lastClaimDate === yesterday) s.streak.count++;
+  else if (!s.streak.lastClaimDate) s.streak.count = 1;
+  else s.streak.count = 1;
+
+  s.streak.longestStreak = Math.max(s.streak.longestStreak, s.streak.count);
+  s.streak.lastClaimDate = today;
+
+  const day = ((s.streak.count - 1) % 7) + 1;
+  const rewardCoins = day * 100;
+  const rewardShards = grantFreeShards(s, day === 7 ? 5 : day === 3 ? 1 : 0);
+  s.coins += rewardCoins;
+  return { rewardCoins, rewardShards, day };
+}
+
+async function claimCommunityRewardFromState(s: PlayerState, now = Date.now()): Promise<{ rewardCoins: number; rewardXp: number; nextClaimAt: number; tier: number }> {
+  const last = s.communityRewardClaimedAt ?? 0;
+  const event = await getCommunityEvent();
+  if (last && now - last < COMMUNITY_REWARD_INTERVAL_MS) {
+    return {
+      rewardCoins: 0,
+      rewardXp: 0,
+      nextClaimAt: last + COMMUNITY_REWARD_INTERVAL_MS,
+      tier: Math.max(1, event.tier || 1),
+    };
+  }
+
+  const tier = Math.max(1, event.tier || 1);
+  const rewardCoins = Math.max(250, Math.round((500 * tier) + (s.level || 1) * 25));
+  const rewardXp = 25 * tier;
+  s.communityRewardClaimedAt = now;
+  s.coins += rewardCoins;
+  applyXp(s, rewardXp);
+  return { rewardCoins, rewardXp, nextClaimAt: now + COMMUNITY_REWARD_INTERVAL_MS, tier };
+}
+
+async function processAutomation(s: PlayerState): Promise<void> {
+  if (s.automations?.autoStreakClaim) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (s.streak.lastClaimDate !== today) {
+      await claimDailyStreakFromState(s);
+    }
+  }
+
+  if (s.automations?.autoQuestClaim) {
+    const quests = [...s.dailyQuests, ...s.weeklyQuests]
+      .filter(q => q.unlocked !== false && !q.claimed && q.progress >= q.target)
+      .slice(0, 25);
+    for (const q of quests) {
+      const result = applyQuestReward(s, q);
+      if (result.rewardTokens > 0) {
+        const username = context.username ?? ('reddit-user-' + (context.userId ?? 'unknown').slice(-8));
+        void addGuildTokens(username, result.rewardTokens);
+      }
+    }
+  }
+
+  if (s.automations?.autoCommunityClaim) {
+    await claimCommunityRewardFromState(s);
+  }
+
+  if (s.automations?.autoUpgrade) {
+    autoBuyCheapest(s);
+  }
 }
 
 export async function save(s: PlayerState) {
@@ -211,7 +328,10 @@ export async function applyRolls(
       bestRarity = rarity;
     }
 
-    const xpBonusMul = (1 + (s.upgrades.xpBonus ?? 0) * 0.20) * levelBenefits.xpMultiplier;
+    const xpBonusMul =
+      (1 + (s.upgrades.xpBonus ?? 0) * 0.20) *
+      levelBenefits.xpMultiplier *
+      (isPremiumBoosterActive(s, 'ascension') ? 10 : 1);
     const earnedXp = Math.round(Math.min(200, 5 + Math.floor(Math.log10(rarity + 1) * 8)) * xpBonusMul);
 
     // Shards bonus for rare orbs (1,000+)
@@ -295,8 +415,11 @@ export async function applyRolls(
   }
 
   s.coins += coinsGained;
-  s.shards = (s.shards ?? 0) + shardsGained;
-  s.xp += xpGained;
+  shardsGained = grantFreeShards(s, shardsGained);
+
+  // Ascension increases XP by 10× while preserving the existing level logic.
+  const effectiveXpGained = isPremiumBoosterActive(s, 'ascension') ? xpGained * 10 : xpGained;
+  s.xp += effectiveXpGained;
 
   // Rich EXP Level Progression
   const oldLevel = s.level || 1;
@@ -307,7 +430,6 @@ export async function applyRolls(
     s.masteryPoints = (s.masteryPoints ?? 0) + levelGained;
   }
   s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
-  s.lifetimeShards = (s.lifetimeShards ?? 0) + shardsGained;
 
   // Singularity Tithe: award every threshold crossed, including large offline batches.
   const titheLevel = s.prestigeUpgrades?.singularityTithe ?? 0;
@@ -356,6 +478,9 @@ export async function applyRolls(
 export async function settleOffline(s: PlayerState): Promise<PlayerState> {
   const now = Date.now();
   checkPeriodicResets(s, now);
+  resetFreeShardBudgetIfNeeded(s, now);
+  s.onlinePlayers = await touchOnlinePresence();
+  await processAutomation(s);
 
   const tickMs = effectiveOfflineTickMs(s);
   const diff = now - (s.lastSeenAt || now);
@@ -570,17 +695,7 @@ export async function claimQuest(type: 'daily' | 'weekly', id: string): Promise<
   if (quest.claimed) throw new Error('Quest already claimed.');
   if (quest.progress < quest.target) throw new Error('Quest requirement not met.');
 
-  quest.claimed = true;
-  s.questsCompleted = (s.questsCompleted ?? 0) + 1;
-  s.coins += quest.rewardCoins;
-  s.shards = (s.shards ?? 0) + (quest.rewardShards ?? 0);
-  const oldLevel = s.level || 1;
-  s.xp += quest.rewardXp ?? 0;
-  const levelInfo = calculateLevelFromXp(s.xp);
-  s.level = levelInfo.level;
-  if (s.level > oldLevel) {
-    s.masteryPoints = (s.masteryPoints ?? 0) + (s.level - oldLevel);
-  }
+  const reward = applyQuestReward(s, quest);
 
   if (quest.rewardTokens && quest.rewardTokens > 0) {
     const username = context.username ?? `reddit-user-${(context.userId ?? 'unknown').slice(-8)}`;
@@ -590,9 +705,9 @@ export async function claimQuest(type: 'daily' | 'weekly', id: string): Promise<
   await save(s);
   return {
     state: s,
-    rewardCoins: quest.rewardCoins,
-    rewardShards: quest.rewardShards ?? 0,
-    rewardTokens: quest.rewardTokens ?? 0,
+    rewardCoins: reward.rewardCoins,
+    rewardShards: reward.rewardShards,
+    rewardTokens: reward.rewardTokens,
   };
 }
 
@@ -768,6 +883,47 @@ export async function buyCosmetic(id: string): Promise<PlayerState> {
   s.activeCosmetic = id;
   await save(s);
   return s;
+}
+
+export async function activatePremiumBooster(id: PremiumBoosterId): Promise<PlayerState> {
+  const s = await settleOffline(await loadRaw());
+  const info = PREMIUM_BOOSTERS[id];
+  if (!info) throw new Error('Unknown premium booster.');
+  if (!s.activeBoosters) s.activeBoosters = {};
+  if ((s.shards ?? 0) < info.costShards) {
+    throw new Error(info.name + ' requires ' + info.costShards + ' Shards.');
+  }
+
+  const now = Date.now();
+  s.shards -= info.costShards;
+  s.activeBoosters[id] = Math.max(now, s.activeBoosters[id] ?? 0) + info.durationMs;
+  await save(s);
+  return s;
+}
+
+export async function buyAutomation(id: AutomationId): Promise<PlayerState> {
+  const s = await settleOffline(await loadRaw());
+  const info = AUTOMATIONS[id];
+  if (!info) throw new Error('Unknown automation.');
+  if (s.automations?.[id]) throw new Error(info.name + ' is already unlocked.');
+  if ((s.shards ?? 0) < info.costShards) {
+    throw new Error(info.name + ' requires ' + info.costShards + ' Shards.');
+  }
+
+  s.shards -= info.costShards;
+  s.automations = { ...(s.automations ?? {}), [id]: true };
+  await save(s);
+  return s;
+}
+
+export async function claimCommunityReward(): Promise<{ state: PlayerState; rewardCoins: number; rewardXp: number; nextClaimAt: number; tier: number }> {
+  const s = await settleOffline(await loadRaw());
+  const result = await claimCommunityRewardFromState(s);
+  if (result.rewardCoins <= 0) {
+    throw new Error('Community reward is on cooldown. Next claim in ' + Math.ceil((result.nextClaimAt - Date.now()) / 1000) + 's.');
+  }
+  await save(s);
+  return { state: s, ...result };
 }
 
 export async function activateTurbo(): Promise<PlayerState> {
