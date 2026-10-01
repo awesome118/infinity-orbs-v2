@@ -165,7 +165,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               <p className="text-xs text-slate-400">Server-authorized testing and moderation controls.</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
+          <button title="Close the admin console." onClick={onClose} className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -222,11 +222,12 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               ['streak-reset', 'Reset Streak', 'bg-slate-800 hover:bg-slate-700'],
               ['offline-clear', 'Clear Offline', 'bg-slate-800 hover:bg-slate-700'],
             ].map(([id, label, cls]) => (
-              <button key={id} disabled={loading} onClick={() => void setPreset(id)} className={`${buttonBase} border-transparent px-3 py-2 text-white ${cls}`}>
+              <button title={`Apply the ${label} test preset.`} key={id} disabled={loading} onClick={() => void setPreset(id)} className={`${buttonBase} border-transparent px-3 py-2 text-white ${cls}`}>
                 {label}
               </button>
             ))}
             <button
+              title="Reset daily, weekly, streak, free-shard, and Frenzy timing flags."
               disabled={loading}
               onClick={() => void sendAdminAction('/api/dev/reset-daily')}
               className={`${buttonBase} bg-orange-500/10 hover:bg-orange-500/20 border-orange-500/30 text-orange-300 px-3 py-2`}
@@ -248,13 +249,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               className="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
               placeholder="Rarity denominator"
             />
-            <button onClick={() => void handleForceRoll(Number(customRarity))} disabled={loading} className={`${buttonBase} bg-cyan-600 hover:bg-cyan-500 border-cyan-500 text-white px-4`}>
+            <button title="Perform one roll at the exact rarity entered in the field." onClick={() => void handleForceRoll(Number(customRarity))} disabled={loading} className={`${buttonBase} bg-cyan-600 hover:bg-cyan-500 border-cyan-500 text-white px-4`}>
               Roll Exact
             </button>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {[100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000].map(v => (
-              <button key={v} onClick={() => void handleForceRoll(v)} disabled={loading} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-1.5 font-mono`}>
+              <button title={`Force one roll at exact rarity 1/${v.toLocaleString()}.`} key={v} onClick={() => void handleForceRoll(v)} disabled={loading} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-1.5 font-mono`}>
                 1/{v.toLocaleString()}
               </button>
             ))}
@@ -274,7 +275,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               ['/api/dev/currency', { shards: 500 }, '+500 Shards'],
               ['/api/dev/currency', { dust: 50 }, '+50 Dust'],
             ].map(([endpoint, body, label]) => (
-              <button key={label as string} onClick={() => void sendAdminAction(endpoint as string, body)} disabled={loading} className={`${buttonBase} bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-300 px-2.5 py-2`}>
+              <button title="Add the displayed test resource amount without normal gameplay costs." key={label as string} onClick={() => void sendAdminAction(endpoint as string, body)} disabled={loading} className={`${buttonBase} bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-300 px-2.5 py-2`}>
                 {label as string}
               </button>
             ))}
@@ -286,7 +287,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-purple-300">
               <Database className="w-4 h-4" /> Fine State Control
             </div>
-            <button disabled={loading} onClick={() => void sendAdminAction('/api/dev/reset-cooldown')} className={`${buttonBase} bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500/30 text-indigo-300 px-3 py-1.5`}>
+            <button title="Make the next normal roll immediately available." disabled={loading} onClick={() => void sendAdminAction('/api/dev/reset-cooldown')} className={`${buttonBase} bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500/30 text-indigo-300 px-3 py-1.5`}>
               <Gauge className="inline w-3.5 h-3.5 mr-1" /> Cooldown Ready
             </button>
           </div>
@@ -305,16 +306,16 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             ))}
           </div>
           <div className="flex flex-wrap gap-2">
-            <button disabled={loading} onClick={() => void updateState()} className={`${buttonBase} bg-purple-600 hover:bg-purple-500 border-purple-500 text-white px-4 py-2`}>
+            <button title="Apply every nonblank state field above directly to the current test account." disabled={loading} onClick={() => void updateState()} className={`${buttonBase} bg-purple-600 hover:bg-purple-500 border-purple-500 text-white px-4 py-2`}>
               <Save className="inline w-3.5 h-3.5 mr-1" /> Apply State Fields
             </button>
-            <button disabled={loading} onClick={() => void sendAdminAction('/api/dev/unlock-upgrades')} className={`${buttonBase} bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-300 px-3 py-2`}>
+            <button title="Set every standard upgrade to a high testing level." disabled={loading} onClick={() => void sendAdminAction('/api/dev/unlock-upgrades')} className={`${buttonBase} bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-300 px-3 py-2`}>
               Unlock Standard Upgrades
             </button>
-            <button disabled={loading} onClick={() => void sendAdminAction('/api/dev/unlock-everything')} className={`${buttonBase} bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/30 text-rose-300 px-3 py-2`}>
+            <button title="Populate the account with a broad maxed progression state for testing." disabled={loading} onClick={() => void sendAdminAction('/api/dev/unlock-everything')} className={`${buttonBase} bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/30 text-rose-300 px-3 py-2`}>
               <Sparkles className="inline w-3.5 h-3.5 mr-1" /> Everything
             </button>
-            <button disabled={loading} onClick={() => void sendAdminAction('/api/dev/add-offline', { amount: 50 })} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}>
+            <button title="Add 50 offline rolls to the vault." disabled={loading} onClick={() => void sendAdminAction('/api/dev/add-offline', { amount: 50 })} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}>
               +50 Offline Rolls
             </button>
           </div>
@@ -368,11 +369,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </div>
           )}
           <div className="flex flex-wrap gap-2">
-            <button disabled={loading} onClick={() => void sendAdminAction('/api/dev/frenzy/reset')} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}>
+            <button title="Clear Frenzy flags so another Frenzy test can run immediately." disabled={loading} onClick={() => void sendAdminAction('/api/dev/frenzy/reset')} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}>
               <RotateCcw className="inline w-3.5 h-3.5 mr-1" /> Reset Frenzy Flags
             </button>
             {[100, 10_000, 1_000_000, 100_000_000].map(v => (
-              <button key={v} disabled={loading} onClick={() => setFrenzyRarity(String(v))} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-1.5 font-mono`}>
+              <button title={`Use 1/${v.toLocaleString()} as the forced Frenzy rarity.`} key={v} disabled={loading} onClick={() => setFrenzyRarity(String(v))} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-1.5 font-mono`}>
                 1/{v.toLocaleString()}
               </button>
             ))}
@@ -394,6 +395,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </select>
             <input value={globalMinutes} onChange={e => setGlobalMinutes(e.target.value)} type="number" min="1" className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white font-mono" placeholder="minutes" />
             <button
+              title="Set a Global Booster's tier and duration directly without spending Shards."
               disabled={loading}
               onClick={() => void sendAdminAction('/api/dev/global-booster', { id: globalBooster, tier: Number(globalTier), minutes: Number(globalMinutes) })}
               className={`${buttonBase} bg-cyan-600 hover:bg-cyan-500 border-cyan-500 text-white px-3 py-2`}
@@ -409,23 +411,23 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
             {[1_000, 10_000, 100_000, 1_000_000].map(goal => (
-              <button key={goal} disabled={loading} onClick={() => void sendAdminAction('/api/dev/event', { goal })} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-2 font-mono`}>
+              <button title={`Set the community event goal to ${goal.toLocaleString()} rolls.`} key={goal} disabled={loading} onClick={() => void sendAdminAction('/api/dev/event', { goal })} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-2 font-mono`}>
                 Goal {goal >= 1_000_000 ? '1M' : goal >= 1_000 ? `${goal / 1000}K` : goal}
               </button>
             ))}
             {[0, 500, 5_000, 50_000].map(progress => (
-              <button key={`progress-${progress}`} disabled={loading} onClick={() => void sendAdminAction('/api/dev/event', { progress })} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-2`}>
+              <button title={`Set community event progress to ${progress.toLocaleString()}.`} key={`progress-${progress}`} disabled={loading} onClick={() => void sendAdminAction('/api/dev/event', { progress })} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-2`}>
                 Progress {progress >= 1000 ? `${progress / 1000}K` : progress}
               </button>
             ))}
           </div>
           <div className="flex flex-wrap gap-2">
             {[500, 5_000, 50_000].map(amount => (
-              <button key={amount} disabled={loading} onClick={() => void sendAdminAction('/api/dev/event', { addRolls: amount })} className={`${buttonBase} bg-purple-600/20 hover:bg-purple-600/30 border-purple-500/40 text-purple-300 px-3 py-1.5`}>
+              <button title={`Add ${amount.toLocaleString()} rolls to community event progress.`} key={amount} disabled={loading} onClick={() => void sendAdminAction('/api/dev/event', { addRolls: amount })} className={`${buttonBase} bg-purple-600/20 hover:bg-purple-600/30 border-purple-500/40 text-purple-300 px-3 py-1.5`}>
                 +{amount.toLocaleString()} Event Rolls
               </button>
             ))}
-            <button disabled={loading} onClick={() => void sendAdminAction('/api/dev/event', { reset: true })} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-1.5`}>
+            <button title="Reset the community event to its base state." disabled={loading} onClick={() => void sendAdminAction('/api/dev/event', { reset: true })} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-1.5`}>
               Reset Event
             </button>
           </div>
@@ -467,6 +469,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
             />
             <button
+              title="Ban your own Infinity Orbs account only. The ban screen will keep the admin console available so you can unban yourself."
               disabled={loading}
               onClick={() => {
                 const self = contextInfo?.username ?? '';
@@ -475,8 +478,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                   return;
                 }
                 if (!confirmation('Ban your own Infinity Orbs account using the current game-ban settings?')) return;
-                void sendAdminAction('/api/dev/moderation/ban', {
-                  username: self,
+                void sendAdminAction('/api/dev/moderation/self-ban', {
                   durationDays: banDuration === 'permanent' ? null : Number(banDuration),
                   reason: banReason,
                 });
