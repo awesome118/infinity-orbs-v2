@@ -13,15 +13,12 @@ function Splash() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono font-bold text-slate-500">v{context.appVersion}</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black">Infinity Orbs</h1>
+              <h1 className="text-2xl sm:text-3xl font-black">Infinity Orbs</h1>
           </div>
         </div>
 
         <p className="mt-5 text-sm leading-6 text-slate-300">
-          Roll for rare Orbs, build your multipliers, unlock Mastery and Prestige,
-          and compete with other Redditors.
+          Roll. Collect. Go further.
         </p>
 
         <button
