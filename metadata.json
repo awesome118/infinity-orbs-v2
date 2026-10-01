@@ -1,0 +1,6 @@
+{
+  "name": "Infinity Orbs",
+  "description": "A social RNG collection game with incremental upgrades, quests, guilds, prestige, and Reddit sharing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

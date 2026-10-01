@@ -1,0 +1,835 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Shield,
+  Users,
+  Trophy,
+  Globe,
+  MessageSquare,
+  Plus,
+  Send,
+  LogOut,
+  Sparkles,
+  Flame,
+  Clover,
+  Clock,
+  Archive,
+  Gem,
+  Check,
+  Coins,
+  ArrowUpRight,
+  Sword,
+  Zap,
+} from 'lucide-react';
+import type {
+  Guild,
+  LeaderboardEntry,
+  WorldEvent,
+  GuildPerkId,
+} from '../../shared/social.js';
+import { sound } from '../sound.js';
+
+interface GuildsAndSocialProps {
+  guilds: Guild[];
+  myGuild: Guild | null;
+  leaderboard: LeaderboardEntry[];
+  worldEvent: WorldEvent | null;
+  onCreateGuild: (name: string, tag: string) => Promise<void>;
+  onJoinGuild: (id: string) => Promise<void>;
+  onLeaveGuild: () => Promise<void>;
+  onSendMessage: (text: string) => Promise<void>;
+  onBuyGuildPerk?: (perk: GuildPerkId) => Promise<void>;
+  onDonateGuild?: (coins: number, shards: number) => Promise<void>;
+  playerCoins?: number;
+  playerShards?: number;
+  busy: boolean;
+}
+
+export const RollingCounter: React.FC<{ value: number; durationMs?: number }> = ({ value, durationMs = 600 }) => {
+  const [displayValue, setDisplayValue] = useState(value);
+
+  useEffect(() => {
+    let startTimestamp: number | null = null;
+    const startVal = displayValue;
+    const diff = value - startVal;
+    if (diff === 0) return;
+
+    let frameId: number;
+    const step = (timestamp: number) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / durationMs, 1);
+      const easeOut = 1 - Math.pow(1 - progress, 3);
+      setDisplayValue(Math.round(startVal + diff * easeOut));
+      if (progress < 1) {
+        frameId = requestAnimationFrame(step);
+      }
+    };
+    frameId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frameId);
+  }, [value, durationMs]);
+
+  return <span>{displayValue.toLocaleString()}</span>;
+};
+
+export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
+  guilds,
+  myGuild,
+  leaderboard,
+  worldEvent,
+  onCreateGuild,
+  onJoinGuild,
+  onLeaveGuild,
+  onSendMessage,
+  onBuyGuildPerk,
+  onDonateGuild,
+  playerCoins = 0,
+  playerShards = 0,
+  busy,
+}) => {
+  const [activeTab, setActiveTab] = useState<'guild' | 'leaderboard' | 'event'>('guild');
+  const [createName, setCreateName] = useState('');
+  const [createTag, setCreateTag] = useState('');
+  const [chatInput, setChatInput] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
+  const fmt = (n: number) => n.toLocaleString();
+
+  const handleSendChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || busy) return;
+    sound.playClick();
+    const text = chatInput.trim();
+    setChatInput('');
+    await onSendMessage(text);
+  };
+
+  const handleCreateGuild = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createName.trim() || !createTag.trim() || busy) return;
+    sound.playClick();
+    await onCreateGuild(createName.trim(), createTag.trim());
+    setCreateName('');
+    setCreateTag('');
+    setShowCreateModal(false);
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Sub-navigation */}
+      <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+        <button
+          onClick={() => {
+            sound.playClick();
+            setActiveTab('guild');
+          }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === 'guild'
+              ? 'bg-purple-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-white bg-slate-900/60'
+          }`}
+        >
+          <Shield className="w-3.5 h-3.5" />
+          <span>Guild Headquarters</span>
+        </button>
+
+        <button
+          onClick={() => {
+            sound.playClick();
+            setActiveTab('leaderboard');
+          }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === 'leaderboard'
+              ? 'bg-purple-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-white bg-slate-900/60'
+          }`}
+        >
+          <Trophy className="w-3.5 h-3.5" />
+          <span>Leaderboard</span>
+        </button>
+
+        <button
+          onClick={() => {
+            sound.playClick();
+            setActiveTab('event');
+          }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === 'event'
+              ? 'bg-purple-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-white bg-slate-900/60'
+          }`}
+        >
+          <Globe className="w-3.5 h-3.5" />
+          <span>Community Event</span>
+        </button>
+      </div>
+
+      {/* 1. GUILD TAB */}
+      {activeTab === 'guild' && (
+        <div className="space-y-6">
+          {myGuild ? (
+            /* Player Is In A Guild */
+            <div className="space-y-6">
+              {/* Guild Header Hero */}
+              <div className="bg-gradient-to-r from-slate-900 via-purple-950/30 to-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-purple-600/20 border border-purple-500/40 flex items-center justify-center font-black text-purple-300 text-lg">
+                      {myGuild.tag}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-xl font-black text-white">{myGuild.name}</h2>
+                        <span className="text-xs font-bold bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full border border-purple-500/30">
+                          Lv {myGuild.level}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {myGuild.members.length} / 50 Members • {fmt(myGuild.tokens ?? 0)} Guild Tokens • {fmt(myGuild.xp ?? 0)} Guild XP
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      sound.playClick();
+                      void onLeaveGuild();
+                    }}
+                    disabled={busy}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition-all w-fit cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Leave Guild</span>
+                  </button>
+                </div>
+
+                {/* Guild Weekly Challenge */}
+                {myGuild.challenge && (
+                  <div className="mt-5 pt-4 border-t border-slate-800/80">
+                    <div className="flex items-center justify-between text-xs font-bold mb-1.5">
+                      <span className="text-purple-300 flex items-center gap-1.5">
+                        <Flame className="w-4 h-4 text-amber-400" />
+                        <span>Weekly Challenge: {myGuild.challenge.label}</span>
+                      </span>
+                      <span className="text-amber-400">
+                        Reward: +{fmt(myGuild.challenge.reward)} Tokens
+                      </span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                      <div
+                        className="h-full bg-gradient-to-r from-purple-500 to-amber-400 transition-all"
+                        style={{
+                          width: `${Math.min(100, (myGuild.challenge.progress / myGuild.challenge.target) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[11px] text-slate-400 mt-1">
+                      <span>Progress</span>
+                      <span>
+                        {fmt(myGuild.challenge.progress)} / {fmt(myGuild.challenge.target)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Weekly Guild Raid Boss */}
+              {myGuild.boss && (
+                <div className="bg-gradient-to-r from-red-950/40 via-slate-900 to-purple-950/40 border border-red-500/30 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-600 to-amber-600 flex items-center justify-center text-white shadow-lg shadow-red-950/50">
+                        <Sword className="w-6 h-6 animate-pulse" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold uppercase tracking-wider text-red-400">
+                            Weekly Guild Titan
+                          </span>
+                          <span className="text-[10px] bg-red-500/20 text-red-300 font-bold px-2 py-0.5 rounded-full border border-red-500/30">
+                            Tier {myGuild.boss.tier}
+                          </span>
+                          {myGuild.boss.defeated && (
+                            <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
+                              🏆 SLAIN!
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="text-base sm:text-lg font-black text-white">
+                          {myGuild.boss.name}
+                        </h3>
+                      </div>
+                    </div>
+
+                    <div className="text-right text-xs font-mono text-slate-400 bg-slate-950/60 border border-slate-800 px-3 py-1.5 rounded-xl">
+                      <span>Bounty: </span>
+                      <span className="text-amber-300 font-bold">+{myGuild.boss.rewardTokens} Tokens</span>
+                      <span> & </span>
+                      <span className="text-cyan-300 font-bold">+{myGuild.boss.rewardShards} Shards</span>
+                    </div>
+                  </div>
+
+                  {/* Boss HP Bar */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs font-mono">
+                      <span className="text-slate-400">Titan Vitality</span>
+                      <span className={`font-bold ${myGuild.boss.defeated ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {myGuild.boss.defeated ? '0' : fmt(myGuild.boss.currentHp)} / {fmt(myGuild.boss.maxHp)} HP
+                        {' '}({Math.max(0, Math.round((myGuild.boss.currentHp / myGuild.boss.maxHp) * 100))}%)
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          myGuild.boss.defeated
+                            ? 'bg-emerald-500'
+                            : 'bg-gradient-to-r from-red-600 via-rose-500 to-amber-500'
+                        }`}
+                        style={{
+                          width: `${Math.max(0, Math.min(100, (myGuild.boss.currentHp / myGuild.boss.maxHp) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      ⚔️ All rolls made by guild members automatically deal damage to the Titan! Resets weekly with a new boss and bounty.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Guild Perks Chamber */}
+              <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-amber-400" />
+                      <h3 className="text-base font-black text-white">Guild Perks (6 Shared Auras)</h3>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Passive bonuses applied to all guild members. Upgrade using shared Guild Tokens.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 text-amber-300 px-3 py-1.5 rounded-xl text-xs font-bold w-fit">
+                    <Gem className="w-4 h-4 text-amber-400" />
+                    <span>{fmt(myGuild.tokens ?? 0)} Guild Tokens</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
+                  {[
+                    {
+                      id: 'luckRank' as const,
+                      name: 'Guild Luck Aura',
+                      desc: '+2% luck per rank for all guild members.',
+                      icon: <Clover className="w-4 h-4 text-emerald-400" />,
+                      rank: myGuild.perks?.luckRank ?? 0,
+                      effect: `+${((myGuild.perks?.luckRank ?? 0) * 2)}% Luck`,
+                    },
+                    {
+                      id: 'speedRank' as const,
+                      name: 'Guild Speed Blessing',
+                      desc: '-40ms cooldown floor per rank for all guild members.',
+                      icon: <Clock className="w-4 h-4 text-cyan-400" />,
+                      rank: myGuild.perks?.speedRank ?? 0,
+                      effect: `-${((myGuild.perks?.speedRank ?? 0) * 40)}ms Cooldown`,
+                    },
+                    {
+                      id: 'vaultRank' as const,
+                      name: 'Guild Vault Expansion',
+                      desc: '+100 offline roll capacity per rank for all guild members.',
+                      icon: <Archive className="w-4 h-4 text-amber-400" />,
+                      rank: myGuild.perks?.vaultRank ?? 0,
+                      effect: `+${((myGuild.perks?.vaultRank ?? 0) * 100)} Offline Cap`,
+                    },
+                    {
+                      id: 'shardRank' as const,
+                      name: 'Cosmic Shard Attunement',
+                      desc: '+0.2% shard drop chance per rank for all members.',
+                      icon: <Gem className="w-4 h-4 text-cyan-300" />,
+                      rank: myGuild.perks?.shardRank ?? 0,
+                      effect: `+${(((myGuild.perks?.shardRank ?? 0) * 0.2)).toFixed(1)}% Shard Drop`,
+                    },
+                    {
+                      id: 'critRank' as const,
+                      name: 'Critical Alignment',
+                      desc: '+1.5% critical roll chance per rank for all members.',
+                      icon: <Zap className="w-4 h-4 text-rose-400" />,
+                      rank: myGuild.perks?.critRank ?? 0,
+                      effect: `+${(((myGuild.perks?.critRank ?? 0) * 1.5)).toFixed(1)}% Crit Chance`,
+                    },
+                    {
+                      id: 'coinRank' as const,
+                      name: 'Prosperity Sigil',
+                      desc: '+10% coins earned from rolls per rank for all members.',
+                      icon: <Coins className="w-4 h-4 text-yellow-400" />,
+                      rank: myGuild.perks?.coinRank ?? 0,
+                      effect: `+${((myGuild.perks?.coinRank ?? 0) * 10)}% Coins`,
+                    },
+                  ].map(perk => {
+                    const isMax = perk.rank >= 10;
+                    const cost = (perk.rank + 1) * 25;
+                    const canAfford = (myGuild.tokens ?? 0) >= cost && !isMax;
+
+                    return (
+                      <div
+                        key={perk.id}
+                        className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between space-y-3"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              {perk.icon}
+                              <span className="text-xs font-bold text-white">{perk.name}</span>
+                            </div>
+                            <span className="text-[11px] font-bold text-purple-300 bg-purple-950/40 border border-purple-800/40 px-2 py-0.5 rounded-lg">
+                              Rank {perk.rank}/10
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-400 mt-1">{perk.desc}</p>
+                          <div className="text-[11px] font-semibold text-emerald-400 mt-2 font-mono">
+                            Current Buff: {perk.effect}
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            if (onBuyGuildPerk) {
+                              sound.playClick();
+                              void onBuyGuildPerk(perk.id);
+                            }
+                          }}
+                          disabled={!canAfford || busy || isMax}
+                          className={`w-full py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                            isMax
+                              ? 'bg-slate-900 text-slate-500 border border-slate-800 cursor-default'
+                              : canAfford
+                              ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-md active:scale-95 cursor-pointer'
+                              : 'bg-slate-900 text-slate-500 border border-slate-800/80 cursor-not-allowed'
+                          }`}
+                        >
+                          {isMax ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Max Rank</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-3.5 h-3.5" />
+                              <span>Upgrade ({cost} Tokens)</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Guild Donation Station */}
+              {onDonateGuild && (
+                <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-black text-white flex items-center gap-2">
+                        <ArrowUpRight className="w-4 h-4 text-emerald-400" />
+                        <span>Guild Treasury Donation</span>
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Donate coins or shards to increase guild XP and earn Guild Tokens.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                    <button
+                      onClick={() => {
+                        sound.playClick();
+                        void onDonateGuild(1000, 0);
+                      }}
+                      disabled={busy || playerCoins < 1000}
+                      className="p-3 rounded-2xl bg-slate-950/70 hover:bg-slate-950 border border-slate-800 hover:border-amber-500/40 text-left transition-all disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      <div className="flex items-center justify-between text-xs font-bold text-amber-300">
+                        <span className="flex items-center gap-1">
+                          <Coins className="w-3.5 h-3.5" /> 1,000 Coins
+                        </span>
+                        <span className="text-[10px] text-emerald-400">+10 Tokens</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 block mt-1">+20 Guild XP</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        sound.playClick();
+                        void onDonateGuild(10000, 0);
+                      }}
+                      disabled={busy || playerCoins < 10000}
+                      className="p-3 rounded-2xl bg-slate-950/70 hover:bg-slate-950 border border-slate-800 hover:border-amber-500/40 text-left transition-all disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      <div className="flex items-center justify-between text-xs font-bold text-amber-300">
+                        <span className="flex items-center gap-1">
+                          <Coins className="w-3.5 h-3.5" /> 10,000 Coins
+                        </span>
+                        <span className="text-[10px] text-emerald-400">+100 Tokens</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 block mt-1">+200 Guild XP</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        sound.playClick();
+                        void onDonateGuild(0, 5);
+                      }}
+                      disabled={busy || playerShards < 5}
+                      className="p-3 rounded-2xl bg-slate-950/70 hover:bg-slate-950 border border-slate-800 hover:border-cyan-500/40 text-left transition-all disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      <div className="flex items-center justify-between text-xs font-bold text-cyan-300">
+                        <span className="flex items-center gap-1">
+                          <Gem className="w-3.5 h-3.5" /> 5 Shards
+                        </span>
+                        <span className="text-[10px] text-emerald-400">+25 Tokens</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 block mt-1">+125 Guild XP</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Members List & Chat Columns */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Member Roster */}
+                <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                      <Users className="w-4 h-4 text-purple-400" />
+                      <span>Member Contributions</span>
+                    </h3>
+                    <span className="text-xs text-slate-400">
+                      {myGuild.members.length} / 50
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {myGuild.members
+                      .sort((a, b) => b.contribution - a.contribution)
+                      .map((m, idx) => (
+                        <div
+                          key={m.username}
+                          className="flex items-center justify-between bg-slate-950/60 border border-slate-800/80 rounded-xl px-3 py-2 text-xs"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-500">#{idx + 1}</span>
+                            <span className="font-bold text-slate-200">{m.username}</span>
+                            {m.role === 'owner' && (
+                              <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded">
+                                Owner
+                              </span>
+                            )}
+                          </div>
+                          <span className="font-mono text-amber-400 font-semibold">
+                            +{fmt(m.contribution)}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+
+                {/* Guild Chat / Feed */}
+                <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between space-y-3 h-80">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                      <MessageSquare className="w-4 h-4 text-cyan-400" />
+                      <span>Guild Chat Feed</span>
+                    </h3>
+                  </div>
+
+                  {/* Message History */}
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                    {myGuild.chat && myGuild.chat.length > 0 ? (
+                      myGuild.chat.map(msg => (
+                        <div
+                          key={msg.id}
+                          className={`text-xs p-2 rounded-xl ${
+                            msg.isSystem
+                              ? 'bg-purple-950/30 text-purple-300 border border-purple-800/30 text-[11px]'
+                              : 'bg-slate-950/60 text-slate-300 border border-slate-800/60'
+                          }`}
+                        >
+                          {!msg.isSystem && (
+                            <span className="font-bold text-cyan-400 block text-[10px] mb-0.5">
+                              {msg.username}
+                            </span>
+                          )}
+                          <span>{msg.text}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center text-slate-500 text-xs py-8">
+                        No messages yet. Send a message to your guild members.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Send Chat Form */}
+                  <form onSubmit={handleSendChat} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={e => setChatInput(e.target.value)}
+                      placeholder="Say something to guild..."
+                      maxLength={150}
+                      className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-purple-500"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!chatInput.trim() || busy}
+                      className="p-2 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 text-white rounded-xl transition-all cursor-pointer"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Player Is NOT in a guild */
+            <div className="space-y-6">
+              <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 text-center space-y-3">
+                <Shield className="w-12 h-12 text-purple-400 mx-auto" />
+                <h3 className="text-lg font-black text-white">Guilds</h3>
+                <p className="text-xs text-slate-400 max-w-md mx-auto">
+                  Join a guild or create one. Guild members pool rolls toward challenges, earn Guild Tokens, and unlock shared perks.
+                </p>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg inline-flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Found a New Guild</span>
+                </button>
+              </div>
+
+              {/* Guild Directory */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-white">Active Guild Directory</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {guilds.map(g => (
+                    <div
+                      key={g.id}
+                      className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-md"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center font-black text-purple-300 text-xs">
+                          {g.tag}
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-white">{g.name}</h4>
+                          <span className="text-xs text-slate-400">
+                            Lv {g.level} • {g.members.length}/50 Members
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          sound.playClick();
+                          void onJoinGuild(g.id);
+                        }}
+                        disabled={busy || g.members.length >= 50}
+                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        {g.members.length >= 50 ? 'Full' : 'Join'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Create Guild Modal */}
+          {showCreateModal && (
+            <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
+                <h3 className="text-lg font-black text-white">Found a New Guild</h3>
+                <p className="text-xs text-slate-400">
+                  Choose a guild name and a 2-5 letter tag.
+                </p>
+                <form onSubmit={handleCreateGuild} className="space-y-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-400 uppercase block mb-1">
+                      Guild Name
+                    </label>
+                    <input
+                      type="text"
+                      value={createName}
+                      onChange={e => setCreateName(e.target.value)}
+                      placeholder="Guild Name"
+                      maxLength={32}
+                      required
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-400 uppercase block mb-1">
+                      Guild Tag (2-5 Letters)
+                    </label>
+                    <input
+                      type="text"
+                      value={createTag}
+                      onChange={e => setCreateTag(e.target.value.toUpperCase())}
+                      placeholder="TAG"
+                      maxLength={5}
+                      required
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white uppercase focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateModal(false)}
+                      className="flex-1 py-2 rounded-xl bg-slate-800 text-slate-400 text-xs font-bold cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className="flex-1 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold cursor-pointer"
+                    >
+                      Create
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 2. LEADERBOARD TAB */}
+      {activeTab === 'leaderboard' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-black text-white flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-amber-400" />
+              <span>Leaderboard</span>
+            </h3>
+            <span className="text-xs text-slate-400">Ranked by Total Collection Value</span>
+          </div>
+
+          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-800/60">
+            {leaderboard.map((entry, idx) => (
+              <div
+                key={entry.username}
+                className="flex items-center justify-between p-3 sm:px-4 text-xs hover:bg-slate-800/40 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`w-6 text-center font-black text-sm ${
+                      idx === 0
+                        ? 'text-amber-400'
+                        : idx === 1
+                        ? 'text-slate-300'
+                        : idx === 2
+                        ? 'text-amber-600'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    #{idx + 1}
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-white text-sm">{entry.username}</span>
+                      {entry.title && (
+                        <span className="text-[10px] text-slate-400 font-medium">
+                          • {entry.title}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-slate-400 text-[11px]">
+                      {entry.totalRolls.toLocaleString()} rolls • Best: 1/
+                      {entry.highestRarity.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-amber-400 font-mono font-bold text-sm block">
+                    {fmt(entry.value)} Val
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 3. COMMUNITY EVENT TAB */}
+      {activeTab === 'event' && worldEvent && (
+        <div className="bg-gradient-to-b from-slate-900 via-indigo-950/20 to-slate-900 border border-indigo-500/30 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400">
+                <Globe className="w-8 h-8" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl sm:text-2xl font-black text-white">{worldEvent.title}</h2>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                    Tier {worldEvent.tier ?? 1}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  Dynamic community milestone: Every roll contributes to the rolling total.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-emerald-500/10 border border-emerald-500/30 px-3.5 py-2 rounded-2xl text-emerald-300 text-xs font-bold flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-emerald-400" />
+              <span>{worldEvent.buffDescription}</span>
+            </div>
+          </div>
+
+          {/* Rolling Counter Showcase Card */}
+          <div className="bg-slate-950/80 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                  Rolling Global Progress
+                </span>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl sm:text-4xl font-black text-cyan-300 font-mono tracking-tight">
+                    <RollingCounter value={worldEvent.currentProgress} />
+                  </span>
+                  <span className="text-sm font-bold text-slate-500">
+                    / <RollingCounter value={worldEvent.goal} /> Rolls
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-right">
+                <span className="text-xs font-bold text-purple-400 font-mono">
+                  {((worldEvent.currentProgress / worldEvent.goal) * 100).toFixed(1)}% Completed
+                </span>
+              </div>
+            </div>
+
+            {/* Dynamic Progress Bar */}
+            <div className="w-full h-4 bg-slate-900 rounded-full overflow-hidden border border-slate-800 p-0.5">
+              <div
+                className="h-full bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-500 rounded-full transition-all duration-300"
+                style={{
+                  width: `${Math.min(100, (worldEvent.currentProgress / worldEvent.goal) * 100)}%`,
+                }}
+              />
+            </div>
+
+            <p className="text-xs text-slate-400">
+              When the dynamic goal of {fmt(worldEvent.goal)} rolls is reached, the event automatically completes the tier and scales to the next milestone goal with enhanced global luck bonuses!
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

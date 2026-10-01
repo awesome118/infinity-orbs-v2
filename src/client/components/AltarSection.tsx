@@ -1,0 +1,353 @@
+import React, { useState } from 'react';
+import confetti from 'canvas-confetti';
+import {
+  Flame,
+  Coins,
+  Gem,
+  Sparkles,
+  Zap,
+  TrendingUp,
+  Star,
+  ShieldCheck,
+  RotateCw,
+} from 'lucide-react';
+import type { PlayerState } from '../../shared/game.js';
+import { calculateAltarMultipliers } from '../../shared/game.js';
+import { sound } from '../sound.js';
+
+interface AltarSectionProps {
+  state: PlayerState;
+  onSacrifice: (coins: number, shards: number) => Promise<void>;
+  busy: boolean;
+  now: number;
+}
+
+export const AltarSection: React.FC<AltarSectionProps> = ({
+  state,
+  onSacrifice,
+  busy,
+  now,
+}) => {
+  const [selectedCoinOffer, setSelectedCoinOffer] = useState<number>(() => Math.min(1000, state.coins));
+  const [selectedShardOffer, setSelectedShardOffer] = useState<number>(0);
+  const [sacrificing, setSacrificing] = useState(false);
+
+  const fmt = (n: number) => n.toLocaleString();
+
+  const sacrifices = state.sacrifices ?? {
+    coinsSacrificed: 0,
+    shardsSacrificed: 0,
+    altarLevel: 0,
+    luckSurgeUntil: 0,
+  };
+
+  const {
+    coinMultiplier,
+    shardMultiplier,
+    surgeMultiplier,
+    totalAltarMultiplier,
+  } = calculateAltarMultipliers(state);
+
+  const isSurgeActive = Boolean(sacrifices.luckSurgeUntil && sacrifices.luckSurgeUntil > now);
+  const surgeMsLeft = isSurgeActive ? Math.max(0, (sacrifices.luckSurgeUntil || 0) - now) : 0;
+  const surgeMins = Math.floor(surgeMsLeft / 60000);
+  const surgeSecs = Math.floor((surgeMsLeft % 60000) / 1000);
+
+  // Altar level calculations
+  const altarLevel = sacrifices.altarLevel ?? 0;
+  const currentTotalCoins = sacrifices.coinsSacrificed ?? 0;
+  const currentLevelThreshold = altarLevel * altarLevel * 250;
+  const nextLevelThreshold = (altarLevel + 1) * (altarLevel + 1) * 250;
+  const progressInLevel = Math.max(0, currentTotalCoins - currentLevelThreshold);
+  const requiredForNext = nextLevelThreshold - currentLevelThreshold;
+  const devotionProgressPct = Math.min(100, Math.round((progressInLevel / requiredForNext) * 100));
+
+  const handleSacrificeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (sacrificing || (selectedCoinOffer <= 0 && selectedShardOffer <= 0)) return;
+
+    setSacrificing(true);
+    sound.playSacrificeFanfare();
+
+    try {
+      await onSacrifice(selectedCoinOffer, selectedShardOffer);
+      confetti({
+        particleCount: 50,
+        spread: 60,
+        origin: { y: 0.65 },
+        colors: ['#f59e0b', '#ef4444', '#a855f7'],
+      });
+      setSelectedCoinOffer(Math.min(1000, state.coins));
+      setSelectedShardOffer(0);
+    } finally {
+      setSacrificing(false);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300 pb-12">
+      {/* Altar Hero Banner */}
+      <div className="bg-gradient-to-r from-orange-950/70 via-slate-900 to-purple-950/70 border border-orange-700/40 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+        {/* Animated Background Rays & Star */}
+        <div className="absolute -top-16 -right-16 w-64 h-64 bg-orange-600/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-500/20 border border-orange-400/40 text-orange-300 text-xs font-bold">
+              <Flame className="w-3.5 h-3.5 fill-current text-orange-400 animate-pulse" />
+              <span>COSMIC DEVOTION ALTAR</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight flex items-center gap-2">
+              <span>Crucible of Perpetual Devotion</span>
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
+              Sacrifice your wealth to the cosmos. Coin and Shard devotion compound <span className="text-amber-300 font-bold">multiplicatively</span> with each other to exponentially scale your luck!
+            </p>
+          </div>
+
+          {/* Current Total Altar Multiplier Jewel */}
+          <div className="bg-slate-950/80 border border-orange-500/40 rounded-2xl p-4 flex items-center gap-3.5 shadow-xl">
+            <div className="relative w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 flex items-center justify-center text-slate-950 shadow-lg shadow-orange-500/30">
+              <Star className="w-6 h-6 fill-current animate-spin" style={{ animationDuration: '14s' }} />
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-orange-300">
+                Altar Luck Multiplier
+              </div>
+              <div className="text-2xl font-black text-white font-mono">
+                {totalAltarMultiplier}×
+              </div>
+              <div className="text-[10px] text-emerald-400 font-medium">
+                Multiplicative Compounding
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Multiplicative Formula Visualizer */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-3">
+        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+          <span>Multiplicative Luck Formula Breakdown</span>
+        </div>
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left bg-slate-950/70 p-4 rounded-xl border border-slate-800/80">
+          <div className="flex-1">
+            <span className="text-[11px] text-slate-400 block">Coin Devotion</span>
+            <span className="text-lg font-black text-amber-400 font-mono">{coinMultiplier}×</span>
+            <span className="text-[10px] text-slate-500 block">From Lvl {altarLevel} & sacrifices</span>
+          </div>
+
+          <div className="text-slate-500 font-black text-xl">×</div>
+
+          <div className="flex-1">
+            <span className="text-[11px] text-slate-400 block">Shard Infusion</span>
+            <span className="text-lg font-black text-cyan-400 font-mono">{shardMultiplier}×</span>
+            <span className="text-[10px] text-slate-500 block">{sacrifices.shardsSacrificed} Shards offered</span>
+          </div>
+
+          <div className="text-slate-500 font-black text-xl">×</div>
+
+          <div className="flex-1">
+            <span className="text-[11px] text-slate-400 block">Surge Multiplier</span>
+            <span className={`text-lg font-black font-mono ${isSurgeActive ? 'text-rose-400 animate-pulse' : 'text-slate-500'}`}>
+              {surgeMultiplier}×
+            </span>
+            <span className="text-[10px] text-slate-500 block">
+              {isSurgeActive ? `${surgeMins}m ${surgeSecs}s left` : 'Inactive'}
+            </span>
+          </div>
+
+          <div className="text-slate-500 font-black text-xl">=</div>
+
+          <div className="flex-1 bg-orange-500/10 border border-orange-500/30 rounded-xl p-2.5">
+            <span className="text-[11px] text-orange-300 font-bold block">Total Altar Luck</span>
+            <span className="text-xl font-black text-white font-mono">{totalAltarMultiplier}×</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Devotion Level Status Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Altar Level & Progress */}
+        <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 space-y-2">
+          <div className="text-xs text-slate-400 flex items-center justify-between">
+            <span>Altar Devotion Rank</span>
+            <span className="font-mono text-amber-400 font-bold">Lvl {altarLevel}</span>
+          </div>
+          <div className="text-2xl font-black text-white font-mono">
+            {coinMultiplier}× <span className="text-xs font-normal text-amber-400">Coin Multiplier</span>
+          </div>
+          <div className="space-y-1 pt-1">
+            <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+              <span>Next Rank Progress</span>
+              <span>{fmt(progressInLevel)} / {fmt(requiredForNext)} Coins</span>
+            </div>
+            <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+              <div
+                className="bg-gradient-to-r from-amber-500 via-orange-400 to-yellow-300 h-full rounded-full transition-all duration-500"
+                style={{ width: `${devotionProgressPct}%` }}
+              />
+            </div>
+            <div className="text-[10px] text-slate-500 text-right">
+              Rank up awards +1 Mastery Point!
+            </div>
+          </div>
+        </div>
+
+        {/* Shard Infusion */}
+        <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 space-y-1.5">
+          <div className="text-xs text-slate-400 flex items-center gap-1.5">
+            <Gem className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Permanent Shard Infusion</span>
+          </div>
+          <div className="text-2xl font-black text-white font-mono">
+            {shardMultiplier}× <span className="text-xs font-normal text-cyan-400">Shard Multiplier</span>
+          </div>
+          <p className="text-[11px] text-slate-400">
+            {sacrifices.shardsSacrificed} Shards permanently infused (+6% multiplicative luck per shard).
+          </p>
+        </div>
+
+        {/* Cumulative Coins */}
+        <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 space-y-1.5">
+          <div className="text-xs text-slate-400 flex items-center gap-1.5">
+            <Coins className="w-3.5 h-3.5 text-amber-400" />
+            <span>Cumulative Coins Offered</span>
+          </div>
+          <div className="text-2xl font-black text-white font-mono text-amber-300">
+            {fmt(currentTotalCoins)}
+          </div>
+          <p className="text-[11px] text-slate-400">
+            Your devotion endures across runs and prestige resets.
+          </p>
+        </div>
+      </div>
+
+      {/* Offering Ritual Form */}
+      <form onSubmit={handleSacrificeSubmit} className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 sm:p-7 space-y-6 shadow-xl">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="text-sm font-black text-white flex items-center gap-2">
+            <Flame className="w-4 h-4 text-orange-400" />
+            <span>Conduct Sacrificial Ritual</span>
+          </div>
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-amber-400 font-bold">{fmt(state.coins)} Coins</span>
+            <span className="text-slate-600">•</span>
+            <span className="text-cyan-400 font-bold">{fmt(state.shards ?? 0)} Shards</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          {/* Coins Offering Box */}
+          <div className="space-y-3 bg-slate-950/60 border border-slate-800/80 p-4 rounded-2xl">
+            <div className="flex items-center justify-between text-xs">
+              <label className="font-bold text-amber-300 flex items-center gap-1.5">
+                <Coins className="w-3.5 h-3.5 text-amber-400" />
+                <span>Coin Sacrifice</span>
+              </label>
+              <span className="font-mono text-slate-400">
+                Offering: {fmt(selectedCoinOffer)}
+              </span>
+            </div>
+
+            <input
+              type="range"
+              min={0}
+              max={state.coins}
+              step={Math.max(1, Math.floor(state.coins / 100))}
+              value={selectedCoinOffer}
+              onChange={e => setSelectedCoinOffer(Number(e.target.value))}
+              className="w-full accent-amber-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
+            />
+
+            <div className="flex gap-1.5 flex-wrap">
+              {[
+                { label: '0', val: 0 },
+                { label: '1K', val: 1000 },
+                { label: '10K', val: 10000 },
+                { label: '25%', val: Math.floor(state.coins * 0.25) },
+                { label: '50%', val: Math.floor(state.coins * 0.5) },
+                { label: 'MAX', val: state.coins },
+              ].map(btn => (
+                <button
+                  type="button"
+                  key={btn.label}
+                  onClick={() => setSelectedCoinOffer(Math.min(state.coins, btn.val))}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-amber-500/20 hover:text-amber-300 text-[10px] font-bold text-slate-400 transition-colors"
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-slate-500">
+              Permanently raises Altar Devotion level and compounds overall luck.
+            </p>
+          </div>
+
+          {/* Shards Offering Box */}
+          <div className="space-y-3 bg-slate-950/60 border border-slate-800/80 p-4 rounded-2xl">
+            <div className="flex items-center justify-between text-xs">
+              <label className="font-bold text-cyan-300 flex items-center gap-1.5">
+                <Gem className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Shard Sacrifice</span>
+              </label>
+              <span className="font-mono text-slate-400">
+                Offering: {selectedShardOffer} Shards
+              </span>
+            </div>
+
+            <input
+              type="range"
+              min={0}
+              max={state.shards ?? 0}
+              step={1}
+              value={selectedShardOffer}
+              onChange={e => setSelectedShardOffer(Number(e.target.value))}
+              className="w-full accent-cyan-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
+            />
+
+            <div className="flex gap-1.5 flex-wrap">
+              {[
+                { label: '0', val: 0 },
+                { label: '1', val: 1 },
+                { label: '5', val: 5 },
+                { label: '10', val: 10 },
+                { label: 'MAX', val: state.shards ?? 0 },
+              ].map(btn => (
+                <button
+                  type="button"
+                  key={btn.label}
+                  onClick={() => setSelectedShardOffer(Math.min(state.shards ?? 0, btn.val))}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-cyan-500/20 hover:text-cyan-300 text-[10px] font-bold text-slate-400 transition-colors"
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-slate-500">
+              Each Shard grants +6% permanent multiplicative luck and +15m of Luck Surge (1.50× Luck).
+            </p>
+          </div>
+        </div>
+
+        {/* Submit Sacrifice Button */}
+        <button
+          type="submit"
+          disabled={busy || sacrificing || (selectedCoinOffer <= 0 && selectedShardOffer <= 0)}
+          className={`w-full py-4 px-6 rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all shadow-xl ${
+            selectedCoinOffer > 0 || selectedShardOffer > 0
+              ? 'bg-gradient-to-r from-orange-600 via-amber-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white shadow-orange-950/50 active:scale-98 cursor-pointer'
+              : 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700/50'
+          }`}
+        >
+          <Flame className="w-5 h-5 text-amber-300 animate-flame" />
+          <span>
+            {sacrificing
+              ? 'Communing with the Celestial Altar...'
+              : `Consecrate Offering (${fmt(selectedCoinOffer)} Coins, ${selectedShardOffer} Shards)`}
+          </span>
+        </button>
+      </form>
+    </div>
+  );
+};
