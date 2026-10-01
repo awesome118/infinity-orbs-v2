@@ -13,6 +13,10 @@ import {
   synthesizeDust,
   buyCosmetic,
   activateTurbo,
+  activatePremiumBooster,
+  buyAutomation,
+  claimCommunityReward,
+  getOnlinePlayers,
   recordSocialVisit,
   recordShareAction,
   save,
@@ -125,6 +129,14 @@ export function createApp() {
       await recordSocialVisit(s);
       res.json(gd);
     } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch guilds.' }); }
+  });
+
+  app.get('/api/online', async (_req, res) => {
+    try {
+      res.json({ onlinePlayers: await getOnlinePlayers() });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Failed to fetch online players.' });
+    }
   });
 
   app.get('/api/world-event', async (_req, res) => {
@@ -250,6 +262,30 @@ export function createApp() {
 
   app.post('/api/cosmetics/buy', async (req, res) => {
     try { res.json({ state: await buyCosmetic(req.body?.id) }); } catch (e) { badRequest(res, e, 'Cosmetic purchase failed.'); }
+  });
+
+  app.post('/api/boosters/activate', async (req, res) => {
+    try {
+      const id = req.body?.id;
+      const validIds = ['fortune', 'hyperdrive', 'barrage', 'prosperity', 'ascension'];
+      if (!validIds.includes(id)) return res.status(400).json({ error: 'Invalid premium booster.' });
+      res.json({ state: await activatePremiumBooster(id) });
+    } catch (e) { badRequest(res, e, 'Failed to activate booster.'); }
+  });
+
+  app.post('/api/automation/buy', async (req, res) => {
+    try {
+      const id = req.body?.id;
+      const validIds = ['autoQuestClaim', 'autoStreakClaim', 'autoCommunityClaim', 'autoUpgrade'];
+      if (!validIds.includes(id)) return res.status(400).json({ error: 'Invalid automation.' });
+      res.json({ state: await buyAutomation(id) });
+    } catch (e) { badRequest(res, e, 'Failed to unlock automation.'); }
+  });
+
+  app.post('/api/community/reward/claim', async (_req, res) => {
+    try {
+      res.json(await claimCommunityReward());
+    } catch (e) { badRequest(res, e, 'Could not claim community reward.'); }
   });
 
   app.post('/api/turbo/activate', async (_req, res) => {
