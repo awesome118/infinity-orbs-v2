@@ -1324,7 +1324,7 @@ export async function startOrbFrenzy(options: {
 
   const postKey = FRENZY_POST_PREFIX + post.id;
   await redis.set(postKey, JSON.stringify({
-    ownerId: context.userId ?? 'unknown',
+    ownerId: currentUserId(),
     ownerUsername: context.username ?? 'Redditor',
     rarity: result.bestOrb.rarity,
     subredditName,
@@ -1368,7 +1368,7 @@ export async function getOrbFrenzyInfo(): Promise<{
     ownerUsername: data.ownerUsername,
     createdAt: data.createdAt,
     claimedToday: s.lastFrenzyClaimDate === today,
-    isOwner: data.ownerId === (context.userId ?? 'unknown'),
+    isOwner: data.ownerId === currentUserId(),
     postId,
   };
 }
@@ -1394,7 +1394,7 @@ export async function claimOrbFrenzy(options: {
   };
 
   if (
-    data.ownerId === (context.userId ?? 'unknown') &&
+    data.ownerId === currentUserId() &&
     !(options.allowAdminTestOwner === true && data.adminTest === true)
   ) {
     throw new Error('You cannot claim your own Orb Frenzy.');
