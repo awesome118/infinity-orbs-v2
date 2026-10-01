@@ -71,6 +71,37 @@ export function createApp() {
     next();
   });
 
+  // Devvit custom-post entrypoints. These are called by Reddit's moderator menu and install trigger.
+  app.post('/internal/menu/post-create', async (_req, res) => {
+    try {
+      const subredditName = context.subredditName;
+      if (!subredditName) return res.status(400).json({ showToast: 'No subreddit context available.' });
+      const post = await reddit.submitCustomPost({
+        title: 'Infinity Orbs',
+        entry: 'default',
+      });
+      res.json({ navigateTo: `https://reddit.com/r/${subredditName}/comments/${post.id}` });
+    } catch (e) {
+      console.error('Failed to create Infinity Orbs post:', e);
+      res.status(400).json({ showToast: 'Failed to create Infinity Orbs post.' });
+    }
+  });
+
+  app.post('/internal/on-app-install', async (_req, res) => {
+    try {
+      const subredditName = context.subredditName;
+      if (!subredditName) return res.status(400).json({ status: 'error', message: 'No subreddit context available.' });
+      const post = await reddit.submitCustomPost({
+        title: 'Infinity Orbs',
+        entry: 'default',
+      });
+      res.json({ status: 'success', message: `Created Infinity Orbs post ${post.id} in r/${subredditName}.` });
+    } catch (e) {
+      console.error('Failed to create install post:', e);
+      res.status(400).json({ status: 'error', message: 'Failed to create Infinity Orbs post.' });
+    }
+  });
+
   app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
   app.get('/api/me', async (_req, res) => {
