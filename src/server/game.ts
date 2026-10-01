@@ -102,10 +102,21 @@ function normalizeGlobalBoosterSnapshot(raw: string | null, now: number): Global
 
 export async function getGlobalBoosters(): Promise<GlobalBoosterSnapshot> {
   const now = Date.now();
-  const raw = await redis.get(GLOBAL_BOOSTERS_KEY);
-  const snapshot = normalizeGlobalBoosterSnapshot(raw, now);
-  await redis.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(snapshot));
-  return snapshot;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const txn = await redis.watch(GLOBAL_BOOSTERS_KEY);
+    const raw = await txn.get(GLOBAL_BOOSTERS_KEY);
+    const snapshot = normalizeGlobalBoosterSnapshot(raw, now);
+    const serialized = JSON.stringify(snapshot);
+    if (raw === serialized) {
+      await txn.unwatch();
+      return snapshot;
+    }
+    await txn.multi();
+    await txn.set(GLOBAL_BOOSTERS_KEY, serialized);
+    const committed = await txn.exec();
+    if (committed !== null) return snapshot;
+  }
+  throw new Error('Could not refresh World Booster state.');
 }
 
 async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSnapshot> {
