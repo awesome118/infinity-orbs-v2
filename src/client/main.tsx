@@ -11,6 +11,7 @@ import {
   Dices,
   RefreshCw,
   Flame,
+  Shield,
 } from 'lucide-react';
 import type {
   PlayerState,
