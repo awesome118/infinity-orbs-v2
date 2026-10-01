@@ -19,7 +19,6 @@ import type {
   MasterySkillId,
   AutomationId,
   GlobalBoosterId,
-  GlobalBoosterSnapshot,
   PremiumBoosterId,
   Orb,
   RollResponse,
@@ -740,7 +739,7 @@ export function App() {
         onToggleSound={() => setSoundEnabled(sound.toggle())}
         onOpenOdds={() => setShowOddsModal(true)}
         onClaimOffline={handleClaimOffline}
-        onOpenDevDebug={import.meta.env.DEV ? () => setShowDevModal(true) : undefined}
+        onOpenDevDebug={state.username === 'shadow_fen' ? () => setShowDevModal(true) : undefined}
         onOpenProfile={() => setTab('profile')}
       />
 
@@ -1096,7 +1095,7 @@ export function App() {
       )}
 
       {/* Developer Debug Modal */}
-      {showDevModal && (
+      {showDevModal && state.username === 'shadow_fen' && (
         <DevDebugModal
           onClose={() => setShowDevModal(false)}
           onRefresh={refreshAll}
