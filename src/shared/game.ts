@@ -215,17 +215,17 @@ export const GLOBAL_BOOSTER_DRAIN_MULTIPLIER = (tier: number): number =>
 
 export const GLOBAL_BOOSTERS: Record<GlobalBoosterId, GlobalBoosterInfo> = {
   luck: {
-    name: 'World Luck',
+    name: 'Global Luck',
     desc: 'Improves Luck for everyone.',
     costShards: 25,
   },
   speed: {
-    name: 'World Speed',
+    name: 'Global Speed',
     desc: 'Reduces roll cooldown for everyone.',
     costShards: 25,
   },
   crit: {
-    name: 'World Crit',
+    name: 'Global Crit',
     desc: 'Improves Crit Chance and Crit Damage for everyone.',
     costShards: 25,
   },
