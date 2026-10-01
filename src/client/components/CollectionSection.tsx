@@ -41,6 +41,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [reloadToken, setReloadToken] = useState(0);
 
   const fmt = (n: number) => n.toLocaleString();
   const tiersList = useMemo(
@@ -97,7 +98,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
       });
 
     return () => controller.abort();
-  }, [page, selectedTier, sortBy]);
+  }, [page, selectedTier, sortBy, reloadToken]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
@@ -217,7 +218,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
           <button
             onClick={() => {
               setLoadError('');
-              setPage(p => p);
+              setReloadToken(value => value + 1);
             }}
             className="text-xs font-bold text-cyan-300 hover:text-cyan-200"
           >
