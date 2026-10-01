@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   X, Wrench, Coins, Gem, Sparkles, Zap, RotateCcw, Play, Shield,
-  Ban, UserX, VolumeX, Volume2, CheckCircle2, RefreshCw, Flame,
+  Ban, UserX, CheckCircle2, RefreshCw, Flame,
   Database, Wand2, Trash2, Gauge, ListRestart, Save, Power,
 } from 'lucide-react';
 import type { RollResponse } from '../../shared/game.js';
@@ -70,9 +70,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     setMessage('');
     try {
       const res = await fetch(endpoint, {
-        method: endpoint.startsWith('/api/dev/moderation/') || endpoint === '/api/dev/frenzy/start' || endpoint === '/api/dev/frenzy/claim'
-          ? 'POST'
-          : 'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
