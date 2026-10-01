@@ -126,7 +126,13 @@ export type PrestigeUpgradeId =
   | 'supernova'
   | 'altarResonator'
   | 'offlineOverdrive'
-  | 'singularityTithe';
+  | 'singularityTithe'
+  | 'luckyFloor'
+  | 'astralArsenal'
+  | 'deepVault'
+  | 'masteryEngine'
+  | 'steadyHands'
+  | 'offlineFortune';
 
 export interface Orb {
   rarity: number;
@@ -197,6 +203,8 @@ export interface PlayerState {
   };
   masteryPoints?: number;
   masterySkills?: Record<MasterySkillId, number>;
+  socialActivityDate?: string;
+  lastShareAt?: number;
   guildPerks?: {
     luckRank: number;
     speedRank: number;
@@ -325,16 +333,13 @@ export function getOrbInfo(rarity: number): RarityTierInfo {
  * Generates dynamic, exciting varieties of orbs at all luck stages,
  * without clustering 33% of rolls on 1/2.
  */
-export function rollContinuum(luck: number): number {
-  const u = Math.random();
+export function rollContinuum(luck: number, random: () => number = Math.random): number {
+  // Pareto distribution with P(R >= r) = (2 * luck) / r.
+  // This matches the displayed tier odds and, critically, does not collapse most rolls to 1/2.
+  const u = Math.max(1e-12, Math.min(1 - 1e-12, random()));
   const effectiveLuck = Math.max(1, luck);
-  // Pareto / heavy tail distribution where base luck provides great variety
-  // and higher luck shifts the floor and massively extends the ceiling:
-  const basePower = 1 / (1 + Math.log10(effectiveLuck) * 0.45);
-  const factor = 1 / Math.pow(Math.max(1e-10, 1 - u), basePower);
-  const spread = 0.8 + Math.random() * 0.6;
-  const rarity = Math.max(2, Math.floor(2 * effectiveLuck * factor * spread));
-  return Math.min(10_000_000_000, rarity);
+  const rarity = Math.floor((2 * effectiveLuck) / u);
+  return Math.min(10_000_000_000, Math.max(2, rarity));
 }
 
 export interface ContinuumTierMilestone {
@@ -537,6 +542,51 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
     maxLevel: 3,
     costPerLevel: 5,
   },
+  luckyFloor: {
+    name: 'Lucky Floor',
+    desc: '+1 minimum orb rarity per level.',
+    category: 'core',
+    maxLevel: 10,
+    costPerLevel: 3,
+  },
+  astralArsenal: {
+    name: 'Astral Arsenal',
+    desc: '+1 orb per activation per level.',
+    category: 'core',
+    maxLevel: 5,
+    costPerLevel: 5,
+  },
+  deepVault: {
+    name: 'Deep Vault',
+    desc: '+250 offline roll capacity per level.',
+    category: 'qol',
+    maxLevel: 5,
+    costPerLevel: 2,
+    qol: true,
+  },
+  masteryEngine: {
+    name: 'Mastery Engine',
+    desc: 'Gain +1 Mastery Point every 100 rolls per level.',
+    category: 'core',
+    maxLevel: 5,
+    costPerLevel: 4,
+  },
+  steadyHands: {
+    name: 'Steady Hands',
+    desc: '-100ms cooldown floor per level.',
+    category: 'qol',
+    maxLevel: 5,
+    costPerLevel: 3,
+    qol: true,
+  },
+  offlineFortune: {
+    name: 'Offline Fortune',
+    desc: '+25% offline Coins per level.',
+    category: 'qol',
+    maxLevel: 4,
+    costPerLevel: 3,
+    qol: true,
+  },
 };
 
 export function createInitialDailyQuests(): QuestItem[] {
@@ -614,6 +664,12 @@ export function createInitialState(now = Date.now()): PlayerState {
       altarResonator: 0,
       offlineOverdrive: 0,
       singularityTithe: 0,
+      luckyFloor: 0,
+      astralArsenal: 0,
+      deepVault: 0,
+      masteryEngine: 0,
+      steadyHands: 0,
+      offlineFortune: 0,
     },
     streak: { count: 1, lastClaimDate: '', longestStreak: 1 },
     dailyQuests: createInitialDailyQuests(),
@@ -673,10 +729,58 @@ export const LEVEL_MILESTONES: LevelMilestonePerk[] = [
   { level: 50, name: 'Orb Titan', desc: '+1 Extra Orb per activation & 1.30× Coins!', bonusBalls: 1, bonusCoinsMultiplier: 1.30 },
   { level: 75, name: 'Astral Conduit', desc: '1.35× Multiplicative Luck boost!', bonusLuckMultiplier: 1.35 },
   { level: 100, name: 'Transcendent Paragon', desc: '+2 Extra Orbs per activation & 1.50× Luck boost!', bonusBalls: 2, bonusLuckMultiplier: 1.50 },
+  { level: 150, name: 'Grand Conductor', desc: '+2 Extra Orbs per activation & +20% XP!', bonusBalls: 2, bonusXpMultiplier: 1.20 },
+  { level: 200, name: 'Void Fortune', desc: '1.50× Multiplicative Luck boost!', bonusLuckMultiplier: 1.50 },
+  { level: 300, name: 'Golden Age', desc: '1.50× Multiplicative Coin boost!', bonusCoinsMultiplier: 1.50 },
+  { level: 400, name: 'Orb Battalion', desc: '+2 Extra Orbs per activation!', bonusBalls: 2 },
+  { level: 500, name: 'Astral Zenith', desc: '1.75× Luck and +10% Shard Chance!', bonusLuckMultiplier: 1.75, bonusShardChance: 0.10 },
+  { level: 750, name: 'Infinite Arsenal', desc: '+3 Extra Orbs per activation!', bonusBalls: 3 },
+  { level: 1000, name: 'Infinity Master', desc: '2.00× Luck and 2.00× Coins!', bonusLuckMultiplier: 2.00, bonusCoinsMultiplier: 2.00 },
 ];
 
 export function xpRequiredForLevel(level: number): number {
   return Math.floor(100 * Math.pow(Math.max(1, level), 1.35));
+}
+
+export interface LevelBenefits {
+  bonusBalls: number;
+  luckMultiplier: number;
+  coinsMultiplier: number;
+  xpMultiplier: number;
+  shardChance: number;
+  cooldownReductionMs: number;
+  altarEffectMultiplier: number;
+}
+
+export function getLevelBenefits(level: number): LevelBenefits {
+  let bonusBalls = 0;
+  let luckMultiplier = 1 + Math.max(0, level - 1) * 0.015;
+  let coinsMultiplier = 1 + Math.max(0, level - 1) * 0.03;
+  let xpMultiplier = 1;
+  let shardChance = 0;
+  let cooldownReductionMs = 0;
+  let altarEffectMultiplier = 1;
+
+  for (const milestone of LEVEL_MILESTONES) {
+    if (level < milestone.level) continue;
+    bonusBalls += milestone.bonusBalls ?? 0;
+    luckMultiplier *= milestone.bonusLuckMultiplier ?? 1;
+    coinsMultiplier *= milestone.bonusCoinsMultiplier ?? 1;
+    xpMultiplier *= milestone.bonusXpMultiplier ?? 1;
+    shardChance += milestone.bonusShardChance ?? 0;
+    if (milestone.level === 15) cooldownReductionMs += 150;
+    if (milestone.level === 20) altarEffectMultiplier *= 1.15;
+  }
+
+  return {
+    bonusBalls,
+    luckMultiplier,
+    coinsMultiplier,
+    xpMultiplier,
+    shardChance,
+    cooldownReductionMs,
+    altarEffectMultiplier,
+  };
 }
 
 export function calculateLevelFromXp(totalXp: number): {
@@ -712,11 +816,15 @@ export function calculateAltarMultipliers(s: PlayerState): {
   const resonatorBonus = 1 + (s.prestigeUpgrades?.altarResonator ?? 0) * 0.25;
 
   // Coin devotion: scales smoothly with altar level and log of sacrificed coins
-  const coinDevotion = sacrifices.altarLevel * 0.08 + Math.min(5, Math.log10(1 + (sacrifices.coinsSacrificed || 0) / 250) * 0.35);
+  const altarEffectMultiplier = getLevelBenefits(calculateLevelFromXp(s.xp || 0).level).altarEffectMultiplier;
+  const coinDevotion =
+    (sacrifices.altarLevel * 0.08 +
+      Math.min(5, Math.log10(1 + (sacrifices.coinsSacrificed || 0) / 250) * 0.35)) *
+    altarEffectMultiplier;
   const coinMultiplier = 1 + coinDevotion * resonatorBonus;
 
   // Shard devotion: 6% luck per shard sacrificed
-  const shardDevotion = (sacrifices.shardsSacrificed || 0) * 0.06;
+  const shardDevotion = (s.sacrifices?.shardsSacrificed || 0) * 0.06 * altarEffectMultiplier;
   const shardMultiplier = 1 + shardDevotion * resonatorBonus;
 
   // Surge multiplier: 1.5x during active surge
@@ -757,8 +865,9 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
   const permReduction = (s.prestigeUpgrades?.permSpeed ?? 0) * 300;
   const guildSpeedReduction = (s.guildPerks?.speedRank ?? 0) * 100;
   const masteryChronoReduction = (s.masterySkills?.chronoFlow ?? 0) * 120;
-  const levelInfo = calculateLevelFromXp(s.xp || 0);
-  const levelReduction = levelInfo.level >= 15 ? 150 : 0;
+  const steadyHandsReduction = (s.prestigeUpgrades?.steadyHands ?? 0) * 100;
+  const levelBenefits = getLevelBenefits(calculateLevelFromXp(s.xp || 0).level);
+  const levelReduction = levelBenefits.cooldownReductionMs;
 
   // Roll speed upgrade reduces by 3 seconds on first level, then 2.5s, 2s, etc.
   const speedLevel = s.upgrades.speed ?? 0;
@@ -770,7 +879,7 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
   if (speedLevel >= 5) coinReduction += 1000;
   if (speedLevel > 5) coinReduction += (speedLevel - 5) * 400;
 
-  const floor = Math.max(800, 2000 - permReduction - guildSpeedReduction - masteryChronoReduction - levelReduction);
+  const floor = Math.max(800, 2000 - permReduction - guildSpeedReduction - masteryChronoReduction - steadyHandsReduction - levelReduction);
   let cd = Math.max(floor, BASE_COOLDOWN_MS - coinReduction);
 
   if (isAuto && (s.prestigeUpgrades?.autoOverclock ?? 0) > 0) {
@@ -795,13 +904,10 @@ export function rollsPerActivation(s: PlayerState): number {
   balls += (s.prestigeUpgrades?.astralBarrage ?? 0);
   // 4. Astral Mastery Celestial Volley: +1 ball per level
   balls += (s.masterySkills?.celestialVolley ?? 0);
-  // 5. Level Milestones: Level 25 (+1), Level 50 (+1), Level 100 (+2)
+  // 5. Level milestones and permanent prestige arsenal
   const lvl = calculateLevelFromXp(s.xp || 0).level;
-  for (const m of LEVEL_MILESTONES) {
-    if (lvl >= m.level && m.bonusBalls) {
-      balls += m.bonusBalls;
-    }
-  }
+  balls += getLevelBenefits(lvl).bonusBalls;
+  balls += (s.prestigeUpgrades?.astralArsenal ?? 0);
   return Math.max(1, balls);
 }
 
@@ -819,14 +925,7 @@ export function luckMultiplier(s: PlayerState): number {
 
   // 3. Level Perks Luck
   const levelInfo = calculateLevelFromXp(s.xp || 0);
-  const levelBonusLuck = 1 + (levelInfo.level - 1) * 0.015;
-  let milestoneLuckMult = 1.0;
-  for (const m of LEVEL_MILESTONES) {
-    if (levelInfo.level >= m.level && m.bonusLuckMultiplier) {
-      milestoneLuckMult *= m.bonusLuckMultiplier;
-    }
-  }
-  const totalLevelLuck = levelBonusLuck * milestoneLuckMult;
+  const totalLevelLuck = getLevelBenefits(levelInfo.level).luckMultiplier;
 
   // 4. Sacrificial Altar Luck (Coins and Shards multiplicative with each other!)
   const { totalAltarMultiplier } = calculateAltarMultipliers(s);
@@ -866,12 +965,14 @@ export function offlineRollCap(s: PlayerState): number {
   const permVaultBonus = (s.prestigeUpgrades?.vaultCap ?? 0) * 250;
   const guildVaultBonus = (s.guildPerks?.vaultRank ?? 0) * 100;
   const masteryVaultBonus = (s.masterySkills?.infiniteVault ?? 0) * 200;
+  const deepVaultBonus = (s.prestigeUpgrades?.deepVault ?? 0) * 250;
   return Math.min(
     MAX_OFFLINE_ROLLS,
     Math.round((30 + (s.upgrades.auto ?? 0) * 20) * (1 + (s.upgrades.speed ?? 0) * 0.04)) +
       permVaultBonus +
       guildVaultBonus +
-      masterVaultBonus
+      masteryVaultBonus +
+      deepVaultBonus
   );
 }
 
@@ -943,6 +1044,12 @@ export function prestigeUpgradeCost(id: PrestigeUpgradeId, level: number): numbe
     altarResonator: 3,
     offlineOverdrive: 3,
     singularityTithe: 5,
+    luckyFloor: 3,
+    astralArsenal: 5,
+    deepVault: 2,
+    masteryEngine: 4,
+    steadyHands: 3,
+    offlineFortune: 3,
   };
   const base = bases[id] ?? 2;
   return Math.round(base * Math.pow(1.5, level));
