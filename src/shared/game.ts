@@ -148,6 +148,7 @@ export interface QuestItem {
   title: string;
   desc: string;
   target: number;
+  unlocked?: boolean;
   progress: number;
   rewardCoins: number;
   rewardShards?: number;
@@ -604,7 +605,7 @@ export function createInitialWeeklyQuests(): QuestItem[] {
     { id: 'weekly-grind', title: 'Weekly Rolls', desc: 'Perform 1,000 rolls this week', target: 1000, progress: 0, rewardCoins: 5000, rewardShards: 15, rewardXp: 600, claimed: false },
     { id: 'weekly-epic', title: 'Find Epic Orb', desc: 'Obtain an Epic orb (1/1,000+)', target: 1, progress: 0, rewardCoins: 3000, rewardShards: 10, rewardXp: 400, claimed: false },
     { id: 'weekly-guild', title: 'Collection Value', desc: 'Contribute 10,000 collection value', target: 10000, progress: 0, rewardCoins: 4000, rewardTokens: 50, rewardXp: 500, claimed: false },
-    { id: 'weekly-share', title: 'Share Post', desc: 'Share an orb to Reddit', target: 1, progress: 0, rewardCoins: 1500, rewardShards: 5, rewardXp: 200, claimed: false },
+    { id: 'weekly-share', title: 'Share Post', desc: 'Share an orb to Reddit after discovering a Rare+ orb.', target: 1, progress: 0, rewardCoins: 1500, rewardShards: 5, rewardXp: 200, claimed: false, unlocked: false },
   ];
 }
 
