@@ -2,14 +2,13 @@ import { context, redis } from './devvit-mock.js';
 import type { Guild, LeaderboardEntry, Achievement, GuildMessage, GuildPerkId, WorldEvent } from '../shared/social.js';
 import { ACHIEVEMENTS, CHALLENGE_POOL, challengeForWeek, COMMUNITY_WORLD_EVENT, createInitialGuildBoss } from '../shared/social.js';
 import type { PlayerState } from '../shared/game.js';
-import { cooldownMs, grantFreeShards } from '../shared/game.js';
+import { cooldownMs, grantFreeShards, weekKey } from '../shared/game.js';
 
 const user = () => context.userId ?? 'unknown';
 const username = () => context.username ?? `reddit-user-${user().slice(-8)}`;
 const key = (name: string) => `io:${name}`;
 const GUILDS_KEY = key('guilds');
 const COMMUNITY_EVENT_KEY = key('community_event');
-const COMMUNITY_EVENT_TICK_KEY = key('community_event_tick');
 
 function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
   const currentWeek = weekKey(now);
@@ -371,43 +370,51 @@ export async function contribute(value: number, rollCount = 1) {
 
 // Community World Event System
 export async function getCommunityEvent(): Promise<WorldEvent> {
-  const raw = await redis.get(key('community_event'));
-  let ev: WorldEvent;
-  if (!raw) {
-    ev = { ...COMMUNITY_WORLD_EVENT };
-    await redis.set(key('community_event'), JSON.stringify(ev));
-  } else {
-    ev = JSON.parse(raw) as WorldEvent;
-  }
-  if (!ev.buffMultiplier) {
-    ev.buffMultiplier = 1.15;
-  }
-
-  // Automatic Weekly Reset: Every week (Sunday 00:00 UTC / 7-day cycle) the community milestone resets!
+  const eventKey = COMMUNITY_EVENT_KEY;
+  const tickKey = key('community_event_tick');
   const now = Date.now();
-  const currentWeekNumber = Math.floor(now / 604_800_000);
-  if (ev.weekId !== currentWeekNumber || now >= ev.endsAt) {
-    ev.weekId = currentWeekNumber;
-    ev.id = `world-event-w${currentWeekNumber}`;
-    ev.title = 'Weekly Community Milestone';
-    ev.description = 'Community rolls contributed this week toward dynamic tier goals.';
-    ev.goal = 100_000;
-    ev.currentProgress = 0;
-    ev.tier = 1;
-    ev.buffMultiplier = 1.15;
-    ev.buffDescription = '+15% Global Luck Active';
-    ev.endsAt = (currentWeekNumber + 1) * 604_800_000;
-    ev.completed = false;
-    await redis.set(key('community_event'), JSON.stringify(ev));
+  const raw = await redis.get(eventKey);
+
+  if (raw) {
+    const current = JSON.parse(raw) as WorldEvent;
+    const lastTickRaw = await redis.get(tickKey);
+    const lastTick = lastTickRaw ? Number(lastTickRaw) : now;
+    const currentWeekNumber = weekKey(now);
+    if (current.weekId === currentWeekNumber && now < current.endsAt &&
+        now - lastTick < 4_000 && current.buffMultiplier) {
+      return current;
+    }
   }
 
-  // Smooth rolling background simulated progress (community activity)
-  const lastTickRaw = await redis.get(key('community_event_tick'));
-  const lastTick = lastTickRaw ? parseInt(lastTickRaw, 10) : now;
-  const elapsedSec = Math.max(0, Math.floor((now - lastTick) / 1000));
-  if (elapsedSec >= 4) {
-    const naturalRolls = Math.floor(elapsedSec * 0.5);
-    if (naturalRolls > 0) {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const txn = await redis.watch(eventKey, tickKey);
+    const latestRaw = await txn.get(eventKey);
+    const latestTickRaw = await txn.get(tickKey);
+    const latestNow = Date.now();
+    const currentWeekNumber = weekKey(latestNow);
+    const ev: WorldEvent = latestRaw
+      ? JSON.parse(latestRaw) as WorldEvent
+      : { ...COMMUNITY_WORLD_EVENT };
+
+    if (ev.weekId !== currentWeekNumber || latestNow >= ev.endsAt) {
+      ev.weekId = currentWeekNumber;
+      ev.id = `world-event-w${currentWeekNumber}`;
+      ev.title = 'Weekly Community Milestone';
+      ev.description = 'Community rolls contributed this week toward dynamic tier goals.';
+      ev.goal = 100_000;
+      ev.currentProgress = 0;
+      ev.tier = 1;
+      ev.buffMultiplier = 1.15;
+      ev.buffDescription = '+15% Global Luck Active';
+      ev.endsAt = (currentWeekNumber + 1) * 604_800_000;
+      ev.completed = false;
+    }
+    if (!ev.buffMultiplier) ev.buffMultiplier = 1.15;
+
+    const lastTick = latestTickRaw ? Number(latestTickRaw) : latestNow;
+    const elapsedSec = Math.max(0, Math.floor((latestNow - lastTick) / 1000));
+    if (elapsedSec >= 4) {
+      const naturalRolls = Math.floor(elapsedSec * 0.5);
       ev.currentProgress += naturalRolls;
       while (ev.currentProgress >= ev.goal) {
         ev.tier = (ev.tier || 1) + 1;
@@ -415,11 +422,16 @@ export async function getCommunityEvent(): Promise<WorldEvent> {
         ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
         ev.buffDescription = `+${Math.round((ev.buffMultiplier - 1) * 100)}% Global Luck Active`;
       }
-      await redis.set(key('community_event'), JSON.stringify(ev));
     }
-    await redis.set(key('community_event_tick'), String(now));
+
+    await txn.multi();
+    await txn.set(eventKey, JSON.stringify(ev));
+    await txn.set(tickKey, String(latestNow));
+    const committed = await txn.exec();
+    if (committed !== null) return ev;
   }
-  return ev;
+
+  throw new Error('Community event changed while refreshing. Please retry.');
 }
 
 export async function addCommunityRolls(rolls: number): Promise<WorldEvent> {
@@ -471,7 +483,28 @@ export async function setCommunityEventConfig(config: {
   buffMultiplier?: number;
   reset?: boolean;
 }): Promise<WorldEvent> {
-  const ev = await getCommunityEvent();
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const txn = await redis.watch(COMMUNITY_EVENT_KEY);
+    const raw = await txn.get(COMMUNITY_EVENT_KEY);
+    const now = Date.now();
+    const currentWeekNumber = weekKey(now);
+    const ev: WorldEvent = raw
+      ? JSON.parse(raw) as WorldEvent
+      : { ...COMMUNITY_WORLD_EVENT };
+
+    if (ev.weekId !== currentWeekNumber || now >= ev.endsAt) {
+      ev.weekId = currentWeekNumber;
+      ev.id = `world-event-w${currentWeekNumber}`;
+      ev.title = 'Weekly Community Milestone';
+      ev.description = 'Community rolls contributed this week toward dynamic tier goals.';
+      ev.goal = 100_000;
+      ev.currentProgress = 0;
+      ev.tier = 1;
+      ev.buffMultiplier = 1.15;
+      ev.buffDescription = '+15% Global Luck Active';
+      ev.endsAt = (currentWeekNumber + 1) * 604_800_000;
+      ev.completed = false;
+    }
   if (config.reset) {
     ev.currentProgress = 0;
     ev.goal = 100_000;
@@ -502,8 +535,12 @@ export async function setCommunityEventConfig(config: {
     ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
     ev.buffDescription = `+${Math.round((ev.buffMultiplier - 1) * 100)}% Global Luck Active`;
   }
-  await redis.set(key('community_event'), JSON.stringify(ev));
-  return ev;
+    await txn.multi();
+    await txn.set(COMMUNITY_EVENT_KEY, JSON.stringify(ev));
+    const committed = await txn.exec();
+    if (committed !== null) return ev;
+  }
+  throw new Error('Community event changed while applying the admin update. Please retry.');
 }
 
 export async function leaderboard(): Promise<LeaderboardEntry[]> {
