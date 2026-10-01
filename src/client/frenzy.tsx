@@ -40,10 +40,9 @@ function FrenzyPost() {
       const res = await fetch('/api/frenzy/claim', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not claim Frenzy.');
-      const count = Math.floor(data.state.totalRolls); 
       setClaimed(true);
       setResult({
-        count: data.orb?.rarity ? data.orb.rarity : 0,
+        count: data.frenzyCount ?? data.orb?.rarity ?? 0,
         coins: data.coinsGained,
         xp: data.xpGained,
       });
@@ -81,7 +80,7 @@ function FrenzyPost() {
           <div className="mt-5 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4">
             <div className="text-sm font-black text-emerald-200">Frenzy claimed!</div>
             <div className="mt-1 text-xs text-slate-300">
-              Coins +{result.coins.toLocaleString()} · XP +{result.xp.toLocaleString()}
+              {result.count.toLocaleString()} Orbs rolled · Coins +{result.coins.toLocaleString()} · XP +{result.xp.toLocaleString()}
             </div>
           </div>
         ) : (
