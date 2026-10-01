@@ -10,6 +10,10 @@
       },
       "game": {
         "entry": "game.html"
+      },
+      "frenzy": {
+        "entry": "frenzy.html",
+        "height": "tall"
       }
     }
   },
