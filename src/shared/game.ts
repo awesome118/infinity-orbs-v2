@@ -275,22 +275,26 @@ export function activateGlobalBoosterStack(
   now = Date.now(),
 ): GlobalBoosterState {
   const decayed = decayGlobalBoosterState(state, now);
-  const nextRemaining = decayed.remainingMs + GLOBAL_BOOSTER_STACK_MS;
-  const nextTier = Math.min(
-    GLOBAL_BOOSTER_MAX_TIER,
-    decayed.tier <= 0 ? 1 : decayed.tier + 1,
-  );
+  let tier = decayed.tier <= 0 ? 1 : decayed.tier;
+  const remainingMs = decayed.remainingMs + GLOBAL_BOOSTER_STACK_MS;
+
+  // A stack adds exactly 30 minutes of charge. When that fills the current
+  // tier's bar, the booster tiers up. Overflow carries into the new tier.
+  while (tier < GLOBAL_BOOSTER_MAX_TIER && remainingMs > tier * GLOBAL_BOOSTER_STACK_MS) {
+    tier++;
+  }
+
   return {
-    tier: nextTier,
-    remainingMs: nextRemaining,
+    tier,
+    remainingMs,
     updatedAt: now,
   };
 }
 
 export function globalBoosterProgress(state: GlobalBoosterState): number {
   if (state.remainingMs <= 0 || state.tier <= 0) return 0;
-  const cycle = state.remainingMs % GLOBAL_BOOSTER_STACK_MS;
-  return Math.round((cycle === 0 ? 1 : cycle / GLOBAL_BOOSTER_STACK_MS) * 100);
+  const capacity = state.tier * GLOBAL_BOOSTER_STACK_MS;
+  return Math.round(Math.min(1, state.remainingMs / capacity) * 100);
 }
 
 export interface PurchasePack {
