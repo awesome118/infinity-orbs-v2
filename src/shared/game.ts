@@ -395,14 +395,14 @@ export interface PrestigeUpgradeInfo {
 export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> = {
   permLuck: {
     name: 'Permanent Luck',
-    desc: '+5% luck per level.',
+    desc: '+10% luck multiplier per level.',
     category: 'core',
     maxLevel: 10,
     costPerLevel: 2,
   },
   permSpeed: {
     name: 'Permanent Speed Floor',
-    desc: '-300ms cooldown floor per level.
+    desc: '-300ms cooldown floor per level.',
     category: 'core',
     maxLevel: 5,
     costPerLevel: 3,
