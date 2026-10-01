@@ -607,6 +607,26 @@ debugRouter.get('/moderation/banned', async (_req, res) => {
   }
 });
 
+debugRouter.post('/moderation/self-ban', async (req, res) => {
+  try {
+    if (!context.userId) throw new Error('The current game session has no user ID.');
+    const durationValue = req.body?.durationDays;
+    const durationDays = durationValue === '' || durationValue == null
+      ? undefined
+      : Math.max(1, finiteInteger(durationValue));
+    const ban = await banGameUser({
+      userId: context.userId,
+      username: normalizeUsername(context.username),
+      durationDays,
+      reason: String(req.body?.reason ?? 'Self-ban test').slice(0, 300),
+      bannedBy: context.username ?? 'shadow_fen',
+    });
+    res.json({ ok: true, action: 'self-game-ban', ban });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to ban the current game account.' });
+  }
+});
+
 debugRouter.post('/moderation/ban', async (req, res) => {
   try {
     const username = targetUsername(req.body?.username);
