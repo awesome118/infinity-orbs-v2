@@ -143,13 +143,14 @@ export async function applyRolls(
   const batch: Orb[] = [];
   const rarities: number[] = [];
   let rollCount = rollsPerActivation(s) * activationCount;
+  const now = Date.now();
+  const rng = serverRandom;
+
   // Astral Magnetism proc: chance for multi-rolls to pull 2 bonus orbs
   const magnetLevel = s.prestigeUpgrades?.stellarMagnet ?? 0;
   if (rollCount > 1 && magnetLevel > 0 && rng() < 0.10 * magnetLevel) {
     rollCount += 2;
   }
-  const now = Date.now();
-  const rng = serverRandom;
 
   const worldEvent = await getCommunityEvent();
   const communityLuck = worldEvent.buffMultiplier ?? 1.15;
