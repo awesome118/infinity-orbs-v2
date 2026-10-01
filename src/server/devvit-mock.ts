@@ -54,6 +54,35 @@ const localRedis = {
     store.set(key, String(value));
     return value;
   },
+  zAdd: async (key: string, ...entries: Array<{ member: string; score: number }>): Promise<number> => {
+    const raw = store.get(key);
+    const values: Record<string, number> = raw ? JSON.parse(raw) : {};
+    let added = 0;
+    for (const entry of entries) {
+      if (!(entry.member in values)) added++;
+      values[entry.member] = entry.score;
+    }
+    store.set(key, JSON.stringify(values));
+    return added;
+  },
+  zRemRangeByScore: async (key: string, min: number, max: number): Promise<number> => {
+    const raw = store.get(key);
+    if (!raw) return 0;
+    const values: Record<string, number> = JSON.parse(raw);
+    let removed = 0;
+    for (const [member, score] of Object.entries(values)) {
+      if (score >= min && score <= max) {
+        delete values[member];
+        removed++;
+      }
+    }
+    store.set(key, JSON.stringify(values));
+    return removed;
+  },
+  zCard: async (key: string): Promise<number> => {
+    const raw = store.get(key);
+    return raw ? Object.keys(JSON.parse(raw)).length : 0;
+  },
 };
 
 const localContext = {
