@@ -255,8 +255,8 @@ export async function leaveGuild() {
     if (oldMember?.role === 'owner') {
       const topMember = [...guild.members].sort((a, b) => b.contribution - a.contribution)[0];
       topMember.role = 'owner';
-      if (!guild.chat) guild.chat = [];
-      guild.chat.push({
+          if (!guild.chat) guild.chat = [];
+          guild.chat.push({
         id: `msg-${Date.now()}-owner`,
         username: 'System',
         text: `${topMember.username} is now the guild owner.`,
@@ -301,17 +301,17 @@ export async function contribute(value: number, rollCount = 1) {
   try {
     if (value <= 0) return;
     await updateGuilds(guilds => {
-    const guild = guilds.find(g => g.members.some(m => m.username === username()));
-    if (!guild) return;
-    const member = guild.members.find(m => m.username === username());
-    if (!member) return;
-    member.contribution += value;
-  guild.xp += Math.max(1, Math.floor(value / 250));
-  guild.level = 1 + Math.floor(guild.xp / 500);
-  guild.tokens += Math.max(1, Math.floor(value / 25000));
+      const guild = guilds.find(g => g.members.some(m => m.username === username()));
+      if (!guild) return;
+      const member = guild.members.find(m => m.username === username());
+      if (!member) return;
+      member.contribution += value;
+      guild.xp += Math.max(1, Math.floor(value / 250));
+      guild.level = 1 + Math.floor(guild.xp / 500);
+      guild.tokens += Math.max(1, Math.floor(value / 25000));
 
-  // Progress guild challenge
-  if (guild.challenge) {
+      // Progress guild challenge
+      if (guild.challenge) {
     if (guild.challenge.type === 'value') {
       guild.challenge.progress += value;
     } else if (guild.challenge.type === 'rolls') {
@@ -321,9 +321,9 @@ export async function contribute(value: number, rollCount = 1) {
     }
 
     // Check challenge completion
-    if (guild.challenge.progress >= guild.challenge.target) {
-      const reward = guild.challenge.reward;
-      guild.tokens += reward;
+        if (guild.challenge.progress >= guild.challenge.target) {
+          const reward = guild.challenge.reward;
+          guild.tokens += reward;
       if (!guild.chat) guild.chat = [];
       guild.chat.push({
         id: `msg-${Date.now()}-challenge`,
@@ -333,13 +333,13 @@ export async function contribute(value: number, rollCount = 1) {
         isSystem: true,
       });
 
-      // Cycle to next challenge
-      const nextIdx = (CHALLENGE_POOL.findIndex(c => c.type === guild.challenge.type) + 1) % CHALLENGE_POOL.length;
-      guild.challenge = { ...CHALLENGE_POOL[nextIdx], progress: 0 };
+          // Cycle to next challenge
+          const nextIdx = (CHALLENGE_POOL.findIndex(c => c.type === guild.challenge.type) + 1) % CHALLENGE_POOL.length;
+          guild.challenge = { ...CHALLENGE_POOL[nextIdx], progress: 0 };
     }
-  }
+      }
 
-    // Guild Raid Boss damage contribution
+      // Guild Raid Boss damage contribution
     if (guild.boss && !guild.boss.defeated) {
       const damage = Math.round(value + rollCount * 25);
       guild.boss.currentHp = Math.max(0, guild.boss.currentHp - damage);
@@ -361,7 +361,6 @@ export async function contribute(value: number, rollCount = 1) {
       }
     }
 
-      return;
     });
   } catch (err) {
     console.error('Error in guild contribution:', err);
