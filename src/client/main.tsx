@@ -77,6 +77,21 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+async function getJsonWithTimeout<T>(url: string, timeoutMs = 10_000, options?: RequestInit): Promise<T> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await getJson<T>(url, { ...options, signal: controller.signal });
+  } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      throw new Error('The Infinity Orbs server did not respond within 10 seconds.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 export function App() {
   const [state, setState] = useState<PlayerState | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
@@ -126,7 +141,7 @@ export function App() {
     try {
       // Load the player's state first. Admin/debug status is auxiliary and must
       // never block the entire game from rendering if that endpoint is slow.
-      const me = await getJson<PlayerState>('/api/me');
+      const me = await getJsonWithTimeout<PlayerState>('/api/me');
       setState(me);
       setAuthRequired(false);
       setStartupError(null);
