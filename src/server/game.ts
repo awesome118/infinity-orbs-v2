@@ -336,17 +336,17 @@ export async function applyRolls(
 
     // Shards bonus for rare orbs (1,000+)
     let earnedShards = 0;
-    if (rarity >= 1_000_000) earnedShards = 25;
-    else if (rarity >= 100_000) earnedShards = 10;
-    else if (rarity >= 10_000) earnedShards = 3;
+    if (rarity >= 1_000_000) earnedShards = 10;
+    else if (rarity >= 100_000) earnedShards = 5;
+    else if (rarity >= 10_000) earnedShards = 2;
     else if (rarity >= 1_000) earnedShards = 1;
 
     // Shard Chance upgrade + Mastery + Guild perk proc
     const shardProcChance = Math.min(
       1,
-      (s.upgrades.shardChance ?? 0) * 0.005 +
-      (s.masterySkills?.shardAttunement ?? 0) * 0.005 +
-      (s.guildPerks?.shardRank ?? 0) * 0.002 +
+      (s.upgrades.shardChance ?? 0) * 0.0015 +
+      (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
+      (s.guildPerks?.shardRank ?? 0) * 0.0005 +
       levelBenefits.shardChance
     );
     if (rng() < shardProcChance) {
@@ -677,10 +677,9 @@ export async function claimDailyStreak(): Promise<{ state: PlayerState; rewardCo
 
   const day = ((s.streak.count - 1) % 7) + 1;
   const rewardCoins = day * 100;
-  const rewardShards = day === 7 ? 15 : day === 3 ? 3 : 0;
+  const rewardShards = grantFreeShards(s, day === 7 ? 5 : day === 3 ? 1 : 0);
 
   s.coins += rewardCoins;
-  s.shards = (s.shards ?? 0) + rewardShards;
 
   await save(s);
   return { state: s, rewardCoins, rewardShards, day };
@@ -919,9 +918,6 @@ export async function buyAutomation(id: AutomationId): Promise<PlayerState> {
 export async function claimCommunityReward(): Promise<{ state: PlayerState; rewardCoins: number; rewardXp: number; nextClaimAt: number; tier: number }> {
   const s = await settleOffline(await loadRaw());
   const result = await claimCommunityRewardFromState(s);
-  if (result.rewardCoins <= 0) {
-    throw new Error('Community reward is on cooldown. Next claim in ' + Math.ceil((result.nextClaimAt - Date.now()) / 1000) + 's.');
-  }
   await save(s);
   return { state: s, ...result };
 }
