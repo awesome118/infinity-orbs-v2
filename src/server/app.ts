@@ -38,7 +38,7 @@ import { context, reddit } from './devvit-mock.js';
 
 export function createApp() {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '16kb' }));
 
   // Serialize state-changing requests per player. The client is untrusted and may
   // double-submit buttons or send concurrent requests, so mutations must not race.
@@ -174,7 +174,8 @@ export function createApp() {
         'permLuck', 'permSpeed', 'vaultCap', 'dustBounty', 'sonarPing', 'instantReveal',
         'autoOverclock', 'autoFilter', 'resonanceMeter', 'stellarMagnet', 'chronoOverdrive',
         'transmutation', 'shardSynthesis', 'astralBarrage', 'cosmicInheritance',
-        'autoBuyer', 'supernova', 'altarResonator', 'offlineOverdrive', 'singularityTithe'
+        'autoBuyer', 'supernova', 'altarResonator', 'offlineOverdrive', 'singularityTithe',
+        'luckyFloor', 'astralArsenal', 'deepVault', 'masteryEngine', 'steadyHands', 'offlineFortune'
       ];
       if (!validIds.includes(id)) return res.status(400).json({ error: 'Invalid prestige upgrade.' });
       res.json({ state: await buyPrestigeUpgrade(id) });
@@ -258,8 +259,15 @@ export function createApp() {
   app.post('/api/guilds/donate', async (req, res) => {
     try {
       const { coins = 0, shards = 0 } = req.body || {};
-      const numCoins = Math.max(0, Math.floor(coins));
-      const numShards = Math.max(0, Math.floor(shards));
+      const numCoinsRaw = Number(coins);
+      const numShardsRaw = Number(shards);
+      if (!Number.isFinite(numCoinsRaw) || !Number.isFinite(numShardsRaw) ||
+          numCoinsRaw < 0 || numShardsRaw < 0 ||
+          !Number.isSafeInteger(Math.floor(numCoinsRaw)) || !Number.isSafeInteger(Math.floor(numShardsRaw))) {
+        return res.status(400).json({ error: 'Invalid donation amounts.' });
+      }
+      const numCoins = Math.floor(numCoinsRaw);
+      const numShards = Math.floor(numShardsRaw);
       const s = await getMe();
       if (s.coins < numCoins) throw new Error('Not enough coins.');
       if ((s.shards ?? 0) < numShards) throw new Error('Not enough shards.');
@@ -278,6 +286,9 @@ export function createApp() {
       const value = Number(req.body?.rarity);
       if (!Number.isSafeInteger(value) || value <= 0 || (s.collection[String(value)] ?? 0) <= 0) {
         return res.status(400).json({ error: 'You can only share an orb you actually own.' });
+      }
+      if (s.lastShareAt && Date.now() - s.lastShareAt < 30_000) {
+        return res.status(429).json({ error: 'Please wait before sharing another orb.' });
       }
       const subredditName = context.subredditName;
       const text = shareText(s, value);
