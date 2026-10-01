@@ -29,6 +29,7 @@ import {
   save,
   sacrificeToAltar,
   upgradeMasterySkill,
+  getCollectionPage,
 } from './game.js';
 import {
   achievements,
@@ -198,6 +199,22 @@ export function createApp() {
   app.get('/api/me', async (_req, res) => {
     try { res.json(await getMe()); }
     catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch player state.' }); }
+  });
+
+  app.get('/api/collection', async (req, res) => {
+    try {
+      const offset = Math.max(0, Math.floor(Number(req.query.offset ?? 0) || 0));
+      const limit = Math.min(100, Math.max(1, Math.floor(Number(req.query.limit ?? 60) || 60)));
+      const sortValue = String(req.query.sort ?? 'rarity_desc');
+      const sort =
+        sortValue === 'rarity_asc' || sortValue === 'count'
+          ? sortValue
+          : 'rarity_desc';
+      const tier = String(req.query.tier ?? 'all');
+      res.json(await getCollectionPage({ offset, limit, tier, sort }));
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Failed to fetch Codex entries.' });
+    }
   });
 
   app.get('/api/leaderboard', async (_req, res) => {
