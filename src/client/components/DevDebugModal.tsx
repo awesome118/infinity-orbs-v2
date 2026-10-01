@@ -468,6 +468,22 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             >
               <UserX className="inline w-3.5 h-3.5 mr-1" /> Wipe Save
             </button>
+            <button
+              disabled={loading || !targetUser.trim()}
+              onClick={() => {
+                if (!confirmation(`Wipe game data and ban u/${targetUser.replace(/^u\\//i, '')}?`)) return;
+                void sendAdminAction('/api/dev/moderation/wipe-and-ban', {
+                  username: targetUser,
+                  duration: banDuration === 'permanent' ? null : Number(banDuration),
+                  reason: banReason,
+                  note: banNote,
+                  message: banMessage,
+                });
+              }}
+              className={`${buttonBase} bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/30 text-rose-300 px-3 py-2`}
+            >
+              <Ban className="inline w-3.5 h-3.5 mr-1" /> Wipe + Ban
+            </button>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
