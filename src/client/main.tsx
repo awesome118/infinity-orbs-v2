@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Sparkles,
   Zap,
@@ -17,6 +18,8 @@ import type {
   UpgradeId,
   PrestigeUpgradeId,
   MasterySkillId,
+  AutomationId,
+  PremiumBoosterId,
   Orb,
   RollResponse,
 } from '../shared/game.js';
@@ -45,12 +48,14 @@ import { AchievementsSection } from './components/AchievementsSection.js';
 import { RedditShareModal } from './components/RedditShareModal.js';
 import { RarityTableModal } from './components/RarityTableModal.js';
 import { NewBestModal } from './components/NewBestModal.js';
+import { BoostersAndAutomation } from './components/BoostersAndAutomation.js';
 import { DevDebugModal } from './components/DevDebugModal.js';
 import './styles.css';
 
 type ActiveTab =
   | 'roll'
   | 'upgrades'
+  | 'boosters'
   | 'altar'
   | 'mastery'
   | 'collection'
@@ -152,6 +157,16 @@ export function App() {
     }, pollInterval);
     return () => clearInterval(interval);
   }, [tab]);
+
+  // Keep presence fresh and process server-side automation while the game is open.
+  useEffect(() => {
+    const presenceInterval = setInterval(() => {
+      void getJson<PlayerState>('/api/me')
+        .then(setState)
+        .catch(() => null);
+    }, 10_000);
+    return () => clearInterval(presenceInterval);
+  }, []);
 
   // Roll action
   const handleRoll = useCallback(async () => {
@@ -255,6 +270,70 @@ export function App() {
       showToast('Turbo Roll Activated! Cooldowns reduced by 20% for 30m.', 'success');
     } catch (e: any) {
       showToast(e.message || 'Could not activate turbo roll', 'warn');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Premium Booster
+  const handleActivatePremiumBooster = async (id: PremiumBoosterId) => {
+    setBusy(true);
+    try {
+      const res = await getJson<{ state: PlayerState }>('/api/boosters/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      setState(res.state);
+      sound.playChime(1046, 'sawtooth', 0.3);
+      showToast('Premium booster activated.', 'success');
+    } catch (e: any) {
+      showToast(e.message || 'Could not activate booster', 'warn');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Permanent automation
+  const handleBuyAutomation = async (id: AutomationId) => {
+    setBusy(true);
+    try {
+      const res = await getJson<{ state: PlayerState }>('/api/automation/buy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      setState(res.state);
+      sound.playLevelUpFanfare();
+      showToast('Automation unlocked.', 'success');
+    } catch (e: any) {
+      showToast(e.message || 'Could not unlock automation', 'warn');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Community cache
+  const handleClaimCommunityReward = async () => {
+    setBusy(true);
+    try {
+      const res = await getJson<{
+        state: PlayerState;
+        rewardCoins: number;
+        rewardXp: number;
+        nextClaimAt: number;
+        tier: number;
+      }>('/api/community/reward/claim', { method: 'POST' });
+      setState(res.state);
+      if (res.rewardCoins > 0) {
+        sound.playChime(880, 'triangle', 0.3);
+        showToast(
+          `Community cache claimed! +${res.rewardCoins.toLocaleString()} Coins, +${res.rewardXp.toLocaleString()} XP.`,
+          'success',
+        );
+      }
+    } catch (e: any) {
+      showToast(e.message || 'Could not claim community reward', 'warn');
     } finally {
       setBusy(false);
     }
@@ -676,6 +755,19 @@ export function App() {
           <button
             onClick={() => {
               sound.playClick();
+              setTab('boosters');
+            }}
+            className={tab === 'boosters'
+              ? 'flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-md'
+              : 'flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap text-slate-400 hover:text-white hover:bg-slate-800/60'}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
+            <span>Boosters</span>
+          </button>
+
+          <button
+            onClick={() => {
+              sound.playClick();
               setTab('altar');
             }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
@@ -819,6 +911,16 @@ export function App() {
             onBuyAllUpgrades={handleBuyAllUpgrades}
             onActivateTurbo={handleActivateTurbo}
             busy={busy}
+          />
+        )}
+
+        {tab === 'boosters' && (
+          <BoostersAndAutomation
+            state={state}
+            busy={busy}
+            onActivateBooster={handleActivatePremiumBooster}
+            onBuyAutomation={handleBuyAutomation}
+            onClaimCommunityReward={handleClaimCommunityReward}
           />
         )}
 
