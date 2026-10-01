@@ -1,4 +1,4 @@
-import { redis, context } from './devvit-mock.js';
+import { redis, context, reddit } from './devvit-mock.js';
 import {
   createInitialState,
   type PlayerState,
@@ -210,7 +210,7 @@ async function claimWorldBoosterActivation(
   const cost = GLOBAL_BOOSTERS[id].costShards;
   if (useCredit) {
     if ((s.globalBoosterCredits ?? 0) <= 0) throw new Error('No free World Booster activations remain.');
-    s.globalBoosterCredits--;
+    s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) - 1;
   } else {
     spendShards(s, cost);
   }
@@ -1088,11 +1088,11 @@ export async function startOrbFrenzy(): Promise<{ state: PlayerState; postId: st
   const subredditName = context.subredditName;
   if (!subredditName) throw new Error('Orb Frenzy requires a Reddit post context.');
 
-  const text = `Orb Frenzy! I rolled a 1/${result.orb.rarity.toLocaleString()} Orb. Other players can click this post once per day to unleash the Frenzy.`;
+  const text = `Orb Frenzy! I rolled a 1/${result.bestOrb.rarity.toLocaleString()} Orb. Other players can click this post once per day to unleash the Frenzy.`;
   const post = await reddit.submitCustomPost({
     runAs: 'USER',
     subredditName,
-    title: `⚡ Orb Frenzy: 1/${result.orb.rarity.toLocaleString()}`,
+    title: `⚡ Orb Frenzy: 1/${result.bestOrb.rarity.toLocaleString()}`,
     entry: 'frenzy',
     userGeneratedContent: { text },
   });
@@ -1101,7 +1101,7 @@ export async function startOrbFrenzy(): Promise<{ state: PlayerState; postId: st
   await redis.set(postKey, JSON.stringify({
     ownerId: context.userId ?? 'unknown',
     ownerUsername: context.username ?? 'Redditor',
-    rarity: result.orb.rarity,
+    rarity: result.bestOrb.rarity,
     subredditName,
     createdAt: Date.now(),
   }));
@@ -1115,7 +1115,7 @@ export async function startOrbFrenzy(): Promise<{ state: PlayerState; postId: st
   return {
     state: s,
     postId: post.id,
-    rarity: result.orb.rarity,
+    rarity: result.bestOrb.rarity,
     url: `https://reddit.com/r/${subredditName}/comments/${post.id}`,
   };
 }
