@@ -5,10 +5,14 @@ import { setCommunityEventConfig } from './social.js';
 import { cooldownMs } from '../shared/game.js';
 import { recordLeaderboard } from './social.js';
 
-const DEBUG_USERNAME = 'shadow_fen';
+const DEBUG_USERS = new Set([
+  'shadow_fen',
+  'u/shadow_fen',
+  '/u/shadow_fen',
+]);
 
 export function isDebugUser(): boolean {
-  return context.username === DEBUG_USERNAME;
+  return DEBUG_USERS.has(context.username ?? '');
 }
 
 export const debugRouter = Router();
