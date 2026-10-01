@@ -34,7 +34,7 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
     try {
       const result = await purchase(sku);
       if (result.status === OrderResultStatus.STATUS_SUCCESS) {
-        setMessage('Purchase complete. Your Shards and World Booster credits are being added.');
+        setMessage('Purchase complete. Your Shards and Global Booster credits are being added.');
         await onPurchased();
       } else {
         setMessage(result.errorMessage || 'Purchase was not completed.');
@@ -52,7 +52,7 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
           <h2 className="text-xl font-black text-white">Shard Shop</h2>
         </div>
         <p className="mt-1 text-xs text-slate-400">
-          Purchases use Reddit Gold through Reddit's native payment flow. Each pack also includes free World Booster activations.
+          Purchases use Reddit Gold through Reddit's native payment flow. Each pack also includes free Global Booster activations.
         </p>
 
         <div className="mt-4 flex items-center gap-4">
@@ -61,7 +61,7 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
             <span className="text-xl font-black text-cyan-200">{state.shards.toLocaleString()} <Gem className="inline w-4 h-4" /></span>
           </div>
           <div className="rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/10 px-4 py-3">
-            <span className="block text-[10px] uppercase font-black text-fuchsia-300/70">Free World Boosts</span>
+            <span className="block text-[10px] uppercase font-black text-fuchsia-300/70">Free Global Boosts</span>
             <span className="text-xl font-black text-fuchsia-200">{state.globalBoosterCredits ?? 0} <Sparkles className="inline w-4 h-4" /></span>
           </div>
         </div>
