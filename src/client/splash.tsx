@@ -13,7 +13,6 @@ function Splash() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <p className="text-[10px] uppercase tracking-[0.25em] text-purple-300 font-black">Reddit Game</p>
               <span className="text-[10px] font-mono font-bold text-slate-500">v{context.appVersion}</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black">Infinity Orbs</h1>
@@ -33,7 +32,7 @@ function Splash() {
         </button>
 
         <p className="mt-4 text-[11px] text-slate-500">
-          Version {context.appVersion ?? 'unknown'} · Progress is stored server-side.
+          v{context.appVersion ?? 'unknown'}
         </p>
       </section>
     </main>
