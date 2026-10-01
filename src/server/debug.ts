@@ -372,6 +372,58 @@ debugRouter.post('/preset', async (req, res) => {
         ascension: now + 60 * 60 * 1000,
       };
       s.lastRollAt = 0;
+    } else if (preset === 'upgrades-max') {
+      s.upgrades = {
+        speed: 20, multi: 20, clusterRoll: 20, auto: 1, luck: 20,
+        coinBonus: 20, shardChance: 20, xpBonus: 20, critChance: 20,
+        critPower: 20, offlineRate: 20, valueBonus: 20,
+      };
+    } else if (preset === 'upgrades-reset') {
+      s.upgrades = {
+        speed: 0, multi: 0, clusterRoll: 0, auto: 0, luck: 0,
+        coinBonus: 0, shardChance: 0, xpBonus: 0, critChance: 0,
+        critPower: 0, offlineRate: 0, valueBonus: 0,
+      };
+    } else if (preset === 'prestige-max') {
+      for (const [id, info] of Object.entries(PRESTIGE_UPGRADES)) {
+        s.prestigeUpgrades[id as keyof typeof s.prestigeUpgrades] = info.maxLevel;
+      }
+    } else if (preset === 'prestige-reset') {
+      for (const id of Object.keys(s.prestigeUpgrades)) {
+        s.prestigeUpgrades[id as keyof typeof s.prestigeUpgrades] = 0;
+      }
+    } else if (preset === 'mastery-max') {
+      for (const [id, info] of Object.entries(MASTERY_SKILLS)) {
+        s.masterySkills![id as keyof typeof s.masterySkills] = info.maxLevel;
+      }
+    } else if (preset === 'mastery-reset') {
+      for (const id of Object.keys(s.masterySkills ?? {})) {
+        s.masterySkills![id as keyof typeof s.masterySkills] = 0;
+      }
+      s.masteryPoints = 0;
+    } else if (preset === 'automations-on') {
+      s.automations = {
+        autoQuestClaim: true, autoStreakClaim: true, autoCommunityClaim: true,
+        autoOfflineClaim: true, autoUpgrade: true,
+      };
+    } else if (preset === 'automations-off') {
+      s.automations = {};
+    } else if (preset === 'boosters-off') {
+      s.activeBoosters = {};
+    } else if (preset === 'collection-clear') {
+      s.collection = {};
+      s.collectionValue = 0;
+      s.highestRarity = 0;
+      s.rollsSinceBest = 0;
+    } else if (preset === 'quests-reset') {
+      for (const quest of [...s.dailyQuests, ...s.weeklyQuests]) {
+        quest.progress = 0;
+        quest.claimed = false;
+      }
+    } else if (preset === 'streak-reset') {
+      s.streak = { count: 1, lastClaimDate: '', longestStreak: 1 };
+    } else if (preset === 'offline-clear') {
+      s.offlineRolls = 0;
     } else {
       throw new Error('Unknown admin preset.');
     }
@@ -641,6 +693,28 @@ debugRouter.post('/moderation/wipe-and-unban', async (req, res) => {
     res.json({ ok: true, action: 'wipe-and-unban', ...result });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to wipe and unban user.' });
+  }
+});
+
+debugRouter.post('/moderation/wipe-and-ban', async (req, res) => {
+  try {
+    const username = targetUsername(req.body?.username);
+    const subreddit = await currentSubreddit();
+    const result = await wipeUser(username);
+    const durationValue = req.body?.duration;
+    const duration = durationValue === '' || durationValue == null
+      ? undefined
+      : Math.max(0, finiteInteger(durationValue));
+    await subreddit.banUser({
+      username,
+      duration,
+      reason: String(req.body?.reason ?? 'Infinity Orbs admin action').slice(0, 300),
+      message: String(req.body?.message ?? '').slice(0, 500),
+      note: String(req.body?.note ?? 'Infinity Orbs admin console').slice(0, 300),
+    });
+    res.json({ ok: true, action: 'wipe-and-ban', ...result, duration: duration ?? null });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to wipe and ban user.' });
   }
 });
 
