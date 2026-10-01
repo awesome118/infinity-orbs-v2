@@ -420,6 +420,7 @@ export interface PlayerState {
   lastFrenzyDate?: string;
   lastFrenzyClaimDate?: string;
   communityRewardClaimedTier?: number;
+  paymentReceipts?: Record<string, 'fulfilled' | 'refunded'>;
   currentRunRolls?: number;
   questsCompleted?: number;
   guildContribution?: number;
