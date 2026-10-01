@@ -924,6 +924,7 @@ export function createInitialState(now = Date.now()): PlayerState {
       masteryEngine: 0,
       steadyHands: 0,
       offlineFortune: 0,
+      frenzyVolley: 0,
     },
     streak: { count: 1, lastClaimDate: '', longestStreak: 1 },
     dailyQuests: createInitialDailyQuests(),
