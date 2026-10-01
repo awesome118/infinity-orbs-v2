@@ -297,16 +297,15 @@ export const RollSection: React.FC<RollSectionProps> = ({
         <div className="absolute w-48 h-48 rounded-full overflow-hidden pointer-events-none animate-energy-sweep opacity-50">
           <div className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-cyan-300/40 to-transparent" />
         </div>
-        <div className="absolute w-72 h-72 pointer-events-none">
+        <div className="absolute w-72 h-72 pointer-events-none animate-star-ring">
           {[0,1,2,3,4,5].map(i => (
             <span
               key={i}
-              className="absolute left-1/2 top-1/2 w-1 h-1 rounded-full bg-white/60 animate-star-drift"
-              style={{ animationDelay: `${i * -0.55}s`, transform: `rotate(${i * 60}deg) translateY(-${112 + (i % 2) * 18}px)` }}
+              className="absolute left-1/2 top-1/2 w-1.5 h-1.5 rounded-full bg-white/70 shadow-[0_0_6px_rgba(255,255,255,0.65)]"
+              style={{ transform: "translate(-50%, -50%) rotate(" + (i * 60) + "deg) translateY(-" + (112 + (i % 2) * 18) + "px)" }}
             />
           ))}
         </div>
-
         {/* The Central Main Orb */}
         <div
           onClick={handleRollClick}
