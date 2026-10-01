@@ -237,7 +237,7 @@ async function claimWorldBoosterActivation(
 ): Promise<{ state: PlayerState; snapshot: GlobalBoosterSnapshot; usedCredit: boolean }> {
   const cost = GLOBAL_BOOSTERS[id].costShards;
   if (useCredit) {
-    if ((s.globalBoosterCredits ?? 0) <= 0) throw new Error('No free World Booster activations remain.');
+    if ((s.globalBoosterCredits ?? 0) <= 0) throw new Error('No free Global Booster activations remain.');
     s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) - 1;
   } else {
     spendShards(s, cost);
@@ -1062,7 +1062,7 @@ export async function buyCosmetic(id: string): Promise<PlayerState> {
 
 export async function activateGlobalBooster(id: GlobalBoosterId, useCredit = false): Promise<{ state: PlayerState; snapshot: GlobalBoosterSnapshot; usedCredit: boolean }> {
   const s = await settleOffline(await loadRaw());
-  if (!GLOBAL_BOOSTERS[id]) throw new Error('Unknown World Booster.');
+  if (!GLOBAL_BOOSTERS[id]) throw new Error('Unknown Global Booster.');
   return claimWorldBoosterActivation(s, id, useCredit);
 }
 
