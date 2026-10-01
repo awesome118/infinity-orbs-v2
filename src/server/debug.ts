@@ -45,7 +45,7 @@ debugRouter.use((_req, res, next) => {
   next();
 });
 
-debugRouter.get('/status', (_req, res) => {
+debugRouter.get('/status', async (_req, res) => {
   res.json({
     isAdmin: true,
     username: context.username ?? null,
