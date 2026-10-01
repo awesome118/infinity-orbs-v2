@@ -482,7 +482,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                   return;
                 }
                 if (!confirmation('Ban your own Infinity Orbs account using the current game-ban settings?')) return;
-                void sendAdminAction('/api/dev/moderation/self-ban', {
+                void sendAdminAction('/api/dev/moderation/self-game-ban', {
                   durationDays: banDuration === 'permanent' ? null : Number(banDuration),
                   reason: banReason,
                 });
