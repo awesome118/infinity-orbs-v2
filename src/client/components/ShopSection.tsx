@@ -19,6 +19,7 @@ interface ShopSectionProps {
 export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchased }) => {
   const [products, setProducts] = useState<ShopProduct[]>([]);
   const [loading, setLoading] = useState(true);
+  const [buyingSku, setBuyingSku] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -30,17 +31,44 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
   }, []);
 
   const buy = async (sku: string) => {
+    if (buyingSku) return;
+    setBuyingSku(sku);
     setMessage(null);
+    const baselineShards = state.shards;
+    const baselineCredits = state.globalBoosterCredits ?? 0;
     try {
       const result = await purchase(sku);
       if (result.status === OrderResultStatus.STATUS_SUCCESS) {
-        setMessage('Purchase complete. Your Shards and Global Booster credits are being added.');
+        // Reddit can report the purchase before the fulfillment handler has
+        // finished writing the player's entitlements. Poll briefly so the shop
+        // does not tell the player their purchase vanished into the void.
+        let fulfillmentObserved = false;
+        for (const delayMs of [0, 500, 1000, 2000, 3000]) {
+          if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
+          const res = await fetch('/api/me');
+          if (!res.ok) continue;
+          const next = await res.json() as PlayerState;
+          if (
+            next.shards > baselineShards ||
+            (next.globalBoosterCredits ?? 0) > baselineCredits
+          ) {
+            fulfillmentObserved = true;
+            break;
+          }
+        }
         await onPurchased();
+        setMessage(
+          fulfillmentObserved
+            ? 'Purchase complete. Your Shards and Global Booster credits were added.'
+            : 'Purchase accepted. Reddit is still finishing delivery; your entitlements will appear shortly.'
+        );
       } else {
         setMessage(result.errorMessage || 'Purchase was not completed.');
       }
     } catch (e: any) {
       setMessage(e?.message || 'Purchase failed.');
+    } finally {
+      setBuyingSku(null);
     }
   };
 
@@ -83,10 +111,10 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
               <p className="mt-1 min-h-10 text-xs text-slate-400">{product.description}</p>
               <button
                 onClick={() => void buy(product.sku)}
-                disabled={busy}
+                disabled={busy || buyingSku !== null}
                 className="mt-4 w-full rounded-xl bg-amber-600 hover:bg-amber-500 px-4 py-2.5 text-xs font-black text-white active:scale-95 disabled:bg-slate-800 disabled:text-slate-500"
               >
-                Buy for {product.price} Reddit Gold
+                {buyingSku === product.sku ? 'Processing purchase…' : `Buy for ${product.price} Reddit Gold`}
               </button>
             </div>
           ))}
