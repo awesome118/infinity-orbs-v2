@@ -337,8 +337,7 @@ export async function applyRolls(
 
     const xpBonusMul =
       (1 + (s.upgrades.xpBonus ?? 0) * 0.20) *
-      levelBenefits.xpMultiplier *
-      (isPremiumBoosterActive(s, 'ascension') ? 10 : 1);
+      levelBenefits.xpMultiplier;
     const earnedXp = Math.round(Math.min(200, 5 + Math.floor(Math.log10(rarity + 1) * 8)) * xpBonusMul);
 
     // Shards bonus for rare orbs (1,000+)
@@ -427,6 +426,7 @@ export async function applyRolls(
   // Ascension increases XP by 10× while preserving the existing level logic.
   const effectiveXpGained = isPremiumBoosterActive(s, 'ascension') ? xpGained * 10 : xpGained;
   s.xp += effectiveXpGained;
+  xpGained = effectiveXpGained;
 
   // Rich EXP Level Progression
   const oldLevel = s.level || 1;
