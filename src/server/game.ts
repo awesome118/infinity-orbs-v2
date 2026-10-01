@@ -105,7 +105,7 @@ function advanceQuestProgress(s: PlayerState, type: 'roll' | 'rare' | 'value' | 
       const shareQuest = s.weeklyQuests.find(weekly => weekly.id === 'weekly-share');
       if (shareQuest) shareQuest.unlocked = true;
     }
-    if (!q.unlocked) continue;
+    if (q.unlocked === false) continue;
     if (q.claimed) continue;
     if (type === 'roll' && q.id.includes('grind')) q.progress = Math.min(q.target, q.progress + amount);
     if (type === 'rare' && q.id.includes('epic') && amount >= 1000) q.progress = Math.min(q.target, q.progress + 1);
