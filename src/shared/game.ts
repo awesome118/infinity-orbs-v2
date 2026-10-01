@@ -180,7 +180,7 @@ export function premiumBoosterRemainingMs(s: PlayerState, id: PremiumBoosterId, 
 
 export function onlinePlayerLuckMultiplier(onlinePlayers: number): number {
   const count = Math.max(1, Math.floor(onlinePlayers));
-  return Math.round((1 + Math.log2(count + 1) * 0.10) * 100) / 100;
+  return Math.round((1 + Math.log2(count) * 0.10) * 100) / 100;
 }
 
 export type PrestigeUpgradeId =
