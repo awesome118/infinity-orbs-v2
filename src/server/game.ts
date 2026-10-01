@@ -33,6 +33,7 @@ import {
   type GlobalBoosterId,
   type GlobalBoosterSnapshot,
   type GlobalBoosterState,
+  type PaymentReceipt,
   PREMIUM_BOOSTERS,
   AUTOMATIONS,
   GLOBAL_BOOSTERS,
@@ -44,6 +45,7 @@ import {
   grantFreeShards,
   spendShards,
   resetFreeShardBudgetIfNeeded,
+  weekKey,
   isPremiumBoosterActive,
   MASTERY_SKILLS,
   masterySkillCost,
@@ -267,23 +269,34 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
     const raw = await txn.get(pkey);
     const state = raw ? JSON.parse(raw) as PlayerState : createInitialState();
     state.paymentReceipts = state.paymentReceipts ?? {};
-    if (state.paymentReceipts[orderId] === 'fulfilled') {
+    const existingReceipt = state.paymentReceipts[orderId];
+    if (
+      existingReceipt === 'fulfilled' ||
+      (existingReceipt && typeof existingReceipt === 'object' && existingReceipt.status === 'fulfilled')
+    ) {
       await txn.unwatch();
       return false;
     }
-    if (state.paymentReceipts[orderId] === 'refunded') {
+    if (
+      existingReceipt === 'refunded' ||
+      (existingReceipt && typeof existingReceipt === 'object' && existingReceipt.status === 'refunded')
+    ) {
       await txn.unwatch();
       return false;
     }
+
     state.shards = (state.shards ?? 0) + pack.shards;
     state.purchasedShards = (state.purchasedShards ?? 0) + pack.shards;
-    state.lifetimeShards = (state.lifetimeShards ?? 0) + pack.shards;
+    state.lifetimeShards = (state.lifetimeShards ?? 0) + pack.globalBoosterCredits * 0 + pack.shards;
     state.globalBoosterCredits = (state.globalBoosterCredits ?? 0) + pack.globalBoosterCredits;
-    state.paymentReceipts[orderId] = 'fulfilled';
-    const receiptKeys = Object.keys(state.paymentReceipts);
-    if (receiptKeys.length > 100) {
-      delete state.paymentReceipts[receiptKeys[0]];
-    }
+    const receipt: PaymentReceipt = {
+      status: 'fulfilled',
+      shards: pack.shards,
+      globalBoosterCredits: pack.globalBoosterCredits,
+    };
+    // Do not evict old receipts: a delayed callback must never be able to replay
+    // an older order after its id has fallen out of a fixed-size in-state cache.
+    state.paymentReceipts[orderId] = receipt;
     await txn.multi();
     await txn.set(pkey, JSON.stringify(state));
     const committed = await txn.exec();
@@ -305,16 +318,32 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
     const state = JSON.parse(raw) as PlayerState;
     state.paymentReceipts = state.paymentReceipts ?? {};
     const receipt = state.paymentReceipts[orderId];
-    if (receipt !== 'fulfilled') {
+    if (!receipt) {
       await txn.unwatch();
       return;
     }
-    const refundableShards = Math.min(state.purchasedShards ?? 0, pack.shards);
+    const isFulfilled =
+      receipt === 'fulfilled' ||
+      (typeof receipt === 'object' && receipt.status === 'fulfilled');
+    if (!isFulfilled) {
+      await txn.unwatch();
+      return;
+    }
+
+    // New receipts store the exact entitlement granted by this order. Old
+    // status-only receipts migrate using the verified SKU payload.
+    const grantedShards = typeof receipt === 'string' ? pack.shards : receipt.shards;
+    const grantedCredits = typeof receipt === 'string' ? pack.globalBoosterCredits : receipt.globalBoosterCredits;
+    const refundableShards = Math.min(state.purchasedShards ?? 0, grantedShards);
     state.shards = Math.max(0, (state.shards ?? 0) - refundableShards);
     state.purchasedShards = Math.max(0, (state.purchasedShards ?? 0) - refundableShards);
-    const refundableCredits = Math.min(state.globalBoosterCredits ?? 0, pack.globalBoosterCredits);
+    const refundableCredits = Math.min(state.globalBoosterCredits ?? 0, grantedCredits);
     state.globalBoosterCredits = Math.max(0, (state.globalBoosterCredits ?? 0) - refundableCredits);
-    state.paymentReceipts[orderId] = 'refunded';
+    state.paymentReceipts[orderId] = {
+      status: 'refunded',
+      shards: grantedShards,
+      globalBoosterCredits: grantedCredits,
+    };
     await txn.multi();
     await txn.set(pkey, JSON.stringify(state));
     const committed = await txn.exec();
@@ -502,7 +531,7 @@ function advanceQuestProgress(s: PlayerState, type: 'roll' | 'rare' | 'value' | 
     if (q.claimed) continue;
     if (type === 'roll' && q.id.includes('rolls')) q.progress = Math.min(q.target, q.progress + amount);
     if (type === 'rare' && q.id.includes('rare') && amount >= 100) q.progress = Math.min(q.target, q.progress + 1);
-    if (type === 'unique' && q.id.includes('unique')) q.progress = Math.min(q.target, Object.keys(s.collection).length);
+    if (type === 'unique' && q.id.includes('unique')) q.progress = Math.min(q.target, q.progress + Math.max(0, amount));
     if (type === 'social' && q.id.includes('social')) q.progress = Math.min(q.target, q.progress + 1);
   }
   for (const q of s.weeklyQuests) {
@@ -526,8 +555,8 @@ function checkPeriodicResets(s: PlayerState, now: number) {
     s.dailyQuests = createInitialDailyQuests();
     s.lastDailyReset = today;
   }
-  const currentWeek = Math.floor(now / 604_800_000);
-  const lastWeek = s.lastWeeklyReset ? Math.floor(new Date(s.lastWeeklyReset).getTime() / 604_800_000) : 0;
+  const currentWeek = weekKey(now);
+  const lastWeek = s.lastWeeklyReset ? weekKey(new Date(s.lastWeeklyReset).getTime()) : -1;
   if (currentWeek !== lastWeek) {
     s.weeklyQuests = createInitialWeeklyQuests();
     s.lastWeeklyReset = today;
@@ -546,6 +575,7 @@ export async function applyRolls(
   let coinsGained = 0;
   let shardsGained = 0;
   let xpGained = 0;
+  let uniqueGained = 0;
   const batch: Orb[] = [];
   const rarities: number[] = [];
   let rollCount = rollCountOverride ?? (rollsPerActivation(s) * activationCount);
@@ -605,6 +635,7 @@ export async function applyRolls(
     s.lifetimeCollectionValue = (s.lifetimeCollectionValue ?? 0) + finalVal;
 
     const isNew = !s.collection[String(rarity)];
+    if (isNew) uniqueGained++;
     s.collection[String(rarity)] = (s.collection[String(rarity)] ?? 0) + 1;
 
     if (rarity > s.highestRarity) {
@@ -748,7 +779,7 @@ export async function applyRolls(
   advanceQuestProgress(s, 'roll', rollCount);
   if (bestRarity >= 100) advanceQuestProgress(s, 'rare', bestRarity);
   advanceQuestProgress(s, 'value', totalVal);
-  advanceQuestProgress(s, 'unique', 0);
+  advanceQuestProgress(s, 'unique', uniqueGained);
 
   void contribute(totalVal, rollCount);
   void addCommunityRolls(rollCount);
@@ -835,8 +866,8 @@ export async function getState(): Promise<PlayerState> {
 }
 
 export async function getMe(): Promise<PlayerState> {
-  const s = await getState();
   const ban = await getGameBanStatus();
+  const s = ban ? await loadRaw() : await getState();
   if (ban) {
     s.gameBan = {
       active: true,
@@ -1406,11 +1437,19 @@ export async function claimOrbFrenzy(options: {
   ].filter(group => group.count > 0);
 
   const valueMul = 1 + (s.upgrades.valueBonus ?? 0) * 0.10;
+  const maxSafe = Number.MAX_SAFE_INTEGER;
+  const safeMultiplyAdd = (sum: number, count: number, value: number): number => {
+    if (sum >= maxSafe || count <= 0 || value <= 0) return Math.min(maxSafe, sum);
+    if (count > Math.floor((maxSafe - sum) / value)) return maxSafe;
+    return sum + count * value;
+  };
   const rawValue = groups.reduce(
-    (sum, group) => sum + group.count * group.rarity,
+    (sum, group) => safeMultiplyAdd(sum, group.count, group.rarity),
     0,
   );
-  const finalValue = Math.min(Number.MAX_SAFE_INTEGER, Math.round(rawValue * valueMul));
+  const finalValue = rawValue >= maxSafe / valueMul
+    ? maxSafe
+    : Math.min(maxSafe, Math.round(rawValue * valueMul));
 
   const coinTotals = groups.reduce(
     (sum, group) => sum + group.count * Math.max(1, Math.round(coinsForRarity(group.rarity))),
@@ -1478,6 +1517,10 @@ export async function claimOrbFrenzy(options: {
   }
 
   const bestRarity = topRarity;
+  const uniqueGained = groups.reduce(
+    (total, group) => total + (s.collection[String(group.rarity)] ? 0 : 1),
+    0,
+  );
   s.highestRarity = Math.max(s.highestRarity, bestRarity);
   s.rollsSinceBest = bestRarity > previousHighest ? 0 : (s.rollsSinceBest ?? 0) + count;
 
@@ -1492,7 +1535,7 @@ export async function claimOrbFrenzy(options: {
   advanceQuestProgress(s, 'roll', count);
   advanceQuestProgress(s, 'rare', bestRarity);
   advanceQuestProgress(s, 'value', finalValue);
-  advanceQuestProgress(s, 'unique', 0);
+  advanceQuestProgress(s, 'unique', uniqueGained);
   void contribute(finalValue, count);
   void addCommunityRolls(count);
 
