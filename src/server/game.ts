@@ -633,6 +633,7 @@ export async function settleOffline(s: PlayerState): Promise<PlayerState> {
   checkPeriodicResets(s, now);
   resetFreeShardBudgetIfNeeded(s, now);
   s.onlinePlayers = await touchOnlinePresence();
+  s.globalBoosters = await getGlobalBoosters();
   await processAutomation(s);
 
   const tickMs = effectiveOfflineTickMs(s);
