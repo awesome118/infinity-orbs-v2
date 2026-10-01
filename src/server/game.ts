@@ -417,7 +417,8 @@ export async function applyRolls(
   s: PlayerState,
   activationCount = 1,
   forcedRarity?: number,
-  source: 'online' | 'offline' = 'online'
+  source: 'online' | 'offline' = 'online',
+  rollCountOverride?: number
 ): Promise<{ bestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number }> {
   let bestRarity = 0;
   let totalVal = 0;
@@ -426,7 +427,7 @@ export async function applyRolls(
   let xpGained = 0;
   const batch: Orb[] = [];
   const rarities: number[] = [];
-  let rollCount = rollsPerActivation(s) * activationCount;
+  let rollCount = rollCountOverride ?? (rollsPerActivation(s) * activationCount);
   const now = Date.now();
   const rng = serverRandom;
 
