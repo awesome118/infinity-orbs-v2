@@ -234,6 +234,7 @@ export async function loadRaw(): Promise<PlayerState> {
   const globalBoosters = await getGlobalBoosters();
   if (!raw) {
     const s = createInitialState();
+    s.username = username;
     s.guildPerks = perks;
     s.globalBoosters = globalBoosters;
     return s;
@@ -243,6 +244,7 @@ export async function loadRaw(): Promise<PlayerState> {
   return {
     ...base,
     ...parsed,
+    username,
     upgrades: { ...base.upgrades, ...(parsed.upgrades ?? {}) },
     prestigeUpgrades: { ...base.prestigeUpgrades, ...(parsed.prestigeUpgrades ?? {}) },
     collection: parsed.collection ?? {},
