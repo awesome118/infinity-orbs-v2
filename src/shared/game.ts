@@ -106,6 +106,81 @@ export function masterySkillCost(id: MasterySkillId, currentLevel: number): numb
   return Math.max(1, Math.round(mult * (1 + currentLevel * 1.5)));
 }
 
+export type PremiumBoosterId =
+  | 'fortune'
+  | 'hyperdrive'
+  | 'barrage'
+  | 'prosperity'
+  | 'ascension';
+
+export type AutomationId =
+  | 'autoQuestClaim'
+  | 'autoStreakClaim'
+  | 'autoCommunityClaim'
+  | 'autoUpgrade';
+
+export interface PremiumBoosterInfo {
+  name: string;
+  desc: string;
+  costShards: number;
+  durationMs: number;
+}
+
+export const PREMIUM_BOOSTERS: Record<PremiumBoosterId, PremiumBoosterInfo> = {
+  fortune: { name: 'Fortune Surge', desc: 'Multiplies Luck by 10× while active. RNG still decides every roll.', costShards: 75, durationMs: 30 * 60 * 1000 },
+  hyperdrive: { name: 'Hyperdrive', desc: 'Cuts roll cooldown to 25% of its normal value while active.', costShards: 75, durationMs: 30 * 60 * 1000 },
+  barrage: { name: 'Orb Barrage', desc: 'Adds 25 extra orbs to every activation while active.', costShards: 100, durationMs: 30 * 60 * 1000 },
+  prosperity: { name: 'Prosperity Field', desc: 'Multiplies Coin rewards by 10× while active.', costShards: 50, durationMs: 30 * 60 * 1000 },
+  ascension: { name: 'Ascension', desc: 'Multiplies roll XP by 10× and sustained-progression gains by 5× while active.', costShards: 75, durationMs: 30 * 60 * 1000 },
+};
+
+export const AUTOMATIONS: Record<AutomationId, { name: string; desc: string; costShards: number }> = {
+  autoQuestClaim: { name: 'Auto-Complete Quests', desc: 'Automatically claims completed daily and weekly quest rewards.', costShards: 750 },
+  autoStreakClaim: { name: 'Auto-Claim Streak', desc: 'Automatically claims the daily streak reward when it becomes available.', costShards: 500 },
+  autoCommunityClaim: { name: 'Auto-Claim Community Rewards', desc: 'Automatically claims the community reward whenever its 5-minute timer is ready.', costShards: 1_000 },
+  autoUpgrade: { name: 'Auto-Complete Upgrades', desc: 'Automatically purchases one affordable standard upgrade whenever the game processes your state.', costShards: 1_500 },
+};
+
+export const FREE_SHARD_DAILY_CAP = 20;
+
+export function todayKey(now = Date.now()): string {
+  return new Date(now).toISOString().slice(0, 10);
+}
+
+export function resetFreeShardBudgetIfNeeded(s: PlayerState, now = Date.now()): void {
+  const today = todayKey(now);
+  if (s.lastFreeShardReset !== today) {
+    s.lastFreeShardReset = today;
+    s.freeShardsEarnedToday = 0;
+  }
+}
+
+export function grantFreeShards(s: PlayerState, requested: number, now = Date.now()): number {
+  resetFreeShardBudgetIfNeeded(s, now);
+  const amount = Math.max(0, Math.floor(requested));
+  const available = Math.max(0, FREE_SHARD_DAILY_CAP - (s.freeShardsEarnedToday ?? 0));
+  const granted = Math.min(amount, available);
+  if (granted > 0) {
+    s.shards = (s.shards ?? 0) + granted;
+    s.lifetimeShards = (s.lifetimeShards ?? 0) + granted;
+    s.freeShardsEarnedToday = (s.freeShardsEarnedToday ?? 0) + granted;
+  }
+  return granted;
+}
+
+export function isPremiumBoosterActive(s: PlayerState, id: PremiumBoosterId, now = Date.now()): boolean {
+  return (s.activeBoosters?.[id] ?? 0) > now;
+}
+
+export function premiumBoosterRemainingMs(s: PlayerState, id: PremiumBoosterId, now = Date.now()): number {
+  return Math.max(0, (s.activeBoosters?.[id] ?? 0) - now);
+}
+
+export function onlinePlayerLuckMultiplier(onlinePlayers: number): number {
+  const count = Math.max(1, Math.floor(onlinePlayers));
+  return Math.round((1 + Math.log2(count + 1) * 0.10) * 100) / 100;
+}
+
 export type PrestigeUpgradeId =
   | 'permLuck'
   | 'permSpeed'
@@ -193,6 +268,12 @@ export interface PlayerState {
   activeCosmetic: string;
   unlockedCosmetics: string[];
   turboRollUntil: number; // timestamp
+  activeBoosters?: Partial<Record<PremiumBoosterId, number>>;
+  automations?: Partial<Record<AutomationId, boolean>>;
+  onlinePlayers?: number;
+  communityRewardClaimedAt?: number;
+  freeShardsEarnedToday?: number;
+  lastFreeShardReset?: string;
   currentRunRolls?: number;
   questsCompleted?: number;
   guildContribution?: number;
@@ -593,7 +674,7 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
 export function createInitialDailyQuests(): QuestItem[] {
   return [
     { id: 'daily-rolls-25', title: 'Roll 25 Times', desc: 'Perform 25 rolls', target: 25, progress: 0, rewardCoins: 100, rewardXp: 50, claimed: false },
-    { id: 'daily-rolls-100', title: 'Roll 100 Times', desc: 'Perform 100 rolls', target: 100, progress: 0, rewardCoins: 500, rewardShards: 2, rewardXp: 150, claimed: false },
+    { id: 'daily-rolls-100', title: 'Roll 100 Times', desc: 'Perform 100 rolls', target: 100, progress: 0, rewardCoins: 500, rewardShards: 1, rewardXp: 150, claimed: false },
     { id: 'daily-rare-100', title: 'Find Rare Orb', desc: 'Obtain an orb with 1/100+ rarity', target: 1, progress: 0, rewardCoins: 300, rewardXp: 100, claimed: false },
     { id: 'daily-unique-3', title: 'Unique Orbs', desc: 'Obtain 3 unique orbs today', target: 3, progress: 0, rewardCoins: 200, rewardXp: 80, claimed: false },
     { id: 'daily-social', title: 'Guild Activity', desc: 'View guild or leaderboard', target: 1, progress: 0, rewardCoins: 150, rewardTokens: 10, rewardXp: 50, claimed: false },
@@ -602,10 +683,10 @@ export function createInitialDailyQuests(): QuestItem[] {
 
 export function createInitialWeeklyQuests(): QuestItem[] {
   return [
-    { id: 'weekly-grind', title: 'Weekly Rolls', desc: 'Perform 1,000 rolls this week', target: 1000, progress: 0, rewardCoins: 5000, rewardShards: 15, rewardXp: 600, claimed: false },
-    { id: 'weekly-epic', title: 'Find Epic Orb', desc: 'Obtain an Epic orb (1/1,000+)', target: 1, progress: 0, rewardCoins: 3000, rewardShards: 10, rewardXp: 400, claimed: false },
+    { id: 'weekly-grind', title: 'Weekly Rolls', desc: 'Perform 1,000 rolls this week', target: 1000, progress: 0, rewardCoins: 5000, rewardShards: 5, rewardXp: 600, claimed: false },
+    { id: 'weekly-epic', title: 'Find Epic Orb', desc: 'Obtain an Epic orb (1/1,000+)', target: 1, progress: 0, rewardCoins: 3000, rewardShards: 3, rewardXp: 400, claimed: false },
     { id: 'weekly-guild', title: 'Collection Value', desc: 'Contribute 10,000 collection value', target: 10000, progress: 0, rewardCoins: 4000, rewardTokens: 50, rewardXp: 500, claimed: false },
-    { id: 'weekly-share', title: 'Share Post', desc: 'Share an orb to Reddit after discovering a Rare+ orb.', target: 1, progress: 0, rewardCoins: 1500, rewardShards: 5, rewardXp: 200, claimed: false, unlocked: false },
+    { id: 'weekly-share', title: 'Share Post', desc: 'Share an orb to Reddit after discovering a Rare+ orb.', target: 1, progress: 0, rewardCoins: 1500, rewardShards: 2, rewardXp: 200, claimed: false, unlocked: false },
   ];
 }
 
@@ -681,6 +762,12 @@ export function createInitialState(now = Date.now()): PlayerState {
     activeCosmetic: 'default',
     unlockedCosmetics: ['default'],
     turboRollUntil: 0,
+    activeBoosters: {},
+    automations: {},
+    onlinePlayers: 1,
+    communityRewardClaimedAt: 0,
+    freeShardsEarnedToday: 0,
+    lastFreeShardReset: today,
     currentRunRolls: 0,
     questsCompleted: 0,
     guildContribution: 0,
@@ -855,7 +942,8 @@ export const SHARD_SYNTHESIS_COST = 10;
 export function effectiveOfflineTickMs(s: PlayerState): number {
   const rateReduction = (s.upgrades.offlineRate ?? 0) * 0.08;
   const overdriveMul = 1 + (s.prestigeUpgrades?.offlineOverdrive ?? 0) * 0.50;
-  return Math.max(15_000, Math.round((OFFLINE_TICK_MS / overdriveMul) * (1 - Math.min(0.6, rateReduction))));
+  const premiumOfflineMul = isPremiumBoosterActive(s, 'hyperdrive') ? 0.75 : 1;
+  return Math.max(10_000, Math.round((OFFLINE_TICK_MS / overdriveMul) * premiumOfflineMul * (1 - Math.min(0.6, rateReduction))));
 }
 
 export function critMultiplier(s: PlayerState): number {
@@ -886,6 +974,9 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
     const turboReduction = (s.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 0.65 : 0.75;
     cd = Math.max(600, Math.round(cd * turboReduction));
   }
+  if (isPremiumBoosterActive(s, 'hyperdrive')) {
+    cd = Math.max(400, Math.round(cd * 0.25));
+  }
   return Math.round(cd);
 }
 
@@ -904,6 +995,7 @@ export function rollsPerActivation(s: PlayerState): number {
   const lvl = calculateLevelFromXp(s.xp || 0).level;
   balls += getLevelBenefits(lvl).bonusBalls;
   balls += (s.prestigeUpgrades?.astralArsenal ?? 0);
+  if (isPremiumBoosterActive(s, 'barrage')) balls += 25;
   return Math.max(1, balls);
 }
 
