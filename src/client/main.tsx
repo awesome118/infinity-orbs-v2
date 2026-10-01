@@ -80,6 +80,7 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
 export function App() {
   const [state, setState] = useState<PlayerState | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
+  const [startupError, setStartupError] = useState<string | null>(null);
   const [lastOrb, setLastOrb] = useState<Orb | null>(null);
   const [lastBatch, setLastBatch] = useState<Orb[]>([]);
   const [batchSummary, setBatchSummary] = useState<{
@@ -123,13 +124,15 @@ export function App() {
 
   const refreshAll = useCallback(async () => {
     try {
-      const [me, adminStatus] = await Promise.all([
-        getJson<PlayerState>('/api/me'),
-        getJson<{ isAdmin: boolean }>('/api/dev/status').catch(() => ({ isAdmin: false })),
-      ]);
-
+      // Load the player's state first. Admin/debug status is auxiliary and must
+      // never block the entire game from rendering if that endpoint is slow.
+      const me = await getJson<PlayerState>('/api/me');
       setState(me);
       setAuthRequired(false);
+      setStartupError(null);
+
+      // Admin status is intentionally independent from game-state loading.
+      const adminStatus = await getJson<{ isAdmin: boolean }>('/api/dev/status').catch(() => ({ isAdmin: false }));
       setIsAdmin(adminStatus.isAdmin === true);
 
       // A banned non-admin only needs their own state so the ban screen can load.
@@ -152,8 +155,11 @@ export function App() {
         setAuthRequired(true);
         setState(null);
         setIsAdmin(false);
+        setStartupError(null);
         return;
       }
+      const message = e?.message || 'Could not connect to the Infinity Orbs server.';
+      setStartupError(message);
       console.error('Refresh error:', e);
     }
   }, []);
@@ -766,9 +772,29 @@ export function App() {
 
   if (!state) {
     return (
-      <main className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 space-y-3">
-        <RefreshCw className="w-8 h-8 animate-spin text-purple-500" />
-        <p className="text-sm font-semibold">Connecting to Infinity Orbs...</p>
+      <main className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 p-6">
+        <div className="w-full max-w-lg rounded-3xl border border-slate-800 bg-slate-900 p-8 text-center shadow-2xl">
+          {startupError ? (
+            <>
+              <div className="mx-auto w-14 h-14 rounded-full bg-rose-500/10 border border-rose-500/30 flex items-center justify-center">
+                <Shield className="w-7 h-7 text-rose-400" />
+              </div>
+              <h1 className="mt-5 text-xl font-black text-white">Unable to connect</h1>
+              <p className="mt-2 text-sm text-slate-400">{startupError}</p>
+              <button
+                onClick={() => { setStartupError(null); void refreshAll(); }}
+                className="mt-6 px-5 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-sm"
+              >
+                Retry
+              </button>
+            </>
+          ) : (
+            <>
+              <RefreshCw className="mx-auto w-8 h-8 animate-spin text-purple-500" />
+              <p className="mt-3 text-sm font-semibold">Connecting to Infinity Orbs...</p>
+            </>
+          )}
+        </div>
       </main>
     );
   }
