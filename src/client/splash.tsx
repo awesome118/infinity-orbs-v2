@@ -33,7 +33,7 @@ function Splash() {
         </button>
 
         <p className="mt-4 text-[11px] text-slate-500">
-          Playing as {context.username ?? 'Redditor'} · Progress is stored server-side.
+          Version {context.appVersion ?? 'unknown'} · Progress is stored server-side.
         </p>
       </section>
     </main>
