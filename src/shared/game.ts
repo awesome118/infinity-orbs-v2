@@ -170,6 +170,15 @@ export function grantFreeShards(s: PlayerState, requested: number, now = Date.no
   return granted;
 }
 
+
+export function spendShards(s: PlayerState, requested: number): number {
+  const amount = Math.max(0, Math.floor(requested));
+  if ((s.shards ?? 0) < amount) throw new Error('Not enough Shards.');
+  s.shards -= amount;
+  const paidPortion = Math.min(amount, s.purchasedShards ?? 0);
+  if (paidPortion > 0) s.purchasedShards = (s.purchasedShards ?? 0) - paidPortion;
+  return amount;
+}
 export function isPremiumBoosterActive(s: PlayerState, id: PremiumBoosterId, now = Date.now()): boolean {
   return (s.activeBoosters?.[id] ?? 0) > now;
 }
@@ -417,6 +426,7 @@ export interface PlayerState {
   freeShardsEarnedToday?: number;
   lastFreeShardReset?: string;
   globalBoosterCredits?: number;
+  purchasedShards?: number;
   globalBoosters?: GlobalBoosterSnapshot;
   lastFrenzyDate?: string;
   lastFrenzyClaimDate?: string;
@@ -926,6 +936,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     freeShardsEarnedToday: 0,
     lastFreeShardReset: today,
     globalBoosterCredits: 0,
+    purchasedShards: 0,
     globalBoosters: createInitialGlobalBoosters(now),
     lastFrenzyDate: '',
     lastFrenzyClaimDate: '',
