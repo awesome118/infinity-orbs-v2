@@ -2,7 +2,6 @@ import './styles.css';
 import { requestExpandedMode, context } from '@devvit/web/client';
 import { createRoot } from 'react-dom/client';
 
-const APP_VERSION = '0.1.0';
 
 function Splash() {
   return (
@@ -15,7 +14,7 @@ function Splash() {
           <div>
             <div className="flex items-center gap-2">
               <p className="text-[10px] uppercase tracking-[0.25em] text-purple-300 font-black">Reddit Game</p>
-              <span className="text-[10px] font-mono font-bold text-slate-500">v{APP_VERSION}</span>
+              <span className="text-[10px] font-mono font-bold text-slate-500">v{context.appVersion}</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black">Infinity Orbs</h1>
           </div>
