@@ -143,7 +143,7 @@ export const Header: React.FC<HeaderProps> = ({
             <HelpCircle className="w-4 h-4" />
           </button>
 
-          {/* Dev Debug Menu */}
+          {/* Admin Console */}
           {onOpenDevDebug && (
             <button
               onClick={() => {
@@ -151,10 +151,10 @@ export const Header: React.FC<HeaderProps> = ({
                 onOpenDevDebug();
               }}
               className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-lg text-xs font-bold transition-all"
-              title="Developer Debug Menu"
+              title="Admin Console"
             >
               <Wrench className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Debug</span>
+              <span className="hidden sm:inline">Admin</span>
             </button>
           )}
 
