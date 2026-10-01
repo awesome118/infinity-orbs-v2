@@ -35,7 +35,7 @@ export interface MasterySkillInfo {
 export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   continuumLuck: {
     name: 'Continuum Attunement',
-    desc: '+5% luck per level.',
+    desc: '+10% luck multiplier per level.',
     maxLevel: 50,
     costMultiplier: 1,
   },
@@ -402,7 +402,7 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
   permSpeed: {
     name: 'Permanent Speed Floor',
-    desc: '-150ms cooldown floor per level.',
+    desc: '-300ms cooldown floor per level.
     category: 'core',
     maxLevel: 5,
     costPerLevel: 3,
@@ -416,7 +416,7 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
   dustBounty: {
     name: 'Cosmic Dust Bounty',
-    desc: '+10% Cosmic Dust from prestige per level.',
+    desc: '+15% Cosmic Dust from prestige per level.',
     category: 'core',
     maxLevel: 5,
     costPerLevel: 5,
@@ -439,7 +439,7 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
   autoOverclock: {
     name: 'Auto-Roll Speed',
-    desc: 'Auto-roll is 3% faster per level.',
+    desc: 'Auto-roll cooldown is 5% shorter per level.',
     category: 'qol',
     maxLevel: 5,
     costPerLevel: 2,
@@ -455,7 +455,7 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
   resonanceMeter: {
     name: 'Dry Streak Luck',
-    desc: '+1% luck for every 20 rolls without a Rare+ orb.',
+    desc: '+2% luck per stack for dry streaks; stacks begin every 18 rolls.',
     category: 'qol',
     maxLevel: 3,
     costPerLevel: 3,
@@ -530,7 +530,7 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
   offlineOverdrive: {
     name: 'Offline Overdrive',
-    desc: 'Offline rolls generate at 2x speed and grant 50% more coins per level.',
+    desc: 'Offline rolls generate 50% faster and grant 50% more Coins per level.',
     category: 'qol',
     maxLevel: 3,
     costPerLevel: 3,
