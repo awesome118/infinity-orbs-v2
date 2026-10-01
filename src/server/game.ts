@@ -189,6 +189,13 @@ async function processAutomation(s: PlayerState): Promise<void> {
     await claimCommunityRewardFromState(s);
   }
 
+  if (s.automations?.autoOfflineClaim && s.offlineRolls > 0) {
+    const batches = s.offlineRolls;
+    s.offlineRolls = 0;
+    await applyRolls(s, batches, undefined, 'offline');
+    s.lastRollAt = Date.now();
+  }
+
   if (s.automations?.autoUpgrade) {
     autoBuyCheapest(s);
   }
