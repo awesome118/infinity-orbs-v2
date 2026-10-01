@@ -513,9 +513,11 @@ debugRouter.post('/frenzy/start', async (req, res) => {
   }
 });
 
-debugRouter.post('/frenzy/claim', async (_req, res) => {
+debugRouter.post('/frenzy/claim', async (req, res) => {
   try {
-    res.json(await claimOrbFrenzy({ allowAdminTestOwner: true }));
+    const postId = String(req.body?.postId ?? '').trim();
+    if (!postId) throw new Error('Frenzy post ID is required.');
+    res.json(await claimOrbFrenzy({ allowAdminTestOwner: true, postId }));
   } catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to claim admin Frenzy.' });
   }
