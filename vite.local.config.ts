@@ -2,6 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig } from 'vite';
+import { createApp } from './src/server/app.js';
 
 export default defineConfig(() => ({
   plugins: [
@@ -10,9 +11,7 @@ export default defineConfig(() => ({
     {
       name: 'api-server',
       configureServer(server) {
-        // Local-only API harness. Production Reddit hosting uses src/server/index.ts.
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        // The server middleware is attached through the existing game app.
+        server.middlewares.use(createApp());
       },
     },
   ],
