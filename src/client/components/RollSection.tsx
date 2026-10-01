@@ -41,6 +41,7 @@ interface RollSectionProps {
   worldEvent?: WorldEvent | null;
   onToggleAutoRoll: () => void;
   onRoll: () => Promise<void>;
+  onOrbFrenzy: () => Promise<void>;
   onOpenShareModal: (rarity: number) => void;
   onNewBest?: (orb: Orb, prevBest: number) => void;
 }
@@ -75,6 +76,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
   worldEvent,
   onToggleAutoRoll,
   onRoll,
+  onOrbFrenzy,
   onOpenShareModal,
   onNewBest,
 }) => {
@@ -505,6 +507,26 @@ export const RollSection: React.FC<RollSectionProps> = ({
               : remain > 0
               ? `WAIT ${(remain / 1000).toFixed(1)}s`
               : `ROLL ${multi > 1 ? `×${multi}` : ''}`}
+          </span>
+        </button>
+
+        <button
+          onClick={() => void onOrbFrenzy()}
+          disabled={busy || Boolean(state.lastFrenzyDate && state.lastFrenzyDate === new Date().toISOString().slice(0, 10))}
+          className={
+            busy || Boolean(state.lastFrenzyDate && state.lastFrenzyDate === new Date().toISOString().slice(0, 10))
+              ? 'w-full px-4 py-2.5 rounded-xl text-xs font-black bg-slate-900 border border-slate-800 text-slate-600 cursor-not-allowed'
+              : 'w-full px-4 py-2.5 rounded-xl text-xs font-black bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-200 hover:bg-fuchsia-500/20 active:scale-95'
+          }
+          title='Once per day: make one normal roll, automatically post its highest Orb, and let another player claim its Frenzy.'
+        >
+          <span className='inline-flex items-center justify-center gap-2'>
+            <Sparkles className='w-4 h-4 text-fuchsia-300' />
+            <span>
+              {state.lastFrenzyDate === new Date().toISOString().slice(0, 10)
+                ? 'Orb Frenzy Used Today'
+                : 'Orb Frenzy • 1 Daily Roll + Auto Post'}
+            </span>
           </span>
         </button>
 
