@@ -37,6 +37,30 @@
   to { transform: rotate(360deg); }
 }
 
+@keyframes celestial-spin {
+  from { transform: rotate(0deg) scale(1); opacity: 0.35; }
+  50% { transform: rotate(180deg) scale(1.04); opacity: 0.65; }
+  to { transform: rotate(360deg) scale(1); opacity: 0.35; }
+}
+
+@keyframes celestial-spin-reverse {
+  from { transform: rotate(360deg) scale(1.04); opacity: 0.25; }
+  50% { transform: rotate(180deg) scale(0.98); opacity: 0.5; }
+  to { transform: rotate(0deg) scale(1.04); opacity: 0.25; }
+}
+
+@keyframes energy-sweep {
+  0%, 100% { transform: rotate(0deg) scale(0.92); opacity: 0; }
+  25% { opacity: 0.8; }
+  50% { transform: rotate(180deg) scale(1.02); opacity: 0.25; }
+  75% { opacity: 0.8; }
+}
+
+@keyframes star-drift {
+  0%, 100% { opacity: 0.15; transform: rotate(0deg) translateY(-112px) scale(0.7); }
+  50% { opacity: 1; transform: rotate(180deg) translateY(-125px) scale(1.5); }
+}
+
 @keyframes float-up-fade {
   0% {
     opacity: 0;
@@ -105,6 +129,22 @@
 
 .animate-orbit-counter {
   animation: orbit-ccw 36s linear infinite;
+}
+
+.animate-celestial-spin {
+  animation: celestial-spin 18s linear infinite;
+}
+
+.animate-celestial-spin-reverse {
+  animation: celestial-spin-reverse 13s linear infinite;
+}
+
+.animate-energy-sweep {
+  animation: energy-sweep 4s ease-in-out infinite;
+}
+
+.animate-star-drift {
+  animation: star-drift 3.6s ease-in-out infinite;
 }
 
 .animate-float-slow {
