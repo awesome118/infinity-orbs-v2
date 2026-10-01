@@ -18,6 +18,8 @@ import type {
   PrestigeUpgradeId,
   MasterySkillId,
   AutomationId,
+  GlobalBoosterId,
+  GlobalBoosterSnapshot,
   PremiumBoosterId,
   Orb,
   RollResponse,
@@ -48,6 +50,7 @@ import { RedditShareModal } from './components/RedditShareModal.js';
 import { RarityTableModal } from './components/RarityTableModal.js';
 import { NewBestModal } from './components/NewBestModal.js';
 import { BoostersAndAutomation } from './components/BoostersAndAutomation.js';
+import { ShopSection } from './components/ShopSection.js';
 import { DevDebugModal } from './components/DevDebugModal.js';
 import './styles.css';
 
@@ -55,6 +58,7 @@ type ActiveTab =
   | 'roll'
   | 'upgrades'
   | 'boosters'
+  | 'shop'
   | 'altar'
   | 'mastery'
   | 'collection'
@@ -274,6 +278,24 @@ export function App() {
     }
   };
 
+  // Daily Orb Frenzy
+  const handleStartOrbFrenzy = async () => {
+    setBusy(true);
+    try {
+      const res = await getJson<{ state: PlayerState; postId: string; url: string; rarity: number }>('/api/frenzy/start', { method: 'POST' });
+      setState(res.state);
+      sound.playEpicFanfare();
+      showToast(`Orb Frenzy posted: 1/${res.rarity.toLocaleString()}.`, 'success');
+      try {
+        window.open(res.url, '_blank', 'noopener,noreferrer');
+      } catch {}
+    } catch (e: any) {
+      showToast(e.message || 'Could not start Orb Frenzy', 'warn');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // Premium Booster
   const handleActivatePremiumBooster = async (id: PremiumBoosterId) => {
     setBusy(true);
@@ -288,6 +310,28 @@ export function App() {
       showToast('Premium booster activated.', 'success');
     } catch (e: any) {
       showToast(e.message || 'Could not activate booster', 'warn');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // World Booster
+  const handleActivateGlobalBooster = async (id: GlobalBoosterId, useCredit: boolean) => {
+    setBusy(true);
+    try {
+      const res = await getJson<{ state: PlayerState; snapshot: GlobalBoosterSnapshot; usedCredit: boolean }>('/api/global-boosters/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, useCredit }),
+      });
+      setState(res.state);
+      sound.playChime(960, 'sawtooth', 0.3);
+      showToast(
+        res.usedCredit ? 'World Booster activated for everyone with a free credit.' : 'World Booster activated for everyone.',
+        'success',
+      );
+    } catch (e: any) {
+      showToast(e.message || 'Could not activate World Booster', 'warn');
     } finally {
       setBusy(false);
     }
@@ -767,6 +811,19 @@ export function App() {
           <button
             onClick={() => {
               sound.playClick();
+              setTab('shop');
+            }}
+            className={tab === 'shop'
+              ? 'flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap bg-gradient-to-r from-amber-600 to-yellow-500 text-white shadow-md'
+              : 'flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap text-slate-400 hover:text-white hover:bg-slate-800/60'}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+            <span>Shop</span>
+          </button>
+
+          <button
+            onClick={() => {
+              sound.playClick();
               setTab('altar');
             }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
@@ -898,6 +955,7 @@ export function App() {
             worldEvent={worldEvent}
             onToggleAutoRoll={() => setAutoRoll(!autoRoll)}
             onRoll={handleRoll}
+            onOrbFrenzy={handleStartOrbFrenzy}
             onOpenShareModal={r => setShareRarity(r)}
             onNewBest={(orb, prevBest) => setNewBestModalData({ orb, prevBest })}
           />
@@ -917,9 +975,26 @@ export function App() {
           <BoostersAndAutomation
             state={state}
             busy={busy}
+            globalBoosters={state.globalBoosters ?? {
+              luck: { tier: 0, remainingMs: 0, updatedAt: Date.now() },
+              speed: { tier: 0, remainingMs: 0, updatedAt: Date.now() },
+              crit: { tier: 0, remainingMs: 0, updatedAt: Date.now() },
+            }}
+            worldEvent={worldEvent}
             onActivateBooster={handleActivatePremiumBooster}
+            onActivateGlobalBooster={handleActivateGlobalBooster}
             onBuyAutomation={handleBuyAutomation}
             onClaimCommunityReward={handleClaimCommunityReward}
+          />
+        )}
+
+        {tab === 'shop' && (
+          <ShopSection
+            state={state}
+            busy={busy}
+            onPurchased={async () => {
+              await refreshAll();
+            }}
           />
         )}
 
