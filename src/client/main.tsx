@@ -19,6 +19,7 @@ import type {
   MasterySkillId,
   AutomationId,
   GlobalBoosterId,
+  GlobalBoosterSnapshot,
   PremiumBoosterId,
   Orb,
   RollResponse,
