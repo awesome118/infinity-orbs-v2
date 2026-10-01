@@ -425,90 +425,163 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
 
         <section className={`${panelBase} border border-rose-500/30`}>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-300">
-            <Shield className="w-4 h-4" /> Reddit Moderation
+            <Shield className="w-4 h-4" /> Game Moderation
           </div>
+          <p className="text-[10px] text-slate-500">
+            These actions affect Infinity Orbs accounts only. They do not ban, mute, approve, or otherwise moderate Reddit users.
+          </p>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-            <input value={targetUser} onChange={e => setTargetUser(e.target.value)} placeholder="Reddit username, without u/" className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white" />
-            <select value={banDuration} onChange={e => setBanDuration(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white">
-              <option value="permanent">Permanent ban</option>
+            <input
+              value={targetUser}
+              onChange={e => setTargetUser(e.target.value)}
+              placeholder="Reddit username, without u/"
+              className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+            />
+            <select
+              value={banDuration}
+              onChange={e => setBanDuration(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+            >
+              <option value="permanent">Permanent game ban</option>
               <option value="1">1 day</option>
               <option value="3">3 days</option>
               <option value="7">7 days</option>
               <option value="30">30 days</option>
             </select>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <input value={banReason} onChange={e => setBanReason(e.target.value)} placeholder="Ban reason" className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white" />
-            <input value={banNote} onChange={e => setBanNote(e.target.value)} placeholder="Moderator note" className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white" />
-            <input value={banMessage} onChange={e => setBanMessage(e.target.value)} placeholder="Message to user (optional)" className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white" />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input
+              value={banReason}
+              onChange={e => setBanReason(e.target.value)}
+              placeholder="Game ban reason"
+              className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+            />
+            <button
+              disabled={loading}
+              onClick={() => {
+                const self = contextInfo?.username ?? '';
+                if (!self) {
+                  setMessage('Could not determine the current admin username.');
+                  return;
+                }
+                if (!confirmation('Ban your own Infinity Orbs account using the current game-ban settings?')) return;
+                void sendAdminAction('/api/dev/moderation/ban', {
+                  username: self,
+                  durationDays: banDuration === 'permanent' ? null : Number(banDuration),
+                  reason: banReason,
+                });
+              }}
+              className={`${buttonBase} bg-rose-600 hover:bg-rose-500 border-rose-500 text-white px-3 py-2`}
+            >
+              <Ban className="inline w-3.5 h-3.5 mr-1" /> Ban Myself (Test)
+            </button>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-            <button disabled={loading || !targetUser.trim()} onClick={() => void sendAdminAction('/api/dev/moderation/ban', { username: targetUser, duration: banDuration === 'permanent' ? null : Number(banDuration), reason: banReason, note: banNote, message: banMessage })} className={`${buttonBase} bg-rose-600 hover:bg-rose-500 border-rose-500 text-white px-3 py-2`}>
-              <Ban className="inline w-3.5 h-3.5 mr-1" /> Ban
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+            <button
+              disabled={loading || !targetUser.trim()}
+              onClick={() => void sendAdminAction('/api/dev/moderation/ban', {
+                username: targetUser,
+                durationDays: banDuration === 'permanent' ? null : Number(banDuration),
+                reason: banReason,
+              })}
+              className={`${buttonBase} bg-rose-600 hover:bg-rose-500 border-rose-500 text-white px-3 py-2`}
+            >
+              <Ban className="inline w-3.5 h-3.5 mr-1" /> Ban in Game
             </button>
-            <button disabled={loading || !targetUser.trim()} onClick={() => void sendAdminAction('/api/dev/moderation/unban', { username: targetUser })} className={`${buttonBase} bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-300 px-3 py-2`}>
-              <CheckCircle2 className="inline w-3.5 h-3.5 mr-1" /> Unban
-            </button>
-            <button disabled={loading || !targetUser.trim()} onClick={() => void sendAdminAction('/api/dev/moderation/mute', { username: targetUser })} className={`${buttonBase} bg-orange-500/10 hover:bg-orange-500/20 border-orange-500/30 text-orange-300 px-3 py-2`}>
-              <VolumeX className="inline w-3.5 h-3.5 mr-1" /> Mute
-            </button>
-            <button disabled={loading || !targetUser.trim()} onClick={() => void sendAdminAction('/api/dev/moderation/unmute', { username: targetUser })} className={`${buttonBase} bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-300 px-3 py-2`}>
-              <Volume2 className="inline w-3.5 h-3.5 mr-1" /> Unmute
-            </button>
-            <button disabled={loading || !targetUser.trim()} onClick={() => void sendAdminAction('/api/dev/moderation/approve', { username: targetUser })} className={`${buttonBase} bg-blue-500/10 hover:bg-blue-500/20 border-blue-500/30 text-blue-300 px-3 py-2`}>
-              <CheckCircle2 className="inline w-3.5 h-3.5 mr-1" /> Approve
+            <button
+              disabled={loading || !targetUser.trim()}
+              onClick={() => void sendAdminAction('/api/dev/moderation/unban', { username: targetUser })}
+              className={`${buttonBase} bg-rose-600 hover:bg-rose-500 border-rose-500 text-white px-3 py-2`}
+            >
+              <CheckCircle2 className="inline w-3.5 h-3.5 mr-1" /> Unban Game
             </button>
             <button
               disabled={loading || !targetUser.trim()}
               onClick={() => {
-                if (!confirmation(`Delete all Infinity Orbs game data for u/${targetUser.replace(/^u\\//i, '')}?`)) return;
+                if (!confirmation(`Delete all Infinity Orbs save data for u/${targetUser.replace(/^u\\//i, '')}?`)) return;
                 void sendAdminAction('/api/dev/moderation/wipe-game', { username: targetUser });
               }}
-              className={`${buttonBase} bg-yellow-500/10 hover:bg-yellow-500/20 border-yellow-500/30 text-yellow-300 px-3 py-2`}
+              className={`${buttonBase} bg-rose-600 hover:bg-rose-500 border-rose-500 text-white px-3 py-2`}
             >
               <UserX className="inline w-3.5 h-3.5 mr-1" /> Wipe Save
             </button>
             <button
               disabled={loading || !targetUser.trim()}
               onClick={() => {
-                if (!confirmation(`Wipe game data and ban u/${targetUser.replace(/^u\\//i, '')}?`)) return;
+                if (!confirmation(`Wipe game data and game-ban u/${targetUser.replace(/^u\\//i, '')}?`)) return;
                 void sendAdminAction('/api/dev/moderation/wipe-and-ban', {
                   username: targetUser,
-                  duration: banDuration === 'permanent' ? null : Number(banDuration),
+                  durationDays: banDuration === 'permanent' ? null : Number(banDuration),
                   reason: banReason,
-                  note: banNote,
-                  message: banMessage,
                 });
               }}
-              className={`${buttonBase} bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/30 text-rose-300 px-3 py-2`}
+              className={`${buttonBase} bg-rose-600 hover:bg-rose-500 border-rose-500 text-white px-3 py-2`}
             >
               <Ban className="inline w-3.5 h-3.5 mr-1" /> Wipe + Ban
             </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
             <button
               disabled={loading || !targetUser.trim()}
               onClick={() => {
                 if (!confirmation(`Wipe game data and unban u/${targetUser.replace(/^u\\//i, '')}?`)) return;
                 void sendAdminAction('/api/dev/moderation/wipe-and-unban', { username: targetUser });
               }}
-              className={`${buttonBase} bg-yellow-500/10 hover:bg-yellow-500/20 border-yellow-500/30 text-yellow-300 px-3 py-2`}
+              className={`${buttonBase} bg-rose-600 hover:bg-rose-500 border-rose-500 text-white px-3 py-2`}
             >
               <Trash2 className="inline w-3.5 h-3.5 mr-1" /> Wipe + Unban
             </button>
-            <button disabled={loading} onClick={() => void getBannedUsers()} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}>
-              <RefreshCw className="inline w-3.5 h-3.5 mr-1" /> Load Banned Users
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              disabled={loading}
+              onClick={() => void getBannedUsers()}
+              className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}
+            >
+              <RefreshCw className="inline w-3.5 h-3.5 mr-1" /> Load Banned Game Accounts
             </button>
-            <button disabled={loading} onClick={() => void sendAdminAction('/api/dev/moderation/wipe-game', { username: contextInfo?.username ?? '' })} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}>
+            <button
+              disabled={loading}
+              onClick={() => {
+                const self = contextInfo?.username ?? '';
+                if (!self) return;
+                if (!confirmation('Wipe your own Infinity Orbs save?')) return;
+                void sendAdminAction('/api/dev/moderation/wipe-game', { username: self });
+              }}
+              className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}
+            >
               Wipe My Save
             </button>
+            <button
+              disabled={loading}
+              onClick={() => {
+                const self = contextInfo?.username ?? '';
+                if (!self) return;
+                void sendAdminAction('/api/dev/moderation/unban', { username: self });
+              }}
+              className={`${buttonBase} bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-300 px-3 py-2`}
+            >
+              Unban Me
+            </button>
           </div>
+
           {bannedUsers.length > 0 && (
-            <div className="max-h-40 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/80 divide-y divide-slate-800">
+            <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/80 divide-y divide-slate-800">
               {bannedUsers.map(user => (
                 <div key={user.id ?? user.username} className="flex items-center justify-between gap-2 px-3 py-2">
-                  <span className="text-xs font-mono text-slate-200">u/{user.username}</span>
-                  <button disabled={loading} onClick={() => void sendAdminAction('/api/dev/moderation/unban', { username: user.username })} className={`${buttonBase} bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-300 px-2.5 py-1`}>
+                  <div className="min-w-0">
+                    <div className="text-xs font-mono text-slate-200">u/{user.username}</div>
+                    <div className="text-[10px] text-slate-500">
+                      {user.bannedUntil === null ? 'Permanent' : `Until ${new Date(user.bannedUntil).toLocaleString()}`} · {user.reason}
+                    </div>
+                  </div>
+                  <button
+                    disabled={loading}
+                    onClick={() => void sendAdminAction('/api/dev/moderation/unban', { username: user.username })}
+                    className={`${buttonBase} bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-300 px-3 py-2`}
+                  >
                     Unban
                   </button>
                 </div>
