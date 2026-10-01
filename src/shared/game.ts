@@ -395,6 +395,12 @@ export interface PlayerStreak {
 
 export interface PlayerState {
   username?: string;
+  gameBan?: {
+    active: true;
+    bannedAt: number;
+    bannedUntil: number | null;
+    reason: string;
+  };
   coins: number;
   shards: number;
   cosmicDust: number;
