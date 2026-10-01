@@ -784,6 +784,50 @@ export async function settleOffline(s: PlayerState): Promise<PlayerState> {
   return s;
 }
 
+export interface CollectionPageItem {
+  rarity: number;
+  count: number;
+}
+
+export async function getCollectionPage(options: {
+  offset?: number;
+  limit?: number;
+  tier?: string;
+  sort?: 'rarity_desc' | 'rarity_asc' | 'count';
+} = {}): Promise<{
+  items: CollectionPageItem[];
+  total: number;
+  offset: number;
+  limit: number;
+}> {
+  const s = await loadRaw();
+  const offset = Math.max(0, Math.floor(Number(options.offset ?? 0)));
+  const limit = Math.min(100, Math.max(1, Math.floor(Number(options.limit ?? 60))));
+  const sort = options.sort ?? 'rarity_desc';
+  const tier = String(options.tier ?? 'all');
+
+  let entries = Object.entries(s.collection ?? {})
+    .map(([rarityStr, count]) => ({ rarity: Number(rarityStr), count: Number(count) }))
+    .filter(item => Number.isFinite(item.rarity) && item.count > 0);
+
+  if (tier !== 'all') {
+    entries = entries.filter(item => getOrbInfo(item.rarity).tier === tier);
+  }
+
+  entries.sort((a, b) => {
+    if (sort === 'rarity_asc') return a.rarity - b.rarity;
+    if (sort === 'count') return b.count - a.count || b.rarity - a.rarity;
+    return b.rarity - a.rarity;
+  });
+
+  return {
+    items: entries.slice(offset, offset + limit),
+    total: entries.length,
+    offset,
+    limit,
+  };
+}
+
 export async function getState(): Promise<PlayerState> {
   const s = await settleOffline(await loadRaw());
   await save(s);
