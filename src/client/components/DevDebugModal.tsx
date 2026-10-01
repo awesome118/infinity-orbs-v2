@@ -200,6 +200,19 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               ['quests-ready', 'Quests Ready', 'bg-amber-600 hover:bg-amber-500'],
               ['prestige-ready', 'Prestige Ready', 'bg-violet-600 hover:bg-violet-500'],
               ['booster-test', 'Boosters 1h', 'bg-cyan-600 hover:bg-cyan-500'],
+              ['upgrades-max', 'Upgrades Max', 'bg-emerald-700 hover:bg-emerald-600'],
+              ['upgrades-reset', 'Upgrades 0', 'bg-slate-800 hover:bg-slate-700'],
+              ['prestige-max', 'Prestige Max', 'bg-violet-700 hover:bg-violet-600'],
+              ['prestige-reset', 'Prestige 0', 'bg-slate-800 hover:bg-slate-700'],
+              ['mastery-max', 'Mastery Max', 'bg-purple-700 hover:bg-purple-600'],
+              ['mastery-reset', 'Mastery 0', 'bg-slate-800 hover:bg-slate-700'],
+              ['automations-on', 'Automation On', 'bg-cyan-700 hover:bg-cyan-600'],
+              ['automations-off', 'Automation Off', 'bg-slate-800 hover:bg-slate-700'],
+              ['boosters-off', 'Boosters Off', 'bg-slate-800 hover:bg-slate-700'],
+              ['collection-clear', 'Clear Collection', 'bg-rose-700 hover:bg-rose-600'],
+              ['quests-reset', 'Reset Quests', 'bg-slate-800 hover:bg-slate-700'],
+              ['streak-reset', 'Reset Streak', 'bg-slate-800 hover:bg-slate-700'],
+              ['offline-clear', 'Clear Offline', 'bg-slate-800 hover:bg-slate-700'],
             ].map(([id, label, cls]) => (
               <button key={id} disabled={loading} onClick={() => void setPreset(id)} className={`${buttonBase} border-transparent px-3 py-2 text-white ${cls}`}>
                 {label}
