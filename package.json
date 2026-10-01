@@ -9,11 +9,11 @@
     "start": "tsx server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit",
+    "lint": "npm run type-check",
     "dev:local": "vite --config vite.local.config.ts --port=3000 --host=0.0.0.0",
     "dev:reddit": "devvit playtest",
     "login": "devvit login",
-    "type-check": "tsc --noEmit",
+    "type-check": "tsc --noEmit -p tsconfig.client.json && tsc --noEmit -p tsconfig.server.json",
     "deploy": "npm run type-check && npm run build && devvit upload",
     "launch": "npm run deploy && devvit publish"
   },
