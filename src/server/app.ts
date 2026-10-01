@@ -281,20 +281,23 @@ export function createApp() {
 
   app.get('/api/leaderboard', async (_req, res) => {
     try {
-      const lb = await leaderboard();
-      const s = await getMe();
-      await recordSocialVisit(s);
-      res.json(lb);
+      res.json(await leaderboard());
     } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch leaderboard.' }); }
   });
 
   app.get('/api/guilds', async (_req, res) => {
     try {
-      const gd = await guildInfo();
+      res.json(await guildInfo());
+    } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch guilds.' }); }
+  });
+
+  // Count an explicit visit to the social tab, not background API refreshes.
+  app.post('/api/social/visit', async (_req, res) => {
+    try {
       const s = await getMe();
       await recordSocialVisit(s);
-      res.json(gd);
-    } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch guilds.' }); }
+      res.json({ ok: true, state: s });
+    } catch (e: any) { badRequest(res, e, 'Could not record social visit.'); }
   });
 
   app.get('/api/global-boosters', async (_req, res) => {
