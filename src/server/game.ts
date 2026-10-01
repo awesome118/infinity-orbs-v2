@@ -30,8 +30,17 @@ import {
   type MasterySkillId,
   type PremiumBoosterId,
   type AutomationId,
+  type GlobalBoosterId,
+  type GlobalBoosterSnapshot,
   PREMIUM_BOOSTERS,
   AUTOMATIONS,
+  GLOBAL_BOOSTERS,
+  GLOBAL_BOOSTER_STACK_MS,
+  GLOBAL_BOOSTER_MAX_TIER,
+  createInitialGlobalBoosters,
+  decayGlobalBoosterState,
+  activateGlobalBoosterStack,
+  PURCHASE_PACKS,
   grantFreeShards,
   resetFreeShardBudgetIfNeeded,
   isPremiumBoosterActive,
@@ -52,7 +61,6 @@ import {
 const key = () => `player:${context.userId ?? 'unknown'}`;
 const ONLINE_PLAYERS_KEY = 'io:online:players';
 const ONLINE_WINDOW_MS = 30_000;
-const COMMUNITY_REWARD_INTERVAL_MS = 5 * 60 * 1000;
 
 async function touchOnlinePresence(): Promise<number> {
   const userId = context.userId;
@@ -67,13 +75,153 @@ export async function getOnlinePlayers(): Promise<number> {
   return touchOnlinePresence();
 }
 
+const GLOBAL_BOOSTERS_KEY = 'io:world-boosters';
+const FRENZY_POST_PREFIX = 'io:frenzy:post:';
+
+function playerKeyFor(userId: string): string {
+  return `player:${userId}`;
+}
+
+function normalizeGlobalBoosterSnapshot(raw: string | null, now: number): GlobalBoosterSnapshot {
+  const base = createInitialGlobalBoosters(now);
+  if (!raw) return base;
+  let parsed: Partial<GlobalBoosterSnapshot>;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return base;
+  }
+  return {
+    luck: decayGlobalBoosterState(parsed.luck ?? base.luck, now),
+    speed: decayGlobalBoosterState(parsed.speed ?? base.speed, now),
+    crit: decayGlobalBoosterState(parsed.crit ?? base.crit, now),
+  };
+}
+
+export async function getGlobalBoosters(): Promise<GlobalBoosterSnapshot> {
+  const now = Date.now();
+  const raw = await redis.get(GLOBAL_BOOSTERS_KEY);
+  const snapshot = normalizeGlobalBoosterSnapshot(raw, now);
+  await redis.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(snapshot));
+  return snapshot;
+}
+
+async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSnapshot> {
+  const now = Date.now();
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const txn = await redis.watch(GLOBAL_BOOSTERS_KEY);
+    const raw = await txn.get(GLOBAL_BOOSTERS_KEY);
+    const current = normalizeGlobalBoosterSnapshot(raw, now);
+    current[id] = activateGlobalBoosterStack(current[id]);
+    await txn.multi();
+    await txn.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(current));
+    const committed = await txn.exec();
+    if (committed !== null) return current;
+  }
+  throw new Error('The World Booster was activated by another player. Please try again.');
+}
+
+function paymentGoodsForSku(sku: string) {
+  const pack = PURCHASE_PACKS.find(p => p.sku === sku);
+  if (!pack) throw new Error('Unknown purchase product.');
+  return pack;
+}
+
+export async function grantPurchasedPack(userId: string, sku: string, orderId: string): Promise<boolean> {
+  const pack = paymentGoodsForSku(sku);
+  const pkey = playerKeyFor(userId);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const txn = await redis.watch(pkey);
+    const raw = await txn.get(pkey);
+    const state = raw ? JSON.parse(raw) as PlayerState : createInitialState();
+    state.paymentReceipts = state.paymentReceipts ?? {};
+    if (state.paymentReceipts[orderId] === 'fulfilled') {
+      await txn.unwatch();
+      return false;
+    }
+    if (state.paymentReceipts[orderId] === 'refunded') {
+      await txn.unwatch();
+      return false;
+    }
+    state.shards = (state.shards ?? 0) + pack.shards;
+    state.lifetimeShards = (state.lifetimeShards ?? 0) + pack.shards;
+    state.globalBoosterCredits = (state.globalBoosterCredits ?? 0) + pack.globalBoosterCredits;
+    state.paymentReceipts[orderId] = 'fulfilled';
+    const receiptKeys = Object.keys(state.paymentReceipts);
+    if (receiptKeys.length > 100) {
+      delete state.paymentReceipts[receiptKeys[0]];
+    }
+    await txn.multi();
+    await txn.set(pkey, JSON.stringify(state));
+    const committed = await txn.exec();
+    if (committed !== null) return true;
+  }
+  throw new Error('Could not safely fulfill the purchase. Please retry.');
+}
+
+export async function refundPurchasedPack(userId: string, sku: string, orderId: string): Promise<void> {
+  const pack = paymentGoodsForSku(sku);
+  const pkey = playerKeyFor(userId);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const txn = await redis.watch(pkey);
+    const raw = await txn.get(pkey);
+    if (!raw) {
+      await txn.unwatch();
+      return;
+    }
+    const state = JSON.parse(raw) as PlayerState;
+    state.paymentReceipts = state.paymentReceipts ?? {};
+    const receipt = state.paymentReceipts[orderId];
+    if (receipt !== 'fulfilled') {
+      await txn.unwatch();
+      return;
+    }
+    state.shards = Math.max(0, (state.shards ?? 0) - pack.shards);
+    state.globalBoosterCredits = Math.max(0, (state.globalBoosterCredits ?? 0) - pack.globalBoosterCredits);
+    state.paymentReceipts[orderId] = 'refunded';
+    await txn.multi();
+    await txn.set(pkey, JSON.stringify(state));
+    const committed = await txn.exec();
+    if (committed !== null) return;
+  }
+  throw new Error('Could not safely process the refund.');
+}
+
+async function claimWorldBoosterActivation(
+  s: PlayerState,
+  id: GlobalBoosterId,
+  useCredit: boolean,
+): Promise<{ state: PlayerState; snapshot: GlobalBoosterSnapshot; usedCredit: boolean }> {
+  const cost = GLOBAL_BOOSTERS[id].costShards;
+  if (useCredit) {
+    if ((s.globalBoosterCredits ?? 0) <= 0) throw new Error('No free World Booster activations remain.');
+    s.globalBoosterCredits--;
+  } else {
+    if ((s.shards ?? 0) < cost) throw new Error('Not enough Shards.');
+    s.shards -= cost;
+  }
+
+  try {
+    const snapshot = await updateGlobalBooster(id);
+    s.globalBoosters = snapshot;
+    await save(s);
+    return { state: s, snapshot, usedCredit: useCredit };
+  } catch (error) {
+    if (useCredit) s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) + 1;
+    else s.shards = (s.shards ?? 0) + cost;
+    throw error;
+  }
+}
+
 export async function loadRaw(): Promise<PlayerState> {
   const raw = await redis.get(key());
   const username = context.username ?? `reddit-user-${(context.userId ?? 'unknown').slice(-8)}`;
   const perks = await getPlayerGuildPerks(username);
+  const globalBoosters = await getGlobalBoosters();
   if (!raw) {
     const s = createInitialState();
     s.guildPerks = perks;
+    s.globalBoosters = globalBoosters;
     return s;
   }
   const parsed = JSON.parse(raw) as Partial<PlayerState>;
@@ -97,6 +245,7 @@ export async function loadRaw(): Promise<PlayerState> {
     },
     masterySkills: { ...base.masterySkills!, ...(parsed.masterySkills ?? {}) } as Record<MasterySkillId, number>,
     masteryPoints: parsed.masteryPoints ?? base.masteryPoints ?? 1,
+    globalBoosters,
     guildPerks: perks,
   };
 }
@@ -143,25 +292,20 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
   return { rewardCoins, rewardShards, day };
 }
 
-async function claimCommunityRewardFromState(s: PlayerState, now = Date.now()): Promise<{ rewardCoins: number; rewardXp: number; nextClaimAt: number; tier: number }> {
-  const last = s.communityRewardClaimedAt ?? 0;
+async function claimCommunityRewardFromState(s: PlayerState): Promise<{ rewardCoins: number; rewardXp: number; nextClaimAt: number; tier: number }> {
   const event = await getCommunityEvent();
-  if (last && now - last < COMMUNITY_REWARD_INTERVAL_MS) {
-    return {
-      rewardCoins: 0,
-      rewardXp: 0,
-      nextClaimAt: last + COMMUNITY_REWARD_INTERVAL_MS,
-      tier: Math.max(1, event.tier || 1),
-    };
+  const tier = Math.max(1, event.tier || 1);
+  const claimedTier = s.communityRewardClaimedTier ?? 0;
+  if (tier <= claimedTier) {
+    return { rewardCoins: 0, rewardXp: 0, nextClaimAt: 0, tier };
   }
 
-  const tier = Math.max(1, event.tier || 1);
-  const rewardCoins = Math.max(250, Math.round((500 * tier) + (s.level || 1) * 25));
-  const rewardXp = 25 * tier;
-  s.communityRewardClaimedAt = now;
+  const rewardCoins = Math.round(1_000 * tier + 250 * (s.level || 1));
+  const rewardXp = 75 * tier;
+  s.communityRewardClaimedTier = tier;
   s.coins += rewardCoins;
   applyXp(s, rewardXp);
-  return { rewardCoins, rewardXp, nextClaimAt: now + COMMUNITY_REWARD_INTERVAL_MS, tier };
+  return { rewardCoins, rewardXp, nextClaimAt: 0, tier };
 }
 
 async function processAutomation(s: PlayerState): Promise<void> {
@@ -294,7 +438,8 @@ export async function applyRolls(
     const critChance =
       (s.upgrades.critChance ?? 0) * 0.03 +
       (s.masterySkills?.critMastery ?? 0) * 0.03 +
-      (s.guildPerks?.critRank ?? 0) * 0.015;
+      (s.guildPerks?.critRank ?? 0) * 0.015 +
+      (s.globalBoosters?.crit ? globalBoosterCritChanceBonus(s.globalBoosters.crit) : 0);
     const isCrit = rng() < Math.min(1, critChance);
     let effectiveCm = cm;
     if (isCrit) {
@@ -869,6 +1014,12 @@ export async function buyCosmetic(id: string): Promise<PlayerState> {
   return s;
 }
 
+export async function activateGlobalBooster(id: GlobalBoosterId, useCredit = false): Promise<{ state: PlayerState; snapshot: GlobalBoosterSnapshot; usedCredit: boolean }> {
+  const s = await settleOffline(await loadRaw());
+  if (!GLOBAL_BOOSTERS[id]) throw new Error('Unknown World Booster.');
+  return claimWorldBoosterActivation(s, id, useCredit);
+}
+
 export async function activatePremiumBooster(id: PremiumBoosterId): Promise<PlayerState> {
   const s = await settleOffline(await loadRaw());
   const info = PREMIUM_BOOSTERS[id];
@@ -903,8 +1054,205 @@ export async function buyAutomation(id: AutomationId): Promise<PlayerState> {
 export async function claimCommunityReward(): Promise<{ state: PlayerState; rewardCoins: number; rewardXp: number; nextClaimAt: number; tier: number }> {
   const s = await settleOffline(await loadRaw());
   const result = await claimCommunityRewardFromState(s);
+  if (result.rewardCoins <= 0) throw new Error('No new Community Reward is available.');
   await save(s);
   return { state: s, ...result };
+}
+
+export async function startOrbFrenzy(): Promise<{ state: PlayerState; postId: string; url: string; rarity: number }> {
+  const s = await settleOffline(await loadRaw());
+  const today = new Date().toISOString().slice(0, 10);
+  if (s.lastFrenzyDate === today) throw new Error('Orb Frenzy is already used today.');
+
+  // A Frenzy is a single normal roll. The resulting highest orb is posted,
+  // so there is no client-side choice to hide a weak result.
+  const result = await applyRolls(s, 1, undefined, 'online', 1);
+  const subredditName = context.subredditName;
+  if (!subredditName) throw new Error('Orb Frenzy requires a Reddit post context.');
+
+  const text = `Orb Frenzy! I rolled a 1/${result.orb.rarity.toLocaleString()} Orb. Other players can click this post once per day to unleash the Frenzy.`;
+  const post = await reddit.submitCustomPost({
+    runAs: 'USER',
+    subredditName,
+    title: `⚡ Orb Frenzy: 1/${result.orb.rarity.toLocaleString()}`,
+    entry: 'frenzy',
+    userGeneratedContent: { text },
+  });
+
+  const postKey = FRENZY_POST_PREFIX + post.id;
+  await redis.set(postKey, JSON.stringify({
+    ownerId: context.userId ?? 'unknown',
+    ownerUsername: context.username ?? 'Redditor',
+    rarity: result.orb.rarity,
+    subredditName,
+    createdAt: Date.now(),
+  }));
+
+  s.lastFrenzyDate = today;
+  s.lastRollAt = Date.now();
+  s.lastSeenAt = Date.now();
+  s.globalBoosters = await getGlobalBoosters();
+  await save(s);
+
+  return {
+    state: s,
+    postId: post.id,
+    rarity: result.orb.rarity,
+    url: `https://reddit.com/r/${subredditName}/comments/${post.id}`,
+  };
+}
+
+export async function getOrbFrenzyInfo(): Promise<{
+  rarity: number;
+  ownerUsername: string;
+  createdAt: number;
+  claimedToday: boolean;
+  isOwner: boolean;
+  postId: string;
+}> {
+  const postId = context.postId;
+  if (!postId) throw new Error('This is not an Orb Frenzy post.');
+  const raw = await redis.get(FRENZY_POST_PREFIX + postId);
+  if (!raw) throw new Error('Orb Frenzy post data was not found.');
+  const data = JSON.parse(raw) as {
+    ownerId: string; ownerUsername: string; rarity: number; createdAt: number;
+  };
+  const today = new Date().toISOString().slice(0, 10);
+  const s = await getMe();
+  return {
+    rarity: data.rarity,
+    ownerUsername: data.ownerUsername,
+    createdAt: data.createdAt,
+    claimedToday: s.lastFrenzyClaimDate === today,
+    isOwner: data.ownerId === (context.userId ?? 'unknown'),
+    postId,
+  };
+}
+
+export async function claimOrbFrenzy(): Promise<RollResponse> {
+  const postId = context.postId;
+  if (!postId) throw new Error('This is not an Orb Frenzy post.');
+  const raw = await redis.get(FRENZY_POST_PREFIX + postId);
+  if (!raw) throw new Error('Orb Frenzy post data was not found.');
+  const data = JSON.parse(raw) as {
+    ownerId: string; ownerUsername: string; rarity: number; subredditName: string;
+  };
+  if (data.ownerId === (context.userId ?? 'unknown')) throw new Error('You cannot claim your own Orb Frenzy.');
+
+  const s = await settleOffline(await loadRaw());
+  const today = new Date().toISOString().slice(0, 10);
+  if (s.lastFrenzyClaimDate === today) throw new Error('You already claimed a Frenzy reward today.');
+
+  const baseCount = data.rarity;
+  const multiballEfficiency = (s.prestigeUpgrades?.frenzyVolley ?? 0) > 0
+    ? Math.max(0, rollsPerActivation(s) - 1) * 0.20
+    : 0;
+  const count = Math.max(1, Math.min(50_000_000, Math.floor(baseCount * (1 + multiballEfficiency))));
+
+  // Aggregate forced-rarity Frenzy outcomes instead of looping millions of identical
+  // orbs. Crit and Shard procs retain the normal probabilities using aggregate draws.
+  const critChance = Math.min(
+    1,
+    (s.upgrades.critChance ?? 0) * 0.03 +
+    (s.masterySkills?.critMastery ?? 0) * 0.03 +
+    (s.guildPerks?.critRank ?? 0) * 0.015 +
+    (s.globalBoosters?.crit ? globalBoosterCritChanceBonus(s.globalBoosters.crit) : 0),
+  );
+  const critCount = sampleBinomial(count, critChance);
+  const critMultiplierValue = critMultiplier(s);
+  const baseValue = Math.min(10_000_000_000, data.rarity);
+  const totalVal = Math.min(
+    Number.MAX_SAFE_INTEGER,
+    Math.round(baseValue * (count - critCount) + baseValue * critCount * critMultiplierValue),
+  );
+  const valueMul = 1 + (s.upgrades.valueBonus ?? 0) * 0.10;
+  const finalValue = Math.min(Number.MAX_SAFE_INTEGER, Math.round(totalVal * valueMul));
+
+  const coinPer = Math.max(1, Math.round(coinsForRarity(data.rarity)));
+  let coinsGained = Math.round((coinPer + Math.max(0, count - 1) * coinPer * 0.20));
+  const levelBenefits = getLevelBenefits(calculateLevelFromXp(s.xp || 0).level);
+  coinsGained = Math.round(coinsGained *
+    levelBenefits.coinsMultiplier *
+    (1 + (s.upgrades.coinBonus ?? 0) * 0.15) *
+    (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
+    (1 + (s.guildPerks?.coinRank ?? 0) * 0.10) *
+    (isPremiumBoosterActive(s, 'prosperity') ? 10 : 1));
+
+  const xpEach = Math.round(Math.min(200, 5 + Math.floor(Math.log10(data.rarity + 1) * 8)) *
+    (1 + (s.upgrades.xpBonus ?? 0) * 0.20) *
+    levelBenefits.xpMultiplier *
+    (isPremiumBoosterActive(s, 'ascension') ? 10 : 1));
+  const xpGained = Math.min(Number.MAX_SAFE_INTEGER, xpEach * count);
+
+  let shardChance =
+    (s.upgrades.shardChance ?? 0) * 0.0015 +
+    (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
+    (s.guildPerks?.shardRank ?? 0) * 0.0005 +
+    levelBenefits.shardChance;
+  shardChance = Math.min(1, shardChance);
+  const procShards = sampleBinomial(count, shardChance);
+  let rarityShards = 0;
+  if (data.rarity >= 1_000_000) rarityShards = count * 10;
+  else if (data.rarity >= 100_000) rarityShards = count * 5;
+  else if (data.rarity >= 10_000) rarityShards = count * 2;
+  else if (data.rarity >= 1_000) rarityShards = count;
+  const shardsGained = grantFreeShards(s, rarityShards + procShards);
+
+  s.totalRolls += count;
+  s.currentRunRolls = (s.currentRunRolls ?? 0) + count;
+  s.collectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.collectionValue ?? 0) + finalValue);
+  s.lifetimeCollectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.lifetimeCollectionValue ?? 0) + finalValue);
+  s.collection[String(data.rarity)] = (s.collection[String(data.rarity)] ?? 0) + count;
+  s.highestRarity = Math.max(s.highestRarity, data.rarity * (critCount > 0 ? critMultiplierValue : 1));
+  s.totalCrits = (s.totalCrits ?? 0) + critCount;
+  s.coins += coinsGained;
+  s.xp += xpGained;
+  s.lastFrenzyClaimDate = today;
+  s.globalBoosters = await getGlobalBoosters();
+  await save(s);
+
+  const orbInfo = getOrbInfo(data.rarity);
+  return {
+    orb: {
+      rarity: data.rarity,
+      rolledAt: Date.now(),
+      tier: orbInfo.tier,
+      name: orbInfo.name,
+      isNew: true,
+    },
+    batch: [{
+      rarity: data.rarity,
+      rolledAt: Date.now(),
+      tier: orbInfo.tier,
+      name: orbInfo.name,
+      isNew: false,
+    }],
+    totalValueGained: finalValue,
+    totalRollValue: finalValue,
+    coinsGained,
+    shardsGained,
+    xpGained,
+    state: s,
+    rollsRemainingUntilNext: cooldownMs(s),
+    dramaticReveal: data.rarity >= 100,
+  };
+}
+
+function sampleBinomial(n: number, p: number): number {
+  if (n <= 0 || p <= 0) return 0;
+  if (p >= 1) return n;
+  if (n < 2_000) {
+    let count = 0;
+    for (let i = 0; i < n; i++) if (serverRandom() < p) count++;
+    return count;
+  }
+  const mean = n * p;
+  const variance = n * p * (1 - p);
+  const standardDeviation = Math.sqrt(variance);
+  const u1 = Math.max(1e-12, serverRandom());
+  const u2 = serverRandom();
+  const gaussian = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  return Math.max(0, Math.min(n, Math.round(mean + standardDeviation * gaussian)));
 }
 
 export async function activateTurbo(): Promise<PlayerState> {
