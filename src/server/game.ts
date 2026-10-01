@@ -75,61 +75,88 @@ export async function getOnlinePlayers(): Promise<number> {
   return touchOnlinePresence();
 }
 
-const GLOBAL_BOOSTERS_KEY = 'io:world-boosters';
+const GLOBAL_BOOSTERS_LEGACY_KEY = 'io:world-boosters';
+const GLOBAL_BOOSTER_KEY_PREFIX = 'io:world-booster:';
 const FRENZY_POST_PREFIX = 'io:frenzy:post:';
+
+function globalBoosterKey(id: GlobalBoosterId): string {
+  return GLOBAL_BOOSTER_KEY_PREFIX + id;
+}
 
 function playerKeyFor(userId: string): string {
   return `player:${userId}`;
 }
 
-function normalizeGlobalBoosterSnapshot(raw: string | null, now: number): GlobalBoosterSnapshot {
-  const base = createInitialGlobalBoosters(now);
-  if (!raw) return base;
-  let parsed: Partial<GlobalBoosterSnapshot>;
+function parseGlobalBoosterState(raw: string | null, fallback: GlobalBoosterState): GlobalBoosterState {
+  if (!raw) return fallback;
   try {
-    parsed = JSON.parse(raw);
+    const parsed = JSON.parse(raw) as Partial<GlobalBoosterState>;
+    return {
+      tier: Math.max(0, Math.floor(Number(parsed.tier ?? fallback.tier))),
+      remainingMs: Math.max(0, Number(parsed.remainingMs ?? fallback.remainingMs)),
+      updatedAt: Number(parsed.updatedAt ?? fallback.updatedAt),
+    };
   } catch {
-    return base;
+    return fallback;
   }
-  return {
-    luck: decayGlobalBoosterState(parsed.luck ?? base.luck, now),
-    speed: decayGlobalBoosterState(parsed.speed ?? base.speed, now),
-    crit: decayGlobalBoosterState(parsed.crit ?? base.crit, now),
-  };
+}
+
+async function getGlobalBoosterState(
+  id: GlobalBoosterId,
+  now: number,
+  legacy?: Partial<GlobalBoosterSnapshot>,
+): Promise<GlobalBoosterState> {
+  const base = createInitialGlobalBoosters(now)[id];
+  const raw = await redis.get(globalBoosterKey(id));
+  const source = raw ?? (legacy?.[id] ? JSON.stringify(legacy[id]) : null);
+  return decayGlobalBoosterState(parseGlobalBoosterState(source, base), now);
+}
+
+async function readLegacyGlobalBoosters(): Promise<Partial<GlobalBoosterSnapshot> | null> {
+  const raw = await redis.get(GLOBAL_BOOSTERS_LEGACY_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as Partial<GlobalBoosterSnapshot>;
+  } catch {
+    return null;
+  }
 }
 
 export async function getGlobalBoosters(): Promise<GlobalBoosterSnapshot> {
   const now = Date.now();
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const txn = await redis.watch(GLOBAL_BOOSTERS_KEY);
-    const raw = await txn.get(GLOBAL_BOOSTERS_KEY);
-    const snapshot = normalizeGlobalBoosterSnapshot(raw, now);
-    const serialized = JSON.stringify(snapshot);
-    if (raw === serialized) {
-      await txn.unwatch();
-      return snapshot;
-    }
-    await txn.multi();
-    await txn.set(GLOBAL_BOOSTERS_KEY, serialized);
-    const committed = await txn.exec();
-    if (committed !== null) return snapshot;
-  }
-  throw new Error('Could not refresh World Booster state.');
+  const legacy = await readLegacyGlobalBoosters();
+  const [luck, speed, crit] = await Promise.all([
+    getGlobalBoosterState('luck', now, legacy ?? undefined),
+    getGlobalBoosterState('speed', now, legacy ?? undefined),
+    getGlobalBoosterState('crit', now, legacy ?? undefined),
+  ]);
+  return { luck, speed, crit };
 }
 
 async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSnapshot> {
   const now = Date.now();
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const txn = await redis.watch(GLOBAL_BOOSTERS_KEY);
-    const raw = await txn.get(GLOBAL_BOOSTERS_KEY);
-    const current = normalizeGlobalBoosterSnapshot(raw, now);
-    current[id] = activateGlobalBoosterStack(current[id]);
+  const storageKey = globalBoosterKey(id);
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const txn = await redis.watch(storageKey);
+    const legacy = await readLegacyGlobalBoosters();
+    const base = createInitialGlobalBoosters(now)[id];
+    const raw = await txn.get(storageKey);
+    const source = raw ?? (legacy?.[id] ? JSON.stringify(legacy[id]) : null);
+    const current = decayGlobalBoosterState(parseGlobalBoosterState(source, base), now);
+    const next = activateGlobalBoosterStack(current);
+
     await txn.multi();
-    await txn.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(current));
+    await txn.set(storageKey, JSON.stringify(next));
     const committed = await txn.exec();
-    if (committed !== null) return current;
+    if (committed !== null) {
+      const snapshot = await getGlobalBoosters();
+      snapshot[id] = next;
+      return snapshot;
+    }
   }
-  throw new Error('The World Booster was activated by another player. Please try again.');
+
+  throw new Error('The Global Booster was activated by another player. Please try again.');
 }
 
 function paymentGoodsForSku(sku: string) {
