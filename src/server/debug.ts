@@ -5,6 +5,10 @@ import {
   loadRaw,
   save,
   startOrbFrenzy,
+  getGameBanStatus,
+  listGameBans,
+  banGameUser,
+  unbanGameUser,
 } from './game.js';
 import { context, redis, reddit } from './devvit-mock.js';
 import { setCommunityEventConfig } from './social.js';
@@ -43,6 +47,7 @@ debugRouter.get('/status', (_req, res) => {
     userId: context.userId ?? null,
     subredditName: context.subredditName ?? null,
     postId: context.postId ?? null,
+    gameBan: await getGameBanStatus(),
   });
 });
 
@@ -59,12 +64,6 @@ function targetUsername(value: unknown): string {
   const name = normalizeUsername(value);
   if (!name) throw new Error('A Reddit username is required.');
   return name;
-}
-
-async function currentSubreddit() {
-  const name = String(context.subredditName ?? '').trim().replace(/^r\//i, '');
-  if (!name) throw new Error('This admin action requires a subreddit context.');
-  return reddit.getSubredditByName(name);
 }
 
 async function removeLeaderboardEntry(username: string): Promise<void> {
@@ -597,81 +596,46 @@ debugRouter.post('/global-booster', async (req, res) => {
   }
 });
 
-// Reddit moderation.
+// Game moderation. These actions affect Infinity Orbs accounts only.
+// No subreddit moderation API is used here.
 debugRouter.get('/moderation/banned', async (_req, res) => {
   try {
-    const subreddit = await currentSubreddit();
-    const listing = await subreddit.getBannedUsers().all();
-    const users = listing.map((user: any) => ({
-      username: user?.username ?? user?.name ?? null,
-      id: user?.id ?? null,
-    })).filter((user: any) => user.username);
-    res.json({ subreddit: subreddit.name, users });
+    const users = await listGameBans();
+    res.json({ users });
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || 'Failed to load banned users.' });
+    res.status(500).json({ error: e?.message || 'Failed to load banned game accounts.' });
   }
 });
 
 debugRouter.post('/moderation/ban', async (req, res) => {
   try {
     const username = targetUsername(req.body?.username);
-    const durationValue = req.body?.duration;
-    const duration = durationValue === '' || durationValue == null ? undefined : Math.max(0, finiteInteger(durationValue));
-    const subreddit = await currentSubreddit();
-    await subreddit.banUser({
+    const userId = await resolveUserId(username);
+    const durationValue = req.body?.durationDays;
+    const durationDays = durationValue === '' || durationValue == null
+      ? undefined
+      : Math.max(1, finiteInteger(durationValue));
+    const ban = await banGameUser({
+      userId,
       username,
-      duration,
-      reason: String(req.body?.reason ?? 'Infinity Orbs admin action').slice(0, 300),
-      message: String(req.body?.message ?? '').slice(0, 500),
-      note: String(req.body?.note ?? 'Infinity Orbs admin console').slice(0, 300),
+      durationDays,
+      reason: String(req.body?.reason ?? 'Game moderation action').slice(0, 300),
+      bannedBy: context.username ?? 'shadow_fen',
     });
-    res.json({ ok: true, action: 'ban', username, duration: duration ?? null });
+    res.json({ ok: true, action: 'game-ban', ban });
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || 'Failed to ban user.' });
+    res.status(500).json({ error: e?.message || 'Failed to ban game account.' });
   }
 });
 
 debugRouter.post('/moderation/unban', async (req, res) => {
   try {
     const username = targetUsername(req.body?.username);
-    const subreddit = await currentSubreddit();
-    await subreddit.unbanUser(username);
-    res.json({ ok: true, action: 'unban', username });
+    const userId = await resolveUserId(username);
+    const changed = await unbanGameUser(userId);
+    res.json({ ok: true, action: 'game-unban', username, userId, changed });
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || 'Failed to unban user.' });
-  }
-});
-
-debugRouter.post('/moderation/mute', async (req, res) => {
-  try {
-    const username = targetUsername(req.body?.username);
-    const subreddit = await currentSubreddit();
-    await subreddit.muteUser(username);
-    res.json({ ok: true, action: 'mute', username });
-  } catch (e: any) {
-    res.status(500).json({ error: e?.message || 'Failed to mute user.' });
-  }
-});
-
-debugRouter.post('/moderation/unmute', async (req, res) => {
-  try {
-    const username = targetUsername(req.body?.username);
-    const subreddit = await currentSubreddit();
-    await subreddit.unmuteUser(username);
-    res.json({ ok: true, action: 'unmute', username });
-  } catch (e: any) {
-    res.status(500).json({ error: e?.message || 'Failed to unmute user.' });
-  }
-});
-
-debugRouter.post('/moderation/approve', async (req, res) => {
-  try {
-    const username = targetUsername(req.body?.username);
-    const subreddit = await currentSubreddit();
-    await subreddit.approveUser(username);
-    res.json({ ok: true, action: 'approve', username });
-  } catch (e: any) {
-    res.status(500).json({ error: e?.message || 'Failed to approve user.' });
+    res.status(500).json({ error: e?.message || 'Failed to unban game account.' });
   }
 });
 
@@ -687,34 +651,34 @@ debugRouter.post('/moderation/wipe-game', async (req, res) => {
 debugRouter.post('/moderation/wipe-and-unban', async (req, res) => {
   try {
     const username = targetUsername(req.body?.username);
-    const subreddit = await currentSubreddit();
+    const userId = await resolveUserId(username);
     const result = await wipeUser(username);
-    await subreddit.unbanUser(username);
+    await unbanGameUser(userId);
     res.json({ ok: true, action: 'wipe-and-unban', ...result });
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || 'Failed to wipe and unban user.' });
+    res.status(500).json({ error: e?.message || 'Failed to wipe and unban game account.' });
   }
 });
 
 debugRouter.post('/moderation/wipe-and-ban', async (req, res) => {
   try {
     const username = targetUsername(req.body?.username);
-    const subreddit = await currentSubreddit();
+    const userId = await resolveUserId(username);
     const result = await wipeUser(username);
-    const durationValue = req.body?.duration;
-    const duration = durationValue === '' || durationValue == null
+    const durationValue = req.body?.durationDays;
+    const durationDays = durationValue === '' || durationValue == null
       ? undefined
-      : Math.max(0, finiteInteger(durationValue));
-    await subreddit.banUser({
+      : Math.max(1, finiteInteger(durationValue));
+    const ban = await banGameUser({
+      userId,
       username,
-      duration,
-      reason: String(req.body?.reason ?? 'Infinity Orbs admin action').slice(0, 300),
-      message: String(req.body?.message ?? '').slice(0, 500),
-      note: String(req.body?.note ?? 'Infinity Orbs admin console').slice(0, 300),
+      durationDays,
+      reason: String(req.body?.reason ?? 'Game moderation action').slice(0, 300),
+      bannedBy: context.username ?? 'shadow_fen',
     });
-    res.json({ ok: true, action: 'wipe-and-ban', ...result, duration: duration ?? null });
+    res.json({ ok: true, action: 'wipe-and-ban', ...result, ban });
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || 'Failed to wipe and ban user.' });
+    res.status(500).json({ error: e?.message || 'Failed to wipe and ban game account.' });
   }
 });
 
