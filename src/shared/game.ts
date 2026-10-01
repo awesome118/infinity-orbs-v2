@@ -149,6 +149,15 @@ export function todayKey(now = Date.now()): string {
   return new Date(now).toISOString().slice(0, 10);
 }
 
+// Week boundaries are Sunday 00:00 UTC. Using the Unix epoch directly would
+// start the week on Thursday because 1970-01-01 was a Thursday.
+export function weekKey(now = Date.now()): number {
+  const date = new Date(now);
+  const startOfDay = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  const sundayStart = startOfDay - date.getUTCDay() * 86_400_000;
+  return Math.floor(sundayStart / 604_800_000);
+}
+
 export function resetFreeShardBudgetIfNeeded(s: PlayerState, now = Date.now()): void {
   const today = todayKey(now);
   if (s.lastFreeShardReset !== today) {
@@ -453,7 +462,7 @@ export interface PlayerState {
   lastFrenzyDate?: string;
   lastFrenzyClaimDate?: string;
   communityRewardClaimedTier?: number;
-  paymentReceipts?: Record<string, 'fulfilled' | 'refunded'>;
+  paymentReceipts?: Record<string, PaymentReceipt | 'fulfilled' | 'refunded'>;
   currentRunRolls?: number;
   questsCompleted?: number;
   guildContribution?: number;
@@ -475,6 +484,12 @@ export interface PlayerState {
     critRank?: number;
     coinRank?: number;
   };
+}
+
+export interface PaymentReceipt {
+  status: 'fulfilled' | 'refunded';
+  shards: number;
+  globalBoosterCredits: number;
 }
 
 export interface RollResponse {
