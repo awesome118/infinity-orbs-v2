@@ -665,31 +665,9 @@ export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent
 
 export async function claimDailyStreak(): Promise<{ state: PlayerState; rewardCoins: number; rewardShards: number; day: number }> {
   const s = await settleOffline(await loadRaw());
-  const today = new Date().toISOString().slice(0, 10);
-  if (s.streak.lastClaimDate === today) {
-    throw new Error('Already claimed daily reward for today.');
-  }
-
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  if (s.streak.lastClaimDate === yesterday) {
-    s.streak.count++;
-  } else if (!s.streak.lastClaimDate) {
-    s.streak.count = 1;
-  } else {
-    s.streak.count = 1;
-  }
-
-  s.streak.longestStreak = Math.max(s.streak.longestStreak, s.streak.count);
-  s.streak.lastClaimDate = today;
-
-  const day = ((s.streak.count - 1) % 7) + 1;
-  const rewardCoins = day * 100;
-  const rewardShards = grantFreeShards(s, day === 7 ? 5 : day === 3 ? 1 : 0);
-
-  s.coins += rewardCoins;
-
+  const result = await claimDailyStreakFromState(s);
   await save(s);
-  return { state: s, rewardCoins, rewardShards, day };
+  return { state: s, ...result };
 }
 
 export async function claimQuest(type: 'daily' | 'weekly', id: string): Promise<{ state: PlayerState; rewardCoins: number; rewardShards: number; rewardTokens: number }> {
