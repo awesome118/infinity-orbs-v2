@@ -303,64 +303,63 @@ export async function contribute(value: number, rollCount = 1) {
     await updateGuilds(guilds => {
       const guild = guilds.find(g => g.members.some(m => m.username === username()));
       if (!guild) return;
+
       const member = guild.members.find(m => m.username === username());
       if (!member) return;
+
       member.contribution += value;
       guild.xp += Math.max(1, Math.floor(value / 250));
       guild.level = 1 + Math.floor(guild.xp / 500);
       guild.tokens += Math.max(1, Math.floor(value / 25000));
 
-      // Progress guild challenge
       if (guild.challenge) {
-    if (guild.challenge.type === 'value') {
-      guild.challenge.progress += value;
-    } else if (guild.challenge.type === 'rolls') {
-      guild.challenge.progress += rollCount;
-    } else if (guild.challenge.type === 'rare' && value >= 100) {
-      guild.challenge.progress += 1;
-    }
+        if (guild.challenge.type === 'value') {
+          guild.challenge.progress += value;
+        } else if (guild.challenge.type === 'rolls') {
+          guild.challenge.progress += rollCount;
+        } else if (guild.challenge.type === 'rare' && value >= 100) {
+          guild.challenge.progress += 1;
+        }
 
-    // Check challenge completion
         if (guild.challenge.progress >= guild.challenge.target) {
           const reward = guild.challenge.reward;
           guild.tokens += reward;
-      if (!guild.chat) guild.chat = [];
-      guild.chat.push({
-        id: `msg-${Date.now()}-challenge`,
-        username: 'System',
-        text: `Guild challenge completed! +${reward} Guild Tokens added to treasury.`,
-        timestamp: Date.now(),
-        isSystem: true,
-      });
+          if (!guild.chat) guild.chat = [];
+          guild.chat.push({
+            id: `msg-${Date.now()}-challenge`,
+            username: 'System',
+            text: `Guild challenge completed! +${reward} Guild Tokens added to treasury.`,
+            timestamp: Date.now(),
+            isSystem: true,
+          });
 
-          // Cycle to next challenge
-          const nextIdx = (CHALLENGE_POOL.findIndex(c => c.type === guild.challenge.type) + 1) % CHALLENGE_POOL.length;
+          const nextIdx =
+            (CHALLENGE_POOL.findIndex(challenge => challenge.type === guild.challenge!.type) + 1) %
+            CHALLENGE_POOL.length;
           guild.challenge = { ...CHALLENGE_POOL[nextIdx], progress: 0 };
-    }
+        }
       }
 
-      // Guild Raid Boss damage contribution
-    if (guild.boss && !guild.boss.defeated) {
-      const damage = Math.round(value + rollCount * 25);
-      guild.boss.currentHp = Math.max(0, guild.boss.currentHp - damage);
-      if (!guild.boss.contributors) guild.boss.contributors = {};
-      guild.boss.contributors[username()] = (guild.boss.contributors[username()] ?? 0) + damage;
+      if (guild.boss && !guild.boss.defeated) {
+        const damage = Math.round(value + rollCount * 25);
+        guild.boss.currentHp = Math.max(0, guild.boss.currentHp - damage);
+        if (!guild.boss.contributors) guild.boss.contributors = {};
+        guild.boss.contributors[username()] = (guild.boss.contributors[username()] ?? 0) + damage;
 
-      if (guild.boss.currentHp <= 0) {
-        guild.boss.defeated = true;
-        const tokensReward = guild.boss.rewardTokens;
-        guild.tokens += tokensReward;
-        if (!guild.chat) guild.chat = [];
-        guild.chat.push({
-          id: `msg-${Date.now()}-boss`,
-          username: 'System',
-          text: `🏆 RAID BOSS SLAIN! ${guild.boss.name} was defeated! +${tokensReward} Guild Tokens added to treasury!`,
-          timestamp: Date.now(),
-          isSystem: true,
-        });
+        if (guild.boss.currentHp <= 0) {
+          guild.boss.defeated = true;
+          const tokensReward = guild.boss.rewardTokens;
+          guild.tokens += tokensReward;
+          if (!guild.chat) guild.chat = [];
+          guild.chat.push({
+            id: `msg-${Date.now()}-boss`,
+            username: 'System',
+            text: `🏆 RAID BOSS SLAIN! ${guild.boss.name} was defeated! +${tokensReward} Guild Tokens added to treasury!`,
+            timestamp: Date.now(),
+            isSystem: true,
+          });
+        }
       }
-    }
-
     });
   } catch (err) {
     console.error('Error in guild contribution:', err);
