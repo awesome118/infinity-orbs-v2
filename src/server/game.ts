@@ -1105,14 +1105,23 @@ export async function claimCommunityReward(): Promise<{ state: PlayerState; rewa
   return { state: s, ...result };
 }
 
-export async function startOrbFrenzy(): Promise<{ state: PlayerState; postId: string; url: string; rarity: number }> {
+export async function startOrbFrenzy(options: {
+  bypassDailyLimit?: boolean;
+  forcedRarity?: number;
+  adminTest?: boolean;
+} = {}): Promise<{ state: PlayerState; postId: string; url: string; rarity: number }> {
   const s = await settleOffline(await loadRaw());
   const today = new Date().toISOString().slice(0, 10);
-  if (s.lastFrenzyDate === today) throw new Error('Orb Frenzy is already used today.');
+  if (!options.bypassDailyLimit && s.lastFrenzyDate === today) {
+    throw new Error('Orb Frenzy is already used today.');
+  }
 
-  // A Frenzy is a single normal roll. The resulting highest orb is posted,
-  // so there is no client-side choice to hide a weak result.
-  const result = await applyRolls(s, 1, undefined, 'online', 1);
+  // A Frenzy is a single roll. Admin test Frenzies may use a forced rarity and
+  // may be triggered repeatedly without consuming the normal daily eligibility.
+  const forcedRarity = options.forcedRarity == null
+    ? undefined
+    : Math.max(2, Math.floor(Number(options.forcedRarity)));
+  const result = await applyRolls(s, 1, forcedRarity, 'online', 1);
   const subredditName = context.subredditName;
   if (!subredditName) throw new Error('Orb Frenzy requires a Reddit post context.');
 
@@ -1132,6 +1141,7 @@ export async function startOrbFrenzy(): Promise<{ state: PlayerState; postId: st
     rarity: result.bestOrb.rarity,
     subredditName,
     createdAt: Date.now(),
+    adminTest: options.adminTest === true,
   }));
 
   s.lastFrenzyDate = today;
@@ -1175,7 +1185,7 @@ export async function getOrbFrenzyInfo(): Promise<{
   };
 }
 
-export async function claimOrbFrenzy(): Promise<RollResponse> {
+export async function claimOrbFrenzy(options: { allowAdminTestOwner?: boolean } = {}): Promise<RollResponse> {
   const postId = context.postId;
   if (!postId) throw new Error('This is not an Orb Frenzy post.');
   const raw = await redis.get(FRENZY_POST_PREFIX + postId);
@@ -1186,9 +1196,13 @@ export async function claimOrbFrenzy(): Promise<RollResponse> {
     ownerUsername: string;
     rarity: number;
     subredditName: string;
+    adminTest?: boolean;
   };
 
-  if (data.ownerId === (context.userId ?? 'unknown')) {
+  if (
+    data.ownerId === (context.userId ?? 'unknown') &&
+    !(options.allowAdminTestOwner === true && data.adminTest === true)
+  ) {
     throw new Error('You cannot claim your own Orb Frenzy.');
   }
 
