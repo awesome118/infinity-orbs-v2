@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { redis, context } from './devvit-mock.js';
 import {
   createInitialState,
@@ -30,6 +31,8 @@ import {
   type MasterySkillId,
   MASTERY_SKILLS,
   masterySkillCost,
+  getLevelBenefits,
+  calculateLevelFromXp,
 } from '../shared/game.js';
 import {
   contribute,
@@ -80,6 +83,15 @@ export async function save(s: PlayerState) {
   await redis.set(key(), JSON.stringify(s));
 }
 
+function serverRandom(): number {
+  return randomInt(0, 1_000_000_000) / 1_000_000_000;
+}
+
+function finiteNonNegativeInteger(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : fallback;
+}
+
 function advanceQuestProgress(s: PlayerState, type: 'roll' | 'rare' | 'value' | 'unique' | 'social' | 'share', amount: number) {
   for (const q of s.dailyQuests) {
     if (q.claimed) continue;
@@ -115,7 +127,8 @@ function checkPeriodicResets(s: PlayerState, now: number) {
 export async function applyRolls(
   s: PlayerState,
   activationCount = 1,
-  forcedRarity?: number
+  forcedRarity?: number,
+  source: 'online' | 'offline' = 'online'
 ): Promise<{ bestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number }> {
   let bestRarity = 0;
   let totalVal = 0;
@@ -127,10 +140,11 @@ export async function applyRolls(
   let rollCount = rollsPerActivation(s) * activationCount;
   // Astral Magnetism proc: chance for multi-rolls to pull 2 bonus orbs
   const magnetLevel = s.prestigeUpgrades?.stellarMagnet ?? 0;
-  if (rollCount > 1 && magnetLevel > 0 && Math.random() < 0.10 * magnetLevel) {
+  if (rollCount > 1 && magnetLevel > 0 && rng() < 0.10 * magnetLevel) {
     rollCount += 2;
   }
   const now = Date.now();
+  const rng = serverRandom;
 
   const worldEvent = await getCommunityEvent();
   const communityLuck = worldEvent.buffMultiplier ?? 1.15;
@@ -138,10 +152,11 @@ export async function applyRolls(
 
   // Apex Fortune Mastery: chance on multi-roll to double the luck of that activation
   const apexChance = (s.masterySkills?.apexFortune ?? 0) * 0.04;
-  const isApex = rollCount > 1 && Math.random() < apexChance;
+  const isApex = rollCount > 1 && rng() < apexChance;
   const effectiveLuck = isApex ? baseLuck * 2 : baseLuck;
 
   const cm = critMultiplier(s);
+  const levelBenefits = getLevelBenefits(calculateLevelFromXp(s.xp || 0).level);
   const valueMul = 1 + (s.upgrades.valueBonus ?? 0) * 0.10;
 
   for (let i = 0; i < rollCount; i++) {
@@ -150,18 +165,22 @@ export async function applyRolls(
       (s.upgrades.critChance ?? 0) * 0.03 +
       (s.masterySkills?.critMastery ?? 0) * 0.03 +
       (s.guildPerks?.critRank ?? 0) * 0.015;
-    const isCrit = Math.random() < critChance;
+    const isCrit = rng() < Math.min(1, critChance);
     let effectiveCm = cm;
     if (isCrit) {
       s.totalCrits = (s.totalCrits ?? 0) + 1;
       const supernovaLevel = s.prestigeUpgrades?.supernova ?? 0;
-      if (supernovaLevel > 0 && Math.random() < supernovaLevel * 0.10) {
+      if (supernovaLevel > 0 && rng() < supernovaLevel * 0.10) {
         effectiveCm = cm * 2.5; // 5x base critical multiplier!
       }
     }
 
     // Continuum RNG generation with effective luck
-    const baseRarity = (forcedRarity && i === 0) ? forcedRarity : rollContinuum(effectiveLuck);
+    const minimumRarity = 2 + (s.prestigeUpgrades?.luckyFloor ?? 0);
+    const rolledRarity = (forcedRarity && i === 0)
+      ? forcedRarity
+      : Math.max(minimumRarity, rollContinuum(effectiveLuck, rng));
+    const baseRarity = Math.max(minimumRarity, rolledRarity);
     const rarity = isCrit ? Math.min(10_000_000_000, Math.round(baseRarity * effectiveCm)) : baseRarity;
     const finalVal = Math.round(rarity * valueMul);
 
@@ -186,7 +205,7 @@ export async function applyRolls(
       bestRarity = rarity;
     }
 
-    const xpBonusMul = 1 + (s.upgrades.xpBonus ?? 0) * 0.20;
+    const xpBonusMul = (1 + (s.upgrades.xpBonus ?? 0) * 0.20) * levelBenefits.xpMultiplier;
     const earnedXp = Math.round(Math.min(200, 5 + Math.floor(Math.log10(rarity + 1) * 8)) * xpBonusMul);
 
     // Shards bonus for rare orbs (1,000+)
@@ -197,11 +216,14 @@ export async function applyRolls(
     else if (rarity >= 1_000) earnedShards = 1;
 
     // Shard Chance upgrade + Mastery + Guild perk proc
-    const shardProcChance =
+    const shardProcChance = Math.min(
+      1,
       (s.upgrades.shardChance ?? 0) * 0.005 +
       (s.masterySkills?.shardAttunement ?? 0) * 0.003 +
-      (s.guildPerks?.shardRank ?? 0) * 0.002;
-    if (Math.random() < shardProcChance) {
+      (s.guildPerks?.shardRank ?? 0) * 0.002 +
+      levelBenefits.shardChance
+    );
+    if (rng() < shardProcChance) {
       earnedShards += 1;
     }
 
@@ -228,29 +250,43 @@ export async function applyRolls(
   const extraCoins = rarities.slice(1).reduce((acc, r) => acc + Math.max(1, Math.round(coinsForRarity(r) * dustBountyMul * 0.20)), 0);
   coinsGained = topCoins + extraCoins;
 
-  // Coin Bonus base upgrade + Midas Touch Mastery + Guild Treasury perk
+  // Level passives and other coin modifiers stack multiplicatively by source.
   const coinBonusMul =
-    1 +
-    (s.upgrades.coinBonus ?? 0) * 0.15 +
-    (s.masterySkills?.prosperity ?? 0) * 0.10 +
-    (s.guildPerks?.coinRank ?? 0) * 0.10;
+    levelBenefits.coinsMultiplier *
+    (1 + (s.upgrades.coinBonus ?? 0) * 0.15) *
+    (1 + (s.masterySkills?.prosperity ?? 0) * 0.10) *
+    (1 + (s.guildPerks?.coinRank ?? 0) * 0.10);
   coinsGained = Math.round(coinsGained * coinBonusMul);
 
-  // Singularity Filter Prestige Upgrade: auto-condenses common/uncommon drops into +25% bonus gold
+  const lowRarityCoins = rarities
+    .filter(r => r < 100)
+    .reduce((sum, r) => sum + Math.max(1, Math.round(coinsForRarity(r) * dustBountyMul)), 0);
+
+  // Singularity Filter: +25% only to Common/Uncommon coin yield.
   const hasFilter = (s.prestigeUpgrades?.autoFilter ?? 0) > 0;
-  if (hasFilter) {
-    coinsGained = Math.round(coinsGained * 1.25);
+  if (hasFilter && lowRarityCoins > 0) {
+    coinsGained += Math.round(lowRarityCoins * 0.25);
   }
 
-  // Alchemical Transmutation Prestige Upgrade: bonus coins & chance for shards
+  // Alchemical Transmutation: bonus low-rarity coins & shard procs only.
   const transLevel = s.prestigeUpgrades?.transmutation ?? 0;
   if (transLevel > 0) {
-    coinsGained = Math.round(coinsGained * (1 + transLevel * 0.15));
+    coinsGained += Math.round(lowRarityCoins * (transLevel * 0.15));
     for (let i = 0; i < rollCount; i++) {
-      if (Math.random() < 0.01 * transLevel) {
+      if (rng() < 0.01 * transLevel) {
         shardsGained += 1;
       }
     }
+  }
+
+  // Offline Fortune only modifies rewards generated from the offline vault.
+  if (source === 'offline' && (s.prestigeUpgrades?.offlineFortune ?? 0) > 0) {
+    coinsGained = Math.round(coinsGained * (1 + (s.prestigeUpgrades.offlineFortune * 0.25)));
+  }
+
+  // Offline Overdrive was intended to improve offline rewards, not online rolls.
+  if (source === 'offline' && (s.prestigeUpgrades?.offlineOverdrive ?? 0) > 0) {
+    coinsGained = Math.round(coinsGained * (1 + (s.prestigeUpgrades.offlineOverdrive * 0.50)));
   }
 
   s.coins += coinsGained;
@@ -268,10 +304,22 @@ export async function applyRolls(
   s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
   s.lifetimeShards = (s.lifetimeShards ?? 0) + shardsGained;
 
-  // Singularity Tithe Prestige Upgrade: passive cosmic dust every 200 rolls
+  // Singularity Tithe: award every threshold crossed, including large offline batches.
   const titheLevel = s.prestigeUpgrades?.singularityTithe ?? 0;
-  if (titheLevel > 0 && Math.floor((s.totalRolls - rollCount) / (200 / titheLevel)) < Math.floor(s.totalRolls / (200 / titheLevel))) {
-    s.cosmicDust = (s.cosmicDust ?? 0) + 1;
+  if (titheLevel > 0) {
+    const interval = Math.max(1, Math.floor(200 / titheLevel));
+    const before = Math.floor((s.totalRolls - rollCount) / interval);
+    const after = Math.floor(s.totalRolls / interval);
+    if (after > before) s.cosmicDust = (s.cosmicDust ?? 0) + (after - before);
+  }
+
+  // Mastery Engine: permanent Mastery Point income from sustained rolling.
+  const masteryEngineLevel = s.prestigeUpgrades?.masteryEngine ?? 0;
+  if (masteryEngineLevel > 0) {
+    const interval = Math.max(1, Math.floor(100 / masteryEngineLevel));
+    const before = Math.floor((s.totalRolls - rollCount) / interval);
+    const after = Math.floor(s.totalRolls / interval);
+    if (after > before) s.masteryPoints = (s.masteryPoints ?? 0) + (after - before);
   }
 
   // Celestial Auto-Buyer Prestige Upgrade: auto-buy cheapest affordable upgrade
@@ -361,7 +409,7 @@ export async function claimOffline(): Promise<RollResponse> {
   if (s.offlineRolls <= 0) throw new Error('No offline rolls waiting.');
   const batches = s.offlineRolls;
   s.offlineRolls = 0;
-  const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained } = await applyRolls(s, batches);
+  const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained } = await applyRolls(s, batches, undefined, 'offline');
   const now = Date.now();
   s.lastRollAt = now;
   s.lastSeenAt = now;
@@ -522,8 +570,13 @@ export async function claimQuest(type: 'daily' | 'weekly', id: string): Promise<
   s.questsCompleted = (s.questsCompleted ?? 0) + 1;
   s.coins += quest.rewardCoins;
   s.shards = (s.shards ?? 0) + (quest.rewardShards ?? 0);
+  const oldLevel = s.level || 1;
   s.xp += quest.rewardXp ?? 0;
-  s.level = 1 + Math.floor(s.xp / 100);
+  const levelInfo = calculateLevelFromXp(s.xp);
+  s.level = levelInfo.level;
+  if (s.level > oldLevel) {
+    s.masteryPoints = (s.masteryPoints ?? 0) + (s.level - oldLevel);
+  }
 
   if (quest.rewardTokens && quest.rewardTokens > 0) {
     const username = context.username ?? `reddit-user-${(context.userId ?? 'unknown').slice(-8)}`;
@@ -597,11 +650,11 @@ export async function buyPrestigeUpgrade(id: PrestigeUpgradeId): Promise<PlayerS
 
 export async function sacrificeToAltar(coins: number, shards: number): Promise<{ state: PlayerState; altarLeveledUp: boolean; luckSurgeExtended: boolean }> {
   const s = await settleOffline(await loadRaw());
-  const numCoins = Math.max(0, Math.floor(coins || 0));
-  const numShards = Math.max(0, Math.floor(shards || 0));
+  const numCoins = finiteNonNegativeInteger(coins);
+  const numShards = finiteNonNegativeInteger(shards);
 
-  if (numCoins <= 0 && numShards <= 0) {
-    throw new Error('Must sacrifice at least 100 Coins or 1 Shard.');
+  if (numCoins < 100 && numShards <= 0) {
+    throw new Error('Sacrifice at least 100 Coins or 1 Shard.');
   }
   if (s.coins < numCoins) throw new Error('Not enough Coins to sacrifice.');
   if ((s.shards ?? 0) < numShards) throw new Error('Not enough Shards to sacrifice.');
@@ -656,6 +709,7 @@ export async function upgradeMasterySkill(skillId: MasterySkillId): Promise<Play
       celestialSurge: 0,
       pityAccelerant: 0,
       apexFortune: 0,
+      celestialVolley: 0,
     };
   }
 
@@ -725,12 +779,20 @@ export async function activateTurbo(): Promise<PlayerState> {
   return s;
 }
 
-export function recordSocialVisit(s: PlayerState) {
+export async function recordSocialVisit(s: PlayerState) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (s.socialActivityDate === today) return;
+  s.socialActivityDate = today;
   advanceQuestProgress(s, 'social', 1);
-  void save(s);
+  await save(s);
 }
 
-export function recordShareAction(s: PlayerState) {
+export async function recordShareAction(s: PlayerState) {
+  const now = Date.now();
+  if (s.lastShareAt && now - s.lastShareAt < 30_000) {
+    throw new Error('Please wait before sharing another orb.');
+  }
+  s.lastShareAt = now;
   advanceQuestProgress(s, 'share', 1);
-  void save(s);
+  await save(s);
 }
