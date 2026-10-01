@@ -132,7 +132,7 @@ export const PREMIUM_BOOSTERS: Record<PremiumBoosterId, PremiumBoosterInfo> = {
   hyperdrive: { name: 'Hyperdrive', desc: 'Cuts roll cooldown to 25% of its normal value while active.', costShards: 75, durationMs: 30 * 60 * 1000 },
   barrage: { name: 'Orb Barrage', desc: 'Adds 25 extra orbs to every activation while active.', costShards: 100, durationMs: 30 * 60 * 1000 },
   prosperity: { name: 'Prosperity Field', desc: 'Multiplies Coin rewards by 10× while active.', costShards: 50, durationMs: 30 * 60 * 1000 },
-  ascension: { name: 'Ascension', desc: 'Multiplies roll XP by 10× and sustained-progression gains by 5× while active.', costShards: 75, durationMs: 30 * 60 * 1000 },
+  ascension: { name: 'Ascension', desc: 'Multiplies roll XP by 10× while active.', costShards: 75, durationMs: 30 * 60 * 1000 },
 };
 
 export const AUTOMATIONS: Record<AutomationId, { name: string; desc: string; costShards: number }> = {
