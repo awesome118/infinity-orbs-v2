@@ -58,8 +58,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               <Wrench className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-black text-white">Developer Debug Menu</h3>
-              <p className="text-xs text-slate-400">Easy to remove modular debug tools</p>
+              <h3 className="text-base font-black text-white">Admin Console</h3>
+              <p className="text-xs text-slate-400">Restricted server-side to the Infinity Orbs administrator.</p>
             </div>
           </div>
           <button
