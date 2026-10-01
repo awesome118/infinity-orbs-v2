@@ -2,7 +2,7 @@ import { context, redis } from './devvit-mock.js';
 import type { Guild, LeaderboardEntry, Achievement, GuildMessage, GuildPerkId, WorldEvent } from '../shared/social.js';
 import { ACHIEVEMENTS, CHALLENGE_POOL, challengeForWeek, COMMUNITY_WORLD_EVENT, createInitialGuildBoss } from '../shared/social.js';
 import type { PlayerState } from '../shared/game.js';
-import { cooldownMs } from '../shared/game.js';
+import { cooldownMs, grantFreeShards } from '../shared/game.js';
 
 const user = () => context.userId ?? 'unknown';
 const username = () => context.username ?? `reddit-user-${user().slice(-8)}`;
@@ -518,11 +518,11 @@ export async function claimAchievement(s: PlayerState, id: string) {
   if (s.claimedAchievements.includes(id)) throw new Error('Achievement reward already claimed.');
   s.claimedAchievements.push(id);
   s.coins += achievement.rewardCoins;
-  s.shards = (s.shards ?? 0) + (achievement.rewardShards ?? 0);
+  const rewardShards = grantFreeShards(s, achievement.rewardShards ?? 0);
   const raw = await redis.get(`player:${user()}`);
   if (!raw) throw new Error('Player state unavailable.');
   await redis.set(`player:${user()}`, JSON.stringify(s));
-  return { state: s, rewardCoins: achievement.rewardCoins, rewardShards: achievement.rewardShards ?? 0 };
+  return { state: s, rewardCoins: achievement.rewardCoins, rewardShards };
 }
 
 export function shareText(s: PlayerState, rarity: number) {
