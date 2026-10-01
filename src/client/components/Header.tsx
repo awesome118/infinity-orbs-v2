@@ -1,7 +1,7 @@
 import React from 'react';
 import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { calculateLevelFromXp, LEVEL_MILESTONES } from '../../shared/game.js';
+import { calculateLevelFromXp, LEVEL_MILESTONES, getLevelBenefits } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface HeaderProps {
@@ -26,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
   const fmt = (n: number) => n.toLocaleString();
   const levelInfo = calculateLevelFromXp(state.xp || 0);
   const nextMilestone = LEVEL_MILESTONES.find(m => m.level > levelInfo.level);
+  const levelBenefits = getLevelBenefits(levelInfo.level);
 
   return (
     <header className="bg-slate-900/90 border-b border-slate-800/80 backdrop-blur-md sticky top-0 z-30 px-4 py-3">
@@ -48,7 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 onClick={onOpenProfile}
                 className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gradient-to-r from-purple-500/30 to-indigo-500/30 text-purple-200 border border-purple-400/40 hover:border-purple-300 flex items-center gap-1 shadow-sm cursor-pointer transition-all"
-                title={`Level ${levelInfo.level} Perks: +${((levelInfo.level - 1) * 1.5).toFixed(1)}% Luck, +${((levelInfo.level - 1) * 3)}% Coins`}
+                title={`Level ${levelInfo.level} Perks: ${levelBenefits.luckMultiplier.toFixed(2)}× Luck, ${levelBenefits.coinsMultiplier.toFixed(2)}× Coins, +${levelBenefits.bonusBalls} Balls`}
               >
                 <Star className="w-2.5 h-2.5 text-amber-300 fill-current animate-spin" style={{ animationDuration: '10s' }} />
                 <span>Lv {levelInfo.level}</span>
