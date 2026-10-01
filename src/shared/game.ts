@@ -280,7 +280,7 @@ export function activateGlobalBoosterStack(
 
   // A stack adds exactly 30 minutes of charge. When that fills the current
   // tier's bar, the booster tiers up. Overflow carries into the new tier.
-  while (tier < GLOBAL_BOOSTER_MAX_TIER && remainingMs > tier * GLOBAL_BOOSTER_STACK_MS) {
+  while (tier < GLOBAL_BOOSTER_MAX_TIER && remainingMs >= tier * GLOBAL_BOOSTER_STACK_MS) {
     tier++;
   }
 
