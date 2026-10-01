@@ -416,6 +416,7 @@ export interface PlayerState {
   freeShardsEarnedToday?: number;
   lastFreeShardReset?: string;
   globalBoosterCredits?: number;
+  globalBoosters?: GlobalBoosterSnapshot;
   lastFrenzyDate?: string;
   lastFrenzyClaimDate?: string;
   communityRewardClaimedTier?: number;
@@ -914,6 +915,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     freeShardsEarnedToday: 0,
     lastFreeShardReset: today,
     globalBoosterCredits: 0,
+    globalBoosters: createInitialGlobalBoosters(now),
     lastFrenzyDate: '',
     lastFrenzyClaimDate: '',
     communityRewardClaimedTier: 0,
@@ -1097,7 +1099,9 @@ export function effectiveOfflineTickMs(s: PlayerState): number {
 
 export function critMultiplier(s: PlayerState): number {
   const masteryCritPower = (s.masterySkills?.critMastery ?? 0) * 0.30;
-  return 2.0 + (s.upgrades.critPower ?? 0) * 0.25 + masteryCritPower;
+  const globalCrit = s.globalBoosters?.crit;
+  return 2.0 + (s.upgrades.critPower ?? 0) * 0.25 + masteryCritPower +
+    (globalCrit ? globalBoosterCritDamageBonus(globalCrit) : 0);
 }
 
 export function cooldownMs(s: PlayerState, isAuto = false): number {
@@ -1122,6 +1126,10 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
   if (s.turboRollUntil && Date.now() < s.turboRollUntil) {
     const turboReduction = (s.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 0.65 : 0.75;
     cd = Math.max(600, Math.round(cd * turboReduction));
+  }
+  const globalSpeed = s.globalBoosters?.speed;
+  if (globalSpeed) {
+    cd = Math.max(300, Math.round(cd * globalBoosterSpeedMultiplier(globalSpeed)));
   }
   if (isPremiumBoosterActive(s, 'hyperdrive')) {
     cd = Math.max(400, Math.round(cd * 0.25));
@@ -1188,6 +1196,9 @@ export function luckMultiplier(s: PlayerState): number {
   // ALL SOURCES OF LUCK ARE MULTIPLICATIVE WITH EACH OTHER!
   const onlineLuck = onlinePlayerLuckMultiplier(s.onlinePlayers ?? 1);
   const premiumLuck = isPremiumBoosterActive(s, 'fortune') ? 10 : 1;
+  const globalLuckState = s.globalBoosters?.luck;
+  const globalLuck = globalLuckState ? globalBoosterLuckMultiplier(globalLuckState) : 1;
+
   const total =
     upgradeLuck *
     prestigeLuck *
@@ -1197,7 +1208,8 @@ export function luckMultiplier(s: PlayerState): number {
     guildLuck *
     resonanceLuck *
     onlineLuck *
-    premiumLuck;
+    premiumLuck *
+    globalLuck;
 
   return Math.round(total * 100) / 100;
 }
