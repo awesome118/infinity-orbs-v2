@@ -47,7 +47,7 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   },
   shardAttunement: {
     name: 'Shard Resonance',
-    desc: '+0.5% shard drop chance on rolls per level.',
+    desc: '+0.1% shard drop chance on rolls per level.',
     maxLevel: 25,
     costMultiplier: 2,
   },
