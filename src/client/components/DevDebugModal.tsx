@@ -4,7 +4,7 @@ import {
   Ban, UserX, VolumeX, Volume2, CheckCircle2, RefreshCw, Flame,
   Database, Wand2, Trash2, Gauge, ListRestart, Save, Power,
 } from 'lucide-react';
-import type { PlayerState, RollResponse } from '../../shared/game.js';
+import type { RollResponse } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface DevDebugModalProps {
