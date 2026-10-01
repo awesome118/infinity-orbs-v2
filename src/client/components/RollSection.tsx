@@ -28,6 +28,7 @@ import {
   coinsForRarity,
 } from '../../shared/game.js';
 import { sound } from '../sound.js';
+import { OrbOrbit } from './OrbOrbit.js';
 
 interface RollSectionProps {
   state: PlayerState;
@@ -229,14 +230,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
     }
   };
 
-  // Satellite orbiting orbs calculation
-  const hasMultipleOrbs = lastBatch && lastBatch.length > 1;
-  const maxSatellites = 8;
-  const satellitesToRender = hasMultipleOrbs
-    ? lastBatch.slice(0, maxSatellites)
-    : [];
-  const extraBatchCount = hasMultipleOrbs ? Math.max(0, lastBatch.length - maxSatellites) : 0;
-  // Radius of the orbit path (clears the central orb with ample buffer space)
+  const hasMultipleOrbs = lastBatch.length > 1;
   const orbitRadius = 152;
 
   return (
@@ -290,79 +284,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
         />
 
         {/* Orbiting Satellite Orbs Container (Concentric with central orb) */}
-        {hasMultipleOrbs && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            {/* Circular Orbit Path Guide Line */}
-            <div
-              className="absolute rounded-full border border-dashed border-slate-700/50 pointer-events-none"
-              style={{
-                width: `${orbitRadius * 2}px`,
-                height: `${orbitRadius * 2}px`,
-              }}
-            />
-
-            {/* The Rotating Anchor Ring */}
-            <div className="relative w-0 h-0 animate-orbit-ring pointer-events-auto">
-              {satellitesToRender.map((satelliteOrb, idx) => {
-                const total = satellitesToRender.length + (extraBatchCount > 0 ? 1 : 0);
-                const angle = (idx / total) * 2 * Math.PI - Math.PI / 2;
-                const x = Math.round(Math.cos(angle) * orbitRadius);
-                const y = Math.round(Math.sin(angle) * orbitRadius);
-                const info = getOrbInfo(satelliteOrb.rarity);
-                const isWinner = displayOrb && satelliteOrb.rarity === displayOrb.rarity;
-
-                return (
-                  <div
-                    key={idx}
-                    className="absolute flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 transition-transform duration-500"
-                    style={{
-                      left: `${x}px`,
-                      top: `${y}px`,
-                    }}
-                  >
-                    {/* Counter-rotate each satellite orb chip so labels stay upright */}
-                    <div
-                      className={`animate-orbit-counter flex flex-col items-center justify-center rounded-full transition-all duration-300 cursor-pointer ${
-                        isWinner
-                          ? 'w-10 h-10 ring-2 ring-amber-400 shadow-[0_0_18px_rgba(251,191,36,0.6)] scale-110'
-                          : 'w-8 h-8 border border-white/20 shadow-md hover:scale-110'
-                      }`}
-                      style={{
-                        background: info.bgGradient,
-                      }}
-                      title={`${info.tier}: 1 / ${satelliteOrb.rarity.toLocaleString()}`}
-                    >
-                      {isWinner && (
-                        <Crown className="w-2.5 h-2.5 text-amber-300 drop-shadow mb-0.5" />
-                      )}
-                      <span className="text-[9px] font-black text-white font-mono leading-none drop-shadow">
-                        {formatCompactRarity(satelliteOrb.rarity)}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* Extra Count Satellite Pill if batch is larger than displayed slots */}
-              {extraBatchCount > 0 && (
-                <div
-                  className="absolute flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2"
-                  style={{
-                    left: `${Math.round(Math.cos(((satellitesToRender.length) / (satellitesToRender.length + 1)) * 2 * Math.PI - Math.PI / 2) * orbitRadius)}px`,
-                    top: `${Math.round(Math.sin(((satellitesToRender.length) / (satellitesToRender.length + 1)) * 2 * Math.PI - Math.PI / 2) * orbitRadius)}px`,
-                  }}
-                >
-                  <div
-                    className="animate-orbit-counter w-8 h-8 rounded-full bg-slate-900/95 border border-purple-500/40 text-purple-300 text-[10px] font-black flex items-center justify-center shadow-lg"
-                    title={`${extraBatchCount} more orbs rolled in this batch`}
-                  >
-                    +{extraBatchCount}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {hasMultipleOrbs && <OrbOrbit orbs={lastBatch} radius={orbitRadius} />}
 
         {/* Celestial Sonar Radar Pulse Wave on Rare Drops */}
         {sonarPinging && (
