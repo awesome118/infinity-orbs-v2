@@ -39,6 +39,8 @@ import {
   setCommunityEventConfig,
 } from './social.js';
 import { context, reddit } from './devvit-mock.js';
+import { payments } from '@devvit/web/server';
+import type { Order, PaymentHandlerResponse } from '@devvit/web/server';
 
 export function createApp() {
   const app = express();
@@ -76,6 +78,48 @@ export function createApp() {
   });
 
   // Devvit custom-post entrypoints. These are called by Reddit's moderator menu and install trigger.
+  app.post('/internal/payments/fulfill', async (req, res) => {
+    try {
+      const order = req.body as Order;
+      if (order.status !== 'PAID' || !order.userId || !order.id) {
+        return res.json<PaymentHandlerResponse>({ success: false, reason: 'Order is not payable.' });
+      }
+      const skus = order.products.map(product => product.sku);
+      if (skus.length !== 1) {
+        return res.json<PaymentHandlerResponse>({ success: false, reason: 'Infinity Orbs purchases must contain one product.' });
+      }
+      await grantPurchasedPack(order.userId, skus[0], order.id);
+      return res.json<PaymentHandlerResponse>({ success: true });
+    } catch (e: any) {
+      console.error('Payment fulfillment failed:', e);
+      return res.json<PaymentHandlerResponse>({
+        success: false,
+        reason: e?.message || 'Unable to fulfill purchase.',
+      });
+    }
+  });
+
+  app.post('/internal/payments/refund', async (req, res) => {
+    try {
+      const order = req.body as Order;
+      if (!order.userId || !order.id) {
+        return res.json<PaymentHandlerResponse>({ success: false, reason: 'Refund order is missing an identity.' });
+      }
+      const skus = order.products.map(product => product.sku);
+      if (skus.length !== 1) {
+        return res.json<PaymentHandlerResponse>({ success: false, reason: 'Refund must identify one product.' });
+      }
+      await refundPurchasedPack(order.userId, skus[0], order.id);
+      return res.json<PaymentHandlerResponse>({ success: true });
+    } catch (e: any) {
+      console.error('Payment refund failed:', e);
+      return res.json<PaymentHandlerResponse>({
+        success: false,
+        reason: e?.message || 'Unable to process refund.',
+      });
+    }
+  });
+
   app.post('/internal/menu/post-create', async (_req, res) => {
     try {
       const subredditName = context.subredditName;
@@ -129,6 +173,19 @@ export function createApp() {
       await recordSocialVisit(s);
       res.json(gd);
     } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch guilds.' }); }
+  });
+
+  app.get('/api/global-boosters', async (_req, res) => {
+    try { res.json(await getGlobalBoosters()); }
+    catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch World Boosters.' }); }
+  });
+
+  app.get('/api/products', async (_req, res) => {
+    try {
+      res.json(await payments.getProducts());
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Failed to fetch products.' });
+    }
   });
 
   app.get('/api/online', async (_req, res) => {
@@ -264,6 +321,16 @@ export function createApp() {
     try { res.json({ state: await buyCosmetic(req.body?.id) }); } catch (e) { badRequest(res, e, 'Cosmetic purchase failed.'); }
   });
 
+  app.post('/api/global-boosters/activate', async (req, res) => {
+    try {
+      const id = req.body?.id;
+      const useCredit = req.body?.useCredit === true;
+      const validIds = ['luck', 'speed', 'crit'];
+      if (!validIds.includes(id)) return res.status(400).json({ error: 'Invalid World Booster.' });
+      res.json(await activateGlobalBooster(id, useCredit));
+    } catch (e) { badRequest(res, e, 'Failed to activate World Booster.'); }
+  });
+
   app.post('/api/boosters/activate', async (req, res) => {
     try {
       const id = req.body?.id;
@@ -286,6 +353,21 @@ export function createApp() {
     try {
       res.json(await claimCommunityReward());
     } catch (e) { badRequest(res, e, 'Could not claim community reward.'); }
+  });
+
+  app.post('/api/frenzy/start', async (_req, res) => {
+    try { res.json(await startOrbFrenzy()); }
+    catch (e) { badRequest(res, e, 'Could not start Orb Frenzy.'); }
+  });
+
+  app.get('/api/frenzy/info', async (_req, res) => {
+    try { res.json(await getOrbFrenzyInfo()); }
+    catch (e) { badRequest(res, e, 'Could not load Orb Frenzy.'); }
+  });
+
+  app.post('/api/frenzy/claim', async (_req, res) => {
+    try { res.json(await claimOrbFrenzy()); }
+    catch (e) { badRequest(res, e, 'Could not claim Orb Frenzy.'); }
   });
 
   app.post('/api/turbo/activate', async (_req, res) => {
