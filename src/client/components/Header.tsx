@@ -1,7 +1,7 @@
 import React from 'react';
-import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star } from 'lucide-react';
+import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star, Users } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { calculateLevelFromXp, LEVEL_MILESTONES, getLevelBenefits } from '../../shared/game.js';
+import { calculateLevelFromXp, LEVEL_MILESTONES, getLevelBenefits, onlinePlayerLuckMultiplier } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface HeaderProps {
@@ -84,6 +84,16 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Currencies & Global Actions */}
         <div className="flex items-center gap-2 sm:gap-4 ml-auto">
+          {/* Live player count / social luck */}
+          <div
+            className="hidden sm:flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-2.5 py-1.5 text-[10px] font-black text-indigo-200"
+            title="Players currently active in this Reddit game installation. More players give everyone a logarithmic Luck bonus."
+          >
+            <Users className="w-3.5 h-3.5 text-indigo-300" />
+            <span>{(state.onlinePlayers ?? 1).toLocaleString()} Online</span>
+            <span className="text-indigo-300/70">×{onlinePlayerLuckMultiplier(state.onlinePlayers ?? 1).toFixed(2)} Luck</span>
+          </div>
+
           {/* Currencies */}
           <div className="flex items-center gap-2 bg-slate-950/70 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-semibold">
             {/* Coins */}
