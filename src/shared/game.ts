@@ -414,6 +414,7 @@ export interface PlayerState {
   collectionValue: number;
   lifetimeCollectionValue: number;
   collection: Record<string, number>;
+  collectionCount?: number;
   lastRollAt: number | null;
   lastSeenAt: number;
   offlineRolls: number;
