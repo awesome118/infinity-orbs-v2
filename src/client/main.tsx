@@ -79,6 +79,7 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
 
 export function App() {
   const [state, setState] = useState<PlayerState | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
   const [lastOrb, setLastOrb] = useState<Orb | null>(null);
   const [lastBatch, setLastBatch] = useState<Orb[]>([]);
   const [batchSummary, setBatchSummary] = useState<{
@@ -128,6 +129,7 @@ export function App() {
       ]);
 
       setState(me);
+      setAuthRequired(false);
       setIsAdmin(adminStatus.isAdmin === true);
 
       // A banned non-admin only needs their own state so the ban screen can load.
@@ -146,6 +148,12 @@ export function App() {
       setAchievementsData(ach);
       if (we) setWorldEvent(we);
     } catch (e: any) {
+      if (e?.message === 'REDDIT_LOGIN_REQUIRED') {
+        setAuthRequired(true);
+        setState(null);
+        setIsAdmin(false);
+        return;
+      }
       console.error('Refresh error:', e);
     }
   }, []);
@@ -734,6 +742,27 @@ export function App() {
     void refreshAll();
     return res;
   };
+
+  if (authRequired) {
+    return (
+      <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
+        <div className="w-full max-w-lg">
+          <div className="bg-slate-900 border border-amber-500/30 rounded-3xl p-8 shadow-2xl text-center">
+            <div className="mx-auto w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
+              <Shield className="w-8 h-8 text-amber-300" />
+            </div>
+            <h1 className="mt-5 text-2xl font-black text-white">Reddit Login Required</h1>
+            <p className="mt-2 text-sm text-slate-400">
+              You must be logged into a Reddit account to play Infinity Orbs.
+            </p>
+            <p className="mt-4 text-xs text-slate-500">
+              Your save is tied to your Reddit account, so anonymous sessions are not given a shared save.
+            </p>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   if (!state) {
     return (
