@@ -287,7 +287,7 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
 
     state.shards = (state.shards ?? 0) + pack.shards;
     state.purchasedShards = (state.purchasedShards ?? 0) + pack.shards;
-    state.lifetimeShards = (state.lifetimeShards ?? 0) + pack.globalBoosterCredits * 0 + pack.shards;
+    state.lifetimeShards = (state.lifetimeShards ?? 0) + pack.shards;
     state.globalBoosterCredits = (state.globalBoosterCredits ?? 0) + pack.globalBoosterCredits;
     const receipt: PaymentReceipt = {
       status: 'fulfilled',
