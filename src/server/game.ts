@@ -146,6 +146,7 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
       return false;
     }
     state.shards = (state.shards ?? 0) + pack.shards;
+    state.purchasedShards = (state.purchasedShards ?? 0) + pack.shards;
     state.lifetimeShards = (state.lifetimeShards ?? 0) + pack.shards;
     state.globalBoosterCredits = (state.globalBoosterCredits ?? 0) + pack.globalBoosterCredits;
     state.paymentReceipts[orderId] = 'fulfilled';
@@ -178,8 +179,11 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
       await txn.unwatch();
       return;
     }
-    state.shards = Math.max(0, (state.shards ?? 0) - pack.shards);
-    state.globalBoosterCredits = Math.max(0, (state.globalBoosterCredits ?? 0) - pack.globalBoosterCredits);
+    const refundableShards = Math.min(state.purchasedShards ?? 0, pack.shards);
+    state.shards = Math.max(0, (state.shards ?? 0) - refundableShards);
+    state.purchasedShards = Math.max(0, (state.purchasedShards ?? 0) - refundableShards);
+    const refundableCredits = Math.min(state.globalBoosterCredits ?? 0, pack.globalBoosterCredits);
+    state.globalBoosterCredits = Math.max(0, (state.globalBoosterCredits ?? 0) - refundableCredits);
     state.paymentReceipts[orderId] = 'refunded';
     await txn.multi();
     await txn.set(pkey, JSON.stringify(state));
