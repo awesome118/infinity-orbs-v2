@@ -183,6 +183,145 @@ export function onlinePlayerLuckMultiplier(onlinePlayers: number): number {
   return Math.round((1 + Math.log2(count) * 0.10) * 100) / 100;
 }
 
+export type GlobalBoosterId = 'luck' | 'speed' | 'crit';
+
+export interface GlobalBoosterInfo {
+  name: string;
+  desc: string;
+  costShards: number;
+}
+
+export interface GlobalBoosterState {
+  tier: number;
+  remainingMs: number;
+  updatedAt: number;
+}
+
+export type GlobalBoosterSnapshot = Record<GlobalBoosterId, GlobalBoosterState>;
+
+export const GLOBAL_BOOSTER_STACK_MS = 30 * 60 * 1000;
+export const GLOBAL_BOOSTER_MAX_TIER = 10;
+export const GLOBAL_BOOSTER_DRAIN_MULTIPLIER = (tier: number): number =>
+  Math.max(1, 1 + (Math.max(1, Math.min(GLOBAL_BOOSTER_MAX_TIER, tier)) - 1) * 0.5);
+
+export const GLOBAL_BOOSTERS: Record<GlobalBoosterId, GlobalBoosterInfo> = {
+  luck: {
+    name: 'World Luck',
+    desc: 'Improves Luck for everyone. Each tier multiplies the base Luck boost; Tier 5 is 5× the base boost.',
+    costShards: 25,
+  },
+  speed: {
+    name: 'World Speed',
+    desc: 'Reduces roll cooldown for everyone. Higher tiers are stronger but burn through the timer faster.',
+    costShards: 25,
+  },
+  crit: {
+    name: 'World Crit',
+    desc: 'Improves Crit Chance and Crit Damage for everyone.',
+    costShards: 25,
+  },
+};
+
+export function createInitialGlobalBoosters(now = Date.now()): GlobalBoosterSnapshot {
+  return {
+    luck: { tier: 0, remainingMs: 0, updatedAt: now },
+    speed: { tier: 0, remainingMs: 0, updatedAt: now },
+    crit: { tier: 0, remainingMs: 0, updatedAt: now },
+  };
+}
+
+export function globalBoosterLuckMultiplier(state: GlobalBoosterState): number {
+  if (state.tier <= 0 || state.remainingMs <= 0) return 1;
+  return 1 + 0.20 * state.tier;
+}
+
+export function globalBoosterSpeedMultiplier(state: GlobalBoosterState): number {
+  if (state.tier <= 0 || state.remainingMs <= 0) return 1;
+  return Math.max(0.35, 1 - 0.05 * state.tier);
+}
+
+export function globalBoosterCritChanceBonus(state: GlobalBoosterState): number {
+  if (state.tier <= 0 || state.remainingMs <= 0) return 0;
+  return 0.02 * state.tier;
+}
+
+export function globalBoosterCritDamageBonus(state: GlobalBoosterState): number {
+  if (state.tier <= 0 || state.remainingMs <= 0) return 0;
+  return 0.10 * state.tier;
+}
+
+export function decayGlobalBoosterState(state: GlobalBoosterState, now = Date.now()): GlobalBoosterState {
+  if (state.remainingMs <= 0 || state.tier <= 0) {
+    return { tier: 0, remainingMs: 0, updatedAt: now };
+  }
+  const elapsed = Math.max(0, now - (state.updatedAt || now));
+  const drained = state.remainingMs - elapsed * GLOBAL_BOOSTER_DRAIN_MULTIPLIER(state.tier);
+  return drained <= 0
+    ? { tier: 0, remainingMs: 0, updatedAt: now }
+    : { ...state, remainingMs: drained, updatedAt: now };
+}
+
+export function activateGlobalBoosterStack(
+  state: GlobalBoosterState,
+  now = Date.now(),
+): GlobalBoosterState {
+  const decayed = decayGlobalBoosterState(state, now);
+  const nextRemaining = decayed.remainingMs + GLOBAL_BOOSTER_STACK_MS;
+  const nextTier = Math.min(
+    GLOBAL_BOOSTER_MAX_TIER,
+    decayed.tier <= 0 ? 1 : decayed.tier + 1,
+  );
+  return {
+    tier: nextTier,
+    remainingMs: nextRemaining,
+    updatedAt: now,
+  };
+}
+
+export function globalBoosterProgress(state: GlobalBoosterState): number {
+  if (state.remainingMs <= 0 || state.tier <= 0) return 0;
+  const cycle = state.remainingMs % GLOBAL_BOOSTER_STACK_MS;
+  return Math.round((cycle === 0 ? 1 : cycle / GLOBAL_BOOSTER_STACK_MS) * 100);
+}
+
+export interface PurchasePack {
+  sku: string;
+  name: string;
+  description: string;
+  priceGold: number;
+  shards: number;
+  globalBoosterCredits: number;
+}
+
+export const PURCHASE_PACKS: PurchasePack[] = [
+  {
+    sku: 'shards-100',
+    name: '100 Shards + 1 World Boost',
+    description: '100 Shards and 1 free World Booster activation.',
+    priceGold: 50,
+    shards: 100,
+    globalBoosterCredits: 1,
+  },
+  {
+    sku: 'shards-600',
+    name: '600 Shards + 8 World Boosts',
+    description: '600 Shards and 8 free World Booster activations.',
+    priceGold: 250,
+    shards: 600,
+    globalBoosterCredits: 8,
+  },
+  {
+    sku: 'shards-1400',
+    name: '1,400 Shards + 20 World Boosts',
+    description: '1,400 Shards and 20 free World Booster activations.',
+    priceGold: 500,
+    shards: 1_400,
+    globalBoosterCredits: 20,
+  },
+];
+
+export const ORB_FRENZY_DAILY_KEY_OFFSET = 0;
+
 export type PrestigeUpgradeId =
   | 'permLuck'
   | 'permSpeed'
@@ -276,6 +415,10 @@ export interface PlayerState {
   communityRewardClaimedAt?: number;
   freeShardsEarnedToday?: number;
   lastFreeShardReset?: string;
+  globalBoosterCredits?: number;
+  lastFrenzyDate?: string;
+  lastFrenzyClaimDate?: string;
+  communityRewardClaimedTier?: number;
   currentRunRolls?: number;
   questsCompleted?: number;
   guildContribution?: number;
@@ -770,6 +913,10 @@ export function createInitialState(now = Date.now()): PlayerState {
     communityRewardClaimedAt: 0,
     freeShardsEarnedToday: 0,
     lastFreeShardReset: today,
+    globalBoosterCredits: 0,
+    lastFrenzyDate: '',
+    lastFrenzyClaimDate: '',
+    communityRewardClaimedTier: 0,
     currentRunRolls: 0,
     questsCompleted: 0,
     guildContribution: 0,
