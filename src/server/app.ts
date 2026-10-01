@@ -1,5 +1,5 @@
 import express from 'express';
-import { debugRouter } from './debug.js';
+import { debugRouter, isDebugUser } from './debug.js';
 import {
   getMe,
   roll,
@@ -79,6 +79,32 @@ export function createApp() {
     };
     res.once('finish', releaseOnce);
     res.once('close', releaseOnce);
+    next();
+  });
+
+  // Game bans are enforced server-side. Banned players can still load /api/me
+  // so the client can render the ban screen, and the admin identity can still
+  // use /api/dev to unban or otherwise recover the account.
+  app.use('/api', async (req, res, next) => {
+    if (req.path === '/me' || req.path === '/dev' || req.path.startsWith('/dev/')) return next();
+
+    try {
+      const { getGameBanStatus } = await import('./game.js');
+      const ban = await getGameBanStatus();
+      if (ban && !isDebugUser()) {
+        return res.status(403).json({
+          error: ban.reason || 'Your Infinity Orbs account is banned.',
+          gameBan: {
+            active: true,
+            bannedAt: ban.bannedAt,
+            bannedUntil: ban.bannedUntil,
+            reason: ban.reason,
+          },
+        });
+      }
+    } catch (e) {
+      console.error('Game ban check failed:', e);
+    }
     next();
   });
 
