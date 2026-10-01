@@ -60,7 +60,100 @@ import {
 
 
 const key = () => `player:${context.userId ?? 'unknown'}`;
+const GAME_BANS_KEY = 'io:game-bans';
 const ONLINE_PLAYERS_KEY = 'io:online:players';
+
+export interface GameBanRecord {
+  userId: string;
+  username: string;
+  bannedAt: number;
+  bannedUntil: number | null;
+  reason: string;
+  bannedBy: string;
+}
+
+export interface GameBanStatus extends GameBanRecord {
+  active: true;
+}
+
+async function readGameBans(): Promise<Record<string, GameBanRecord>> {
+  const raw = await redis.get(GAME_BANS_KEY);
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Record<string, GameBanRecord>;
+  } catch {
+    return {};
+  }
+}
+
+async function writeGameBans(bans: Record<string, GameBanRecord>): Promise<void> {
+  await redis.set(GAME_BANS_KEY, JSON.stringify(bans));
+}
+
+export async function getGameBanStatus(userId = context.userId ?? ''): Promise<GameBanStatus | null> {
+  if (!userId) return null;
+  const bans = await readGameBans();
+  const ban = bans[userId];
+  if (!ban) return null;
+  if (ban.bannedUntil !== null && ban.bannedUntil <= Date.now()) {
+    delete bans[userId];
+    await writeGameBans(bans);
+    return null;
+  }
+  return { ...ban, active: true };
+}
+
+export async function listGameBans(): Promise<GameBanRecord[]> {
+  const bans = await readGameBans();
+  const now = Date.now();
+  let changed = false;
+  const active: GameBanRecord[] = [];
+
+  for (const [userId, ban] of Object.entries(bans)) {
+    if (ban.bannedUntil !== null && ban.bannedUntil <= now) {
+      delete bans[userId];
+      changed = true;
+      continue;
+    }
+    active.push(ban);
+  }
+
+  if (changed) await writeGameBans(bans);
+  return active.sort((a, b) => b.bannedAt - a.bannedAt);
+}
+
+export async function banGameUser(options: {
+  userId: string;
+  username: string;
+  durationDays?: number;
+  reason?: string;
+  bannedBy?: string;
+}): Promise<GameBanStatus> {
+  const durationDays =
+    options.durationDays == null
+      ? null
+      : Math.max(1, Math.floor(Number(options.durationDays)));
+  const ban: GameBanRecord = {
+    userId: options.userId,
+    username: options.username,
+    bannedAt: Date.now(),
+    bannedUntil: durationDays === null ? null : Date.now() + durationDays * 86_400_000,
+    reason: String(options.reason ?? 'Game moderation action').slice(0, 300),
+    bannedBy: String(options.bannedBy ?? context.username ?? 'Admin').slice(0, 100),
+  };
+  const bans = await readGameBans();
+  bans[options.userId] = ban;
+  await writeGameBans(bans);
+  return { ...ban, active: true };
+}
+
+export async function unbanGameUser(userId: string): Promise<boolean> {
+  const bans = await readGameBans();
+  if (!bans[userId]) return false;
+  delete bans[userId];
+  await writeGameBans(bans);
+  return true;
+}
 const ONLINE_WINDOW_MS = 30_000;
 
 async function touchOnlinePresence(): Promise<number> {
@@ -697,7 +790,21 @@ export async function getState(): Promise<PlayerState> {
   return s;
 }
 
-export const getMe = getState;
+export async function getMe(): Promise<PlayerState> {
+  const s = await getState();
+  const ban = await getGameBanStatus();
+  if (ban) {
+    s.gameBan = {
+      active: true,
+      bannedAt: ban.bannedAt,
+      bannedUntil: ban.bannedUntil,
+      reason: ban.reason,
+    };
+  } else {
+    delete s.gameBan;
+  }
+  return s;
+}
 
 export async function checkOffline(): Promise<PlayerState> {
   const s = await loadRaw();
