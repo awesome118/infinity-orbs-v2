@@ -35,7 +35,8 @@ import { sound } from './sound.js';
 import { Header } from './components/Header.js';
 import { RollSection } from './components/RollSection.js';
 import { UpgradesSection } from './components/UpgradesSection.js';
-import { AltarAndMasterySection } from './components/AltarAndMasterySection.js';
+import { AltarSection } from './components/AltarSection.js';
+import { MasterySection } from './components/MasterySection.js';
 import { CollectionSection } from './components/CollectionSection.js';
 import { QuestsAndStreaks } from './components/QuestsAndStreaks.js';
 import { GuildsAndSocial } from './components/GuildsAndSocial.js';
@@ -51,6 +52,7 @@ type ActiveTab =
   | 'roll'
   | 'upgrades'
   | 'altar'
+  | 'mastery'
   | 'collection'
   | 'quests'
   | 'social'
@@ -187,7 +189,7 @@ export function App() {
     } finally {
       setIsRolling(false);
     }
-  }, [isRolling]);
+  }, [isRolling, state]);
 
   // Auto roll watcher (paced steadily)
   useEffect(() => {
@@ -215,6 +217,29 @@ export function App() {
       void refreshAll();
     } catch (e: any) {
       showToast(e.message || 'Upgrade failed', 'warn');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Upgrade All Standard Upgrades
+  const handleBuyAllUpgrades = async () => {
+    setBusy(true);
+    try {
+      const res = await getJson<{ state: PlayerState; totalSpent: number; upgradedCount: number }>('/api/upgrade/all', {
+        method: 'POST',
+      });
+      setState(res.state);
+      sound.playChime(523.25, 'triangle', 0.3);
+      showToast(
+        res.upgradedCount > 0
+          ? `Bought ${res.upgradedCount} upgrade level${res.upgradedCount === 1 ? '' : 's'} for ${res.totalSpent.toLocaleString()} Coins.`
+          : 'No upgrades are currently affordable.',
+        res.upgradedCount > 0 ? 'success' : 'info'
+      );
+      void refreshAll();
+    } catch (e: any) {
+      showToast(e.message || 'Upgrade All failed', 'warn');
     } finally {
       setBusy(false);
     }
@@ -593,7 +618,8 @@ export function App() {
         onToggleSound={() => setSoundEnabled(sound.toggle())}
         onOpenOdds={() => setShowOddsModal(true)}
         onClaimOffline={handleClaimOffline}
-        onOpenDevDebug={() => setShowDevModal(true)}
+        onOpenDevDebug={import.meta.env.DEV ? () => setShowDevModal(true) : undefined}
+        onOpenProfile={() => setTab('profile')}
       />
 
       {/* Ephemeral Toast Banner */}
@@ -654,14 +680,29 @@ export function App() {
             }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'altar'
-                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+                ? 'bg-gradient-to-r from-orange-600 to-amber-500 text-white shadow-md'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
             }`}
           >
             <Flame className="w-3.5 h-3.5 text-orange-400 animate-flame" />
-            <span>Altar & Mastery</span>
+            <span>Altar</span>
+          </button>
+
+          <button
+            onClick={() => {
+              sound.playClick();
+              setTab('mastery');
+            }}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
+              tab === 'mastery'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            <span>Mastery</span>
             {(state.masteryPoints ?? 0) > 0 && (
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
             )}
           </button>
 
@@ -775,18 +816,26 @@ export function App() {
           <UpgradesSection
             state={state}
             onBuyUpgrade={handleBuyUpgrade}
+            onBuyAllUpgrades={handleBuyAllUpgrades}
             onActivateTurbo={handleActivateTurbo}
             busy={busy}
           />
         )}
 
         {tab === 'altar' && (
-          <AltarAndMasterySection
+          <AltarSection
             state={state}
             onSacrifice={handleSacrifice}
-            onUpgradeMastery={handleUpgradeMastery}
             busy={busy}
             now={now}
+          />
+        )}
+
+        {tab === 'mastery' && (
+          <MasterySection
+            state={state}
+            onUpgradeMastery={handleUpgradeMastery}
+            busy={busy}
           />
         )}
 
