@@ -37,6 +37,7 @@ import {
   PRESTIGE_UPGRADES,
   prestigeUpgradeCost,
   SHARD_SYNTHESIS_COST,
+  getLevelBenefits,
 } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
@@ -126,12 +127,25 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
         return <Clock className="w-4 h-4 text-teal-400" />;
       case 'singularityTithe':
         return <Gem className="w-4 h-4 text-yellow-400" />;
+      case 'luckyFloor':
+        return <Clover className="w-4 h-4 text-emerald-400" />;
+      case 'astralArsenal':
+        return <Sparkles className="w-4 h-4 text-purple-400" />;
+      case 'deepVault':
+        return <Archive className="w-4 h-4 text-amber-400" />;
+      case 'masteryEngine':
+        return <Award className="w-4 h-4 text-indigo-400" />;
+      case 'steadyHands':
+        return <Clock className="w-4 h-4 text-cyan-400" />;
+      case 'offlineFortune':
+        return <Zap className="w-4 h-4 text-teal-400" />;
       default:
         return <Sparkles className="w-4 h-4 text-fuchsia-400" />;
     }
   };
 
   const levelInfo = calculateLevelFromXp(state.xp || 0);
+  const levelBenefits = getLevelBenefits(levelInfo.level);
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -150,7 +164,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-0.5">
-                Each level grants permanent passive multipliers, critical damage, and Mastery Points!
+                Each level grants permanent passive multipliers, milestone perks, and Mastery Points.
               </p>
             </div>
           </div>
@@ -158,10 +172,10 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
           <div className="bg-slate-950/80 border border-purple-500/30 px-4 py-2 rounded-2xl text-right">
             <div className="text-[10px] font-bold uppercase text-purple-300">Level Passives</div>
             <div className="text-xs font-mono text-emerald-400 font-bold">
-              +{((levelInfo.level - 1) * 1.5).toFixed(1)}% Multiplicative Luck
+              {levelBenefits.luckMultiplier.toFixed(2)}× Multiplicative Luck
             </div>
             <div className="text-[10px] font-mono text-amber-300 font-bold">
-              +{((levelInfo.level - 1) * 3)}% Multiplicative Coins
+              {levelBenefits.coinsMultiplier.toFixed(2)}× Multiplicative Coins
             </div>
           </div>
         </div>
