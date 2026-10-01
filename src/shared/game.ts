@@ -138,7 +138,7 @@ export const PREMIUM_BOOSTERS: Record<PremiumBoosterId, PremiumBoosterInfo> = {
 export const AUTOMATIONS: Record<AutomationId, { name: string; desc: string; costShards: number }> = {
   autoQuestClaim: { name: 'Auto-Complete Quests', desc: 'Automatically claims completed daily and weekly quest rewards.', costShards: 750 },
   autoStreakClaim: { name: 'Auto-Claim Streak', desc: 'Automatically claims the daily streak reward when it becomes available.', costShards: 500 },
-  autoCommunityClaim: { name: 'Auto-Claim Community Rewards', desc: 'Automatically claims the community reward whenever its 5-minute timer is ready.', costShards: 1_000 },
+  autoCommunityClaim: { name: 'Auto-Claim Community Rewards', desc: 'Automatically claims each newly reached Community Reward tier.', costShards: 1_000 },
   autoOfflineClaim: { name: 'Auto-Claim Offline Rolls', desc: 'Automatically claims accumulated offline rolls when you return to the game.', costShards: 750 },
   autoUpgrade: { name: 'Auto-Complete Upgrades', desc: 'Automatically purchases one affordable standard upgrade whenever the game processes your state.', costShards: 1_500 },
 };
