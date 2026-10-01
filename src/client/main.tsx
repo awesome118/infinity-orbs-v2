@@ -299,9 +299,9 @@ export function App() {
       setState(res.state);
       if (res.altarLeveledUp) {
         sound.playLevelUpFanfare();
-        showToast(`Altar Devotion leveled up to Lvl ${res.state.sacrifices?.altarLevel}! (+1 MP, +1% Luck)`, 'success');
+        showToast(`Altar Devotion reached Lvl ${res.state.sacrifices?.altarLevel}! (+1 Mastery Point)`, 'success');
       } else if (res.luckSurgeExtended) {
-        showToast('Sacrifice accepted! Luck Surge ignited (+25% Luck)!', 'success');
+        showToast('Sacrifice accepted! 1.50× Luck Surge ignited!', 'success');
       } else {
         showToast('Offerings consumed by the Altar.', 'info');
       }
