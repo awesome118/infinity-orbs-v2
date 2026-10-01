@@ -61,7 +61,13 @@ import {
 } from './social.js';
 
 
-const key = () => `player:${context.userId ?? 'unknown'}`;
+function currentUserId(): string {
+  const userId = String(context.userId ?? '').trim();
+  if (!userId) throw new Error('REDDIT_LOGIN_REQUIRED');
+  return userId;
+}
+
+const key = () => `player:${currentUserId()}`;
 const GAME_BANS_KEY = 'io:game-bans';
 const ONLINE_PLAYERS_KEY = 'io:online:players';
 
@@ -379,7 +385,7 @@ async function claimWorldBoosterActivation(
 
 export async function loadRaw(): Promise<PlayerState> {
   const raw = await redis.get(key());
-  const username = context.username ?? `reddit-user-${(context.userId ?? 'unknown').slice(-8)}`;
+  const username = context.username ?? `reddit-user-${currentUserId().slice(-8)}`;
   const perks = await getPlayerGuildPerks(username);
   const globalBoosters = await getGlobalBoosters();
   if (!raw) {
@@ -489,7 +495,7 @@ async function processAutomation(s: PlayerState): Promise<void> {
     for (const q of quests) {
       const result = applyQuestReward(s, q);
       if (result.rewardTokens > 0) {
-        const username = context.username ?? ('reddit-user-' + (context.userId ?? 'unknown').slice(-8));
+        const username = context.username ?? ('reddit-user-' + currentUserId().slice(-8));
         void addGuildTokens(username, result.rewardTokens);
       }
     }
@@ -1055,7 +1061,7 @@ export async function claimQuest(type: 'daily' | 'weekly', id: string): Promise<
   const reward = applyQuestReward(s, quest);
 
   if (quest.rewardTokens && quest.rewardTokens > 0) {
-    const username = context.username ?? `reddit-user-${(context.userId ?? 'unknown').slice(-8)}`;
+    const username = context.username ?? `reddit-user-${currentUserId().slice(-8)}`;
     void addGuildTokens(username, quest.rewardTokens);
   }
 
