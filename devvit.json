@@ -45,7 +45,8 @@
       "enable": true,
       "asUser": [
         "SUBMIT_POST"
-      ]
+      ],
+      "scope": "moderator"
     },
     "payments": true
   },
