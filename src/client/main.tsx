@@ -739,7 +739,7 @@ export function App() {
         onToggleSound={() => setSoundEnabled(sound.toggle())}
         onOpenOdds={() => setShowOddsModal(true)}
         onClaimOffline={handleClaimOffline}
-        onOpenDevDebug={state.username === 'shadow_fen' ? () => setShowDevModal(true) : undefined}
+        onOpenDevDebug={['shadow_fen', 'u/shadow_fen', '/u/shadow_fen'].includes(state.username ?? '') ? () => setShowDevModal(true) : undefined}
         onOpenProfile={() => setTab('profile')}
       />
 
@@ -1095,7 +1095,7 @@ export function App() {
       )}
 
       {/* Developer Debug Modal */}
-      {showDevModal && state.username === 'shadow_fen' && (
+      {showDevModal && ['shadow_fen', 'u/shadow_fen', '/u/shadow_fen'].includes(state.username ?? '') && (
         <DevDebugModal
           onClose={() => setShowDevModal(false)}
           onRefresh={refreshAll}
