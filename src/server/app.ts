@@ -44,7 +44,11 @@ export function createApp() {
   // double-submit buttons or send concurrent requests, so mutations must not race.
   const mutationQueues = new Map<string, Promise<void>>();
   app.use('/api', async (req, res, next) => {
-    if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+    const mutatesState = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
+    const readsAndPersistsPlayerState =
+      req.method === 'GET' &&
+      ['/me', '/leaderboard', '/guilds', '/achievements'].includes(req.path);
+    if (!mutatesState && !readsAndPersistsPlayerState) return next();
     const playerKey = context.userId ?? req.ip ?? 'unknown';
     const previous = mutationQueues.get(playerKey) ?? Promise.resolve();
 
