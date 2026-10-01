@@ -487,41 +487,38 @@ export function autoBuyCheapest(s: PlayerState): boolean {
 
 export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent: number; upgradedCount: number }> {
   const s = await settleOffline(await loadRaw());
+  const upgradeIds: UpgradeId[] = [
+    'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
+    'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus'
+  ];
+
   let totalSpent = 0;
   let upgradedCount = 0;
-  let changed = true;
+  const MAX_PURCHASES_PER_REQUEST = 5_000;
 
-  while (changed) {
+  // Sweep one level across every affordable upgrade, then repeat until no upgrade
+  // can be bought. This makes the button genuinely "Upgrade All" rather than
+  // "buy the cheapest thing until the wallet is empty."
+  let changed = true;
+  while (changed && upgradedCount < MAX_PURCHASES_PER_REQUEST) {
     changed = false;
-    const upgradeIds: UpgradeId[] = [
-      'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
-      'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus'
-    ];
-    let bestId: UpgradeId | null = null;
-    let lowestCost = Infinity;
 
     for (const id of upgradeIds) {
-      if (id === 'auto') {
-        if ((s.upgrades.auto ?? 0) === 0 && s.totalRolls >= 10 && s.coins >= AUTO_UNLOCK_COST) {
-          if (AUTO_UNLOCK_COST < lowestCost) {
-            lowestCost = AUTO_UNLOCK_COST;
-            bestId = id;
-          }
-        }
-        continue;
-      }
-      const lvl = s.upgrades[id] ?? 0;
-      const cost = upgradeCost(id, lvl);
-      if (cost <= s.coins && cost < lowestCost) {
-        lowestCost = cost;
-        bestId = id;
-      }
-    }
+      if (upgradedCount >= MAX_PURCHASES_PER_REQUEST) break;
 
-    if (bestId && Number.isFinite(lowestCost) && s.coins >= lowestCost) {
-      s.coins -= lowestCost;
-      s.upgrades[bestId] = (s.upgrades[bestId] ?? 0) + 1;
-      totalSpent += lowestCost;
+      const level = s.upgrades[id] ?? 0;
+      let cost = upgradeCost(id, level);
+
+      if (id === 'auto' && level === 0) {
+        if (s.totalRolls < 10) continue;
+        cost = AUTO_UNLOCK_COST;
+      }
+
+      if (!Number.isFinite(cost) || cost > s.coins) continue;
+
+      s.coins -= cost;
+      s.upgrades[id] = level + 1;
+      totalSpent += cost;
       upgradedCount++;
       changed = true;
     }
@@ -530,6 +527,7 @@ export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent
   if (upgradedCount > 0) {
     await save(s);
   }
+
   return { state: s, totalSpent, upgradedCount };
 }
 
