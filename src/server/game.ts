@@ -40,6 +40,7 @@ import {
   createInitialGlobalBoosters,
   decayGlobalBoosterState,
   activateGlobalBoosterStack,
+  globalBoosterCritChanceBonus,
   PURCHASE_PACKS,
   grantFreeShards,
   resetFreeShardBudgetIfNeeded,
@@ -1202,8 +1203,12 @@ export async function claimOrbFrenzy(): Promise<RollResponse> {
   s.currentRunRolls = (s.currentRunRolls ?? 0) + count;
   s.collectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.collectionValue ?? 0) + finalValue);
   s.lifetimeCollectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.lifetimeCollectionValue ?? 0) + finalValue);
-  s.collection[String(data.rarity)] = (s.collection[String(data.rarity)] ?? 0) + count;
-  s.highestRarity = Math.max(s.highestRarity, data.rarity * (critCount > 0 ? critMultiplierValue : 1));
+  const critRarity = Math.min(10_000_000_000, Math.round(data.rarity * critMultiplierValue));
+  s.collection[String(data.rarity)] = (s.collection[String(data.rarity)] ?? 0) + (count - critCount);
+  if (critCount > 0) {
+    s.collection[String(critRarity)] = (s.collection[String(critRarity)] ?? 0) + critCount;
+  }
+  s.highestRarity = Math.max(s.highestRarity, critCount > 0 ? critRarity : data.rarity);
   s.totalCrits = (s.totalCrits ?? 0) + critCount;
   s.coins += coinsGained;
   s.xp += xpGained;
