@@ -348,7 +348,8 @@ export type PrestigeUpgradeId =
   | 'deepVault'
   | 'masteryEngine'
   | 'steadyHands'
-  | 'offlineFortune';
+  | 'offlineFortune'
+  | 'frenzyVolley';
 
 export interface Orb {
   rarity: number;
