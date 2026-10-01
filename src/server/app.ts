@@ -46,6 +46,8 @@ import {
   getCommunityEvent,
 } from './social.js';
 import { context, reddit } from './devvit-mock.js';
+import { payments } from '@devvit/web/server';
+import type { Order, PaymentHandlerResponse } from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards } from '../shared/game.js';
 
 export function createApp() {
@@ -144,57 +146,83 @@ export function createApp() {
     next();
   });
 
-  // Devvit calls these handlers for native Reddit Gold purchases.
-  // The server context identifies the buyer. Do not trust userId from the request body.
-  type PaymentOrderPayload = {
-    status?: string;
-    id?: string;
-    products?: Array<{ sku?: string }>;
-  };
-
+  // Reddit Payments fulfillment follows Devvit's Order contract exactly.
+  // The user identity for a payment comes from the Order, not from arbitrary request data.
   app.post('/internal/payments/fulfill', async (req, res) => {
     try {
-      const order = req.body as PaymentOrderPayload;
-      const userId = context.userId;
-      const orderId = order.id;
-      const products = order.products ?? [];
-      if (order.status !== 'PAID' || !userId || !orderId) {
-        return res.json({ success: false, reason: 'Order is not payable.' });
+      const order = req.body as Order;
+      console.error('[Payments] Fulfill received:', JSON.stringify({
+        id: order?.id,
+        userId: order?.userId,
+        status: order?.status,
+        products: order?.products?.map(product => ({ sku: product.sku })),
+      }));
+
+      if (order.status !== 'PAID' || !order.userId || !order.id) {
+        return res.json<PaymentHandlerResponse>({
+          success: false,
+          reason: 'Order is not payable.',
+        });
       }
-      if (products.length !== 1 || !products[0]?.sku) {
-        return res.json({ success: false, reason: 'Infinity Orbs purchases must contain one product.' });
+
+      if (!Array.isArray(order.products) || order.products.length !== 1 || !order.products[0]?.sku) {
+        return res.json<PaymentHandlerResponse>({
+          success: false,
+          reason: 'Infinity Orbs purchases must contain one product.',
+        });
       }
-      await grantPurchasedPack(userId, products[0].sku, orderId);
-      return res.json({ success: true });
-    } catch (e: any) {
-      console.error('Payment fulfillment failed:', e);
-      return res.json({
+
+      await grantPurchasedPack(order.userId, order.products[0].sku, order.id);
+      return res.json<PaymentHandlerResponse>({ success: true });
+    } catch (e: unknown) {
+      console.error('[Payments] Fulfillment failed:', e instanceof Error ? e.stack ?? e.message : e);
+      return res.json<PaymentHandlerResponse>({
         success: false,
-        reason: e?.message || 'Unable to fulfill purchase.',
+        reason: e instanceof Error ? e.message : 'Unable to fulfill purchase.',
       });
     }
   });
 
   app.post('/internal/payments/refund', async (req, res) => {
     try {
-      const order = req.body as PaymentOrderPayload;
-      const userId = context.userId;
-      const orderId = order.id;
-      const products = order.products ?? [];
-      if (!userId || !orderId) {
-        return res.json({ success: false, reason: 'Refund order is missing an identity.' });
+      const order = req.body as Order;
+      if (!order.userId || !order.id) {
+        return res.json<PaymentHandlerResponse>({
+          success: false,
+          reason: 'Refund order is missing an identity.',
+        });
       }
-      if (products.length !== 1 || !products[0]?.sku) {
-        return res.json({ success: false, reason: 'Refund must identify one product.' });
+      if (!Array.isArray(order.products) || order.products.length !== 1 || !order.products[0]?.sku) {
+        return res.json<PaymentHandlerResponse>({
+          success: false,
+          reason: 'Refund must identify one product.',
+        });
       }
-      await refundPurchasedPack(userId, products[0].sku, orderId);
-      return res.json({ success: true });
-    } catch (e: any) {
-      console.error('Payment refund failed:', e);
-      return res.json({
+
+      await refundPurchasedPack(order.userId, order.products[0].sku, order.id);
+      return res.json<PaymentHandlerResponse>({ success: true });
+    } catch (e: unknown) {
+      console.error('[Payments] Refund failed:', e instanceof Error ? e.stack ?? e.message : e);
+      return res.json<PaymentHandlerResponse>({
         success: false,
-        reason: e?.message || 'Unable to process refund.',
+        reason: e instanceof Error ? e.message : 'Unable to process refund.',
       });
+    }
+  });
+
+  app.get('/api/products', async (_req, res) => {
+    try {
+      const products = await payments.getProducts();
+      res.json(products);
+    } catch (e: unknown) {
+      console.error('[Payments] Product lookup failed:', e instanceof Error ? e.stack ?? e.message : e);
+      // Keep the shop usable in playtest if the payment catalog lookup is temporarily unavailable.
+      res.json(PURCHASE_PACKS.map(pack => ({
+        sku: pack.sku,
+        displayName: pack.name,
+        description: pack.description,
+        price: pack.priceGold,
+      })));
     }
   });
 
@@ -272,15 +300,6 @@ export function createApp() {
   app.get('/api/global-boosters', async (_req, res) => {
     try { res.json(await getGlobalBoosters()); }
     catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch World Boosters.' }); }
-  });
-
-  app.get('/api/products', (_req, res) => {
-    res.json(PURCHASE_PACKS.map(pack => ({
-      sku: pack.sku,
-      displayName: pack.name,
-      description: pack.description,
-      price: pack.priceGold,
-    })));
   });
 
   app.get('/api/online', async (_req, res) => {
