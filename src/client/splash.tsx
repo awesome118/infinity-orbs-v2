@@ -14,6 +14,7 @@ function Splash() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl sm:text-3xl font-black">Infinity Orbs</h1>
+            </div>
           </div>
         </div>
 
