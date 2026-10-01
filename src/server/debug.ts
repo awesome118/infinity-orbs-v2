@@ -19,6 +19,11 @@ const DEBUG_USERS = new Set([
   'shadow_fen',
 ]);
 
+// Bump this whenever the game-moderation transport changes so an admin can
+// immediately tell whether the running Devvit bundle contains the Redis-only
+// game-ban implementation instead of an older Reddit-moderation build.
+const GAME_MODERATION_VERSION = 'redis-game-ban-v3';
+
 function normalizeUsername(value: unknown): string {
   return String(value ?? '')
     .trim()
@@ -47,6 +52,7 @@ debugRouter.get('/status', (_req, res) => {
     userId: context.userId ?? null,
     subredditName: context.subredditName ?? null,
     postId: context.postId ?? null,
+    gameModerationVersion: GAME_MODERATION_VERSION,
     gameBan: await getGameBanStatus(),
   });
 });
@@ -607,7 +613,7 @@ debugRouter.get('/moderation/banned', async (_req, res) => {
   }
 });
 
-debugRouter.post('/moderation/self-ban', async (req, res) => {
+debugRouter.post('/moderation/self-game-ban', async (req, res) => {
   try {
     if (!context.userId) throw new Error('The current game session has no user ID.');
     const durationValue = req.body?.durationDays;
