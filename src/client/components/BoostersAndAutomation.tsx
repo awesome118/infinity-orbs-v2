@@ -18,6 +18,7 @@ import type {
   PlayerState,
   PremiumBoosterId,
 } from '../../shared/game.js';
+import type { WorldEvent } from '../../shared/social.js';
 import {
   AUTOMATIONS,
   FREE_SHARD_DAILY_CAP,
@@ -38,6 +39,7 @@ interface BoostersAndAutomationProps {
   busy: boolean;
   onActivateBooster: (id: PremiumBoosterId) => Promise<void>;
   globalBoosters: GlobalBoosterSnapshot;
+  worldEvent?: WorldEvent | null;
   onActivateGlobalBooster: (id: GlobalBoosterId, useCredit: boolean) => Promise<void>;
   onBuyAutomation: (id: AutomationId) => Promise<void>;
   onClaimCommunityReward: () => Promise<void>;
@@ -72,6 +74,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   state,
   busy,
   globalBoosters,
+  worldEvent,
   onActivateBooster,
   onActivateGlobalBooster,
   onBuyAutomation,
