@@ -44,6 +44,7 @@ const automationIcons: Record<AutomationId, React.ReactNode> = {
   autoQuestClaim: <Gift className="w-5 h-5 text-emerald-300" />,
   autoStreakClaim: <Clock className="w-5 h-5 text-amber-300" />,
   autoCommunityClaim: <Users className="w-5 h-5 text-indigo-300" />,
+  autoOfflineClaim: <Clock className="w-5 h-5 text-teal-300" />,
   autoUpgrade: <TrendingUp className="w-5 h-5 text-cyan-300" />,
 };
 
@@ -253,7 +254,9 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                         ? 'Claims rewards as soon as objectives finish.'
                         : id === 'autoStreakClaim'
                           ? 'Keeps daily streak rewards from sitting unclaimed.'
-                          : 'Keeps affordable standard upgrades flowing.'}
+                          : id === 'autoOfflineClaim'
+                            ? 'Processes offline rolls as soon as they become claimable.'
+                            : 'Keeps affordable standard upgrades flowing.'}
                   </span>
                   <button
                     onClick={() => void onBuyAutomation(id)}
