@@ -1185,8 +1185,14 @@ export async function getOrbFrenzyInfo(): Promise<{
   };
 }
 
-export async function claimOrbFrenzy(options: { allowAdminTestOwner?: boolean } = {}): Promise<RollResponse> {
-  const postId = context.postId;
+export async function claimOrbFrenzy(options: {
+  allowAdminTestOwner?: boolean;
+  postId?: string;
+} = {}): Promise<RollResponse> {
+  const postId = options.postId ?? context.postId;
+  if (options.postId && options.allowAdminTestOwner !== true) {
+    throw new Error('Explicit Frenzy post targeting is admin-only.');
+  }
   if (!postId) throw new Error('This is not an Orb Frenzy post.');
   const raw = await redis.get(FRENZY_POST_PREFIX + postId);
   if (!raw) throw new Error('Orb Frenzy post data was not found.');
