@@ -132,7 +132,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
           {/* Mastery Points Jewel Badge */}
           <div className="bg-slate-950/80 border border-amber-500/40 rounded-2xl p-4 flex items-center gap-3.5 shadow-xl">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-950 shadow-lg shadow-amber-500/30">
-              <Star className="w-6 h-6 fill-current animate-spin" style={{ animationDuration: '18s' }} />
+              <Star className="w-6 h-6 fill-current " style={{ animationDuration: '18s' }} />
             </div>
             <div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
