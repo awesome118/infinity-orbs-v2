@@ -1779,6 +1779,20 @@ export async function applyRolls(
     rarityAverage: rarities.length
       ? Math.round(rarities.reduce((sum, rarity) => sum + rarity, 0) / rarities.length)
       : 0,
+    rarityHistogram: {
+      '2-9': rarities.filter(r => r < 10).length,
+      '10-99': rarities.filter(r => r >= 10 && r < 100).length,
+      '100-999': rarities.filter(r => r >= 100 && r < 1_000).length,
+      '1k-9.9k': rarities.filter(r => r >= 1_000 && r < 10_000).length,
+      '10k-99.9k': rarities.filter(r => r >= 10_000 && r < 100_000).length,
+      '100k-999.9k': rarities.filter(r => r >= 100_000 && r < 1_000_000).length,
+      '1m-9.9m': rarities.filter(r => r >= 1_000_000 && r < 10_000_000).length,
+      '10m+': rarities.filter(r => r >= 10_000_000).length,
+    },
+    sampleRarities: rarities.slice(0, 50),
+    coinsPerRoll: rollCount > 0 ? Math.round(coinsGained / rollCount) : 0,
+    xpPerRoll: rollCount > 0 ? Math.round(xpGained / rollCount) : 0,
+    shardsPerRoll: rollCount > 0 ? Number((shardsGained / rollCount).toFixed(4)) : 0,
     bestRarity,
     criticalRolls: Math.max(0, (s.totalCrits ?? 0) - spyBefore.totalCrits),
     uniqueGained,
@@ -1904,7 +1918,19 @@ export async function settleOffline(s: PlayerState): Promise<PlayerState> {
   if (diff >= tickMs) {
     const earned = Math.floor(diff / tickMs);
     const cap = offlineRollCap(s);
-    s.offlineRolls = Math.min(cap, (s.offlineRolls || 0) + earned);
+    const offlineBefore = s.offlineRolls || 0;
+    const offlineAfter = Math.min(cap, offlineBefore + earned);
+    s.offlineRolls = offlineAfter;
+    await appendPlayerSpyLog('offline-accrual', {
+      elapsedMs: diff,
+      earnedTicks: earned,
+      tickMs,
+      cap,
+      offlineRollsBefore: offlineBefore,
+      offlineRollsAfter: offlineAfter,
+      wastedTicksFromCap: Math.max(0, offlineBefore + earned - offlineAfter),
+      snapshot: playerSpySnapshot(s),
+    });
   }
 
   s.lastSeenAt = now;
