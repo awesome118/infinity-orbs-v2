@@ -65,6 +65,139 @@ const payments = (devvitServer as typeof devvitServer & {
   };
 }).payments;
 
+type PaymentProduct = {
+  sku?: unknown;
+};
+
+type PaymentOrder = {
+  id?: unknown;
+  userId?: unknown;
+  user?: unknown;
+  buyer?: unknown;
+  buyerUserId?: unknown;
+  status?: unknown;
+  products?: PaymentProduct[];
+};
+
+function paymentRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function parsePaymentPayload(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const text = value.trim();
+  if (!text) return value;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return value;
+  }
+}
+
+function normalizePaymentOrder(value: unknown, depth = 0): PaymentOrder {
+  const parsed = parsePaymentPayload(value);
+  const record = paymentRecord(parsed);
+  if (!record || depth > 4) return {};
+
+  // Devvit sends the Order directly, but accepting common envelopes makes the
+  // handler resilient to runtime/proxy serialization differences.
+  if (
+    'id' in record ||
+    'products' in record ||
+    'userId' in record ||
+    'status' in record ||
+    'buyerUserId' in record
+  ) {
+    return record as PaymentOrder;
+  }
+
+  for (const key of ['order', 'data', 'payload', 'result']) {
+    if (key in record) {
+      const nested = normalizePaymentOrder(record[key], depth + 1);
+      if (Object.keys(nested).length > 0) return nested;
+    }
+  }
+
+  return record as PaymentOrder;
+}
+
+function paymentString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function paymentBuyerFromObject(value: unknown): string {
+  const record = paymentRecord(value);
+  if (!record) return '';
+
+  for (const key of ['userId', 'buyerUserId', 'id']) {
+    const candidate = paymentString(record[key]);
+    if (candidate) return candidate;
+  }
+
+  return '';
+}
+
+function paymentProductSku(order: PaymentOrder): string {
+  if (!Array.isArray(order.products) || order.products.length !== 1) return '';
+  return paymentString(order.products[0]?.sku);
+}
+
+function paymentOrderStatus(order: PaymentOrder): string {
+  return paymentString(order.status).toUpperCase();
+}
+
+function paymentOrderId(order: PaymentOrder): string {
+  return paymentString(order.id);
+}
+
+async function resolvePaymentBuyerId(order: PaymentOrder, orderId: string): Promise<string> {
+  const directCandidates = [
+    paymentString(order.userId),
+    paymentString(order.buyerUserId),
+    paymentBuyerFromObject(order.buyer),
+    paymentBuyerFromObject(order.user),
+  ];
+  for (const candidate of directCandidates) {
+    if (candidate) return candidate;
+  }
+
+  // Some payment runtime versions provide the order ID in the callback but omit
+  // userId from the callback body. Resolve the ID from Reddit's authoritative
+  // order history before falling back to request context.
+  if (orderId) {
+    try {
+      const rawOrders = await payments.getOrders({ limit: 50 });
+      const orders = Array.isArray(rawOrders)
+        ? rawOrders
+        : rawOrders && typeof rawOrders === 'object' && Array.isArray((rawOrders as { orders?: unknown }).orders)
+          ? (rawOrders as { orders: unknown[] }).orders
+          : [];
+
+      for (const rawOrder of orders) {
+        const candidate = normalizePaymentOrder(rawOrder);
+        if (paymentOrderId(candidate) !== orderId) continue;
+
+        const resolved = [
+          paymentString(candidate.userId),
+          paymentString(candidate.buyerUserId),
+          paymentBuyerFromObject(candidate.buyer),
+          paymentBuyerFromObject(candidate.user),
+        ].find(Boolean);
+
+        if (resolved) return resolved;
+      }
+    } catch (error) {
+      console.error('[Payments] Could not resolve buyer from order history:', error);
+    }
+  }
+
+  // Devvit's authenticated request context is the final fallback for runtimes
+  // that deliberately omit the user from the serialized Order body.
+  return paymentString(context.userId);
+}
+
 export function createApp() {
   const app = express();
   app.use(express.json({ limit: '16kb' }));
@@ -216,24 +349,26 @@ export function createApp() {
     next();
   });
 
-  // Devvit sends the complete payment Order to this endpoint. Use the order's
-  // userId as the entitlement owner because the fulfillment callback itself is
-  // not guaranteed to run with the buyer as the request context user.
+  // Reddit's payment callback should be treated as an untrusted transport
+  // envelope. Normalize it first, then resolve the entitlement owner from the
+  // order itself, verified order history, or the authenticated Devvit context.
   app.post('/internal/payments/fulfill', async (req, res) => {
     try {
-      const order = req.body as PaymentOrder;
-      const buyerUserId = String(order?.userId ?? '').trim();
-      const orderId = String(order?.id ?? '').trim();
-      const productSku = Array.isArray(order?.products) && order.products.length === 1
-        ? String(order.products[0]?.sku ?? '').trim()
-        : '';
+      const order = normalizePaymentOrder(req.body);
+      const orderId = paymentOrderId(order);
+      const productSku = paymentProductSku(order);
+      const status = paymentOrderStatus(order);
+      const buyerUserId = await resolvePaymentBuyerId(order, orderId);
 
       console.error('[Payments] Fulfill received:', JSON.stringify({
-        id: order?.id ?? null,
-        orderUserId: order?.userId ?? null,
-        contextUserId: context.userId ?? null,
-        status: order?.status ?? null,
-        products: order?.products?.map(product => ({ sku: product.sku })) ?? [],
+        id: orderId || null,
+        orderUserId: paymentString(order.userId) || null,
+        contextUserId: paymentString(context.userId) || null,
+        resolvedBuyerUserId: buyerUserId || null,
+        status: status || null,
+        products: Array.isArray(order.products)
+          ? order.products.map(product => ({ sku: paymentString(product?.sku) }))
+          : [],
       }));
 
       if (!buyerUserId) {
@@ -242,7 +377,7 @@ export function createApp() {
           reason: 'Unable to identify the purchasing Reddit account.',
         });
       }
-      if (order?.status !== 'PAID') {
+      if (status && status !== 'PAID') {
         return res.json({
           success: false,
           reason: 'Payment order is not marked as PAID.',
@@ -274,12 +409,10 @@ export function createApp() {
 
   app.post('/internal/payments/refund', async (req, res) => {
     try {
-      const order = req.body as PaymentOrder;
-      const buyerUserId = String(order?.userId ?? '').trim();
-      const orderId = String(order?.id ?? '').trim();
-      const productSku = Array.isArray(order?.products) && order.products.length === 1
-        ? String(order.products[0]?.sku ?? '').trim()
-        : '';
+      const order = normalizePaymentOrder(req.body);
+      const orderId = paymentOrderId(order);
+      const productSku = paymentProductSku(order);
+      const buyerUserId = await resolvePaymentBuyerId(order, orderId);
 
       if (!buyerUserId || !orderId) {
         return res.json({
