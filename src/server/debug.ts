@@ -104,15 +104,29 @@ async function wipeUser(username: string): Promise<{ username: string; userId: s
   const name = targetUsername(username);
   const userId = await resolveUserId(name);
   const generationKey = `player-generation:${userId}`;
+  const playerKey = `player:${userId}`;
+
   const currentRaw = await redis.get(generationKey);
   const currentGeneration = Math.max(0, Number.parseInt(String(currentRaw ?? '0'), 10) || 0);
   const generation = currentGeneration + 1;
 
-  // Invalidate the old save before deleting it. Any in-flight request carrying
-  // the old generation is then rejected by game.save() and cannot resurrect it.
+  // Invalidate the old generation first, then replace the save with a fresh
+  // starting state instead of merely deleting it. This makes a wipe observable
+  // immediately even when the target player is actively online. Any in-flight
+  // request carrying the old generation still fails the generation check and
+  // cannot write the old state back over the reset.
+  const fresh = createInitialState();
+  fresh.username = name;
+  fresh.saveGeneration = generation;
+
   await redis.set(generationKey, String(generation));
-  await redis.del(`player:${userId}`);
+  await redis.set(playerKey, JSON.stringify(fresh));
   await removeLeaderboardEntry(name);
+
+  const persisted = await redis.get(playerKey);
+  if (persisted == null) {
+    throw new Error(`Wipe failed: player save for u/${name} was not persisted.`);
+  }
 
   return { username: name, userId, generation };
 }
@@ -401,7 +415,7 @@ debugRouter.post('/preset', async (req, res) => {
       };
     } else if (preset === 'upgrades-reset') {
       s.upgrades = {
-        speed: 0, multi: 0, clusterRoll: 0, auto: 0, luck: 0,
+        speed: 0, multi: 0, clusterRoll: 0, auto: 1, luck: 0,
         coinBonus: 0, shardChance: 0, xpBonus: 0, critChance: 0,
         critPower: 0, offlineRate: 0, valueBonus: 0,
       };
