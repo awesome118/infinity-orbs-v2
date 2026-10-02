@@ -1378,15 +1378,6 @@ export function App() {
           />
         )}
 
-        {tab === 'shop' && (
-          <ShopSection
-            state={state}
-            busy={busy}
-            onPurchased={async () => {
-              await refreshAll();
-            }}
-          />
-        )}
 
         {tab === 'altar' && (
           <AltarSection
