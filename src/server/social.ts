@@ -704,8 +704,9 @@ export async function getCommunityEvent(): Promise<WorldEvent> {
       ev.tier = 1;
       ev.buffMultiplier = 1.15;
       ev.buffDescription = '+15% Global Luck Active';
-      ev.endsAt = (currentWeekNumber + 1) * 604_800_000;
+      ev.endsAt = weekEndMs(latestNow);
       ev.completed = false;
+      ev.completedTier = 0;
     }
     if (!ev.buffMultiplier) ev.buffMultiplier = 1.15;
 
@@ -742,12 +743,14 @@ export async function addCommunityRolls(rolls: number): Promise<WorldEvent> {
       ev.tier = 1;
       ev.buffMultiplier = 1.15;
       ev.buffDescription = '+15% Global Luck Active';
-      ev.endsAt = (currentWeekNumber + 1) * 604_800_000;
+      ev.endsAt = weekEndMs(now);
       ev.completed = false;
+      ev.completedTier = 0;
       ev.weekId = currentWeekNumber;
     }
     ev.currentProgress += amount;
     while (ev.currentProgress >= ev.goal) {
+      ev.completedTier = Math.max(ev.completedTier ?? 0, ev.tier || 1);
       ev.tier = (ev.tier || 1) + 1;
       ev.goal = Math.round(ev.goal * 2.2);
       ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
@@ -800,6 +803,7 @@ export async function setCommunityEventConfig(config: {
     ev.buffMultiplier = 1.15;
     ev.buffDescription = '+15% Global Luck Active';
     ev.completed = false;
+    ev.completedTier = 0;
   }
   if (typeof config.goal === 'number' && config.goal > 0) {
     ev.goal = config.goal;
@@ -818,6 +822,7 @@ export async function setCommunityEventConfig(config: {
     ev.currentProgress += config.addRolls;
   }
   while (ev.currentProgress >= ev.goal) {
+    ev.completedTier = Math.max(ev.completedTier ?? 0, ev.tier || 1);
     ev.tier = (ev.tier || 1) + 1;
     ev.goal = Math.round(ev.goal * 2.2);
     ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
