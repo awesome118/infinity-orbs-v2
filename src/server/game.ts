@@ -1046,8 +1046,8 @@ export async function loadRaw(): Promise<PlayerState> {
   const normalizedUpgrades = {
     ...base.upgrades,
     ...(parsed.upgrades ?? {}),
-    // Auto Roll is free and unlocks automatically at 10 manual roll activations.
-    auto: normalizedManualRolls >= 10 ? 1 : 0,
+    // Auto Roll is free and unlocks automatically at 3 manual roll activations.
+    auto: normalizedManualRolls >= 3 ? 1 : 0,
   };
   return {
     ...base,
@@ -1081,20 +1081,18 @@ function applyXp(s: PlayerState, amount: number): void {
   s.xp += Math.max(0, Math.floor(amount));
   const earnedLevel = calculateLevelFromXp(s.xp).level;
 
-  // A large XP reward can fill several future levels, but the player's actual
-  // level advances at most once per state update. This keeps milestones arriving
-  // in a deliberate sequence instead of dumping the entire progression at once.
-  const newLevel = Math.min(oldLevel + 1, earnedLevel);
-  s.level = Math.max(oldLevel, newLevel);
-  if (s.level > oldLevel) {
-    s.masteryPoints = (s.masteryPoints ?? 0) + 1;
+  // Keep the displayed level synchronized with the XP actually earned.
+  const newLevel = Math.max(oldLevel, earnedLevel);
+  s.level = newLevel;
+  if (newLevel > oldLevel) {
+    s.masteryPoints = (s.masteryPoints ?? 0) + (newLevel - oldLevel);
   }
 }
 
 function applyQuestReward(s: PlayerState, quest: { rewardCoins: number; rewardShards?: number; rewardTokens?: number; rewardXp?: number; claimed: boolean }): { rewardCoins: number; rewardShards: number; rewardTokens: number } {
   quest.claimed = true;
   s.questsCompleted = (s.questsCompleted ?? 0) + 1;
-  s.coins += quest.rewardCoins;
+  addCoins(s, quest.rewardCoins);
   const rewardShards = grantFreeShards(s, quest.rewardShards ?? 0);
   applyXp(s, quest.rewardXp ?? 0);
   return {
@@ -1119,7 +1117,7 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
   const day = ((s.streak.count - 1) % 7) + 1;
   const rewardCoins = day * 100;
   const rewardShards = grantFreeShards(s, day === 7 ? 5 : day === 3 ? 1 : 0);
-  s.coins += rewardCoins;
+  addCoins(s, rewardCoins);
   return { rewardCoins, rewardShards, day };
 }
 
@@ -1134,7 +1132,7 @@ async function claimCommunityRewardFromState(s: PlayerState): Promise<{ rewardCo
   const rewardCoins = Math.round(1_000 * tier + 250 * (s.level || 1));
   const rewardXp = 75 * tier;
   s.communityRewardClaimedTier = tier;
-  s.coins += rewardCoins;
+  addCoins(s, rewardCoins);
   applyXp(s, rewardXp);
   return { rewardCoins, rewardXp, nextClaimAt: 0, tier };
 }
@@ -1170,6 +1168,7 @@ async function processAutomation(s: PlayerState): Promise<void> {
     await applyRolls(s, batches, undefined, 'offline');
     s.lastRollAt = Date.now();
     await redis.del(OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId());
+    await redis.del(OFFLINE_FULL_JOB_PREFIX + currentUserId());
   }
 
   if (s.automations?.autoUpgrade) {
@@ -1285,6 +1284,14 @@ function finiteNonNegativeInteger(value: unknown, fallback = 0): number {
   const n = Number(value);
   return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : fallback;
 }
+function addCoins(s: PlayerState, amount: number): number {
+  const gain = finiteNonNegativeInteger(amount);
+  if (gain <= 0) return 0;
+  s.coins += gain;
+  s.lifetimeCoins = (s.lifetimeCoins ?? 0) + gain;
+  return gain;
+}
+
 
 function advanceQuestProgress(s: PlayerState, type: 'roll' | 'rare' | 'value' | 'unique' | 'social' | 'share', amount: number) {
   for (const q of s.dailyQuests) {
@@ -1549,8 +1556,8 @@ export async function applyRolls(
   advanceQuestProgress(s, 'value', totalVal);
   advanceQuestProgress(s, 'unique', uniqueGained);
 
-  void contribute(totalVal, rollCount);
-  void addCommunityRolls(rollCount);
+  await contribute(totalVal, rollCount, bestRarity);
+  await addCommunityRolls(rollCount);
 
   const bestInfo = getOrbInfo(bestRarity);
   const bestOrb: Orb = {
@@ -1656,8 +1663,6 @@ export async function settleOffline(s: PlayerState): Promise<PlayerState> {
   s.onlinePlayers = await touchOnlinePresence();
   s.globalBoosters = await getGlobalBoosters();
 
-  await processAutomation(s);
-
   const tickMs = effectiveOfflineTickMs(s);
   const diff = now - (s.lastSeenAt || now);
   if (diff >= tickMs) {
@@ -1667,6 +1672,9 @@ export async function settleOffline(s: PlayerState): Promise<PlayerState> {
   }
 
   s.lastSeenAt = now;
+
+  // Process automation after newly earned offline rolls have been added.
+  await processAutomation(s);
 
   const cap = offlineRollCap(s);
   const userId = String(context.userId ?? '').trim();
@@ -1779,10 +1787,10 @@ export async function checkOffline(): Promise<PlayerState> {
   return settleOffline(s);
 }
 
-export async function roll(): Promise<RollResponse> {
+export async function roll(isAuto = false): Promise<RollResponse> {
   const s = await settleOffline(await loadRaw());
   const now = Date.now();
-  const cd = cooldownMs(s);
+  const cd = cooldownMs(s, isAuto);
   if (s.lastRollAt !== null && now - s.lastRollAt < cd) {
     throw new Error(`Cooldown: ${((cd - now + s.lastRollAt) / 1000).toFixed(1)}s`);
   }
@@ -1958,7 +1966,7 @@ export async function claimQuest(type: 'daily' | 'weekly', id: string): Promise<
 
   if (quest.rewardTokens && quest.rewardTokens > 0) {
     const username = context.username ?? `reddit-user-${currentUserId().slice(-8)}`;
-    void addGuildTokens(username, quest.rewardTokens);
+    await addGuildTokens(username, quest.rewardTokens);
   }
 
   await save(s);
@@ -1995,6 +2003,7 @@ export async function prestige(): Promise<{ state: PlayerState; cosmicDustEarned
   s.offlineRolls = 0;
   s.rollsSinceBest = 0;
   s.currentRunRolls = 0;
+  s.lastRollAt = null;
 
   if (!s.claimedAchievements.includes('first-prestige')) {
     s.claimedAchievements.push('first-prestige');
@@ -2605,8 +2614,8 @@ export async function claimOrbFrenzy(options: {
   advanceQuestProgress(s, 'rare', bestRarity);
   advanceQuestProgress(s, 'value', finalValue);
   advanceQuestProgress(s, 'unique', uniqueGained);
-  void contribute(finalValue, count);
-  void addCommunityRolls(count);
+  await contribute(finalValue, count, bestRarity);
+  await addCommunityRolls(count);
 
   await save(s);
 
