@@ -14,6 +14,7 @@ import {
   Shield,
   Lock,
   Megaphone,
+  X,
 } from 'lucide-react';
 import type {
   PlayerState,
