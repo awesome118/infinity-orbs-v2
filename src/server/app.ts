@@ -224,44 +224,44 @@ export function createApp() {
     res.type('application/json').send(JSON.stringify(body));
   };
 
-  // Reddit Payments fulfillment follows Devvit's Order contract exactly.
-  // The payment order supplies the purchase details; the authenticated Devvit context supplies the buyer identity.
+  // Devvit sends payment fulfillment details as JSON. Buyer identity comes from
+  // the authenticated request context, while the order body supplies the SKU/ID.
   app.post('/internal/payments/fulfill', async (req, res) => {
     try {
       const order = req.body as PaymentOrder;
       const buyerUserId = String(context.userId ?? '').trim();
       const orderId = String(order?.id ?? '').trim();
+      const productSku = order?.products?.length === 1
+        ? String(order.products[0]?.sku ?? '').trim()
+        : '';
+
       console.error('[Payments] Fulfill received:', JSON.stringify({
         id: order?.id ?? null,
-        orderUserId: order?.userId ?? null,
+        contextUserId: context.userId ?? null,
         status: order?.status ?? null,
-        products: order?.products?.map((product: { sku?: string }) => ({ sku: product.sku })),
+        products: order?.products?.map(product => ({ sku: product.sku })) ?? [],
       }));
 
-      // Devvit invokes this endpoint as part of the completed purchase flow.
-      // Do not reject fulfillment solely because a status field is absent or
-      // differs between payment environments. The official Devvit Web payments
-      // example uses the fulfillment callback itself as the trusted signal and
-      // identifies the buyer through the authenticated Devvit context.
       if (!buyerUserId) {
         sendPaymentResponse(res, {
           success: false,
           reason: 'Unable to identify the purchasing Reddit account.',
         });
+        return;
       }
-
-      if (!Array.isArray(order.products) || order.products.length !== 1 || !order.products[0]?.sku) {
+      if (!productSku) {
         sendPaymentResponse(res, {
           success: false,
           reason: 'Infinity Orbs purchases must contain one product.',
         });
+        return;
       }
-
       if (!orderId) {
         sendPaymentResponse(res, {
           success: false,
           reason: 'Purchase order is missing its order ID.',
         });
+        return;
       }
 
       await grantPurchasedPack(buyerUserId, productSku, orderId);
@@ -280,20 +280,26 @@ export function createApp() {
       const order = req.body as PaymentOrder;
       const buyerUserId = String(context.userId ?? '').trim();
       const orderId = String(order?.id ?? '').trim();
+      const productSku = order?.products?.length === 1
+        ? String(order.products[0]?.sku ?? '').trim()
+        : '';
+
       if (!buyerUserId || !orderId) {
         sendPaymentResponse(res, {
           success: false,
           reason: 'Refund order is missing an identity.',
         });
+        return;
       }
-      if (!Array.isArray(order.products) || order.products.length !== 1 || !order.products[0]?.sku) {
+      if (!productSku) {
         sendPaymentResponse(res, {
           success: false,
           reason: 'Refund must identify one product.',
         });
+        return;
       }
 
-      await refundPurchasedPack(buyerUserId, order.products[0].sku, orderId);
+      await refundPurchasedPack(buyerUserId, productSku, orderId);
       sendPaymentResponse(res, { success: true });
     } catch (e: unknown) {
       console.error('[Payments] Refund failed:', e instanceof Error ? e.stack ?? e.message : e);
@@ -303,7 +309,6 @@ export function createApp() {
       });
     }
   });
-
   app.post('/api/payments/reconcile', async (_req, res) => {
     try {
       const userId = String(context.userId ?? '').trim();
