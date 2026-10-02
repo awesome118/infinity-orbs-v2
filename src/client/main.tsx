@@ -1216,6 +1216,21 @@ export function App() {
           <button
             onClick={() => {
               sound.playClick();
+              changeTab('roll');
+            }}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+              tab === 'roll'
+                ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
+            <span>Roll</span>
+          </button>
+
+          <button
+            onClick={() => {
+              sound.playClick();
               changeTab('upgrades');
             }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
