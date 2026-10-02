@@ -1434,7 +1434,7 @@ export async function applyRolls(
     // New-player hype: the third ball this account ever rolls is guaranteed
     // to land in the 1/101 through 1/120 range. It cannot crit upward, so the
     // guarantee is the exact advertised range.
-    const isGuaranteedThirdBall = source === 'online' && forcedRarity == null && s.totalRolls + i === 2;
+    const isGuaranteedThirdBall = forcedRarity == null && s.totalRolls + i === 2;
 
     const critChance =
       (s.upgrades.critChance ?? 0) * 0.03 +
