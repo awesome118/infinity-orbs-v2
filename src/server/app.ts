@@ -23,6 +23,7 @@ import {
   startOrbFrenzy,
   grantPurchasedPack,
   refundPurchasedPack,
+  hasReadablePlayerSave,
   getDeveloperAnnouncement,
   loadRaw,
   recordSocialVisit,
@@ -150,44 +151,26 @@ async function resolvePaymentBuyerId(order: PaymentOrder, orderId: string): Prom
     paymentString(order.buyerUserId),
     paymentBuyerFromObject(order.buyer),
     paymentBuyerFromObject(order.user),
-  ];
-  for (const candidate of directCandidates) {
-    if (candidate) return candidate;
+    paymentString(context.userId),
+  ].filter(Boolean);
+
+  const uniqueCandidates = [...new Set(directCandidates)];
+
+  // In sandbox/playtest payments, preserve the normal game account when the
+  // payment bridge supplies a placeholder/stale identity. Prefer a candidate
+  // that actually owns a readable Infinity Orbs save.
+  for (const candidate of uniqueCandidates) {
+    if (await hasReadablePlayerSave(candidate)) return candidate;
   }
 
-  // Some payment runtime versions provide the order ID in the callback but omit
-  // userId from the callback body. Resolve the ID from Reddit's authoritative
-  // order history before falling back to request context.
-  if (orderId) {
-    try {
-      const rawOrders = await payments.getOrders({ limit: 50 });
-      const orders = Array.isArray(rawOrders)
-        ? rawOrders
-        : rawOrders && typeof rawOrders === 'object' && Array.isArray((rawOrders as { orders?: unknown }).orders)
-          ? (rawOrders as { orders: unknown[] }).orders
-          : [];
+  // A brand-new buyer may not have a save yet. Use the authenticated game user
+  // first so the purchase creates the save for the account currently testing it.
+  const contextUserId = paymentString(context.userId);
+  if (contextUserId) return contextUserId;
 
-      for (const rawOrder of orders) {
-        const candidate = normalizePaymentOrder(rawOrder);
-        if (paymentOrderId(candidate) !== orderId) continue;
-
-        const resolved = [
-          paymentString(candidate.userId),
-          paymentString(candidate.buyerUserId),
-          paymentBuyerFromObject(candidate.buyer),
-          paymentBuyerFromObject(candidate.user),
-        ].find(Boolean);
-
-        if (resolved) return resolved;
-      }
-    } catch (error) {
-      console.error('[Payments] Could not resolve buyer from order history:', error);
-    }
-  }
-
-  // Devvit's authenticated request context is the final fallback for runtimes
-  // that deliberately omit the user from the serialized Order body.
-  return paymentString(context.userId);
+  // Finally honor Reddit's documented Order.userId when there is no existing
+  // save and no authenticated request context.
+  return uniqueCandidates[0] ?? '';
 }
 
 export function createApp() {
