@@ -327,14 +327,19 @@ function normalizeGlobalBoosterState(
   state: Partial<GlobalBoosterState> | null | undefined,
   now: number,
 ): GlobalBoosterState {
+  const updatedAt = Number(state?.updatedAt ?? now) || now;
+  const remainingMs = Math.max(0, Number(state?.remainingMs ?? 0) || 0);
+  const storedEndsAt = Number(state?.endsAt ?? 0) || 0;
+
   return {
     tier: Math.max(0, Math.min(GLOBAL_BOOSTER_MAX_TIER, Math.floor(Number(state?.tier ?? 0) || 0))),
-    remainingMs: Math.max(0, Number(state?.remainingMs ?? 0) || 0),
-    updatedAt: Number(state?.updatedAt ?? now) || now,
+    remainingMs,
+    updatedAt,
     activationProgress: Math.max(
       0,
       Math.min(GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER - 1, Math.floor(Number(state?.activationProgress ?? 0) || 0)),
     ),
+    endsAt: Math.max(0, storedEndsAt > 0 ? storedEndsAt : updatedAt + remainingMs),
   };
 }
 
