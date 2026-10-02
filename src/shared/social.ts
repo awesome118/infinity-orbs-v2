@@ -26,6 +26,14 @@ export interface GuildMessage {
   text: string;
   timestamp: number;
   isSystem?: boolean;
+  userId?: string;
+}
+
+export interface GuildChatMuteRecord {
+  userId: string;
+  username: string;
+  mutedAt: number;
+  mutedBy: string;
 }
 
 export interface GuildPerks {
