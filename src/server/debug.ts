@@ -75,7 +75,14 @@ function targetUsername(value: unknown): string {
 async function removeLeaderboardEntry(username: string): Promise<void> {
   const raw = await redis.get('io:leaderboard');
   if (!raw) return;
-  const board = JSON.parse(raw) as Array<{ username?: string }>;
+  const board = (() => {
+    if (typeof raw !== 'string') return Array.isArray(raw) ? raw as unknown as Array<{ username?: string }> : [];
+    try {
+      return JSON.parse(raw) as Array<{ username?: string }>;
+    } catch {
+      return [];
+    }
+  })();
   const normalized = normalizeUsername(username);
   await redis.set(
     'io:leaderboard',
@@ -93,12 +100,21 @@ async function resolveUserId(username: string): Promise<string> {
   return id;
 }
 
-async function wipeUser(username: string): Promise<{ username: string; userId: string }> {
+async function wipeUser(username: string): Promise<{ username: string; userId: string; generation: number }> {
   const name = targetUsername(username);
   const userId = await resolveUserId(name);
+  const generationKey = `player-generation:${userId}`;
+  const currentRaw = await redis.get(generationKey);
+  const currentGeneration = Math.max(0, Number.parseInt(String(currentRaw ?? '0'), 10) || 0);
+  const generation = currentGeneration + 1;
+
+  // Invalidate the old save before deleting it. Any in-flight request carrying
+  // the old generation is then rejected by game.save() and cannot resurrect it.
+  await redis.set(generationKey, String(generation));
   await redis.del(`player:${userId}`);
   await removeLeaderboardEntry(name);
-  return { username: name, userId };
+
+  return { username: name, userId, generation };
 }
 
 function setMaxProgression(s: Awaited<ReturnType<typeof loadRaw>>): void {
