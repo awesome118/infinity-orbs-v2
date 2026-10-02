@@ -922,7 +922,7 @@ export function createInitialState(now = Date.now()): PlayerState {
       speed: 0,
       multi: 0,
       clusterRoll: 0,
-      auto: 0,
+      auto: 1,
       luck: 0,
       coinBonus: 0,
       shardChance: 0,
@@ -1148,7 +1148,7 @@ export function calculateAltarMultipliers(s: PlayerState): {
 // Roll speed is deliberately a long-term investment: 20 levels, 150ms per level,
  // for a maximum 3.0s reduction from this run upgrade.
 export const BASE_COOLDOWN_MS = 15_000;
-export const AUTO_UNLOCK_COST = 200;
+export const AUTO_UNLOCK_COST = 0;
 export const MAX_OFFLINE_ROLLS = 1_000;
 export const OFFLINE_TICK_MS = 60_000; // 1 offline roll every 60 seconds
 
@@ -1220,8 +1220,8 @@ export function rollsPerActivation(s: PlayerState): number {
   return Math.max(1, balls);
 }
 
-export function autoUnlocked(s: PlayerState): boolean {
-  return (s.upgrades.auto ?? 0) > 0;
+export function autoUnlocked(_s: PlayerState): boolean {
+  return true;
 }
 
 // All sources of luck are MULTIPLICATIVE!
@@ -1305,7 +1305,7 @@ export function coinsForRarity(rarity: number): number {
  * Sustainable upgrade costs
  */
 export function upgradeCost(id: UpgradeId, level: number): number {
-  if (id === 'auto') return level ? Infinity : AUTO_UNLOCK_COST;
+  if (id === 'auto') return level ? Infinity : 0;
   // Roll Speed has a deliberate cap: 20 levels, totaling at most 3 seconds.
   if (id === 'speed' && level >= 20) return Infinity;
   const configs: Record<Exclude<UpgradeId, 'auto'>, { base: number; mult: number }> = {
