@@ -221,6 +221,7 @@ function parseGlobalBoosterState(raw: string | null, fallback: GlobalBoosterStat
       tier: Math.max(0, Math.floor(Number(parsed.tier ?? fallback.tier))),
       remainingMs: Math.max(0, Number(parsed.remainingMs ?? fallback.remainingMs)),
       updatedAt: Number(parsed.updatedAt ?? fallback.updatedAt),
+      activationProgress: Math.max(0, Math.min(3, Math.floor(Number(parsed.activationProgress ?? fallback.activationProgress ?? 0)))),
     };
   } catch {
     return fallback;
