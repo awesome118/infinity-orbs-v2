@@ -407,29 +407,61 @@ function parsePlayerStateValue(value: unknown, depth = 0): PlayerState | null {
 }
 
 function parsePaymentPlayerState(raw: unknown): PlayerState {
-  // Payment fulfillment should accept a partially migrated save too. The normal
-  // loader merges missing fields with createInitialState(), so requiring every
-  // field here only turns recoverable legacy saves into rejected purchases.
-  let parsed: unknown = parseStoredJson<unknown>(raw);
+  // Payment fulfillment must tolerate the same Redis representations that the
+  // normal loader can encounter, including nested wrappers and double-encoded
+  // JSON strings from older saves or migration layers.
+  let parsed: unknown = raw;
 
-  for (let depth = 0; depth < 7; depth++) {
+  for (let depth = 0; depth < 12; depth++) {
+    if (typeof parsed === 'string') {
+      const decoded = parseStoredJson<unknown>(parsed);
+      if (decoded === null) break;
+      parsed = decoded;
+      continue;
+    }
+
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) break;
 
     const record = parsed as Record<string, unknown>;
-    if ('coins' in record || 'shards' in record || 'totalRolls' in record) {
+    const looksLikePlayerState =
+      'coins' in record ||
+      'shards' in record ||
+      'totalRolls' in record ||
+      'username' in record ||
+      'saveGeneration' in record ||
+      'upgrades' in record ||
+      'collection' in record ||
+      'paymentReceipts' in record;
+
+    if (looksLikePlayerState) {
       const base = createInitialState();
+      const upgrades = record.upgrades && typeof record.upgrades === 'object' && !Array.isArray(record.upgrades)
+        ? record.upgrades as Record<string, unknown>
+        : {};
+      const prestigeUpgrades = record.prestigeUpgrades && typeof record.prestigeUpgrades === 'object' && !Array.isArray(record.prestigeUpgrades)
+        ? record.prestigeUpgrades as Record<string, unknown>
+        : {};
+
       return {
         ...base,
         ...record,
-        upgrades: { ...base.upgrades, ...(record.upgrades as Record<string, unknown> ?? {}) },
-        prestigeUpgrades: { ...base.prestigeUpgrades, ...(record.prestigeUpgrades as Record<string, unknown> ?? {}) },
+        upgrades: { ...base.upgrades, ...upgrades },
+        prestigeUpgrades: { ...base.prestigeUpgrades, ...prestigeUpgrades },
         collection: (record.collection && typeof record.collection === 'object' && !Array.isArray(record.collection))
           ? record.collection as Record<string, number>
           : base.collection,
-        claimedAchievements: Array.isArray(record.claimedAchievements) ? record.claimedAchievements as string[] : base.claimedAchievements,
-        unlockedCosmetics: Array.isArray(record.unlockedCosmetics) ? record.unlockedCosmetics as string[] : base.unlockedCosmetics,
-        dailyQuests: Array.isArray(record.dailyQuests) ? record.dailyQuests as PlayerState['dailyQuests'] : base.dailyQuests,
-        weeklyQuests: Array.isArray(record.weeklyQuests) ? record.weeklyQuests as PlayerState['weeklyQuests'] : base.weeklyQuests,
+        claimedAchievements: Array.isArray(record.claimedAchievements)
+          ? record.claimedAchievements as string[]
+          : base.claimedAchievements,
+        unlockedCosmetics: Array.isArray(record.unlockedCosmetics)
+          ? record.unlockedCosmetics as string[]
+          : base.unlockedCosmetics,
+        dailyQuests: Array.isArray(record.dailyQuests)
+          ? record.dailyQuests as PlayerState['dailyQuests']
+          : base.dailyQuests,
+        weeklyQuests: Array.isArray(record.weeklyQuests)
+          ? record.weeklyQuests as PlayerState['weeklyQuests']
+          : base.weeklyQuests,
         paymentReceipts: record.paymentReceipts && typeof record.paymentReceipts === 'object' && !Array.isArray(record.paymentReceipts)
           ? record.paymentReceipts as PlayerState['paymentReceipts']
           : {},
@@ -518,6 +550,11 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
           sku,
           orderId,
           attempt,
+          playerKey: pkey,
+          rawType: typeof raw,
+          rawIsNull: raw == null,
+          rawLength: typeof raw === 'string' ? raw.length : null,
+          rawPreview: typeof raw === 'string' ? raw.slice(0, 12000) : raw,
           error: error instanceof Error ? error.message : String(error),
         });
         throw error;
