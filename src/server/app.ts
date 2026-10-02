@@ -56,6 +56,7 @@ import {
 import { context, reddit } from './devvit-mock.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, type FeatureId } from '../shared/game.js';
+import { APP_VERSION } from '../shared/version.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -589,6 +590,13 @@ export function createApp() {
   });
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+
+  app.get('/api/version', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.json({ version: APP_VERSION });
+  });
 
   app.get('/api/me', async (_req, res) => {
     try { res.json(await getMe()); }
