@@ -794,7 +794,6 @@ export function App() {
       } else {
         showToast('Offerings consumed by the Altar.', 'info');
       }
-      void refreshAll();
     } catch (e: any) {
       showToast(e.message || 'Sacrifice failed', 'warn');
     } finally {
