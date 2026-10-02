@@ -55,6 +55,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [globalMinutes, setGlobalMinutes] = useState('30');
   const [globalBoosterLogs, setGlobalBoosterLogs] = useState<Array<Record<string, unknown>>>([]);
   const [globalBoosterLogsLoading, setGlobalBoosterLogsLoading] = useState(false);
+  const [ccuStats, setCcuStats] = useState<{
+    current: number;
+    last24Hours: number;
+    last7Days: number;
+    last30Days: number;
+    allTime: number;
+  } | null>(null);
+  const [ccuLoading, setCcuLoading] = useState(false);
 
   const [guildChatSpy, setGuildChatSpy] = useState<Array<{
     id: string;
@@ -158,6 +166,21 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     bannedUntil: number | null;
     reason: string;
   }>>([]);
+
+  const loadCcuStats = async () => {
+    setCcuLoading(true);
+    try {
+      const res = await fetch('/api/dev/ccu', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load CCU statistics.');
+      setCcuStats(data);
+      setMessage('CCU statistics refreshed.');
+    } catch (e: any) {
+      setMessage('Error: ' + (e?.message || 'Could not load CCU statistics.'));
+    } finally {
+      setCcuLoading(false);
+    }
+  };
 
   const loadPaymentLogs = async () => {
     setPaymentLogsLoading(true);
@@ -436,6 +459,43 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             {message}
           </div>
         )}
+
+        <section className={panelBase + ' border border-cyan-500/30'}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-300">
+                <Gauge className="w-4 h-4" /> Max CCU
+              </div>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Peak concurrent players recorded from the game's 30-second online presence window.
+              </p>
+            </div>
+            <button
+              title="Refresh current and historical peak concurrent-user counts."
+              disabled={ccuLoading}
+              onClick={() => void loadCcuStats()}
+              className={buttonBase + ' bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-300 px-3 py-2'}
+            >
+              <RefreshCw className="inline w-3.5 h-3.5 mr-1" /> {ccuLoading ? 'Loading…' : 'Refresh'}
+            </button>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+            {[
+              ['Current', ccuStats?.current ?? 0],
+              ['Last 24 Hours', ccuStats?.last24Hours ?? 0],
+              ['Last 7 Days', ccuStats?.last7Days ?? 0],
+              ['Last 30 Days', ccuStats?.last30Days ?? 0],
+              ['All Time', ccuStats?.allTime ?? 0],
+            ].map(([label, value]) => (
+              <div key={label as string} className="rounded-xl bg-slate-900/80 border border-slate-800 px-3 py-3 text-center">
+                <div className="text-[10px] uppercase font-bold text-slate-500">{label as string}</div>
+                <div className="text-xl font-black text-cyan-300 font-mono mt-1">
+                  {Number(value).toLocaleString()}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
 
         <section className={panelBase}>
           <div className="flex items-center justify-between gap-3">
