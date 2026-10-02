@@ -275,7 +275,7 @@ export function App() {
         // sessionStorage can be unavailable in some embedded webviews.
       }
       if (revisionAtStart !== stateRevisionRef.current) return;
-      setState(me);
+      applyPlayerState(me);
       setAuthRequired(false);
       setStartupError(null);
 
@@ -419,7 +419,7 @@ export function App() {
       const revisionAtStart = stateRevisionRef.current;
       void getJson<PlayerState>('/api/me')
         .then(nextState => {
-          if (revisionAtStart === stateRevisionRef.current) setState(nextState);
+          if (revisionAtStart === stateRevisionRef.current) applyPlayerState(nextState);
         })
         .catch(() => null);
     }, 10_000);
