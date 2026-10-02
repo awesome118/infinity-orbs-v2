@@ -1200,7 +1200,7 @@ export function calculateAltarMultipliers(s: PlayerState): {
   const resonatorBonus = 1 + (s.prestigeUpgrades?.altarResonator ?? 0) * 0.25;
 
   // Coin devotion: scales smoothly with altar level and log of sacrificed coins
-  const altarEffectMultiplier = getLevelBenefits(calculateLevelFromXp(s.xp || 0).level).altarEffectMultiplier;
+  const altarEffectMultiplier = getLevelBenefits(Math.max(1, s.level || 1)).altarEffectMultiplier;
   const coinDevotion =
     (sacrifices.altarLevel * 0.08 +
       Math.min(5, Math.log10(1 + (sacrifices.coinsSacrificed || 0) / 250) * 0.35)) *
