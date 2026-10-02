@@ -1174,7 +1174,7 @@ async function processAutomation(s: PlayerState): Promise<void> {
       const result = applyQuestReward(s, q);
       if (result.rewardTokens > 0) {
         const username = context.username ?? ('reddit-user-' + currentUserId().slice(-8));
-        void addGuildTokens(username, result.rewardTokens);
+        await addGuildTokens(username, result.rewardTokens);
       }
     }
   }
