@@ -63,12 +63,19 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
     try {
       const result = await purchase(sku);
       if (result.status === OrderResultStatus.STATUS_SUCCESS) {
-        // Reddit can report the purchase before the fulfillment handler has
-        // finished writing the player's entitlements. Poll briefly so the shop
-        // does not tell the player their purchase vanished into the void.
         let fulfillmentObserved = false;
         for (const delayMs of [0, 500, 1000, 2000, 3000]) {
           if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
+
+          // First, ask the server to reconcile PAID orders. This repairs the
+          // common case where Reddit completed the order but the fulfillment
+          // callback reached the app late or a previous callback failed.
+          try {
+            await fetch('/api/payments/reconcile', { method: 'POST' });
+          } catch {
+            // The polling below can still observe a normal fulfillment.
+          }
+
           const res = await fetch('/api/me');
           if (!res.ok) continue;
           const next = await res.json() as PlayerState;
@@ -80,13 +87,23 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
             break;
           }
         }
+
         await onPurchased();
         setMessage(
           fulfillmentObserved
             ? 'Purchase complete. Your Shards and Global Booster credits were added.'
-            : 'Purchase accepted. Reddit is still finishing delivery; your entitlements will appear shortly.'
+            : 'Purchase accepted. Reddit is still finishing delivery; refresh shortly if the balance has not changed.'
         );
       } else {
+        // A completed order can occasionally reach the client with a non-success
+        // result while Reddit has already recorded it. Reconcile before reporting
+        // a hard failure so paid entitlements are not stranded.
+        try {
+          await fetch('/api/payments/reconcile', { method: 'POST' });
+          await onPurchased();
+        } catch {
+          // Keep the original payment error for the player.
+        }
         setMessage(result.errorMessage || 'Purchase was not completed.');
       }
     } catch (e: any) {
