@@ -687,8 +687,8 @@ export async function getCommunityEvent(): Promise<WorldEvent> {
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(eventKey, tickKey);
-    const latestRaw = await txn.get(eventKey);
-    const latestTickRaw = await txn.get(tickKey);
+    const latestRaw = await redis.get(eventKey);
+    const latestTickRaw = await redis.get(tickKey);
     const latestNow = Date.now();
     const currentWeekNumber = weekKey(latestNow);
     const ev: WorldEvent = latestRaw
