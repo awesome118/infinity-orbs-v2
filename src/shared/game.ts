@@ -1169,8 +1169,7 @@ export function luckMultiplier(s: PlayerState): number {
     guildLuck *
     resonanceLuck *
     onlineLuck *
-    premiumLuck *
-    globalLuck;
+    premiumLuck;
 
   return Math.round(total * 100) / 100;
 }
