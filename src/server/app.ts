@@ -51,13 +51,6 @@ import { context, reddit } from './devvit-mock.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, type FeatureId } from '../shared/game.js';
 
-type PaymentOrder = {
-  id?: string;
-  userId?: string;
-  status?: string;
-  products?: Array<{ sku?: string }>;
-};
-
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
     getProducts(): Promise<unknown>;
