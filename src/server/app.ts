@@ -51,8 +51,17 @@ import { context, reddit } from './devvit-mock.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, type FeatureId } from '../shared/game.js';
 
-import type { PaymentHandlerResponse, Order } from '@devvit/web/server';
+type PaymentHandlerResponse = {
+  success: boolean;
+  reason?: string;
+};
 
+type PaymentOrder = {
+  id?: string;
+  userId?: string;
+  status?: string;
+  products?: Array<{ sku?: string }>;
+};
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
     getProducts(): Promise<unknown>;
@@ -215,7 +224,7 @@ export function createApp() {
   // The user identity for a payment comes from the Order, not from arbitrary request data.
   app.post('/internal/payments/fulfill', async (req, res) => {
     try {
-      const order = req.body as Order;
+      const order = req.body as PaymentOrder;
       const buyerUserId = String(order?.userId ?? '').trim();
       const orderId = String(order?.id ?? '').trim();
       console.error('[Payments] Fulfill received:', JSON.stringify({
@@ -252,7 +261,7 @@ export function createApp() {
       }
 
       await grantPurchasedPack(buyerUserId, order.products[0].sku, orderId);
-      return res.json({ success: true } satisfies PaymentHandlerResponse);
+      return res.json({ success: true });
     } catch (e: unknown) {
       console.error('[Payments] Fulfillment failed:', e instanceof Error ? e.stack ?? e.message : e);
       return res.json({
@@ -306,7 +315,7 @@ export function createApp() {
       let granted = 0;
       for (const rawOrder of orders) {
         if (!rawOrder || typeof rawOrder !== 'object') continue;
-        const order = rawOrder as Order;
+        const order = rawOrder as PaymentOrder;
         if (order.userId !== userId || order.status !== 'PAID' || !order.id) continue;
         if (!Array.isArray(order.products) || order.products.length !== 1) continue;
         const sku = String(order.products[0]?.sku ?? '');
