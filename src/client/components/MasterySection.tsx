@@ -248,7 +248,7 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
                       <div className="mt-1 flex items-center justify-between gap-3">
                         <span className="text-[10px] text-slate-500">
                           {codexChain > 0
-                            ? `+${Math.min(codexChain, 50)}% per level`
+                            ? `+${(codexChain * 0.3).toFixed(1)}% per level`
                             : 'Collect consecutive rarities to build a chain'}
                         </span>
                         <span className="text-base font-black text-emerald-300">
