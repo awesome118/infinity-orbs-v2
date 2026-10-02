@@ -200,6 +200,7 @@ export function App() {
   } | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(sound.enabled);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [newBestModalData, setNewBestModalData] = useState<{ orb: Orb; prevBest: number } | null>(null);
   const [frenzyRunTriggered, setFrenzyRunTriggered] = useState(false);
   const lastBoosterAnnouncementAtRef = useRef(0);
@@ -259,17 +260,19 @@ export function App() {
       // The admin may continue to use the normal game endpoints while testing a ban.
       if (me.gameBan?.active) return;
 
-      const [lb, gd, we, announcement] = await Promise.all([
+      const [lb, gd, we, announcement, notificationState] = await Promise.all([
         getJson<LeaderboardEntry[]>('/api/leaderboard').catch(() => []),
         getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds').catch(() => ({ guilds: [], mine: null })),
         getJson<WorldEvent>('/api/world-event').catch(() => null),
         getJson<{ message: string; updatedAt: number; updatedBy: string }>('/api/developer-announcement').catch(() => null),
+        getJson<{ enabled: boolean }>('/api/notifications').catch(() => ({ enabled: false })),
       ]);
 
       setLeaderboardData(lb);
       setGuildData(gd);
       if (we) setWorldEvent(we);
       if (announcement) setDeveloperAnnouncement(announcement);
+      setNotificationsEnabled(notificationState.enabled === true);
     } catch (e: any) {
       if (e?.message === 'REDDIT_LOGIN_REQUIRED') {
         setAuthRequired(true);
@@ -1023,6 +1026,24 @@ export function App() {
     showToast(type === 'bug' ? 'Bug report sent to the moderators.' : 'Suggestion sent to the moderators.', 'success');
   };
 
+  const handleToggleNotifications = async () => {
+    try {
+      const enabled = !notificationsEnabled;
+      const res = await getJson<{ enabled: boolean }>('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      setNotificationsEnabled(res.enabled === true);
+      showToast(
+        res.enabled ? 'Reddit notifications enabled.' : 'Reddit notifications disabled.',
+        'success',
+      );
+    } catch (e: any) {
+      showToast(e.message || 'Could not update Reddit notification settings.', 'warn');
+    }
+  };
+
   // Share to Reddit
   const handleShareToReddit = async (rarity: number) => {
     const res = await getJson<{ success: boolean; id?: string }>('/api/share', {
@@ -1164,6 +1185,8 @@ export function App() {
         onClaimOffline={handleClaimOffline}
         onOpenDevDebug={isAdmin ? () => setShowDevModal(true) : undefined}
         onOpenProfile={() => changeTab('profile')}
+        notificationsEnabled={notificationsEnabled}
+        onToggleNotifications={() => void handleToggleNotifications()}
       />
 
       {/* Global Booster Activation Announcement */}
