@@ -78,7 +78,7 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(GUILDS_KEY);
-    const raw = await txn.get(GUILDS_KEY);
+    const raw = await redis.get(GUILDS_KEY);
     const guilds: Guild[] = parseGuildList(raw);
     try {
       const result = await mutator(guilds);
@@ -328,20 +328,22 @@ export async function leaveGuild() {
 export async function postGuildMessage(text: string) {
   const clean = text.trim().slice(0, 200);
   if (!clean) throw new Error('Message cannot be empty.');
-  const guilds = await loadGuilds();
-  const guild = guilds.find(g => g.members.some(m => m.username === username()));
-  if (!guild) throw new Error('You are not in a guild.');
-  if (!guild.chat) guild.chat = [];
-  const msg: GuildMessage = {
-    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    username: username(),
-    text: clean,
-    timestamp: Date.now(),
-  };
-  guild.chat.push(msg);
-  if (guild.chat.length > 50) guild.chat.shift();
-  await saveGuilds(guilds);
-  return msg;
+
+  return updateGuilds(guilds => {
+    const guild = guilds.find(g => g.members.some(m => m.username === username()));
+    if (!guild) throw new Error('You are not in a guild.');
+    if (!guild.chat) guild.chat = [];
+
+    const msg: GuildMessage = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      username: username(),
+      text: clean,
+      timestamp: Date.now(),
+    };
+    guild.chat.push(msg);
+    if (guild.chat.length > 50) guild.chat.shift();
+    return msg;
+  });
 }
 
 export async function contribute(value: number, rollCount = 1) {
