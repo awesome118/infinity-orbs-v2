@@ -961,8 +961,20 @@ export async function getCollectionPage(options: {
 
 export async function getState(): Promise<PlayerState> {
   const s = await settleOffline(await loadRaw());
-  await save(s);
-  return s;
+  try {
+    await save(s);
+    return s;
+  } catch (error) {
+    // /api/me is a recovery-safe read endpoint. If an admin wipe happened while
+    // this request was in flight, discard the stale state and immediately reload
+    // the fresh generation instead of trapping the player behind a reload error.
+    if (error instanceof Error && error.message.includes('invalidated by an admin wipe')) {
+      const fresh = await settleOffline(await loadRaw());
+      await save(fresh);
+      return fresh;
+    }
+    throw error;
+  }
 }
 
 export async function getMe(): Promise<PlayerState> {
