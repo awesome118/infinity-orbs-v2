@@ -293,6 +293,14 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
 
           <div className="flex items-center gap-3">
             <div className="text-right">
+              <span className="block text-[10px] uppercase font-black text-slate-500">Luck bonus</span>
+              <span className="text-sm font-black text-amber-300">
+                {worldEvent && worldEvent.endsAt > now
+                  ? formatDuration(worldEvent.endsAt - now) + ' left'
+                  : 'Expired'}
+              </span>
+            </div>
+            <div className="text-right">
               <span className="block text-[10px] uppercase font-black text-slate-500">Reward tier</span>
               <span className="text-sm font-black text-emerald-300">
                 {worldEvent?.tier ?? 1}
@@ -309,6 +317,9 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
             >
               {(worldEvent?.tier ?? 1) > (state.communityRewardClaimedTier ?? 0) ? 'Claim Reward' : 'Claimed'}
             </button>
+          <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-slate-300">
+            <span className="font-black text-amber-300">{worldEvent?.buffDescription ?? '+15% Global Luck Active'}</span>
+            <span className="text-slate-500"> · resets when the weekly community event expires.</span>
           </div>
         </div>
       </section>
