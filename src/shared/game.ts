@@ -35,7 +35,7 @@ export interface MasterySkillInfo {
 export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   continuumLuck: {
     name: 'Continuum Attunement',
-    desc: '+10% luck multiplier per level.',
+    desc: '+5% luck multiplier per level.',
     maxLevel: 50,
     costMultiplier: 1,
   },
@@ -151,11 +151,21 @@ export function todayKey(now = Date.now()): string {
 
 // Week boundaries are Sunday 00:00 UTC. Using the Unix epoch directly would
 // start the week on Thursday because 1970-01-01 was a Thursday.
-export function weekKey(now = Date.now()): number {
+export const WEEK_MS = 604_800_000;
+export const WEEK_EPOCH_SUNDAY = Date.UTC(1970, 0, 4);
+
+export function weekStartMs(now = Date.now()): number {
   const date = new Date(now);
   const startOfDay = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-  const sundayStart = startOfDay - date.getUTCDay() * 86_400_000;
-  return Math.floor(sundayStart / 604_800_000);
+  return startOfDay - date.getUTCDay() * 86_400_000;
+}
+
+export function weekEndMs(now = Date.now()): number {
+  return weekStartMs(now) + WEEK_MS;
+}
+
+export function weekKey(now = Date.now()): number {
+  return Math.floor((weekStartMs(now) - WEEK_EPOCH_SUNDAY) / WEEK_MS);
 }
 
 export function resetFreeShardBudgetIfNeeded(s: PlayerState, now = Date.now()): void {
@@ -1182,20 +1192,29 @@ export function calculateLevelFromXp(totalXp: number): {
   nextLevelXp: number;
   progressPercent: number;
 } {
+  const safeXp = Math.max(0, Number(totalXp) || 0);
+  const MAX_LEVEL = 1000;
   let lvl = 1;
   let accumulated = 0;
-  while (true) {
+
+  while (lvl < MAX_LEVEL) {
     const req = xpRequiredForLevel(lvl);
-    if (totalXp < accumulated + req) {
-      const currentLevelXp = Math.max(0, totalXp - accumulated);
+    if (safeXp < accumulated + req) {
+      const currentLevelXp = Math.max(0, safeXp - accumulated);
       const progressPercent = Math.min(100, Math.round((currentLevelXp / req) * 100));
       return { level: lvl, currentLevelXp, nextLevelXp: req, progressPercent };
     }
     accumulated += req;
     lvl++;
-    if (lvl > 1000) break;
   }
-  return { level: lvl, currentLevelXp: 0, nextLevelXp: 1000, progressPercent: 100 };
+
+  const finalReq = xpRequiredForLevel(MAX_LEVEL);
+  return {
+    level: MAX_LEVEL,
+    currentLevelXp: Math.max(0, safeXp - accumulated),
+    nextLevelXp: finalReq,
+    progressPercent: 100,
+  };
 }
 
 // Altar Multipliers: Coin and Shard multipliers are MULTIPLICATIVE with each other!
@@ -1246,9 +1265,9 @@ export const SHARD_SYNTHESIS_COST = 10;
 
 export function effectiveOfflineTickMs(s: PlayerState): number {
   const rateReduction = (s.upgrades.offlineRate ?? 0) * 0.08;
-  const overdriveMul = 1 + (s.prestigeUpgrades?.offlineOverdrive ?? 0) * 0.50;
-  const premiumOfflineMul = isPremiumBoosterActive(s, 'hyperdrive') ? 0.75 : 1;
-  return Math.max(10_000, Math.round((OFFLINE_TICK_MS / overdriveMul) * premiumOfflineMul * (1 - Math.min(0.6, rateReduction))));
+  const overdriveLevel = Math.max(0, Math.min(3, s.prestigeUpgrades?.offlineOverdrive ?? 0));
+  const overdriveMultiplier = Math.pow(1.5, overdriveLevel);
+  return Math.max(10_000, Math.round((OFFLINE_TICK_MS / overdriveMultiplier) * (1 - Math.min(0.6, rateReduction))));
 }
 
 export function critMultiplier(s: PlayerState): number {
