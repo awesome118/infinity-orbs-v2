@@ -10,6 +10,24 @@ interface ShopProduct {
   price: number;
 }
 
+function normalizeProducts(raw: unknown): ShopProduct[] {
+  const source = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === 'object' && Array.isArray((raw as { products?: unknown }).products)
+      ? (raw as { products: unknown[] }).products
+      : [];
+
+  return source
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    .map(item => ({
+      sku: String(item.sku ?? ''),
+      displayName: String(item.displayName ?? 'Shard Pack'),
+      description: String(item.description ?? ''),
+      price: Number(item.price ?? 0),
+    }))
+    .filter(product => product.sku.length > 0 && Number.isFinite(product.price) && product.price > 0);
+}
+
 interface ShopSectionProps {
   state: PlayerState;
   busy: boolean;
@@ -24,9 +42,15 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
 
   useEffect(() => {
     fetch('/api/products')
-      .then(r => r.ok ? r.json() : Promise.reject(new Error('Unable to load products.')))
+      .then(async r => {
+        if (!r.ok) throw new Error('Unable to load products.');
+        return normalizeProducts(await r.json());
+      })
       .then(setProducts)
-      .catch(e => setMessage(e.message || 'Unable to load the shop.'))
+      .catch(e => {
+        setProducts([]);
+        setMessage(e?.message || 'Unable to load the shop.');
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -104,6 +128,7 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
       {loading ? (
         <div className="text-center text-sm text-slate-500 py-12">Loading products...</div>
       ) : (
+        products.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {products.map(product => (
             <div key={product.sku} className="rounded-2xl border border-slate-800 bg-slate-900/85 p-4 shadow-md">
@@ -119,6 +144,13 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
             </div>
           ))}
         </div>
+        ) : (
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-8 text-center">
+            <ShoppingBag className="w-8 h-8 mx-auto text-slate-600" />
+            <div className="mt-3 text-sm font-bold text-slate-300">Shop products are unavailable</div>
+            <div className="mt-1 text-xs text-slate-500">The game is still playable. Payment products could not be loaded right now.</div>
+          </div>
+        )
       )}
     </div>
   );
