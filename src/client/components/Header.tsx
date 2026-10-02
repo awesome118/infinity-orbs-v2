@@ -52,10 +52,8 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
         {/* Brand & Player Identity & EXP Bar */}
         <div className="flex items-center space-x-3">
-          <div className="relative w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 via-indigo-500 to-cyan-400 p-0.5 shadow-lg shadow-indigo-500/20 flex items-center justify-center">
-            {/* Rotating Star Ring Animation */}
-            <div className="absolute inset-0 rounded-xl border border-cyan-400/30 animate-spin" style={{ animationDuration: '24s' }} />
-            <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center font-black text-xl text-transparent bg-clip-text bg-gradient-to-r from-purple-300 to-cyan-200">
+          <div className="relative w-10 h-10 rounded-xl border border-purple-400/35 bg-slate-950 flex items-center justify-center">
+            <div className="w-full h-full rounded-[10px] flex items-center justify-center font-semibold text-xl text-purple-200">
               ∞
             </div>
           </div>
@@ -70,7 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
                 className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gradient-to-r from-purple-500/30 to-indigo-500/30 text-purple-200 border border-purple-400/40 hover:border-purple-300 flex items-center gap-1 shadow-sm cursor-pointer transition-all"
                 title={`Level ${levelInfo.level} Perks: ${levelBenefits.luckMultiplier.toFixed(2)}× Luck, ${levelBenefits.coinsMultiplier.toFixed(2)}× Coins, +${levelBenefits.bonusBalls} Balls`}
               >
-                <Star className="w-2.5 h-2.5 text-amber-300 fill-current animate-spin" style={{ animationDuration: '10s' }} />
+                <Star className="w-2.5 h-2.5 text-amber-300 fill-current" />
                 <span>Lv {levelInfo.level}</span>
               </button>
             </div>
@@ -86,7 +84,6 @@ export const Header: React.FC<HeaderProps> = ({
                   className="h-full bg-gradient-to-r from-purple-500 via-indigo-400 to-cyan-400 rounded-full transition-all duration-300 relative shadow-[0_0_8px_rgba(168,85,247,0.7)]"
                   style={{ width: `${levelInfo.progressPercent}%` }}
                 >
-                  <div className="absolute inset-0 bg-white/20 animate-pulse" />
                 </div>
               </div>
               <span className="text-[10px] font-mono text-slate-400 font-medium">
@@ -145,7 +142,7 @@ export const Header: React.FC<HeaderProps> = ({
           {state.offlineRolls > 0 && (
             <button
               onClick={onClaimOffline}
-              className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs px-3 py-1.5 rounded-xl shadow-lg shadow-emerald-900/30 animate-pulse transition-all"
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3 py-1.5 rounded-xl shadow-md transition-all"
               title="Claim rolls accumulated while away"
             >
               <Zap className="w-3.5 h-3.5" />
