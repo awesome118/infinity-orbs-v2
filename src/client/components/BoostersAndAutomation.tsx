@@ -75,9 +75,10 @@ function formatDuration(ms: number): string {
 export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   state,
   busy,
-
+  globalBoosters,
   worldEvent,
   onActivateBooster,
+  onActivateGlobalBooster,
   onBuyAutomation,
   onClaimCommunityReward,
 }) => {
