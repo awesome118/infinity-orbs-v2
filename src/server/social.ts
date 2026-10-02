@@ -506,10 +506,12 @@ export async function contribute(value: number, rollCount = 1) {
       const member = guild.members.find(m => m.username === username());
       if (!member) return;
 
+      const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * 0.10;
+      const tokenMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05;
       member.contribution += value;
-      guild.xp += Math.max(1, Math.floor(value / 250));
+      guild.xp += Math.max(1, Math.floor(Math.max(1, Math.floor(value / 250)) * xpMultiplier));
       guild.level = 1 + Math.floor(guild.xp / 500);
-      guild.tokens += Math.max(1, Math.floor(value / 25000));
+      guild.tokens += Math.max(1, Math.floor(Math.max(1, Math.floor(value / 25000)) * tokenMultiplier));
 
       if (guild.challenge) {
         if (guild.challenge.type === 'value') {
@@ -521,7 +523,10 @@ export async function contribute(value: number, rollCount = 1) {
         }
 
         if (guild.challenge.progress >= guild.challenge.target) {
-          const reward = guild.challenge.reward;
+          const reward = Math.max(1, Math.floor(
+            guild.challenge.reward *
+            (1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05),
+          ));
           guild.tokens += reward;
           if (!guild.chat) guild.chat = [];
           guild.chat.push({
@@ -547,7 +552,10 @@ export async function contribute(value: number, rollCount = 1) {
 
         if (guild.boss.currentHp <= 0) {
           guild.boss.defeated = true;
-          const tokensReward = guild.boss.rewardTokens;
+          const tokensReward = Math.max(1, Math.floor(
+            guild.boss.rewardTokens *
+            (1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05),
+          ));
           guild.tokens += tokensReward;
           if (!guild.chat) guild.chat = [];
           guild.chat.push({
