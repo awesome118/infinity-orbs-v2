@@ -169,7 +169,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       level: state.upgrades.luck ?? 0,
       currentVal: `${currentLuckMultiplier.toFixed(2)}×`,
       nextVal: `${nextLuckMultiplier.toFixed(2)}×`,
-      desc: '+10% multiplicative luck factor per level.',
+      desc: '+5% Luck per level. Luck sources combine into one total before RNG diminishing returns.',
       cost: upgradeCost('luck', state.upgrades.luck ?? 0),
     },
     {
@@ -270,7 +270,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
               <Star className="w-4 h-4 text-amber-400 fill-current animate-spin" style={{ animationDuration: '16s' }} />
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Spend coins on run upgrades. All luck sources are multiplicative!
+              Spend coins on run upgrades. Luck sources combine into one total before RNG diminishing returns.
             </p>
           </div>
 
@@ -322,7 +322,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
 
           <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3">
             <span className="text-[10px] uppercase font-bold text-slate-500 block mb-0.5">
-              Total Multiplicative Luck
+              Total Luck
             </span>
             <span className="text-sm font-black text-emerald-300 font-mono">
               {currentLuckMultiplier.toFixed(2)}×

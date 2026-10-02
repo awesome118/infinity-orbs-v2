@@ -1571,7 +1571,8 @@ export async function applyRolls(
   const fakeCcuBonus = await getFakeCcuBonus();
   const luckCcu = Math.max(1, Math.floor((s.onlinePlayers ?? 1) + fakeCcuBonus));
   const luckState = luckCcu === (s.onlinePlayers ?? 1) ? s : { ...s, onlinePlayers: luckCcu };
-  const baseLuck = luckMultiplier(luckState) * communityLuck;
+  // Community Luck is another additive source, kept transient rather than persisted.
+  const baseLuck = luckMultiplier(luckState) + Math.max(0, communityLuck - 1);
 
   // Apex Fortune Mastery: chance on multi-roll to double the luck of that activation
   const apexChance = Math.min(0.45, (s.masterySkills?.apexFortune ?? 0) * 0.03);
@@ -1605,7 +1606,8 @@ export async function applyRolls(
       }
     }
 
-    // Continuum RNG generation with effective luck.
+    // Continuum RNG generation with effective luck. Luck reshapes the tail;
+    // it does not multiply the final rarity directly.
     // The third lifetime ball overrides the random result with a guaranteed beginner drop.
     const minimumRarity = 2 + (s.prestigeUpgrades?.luckyFloor ?? 0);
     const beginnerRarity = 101 + Math.floor(rng() * 20);

@@ -119,7 +119,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/40 text-purple-300 text-xs font-bold">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>INFINITE LUCK MULTIPLIERS</span>
+              <span>INFINITE LUCK BONUSES</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
               Cosmic Altar & Astral Mastery

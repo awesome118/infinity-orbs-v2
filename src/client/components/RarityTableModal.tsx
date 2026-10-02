@@ -31,7 +31,7 @@ export const RarityTableModal: React.FC<RarityTableModalProps> = ({ onClose }) =
             Coin rewards scale with rarity using a diminishing-return formula, so higher-rarity orbs are worth more without paying their full rarity number.
           </p>
           <p className="text-slate-400">
-            Orbs generate continuously: any number <code className="text-cyan-300">R ≥ 2</code> is obtainable. Chance of rolling at least R is <code className="text-cyan-300">(2 × Luck) / R</code>.
+            Orbs generate continuously: any number <code className="text-cyan-300">R ≥ 2</code> is obtainable. At 1× Luck, the chance of rolling at least R is <code className="text-cyan-300">1 / R</code>. Luck increases the tail weight with diminishing returns instead of multiplying the rolled rarity directly.
           </p>
         </div>
 

@@ -35,7 +35,7 @@ export interface MasterySkillInfo {
 export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   continuumLuck: {
     name: 'Continuum Attunement',
-    desc: '+5% luck multiplier per level.',
+    desc: '+3% Luck per level.',
     maxLevel: 50,
     costMultiplier: 1,
   },
@@ -712,16 +712,24 @@ export function getOrbInfo(rarity: number): RarityTierInfo {
 
 /**
  * Continuous Rarity Distribution (Continuum RNG)
- * P(R >= r) = (2 * luck) / r
- * Generates dynamic, exciting varieties of orbs at all luck stages,
- * without clustering 33% of rolls on 1/2.
+ *
+ * At 1× Luck, the tail matches the displayed "1 / R" rarity model:
+ * P(Rarity >= R) ≈ 1 / R.
+ *
+ * Luck increases the tail weight through a diminishing-return shape exponent
+ * instead of multiplying the rolled rarity directly. This keeps high Luck
+ * valuable without turning ordinary rolls into giant outliers.
  */
+export function luckRarityExponent(luck: number): number {
+  const rawLuck = Number(luck);
+  const effectiveLuck = Number.isFinite(rawLuck) ? Math.max(1, rawLuck) : 1;
+  return 1 + Math.min(0.50, Math.log2(effectiveLuck) * 0.14);
+}
+
 export function rollContinuum(luck: number, random: () => number = Math.random): number {
-  // Pareto distribution with P(R >= r) = (2 * luck) / r.
-  // This matches the displayed tier odds and, critically, does not collapse most rolls to 1/2.
   const u = Math.max(1e-12, Math.min(1 - 1e-12, random()));
-  const effectiveLuck = Math.max(1, luck);
-  const rarity = Math.floor((2 * effectiveLuck) / u);
+  const exponent = luckRarityExponent(luck);
+  const rarity = Math.floor(1 / Math.pow(u, exponent));
   return Math.min(10_000_000_000, Math.max(2, rarity));
 }
 
@@ -735,15 +743,15 @@ export interface ContinuumTierMilestone {
 }
 
 export const CONTINUUM_TIERS: ContinuumTierMilestone[] = [
-  { tier: 'Common', minRarity: 2, label: '1 / 2 - 1 / 9', approxChance: '~80.0%', coinsPerOrb: '2 - 9 Coins', color: '#94a3b8' },
-  { tier: 'Uncommon', minRarity: 10, label: '1 / 10 - 1 / 99', approxChance: '~18.0%', coinsPerOrb: '10 - 99 Coins', color: '#38bdf8' },
-  { tier: 'Rare', minRarity: 100, label: '1 / 100 - 1 / 999', approxChance: '~1.8%', coinsPerOrb: '100 - 999 Coins', color: '#c084fc' },
-  { tier: 'Epic', minRarity: 1000, label: '1 / 1,000 - 1 / 9,999', approxChance: '~0.18%', coinsPerOrb: '1,000 - 9,999 Coins', color: '#fb923c' },
-  { tier: 'Legendary', minRarity: 10000, label: '1 / 10,000 - 1 / 99,999', approxChance: '~0.018%', coinsPerOrb: '10,000 - 99,999 Coins', color: '#4ade80' },
-  { tier: 'Mythic', minRarity: 100000, label: '1 / 100,000 - 1 / 999,999', approxChance: '~0.0018%', coinsPerOrb: '100,000 - 999,999 Coins', color: '#a855f7' },
-  { tier: 'Relic', minRarity: 1000000, label: '1 / 1,000,000 - 1 / 9,999,999', approxChance: '~0.00018%', coinsPerOrb: '1,000,000 - 9,999,999 Coins', color: '#f59e0b' },
-  { tier: 'Divine', minRarity: 10000000, label: '1 / 10,000,000 - 1 / 99,999,999', approxChance: '~0.000018%', coinsPerOrb: '10,000,000 - 99,999,999 Coins', color: '#38bdf8' },
-  { tier: 'Transcendent', minRarity: 100000000, label: '1 / 100,000,000+', approxChance: '~0.000002%', coinsPerOrb: '100,000,000+ Coins', color: '#ffffff' },
+  { tier: 'Common', minRarity: 2, label: '1 / 2 - 1 / 9', approxChance: '~90.0%', coinsPerOrb: '2 - 9 Coins', color: '#94a3b8' },
+  { tier: 'Uncommon', minRarity: 10, label: '1 / 10 - 1 / 99', approxChance: '~9.0%', coinsPerOrb: '10 - 99 Coins', color: '#38bdf8' },
+  { tier: 'Rare', minRarity: 100, label: '1 / 100 - 1 / 999', approxChance: '~0.9%', coinsPerOrb: '100 - 999 Coins', color: '#c084fc' },
+  { tier: 'Epic', minRarity: 1000, label: '1 / 1,000 - 1 / 9,999', approxChance: '~0.09%', coinsPerOrb: '1,000 - 9,999 Coins', color: '#fb923c' },
+  { tier: 'Legendary', minRarity: 10000, label: '1 / 10,000 - 1 / 99,999', approxChance: '~0.009%', coinsPerOrb: '10,000 - 99,999 Coins', color: '#4ade80' },
+  { tier: 'Mythic', minRarity: 100000, label: '1 / 100,000 - 1 / 999,999', approxChance: '~0.0009%', coinsPerOrb: '100,000 - 999,999 Coins', color: '#a855f7' },
+  { tier: 'Relic', minRarity: 1000000, label: '1 / 1,000,000 - 1 / 9,999,999', approxChance: '~0.00009%', coinsPerOrb: '1,000,000 - 9,999,999 Coins', color: '#f59e0b' },
+  { tier: 'Divine', minRarity: 10000000, label: '1 / 10,000,000 - 1 / 99,999,999', approxChance: '~0.000009%', coinsPerOrb: '10,000,000 - 99,999,999 Coins', color: '#38bdf8' },
+  { tier: 'Transcendent', minRarity: 100000000, label: '1 / 100,000,000+', approxChance: '~0.000001%', coinsPerOrb: '100,000,000+ Coins', color: '#ffffff' },
 ];
 
 export interface CosmeticItem {
@@ -777,7 +785,7 @@ export interface PrestigeUpgradeInfo {
 export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> = {
   permLuck: {
     name: 'Permanent Luck',
-    desc: '+5% luck multiplier per level.',
+    desc: '+5% Luck per level.',
     category: 'core',
     maxLevel: 10,
     costPerLevel: 2,
@@ -837,7 +845,7 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
   resonanceMeter: {
     name: 'Dry Streak Luck',
-    desc: '+1% luck per stack for dry streaks; stacks begin every 18 rolls.',
+    desc: '+1% Luck per pity stack; stacks begin every 18 rolls and can accelerate with mastery.',
     category: 'qol',
     maxLevel: 3,
     costPerLevel: 3,
@@ -1132,17 +1140,17 @@ export const LEVEL_MILESTONES: LevelMilestonePerk[] = [
   { level: 15, name: 'Chrono Adept', desc: 'Cooldown floor reduced by 150ms' },
   { level: 20, name: 'Alchemical Affinity', desc: 'Altar Sacrifices are 15% more potent' },
   { level: 25, name: 'Twin Orb Conductor', desc: '+1 Extra Orb per activation!', bonusBalls: 1 },
-  { level: 35, name: "Fortune's Blessing", desc: '1.15× Multiplicative Luck boost!', bonusLuckMultiplier: 1.15 },
+  { level: 35, name: "Fortune's Blessing", desc: '+15% Luck!', bonusLuckMultiplier: 1.15 },
   { level: 50, name: 'Orb Titan', desc: '+1 Extra Orb per activation & 1.30× Coins!', bonusBalls: 1, bonusCoinsMultiplier: 1.30 },
-  { level: 75, name: 'Astral Conduit', desc: '1.20× Multiplicative Luck boost!', bonusLuckMultiplier: 1.20 },
-  { level: 100, name: 'Transcendent Paragon', desc: '+2 Extra Orbs per activation & 1.30× Luck boost!', bonusBalls: 2, bonusLuckMultiplier: 1.30 },
+  { level: 75, name: 'Astral Conduit', desc: '+20% Luck!', bonusLuckMultiplier: 1.20 },
+  { level: 100, name: 'Transcendent Paragon', desc: '+2 Extra Orbs per activation & +30% Luck!', bonusBalls: 2, bonusLuckMultiplier: 1.30 },
   { level: 150, name: 'Grand Conductor', desc: '+2 Extra Orbs per activation & +20% XP!', bonusBalls: 2, bonusXpMultiplier: 1.20 },
-  { level: 200, name: 'Void Fortune', desc: '1.30× Multiplicative Luck boost!', bonusLuckMultiplier: 1.30 },
+  { level: 200, name: 'Void Fortune', desc: '+30% Luck!', bonusLuckMultiplier: 1.30 },
   { level: 300, name: 'Golden Age', desc: '1.50× Multiplicative Coin boost!', bonusCoinsMultiplier: 1.50 },
   { level: 400, name: 'Orb Battalion', desc: '+2 Extra Orbs per activation!', bonusBalls: 2 },
-  { level: 500, name: 'Astral Zenith', desc: '1.40× Luck and +10% Shard Chance!', bonusLuckMultiplier: 1.40, bonusShardChance: 0.10 },
+  { level: 500, name: 'Astral Zenith', desc: '+40% Luck and +10% Shard Chance!', bonusLuckMultiplier: 1.40, bonusShardChance: 0.10 },
   { level: 750, name: 'Infinite Arsenal', desc: '+3 Extra Orbs per activation!', bonusBalls: 3 },
-  { level: 1000, name: 'Infinity Master', desc: '1.50× Luck and 2.00× Coins!', bonusLuckMultiplier: 1.50, bonusCoinsMultiplier: 2.00 },
+  { level: 1000, name: 'Infinity Master', desc: '+50% Luck and 2.00× Coins!', bonusLuckMultiplier: 1.50, bonusCoinsMultiplier: 2.00 },
 ];
 
 export function xpRequiredForLevel(level: number): number {
@@ -1171,7 +1179,7 @@ export function getLevelBenefits(level: number): LevelBenefits {
   for (const milestone of LEVEL_MILESTONES) {
     if (level < milestone.level) continue;
     bonusBalls += milestone.bonusBalls ?? 0;
-    luckMultiplier *= milestone.bonusLuckMultiplier ?? 1;
+    luckMultiplier += Math.max(0, (milestone.bonusLuckMultiplier ?? 1) - 1);
     coinsMultiplier *= milestone.bonusCoinsMultiplier ?? 1;
     xpMultiplier *= milestone.bonusXpMultiplier ?? 1;
     shardChance += milestone.bonusShardChance ?? 0;
@@ -1221,7 +1229,8 @@ export function calculateLevelFromXp(totalXp: number): {
   };
 }
 
-// Altar Multipliers: Coin and Shard multipliers are MULTIPLICATIVE with each other!
+// Altar Luck is composed of explicit additive bonuses. The returned values remain
+// multipliers for compatibility with existing callers and UI.
 export function calculateAltarMultipliers(s: PlayerState): {
   coinMultiplier: number;
   shardMultiplier: number;
@@ -1230,29 +1239,21 @@ export function calculateAltarMultipliers(s: PlayerState): {
 } {
   const sacrifices = s.sacrifices ?? { coinsSacrificed: 0, shardsSacrificed: 0, altarLevel: 0 };
   const resonatorBonus = 1 + (s.prestigeUpgrades?.altarResonator ?? 0) * 0.15;
-
-  // Coin devotion: scales smoothly with altar level and log of sacrificed coins
   const altarEffectMultiplier = getLevelBenefits(Math.max(1, s.level || 1)).altarEffectMultiplier;
-  // Coin offerings only increase this multiplier when they win a devotion
-  // breakthrough. The amount spent affects the chance, not guaranteed power.
-  const coinDevotion =
-    (sacrifices.altarLevel * 0.08) * altarEffectMultiplier;
-  const coinMultiplier = 1 + coinDevotion * resonatorBonus;
 
-  // Shard devotion: 3% luck per shard sacrificed
-  const shardDevotion = (s.sacrifices?.shardsSacrificed || 0) * 0.03 * altarEffectMultiplier;
-  const shardMultiplier = 1 + shardDevotion * resonatorBonus;
+  // Match the displayed Altar bonuses: +1% per altar level and +2% per infused shard.
+  const coinBonus = sacrifices.altarLevel * 0.01 * altarEffectMultiplier * resonatorBonus;
+  const shardBonus = (sacrifices.shardsSacrificed || 0) * 0.02 * altarEffectMultiplier * resonatorBonus;
 
-  // Surge multiplier: 1.25x during active surge
   const isSurgeActive = Boolean(sacrifices.luckSurgeUntil && Date.now() < sacrifices.luckSurgeUntil);
   const surgeMultiplier = isSurgeActive ? 1.25 : 1.0;
 
-  // Multiplicative with each other!
-  const totalAltarMultiplier = Math.round(coinMultiplier * shardMultiplier * surgeMultiplier * 100) / 100;
+  // The three Altar effects are additive so they cannot compound Luck multipliers.
+  const totalAltarMultiplier = Math.round((1 + coinBonus + shardBonus + (surgeMultiplier - 1)) * 100) / 100;
 
   return {
-    coinMultiplier: Math.round(coinMultiplier * 100) / 100,
-    shardMultiplier: Math.round(shardMultiplier * 100) / 100,
+    coinMultiplier: Math.round((1 + coinBonus) * 100) / 100,
+    shardMultiplier: Math.round((1 + shardBonus) * 100) / 100,
     surgeMultiplier,
     totalAltarMultiplier,
   };
@@ -1338,7 +1339,8 @@ export function autoUnlocked(s: PlayerState): boolean {
   return (s.manualRolls ?? 0) >= 3;
 }
 
-// All sources of luck are MULTIPLICATIVE!
+// Luck sources contribute additively to one total Luck factor. The RNG then
+// applies diminishing returns to that factor's effect on the rarity tail.
 export function highestCodexChain(collection: Record<string, number> | null | undefined): number {
   const rarities = Object.entries(collection ?? {})
     .filter(([rarity, count]) => {
@@ -1410,56 +1412,51 @@ export function altarCoinDevotionChancePercent(
 }
 
 export function luckMultiplier(s: PlayerState): number {
-  // 1. Base Upgrade Luck
-  const upgradeLuck = 1 + (s.upgrades.luck ?? 0) * 0.05;
+  // All Luck sources contribute additively to one total factor. The RNG
+  // converts this factor into a bounded change in the rarity tail.
+  let bonus = 0;
+
+  // 1. Run upgrade Luck
+  bonus += (s.upgrades.luck ?? 0) * 0.05;
 
   // 2. Prestige Permanent Luck
-  const prestigeLuck = 1 + (s.prestigeUpgrades?.permLuck ?? 0) * 0.05;
+  bonus += (s.prestigeUpgrades?.permLuck ?? 0) * 0.05;
 
-  // 3. Level Perks Luck
+  // 3. Level Luck, including milestone bonuses
   const totalLevelLuck = getLevelBenefits(Math.max(1, s.level || 1)).luckMultiplier;
+  bonus += Math.max(0, totalLevelLuck - 1);
 
-  // 4. Sacrificial Altar Luck (Coins and Shards multiplicative with each other!)
+  // 4. Sacrificial Altar Luck
   const { totalAltarMultiplier } = calculateAltarMultipliers(s);
+  bonus += Math.max(0, totalAltarMultiplier - 1);
 
-  // 5. Astral Mastery Skill Luck
-  const masteryBaseLuck = 1 + (s.masterySkills?.continuumLuck ?? 0) * 0.03;
+  // 5. Astral Mastery Luck + Codex Devotion
+  bonus += (s.masterySkills?.continuumLuck ?? 0) * 0.03;
   const codexChain = highestCodexChain(s.collection);
-  const codexLuck = 1 + codexDevotionLuckPercent(
+  bonus += codexDevotionLuckPercent(
     s.masterySkills?.celestialSurge ?? 0,
     codexChain,
   ) / 100;
-  const totalMasteryLuck = masteryBaseLuck * codexLuck;
 
   // 6. Guild Perk Luck
-  const guildLuck = 1 + (s.guildPerks?.luckRank ?? 0) * 0.03;
+  bonus += (s.guildPerks?.luckRank ?? 0) * 0.03;
 
-  // 7. Dry streak Resonance Pity Luck
-  let resonanceLuck = 1.0;
+  // 7. Dry-streak pity Luck
   if ((s.prestigeUpgrades?.resonanceMeter ?? 0) > 0) {
     const dryRolls = s.rollsSinceBest ?? 0;
     const interval = Math.max(6, 18 - (s.masterySkills?.pityAccelerant ?? 0) * 2);
     const stacks = Math.min(50, Math.floor(dryRolls / interval));
-    resonanceLuck = 1 + (s.prestigeUpgrades.resonanceMeter * 0.01) * stacks;
+    bonus += (s.prestigeUpgrades.resonanceMeter * 0.01) * stacks;
   }
 
-  // ALL SOURCES OF LUCK ARE MULTIPLICATIVE WITH EACH OTHER!
-  const onlineLuck = onlinePlayerLuckMultiplier(s.onlinePlayers ?? 1);
-  const premiumLuck = isPremiumBoosterActive(s, 'fortune') ? 4 : 1;
+  // 8. Online population Luck
+  bonus += Math.max(0, onlinePlayerLuckMultiplier(s.onlinePlayers ?? 1) - 1);
 
-  const total =
-    upgradeLuck *
-    prestigeLuck *
-    totalLevelLuck *
-    totalAltarMultiplier *
-    totalMasteryLuck *
-    guildLuck *
-    resonanceLuck *
-    onlineLuck *
-    premiumLuck *
-    globalBoosterLuckMultiplier(s.globalBoosters?.luck);
+  // 9. Temporary Luck boosters use the same additive pool.
+  if (isPremiumBoosterActive(s, 'fortune')) bonus += 3.0; // 4× becomes +300%.
+  bonus += Math.max(0, globalBoosterLuckMultiplier(s.globalBoosters?.luck) - 1);
 
-  return Math.round(total * 100) / 100;
+  return Math.round((1 + bonus) * 100) / 100;
 }
 
 export function offlineRollCap(s: PlayerState): number {
