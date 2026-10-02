@@ -56,6 +56,8 @@ import {
   recordLeaderboard,
   shareText,
   getCommunityEvent,
+  getGlobalChat,
+  postGlobalChatMessage,
 } from './social.js';
 import { context, reddit } from './devvit-mock.js';
 import * as devvitServer from '@devvit/web/server';
@@ -660,6 +662,16 @@ export function createApp() {
     try {
       res.json(await leaderboard());
     } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch leaderboard.' }); }
+  });
+
+  app.get('/api/chat', async (_req, res) => {
+    try { res.json(await getGlobalChat()); }
+    catch (e) { badRequest(res, e, 'Could not load global chat.'); }
+  });
+
+  app.post('/api/chat', async (req, res) => {
+    try { res.json(await postGlobalChatMessage(req.body?.text ?? '')); }
+    catch (e) { badRequest(res, e, 'Could not send chat message.'); }
   });
 
   app.get('/api/guilds', async (_req, res) => {
