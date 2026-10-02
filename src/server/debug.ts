@@ -19,7 +19,12 @@ import {
   clearGlobalBoosterDebugLogs,
 } from './game.js';
 import { context, redis, reddit } from './devvit-mock.js';
-import { setCommunityEventConfig } from './social.js';
+import {
+  setCommunityEventConfig,
+  listGuildChatSpy,
+  muteGuildChatUser,
+  unmuteGuildChatUser,
+} from './social.js';
 import { cooldownMs, createInitialState, calculateLevelFromXp, COSMETICS_LIST, PRESTIGE_UPGRADES, MASTERY_SKILLS } from '../shared/game.js';
 import { recordLeaderboard } from './social.js';
 
@@ -287,6 +292,36 @@ debugRouter.post('/announcement', async (req, res) => {
     res.json({ announcement });
   } catch (e: any) {
     res.status(400).json({ error: e?.message || 'Failed to update developer announcement.' });
+  }
+});
+
+debugRouter.get('/guild-chat-spy', async (_req, res) => {
+  try {
+    res.json(await listGuildChatSpy());
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to load Guild Chat spy data.' });
+  }
+});
+
+debugRouter.post('/guild-chat/mute', async (req, res) => {
+  try {
+    const username = targetUsername(req.body?.username);
+    const userId = await resolveUserId(username);
+    const mute = await muteGuildChatUser(userId, username, context.username ?? 'shadow_fen');
+    res.json({ ok: true, action: 'guild-chat-mute', mute });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to mute Guild Chat user.' });
+  }
+});
+
+debugRouter.post('/guild-chat/unmute', async (req, res) => {
+  try {
+    const username = targetUsername(req.body?.username);
+    const userId = await resolveUserId(username);
+    const changed = await unmuteGuildChatUser(userId);
+    res.json({ ok: true, action: 'guild-chat-unmute', username, userId, changed });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to unmute Guild Chat user.' });
   }
 });
 
