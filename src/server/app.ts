@@ -241,6 +241,40 @@ export function createApp() {
     }
   });
 
+  app.post('/api/payments/reconcile', async (_req, res) => {
+    try {
+      const userId = String(context.userId ?? '').trim();
+      if (!userId) return res.status(401).json({ error: 'REDDIT_LOGIN_REQUIRED' });
+
+      const rawOrders = await payments.getOrders();
+      const orders = Array.isArray(rawOrders)
+        ? rawOrders
+        : rawOrders && typeof rawOrders === 'object' && Array.isArray((rawOrders as { orders?: unknown }).orders)
+          ? (rawOrders as { orders: unknown[] }).orders
+          : [];
+
+      let granted = 0;
+      for (const rawOrder of orders) {
+        if (!rawOrder || typeof rawOrder !== 'object') continue;
+        const order = rawOrder as PaymentOrder;
+        if (order.userId !== userId || order.status !== 'PAID' || !order.id) continue;
+        if (!Array.isArray(order.products) || order.products.length !== 1) continue;
+        const sku = String(order.products[0]?.sku ?? '');
+        if (!sku) continue;
+        try {
+          if (await grantPurchasedPack(userId, sku, order.id)) granted++;
+        } catch (error) {
+          console.error('[Payments] Reconciliation failed for order', order.id, error);
+        }
+      }
+
+      res.json({ ok: true, granted });
+    } catch (e: unknown) {
+      console.error('[Payments] Reconciliation lookup failed:', e instanceof Error ? e.stack ?? e.message : e);
+      res.status(500).json({ error: e instanceof Error ? e.message : 'Unable to reconcile purchases.' });
+    }
+  });
+
   app.get('/api/products', async (_req, res) => {
     const fallbackProducts = PURCHASE_PACKS.map(pack => ({
       sku: pack.sku,
