@@ -170,6 +170,10 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     bannedUntil: number | null;
     reason: string;
   }>>([]);
+  const [playerSpyLogs, setPlayerSpyLogs] = useState<Array<Record<string, unknown>>>([]);
+  const [playerSpyUsername, setPlayerSpyUsername] = useState('');
+  const [playerSpyUserId, setPlayerSpyUserId] = useState('');
+  const [playerSpyLoading, setPlayerSpyLoading] = useState(false);
 
   const loadCcuStats = async () => {
     setCcuLoading(true);
@@ -252,6 +256,84 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       textarea.focus();
       textarea.select();
       setMessage('Clipboard access was blocked. The logs are selected; copy them manually.');
+    }
+  };
+
+  const loadPlayerSpy = async () => {
+    const username = playerSpyUsername.trim().replace(/^u\//i, '');
+    if (!username) {
+      setMessage('Enter a Reddit username first.');
+      return;
+    }
+
+    setPlayerSpyLoading(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/dev/player-spy?username=' + encodeURIComponent(username) + '&limit=500', {
+        cache: 'no-store',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load Player Spy logs.');
+      setPlayerSpyUsername(data.username ?? username);
+      setPlayerSpyUserId(data.userId ?? '');
+      setPlayerSpyLogs(Array.isArray(data.logs) ? data.logs : []);
+      setMessage(`Loaded ${Array.isArray(data.logs) ? data.logs.length : 0} Player Spy events for u/${data.username ?? username}.`);
+    } catch (e: any) {
+      setMessage('Error: ' + (e?.message || 'Could not load Player Spy logs.'));
+      setPlayerSpyLogs([]);
+      setPlayerSpyUserId('');
+    } finally {
+      setPlayerSpyLoading(false);
+    }
+  };
+
+  const copyPlayerSpy = async () => {
+    const payload = {
+      username: playerSpyUsername.trim().replace(/^u\//i, ''),
+      userId: playerSpyUserId || null,
+      exportedAt: new Date().toISOString(),
+      logCount: playerSpyLogs.length,
+      logs: playerSpyLogs,
+    };
+    const serialized = JSON.stringify(payload, null, 2);
+    try {
+      await navigator.clipboard.writeText(serialized);
+      setMessage('Player Spy logs copied to clipboard. You may paste the JSON into chat for analysis.');
+    } catch {
+      const textarea = document.getElementById('player-spy-log-copy') as HTMLTextAreaElement | null;
+      if (!textarea) {
+        setMessage('Could not access the clipboard.');
+        return;
+      }
+      textarea.focus();
+      textarea.select();
+      setMessage('Clipboard access was blocked. The Player Spy JSON is selected; copy it manually.');
+    }
+  };
+
+  const clearPlayerSpy = async () => {
+    const username = playerSpyUsername.trim().replace(/^u\//i, '');
+    if (!username) {
+      setMessage('Enter a Reddit username first.');
+      return;
+    }
+    if (!window.confirm(`Clear all stored Player Spy logs for u/${username}?`)) return;
+
+    setPlayerSpyLoading(true);
+    try {
+      const res = await fetch('/api/dev/player-spy/clear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not clear Player Spy logs.');
+      setPlayerSpyLogs([]);
+      setMessage('Player Spy logs cleared.');
+    } catch (e: any) {
+      setMessage('Error: ' + (e?.message || 'Could not clear Player Spy logs.'));
+    } finally {
+      setPlayerSpyLoading(false);
     }
   };
 
@@ -1197,6 +1279,79 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           ) : (
             <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-center text-xs text-slate-500">No player accounts are registered yet.</div>
           )}
+        </section>
+
+        <section className={panelBase + ' border border-fuchsia-500/30'}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fuchsia-300">
+                <Users className="w-4 h-4" /> Player Spy
+              </div>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Loads gameplay telemetry for one player so balance problems can be investigated from real progression and roll data.
+              </p>
+            </div>
+            <span className="text-[10px] text-slate-600 font-mono">{playerSpyLogs.length}/500</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-2">
+            <input
+              value={playerSpyUsername}
+              onChange={e => setPlayerSpyUsername(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') void loadPlayerSpy();
+              }}
+              title="Enter the Reddit username whose gameplay logs you want to inspect."
+              placeholder="Reddit username, without u/"
+              className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+            />
+            <button
+              title="Load the latest 500 gameplay telemetry events for this player."
+              disabled={playerSpyLoading || !playerSpyUsername.trim()}
+              onClick={() => void loadPlayerSpy()}
+              className={buttonBase + ' bg-fuchsia-600 hover:bg-fuchsia-500 border-fuchsia-500 text-white px-3 py-2'}
+            >
+              <RefreshCw className="inline w-3.5 h-3.5 mr-1" />
+              {playerSpyLoading ? 'Loading…' : 'Spy'}
+            </button>
+            <button
+              title="Copy the Player Spy data as JSON so it can be analyzed externally or pasted into ChatGPT."
+              disabled={playerSpyLogs.length === 0}
+              onClick={() => void copyPlayerSpy()}
+              className={buttonBase + ' bg-emerald-600/20 hover:bg-emerald-600/30 border-emerald-500/30 text-emerald-200 px-3 py-2'}
+            >
+              <Copy className="inline w-3.5 h-3.5 mr-1" /> Copy
+            </button>
+            <button
+              title="Delete all stored Player Spy telemetry for this player."
+              disabled={playerSpyLoading || !playerSpyUsername.trim()}
+              onClick={() => void clearPlayerSpy()}
+              className={buttonBase + ' bg-rose-600/20 hover:bg-rose-600/30 border-rose-500/30 text-rose-200 px-3 py-2'}
+            >
+              <Trash2 className="inline w-3.5 h-3.5 mr-1" /> Clear
+            </button>
+          </div>
+
+          {playerSpyUserId && (
+            <div className="text-[10px] text-slate-600 font-mono">
+              u/{playerSpyUsername.replace(/^u\//i, '')} · ID {playerSpyUserId.slice(-10)}
+            </div>
+          )}
+
+          <textarea
+            id="player-spy-log-copy"
+            readOnly
+            value={playerSpyLogs.length > 0
+              ? JSON.stringify({
+                  username: playerSpyUsername.replace(/^u\//i, ''),
+                  userId: playerSpyUserId || null,
+                  logCount: playerSpyLogs.length,
+                  logs: playerSpyLogs,
+                }, null, 2)
+              : 'No Player Spy logs loaded. Enter a Reddit username and press Spy.'}
+            className="w-full min-h-72 max-h-[32rem] rounded-xl border border-slate-800 bg-black/40 p-3 text-[10px] leading-4 font-mono text-slate-300 resize-y"
+            onFocus={e => e.currentTarget.select()}
+          />
         </section>
 
         <section className={panelBase + ' border border-amber-500/30'}>
