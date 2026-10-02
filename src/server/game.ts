@@ -72,6 +72,8 @@ function currentUserId(): string {
 const key = () => `player:${currentUserId()}`;
 const GAME_BANS_KEY = 'io:game-bans';
 const ONLINE_PLAYERS_KEY = 'io:online:players';
+const CCU_HOURLY_PREFIX = 'io:ccu:hour:';
+const CCU_ALL_TIME_KEY = 'io:ccu:all-time';
 const SAVE_GENERATION_KEY_PREFIX = 'player-generation:';
 const PLAYER_REGISTRY_KEY = 'io:player-registry';
 const DEVELOPER_ANNOUNCEMENT_KEY = 'io:developer-announcement';
@@ -376,17 +378,58 @@ export async function unbanGameUser(userId: string): Promise<boolean> {
 }
 const ONLINE_WINDOW_MS = 30_000;
 
+async function recordCcuPeak(ccu: number, now: number): Promise<void> {
+  const hour = Math.floor(now / 3_600_000);
+  const hourKey = CCU_HOURLY_PREFIX + String(hour);
+  const allTime = Math.max(0, Number.parseInt(String(await redis.get(CCU_ALL_TIME_KEY) ?? '0'), 10) || 0);
+  const hourly = Math.max(0, Number.parseInt(String(await redis.get(hourKey) ?? '0'), 10) || 0);
+
+  if (ccu > hourly) await redis.set(hourKey, String(ccu));
+  if (ccu > allTime) await redis.set(CCU_ALL_TIME_KEY, String(ccu));
+}
+
 async function touchOnlinePresence(): Promise<number> {
   const userId = context.userId;
   if (!userId) return 1;
   const now = Date.now();
   await redis.zAdd(ONLINE_PLAYERS_KEY, { member: userId, score: now });
   await redis.zRemRangeByScore(ONLINE_PLAYERS_KEY, 0, now - ONLINE_WINDOW_MS);
-  return Math.max(1, await redis.zCard(ONLINE_PLAYERS_KEY));
+  const ccu = Math.max(1, await redis.zCard(ONLINE_PLAYERS_KEY));
+  void recordCcuPeak(ccu, now).catch(error => {
+    console.error('Failed to record CCU peak:', error);
+  });
+  return ccu;
 }
 
 export async function getOnlinePlayers(): Promise<number> {
   return touchOnlinePresence();
+}
+
+export async function getCcuPeaks(): Promise<{
+  current: number;
+  last24Hours: number;
+  last7Days: number;
+  last30Days: number;
+  allTime: number;
+}> {
+  const now = Date.now();
+  const current = await touchOnlinePresence();
+  const currentHour = Math.floor(now / 3_600_000);
+  const hourlyKeys = Array.from({ length: 720 }, (_, index) => CCU_HOURLY_PREFIX + String(currentHour - index));
+  const values = await Promise.all(hourlyKeys.map(async key => {
+    const raw = await redis.get(key);
+    return Math.max(0, Number.parseInt(String(raw ?? '0'), 10) || 0);
+  }));
+
+  const maxIn = (hours: number) => Math.max(current, ...values.slice(0, hours), 0);
+  const allTimeRaw = await redis.get(CCU_ALL_TIME_KEY);
+  return {
+    current,
+    last24Hours: maxIn(24),
+    last7Days: maxIn(24 * 7),
+    last30Days: maxIn(24 * 30),
+    allTime: Math.max(0, Number.parseInt(String(allTimeRaw ?? '0'), 10) || 0, current),
+  };
 }
 
 const FRENZY_POST_PREFIX = 'io:frenzy:post:';
