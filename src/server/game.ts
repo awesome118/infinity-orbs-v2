@@ -444,7 +444,7 @@ function parsePaymentPlayerState(raw: unknown): PlayerState {
 
     const record = parsed as Record<string, unknown>;
     if ('coins' in record || 'shards' in record || 'totalRolls' in record) {
-      return record as PlayerState;
+      return record as unknown as PlayerState;
     }
 
     let nestedFound = false;
