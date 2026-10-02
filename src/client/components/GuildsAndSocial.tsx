@@ -100,6 +100,10 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   const fmt = (n: number) => n.toLocaleString();
+  const currentGuildMember = myGuild?.members.find(m => m.username === playerUsername);
+  const canManageGuild = currentGuildMember?.role === 'owner' ||
+    currentGuildMember?.role === 'officer' ||
+    currentGuildMember?.trusted === true;
 
   const handleSendChat = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -410,9 +414,6 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                     const exponent = perk.id === 'memberCapacityRank' ? 1.45 : 1.65;
                     const cost = Math.max(1, Math.round(costBase * Math.pow(perk.rank + 1, exponent)));
                     const canAfford = (myGuild.tokens ?? 0) >= cost && !isMax;
-                    const myMember = myGuild.members.find(m => m.username === playerUsername);
-                    const canManage = myMember?.role === 'owner' || myMember?.role === 'officer' || myMember?.trusted === true;
-
                     return (
                       <div
                         key={perk.id}
@@ -441,11 +442,11 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                               void onBuyGuildPerk(perk.id);
                             }
                           }}
-                          disabled={!canAfford || busy || isMax || !canManage}
+                          disabled={!canAfford || busy || isMax || !canManageGuild}
                           className={`w-full py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
                             isMax
                               ? 'bg-slate-900 text-slate-500 border border-slate-800 cursor-default'
-                              : canAfford && canManage
+                              : canAfford && canManageGuild
                               ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-md active:scale-95 cursor-pointer'
                               : 'bg-slate-900 text-slate-500 border border-slate-800/80 cursor-not-allowed'
                           }`}
@@ -455,7 +456,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                               <Check className="w-3.5 h-3.5 text-emerald-400" />
                               <span>Max Rank</span>
                             </>
-                          ) : canManage ? (
+                          ) : canManageGuild ? (
                             <>
                               <Sparkles className="w-3.5 h-3.5" />
                               <span>Upgrade ({fmt(cost)} Tokens)</span>
@@ -488,16 +489,16 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                         <button
                           key={rate}
                           type="button"
-                          disabled={busy || !canManage}
+                          disabled={busy || !canManageGuild}
                           onClick={() => {
-                            if (!onSetGuildTax || !canManage) return;
+                            if (!onSetGuildTax || !canManageGuild) return;
                             sound.playClick();
                             void onSetGuildTax(rate);
                           }}
                           className={`py-1.5 rounded-lg text-[10px] font-bold border transition-all ${
                             (myGuild.taxRate ?? 0) === rate
                               ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
-                              : canManage
+                              : canManageGuild
                               ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                               : 'bg-slate-900 border-slate-800 text-slate-600'
                           }`}
@@ -506,7 +507,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                         </button>
                       ))}
                     </div>
-                    {!canManage && (
+                    {!canManageGuild && (
                       <p className="text-[10px] text-slate-600 mt-2">Owner, officers, and trusted members can manage guild upgrades and tax.</p>
                     )}
                   </div>
