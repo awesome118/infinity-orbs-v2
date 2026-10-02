@@ -84,14 +84,20 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
 
           {/* Post Body Preview */}
           <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-800/80 text-xs text-slate-300 space-y-2">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row items-center gap-4">
               <div
-                className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-[10px] text-white shrink-0"
-                style={{ background: info.bgGradient }}
+                className="w-24 h-24 sm:w-28 sm:h-28 rounded-full flex flex-col items-center justify-center font-black text-white shrink-0 border-2 border-white/20 shadow-2xl relative"
+                style={{
+                  background: info.bgGradient,
+                  boxShadow: `0 0 35px ${info.color}77`,
+                }}
               >
-                1/{rarity >= 1000 ? `${(rarity / 1000).toFixed(0)}k` : rarity}
+                <div className="absolute inset-2 rounded-full border border-white/30" />
+                <span className="text-[10px] font-black uppercase tracking-wider">{info.tier}</span>
+                <span className="text-base sm:text-lg font-black font-mono">1/{fmt(rarity)}</span>
+                <span className="text-[10px] text-white/90 mt-0.5">{info.name}</span>
               </div>
-              <div>
+              <div className="text-center sm:text-left">
                 <span className="font-bold text-white block">{info.name}</span>
                 <span className="text-slate-400">Theoretical Odds: 1 in {fmt(rarity)}</span>
               </div>
