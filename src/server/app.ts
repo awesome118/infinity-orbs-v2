@@ -236,7 +236,7 @@ export function createApp() {
   // Persistent player data is keyed by Reddit user ID. Logged-out users have
   // no account identity, so they must never reach player-state APIs.
   app.use('/api', (req, res, next) => {
-    if (req.path === '/health') return next();
+    if (req.path === '/health' || req.path === '/version') return next();
     const userId = String(context.userId ?? '').trim();
     if (!userId) {
       return res.status(401).json({
