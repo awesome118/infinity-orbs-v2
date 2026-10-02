@@ -1086,3 +1086,91 @@
     transform: none !important;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Production UI pass: flatter surfaces, fewer effects, clearer hierarchy.    */
+/* -------------------------------------------------------------------------- */
+
+.io-ui {
+  --io-bg: #080b10;
+  --io-panel: rgba(16, 20, 27, 0.94);
+  --io-panel-deep: rgba(10, 13, 18, 0.96);
+  --io-border: rgba(148, 163, 184, 0.12);
+  --io-text: #e7eaf0;
+  --io-muted: #8993a3;
+  --io-accent: #8b78ff;
+  background:
+    radial-gradient(80% 45% at 50% 0%, rgba(116, 96, 230, 0.075), transparent 70%),
+    var(--io-bg) !important;
+}
+
+.io-ui main {
+  contain: layout style;
+}
+
+.io-ui div[class*="rounded-3xl"],
+.io-ui section[class*="rounded-3xl"],
+.io-ui form[class*="rounded-3xl"] {
+  border-radius: 16px !important;
+}
+
+.io-ui div[class*="rounded-2xl"],
+.io-ui section[class*="rounded-2xl"],
+.io-ui form[class*="rounded-2xl"] {
+  border-radius: 12px !important;
+}
+
+.io-ui div[class*="shadow-xl"],
+.io-ui div[class*="shadow-2xl"],
+.io-ui section[class*="shadow-xl"],
+.io-ui section[class*="shadow-2xl"],
+.io-ui form[class*="shadow-xl"],
+.io-ui form[class*="shadow-2xl"] {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16) !important;
+}
+
+.io-ui div[class*="bg-gradient-to-"],
+.io-ui section[class*="bg-gradient-to-"],
+.io-ui form[class*="bg-gradient-to-"] {
+  background-image: none !important;
+  background-color: var(--io-panel) !important;
+}
+
+.io-ui .io-nav button[class*="bg-gradient-to-"] {
+  background-image: none !important;
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: none !important;
+}
+
+.io-ui h1[class*="font-black"],
+.io-ui h2[class*="font-black"],
+.io-ui h3[class*="font-black"] {
+  font-weight: 720 !important;
+}
+
+.io-ui [class*="uppercase"][class*="tracking-wider"] {
+  letter-spacing: 0.08em;
+}
+
+.io-ui .animate-pulse {
+  animation-duration: 2.8s;
+}
+
+.io-ui .animate-celestial-spin,
+.io-ui .animate-celestial-spin-reverse,
+.io-ui .animate-energy-sweep,
+.io-ui .animate-star-ring {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .io-ui *,
+  .io-ui *::before,
+  .io-ui *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+}
