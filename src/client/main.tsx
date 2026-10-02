@@ -880,6 +880,40 @@ export function App() {
     }
   };
 
+  const handleToggleGuildTrust = async (username: string, trusted: boolean) => {
+    setBusy(true);
+    try {
+      await getJson('/api/guilds/trust', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, trusted }),
+      });
+      showToast(trusted ? `${username} is now trusted.` : `${username} is no longer trusted.`, 'success');
+      void refreshAll();
+    } catch (e: any) {
+      showToast(e.message || 'Could not change Trust status', 'warn');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSetGuildTax = async (rate: number) => {
+    setBusy(true);
+    try {
+      await getJson('/api/guilds/tax', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rate }),
+      });
+      showToast(`Guild Tax set to ${rate}%.`, 'success');
+      void refreshAll();
+    } catch (e: any) {
+      showToast(e.message || 'Could not change Guild Tax', 'warn');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleDonateGuild = async (coins: number, shards: number) => {
     setBusy(true);
     try {
@@ -1380,6 +1414,9 @@ export function App() {
             onSendMessage={handleSendGuildChat}
             onBuyGuildPerk={handleBuyGuildPerk}
             onDonateGuild={handleDonateGuild}
+            onToggleGuildTrust={handleToggleGuildTrust}
+            onSetGuildTax={handleSetGuildTax}
+            playerUsername={state.username ?? ''}
             playerCoins={state.coins}
             playerShards={state.shards}
             busy={busy}
