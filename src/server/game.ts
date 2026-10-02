@@ -450,11 +450,21 @@ export async function loadRaw(): Promise<PlayerState> {
   }
 
   const base = createInitialState();
+  const normalizedManualRolls = Math.max(
+    0,
+    Math.min(
+      10,
+      Number(
+        parsed.manualRolls ??
+        Math.min(Number(parsed.totalRolls ?? 0), 10),
+      ) || 0,
+    ),
+  );
   const normalizedUpgrades = {
     ...base.upgrades,
     ...(parsed.upgrades ?? {}),
-    // Auto Roll is permanently unlocked for every account, including legacy saves.
-    auto: Math.max(1, Number(parsed.upgrades?.auto ?? base.upgrades.auto ?? 1)),
+    // Auto Roll is free and unlocks automatically at 10 manual roll activations.
+    auto: normalizedManualRolls >= 10 ? 1 : 0,
   };
   return {
     ...base,
@@ -464,6 +474,7 @@ export async function loadRaw(): Promise<PlayerState> {
     username,
     upgrades: normalizedUpgrades,
     prestigeUpgrades: { ...base.prestigeUpgrades, ...(parsed.prestigeUpgrades ?? {}) },
+    manualRolls: normalizedManualRolls,
     collection: parsed.collection ?? {},
     claimedAchievements: parsed.claimedAchievements ?? [],
     streak: { ...base.streak, ...(parsed.streak ?? {}) },
@@ -985,6 +996,13 @@ export async function roll(): Promise<RollResponse> {
   }
 
   const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained } = await applyRolls(s);
+
+  // Only direct manual roll activations count toward the Auto Roll unlock.
+  s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + 1);
+  if (s.manualRolls >= 10) {
+    s.upgrades.auto = 1;
+  }
+
   s.lastRollAt = now;
   s.lastSeenAt = now;
   await save(s);
@@ -1034,13 +1052,13 @@ export async function buyUpgrade(id: UpgradeId): Promise<PlayerState> {
   const s = await settleOffline(await loadRaw());
   const level = s.upgrades[id] ?? 0;
 
-  // Auto Roll is a free, always-available unlock. Existing saves are migrated
-  // to level 1 by loadRaw(), so this path only handles legacy zero-level states.
+  // Auto Roll is free, but the server still enforces its 10-manual-roll unlock.
   if (id === 'auto') {
-    if (level === 0) {
-      s.upgrades.auto = 1;
-      await save(s);
+    if ((s.manualRolls ?? 0) < 10) {
+      throw new Error(`Auto Roll unlocks after 10 manual rolls (${s.manualRolls ?? 0}/10).`);
     }
+    s.upgrades.auto = 1;
+    await save(s);
     return s;
   }
 
@@ -1063,13 +1081,7 @@ export function autoBuyCheapest(s: PlayerState): boolean {
   let lowestCost = Infinity;
 
   for (const id of upgradeIds) {
-    if (id === 'auto') {
-      if ((s.upgrades.auto ?? 0) === 0) {
-        s.upgrades.auto = 1;
-        continue;
-      }
-      continue;
-    }
+    if (id === 'auto') continue;
     const lvl = s.upgrades[id] ?? 0;
     const cost = upgradeCost(id, lvl);
     if (cost <= s.coins && cost < lowestCost) {
@@ -1110,11 +1122,7 @@ export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent
       const level = s.upgrades[id] ?? 0;
       let cost = upgradeCost(id, level);
 
-      if (id === 'auto' && level === 0) {
-        s.upgrades.auto = 1;
-        changed = true;
-        continue;
-      }
+      if (id === 'auto') continue;
 
       if (!Number.isFinite(cost) || cost > s.coins) continue;
 
