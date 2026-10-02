@@ -164,7 +164,7 @@ function setMaxProgression(s: Awaited<ReturnType<typeof loadRaw>>): void {
     s.prestigeUpgrades[id as keyof typeof s.prestigeUpgrades] = info.maxLevel;
   }
   for (const [id, info] of Object.entries(MASTERY_SKILLS)) {
-    s.masterySkills![id as keyof typeof s.masterySkills] = info.maxLevel;
+    (s.masterySkills as Record<string, number>)[id] = info.maxLevel;
   }
 
   s.automations = {
@@ -290,7 +290,7 @@ debugRouter.post('/state', async (req, res) => {
 
     if (body.masterySkills && typeof body.masterySkills === 'object') {
       for (const id of Object.keys(s.masterySkills ?? {})) {
-        if (id in body.masterySkills) s.masterySkills![id as keyof typeof s.masterySkills] =
+        if (id in body.masterySkills) (s.masterySkills as Record<string, number>)[id] =
           nonNegativeInteger(body.masterySkills[id]);
       }
     }
@@ -415,11 +415,11 @@ debugRouter.post('/preset', async (req, res) => {
       }
     } else if (preset === 'mastery-max') {
       for (const [id, info] of Object.entries(MASTERY_SKILLS)) {
-        s.masterySkills![id as keyof typeof s.masterySkills] = info.maxLevel;
+        (s.masterySkills as Record<string, number>)[id] = info.maxLevel;
       }
     } else if (preset === 'mastery-reset') {
       for (const id of Object.keys(s.masterySkills ?? {})) {
-        s.masterySkills![id as keyof typeof s.masterySkills] = 0;
+        (s.masterySkills as Record<string, number>)[id] = 0;
       }
       s.masteryPoints = 0;
     } else if (preset === 'automations-on') {
