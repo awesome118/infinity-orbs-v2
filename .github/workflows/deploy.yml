@@ -25,6 +25,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Inspect Devvit exports
+        run: |
+          echo '--- notifications package ---'
+          cat node_modules/@devvit/notifications/package.json
+          echo '--- notifications declarations ---'
+          find node_modules/@devvit/notifications -maxdepth 3 -type f | sort | head -80
+          echo '--- scheduler package ---'
+          cat node_modules/@devvit/scheduler/package.json
+          echo '--- scheduler declarations ---'
+          find node_modules/@devvit/scheduler -maxdepth 3 -type f | sort | head -80
+
       - name: Type-check
         run: npm run type-check
 
