@@ -1312,7 +1312,7 @@ export function rollsPerActivation(s: PlayerState): number {
 }
 
 export function autoUnlocked(s: PlayerState): boolean {
-  return (s.manualRolls ?? 0) >= 10;
+  return (s.manualRolls ?? 0) >= 3;
 }
 
 // All sources of luck are MULTIPLICATIVE!
