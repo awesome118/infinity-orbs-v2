@@ -1321,8 +1321,8 @@ export function upgradeCost(id: UpgradeId, level: number): number {
     coinBonus: { base: 50, mult: 1.45 },
     shardChance: { base: 150, mult: 1.60 },
     xpBonus: { base: 45, mult: 1.40 },
-    critChance: { base: 100, mult: 1.55 },
-    critPower: { base: 120, mult: 1.55 },
+    critChance: { base: 100, mult: 1.72 },
+    critPower: { base: 120, mult: 1.78 },
     offlineRate: { base: 90, mult: 1.50 },
     valueBonus: { base: 80, mult: 1.50 },
   };
