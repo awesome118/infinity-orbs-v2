@@ -63,6 +63,15 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
 }
 
 async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Promise<T> {
+  // The transaction client queues the pre-MULTI GET for EXEC. If the key does not
+  // exist, Valkey returns nil for that command and the adapter cannot transform
+  // the transaction result. Initialize the collection once so the watched GET
+  // always has a concrete string reply.
+  const existing = await redis.get(GUILDS_KEY);
+  if (existing == null) {
+    await redis.set(GUILDS_KEY, '[]');
+  }
+
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(GUILDS_KEY);
     const raw = await txn.get(GUILDS_KEY);
