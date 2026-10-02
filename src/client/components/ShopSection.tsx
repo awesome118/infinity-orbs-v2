@@ -81,7 +81,7 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
       if (!meRes.ok) return false;
       const next = await meRes.json() as PlayerState;
       const fulfilled =
-        next.shards > baselineShards ||;
+        next.shards > baselineShards;
 
       if (fulfilled) await onPurchased();
       return fulfilled;
