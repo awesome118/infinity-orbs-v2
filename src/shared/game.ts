@@ -1375,16 +1375,19 @@ export function codexDevotionLuckPercent(skillLevel: number, chain: number): num
   return Math.round(safeLevel * safeChain * 0.3 * 100) / 100;
 }
 
+export const MIN_ALTAR_COIN_OFFER = 10_000;
+
 export function altarCoinDevotionChancePercent(coins: number, pity = 0): number {
   const safeCoins = Math.max(0, Math.floor(Number(coins) || 0));
   const safePity = Math.max(0, Math.floor(Number(pity) || 0));
-  if (safeCoins <= 0) return 0;
+  if (safeCoins < MIN_ALTAR_COIN_OFFER) return 0;
 
-  // Coins create a breakthrough roll. Larger offerings help, but repeated
-  // failures build pity so the altar cannot indefinitely brick progress.
-  const baseChance = 0.08 + Math.min(0.52, Math.log10(1 + safeCoins / 100) * 0.08);
-  const pityBonus = Math.min(0.36, safePity * 0.06);
-  return Math.round(Math.min(0.95, baseChance + pityBonus) * 10000) / 100;
+  // The coin floor prevents cheap spam. Larger offerings improve the base
+  // chance, while pity compounds multiplicatively after each failed attempt.
+  const amountRatio = safeCoins / MIN_ALTAR_COIN_OFFER;
+  const baseChance = Math.min(0.20, 0.05 + Math.log10(amountRatio) * 0.15);
+  const pityMultiplier = Math.pow(1.35, safePity);
+  return Math.round(Math.min(0.90, baseChance * pityMultiplier) * 10000) / 100;
 }
 
 export function luckMultiplier(s: PlayerState): number {
