@@ -12,7 +12,7 @@ import {
   RotateCw,
 } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { calculateAltarMultipliers } from '../../shared/game.js';
+import { calculateAltarMultipliers, altarCoinDevotionChancePercent } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface AltarSectionProps {
@@ -53,14 +53,11 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
   const surgeMins = Math.floor(surgeMsLeft / 60000);
   const surgeSecs = Math.floor((surgeMsLeft % 60000) / 1000);
 
-  // Altar level calculations
+  // Coin Devotion is a chance-based breakthrough system.
   const altarLevel = sacrifices.altarLevel ?? 0;
   const currentTotalCoins = sacrifices.coinsSacrificed ?? 0;
-  const currentLevelThreshold = altarLevel * altarLevel * 250;
-  const nextLevelThreshold = (altarLevel + 1) * (altarLevel + 1) * 250;
-  const progressInLevel = Math.max(0, currentTotalCoins - currentLevelThreshold);
-  const requiredForNext = nextLevelThreshold - currentLevelThreshold;
-  const devotionProgressPct = Math.min(100, Math.round((progressInLevel / requiredForNext) * 100));
+  const altarPity = sacrifices.altarPity ?? 0;
+  const selectedCoinChance = altarCoinDevotionChancePercent(selectedCoinOffer, altarPity);
 
   const handleSacrificeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,7 +97,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
               <span>Crucible of Perpetual Devotion</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Sacrifice Coins and Shards to build permanent luck multipliers. Coin devotion and Shard infusion combine <span className="text-amber-300 font-bold">multiplicatively</span>, while the temporary Surge multiplies the result again.
+              Coin offerings gamble for permanent Devotion breakthroughs. Larger offerings improve the chance, and failed attempts build pity. Shards remain a separate source of infusion and temporary Surge.
             </p>
           </div>
 
@@ -168,28 +165,27 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
 
       {/* Devotion Level Status Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Altar Level & Progress */}
-        <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 space-y-2">
+        {/* Altar Rank & Breakthrough Chance */}
+        <div className="bg-slate-950/70 border border-amber-500/20 rounded-2xl p-4 space-y-2">
           <div className="text-xs text-slate-400 flex items-center justify-between">
             <span>Altar Devotion Rank</span>
             <span className="font-mono text-amber-400 font-bold">Lvl {altarLevel}</span>
           </div>
           <div className="text-2xl font-black text-white font-mono">
-            {coinMultiplier}× <span className="text-xs font-normal text-amber-400">Coin Multiplier</span>
+            {coinMultiplier}× <span className="text-xs font-normal text-amber-400">Coin Luck</span>
           </div>
-          <div className="space-y-1 pt-1">
-            <div className="flex justify-between text-[10px] text-slate-400 font-mono">
-              <span>Next Rank Progress</span>
-              <span>{fmt(progressInLevel)} / {fmt(requiredForNext)} Coins</span>
+          <div className="rounded-xl bg-amber-500/5 border border-amber-500/15 px-3 py-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase font-black tracking-wide text-amber-300">
+                Coin Breakthrough Chance
+              </span>
+              <span className="text-lg font-black font-mono text-white">{selectedCoinChance}%</span>
             </div>
-            <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
-              <div
-                className="bg-gradient-to-r from-amber-500 via-orange-400 to-yellow-300 h-full rounded-full transition-all duration-500"
-                style={{ width: `${devotionProgressPct}%` }}
-              />
+            <div className="mt-1 text-[10px] text-slate-500">
+              Based on the selected coin offering. This roll only happens when coins are offered.
             </div>
-            <div className="text-[10px] text-slate-500 text-right">
-              Rank up awards +1 Mastery Point!
+            <div className="mt-1 text-[10px] text-orange-300 font-bold">
+              Failed attempts: {altarPity} • +6% pity each failure (up to +36%)
             </div>
           </div>
         </div>
@@ -280,7 +276,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
               ))}
             </div>
             <p className="text-[10px] text-slate-500">
-              Permanently raises Altar Devotion level and compounds overall luck.
+              Coin offerings trigger a breakthrough roll. Larger offerings raise the chance; failed coin attempts build pity.
             </p>
           </div>
 
@@ -325,7 +321,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
               ))}
             </div>
             <p className="text-[10px] text-slate-500">
-              Each Shard grants +6% permanent multiplicative luck and +15m of Luck Surge (1.50× Luck).
+              Shards do not roll for Devotion. Each gives +3% permanent multiplicative luck and extends the +25% Luck Surge by 15 minutes.
             </p>
           </div>
         </div>
@@ -333,9 +329,9 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
         {/* Submit Sacrifice Button */}
         <button
           type="submit"
-          disabled={busy || sacrificing || (selectedCoinOffer <= 0 && selectedShardOffer <= 0)}
+          disabled={busy || sacrificing || (selectedCoinOffer < 100 && selectedShardOffer <= 0)}
           className={`w-full py-4 px-6 rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all shadow-xl ${
-            selectedCoinOffer > 0 || selectedShardOffer > 0
+            selectedCoinOffer >= 100 || selectedShardOffer > 0
               ? 'bg-gradient-to-r from-orange-600 via-amber-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white shadow-orange-950/50 active:scale-98 cursor-pointer'
               : 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700/50'
           }`}
