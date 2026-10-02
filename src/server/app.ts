@@ -183,17 +183,25 @@ export function createApp() {
   app.post('/internal/payments/fulfill', async (req, res) => {
     try {
       const order = req.body as PaymentOrder;
+      const buyerUserId = String(context.userId ?? order?.userId ?? '').trim();
+      const orderId = String(order?.id ?? '').trim();
       console.error('[Payments] Fulfill received:', JSON.stringify({
-        id: order?.id,
-        userId: order?.userId,
-        status: order?.status,
+        id: order?.id ?? null,
+        contextUserId: context.userId ?? null,
+        orderUserId: order?.userId ?? null,
+        status: order?.status ?? null,
         products: order?.products?.map((product: { sku?: string }) => ({ sku: product.sku })),
       }));
 
-      if (order.status !== 'PAID' || !order.userId || !order.id) {
+      // Devvit invokes this endpoint as part of the completed purchase flow.
+      // Do not reject fulfillment solely because a status field is absent or
+      // differs between payment environments. The official Devvit Web payments
+      // example uses the fulfillment callback itself as the trusted signal and
+      // takes the buyer from context.userId.
+      if (!buyerUserId) {
         return res.json({
           success: false,
-          reason: 'Order is not payable.',
+          reason: 'Unable to identify the purchasing Reddit account.',
         });
       }
 
@@ -204,7 +212,14 @@ export function createApp() {
         });
       }
 
-      await grantPurchasedPack(order.userId, order.products[0].sku, order.id);
+      if (!orderId) {
+        return res.json({
+          success: false,
+          reason: 'Purchase order is missing its order ID.',
+        });
+      }
+
+      await grantPurchasedPack(buyerUserId, order.products[0].sku, orderId);
       return res.json({ success: true });
     } catch (e: unknown) {
       console.error('[Payments] Fulfillment failed:', e instanceof Error ? e.stack ?? e.message : e);
@@ -218,7 +233,9 @@ export function createApp() {
   app.post('/internal/payments/refund', async (req, res) => {
     try {
       const order = req.body as PaymentOrder;
-      if (!order.userId || !order.id) {
+      const buyerUserId = String(context.userId ?? order?.userId ?? '').trim();
+      const orderId = String(order?.id ?? '').trim();
+      if (!buyerUserId || !orderId) {
         return res.json({
           success: false,
           reason: 'Refund order is missing an identity.',
@@ -231,7 +248,7 @@ export function createApp() {
         });
       }
 
-      await refundPurchasedPack(order.userId, order.products[0].sku, order.id);
+      await refundPurchasedPack(buyerUserId, order.products[0].sku, orderId);
       return res.json({ success: true });
     } catch (e: unknown) {
       console.error('[Payments] Refund failed:', e instanceof Error ? e.stack ?? e.message : e);
