@@ -691,7 +691,9 @@ export async function applyRolls(
 
   const worldEvent = await getCommunityEvent();
   const communityLuck = worldEvent.buffMultiplier ?? 1.15;
-  const baseLuck = luckMultiplier(s) * communityLuck;
+  const globalLuckState = s.globalBoosters?.luck;
+  const globalLuck = globalLuckState ? globalBoosterLuckMultiplier(globalLuckState) : 1;
+  const baseLuck = luckMultiplier(s) * communityLuck * globalLuck;
 
   // Apex Fortune Mastery: chance on multi-roll to double the luck of that activation
   const apexChance = Math.min(1, (s.masterySkills?.apexFortune ?? 0) * 0.05);
