@@ -171,7 +171,7 @@ export function App() {
     };
 
     void pollAnnouncement();
-    const interval = window.setInterval(() => void pollAnnouncement(), 1500);
+    const interval = window.setInterval(() => void pollAnnouncement(), 4000);
     return () => {
       window.clearInterval(interval);
       if (boosterAnnouncementTimerRef.current !== null) {
@@ -214,8 +214,14 @@ export function App() {
   });
   const [newBestModalData, setNewBestModalData] = useState<{ orb: Orb; prevBest: number } | null>(null);
   const [frenzyRunTriggered, setFrenzyRunTriggered] = useState(false);
+  const stateRevisionRef = useRef(0);
   const lastBoosterAnnouncementAtRef = useRef(0);
   const boosterAnnouncementTimerRef = useRef<number | null>(null);
+
+  const applyPlayerState = useCallback((nextState: PlayerState) => {
+    stateRevisionRef.current += 1;
+    setState(nextState);
+  }, []);
   const dismissedDeveloperAnnouncementRef = useRef<number>(
     (() => {
       try {
@@ -259,6 +265,7 @@ export function App() {
   };
 
   const refreshAll = useCallback(async () => {
+    const revisionAtStart = stateRevisionRef.current;
     try {
       // Load the player's state first. Admin/debug status is auxiliary and must
       // never block the entire game from rendering if that endpoint is slow.
@@ -268,6 +275,7 @@ export function App() {
       } catch {
         // sessionStorage can be unavailable in some embedded webviews.
       }
+      if (revisionAtStart !== stateRevisionRef.current) return;
       setState(me);
       setAuthRequired(false);
       setStartupError(null);
@@ -307,10 +315,9 @@ export function App() {
     }
   }, []);
 
-  // Initial load & tick loop (paced smoothly at 250ms to prevent high-frequency re-render jitter)
+  // Initial load. Timer updates stay local to the screens that display them.
   useEffect(() => {
     void refreshAll();
-    return undefined;
   }, [refreshAll]);
 
   // Live developer announcement feed. All open clients poll the same Redis-backed
@@ -366,7 +373,7 @@ export function App() {
     };
 
     void checkForUpdate();
-    const interval = window.setInterval(() => void checkForUpdate(), 5_000);
+    const interval = window.setInterval(() => void checkForUpdate(), 30_000);
     return () => window.clearInterval(interval);
   }, []);
 
@@ -410,8 +417,11 @@ export function App() {
   // Keep presence fresh and process server-side automation while the game is open.
   useEffect(() => {
     const presenceInterval = setInterval(() => {
+      const revisionAtStart = stateRevisionRef.current;
       void getJson<PlayerState>('/api/me')
-        .then(setState)
+        .then(nextState => {
+          if (revisionAtStart === stateRevisionRef.current) setState(nextState);
+        })
         .catch(() => null);
     }, 10_000);
     return () => clearInterval(presenceInterval);
@@ -443,7 +453,7 @@ export function App() {
           const res = await getJson<RollResponse>('/api/frenzy/claim', { method: 'POST' });
 
           if (cancelled) return;
-          setState(res.state);
+          applyPlayerState(res.state);
           setLastOrb(res.orb);
           setLastBatch(res.batch ?? [res.orb]);
           setBatchSummary({
@@ -479,7 +489,7 @@ export function App() {
   useEffect(() => {
     if (tab !== 'social') return;
     void getJson<{ ok: boolean; state: PlayerState }>('/api/social/visit', { method: 'POST' })
-      .then(result => setState(result.state))
+      .then(result => applyPlayerState(result.state))
       .catch(() => null);
   }, [tab]);
 
@@ -494,7 +504,7 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ auto: isAutoRoll }),
       });
-      setState(res.state);
+      applyPlayerState(res.state);
       setLastOrb(res.orb);
       setLastBatch(res.batch ?? [res.orb]);
       setBatchSummary({
@@ -546,7 +556,7 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
       });
-      setState(res.state);
+      applyPlayerState(res.state);
       sound.playChime(659.25, 'sine', 0.2);
       showToast(`Upgraded ${id.toUpperCase()} successfully!`, 'success');
       void refreshAll();
@@ -564,7 +574,7 @@ export function App() {
       const res = await getJson<{ state: PlayerState; totalSpent: number; upgradedCount: number }>('/api/upgrade/all', {
         method: 'POST',
       });
-      setState(res.state);
+      applyPlayerState(res.state);
       sound.playChime(523.25, 'triangle', 0.3);
       showToast(
         res.upgradedCount > 0
@@ -585,7 +595,7 @@ export function App() {
     setBusy(true);
     try {
       const res = await getJson<{ state: PlayerState }>('/api/turbo/activate', { method: 'POST' });
-      setState(res.state);
+      applyPlayerState(res.state);
       sound.playChime(880, 'sawtooth', 0.3);
       showToast('Turbo Roll Activated! Cooldowns reduced by 20% for 30m.', 'success');
     } catch (e: any) {
@@ -615,7 +625,7 @@ export function App() {
 
     try {
       const res = await startRequest;
-      setState(res.state);
+      applyPlayerState(res.state);
       sound.playEpicFanfare();
 
       // In expanded mode the current game window is already open, so the
@@ -653,7 +663,7 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, useCredit }),
       });
-      setState(res.state);
+      applyPlayerState(res.state);
       lastBoosterAnnouncementAtRef.current = res.announcement.activatedAt;
       setBoosterAnnouncement(res.announcement);
       if (boosterAnnouncementTimerRef.current !== null) window.clearTimeout(boosterAnnouncementTimerRef.current);
@@ -681,7 +691,7 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
       });
-      setState(res.state);
+      applyPlayerState(res.state);
       sound.playChime(1046, 'sawtooth', 0.3);
       showToast('Premium booster activated.', 'success');
     } catch (e: any) {
@@ -700,7 +710,7 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
       });
-      setState(res.state);
+      applyPlayerState(res.state);
       sound.playLevelUpFanfare();
       showToast('Automation unlocked.', 'success');
     } catch (e: any) {
@@ -721,7 +731,7 @@ export function App() {
         nextClaimAt: number;
         tier: number;
       }>('/api/community/reward/claim', { method: 'POST' });
-      setState(res.state);
+      applyPlayerState(res.state);
       if (res.rewardCoins > 0) {
         sound.playChime(880, 'triangle', 0.3);
         showToast(
@@ -741,7 +751,7 @@ export function App() {
     setBusy(true);
     try {
       const res = await getJson<RollResponse>('/api/offline/claim', { method: 'POST' });
-      setState(res.state);
+      applyPlayerState(res.state);
       setLastOrb(res.orb);
       setLastBatch(res.batch ?? [res.orb]);
       setBatchSummary({
@@ -764,8 +774,9 @@ export function App() {
   };
 
   // Altar Sacrifice
-  const handleSacrifice = async (coins: number, shards: number) => {
+  const handleSacrifice = async (coins: number, shards: number): Promise<PlayerState> => {
     setBusy(true);
+    stateRevisionRef.current += 1;
     try {
       const res = await getJson<{
         state: PlayerState;
@@ -778,7 +789,7 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ coins, shards }),
       });
-      setState(res.state);
+      applyPlayerState(res.state);
       if (res.altarLeveledUp) {
         sound.playLevelUpFanfare();
         showToast(
@@ -795,8 +806,10 @@ export function App() {
       } else {
         showToast('Offerings consumed by the Altar.', 'info');
       }
+      return res.state;
     } catch (e: any) {
       showToast(e.message || 'Sacrifice failed', 'warn');
+      throw e;
     } finally {
       setBusy(false);
     }
@@ -811,7 +824,7 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ skillId }),
       });
-      setState(res.state);
+      applyPlayerState(res.state);
       showToast('Mastery Skill enhanced!', 'success');
       void refreshAll();
     } catch (e: any) {
@@ -829,7 +842,7 @@ export function App() {
         '/api/streak/claim',
         { method: 'POST' }
       );
-      setState(res.state);
+      applyPlayerState(res.state);
       sound.playChime(784, 'triangle', 0.3);
       showToast(
         `Streak claimed! +${res.rewardCoins} Coins ${res.rewardShards > 0 ? `+${res.rewardShards} Shards` : ''}`,
@@ -855,7 +868,7 @@ export function App() {
           body: JSON.stringify({ type, id }),
         }
       );
-      setState(res.state);
+      applyPlayerState(res.state);
       sound.playChime(700, 'sine', 0.25);
       showToast(`Quest completed! +${res.rewardCoins.toLocaleString()} Coins`, 'success');
       void refreshAll();
@@ -873,7 +886,7 @@ export function App() {
       const res = await getJson<{ state: PlayerState; dustGained?: number; cosmicDustEarned?: number }>('/api/prestige', {
         method: 'POST',
       });
-      setState(res.state);
+      applyPlayerState(res.state);
       sound.playMythicFanfare();
       const dust = res.dustGained ?? res.cosmicDustEarned ?? 0;
       showToast(`Prestige Complete! You earned +${dust} Cosmic Dust.`, 'success');
@@ -894,7 +907,7 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
       });
-      setState(res.state);
+      applyPlayerState(res.state);
       sound.playChime(659.25, 'sine', 0.25);
       showToast('Permanent cosmic upgrade obtained!', 'success');
     } catch (e: any) {
@@ -911,7 +924,7 @@ export function App() {
       const res = await getJson<{ state: PlayerState; dustEarned: number }>('/api/prestige/synthesize', {
         method: 'POST',
       });
-      setState(res.state);
+      applyPlayerState(res.state);
       sound.playChime(1046.5, 'triangle', 0.4);
       showToast(`+${res.dustEarned} Cosmic Dust forged in the Astral Forge!`, 'success');
       void refreshAll();
@@ -950,7 +963,7 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
       });
-      setState(res.state);
+      applyPlayerState(res.state);
       sound.playChime(523.25, 'sine', 0.2);
       showToast('Cosmetic equipped!', 'success');
     } catch (e: any) {
@@ -1052,7 +1065,7 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ coins, shards }),
       });
-      setState(res.state);
+      applyPlayerState(res.state);
       setGuildData(prev => ({
         ...prev,
         mine: res.guild,
@@ -1726,7 +1739,7 @@ export function App() {
           onRefresh={refreshAll}
           onForceRollResult={res => {
             changeTab('roll');
-            setState(res.state);
+            applyPlayerState(res.state);
             setLastOrb(res.orb);
             setLastBatch(res.batch ?? [res.orb]);
             setBatchSummary({
