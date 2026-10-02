@@ -450,12 +450,19 @@ export async function loadRaw(): Promise<PlayerState> {
   }
 
   const base = createInitialState();
+  const normalizedUpgrades = {
+    ...base.upgrades,
+    ...(parsed.upgrades ?? {}),
+    // Auto Roll is permanently unlocked for every account, including legacy saves.
+    auto: Math.max(1, Number(parsed.upgrades?.auto ?? base.upgrades.auto ?? 1)),
+  };
   return {
     ...base,
     ...parsed,
+    upgrades: normalizedUpgrades,
     saveGeneration: generation,
     username,
-    upgrades: { ...base.upgrades, ...(parsed.upgrades ?? {}) },
+    upgrades: normalizedUpgrades,
     prestigeUpgrades: { ...base.prestigeUpgrades, ...(parsed.prestigeUpgrades ?? {}) },
     collection: parsed.collection ?? {},
     claimedAchievements: parsed.claimedAchievements ?? [],
