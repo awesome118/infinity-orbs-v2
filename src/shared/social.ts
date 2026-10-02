@@ -5,8 +5,10 @@ export type ChallengeType = 'rolls' | 'value' | 'rare';
 
 export interface GuildMember {
   username: string;
+  userId?: string;
   contribution: number;
   role: GuildRole;
+  trusted?: boolean;
   joinedAt?: number;
 }
 
@@ -27,15 +29,27 @@ export interface GuildMessage {
 }
 
 export interface GuildPerks {
-  luckRank: number; // +2% luck per rank for all guild members
-  speedRank: number; // -40ms roll cooldown for all guild members
-  vaultRank: number; // +100 offline capacity for all guild members
-  shardRank?: number; // +0.2% shard drop chance for all members
-  critRank?: number; // +1.5% critical roll chance for all members
-  coinRank?: number; // +10% coins earned for all members
+  luckRank: number; // +2% luck per rank
+  speedRank: number; // -40ms roll cooldown per rank
+  vaultRank: number; // +100 offline capacity per rank
+  shardRank?: number; // +0.2% shard drop chance per rank
+  critRank?: number; // +1.5% critical roll chance per rank
+  coinRank?: number; // +10% coins earned per rank
+  memberCapacityRank?: number; // +1 maximum member per rank, max 40
+  tokenYieldRank?: number; // +5% Guild Tokens generated per rank
+  guildXpRank?: number; // +10% Guild XP generated per rank
 }
 
-export type GuildPerkId = 'luckRank' | 'speedRank' | 'vaultRank' | 'shardRank' | 'critRank' | 'coinRank';
+export type GuildPerkId =
+  | 'luckRank'
+  | 'speedRank'
+  | 'vaultRank'
+  | 'shardRank'
+  | 'critRank'
+  | 'coinRank'
+  | 'memberCapacityRank'
+  | 'tokenYieldRank'
+  | 'guildXpRank';
 
 export interface GuildBoss {
   id: string;
@@ -63,6 +77,7 @@ export interface Guild {
   perks?: GuildPerks;
   chat?: GuildMessage[];
   bannerEffect?: string;
+  taxRate?: number; // 0-10% of earned Coins converted to Guild Tokens
 }
 
 export interface LeaderboardEntry {
