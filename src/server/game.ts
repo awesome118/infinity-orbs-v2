@@ -1,7 +1,7 @@
 import { redis, context, reddit } from './devvit-mock.js';
-import { NotificationsClient } from '@devvit/notifications';
+import * as notificationsModule from '@devvit/notifications';
 
-const notifications = new NotificationsClient();
+const notifications = (notificationsModule as any).notifications;
 import {
   createInitialState,
   type PlayerState,
