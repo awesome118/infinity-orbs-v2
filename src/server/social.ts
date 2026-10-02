@@ -840,10 +840,20 @@ export async function setCommunityEventConfig(config: {
 export async function leaderboard(): Promise<LeaderboardEntry[]> {
   const raw = await redis.get(key('leaderboard'));
   const board: LeaderboardEntry[] = parseLeaderboardList(raw);
-  return [...board].sort((a, b) => b.value - a.value).slice(0, 25);
+
+  // A player must have successfully shared an Orb post before entering the
+  // public leaderboard. Legacy entries without sharedAt are intentionally
+  // hidden until the player shares again or rolls after having shared.
+  return board
+    .filter(entry => Number(entry.sharedAt ?? 0) > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 25);
 }
 
 export async function recordLeaderboard(s: PlayerState) {
+  // Sharing a post is the gate for leaderboard participation.
+  if (!(s.lastShareAt && Number(s.lastShareAt) > 0)) return;
+
   const leaderboardKey = key('leaderboard');
   const name = username();
   const next: LeaderboardEntry = {
@@ -852,6 +862,7 @@ export async function recordLeaderboard(s: PlayerState) {
     highestRarity: s.highestRarity,
     totalRolls: s.totalRolls,
     level: s.level,
+    sharedAt: s.lastShareAt,
   };
 
   for (let attempt = 0; attempt < 6; attempt++) {
