@@ -13,7 +13,7 @@ import {
   Award,
 } from 'lucide-react';
 import type { PlayerState, MasterySkillId } from '../../shared/game.js';
-import { MASTERY_SKILLS, masterySkillCost } from '../../shared/game.js';
+import { MASTERY_SKILLS, masterySkillCost, highestCodexChain, codexDevotionLuckPercent } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface MasterySectionProps {
@@ -186,6 +186,11 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredSkills.map(([skillId, skill]) => {
             const currentLevel = state.masterySkills?.[skillId] ?? 0;
+            const isCodexDevotion = skillId === 'celestialSurge';
+            const codexChain = isCodexDevotion ? highestCodexChain(state.collection) : 0;
+            const codexLuckPercent = isCodexDevotion
+              ? codexDevotionLuckPercent(currentLevel, codexChain)
+              : 0;
             const isMax = currentLevel >= skill.maxLevel;
             const cost = masterySkillCost(skillId, currentLevel);
             const canAfford = (state.masteryPoints ?? 0) >= cost && !isMax;
@@ -229,6 +234,29 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
                   <p className="text-xs text-slate-400 leading-relaxed">
                     {skill.desc}
                   </p>
+
+                  {isCodexDevotion && (
+                    <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[10px] uppercase tracking-wide font-black text-cyan-300">
+                          Longest Codex Chain
+                        </span>
+                        <span className="text-sm font-black font-mono text-white">
+                          {codexChain}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between gap-3">
+                        <span className="text-[10px] text-slate-500">
+                          {codexChain > 0
+                            ? `+${Math.min(codexChain, 50)}% per level`
+                            : 'Collect consecutive rarities to build a chain'}
+                        </span>
+                        <span className="text-base font-black text-emerald-300">
+                          +{codexLuckPercent}% Luck
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   {/* 10-Pip Progress Bar that changes color on wrap-around */}
                   <div className="space-y-1 pt-1">
