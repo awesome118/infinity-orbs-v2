@@ -336,6 +336,7 @@ export function decayGlobalBoosterState(
     ...normalized,
     remainingMs: Math.max(0, normalized.endsAt - now),
     updatedAt: now,
+    endsAt: normalized.endsAt,
   };
 }
 
