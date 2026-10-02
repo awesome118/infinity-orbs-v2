@@ -66,9 +66,11 @@ const automationIcons: Record<AutomationId, React.ReactNode> = {
 
 function formatDuration(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 1000));
-  const hours = Math.floor(total / 3600);
+  const days = Math.floor(total / 86_400);
+  const hours = Math.floor((total % 86_400) / 3600);
   const minutes = Math.floor((total % 3600) / 60);
   const seconds = total % 60;
+  if (days > 0) return days + 'd ' + hours + 'h ' + minutes + 'm';
   if (hours > 0) return hours + 'h ' + minutes + 'm';
   return minutes + 'm ' + seconds + 's';
 }
@@ -279,31 +281,55 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
 
       <section className="rounded-3xl border border-emerald-500/20 bg-gradient-to-br from-slate-900 via-emerald-950/10 to-slate-900 p-5 shadow-xl">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <Gift className="w-5 h-5 text-emerald-300" />
               <h3 className="text-base font-black text-white">Community Reward</h3>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              The community milestone remains global and weekly. Each time the community reaches a new
-              reward tier, every player gets one claim for that tier. The global Luck buff itself still
-              works exactly as before.
+              The community milestone is global and weekly. Reach the goal to raise the reward tier for everyone.
             </p>
+
+            <div className="mt-3">
+              <div className="flex items-center justify-between gap-2 text-[10px]">
+                <span className="font-black text-emerald-300">
+                  {(worldEvent?.currentProgress ?? 0).toLocaleString()} / {(worldEvent?.goal ?? 100_000).toLocaleString()} rolls
+                </span>
+                <span className="font-bold text-slate-500">
+                  Tier {worldEvent?.tier ?? 1}
+                </span>
+              </div>
+              <div className="mt-1.5 h-2 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
+                <div
+                  className="h-full bg-emerald-500 transition-all duration-500"
+                  style={{
+                    width: Math.min(
+                      100,
+                      ((worldEvent?.currentProgress ?? 0) / Math.max(1, worldEvent?.goal ?? 100_000)) * 100,
+                    ) + '%',
+                  }}
+                />
+              </div>
+              <div className="mt-2 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-slate-300">
+                <span className="font-black text-amber-300">{worldEvent?.buffDescription ?? '+15% Global Luck Active'}</span>
+                <span className="text-slate-500"> · expires in </span>
+                <span className="font-black text-amber-200">
+                  {worldEvent && worldEvent.endsAt > now
+                    ? formatDuration(worldEvent.endsAt - now)
+                    : '0m 0s'}
+                </span>
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <span className="block text-[10px] uppercase font-black text-slate-500">Luck bonus</span>
-              <span className="text-sm font-black text-amber-300">
-                {worldEvent && worldEvent.endsAt > now
-                  ? formatDuration(worldEvent.endsAt - now) + ' left'
-                  : 'Expired'}
-              </span>
-            </div>
+          <div className="flex items-center gap-3 shrink-0">
             <div className="text-right">
               <span className="block text-[10px] uppercase font-black text-slate-500">Reward tier</span>
               <span className="text-sm font-black text-emerald-300">
                 {worldEvent?.tier ?? 1}
+              </span>
+              <span className="block text-[10px] text-slate-600 mt-0.5">
+                Claim {worldEvent?.tier ?? 1} once
               </span>
             </div>
             <button
@@ -317,9 +343,6 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
             >
               {(worldEvent?.tier ?? 1) > (state.communityRewardClaimedTier ?? 0) ? 'Claim Reward' : 'Claimed'}
             </button>
-          <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-slate-300">
-            <span className="font-black text-amber-300">{worldEvent?.buffDescription ?? '+15% Global Luck Active'}</span>
-            <span className="text-slate-500"> · resets when the weekly community event expires.</span>
           </div>
         </div>
       </section>
