@@ -3,7 +3,7 @@ import {
   X, Wrench, Coins, Gem, Sparkles, Zap, RotateCcw, Play, Shield, Megaphone,
   Users,
   Ban, UserX, CheckCircle2, RefreshCw, Flame,
-  Database, Wand2, Trash2, Gauge, ListRestart, Save, Power,
+  Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy,
 } from 'lucide-react';
 import type { RollResponse } from '../../shared/game.js';
 import { sound } from '../sound.js';
@@ -48,6 +48,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [banReason, setBanReason] = useState('Infinity Orbs admin action');
   const [announcementText, setAnnouncementText] = useState('');
   const [announcementLoaded, setAnnouncementLoaded] = useState(false);
+  const [paymentLogs, setPaymentLogs] = useState<Array<Record<string, unknown>>>([]);
+  const [paymentLogsLoading, setPaymentLogsLoading] = useState(false);
 
   const [frenzyRarity, setFrenzyRarity] = useState('');
   const [frenzyPostId, setFrenzyPostId] = useState('');
@@ -127,6 +129,53 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     bannedUntil: number | null;
     reason: string;
   }>>([]);
+
+  const loadPaymentLogs = async () => {
+    setPaymentLogsLoading(true);
+    try {
+      const res = await fetch('/api/dev/payment-logs?limit=200');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load payment logs.');
+      setPaymentLogs(Array.isArray(data.logs) ? data.logs : []);
+      setMessage('Loaded ' + (Array.isArray(data.logs) ? data.logs.length : 0) + ' payment log entries.');
+    } catch (e: any) {
+      setMessage('Error: ' + (e?.message || 'Could not load payment logs.'));
+    } finally {
+      setPaymentLogsLoading(false);
+    }
+  };
+
+  const copyPaymentLogs = async () => {
+    const text = JSON.stringify(paymentLogs, null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+      setMessage('Payment logs copied to clipboard.');
+    } catch {
+      const textarea = document.getElementById('payment-debug-log-copy') as HTMLTextAreaElement | null;
+      if (!textarea) {
+        setMessage('Could not access the clipboard.');
+        return;
+      }
+      textarea.focus();
+      textarea.select();
+      setMessage('Clipboard access was blocked. The logs are selected; copy them manually.');
+    }
+  };
+
+  const clearPaymentLogs = async () => {
+    setPaymentLogsLoading(true);
+    try {
+      const res = await fetch('/api/dev/payment-logs/clear', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not clear payment logs.');
+      setPaymentLogs([]);
+      setMessage('Payment debug logs cleared.');
+    } catch (e: any) {
+      setMessage('Error: ' + (e?.message || 'Could not clear payment logs.'));
+    } finally {
+      setPaymentLogsLoading(false);
+    }
+  };
 
   const getPlayerList = async () => {
     setLoading(true);
@@ -265,6 +314,53 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             {message}
           </div>
         )}
+
+        <section className={panelBase}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-300">
+                <Database className="w-4 h-4" /> Reddit Gold Payment Logs
+              </div>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Persistent server-side trace of the payment callback, buyer resolution, save read, and fulfillment. Run the sandbox purchase first, then press Refresh.
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                title="Load the latest payment trace from the server."
+                disabled={paymentLogsLoading}
+                onClick={() => void loadPaymentLogs()}
+                className={buttonBase + ' bg-slate-900 border-slate-700 text-slate-200 px-3 py-2'}
+              >
+                {paymentLogsLoading ? 'Loading…' : 'Refresh'}
+              </button>
+              <button
+                title="Copy the complete payment trace."
+                disabled={paymentLogs.length === 0}
+                onClick={() => void copyPaymentLogs()}
+                className={buttonBase + ' bg-emerald-600/20 border-emerald-500/30 text-emerald-200 px-3 py-2'}
+              >
+                <Copy className="w-3.5 h-3.5 inline mr-1" /> Copy
+              </button>
+              <button
+                title="Delete all stored payment traces."
+                disabled={paymentLogsLoading || paymentLogs.length === 0}
+                onClick={() => void clearPaymentLogs()}
+                className={buttonBase + ' bg-red-600/20 border-red-500/30 text-red-200 px-3 py-2'}
+              >
+                <Trash2 className="w-3.5 h-3.5 inline mr-1" /> Clear
+              </button>
+            </div>
+          </div>
+
+          <textarea
+            id="payment-debug-log-copy"
+            readOnly
+            value={paymentLogs.length > 0 ? JSON.stringify(paymentLogs, null, 2) : 'No payment logs loaded. Run a Reddit Gold sandbox purchase, then press Refresh.'}
+            className="w-full min-h-56 max-h-96 rounded-xl border border-slate-800 bg-black/40 p-3 text-[10px] leading-4 font-mono text-slate-300 resize-y"
+            onFocus={e => e.currentTarget.select()}
+          />
+        </section>
 
         <section className={panelBase}>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-300">
