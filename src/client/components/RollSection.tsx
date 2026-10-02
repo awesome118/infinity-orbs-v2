@@ -381,7 +381,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
         {/* Cooldown Timer */}
         <div className="text-center pt-1">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+          <div className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">
             {canRoll ? 'READY TO ROLL' : `COOLDOWN: ${(remain / 1000).toFixed(1)}s`}
           </div>
           {/* Progress Bar */}
