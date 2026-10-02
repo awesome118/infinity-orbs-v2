@@ -1376,17 +1376,33 @@ export function codexDevotionLuckPercent(skillLevel: number, chain: number): num
 }
 
 export const MIN_ALTAR_COIN_OFFER = 10_000;
+export const ALTAR_COIN_FLOOR_GROWTH = 2;
+export const ALTAR_BASE_CHANCE_DECAY = 0.85;
 
-export function altarCoinDevotionChancePercent(coins: number, pity = 0): number {
+export function altarCoinFloor(altarLevel: number): number {
+  const safeLevel = Math.max(0, Math.floor(Number(altarLevel) || 0));
+  return Math.round(MIN_ALTAR_COIN_OFFER * Math.pow(ALTAR_COIN_FLOOR_GROWTH, safeLevel));
+}
+
+export function altarCoinDevotionChancePercent(
+  coins: number,
+  pity = 0,
+  altarLevel = 0,
+): number {
   const safeCoins = Math.max(0, Math.floor(Number(coins) || 0));
   const safePity = Math.max(0, Math.floor(Number(pity) || 0));
-  if (safeCoins < MIN_ALTAR_COIN_OFFER) return 0;
+  const safeLevel = Math.max(0, Math.floor(Number(altarLevel) || 0));
+  const floor = altarCoinFloor(safeLevel);
+  if (safeCoins < floor) return 0;
 
-  // The coin floor prevents cheap spam. Larger offerings improve the base
-  // chance, while pity compounds multiplicatively after each failed attempt.
-  const amountRatio = safeCoins / MIN_ALTAR_COIN_OFFER;
-  const baseChance = Math.min(0.20, 0.05 + Math.log10(amountRatio) * 0.15);
+  // Every breakthrough makes the next one harder: the minimum offering
+  // doubles, while the underlying odds fall by 15% per level. Larger
+  // offerings can compensate somewhat, but never bypass the new floor.
+  const amountRatio = safeCoins / floor;
+  const levelChanceMultiplier = Math.pow(ALTAR_BASE_CHANCE_DECAY, safeLevel);
+  const baseChance = Math.min(0.12, (0.05 + Math.log10(amountRatio) * 0.07) * levelChanceMultiplier);
   const pityMultiplier = Math.pow(1.35, safePity);
+
   return Math.round(Math.min(0.90, baseChance * pityMultiplier) * 10000) / 100;
 }
 
