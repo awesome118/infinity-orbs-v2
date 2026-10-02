@@ -61,7 +61,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
   const surgeMins = Math.floor(surgeMsLeft / 60000);
   const surgeSecs = Math.floor((surgeMsLeft % 60000) / 1000);
 
-  // Coin Devotion is a chance-based breakthrough system.
+  // Coin devotion is a chance-based breakthrough system.
   const altarLevel = sacrifices.altarLevel ?? 0;
   const currentTotalCoins = sacrifices.coinsSacrificed ?? 0;
   const altarPity = sacrifices.altarPity ?? 0;
@@ -158,7 +158,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
           <div className="text-slate-500 font-black text-xl">×</div>
 
           <div className="flex-1">
-            <span className="text-[11px] text-slate-400 block">Shard Infusion</span>
+            <span className="text-[11px] text-slate-400 block">Shard infusion</span>
             <span className="text-lg font-black text-cyan-400 font-mono">{shardMultiplier}×</span>
             <span className="text-[10px] text-slate-500 block">{sacrifices.shardsSacrificed} Shards offered</span>
           </div>
@@ -166,7 +166,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
           <div className="text-slate-500 font-black text-xl">×</div>
 
           <div className="flex-1">
-            <span className="text-[11px] text-slate-400 block">Surge Multiplier</span>
+            <span className="text-[11px] text-slate-400 block">Luck Surge</span>
             <span className={`text-lg font-black font-mono ${isSurgeActive ? 'text-rose-400 animate-pulse' : 'text-slate-500'}`}>
               {surgeMultiplier}×
             </span>
@@ -360,15 +360,15 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
           disabled={busy || sacrificing || (selectedCoinOffer < 100 && selectedShardOffer <= 0)}
           className={`w-full py-4 px-6 rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all shadow-xl ${
             selectedCoinOffer >= 100 || selectedShardOffer > 0
-              ? 'bg-gradient-to-r from-orange-600 via-amber-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white shadow-orange-950/50 active:scale-98 cursor-pointer'
+              ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-md active:scale-[0.99] cursor-pointer'
               : 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700/50'
           }`}
         >
-          <Flame className="w-5 h-5 text-amber-300 animate-flame" />
+          <Flame className="w-5 h-5 text-amber-300 " />
           <span>
             {sacrificing
-              ? 'Communing with the Celestial Altar...'
-              : `Consecrate Offering (${fmt(selectedCoinOffer)} Coins, ${selectedShardOffer} Shards)`}
+              ? 'Offering...'
+              : `Make Offering (${fmt(selectedCoinOffer)} Coins, ${selectedShardOffer} Shards)`}
           </span>
         </button>
       </form>
