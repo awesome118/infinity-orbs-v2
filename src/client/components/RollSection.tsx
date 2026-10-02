@@ -439,17 +439,32 @@ export const RollSection: React.FC<RollSectionProps> = ({
               ? 'w-full px-4 py-2.5 rounded-xl text-xs font-black bg-slate-900 border border-slate-800 text-slate-600 cursor-not-allowed'
               : 'w-full px-4 py-2.5 rounded-xl text-xs font-black bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-200 hover:bg-fuchsia-500/20 active:scale-95'
           }
-          title='Once per day: roll a baseline Orb, open the full game window, and unleash the Frenzy volley.'
+          title='Once per day. A normal starter roll determines the Frenzy size: a 1 / N result unleashes N Frenzy rolls.'
         >
           <span className='inline-flex items-center justify-center gap-2'>
             <Sparkles className='w-4 h-4 text-fuchsia-300' />
             <span>
               {state.lastFrenzyDate === new Date().toISOString().slice(0, 10)
                 ? 'Orb Frenzy Used Today'
-                : 'Orb Frenzy • Open & Roll All'}
+                : 'Orb Frenzy • Start Frenzy'}
             </span>
           </span>
         </button>
+
+        <div className='w-full rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 px-3 py-2.5 text-left'>
+          <div className='flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-fuchsia-300'>
+            <Sparkles className='w-3.5 h-3.5 shrink-0' />
+            <span>How Orb Frenzy works</span>
+          </div>
+          <div className='mt-1.5 text-[11px] leading-relaxed text-slate-400'>
+            Once per day, Orb Frenzy makes <span className='font-semibold text-slate-300'>1 normal starter roll</span>.
+            Its rarity sets the Frenzy size: a <span className='font-semibold text-slate-300'>1 / 1,000</span> starter orb
+            unleashes <span className='font-semibold text-slate-300'>1,000 Frenzy rolls</span>.
+            The Frenzy rolls use that rarity and give their normal rewards, including Coins, XP, Shards, and Crits.
+            Your upgrades can increase the Frenzy size, and the <span className='font-semibold text-slate-300'>best result</span>
+            from the volley is shown on the orb above.
+          </div>
+        </div>
 
         {/* Control Toggles: Auto Roll, Sonar Mode, Instant Chrono-Skip */}
         <div className="flex flex-wrap items-center justify-center gap-2 w-full">
