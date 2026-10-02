@@ -429,6 +429,7 @@ export interface PlayerState {
   level: number;
   xp: number;
   totalRolls: number;
+  manualRolls: number;
   totalCrits: number;
   lifetimeCoins: number;
   lifetimeShards: number;
@@ -907,6 +908,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     level: 1,
     xp: 0,
     totalRolls: 0,
+    manualRolls: 0,
     totalCrits: 0,
     lifetimeCoins: 50,
     lifetimeShards: 5,
@@ -922,7 +924,7 @@ export function createInitialState(now = Date.now()): PlayerState {
       speed: 0,
       multi: 0,
       clusterRoll: 0,
-      auto: 1,
+      auto: 0,
       luck: 0,
       coinBonus: 0,
       shardChance: 0,
@@ -1220,8 +1222,8 @@ export function rollsPerActivation(s: PlayerState): number {
   return Math.max(1, balls);
 }
 
-export function autoUnlocked(_s: PlayerState): boolean {
-  return true;
+export function autoUnlocked(s: PlayerState): boolean {
+  return (s.manualRolls ?? 0) >= 10;
 }
 
 // All sources of luck are MULTIPLICATIVE!
