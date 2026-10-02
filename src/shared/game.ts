@@ -77,7 +77,7 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   },
   celestialSurge: {
     name: 'Codex Devotion',
-    desc: '+0.5% permanent luck for every 5 unique orbs discovered per level.',
+    desc: 'Adds diminishing permanent Luck based on your unique orb collection per level.',
     maxLevel: 10,
     costMultiplier: 3,
   },
@@ -1351,8 +1351,12 @@ export function luckMultiplier(s: PlayerState): number {
 
   // 5. Astral Mastery Skill Luck
   const masteryBaseLuck = 1 + (s.masterySkills?.continuumLuck ?? 0) * 0.03;
-  const codexTier = Math.floor(Object.keys(s.collection || {}).length / 5);
-  const codexLuck = 1 + (s.masterySkills?.celestialSurge ?? 0) * (codexTier * 0.005);
+  // Continuous rarity makes almost every roll a distinct collection key.
+  // Use logarithmic collection progress so Codex Devotion cannot become a
+  // thousands-of-times luck multiplier on long-running accounts.
+  const uniqueCollectionCount = Object.keys(s.collection || {}).length;
+  const codexProgress = Math.max(0, Math.floor(Math.log2(uniqueCollectionCount + 1)));
+  const codexLuck = 1 + (s.masterySkills?.celestialSurge ?? 0) * Math.min(0.01 * codexProgress, 0.50);
   const totalMasteryLuck = masteryBaseLuck * codexLuck;
 
   // 6. Guild Perk Luck
