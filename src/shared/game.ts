@@ -502,6 +502,8 @@ export interface PlayerState {
   freeShardsEarnedToday?: number;
   lastFreeShardReset?: string;
   purchasedShards?: number;
+  globalBoosterCredits?: number;
+  globalBoosters?: GlobalBoosterSnapshot;
 
   lastFrenzyDate?: string;
   lastFrenzyClaimDate?: string;
@@ -1020,6 +1022,8 @@ export function createInitialState(now = Date.now()): PlayerState {
     freeShardsEarnedToday: 0,
     lastFreeShardReset: today,
     purchasedShards: 0,
+    globalBoosterCredits: 0,
+    globalBoosters: createInitialGlobalBoosters(now),
 
     lastFrenzyDate: '',
     lastFrenzyClaimDate: '',
