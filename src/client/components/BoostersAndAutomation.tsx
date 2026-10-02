@@ -135,7 +135,9 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
               <Users className="w-4 h-4 text-fuchsia-300" />
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Each booster runs independently. Re-activating the same booster adds 30 minutes to its timer.
+              Each booster runs independently. Re-activating the same booster adds 30 minutes.
+              Higher tiers also make its timer drain faster: every tier adds 10% to the timer drain rate.
+              Tier 1 = ×1.10 drain, Tier 10 = ×2.00 drain.
             </p>
           </div>
           <div className="text-[11px] font-bold text-fuchsia-200">
@@ -149,6 +151,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
             const remaining = globalBoosterRemainingMs(displayed, now);
             const active = remaining > 0 && displayed.tier > 0;
             const activationProgress = Math.max(0, Math.min(4, displayed.activationProgress ?? 0));
+            const timerDrainRate = displayed.tier > 0 ? 1 + displayed.tier * 0.10 : 1;
             const effect = id === 'luck'
               ? '×' + globalBoosterLuckMultiplier(displayed, now).toFixed(2) + ' Luck'
               : id === 'speed'
@@ -190,6 +193,12 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                   <div className="mt-1 text-[10px] font-bold text-fuchsia-300">
                     {displayed.tier > 0 ? effect : ''}
                   </div>
+                  {displayed.tier > 0 && (
+                    <div className="mt-1 text-[10px] text-slate-400">
+                      Timer drain: <span className="font-black text-amber-300">×{timerDrainRate.toFixed(2)}</span> normal
+                      {' • '}{id === 'speed' && displayed.tier >= 10 ? 'Tier 10 MAX' : '10% faster per tier'}
+                    </div>
+                  )
                 </div>
                 <div className="mt-3 flex gap-2">
                   <button
