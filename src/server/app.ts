@@ -37,6 +37,8 @@ import {
   upgradeMasterySkill,
   getCollectionPage,
   processOfflineFullNotification,
+  getNotificationState,
+  setNotificationState,
 } from './game.js';
 import {
   achievements,
@@ -595,6 +597,23 @@ export function createApp() {
     } catch (e) {
       console.error('Failed to create install post:', e);
       res.status(400).json({ status: 'error', message: 'Failed to create Infinity Orbs post.' });
+    }
+  });
+
+  app.get('/api/notifications', async (_req, res) => {
+    try {
+      res.json({ enabled: await getNotificationState() });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Could not load notification settings.' });
+    }
+  });
+
+  app.post('/api/notifications', async (req, res) => {
+    try {
+      const enabled = req.body?.enabled === true;
+      res.json({ enabled: await setNotificationState(enabled) });
+    } catch (e: any) {
+      res.status(400).json({ error: e?.message || 'Could not update notification settings.' });
     }
   });
 
