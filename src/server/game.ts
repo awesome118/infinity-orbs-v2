@@ -389,9 +389,11 @@ async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSn
     await txn.set(storageKey, JSON.stringify(next));
     const committed = await txn.exec();
     if (committed !== null) {
-      const snapshot = await getGlobalBoosters();
-      snapshot[id] = next;
-      return snapshot;
+      // Re-read after the successful transaction so the activating player gets
+      // the newest shared state even when another player activates the same
+      // booster immediately afterward. Never overwrite that fresh snapshot
+      // with the state from the transaction that just completed.
+      return await getGlobalBoosters();
     }
   }
 
