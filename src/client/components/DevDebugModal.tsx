@@ -225,7 +225,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   }, [guildChatSpyLoaded]);
 
   const toggleGuildChatMute = async (username: string, currentlyMuted: boolean) => {
-    const cleanName = username.trim().replace(/^u\\//i, '');
+    const cleanName = username.trim().replace(/^u\//i, '');
     const data = await sendAdminAction(
       currentlyMuted ? '/api/dev/guild-chat/unmute' : '/api/dev/guild-chat/mute',
       { username: cleanName },
