@@ -1584,7 +1584,6 @@ export async function settleOffline(s: PlayerState): Promise<PlayerState> {
     const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId();
     const alreadyNotified = await redis.get(notificationKey);
     if (!alreadyNotified) {
-      await redis.set(notificationKey, '1');
       const subredditName = String(context.subredditName ?? '').trim();
       const userId = String(context.userId ?? '').trim();
       if (subredditName && userId) {
@@ -1598,6 +1597,7 @@ export async function settleOffline(s: PlayerState): Promise<PlayerState> {
                 link: `https://reddit.com/r/${subredditName}`,
               }],
             });
+            await redis.set(notificationKey, '1');
           }
         } catch (error) {
           console.error('Failed to send offline-orbs-full notification:', error);
