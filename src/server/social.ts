@@ -165,9 +165,9 @@ export async function guildInfo() {
   };
 }
 
-export async function getPlayerGuildPerks(uname: string) {
+export async function getPlayerGuildPerks(uname: string, uid?: string) {
   const guilds = await loadGuilds();
-  const mine = guilds.find(g => g.members.some(m => m.username === uname));
+  const mine = guilds.find(g => g.members.some(m => (uid && m.userId === uid) || m.username === uname));
   return mine?.perks ?? {
     luckRank: 0,
     speedRank: 0,
@@ -175,6 +175,9 @@ export async function getPlayerGuildPerks(uname: string) {
     shardRank: 0,
     critRank: 0,
     coinRank: 0,
+    memberCapacityRank: 0,
+    tokenYieldRank: 0,
+    guildXpRank: 0,
   };
 }
 
