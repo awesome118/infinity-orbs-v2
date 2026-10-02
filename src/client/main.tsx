@@ -74,7 +74,12 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, options);
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    const message = errorData.error || `HTTP ${res.status}: ${res.statusText}`;
+    const message =
+      typeof errorData.error === 'string'
+        ? errorData.error
+        : typeof errorData.message === 'string'
+          ? errorData.message
+          : `HTTP ${res.status}: ${res.statusText}`;
 
     // An admin wipe intentionally invalidates old in-flight requests. Those
     // requests must never resurrect old data, but they also should not strand
@@ -421,12 +426,16 @@ export function App() {
   }, [tab]);
 
   // Roll action
-  const handleRoll = useCallback(async () => {
+  const handleRoll = useCallback(async (isAutoRoll = false) => {
     if (isRolling) return;
     setIsRolling(true);
     try {
       sound.playRollNormal();
-      const res = await getJson<RollResponse>('/api/roll', { method: 'POST' });
+      const res = await getJson<RollResponse>('/api/roll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auto: isAutoRoll }),
+      });
       setState(res.state);
       setLastOrb(res.orb);
       setLastBatch(res.batch ?? [res.orb]);
@@ -463,7 +472,7 @@ export function App() {
     if (!autoRoll || !state || state.upgrades.auto === 0) return;
     const interval = setInterval(() => {
       if (Date.now() >= readyAt && !isRolling) {
-        void handleRoll();
+        void handleRoll(true);
       }
     }, 300);
     return () => clearInterval(interval);
@@ -685,7 +694,7 @@ export function App() {
       setReadyAt(Date.now() + res.rollsRemainingUntilNext);
       sound.playEpicFanfare();
       showToast(
-        `Claimed ${res.batch?.length ?? 0} offline rolls! Highest: 1/${res.orb.rarity.toLocaleString()}`,
+        `Claimed ${(res.rollsProcessed ?? res.batch?.length ?? 0).toLocaleString()} offline rolls! Highest: 1/${res.orb.rarity.toLocaleString()}`,
         'success'
       );
     } catch (e: any) {
@@ -880,7 +889,7 @@ export function App() {
   };
 
   // Guilds
-  const handleCreateGuild = async (name: string, tag: string) => {
+  const handleCreateGuild = async (name: string, tag: string): Promise<boolean> => {
     setBusy(true);
     try {
       await getJson('/api/guilds/create', {
@@ -890,8 +899,10 @@ export function App() {
       });
       showToast(`Guild [${tag}] ${name} founded!`, 'success');
       void refreshAll();
+      return true;
     } catch (e: any) {
       showToast(e.message || 'Could not create guild', 'warn');
+      return false;
     } finally {
       setBusy(false);
     }
@@ -986,6 +997,8 @@ export function App() {
   };
 
   const handleSendGuildChat = async (text: string) => {
+    if (busy) return;
+    setBusy(true);
     try {
       await getJson('/api/guilds/chat', {
         method: 'POST',
@@ -995,6 +1008,8 @@ export function App() {
       void refreshAll();
     } catch (e: any) {
       showToast(e.message || 'Could not send message', 'warn');
+    } finally {
+      setBusy(false);
     }
   };
 
