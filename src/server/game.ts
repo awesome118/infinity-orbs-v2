@@ -400,6 +400,19 @@ async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSn
       currentSnapshot = await readLegacyGlobalBoosterSnapshot(now);
     }
 
+    const activeOther = (['luck', 'speed', 'crit'] as GlobalBoosterId[]).find(otherId =>
+      otherId !== id &&
+      currentSnapshot[otherId].tier > 0 &&
+      currentSnapshot[otherId].remainingMs > 0,
+    );
+    if (activeOther) {
+      await txn.unwatch();
+      throw new Error(
+        GLOBAL_BOOSTERS[activeOther].name +
+        ' is already active. Wait for it to expire before activating another Global Booster.',
+      );
+    }
+
     currentSnapshot[id] = activateGlobalBoosterStack(currentSnapshot[id], now);
 
     await txn.multi();
@@ -421,21 +434,69 @@ function paymentGoodsForSku(sku: string) {
 }
 
 function parsePaymentPlayerState(raw: unknown): PlayerState {
-  const state = parseStoredJson<PlayerState>(raw);
-  if (!state || typeof state !== 'object' || Array.isArray(state)) {
-    throw new Error('Saved player data could not be read; the purchase was not applied.');
+  let parsed: unknown = parseStoredJson<unknown>(raw);
+
+  // Payment fulfillment must tolerate Redis/runtime wrappers without ever
+  // treating the wrapper itself as the player's save. A wrapper-shaped read
+  // used to make us write a fresh save containing only the purchased shards.
+  for (let depth = 0; depth < 5; depth++) {
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) break;
+
+    const record = parsed as Record<string, unknown>;
+    if ('coins' in record || 'shards' in record || 'totalRolls' in record) {
+      return record as PlayerState;
+    }
+
+    let nestedFound = false;
+    for (const key of ['state', 'player', 'value', 'data', 'payload']) {
+      const nested = record[key];
+      if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+        parsed = nested;
+        nestedFound = true;
+        break;
+      }
+    }
+    if (!nestedFound) break;
   }
-  return state;
+
+  throw new Error('Saved player data could not be read; the purchase was not applied.');
 }
 
 export async function grantPurchasedPack(userId: string, sku: string, orderId: string): Promise<boolean> {
   const pack = paymentGoodsForSku(sku);
   const pkey = playerKeyFor(userId);
-  await ensureRedisStringKey(pkey, JSON.stringify(createInitialState()));
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const txn = await redis.watch(pkey);
+  const generationKey = saveGenerationKeyFor(userId);
+  await ensureRedisStringKey(generationKey, '0');
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const txn = await redis.watch(pkey, generationKey);
+    const generationRaw = await txn.get(generationKey);
+    const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
     const raw = await txn.get(pkey);
-    const state = raw == null ? createInitialState() : parsePaymentPlayerState(raw);
+
+    let state: PlayerState;
+    if (raw == null) {
+      state = createInitialState();
+      state.username = 'reddit-user-' + userId.slice(-8);
+      state.saveGeneration = generation;
+    } else {
+      const stored = parsePaymentPlayerState(raw);
+      const storedGeneration = Math.max(0, Math.floor(Number(stored.saveGeneration ?? 0)));
+
+      // A generation mismatch means an admin wipe happened after this save was
+      // created. Never resurrect that old save just because a payment arrived.
+      // Start from the current generation and then apply the paid entitlement.
+      if (storedGeneration !== generation) {
+        state = createInitialState();
+        state.username = stored.username ?? ('reddit-user-' + userId.slice(-8));
+        state.saveGeneration = generation;
+      } else {
+        state = stored;
+        state.saveGeneration = generation;
+        state.username = state.username ?? ('reddit-user-' + userId.slice(-8));
+      }
+    }
+
     state.paymentReceipts = state.paymentReceipts ?? {};
     const existingReceipt = state.paymentReceipts[orderId];
     if (
@@ -462,14 +523,14 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
       shards: pack.shards,
       globalBoosterCredits: pack.globalBoosterCredits,
     };
-    // Do not evict old receipts: a delayed callback must never be able to replay
-    // an older order after its id has fallen out of a fixed-size in-state cache.
     state.paymentReceipts[orderId] = receipt;
+
     await txn.multi();
     await txn.set(pkey, JSON.stringify(state));
     const committed = await txn.exec();
     if (committed !== null) return true;
   }
+
   throw new Error('Could not safely fulfill the purchase. Please retry.');
 }
 
