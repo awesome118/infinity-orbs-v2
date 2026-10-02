@@ -453,6 +453,8 @@ export async function getGlobalBoosters(): Promise<GlobalBoosterSnapshot> {
     return createInitialGlobalBoosters(now);
   }
 
+  snapshot.speed.tier = Math.min(10, Math.max(0, Math.floor(Number(snapshot.speed.tier) || 0)));
+  if (snapshot.speed.tier >= 10) snapshot.speed.activationProgress = 0;
   return snapshot;
 }
 
@@ -520,10 +522,11 @@ export async function setGlobalBoosterDebugState(
   const safeMinutes = Math.max(1, Math.floor(Number(minutes) || 30));
   const snapshot = await getGlobalBoosters();
   const previous = snapshot[id];
+  const cappedTier = id === 'speed' ? Math.min(10, safeTier) : safeTier;
   const next = {
-    tier: safeTier,
+    tier: cappedTier,
     activationProgress: 0,
-    endsAt: safeTier === 0 ? 0 : now + safeMinutes * 60_000,
+    endsAt: cappedTier === 0 ? 0 : now + safeMinutes * 60_000,
   };
   snapshot[id] = next;
   await redis.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(snapshot));
@@ -2106,7 +2109,17 @@ async function claimWorldBoosterActivation(
 export async function activateGlobalBooster(
   id: GlobalBoosterId,
   useCredit = false,
-): Promise<{ state: PlayerState; snapshot: GlobalBoosterSnapshot; usedCredit: boolean }> {
+): Promise<{
+  state: PlayerState;
+  snapshot: GlobalBoosterSnapshot;
+  usedCredit: boolean;
+  announcement: {
+    id: GlobalBoosterId;
+    name: string;
+    username: string;
+    activatedAt: number;
+  };
+}> {
   if (!GLOBAL_BOOSTERS[id]) throw new Error('Unknown Global Booster.');
 
   const userId = currentUserId();
