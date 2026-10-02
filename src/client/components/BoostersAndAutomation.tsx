@@ -30,6 +30,7 @@ import {
   globalBoosterSpeedMultiplier,
   globalBoosterCritChanceBonus,
   globalBoosterCritLuckBonus,
+  globalBoosterBarColor,
 
   PREMIUM_BOOSTERS,
   onlinePlayerLuckMultiplier,
@@ -166,8 +167,12 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                 <div className="mt-2">
                   <div className="h-2.5 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
                     <div
-                      className="h-full bg-gradient-to-r from-fuchsia-500 via-purple-500 to-cyan-400 transition-all duration-700"
-                      style={{ width: globalBoosterProgress(displayed, now) + '%' }}
+                      className="h-full transition-all duration-700"
+                      style={{
+                        width: globalBoosterProgress(displayed, now) + '%',
+                        backgroundColor: globalBoosterBarColor(displayed.tier),
+                        boxShadow: '0 0 10px ' + globalBoosterBarColor(displayed.tier),
+                      }}
                     />
                   </div>
                   <div className="mt-1 flex items-center justify-between gap-2 text-[10px]">
