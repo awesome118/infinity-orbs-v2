@@ -207,13 +207,14 @@ export interface GlobalBoosterState {
   tier: number;
   activationProgress: number;
   endsAt: number;
+  lastTickAt?: number;
 }
 
 export type GlobalBoosterSnapshot = Record<GlobalBoosterId, GlobalBoosterState>;
 
 export const GLOBAL_BOOSTER_DURATION_MS = 30 * 60 * 1000;
-export const GLOBAL_BOOSTER_MAX_TIER = 10;
 export const GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER = 4;
+export const GLOBAL_BOOSTER_TIMER_ACCELERATION_PER_TIER = 0.10;
 
 export const GLOBAL_BOOSTERS: Record<GlobalBoosterId, {
   name: string;
@@ -254,21 +255,41 @@ export function decayGlobalBoosterState(
   state: GlobalBoosterState | null | undefined,
   now = Date.now(),
 ): GlobalBoosterState {
-  const tier = Math.max(0, Math.min(
-    GLOBAL_BOOSTER_MAX_TIER,
-    Math.floor(Number(state?.tier ?? 0) || 0),
-  ));
-  const activationProgress = Math.max(0, Math.min(
-    GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER - 1,
-    Math.floor(Number(state?.activationProgress ?? 0) || 0),
-  ));
-  const endsAt = Math.max(0, Math.floor(Number(state?.endsAt ?? 0) || 0));
+  const tier = Math.max(0, Math.floor(Number(state?.tier ?? 0) || 0));
+  const activationProgress = Math.max(
+    0,
+    Math.min(
+      GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER - 1,
+      Math.floor(Number(state?.activationProgress ?? 0) || 0),
+    ),
+  );
+  let endsAt = Math.max(0, Math.floor(Number(state?.endsAt ?? 0) || 0));
+  const previousTickAt = Math.max(
+    0,
+    Math.floor(Number(state?.lastTickAt ?? now) || now),
+  );
+  const elapsed = Math.max(0, now - previousTickAt);
 
-  if (tier <= 0 || endsAt <= now) {
-    return { tier, activationProgress, endsAt: 0 };
+  if (tier > 0 && endsAt > 0 && elapsed > 0) {
+    const acceleration = 1 + tier * GLOBAL_BOOSTER_TIMER_ACCELERATION_PER_TIER;
+    endsAt -= Math.round(elapsed * (acceleration - 1));
   }
 
-  return { tier, activationProgress, endsAt };
+  if (tier <= 0 || endsAt <= now) {
+    return {
+      tier,
+      activationProgress,
+      endsAt: 0,
+      lastTickAt: now,
+    };
+  }
+
+  return {
+    tier,
+    activationProgress,
+    endsAt,
+    lastTickAt: now,
+  };
 }
 
 export function globalBoosterRemainingMs(
@@ -289,15 +310,13 @@ export function activateGlobalBoosterStack(
 
   if (tier <= 0) tier = 1;
 
-  if (activationProgress >= GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER && tier < GLOBAL_BOOSTER_MAX_TIER) {
+  if (activationProgress >= GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER) {
     tier += 1;
-    activationProgress = 0;
-  } else if (tier >= GLOBAL_BOOSTER_MAX_TIER) {
     activationProgress = 0;
   }
 
   const endsAt = Math.max(now, current.endsAt) + GLOBAL_BOOSTER_DURATION_MS;
-  return { tier, activationProgress, endsAt };
+  return { tier, activationProgress, endsAt, lastTickAt: now };
 }
 
 export function globalBoosterProgress(state: GlobalBoosterState | null | undefined, now = Date.now()): number {
@@ -327,6 +346,22 @@ export function globalBoosterCritChanceBonus(state: GlobalBoosterState | null | 
 export function globalBoosterCritLuckBonus(state: GlobalBoosterState | null | undefined, now = Date.now()): number {
   const current = decayGlobalBoosterState(state, now);
   return current.tier > 0 && current.endsAt > now ? 0.10 * current.tier : 0;
+}
+
+const GLOBAL_BOOSTER_BAR_COLORS = [
+  '#c084fc',
+  '#38bdf8',
+  '#34d399',
+  '#fbbf24',
+  '#fb7185',
+  '#a78bfa',
+  '#22d3ee',
+  '#f472b6',
+];
+
+export function globalBoosterBarColor(tier: number): string {
+  const normalizedTier = Math.max(0, Math.floor(Number(tier) || 0));
+  return GLOBAL_BOOSTER_BAR_COLORS[normalizedTier % GLOBAL_BOOSTER_BAR_COLORS.length];
 }
 
 export type FeatureId =
@@ -1087,7 +1122,7 @@ export const LEVEL_MILESTONES: LevelMilestonePerk[] = [
 ];
 
 export function xpRequiredForLevel(level: number): number {
-  return Math.floor(100 * Math.pow(Math.max(1, level), 1.35));
+  return Math.floor(70 * Math.pow(Math.max(1, level), 1.30));
 }
 
 export interface LevelBenefits {
