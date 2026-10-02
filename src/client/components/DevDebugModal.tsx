@@ -50,6 +50,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [announcementLoaded, setAnnouncementLoaded] = useState(false);
   const [paymentLogs, setPaymentLogs] = useState<Array<Record<string, unknown>>>([]);
   const [paymentLogsLoading, setPaymentLogsLoading] = useState(false);
+  const [globalBooster, setGlobalBooster] = useState('luck');
+  const [globalTier, setGlobalTier] = useState('1');
+  const [globalMinutes, setGlobalMinutes] = useState('30');
+  const [globalBoosterLogs, setGlobalBoosterLogs] = useState<Array<Record<string, unknown>>>([]);
+  const [globalBoosterLogsLoading, setGlobalBoosterLogsLoading] = useState(false);
 
   const [frenzyRarity, setFrenzyRarity] = useState('');
   const [frenzyPostId, setFrenzyPostId] = useState('');
@@ -159,6 +164,53 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       textarea.focus();
       textarea.select();
       setMessage('Clipboard access was blocked. The logs are selected; copy them manually.');
+    }
+  };
+
+  const loadGlobalBoosterLogs = async () => {
+    setGlobalBoosterLogsLoading(true);
+    try {
+      const res = await fetch('/api/dev/global-booster-logs?limit=300');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load Global Booster logs.');
+      setGlobalBoosterLogs(Array.isArray(data.logs) ? data.logs : []);
+      setMessage('Loaded ' + (Array.isArray(data.logs) ? data.logs.length : 0) + ' Global Booster log entries.');
+    } catch (e: any) {
+      setMessage('Error: ' + (e?.message || 'Could not load Global Booster logs.'));
+    } finally {
+      setGlobalBoosterLogsLoading(false);
+    }
+  };
+
+  const copyGlobalBoosterLogs = async () => {
+    const text = JSON.stringify(globalBoosterLogs, null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+      setMessage('Global Booster logs copied to clipboard.');
+    } catch {
+      const textarea = document.getElementById('global-booster-debug-log-copy') as HTMLTextAreaElement | null;
+      if (!textarea) {
+        setMessage('Could not access the clipboard.');
+        return;
+      }
+      textarea.focus();
+      textarea.select();
+      setMessage('Clipboard access was blocked. The logs are selected; copy them manually.');
+    }
+  };
+
+  const clearGlobalBoosterLogs = async () => {
+    setGlobalBoosterLogsLoading(true);
+    try {
+      const res = await fetch('/api/dev/global-booster-logs/clear', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not clear Global Booster logs.');
+      setGlobalBoosterLogs([]);
+      setMessage('Global Booster logs cleared.');
+    } catch (e: any) {
+      setMessage('Error: ' + (e?.message || 'Could not clear Global Booster logs.'));
+    } finally {
+      setGlobalBoosterLogsLoading(false);
     }
   };
 
@@ -357,6 +409,62 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             id="payment-debug-log-copy"
             readOnly
             value={paymentLogs.length > 0 ? JSON.stringify(paymentLogs, null, 2) : 'No payment logs loaded. Run a Reddit Gold sandbox purchase, then press Refresh.'}
+            className="w-full min-h-56 max-h-96 rounded-xl border border-slate-800 bg-black/40 p-3 text-[10px] leading-4 font-mono text-slate-300 resize-y"
+            onFocus={e => e.currentTarget.select()}
+          />
+        </section>
+
+        <section className={panelBase}>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fuchsia-300">
+            <Power className="w-4 h-4" /> Global Booster Control
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <select title="Choose the Global Booster to edit." value={globalBooster} onChange={e => setGlobalBooster(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white">
+              <option value="luck">Global Luck</option>
+              <option value="speed">Global Speed</option>
+              <option value="crit">Global Crit</option>
+            </select>
+            <select title="Choose the tier to force. Off disables the booster." value={globalTier} onChange={e => setGlobalTier(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white">
+              {[0, 1, 5, 10].map(v => <option key={v} value={v}>{v === 0 ? 'Off' : 'Tier ' + v}</option>)}
+            </select>
+            <input value={globalMinutes} onChange={e => setGlobalMinutes(e.target.value)} type="number" min="1" title="How many minutes the forced Global Booster state should remain active." className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white font-mono" placeholder="minutes" />
+            <button
+              title="Set a Global Booster tier and duration directly without spending Shards."
+              disabled={loading}
+              onClick={() => void sendAdminAction('/api/dev/global-booster', { id: globalBooster, tier: Number(globalTier), minutes: Number(globalMinutes) })}
+              className={buttonBase + ' bg-fuchsia-600 hover:bg-fuchsia-500 border-fuchsia-500 text-white px-3 py-2'}
+            >
+              Set Booster
+            </button>
+          </div>
+        </section>
+
+        <section className={panelBase}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fuchsia-300">
+                <Database className="w-4 h-4" /> Global Booster Logs
+              </div>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Persistent trace of Global Booster reads, state calculations, atomic writes, player currency deduction, and save failures.
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button title="Load the latest Global Booster trace." disabled={globalBoosterLogsLoading} onClick={() => void loadGlobalBoosterLogs()} className={buttonBase + ' bg-slate-900 border-slate-700 text-slate-200 px-3 py-2'}>
+                {globalBoosterLogsLoading ? 'Loading…' : 'Refresh'}
+              </button>
+              <button title="Copy the complete Global Booster trace." disabled={globalBoosterLogs.length === 0} onClick={() => void copyGlobalBoosterLogs()} className={buttonBase + ' bg-emerald-600/20 border-emerald-500/30 text-emerald-200 px-3 py-2'}>
+                <Copy className="w-3.5 h-3.5 inline mr-1" /> Copy
+              </button>
+              <button title="Delete all Global Booster traces." disabled={globalBoosterLogsLoading || globalBoosterLogs.length === 0} onClick={() => void clearGlobalBoosterLogs()} className={buttonBase + ' bg-red-600/20 border-red-500/30 text-red-200 px-3 py-2'}>
+                <Trash2 className="w-3.5 h-3.5 inline mr-1" /> Clear
+              </button>
+            </div>
+          </div>
+          <textarea
+            id="global-booster-debug-log-copy"
+            readOnly
+            value={globalBoosterLogs.length > 0 ? JSON.stringify(globalBoosterLogs, null, 2) : 'No Global Booster logs loaded. Clear the trace, activate one booster, then press Refresh.'}
             className="w-full min-h-56 max-h-96 rounded-xl border border-slate-800 bg-black/40 p-3 text-[10px] leading-4 font-mono text-slate-300 resize-y"
             onFocus={e => e.currentTarget.select()}
           />
