@@ -28,7 +28,7 @@ export const RarityTableModal: React.FC<RarityTableModalProps> = ({ onClose }) =
             <span>Economy: <strong className="text-amber-300">Coins = Rarity</strong></span>
           </div>
           <p className="text-slate-400">
-            Every roll yields coins equal to the rarity rolled (e.g. 1/2 = 2 coins, 1/10 = 10 coins, 1/1,000 = 1,000 coins).
+            Coin rewards scale with rarity using a diminishing-return formula, so higher-rarity orbs are worth more without paying their full rarity number.
           </p>
           <p className="text-slate-400">
             Orbs generate continuously: any number <code className="text-cyan-300">R ≥ 2</code> is obtainable. Chance of rolling at least R is <code className="text-cyan-300">(2 × Luck) / R</code>.
