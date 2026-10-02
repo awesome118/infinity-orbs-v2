@@ -8,7 +8,6 @@ import {
   Calendar,
   Users,
   Award,
-  Trophy,
   Dices,
   RefreshCw,
   Flame,
@@ -33,7 +32,6 @@ import type {
 import type {
   Guild,
   LeaderboardEntry,
-  Achievement,
   WorldEvent,
   GuildPerkId,
 } from '../shared/social.js';
@@ -52,13 +50,13 @@ import { CollectionSection } from './components/CollectionSection.js';
 import { QuestsAndStreaks } from './components/QuestsAndStreaks.js';
 import { GuildsAndSocial } from './components/GuildsAndSocial.js';
 import { ProfileAndPrestige } from './components/ProfileAndPrestige.js';
-import { AchievementsSection } from './components/AchievementsSection.js';
 import { RedditShareModal } from './components/RedditShareModal.js';
 import { RarityTableModal } from './components/RarityTableModal.js';
 import { NewBestModal } from './components/NewBestModal.js';
 import { BoostersAndAutomation } from './components/BoostersAndAutomation.js';
 import { DevDebugModal } from './components/DevDebugModal.js';
 import { FeedbackModal } from './components/FeedbackModal.js';
+import { APP_VERSION } from '../shared/version.js';
 import './styles.css';
 
 type ActiveTab =
@@ -181,9 +179,9 @@ export function App() {
     guilds: [],
     mine: null,
   });
-  const [achievementsData, setAchievementsData] = useState<Achievement[]>([]);
   const [worldEvent, setWorldEvent] = useState<WorldEvent | null>(null);
   const [developerAnnouncement, setDeveloperAnnouncement] = useState<{ message: string; updatedAt: number; updatedBy: string } | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
 
   // Modals
   const [shareRarity, setShareRarity] = useState<number | null>(null);
@@ -257,17 +255,15 @@ export function App() {
       // The admin may continue to use the normal game endpoints while testing a ban.
       if (me.gameBan?.active) return;
 
-      const [lb, gd, ach, we, announcement] = await Promise.all([
+      const [lb, gd, we, announcement] = await Promise.all([
         getJson<LeaderboardEntry[]>('/api/leaderboard').catch(() => []),
         getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds').catch(() => ({ guilds: [], mine: null })),
-        getJson<Achievement[]>('/api/achievements').catch(() => []),
         getJson<WorldEvent>('/api/world-event').catch(() => null),
         getJson<{ message: string; updatedAt: number; updatedBy: string }>('/api/developer-announcement').catch(() => null),
       ]);
 
       setLeaderboardData(lb);
       setGuildData(gd);
-      setAchievementsData(ach);
       if (we) setWorldEvent(we);
       if (announcement) setDeveloperAnnouncement(announcement);
     } catch (e: any) {
@@ -290,6 +286,27 @@ export function App() {
     const interval = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(interval);
   }, [refreshAll]);
+
+  // Detect when the installed game has a newer client bundle. The endpoint is
+  // deliberately uncached so stale Reddit/CDN responses do not hide updates.
+  useEffect(() => {
+    const checkForUpdate = async () => {
+      try {
+        const res = await fetch('/api/version', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json() as { version?: string };
+        if (data.version && data.version !== APP_VERSION) {
+          setUpdateAvailable(true);
+        }
+      } catch {
+        // Update detection is best-effort and must never block gameplay.
+      }
+    };
+
+    void checkForUpdate();
+    const interval = window.setInterval(() => void checkForUpdate(), 15_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   // Periodic background refresh for social & community event rolling counter
   useEffect(() => {
@@ -769,30 +786,6 @@ export function App() {
     }
   };
 
-  // Claim Achievement
-  const handleClaimAchievement = async (id: string) => {
-    setBusy(true);
-    try {
-      const res = await getJson<{
-        state: PlayerState;
-        rewardCoins: number;
-        rewardShards: number;
-      }>('/api/achievements/claim', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
-      setState(res.state);
-      sound.playChime(880, 'triangle', 0.3);
-      showToast(`Achievement reward claimed! +${res.rewardCoins} Coins`, 'success');
-      void refreshAll();
-    } catch (e: any) {
-      showToast(e.message || 'Could not claim achievement', 'warn');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   // Prestige Reset
   const handlePrestige = async () => {
     setBusy(true);
@@ -1143,7 +1136,6 @@ export function App() {
   const questsReady =
     state.dailyQuests.some(q => !q.claimed && q.progress >= q.target) ||
     state.weeklyQuests.some(q => !q.claimed && q.progress >= q.target);
-  const achievementsReady = achievementsData.some(a => a.unlocked && !a.claimed);
   const prestigeReady = calculateCosmicDust(state) > 0;
 
   return (
@@ -1189,6 +1181,23 @@ export function App() {
         </div>
       )}
 
+      {updateAvailable && (
+        <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5">
+          <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm font-bold text-amber-200">
+              <RefreshCw className="w-4 h-4 shrink-0" />
+              <span>New update, please refresh!</span>
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="shrink-0 rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-black text-slate-950 hover:bg-amber-300 transition-colors"
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+      )}
+
       {developerAnnouncement?.message && (
         <div className="border-b border-cyan-500/20 bg-cyan-500/5 px-4 py-3">
           <div className="max-w-6xl mx-auto flex items-start gap-3">
@@ -1204,6 +1213,22 @@ export function App() {
       {/* Main Navigation Bar */}
       <div className="bg-slate-900/40 border-b border-slate-800/80 px-4 py-2 sticky top-[57px] z-20 backdrop-blur-md">
         <div className="max-w-6xl mx-auto flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+
+          <button
+            onClick={() => {
+              sound.playClick();
+              changeTab('upgrades');
+            }}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
+              tab === 'upgrades'
+                ? 'bg-gradient-to-r from-amber-600 to-yellow-500 text-white shadow-md'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-300" />
+            <span>Upgrades</span>
+            {featureForTab('upgrades' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('upgrades' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
+          </button>
 
           <button
             onClick={() => {
@@ -1289,24 +1314,6 @@ export function App() {
             <Users className="w-3.5 h-3.5 text-indigo-400" />
             <span>Guilds & Social</span>
             {featureForTab('social' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('social' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
-          </button>
-
-          <button
-            onClick={() => {
-              sound.playClick();
-              changeTab('achievements');
-            }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
-              tab === 'achievements'
-                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Trophy className="w-3.5 h-3.5 text-amber-300" />
-            <span>Trophies</span>
-            {achievementsReady && (
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-            )}
           </button>
 
           <button
@@ -1429,15 +1436,6 @@ export function App() {
             playerUsername={state.username ?? ''}
             playerCoins={state.coins}
             playerShards={state.shards}
-            busy={busy}
-          />
-        )}
-
-        {tab === 'achievements' && (
-          <AchievementsSection
-            achievements={achievementsData}
-            state={state}
-            onClaimAchievement={handleClaimAchievement}
             busy={busy}
           />
         )}
