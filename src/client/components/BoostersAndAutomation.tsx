@@ -198,7 +198,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                       Timer drain: <span className="font-black text-amber-300">×{timerDrainRate.toFixed(2)}</span> normal
                       {' • '}{id === 'speed' && displayed.tier >= 10 ? 'Tier 10 MAX' : '10% faster per tier'}
                     </div>
-                  )
+                  )}
                 </div>
                 <div className="mt-3 flex gap-2">
                   <button
