@@ -443,20 +443,20 @@ export const RollSection: React.FC<RollSectionProps> = ({
           </span>
         </button>
 
-        <div className='w-full rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 px-3 py-2.5 text-left'>
-          <div className='flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-fuchsia-300'>
-            <Sparkles className='w-3.5 h-3.5 shrink-0' />
-            <span>How Orb Frenzy works</span>
+        <details className='w-full rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2.5 text-left'>
+          <summary className='flex cursor-pointer list-none items-center justify-between gap-3 text-[11px] font-semibold text-slate-300'>
+            <span className='inline-flex items-center gap-2'>
+              <Sparkles className='w-3.5 h-3.5 text-fuchsia-300' />
+              Orb Frenzy
+            </span>
+            <span className='text-[10px] font-medium text-slate-500'>How it works</span>
+          </summary>
+          <div className='mt-2 text-[11px] leading-relaxed text-slate-400'>
+            Once per day, one starter roll sets the Frenzy size. A <span className='font-semibold text-slate-300'>1 / 1,000</span>
+            starter gives <span className='font-semibold text-slate-300'>1,000</span> Frenzy rolls. Upgrades can increase
+            the size, and the best result is shown above.
           </div>
-          <div className='mt-1.5 text-[11px] leading-relaxed text-slate-400'>
-            Once per day, Orb Frenzy makes <span className='font-semibold text-slate-300'>1 normal starter roll</span>.
-            Its rarity sets the Frenzy size: a <span className='font-semibold text-slate-300'>1 / 1,000</span> starter orb
-            unleashes <span className='font-semibold text-slate-300'>1,000 Frenzy rolls</span>.
-            The Frenzy rolls use that rarity and give their normal rewards, including Coins, XP, Shards, and Crits.
-            Your upgrades can increase the Frenzy size, and the <span className='font-semibold text-slate-300'>best result</span>
-            from the volley is shown on the orb above.
-          </div>
-        </div>
+        </details>
 
         {/* Control Toggles: Auto Roll, Sonar Mode, Instant Chrono-Skip */}
         <div className="flex flex-wrap items-center justify-center gap-2 w-full">
