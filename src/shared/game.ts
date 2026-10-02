@@ -77,7 +77,7 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   },
   celestialSurge: {
     name: 'Codex Devotion',
-    desc: '+2% permanent luck for every 5 unique orbs discovered per level.',
+    desc: '+0.5% permanent luck for every 5 unique orbs discovered per level.',
     maxLevel: 10,
     costMultiplier: 3,
   },
@@ -128,7 +128,7 @@ export interface PremiumBoosterInfo {
 }
 
 export const PREMIUM_BOOSTERS: Record<PremiumBoosterId, PremiumBoosterInfo> = {
-  fortune: { name: 'Fortune Surge', desc: 'Multiplies Luck by 10× while active. RNG still decides every roll.', costShards: 75, durationMs: 30 * 60 * 1000 },
+  fortune: { name: 'Fortune Surge', desc: 'Multiplies Luck by 4× while active. RNG still decides every roll.', costShards: 75, durationMs: 30 * 60 * 1000 },
   hyperdrive: { name: 'Hyperdrive', desc: 'Cuts roll cooldown to 25% of its normal value while active.', costShards: 75, durationMs: 30 * 60 * 1000 },
   barrage: { name: 'Orb Barrage', desc: 'Adds 25 extra orbs to every activation while active.', costShards: 100, durationMs: 30 * 60 * 1000 },
   prosperity: { name: 'Prosperity Field', desc: 'Multiplies Coin rewards by 10× while active.', costShards: 50, durationMs: 30 * 60 * 1000 },
@@ -208,7 +208,7 @@ export function premiumBoosterRemainingMs(s: PlayerState, id: PremiumBoosterId, 
 
 export function onlinePlayerLuckMultiplier(onlinePlayers: number): number {
   const count = Math.max(1, Math.floor(onlinePlayers));
-  return Math.round((1 + Math.log2(count) * 0.10) * 100) / 100;
+  return Math.round((1 + Math.log2(count) * 0.05) * 100) / 100;
 }
 
 export type GlobalBoosterId = 'luck' | 'speed' | 'crit';
@@ -345,7 +345,7 @@ export function globalBoosterProgress(state: GlobalBoosterState | null | undefin
 
 export function globalBoosterLuckMultiplier(state: GlobalBoosterState | null | undefined, now = Date.now()): number {
   const current = decayGlobalBoosterState(state, now);
-  return current.tier > 0 && current.endsAt > now ? 1 + 0.20 * current.tier : 1;
+  return current.tier > 0 && current.endsAt > now ? 1 + 0.10 * current.tier : 1;
 }
 
 export function globalBoosterSpeedMultiplier(state: GlobalBoosterState | null | undefined, now = Date.now()): number {
@@ -774,7 +774,7 @@ export interface PrestigeUpgradeInfo {
 export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> = {
   permLuck: {
     name: 'Permanent Luck',
-    desc: '+10% luck multiplier per level.',
+    desc: '+5% luck multiplier per level.',
     category: 'core',
     maxLevel: 10,
     costPerLevel: 2,
@@ -834,7 +834,7 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
   resonanceMeter: {
     name: 'Dry Streak Luck',
-    desc: '+2% luck per stack for dry streaks; stacks begin every 18 rolls.',
+    desc: '+1% luck per stack for dry streaks; stacks begin every 18 rolls.',
     category: 'qol',
     maxLevel: 3,
     costPerLevel: 3,
@@ -902,7 +902,7 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
   altarResonator: {
     name: 'Altar Resonator',
-    desc: '+25% greater luck multiplier from Altar sacrifices per level.',
+    desc: '+15% greater luck multiplier from Altar sacrifices per level.'
     category: 'alchemy',
     maxLevel: 4,
     costPerLevel: 3,
@@ -1129,17 +1129,17 @@ export const LEVEL_MILESTONES: LevelMilestonePerk[] = [
   { level: 15, name: 'Chrono Adept', desc: 'Cooldown floor reduced by 150ms' },
   { level: 20, name: 'Alchemical Affinity', desc: 'Altar Sacrifices are 15% more potent' },
   { level: 25, name: 'Twin Orb Conductor', desc: '+1 Extra Orb per activation!', bonusBalls: 1 },
-  { level: 35, name: "Fortune's Blessing", desc: '1.20× Multiplicative Luck boost!', bonusLuckMultiplier: 1.20 },
+  { level: 35, name: "Fortune's Blessing", desc: '1.15× Multiplicative Luck boost!', bonusLuckMultiplier: 1.15 },
   { level: 50, name: 'Orb Titan', desc: '+1 Extra Orb per activation & 1.30× Coins!', bonusBalls: 1, bonusCoinsMultiplier: 1.30 },
-  { level: 75, name: 'Astral Conduit', desc: '1.35× Multiplicative Luck boost!', bonusLuckMultiplier: 1.35 },
-  { level: 100, name: 'Transcendent Paragon', desc: '+2 Extra Orbs per activation & 1.50× Luck boost!', bonusBalls: 2, bonusLuckMultiplier: 1.50 },
+  { level: 75, name: 'Astral Conduit', desc: '1.20× Multiplicative Luck boost!', bonusLuckMultiplier: 1.20 },
+  { level: 100, name: 'Transcendent Paragon', desc: '+2 Extra Orbs per activation & 1.30× Luck boost!', bonusBalls: 2, bonusLuckMultiplier: 1.30 },
   { level: 150, name: 'Grand Conductor', desc: '+2 Extra Orbs per activation & +20% XP!', bonusBalls: 2, bonusXpMultiplier: 1.20 },
-  { level: 200, name: 'Void Fortune', desc: '1.50× Multiplicative Luck boost!', bonusLuckMultiplier: 1.50 },
+  { level: 200, name: 'Void Fortune', desc: '1.30× Multiplicative Luck boost!', bonusLuckMultiplier: 1.30 },
   { level: 300, name: 'Golden Age', desc: '1.50× Multiplicative Coin boost!', bonusCoinsMultiplier: 1.50 },
   { level: 400, name: 'Orb Battalion', desc: '+2 Extra Orbs per activation!', bonusBalls: 2 },
-  { level: 500, name: 'Astral Zenith', desc: '1.75× Luck and +10% Shard Chance!', bonusLuckMultiplier: 1.75, bonusShardChance: 0.10 },
+  { level: 500, name: 'Astral Zenith', desc: '1.40× Luck and +10% Shard Chance!', bonusLuckMultiplier: 1.40, bonusShardChance: 0.10 },
   { level: 750, name: 'Infinite Arsenal', desc: '+3 Extra Orbs per activation!', bonusBalls: 3 },
-  { level: 1000, name: 'Infinity Master', desc: '2.00× Luck and 2.00× Coins!', bonusLuckMultiplier: 2.00, bonusCoinsMultiplier: 2.00 },
+  { level: 1000, name: 'Infinity Master', desc: '1.50× Luck and 2.00× Coins!', bonusLuckMultiplier: 1.50, bonusCoinsMultiplier: 2.00 },
 ];
 
 export function xpRequiredForLevel(level: number): number {
@@ -1158,7 +1158,7 @@ export interface LevelBenefits {
 
 export function getLevelBenefits(level: number): LevelBenefits {
   let bonusBalls = 0;
-  let luckMultiplier = 1 + Math.max(0, level - 1) * 0.015;
+  let luckMultiplier = 1 + Math.max(0, level - 1) * 0.01;
   let coinsMultiplier = 1 + Math.max(0, level - 1) * 0.03;
   let xpMultiplier = 1;
   let shardChance = 0;
@@ -1226,7 +1226,7 @@ export function calculateAltarMultipliers(s: PlayerState): {
   totalAltarMultiplier: number;
 } {
   const sacrifices = s.sacrifices ?? { coinsSacrificed: 0, shardsSacrificed: 0, altarLevel: 0 };
-  const resonatorBonus = 1 + (s.prestigeUpgrades?.altarResonator ?? 0) * 0.25;
+  const resonatorBonus = 1 + (s.prestigeUpgrades?.altarResonator ?? 0) * 0.15;
 
   // Coin devotion: scales smoothly with altar level and log of sacrificed coins
   const altarEffectMultiplier = getLevelBenefits(Math.max(1, s.level || 1)).altarEffectMultiplier;
@@ -1236,13 +1236,13 @@ export function calculateAltarMultipliers(s: PlayerState): {
     altarEffectMultiplier;
   const coinMultiplier = 1 + coinDevotion * resonatorBonus;
 
-  // Shard devotion: 6% luck per shard sacrificed
-  const shardDevotion = (s.sacrifices?.shardsSacrificed || 0) * 0.06 * altarEffectMultiplier;
+  // Shard devotion: 3% luck per shard sacrificed
+  const shardDevotion = (s.sacrifices?.shardsSacrificed || 0) * 0.03 * altarEffectMultiplier;
   const shardMultiplier = 1 + shardDevotion * resonatorBonus;
 
-  // Surge multiplier: 1.5x during active surge
+  // Surge multiplier: 1.25x during active surge
   const isSurgeActive = Boolean(sacrifices.luckSurgeUntil && Date.now() < sacrifices.luckSurgeUntil);
-  const surgeMultiplier = isSurgeActive ? 1.50 : 1.0;
+  const surgeMultiplier = isSurgeActive ? 1.25 : 1.0;
 
   // Multiplicative with each other!
   const totalAltarMultiplier = Math.round(coinMultiplier * shardMultiplier * surgeMultiplier * 100) / 100;
@@ -1338,10 +1338,10 @@ export function autoUnlocked(s: PlayerState): boolean {
 // All sources of luck are MULTIPLICATIVE!
 export function luckMultiplier(s: PlayerState): number {
   // 1. Base Upgrade Luck
-  const upgradeLuck = 1 + (s.upgrades.luck ?? 0) * 0.10;
+  const upgradeLuck = 1 + (s.upgrades.luck ?? 0) * 0.05;
 
   // 2. Prestige Permanent Luck
-  const prestigeLuck = 1 + (s.prestigeUpgrades?.permLuck ?? 0) * 0.10;
+  const prestigeLuck = 1 + (s.prestigeUpgrades?.permLuck ?? 0) * 0.05;
 
   // 3. Level Perks Luck
   const totalLevelLuck = getLevelBenefits(Math.max(1, s.level || 1)).luckMultiplier;
@@ -1350,26 +1350,26 @@ export function luckMultiplier(s: PlayerState): number {
   const { totalAltarMultiplier } = calculateAltarMultipliers(s);
 
   // 5. Astral Mastery Skill Luck
-  const masteryBaseLuck = 1 + (s.masterySkills?.continuumLuck ?? 0) * 0.05;
+  const masteryBaseLuck = 1 + (s.masterySkills?.continuumLuck ?? 0) * 0.03;
   const codexTier = Math.floor(Object.keys(s.collection || {}).length / 5);
-  const codexLuck = 1 + (s.masterySkills?.celestialSurge ?? 0) * (codexTier * 0.02);
+  const codexLuck = 1 + (s.masterySkills?.celestialSurge ?? 0) * (codexTier * 0.005);
   const totalMasteryLuck = masteryBaseLuck * codexLuck;
 
   // 6. Guild Perk Luck
-  const guildLuck = 1 + (s.guildPerks?.luckRank ?? 0) * 0.05;
+  const guildLuck = 1 + (s.guildPerks?.luckRank ?? 0) * 0.03;
 
   // 7. Dry streak Resonance Pity Luck
   let resonanceLuck = 1.0;
   if ((s.prestigeUpgrades?.resonanceMeter ?? 0) > 0) {
     const dryRolls = s.rollsSinceBest ?? 0;
     const interval = Math.max(6, 18 - (s.masterySkills?.pityAccelerant ?? 0) * 2);
-    const stacks = Math.min(100, Math.floor(dryRolls / interval));
-    resonanceLuck = 1 + (s.prestigeUpgrades.resonanceMeter * 0.02) * stacks;
+    const stacks = Math.min(50, Math.floor(dryRolls / interval));
+    resonanceLuck = 1 + (s.prestigeUpgrades.resonanceMeter * 0.01) * stacks;
   }
 
   // ALL SOURCES OF LUCK ARE MULTIPLICATIVE WITH EACH OTHER!
   const onlineLuck = onlinePlayerLuckMultiplier(s.onlinePlayers ?? 1);
-  const premiumLuck = isPremiumBoosterActive(s, 'fortune') ? 10 : 1;
+  const premiumLuck = isPremiumBoosterActive(s, 'fortune') ? 4 : 1;
 
   const total =
     upgradeLuck *
