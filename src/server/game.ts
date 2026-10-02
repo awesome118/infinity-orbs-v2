@@ -834,8 +834,13 @@ export async function applyRolls(
 
   const worldEvent = await getCommunityEvent();
   const communityLuck = worldEvent.buffMultiplier ?? 1.15;
-  const globalLuckState = s.globalBoosters?.luck;
-  const globalLuck = globalLuckState ? globalBoosterLuckMultiplier(globalLuckState) : 1;
+
+  // Global boosters are shared state. Read the canonical snapshot for every
+  // roll operation so another player's activation takes effect immediately,
+  // without waiting for that player's personal state cache to refresh.
+  const globalBoosters = await getGlobalBoosters();
+  s.globalBoosters = globalBoosters;
+  const globalLuck = globalBoosterLuckMultiplier(globalBoosters.luck);
   const baseLuck = luckMultiplier(s) * communityLuck * globalLuck;
 
   // Apex Fortune Mastery: chance on multi-roll to double the luck of that activation
@@ -853,7 +858,7 @@ export async function applyRolls(
       (s.upgrades.critChance ?? 0) * 0.03 +
       (s.masterySkills?.critMastery ?? 0) * 0.03 +
       (s.guildPerks?.critRank ?? 0) * 0.015 +
-      (s.globalBoosters?.crit ? globalBoosterCritChanceBonus(s.globalBoosters.crit) : 0);
+      globalBoosterCritChanceBonus(globalBoosters.crit);
     const isCrit = rng() < Math.min(1, critChance);
     let effectiveCm = cm;
     if (isCrit) {
