@@ -1677,7 +1677,7 @@ export async function roll(): Promise<RollResponse> {
 
   // Only direct manual roll activations count toward the Auto Roll unlock.
   s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + 1);
-  if (s.manualRolls >= 10) {
+  if (s.manualRolls >= 3) {
     s.upgrades.auto = 1;
   }
 
@@ -1730,10 +1730,10 @@ export async function buyUpgrade(id: UpgradeId): Promise<PlayerState> {
   const s = await settleOffline(await loadRaw());
   const level = s.upgrades[id] ?? 0;
 
-  // Auto Roll is free, but the server still enforces its 10-manual-roll unlock.
+  // Auto Roll is free and unlocks once the player has at least 3 manual rolls.
   if (id === 'auto') {
-    if ((s.manualRolls ?? 0) < 10) {
-      throw new Error(`Auto Roll unlocks after 10 manual rolls (${s.manualRolls ?? 0}/10).`);
+    if ((s.manualRolls ?? 0) < 3) {
+      throw new Error(`Auto Roll unlocks after 3 manual rolls (${s.manualRolls ?? 0}/3).`);
     }
     s.upgrades.auto = 1;
     await save(s);
