@@ -41,6 +41,7 @@
   },
   "permissions": {
     "redis": true,
+    "payments": false,
     "reddit": {
       "enable": true,
       "scope": "moderator",
