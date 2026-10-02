@@ -77,7 +77,7 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   },
   celestialSurge: {
     name: 'Codex Devotion',
-    desc: '+1% Luck per Codex chain number per level, based on your longest consecutive rarity chain.',
+    desc: '+0.3% Luck per Codex chain number per level, based on your longest consecutive rarity chain.',
     maxLevel: 10,
     costMultiplier: 3,
   },
