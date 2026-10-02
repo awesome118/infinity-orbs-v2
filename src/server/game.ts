@@ -2307,7 +2307,7 @@ export async function claimOrbFrenzy(options: {
   s.collectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.collectionValue ?? 0) + finalValue);
   s.lifetimeCollectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.lifetimeCollectionValue ?? 0) + finalValue);
   s.totalCrits = (s.totalCrits ?? 0) + critCount;
-  const guildTax = await applyGuildTax(context.username ?? '', coinsGained);
+  const guildTax = await applyGuildTax(coinsGained);
   coinsGained = Math.max(0, coinsGained - guildTax.taxedCoins);
   s.coins += coinsGained;
   s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
