@@ -766,7 +766,13 @@ export function App() {
   const handleSacrifice = async (coins: number, shards: number) => {
     setBusy(true);
     try {
-      const res = await getJson<{ state: PlayerState; altarLeveledUp: boolean; luckSurgeExtended: boolean }>('/api/altar/sacrifice', {
+      const res = await getJson<{
+        state: PlayerState;
+        altarLeveledUp: boolean;
+        luckSurgeExtended: boolean;
+        altarBreakthroughChance: number;
+        altarPity: number;
+      }>('/api/altar/sacrifice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ coins, shards }),
@@ -774,9 +780,17 @@ export function App() {
       setState(res.state);
       if (res.altarLeveledUp) {
         sound.playLevelUpFanfare();
-        showToast(`Altar Devotion reached Lvl ${res.state.sacrifices?.altarLevel}! (+1 Mastery Point)`, 'success');
+        showToast(
+          `Devotion breakthrough! Altar reached Lvl ${res.state.sacrifices?.altarLevel} at ${res.altarBreakthroughChance}% chance. +1 Mastery Point.`,
+          'success',
+        );
+      } else if (res.altarBreakthroughChance > 0) {
+        showToast(
+          `The altar resisted the offering (${res.altarBreakthroughChance}% chance). Pity is now ${res.altarPity}.`,
+          'info',
+        );
       } else if (res.luckSurgeExtended) {
-        showToast('Sacrifice accepted! 1.50× Luck Surge ignited!', 'success');
+        showToast('Shard sacrifice accepted! Luck Surge extended by 15 minutes per Shard.', 'success');
       } else {
         showToast('Offerings consumed by the Altar.', 'info');
       }
@@ -1638,6 +1652,7 @@ export function App() {
             playerUsername={state.username ?? ''}
             playerCoins={state.coins}
             playerShards={state.shards}
+            playerHasShared={Boolean(state.lastShareAt && state.lastShareAt > 0)}
             busy={busy}
           />
         )}
