@@ -20,8 +20,6 @@ import {
   claimOrbFrenzy,
   getOrbFrenzyInfo,
   startOrbFrenzy,
-  getGlobalBoosters,
-  activateGlobalBooster,
   grantPurchasedPack,
   refundPurchasedPack,
   getDeveloperAnnouncement,
@@ -281,8 +279,7 @@ export function createApp() {
     if (path === '/products' || path === '/payments/reconcile') return 'shop';
     if (path === '/collection') return 'collection';
     if (path === '/quests/claim') return 'quests';
-    if (path === '/global-boosters' || path === '/global-boosters/activate' ||
-        path === '/boosters/activate' || path === '/automation/buy') return 'boosters';
+    if (path === '/boosters/activate' || path === '/automation/buy') return 'boosters';
     if (path === '/leaderboard' || path === '/guilds' || path.startsWith('/guilds/') ||
         path === '/social/visit' || path === '/online' || path === '/world-event' ||
         path.startsWith('/community/')) return 'social';
@@ -587,11 +584,6 @@ export function createApp() {
     } catch (e: any) { badRequest(res, e, 'Could not record social visit.'); }
   });
 
-  app.get('/api/global-boosters', async (_req, res) => {
-    try { res.json(await getGlobalBoosters()); }
-    catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch World Boosters.' }); }
-  });
-
   app.get('/api/online', async (_req, res) => {
     try {
       res.json({ onlinePlayers: await getOnlinePlayers() });
@@ -713,16 +705,6 @@ export function createApp() {
 
   app.post('/api/cosmetics/buy', async (req, res) => {
     try { res.json({ state: await buyCosmetic(req.body?.id) }); } catch (e) { badRequest(res, e, 'Cosmetic purchase failed.'); }
-  });
-
-  app.post('/api/global-boosters/activate', async (req, res) => {
-    try {
-      const id = req.body?.id;
-      const useCredit = req.body?.useCredit === true;
-      const validIds = ['luck', 'speed', 'crit'];
-      if (!validIds.includes(id)) return res.status(400).json({ error: 'Invalid World Booster.' });
-      res.json(await activateGlobalBooster(id, useCredit));
-    } catch (e) { badRequest(res, e, 'Failed to activate World Booster.'); }
   });
 
   app.post('/api/boosters/activate', async (req, res) => {
