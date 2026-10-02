@@ -491,7 +491,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
               }`}
             >
               <Clover className="w-3.5 h-3.5 text-purple-400" />
-              <span>Core Power</span>
+              <span>Core</span>
             </button>
 
             <button
@@ -506,7 +506,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
               }`}
             >
               <Wand2 className="w-3.5 h-3.5 text-amber-400" />
-              <span>Astral Alchemy</span>
+              <span>Alchemy</span>
             </button>
           </div>
 
