@@ -242,18 +242,41 @@ export function createApp() {
   });
 
   app.get('/api/products', async (_req, res) => {
+    const fallbackProducts = PURCHASE_PACKS.map(pack => ({
+      sku: pack.sku,
+      displayName: pack.name,
+      description: pack.description,
+      price: pack.priceGold,
+    }));
+
     try {
-      const products = await payments.getProducts();
-      res.json(products);
+      const raw = await payments.getProducts();
+      const products = Array.isArray(raw)
+        ? raw
+        : raw && typeof raw === 'object' && Array.isArray((raw as { products?: unknown }).products)
+          ? (raw as { products: unknown[] }).products
+          : null;
+
+      if (!products) {
+        console.error('[Payments] Product lookup returned an unexpected response shape.');
+        return res.json(fallbackProducts);
+      }
+
+      const normalized = products
+        .filter((product): product is Record<string, unknown> => Boolean(product) && typeof product === 'object')
+        .map(product => ({
+          sku: String(product.sku ?? ''),
+          displayName: String(product.displayName ?? 'Shard Pack'),
+          description: String(product.description ?? ''),
+          price: Number(product.price ?? 0),
+        }))
+        .filter(product => product.sku && Number.isFinite(product.price) && product.price > 0);
+
+      return res.json(normalized.length > 0 ? normalized : fallbackProducts);
     } catch (e: unknown) {
       console.error('[Payments] Product lookup failed:', e instanceof Error ? e.stack ?? e.message : e);
       // Keep the shop usable in playtest if the payment catalog lookup is temporarily unavailable.
-      res.json(PURCHASE_PACKS.map(pack => ({
-        sku: pack.sku,
-        displayName: pack.name,
-        description: pack.description,
-        price: pack.priceGold,
-      })));
+      return res.json(fallbackProducts);
     }
   });
 
