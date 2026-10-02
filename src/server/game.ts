@@ -1,6 +1,6 @@
 import { redis, context, reddit } from './devvit-mock.js';
-import { notifications } from '@devvit/web/server';
-import { scheduler } from '@devvit/scheduler';
+import { notifications } from '@devvit/notifications';
+import { scheduler } from '@devvit/web/server';
 import {
   createInitialState,
   type PlayerState,
