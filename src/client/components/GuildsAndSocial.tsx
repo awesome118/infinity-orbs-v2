@@ -309,7 +309,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                   <div>
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-5 h-5 text-amber-400" />
-                      <h3 className="text-base font-black text-white">Guild Perks (6 Shared Auras)</h3>
+                      <h3 className="text-base font-black text-white">Guild Upgrades (9 Shared Bonuses)</h3>
                     </div>
                     <p className="text-xs text-slate-400 mt-0.5">
                       Passive bonuses applied to all guild members. Upgrade using shared Guild Tokens.
@@ -511,6 +511,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                     )}
                   </div>
                 </div>
+              </div>
 
               {/* Guild Donation Station */}
               {onDonateGuild && (
