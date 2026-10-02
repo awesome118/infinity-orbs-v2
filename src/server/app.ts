@@ -51,17 +51,7 @@ import { context, reddit } from './devvit-mock.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, type FeatureId } from '../shared/game.js';
 
-type PaymentHandlerResponse = {
-  success: boolean;
-  reason?: string;
-};
-
-type PaymentOrder = {
-  id?: string;
-  userId?: string;
-  status?: string;
-  products?: Array<{ sku?: string }>;
-};
+import type { PaymentHandlerResponse, Order } from '@devvit/web/server';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -225,12 +215,11 @@ export function createApp() {
   // The user identity for a payment comes from the Order, not from arbitrary request data.
   app.post('/internal/payments/fulfill', async (req, res) => {
     try {
-      const order = req.body as PaymentOrder;
-      const buyerUserId = String(context.userId ?? order?.userId ?? '').trim();
+      const order = req.body as Order;
+      const buyerUserId = String(order?.userId ?? '').trim();
       const orderId = String(order?.id ?? '').trim();
       console.error('[Payments] Fulfill received:', JSON.stringify({
         id: order?.id ?? null,
-        contextUserId: context.userId ?? null,
         orderUserId: order?.userId ?? null,
         status: order?.status ?? null,
         products: order?.products?.map((product: { sku?: string }) => ({ sku: product.sku })),
@@ -263,7 +252,7 @@ export function createApp() {
       }
 
       await grantPurchasedPack(buyerUserId, order.products[0].sku, orderId);
-      return res.json({ success: true });
+      return res.json({ success: true } satisfies PaymentHandlerResponse);
     } catch (e: unknown) {
       console.error('[Payments] Fulfillment failed:', e instanceof Error ? e.stack ?? e.message : e);
       return res.json({
@@ -275,8 +264,8 @@ export function createApp() {
 
   app.post('/internal/payments/refund', async (req, res) => {
     try {
-      const order = req.body as PaymentOrder;
-      const buyerUserId = String(context.userId ?? order?.userId ?? '').trim();
+      const order = req.body as Order;
+      const buyerUserId = String(order?.userId ?? '').trim();
       const orderId = String(order?.id ?? '').trim();
       if (!buyerUserId || !orderId) {
         return res.json({
@@ -292,7 +281,7 @@ export function createApp() {
       }
 
       await refundPurchasedPack(buyerUserId, order.products[0].sku, orderId);
-      return res.json({ success: true });
+      return res.json({ success: true } satisfies PaymentHandlerResponse);
     } catch (e: unknown) {
       console.error('[Payments] Refund failed:', e instanceof Error ? e.stack ?? e.message : e);
       return res.json({
@@ -317,7 +306,7 @@ export function createApp() {
       let granted = 0;
       for (const rawOrder of orders) {
         if (!rawOrder || typeof rawOrder !== 'object') continue;
-        const order = rawOrder as PaymentOrder;
+        const order = rawOrder as Order;
         if (order.userId !== userId || order.status !== 'PAID' || !order.id) continue;
         if (!Array.isArray(order.products) || order.products.length !== 1) continue;
         const sku = String(order.products[0]?.sku ?? '');
