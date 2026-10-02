@@ -1360,7 +1360,8 @@ async function processAutomation(s: PlayerState): Promise<void> {
   }
 
   if (s.automations?.autoUpgrade) {
-    autoBuyCheapest(s);
+    const reserveCoins = s.prestigeUpgrades?.autoBuyer ? AUTO_BUYER_COIN_RESERVE : 0;
+    autoBuyCheapest(s, reserveCoins);
   }
 }
 
