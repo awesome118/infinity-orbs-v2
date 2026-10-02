@@ -340,11 +340,56 @@ function parsePlayerStateValue(value: unknown, depth = 0): PlayerState | null {
 }
 
 function parsePaymentPlayerState(raw: unknown): PlayerState {
-  const state = parsePlayerStateValue(raw);
-  if (!state) {
-    throw new Error('Saved player data could not be read; the purchase was not applied.');
+  // Payment fulfillment should accept a partially migrated save too. The normal
+  // loader merges missing fields with createInitialState(), so requiring every
+  // field here only turns recoverable legacy saves into rejected purchases.
+  let parsed: unknown = parseStoredJson<unknown>(raw);
+
+  for (let depth = 0; depth < 7; depth++) {
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) break;
+
+    const record = parsed as Record<string, unknown>;
+    if ('coins' in record || 'shards' in record || 'totalRolls' in record) {
+      const base = createInitialState();
+      return {
+        ...base,
+        ...record,
+        upgrades: { ...base.upgrades, ...(record.upgrades as Record<string, unknown> ?? {}) },
+        prestigeUpgrades: { ...base.prestigeUpgrades, ...(record.prestigeUpgrades as Record<string, unknown> ?? {}) },
+        collection: (record.collection && typeof record.collection === 'object' && !Array.isArray(record.collection))
+          ? record.collection as Record<string, number>
+          : base.collection,
+        claimedAchievements: Array.isArray(record.claimedAchievements) ? record.claimedAchievements as string[] : base.claimedAchievements,
+        unlockedCosmetics: Array.isArray(record.unlockedCosmetics) ? record.unlockedCosmetics as string[] : base.unlockedCosmetics,
+        dailyQuests: Array.isArray(record.dailyQuests) ? record.dailyQuests as PlayerState['dailyQuests'] : base.dailyQuests,
+        weeklyQuests: Array.isArray(record.weeklyQuests) ? record.weeklyQuests as PlayerState['weeklyQuests'] : base.weeklyQuests,
+        paymentReceipts: record.paymentReceipts && typeof record.paymentReceipts === 'object' && !Array.isArray(record.paymentReceipts)
+          ? record.paymentReceipts as PlayerState['paymentReceipts']
+          : {},
+      };
+    }
+
+    let nestedFound = false;
+    for (const key of ['value', 'state', 'player', 'data', 'payload', 'result']) {
+      if (!(key in record)) continue;
+      parsed = record[key];
+      nestedFound = true;
+      break;
+    }
+    if (!nestedFound) break;
   }
-  return state;
+
+  throw new Error('Saved player data could not be read; the purchase was not applied.');
+}
+
+export async function hasReadablePlayerSave(userId: string): Promise<boolean> {
+  const id = String(userId ?? '').trim();
+  if (!id) return false;
+  try {
+    return parsePaymentPlayerState(await redis.get(playerKeyFor(id))) !== null;
+  } catch {
+    return false;
+  }
 }
 
 export async function grantPurchasedPack(userId: string, sku: string, orderId: string): Promise<boolean> {
