@@ -46,6 +46,7 @@ interface GuildsAndSocialProps {
   playerUsername?: string;
   playerCoins?: number;
   playerShards?: number;
+  playerHasShared?: boolean;
   busy: boolean;
 }
 
@@ -91,6 +92,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   playerUsername = '',
   playerCoins = 0,
   playerShards = 0,
+  playerHasShared = false,
   busy,
 }) => {
   const [activeTab, setActiveTab] = useState<'guild' | 'leaderboard' | 'event'>('guild');
@@ -827,13 +829,29 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
       {/* 2. LEADERBOARD TAB */}
       {activeTab === 'leaderboard' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-black text-white flex items-center gap-2">
-              <Trophy className="w-5 h-5 text-amber-400" />
-              <span>Leaderboard</span>
-            </h3>
-            <span className="text-xs text-slate-400">Ranked by Total Collection Value</span>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-black text-white flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-amber-400" />
+                <span>Leaderboard</span>
+              </h3>
+              <span className="text-xs text-slate-400">Ranked by Total Collection Value</span>
+            </div>
+            <div className={playerHasShared
+              ? 'text-right text-[10px] font-bold text-emerald-300'
+              : 'text-right text-[10px] font-bold text-amber-300'}
+            >
+              {playerHasShared
+                ? 'Leaderboard eligible'
+                : 'Share an Orb post to appear'}
+            </div>
           </div>
+
+          {leaderboard.length === 0 && (
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-500">
+              No eligible players yet. A player must share at least one Orb post before entering the leaderboard.
+            </div>
+          )}
 
           <div className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-800/60">
             {leaderboard.map((entry, idx) => (
