@@ -62,7 +62,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h1 className="font-extrabold text-base sm:text-lg tracking-tight text-white flex items-center gap-1.5">
-                Infinity Orbs <span className="text-xs font-normal text-slate-400 hidden sm:inline">• The Infinite Roll</span>
+                Infinity Orbs
               </h1>
               {/* Level Badge with click to view perks */}
               <button
