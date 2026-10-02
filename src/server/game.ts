@@ -56,6 +56,7 @@ import {
   getLevelBenefits,
   highestCodexChain,
   codexDevotionLuckPercent,
+  altarCoinDevotionChancePercent,
 } from '../shared/game.js';
 import {
   contribute,
@@ -2367,7 +2368,13 @@ export async function buyPrestigeUpgrade(id: PrestigeUpgradeId): Promise<PlayerS
   return s;
 }
 
-export async function sacrificeToAltar(coins: number, shards: number): Promise<{ state: PlayerState; altarLeveledUp: boolean; luckSurgeExtended: boolean }> {
+export async function sacrificeToAltar(coins: number, shards: number): Promise<{
+  state: PlayerState;
+  altarLeveledUp: boolean;
+  luckSurgeExtended: boolean;
+  altarBreakthroughChance: number;
+  altarPity: number;
+}> {
   const s = await settleOffline(await loadRaw());
   const numCoins = finiteNonNegativeInteger(coins);
   const numShards = finiteNonNegativeInteger(shards);
@@ -2379,44 +2386,72 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
   if ((s.shards ?? 0) < numShards) throw new Error('Not enough Shards to sacrifice.');
 
   if (!s.sacrifices) {
-    s.sacrifices = { coinsSacrificed: 0, shardsSacrificed: 0, altarLevel: 0, luckSurgeUntil: 0 };
+    s.sacrifices = {
+      coinsSacrificed: 0,
+      shardsSacrificed: 0,
+      altarLevel: 0,
+      luckSurgeUntil: 0,
+      altarPity: 0,
+    };
   }
+
+  const sacrifices = s.sacrifices;
+  const prevAltarLevel = sacrifices.altarLevel ?? 0;
+  const previousPity = sacrifices.altarPity ?? 0;
 
   s.coins -= numCoins;
   s.shards = (s.shards ?? 0) - numShards;
 
-  const prevAltarLevel = s.sacrifices.altarLevel ?? 0;
-  s.sacrifices.coinsSacrificed = (s.sacrifices.coinsSacrificed ?? 0) + numCoins;
-  s.sacrifices.shardsSacrificed = (s.sacrifices.shardsSacrificed ?? 0) + numShards;
+  sacrifices.coinsSacrificed = (sacrifices.coinsSacrificed ?? 0) + numCoins;
+  sacrifices.shardsSacrificed = (sacrifices.shardsSacrificed ?? 0) + numShards;
 
-  // Level up altar devotion based on cumulative sacrifices
-  const newAltarLevel = Math.floor(Math.sqrt((s.sacrifices.coinsSacrificed ?? 0) / 250));
-  const altarLeveledUp = newAltarLevel > prevAltarLevel;
-  s.sacrifices.altarLevel = newAltarLevel;
+  // Coins now create a probabilistic Devotion Breakthrough. The offering
+  // size raises the chance and failed attempts build pity. This roll only
+  // happens when coins are actually offered.
+  let altarBreakthroughChance = 0;
+  let altarLeveledUp = false;
+  if (numCoins > 0) {
+    altarBreakthroughChance = altarCoinDevotionChancePercent(numCoins, previousPity);
+    altarLeveledUp = Math.random() * 100 < altarBreakthroughChance;
 
-  // Shards grant / extend temporary high-yield Luck Surge (+25% bonus luck)
+    if (altarLeveledUp) {
+      sacrifices.altarLevel = prevAltarLevel + 1;
+      sacrifices.altarPity = 0;
+      s.masteryPoints = (s.masteryPoints ?? 0) + 1;
+    } else {
+      sacrifices.altarPity = previousPity + 1;
+    }
+  }
+
+  // Shards retain their separate deterministic Luck Surge behavior.
   let luckSurgeExtended = false;
   if (numShards > 0) {
-    const surgeDurationMs = numShards * 15 * 60 * 1000; // 15 mins per shard
-    s.sacrifices.luckSurgeUntil = Math.max(Date.now(), s.sacrifices.luckSurgeUntil ?? 0) + surgeDurationMs;
+    const surgeDurationMs = numShards * 15 * 60 * 1000;
+    sacrifices.luckSurgeUntil = Math.max(Date.now(), sacrifices.luckSurgeUntil ?? 0) + surgeDurationMs;
     luckSurgeExtended = true;
   }
 
-  // Altar level ups award Mastery Points!
-  if (altarLeveledUp) {
-    s.masteryPoints = (s.masteryPoints ?? 0) + (newAltarLevel - prevAltarLevel);
-  }
+  const altarPity = sacrifices.altarPity ?? 0;
 
   await save(s);
   await appendPlayerSpyLog('altar-sacrifice', {
     coinsSacrificed: numCoins,
     shardsSacrificed: numShards,
     altarLeveledUp,
+    altarBreakthroughChance,
+    altarPity,
     luckSurgeExtended,
-    altarLevel: s.sacrifices.altarLevel,
+    altarLevel: sacrifices.altarLevel,
     snapshot: playerSpySnapshot(s),
   });
-  return { state: s, altarLeveledUp, luckSurgeExtended };
+
+  return {
+    state: s,
+    altarLeveledUp,
+    luckSurgeExtended,
+    altarBreakthroughChance,
+    altarPity,
+  };
 }
 
 export async function upgradeMasterySkill(skillId: MasterySkillId): Promise<PlayerState> {
