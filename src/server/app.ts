@@ -49,11 +49,7 @@ import {
 } from './social.js';
 import { context, reddit } from './devvit-mock.js';
 import * as devvitServer from '@devvit/web/server';
-
-type PaymentHandlerResponse = {
-  success: boolean;
-  reason?: string;
-};
+import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, type FeatureId } from '../shared/game.js';
 
 type PaymentOrder = {
   id?: string;
@@ -68,7 +64,6 @@ const payments = (devvitServer as typeof devvitServer & {
     getOrders(filters: { limit: number; sku?: string; buyer?: string; status?: string }): Promise<unknown>;
   };
 }).payments;
-import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, type FeatureId } from '../shared/game.js';
 
 export function createApp() {
   const app = express();
