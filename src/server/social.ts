@@ -55,7 +55,26 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
   const currentWeek = weekKey(now);
   for (const g of guilds) {
     if (!g.perks) {
-      g.perks = { luckRank: 0, speedRank: 0, vaultRank: 0, shardRank: 0, critRank: 0, coinRank: 0 };
+      g.perks = {
+        luckRank: 0,
+        speedRank: 0,
+        vaultRank: 0,
+        shardRank: 0,
+        critRank: 0,
+        coinRank: 0,
+        memberCapacityRank: 0,
+        tokenYieldRank: 0,
+        guildXpRank: 0,
+      };
+    } else {
+      g.perks.memberCapacityRank ??= 0;
+      g.perks.tokenYieldRank ??= 0;
+      g.perks.guildXpRank ??= 0;
+    }
+    g.taxRate = Math.max(0, Math.min(10, Math.floor(Number(g.taxRate ?? 0) || 0)));
+    for (const member of g.members) {
+      if (member.role === 'owner') member.trusted = true;
+      member.userId = member.userId || undefined;
     }
     if (!g.boss || (g as any).bossWeek !== currentWeek) {
       g.boss = createInitialGuildBoss(Math.max(1, Math.min(10, g.level || 1)));
@@ -67,6 +86,39 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
     }
   }
   return guilds;
+}
+
+function memberMatches(member: Guild['members'][number], requestedUsername?: string): boolean {
+  const currentUsername = username();
+  return Boolean(
+    (member.userId && member.userId === user()) ||
+    member.username === requestedUsername ||
+    member.username === currentUsername,
+  );
+}
+
+function currentGuild(guilds: Guild[]): Guild | undefined {
+  return guilds.find(g => g.members.some(member => memberMatches(member)));
+}
+
+function maxGuildMembers(guild: Guild): number {
+  return 10 + Math.min(40, Math.max(0, Math.floor(guild.perks?.memberCapacityRank ?? 0)));
+}
+
+function isTrustedMember(guild: Guild, member: Guild['members'][number]): boolean {
+  return member.role === 'owner' || member.role === 'officer' || member.trusted === true;
+}
+
+function guildPerkMax(perk: GuildPerkId): number {
+  if (perk === 'memberCapacityRank') return 40;
+  if (perk === 'tokenYieldRank' || perk === 'guildXpRank') return 20;
+  return 10;
+}
+
+function guildPerkCost(perk: GuildPerkId, currentRank: number): number {
+  const base = perk === 'memberCapacityRank' ? 250 : 100;
+  const exponent = perk === 'memberCapacityRank' ? 1.45 : 1.65;
+  return Math.max(1, Math.round(base * Math.pow(currentRank + 1, exponent)));
 }
 
 async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Promise<T> {
@@ -128,105 +180,175 @@ export async function getPlayerGuildPerks(uname: string) {
 
 export async function addGuildTokens(uname: string, amount: number) {
   if (amount <= 0) return;
-  const guilds = await loadGuilds();
-  const guild = guilds.find(g => g.members.some(m => m.username === uname));
-  if (!guild) return;
-  guild.tokens = (guild.tokens ?? 0) + amount;
-  if (!guild.chat) guild.chat = [];
-  guild.chat.push({
-    id: `msg-${Date.now()}`,
-    username: 'System',
-    text: `${uname} contributed +${amount} Guild Tokens from quest.`,
-    timestamp: Date.now(),
-    isSystem: true,
+  await updateGuilds(guilds => {
+    const guild = guilds.find(g => g.members.some(m => m.username === uname));
+    if (!guild) return;
+    guild.tokens = (guild.tokens ?? 0) + amount;
+    if (!guild.chat) guild.chat = [];
+    guild.chat.push({
+      id: `msg-${Date.now()}`,
+      username: 'System',
+      text: `${uname} contributed +${amount} Guild Tokens from quest.`,
+      timestamp: Date.now(),
+      isSystem: true,
+    });
+    if (guild.chat.length > 50) guild.chat.shift();
   });
-  await saveGuilds(guilds);
 }
 
 export async function buyGuildPerk(perk: GuildPerkId) {
-  const guilds = await loadGuilds();
-  const guild = guilds.find(g => g.members.some(m => m.username === username()));
-  if (!guild) throw new Error('You are not in a guild.');
-  if (!guild.perks) {
-    guild.perks = {
-      luckRank: 0,
-      speedRank: 0,
-      vaultRank: 0,
-      shardRank: 0,
-      critRank: 0,
-      coinRank: 0,
+  return updateGuilds(guilds => {
+    const guild = currentGuild(guilds);
+    if (!guild) throw new Error('You are not in a guild.');
+    const member = guild.members.find(m => memberMatches(m));
+    if (!member || !isTrustedMember(guild, member)) {
+      throw new Error('You are not trusted to purchase Guild Upgrades.');
+    }
+
+    if (!guild.perks) guild.perks = {
+      luckRank: 0, speedRank: 0, vaultRank: 0, shardRank: 0,
+      critRank: 0, coinRank: 0, memberCapacityRank: 0, tokenYieldRank: 0, guildXpRank: 0,
     };
-  }
 
-  const current = guild.perks[perk] ?? 0;
-  if (current >= 10) throw new Error('Perk is already max level (10).');
+    const current = Math.max(0, Math.floor(guild.perks[perk] ?? 0));
+    const max = guildPerkMax(perk);
+    if (current >= max) throw new Error(`Perk is already max level (${max}).`);
 
-  const cost = (current + 1) * 25;
-  if ((guild.tokens ?? 0) < cost) {
-    throw new Error(`Guild needs ${cost} Guild Tokens.`);
-  }
+    const cost = guildPerkCost(perk, current);
+    if ((guild.tokens ?? 0) < cost) {
+      throw new Error(`Guild needs ${cost.toLocaleString()} Guild Tokens.`);
+    }
 
-  guild.tokens -= cost;
-  guild.perks[perk] = current + 1;
+    guild.tokens -= cost;
+    guild.perks[perk] = current + 1;
 
-  const perkNames: Record<GuildPerkId, string> = {
-    luckRank: 'Luck Aura',
-    speedRank: 'Speed Blessing',
-    vaultRank: 'Vault Expansion',
-    shardRank: 'Shard Attunement',
-    critRank: 'Critical Warcry',
-    coinRank: 'Treasury Prosperity',
-  };
+    const perkNames: Record<GuildPerkId, string> = {
+      luckRank: 'Luck Aura',
+      speedRank: 'Speed Blessing',
+      vaultRank: 'Vault Expansion',
+      shardRank: 'Shard Attunement',
+      critRank: 'Critical Alignment',
+      coinRank: 'Prosperity Sigil',
+      memberCapacityRank: 'Member Capacity',
+      tokenYieldRank: 'Token Yield',
+      guildXpRank: 'Guild Growth',
+    };
 
-  if (!guild.chat) guild.chat = [];
-  guild.chat.push({
-    id: `msg-${Date.now()}`,
-    username: 'System',
-    text: `${username()} upgraded ${perkNames[perk]} to Level ${guild.perks[perk]}.`,
-    timestamp: Date.now(),
-    isSystem: true,
+    if (!guild.chat) guild.chat = [];
+    guild.chat.push({
+      id: `msg-${Date.now()}`,
+      username: 'System',
+      text: `${username()} upgraded ${perkNames[perk]} to Level ${guild.perks[perk]}.`,
+      timestamp: Date.now(),
+      isSystem: true,
+    });
+    if (guild.chat.length > 50) guild.chat.shift();
+
+    return { guild, perk, level: guild.perks[perk], cost };
   });
+}
 
-  await saveGuilds(guilds);
-  return { guild, perk, level: guild.perks[perk] };
+export async function setGuildTrust(targetUsername: string, trusted: boolean) {
+  return updateGuilds(guilds => {
+    const guild = currentGuild(guilds);
+    if (!guild) throw new Error('You are not in a guild.');
+    const actor = guild.members.find(m => memberMatches(m));
+    if (!actor || actor.role !== 'owner') {
+      throw new Error('Only the guild owner can change Trust status.');
+    }
+    const target = guild.members.find(m => m.username === targetUsername);
+    if (!target) throw new Error('Guild member not found.');
+    if (target.role === 'owner') {
+      target.trusted = true;
+    } else {
+      target.trusted = trusted;
+    }
+    return target;
+  });
+}
+
+export async function setGuildTaxRate(rate: number) {
+  const safeRate = Math.max(0, Math.min(10, Math.floor(Number(rate) || 0)));
+  return updateGuilds(guilds => {
+    const guild = currentGuild(guilds);
+    if (!guild) throw new Error('You are not in a guild.');
+    const actor = guild.members.find(m => memberMatches(m));
+    if (!actor || !isTrustedMember(guild, actor)) {
+      throw new Error('You are not trusted to change the Guild Tax.');
+    }
+    guild.taxRate = safeRate;
+    if (!guild.chat) guild.chat = [];
+    guild.chat.push({
+      id: `msg-${Date.now()}-tax`,
+      username: 'System',
+      text: `Guild Tax set to ${safeRate}%.`,
+      timestamp: Date.now(),
+      isSystem: true,
+    });
+    if (guild.chat.length > 50) guild.chat.shift();
+    return guild;
+  });
+}
+
+export async function applyGuildTax(uname: string, coinsEarned: number): Promise<{ taxedCoins: number; tokensEarned: number }> {
+  const safeCoins = Math.max(0, Math.floor(coinsEarned || 0));
+  if (safeCoins < 100) return { taxedCoins: 0, tokensEarned: 0 };
+
+  return updateGuilds(guilds => {
+    const guild = guilds.find(g => g.members.some(m => m.username === uname));
+    if (!guild) return { taxedCoins: 0, tokensEarned: 0 };
+
+    const rate = Math.max(0, Math.min(10, Math.floor(Number(guild.taxRate ?? 0) || 0)));
+    const theoreticalTax = Math.floor(safeCoins * rate / 100);
+    const taxedCoins = Math.floor(theoreticalTax / 100) * 100;
+    if (taxedCoins < 100) return { taxedCoins: 0, tokensEarned: 0 };
+
+    const tokenMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05;
+    const tokensEarned = Math.max(1, Math.floor((taxedCoins / 100) * tokenMultiplier));
+    guild.tokens = (guild.tokens ?? 0) + tokensEarned;
+    return { taxedCoins, tokensEarned };
+  });
 }
 
 export async function donateToGuild(coins: number, shards: number) {
-  const guilds = await loadGuilds();
-  const guild = guilds.find(g => g.members.some(m => m.username === username()));
-  if (!guild) throw new Error('You are not in a guild.');
-  const member = guild.members.find(m => m.username === username());
-  if (!member) throw new Error('Guild member not found.');
+  return updateGuilds(guilds => {
+    const guild = currentGuild(guilds);
+    if (!guild) throw new Error('You are not in a guild.');
+    const member = guild.members.find(m => memberMatches(m));
+    if (!member) throw new Error('Guild member not found.');
 
-  const safeCoins = Math.max(0, Math.floor(coins || 0));
-  const safeShards = Math.max(0, Math.floor(shards || 0));
+    const safeCoins = Math.max(0, Math.floor(coins || 0));
+    const safeShards = Math.max(0, Math.floor(shards || 0));
+    const tokenMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05;
+    const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * 0.10;
 
-  const tokenGain = Math.floor(safeCoins / 500) * 5 + safeShards * 5;
-  const xpGain = Math.floor(safeCoins / 50) + safeShards * 25;
-  if (tokenGain <= 0 && xpGain <= 0) {
-    throw new Error('Donation must be at least 500 Coins or 1 Shard.');
-  }
+    const tokenGain = Math.floor((Math.floor(safeCoins / 500) * 5 + safeShards * 5) * tokenMultiplier);
+    const xpGain = Math.max(0, Math.floor((Math.floor(safeCoins / 50) + safeShards * 25) * xpMultiplier));
+    if (tokenGain <= 0 && xpGain <= 0) {
+      throw new Error('Donation must be at least 500 Coins or 1 Shard.');
+    }
 
-  member.contribution += safeCoins + (safeShards * 1000);
-  guild.xp += xpGain;
-  guild.level = 1 + Math.floor(guild.xp / 500);
-  guild.tokens = (guild.tokens ?? 0) + tokenGain;
+    member.contribution += safeCoins + (safeShards * 1000);
+    guild.xp += xpGain;
+    guild.level = 1 + Math.floor(guild.xp / 500);
+    guild.tokens = (guild.tokens ?? 0) + tokenGain;
 
-  if (!guild.chat) guild.chat = [];
-  const parts: string[] = [];
-  if (safeCoins > 0) parts.push(`${safeCoins.toLocaleString()} Coins`);
-  if (safeShards > 0) parts.push(`${safeShards} Shards`);
+    if (!guild.chat) guild.chat = [];
+    const parts: string[] = [];
+    if (safeCoins > 0) parts.push(`${safeCoins.toLocaleString()} Coins`);
+    if (safeShards > 0) parts.push(`${safeShards} Shards`);
 
-  guild.chat.push({
-    id: `msg-${Date.now()}-donate`,
-    username: 'System',
-    text: `${username()} donated ${parts.join(' and ')} (+${tokenGain} Tokens, +${xpGain} Guild XP).`,
-    timestamp: Date.now(),
-    isSystem: true,
+    guild.chat.push({
+      id: `msg-${Date.now()}-donate`,
+      username: 'System',
+      text: `${username()} donated ${parts.join(' and ')} (+${tokenGain} Tokens, +${xpGain} Guild XP).`,
+      timestamp: Date.now(),
+      isSystem: true,
+    });
+    if (guild.chat.length > 50) guild.chat.shift();
+
+    return { guild, tokensEarned: tokenGain, xpEarned: xpGain };
   });
-
-  await saveGuilds(guilds);
-  return { guild, tokensEarned: tokenGain, xpEarned: xpGain };
 }
 
 export async function createGuild(name: string, tag: string) {
@@ -235,94 +357,122 @@ export async function createGuild(name: string, tag: string) {
   if (cleanName.length < 3 || cleanTag.length < 2) {
     throw new Error('Guild name must be 3+ chars and tag 2-5 letters.');
   }
-  const guilds = await loadGuilds();
-  if (guilds.some(g => g.name.toLowerCase() === cleanName.toLowerCase() || g.tag === cleanTag)) {
-    throw new Error('That guild name or tag is already taken.');
-  }
-  if (guilds.some(g => g.members.some(m => m.username === username()))) {
-    throw new Error('Leave your current guild first.');
-  }
-  const guild: Guild = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    name: cleanName,
-    tag: cleanTag,
-    level: 1,
-    xp: 0,
-    tokens: 0,
-    createdAt: Date.now(),
-    challenge: challengeForWeek(),
-    members: [{ username: username(), contribution: 0, role: 'owner', joinedAt: Date.now() }],
-    chat: [{
-      id: `msg-${Date.now()}`,
-      username: 'System',
-      text: `Guild [${cleanTag}] ${cleanName} created.`,
-      timestamp: Date.now(),
-      isSystem: true,
-    }],
-  };
-  guilds.push(guild);
-  await saveGuilds(guilds);
-  return guild;
+
+  return updateGuilds(guilds => {
+    if (guilds.some(g => g.name.toLowerCase() === cleanName.toLowerCase() || g.tag === cleanTag)) {
+      throw new Error('That guild name or tag is already taken.');
+    }
+    if (currentGuild(guilds)) {
+      throw new Error('Leave your current guild first.');
+    }
+
+    const now = Date.now();
+    const guild: Guild = {
+      id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
+      name: cleanName,
+      tag: cleanTag,
+      level: 1,
+      xp: 0,
+      tokens: 0,
+      createdAt: now,
+      taxRate: 0,
+      challenge: challengeForWeek(),
+      members: [{ username: username(), userId: user(), contribution: 0, role: 'owner', trusted: true, joinedAt: now }],
+      chat: [{
+        id: `msg-${now}`,
+        username: 'System',
+        text: `Guild [${cleanTag}] ${cleanName} created.`,
+        timestamp: now,
+        isSystem: true,
+      }],
+      perks: {
+        luckRank: 0,
+        speedRank: 0,
+        vaultRank: 0,
+        shardRank: 0,
+        critRank: 0,
+        coinRank: 0,
+        memberCapacityRank: 0,
+        tokenYieldRank: 0,
+        guildXpRank: 0,
+      },
+    };
+    guilds.push(guild);
+    return guild;
+  });
 }
 
 export async function joinGuild(guildId: string) {
-  const guilds = await loadGuilds();
-  if (guilds.some(g => g.members.some(m => m.username === username()))) {
-    throw new Error('You are already in a guild.');
-  }
-  const guild = guilds.find(g => g.id === guildId);
-  if (!guild) throw new Error('Guild not found.');
-  if (guild.members.length >= 50) throw new Error('That guild is full (50/50 members).');
-  guild.members.push({ username: username(), contribution: 0, role: 'member', joinedAt: Date.now() });
-  if (!guild.chat) guild.chat = [];
-  guild.chat.push({
-    id: `msg-${Date.now()}`,
-    username: 'System',
-    text: `${username()} joined the guild.`,
-    timestamp: Date.now(),
-    isSystem: true,
+  return updateGuilds(guilds => {
+    if (currentGuild(guilds)) {
+      throw new Error('You are already in a guild.');
+    }
+    const guild = guilds.find(g => g.id === guildId);
+    if (!guild) throw new Error('Guild not found.');
+    const capacity = maxGuildMembers(guild);
+    if (guild.members.length >= capacity) {
+      throw new Error(`That guild is full (${guild.members.length}/${capacity}).`);
+    }
+
+    const now = Date.now();
+    guild.members.push({
+      username: username(),
+      userId: user(),
+      contribution: 0,
+      role: 'member',
+      trusted: false,
+      joinedAt: now,
+    });
+    if (!guild.chat) guild.chat = [];
+    guild.chat.push({
+      id: `msg-${now}`,
+      username: 'System',
+      text: `${username()} joined the guild.`,
+      timestamp: now,
+      isSystem: true,
+    });
+    if (guild.chat.length > 50) guild.chat.shift();
+    return guild;
   });
-  await saveGuilds(guilds);
-  return guild;
 }
 
 export async function leaveGuild() {
-  const guilds = await loadGuilds();
-  const guildIndex = guilds.findIndex(g => g.members.some(m => m.username === username()));
-  if (guildIndex === -1) throw new Error('You are not in a guild.');
-  const guild = guilds[guildIndex];
-  const oldMember = guild.members.find(m => m.username === username());
-  guild.members = guild.members.filter(m => m.username !== username());
+  return updateGuilds(guilds => {
+    const guildIndex = guilds.findIndex(g => g.members.some(m => memberMatches(m)));
+    if (guildIndex === -1) throw new Error('You are not in a guild.');
+    const guild = guilds[guildIndex];
+    const oldMember = guild.members.find(m => memberMatches(m));
+    guild.members = guild.members.filter(m => !memberMatches(m));
 
-  if (guild.members.length === 0) {
-    // Delete empty guild
-    guilds.splice(guildIndex, 1);
-  } else {
-    // Promote new owner if owner left
-    if (oldMember?.role === 'owner') {
-      const topMember = [...guild.members].sort((a, b) => b.contribution - a.contribution)[0];
-      topMember.role = 'owner';
-          if (!guild.chat) guild.chat = [];
-          guild.chat.push({
-        id: `msg-${Date.now()}-owner`,
+    if (guild.members.length === 0) {
+      guilds.splice(guildIndex, 1);
+    } else {
+      if (oldMember?.role === 'owner') {
+        const topMember = [...guild.members].sort((a, b) => b.contribution - a.contribution)[0];
+        topMember.role = 'owner';
+        topMember.trusted = true;
+        if (!guild.chat) guild.chat = [];
+        guild.chat.push({
+          id: `msg-${Date.now()}-owner`,
+          username: 'System',
+          text: `${topMember.username} is now the guild owner.`,
+          timestamp: Date.now(),
+          isSystem: true,
+        });
+      }
+      if (!guild.chat) guild.chat = [];
+      guild.chat.push({
+        id: `msg-${Date.now()}`,
         username: 'System',
-        text: `${topMember.username} is now the guild owner.`,
+        text: `${username()} left the guild.`,
         timestamp: Date.now(),
         isSystem: true,
       });
+      if (guild.chat.length > 50) guild.chat.shift();
     }
-    if (!guild.chat) guild.chat = [];
-    guild.chat.push({
-      id: `msg-${Date.now()}`,
-      username: 'System',
-      text: `${username()} left the guild.`,
-      timestamp: Date.now(),
-      isSystem: true,
-    });
-  }
 
-  await saveGuilds(guilds);
-  return { success: true };
+    return { success: true };
+  });
 }
 
 export async function postGuildMessage(text: string) {
@@ -330,7 +480,7 @@ export async function postGuildMessage(text: string) {
   if (!clean) throw new Error('Message cannot be empty.');
 
   return updateGuilds(guilds => {
-    const guild = guilds.find(g => g.members.some(m => m.username === username()));
+    const guild = currentGuild(guilds);
     if (!guild) throw new Error('You are not in a guild.');
     if (!guild.chat) guild.chat = [];
 
