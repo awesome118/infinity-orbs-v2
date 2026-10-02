@@ -24,6 +24,7 @@ import {
   grantPurchasedPack,
   refundPurchasedPack,
   hasReadablePlayerSave,
+  appendPaymentDebugLog,
   getDeveloperAnnouncement,
   loadRaw,
   recordSocialVisit,
@@ -155,22 +156,41 @@ async function resolvePaymentBuyerId(order: PaymentOrder, orderId: string): Prom
   ].filter(Boolean);
 
   const uniqueCandidates = [...new Set(directCandidates)];
+  const readability: Array<{ userId: string; readable: boolean }> = [];
 
-  // In sandbox/playtest payments, preserve the normal game account when the
-  // payment bridge supplies a placeholder/stale identity. Prefer a candidate
-  // that actually owns a readable Infinity Orbs save.
   for (const candidate of uniqueCandidates) {
-    if (await hasReadablePlayerSave(candidate)) return candidate;
+    const readable = await hasReadablePlayerSave(candidate);
+    readability.push({ userId: candidate, readable });
+    if (readable) {
+      await appendPaymentDebugLog('buyer:resolved-existing-save', {
+        orderId,
+        candidates: readability,
+        selectedUserId: candidate,
+        contextUserId: paymentString(context.userId) || null,
+      });
+      return candidate;
+    }
   }
 
-  // A brand-new buyer may not have a save yet. Use the authenticated game user
-  // first so the purchase creates the save for the account currently testing it.
   const contextUserId = paymentString(context.userId);
-  if (contextUserId) return contextUserId;
+  if (contextUserId) {
+    await appendPaymentDebugLog('buyer:resolved-context', {
+      orderId,
+      candidates: readability,
+      selectedUserId: contextUserId,
+      contextUserId,
+    });
+    return contextUserId;
+  }
 
-  // Finally honor Reddit's documented Order.userId when there is no existing
-  // save and no authenticated request context.
-  return uniqueCandidates[0] ?? '';
+  const fallback = uniqueCandidates[0] ?? '';
+  await appendPaymentDebugLog('buyer:resolved-order-fallback', {
+    orderId,
+    candidates: readability,
+    selectedUserId: fallback || null,
+    contextUserId: null,
+  });
+  return fallback;
 }
 
 export function createApp() {
@@ -328,6 +348,20 @@ export function createApp() {
   // order itself, verified order history, or the authenticated Devvit context.
   app.post('/internal/payments/fulfill', async (req, res) => {
     try {
+      await appendPaymentDebugLog('fulfill:received', {
+        contentType: req.headers['content-type'] ?? null,
+        bodyType: typeof req.body,
+        bodyKeys: req.body && typeof req.body === 'object' ? Object.keys(req.body) : null,
+        rawBody: (() => {
+          try {
+            const serialized = JSON.stringify(req.body);
+            return serialized.length > 12000 ? serialized.slice(0, 12000) + '…[truncated]' : serialized;
+          } catch {
+            return String(req.body);
+          }
+        })(),
+      });
+
       const order = normalizePaymentOrder(req.body);
       const orderId = paymentOrderId(order);
       const productSku = paymentProductSku(order);
@@ -344,6 +378,16 @@ export function createApp() {
           ? order.products.map(product => ({ sku: paymentString(product?.sku) }))
           : [],
       }));
+      await appendPaymentDebugLog('fulfill:normalized', {
+        orderId: orderId || null,
+        orderUserId: paymentString(order.userId) || null,
+        contextUserId: paymentString(context.userId) || null,
+        resolvedBuyerUserId: buyerUserId || null,
+        status: status || null,
+        productSku: productSku || null,
+        productCount: Array.isArray(order.products) ? order.products.length : null,
+        normalizedOrder: order,
+      });
 
       if (!buyerUserId) {
         return res.json({
@@ -370,10 +414,25 @@ export function createApp() {
         });
       }
 
+      await appendPaymentDebugLog('fulfill:before-grant', {
+        buyerUserId,
+        productSku,
+        orderId,
+      });
       await grantPurchasedPack(buyerUserId, productSku, orderId);
+      await appendPaymentDebugLog('fulfill:handler-success', {
+        buyerUserId,
+        productSku,
+        orderId,
+      });
       return res.json({ success: true });
     } catch (e: unknown) {
       console.error('[Payments] Fulfillment failed:', e instanceof Error ? e.stack ?? e.message : e);
+      await appendPaymentDebugLog('fulfill:handler-error', {
+        errorName: e instanceof Error ? e.name : null,
+        errorMessage: e instanceof Error ? e.message : String(e),
+        errorStack: e instanceof Error ? (e.stack ?? '').slice(0, 8000) : null,
+      });
       return res.json({
         success: false,
         reason: e instanceof Error ? e.message : 'Unable to fulfill purchase.',
