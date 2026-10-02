@@ -1814,6 +1814,9 @@ export async function checkOffline(): Promise<PlayerState> {
 
 export async function roll(isAuto = false): Promise<RollResponse> {
   const s = await settleOffline(await loadRaw());
+  if (isAuto && (s.upgrades.auto ?? 0) <= 0) {
+    throw new Error('Auto Roll is not unlocked yet.');
+  }
   const now = Date.now();
   const cd = cooldownMs(s, isAuto);
   if (s.lastRollAt !== null && now - s.lastRollAt < cd) {
