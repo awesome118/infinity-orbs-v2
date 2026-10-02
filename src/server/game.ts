@@ -1006,8 +1006,11 @@ export async function getCollectionPage(options: {
 }
 
 export async function getState(): Promise<PlayerState> {
-  const s = await settleOffline(await loadRaw());
   try {
+    // Keep the entire read/settle/save cycle inside the recovery boundary. A
+    // wipe can race either loadRaw() or an automation save triggered by
+    // settleOffline(), not only the final explicit save below.
+    const s = await settleOffline(await loadRaw());
     await save(s);
     return s;
   } catch (error) {
