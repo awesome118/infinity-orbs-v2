@@ -95,8 +95,8 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
     upgrades: { ...state.upgrades, luck: (state.upgrades.luck ?? 0) + 1 },
   });
 
-  const manualRolls = Math.min(10, state.manualRolls ?? 0);
-  const isAutoUnlocked = manualRolls >= 10;
+  const manualRolls = Math.min(3, state.manualRolls ?? 0);
+  const isAutoUnlocked = manualRolls >= 3;
   const canUnlockAuto = isAutoUnlocked;
 
   const currentCoinBonusPct = (state.upgrades.coinBonus ?? 0) * 15;
