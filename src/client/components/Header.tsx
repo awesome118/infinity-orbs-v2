@@ -65,7 +65,7 @@ export const Header: React.FC<HeaderProps> = ({
               {/* Level Badge with click to view perks */}
               <button
                 onClick={onOpenProfile}
-                className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gradient-to-r from-purple-500/30 to-indigo-500/30 text-purple-200 border border-purple-400/40 hover:border-purple-300 flex items-center gap-1 shadow-sm cursor-pointer transition-all"
+                className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-200 border border-purple-400/25 hover:border-purple-300/50 flex items-center gap-1 cursor-pointer transition-colors"
                 title={`Level ${levelInfo.level} Perks: ${levelBenefits.luckMultiplier.toFixed(2)}× Luck, ${levelBenefits.coinsMultiplier.toFixed(2)}× Coins, +${levelBenefits.bonusBalls} Balls`}
               >
                 <Star className="w-2.5 h-2.5 text-amber-300 fill-current" />
@@ -81,7 +81,7 @@ export const Header: React.FC<HeaderProps> = ({
                 title={`EXP: ${fmt(levelInfo.currentLevelXp)} / ${fmt(levelInfo.nextLevelXp)} (${levelInfo.progressPercent}%)`}
               >
                 <div
-                  className="h-full bg-gradient-to-r from-purple-500 via-indigo-400 to-cyan-400 rounded-full transition-all duration-300 relative shadow-[0_0_8px_rgba(168,85,247,0.7)]"
+                  className="h-full bg-purple-400 rounded-full transition-all duration-300 relative"
                   style={{ width: `${levelInfo.progressPercent}%` }}
                 >
                 </div>
