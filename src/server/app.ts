@@ -273,7 +273,7 @@ export function createApp() {
 
   app.post('/internal/payments/refund', async (req, res) => {
     try {
-      const order = req.body as Order;
+      const order = req.body as PaymentOrder;
       const buyerUserId = String(order?.userId ?? '').trim();
       const orderId = String(order?.id ?? '').trim();
       if (!buyerUserId || !orderId) {
@@ -290,7 +290,7 @@ export function createApp() {
       }
 
       await refundPurchasedPack(buyerUserId, order.products[0].sku, orderId);
-      return res.json({ success: true } satisfies PaymentHandlerResponse);
+      return res.json({ success: true });
     } catch (e: unknown) {
       console.error('[Payments] Refund failed:', e instanceof Error ? e.stack ?? e.message : e);
       return res.json({
