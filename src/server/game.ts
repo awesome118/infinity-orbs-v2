@@ -1801,7 +1801,6 @@ export async function applyRolls(
       level: s.level,
       highestRarity: s.highestRarity,
     },
-    snapshot: playerSpySnapshot(s),
     userId: spyUserId,
   }, spyUserId);
 
@@ -2056,7 +2055,6 @@ export async function roll(isAuto = false): Promise<RollResponse> {
     coinsGained,
     shardsGained,
     xpGained,
-    snapshot: playerSpySnapshot(s),
   });
 
   return {
