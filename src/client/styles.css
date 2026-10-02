@@ -1174,3 +1174,27 @@
     transition-duration: 0.001ms !important;
   }
 }
+
+.io-ui button,
+.io-ui input,
+.io-ui select,
+.io-ui summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.io-ui button:focus-visible,
+.io-ui input:focus-visible,
+.io-ui select:focus-visible,
+.io-ui summary:focus-visible {
+  outline: 2px solid rgba(139, 120, 255, 0.75);
+  outline-offset: 2px;
+}
+
+.io-ui button {
+  touch-action: manipulation;
+}
+
+.io-ui [class*="backdrop-blur"] {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
