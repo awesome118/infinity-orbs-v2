@@ -28,6 +28,7 @@ import {
   hasReadablePlayerSave,
   appendPaymentDebugLog,
   getDeveloperAnnouncement,
+  getGlobalBoosterAnnouncement,
   loadRaw,
   recordSocialVisit,
   recordShareAction,
@@ -647,6 +648,14 @@ export function createApp() {
     }
   });
 
+  app.get('/api/global-booster-announcement', async (_req, res) => {
+    try {
+      res.json(await getGlobalBoosterAnnouncement());
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Failed to fetch Global Booster announcement.' });
+    }
+  });
+
   app.post('/api/global-boosters/activate', async (req, res) => {
     try {
       const id = req.body?.id;
@@ -813,6 +822,38 @@ export function createApp() {
   app.post('/api/frenzy/claim', async (_req, res) => {
     try { res.json(await claimOrbFrenzy()); }
     catch (e) { badRequest(res, e, 'Could not claim Orb Frenzy.'); }
+  });
+
+  app.post('/api/feedback', async (req, res) => {
+    try {
+      const type = req.body?.type === 'suggestion' ? 'suggestion' : 'bug';
+      const message = String(req.body?.message ?? '').trim();
+      if (!message) return res.status(400).json({ error: 'Please describe the bug or suggestion.' });
+      if (message.length > 2000) return res.status(400).json({ error: 'Please keep feedback under 2,000 characters.' });
+
+      const subredditName = String(context.subredditName ?? '').trim();
+      const subredditId = String(context.subredditId ?? '').trim();
+      const username = String(context.username ?? 'Redditor').trim() || 'Redditor';
+      if (!subredditName || !subredditId) {
+        return res.status(400).json({ error: 'Subreddit context is unavailable.' });
+      }
+
+      const subject = `${type === 'bug' ? 'Bug Report' : 'Suggestion'} • Infinity Orbs • u/${username}`.slice(0, 100);
+      const bodyMarkdown =
+        `**${type === 'bug' ? 'Bug Report' : 'Suggestion'}**\\n\\n` +
+        `**From:** u/${username}\\n\\n` +
+        message;
+
+      const conversationId = await reddit.modMail.createModInboxConversation({
+        subredditId,
+        subject,
+        bodyMarkdown,
+      });
+
+      res.json({ success: true, conversationId });
+    } catch (e) {
+      badRequest(res, e, 'Could not send feedback to modmail.');
+    }
   });
 
   app.post('/api/turbo/activate', async (_req, res) => {
