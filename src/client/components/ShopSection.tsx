@@ -72,6 +72,25 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
       .finally(() => setLoading(false));
   }, []);
 
+  const reconcilePurchase = async (baselineShards: number, baselineCredits: number): Promise<boolean> => {
+    try {
+      const reconcileRes = await fetch('/api/payments/reconcile', { method: 'POST' });
+      if (!reconcileRes.ok) return false;
+
+      const meRes = await fetch('/api/me');
+      if (!meRes.ok) return false;
+      const next = await meRes.json() as PlayerState;
+      const fulfilled =
+        next.shards > baselineShards ||
+        (next.globalBoosterCredits ?? 0) > baselineCredits;
+
+      if (fulfilled) await onPurchased();
+      return fulfilled;
+    } catch {
+      return false;
+    }
+  };
+
   const buy = async (sku: string) => {
     if (buyingSku) return;
     setBuyingSku(sku);
@@ -85,49 +104,35 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
         let fulfillmentObserved = false;
         for (const delayMs of [0, 500, 1000, 2000, 3000]) {
           if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
-
-          // First, ask the server to reconcile PAID orders. This repairs the
-          // common case where Reddit completed the order but the fulfillment
-          // callback reached the app late or a previous callback failed.
-          try {
-            await fetch('/api/payments/reconcile', { method: 'POST' });
-          } catch {
-            // The polling below can still observe a normal fulfillment.
-          }
-
-          const res = await fetch('/api/me');
-          if (!res.ok) continue;
-          const next = await res.json() as PlayerState;
-          if (
-            next.shards > baselineShards ||
-            (next.globalBoosterCredits ?? 0) > baselineCredits
-          ) {
+          if (await reconcilePurchase(baselineShards, baselineCredits)) {
             fulfillmentObserved = true;
             break;
           }
         }
 
-        await onPurchased();
         setMessage(
           fulfillmentObserved
             ? 'Purchase complete. Your Shards and Global Booster credits were added.'
             : 'Purchase accepted. Reddit is still finishing delivery; refresh shortly if the balance has not changed.'
         );
       } else {
-        // A completed order can occasionally reach the client with a non-success
-        // result while Reddit has already recorded it. Reconcile before reporting
-        // a hard failure so paid entitlements are not stranded.
-        try {
-          await fetch('/api/payments/reconcile', { method: 'POST' });
-          await onPurchased();
-        } catch {
-          // Keep the original payment error for the player.
+        // Reddit can complete an order even when the client receives a malformed
+        // or otherwise non-success response from the native payment bridge.
+        // Reconcile before showing a hard failure so a paid entitlement is not
+        // stranded behind a client-side parsing error.
+        if (await reconcilePurchase(baselineShards, baselineCredits)) {
+          setMessage('Purchase complete. Your Shards and Global Booster credits were added.');
+        } else {
+          setMessage(formatPaymentError(result.errorMessage, 'Purchase was not completed.'));
         }
-        setMessage(formatPaymentError(result.errorMessage, 'Purchase was not completed.'));
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('[Payments] Client purchase exception:', e);
-      setMessage(formatPaymentError(e, 'Purchase failed.'));
+      if (await reconcilePurchase(baselineShards, baselineCredits)) {
+        setMessage('Purchase complete. Your Shards and Global Booster credits were added.');
+      } else {
+        setMessage(formatPaymentError(e, 'Purchase failed.'));
+      }
     } finally {
       setBuyingSku(null);
     }
