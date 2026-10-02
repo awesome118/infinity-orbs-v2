@@ -31,7 +31,7 @@ import type {
 } from '../../shared/game.js';
 import {
   calculateCosmicDust,
-  calculateLevelFromXp,
+  xpRequiredForLevel,
   LEVEL_MILESTONES,
   COSMETICS,
   PRESTIGE_UPGRADES,
