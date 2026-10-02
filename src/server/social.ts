@@ -876,7 +876,7 @@ export async function postGlobalChatMessage(text: string): Promise<GlobalChatMes
 
   const message: GlobalChatMessage = {
     id: `global-chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    username: username().replace(/^u\\//i, '') || 'Redditor',
+    username: username().replace(/^u\//i, '') || 'Redditor',
     text: messageText,
     timestamp: Date.now(),
     userId: user(),
