@@ -11,13 +11,36 @@ const GUILDS_KEY = key('guilds');
 
 function parseStoredJson<T>(raw: unknown): T | null {
   if (raw == null) return null;
-  if (typeof raw === 'object') return raw as T;
-  if (typeof raw !== 'string') return null;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
+
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
   }
+
+  if (typeof raw === 'object') {
+    const value = raw as Record<string, unknown>;
+    // Be tolerant of Redis/adapter responses that wrap the stored value.
+    if ('value' in value) return parseStoredJson<T>(value.value);
+    if ('data' in value) return parseStoredJson<T>(value.data);
+    return raw as T;
+  }
+
+  return null;
+}
+
+function parseGuildList(raw: unknown): Guild[] {
+  const parsed = parseStoredJson<unknown>(raw);
+  if (!Array.isArray(parsed)) return [];
+  return normalizeGuilds(parsed.filter(item => item && typeof item === 'object') as Guild[]);
+}
+
+function parseLeaderboardList(raw: unknown): LeaderboardEntry[] {
+  const parsed = parseStoredJson<unknown>(raw);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter(item => item && typeof item === 'object') as LeaderboardEntry[];
 }
 const COMMUNITY_EVENT_KEY = key('community_event');
 
@@ -43,7 +66,7 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(GUILDS_KEY);
     const raw = await txn.get(GUILDS_KEY);
-    const guilds: Guild[] = normalizeGuilds(parseStoredJson<Guild[]>(raw) ?? []);
+    const guilds: Guild[] = parseGuildList(raw);
     try {
       const result = await mutator(guilds);
       await txn.multi();
@@ -61,7 +84,7 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
 
 async function loadGuilds(): Promise<Guild[]> {
   const raw = await redis.get(GUILDS_KEY);
-  return normalizeGuilds(parseStoredJson<Guild[]>(raw) ?? []);
+  return parseGuildList(raw);
 }
 
 async function saveGuilds(guilds: Guild[]) {
@@ -555,7 +578,7 @@ export async function setCommunityEventConfig(config: {
 
 export async function leaderboard(): Promise<LeaderboardEntry[]> {
   const raw = await redis.get(key('leaderboard'));
-  const board: LeaderboardEntry[] = parseStoredJson<LeaderboardEntry[]>(raw) ?? [];
+  const board: LeaderboardEntry[] = parseLeaderboardList(raw);
   return [...board].sort((a, b) => b.value - a.value).slice(0, 25);
 }
 
@@ -573,7 +596,7 @@ export async function recordLeaderboard(s: PlayerState) {
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(leaderboardKey);
     const raw = await txn.get(leaderboardKey);
-    const board: LeaderboardEntry[] = parseStoredJson<LeaderboardEntry[]>(raw) ?? [];
+    const board: LeaderboardEntry[] = parseLeaderboardList(raw);
     const existing = board.find(e => e.username === name);
     if (existing) Object.assign(existing, next);
     else board.push(next);
