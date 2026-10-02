@@ -565,6 +565,9 @@ export interface PlayerState {
     shardRank?: number;
     critRank?: number;
     coinRank?: number;
+    memberCapacityRank?: number;
+    tokenYieldRank?: number;
+    guildXpRank?: number;
   };
 }
 
