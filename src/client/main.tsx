@@ -1307,9 +1307,9 @@ export function App() {
             state={state}
             busy={busy}
             globalBoosters={state.globalBoosters ?? {
-              luck: { tier: 0, remainingMs: 0, updatedAt: Date.now(), activationProgress: 0 },
-              speed: { tier: 0, remainingMs: 0, updatedAt: Date.now(), activationProgress: 0 },
-              crit: { tier: 0, remainingMs: 0, updatedAt: Date.now(), activationProgress: 0 },
+              luck: { tier: 0, remainingMs: 0, updatedAt: Date.now(), activationProgress: 0, endsAt: 0 },
+              speed: { tier: 0, remainingMs: 0, updatedAt: Date.now(), activationProgress: 0, endsAt: 0 },
+              crit: { tier: 0, remainingMs: 0, updatedAt: Date.now(), activationProgress: 0, endsAt: 0 },
             }}
             worldEvent={worldEvent}
             onActivateBooster={handleActivatePremiumBooster}
