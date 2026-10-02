@@ -3,22 +3,22 @@
   "products": [
     {
       "sku": "shards-100",
-      "displayName": "100 Shards + 1 Global Boost",
-      "description": "100 Shards and 1 free Global Booster activation.",
+      "displayName": "100 Shards",
+      "description": "100 Shards.",
       "price": 50,
       "accountingType": "CONSUMABLE"
     },
     {
       "sku": "shards-600",
-      "displayName": "600 Shards + 8 Global Boosts",
-      "description": "600 Shards and 8 free Global Booster activations.",
+      "displayName": "600 Shards",
+      "description": "600 Shards.",
       "price": 250,
       "accountingType": "CONSUMABLE"
     },
     {
       "sku": "shards-1400",
-      "displayName": "1,400 Shards + 20 Global Boosts",
-      "description": "1,400 Shards and 20 free Global Booster activations.",
+      "displayName": "1,400 Shards",
+      "description": "1,400 Shards.",
       "price": 500,
       "accountingType": "CONSUMABLE"
     }
