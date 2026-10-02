@@ -1604,8 +1604,7 @@ export async function claimOrbFrenzy(options: {
     1,
     (s.upgrades.critChance ?? 0) * 0.03 +
     (s.masterySkills?.critMastery ?? 0) * 0.03 +
-    (s.guildPerks?.critRank ?? 0) * 0.015 +
-    globalCritChance,
+    (s.guildPerks?.critRank ?? 0) * 0.015,
   );
   const critCount = sampleBinomial(count, critChance);
 
