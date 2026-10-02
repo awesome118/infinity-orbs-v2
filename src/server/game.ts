@@ -72,6 +72,42 @@ const key = () => `player:${currentUserId()}`;
 const GAME_BANS_KEY = 'io:game-bans';
 const ONLINE_PLAYERS_KEY = 'io:online:players';
 const SAVE_GENERATION_KEY_PREFIX = 'player-generation:';
+const DEVELOPER_ANNOUNCEMENT_KEY = 'io:developer-announcement';
+export interface DeveloperAnnouncement {
+  message: string;
+  updatedAt: number;
+  updatedBy: string;
+}
+export const DEFAULT_DEVELOPER_ANNOUNCEMENT = 'Welcome to Infinity Orbs! New developer announcements will appear here.';
+
+export async function getDeveloperAnnouncement(): Promise<DeveloperAnnouncement> {
+  const raw = await redis.get(DEVELOPER_ANNOUNCEMENT_KEY);
+  if (!raw) {
+    return { message: DEFAULT_DEVELOPER_ANNOUNCEMENT, updatedAt: 0, updatedBy: '' };
+  }
+
+  const parsed = parseStoredJson<Partial<DeveloperAnnouncement>>(raw);
+  if (!parsed) {
+    return { message: DEFAULT_DEVELOPER_ANNOUNCEMENT, updatedAt: 0, updatedBy: '' };
+  }
+
+  return {
+    message: String(parsed.message ?? DEFAULT_DEVELOPER_ANNOUNCEMENT).slice(0, 1200),
+    updatedAt: Number(parsed.updatedAt ?? 0) || 0,
+    updatedBy: String(parsed.updatedBy ?? '').slice(0, 100),
+  };
+}
+
+export async function setDeveloperAnnouncement(message: string, updatedBy: string): Promise<DeveloperAnnouncement> {
+  const next: DeveloperAnnouncement = {
+    message: String(message ?? '').trim().slice(0, 1200),
+    updatedAt: Date.now(),
+    updatedBy: String(updatedBy ?? context.username ?? 'Developer').slice(0, 100),
+  };
+  await redis.set(DEVELOPER_ANNOUNCEMENT_KEY, JSON.stringify(next));
+  return next;
+}
+
 
 function saveGenerationKeyFor(userId: string): string {
   return SAVE_GENERATION_KEY_PREFIX + userId;
