@@ -56,6 +56,30 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [globalBoosterLogs, setGlobalBoosterLogs] = useState<Array<Record<string, unknown>>>([]);
   const [globalBoosterLogsLoading, setGlobalBoosterLogsLoading] = useState(false);
 
+  const [guildChatSpy, setGuildChatSpy] = useState<Array<{
+    id: string;
+    name: string;
+    tag: string;
+    memberCount: number;
+    messages: Array<{
+      id: string;
+      username: string;
+      userId?: string;
+      text: string;
+      timestamp: number;
+      isSystem?: boolean;
+    }>;
+  }>>([]);
+  const [guildChatMutes, setGuildChatMutes] = useState<Array<{
+    userId: string;
+    username: string;
+    mutedAt: number;
+    mutedBy: string;
+  }>>([]);
+  const [guildChatSpyLoading, setGuildChatSpyLoading] = useState(false);
+  const [guildChatSpyLoaded, setGuildChatSpyLoaded] = useState(false);
+  const [guildChatMuteUser, setGuildChatMuteUser] = useState('');
+
   const [frenzyRarity, setFrenzyRarity] = useState('');
   const [frenzyPostId, setFrenzyPostId] = useState('');
   const [frenzyPostUrl, setFrenzyPostUrl] = useState('');
@@ -165,6 +189,52 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       textarea.select();
       setMessage('Clipboard access was blocked. The logs are selected; copy them manually.');
     }
+  };
+
+  const loadGuildChatSpy = async (quiet = false) => {
+    if (!quiet) setGuildChatSpyLoading(true);
+    try {
+      const res = await fetch('/api/dev/guild-chat-spy');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load Guild Chat spy data.');
+      setGuildChatSpy(Array.isArray(data.guilds) ? data.guilds : []);
+      setGuildChatMutes(Array.isArray(data.mutes) ? data.mutes : []);
+      setGuildChatSpyLoaded(true);
+      if (!quiet) {
+        const guilds = Array.isArray(data.guilds) ? data.guilds : [];
+        const messageCount = guilds.reduce(
+          (total: number, guild: { messages?: unknown[] }) =>
+            total + (Array.isArray(guild.messages) ? guild.messages.length : 0),
+          0,
+        );
+        setMessage('Loaded ' + guilds.length + ' guilds and ' + messageCount + ' stored chat messages.');
+      }
+    } catch (e: any) {
+      if (!quiet) setMessage('Error: ' + (e?.message || 'Could not load Guild Chat spy data.'));
+    } finally {
+      if (!quiet) setGuildChatSpyLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!guildChatSpyLoaded) return;
+    const interval = window.setInterval(() => {
+      void loadGuildChatSpy(true);
+    }, 3000);
+    return () => window.clearInterval(interval);
+  }, [guildChatSpyLoaded]);
+
+  const toggleGuildChatMute = async (username: string, currentlyMuted: boolean) => {
+    const cleanName = username.trim().replace(/^u\\//i, '');
+    const data = await sendAdminAction(
+      currentlyMuted ? '/api/dev/guild-chat/unmute' : '/api/dev/guild-chat/mute',
+      { username: cleanName },
+      false,
+      currentlyMuted
+        ? 'Unmuted u/' + cleanName + ' from Guild Chat.'
+        : 'Muted u/' + cleanName + ' in Guild Chat.',
+    );
+    if (data) await loadGuildChatSpy(true);
   };
 
   const loadGlobalBoosterLogs = async () => {
@@ -940,6 +1010,144 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </div>
           ) : (
             <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-center text-xs text-slate-500">No player accounts are registered yet.</div>
+          )}
+        </section>
+
+        <section className={panelBase + ' border border-amber-500/30'}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-300">
+                <Shield className="w-4 h-4" /> Guild Chat Spy
+              </div>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Moderation-only view of every message currently retained in every guild. Refreshes every 3 seconds after the first load.
+              </p>
+            </div>
+            <button
+              title="Load all stored Guild Chat messages and active chat mutes."
+              disabled={guildChatSpyLoading}
+              onClick={() => void loadGuildChatSpy()}
+              className={buttonBase + ' bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-300 px-3 py-2'}
+            >
+              <RefreshCw className="inline w-3.5 h-3.5 mr-1" />
+              {guildChatSpyLoading ? 'Loading…' : 'Refresh Spy'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+            <input
+              value={guildChatMuteUser}
+              onChange={e => setGuildChatMuteUser(e.target.value)}
+              title="Enter a Reddit username to mute or unmute from all Infinity Orbs Guild Chat."
+              placeholder="Reddit username, without u/"
+              className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+            />
+            <div className="flex gap-2">
+              <button
+                title="Mute this account from every Infinity Orbs Guild Chat."
+                disabled={loading || !guildChatMuteUser.trim()}
+                onClick={async () => {
+                  const name = guildChatMuteUser.trim().replace(/^u\//i, '');
+                  const data = await sendAdminAction('/api/dev/guild-chat/mute', { username: name }, false, 'Muted u/' + name + ' in Guild Chat.');
+                  if (data) {
+                    setGuildChatMuteUser('');
+                    await loadGuildChatSpy(true);
+                  }
+                }}
+                className={buttonBase + ' bg-rose-600/20 hover:bg-rose-600/30 border-rose-500/40 text-rose-200 px-3 py-2'}
+              >
+                Mute
+              </button>
+              <button
+                title="Unmute this account from every Infinity Orbs Guild Chat."
+                disabled={loading || !guildChatMuteUser.trim()}
+                onClick={async () => {
+                  const name = guildChatMuteUser.trim().replace(/^u\//i, '');
+                  const data = await sendAdminAction('/api/dev/guild-chat/unmute', { username: name }, false, 'Unmuted u/' + name + ' from Guild Chat.');
+                  if (data) {
+                    setGuildChatMuteUser('');
+                    await loadGuildChatSpy(true);
+                  }
+                }}
+                className={buttonBase + ' bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-300 px-3 py-2'}
+              >
+                Unmute
+              </button>
+            </div>
+          </div>
+
+          {guildChatMutes.length > 0 && (
+            <div className="rounded-xl border border-rose-500/20 bg-rose-950/10 p-3 space-y-2">
+              <div className="text-[10px] uppercase font-bold text-rose-300">Muted accounts</div>
+              <div className="flex flex-wrap gap-2">
+                {guildChatMutes.map(mute => (
+                  <button
+                    key={mute.userId}
+                    title={'Unmute u/' + mute.username + ' from Guild Chat.'}
+                    disabled={loading}
+                    onClick={() => void toggleGuildChatMute(mute.username, true)}
+                    className={buttonBase + ' bg-rose-500/10 border-rose-500/30 text-rose-200 px-2.5 py-1.5'}
+                  >
+                    u/{mute.username} · Unmute
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {guildChatSpy.length > 0 ? (
+            <div className="space-y-3">
+              {guildChatSpy.map(guild => {
+                const mutedNames = new Set(guildChatMutes.map(mute => mute.username.toLowerCase()));
+                return (
+                  <div key={guild.id} className="rounded-xl border border-slate-800 bg-slate-900/70 overflow-hidden">
+                    <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-xs font-black text-white">[{guild.tag}] {guild.name}</div>
+                        <div className="text-[10px] text-slate-500">{guild.memberCount} members · {guild.messages.length} stored messages</div>
+                      </div>
+                    </div>
+                    {guild.messages.length > 0 ? (
+                      <div className="max-h-72 overflow-y-auto divide-y divide-slate-800/80">
+                        {guild.messages.map(msg => {
+                          const isMuted = !msg.isSystem && mutedNames.has(msg.username.toLowerCase());
+                          return (
+                            <div key={msg.id} className="px-3 py-2 flex items-start gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className={'text-xs font-bold ' + (msg.isSystem ? 'text-slate-500' : 'text-slate-200')}>u/{msg.username}</span>
+                                  {isMuted && <span className="text-[9px] font-black uppercase text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-full px-1.5 py-0.5">Muted</span>}
+                                  <span className="text-[9px] text-slate-600">{new Date(msg.timestamp).toLocaleString()}</span>
+                                </div>
+                                <div className={'text-xs mt-0.5 whitespace-pre-wrap break-words ' + (msg.isSystem ? 'text-slate-500 italic' : 'text-slate-300')}>{msg.text}</div>
+                              </div>
+                              {!msg.isSystem && (
+                                <button
+                                  title={(isMuted ? 'Unmute ' : 'Mute ') + 'u/' + msg.username + ' from all Guild Chat.'}
+                                  disabled={loading}
+                                  onClick={() => void toggleGuildChatMute(msg.username, isMuted)}
+                                  className={buttonBase + ' ' + (isMuted
+                                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                                    : 'bg-rose-500/10 border-rose-500/30 text-rose-200') + ' px-2 py-1 shrink-0'}
+                                >
+                                  {isMuted ? 'Unmute' : 'Mute'}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="p-3 text-xs text-slate-600 italic">No stored messages.</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-center text-xs text-slate-500">
+              Press Refresh Spy to load Guild Chat across all guilds.
+            </div>
           )}
         </section>
 
