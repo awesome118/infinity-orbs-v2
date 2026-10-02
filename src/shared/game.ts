@@ -785,7 +785,7 @@ export interface PrestigeUpgradeInfo {
 export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> = {
   permLuck: {
     name: 'Permanent Luck',
-    desc: '+5% Luck per level.',
+    desc: 'Multiplies Luck by 1.05× per level.',
     category: 'core',
     maxLevel: 10,
     costPerLevel: 2,
@@ -1229,8 +1229,9 @@ export function calculateLevelFromXp(totalXp: number): {
   };
 }
 
-// Altar Luck is composed of explicit additive bonuses. The returned values remain
-// multipliers for compatibility with existing callers and UI.
+// Altar Luck is a multiplicative layer. Each altar component is calculated
+// independently, then the components compound with one another and with other
+// multiplicative Luck sources.
 export function calculateAltarMultipliers(s: PlayerState): {
   coinMultiplier: number;
   shardMultiplier: number;
@@ -1245,15 +1246,18 @@ export function calculateAltarMultipliers(s: PlayerState): {
   const coinBonus = sacrifices.altarLevel * 0.01 * altarEffectMultiplier * resonatorBonus;
   const shardBonus = (sacrifices.shardsSacrificed || 0) * 0.02 * altarEffectMultiplier * resonatorBonus;
 
+  const coinMultiplier = Math.round((1 + coinBonus) * 100) / 100;
+  const shardMultiplier = Math.round((1 + shardBonus) * 100) / 100;
   const isSurgeActive = Boolean(sacrifices.luckSurgeUntil && Date.now() < sacrifices.luckSurgeUntil);
   const surgeMultiplier = isSurgeActive ? 1.25 : 1.0;
 
-  // The three Altar effects are additive so they cannot compound Luck multipliers.
-  const totalAltarMultiplier = Math.round((1 + coinBonus + shardBonus + (surgeMultiplier - 1)) * 100) / 100;
+  // Altar components multiply rather than add: coin × shards × active Surge.
+  const totalAltarMultiplier =
+    Math.round(coinMultiplier * shardMultiplier * surgeMultiplier * 100) / 100;
 
   return {
-    coinMultiplier: Math.round((1 + coinBonus) * 100) / 100,
-    shardMultiplier: Math.round((1 + shardBonus) * 100) / 100,
+    coinMultiplier,
+    shardMultiplier,
     surgeMultiplier,
     totalAltarMultiplier,
   };
@@ -1412,51 +1416,51 @@ export function altarCoinDevotionChancePercent(
 }
 
 export function luckMultiplier(s: PlayerState): number {
-  // All Luck sources contribute additively to one total factor. The RNG
-  // converts this factor into a bounded change in the rarity tail.
-  let bonus = 0;
+  // Most Luck sources add into the base factor. Prestige Permanent Luck and
+  // Altar Luck are multiplicative layers, so long-term investment compounds
+  // with the additive pool instead of merely joining it.
+  let additiveBonus = 0;
 
   // 1. Run upgrade Luck
-  bonus += (s.upgrades.luck ?? 0) * 0.05;
+  additiveBonus += (s.upgrades.luck ?? 0) * 0.05;
 
-  // 2. Prestige Permanent Luck
-  bonus += (s.prestigeUpgrades?.permLuck ?? 0) * 0.05;
-
-  // 3. Level Luck, including milestone bonuses
+  // 2. Level Luck, including milestone bonuses
   const totalLevelLuck = getLevelBenefits(Math.max(1, s.level || 1)).luckMultiplier;
-  bonus += Math.max(0, totalLevelLuck - 1);
+  additiveBonus += Math.max(0, totalLevelLuck - 1);
 
-  // 4. Sacrificial Altar Luck
-  const { totalAltarMultiplier } = calculateAltarMultipliers(s);
-  bonus += Math.max(0, totalAltarMultiplier - 1);
-
-  // 5. Astral Mastery Luck + Codex Devotion
-  bonus += (s.masterySkills?.continuumLuck ?? 0) * 0.03;
+  // 3. Astral Mastery Luck + Codex Devotion
+  additiveBonus += (s.masterySkills?.continuumLuck ?? 0) * 0.03;
   const codexChain = highestCodexChain(s.collection);
-  bonus += codexDevotionLuckPercent(
+  additiveBonus += codexDevotionLuckPercent(
     s.masterySkills?.celestialSurge ?? 0,
     codexChain,
   ) / 100;
 
-  // 6. Guild Perk Luck
-  bonus += (s.guildPerks?.luckRank ?? 0) * 0.03;
+  // 4. Guild Perk Luck
+  additiveBonus += (s.guildPerks?.luckRank ?? 0) * 0.03;
 
-  // 7. Dry-streak pity Luck
+  // 5. Dry-streak pity Luck
   if ((s.prestigeUpgrades?.resonanceMeter ?? 0) > 0) {
     const dryRolls = s.rollsSinceBest ?? 0;
     const interval = Math.max(6, 18 - (s.masterySkills?.pityAccelerant ?? 0) * 2);
     const stacks = Math.min(50, Math.floor(dryRolls / interval));
-    bonus += (s.prestigeUpgrades.resonanceMeter * 0.01) * stacks;
+    additiveBonus += (s.prestigeUpgrades.resonanceMeter * 0.01) * stacks;
   }
 
-  // 8. Online population Luck
-  bonus += Math.max(0, onlinePlayerLuckMultiplier(s.onlinePlayers ?? 1) - 1);
+  // 6. Online population Luck
+  additiveBonus += Math.max(0, onlinePlayerLuckMultiplier(s.onlinePlayers ?? 1) - 1);
 
-  // 9. Temporary Luck boosters use the same additive pool.
-  if (isPremiumBoosterActive(s, 'fortune')) bonus += 3.0; // 4× becomes +300%.
-  bonus += Math.max(0, globalBoosterLuckMultiplier(s.globalBoosters?.luck) - 1);
+  // 7. Temporary Luck boosters remain additive to the base pool.
+  if (isPremiumBoosterActive(s, 'fortune')) additiveBonus += 3.0; // 4× becomes +300%.
+  additiveBonus += Math.max(0, globalBoosterLuckMultiplier(s.globalBoosters?.luck) - 1);
 
-  return Math.round((1 + bonus) * 100) / 100;
+  // 8. Multiplicative long-term layers.
+  // Permanent Luck is ×1.05 per level, rather than +5% into the additive pool.
+  const prestigeMultiplier = Math.pow(1.05, Math.max(0, s.prestigeUpgrades?.permLuck ?? 0));
+  const { totalAltarMultiplier } = calculateAltarMultipliers(s);
+
+  const baseLuck = 1 + additiveBonus;
+  return Math.round(baseLuck * prestigeMultiplier * totalAltarMultiplier * 100) / 100;
 }
 
 export function offlineRollCap(s: PlayerState): number {
