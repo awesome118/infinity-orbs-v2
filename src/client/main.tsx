@@ -171,7 +171,7 @@ export function App() {
     };
 
     void pollAnnouncement();
-    const interval = window.setInterval(() => void pollAnnouncement(), 4000);
+    const interval = window.setInterval(() => void pollAnnouncement(), 5000);
     return () => {
       window.clearInterval(interval);
       if (boosterAnnouncementTimerRef.current !== null) {
@@ -346,7 +346,7 @@ export function App() {
     };
 
     void pollDeveloperAnnouncement();
-    const interval = window.setInterval(() => void pollDeveloperAnnouncement(), 3000);
+    const interval = window.setInterval(() => void pollDeveloperAnnouncement(), 10000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
@@ -559,7 +559,6 @@ export function App() {
       applyPlayerState(res.state);
       sound.playChime(659.25, 'sine', 0.2);
       showToast(`Upgraded ${id.toUpperCase()} successfully!`, 'success');
-      void refreshAll();
     } catch (e: any) {
       showToast(e.message || 'Upgrade failed', 'warn');
     } finally {
@@ -582,7 +581,6 @@ export function App() {
           : 'No upgrades are currently affordable.',
         res.upgradedCount > 0 ? 'success' : 'info'
       );
-      void refreshAll();
     } catch (e: any) {
       showToast(e.message || 'Upgrade All failed', 'warn');
     } finally {
@@ -826,7 +824,6 @@ export function App() {
       });
       applyPlayerState(res.state);
       showToast('Mastery Skill enhanced!', 'success');
-      void refreshAll();
     } catch (e: any) {
       showToast(e.message || 'Mastery upgrade failed', 'warn');
     } finally {
@@ -848,7 +845,6 @@ export function App() {
         `Streak claimed! +${res.rewardCoins} Coins ${res.rewardShards > 0 ? `+${res.rewardShards} Shards` : ''}`,
         'success'
       );
-      void refreshAll();
     } catch (e: any) {
       showToast(e.message || 'Could not claim streak', 'warn');
     } finally {
@@ -871,7 +867,6 @@ export function App() {
       applyPlayerState(res.state);
       sound.playChime(700, 'sine', 0.25);
       showToast(`Quest completed! +${res.rewardCoins.toLocaleString()} Coins`, 'success');
-      void refreshAll();
     } catch (e: any) {
       showToast(e.message || 'Could not claim quest', 'warn');
     } finally {
@@ -890,7 +885,6 @@ export function App() {
       sound.playMythicFanfare();
       const dust = res.dustGained ?? res.cosmicDustEarned ?? 0;
       showToast(`Prestige Complete! You earned +${dust} Cosmic Dust.`, 'success');
-      void refreshAll();
     } catch (e: any) {
       showToast(e.message || 'Prestige failed', 'warn');
     } finally {
