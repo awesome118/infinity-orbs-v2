@@ -18,44 +18,6 @@ import { setCommunityEventConfig } from './social.js';
 import { cooldownMs, createInitialState, calculateLevelFromXp, COSMETICS_LIST, PRESTIGE_UPGRADES, MASTERY_SKILLS } from '../shared/game.js';
 import { recordLeaderboard } from './social.js';
 
-const GLOBAL_BOOSTERS_KEY = 'io:global-boosters:v3';
-
-async function setGlobalBooster(id: string, tier: number, minutes: number) {
-  const valid = ['luck', 'speed', 'crit'];
-  if (!valid.includes(id)) throw new Error('Invalid global booster.');
-
-  const now = Date.now();
-  const safeTier = Math.max(0, Math.min(10, nonNegativeInteger(tier, 0)));
-  const safeMinutes = Math.max(1, nonNegativeInteger(minutes, 30));
-  const raw = await redis.get(GLOBAL_BOOSTERS_KEY);
-
-  let snapshot: Record<string, any>;
-  try {
-    snapshot = raw ? JSON.parse(String(raw)) : {};
-  } catch {
-    snapshot = {};
-  }
-
-  snapshot.luck = snapshot.luck && typeof snapshot.luck === 'object'
-    ? snapshot.luck
-    : { tier: 0, activationProgress: 0, endsAt: 0 };
-  snapshot.speed = snapshot.speed && typeof snapshot.speed === 'object'
-    ? snapshot.speed
-    : { tier: 0, activationProgress: 0, endsAt: 0 };
-  snapshot.crit = snapshot.crit && typeof snapshot.crit === 'object'
-    ? snapshot.crit
-    : { tier: 0, activationProgress: 0, endsAt: 0 };
-
-  snapshot[id] = {
-    tier: safeTier,
-    activationProgress: 0,
-    endsAt: safeTier === 0 ? 0 : now + safeMinutes * 60_000,
-  };
-
-  await redis.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(snapshot));
-  return snapshot[id];
-}
-
 const DEBUG_USERS = new Set([
   'shadow_fen',
 ]);
@@ -380,7 +342,7 @@ debugRouter.post('/state', async (req, res) => {
       'coins', 'shards', 'cosmicDust', 'xp', 'totalRolls', 'totalCrits',
       'lifetimeCoins', 'lifetimeShards', 'highestRarity', 'collectionValue',
       'lifetimeCollectionValue', 'offlineRolls', 'prestigeCount', 'rollsSinceBest',
-      'turboRollUntil', 'onlinePlayers', 'globalBoosterCredits', 'purchasedShards',
+      'turboRollUntil', 'onlinePlayers', 'purchasedShards',
       'currentRunRolls', 'questsCompleted', 'guildContribution', 'masteryPoints',
       'communityRewardClaimedAt', 'communityRewardClaimedTier',
     ];
@@ -730,15 +692,6 @@ debugRouter.post('/frenzy/reset', async (_req, res) => {
   }
 });
 
-debugRouter.post('/global-booster', async (req, res) => {
-  try {
-    const id = String(req.body?.id ?? '');
-    const state = await setGlobalBooster(id, req.body?.tier, req.body?.minutes);
-    res.json({ ok: true, id, state });
-  } catch (e: any) {
-    res.status(400).json({ error: e?.message || 'Failed to set Global Booster.' });
-  }
-});
 
 // Game moderation. These actions affect Infinity Orbs accounts only.
 // No subreddit moderation API is used here.
