@@ -1798,9 +1798,11 @@ export async function roll(isAuto = false): Promise<RollResponse> {
   const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained } = await applyRolls(s);
 
   // Only direct manual roll activations count toward the Auto Roll unlock.
-  s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + 1);
-  if (s.manualRolls >= 3) {
-    s.upgrades.auto = 1;
+  if (!isAuto) {
+    s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + 1);
+    if (s.manualRolls >= 3) {
+      s.upgrades.auto = 1;
+    }
   }
 
   s.lastRollAt = now;
