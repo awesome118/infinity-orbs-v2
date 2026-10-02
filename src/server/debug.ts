@@ -19,6 +19,7 @@ import {
   clearGlobalBoosterDebugLogs,
   getCcuPeaks,
   setFakeCcuBonus,
+  sendPushNotificationTest,
 } from './game.js';
 import { context, redis, reddit } from './devvit-mock.js';
 import {
@@ -120,6 +121,15 @@ debugRouter.post('/ccu/fake', async (req, res) => {
     res.json({ ok: true, fakeCcuBonus: bonus });
   } catch (e: any) {
     res.status(400).json({ error: e?.message || 'Failed to set fake CCU.' });
+  }
+});
+
+debugRouter.post('/push-test', async (_req, res) => {
+  try {
+    await sendPushNotificationTest();
+    res.json({ ok: true, message: 'Push test notification enqueued.' });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to send push test notification.' });
   }
 });
 
