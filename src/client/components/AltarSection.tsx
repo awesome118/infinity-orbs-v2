@@ -12,7 +12,11 @@ import {
   RotateCw,
 } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { calculateAltarMultipliers, altarCoinDevotionChancePercent } from '../../shared/game.js';
+import {
+  calculateAltarMultipliers,
+  altarCoinDevotionChancePercent,
+  MIN_ALTAR_COIN_OFFER,
+} from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface AltarSectionProps {
@@ -58,10 +62,15 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
   const currentTotalCoins = sacrifices.coinsSacrificed ?? 0;
   const altarPity = sacrifices.altarPity ?? 0;
   const selectedCoinChance = altarCoinDevotionChancePercent(selectedCoinOffer, altarPity);
+  const coinOfferMeetsFloor = selectedCoinOffer === 0 || selectedCoinOffer >= MIN_ALTAR_COIN_OFFER;
 
   const handleSacrificeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (sacrificing || (selectedCoinOffer <= 0 && selectedShardOffer <= 0)) return;
+    if (
+      sacrificing ||
+      (selectedCoinOffer <= 0 && selectedShardOffer <= 0) ||
+      (selectedCoinOffer > 0 && selectedCoinOffer < MIN_ALTAR_COIN_OFFER)
+    ) return;
 
     setSacrificing(true);
     sound.playSacrificeSound();
@@ -182,10 +191,14 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
               <span className="text-lg font-black font-mono text-white">{selectedCoinChance}%</span>
             </div>
             <div className="mt-1 text-[10px] text-slate-500">
-              Based on the selected coin offering. This roll only happens when coins are offered.
+              {selectedCoinOffer === 0
+                ? 'Select a coin offering to see its breakthrough chance.'
+                : coinOfferMeetsFloor
+                ? 'Larger offerings improve the base chance. Failed attempts multiply it upward.'
+                : 'Coin offerings require at least ' + MIN_ALTAR_COIN_OFFER.toLocaleString() + ' Coins.'}
             </div>
             <div className="mt-1 text-[10px] text-orange-300 font-bold">
-              Failed attempts: {altarPity} • +6% pity each failure (up to +36%)
+              Failed attempts: {altarPity} • pity multiplies chance by 1.35× per failure (cap 90%)
             </div>
           </div>
         </div>
@@ -276,7 +289,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
               ))}
             </div>
             <p className="text-[10px] text-slate-500">
-              Coin offerings trigger a breakthrough roll. Larger offerings raise the chance; failed coin attempts build pity.
+              Minimum coin offering: {MIN_ALTAR_COIN_OFFER.toLocaleString()}. Pity compounds by 1.35× per failed coin attempt.
             </p>
           </div>
 
