@@ -740,7 +740,7 @@ export async function addCommunityRolls(rolls: number): Promise<WorldEvent> {
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(COMMUNITY_EVENT_KEY);
-    const raw = await txn.get(COMMUNITY_EVENT_KEY);
+    const raw = await redis.get(COMMUNITY_EVENT_KEY);
     const now = Date.now();
     const currentWeekNumber = weekKey(now);
     const ev: WorldEvent = raw
@@ -786,7 +786,7 @@ export async function setCommunityEventConfig(config: {
   await ensureRedisStringKey(COMMUNITY_EVENT_KEY, JSON.stringify(COMMUNITY_WORLD_EVENT));
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(COMMUNITY_EVENT_KEY);
-    const raw = await txn.get(COMMUNITY_EVENT_KEY);
+    const raw = await redis.get(COMMUNITY_EVENT_KEY);
     const now = Date.now();
     const currentWeekNumber = weekKey(now);
     const ev: WorldEvent = raw
