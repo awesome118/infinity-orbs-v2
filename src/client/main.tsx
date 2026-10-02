@@ -59,7 +59,6 @@ import { BoostersAndAutomation } from './components/BoostersAndAutomation.js';
 import { GlobalChatWindow } from './components/GlobalChatWindow.js';
 import { DevDebugModal } from './components/DevDebugModal.js';
 import { FeedbackModal } from './components/FeedbackModal.js';
-import { SplashScreen } from './components/SplashScreen.js';
 import { APP_VERSION } from '../shared/version.js';
 import './styles.css';
 
@@ -126,7 +125,6 @@ async function getJsonWithTimeout<T>(url: string, timeoutMs = 10_000, options?: 
 
 export function App() {
   const [state, setState] = useState<PlayerState | null>(null);
-  const [showSplash, setShowSplash] = useState<boolean>(true);
   const [authRequired, setAuthRequired] = useState(false);
   const [startupError, setStartupError] = useState<string | null>(null);
   const [lastOrb, setLastOrb] = useState<Orb | null>(null);
@@ -1184,21 +1182,6 @@ export function App() {
           </div>
         </div>
       </main>
-    );
-  }
-
-  if (showSplash) {
-    return (
-      <SplashScreen
-        ready={Boolean(state)}
-        hasProgress={Boolean(state && state.totalRolls > 0)}
-        highestRarity={state?.highestRarity}
-        totalRolls={state?.totalRolls}
-        onEnter={() => {
-          sound.playClick();
-          setShowSplash(false);
-        }}
-      />
     );
   }
 
