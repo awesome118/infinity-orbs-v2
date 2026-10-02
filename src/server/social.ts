@@ -8,6 +8,7 @@ const user = () => context.userId ?? 'unknown';
 const username = () => context.username ?? `reddit-user-${user().slice(-8)}`;
 const key = (name: string) => `io:${name}`;
 const GUILDS_KEY = key('guilds');
+const GUILD_CHAT_MUTES_KEY = key('guild-chat-mutes:v1');
 
 function parseStoredJson<T>(raw: unknown): T | null {
   if (raw == null) return null;
@@ -152,6 +153,80 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
 async function loadGuilds(): Promise<Guild[]> {
   const raw = await redis.get(GUILDS_KEY);
   return parseGuildList(raw);
+}
+
+export interface GuildChatSpyGuild {
+  id: string;
+  name: string;
+  tag: string;
+  memberCount: number;
+  messages: GuildMessage[];
+}
+
+export async function listGuildChatSpy(): Promise<{
+  guilds: GuildChatSpyGuild[];
+  mutes: import('../shared/social.js').GuildChatMuteRecord[];
+}> {
+  const guilds = await loadGuilds();
+  const rawMutes = await redis.hGetAll(GUILD_CHAT_MUTES_KEY);
+  const mutes: import('../shared/social.js').GuildChatMuteRecord[] = [];
+
+  if (rawMutes && typeof rawMutes === 'object') {
+    for (const [userId, raw] of Object.entries(rawMutes as Record<string, string>)) {
+      if (!raw) continue;
+      const parsed = parseStoredJson<import('../shared/social.js').GuildChatMuteRecord>(raw);
+      if (!parsed || !parsed.userId || !parsed.username) continue;
+      mutes.push({
+        userId: parsed.userId || userId,
+        username: parsed.username,
+        mutedAt: Number(parsed.mutedAt ?? 0) || 0,
+        mutedBy: parsed.mutedBy || 'Admin',
+      });
+    }
+  }
+
+  mutes.sort((a, b) => b.mutedAt - a.mutedAt);
+
+  return {
+    guilds: guilds.map(guild => ({
+      id: guild.id,
+      name: guild.name,
+      tag: guild.tag,
+      memberCount: guild.members.length,
+      messages: Array.isArray(guild.chat) ? guild.chat : [],
+    })),
+    mutes,
+  };
+}
+
+export async function isGuildChatMuted(userId = user()): Promise<boolean> {
+  if (!userId || userId === 'unknown') return false;
+  const raw = await redis.hGet(GUILD_CHAT_MUTES_KEY, userId);
+  return Boolean(raw);
+}
+
+export async function muteGuildChatUser(
+  userId: string,
+  targetUsername: string,
+  mutedBy = username(),
+): Promise<import('../shared/social.js').GuildChatMuteRecord> {
+  const record: import('../shared/social.js').GuildChatMuteRecord = {
+    userId: String(userId),
+    username: String(targetUsername).trim().replace(/^u\//i, ''),
+    mutedAt: Date.now(),
+    mutedBy: String(mutedBy).trim() || 'Admin',
+  };
+  await redis.hSet(GUILD_CHAT_MUTES_KEY, {
+    [record.userId]: JSON.stringify(record),
+  });
+  return record;
+}
+
+export async function unmuteGuildChatUser(userId: string): Promise<boolean> {
+  const existing = await redis.hGet(GUILD_CHAT_MUTES_KEY, userId);
+  if (!existing) return false;
+  await redis.hSet(GUILD_CHAT_MUTES_KEY, { [userId]: '' });
+  return true;
 }
 
 export async function guildInfo() {
@@ -490,6 +565,10 @@ export async function postGuildMessage(text: string) {
   const clean = text.trim().slice(0, 200);
   if (!clean) throw new Error('Message cannot be empty.');
 
+  if (await isGuildChatMuted()) {
+    throw new Error('You are muted from Guild Chat.');
+  }
+
   return updateGuilds(guilds => {
     const guild = currentGuild(guilds);
     if (!guild) throw new Error('You are not in a guild.');
@@ -498,6 +577,7 @@ export async function postGuildMessage(text: string) {
     const msg: GuildMessage = {
       id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       username: username(),
+      userId: user(),
       text: clean,
       timestamp: Date.now(),
     };
