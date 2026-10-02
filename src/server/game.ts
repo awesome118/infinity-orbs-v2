@@ -54,6 +54,8 @@ import {
   MASTERY_SKILLS,
   masterySkillCost,
   getLevelBenefits,
+  highestCodexChain,
+  codexDevotionLuckPercent,
 } from '../shared/game.js';
 import {
   contribute,
@@ -1301,10 +1303,15 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
 
 async function claimCommunityRewardFromState(s: PlayerState): Promise<{ rewardCoins: number; rewardXp: number; nextClaimAt: number; tier: number }> {
   const event = await getCommunityEvent();
-  const tier = Math.max(1, event.tier || 1);
-  const claimedTier = s.communityRewardClaimedTier ?? 0;
-  if (tier <= claimedTier) {
-    return { rewardCoins: 0, rewardXp: 0, nextClaimAt: 0, tier };
+  const completedTier = Math.max(
+    0,
+    Math.floor(Number(event.completedTier ?? Math.max(0, (event.tier ?? 1) - 1)) || 0),
+  );
+  const claimedTier = Math.max(0, Math.floor(Number(s.communityRewardClaimedTier ?? 0) || 0));
+  const tier = claimedTier + 1;
+
+  if (tier > completedTier) {
+    return { rewardCoins: 0, rewardXp: 0, nextClaimAt: 0, tier: completedTier };
   }
 
   const rewardCoins = Math.round(1_000 * tier + 250 * (s.level || 1));
@@ -1409,6 +1416,11 @@ export async function getGlobalBoosterAnnouncement(): Promise<{
 
 export async function save(s: PlayerState) {
   const userId = currentUserId();
+  s.codexChain = highestCodexChain(s.collection);
+  s.codexDevotionLuckPercent = codexDevotionLuckPercent(
+    s.masterySkills?.celestialSurge ?? 0,
+    s.codexChain,
+  );
   const playerKey = key();
   const generationKey = saveGenerationKeyFor(userId);
   await ensureRedisStringKey(generationKey, '0');
@@ -1505,6 +1517,8 @@ function checkPeriodicResets(s: PlayerState, now: number) {
   if (currentWeek !== lastWeek) {
     s.weeklyQuests = createInitialWeeklyQuests();
     s.lastWeeklyReset = today;
+    // Community rewards are weekly. A new week starts the claim ladder over at Tier 1.
+    s.communityRewardClaimedTier = 0;
   }
 }
 
