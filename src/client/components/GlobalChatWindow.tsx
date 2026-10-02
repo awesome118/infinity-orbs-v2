@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { memo, useEffect, useRef, useState } from 'react';
 import { MessageCircle, Minimize2, Send, X } from 'lucide-react';
 import type { GlobalChatMessage } from '../../shared/social.js';
 
@@ -15,7 +15,7 @@ async function loadChat(): Promise<GlobalChatMessage[]> {
   return await response.json() as GlobalChatMessage[];
 }
 
-export const GlobalChatWindow: React.FC<GlobalChatWindowProps> = ({ username = '' }) => {
+const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username = '' }) => {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<GlobalChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -31,11 +31,13 @@ export const GlobalChatWindow: React.FC<GlobalChatWindowProps> = ({ username = '
     }
   };
 
+export const GlobalChatWindow = memo(GlobalChatWindowComponent);
+
   useEffect(() => {
     void refreshChat();
-    const interval = window.setInterval(() => void refreshChat(), 3000);
+    const interval = window.setInterval(() => void refreshChat(), open ? 3000 : 10000);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
