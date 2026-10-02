@@ -238,7 +238,7 @@ export const GLOBAL_BOOSTERS: Record<GlobalBoosterId, {
   },
 };
 
-export function createInitialGlobalBoosters(_now = Date.now()): GlobalBoosterSnapshot {
+export function createInitialGlobalBoosters(now = Date.now()): GlobalBoosterSnapshot {
   const inactive = (): GlobalBoosterState => ({
     tier: 0,
     activationProgress: 0,
