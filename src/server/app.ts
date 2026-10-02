@@ -49,7 +49,7 @@ import {
 } from './social.js';
 import { context, reddit } from './devvit-mock.js';
 import * as devvitServer from '@devvit/web/server';
-import type { Order, PaymentHandlerResponse } from '@devvit/web/server';
+import type { Order } from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, type FeatureId } from '../shared/game.js';
 
 export function createApp() {
@@ -223,35 +223,35 @@ export function createApp() {
       }));
 
       if (!buyerUserId) {
-        return res.json<PaymentHandlerResponse>({
+        return res.json({
           success: false,
           reason: 'Unable to identify the purchasing Reddit account.',
         });
       }
       if (order?.status !== 'PAID') {
-        return res.json<PaymentHandlerResponse>({
+        return res.json({
           success: false,
           reason: 'Payment order is not marked as PAID.',
         });
       }
       if (!productSku) {
-        return res.json<PaymentHandlerResponse>({
+        return res.json({
           success: false,
           reason: 'Infinity Orbs purchases must contain one product.',
         });
       }
       if (!orderId) {
-        return res.json<PaymentHandlerResponse>({
+        return res.json({
           success: false,
           reason: 'Purchase order is missing its order ID.',
         });
       }
 
       await grantPurchasedPack(buyerUserId, productSku, orderId);
-      return res.json<PaymentHandlerResponse>({ success: true });
+      return res.json({ success: true });
     } catch (e: unknown) {
       console.error('[Payments] Fulfillment failed:', e instanceof Error ? e.stack ?? e.message : e);
-      return res.json<PaymentHandlerResponse>({
+      return res.json({
         success: false,
         reason: e instanceof Error ? e.message : 'Unable to fulfill purchase.',
       });
@@ -268,23 +268,23 @@ export function createApp() {
         : '';
 
       if (!buyerUserId || !orderId) {
-        return res.json<PaymentHandlerResponse>({
+        return res.json({
           success: false,
           reason: 'Refund order is missing an identity.',
         });
       }
       if (!productSku) {
-        return res.json<PaymentHandlerResponse>({
+        return res.json({
           success: false,
           reason: 'Refund must identify one product.',
         });
       }
 
       await refundPurchasedPack(buyerUserId, productSku, orderId);
-      return res.json<PaymentHandlerResponse>({ success: true });
+      return res.json({ success: true });
     } catch (e: unknown) {
       console.error('[Payments] Refund failed:', e instanceof Error ? e.stack ?? e.message : e);
-      return res.json<PaymentHandlerResponse>({
+      return res.json({
         success: false,
         reason: e instanceof Error ? e.message : 'Unable to process refund.',
       });
