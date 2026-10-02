@@ -28,7 +28,7 @@ import {
   globalBoosterLuckMultiplier,
   globalBoosterSpeedMultiplier,
   globalBoosterCritChanceBonus,
-  globalBoosterCritDamageBonus,
+  globalBoosterCritLuckBonus,
   PREMIUM_BOOSTERS,
   onlinePlayerLuckMultiplier,
   premiumBoosterRemainingMs,
@@ -144,13 +144,14 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
             const displayed = decayGlobalBoosterState(raw, now);
             const active = displayed.remainingMs > 0 && displayed.tier > 0;
             const progress = globalBoosterProgress(displayed);
+            const activationProgress = Math.max(0, Math.min(4, displayed.activationProgress ?? 0));
             const drain = displayed.tier > 0 ? (1 + (displayed.tier - 1) * 0.5) : 1;
             const effect = id === 'luck'
               ? '×' + globalBoosterLuckMultiplier(displayed).toFixed(2) + ' Luck'
               : id === 'speed'
                 ? Math.round((1 - globalBoosterSpeedMultiplier(displayed)) * 100) + '% faster cooldown'
                 : '+' + Math.round(globalBoosterCritChanceBonus(displayed) * 100) + '% Crit, +' +
-                  globalBoosterCritDamageBonus(displayed).toFixed(1) + '× damage';
+                  globalBoosterCritLuckBonus(displayed).toFixed(1) + '× crit luck';
 
             return (
               <div key={id} className="rounded-2xl border border-slate-800 bg-slate-950/65 p-3">
@@ -164,13 +165,18 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                   <div className="h-2.5 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
                     <div
                       className="h-full bg-gradient-to-r from-fuchsia-500 via-purple-500 to-cyan-400 transition-all duration-700"
-                      style={{ width: (active ? Math.min(100, progress) : 0) + '%' }}
+                      style={{ width: (active ? activationProgress * 25 : 0) + '%' }}
                     />
                   </div>
                   <div className="mt-1 flex items-center justify-between text-[10px]">
                     <span className="text-slate-400">
                       {active ? formatDuration(displayed.remainingMs / drain) + ' left' : 'Inactive'}
                     </span>
+                    {active && displayed.tier < 10 && (
+                      <span className="text-fuchsia-300 font-bold">
+                        {activationProgress}/4 activations to Tier {displayed.tier + 1}
+                      </span>
+                    )}
                     <span className="text-fuchsia-300 font-bold">
                       {active ? effect : ''}
                     </span>
