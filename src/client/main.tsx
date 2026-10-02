@@ -347,7 +347,7 @@ export function App() {
     };
 
     void checkForUpdate();
-    const interval = window.setInterval(() => void checkForUpdate(), 15_000);
+    const interval = window.setInterval(() => void checkForUpdate(), 5_000);
     return () => window.clearInterval(interval);
   }, []);
 
