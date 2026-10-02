@@ -119,20 +119,20 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/40 text-purple-300 text-xs font-bold">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>ASTRAL MASTERY CODEX</span>
+              <span>MASTERY</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              Astral Skill Tree
+              Skill Tree
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Invest Mastery Points gained from Leveling up and Altar devotions into deep permanent passive skills.
+              Spend Mastery Points on permanent passive skills.
             </p>
           </div>
 
           {/* Mastery Points Jewel Badge */}
           <div className="bg-slate-950/80 border border-amber-500/40 rounded-2xl p-4 flex items-center gap-3.5 shadow-xl">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 via-amber-500 to-yellow-600 flex items-center justify-center text-slate-950 shadow-lg shadow-amber-500/30">
-              <Star className="w-6 h-6 fill-current animate-spin" style={{ animationDuration: '18s' }} />
+              <Star className="w-6 h-6 fill-current " style={{ animationDuration: '18s' }} />
             </div>
             <div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
