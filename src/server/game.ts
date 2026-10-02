@@ -81,7 +81,7 @@ export async function appendPaymentDebugLog(stage: string, details: Record<strin
   try {
     for (let attempt = 0; attempt < 4; attempt++) {
       const txn = await redis.watch(PAYMENT_DEBUG_LOG_KEY);
-      const raw = await txn.get(PAYMENT_DEBUG_LOG_KEY);
+      const raw = await redis.get(PAYMENT_DEBUG_LOG_KEY);
       let entries: Array<Record<string, unknown>> = [];
 
       if (typeof raw === 'string' && raw.trim()) {
@@ -507,9 +507,9 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(pkey, generationKey);
-    const generationRaw = await txn.get(generationKey);
+    const generationRaw = await redis.get(generationKey);
     const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
-    const raw = await txn.get(pkey);
+    const raw = await redis.get(pkey);
     await appendPaymentDebugLog('grant:redis-read', {
       userId,
       sku,
@@ -654,7 +654,7 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
   const pkey = playerKeyFor(userId);
   for (let attempt = 0; attempt < 4; attempt++) {
     const txn = await redis.watch(pkey);
-    const raw = await txn.get(pkey);
+    const raw = await redis.get(pkey);
     if (raw == null) {
       await txn.unwatch();
       return;
@@ -882,7 +882,7 @@ export async function save(s: PlayerState) {
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(playerKey, generationKey);
-    const generationRaw = await txn.get(generationKey);
+    const generationRaw = await redis.get(generationKey);
     const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
     const stateGeneration = Math.max(0, Math.floor(Number(s.saveGeneration ?? 0)));
 
@@ -891,7 +891,7 @@ export async function save(s: PlayerState) {
       // and adopt the fresh state already written by the wipe. Never let an
       // old request resurrect pre-wipe data, and never strand the player with
       // an avoidable invalidation error.
-      const currentRaw = await txn.get(playerKey);
+      const currentRaw = await redis.get(playerKey);
       const current = parseStoredJson<PlayerState>(currentRaw);
       const currentGeneration = current
         ? Math.max(0, Math.floor(Number(current.saveGeneration ?? -1)))
