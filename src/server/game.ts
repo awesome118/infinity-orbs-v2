@@ -31,13 +31,7 @@ import {
   type PremiumBoosterId,
   type AutomationId,
   type PaymentReceipt,
-  type GlobalBoosterId,
-  type GlobalBoosterSnapshot,
-  GLOBAL_BOOSTERS,
-  createInitialGlobalBoosters,
-  decayGlobalBoosterState,
-  activateGlobalBoosterStack,
-  globalBoosterCritChanceBonus,
+
   PREMIUM_BOOSTERS,
   AUTOMATIONS,
   PURCHASE_PACKS,
@@ -238,63 +232,6 @@ export async function getOnlinePlayers(): Promise<number> {
 
 const FRENZY_POST_PREFIX = 'io:frenzy:post:';
 
-const GLOBAL_BOOSTERS_KEY = 'io:global-boosters:v3';
-
-function parseGlobalBoosterSnapshot(raw: unknown, now: number): GlobalBoosterSnapshot | null {
-  if (raw == null) return null;
-
-  let parsed: unknown = raw;
-  for (let depth = 0; depth < 2 && typeof parsed === 'string'; depth++) {
-    try {
-      parsed = JSON.parse(parsed);
-    } catch {
-      return null;
-    }
-  }
-
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-  const record = parsed as Record<string, unknown>;
-
-  if (
-    !record.luck || typeof record.luck !== 'object' ||
-    !record.speed || typeof record.speed !== 'object' ||
-    !record.crit || typeof record.crit !== 'object'
-  ) {
-    return null;
-  }
-
-  return {
-    luck: decayGlobalBoosterState(record.luck as any, now),
-    speed: decayGlobalBoosterState(record.speed as any, now),
-    crit: decayGlobalBoosterState(record.crit as any, now),
-  };
-}
-
-export async function getGlobalBoosters(): Promise<GlobalBoosterSnapshot> {
-  const now = Date.now();
-  const raw = await redis.get(GLOBAL_BOOSTERS_KEY);
-  return parseGlobalBoosterSnapshot(raw, now) ?? createInitialGlobalBoosters(now);
-}
-
-async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSnapshot> {
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const now = Date.now();
-    const txn = await redis.watch(GLOBAL_BOOSTERS_KEY);
-    const raw = await txn.get(GLOBAL_BOOSTERS_KEY);
-    const current = parseGlobalBoosterSnapshot(raw, now) ?? createInitialGlobalBoosters(now);
-
-    // Only this booster entry changes. Luck, Speed, and Crit are independent.
-    current[id] = activateGlobalBoosterStack(current[id], now);
-
-    await txn.multi();
-    await txn.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(current));
-    const committed = await txn.exec();
-    if (committed !== null) return getGlobalBoosters();
-  }
-
-  throw new Error('The Global Booster was activated by another player. Please try again.');
-}
-
 function playerKeyFor(userId: string): string {
   return `player:${userId}`;
 }
@@ -465,11 +402,9 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
     state.shards = (state.shards ?? 0) + pack.shards;
     state.purchasedShards = (state.purchasedShards ?? 0) + pack.shards;
     state.lifetimeShards = (state.lifetimeShards ?? 0) + pack.shards;
-    state.globalBoosterCredits = (state.globalBoosterCredits ?? 0) + pack.globalBoosterCredits;
     const receipt: PaymentReceipt = {
       status: 'fulfilled',
       shards: pack.shards,
-      globalBoosterCredits: pack.globalBoosterCredits,
     };
     state.paymentReceipts[orderId] = receipt;
 
@@ -509,19 +444,13 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
 
     // New receipts store the exact entitlement granted by this order. Old
     // status-only receipts migrate using the verified SKU payload.
-    const grantedShards = typeof receipt === 'string' ? pack.shards : receipt.shards;
-    const grantedCredits = typeof receipt === 'string'
-      ? pack.globalBoosterCredits
-      : Math.max(0, Number(receipt.globalBoosterCredits ?? 0) || 0);
-    const refundableShards = Math.min(state.purchasedShards ?? 0, grantedShards);
+    const grantedShards = typeof receipt === 'string' ? pack.shards : receipt.shards;    const refundableShards = Math.min(state.purchasedShards ?? 0, grantedShards);
     state.shards = Math.max(0, (state.shards ?? 0) - refundableShards);
     state.purchasedShards = Math.max(0, (state.purchasedShards ?? 0) - refundableShards);
-    const refundableCredits = Math.min(state.globalBoosterCredits ?? 0, grantedCredits);
-    state.globalBoosterCredits = Math.max(0, (state.globalBoosterCredits ?? 0) - refundableCredits);
+
     state.paymentReceipts[orderId] = {
       status: 'refunded',
       shards: grantedShards,
-      globalBoosterCredits: grantedCredits,
     };
     await txn.multi();
     await txn.set(pkey, JSON.stringify(state));
@@ -541,14 +470,14 @@ export async function loadRaw(): Promise<PlayerState> {
   const username = context.username ?? `reddit-user-${userId.slice(-8)}`;
   await registerPlayer(userId, username);
   const perks = await getPlayerGuildPerks(username);
-  const globalBoosters = await getGlobalBoosters();
+
 
   if (!raw) {
     const s = createInitialState();
     s.username = username;
     s.saveGeneration = generation;
     s.guildPerks = perks;
-    s.globalBoosters = globalBoosters;
+
     return s;
   }
 
@@ -565,7 +494,7 @@ export async function loadRaw(): Promise<PlayerState> {
     fresh.username = username;
     fresh.saveGeneration = generation;
     fresh.guildPerks = perks;
-    fresh.globalBoosters = globalBoosters;
+
     return fresh;
   }
 
@@ -610,7 +539,6 @@ export async function loadRaw(): Promise<PlayerState> {
     masterySkills: { ...base.masterySkills!, ...(parsed.masterySkills ?? {}) } as Record<MasterySkillId, number>,
     masteryPoints: parsed.masteryPoints ?? base.masteryPoints ?? 1,
     guildPerks: perks,
-    globalBoosters,
   };
 }
 
@@ -829,8 +757,7 @@ export async function applyRolls(
     rollCount += 2;
   }
 
-  s.globalBoosters = await getGlobalBoosters();
-  const globalBoosters = s.globalBoosters;
+
   const worldEvent = await getCommunityEvent();
   const communityLuck = worldEvent.buffMultiplier ?? 1.15;
 
@@ -851,8 +778,7 @@ export async function applyRolls(
     const critChance =
       (s.upgrades.critChance ?? 0) * 0.03 +
       (s.masterySkills?.critMastery ?? 0) * 0.03 +
-      (s.guildPerks?.critRank ?? 0) * 0.015 +
-      globalBoosterCritChanceBonus(globalBoosters.crit);
+      (s.guildPerks?.critRank ?? 0) * 0.015;
     const isCrit = rng() < Math.min(1, critChance);
     let effectiveCm = cm;
     if (isCrit) {
@@ -1047,7 +973,7 @@ export async function settleOffline(s: PlayerState): Promise<PlayerState> {
   checkPeriodicResets(s, now);
   resetFreeShardBudgetIfNeeded(s, now);
   s.onlinePlayers = await touchOnlinePresence();
-  s.globalBoosters = await getGlobalBoosters();
+
   await processAutomation(s);
 
   const tickMs = effectiveOfflineTickMs(s);
@@ -1508,43 +1434,6 @@ export async function buyCosmetic(id: string): Promise<PlayerState> {
   s.activeCosmetic = id;
   await save(s);
   return s;
-}
-
-async function claimWorldBoosterActivation(
-  s: PlayerState,
-  id: GlobalBoosterId,
-  useCredit: boolean,
-): Promise<{ state: PlayerState; snapshot: GlobalBoosterSnapshot; usedCredit: boolean }> {
-  const cost = GLOBAL_BOOSTERS[id].costShards;
-
-  if (useCredit) {
-    if ((s.globalBoosterCredits ?? 0) <= 0) {
-      throw new Error('No free Global Booster activations remain.');
-    }
-    s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) - 1;
-  } else {
-    spendShards(s, cost);
-  }
-
-  try {
-    const snapshot = await updateGlobalBooster(id);
-    s.globalBoosters = snapshot;
-    await save(s);
-    return { state: s, snapshot, usedCredit: useCredit };
-  } catch (error) {
-    if (useCredit) s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) + 1;
-    else s.shards = (s.shards ?? 0) + cost;
-    throw error;
-  }
-}
-
-export async function activateGlobalBooster(
-  id: GlobalBoosterId,
-  useCredit = false,
-): Promise<{ state: PlayerState; snapshot: GlobalBoosterSnapshot; usedCredit: boolean }> {
-  if (!GLOBAL_BOOSTERS[id]) throw new Error('Unknown Global Booster.');
-  const s = await settleOffline(await loadRaw());
-  return claimWorldBoosterActivation(s, id, useCredit);
 }
 
 export async function activatePremiumBooster(id: PremiumBoosterId): Promise<PlayerState> {
