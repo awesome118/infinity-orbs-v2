@@ -35,7 +35,7 @@ interface GuildsAndSocialProps {
   myGuild: Guild | null;
   leaderboard: LeaderboardEntry[];
   worldEvent: WorldEvent | null;
-  onCreateGuild: (name: string, tag: string) => Promise<void>;
+  onCreateGuild: (name: string, tag: string) => Promise<boolean>;
   onJoinGuild: (id: string) => Promise<void>;
   onLeaveGuild: () => Promise<void>;
   onSendMessage: (text: string) => Promise<void>;
@@ -118,10 +118,12 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     e.preventDefault();
     if (!createName.trim() || !createTag.trim() || busy) return;
     sound.playClick();
-    await onCreateGuild(createName.trim(), createTag.trim());
-    setCreateName('');
-    setCreateTag('');
-    setShowCreateModal(false);
+    const created = await onCreateGuild(createName.trim(), createTag.trim());
+    if (created) {
+      setCreateName('');
+      setCreateTag('');
+      setShowCreateModal(false);
+    }
   };
 
   return (
