@@ -178,11 +178,11 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       icon: <Bot className="w-5 h-5 text-cyan-400" />,
       level: state.upgrades.auto ?? 0,
       currentVal: isAutoUnlocked ? 'Unlocked' : 'Locked',
-      nextVal: isAutoUnlocked ? 'Active' : '10 Manual Rolls',
+      nextVal: isAutoUnlocked ? 'Active' : '3 Manual Rolls',
       desc: 'Rolls automatically when cooldown finishes. Unlocks automatically after 3 manual rolls.',
       cost: isAutoUnlocked ? Infinity : 0,
       locked: !isAutoUnlocked,
-      lockMsg: isAutoUnlocked ? undefined : `Unlocks after 3 manual rolls (${manualRolls}/10)`,
+      lockMsg: isAutoUnlocked ? undefined : `Unlocks after 3 manual rolls (${manualRolls}/3)`,
     },
     {
       id: 'coinBonus',
