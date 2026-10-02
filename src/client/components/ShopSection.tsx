@@ -10,6 +10,24 @@ interface ShopProduct {
   price: number;
 }
 
+function formatPaymentError(value: unknown, fallback: string): string {
+  if (typeof value === 'string' && value.trim()) return value;
+  if (value instanceof Error && value.message) return value.message;
+  if (value && typeof value === 'object') {
+    const objectValue = value as Record<string, unknown>;
+    for (const key of ['message', 'errorMessage', 'reason', 'error']) {
+      const candidate = objectValue[key];
+      if (typeof candidate === 'string' && candidate.trim()) return candidate;
+    }
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
 function normalizeProducts(raw: unknown): ShopProduct[] {
   const source = Array.isArray(raw)
     ? raw
@@ -62,6 +80,7 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
     const baselineCredits = state.globalBoosterCredits ?? 0;
     try {
       const result = await purchase(sku);
+      console.error('[Payments] Client purchase result:', result);
       if (result.status === OrderResultStatus.STATUS_SUCCESS) {
         let fulfillmentObserved = false;
         for (const delayMs of [0, 500, 1000, 2000, 3000]) {
@@ -104,10 +123,11 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
         } catch {
           // Keep the original payment error for the player.
         }
-        setMessage(result.errorMessage || 'Purchase was not completed.');
+        setMessage(formatPaymentError(result.errorMessage, 'Purchase was not completed.'));
       }
     } catch (e: any) {
-      setMessage(e?.message || 'Purchase failed.');
+      console.error('[Payments] Client purchase exception:', e);
+      setMessage(formatPaymentError(e, 'Purchase failed.'));
     } finally {
       setBuyingSku(null);
     }
