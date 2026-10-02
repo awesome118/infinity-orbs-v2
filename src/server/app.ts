@@ -18,6 +18,8 @@ import {
   buyAutomation,
   claimCommunityReward,
   getOnlinePlayers,
+  getGlobalBoosters,
+  activateGlobalBooster,
   claimOrbFrenzy,
   getOrbFrenzyInfo,
   startOrbFrenzy,
@@ -632,6 +634,28 @@ export function createApp() {
       res.json({ onlinePlayers: await getOnlinePlayers() });
     } catch (e: any) {
       res.status(500).json({ error: e?.message || 'Failed to fetch online players.' });
+    }
+  });
+
+  app.get('/api/global-boosters', async (_req, res) => {
+    try {
+      res.json(await getGlobalBoosters());
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Failed to fetch Global Boosters.' });
+    }
+  });
+
+  app.post('/api/global-boosters/activate', async (req, res) => {
+    try {
+      const id = req.body?.id;
+      const useCredit = req.body?.useCredit === true;
+      const validIds = ['luck', 'speed', 'crit'];
+      if (!validIds.includes(id)) {
+        return res.status(400).json({ error: 'Invalid Global Booster.' });
+      }
+      res.json(await activateGlobalBooster(id, useCredit));
+    } catch (e) {
+      badRequest(res, e, 'Failed to activate Global Booster.');
     }
   });
 
