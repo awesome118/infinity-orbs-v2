@@ -97,7 +97,7 @@ export const NewBestModal: React.FC<NewBestModalProps> = ({
         <div className="relative z-10 w-full max-w-sm bg-slate-900 border border-slate-700/80 rounded-2xl p-5 shadow-xl text-center space-y-4 animate-in zoom-in-95 duration-200">
           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 text-xs font-semibold">
             <Star className="w-3.5 h-3.5 text-amber-400" />
-            <span>New Best Ball</span>
+            <span>NEW PERSONAL BEST</span>
           </div>
 
           <div className="py-2 flex items-center justify-center">
@@ -119,9 +119,9 @@ export const NewBestModal: React.FC<NewBestModalProps> = ({
 
           <div className="text-xs text-slate-400">
             {prevBest > 0 ? (
-              <span>Improved from 1/{prevBest.toLocaleString()} ({multiplier}×)</span>
+              <span>You beat your previous record by {multiplier}×.</span>
             ) : (
-              <span>Your initial record!</span>
+              <span>Your first record is on the board.</span>
             )}
           </div>
 
@@ -158,11 +158,11 @@ export const NewBestModal: React.FC<NewBestModalProps> = ({
         <div className="space-y-1.5">
           <div className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 text-xs font-black tracking-widest uppercase shadow-md animate-bounce">
             <Crown className="w-4 h-4 text-amber-300" />
-            <span>NEW ALL-TIME BEST BALL!</span>
+            <span>NEW PERSONAL BEST!</span>
             <Crown className="w-4 h-4 text-amber-300" />
           </div>
           <h2 className="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-400 drop-shadow-sm">
-            INCREDIBLE DISCOVERY!
+            YOU BEAT YOUR RECORD!
           </h2>
         </div>
 
@@ -199,7 +199,7 @@ export const NewBestModal: React.FC<NewBestModalProps> = ({
         {/* Comparison Stats */}
         <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-2.5">
           <div className="flex items-center justify-between text-xs text-slate-400">
-            <span>Previous Best Record:</span>
+            <span>Previous Record:</span>
             <span className="font-mono font-bold text-slate-300">
               {prevBest > 0 ? `1 / ${prevBest.toLocaleString()}` : 'None'}
             </span>
@@ -207,7 +207,7 @@ export const NewBestModal: React.FC<NewBestModalProps> = ({
           <div className="flex items-center justify-between text-sm font-bold text-emerald-400 border-t border-slate-800/80 pt-2">
             <span className="flex items-center gap-1.5">
               <Trophy className="w-4 h-4 text-amber-400" />
-              <span>Record Improvement:</span>
+              <span>Record Jump:</span>
             </span>
             <span className="font-mono text-base font-black text-amber-300">
               {multiplier !== '∞' ? `${multiplier}× Higher!` : 'First Roll!'}
@@ -225,14 +225,14 @@ export const NewBestModal: React.FC<NewBestModalProps> = ({
             className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-orange-600 via-amber-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-orange-950/50 transition-all active:scale-95 cursor-pointer"
           >
             <Share2 className="w-4 h-4" />
-            <span>Share Record</span>
+            <span>Share This Record</span>
           </button>
           <button
             onClick={onClose}
             className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-950/50 transition-all active:scale-95 cursor-pointer"
           >
             <Sparkles className="w-4 h-4" />
-            <span>Keep Rolling!</span>
+            <span>Keep Rolling</span>
           </button>
         </div>
       </div>
