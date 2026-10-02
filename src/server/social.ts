@@ -385,7 +385,8 @@ export async function getCommunityEvent(): Promise<WorldEvent> {
   const raw = await redis.get(eventKey);
 
   if (raw) {
-    const current = parseStoredJson<WorldEvent>(raw);\n    if (!current) return { ...COMMUNITY_WORLD_EVENT };
+    const current = parseStoredJson<WorldEvent>(raw);
+    if (!current) return { ...COMMUNITY_WORLD_EVENT };
     const lastTickRaw = await redis.get(tickKey);
     const lastTick = lastTickRaw ? Number(lastTickRaw) : now;
     const currentWeekNumber = weekKey(now);
@@ -498,7 +499,7 @@ export async function setCommunityEventConfig(config: {
     const now = Date.now();
     const currentWeekNumber = weekKey(now);
     const ev: WorldEvent = raw
-      ? JSON.parse(raw) as WorldEvent
+      ? parseStoredJson<WorldEvent>(raw) ?? { ...COMMUNITY_WORLD_EVENT }
       : { ...COMMUNITY_WORLD_EVENT };
 
     if (ev.weekId !== currentWeekNumber || now >= ev.endsAt) {
@@ -572,7 +573,7 @@ export async function recordLeaderboard(s: PlayerState) {
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(leaderboardKey);
     const raw = await txn.get(leaderboardKey);
-    const board: LeaderboardEntry[] = raw ? JSON.parse(raw) : [];
+    const board: LeaderboardEntry[] = parseStoredJson<LeaderboardEntry[]>(raw) ?? [];
     const existing = board.find(e => e.username === name);
     if (existing) Object.assign(existing, next);
     else board.push(next);
