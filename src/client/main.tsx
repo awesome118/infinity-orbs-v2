@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getWebViewMode, requestExpandedMode } from '@devvit/web/client';
 import {
@@ -59,6 +59,7 @@ import { NewBestModal } from './components/NewBestModal.js';
 import { BoostersAndAutomation } from './components/BoostersAndAutomation.js';
 import { ShopSection } from './components/ShopSection.js';
 import { DevDebugModal } from './components/DevDebugModal.js';
+import { FeedbackModal } from './components/FeedbackModal.js';
 import './styles.css';
 
 type ActiveTab =
@@ -141,6 +142,41 @@ export function App() {
   const [busy, setBusy] = useState<boolean>(false);
   const [toast, setToast] = useState<{ msg: string; type?: 'info' | 'success' | 'warn' } | null>(null);
 
+  useEffect(() => {
+    const pollAnnouncement = async () => {
+      try {
+        const announcement = await getJson<{
+          id: GlobalBoosterId;
+          name: string;
+          username: string;
+          activatedAt: number;
+        } | null>('/api/global-booster-announcement');
+        if (!announcement || announcement.activatedAt <= lastBoosterAnnouncementAtRef.current) return;
+
+        lastBoosterAnnouncementAtRef.current = announcement.activatedAt;
+        setBoosterAnnouncement(announcement);
+        if (boosterAnnouncementTimerRef.current !== null) {
+          window.clearTimeout(boosterAnnouncementTimerRef.current);
+        }
+        boosterAnnouncementTimerRef.current = window.setTimeout(() => {
+          setBoosterAnnouncement(null);
+          boosterAnnouncementTimerRef.current = null;
+        }, 5000);
+      } catch {
+        // Announcement polling is best-effort and never blocks gameplay.
+      }
+    };
+
+    void pollAnnouncement();
+    const interval = window.setInterval(() => void pollAnnouncement(), 1500);
+    return () => {
+      window.clearInterval(interval);
+      if (boosterAnnouncementTimerRef.current !== null) {
+        window.clearTimeout(boosterAnnouncementTimerRef.current);
+      }
+    };
+  }, []);
+
   // Social & Community state
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
   const [guildData, setGuildData] = useState<{ guilds: Guild[]; mine: Guild | null }>({
@@ -154,11 +190,20 @@ export function App() {
   // Modals
   const [shareRarity, setShareRarity] = useState<number | null>(null);
   const [showOddsModal, setShowOddsModal] = useState<boolean>(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState<boolean>(false);
   const [showDevModal, setShowDevModal] = useState<boolean>(false);
+  const [boosterAnnouncement, setBoosterAnnouncement] = useState<{
+    id: GlobalBoosterId;
+    name: string;
+    username: string;
+    activatedAt: number;
+  } | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(sound.enabled);
   const [newBestModalData, setNewBestModalData] = useState<{ orb: Orb; prevBest: number } | null>(null);
   const [frenzyRunTriggered, setFrenzyRunTriggered] = useState(false);
+  const lastBoosterAnnouncementAtRef = useRef(0);
+  const boosterAnnouncementTimerRef = useRef<number | null>(null);
 
   const featureForTab = (nextTab: ActiveTab): FeatureId | null => {
     if (nextTab === 'upgrades') return 'upgrades';
@@ -516,12 +561,25 @@ export function App() {
         state: PlayerState;
         snapshot: GlobalBoosterSnapshot;
         usedCredit: boolean;
+        announcement: {
+          id: GlobalBoosterId;
+          name: string;
+          username: string;
+          activatedAt: number;
+        };
       }>('/api/global-boosters/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, useCredit }),
       });
       setState(res.state);
+      lastBoosterAnnouncementAtRef.current = res.announcement.activatedAt;
+      setBoosterAnnouncement(res.announcement);
+      if (boosterAnnouncementTimerRef.current !== null) window.clearTimeout(boosterAnnouncementTimerRef.current);
+      boosterAnnouncementTimerRef.current = window.setTimeout(() => {
+        setBoosterAnnouncement(null);
+        boosterAnnouncementTimerRef.current = null;
+      }, 5000);
       sound.playChime(960, 'sawtooth', 0.3);
       showToast(
         res.usedCredit ? 'Global Booster activated with a free credit.' : 'Global Booster activated.',
@@ -951,6 +1009,16 @@ export function App() {
     }
   };
 
+  const handleSendFeedback = async (type: 'bug' | 'suggestion', message: string) => {
+    await getJson<{ success: boolean }>('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, message }),
+    });
+    setShowFeedbackModal(false);
+    showToast(type === 'bug' ? 'Bug report sent to the moderators.' : 'Suggestion sent to the moderators.', 'success');
+  };
+
   // Share to Reddit
   const handleShareToReddit = async (rarity: number) => {
     const res = await getJson<{ success: boolean; id?: string }>('/api/share', {
@@ -1089,10 +1157,22 @@ export function App() {
         soundEnabled={soundEnabled}
         onToggleSound={() => setSoundEnabled(sound.toggle())}
         onOpenOdds={() => setShowOddsModal(true)}
+        onOpenFeedback={() => setShowFeedbackModal(true)}
         onClaimOffline={handleClaimOffline}
         onOpenDevDebug={isAdmin ? () => setShowDevModal(true) : undefined}
         onOpenProfile={() => changeTab('profile')}
       />
+
+      {/* Global Booster Activation Announcement */}
+      {boosterAnnouncement && (
+        <div className="fixed top-[68px] left-1/2 -translate-x-1/2 z-50 pointer-events-none px-4 w-full flex justify-center animate-in slide-in-from-top-3 fade-in duration-200">
+          <div className="max-w-xl rounded-2xl border border-fuchsia-400/40 bg-slate-950/95 px-4 py-3 shadow-2xl shadow-fuchsia-950/30 backdrop-blur-md text-center">
+            <div className="text-sm font-black text-fuchsia-200">
+              u/{boosterAnnouncement.username} activated {boosterAnnouncement.name} booster for 30 minutes!
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Ephemeral Toast Banner */}
       {toast && (
@@ -1461,6 +1541,14 @@ export function App() {
           state={state}
           onClose={() => setShareRarity(null)}
           onShare={handleShareToReddit}
+        />
+      )}
+
+      {/* Feedback Modal */}
+      {showFeedbackModal && (
+        <FeedbackModal
+          onClose={() => setShowFeedbackModal(false)}
+          onSubmit={handleSendFeedback}
         />
       )}
 
