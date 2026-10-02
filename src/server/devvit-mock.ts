@@ -21,51 +21,7 @@ const localRedis = {
     const raw = store.get(key);
     return raw ? JSON.parse(raw) as Record<string, string> : {};
   },
-  mGet: async (keys: string[]): Promise<Array<string | null>> => keys.map(key => store.get(key) ?? null),ction, src/server/index.ts swaps these live bindings for Devvit's real services.
-
-const store = new Map<string, string>();
-
-const initialGuilds = [
-  {
-    id: 'guild-1',
-    name: 'Astral Knights',
-    tag: 'STAR',
-    level: 12,
-    xp: 1250,
-    tokens: 42,
-    createdAt: Date.now() - 86400000 * 5,
-    challenge: { type: 'rolls', target: 500, progress: 140, reward: 250, label: 'Roll Together: 500 guild rolls' },
-    members: [
-      { username: 'Celestia', contribution: 540000, role: 'owner' },
-      { username: 'Starlight', contribution: 320000, role: 'member' },
-    ],
-  },
-  {
-    id: 'guild-2',
-    name: 'Void Walkers',
-    tag: 'VOID',
-    level: 8,
-    xp: 820,
-    tokens: 18,
-    createdAt: Date.now() - 86400000 * 3,
-    challenge: { type: 'value', target: 50_000, progress: 12400, reward: 500, label: 'Treasure Hunt: 50,000 collection value' },
-    members: [{ username: 'NullPointer', contribution: 410000, role: 'owner' }],
-  },
-];
-
-const initialLeaderboard = [
-  { username: 'Celestia', value: 540000, highestRarity: 100000, totalRolls: 840 },
-  { username: 'NullPointer', value: 410000, highestRarity: 10000, totalRolls: 620 },
-  { username: 'Starlight', value: 320000, highestRarity: 10000, totalRolls: 510 },
-  { username: 'NebulaRider', value: 180000, highestRarity: 1000, totalRolls: 340 },
-  { username: 'OrbMaster', value: 0, highestRarity: 2, totalRolls: 0 },
-];
-
-store.set('io:guilds', JSON.stringify(initialGuilds));
-store.set('io:leaderboard', JSON.stringify(initialLeaderboard));
-
-const localRedis = {
-  get: async (key: string): Promise<string | null> => store.get(key) ?? null,
+  mGet: async (keys: string[]): Promise<Array<string | null>> => keys.map(key => store.get(key) ?? null),
   set: async (key: string, value: string): Promise<string> => {
     store.set(key, value);
     return 'OK';
@@ -126,7 +82,6 @@ const localRedis = {
     return raw ? Object.keys(JSON.parse(raw)).length : 0;
   },
 };
-
 const localContext = {
   userId: 'local-player-1',
   username: 'OrbMaster',
