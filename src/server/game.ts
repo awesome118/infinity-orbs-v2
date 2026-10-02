@@ -58,6 +58,7 @@ import {
   highestCodexChain,
   codexDevotionLuckPercent,
   altarCoinDevotionChancePercent,
+  altarCoinFloor,
 } from '../shared/game.js';
 import {
   contribute,
@@ -2380,11 +2381,13 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
   const numCoins = finiteNonNegativeInteger(coins);
   const numShards = finiteNonNegativeInteger(shards);
 
-  if (numCoins > 0 && numCoins < MIN_ALTAR_COIN_OFFER) {
-    throw new Error(`Coin offerings require at least ${MIN_ALTAR_COIN_OFFER.toLocaleString()} Coins.`);
+  const currentAltarLevel = Math.max(0, Math.floor(Number(s.sacrifices?.altarLevel ?? 0) || 0));
+  const currentCoinFloor = altarCoinFloor(currentAltarLevel);
+  if (numCoins > 0 && numCoins < currentCoinFloor) {
+    throw new Error(`Coin offerings require at least ${currentCoinFloor.toLocaleString()} Coins at Altar Lvl ${currentAltarLevel}.`);
   }
   if (numCoins === 0 && numShards <= 0) {
-    throw new Error('Sacrifice at least 10,000 Coins or 1 Shard.');
+    throw new Error(`Sacrifice at least ${currentCoinFloor.toLocaleString()} Coins or 1 Shard.`);
   }
   if (s.coins < numCoins) throw new Error('Not enough Coins to sacrifice.');
   if ((s.shards ?? 0) < numShards) throw new Error('Not enough Shards to sacrifice.');
@@ -2415,7 +2418,11 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
   let altarBreakthroughChance = 0;
   let altarLeveledUp = false;
   if (numCoins > 0) {
-    altarBreakthroughChance = altarCoinDevotionChancePercent(numCoins, previousPity);
+    altarBreakthroughChance = altarCoinDevotionChancePercent(
+      numCoins,
+      previousPity,
+      prevAltarLevel,
+    );
     altarLeveledUp = serverRandom() * 100 < altarBreakthroughChance;
 
     if (altarLeveledUp) {
