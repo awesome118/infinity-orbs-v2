@@ -496,12 +496,17 @@ export async function loadRaw(): Promise<PlayerState> {
 }
 
 function applyXp(s: PlayerState, amount: number): void {
-  const oldLevel = s.level || 1;
+  const oldLevel = Math.max(1, s.level || 1);
   s.xp += Math.max(0, Math.floor(amount));
-  const levelInfo = calculateLevelFromXp(s.xp);
-  s.level = levelInfo.level;
+  const earnedLevel = calculateLevelFromXp(s.xp).level;
+
+  // A large XP reward can fill several future levels, but the player's actual
+  // level advances at most once per state update. This keeps milestones arriving
+  // in a deliberate sequence instead of dumping the entire progression at once.
+  const newLevel = Math.min(oldLevel + 1, earnedLevel);
+  s.level = Math.max(oldLevel, newLevel);
   if (s.level > oldLevel) {
-    s.masteryPoints = (s.masteryPoints ?? 0) + (s.level - oldLevel);
+    s.masteryPoints = (s.masteryPoints ?? 0) + 1;
   }
 }
 
@@ -702,7 +707,7 @@ export async function applyRolls(
   const effectiveLuck = isApex ? baseLuck * 2 : baseLuck;
 
   const cm = critMultiplier(s);
-  const levelBenefits = getLevelBenefits(calculateLevelFromXp(s.xp || 0).level);
+  const levelBenefits = getLevelBenefits(s.level || 1);
   const valueMul = 1 + (s.upgrades.valueBonus ?? 0) * 0.10;
 
   for (let i = 0; i < rollCount; i++) {
@@ -846,13 +851,14 @@ export async function applyRolls(
   s.xp += effectiveXpGained;
   xpGained = effectiveXpGained;
 
-  // Rich EXP Level Progression
-  const oldLevel = s.level || 1;
-  const levelInfo = calculateLevelFromXp(s.xp);
-  s.level = levelInfo.level;
-  if (s.level > oldLevel) {
-    const levelGained = s.level - oldLevel;
-    s.masteryPoints = (s.masteryPoints ?? 0) + levelGained;
+  // Rich EXP Level Progression. XP may skip future thresholds, but the
+  // displayed/active level only advances one step at a time.
+  const oldLevel = Math.max(1, s.level || 1);
+  const earnedLevel = calculateLevelFromXp(s.xp).level;
+  const newLevel = Math.max(oldLevel, Math.min(oldLevel + 1, earnedLevel));
+  s.level = newLevel;
+  if (newLevel > oldLevel) {
+    s.masteryPoints = (s.masteryPoints ?? 0) + 1;
   }
   s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
 
@@ -1662,12 +1668,13 @@ export async function claimOrbFrenzy(options: {
   s.highestRarity = Math.max(s.highestRarity, bestRarity);
   s.rollsSinceBest = bestRarity > previousHighest ? 0 : (s.rollsSinceBest ?? 0) + count;
 
-  const oldLevel = s.level || 1;
+  const oldLevel = Math.max(1, s.level || 1);
   s.xp += xpGained;
-  const newLevel = calculateLevelFromXp(s.xp).level;
+  const earnedLevel = calculateLevelFromXp(s.xp).level;
+  const newLevel = Math.max(oldLevel, Math.min(oldLevel + 1, earnedLevel));
   s.level = newLevel;
   if (newLevel > oldLevel) {
-    s.masteryPoints = (s.masteryPoints ?? 0) + (newLevel - oldLevel);
+    s.masteryPoints = (s.masteryPoints ?? 0) + 1;
   }
 
   advanceQuestProgress(s, 'roll', count);
