@@ -22,10 +22,22 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
   const [sending, setSending] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
 
+  const mergeMessages = (current: GlobalChatMessage[], incoming: GlobalChatMessage[]) => {
+    const merged = new Map<string, GlobalChatMessage>();
+    for (const message of current) merged.set(message.id, message);
+    for (const message of incoming) merged.set(message.id, message);
+    return Array.from(merged.values())
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .slice(-100);
+  };
+
   const refreshChat = async () => {
     try {
       const next = await loadChat();
-      setMessages(next);
+      // Never replace local state with a possibly older polling response.
+      // Merge by message ID so rapid posts and overlapping requests cannot
+      // make one message disappear when another arrives.
+      setMessages(prev => mergeMessages(prev, next));
     } catch {
       // Chat is auxiliary UI and should never block gameplay.
     }
@@ -58,8 +70,12 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
       if (!response.ok) {
         throw new Error('error' in payload ? payload.error || 'Could not send message.' : 'Could not send message.');
       }
+      const sentMessage = payload as GlobalChatMessage;
       setInput('');
-      setMessages(prev => [...prev, payload as GlobalChatMessage].slice(-100));
+      setMessages(prev => mergeMessages(prev, [sentMessage]));
+      // Pull the authoritative history after posting. The merge keeps any
+      // newer local messages if a concurrent poll is still in flight.
+      void refreshChat();
     } catch (error: any) {
       console.error('Global chat error:', error);
     } finally {
