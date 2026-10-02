@@ -265,6 +265,24 @@ export function App() {
     return () => clearInterval(interval);
   }, [tab]);
 
+  // Global Boosters are shared state, so keep the booster screen synchronized
+  // independently from the player's personal /api/me refresh cadence.
+  useEffect(() => {
+    if (tab !== 'boosters') return;
+
+    const refreshGlobalBoosters = () => {
+      void getJson<GlobalBoosterSnapshot>('/api/global-boosters')
+        .then(snapshot => {
+          setState(prev => prev ? { ...prev, globalBoosters: snapshot } : prev);
+        })
+        .catch(() => null);
+    };
+
+    refreshGlobalBoosters();
+    const interval = setInterval(refreshGlobalBoosters, 1500);
+    return () => clearInterval(interval);
+  }, [tab]);
+
   // Keep presence fresh and process server-side automation while the game is open.
   useEffect(() => {
     const presenceInterval = setInterval(() => {
