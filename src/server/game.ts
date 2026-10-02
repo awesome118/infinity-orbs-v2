@@ -100,6 +100,13 @@ function parseStoredJson<T>(raw: unknown): T | null {
   }
 }
 
+async function ensureRedisStringKey(keyName: string, fallback: string): Promise<void> {
+  const existing = await redis.get(keyName);
+  if (existing == null) {
+    await redis.set(keyName, fallback);
+  }
+}
+
 async function readGameBans(): Promise<Record<string, GameBanRecord>> {
   const raw = await redis.get(GAME_BANS_KEY);
   if (!raw) return {};
@@ -255,6 +262,10 @@ export async function getGlobalBoosters(): Promise<GlobalBoosterSnapshot> {
 async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSnapshot> {
   const now = Date.now();
   const storageKey = globalBoosterKey(id);
+  await ensureRedisStringKey(
+    storageKey,
+    JSON.stringify(createInitialGlobalBoosters(now)[id]),
+  );
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(storageKey);
@@ -287,6 +298,7 @@ function paymentGoodsForSku(sku: string) {
 export async function grantPurchasedPack(userId: string, sku: string, orderId: string): Promise<boolean> {
   const pack = paymentGoodsForSku(sku);
   const pkey = playerKeyFor(userId);
+  await ensureRedisStringKey(pkey, JSON.stringify(createInitialState()));
   for (let attempt = 0; attempt < 4; attempt++) {
     const txn = await redis.watch(pkey);
     const raw = await txn.get(pkey);
@@ -563,6 +575,7 @@ export async function save(s: PlayerState) {
   const userId = currentUserId();
   const playerKey = key();
   const generationKey = saveGenerationKeyFor(userId);
+  await ensureRedisStringKey(generationKey, '0');
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(playerKey, generationKey);
