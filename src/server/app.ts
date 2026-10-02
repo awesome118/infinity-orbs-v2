@@ -264,7 +264,7 @@ export function createApp() {
         });
       }
 
-      await grantPurchasedPack(buyerUserId, order.products[0].sku, orderId);
+      await grantPurchasedPack(buyerUserId, productSku, orderId);
       sendPaymentResponse(res, { success: true });
     } catch (e: unknown) {
       console.error('[Payments] Fulfillment failed:', e instanceof Error ? e.stack ?? e.message : e);
