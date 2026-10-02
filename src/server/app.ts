@@ -24,6 +24,7 @@ import {
   activateGlobalBooster,
   grantPurchasedPack,
   refundPurchasedPack,
+  getDeveloperAnnouncement,
   recordSocialVisit,
   recordShareAction,
   save,
@@ -47,7 +48,7 @@ import {
 } from './social.js';
 import { context, reddit } from './devvit-mock.js';
 import * as devvitServer from '@devvit/web/server';
-import { PURCHASE_PACKS, spendShards } from '../shared/game.js';
+import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, type FeatureId } from '../shared/game.js';
 
 type PaymentHandlerResponse = {
   success: boolean;
@@ -148,6 +149,47 @@ export function createApp() {
     };
     res.once('finish', releaseOnce);
     res.once('close', releaseOnce);
+    next();
+  });
+
+  // Major systems unlock gradually so new players learn the core loop before
+  // the advanced economy, social systems, and prestige layers appear.
+  const featureForPath = (path: string): FeatureId | null => {
+    if (path === '/upgrade' || path === '/upgrade/all') return 'upgrades';
+    if (path === '/products' || path === '/payments/reconcile') return 'shop';
+    if (path === '/collection') return 'collection';
+    if (path === '/quests/claim') return 'quests';
+    if (path === '/global-boosters' || path === '/global-boosters/activate' ||
+        path === '/boosters/activate' || path === '/automation/buy') return 'boosters';
+    if (path === '/leaderboard' || path === '/guilds' || path.startsWith('/guilds/') ||
+        path === '/social/visit' || path === '/online' || path === '/world-event' ||
+        path.startsWith('/community/')) return 'social';
+    if (path.startsWith('/altar/')) return 'altar';
+    if (path.startsWith('/mastery/')) return 'mastery';
+    if (path === '/prestige' || path.startsWith('/prestige/')) return 'prestige';
+    return null;
+  };
+
+  app.use('/api', async (req, res, next) => {
+    const feature = featureForPath(req.path);
+    if (!feature) return next();
+
+    try {
+      const s = await loadRaw();
+      const requiredLevel = FEATURE_UNLOCK_LEVELS[feature];
+      if ((s.level || 1) < requiredLevel) {
+        return res.status(403).json({
+          error: `Reach Level ${requiredLevel} to unlock this feature.`,
+          feature,
+          requiredLevel,
+          currentLevel: s.level || 1,
+        });
+      }
+    } catch (e) {
+      console.error('Feature gate check failed:', e);
+      return res.status(500).json({ error: 'Could not verify feature access.' });
+    }
+
     next();
   });
 
@@ -359,6 +401,14 @@ export function createApp() {
     } catch (e) {
       console.error('Failed to create install post:', e);
       res.status(400).json({ status: 'error', message: 'Failed to create Infinity Orbs post.' });
+    }
+  });
+
+  app.get('/api/developer-announcement', async (_req, res) => {
+    try {
+      res.json(await getDeveloperAnnouncement());
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Failed to fetch developer announcement.' });
     }
   });
 
