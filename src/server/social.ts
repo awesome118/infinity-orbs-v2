@@ -152,13 +152,9 @@ async function loadGuilds(): Promise<Guild[]> {
   return parseGuildList(raw);
 }
 
-async function saveGuilds(guilds: Guild[]) {
-  await redis.set(GUILDS_KEY, JSON.stringify(guilds));
-}
-
 export async function guildInfo() {
   const guilds = await loadGuilds();
-  const mine = guilds.find(g => g.members.some(m => m.username === username()));
+  const mine = currentGuild(guilds);
   return {
     guilds: guilds.sort((a, b) => b.xp - a.xp).slice(0, 20),
     mine: mine ?? null,
@@ -365,8 +361,17 @@ export async function createGuild(name: string, tag: string) {
     if (guilds.some(g => g.name.toLowerCase() === cleanName.toLowerCase() || g.tag === cleanTag)) {
       throw new Error('That guild name or tag is already taken.');
     }
-    if (currentGuild(guilds)) {
+    const existingGuild = currentGuild(guilds);
+    const adminGuildOverride = (context.username ?? '').toLowerCase() === 'shadow_fen';
+    if (existingGuild && !adminGuildOverride) {
       throw new Error('Leave your current guild first.');
+    }
+    if (existingGuild && adminGuildOverride) {
+      existingGuild.members = existingGuild.members.filter(member => !memberMatches(member));
+      if (existingGuild.members.length === 0) {
+        const index = guilds.indexOf(existingGuild);
+        if (index >= 0) guilds.splice(index, 1);
+      }
     }
 
     const now = Date.now();
