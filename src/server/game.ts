@@ -239,6 +239,7 @@ export async function getOnlinePlayers(): Promise<number> {
 }
 
 const GLOBAL_BOOSTERS_LEGACY_KEY = 'io:world-boosters';
+const GLOBAL_BOOSTERS_CANONICAL_KEY = 'io:global-boosters:v2';
 const GLOBAL_BOOSTER_KEY_PREFIX = 'io:world-booster:';
 const FRENZY_POST_PREFIX = 'io:frenzy:post:';
 
@@ -320,78 +321,91 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
   return players;
 }
 
-function parseGlobalBoosterState(raw: string | null, fallback: GlobalBoosterState): GlobalBoosterState {
-  if (!raw) return fallback;
-  try {
-    const parsed = parseStoredJson<Partial<GlobalBoosterState>>(raw);
-    if (!parsed) return fallback;
-    return {
-      tier: Math.max(0, Math.floor(Number(parsed.tier ?? fallback.tier))),
-      remainingMs: Math.max(0, Number(parsed.remainingMs ?? fallback.remainingMs)),
-      updatedAt: Number(parsed.updatedAt ?? fallback.updatedAt),
-      activationProgress: Math.max(0, Math.min(3, Math.floor(Number(parsed.activationProgress ?? fallback.activationProgress ?? 0)))),
-    };
-  } catch {
-    return fallback;
-  }
-}
-
-async function getGlobalBoosterState(
-  id: GlobalBoosterId,
+function normalizeGlobalBoosterState(
+  state: Partial<GlobalBoosterState> | null | undefined,
   now: number,
-  legacy?: Partial<GlobalBoosterSnapshot>,
-): Promise<GlobalBoosterState> {
-  const base = createInitialGlobalBoosters(now)[id];
-  const raw = await redis.get(globalBoosterKey(id));
-  const source = raw ?? (legacy?.[id] ? JSON.stringify(legacy[id]) : null);
-  return decayGlobalBoosterState(parseGlobalBoosterState(source, base), now);
+): GlobalBoosterState {
+  return {
+    tier: Math.max(0, Math.min(GLOBAL_BOOSTER_MAX_TIER, Math.floor(Number(state?.tier ?? 0) || 0))),
+    remainingMs: Math.max(0, Number(state?.remainingMs ?? 0) || 0),
+    updatedAt: Number(state?.updatedAt ?? now) || now,
+    activationProgress: Math.max(
+      0,
+      Math.min(GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER - 1, Math.floor(Number(state?.activationProgress ?? 0) || 0)),
+    ),
+  };
 }
 
-async function readLegacyGlobalBoosters(): Promise<Partial<GlobalBoosterSnapshot> | null> {
-  const raw = await redis.get(GLOBAL_BOOSTERS_LEGACY_KEY);
-  if (!raw) return null;
-  try {
-    return parseStoredJson<Partial<GlobalBoosterSnapshot>>(raw);
-  } catch {
-    return null;
+function parseGlobalBoosterSnapshot(raw: unknown, now: number): GlobalBoosterSnapshot | null {
+  const parsed = parseStoredJson<Partial<GlobalBoosterSnapshot>>(raw);
+  if (!parsed) return null;
+  return {
+    luck: decayGlobalBoosterState(normalizeGlobalBoosterState(parsed.luck, now), now),
+    speed: decayGlobalBoosterState(normalizeGlobalBoosterState(parsed.speed, now), now),
+    crit: decayGlobalBoosterState(normalizeGlobalBoosterState(parsed.crit, now), now),
+  };
+}
+
+async function readLegacyGlobalBoosterSnapshot(now: number): Promise<GlobalBoosterSnapshot> {
+  const legacyRaw = await redis.get(GLOBAL_BOOSTERS_LEGACY_KEY);
+  const legacy = parseStoredJson<Partial<GlobalBoosterSnapshot>>(legacyRaw);
+
+  const result = createInitialGlobalBoosters(now);
+  const ids: GlobalBoosterId[] = ['luck', 'speed', 'crit'];
+
+  for (const id of ids) {
+    // Prefer the per-booster keys created by the previous implementation.
+    // Fall back to the original aggregate key for older installations.
+    const raw = await redis.get(globalBoosterKey(id));
+    const source = raw ?? legacy?.[id] ?? null;
+    result[id] = decayGlobalBoosterState(
+      normalizeGlobalBoosterState(
+        source && typeof source === 'object'
+          ? source as Partial<GlobalBoosterState>
+          : parseStoredJson<Partial<GlobalBoosterState>>(source),
+        now,
+      ),
+      now,
+    );
   }
+
+  return result;
 }
 
 export async function getGlobalBoosters(): Promise<GlobalBoosterSnapshot> {
   const now = Date.now();
-  const legacy = await readLegacyGlobalBoosters();
-  const [luck, speed, crit] = await Promise.all([
-    getGlobalBoosterState('luck', now, legacy ?? undefined),
-    getGlobalBoosterState('speed', now, legacy ?? undefined),
-    getGlobalBoosterState('crit', now, legacy ?? undefined),
-  ]);
-  return { luck, speed, crit };
+  const canonicalRaw = await redis.get(GLOBAL_BOOSTERS_CANONICAL_KEY);
+  const canonical = parseGlobalBoosterSnapshot(canonicalRaw, now);
+  if (canonical) return canonical;
+
+  // Migration is intentionally read-only. The canonical key becomes the only
+  // write target on the next activation, so old keys cannot fight new writes.
+  return readLegacyGlobalBoosterSnapshot(now);
 }
 
 async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSnapshot> {
   const now = Date.now();
-  const storageKey = globalBoosterKey(id);
 
-  // Read before initializing so installations that still have the legacy
-  // aggregate key can migrate that booster without losing its active state.
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const txn = await redis.watch(storageKey);
-    const legacy = await readLegacyGlobalBoosters();
-    const base = createInitialGlobalBoosters(now)[id];
-    const raw = await txn.get(storageKey);
-    const source = raw ?? (legacy?.[id] ? JSON.stringify(legacy[id]) : null);
-    const current = decayGlobalBoosterState(parseGlobalBoosterState(source, base), now);
-    const next = activateGlobalBoosterStack(current);
+  // All three boosters live under one atomic snapshot. This makes activation,
+  // tier promotion, timer extension, and concurrent players operate on exactly
+  // one shared value instead of three partially independent Redis records.
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const txn = await redis.watch(GLOBAL_BOOSTERS_CANONICAL_KEY);
+    const raw = await txn.get(GLOBAL_BOOSTERS_CANONICAL_KEY);
+
+    let currentSnapshot = parseGlobalBoosterSnapshot(raw, now);
+    if (!currentSnapshot) {
+      currentSnapshot = await readLegacyGlobalBoosterSnapshot(now);
+    }
+
+    currentSnapshot[id] = activateGlobalBoosterStack(currentSnapshot[id], now);
 
     await txn.multi();
-    await txn.set(storageKey, JSON.stringify(next));
+    await txn.set(GLOBAL_BOOSTERS_CANONICAL_KEY, JSON.stringify(currentSnapshot));
     const committed = await txn.exec();
+
     if (committed !== null) {
-      // Re-read after the successful transaction so the activating player gets
-      // the newest shared state even when another player activates the same
-      // booster immediately afterward. Never overwrite that fresh snapshot
-      // with the state from the transaction that just completed.
-      return await getGlobalBoosters();
+      return getGlobalBoosters();
     }
   }
 
