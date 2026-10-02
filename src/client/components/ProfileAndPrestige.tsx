@@ -144,8 +144,20 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
     }
   };
 
-  const levelInfo = calculateLevelFromXp(state.xp || 0);
-  const levelBenefits = getLevelBenefits(levelInfo.level);
+  const displayedLevel = Math.max(1, state.level || 1);
+  let xpBeforeLevel = 0;
+  for (let level = 1; level < displayedLevel; level++) {
+    xpBeforeLevel += xpRequiredForLevel(level);
+  }
+  const levelXpRequired = xpRequiredForLevel(displayedLevel);
+  const currentLevelXp = Math.max(0, (state.xp || 0) - xpBeforeLevel);
+  const levelInfo = {
+    level: displayedLevel,
+    currentLevelXp,
+    nextLevelXp: levelXpRequired,
+    progressPercent: Math.min(100, Math.round((currentLevelXp / levelXpRequired) * 100)),
+  };
+  const levelBenefits = getLevelBenefits(displayedLevel);
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
