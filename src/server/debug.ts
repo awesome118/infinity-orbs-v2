@@ -14,6 +14,9 @@ import {
   setDeveloperAnnouncement,
   getPaymentDebugLogs,
   clearPaymentDebugLogs,
+  setGlobalBoosterDebugState,
+  getGlobalBoosterDebugLogs,
+  clearGlobalBoosterDebugLogs,
 } from './game.js';
 import { context, redis, reddit } from './devvit-mock.js';
 import { setCommunityEventConfig } from './social.js';
@@ -65,6 +68,34 @@ debugRouter.post('/payment-logs/clear', async (_req, res) => {
     res.json({ ok: true });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to clear payment debug logs.' });
+  }
+});
+
+debugRouter.get('/global-booster-logs', async (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(300, Math.floor(Number(req.query.limit ?? 300) || 300)));
+    res.json({ logs: await getGlobalBoosterDebugLogs(limit) });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to load Global Booster logs.' });
+  }
+});
+
+debugRouter.post('/global-booster-logs/clear', async (_req, res) => {
+  try {
+    await clearGlobalBoosterDebugLogs();
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to clear Global Booster logs.' });
+  }
+});
+
+debugRouter.post('/global-booster', async (req, res) => {
+  try {
+    const id = String(req.body?.id ?? '');
+    const state = await setGlobalBoosterDebugState(id as any, req.body?.tier, req.body?.minutes);
+    res.json({ ok: true, id, state });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to set Global Booster.' });
   }
 });
 
