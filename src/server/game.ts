@@ -948,7 +948,7 @@ export async function loadRaw(): Promise<PlayerState> {
   const raw = await redis.get(playerKey);
   const username = context.username ?? `reddit-user-${userId.slice(-8)}`;
   await registerPlayer(userId, username);
-  const perks = await getPlayerGuildPerks(username);
+  const perks = await getPlayerGuildPerks(username, userId);
   const globalBoosters = await getGlobalBoosters();
 
 
@@ -1390,7 +1390,7 @@ export async function applyRolls(
     coinsGained = Math.round(coinsGained * (1 + (s.prestigeUpgrades.offlineOverdrive * 0.50)));
   }
 
-  const guildTax = await applyGuildTax(context.username ?? '', coinsGained);
+  const guildTax = await applyGuildTax(coinsGained);
   coinsGained = Math.max(0, coinsGained - guildTax.taxedCoins);
   s.coins += coinsGained;
   shardsGained = grantFreeShards(s, shardsGained);
