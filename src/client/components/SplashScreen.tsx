@@ -139,7 +139,7 @@ export function SplashScreen({ ready, hasProgress, highestRarity = 2, totalRolls
 
         <div className="splash-status" aria-live="polite">
           <div className="splash-status-row">
-            <span>{ready ? 'SYSTEMS ONLINE' : MESSAGES[messageIndex].toUpperCase()}</span>
+            <span>{ready ? 'READY' : MESSAGES[messageIndex].toUpperCase()}</span>
             <span>{ready ? '100%' : `${progress}%`}</span>
           </div>
           <div className="splash-progress">
@@ -161,13 +161,6 @@ export function SplashScreen({ ready, hasProgress, highestRarity = 2, totalRolls
           </div>
         )}
 
-        <div className="splash-footer">
-          <span>INFINITE ODDS</span>
-          <b>•</b>
-          <span>COMMUNITY DRIVEN</span>
-          <b>•</b>
-          <span>REDDIT</span>
-        </div>
       </div>
 
       <div className="splash-corner splash-corner-tl" aria-hidden="true" />
