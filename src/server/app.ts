@@ -274,7 +274,7 @@ export function createApp() {
 
   app.post('/internal/payments/refund', async (req, res) => {
     try {
-      const order = req.body as Order;
+      const order = req.body as PaymentOrder;
       const buyerUserId = String(order?.userId ?? '').trim();
       const orderId = String(order?.id ?? '').trim();
       const productSku = Array.isArray(order?.products) && order.products.length === 1
