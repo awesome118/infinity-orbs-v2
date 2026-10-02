@@ -1,5 +1,5 @@
 import { redis, context, reddit } from './devvit-mock.js';
-import { notifications } from '@devvit/web/server';
+import { notifications, scheduler } from '@devvit/web/server';
 import {
   createInitialState,
   type PlayerState,
@@ -80,6 +80,8 @@ const PLAYER_REGISTRY_KEY = 'io:player-registry';
 const DEVELOPER_ANNOUNCEMENT_KEY = 'io:developer-announcement';
 const GLOBAL_BOOSTER_ANNOUNCEMENT_KEY = 'io:global-booster-announcement';
 const OFFLINE_FULL_NOTIFICATION_PREFIX = 'io:offline-full-notified:';
+const OFFLINE_FULL_JOB_PREFIX = 'io:offline-full-job:';
+const OFFLINE_FULL_RETRY_MS = 5 * 60_000;
 const PLAYER_FLAIR_KEY_PREFIX = 'io:player-flair:';
 
 const PAYMENT_DEBUG_LOG_KEY = 'io:payment-debug-log:v1';
@@ -1562,6 +1564,91 @@ export async function applyRolls(
   return { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained };
 }
 
+async function sendOfflineFullNotification(userId: string, subredditName: string): Promise<boolean> {
+  const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
+  if (await redis.get(notificationKey)) return false;
+
+  if (!(await notifications.isOptedIn(userId))) return false;
+
+  await notifications.enqueue({
+    title: 'Infinity Orbs',
+    body: 'your offline orbs are full, make sure to collect them! ',
+    recipients: [{
+      userId,
+      link: `https://reddit.com/r/${subredditName}`,
+    }],
+  });
+  await redis.set(notificationKey, '1');
+  return true;
+}
+
+async function scheduleOfflineFullNotification(
+  userId: string,
+  subredditName: string,
+  runAt: number,
+): Promise<void> {
+  if (!subredditName || !userId) return;
+  if (await redis.get(OFFLINE_FULL_NOTIFICATION_PREFIX + userId)) return;
+  if (!(await notifications.isOptedIn(userId))) return;
+
+  const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
+  if (await redis.get(jobKey)) return;
+
+  const safeRunAt = Math.max(Date.now() + 1_000, runAt);
+  const jobId = await scheduler.runJob({
+    name: 'offline-orbs-full',
+    data: { userId, subredditName },
+    runAt: new Date(safeRunAt),
+  });
+  await redis.set(jobKey, jobId);
+}
+
+export async function processOfflineFullNotification(
+  userId: string,
+  subredditName: string,
+): Promise<void> {
+  const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
+  if (!(await redis.get(jobKey))) return;
+
+  const raw = await redis.get('player:' + userId);
+  if (!raw) {
+    await redis.del(jobKey);
+    return;
+  }
+
+  let s: PlayerState;
+  try {
+    s = JSON.parse(String(raw)) as PlayerState;
+  } catch {
+    await redis.del(jobKey);
+    return;
+  }
+
+  const cap = offlineRollCap(s);
+  const now = Date.now();
+  const tickMs = effectiveOfflineTickMs(s);
+  const lastSeenAt = s.lastSeenAt || now;
+  const elapsed = Math.max(0, now - lastSeenAt);
+  const earned = Math.floor(elapsed / tickMs);
+  const currentOfflineRolls = Math.min(cap, (s.offlineRolls || 0) + earned);
+
+  if (currentOfflineRolls < cap) {
+    const fullAt = now + Math.max(1_000, (cap - currentOfflineRolls) * tickMs);
+    await redis.del(jobKey);
+    await scheduleOfflineFullNotification(userId, subredditName, fullAt);
+    return;
+  }
+
+  try {
+    await sendOfflineFullNotification(userId, subredditName);
+    await redis.del(jobKey);
+  } catch (error) {
+    console.error('Failed to send scheduled offline-orbs-full notification:', error);
+    await redis.del(jobKey);
+    await scheduleOfflineFullNotification(userId, subredditName, now + OFFLINE_FULL_RETRY_MS);
+  }
+}
+
 export async function settleOffline(s: PlayerState): Promise<PlayerState> {
   const now = Date.now();
   checkPeriodicResets(s, now);
@@ -1579,34 +1666,30 @@ export async function settleOffline(s: PlayerState): Promise<PlayerState> {
     s.offlineRolls = Math.min(cap, (s.offlineRolls || 0) + earned);
   }
 
+  s.lastSeenAt = now;
+
   const cap = offlineRollCap(s);
-  if (s.offlineRolls >= cap) {
-    const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId();
-    const alreadyNotified = await redis.get(notificationKey);
-    if (!alreadyNotified) {
-      const subredditName = String(context.subredditName ?? '').trim();
-      const userId = String(context.userId ?? '').trim();
-      if (subredditName && userId) {
-        try {
-          if (await notifications.isOptedIn(userId)) {
-            await notifications.enqueue({
-              title: 'Infinity Orbs',
-              body: 'your offline orbs are full, make sure to collect them! ',
-              recipients: [{
-                userId,
-                link: `https://reddit.com/r/${subredditName}`,
-              }],
-            });
-            await redis.set(notificationKey, '1');
-          }
-        } catch (error) {
-          console.error('Failed to send offline-orbs-full notification:', error);
-        }
-      }
+  const userId = String(context.userId ?? '').trim();
+  const subredditName = String(context.subredditName ?? '').trim();
+  if (userId && subredditName && s.offlineRolls >= cap) {
+    try {
+      await sendOfflineFullNotification(userId, subredditName);
+      await redis.del(OFFLINE_FULL_JOB_PREFIX + userId);
+    } catch (error) {
+      console.error('Failed to send offline-orbs-full notification:', error);
+    }
+  } else if (userId && subredditName) {
+    try {
+      await scheduleOfflineFullNotification(
+        userId,
+        subredditName,
+        now + Math.max(1_000, (cap - s.offlineRolls) * tickMs),
+      );
+    } catch (error) {
+      console.error('Failed to schedule offline-orbs-full notification:', error);
     }
   }
 
-  s.lastSeenAt = now;
   return s;
 }
 
@@ -1737,6 +1820,7 @@ export async function claimOffline(): Promise<RollResponse> {
   const batches = s.offlineRolls;
   s.offlineRolls = 0;
   await redis.del(OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId());
+  await redis.del(OFFLINE_FULL_JOB_PREFIX + currentUserId());
   const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained } = await applyRolls(s, batches, undefined, 'offline');
   const now = Date.now();
   s.lastRollAt = now;
