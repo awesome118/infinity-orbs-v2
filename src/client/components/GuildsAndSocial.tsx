@@ -27,6 +27,7 @@ import type {
   LeaderboardEntry,
   WorldEvent,
   GuildPerkId,
+  GuildMessage,
 } from '../../shared/social.js';
 import { sound } from '../sound.js';
 
@@ -38,7 +39,7 @@ interface GuildsAndSocialProps {
   onCreateGuild: (name: string, tag: string) => Promise<boolean>;
   onJoinGuild: (id: string) => Promise<void>;
   onLeaveGuild: () => Promise<void>;
-  onSendMessage: (text: string) => Promise<void>;
+  onSendMessage: (text: string) => Promise<GuildMessage>;
   onBuyGuildPerk?: (perk: GuildPerkId) => Promise<void>;
   onDonateGuild?: (coins: number, shards: number) => Promise<void>;
   onToggleGuildTrust?: (username: string, trusted: boolean) => Promise<void>;
@@ -100,6 +101,16 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const [createTag, setCreateTag] = useState('');
   const [chatInput, setChatInput] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [chatMessages, setChatMessages] = useState<GuildMessage[]>([]);
+
+  useEffect(() => {
+    setChatMessages(prev => {
+      const merged = new Map<string, GuildMessage>();
+      for (const msg of prev) merged.set(msg.id, msg);
+      for (const msg of myGuild?.chat ?? []) merged.set(msg.id, msg);
+      return Array.from(merged.values()).sort((a, b) => a.timestamp - b.timestamp).slice(-100);
+    });
+  }, [myGuild?.id, myGuild?.chat]);
 
   const fmt = (n: number) => n.toLocaleString();
   const currentGuildMember = myGuild?.members.find(m => m.username === playerUsername);
@@ -113,7 +124,13 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     sound.playClick();
     const text = chatInput.trim();
     setChatInput('');
-    await onSendMessage(text);
+    const sent = await onSendMessage(text);
+    setChatMessages(prev => {
+      const merged = new Map<string, GuildMessage>();
+      for (const msg of prev) merged.set(msg.id, msg);
+      merged.set(sent.id, sent);
+      return Array.from(merged.values()).sort((a, b) => a.timestamp - b.timestamp).slice(-100);
+    });
   };
 
   const handleCreateGuild = async (e: React.FormEvent) => {
@@ -663,9 +680,9 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                   </div>
 
                   {/* Message History */}
-                  <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-                    {myGuild.chat && myGuild.chat.length > 0 ? (
-                      myGuild.chat.map(msg => (
+                  <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
+                    {chatMessages.length > 0 ? (
+                      chatMessages.map(msg => (
                         <div
                           key={msg.id}
                           className={`text-xs p-2 rounded-xl ${
