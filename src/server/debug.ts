@@ -218,20 +218,6 @@ function setMaxProgression(s: Awaited<ReturnType<typeof loadRaw>>): void {
   }
 }
 
-async function setGlobalBooster(id: string, tier: number, minutes: number) {
-  if (!['luck', 'speed', 'crit'].includes(id)) throw new Error('Invalid global booster.');
-  const safeTier = Math.max(0, Math.min(10, nonNegativeInteger(tier, 0)));
-  const remainingMs = safeTier === 0 ? 0 : Math.max(1, nonNegativeInteger(minutes, 30)) * 60_000;
-  const state = {
-    tier: safeTier,
-    remainingMs,
-    updatedAt: Date.now(),
-    activationProgress: 0,
-  };
-  await redis.set(`io:world-booster:${id}`, JSON.stringify(state));
-  return state;
-}
-
 // Read-only identity/context endpoint.
 debugRouter.get('/announcement', async (_req, res) => {
   try {
@@ -356,7 +342,7 @@ debugRouter.post('/state', async (req, res) => {
       'coins', 'shards', 'cosmicDust', 'xp', 'totalRolls', 'totalCrits',
       'lifetimeCoins', 'lifetimeShards', 'highestRarity', 'collectionValue',
       'lifetimeCollectionValue', 'offlineRolls', 'prestigeCount', 'rollsSinceBest',
-      'turboRollUntil', 'onlinePlayers', 'globalBoosterCredits', 'purchasedShards',
+      'turboRollUntil', 'onlinePlayers', 'purchasedShards',
       'currentRunRolls', 'questsCompleted', 'guildContribution', 'masteryPoints',
       'communityRewardClaimedAt', 'communityRewardClaimedTier',
     ];
@@ -703,16 +689,6 @@ debugRouter.post('/frenzy/reset', async (_req, res) => {
     res.json({ ok: true, state: s });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
-  }
-});
-
-debugRouter.post('/global-booster', async (req, res) => {
-  try {
-    const id = String(req.body?.id ?? '');
-    const state = await setGlobalBooster(id, req.body?.tier, req.body?.minutes);
-    res.json({ ok: true, id, state });
-  } catch (e: any) {
-    res.status(400).json({ error: e?.message || 'Failed to set Global Booster.' });
   }
 });
 
