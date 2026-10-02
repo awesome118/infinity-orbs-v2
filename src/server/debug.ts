@@ -18,6 +18,7 @@ import {
   getGlobalBoosterDebugLogs,
   clearGlobalBoosterDebugLogs,
   getCcuPeaks,
+  setFakeCcuBonus,
 } from './game.js';
 import { context, redis, reddit } from './devvit-mock.js';
 import {
@@ -110,6 +111,15 @@ debugRouter.get('/ccu', async (_req, res) => {
     res.json(await getCcuPeaks());
   } catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to load CCU statistics.' });
+  }
+});
+
+debugRouter.post('/ccu/fake', async (req, res) => {
+  try {
+    const bonus = await setFakeCcuBonus(Number(req.body?.bonus ?? 0));
+    res.json({ ok: true, fakeCcuBonus: bonus });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to set fake CCU.' });
   }
 });
 
