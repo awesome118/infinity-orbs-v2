@@ -1558,7 +1558,7 @@ export async function applyRolls(
   const baseLuck = luckMultiplier(luckState) * communityLuck;
 
   // Apex Fortune Mastery: chance on multi-roll to double the luck of that activation
-  const apexChance = Math.min(1, (s.masterySkills?.apexFortune ?? 0) * 0.05);
+  const apexChance = Math.min(0.45, (s.masterySkills?.apexFortune ?? 0) * 0.03);
   const isApex = rollCount > 1 && rng() < apexChance;
   const effectiveLuck = isApex ? baseLuck * 2 : baseLuck;
 
@@ -1566,18 +1566,20 @@ export async function applyRolls(
   const levelBenefits = getLevelBenefits(s.level || 1);
   const valueMul = 1 + (s.upgrades.valueBonus ?? 0) * 0.10;
 
+  const critChance =
+    (s.upgrades.critChance ?? 0) * 0.03 +
+    (s.masterySkills?.critMastery ?? 0) * 0.03 +
+    (s.guildPerks?.critRank ?? 0) * 0.015 +
+    globalBoosterCritChanceBonus(globalBoosters.crit);
+  const effectiveCritChance = Math.min(0.40, critChance);
+
   for (let i = 0; i < rollCount; i++) {
     // New-player hype: the third ball this account ever rolls is guaranteed
     // to land in the 1/101 through 1/120 range. It cannot crit upward, so the
     // guarantee is the exact advertised range.
     const isGuaranteedThirdBall = forcedRarity == null && s.totalRolls + i === 2;
 
-    const critChance =
-      (s.upgrades.critChance ?? 0) * 0.03 +
-      (s.masterySkills?.critMastery ?? 0) * 0.03 +
-      (s.guildPerks?.critRank ?? 0) * 0.015 +
-      globalBoosterCritChanceBonus(globalBoosters.crit);
-    const isCrit = !isGuaranteedThirdBall && rng() < Math.min(1, critChance);
+    const isCrit = !isGuaranteedThirdBall && rng() < effectiveCritChance;
     let effectiveCm = cm;
     if (isCrit) {
       s.totalCrits = (s.totalCrits ?? 0) + 1;
@@ -1804,6 +1806,11 @@ export async function applyRolls(
     fakeCcuBonus,
     luckMultiplier: effectiveLuck,
     communityLuck,
+    critChance: effectiveCritChance,
+    critMultiplier: cm,
+    codexCollectionKeys: Object.keys(s.collection || {}).length,
+    codexProgress: Math.max(0, Math.floor(Math.log2(Object.keys(s.collection || {}).length + 1))),
+    masteryCelestialSurge: s.masterySkills?.celestialSurge ?? 0,
     globalBoosters,
     level: s.level,
     before: spyBefore,
