@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  X, Wrench, Coins, Gem, Sparkles, Zap, RotateCcw, Play, Shield,
+  X, Wrench, Coins, Gem, Sparkles, Zap, RotateCcw, Play, Shield, Megaphone,
   Ban, UserX, CheckCircle2, RefreshCw, Flame,
   Database, Wand2, Trash2, Gauge, ListRestart, Save, Power,
 } from 'lucide-react';
@@ -45,6 +45,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [pendingWipe, setPendingWipe] = useState<{ action: 'wipe-game' | 'wipe-and-ban' | 'wipe-and-unban'; username: string } | null>(null);
   const [banDuration, setBanDuration] = useState('permanent');
   const [banReason, setBanReason] = useState('Infinity Orbs admin action');
+  const [announcementText, setAnnouncementText] = useState('');
+  const [announcementLoaded, setAnnouncementLoaded] = useState(false);
 
   const [frenzyRarity, setFrenzyRarity] = useState('');
   const [frenzyPostId, setFrenzyPostId] = useState('');
@@ -119,6 +121,15 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       .then(r => r.json())
       .then(setContextInfo)
       .catch(() => null);
+
+    void fetch('/api/dev/announcement')
+      .then(async r => {
+        if (!r.ok) throw new Error('Could not load the developer announcement.');
+        return r.json();
+      })
+      .then(data => setAnnouncementText(String(data.message ?? '')))
+      .catch(() => null)
+      .finally(() => setAnnouncementLoaded(true));
   }, []);
 
   const handleForceRoll = async (rarityNum: number) => {
@@ -224,6 +235,34 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             {message}
           </div>
         )}
+
+        <section className={panelBase}>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-300">
+            <Megaphone className="w-4 h-4" /> Developer Announcement
+          </div>
+          <p className="text-[11px] text-slate-500">
+            This text appears above the game navigation for every player. Leave it blank to hide the announcement.
+          </p>
+          <textarea
+            value={announcementText}
+            onChange={e => setAnnouncementText(e.target.value.slice(0, 1200))}
+            disabled={!announcementLoaded || loading}
+            rows={4}
+            placeholder="Write the announcement players should see..."
+            className="w-full rounded-xl bg-slate-900 border border-slate-800 text-sm text-slate-200 placeholder:text-slate-600 p-3 resize-y focus:outline-none focus:border-cyan-500/50"
+          />
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] text-slate-500">{announcementText.length}/1200 characters</span>
+            <button
+              title="Publish the current developer announcement."
+              disabled={!announcementLoaded || loading}
+              onClick={() => void sendAdminAction('/api/dev/announcement', { message: announcementText }, false, 'Developer announcement updated.')}
+              className={\`${buttonBase} bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-2\`}
+            >
+              <Save className="inline w-3.5 h-3.5 mr-1" /> Publish Announcement
+            </button>
+          </div>
+        </section>
 
         <section className={panelBase}>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-300">
