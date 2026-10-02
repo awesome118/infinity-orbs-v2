@@ -8,6 +8,17 @@ const user = () => context.userId ?? 'unknown';
 const username = () => context.username ?? `reddit-user-${user().slice(-8)}`;
 const key = (name: string) => `io:${name}`;
 const GUILDS_KEY = key('guilds');
+
+function parseStoredJson<T>(raw: unknown): T | null {
+  if (raw == null) return null;
+  if (typeof raw === 'object') return raw as T;
+  if (typeof raw !== 'string') return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
 const COMMUNITY_EVENT_KEY = key('community_event');
 
 function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
@@ -32,7 +43,7 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(GUILDS_KEY);
     const raw = await txn.get(GUILDS_KEY);
-    const guilds: Guild[] = normalizeGuilds(raw ? JSON.parse(raw) : []);
+    const guilds: Guild[] = normalizeGuilds(parseStoredJson<Guild[]>(raw) ?? []);
     try {
       const result = await mutator(guilds);
       await txn.multi();
@@ -50,7 +61,7 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
 
 async function loadGuilds(): Promise<Guild[]> {
   const raw = await redis.get(GUILDS_KEY);
-  return normalizeGuilds(raw ? JSON.parse(raw) : []);
+  return normalizeGuilds(parseStoredJson<Guild[]>(raw) ?? []);
 }
 
 async function saveGuilds(guilds: Guild[]) {
@@ -374,7 +385,7 @@ export async function getCommunityEvent(): Promise<WorldEvent> {
   const raw = await redis.get(eventKey);
 
   if (raw) {
-    const current = JSON.parse(raw) as WorldEvent;
+    const current = parseStoredJson<WorldEvent>(raw);\n    if (!current) return { ...COMMUNITY_WORLD_EVENT };
     const lastTickRaw = await redis.get(tickKey);
     const lastTick = lastTickRaw ? Number(lastTickRaw) : now;
     const currentWeekNumber = weekKey(now);
@@ -391,7 +402,7 @@ export async function getCommunityEvent(): Promise<WorldEvent> {
     const latestNow = Date.now();
     const currentWeekNumber = weekKey(latestNow);
     const ev: WorldEvent = latestRaw
-      ? JSON.parse(latestRaw) as WorldEvent
+      ? parseStoredJson<WorldEvent>(latestRaw) ?? { ...COMMUNITY_WORLD_EVENT }
       : { ...COMMUNITY_WORLD_EVENT };
 
     if (ev.weekId !== currentWeekNumber || latestNow >= ev.endsAt) {
@@ -442,7 +453,7 @@ export async function addCommunityRolls(rolls: number): Promise<WorldEvent> {
     const now = Date.now();
     const currentWeekNumber = weekKey(now);
     const ev: WorldEvent = raw
-      ? JSON.parse(raw) as WorldEvent
+      ? parseStoredJson<WorldEvent>(raw) ?? { ...COMMUNITY_WORLD_EVENT }
       : { ...COMMUNITY_WORLD_EVENT };
     if (ev.weekId !== currentWeekNumber || now >= ev.endsAt) {
       ev.id = `world-event-w${currentWeekNumber}`;
@@ -543,7 +554,7 @@ export async function setCommunityEventConfig(config: {
 
 export async function leaderboard(): Promise<LeaderboardEntry[]> {
   const raw = await redis.get(key('leaderboard'));
-  const board: LeaderboardEntry[] = raw ? JSON.parse(raw) : [];
+  const board: LeaderboardEntry[] = parseStoredJson<LeaderboardEntry[]>(raw) ?? [];
   return [...board].sort((a, b) => b.value - a.value).slice(0, 25);
 }
 
