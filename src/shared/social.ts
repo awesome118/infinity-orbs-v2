@@ -96,6 +96,8 @@ export interface LeaderboardEntry {
   level?: number;
   title?: string;
   guildTag?: string;
+  /** Timestamp of the player's first/most recent qualifying share. Required for leaderboard eligibility. */
+  sharedAt?: number;
 }
 
 export interface Achievement {
