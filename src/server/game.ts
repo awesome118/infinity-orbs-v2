@@ -236,7 +236,7 @@ export interface DeveloperAnnouncement {
   updatedAt: number;
   updatedBy: string;
 }
-export const DEFAULT_DEVELOPER_ANNOUNCEMENT = 'Welcome to Infinity Orbs! New developer announcements will appear here.';
+export const DEFAULT_DEVELOPER_ANNOUNCEMENT = '';
 
 export async function getDeveloperAnnouncement(): Promise<DeveloperAnnouncement> {
   const raw = await redis.get(DEVELOPER_ANNOUNCEMENT_KEY);
