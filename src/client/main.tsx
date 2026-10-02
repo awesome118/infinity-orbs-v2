@@ -139,7 +139,6 @@ export function App() {
   } | null>(null);
 
   const [readyAt, setReadyAt] = useState<number>(0);
-  const [now, setNow] = useState<number>(Date.now());
   const [tab, setTab] = useState<ActiveTab>('roll');
   const [autoRoll, setAutoRoll] = useState<boolean>(false);
   const [isRolling, setIsRolling] = useState<boolean>(false);
@@ -311,8 +310,7 @@ export function App() {
   // Initial load & tick loop (paced smoothly at 250ms to prevent high-frequency re-render jitter)
   useEffect(() => {
     void refreshAll();
-    const interval = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(interval);
+    return undefined;
   }, [refreshAll]);
 
   // Live developer announcement feed. All open clients poll the same Redis-backed
@@ -1292,7 +1290,7 @@ export function App() {
   const prestigeReady = calculateCosmicDust(state) > 0;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white">
+    <div className="io-ui min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white">
       {/* Sticky Top Header */}
       <Header
         state={state}
@@ -1411,7 +1409,7 @@ export function App() {
       )}
 
       {/* Main Navigation Bar */}
-      <div className="bg-slate-900/40 border-b border-slate-800/80 px-4 py-2 sticky top-[57px] z-20 backdrop-blur-md">
+      <div className="io-nav bg-slate-900/55 border-b border-slate-800/80 px-4 py-2 sticky top-[57px] z-20 backdrop-blur-md">
         <div className="max-w-6xl mx-auto flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
 
           <button
@@ -1579,7 +1577,6 @@ export function App() {
             lastBatch={lastBatch}
             batchSummary={batchSummary}
             readyAt={readyAt}
-            now={now}
             busy={isRolling}
             autoRoll={autoRoll}
             worldEvent={worldEvent}
