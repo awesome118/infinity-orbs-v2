@@ -400,19 +400,6 @@ async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSn
       currentSnapshot = await readLegacyGlobalBoosterSnapshot(now);
     }
 
-    const activeOther = (['luck', 'speed', 'crit'] as GlobalBoosterId[]).find(otherId =>
-      otherId !== id &&
-      currentSnapshot[otherId].tier > 0 &&
-      currentSnapshot[otherId].remainingMs > 0,
-    );
-    if (activeOther) {
-      await txn.unwatch();
-      throw new Error(
-        GLOBAL_BOOSTERS[activeOther].name +
-        ' is already active. Wait for it to expire before activating another Global Booster.',
-      );
-    }
-
     currentSnapshot[id] = activateGlobalBoosterStack(currentSnapshot[id], now);
 
     await txn.multi();
