@@ -1007,7 +1007,7 @@ export function App() {
         onOpenOdds={() => setShowOddsModal(true)}
         onClaimOffline={handleClaimOffline}
         onOpenDevDebug={isAdmin ? () => setShowDevModal(true) : undefined}
-        onOpenProfile={() => setTab('profile')}
+        onOpenProfile={() => changeTab('profile')}
       />
 
       {/* Ephemeral Toast Banner */}
