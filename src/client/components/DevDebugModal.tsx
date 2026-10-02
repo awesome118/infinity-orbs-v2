@@ -257,7 +257,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               title="Publish the current developer announcement."
               disabled={!announcementLoaded || loading}
               onClick={() => void sendAdminAction('/api/dev/announcement', { message: announcementText }, true, 'Developer announcement updated.')}
-              className={\`${buttonBase} bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-2\`}
+              className={`${buttonBase} bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-2`}
             >
               <Save className="inline w-3.5 h-3.5 mr-1" /> Publish Announcement
             </button>
