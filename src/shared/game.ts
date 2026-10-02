@@ -373,8 +373,8 @@ export interface PurchasePack {
 export const PURCHASE_PACKS: PurchasePack[] = [
   {
     sku: 'shards-100',
-    name: '100 Shards',
-    description: '100 Shards.',
+    name: '100 Shards + 1 Global Boost',
+    description: '100 Shards and 1 free Global Booster activation.',
     priceGold: 50,
     shards: 100,
     globalBoosterCredits: 1,
