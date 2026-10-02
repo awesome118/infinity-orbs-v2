@@ -1,4 +1,3 @@
-import './styles.css';
 import { requestExpandedMode, context } from '@devvit/web/client';
 import { createRoot } from 'react-dom/client';
 import { getOrbInfo } from '../shared/game.js';
