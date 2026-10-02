@@ -203,7 +203,8 @@ function playerKeyFor(userId: string): string {
 function parseGlobalBoosterState(raw: string | null, fallback: GlobalBoosterState): GlobalBoosterState {
   if (!raw) return fallback;
   try {
-    const parsed = parseStoredJson<Partial<GlobalBoosterState>>(raw);\n    if (!parsed) return fallback;
+    const parsed = parseStoredJson<Partial<GlobalBoosterState>>(raw);
+    if (!parsed) return fallback;
     return {
       tier: Math.max(0, Math.floor(Number(parsed.tier ?? fallback.tier))),
       remainingMs: Math.max(0, Number(parsed.remainingMs ?? fallback.remainingMs)),
