@@ -3,7 +3,7 @@ import {
   X, Wrench, Coins, Gem, Sparkles, Zap, RotateCcw, Play, Shield, Megaphone,
   Users,
   Ban, UserX, CheckCircle2, RefreshCw, Flame,
-  Database, Wand2, Trash2, Gauge, ListRestart, Save, Power,
+  Database, Wand2, Trash2, Gauge, ListRestart, Save,
 } from 'lucide-react';
 import type { RollResponse } from '../../shared/game.js';
 import { sound } from '../sound.js';
@@ -65,10 +65,6 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     currentRunRolls: '',
     rollsSinceBest: '',
   });
-
-  const [globalBooster, setGlobalBooster] = useState('luck');
-  const [globalTier, setGlobalTier] = useState('5');
-  const [globalMinutes, setGlobalMinutes] = useState('30');
 
   const sendAdminAction = async (endpoint: string, body: any = {}, refresh = true, successMessage = 'Success.') => {
     setLoading(true);
@@ -481,31 +477,6 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 1/{v.toLocaleString()}
               </button>
             ))}
-          </div>
-        </section>
-
-        <section className={panelBase}>
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-300">
-            <Power className="w-4 h-4" /> Global Booster Control
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <select title="Choose the Global Booster to edit." value={globalBooster} onChange={e => setGlobalBooster(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white">
-              <option value="luck">Global Luck</option>
-              <option value="speed">Global Speed</option>
-              <option value="crit">Global Crit</option>
-            </select>
-            <select title="Choose the tier to force. Off disables the booster." value={globalTier} onChange={e => setGlobalTier(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white">
-              {[0, 1, 5, 10].map(v => <option key={v} value={v}>{v === 0 ? 'Off' : `Tier ${v}`}</option>)}
-            </select>
-            <input value={globalMinutes} onChange={e => setGlobalMinutes(e.target.value)} type="number" min="1" title="How many minutes the forced Global Booster state should remain active." className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white font-mono" placeholder="minutes" />
-            <button
-              title="Set a Global Booster's tier and duration directly without spending Shards."
-              disabled={loading}
-              onClick={() => void sendAdminAction('/api/dev/global-booster', { id: globalBooster, tier: Number(globalTier), minutes: Number(globalMinutes) })}
-              className={`${buttonBase} bg-cyan-600 hover:bg-cyan-500 border-cyan-500 text-white px-3 py-2`}
-            >
-              Set Booster
-            </button>
           </div>
         </section>
 
