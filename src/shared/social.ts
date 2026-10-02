@@ -100,6 +100,14 @@ export interface LeaderboardEntry {
   sharedAt?: number;
 }
 
+export interface GlobalChatMessage {
+  id: string;
+  username: string;
+  text: string;
+  timestamp: number;
+  userId?: string;
+}
+
 export interface Achievement {
   id: string;
   name: string;
