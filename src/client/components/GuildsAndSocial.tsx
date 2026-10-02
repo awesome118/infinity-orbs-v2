@@ -21,7 +21,6 @@ import {
   Zap,
   UserCheck,
   UserPlus,
-  ShieldCheck,
 } from 'lucide-react';
 import type {
   Guild,
