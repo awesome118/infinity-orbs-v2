@@ -15,6 +15,7 @@ import {
   cooldownMs,
   rollsPerActivation,
   luckMultiplier,
+  MIN_ALTAR_COIN_OFFER,
   upgradeCost,
   prestigeUpgradeCost,
   calculatePrestigeDust,
@@ -2379,8 +2380,11 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
   const numCoins = finiteNonNegativeInteger(coins);
   const numShards = finiteNonNegativeInteger(shards);
 
-  if (numCoins < 100 && numShards <= 0) {
-    throw new Error('Sacrifice at least 100 Coins or 1 Shard.');
+  if (numCoins > 0 && numCoins < MIN_ALTAR_COIN_OFFER) {
+    throw new Error(`Coin offerings require at least ${MIN_ALTAR_COIN_OFFER.toLocaleString()} Coins.`);
+  }
+  if (numCoins === 0 && numShards <= 0) {
+    throw new Error('Sacrifice at least 10,000 Coins or 1 Shard.');
   }
   if (s.coins < numCoins) throw new Error('Not enough Coins to sacrifice.');
   if ((s.shards ?? 0) < numShards) throw new Error('Not enough Shards to sacrifice.');
@@ -2412,7 +2416,7 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
   let altarLeveledUp = false;
   if (numCoins > 0) {
     altarBreakthroughChance = altarCoinDevotionChancePercent(numCoins, previousPity);
-    altarLeveledUp = Math.random() * 100 < altarBreakthroughChance;
+    altarLeveledUp = serverRandom() * 100 < altarBreakthroughChance;
 
     if (altarLeveledUp) {
       sacrifices.altarLevel = prevAltarLevel + 1;
