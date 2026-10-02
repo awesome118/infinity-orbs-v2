@@ -64,6 +64,7 @@ type PaymentOrder = {
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
     getProducts(): Promise<unknown>;
+    getOrders(): Promise<unknown>;
   };
 }).payments;
 
