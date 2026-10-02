@@ -157,9 +157,6 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
               <Award className="w-4 h-4 text-purple-400" />
               <span>Skill Specialization Branches</span>
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              10-pip progress bars wrap with new celestial colors as skills advance!
-            </p>
           </div>
 
           <div className="flex gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-slate-800 flex-wrap">
@@ -217,11 +214,6 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
                       {skill.name}
                     </span>
                     <div className="flex items-center gap-1.5">
-                      {wrapCount > 0 && !isMax && (
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${currentTierColor.badge}`}>
-                          Wrap {wrapCount + 1}
-                        </span>
-                      )}
                       <span
                         className={`text-xs font-mono font-bold px-2 py-0.5 rounded-md ${
                           isMax
