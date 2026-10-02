@@ -512,7 +512,7 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
     const grantedShards = typeof receipt === 'string' ? pack.shards : receipt.shards;
     const grantedCredits = typeof receipt === 'string'
       ? pack.globalBoosterCredits
-      : receipt.globalBoosterCredits;
+      : Math.max(0, Number(receipt.globalBoosterCredits ?? 0) || 0);
     const refundableShards = Math.min(state.purchasedShards ?? 0, grantedShards);
     state.shards = Math.max(0, (state.shards ?? 0) - refundableShards);
     state.purchasedShards = Math.max(0, (state.purchasedShards ?? 0) - refundableShards);
