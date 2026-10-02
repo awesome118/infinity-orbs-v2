@@ -294,12 +294,48 @@ export function App() {
     return () => clearInterval(interval);
   }, [refreshAll]);
 
+  // Live developer announcement feed. All open clients poll the same Redis-backed
+  // announcement so edits appear automatically without requiring a page refresh.
+  useEffect(() => {
+    let cancelled = false;
+
+    const pollDeveloperAnnouncement = async () => {
+      try {
+        const announcement = await getJson<{ message: string; updatedAt: number; updatedBy: string }>('/api/developer-announcement');
+        if (cancelled) return;
+
+        if (!announcement.message) {
+          setDeveloperAnnouncement(null);
+          return;
+        }
+
+        if (announcement.updatedAt > dismissedDeveloperAnnouncementRef.current) {
+          setDeveloperAnnouncement(announcement);
+        } else {
+          setDeveloperAnnouncement(null);
+        }
+      } catch {
+        // Announcement polling is best-effort and must never block gameplay.
+      }
+    };
+
+    void pollDeveloperAnnouncement();
+    const interval = window.setInterval(() => void pollDeveloperAnnouncement(), 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
+
   // Detect when the installed game has a newer client bundle. The endpoint is
   // deliberately uncached so stale Reddit/CDN responses do not hide updates.
   useEffect(() => {
     const checkForUpdate = async () => {
       try {
-        const res = await fetch('/api/version', { cache: 'no-store' });
+        const res = await fetch('/api/version?check=' + Date.now(), {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' },
+        });
         if (!res.ok) return;
         const data = await res.json() as { version?: string };
         if (data.version && data.version !== APP_VERSION) {
@@ -451,7 +487,8 @@ export function App() {
       setReadyAt(Date.now() + res.rollsRemainingUntilNext);
 
       // Immediately bump local rolling counter progress on every roll
-      setWorldEvent(prev => (prev ? { ...prev, currentProgress: prev.currentProgress + (res.batch?.length || 1) } : null));
+      setWorldEvent(prev => (prev ? { ...prev, currentProgress: prev.currentProgress + (res.rollsProcessed ?? res.batch?.length ?? 1) } : null));
+      maybePromptForNotifications(state?.totalRolls ?? 0, res.state.totalRolls);
 
       // Trigger New Best Ball Celebration Modal!
       const previousBest = state?.highestRarity ?? 0;
@@ -1044,6 +1081,28 @@ export function App() {
     }
   };
 
+  const maybePromptForNotifications = (previousRolls: number, nextRolls: number) => {
+    if (notificationsEnabled || notificationPromptShown || previousRolls >= 5 || nextRolls < 5) return;
+    setNotificationPromptShown(true);
+    setShowNotificationPrompt(true);
+    try {
+      window.localStorage.setItem('io-notification-prompt-shown', '1');
+    } catch {
+      // Local storage is optional in embedded webviews.
+    }
+  };
+
+  const dismissDeveloperAnnouncement = () => {
+    const updatedAt = developerAnnouncement?.updatedAt ?? 0;
+    dismissedDeveloperAnnouncementRef.current = updatedAt;
+    setDeveloperAnnouncement(null);
+    try {
+      window.localStorage.setItem('io-developer-announcement-dismissed-at', String(updatedAt));
+    } catch {
+      // Local storage is optional.
+    }
+  };
+
   // Share to Reddit
   const handleShareToReddit = async (rarity: number) => {
     const res = await getJson<{ success: boolean; id?: string }>('/api/share', {
@@ -1239,9 +1298,54 @@ export function App() {
         <div className="border-b border-cyan-500/20 bg-cyan-500/5 px-4 py-3">
           <div className="max-w-6xl mx-auto flex items-start gap-3">
             <Megaphone className="w-4 h-4 mt-0.5 text-cyan-300 shrink-0" />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="text-[10px] uppercase tracking-wider font-black text-cyan-300">Developer Announcement</div>
               <div className="mt-1 text-sm text-slate-200 whitespace-pre-wrap break-words">{developerAnnouncement.message}</div>
+            </div>
+            <button
+              onClick={dismissDeveloperAnnouncement}
+              className="shrink-0 p-1 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
+              title="Dismiss this developer announcement"
+              aria-label="Dismiss developer announcement"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showNotificationPrompt && !notificationsEnabled && (
+        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-3xl border border-fuchsia-500/30 bg-slate-900 p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider font-black text-fuchsia-300">Notification Setup</div>
+                <h2 className="mt-1 text-xl font-black text-white">Keep your Orb alerts coming</h2>
+                <p className="mt-2 text-sm text-slate-400">
+                  Enable Reddit notifications to get alerts when your offline Orb storage fills up.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowNotificationPrompt(false)}
+                className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800"
+                aria-label="Close notification prompt"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={() => void handleEnableNotificationsFromPrompt()}
+                className="flex-1 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 px-4 py-2.5 text-xs font-black text-white"
+              >
+                Enable Notifications
+              </button>
+              <button
+                onClick={() => setShowNotificationPrompt(false)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300"
+              >
+                Not Now
+              </button>
             </div>
           </div>
         </div>
