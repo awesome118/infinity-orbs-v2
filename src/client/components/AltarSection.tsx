@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Flame,
@@ -21,20 +21,22 @@ import { sound } from '../sound.js';
 
 interface AltarSectionProps {
   state: PlayerState;
-  onSacrifice: (coins: number, shards: number) => Promise<void>;
+  onSacrifice: (coins: number, shards: number) => Promise<PlayerState>;
   busy: boolean;
-  now: number;
 }
 
 export const AltarSection: React.FC<AltarSectionProps> = ({
   state,
   onSacrifice,
   busy,
-  now,
 }) => {
-  const [selectedCoinOffer, setSelectedCoinOffer] = useState<number>(() =>
-    0
-  );
+  const [selectedCoinOffer, setSelectedCoinOffer] = useState<number>(0);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
   const [selectedShardOffer, setSelectedShardOffer] = useState<number>(0);
   const [sacrificing, setSacrificing] = useState(false);
 
@@ -79,14 +81,21 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
     sound.playSacrificeSound();
 
     try {
-      await onSacrifice(selectedCoinOffer, selectedShardOffer);
+      const nextState = await onSacrifice(selectedCoinOffer, selectedShardOffer);
       confetti({
         particleCount: 50,
         spread: 60,
         origin: { y: 0.65 },
         colors: ['#f59e0b', '#ef4444', '#a855f7'],
       });
-      setSelectedCoinOffer(state.coins >= currentCoinFloor ? currentCoinFloor : 0);
+      const nextSacrifices = nextState.sacrifices ?? {
+        coinsSacrificed: 0,
+        shardsSacrificed: 0,
+        altarLevel: 0,
+        luckSurgeUntil: 0,
+      };
+      const nextFloor = altarCoinFloor(nextSacrifices.altarLevel ?? 0);
+      setSelectedCoinOffer(nextState.coins >= nextFloor ? nextFloor : 0);
       setSelectedShardOffer(0);
     } finally {
       setSacrificing(false);
@@ -103,13 +112,13 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-500/20 border border-orange-400/40 text-orange-300 text-xs font-bold">
               <Flame className="w-3.5 h-3.5 fill-current text-orange-400 animate-pulse" />
-              <span>COSMIC DEVOTION ALTAR</span>
+              <span>DEVOTION ALTAR</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight flex items-center gap-2">
-              <span>Crucible of Perpetual Devotion</span>
+              <span>Devotion Altar</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Coin offerings gamble for permanent Devotion breakthroughs. Larger offerings improve the chance, and failed attempts build pity. Shards remain a separate source of infusion and temporary Surge.
+              Offer Coins for a chance to increase the altar level. Larger offerings have better odds; failed attempts increase pity. Shards add permanent luck and extend the temporary Surge.
             </p>
           </div>
 
@@ -120,13 +129,13 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
             </div>
             <div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-orange-300">
-                Altar Luck Multiplier
+                Altar Luck
               </div>
               <div className="text-2xl font-black text-white font-mono">
                 {totalAltarMultiplier}×
               </div>
               <div className="text-[10px] text-emerald-400 font-medium">
-                Multiplicative Compounding
+                Multiplied with other luck
               </div>
             </div>
           </div>
@@ -137,7 +146,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-3">
         <div className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-          <span>Multiplicative Luck Formula Breakdown</span>
+          <span>Luck breakdown</span>
         </div>
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left bg-slate-950/70 p-4 rounded-xl border border-slate-800/80">
           <div className="flex-1">
