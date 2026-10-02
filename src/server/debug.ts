@@ -4,6 +4,7 @@ import {
   claimOrbFrenzy,
   loadRaw,
   save,
+  listPlayers,
   startOrbFrenzy,
   getGameBanStatus,
   listGameBans,
@@ -225,6 +226,7 @@ async function setGlobalBooster(id: string, tier: number, minutes: number) {
     tier: safeTier,
     remainingMs,
     updatedAt: Date.now(),
+    activationProgress: 0,
   };
   await redis.set(`io:world-booster:${id}`, JSON.stringify(state));
   return state;
@@ -248,6 +250,14 @@ debugRouter.post('/announcement', async (req, res) => {
     res.json({ announcement });
   } catch (e: any) {
     res.status(400).json({ error: e?.message || 'Failed to update developer announcement.' });
+  }
+});
+
+debugRouter.get('/players', async (_req, res) => {
+  try {
+    res.json({ players: await listPlayers() });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to load player list.' });
   }
 });
 
