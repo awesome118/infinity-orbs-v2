@@ -94,8 +94,8 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
     upgrades: { ...state.upgrades, luck: (state.upgrades.luck ?? 0) + 1 },
   });
 
-  const isAutoUnlocked = (state.upgrades.auto ?? 0) > 0;
-  const canUnlockAuto = state.totalRolls >= 10;
+  const isAutoUnlocked = true;
+  const canUnlockAuto = true;
 
   const currentCoinBonusPct = (state.upgrades.coinBonus ?? 0) * 15;
   const currentShardChancePct = ((state.upgrades.shardChance ?? 0) * 0.5).toFixed(1);
@@ -179,8 +179,8 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       nextVal: isAutoUnlocked ? 'Max' : 'Active',
       desc: 'Rolls automatically when cooldown finishes.',
       cost: upgradeCost('auto', state.upgrades.auto ?? 0),
-      locked: !isAutoUnlocked && !canUnlockAuto,
-      lockMsg: `Unlocks after 10 rolls (${state.totalRolls}/10)`,
+      locked: false,
+      lockMsg: undefined,
     },
     {
       id: 'coinBonus',
