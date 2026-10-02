@@ -216,7 +216,7 @@ export function createApp() {
 
   app.post('/internal/payments/refund', async (req, res) => {
     try {
-      const order = req.body as Order;
+      const order = req.body as PaymentOrder;
       if (!order.userId || !order.id) {
         return res.json({
           success: false,
