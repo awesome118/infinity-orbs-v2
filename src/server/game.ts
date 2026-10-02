@@ -2592,16 +2592,16 @@ export async function claimOrbFrenzy(options: {
     }));
   }
 
+  const bestRarity = topRarity;
+  const newRarityKeys = groups.filter(
+    group => (s.collection[String(group.rarity)] ?? 0) <= 0,
+  );
+  const uniqueGained = newRarityKeys.length;
+
   for (const group of groups) {
     const keyForRarity = String(group.rarity);
     s.collection[keyForRarity] = (s.collection[keyForRarity] ?? 0) + group.count;
   }
-
-  const bestRarity = topRarity;
-  const uniqueGained = groups.reduce(
-    (total, group) => total + (s.collection[String(group.rarity)] ? 0 : 1),
-    0,
-  );
   s.highestRarity = Math.max(s.highestRarity, bestRarity);
   s.rollsSinceBest = bestRarity > previousHighest ? 0 : (s.rollsSinceBest ?? 0) + count;
 
@@ -2629,7 +2629,7 @@ export async function claimOrbFrenzy(options: {
     rolledAt: Date.now(),
     tier: orbInfo.tier,
     name: orbInfo.name,
-    isNew: true,
+    isNew: newRarityKeys.some(group => group.rarity === bestRarity),
     isCrit: bestRarity > data.rarity,
   };
 
