@@ -948,5 +948,5 @@ export async function claimAchievement(_s: PlayerState, id: string) {
 }
 
 export function shareText(s: PlayerState, rarity: number) {
-  return `I just found a 1/${rarity.toLocaleString()} Orb in ORBS — The Infinite Roll!\n\nPlayer: ${username()}\nRoll #${s.totalRolls.toLocaleString()} • Collection Value ${s.collectionValue.toLocaleString()}\n\nCan you beat probability?`;
+  return `I just found a 1/${rarity.toLocaleString()} Orb in Infinity Orbs!\n\nPlayer: ${username()}\nRoll #${s.totalRolls.toLocaleString()} • Collection Value ${s.collectionValue.toLocaleString()}\n\nCan you beat probability?`;
 }
