@@ -299,7 +299,9 @@ export function activateGlobalBoosterStack(
   let tier = decayed.tier;
   const remainingMs = decayed.remainingMs + GLOBAL_BOOSTER_STACK_MS;
 
-  while (tier < GLOBAL_BOOSTER_MAX_TIER && remainingMs >= tier * GLOBAL_BOOSTER_STACK_MS) {
+  // A single activation can complete at most one tier. This prevents a large
+  // accumulated charge from skipping tiers in one activation.
+  if (tier < GLOBAL_BOOSTER_MAX_TIER && remainingMs >= tier * GLOBAL_BOOSTER_STACK_MS) {
     tier++;
   }
 
