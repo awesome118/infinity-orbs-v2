@@ -21,6 +21,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const refreshRequestRef = useRef(0);
 
   const mergeMessages = (current: GlobalChatMessage[], incoming: GlobalChatMessage[]) => {
     const merged = new Map<string, GlobalChatMessage>();
@@ -32,11 +33,13 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
   };
 
   const refreshChat = async () => {
+    const requestId = ++refreshRequestRef.current;
     try {
       const next = await loadChat();
-      // Never replace local state with a possibly older polling response.
-      // Merge by message ID so rapid posts and overlapping requests cannot
-      // make one message disappear when another arrives.
+      // Ignore responses from older requests. Embedded webviews can finish
+      // overlapping GETs out of order, which otherwise lets stale history
+      // briefly replace a newer snapshot.
+      if (requestId !== refreshRequestRef.current) return;
       setMessages(prev => mergeMessages(prev, next));
     } catch {
       // Chat is auxiliary UI and should never block gameplay.
