@@ -571,8 +571,6 @@ export async function loadRaw(): Promise<PlayerState> {
 
   const base = createInitialState();
   const cleanParsed = { ...(parsed as PlayerState & Record<string, unknown>) };
-  delete cleanParsed.globalBoosterCredits;
-  delete cleanParsed.globalBoosters;
   const normalizedManualRolls = Math.max(
     0,
     Math.min(
