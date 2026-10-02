@@ -1062,7 +1062,10 @@ export async function buyUpgrade(id: UpgradeId): Promise<PlayerState> {
   }
 
   const cost = upgradeCost(id, level);
-  if (!Number.isFinite(cost) || s.coins < cost) {
+  if (!Number.isFinite(cost)) {
+    throw new Error(`${id === 'speed' ? 'Roll Speed' : 'This upgrade'} is already at its maximum level.`);
+  }
+  if (s.coins < cost) {
     throw new Error(`Need ${cost.toLocaleString()} Coins.`);
   }
   s.coins -= cost;
