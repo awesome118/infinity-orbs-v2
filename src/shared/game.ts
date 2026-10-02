@@ -603,6 +603,7 @@ export interface RollResponse {
   xpGained: number;
   state: PlayerState;
   rollsRemainingUntilNext: number;
+  rollsProcessed?: number;
   dramaticReveal: boolean;
   frenzyCount?: number;
 }
