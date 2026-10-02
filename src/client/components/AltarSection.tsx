@@ -32,7 +32,9 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
   busy,
   now,
 }) => {
-  const [selectedCoinOffer, setSelectedCoinOffer] = useState<number>(() => Math.min(1000, state.coins));
+  const [selectedCoinOffer, setSelectedCoinOffer] = useState<number>(() =>
+    state.coins >= MIN_ALTAR_COIN_OFFER ? MIN_ALTAR_COIN_OFFER : 0
+  );
   const [selectedShardOffer, setSelectedShardOffer] = useState<number>(0);
   const [sacrificing, setSacrificing] = useState(false);
 
@@ -83,7 +85,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
         origin: { y: 0.65 },
         colors: ['#f59e0b', '#ef4444', '#a855f7'],
       });
-      setSelectedCoinOffer(Math.min(1000, state.coins));
+      setSelectedCoinOffer(state.coins >= MIN_ALTAR_COIN_OFFER ? MIN_ALTAR_COIN_OFFER : 0);
       setSelectedShardOffer(0);
     } finally {
       setSacrificing(false);
@@ -188,7 +190,9 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
               <span className="text-[10px] uppercase font-black tracking-wide text-amber-300">
                 Coin Breakthrough Chance
               </span>
-              <span className="text-lg font-black font-mono text-white">{selectedCoinChance}%</span>
+              <span className="text-lg font-black font-mono text-white">
+                {selectedCoinOffer > 0 && coinOfferMeetsFloor ? (selectedCoinChance + '%') : '—'}
+              </span>
             </div>
             <div className="mt-1 text-[10px] text-slate-500">
               {selectedCoinOffer === 0
