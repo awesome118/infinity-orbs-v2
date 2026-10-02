@@ -446,14 +446,16 @@ export function createApp() {
       for (const rawOrder of orders) {
         if (!rawOrder || typeof rawOrder !== 'object') continue;
         const order = rawOrder as PaymentOrder;
-        if (order.userId !== userId || order.status !== 'PAID' || !order.id) continue;
-        if (!Array.isArray(order.products) || order.products.length !== 1) continue;
-        const sku = String(order.products[0]?.sku ?? '');
+        const orderId = paymentOrderId(order);
+        const status = paymentOrderStatus(order);
+        if (status && status !== 'PAID') continue;
+        if (!orderId) continue;
+        const sku = paymentProductSku(order);
         if (!sku) continue;
         try {
-          if (await grantPurchasedPack(userId, sku, order.id)) granted++;
+          if (await grantPurchasedPack(userId, sku, orderId)) granted++;
         } catch (error) {
-          console.error('[Payments] Reconciliation failed for order', order.id, error);
+          console.error('[Payments] Reconciliation failed for order', orderId, error);
         }
       }
 
