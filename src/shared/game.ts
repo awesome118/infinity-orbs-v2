@@ -902,7 +902,7 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
   altarResonator: {
     name: 'Altar Resonator',
-    desc: '+15% greater luck multiplier from Altar sacrifices per level.'
+    desc: '+15% greater luck multiplier from Altar sacrifices per level.',
     category: 'alchemy',
     maxLevel: 4,
     costPerLevel: 3,
