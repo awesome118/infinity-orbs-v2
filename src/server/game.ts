@@ -86,6 +86,130 @@ const OFFLINE_FULL_JOB_PREFIX = 'io:offline-full-job:';
 const OFFLINE_FULL_RETRY_MS = 5 * 60_000;
 const PLAYER_FLAIR_KEY_PREFIX = 'io:player-flair:';
 
+const PLAYER_SPY_LOG_KEY_PREFIX = 'io:player-spy:v1:';
+const PLAYER_SPY_LOG_LIMIT = 500;
+
+export interface PlayerSpyLog {
+  timestamp: number;
+  event: string;
+  details: Record<string, unknown>;
+}
+
+function playerSpyKey(userId: string): string {
+  return PLAYER_SPY_LOG_KEY_PREFIX + userId;
+}
+
+function playerSpySnapshot(s: PlayerState): Record<string, unknown> {
+  return {
+    level: s.level,
+    xp: s.xp,
+    coins: s.coins,
+    shards: s.shards,
+    cosmicDust: s.cosmicDust,
+    totalRolls: s.totalRolls,
+    totalCrits: s.totalCrits ?? 0,
+    highestRarity: s.highestRarity,
+    collectionValue: s.collectionValue,
+    lifetimeCoins: s.lifetimeCoins ?? 0,
+    lifetimeShards: s.lifetimeShards ?? 0,
+    offlineRolls: s.offlineRolls,
+    rollsSinceBest: s.rollsSinceBest ?? 0,
+    prestigeCount: s.prestigeCount ?? 0,
+    masteryPoints: s.masteryPoints ?? 0,
+    manualRolls: s.manualRolls ?? 0,
+    upgrades: { ...s.upgrades },
+    prestigeUpgrades: { ...s.prestigeUpgrades },
+    masterySkills: { ...s.masterySkills },
+    activeBoosters: { ...s.activeBoosters },
+    automations: { ...s.automations },
+  };
+}
+
+export async function appendPlayerSpyLog(
+  event: string,
+  details: Record<string, unknown> = {},
+  userId = currentUserId(),
+): Promise<void> {
+  const id = String(userId ?? '').trim();
+  if (!id) return;
+
+  const entry: PlayerSpyLog = {
+    timestamp: Date.now(),
+    event,
+    details,
+  };
+
+  try {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const logKey = playerSpyKey(id);
+      const txn = await redis.watch(logKey);
+      const raw = await redis.get(logKey);
+      let entries: PlayerSpyLog[] = [];
+
+      if (typeof raw === 'string' && raw.trim()) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            entries = parsed.filter(
+              (item): item is PlayerSpyLog =>
+                Boolean(item) &&
+                typeof item === 'object' &&
+                !Array.isArray(item) &&
+                typeof (item as Record<string, unknown>).event === 'string',
+            );
+          }
+        } catch {
+          entries = [];
+        }
+      }
+
+      entries.push(entry);
+      if (entries.length > PLAYER_SPY_LOG_LIMIT) {
+        entries = entries.slice(-PLAYER_SPY_LOG_LIMIT);
+      }
+
+      await txn.multi();
+      await txn.set(logKey, JSON.stringify(entries));
+      const committed = await txn.exec();
+      if (committed !== null) return;
+    }
+  } catch (error) {
+    console.error('[Player Spy] Could not persist log:', error);
+  }
+}
+
+export async function getPlayerSpyLogs(
+  userId: string,
+  limit = PLAYER_SPY_LOG_LIMIT,
+): Promise<PlayerSpyLog[]> {
+  const id = String(userId ?? '').trim();
+  if (!id) return [];
+  const raw = await redis.get(playerSpyKey(id));
+  if (typeof raw !== 'string' || !raw.trim()) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const entries = parsed.filter(
+      (item): item is PlayerSpyLog =>
+        Boolean(item) &&
+        typeof item === 'object' &&
+        !Array.isArray(item) &&
+        typeof (item as Record<string, unknown>).event === 'string',
+    );
+    const safeLimit = Math.max(1, Math.min(PLAYER_SPY_LOG_LIMIT, Math.floor(Number(limit) || PLAYER_SPY_LOG_LIMIT)));
+    return entries.slice(-safeLimit);
+  } catch {
+    return [];
+  }
+}
+
+export async function clearPlayerSpyLogs(userId: string): Promise<void> {
+  const id = String(userId ?? '').trim();
+  if (!id) return;
+  await redis.del(playerSpyKey(id));
+}
+
 const PAYMENT_DEBUG_LOG_KEY = 'io:payment-debug-log:v1';
 const PAYMENT_DEBUG_LOG_LIMIT = 200;
 
@@ -1400,6 +1524,17 @@ export async function applyRolls(
   const rarities: number[] = [];
   let rollCount = rollCountOverride ?? (rollsPerActivation(s) * activationCount);
   const now = Date.now();
+  const spyUserId = currentUserId();
+  const spyBefore = {
+    totalRolls: s.totalRolls,
+    totalCrits: s.totalCrits ?? 0,
+    coins: s.coins,
+    shards: s.shards,
+    xp: s.xp,
+    level: s.level,
+    highestRarity: s.highestRarity,
+  };
+  const requestedRollCount = rollCount;
   const rng = serverRandom;
 
   // Astral Magnetism proc: chance for multi-rolls to pull 2 bonus orbs
@@ -1632,6 +1767,43 @@ export async function applyRolls(
     name: bestInfo.name,
     isNew: s.collection[String(bestRarity)] === 1,
   };
+
+  await appendPlayerSpyLog('roll', {
+    source,
+    forcedRarity: forcedRarity ?? null,
+    requestedRollCount,
+    processedRollCount: rollCount,
+    activationCount,
+    rarityMin: rarities.length ? Math.min(...rarities) : 0,
+    rarityMax: rarities.length ? Math.max(...rarities) : 0,
+    rarityAverage: rarities.length
+      ? Math.round(rarities.reduce((sum, rarity) => sum + rarity, 0) / rarities.length)
+      : 0,
+    bestRarity,
+    criticalRolls: Math.max(0, (s.totalCrits ?? 0) - spyBefore.totalCrits),
+    uniqueGained,
+    coinsGained,
+    shardsGained,
+    xpGained,
+    onlineCcu: s.onlinePlayers ?? 1,
+    fakeCcuBonus,
+    luckMultiplier: effectiveLuck,
+    communityLuck,
+    globalBoosters,
+    level: s.level,
+    before: spyBefore,
+    after: {
+      totalRolls: s.totalRolls,
+      totalCrits: s.totalCrits ?? 0,
+      coins: s.coins,
+      shards: s.shards,
+      xp: s.xp,
+      level: s.level,
+      highestRarity: s.highestRarity,
+    },
+    snapshot: playerSpySnapshot(s),
+    userId: spyUserId,
+  }, spyUserId);
 
   return { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount };
 }
@@ -1877,6 +2049,15 @@ export async function roll(isAuto = false): Promise<RollResponse> {
   s.lastSeenAt = now;
   await save(s);
   await recordLeaderboard(s);
+  await appendPlayerSpyLog('roll-activation', {
+    mode: isAuto ? 'auto' : 'manual',
+    processedRolls: rollCount,
+    bestRarity: bestOrb.rarity,
+    coinsGained,
+    shardsGained,
+    xpGained,
+    snapshot: playerSpySnapshot(s),
+  });
 
   return {
     orb: bestOrb,
@@ -1946,6 +2127,13 @@ export async function buyUpgrade(id: UpgradeId): Promise<PlayerState> {
   s.coins -= cost;
   s.upgrades[id] = (s.upgrades[id] ?? 0) + 1;
   await save(s);
+  await appendPlayerSpyLog('upgrade-purchase', {
+    upgrade: id,
+    levelBefore: level,
+    levelAfter: s.upgrades[id],
+    cost,
+    snapshot: playerSpySnapshot(s),
+  });
   return s;
 }
 
@@ -2082,6 +2270,11 @@ export async function prestige(): Promise<{ state: PlayerState; cosmicDustEarned
   }
 
   await save(s);
+  await appendPlayerSpyLog('prestige', {
+    cosmicDustEarned: dustEarned,
+    prestigeCount: s.prestigeCount,
+    snapshot: playerSpySnapshot(s),
+  });
   return { state: s, cosmicDustEarned: dustEarned, dustGained: dustEarned };
 }
 
@@ -2104,6 +2297,13 @@ export async function buyPrestigeUpgrade(id: PrestigeUpgradeId): Promise<PlayerS
   s.cosmicDust -= cost;
   s.prestigeUpgrades[id] = current + 1;
   await save(s);
+  await appendPlayerSpyLog('prestige-upgrade-purchase', {
+    upgrade: id,
+    levelBefore: current,
+    levelAfter: s.prestigeUpgrades[id],
+    cost,
+    snapshot: playerSpySnapshot(s),
+  });
   return s;
 }
 
@@ -2148,6 +2348,14 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
   }
 
   await save(s);
+  await appendPlayerSpyLog('altar-sacrifice', {
+    coinsSacrificed: numCoins,
+    shardsSacrificed: numShards,
+    altarLeveledUp,
+    luckSurgeExtended,
+    altarLevel: s.sacrifices.altarLevel,
+    snapshot: playerSpySnapshot(s),
+  });
   return { state: s, altarLeveledUp, luckSurgeExtended };
 }
 
@@ -2185,6 +2393,13 @@ export async function upgradeMasterySkill(skillId: MasterySkillId): Promise<Play
   s.masteryPoints = (s.masteryPoints ?? 0) - cost;
   s.masterySkills[skillId] = currentLevel + 1;
   await save(s);
+  await appendPlayerSpyLog('mastery-upgrade-purchase', {
+    skillId,
+    levelBefore: currentLevel,
+    levelAfter: s.masterySkills[skillId],
+    cost,
+    snapshot: playerSpySnapshot(s),
+  });
   return s;
 }
 
@@ -2200,6 +2415,11 @@ export async function synthesizeDust(): Promise<{ state: PlayerState; dustEarned
   spendShards(s, SHARD_SYNTHESIS_COST);
   s.cosmicDust = (s.cosmicDust ?? 0) + 1;
   await save(s);
+  await appendPlayerSpyLog('dust-synthesis', {
+    shardsSpent: SHARD_SYNTHESIS_COST,
+    dustEarned: 1,
+    snapshot: playerSpySnapshot(s),
+  });
   return { state: s, dustEarned: 1 };
 }
 
@@ -2222,6 +2442,12 @@ export async function buyCosmetic(id: string): Promise<PlayerState> {
   s.unlockedCosmetics.push(id);
   s.activeCosmetic = id;
   await save(s);
+  await appendPlayerSpyLog('cosmetic-purchase', {
+    cosmeticId: id,
+    coinsSpent: cosmetic.costCoins,
+    shardsSpent: cosmetic.costShards,
+    snapshot: playerSpySnapshot(s),
+  });
   return s;
 }
 
