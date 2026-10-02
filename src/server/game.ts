@@ -56,6 +56,7 @@ import {
   contribute,
   recordLeaderboard,
   addGuildTokens,
+  applyGuildTax,
   getPlayerGuildPerks,
   addCommunityRolls,
   getCommunityEvent,
@@ -1389,6 +1390,8 @@ export async function applyRolls(
     coinsGained = Math.round(coinsGained * (1 + (s.prestigeUpgrades.offlineOverdrive * 0.50)));
   }
 
+  const guildTax = await applyGuildTax(context.username ?? '', coinsGained);
+  coinsGained = Math.max(0, coinsGained - guildTax.taxedCoins);
   s.coins += coinsGained;
   shardsGained = grantFreeShards(s, shardsGained);
 
@@ -2304,6 +2307,8 @@ export async function claimOrbFrenzy(options: {
   s.collectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.collectionValue ?? 0) + finalValue);
   s.lifetimeCollectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.lifetimeCollectionValue ?? 0) + finalValue);
   s.totalCrits = (s.totalCrits ?? 0) + critCount;
+  const guildTax = await applyGuildTax(context.username ?? '', coinsGained);
+  coinsGained = Math.max(0, coinsGained - guildTax.taxedCoins);
   s.coins += coinsGained;
   s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
   s.lastFrenzyClaimDate = today;
