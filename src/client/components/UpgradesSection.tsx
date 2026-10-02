@@ -49,6 +49,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   const [recentUpgradeId, setRecentUpgradeId] = useState<UpgradeId | null>(null);
   const [upgradingAll, setUpgradingAll] = useState(false);
   const fmt = (n: number) => n.toLocaleString();
+  const standardUpgradeMaxLevels: Partial<Record<UpgradeId, number>> = { speed: 20 };
 
   const handleUpgradeClick = async (u: (typeof upgradesData)[0]) => {
     sound.playLevelUpFanfare();
@@ -342,8 +343,9 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       {/* Upgrades Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {upgradesData.map(u => {
-          const canAfford = Number.isFinite(u.cost) && state.coins >= u.cost;
-          const isMaxed = !Number.isFinite(u.cost);
+          const maxLevel = standardUpgradeMaxLevels[u.id];
+          const isMaxed = maxLevel !== undefined ? u.level >= maxLevel : !Number.isFinite(u.cost);
+          const canAfford = !isMaxed && Number.isFinite(u.cost) && state.coins >= u.cost;
           const isUpgraded = recentUpgradeId === u.id;
 
           return (
@@ -352,7 +354,9 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
               className={`bg-slate-900/90 border rounded-2xl p-4 flex flex-col justify-between transition-all duration-300 shadow-md space-y-3 relative overflow-hidden ${
                 isUpgraded
                   ? 'border-amber-400 ring-2 ring-amber-400/60 shadow-[0_0_30px_rgba(251,191,36,0.35)] scale-[1.02] animate-upgrade-burst'
-                  : 'border-slate-800 hover:border-slate-700/80'
+                  : isMaxed
+                    ? 'border-slate-800 opacity-70 grayscale-[0.35]'
+                    : 'border-slate-800 hover:border-slate-700/80'
               }`}
             >
               {/* Floating Level Up Celebration Tag */}
@@ -410,10 +414,11 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
                 ) : isMaxed ? (
                   <button
                     disabled
-                    className="w-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-default"
+                    title="This upgrade has reached its maximum level."
+                  className="w-full bg-slate-900 border border-slate-800 text-slate-500 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-not-allowed"
                   >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Max Level</span>
+                    <Check className="w-3.5 h-3.5 text-slate-500" />
+                    <span>MAX LEVEL</span>
                   </button>
                 ) : (
                   <button
