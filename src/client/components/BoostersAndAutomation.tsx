@@ -13,7 +13,8 @@ import {
 } from 'lucide-react';
 import type {
   AutomationId,
-
+  GlobalBoosterId,
+  GlobalBoosterSnapshot,
   PlayerState,
   PremiumBoosterId,
 } from '../../shared/game.js';
