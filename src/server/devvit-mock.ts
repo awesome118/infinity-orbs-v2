@@ -131,9 +131,27 @@ const localContext = {
   userId: 'local-player-1',
   username: 'OrbMaster',
   subredditName: 'infinityorbs',
+  subredditId: 't5-local-infinityorbs',
 };
 
 const localReddit = {
+  modMail: {
+    createModInboxConversation: async (options: {
+      subredditId: string;
+      subject: string;
+      bodyMarkdown: string;
+    }) => {
+      console.log('[Reddit Mock] Modmail submitted:', options.subject);
+      return `local-modmail-${Date.now()}`;
+    },
+  },
+  setUserFlair: async (options: {
+    subredditName: string;
+    username: string;
+    text?: string;
+  }) => {
+    console.log('[Reddit Mock] User flair set:', options.username, options.text);
+  },
   submitCustomPost: async (options: {
     runAs?: string;
     subredditName?: string;
