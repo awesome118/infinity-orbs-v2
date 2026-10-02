@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   X, Wrench, Coins, Gem, Sparkles, Zap, RotateCcw, Play, Shield, Megaphone,
+  Users,
   Ban, UserX, CheckCircle2, RefreshCw, Flame,
   Database, Wand2, Trash2, Gauge, ListRestart, Save, Power,
 } from 'lucide-react';
