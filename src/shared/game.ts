@@ -201,8 +201,6 @@ export function onlinePlayerLuckMultiplier(onlinePlayers: number): number {
   return Math.round((1 + Math.log2(count) * 0.10) * 100) / 100;
 }
 
-export type GlobalBoosterId = 'luck' | 'speed' | 'crit';
-
 export type FeatureId =
   | 'upgrades'
   | 'quests'
@@ -231,183 +229,35 @@ export function featureUnlockLevel(feature: FeatureId): number {
 }
 
 
-export interface GlobalBoosterInfo {
-  name: string;
-  desc: string;
-  costShards: number;
-}
-
-export interface GlobalBoosterState {
-  tier: number;
-  remainingMs: number;
-  updatedAt: number;
-  activationProgress: number;
-  // Absolute expiration is the source of truth for the timer. remainingMs is
-  // retained for compatibility with older saves/UI payloads.
-  endsAt: number;
-}
-
-export type GlobalBoosterSnapshot = Record<GlobalBoosterId, GlobalBoosterState>;
-
-export const GLOBAL_BOOSTER_STACK_MS = 30 * 60 * 1000;
-export const GLOBAL_BOOSTER_MAX_TIER = 10;
-export const GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER = 4;
-
-export const GLOBAL_BOOSTERS: Record<GlobalBoosterId, GlobalBoosterInfo> = {
-  luck: {
-    name: 'Global Luck',
-    desc: 'Improves Luck for everyone.',
-    costShards: 25,
-  },
-  speed: {
-    name: 'Global Speed',
-    desc: 'Reduces roll cooldown for everyone.',
-    costShards: 25,
-  },
-  crit: {
-    name: 'Global Crit',
-    desc: 'Improves Crit Chance and Crit Luck for everyone.',
-    costShards: 25,
-  },
-};
-
-function normalizeGlobalBoosterState(
-  state: Partial<GlobalBoosterState> | null | undefined,
-  now: number,
-): GlobalBoosterState {
-  const updatedAt = Number(state?.updatedAt ?? now) || now;
-  const remainingMs = Math.max(0, Number(state?.remainingMs ?? 0) || 0);
-  const storedEndsAt = Number(state?.endsAt ?? 0) || 0;
-  const endsAt = storedEndsAt > 0
-    ? storedEndsAt
-    : updatedAt + remainingMs;
-
-  return {
-    tier: Math.max(0, Math.min(GLOBAL_BOOSTER_MAX_TIER, Math.floor(Number(state?.tier ?? 0) || 0))),
-    remainingMs,
-    updatedAt,
-    activationProgress: Math.max(
-      0,
-      Math.min(
-        GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER - 1,
-        Math.floor(Number(state?.activationProgress ?? 0) || 0),
-      ),
-    ),
-    endsAt: Math.max(0, endsAt),
-  };
-}
-
-export function createInitialGlobalBoosters(now = Date.now()): GlobalBoosterSnapshot {
-  return {
-    luck: { tier: 0, remainingMs: 0, updatedAt: now, activationProgress: 0, endsAt: 0 },
-    speed: { tier: 0, remainingMs: 0, updatedAt: now, activationProgress: 0, endsAt: 0 },
-    crit: { tier: 0, remainingMs: 0, updatedAt: now, activationProgress: 0, endsAt: 0 },
-  };
-}
-
-export function globalBoosterLuckMultiplier(state: GlobalBoosterState): number {
-  return state.tier > 0 && state.remainingMs > 0 ? 1 + 0.20 * state.tier : 1;
-}
-
-export function globalBoosterSpeedMultiplier(state: GlobalBoosterState): number {
-  return state.tier > 0 && state.remainingMs > 0
-    ? Math.max(0.35, 1 - 0.05 * state.tier)
-    : 1;
-}
-
-export function globalBoosterCritChanceBonus(state: GlobalBoosterState): number {
-  return state.tier > 0 && state.remainingMs > 0 ? 0.02 * state.tier : 0;
-}
-
-export function globalBoosterCritLuckBonus(state: GlobalBoosterState): number {
-  return state.tier > 0 && state.remainingMs > 0 ? 0.10 * state.tier : 0;
-}
-
-export function decayGlobalBoosterState(
-  state: GlobalBoosterState,
-  now = Date.now(),
-): GlobalBoosterState {
-  const normalized = normalizeGlobalBoosterState(state, now);
-  if (normalized.tier <= 0 || normalized.endsAt <= now) {
-    return { ...normalized, remainingMs: 0, updatedAt: now, endsAt: 0 };
-  }
-
-  return {
-    ...normalized,
-    remainingMs: Math.max(0, normalized.endsAt - now),
-    updatedAt: now,
-    endsAt: normalized.endsAt,
-  };
-}
-
-export function activateGlobalBoosterStack(
-  state: GlobalBoosterState,
-  now = Date.now(),
-): GlobalBoosterState {
-  const decayed = decayGlobalBoosterState(state, now);
-
-  let tier = decayed.tier;
-  let activationProgress = decayed.activationProgress + 1;
-
-  if (tier <= 0) tier = 1;
-
-  if (tier < GLOBAL_BOOSTER_MAX_TIER && activationProgress >= GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER) {
-    tier++;
-    activationProgress = 0;
-  } else if (tier >= GLOBAL_BOOSTER_MAX_TIER) {
-    activationProgress = 0;
-  }
-
-  const endsAt = Math.max(now, decayed.endsAt) + GLOBAL_BOOSTER_STACK_MS;
-
-  return {
-    tier,
-    remainingMs: endsAt - now,
-    updatedAt: now,
-    activationProgress,
-    endsAt,
-  };
-}
-
-export function globalBoosterProgress(state: GlobalBoosterState): number {
-  return Math.round(
-    Math.min(1, Math.max(0, state.activationProgress ?? 0) / GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER) * 100,
-  );
-}
-
 export interface PurchasePack {
   sku: string;
   name: string;
   description: string;
   priceGold: number;
   shards: number;
-  globalBoosterCredits: number;
 }
 
 export const PURCHASE_PACKS: PurchasePack[] = [
   {
     sku: 'shards-100',
-    name: '100 Shards + 1 Global Boost',
-    description: '100 Shards and 1 free Global Booster activation.',
+    name: '100 Shards',
+    description: '100 Shards.',
     priceGold: 50,
     shards: 100,
-    globalBoosterCredits: 1,
   },
   {
     sku: 'shards-600',
-    name: '600 Shards + 8 Global Boosts',
-    description: '600 Shards and 8 free Global Booster activations.',
+    name: '600 Shards',
+    description: '600 Shards.',
     priceGold: 250,
     shards: 600,
-    globalBoosterCredits: 8,
   },
   {
     sku: 'shards-1400',
-    name: '1,400 Shards + 20 Global Boosts',
-    description: '1,400 Shards and 20 free Global Booster activations.',
+    name: '1,400 Shards',
+    description: '1,400 Shards.',
     priceGold: 500,
     shards: 1_400,
-    globalBoosterCredits: 20,
   },
 ];
 
@@ -519,9 +369,7 @@ export interface PlayerState {
   communityRewardClaimedAt?: number;
   freeShardsEarnedToday?: number;
   lastFreeShardReset?: string;
-  globalBoosterCredits?: number;
   purchasedShards?: number;
-  globalBoosters?: GlobalBoosterSnapshot;
   lastFrenzyDate?: string;
   lastFrenzyClaimDate?: string;
   communityRewardClaimedTier?: number;
@@ -552,7 +400,6 @@ export interface PlayerState {
 export interface PaymentReceipt {
   status: 'fulfilled' | 'refunded';
   shards: number;
-  globalBoosterCredits: number;
 }
 
 export interface RollResponse {
@@ -1038,9 +885,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     communityRewardClaimedAt: 0,
     freeShardsEarnedToday: 0,
     lastFreeShardReset: today,
-    globalBoosterCredits: 0,
     purchasedShards: 0,
-    globalBoosters: createInitialGlobalBoosters(now),
     lastFrenzyDate: '',
     lastFrenzyClaimDate: '',
     communityRewardClaimedTier: 0,
@@ -1224,9 +1069,7 @@ export function effectiveOfflineTickMs(s: PlayerState): number {
 
 export function critMultiplier(s: PlayerState): number {
   const masteryCritPower = (s.masterySkills?.critMastery ?? 0) * 0.30;
-  const globalCrit = s.globalBoosters?.crit;
-  return 2.0 + (s.upgrades.critPower ?? 0) * 0.25 + masteryCritPower +
-    (globalCrit ? globalBoosterCritLuckBonus(globalCrit) : 0);
+  return 2.0 + (s.upgrades.critPower ?? 0) * 0.25 + masteryCritPower;
 }
 
 export function cooldownMs(s: PlayerState, isAuto = false): number {
@@ -1251,10 +1094,6 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
   if (s.turboRollUntil && Date.now() < s.turboRollUntil) {
     const turboReduction = (s.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 0.65 : 0.75;
     cd = Math.max(600, Math.round(cd * turboReduction));
-  }
-  const globalSpeed = s.globalBoosters?.speed;
-  if (globalSpeed) {
-    cd = Math.max(300, Math.round(cd * globalBoosterSpeedMultiplier(globalSpeed)));
   }
   if (isPremiumBoosterActive(s, 'hyperdrive')) {
     cd = Math.max(400, Math.round(cd * 0.25));
@@ -1321,9 +1160,6 @@ export function luckMultiplier(s: PlayerState): number {
   // ALL SOURCES OF LUCK ARE MULTIPLICATIVE WITH EACH OTHER!
   const onlineLuck = onlinePlayerLuckMultiplier(s.onlinePlayers ?? 1);
   const premiumLuck = isPremiumBoosterActive(s, 'fortune') ? 10 : 1;
-  const globalLuckState = s.globalBoosters?.luck;
-  const globalLuck = globalLuckState ? globalBoosterLuckMultiplier(globalLuckState) : 1;
-
   const total =
     upgradeLuck *
     prestigeLuck *
