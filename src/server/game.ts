@@ -84,11 +84,22 @@ export interface GameBanStatus extends GameBanRecord {
   active: true;
 }
 
+function parseStoredJson<T>(raw: unknown): T | null {
+  if (raw == null) return null;
+  if (typeof raw === 'object') return raw as T;
+  if (typeof raw !== 'string') return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
 async function readGameBans(): Promise<Record<string, GameBanRecord>> {
   const raw = await redis.get(GAME_BANS_KEY);
   if (!raw) return {};
   try {
-    return JSON.parse(raw) as Record<string, GameBanRecord>;
+    return parseStoredJson<Record<string, GameBanRecord>>(raw) ?? {};
   } catch {
     return {};
   }
@@ -192,7 +203,7 @@ function playerKeyFor(userId: string): string {
 function parseGlobalBoosterState(raw: string | null, fallback: GlobalBoosterState): GlobalBoosterState {
   if (!raw) return fallback;
   try {
-    const parsed = JSON.parse(raw) as Partial<GlobalBoosterState>;
+    const parsed = parseStoredJson<Partial<GlobalBoosterState>>(raw);\n    if (!parsed) return fallback;
     return {
       tier: Math.max(0, Math.floor(Number(parsed.tier ?? fallback.tier))),
       remainingMs: Math.max(0, Number(parsed.remainingMs ?? fallback.remainingMs)),
@@ -218,7 +229,7 @@ async function readLegacyGlobalBoosters(): Promise<Partial<GlobalBoosterSnapshot
   const raw = await redis.get(GLOBAL_BOOSTERS_LEGACY_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as Partial<GlobalBoosterSnapshot>;
+    return parseStoredJson<Partial<GlobalBoosterSnapshot>>(raw);
   } catch {
     return null;
   }
@@ -395,7 +406,10 @@ export async function loadRaw(): Promise<PlayerState> {
     s.globalBoosters = globalBoosters;
     return s;
   }
-  const parsed = JSON.parse(raw) as Partial<PlayerState>;
+  const parsed = parseStoredJson<Partial<PlayerState>>(raw);
+  if (!parsed) {
+    throw new Error('Your Infinity Orbs save data could not be read. The stored save is not valid JSON.');
+  }
   const base = createInitialState();
   return {
     ...base,
@@ -1358,9 +1372,10 @@ export async function getOrbFrenzyInfo(): Promise<{
   if (!postId) throw new Error('This is not an Orb Frenzy post.');
   const raw = await redis.get(FRENZY_POST_PREFIX + postId);
   if (!raw) throw new Error('Orb Frenzy post data was not found.');
-  const data = JSON.parse(raw) as {
-    ownerId: string; ownerUsername: string; rarity: number; createdAt: number;
-  };
+  const data = parseStoredJson<{
+    ownerId: string; ownerUsername: string; rarity: number; createdAt: number; inGame?: boolean; consumedAt?: number;
+  }>(raw);
+  if (!data) throw new Error('Orb Frenzy data is corrupted.');
   const today = new Date().toISOString().slice(0, 10);
   const s = await getMe();
   return {
@@ -1385,13 +1400,16 @@ export async function claimOrbFrenzy(options: {
   const raw = await redis.get(FRENZY_POST_PREFIX + postId);
   if (!raw) throw new Error('Orb Frenzy post data was not found.');
 
-  const data = JSON.parse(raw) as {
+  const data = parseStoredJson<{
     ownerId: string;
     ownerUsername: string;
     rarity: number;
     subredditName: string;
     adminTest?: boolean;
-  };
+    inGame?: boolean;
+    consumedAt?: number;
+  }>(raw);
+  if (!data) throw new Error('Orb Frenzy data is corrupted.');
 
   if (
     data.ownerId === currentUserId() &&
