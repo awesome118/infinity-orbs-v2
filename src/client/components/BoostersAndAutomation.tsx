@@ -95,6 +95,14 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   const onlinePlayers = Math.max(1, state.onlinePlayers ?? 1);
   const onlineLuck = onlinePlayerLuckMultiplier(onlinePlayers);
   const freeShards = Math.min(FREE_SHARD_DAILY_CAP, state.freeShardsEarnedToday ?? 0);
+  const completedCommunityTier = Math.max(
+    0,
+    Math.floor(Number(worldEvent?.completedTier ?? Math.max(0, (worldEvent?.tier ?? 1) - 1)) || 0),
+  );
+  const claimedCommunityTier = Math.max(0, Math.floor(Number(state.communityRewardClaimedTier ?? 0) || 0));
+  const nextCommunityRewardTier = claimedCommunityTier + 1;
+  const communityRewardReady = completedCommunityTier >= nextCommunityRewardTier;
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <section className="rounded-3xl border border-indigo-500/25 bg-gradient-to-br from-slate-900 via-indigo-950/20 to-slate-900 p-5 shadow-xl">
@@ -296,7 +304,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                   {(worldEvent?.currentProgress ?? 0).toLocaleString()} / {(worldEvent?.goal ?? 100_000).toLocaleString()} rolls
                 </span>
                 <span className="font-bold text-slate-500">
-                  Tier {worldEvent?.tier ?? 1}
+                  {communityRewardReady ? `Tier ${nextCommunityRewardTier} ready` : `Tier ${worldEvent?.tier ?? 1} in progress`}
                 </span>
               </div>
               <div className="mt-1.5 h-2 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
@@ -325,23 +333,27 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
           <div className="flex items-center gap-3 shrink-0">
             <div className="text-right">
               <span className="block text-[10px] uppercase font-black text-slate-500">Reward tier</span>
-              <span className="text-sm font-black text-emerald-300">
-                {worldEvent?.tier ?? 1}
+              <span className={communityRewardReady ? 'text-sm font-black text-emerald-300' : 'text-sm font-black text-slate-500'}>
+                {communityRewardReady ? nextCommunityRewardTier : completedCommunityTier}
               </span>
               <span className="block text-[10px] text-slate-600 mt-0.5">
-                Claim {worldEvent?.tier ?? 1} once
+                {communityRewardReady
+                  ? `Claim Tier ${nextCommunityRewardTier} once`
+                  : completedCommunityTier > claimedCommunityTier
+                    ? `Tier ${completedCommunityTier} available`
+                    : 'Complete the next community milestone'}
               </span>
             </div>
             <button
               onClick={() => void onClaimCommunityReward()}
-              disabled={busy || (worldEvent?.tier ?? 1) <= (state.communityRewardClaimedTier ?? 0)}
+              disabled={busy || !communityRewardReady}
               className={
-                (worldEvent?.tier ?? 1) > (state.communityRewardClaimedTier ?? 0)
+                communityRewardReady
                   ? 'px-4 py-2.5 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95'
                   : 'px-4 py-2.5 rounded-xl text-xs font-black bg-slate-800 text-slate-500 cursor-not-allowed'
               }
             >
-              {(worldEvent?.tier ?? 1) > (state.communityRewardClaimedTier ?? 0) ? 'Claim Reward' : 'Claimed'}
+              {communityRewardReady ? `Claim Tier ${nextCommunityRewardTier}` : 'No Reward'}
             </button>
           </div>
         </div>
