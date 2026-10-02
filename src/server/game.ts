@@ -433,33 +433,39 @@ function paymentGoodsForSku(sku: string) {
   return pack;
 }
 
-function parsePaymentPlayerState(raw: unknown): PlayerState {
-  let parsed: unknown = parseStoredJson<unknown>(raw);
+function parsePlayerStateValue(value: unknown, depth = 0): PlayerState | null {
+  if (depth > 6 || value == null) return null;
 
-  // Payment fulfillment must tolerate Redis/runtime wrappers without ever
-  // treating the wrapper itself as the player's save. A wrapper-shaped read
-  // used to make us write a fresh save containing only the purchased shards.
-  for (let depth = 0; depth < 5; depth++) {
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) break;
-
-    const record = parsed as Record<string, unknown>;
-    if ('coins' in record || 'shards' in record || 'totalRolls' in record) {
-      return record as unknown as PlayerState;
-    }
-
-    let nestedFound = false;
-    for (const key of ['state', 'player', 'value', 'data', 'payload']) {
-      const nested = record[key];
-      if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
-        parsed = nested;
-        nestedFound = true;
-        break;
-      }
-    }
-    if (!nestedFound) break;
+  if (typeof value === 'string') {
+    const parsed = parseStoredJson<unknown>(value);
+    if (parsed === null) return null;
+    return parsePlayerStateValue(parsed, depth + 1);
   }
 
-  throw new Error('Saved player data could not be read; the purchase was not applied.');
+  if (typeof value !== 'object' || Array.isArray(value)) return null;
+
+  const record = value as Record<string, unknown>;
+  // A real PlayerState has these required top-level fields. Do not mistake a
+  // Redis/proxy wrapper such as { value: '...' } for the save itself.
+  if ('coins' in record && 'shards' in record && 'totalRolls' in record) {
+    return record as unknown as PlayerState;
+  }
+
+  for (const key of ['value', 'state', 'player', 'data', 'payload', 'result']) {
+    if (!(key in record)) continue;
+    const nested = parsePlayerStateValue(record[key], depth + 1);
+    if (nested) return nested;
+  }
+
+  return null;
+}
+
+function parsePaymentPlayerState(raw: unknown): PlayerState {
+  const state = parsePlayerStateValue(raw);
+  if (!state) {
+    throw new Error('Saved player data could not be read; the purchase was not applied.');
+  }
+  return state;
 }
 
 export async function grantPurchasedPack(userId: string, sku: string, orderId: string): Promise<boolean> {
@@ -627,9 +633,9 @@ export async function loadRaw(): Promise<PlayerState> {
     return s;
   }
 
-  const parsed = parseStoredJson<Partial<PlayerState>>(raw);
+  const parsed = parsePlayerStateValue(raw);
   if (!parsed) {
-    throw new Error('Your Infinity Orbs save data could not be read. The stored save is not valid JSON.');
+    throw new Error('Your Infinity Orbs save data could not be read. The stored save is not valid player data.');
   }
 
   // A wipe increments the generation before deleting the save. Any old request
