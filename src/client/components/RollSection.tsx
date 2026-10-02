@@ -134,7 +134,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
     }
   }, [batchSummary, lastOrb]);
 
-  const cd = cooldownMs(state, autoRoll);
+  // The main Roll button always uses the manual-roll cooldown; Auto Roll timing is tracked by the server response.
+  const cd = cooldownMs(state, false);
   const remain = Math.max(0, readyAt - now);
   const canRoll = remain <= 0 && !busy;
   const multi = rollsPerActivation(state);
