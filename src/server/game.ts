@@ -1,4 +1,4 @@
-import { redis, context, reddit } from './devvit-mock.js';
+import { redis, context } from './devvit-mock.js';
 import {
   createInitialState,
   type PlayerState,
@@ -1409,9 +1409,15 @@ export async function claimOrbFrenzy(options: {
   }>(raw);
   if (!data) throw new Error('Orb Frenzy data is corrupted.');
 
-  if (
+  if (data.inGame === true) {
+    if (data.ownerId !== currentUserId()) {
+      throw new Error('This in-game Orb Frenzy belongs to another player.');
+    }
+    if (data.consumedAt) {
+      throw new Error('This Orb Frenzy has already been unleashed.');
+    }
+  } else if (
     data.ownerId === currentUserId() &&
-    data.inGame !== true &&
     !(options.allowAdminTestOwner === true && data.adminTest === true)
   ) {
     throw new Error('You cannot claim your own Orb Frenzy.');
