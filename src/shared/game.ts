@@ -299,14 +299,26 @@ export function globalBoosterCritLuckBonus(state: GlobalBoosterState): number {
 }
 
 export function decayGlobalBoosterState(state: GlobalBoosterState, now = Date.now()): GlobalBoosterState {
-  if (state.remainingMs <= 0 || state.tier <= 0) {
-    return { tier: 0, remainingMs: 0, updatedAt: now, activationProgress: state.activationProgress ?? 0 };
+  const tier = Math.max(0, Math.min(GLOBAL_BOOSTER_MAX_TIER, Math.floor(Number(state.tier) || 0)));
+  const activationProgress = Math.max(
+    0,
+    Math.min(GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER - 1, Math.floor(Number(state.activationProgress ?? 0) || 0)),
+  );
+
+  // Tier progression is permanent. Only the active duration expires. This keeps
+  // the four-activation progression from resetting to Tier 1 when a timer ends.
+  if (state.remainingMs <= 0 || tier <= 0) {
+    return { tier, remainingMs: 0, updatedAt: now, activationProgress };
   }
+
   const elapsed = Math.max(0, now - (state.updatedAt || now));
-  const drained = state.remainingMs - elapsed * GLOBAL_BOOSTER_DRAIN_MULTIPLIER(state.tier);
-  return drained <= 0
-    ? { tier: 0, remainingMs: 0, updatedAt: now, activationProgress: state.activationProgress ?? 0 }
-    : { ...state, remainingMs: drained, updatedAt: now, activationProgress: Math.max(0, Math.min(GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER - 1, state.activationProgress ?? 0)) };
+  const drained = state.remainingMs - elapsed * GLOBAL_BOOSTER_DRAIN_MULTIPLIER(tier);
+  return {
+    tier,
+    remainingMs: Math.max(0, drained),
+    updatedAt: now,
+    activationProgress,
+  };
 }
 
 export function activateGlobalBoosterStack(
