@@ -513,7 +513,7 @@ export async function setGlobalBoosterDebugState(
   if (!GLOBAL_BOOSTERS[id]) throw new Error('Unknown Global Booster.');
 
   const now = Date.now();
-  const safeTier = Math.max(0, Math.min(10, Math.floor(Number(tier) || 0)));
+  const safeTier = Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(Number(tier) || 0)));
   const safeMinutes = Math.max(1, Math.floor(Number(minutes) || 30));
   const snapshot = await getGlobalBoosters();
   const previous = snapshot[id];
@@ -1307,7 +1307,7 @@ export async function applyRolls(
     const xpBonusMul =
       (1 + (s.upgrades.xpBonus ?? 0) * 0.20) *
       levelBenefits.xpMultiplier;
-    const earnedXp = Math.round(Math.min(200, 5 + Math.floor(Math.log10(rarity + 1) * 8)) * xpBonusMul);
+    const earnedXp = Math.round(Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) * xpBonusMul);
 
     // Shards bonus for rare orbs (1,000+)
     let earnedShards = 0;
@@ -2213,7 +2213,8 @@ export async function claimOrbFrenzy(options: {
     1,
     (s.upgrades.critChance ?? 0) * 0.03 +
     (s.masterySkills?.critMastery ?? 0) * 0.03 +
-    (s.guildPerks?.critRank ?? 0) * 0.015,
+    (s.guildPerks?.critRank ?? 0) * 0.015 +
+    globalBoosterCritChanceBonus(s.globalBoosters?.crit),
   );
   const critCount = sampleBinomial(count, critChance);
 
@@ -2270,7 +2271,7 @@ export async function claimOrbFrenzy(options: {
 
   const xpForRarity = (rarity: number) =>
     Math.round(
-      Math.min(200, 5 + Math.floor(Math.log10(rarity + 1) * 8)) *
+      Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) *
       (1 + (s.upgrades.xpBonus ?? 0) * 0.20) *
       levelBenefits.xpMultiplier *
       (isPremiumBoosterActive(s, 'ascension') ? 10 : 1),
