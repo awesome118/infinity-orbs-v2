@@ -70,6 +70,11 @@ function currentUserId(): string {
 const key = () => `player:${currentUserId()}`;
 const GAME_BANS_KEY = 'io:game-bans';
 const ONLINE_PLAYERS_KEY = 'io:online:players';
+const SAVE_GENERATION_KEY_PREFIX = 'player-generation:';
+
+function saveGenerationKeyFor(userId: string): string {
+  return SAVE_GENERATION_KEY_PREFIX + userId;
+}
 
 export interface GameBanRecord {
   userId: string;
@@ -396,25 +401,47 @@ async function claimWorldBoosterActivation(
 }
 
 export async function loadRaw(): Promise<PlayerState> {
-  const raw = await redis.get(key());
-  const username = context.username ?? `reddit-user-${currentUserId().slice(-8)}`;
+  const userId = currentUserId();
+  const playerKey = key();
+  const generationKey = saveGenerationKeyFor(userId);
+  const generationRaw = await redis.get(generationKey);
+  const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
+  const raw = await redis.get(playerKey);
+  const username = context.username ?? `reddit-user-${userId.slice(-8)}`;
   const perks = await getPlayerGuildPerks(username);
   const globalBoosters = await getGlobalBoosters();
+
   if (!raw) {
     const s = createInitialState();
     s.username = username;
+    s.saveGeneration = generation;
     s.guildPerks = perks;
     s.globalBoosters = globalBoosters;
     return s;
   }
+
   const parsed = parseStoredJson<Partial<PlayerState>>(raw);
   if (!parsed) {
     throw new Error('Your Infinity Orbs save data could not be read. The stored save is not valid JSON.');
   }
+
+  // A wipe increments the generation before deleting the save. Any old request
+  // that races the wipe can still write bytes, but those bytes are now invalid
+  // and are discarded instead of resurrecting the old account.
+  if ((parsed.saveGeneration ?? 0) !== generation) {
+    const fresh = createInitialState();
+    fresh.username = username;
+    fresh.saveGeneration = generation;
+    fresh.guildPerks = perks;
+    fresh.globalBoosters = globalBoosters;
+    return fresh;
+  }
+
   const base = createInitialState();
   return {
     ...base,
     ...parsed,
+    saveGeneration: generation,
     username,
     upgrades: { ...base.upgrades, ...(parsed.upgrades ?? {}) },
     prestigeUpgrades: { ...base.prestigeUpgrades, ...(parsed.prestigeUpgrades ?? {}) },
@@ -533,7 +560,29 @@ async function processAutomation(s: PlayerState): Promise<void> {
 }
 
 export async function save(s: PlayerState) {
-  await redis.set(key(), JSON.stringify(s));
+  const userId = currentUserId();
+  const playerKey = key();
+  const generationKey = saveGenerationKeyFor(userId);
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const txn = await redis.watch(playerKey, generationKey);
+    const generationRaw = await txn.get(generationKey);
+    const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
+    const stateGeneration = Math.max(0, Math.floor(Number(s.saveGeneration ?? 0)));
+
+    if (stateGeneration !== generation) {
+      await txn.unwatch();
+      throw new Error('This save was invalidated by an admin wipe. Please reload the game.');
+    }
+
+    s.saveGeneration = generation;
+    await txn.multi();
+    await txn.set(playerKey, JSON.stringify(s));
+    const committed = await txn.exec();
+    if (committed !== null) return;
+  }
+
+  throw new Error('Could not safely save player data. Please retry.');
 }
 
 function serverRandom(): number {
