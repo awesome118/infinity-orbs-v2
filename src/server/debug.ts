@@ -12,6 +12,8 @@ import {
   unbanGameUser,
   getDeveloperAnnouncement,
   setDeveloperAnnouncement,
+  getPaymentDebugLogs,
+  clearPaymentDebugLogs,
 } from './game.js';
 import { context, redis, reddit } from './devvit-mock.js';
 import { setCommunityEventConfig } from './social.js';
@@ -46,6 +48,24 @@ export const debugRouter = Router();
 debugRouter.use((_req, res, next) => {
   if (!isDebugUser()) return res.status(404).json({ error: 'Not found.' });
   next();
+});
+
+debugRouter.get('/payment-logs', async (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(200, Math.floor(Number(req.query.limit ?? 200) || 200)));
+    res.json({ logs: await getPaymentDebugLogs(limit) });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to load payment debug logs.' });
+  }
+});
+
+debugRouter.post('/payment-logs/clear', async (_req, res) => {
+  try {
+    await clearPaymentDebugLogs();
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to clear payment debug logs.' });
+  }
 });
 
 debugRouter.get('/status', async (_req, res) => {
