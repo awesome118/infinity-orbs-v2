@@ -242,6 +242,9 @@ export interface GlobalBoosterState {
   remainingMs: number;
   updatedAt: number;
   activationProgress: number;
+  // Absolute expiration is the source of truth for the timer. remainingMs is
+  // retained for compatibility with older saves/UI payloads.
+  endsAt: number;
 }
 
 export type GlobalBoosterSnapshot = Record<GlobalBoosterId, GlobalBoosterState>;
@@ -272,10 +275,17 @@ function normalizeGlobalBoosterState(
   state: Partial<GlobalBoosterState> | null | undefined,
   now: number,
 ): GlobalBoosterState {
+  const updatedAt = Number(state?.updatedAt ?? now) || now;
+  const remainingMs = Math.max(0, Number(state?.remainingMs ?? 0) || 0);
+  const storedEndsAt = Number(state?.endsAt ?? 0) || 0;
+  const endsAt = storedEndsAt > 0
+    ? storedEndsAt
+    : updatedAt + remainingMs;
+
   return {
     tier: Math.max(0, Math.min(GLOBAL_BOOSTER_MAX_TIER, Math.floor(Number(state?.tier ?? 0) || 0))),
-    remainingMs: Math.max(0, Number(state?.remainingMs ?? 0) || 0),
-    updatedAt: Number(state?.updatedAt ?? now) || now,
+    remainingMs,
+    updatedAt,
     activationProgress: Math.max(
       0,
       Math.min(
@@ -283,14 +293,15 @@ function normalizeGlobalBoosterState(
         Math.floor(Number(state?.activationProgress ?? 0) || 0),
       ),
     ),
+    endsAt: Math.max(0, endsAt),
   };
 }
 
 export function createInitialGlobalBoosters(now = Date.now()): GlobalBoosterSnapshot {
   return {
-    luck: { tier: 0, remainingMs: 0, updatedAt: now, activationProgress: 0 },
-    speed: { tier: 0, remainingMs: 0, updatedAt: now, activationProgress: 0 },
-    crit: { tier: 0, remainingMs: 0, updatedAt: now, activationProgress: 0 },
+    luck: { tier: 0, remainingMs: 0, updatedAt: now, activationProgress: 0, endsAt: 0 },
+    speed: { tier: 0, remainingMs: 0, updatedAt: now, activationProgress: 0, endsAt: 0 },
+    crit: { tier: 0, remainingMs: 0, updatedAt: now, activationProgress: 0, endsAt: 0 },
   };
 }
 
@@ -317,14 +328,13 @@ export function decayGlobalBoosterState(
   now = Date.now(),
 ): GlobalBoosterState {
   const normalized = normalizeGlobalBoosterState(state, now);
-  if (normalized.tier <= 0 || normalized.remainingMs <= 0) {
-    return { ...normalized, remainingMs: 0, updatedAt: now };
+  if (normalized.tier <= 0 || normalized.endsAt <= now) {
+    return { ...normalized, remainingMs: 0, updatedAt: now, endsAt: 0 };
   }
 
-  const elapsed = Math.max(0, now - normalized.updatedAt);
   return {
     ...normalized,
-    remainingMs: Math.max(0, normalized.remainingMs - elapsed),
+    remainingMs: Math.max(0, normalized.endsAt - now),
     updatedAt: now,
   };
 }
@@ -347,11 +357,14 @@ export function activateGlobalBoosterStack(
     activationProgress = 0;
   }
 
+  const endsAt = Math.max(now, decayed.endsAt) + GLOBAL_BOOSTER_STACK_MS;
+
   return {
     tier,
-    remainingMs: decayed.remainingMs + GLOBAL_BOOSTER_STACK_MS,
+    remainingMs: endsAt - now,
     updatedAt: now,
     activationProgress,
+    endsAt,
   };
 }
 
