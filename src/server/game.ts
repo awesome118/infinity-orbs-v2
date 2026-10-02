@@ -371,11 +371,9 @@ export async function getGlobalBoosters(): Promise<GlobalBoosterSnapshot> {
 async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSnapshot> {
   const now = Date.now();
   const storageKey = globalBoosterKey(id);
-  await ensureRedisStringKey(
-    storageKey,
-    JSON.stringify(createInitialGlobalBoosters(now)[id]),
-  );
 
+  // Read before initializing so installations that still have the legacy
+  // aggregate key can migrate that booster without losing its active state.
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(storageKey);
     const legacy = await readLegacyGlobalBoosters();
