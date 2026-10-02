@@ -79,7 +79,7 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
 
           {/* Post Title */}
           <h4 className="text-sm font-bold text-white">
-            I just found a 1/{fmt(rarity)} Orb ({info.name}) in ORBS — The Infinite Roll!
+            I just found a 1/{fmt(rarity)} Orb ({info.name}) in Infinity Orbs!
           </h4>
 
           {/* Post Body Preview */}
