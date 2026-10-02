@@ -1,6 +1,7 @@
 import { redis, context, reddit } from './devvit-mock.js';
-import { notifications } from '@devvit/notifications';
-import { scheduler } from '@devvit/web/server';
+import { NotificationsClient } from '@devvit/notifications';
+
+const notifications = new NotificationsClient();
 import {
   createInitialState,
   type PlayerState,
@@ -1852,7 +1853,7 @@ async function scheduleOfflineFullNotification(
   if (await redis.get(jobKey)) return;
 
   const safeRunAt = Math.max(Date.now() + 1_000, runAt);
-  const jobId = await scheduler.runJob({
+  const jobId = await context.scheduler.runJob({
     name: 'offline-orbs-full',
     data: { userId, subredditName },
     runAt: new Date(safeRunAt),
