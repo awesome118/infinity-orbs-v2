@@ -108,6 +108,19 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     }
   };
 
+  const [playerList, setPlayerList] = useState<Array<{
+    userId: string;
+    username: string;
+    firstSeenAt: number;
+    lastSeenAt: number;
+    active: boolean;
+    level: number;
+    xp: number;
+    totalRolls: number;
+    highestRarity: number;
+    coins: number;
+    shards: number;
+  }>>([]);
   const [bannedUsers, setBannedUsers] = useState<Array<{
     username: string;
     userId?: string;
@@ -115,6 +128,24 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     bannedUntil: number | null;
     reason: string;
   }>>([]);
+
+  const getPlayerList = async () => {
+    setLoading(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/dev/players');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load player list.');
+      const players = Array.isArray(data.players) ? data.players : [];
+      setPlayerList(players);
+      const activeCount = players.filter((player: { active?: boolean }) => player.active).length;
+      setMessage('Loaded ' + players.length + ' player accounts (' + activeCount + ' active now).');
+    } catch (e: any) {
+      setMessage('Error: ' + (e?.message || 'Could not load player list.'));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     void fetch('/api/dev/status')
@@ -693,6 +724,44 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 </div>
               ))}
             </div>
+          )}
+        </section>
+
+        <section className={`${panelBase} border border-cyan-500/30`}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-300">
+              <Users className="w-4 h-4" /> Player List
+            </div>
+            <button
+              title="Load every player account Infinity Orbs has registered, with currently active players first."
+              disabled={loading}
+              onClick={() => void getPlayerList()}
+              className={`${buttonBase} bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-300 px-3 py-2`}
+            >
+              <RefreshCw className="inline w-3.5 h-3.5 mr-1" /> Refresh Player List
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-500">Active means the account contacted the game within the last 30 seconds. Active players stay at the top.</p>
+          {playerList.length > 0 ? (
+            <div className="max-h-80 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/80 divide-y divide-slate-800">
+              {playerList.map(player => (
+                <div key={player.userId} className="px-3 py-2.5 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono text-slate-200 truncate">u/{player.username}</span>
+                      {player.active && <span className="text-[9px] font-black uppercase text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-1.5 py-0.5">Active</span>}
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Level {player.level} · {player.totalRolls.toLocaleString()} rolls · Best 1/{Math.max(1, player.highestRarity).toLocaleString()}</div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="text-[10px] text-slate-400">{player.active ? 'Online now' : player.lastSeenAt ? new Date(player.lastSeenAt).toLocaleString() : 'No recent activity'}</div>
+                    <div className="text-[9px] text-slate-600 font-mono">ID {player.userId.slice(-8)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-center text-xs text-slate-500">No player accounts are registered yet.</div>
           )}
         </section>
 
