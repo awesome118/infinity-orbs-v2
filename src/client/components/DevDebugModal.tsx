@@ -42,6 +42,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [contextInfo, setContextInfo] = useState<AdminContext | null>(null);
 
   const [targetUser, setTargetUser] = useState('');
+  const [pendingWipe, setPendingWipe] = useState<{ action: 'wipe-game' | 'wipe-and-ban' | 'wipe-and-unban'; username: string } | null>(null);
   const [banDuration, setBanDuration] = useState('permanent');
   const [banReason, setBanReason] = useState('Infinity Orbs admin action');
 
@@ -66,7 +67,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [globalTier, setGlobalTier] = useState('5');
   const [globalMinutes, setGlobalMinutes] = useState('30');
 
-  const sendAdminAction = async (endpoint: string, body: any = {}, refresh = true) => {
+  const sendAdminAction = async (endpoint: string, body: any = {}, refresh = true, successMessage = 'Success.') => {
     setLoading(true);
     setMessage('');
     try {
@@ -78,7 +79,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Admin request failed');
       sound.playClick();
-      setMessage('Success.');
+      setMessage(successMessage);
       if (refresh) await onRefresh();
       return data;
     } catch (e: any) {
@@ -152,6 +153,33 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   };
 
   const confirmation = (text: string) => window.confirm(text);
+  const requestWipeConfirmation = (action: 'wipe-game' | 'wipe-and-ban' | 'wipe-and-unban') => {
+    const username = targetUser.trim().replace(/^u\//i, '');
+    if (!username) return;
+
+    if (pendingWipe?.action === action && pendingWipe.username.toLowerCase() === username.toLowerCase()) {
+      setPendingWipe(null);
+      const endpoint = action === 'wipe-game'
+        ? '/api/dev/moderation/wipe-game'
+        : action === 'wipe-and-ban'
+          ? '/api/dev/moderation/wipe-and-ban'
+          : '/api/dev/moderation/wipe-and-unban';
+      const body = action === 'wipe-game' || action === 'wipe-and-unban'
+        ? { username }
+        : {
+            username,
+            durationDays: banDuration === 'permanent' ? null : Number(banDuration),
+            reason: banReason,
+          };
+      const label = action === 'wipe-game' ? 'Wiped' : action === 'wipe-and-ban' ? 'Wiped and banned' : 'Wiped and unbanned';
+      void sendAdminAction(endpoint, body, true, label + ' u/' + username + ' successfully.');
+      return;
+    }
+
+    setPendingWipe({ action, username });
+    setMessage('Click the same wipe button again to confirm for u/' + username + '.');
+  };
+
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
@@ -519,10 +547,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <button
               title="Delete the selected player's Infinity Orbs save. This does not change their game-ban record."
               disabled={loading || !targetUser.trim()}
-              onClick={() => {
-                if (!confirmation(`Delete all Infinity Orbs save data for u/${targetUser.trim().replace(/^u\//i, '')}?`)) return;
-                void sendAdminAction('/api/dev/moderation/wipe-game', { username: targetUser });
-              }}
+              onClick={() => requestWipeConfirmation('wipe-game')}
               className={`${buttonBase} bg-rose-600 hover:bg-rose-500 border-rose-500 text-white px-3 py-2`}
             >
               <UserX className="inline w-3.5 h-3.5 mr-1" /> Wipe Save
@@ -530,14 +555,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <button
               title="Delete the selected save and then apply the selected Infinity Orbs game ban."
               disabled={loading || !targetUser.trim()}
-              onClick={() => {
-                if (!confirmation(`Wipe game data and game-ban u/${targetUser.trim().replace(/^u\//i, '')}?`)) return;
-                void sendAdminAction('/api/dev/moderation/wipe-and-ban', {
-                  username: targetUser,
-                  durationDays: banDuration === 'permanent' ? null : Number(banDuration),
-                  reason: banReason,
-                });
-              }}
+              onClick={() => requestWipeConfirmation('wipe-and-ban')}
               className={`${buttonBase} bg-rose-600 hover:bg-rose-500 border-rose-500 text-white px-3 py-2`}
             >
               <Ban className="inline w-3.5 h-3.5 mr-1" /> Wipe + Ban
@@ -545,10 +563,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <button
               title="Delete the selected save and remove the selected Infinity Orbs game ban."
               disabled={loading || !targetUser.trim()}
-              onClick={() => {
-                if (!confirmation(`Wipe game data and unban u/${targetUser.trim().replace(/^u\//i, '')}?`)) return;
-                void sendAdminAction('/api/dev/moderation/wipe-and-unban', { username: targetUser });
-              }}
+              onClick={() => requestWipeConfirmation('wipe-and-unban')}
               className={`${buttonBase} bg-rose-600 hover:bg-rose-500 border-rose-500 text-white px-3 py-2`}
             >
               <Trash2 className="inline w-3.5 h-3.5 mr-1" /> Wipe + Unban
@@ -570,8 +585,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               onClick={() => {
                 const self = contextInfo?.username ?? '';
                 if (!self) return;
-                if (!confirmation('Wipe your own Infinity Orbs save?')) return;
-                void sendAdminAction('/api/dev/moderation/wipe-game', { username: self });
+                if (pendingWipe?.action === 'wipe-game' && pendingWipe.username.toLowerCase() === self.toLowerCase()) {
+                  setPendingWipe(null);
+                  void sendAdminAction('/api/dev/moderation/wipe-game', { username: self }, true, 'Wiped your save successfully.');
+                  return;
+                }
+                setPendingWipe({ action: 'wipe-game', username: self });
+                setMessage('Click "Wipe My Save" again to confirm for u/' + self + '.');
               }}
               className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}
             >
