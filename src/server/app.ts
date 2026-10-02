@@ -995,14 +995,23 @@ export function createApp() {
         return res.status(429).json({ error: 'Please wait before sharing another orb.' });
       }
       const subredditName = context.subredditName;
+      const username = String(context.username ?? s.username ?? 'a player').trim().replace(/^u\//i, '') || 'a player';
       const text = shareText(s, value);
+      const postData = {
+        type: 'shared-orb',
+        rarity: value,
+        username,
+        totalRolls: s.totalRolls,
+        collectionValue: s.collectionValue,
+      };
       let postId = `share-${Date.now()}`;
       if (subredditName) {
         const post = await reddit.submitCustomPost({
           runAs: 'USER',
           subredditName,
-          title: `I got a 1/${value.toLocaleString()} Orb in Infinity Orbs!`,
+          title: `u/${username} found a 1/${value.toLocaleString()} Orb in Infinity Orbs!`,
           entry: 'default',
+          postData,
           userGeneratedContent: { text },
         });
         postId = post.id;
