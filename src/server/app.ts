@@ -46,9 +46,26 @@ import {
   getCommunityEvent,
 } from './social.js';
 import { context, reddit } from './devvit-mock.js';
-import { payments } from '@devvit/web/server';
-import type { Order, PaymentHandlerResponse } from '@devvit/web/server';
+import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards } from '../shared/game.js';
+
+type PaymentHandlerResponse = {
+  success: boolean;
+  reason?: string;
+};
+
+type PaymentOrder = {
+  id?: string;
+  userId?: string;
+  status?: string;
+  products?: Array<{ sku?: string }>;
+};
+
+const payments = (devvitServer as typeof devvitServer & {
+  payments: {
+    getProducts(): Promise<unknown>;
+  };
+}).payments;
 
 export function createApp() {
   const app = express();
@@ -164,16 +181,16 @@ export function createApp() {
   // The user identity for a payment comes from the Order, not from arbitrary request data.
   app.post('/internal/payments/fulfill', async (req, res) => {
     try {
-      const order = req.body as Order;
+      const order = req.body as PaymentOrder;
       console.error('[Payments] Fulfill received:', JSON.stringify({
         id: order?.id,
         userId: order?.userId,
         status: order?.status,
-        products: order?.products?.map(product => ({ sku: product.sku })),
+        products: order?.products?.map((product: { sku?: string }) => ({ sku: product.sku })),
       }));
 
       if (order.status !== 'PAID' || !order.userId || !order.id) {
-        return res.json<PaymentHandlerResponse>({
+        return res.json({
           success: false,
           reason: 'Order is not payable.',
         });
