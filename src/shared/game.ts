@@ -143,7 +143,7 @@ export const AUTOMATIONS: Record<AutomationId, { name: string; desc: string; cos
   autoUpgrade: { name: 'Auto-Complete Upgrades', desc: 'Automatically purchases one affordable standard upgrade whenever the game processes your state.', costShards: 1_500 },
 };
 
-export const FREE_SHARD_DAILY_CAP = 20;
+export const FREE_SHARD_DAILY_CAP = 50;
 
 export function todayKey(now = Date.now()): string {
   return new Date(now).toISOString().slice(0, 10);
