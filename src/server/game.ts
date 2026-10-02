@@ -1,4 +1,5 @@
 import { redis, context, reddit } from './devvit-mock.js';
+import { notifications } from '@devvit/web/server';
 import {
   createInitialState,
   type PlayerState,
@@ -78,6 +79,7 @@ const SAVE_GENERATION_KEY_PREFIX = 'player-generation:';
 const PLAYER_REGISTRY_KEY = 'io:player-registry';
 const DEVELOPER_ANNOUNCEMENT_KEY = 'io:developer-announcement';
 const GLOBAL_BOOSTER_ANNOUNCEMENT_KEY = 'io:global-booster-announcement';
+const OFFLINE_FULL_NOTIFICATION_PREFIX = 'io:offline-full-notified:';
 const PLAYER_FLAIR_KEY_PREFIX = 'io:player-flair:';
 
 const PAYMENT_DEBUG_LOG_KEY = 'io:payment-debug-log:v1';
@@ -1165,6 +1167,7 @@ async function processAutomation(s: PlayerState): Promise<void> {
     s.offlineRolls = 0;
     await applyRolls(s, batches, undefined, 'offline');
     s.lastRollAt = Date.now();
+    await redis.del(OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId());
   }
 
   if (s.automations?.autoUpgrade) {
@@ -1575,6 +1578,34 @@ export async function settleOffline(s: PlayerState): Promise<PlayerState> {
     const cap = offlineRollCap(s);
     s.offlineRolls = Math.min(cap, (s.offlineRolls || 0) + earned);
   }
+
+  const cap = offlineRollCap(s);
+  if (s.offlineRolls >= cap) {
+    const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId();
+    const alreadyNotified = await redis.get(notificationKey);
+    if (!alreadyNotified) {
+      await redis.set(notificationKey, '1');
+      const subredditName = String(context.subredditName ?? '').trim();
+      const userId = String(context.userId ?? '').trim();
+      if (subredditName && userId) {
+        try {
+          if (await notifications.isOptedIn(userId)) {
+            await notifications.enqueue({
+              title: 'Infinity Orbs',
+              body: 'your offline orbs are full, make sure to collect them! ',
+              recipients: [{
+                userId,
+                link: `https://reddit.com/r/${subredditName}`,
+              }],
+            });
+          }
+        } catch (error) {
+          console.error('Failed to send offline-orbs-full notification:', error);
+        }
+      }
+    }
+  }
+
   s.lastSeenAt = now;
   return s;
 }
@@ -1705,6 +1736,7 @@ export async function claimOffline(): Promise<RollResponse> {
   if (s.offlineRolls <= 0) throw new Error('No offline rolls waiting.');
   const batches = s.offlineRolls;
   s.offlineRolls = 0;
+  await redis.del(OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId());
   const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained } = await applyRolls(s, batches, undefined, 'offline');
   const now = Date.now();
   s.lastRollAt = now;
