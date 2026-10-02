@@ -40,6 +40,7 @@ interface BoostersAndAutomationProps {
   busy: boolean;
   globalBoosters: GlobalBoosterSnapshot;
   onActivateBooster: (id: PremiumBoosterId) => Promise<void>;
+  onActivateGlobalBooster: (id: GlobalBoosterId, useCredit: boolean) => Promise<void>;
   worldEvent?: WorldEvent | null;
   onBuyAutomation: (id: AutomationId) => Promise<void>;
   onClaimCommunityReward: () => Promise<void>;
@@ -73,8 +74,10 @@ function formatDuration(ms: number): string {
 export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   state,
   busy,
+  globalBoosters,
   worldEvent,
   onActivateBooster,
+  onActivateGlobalBooster,
   onBuyAutomation,
   onClaimCommunityReward,
 }) => {
