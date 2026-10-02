@@ -158,27 +158,31 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-black text-white">{GLOBAL_BOOSTERS[id].name}</span>
                   <span className="text-[10px] font-black text-fuchsia-300">
-                    {active ? 'Tier ' + displayed.tier : 'Inactive'}
+                    {displayed.tier > 0 ? 'Tier ' + displayed.tier + (active ? '' : ' • Inactive') : 'Inactive'}
                   </span>
                 </div>
                 <div className="mt-2">
                   <div className="h-2.5 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
                     <div
                       className="h-full bg-gradient-to-r from-fuchsia-500 via-purple-500 to-cyan-400 transition-all duration-700"
-                      style={{ width: (active ? activationProgress * 25 : 0) + '%' }}
+                      style={{ width: ((displayed.tier > 0 ? activationProgress : 0) * 25) + '%' }}
                     />
                   </div>
                   <div className="mt-1 flex items-center justify-between text-[10px]">
                     <span className="text-slate-400">
-                      {active ? formatDuration(displayed.remainingMs / drain) + ' left' : 'Inactive'}
+                      {active
+                        ? formatDuration(displayed.remainingMs / drain) + ' left'
+                        : displayed.tier > 0
+                          ? 'Ready to continue Tier ' + displayed.tier
+                          : 'Inactive'}
                     </span>
-                    {active && displayed.tier < 10 && (
+                    {displayed.tier > 0 && displayed.tier < 10 && (
                       <span className="text-fuchsia-300 font-bold">
                         {activationProgress}/4 activations to Tier {displayed.tier + 1}
                       </span>
                     )}
                     <span className="text-fuchsia-300 font-bold">
-                      {active ? effect : ''}
+                      {displayed.tier > 0 ? effect : ''}
                     </span>
                   </div>
                 </div>
