@@ -1319,32 +1319,25 @@ export async function startOrbFrenzy(options: {
     throw new Error('Orb Frenzy is already used today.');
   }
 
-  // A Frenzy is a single roll. Admin test Frenzies may use a forced rarity and
-  // may be triggered repeatedly without consuming the normal daily eligibility.
+  // Frenzy now stays inside the current game post. The owner gets one normal
+  // roll to determine the Frenzy rarity, then the game expands and unleashes
+  // the full Frenzy volley in the normal game window.
   const forcedRarity = options.forcedRarity == null
     ? undefined
     : Math.max(2, Math.floor(Number(options.forcedRarity)));
   const result = await applyRolls(s, 1, forcedRarity, 'online', 1);
-  const subredditName = context.subredditName;
-  if (!subredditName) throw new Error('Orb Frenzy requires a Reddit post context.');
 
-  const text = `Orb Frenzy! I rolled a 1/${result.bestOrb.rarity.toLocaleString()} Orb. Other players can click this post once per day to unleash the Frenzy.`;
-  const post = await reddit.submitCustomPost({
-    runAs: 'USER',
-    subredditName,
-    title: `⚡ Orb Frenzy: 1/${result.bestOrb.rarity.toLocaleString()}`,
-    entry: 'frenzy',
-    userGeneratedContent: { text },
-  });
-
-  const postKey = FRENZY_POST_PREFIX + post.id;
+  const postId = context.postId ?? 'no-post';
+  const postKey = FRENZY_POST_PREFIX + postId;
   await redis.set(postKey, JSON.stringify({
     ownerId: currentUserId(),
     ownerUsername: context.username ?? 'Redditor',
     rarity: result.bestOrb.rarity,
-    subredditName,
+    subredditName: context.subredditName ?? '',
     createdAt: Date.now(),
     adminTest: options.adminTest === true,
+    inGame: true,
+    consumedAt: null,
   }));
 
   s.lastFrenzyDate = today;
@@ -1355,9 +1348,9 @@ export async function startOrbFrenzy(options: {
 
   return {
     state: s,
-    postId: post.id,
+    postId: context.postId ?? '',
     rarity: result.bestOrb.rarity,
-    url: `https://reddit.com/r/${subredditName}/comments/${post.id}`,
+    url: '',
   };
 }
 
@@ -1368,6 +1361,8 @@ export async function getOrbFrenzyInfo(): Promise<{
   claimedToday: boolean;
   isOwner: boolean;
   postId: string;
+  inGame?: boolean;
+  consumedAt?: number | null;
 }> {
   const postId = context.postId;
   if (!postId) throw new Error('This is not an Orb Frenzy post.');
@@ -1386,6 +1381,8 @@ export async function getOrbFrenzyInfo(): Promise<{
     claimedToday: s.lastFrenzyClaimDate === today,
     isOwner: data.ownerId === currentUserId(),
     postId,
+    inGame: data.inGame === true,
+    consumedAt: data.consumedAt ?? null,
   };
 }
 
@@ -1414,6 +1411,7 @@ export async function claimOrbFrenzy(options: {
 
   if (
     data.ownerId === currentUserId() &&
+    data.inGame !== true &&
     !(options.allowAdminTestOwner === true && data.adminTest === true)
   ) {
     throw new Error('You cannot claim your own Orb Frenzy.');
@@ -1535,6 +1533,13 @@ export async function claimOrbFrenzy(options: {
   s.coins += coinsGained;
   s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
   s.lastFrenzyClaimDate = today;
+
+  if (data.inGame === true) {
+    await redis.set(FRENZY_POST_PREFIX + postId, JSON.stringify({
+      ...data,
+      consumedAt: Date.now(),
+    }));
+  }
 
   for (const group of groups) {
     const keyForRarity = String(group.rarity);
