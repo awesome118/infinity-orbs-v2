@@ -120,6 +120,8 @@ export interface WorldEvent {
   endsAt: number;
   tier: number;
   completed: boolean;
+  /** Highest community reward tier completed this week. */
+  completedTier?: number;
   weekId?: number;
 }
 
@@ -186,8 +188,9 @@ export const COMMUNITY_WORLD_EVENT: WorldEvent = {
   currentProgress: 14_250,
   buffDescription: '+15% Global Luck Active',
   buffMultiplier: 1.15,
-  endsAt: (currentWeekNumber + 1) * 604_800_000,
+  endsAt: weekEndMs(),
   tier: 1,
   completed: false,
+  completedTier: 0,
   weekId: currentWeekNumber,
 };
