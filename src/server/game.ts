@@ -34,6 +34,8 @@ import {
   type GlobalBoosterSnapshot,
   type GlobalBoosterState,
   type PaymentReceipt,
+  GLOBAL_BOOSTER_MAX_TIER,
+  GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER,
   PREMIUM_BOOSTERS,
   AUTOMATIONS,
   GLOBAL_BOOSTERS,
