@@ -213,12 +213,14 @@ export interface GlobalBoosterState {
   tier: number;
   remainingMs: number;
   updatedAt: number;
+  activationProgress: number;
 }
 
 export type GlobalBoosterSnapshot = Record<GlobalBoosterId, GlobalBoosterState>;
 
 export const GLOBAL_BOOSTER_STACK_MS = 30 * 60 * 1000;
 export const GLOBAL_BOOSTER_MAX_TIER = 10;
+export const GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER = 4;
 export const GLOBAL_BOOSTER_DRAIN_MULTIPLIER = (tier: number): number =>
   Math.max(1, 1 + (Math.max(1, Math.min(GLOBAL_BOOSTER_MAX_TIER, tier)) - 1) * 0.5);
 
@@ -235,16 +237,16 @@ export const GLOBAL_BOOSTERS: Record<GlobalBoosterId, GlobalBoosterInfo> = {
   },
   crit: {
     name: 'Global Crit',
-    desc: 'Improves Crit Chance and Crit Damage for everyone.',
+    desc: 'Improves Crit Chance and Crit Luck for everyone.',
     costShards: 25,
   },
 };
 
 export function createInitialGlobalBoosters(now = Date.now()): GlobalBoosterSnapshot {
   return {
-    luck: { tier: 0, remainingMs: 0, updatedAt: now },
-    speed: { tier: 0, remainingMs: 0, updatedAt: now },
-    crit: { tier: 0, remainingMs: 0, updatedAt: now },
+    luck: { tier: 0, remainingMs: 0, updatedAt: now, activationProgress: 0 },
+    speed: { tier: 0, remainingMs: 0, updatedAt: now, activationProgress: 0 },
+    crit: { tier: 0, remainingMs: 0, updatedAt: now, activationProgress: 0 },
   };
 }
 
@@ -263,20 +265,20 @@ export function globalBoosterCritChanceBonus(state: GlobalBoosterState): number 
   return 0.02 * state.tier;
 }
 
-export function globalBoosterCritDamageBonus(state: GlobalBoosterState): number {
+export function globalBoosterCritLuckBonus(state: GlobalBoosterState): number {
   if (state.tier <= 0 || state.remainingMs <= 0) return 0;
   return 0.10 * state.tier;
 }
 
 export function decayGlobalBoosterState(state: GlobalBoosterState, now = Date.now()): GlobalBoosterState {
   if (state.remainingMs <= 0 || state.tier <= 0) {
-    return { tier: 0, remainingMs: 0, updatedAt: now };
+    return { tier: 0, remainingMs: 0, updatedAt: now, activationProgress: state.activationProgress ?? 0 };
   }
   const elapsed = Math.max(0, now - (state.updatedAt || now));
   const drained = state.remainingMs - elapsed * GLOBAL_BOOSTER_DRAIN_MULTIPLIER(state.tier);
   return drained <= 0
-    ? { tier: 0, remainingMs: 0, updatedAt: now }
-    : { ...state, remainingMs: drained, updatedAt: now };
+    ? { tier: 0, remainingMs: 0, updatedAt: now, activationProgress: state.activationProgress ?? 0 }
+    : { ...state, remainingMs: drained, updatedAt: now, activationProgress: Math.max(0, Math.min(GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER - 1, state.activationProgress ?? 0)) };
 }
 
 export function activateGlobalBoosterStack(
@@ -285,37 +287,37 @@ export function activateGlobalBoosterStack(
 ): GlobalBoosterState {
   const decayed = decayGlobalBoosterState(state, now);
 
-  // The first activation creates Tier 1 with a full 30-minute charge.
-  // Later activations add charge to the current tier. Once that tier's bar is
-  // completely filled, the booster promotes exactly once per completed tier.
-  if (decayed.tier <= 0) {
-    return {
-      tier: 1,
-      remainingMs: GLOBAL_BOOSTER_STACK_MS,
-      updatedAt: now,
-    };
+  // Each activation adds 30 minutes of active time and one step toward
+  // the next tier. Four activations advance a booster by one tier.
+  let tier = Math.max(0, Math.min(GLOBAL_BOOSTER_MAX_TIER, decayed.tier));
+  let activationProgress = Math.max(
+    0,
+    Math.min(GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER - 1, decayed.activationProgress ?? 0),
+  ) + 1;
+
+  if (tier <= 0) {
+    tier = 1;
   }
 
-  let tier = decayed.tier;
-  const remainingMs = decayed.remainingMs + GLOBAL_BOOSTER_STACK_MS;
-
-  // A single activation can complete at most one tier. This prevents a large
-  // accumulated charge from skipping tiers in one activation.
-  if (tier < GLOBAL_BOOSTER_MAX_TIER && remainingMs >= tier * GLOBAL_BOOSTER_STACK_MS) {
+  if (tier < GLOBAL_BOOSTER_MAX_TIER && activationProgress >= GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER) {
     tier++;
+    activationProgress = 0;
+  } else if (tier >= GLOBAL_BOOSTER_MAX_TIER) {
+    activationProgress = 0;
   }
 
   return {
     tier,
-    remainingMs,
+    remainingMs: decayed.remainingMs + GLOBAL_BOOSTER_STACK_MS,
     updatedAt: now,
+    activationProgress,
   };
 }
 
 export function globalBoosterProgress(state: GlobalBoosterState): number {
   if (state.remainingMs <= 0 || state.tier <= 0) return 0;
   const capacity = state.tier * GLOBAL_BOOSTER_STACK_MS;
-  return Math.round(Math.min(1, state.remainingMs / capacity) * 100);
+  return Math.round(Math.min(1, (state.activationProgress ?? 0) / GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER) * 100);
 }
 
 export interface PurchasePack {
