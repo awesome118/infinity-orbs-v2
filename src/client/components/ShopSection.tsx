@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { purchase, OrderResultStatus } from '@devvit/web/client';
-import { Gem, Sparkles, ShoppingBag } from 'lucide-react';
+import { Gem, ShoppingBag } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
 
 interface ShopProduct {
@@ -72,7 +72,7 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
       .finally(() => setLoading(false));
   }, []);
 
-  const reconcilePurchase = async (baselineShards: number, baselineCredits: number): Promise<boolean> => {
+  const reconcilePurchase = async (baselineShards: number): Promise<boolean> => {
     try {
       const reconcileRes = await fetch('/api/payments/reconcile', { method: 'POST' });
       if (!reconcileRes.ok) return false;
@@ -81,8 +81,7 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
       if (!meRes.ok) return false;
       const next = await meRes.json() as PlayerState;
       const fulfilled =
-        next.shards > baselineShards ||
-        (next.globalBoosterCredits ?? 0) > baselineCredits;
+        next.shards > baselineShards ||;
 
       if (fulfilled) await onPurchased();
       return fulfilled;
@@ -96,7 +95,6 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
     setBuyingSku(sku);
     setMessage(null);
     const baselineShards = state.shards;
-    const baselineCredits = state.globalBoosterCredits ?? 0;
     try {
       const result = await purchase(sku);
       console.error('[Payments] Client purchase result:', result);
@@ -104,7 +102,7 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
         let fulfillmentObserved = false;
         for (const delayMs of [0, 500, 1000, 2000, 3000]) {
           if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
-          if (await reconcilePurchase(baselineShards, baselineCredits)) {
+          if (await reconcilePurchase(baselineShards)) {
             fulfillmentObserved = true;
             break;
           }
@@ -112,7 +110,7 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
 
         setMessage(
           fulfillmentObserved
-            ? 'Purchase complete. Your Shards and Global Booster credits were added.'
+            ? 'Purchase complete. Your Shards were added.'
             : 'Purchase accepted. Reddit is still finishing delivery; refresh shortly if the balance has not changed.'
         );
       } else {
@@ -120,16 +118,16 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
         // or otherwise non-success response from the native payment bridge.
         // Reconcile before showing a hard failure so a paid entitlement is not
         // stranded behind a client-side parsing error.
-        if (await reconcilePurchase(baselineShards, baselineCredits)) {
-          setMessage('Purchase complete. Your Shards and Global Booster credits were added.');
+        if (await reconcilePurchase(baselineShards)) {
+          setMessage('Purchase complete. Your Shards were added.');
         } else {
           setMessage(formatPaymentError(result.errorMessage, 'Purchase was not completed.'));
         }
       }
     } catch (e: unknown) {
       console.error('[Payments] Client purchase exception:', e);
-      if (await reconcilePurchase(baselineShards, baselineCredits)) {
-        setMessage('Purchase complete. Your Shards and Global Booster credits were added.');
+      if (await reconcilePurchase(baselineShards)) {
+        setMessage('Purchase complete. Your Shards were added.');
       } else {
         setMessage(formatPaymentError(e, 'Purchase failed.'));
       }
@@ -146,17 +144,13 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
           <h2 className="text-xl font-black text-white">Shard Shop</h2>
         </div>
         <p className="mt-1 text-xs text-slate-400">
-          Purchases use Reddit Gold through Reddit's native payment flow. Each pack also includes free Global Booster activations.
+          Purchases use Reddit Gold through Reddit's native payment flow.
         </p>
 
         <div className="mt-4 flex items-center gap-4">
           <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3">
             <span className="block text-[10px] uppercase font-black text-cyan-300/70">Shards</span>
             <span className="text-xl font-black text-cyan-200">{state.shards.toLocaleString()} <Gem className="inline w-4 h-4" /></span>
-          </div>
-          <div className="rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/10 px-4 py-3">
-            <span className="block text-[10px] uppercase font-black text-fuchsia-300/70">Free Global Boosts</span>
-            <span className="text-xl font-black text-fuchsia-200">{state.globalBoosterCredits ?? 0} <Sparkles className="inline w-4 h-4" /></span>
           </div>
         </div>
 
