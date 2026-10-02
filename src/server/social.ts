@@ -2,7 +2,7 @@ import { context, redis } from './devvit-mock.js';
 import type { Guild, LeaderboardEntry, Achievement, GuildMessage, GuildPerkId, WorldEvent } from '../shared/social.js';
 import { ACHIEVEMENTS, CHALLENGE_POOL, challengeForWeek, COMMUNITY_WORLD_EVENT, createInitialGuildBoss } from '../shared/social.js';
 import type { PlayerState } from '../shared/game.js';
-import { cooldownMs, grantFreeShards, weekKey } from '../shared/game.js';
+import { cooldownMs, createInitialState, grantFreeShards, weekEndMs, weekKey } from '../shared/game.js';
 
 const user = () => context.userId ?? 'unknown';
 const username = () => context.username ?? `reddit-user-${user().slice(-8)}`;
@@ -376,9 +376,8 @@ export async function applyGuildTax(coinsEarned: number): Promise<{ taxedCoins: 
     if (!guild) return { taxedCoins: 0, tokensEarned: 0 };
 
     const rate = Math.max(0, Math.min(10, Math.floor(Number(guild.taxRate ?? 0) || 0)));
-    const theoreticalTax = Math.floor(safeCoins * rate / 100);
-    const taxedCoins = Math.floor(theoreticalTax / 100) * 100;
-    if (taxedCoins < 100) return { taxedCoins: 0, tokensEarned: 0 };
+    const taxedCoins = Math.min(safeCoins, Math.floor(safeCoins * rate / 100));
+    if (taxedCoins <= 0) return { taxedCoins: 0, tokensEarned: 0 };
 
     const tokenMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05;
     const tokensEarned = Math.max(1, Math.floor((taxedCoins / 100) * tokenMultiplier));
@@ -587,7 +586,7 @@ export async function postGuildMessage(text: string) {
   });
 }
 
-export async function contribute(value: number, rollCount = 1) {
+export async function contribute(value: number, rollCount = 1, bestRarity?: number) {
   try {
     if (value <= 0) return;
     await updateGuilds(guilds => {
@@ -609,7 +608,7 @@ export async function contribute(value: number, rollCount = 1) {
           guild.challenge.progress += value;
         } else if (guild.challenge.type === 'rolls') {
           guild.challenge.progress += rollCount;
-        } else if (guild.challenge.type === 'rare' && value >= 100) {
+        } else if (guild.challenge.type === 'rare' && (bestRarity ?? 0) >= 100) {
           guild.challenge.progress += 1;
         }
 
@@ -710,19 +709,7 @@ export async function getCommunityEvent(): Promise<WorldEvent> {
     }
     if (!ev.buffMultiplier) ev.buffMultiplier = 1.15;
 
-    const lastTick = latestTickRaw ? Number(latestTickRaw) : latestNow;
-    const elapsedSec = Math.max(0, Math.floor((latestNow - lastTick) / 1000));
-    if (elapsedSec >= 4) {
-      const naturalRolls = Math.floor(elapsedSec * 0.5);
-      ev.currentProgress += naturalRolls;
-      while (ev.currentProgress >= ev.goal) {
-        ev.tier = (ev.tier || 1) + 1;
-        ev.goal = Math.round(ev.goal * 2.2);
-        ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
-        ev.buffDescription = `+${Math.round((ev.buffMultiplier - 1) * 100)}% Global Luck Active`;
-      }
-    }
-
+    // Community progress comes only from real player roll contributions.
     await txn.multi();
     await txn.set(eventKey, JSON.stringify(ev));
     await txn.set(tickKey, String(latestNow));
@@ -908,18 +895,56 @@ export async function achievements(s: PlayerState): Promise<Achievement[]> {
   }));
 }
 
-export async function claimAchievement(s: PlayerState, id: string) {
+export async function claimAchievement(_s: PlayerState, id: string) {
   const achievement = ACHIEVEMENTS.find(a => a.id === id);
   if (!achievement) throw new Error('Achievement not found.');
-  if (!unlocked(achievement, s)) throw new Error('Achievement is not unlocked yet.');
-  if (s.claimedAchievements.includes(id)) throw new Error('Achievement reward already claimed.');
-  s.claimedAchievements.push(id);
-  s.coins += achievement.rewardCoins;
-  const rewardShards = grantFreeShards(s, achievement.rewardShards ?? 0);
-  const raw = await redis.get(`player:${user()}`);
-  if (!raw) throw new Error('Player state unavailable.');
-  await redis.set(`player:${user()}`, JSON.stringify(s));
-  return { state: s, rewardCoins: achievement.rewardCoins, rewardShards };
+
+  const playerKey = `player:${user()}`;
+  const generationKey = `player-generation:${user()}`;
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const txn = await redis.watch(playerKey, generationKey);
+    const raw = await redis.get(playerKey);
+    const generationRaw = await redis.get(generationKey);
+    const state = parseStoredJson<PlayerState>(raw);
+    const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
+
+    if (!state) {
+      await txn.unwatch();
+      throw new Error('Player state unavailable.');
+    }
+
+    if (Math.max(0, Math.floor(Number(state.saveGeneration ?? 0))) !== generation) {
+      await txn.unwatch();
+      throw new Error('Your Infinity Orbs save was invalidated by an admin wipe. Please reload.');
+    }
+
+    state.upgrades = { ...createInitialState().upgrades, ...(state.upgrades ?? {}) };
+    state.claimedAchievements = Array.isArray(state.claimedAchievements) ? state.claimedAchievements : [];
+
+    if (!unlocked(achievement, state)) {
+      await txn.unwatch();
+      throw new Error('Achievement is not unlocked yet.');
+    }
+    if (state.claimedAchievements.includes(id)) {
+      await txn.unwatch();
+      throw new Error('Achievement reward already claimed.');
+    }
+
+    state.claimedAchievements.push(id);
+    state.coins += achievement.rewardCoins;
+    state.lifetimeCoins = (state.lifetimeCoins ?? 0) + achievement.rewardCoins;
+    const rewardShards = grantFreeShards(state, achievement.rewardShards ?? 0);
+
+    await txn.multi();
+    await txn.set(playerKey, JSON.stringify(state));
+    const committed = await txn.exec();
+    if (committed !== null) {
+      return { state, rewardCoins: achievement.rewardCoins, rewardShards };
+    }
+  }
+
+  throw new Error('Player data changed while claiming the achievement. Please retry.');
 }
 
 export function shareText(s: PlayerState, rarity: number) {
