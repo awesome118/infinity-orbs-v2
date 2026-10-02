@@ -66,6 +66,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   } | null>(null);
   const [ccuLoading, setCcuLoading] = useState(false);
   const [fakeCcuInput, setFakeCcuInput] = useState('0');
+  const [pushTestLoading, setPushTestLoading] = useState(false);
 
   const [guildChatSpy, setGuildChatSpy] = useState<Array<{
     id: string;
@@ -205,6 +206,20 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       setMessage('Error: ' + (e?.message || 'Could not set fake CCU.'));
     } finally {
       setCcuLoading(false);
+    }
+  };
+
+  const sendPushTest = async () => {
+    setPushTestLoading(true);
+    try {
+      const res = await fetch('/api/dev/push-test', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to send push test notification.');
+      setMessage('Push test notification sent. Check your Reddit notifications.');
+    } catch (e: any) {
+      setMessage('Error: ' + (e?.message || 'Failed to send push test notification.'));
+    } finally {
+      setPushTestLoading(false);
     }
   };
 
@@ -688,6 +703,27 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             className="w-full min-h-56 max-h-96 rounded-xl border border-slate-800 bg-black/40 p-3 text-[10px] leading-4 font-mono text-slate-300 resize-y"
             onFocus={e => e.currentTarget.select()}
           />
+        </section>
+
+        <section className={panelBase + ' border border-fuchsia-500/30'}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fuchsia-300">
+                <Megaphone className="w-4 h-4" /> Push Notification Test
+              </div>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Sends a real Reddit push notification to the current admin account. Notifications must be enabled first.
+              </p>
+            </div>
+            <button
+              title="Send a real test push notification to the current admin account."
+              disabled={pushTestLoading}
+              onClick={() => void sendPushTest()}
+              className={buttonBase + ' bg-fuchsia-600 hover:bg-fuchsia-500 border-fuchsia-500 text-white px-3 py-2'}
+            >
+              {pushTestLoading ? 'Sending…' : 'Send Test Push'}
+            </button>
+          </div>
         </section>
 
         <section className={panelBase}>
