@@ -55,6 +55,7 @@ import { RedditShareModal } from './components/RedditShareModal.js';
 import { RarityTableModal } from './components/RarityTableModal.js';
 import { NewBestModal } from './components/NewBestModal.js';
 import { BoostersAndAutomation } from './components/BoostersAndAutomation.js';
+import { GlobalChatWindow } from './components/GlobalChatWindow.js';
 import { DevDebugModal } from './components/DevDebugModal.js';
 import { FeedbackModal } from './components/FeedbackModal.js';
 import { APP_VERSION } from '../shared/version.js';
@@ -1687,6 +1688,9 @@ export function App() {
           onShare={handleShareToReddit}
         />
       )}
+
+      {/* Global Chat */}
+      <GlobalChatWindow username={state.username ?? ''} />
 
       {/* Feedback Modal */}
       {showFeedbackModal && (
