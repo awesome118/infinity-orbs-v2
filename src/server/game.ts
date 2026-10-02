@@ -474,7 +474,6 @@ export async function loadRaw(): Promise<PlayerState> {
     saveGeneration: generation,
     username,
     prestigeUpgrades: { ...base.prestigeUpgrades, ...(parsed.prestigeUpgrades ?? {}) },
-    manualRolls: normalizedManualRolls,
     collection: parsed.collection ?? {},
     claimedAchievements: parsed.claimedAchievements ?? [],
     streak: { ...base.streak, ...(parsed.streak ?? {}) },
