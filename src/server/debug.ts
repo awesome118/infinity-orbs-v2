@@ -122,6 +122,10 @@ async function wipeUser(username: string): Promise<{ username: string; userId: s
   await redis.set(generationKey, String(generation));
   await redis.set(playerKey, JSON.stringify(fresh));
   await removeLeaderboardEntry(name);
+  // A plain wipe is a full account reset. Remove any existing game ban so the
+  // wiped player can immediately start a fresh save. The dedicated wipe-and-ban
+  // endpoint applies a new ban after this function returns.
+  await unbanGameUser(userId);
 
   const persisted = await redis.get(playerKey);
   if (persisted == null) {
