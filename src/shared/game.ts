@@ -77,7 +77,7 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   },
   celestialSurge: {
     name: 'Codex Devotion',
-    desc: 'Adds diminishing permanent Luck based on your unique orb collection per level.',
+    desc: '+1% Luck per Codex chain number per level, based on your longest consecutive rarity chain.',
     maxLevel: 10,
     costMultiplier: 3,
   },
@@ -531,6 +531,8 @@ export interface PlayerState {
   lifetimeCollectionValue: number;
   collection: Record<string, number>;
   collectionCount?: number;
+  codexChain?: number;
+  codexDevotionLuckPercent?: number;
   lastRollAt: number | null;
   lastSeenAt: number;
   offlineRolls: number;
@@ -1336,6 +1338,43 @@ export function autoUnlocked(s: PlayerState): boolean {
 }
 
 // All sources of luck are MULTIPLICATIVE!
+export function highestCodexChain(collection: Record<string, number> | null | undefined): number {
+  const rarities = Object.entries(collection ?? {})
+    .filter(([rarity, count]) => {
+      const value = Number(rarity);
+      return Number.isFinite(value) && value >= 2 && count > 0;
+    })
+    .map(([rarity]) => Math.floor(Number(rarity)))
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+
+  if (rarities.length === 0) return 0;
+
+  let best = 1;
+  let current = 1;
+  for (let i = 1; i < rarities.length; i++) {
+    if (rarities[i] === rarities[i - 1] + 1) {
+      current++;
+      best = Math.max(best, current);
+    } else if (rarities[i] !== rarities[i - 1]) {
+      current = 1;
+    }
+  }
+
+  return best;
+}
+
+export function codexDevotionLuckPercent(skillLevel: number, chain: number): number {
+  const safeLevel = Math.max(0, Math.floor(Number(skillLevel) || 0));
+  const safeChain = Math.max(0, Math.floor(Number(chain) || 0));
+  if (safeLevel <= 0 || safeChain <= 0) return 0;
+
+  // Match the previous 50% per mastery level ceiling while making the
+  // progression directly reflect the player's longest Codex chain.
+  const percentPerLevel = Math.min(safeChain, 50);
+  return Math.round(safeLevel * percentPerLevel * 100) / 100;
+}
+
 export function luckMultiplier(s: PlayerState): number {
   // 1. Base Upgrade Luck
   const upgradeLuck = 1 + (s.upgrades.luck ?? 0) * 0.05;
@@ -1351,12 +1390,11 @@ export function luckMultiplier(s: PlayerState): number {
 
   // 5. Astral Mastery Skill Luck
   const masteryBaseLuck = 1 + (s.masterySkills?.continuumLuck ?? 0) * 0.03;
-  // Continuous rarity makes almost every roll a distinct collection key.
-  // Use logarithmic collection progress so Codex Devotion cannot become a
-  // thousands-of-times luck multiplier on long-running accounts.
-  const uniqueCollectionCount = Object.keys(s.collection || {}).length;
-  const codexProgress = Math.max(0, Math.floor(Math.log2(uniqueCollectionCount + 1)));
-  const codexLuck = 1 + (s.masterySkills?.celestialSurge ?? 0) * Math.min(0.01 * codexProgress, 0.50);
+  const codexChain = highestCodexChain(s.collection);
+  const codexLuck = 1 + codexDevotionLuckPercent(
+    s.masterySkills?.celestialSurge ?? 0,
+    codexChain,
+  ) / 100;
   const totalMasteryLuck = masteryBaseLuck * codexLuck;
 
   // 6. Guild Perk Luck
