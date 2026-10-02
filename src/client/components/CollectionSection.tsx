@@ -123,9 +123,6 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
                 ({fmt(total)} Unique Orbs Discovered)
               </span>
             </h2>
-            <p className="text-xs text-slate-400 mt-1">
-              The Codex loads a small page at a time, so enormous collections do not become a browser benchmark.
-            </p>
           </div>
 
           <div className="flex items-center gap-4 bg-slate-950/60 border border-slate-800/80 rounded-2xl px-4 py-2.5">
