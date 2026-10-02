@@ -361,7 +361,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               <Gauge className="inline w-3.5 h-3.5 mr-1" /> Cooldown Ready
             </button>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
             {Object.entries(stateInputs).map(([key, value]) => (
               <label key={key} className="text-[10px] text-slate-400">
                 <span className="block mb-1 uppercase font-bold">{key.replace(/([A-Z])/g, ' $1')}</span>
@@ -606,6 +606,28 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               className={`${buttonBase} bg-rose-600 hover:bg-rose-500 border-rose-500 text-white px-3 py-2`}
             >
               <Trash2 className="inline w-3.5 h-3.5 mr-1" /> Wipe + Unban
+            </button>
+            <button
+              title="Inspect the selected account\'s live save, generation, level, XP, and game-ban state."
+              disabled={loading || !targetUser.trim()}
+              onClick={async () => {
+                setLoading(true);
+                setMessage('');
+                try {
+                  const res = await fetch('/api/dev/moderation/save?username=' + encodeURIComponent(targetUser.trim()));
+                  const data = await res.json().catch(() => ({}));
+                  if (!res.ok) throw new Error(data.error || 'Could not inspect player save.');
+                  const save = data.save;
+                  setMessage('Save: ' + (data.exists ? 'exists' : 'missing') + ' | Level ' + (save?.level ?? 1) + ' | XP ' + Number(save?.xp ?? 0).toLocaleString() + ' | Gen ' + (save?.saveGeneration ?? 0) + '/' + (data.generation ?? 0) + ' | Ban: ' + (data.ban ? 'ACTIVE' : 'none'));
+                } catch (e: any) {
+                  setMessage('Error: ' + (e?.message || 'Could not inspect player save.'));
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className="rounded-xl border text-xs font-bold transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed bg-cyan-600 hover:bg-cyan-500 border-cyan-500 text-white px-3 py-2"
+            >
+              <Database className="inline w-3.5 h-3.5 mr-1" /> Inspect Save
             </button>
           </div>
 
