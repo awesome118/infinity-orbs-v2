@@ -316,7 +316,6 @@ export function activateGlobalBoosterStack(
 
 export function globalBoosterProgress(state: GlobalBoosterState): number {
   if (state.remainingMs <= 0 || state.tier <= 0) return 0;
-  const capacity = state.tier * GLOBAL_BOOSTER_STACK_MS;
   return Math.round(Math.min(1, (state.activationProgress ?? 0) / GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER) * 100);
 }
 
@@ -1171,7 +1170,7 @@ export function critMultiplier(s: PlayerState): number {
   const masteryCritPower = (s.masterySkills?.critMastery ?? 0) * 0.30;
   const globalCrit = s.globalBoosters?.crit;
   return 2.0 + (s.upgrades.critPower ?? 0) * 0.25 + masteryCritPower +
-    (globalCrit ? globalBoosterCritDamageBonus(globalCrit) : 0);
+    (globalCrit ? globalBoosterCritLuckBonus(globalCrit) : 0);
 }
 
 export function cooldownMs(s: PlayerState, isAuto = false): number {
