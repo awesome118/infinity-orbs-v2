@@ -86,6 +86,17 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   onClaimCommunityReward,
 }) => {
   const [now, setNow] = useState(Date.now());
+  const [activatingGlobalBooster, setActivatingGlobalBooster] = useState<GlobalBoosterId | null>(null);
+
+  const handleGlobalActivation = async (id: GlobalBoosterId, useCredit: boolean) => {
+    if (activatingGlobalBooster) return;
+    setActivatingGlobalBooster(id);
+    try {
+      await onActivateGlobalBooster(id, useCredit);
+    } finally {
+      setActivatingGlobalBooster(null);
+    }
+  };
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
@@ -162,6 +173,8 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
             const active = remaining > 0 && displayed.tier > 0;
             const activationProgress = Math.max(0, Math.min(4, displayed.activationProgress ?? 0));
             const timerDrainRate = displayed.tier > 0 ? 1 + displayed.tier * 0.10 : 1;
+            const globalCost = Number(GLOBAL_BOOSTERS[id].costShards ?? 0);
+            const canAffordGlobal = Number(state.shards ?? 0) >= globalCost;
             const effect = id === 'luck'
               ? '×' + globalBoosterLuckMultiplier(displayed, now).toFixed(2) + ' Luck'
               : id === 'speed'
@@ -212,19 +225,19 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                 </div>
                 <div className="mt-3 flex gap-2">
                   <button
-                    onClick={() => void onActivateGlobalBooster(id, false)}
-                    disabled={busy || state.shards < GLOBAL_BOOSTERS[id].costShards}
+                    onClick={() => void handleGlobalActivation(id, false)}
+                    disabled={activatingGlobalBooster !== null || !canAffordGlobal}
                     className="flex-1 px-2.5 py-2 rounded-xl text-[10px] font-black bg-slate-800 hover:bg-slate-700 text-white disabled:text-slate-500 disabled:cursor-not-allowed"
                   >
-                    +30m • 25 💎
+                    {`+30m • ${globalCost.toLocaleString()} 💎`}
                   </button>
                   <button
-                    onClick={() => void onActivateGlobalBooster(id, true)}
-                    disabled={busy || (state.globalBoosterCredits ?? 0) <= 0}
+                    onClick={() => void handleGlobalActivation(id, true)}
+                    disabled={activatingGlobalBooster !== null || (state.globalBoosterCredits ?? 0) <= 0}
                     className="px-2.5 py-2 rounded-xl text-[10px] font-black bg-fuchsia-600/20 border border-fuchsia-500/25 text-fuchsia-200 hover:bg-fuchsia-600/30 disabled:text-slate-600 disabled:cursor-not-allowed"
                     title="Use one free Global Booster activation"
                   >
-                    Free
+                    {activatingGlobalBooster === id ? 'Activating…' : 'Free'}
                   </button>
                 </div>
               </div>
