@@ -1,5 +1,13 @@
 import { context, redis } from './devvit-mock.js';
-import type { Guild, LeaderboardEntry, Achievement, GuildMessage, GuildPerkId, WorldEvent } from '../shared/social.js';
+import type {
+  Guild,
+  LeaderboardEntry,
+  Achievement,
+  GuildMessage,
+  GuildPerkId,
+  WorldEvent,
+  GlobalChatMessage,
+} from '../shared/social.js';
 import { ACHIEVEMENTS, CHALLENGE_POOL, challengeForWeek, COMMUNITY_WORLD_EVENT, createInitialGuildBoss } from '../shared/social.js';
 import type { PlayerState } from '../shared/game.js';
 import { cooldownMs, createInitialState, grantFreeShards, weekEndMs, weekKey } from '../shared/game.js';
@@ -835,6 +843,64 @@ export async function setCommunityEventConfig(config: {
     if (committed !== null) return ev;
   }
   throw new Error('Community event changed while applying the admin update. Please retry.');
+}
+
+const GLOBAL_CHAT_KEY = key('global-chat:v1');
+const GLOBAL_CHAT_MAX_MESSAGES = 100;
+
+export async function getGlobalChat(): Promise<GlobalChatMessage[]> {
+  const raw = await redis.get(GLOBAL_CHAT_KEY);
+  const parsed = parseStoredJson<unknown>(raw);
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter(item => item && typeof item === 'object')
+    .map(item => {
+      const message = item as Partial<GlobalChatMessage>;
+      return {
+        id: String(message.id ?? ''),
+        username: String(message.username ?? 'Redditor'),
+        text: String(message.text ?? ''),
+        timestamp: Number(message.timestamp ?? 0) || 0,
+        userId: message.userId ? String(message.userId) : undefined,
+      };
+    })
+    .filter(message => message.id && message.text)
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .slice(-GLOBAL_CHAT_MAX_MESSAGES);
+}
+
+export async function postGlobalChatMessage(text: string): Promise<GlobalChatMessage> {
+  const messageText = String(text ?? '').trim();
+  if (!messageText) throw new Error('Message cannot be empty.');
+  if (messageText.length > 200) throw new Error('Messages must be 200 characters or fewer.');
+
+  const message: GlobalChatMessage = {
+    id: `global-chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    username: username().replace(/^u\\//i, '') || 'Redditor',
+    text: messageText,
+    timestamp: Date.now(),
+    userId: user(),
+  };
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const txn = await redis.watch(GLOBAL_CHAT_KEY);
+    const raw = await txn.get(GLOBAL_CHAT_KEY);
+    const messages = await (async () => {
+      const parsed = parseStoredJson<unknown>(raw);
+      if (!Array.isArray(parsed)) return [] as GlobalChatMessage[];
+      return parsed.filter(item => item && typeof item === 'object') as GlobalChatMessage[];
+    })();
+
+    messages.push(message);
+    messages.sort((a, b) => a.timestamp - b.timestamp);
+
+    await txn.multi();
+    await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(messages.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
+    const committed = await txn.exec();
+    if (committed !== null) return message;
+  }
+
+  throw new Error('Chat changed while sending your message. Please retry.');
 }
 
 export async function leaderboard(): Promise<LeaderboardEntry[]> {
