@@ -34,11 +34,11 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
   const streakRewards = [
     { day: 1, coins: 50, shards: 0 },
     { day: 2, coins: 100, shards: 0 },
-    { day: 3, coins: 150, shards: 2 },
+    { day: 3, coins: 150, shards: 1 },
     { day: 4, coins: 200, shards: 0 },
     { day: 5, coins: 250, shards: 0 },
     { day: 6, coins: 300, shards: 0 },
-    { day: 7, coins: 350, shards: 15 },
+    { day: 7, coins: 350, shards: 5 },
   ];
 
   return (
