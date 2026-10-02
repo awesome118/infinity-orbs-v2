@@ -4,6 +4,7 @@ import * as notificationsModule from '@devvit/notifications';
 const notifications = (notificationsModule as any).notifications;
 import {
   createInitialState,
+  AUTO_BUYER_COIN_RESERVE,
   type PlayerState,
   type RollResponse,
   type UpgradeId,
@@ -1766,11 +1767,9 @@ export async function applyRolls(
     if (after > before) s.masteryPoints = (s.masteryPoints ?? 0) + (after - before);
   }
 
-  // Celestial Auto-Buyer Prestige Upgrade: auto-buy cheapest affordable upgrade
+  // Celestial Auto-Buyer spends surplus Coins while preserving a small wallet buffer.
   const autoBuyerLevel = s.prestigeUpgrades?.autoBuyer ?? 0;
-  if (autoBuyerLevel > 0 && s.coins > 50) {
-    autoBuyCheapest(s);
-  }
+  if (autoBuyerLevel > 0) autoBuyCheapest(s, AUTO_BUYER_COIN_RESERVE);
 
   advanceQuestProgress(s, 'roll', rollCount);
   if (bestRarity >= 100) advanceQuestProgress(s, 'rare', bestRarity);
@@ -2187,7 +2186,9 @@ export async function buyUpgrade(id: UpgradeId): Promise<PlayerState> {
   return s;
 }
 
-export function autoBuyCheapest(s: PlayerState): boolean {
+export function autoBuyCheapest(s: PlayerState, reserveCoins = 0): boolean {
+  const reserve = Math.max(0, Math.floor(Number.isFinite(reserveCoins) ? reserveCoins : 0));
+  const spendableCoins = Math.max(0, s.coins - reserve);
   const upgradeIds: UpgradeId[] = [
     'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
     'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus'
@@ -2199,13 +2200,13 @@ export function autoBuyCheapest(s: PlayerState): boolean {
     if (id === 'auto') continue;
     const lvl = s.upgrades[id] ?? 0;
     const cost = upgradeCost(id, lvl);
-    if (cost <= s.coins && cost < lowestCost) {
+    if (cost <= spendableCoins && cost < lowestCost) {
       lowestCost = cost;
       bestId = id;
     }
   }
 
-  if (bestId && Number.isFinite(lowestCost) && s.coins >= lowestCost) {
+  if (bestId && Number.isFinite(lowestCost) && s.coins - lowestCost >= reserve) {
     s.coins -= lowestCost;
     s.upgrades[bestId] = (s.upgrades[bestId] ?? 0) + 1;
     return true;

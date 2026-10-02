@@ -1,16 +1,16 @@
-// Web Audio API Synthesizer for ORBS — zero external audio dependencies
+// Hand-authored Web Audio effects. Every sound is synthesized from oscillator
+// patterns and filtered noise; there are no sampled or AI-generated assets.
 class SoundFX {
   private ctx: AudioContext | null = null;
-  public enabled: boolean = true;
-  public sonarMode: boolean = false;
-  public sonarThreshold: number = 100;
+  public enabled = true;
+  public sonarMode = false;
+  public sonarThreshold = 100;
 
   constructor() {
     try {
       const saved = localStorage.getItem('orbs_sound_enabled');
       this.enabled = saved !== null ? saved === 'true' : true;
-      const savedSonar = localStorage.getItem('orbs_sonar_mode');
-      this.sonarMode = savedSonar === 'true';
+      this.sonarMode = localStorage.getItem('orbs_sonar_mode') === 'true';
       const savedThreshold = localStorage.getItem('orbs_sonar_threshold');
       if (savedThreshold) {
         this.sonarThreshold = Math.max(10, parseInt(savedThreshold, 10) || 100);
@@ -22,16 +22,95 @@ class SoundFX {
     }
   }
 
-  private initCtx() {
+  private initCtx(): AudioContext | null {
     if (!this.ctx && typeof window !== 'undefined') {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (AudioCtx) {
-        this.ctx = new AudioCtx();
-      }
+      const browserWindow = window as Window & { webkitAudioContext?: typeof AudioContext };
+      const AudioCtx = window.AudioContext || browserWindow.webkitAudioContext;
+      if (AudioCtx) this.ctx = new AudioCtx();
     }
-    if (this.ctx && this.ctx.state === 'suspended') {
-      void this.ctx.resume();
+    if (this.ctx?.state === 'suspended') {
+      void this.ctx.resume().catch(() => {});
     }
+    return this.ctx;
+  }
+
+  private withAudio(play: (ctx: AudioContext, now: number) => void, allowSonarMode = false) {
+    if (!this.enabled || (this.sonarMode && !allowSonarMode)) return;
+    try {
+      const ctx = this.initCtx();
+      if (ctx) play(ctx, ctx.currentTime);
+    } catch {}
+  }
+
+  private tone(
+    ctx: AudioContext,
+    frequency: number,
+    startAt: number,
+    duration: number,
+    volume: number,
+    type: OscillatorType = 'sine',
+    endFrequency?: number,
+    detune = 0,
+  ) {
+    const oscillator = ctx.createOscillator();
+    const envelope = ctx.createGain();
+    const endAt = startAt + Math.max(0.025, duration);
+    const safeFrequency = Math.max(20, Math.min(8_000, frequency));
+
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(safeFrequency, startAt);
+    oscillator.detune.setValueAtTime(detune, startAt);
+    if (endFrequency && endFrequency > 0) {
+      oscillator.frequency.exponentialRampToValueAtTime(Math.max(20, endFrequency), endAt);
+    }
+
+    const peak = Math.max(0.001, Math.min(0.25, volume));
+    const attack = Math.min(0.012, duration * 0.2);
+    envelope.gain.setValueAtTime(0.0001, startAt);
+    envelope.gain.linearRampToValueAtTime(peak, startAt + attack);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, endAt);
+
+    oscillator.connect(envelope);
+    envelope.connect(ctx.destination);
+    oscillator.start(startAt);
+    oscillator.stop(endAt + 0.01);
+  }
+
+  private filteredNoise(
+    ctx: AudioContext,
+    startAt: number,
+    duration: number,
+    volume: number,
+    cutoff: number,
+    seed: number,
+    filterType: BiquadFilterType = 'bandpass',
+  ) {
+    const frameCount = Math.max(1, Math.floor(ctx.sampleRate * duration));
+    const buffer = ctx.createBuffer(1, frameCount, ctx.sampleRate);
+    const samples = buffer.getChannelData(0);
+    let state = seed >>> 0 || 1;
+    for (let i = 0; i < frameCount; i++) {
+      state = (state * 1_664_525 + 1_013_904_223) >>> 0;
+      samples[i] = ((state / 0x1_0000_0000) * 2 - 1) * (1 - i / frameCount);
+    }
+
+    const source = ctx.createBufferSource();
+    const filter = ctx.createBiquadFilter();
+    const envelope = ctx.createGain();
+    const endAt = startAt + duration;
+    source.buffer = buffer;
+    filter.type = filterType;
+    filter.frequency.setValueAtTime(Math.max(80, Math.min(10_000, cutoff)), startAt);
+    filter.Q.setValueAtTime(0.7, startAt);
+    envelope.gain.setValueAtTime(0.0001, startAt);
+    envelope.gain.linearRampToValueAtTime(Math.max(0.001, Math.min(0.18, volume)), startAt + 0.006);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, endAt);
+
+    source.connect(filter);
+    filter.connect(envelope);
+    envelope.connect(ctx.destination);
+    source.start(startAt);
+    source.stop(endAt + 0.01);
   }
 
   public toggle(): boolean {
@@ -39,9 +118,7 @@ class SoundFX {
     try {
       localStorage.setItem('orbs_sound_enabled', String(this.enabled));
     } catch {}
-    if (this.enabled) {
-      this.playChime(440, 'sine', 0.1);
-    }
+    if (this.enabled) this.playChime(440, 'sine', 0.1);
     return this.enabled;
   }
 
@@ -50,9 +127,7 @@ class SoundFX {
     try {
       localStorage.setItem('orbs_sonar_mode', String(active));
     } catch {}
-    if (active) {
-      this.playSonarPing(this.sonarThreshold);
-    }
+    if (active) this.playSonarPing(this.sonarThreshold);
   }
 
   public setSonarThreshold(threshold: number) {
@@ -64,268 +139,96 @@ class SoundFX {
   }
 
   public playClick() {
-    if (!this.enabled || this.sonarMode) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(320, this.ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(120, this.ctx.currentTime + 0.05);
-      gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.05);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start();
-      osc.stop(this.ctx.currentTime + 0.05);
-    } catch {}
+    this.withAudio((ctx, now) => {
+      this.filteredNoise(ctx, now, 0.035, 0.035, 2_600, 17);
+      this.tone(ctx, 520, now, 0.055, 0.035, 'triangle', 360);
+    });
   }
 
   public playChime(freq = 523.25, type: OscillatorType = 'sine', duration = 0.25) {
-    if (!this.enabled || this.sonarMode) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-      gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start();
-      osc.stop(this.ctx.currentTime + duration);
-    } catch {}
+    this.withAudio((ctx, now) => {
+      const safeFrequency = Number.isFinite(freq) ? Math.max(40, Math.min(4_000, freq)) : 523.25;
+      const safeDuration = Number.isFinite(duration) ? Math.max(0.06, Math.min(1.6, duration)) : 0.25;
+      this.tone(ctx, safeFrequency, now, safeDuration, 0.075, type, undefined, -3);
+      this.tone(ctx, safeFrequency * 2.01, now + 0.008, safeDuration * 0.72, 0.022, 'sine', undefined, 2);
+    });
   }
 
   public playRollNormal() {
-    if (!this.enabled || this.sonarMode) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-      [440, 554.37, 659.25].forEach((freq, idx) => {
-        if (!this.ctx) return;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, now + idx * 0.04);
-        gain.gain.setValueAtTime(0.08, now + idx * 0.04);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.04 + 0.18);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now + idx * 0.04);
-        osc.stop(now + idx * 0.04 + 0.18);
-      });
-    } catch {}
+    this.withAudio((ctx, now) => {
+      this.filteredNoise(ctx, now, 0.055, 0.025, 2_000, 23, 'lowpass');
+      this.tone(ctx, 659.25, now + 0.008, 0.115, 0.045, 'sine', 523.25);
+      this.tone(ctx, 392, now + 0.052, 0.09, 0.025, 'triangle', 440);
+    });
   }
 
-  /**
-   * Crystal Celestial Sonar Ping for rare orb drops.
-   * Plays even in Silent Mode!
-   */
+  /** A rarity-scaled sonar mark, retained while Silent Sonar mode is active. */
   public playSonarPing(rarity: number) {
-    if (!this.enabled) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-
-      // Dynamic frequency scaling based on rarity
-      const baseFreq = rarity >= 10_000 ? 1318.51 : rarity >= 1_000 ? 1046.50 : 880;
-      const harmonicFreq = baseFreq * 1.5;
-
-      const osc1 = this.ctx.createOscillator();
-      const osc2 = this.ctx.createOscillator();
-      const gain1 = this.ctx.createGain();
-      const gain2 = this.ctx.createGain();
-
-      osc1.type = 'sine';
-      osc2.type = 'sine';
-
-      osc1.frequency.setValueAtTime(baseFreq, now);
-      osc2.frequency.setValueAtTime(harmonicFreq, now + 0.05);
-
-      gain1.gain.setValueAtTime(0.22, now);
-      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
-
-      gain2.gain.setValueAtTime(0.15, now + 0.05);
-      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
-
-      osc1.connect(gain1);
-      gain1.connect(this.ctx.destination);
-
-      osc2.connect(gain2);
-      gain2.connect(this.ctx.destination);
-
-      osc1.start(now);
-      osc1.stop(now + 0.55);
-
-      osc2.start(now + 0.05);
-      osc2.stop(now + 0.65);
-    } catch {}
+    this.withAudio((ctx, now) => {
+      const base = rarity >= 10_000 ? 1_318.51 : rarity >= 1_000 ? 1_046.5 : 880;
+      this.tone(ctx, base, now, 0.42, 0.12, 'sine', base * 0.985);
+      this.tone(ctx, base * 1.5, now + 0.055, 0.48, 0.065, 'sine');
+      this.tone(ctx, base * 2, now + 0.12, 0.31, 0.022, 'triangle');
+    }, true);
   }
 
   public playRareRiser() {
-    if (!this.enabled || this.sonarMode) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(220, now);
-      osc.frequency.exponentialRampToValueAtTime(880, now + 0.7);
-      gain.gain.setValueAtTime(0.02, now);
-      gain.gain.linearRampToValueAtTime(0.12, now + 0.6);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.8);
-    } catch {}
+    this.withAudio((ctx, now) => {
+      this.filteredNoise(ctx, now, 0.42, 0.045, 1_400, 31, 'lowpass');
+      this.tone(ctx, 330, now, 0.42, 0.04, 'triangle', 660);
+      this.tone(ctx, 880, now + 0.37, 0.32, 0.055, 'sine');
+    });
   }
 
   public playEpicFanfare() {
-    if (!this.enabled) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-      // Major triad arpeggio + bell
-      const notes = [523.25, 659.25, 783.99, 1046.5];
-      notes.forEach((f, i) => {
-        if (!this.ctx) return;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(f, now + i * 0.1);
-        gain.gain.setValueAtTime(0.15, now + i * 0.1);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.5);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now + i * 0.1);
-        osc.stop(now + i * 0.1 + 0.5);
+    this.withAudio((ctx, now) => {
+      [523.25, 659.25, 783.99, 1_046.5].forEach((frequency, index) => {
+        this.tone(ctx, frequency, now + index * 0.09, 0.42, 0.085, 'triangle');
       });
-    } catch {}
+      this.tone(ctx, 1_568, now + 0.29, 0.36, 0.028, 'sine');
+    }, true);
   }
 
   public playMythicFanfare() {
-    if (!this.enabled) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-      const notes = [440, 554.37, 659.25, 880, 1108.73, 1318.51, 1760];
-      notes.forEach((f, i) => {
-        if (!this.ctx) return;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(f, now + i * 0.08);
-        gain.gain.setValueAtTime(0.18, now + i * 0.08);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 1.2);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now + i * 0.08);
-        osc.stop(now + i * 0.08 + 1.2);
+    this.withAudio((ctx, now) => {
+      [392, 493.88, 587.33, 783.99, 987.77, 1_174.66, 1_567.98].forEach((frequency, index) => {
+        const startAt = now + index * 0.085;
+        this.tone(ctx, frequency, startAt, 0.72, 0.075, index % 2 ? 'triangle' : 'sine');
+        this.tone(ctx, frequency * 2, startAt + 0.018, 0.43, 0.018, 'sine');
       });
-    } catch {}
+    }, true);
   }
 
-  /**
-   * Super flashy upgrade level-up sound effect with ascending sparkle chimes.
-   */
   public playLevelUpFanfare() {
-    if (!this.enabled) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-      const chord = [523.25, 659.25, 783.99, 1046.5, 1318.51];
-      chord.forEach((freq, idx) => {
-        if (!this.ctx) return;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(freq, now + idx * 0.05);
-        gain.gain.setValueAtTime(0.16, now + idx * 0.05);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.05 + 0.4);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now + idx * 0.05);
-        osc.stop(now + idx * 0.05 + 0.4);
+    this.withAudio((ctx, now) => {
+      [392, 493.88, 587.33, 783.99].forEach((frequency, index) => {
+        this.tone(ctx, frequency, now + index * 0.085, 0.34, 0.07, 'triangle');
       });
-    } catch {}
+      [392, 587.33, 783.99].forEach(frequency => {
+        this.tone(ctx, frequency, now + 0.28, 0.42, 0.028, 'sine');
+      });
+    }, true);
   }
 
-  /**
-   * Thunderous triumphant fanfare for rolling a NEW ALL-TIME BEST BALL!
-   */
   public playNewBestFanfare() {
-    if (!this.enabled) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-
-      // Sub-bass impact
-      const subOsc = this.ctx.createOscillator();
-      const subGain = this.ctx.createGain();
-      subOsc.type = 'sine';
-      subOsc.frequency.setValueAtTime(110, now);
-      subOsc.frequency.exponentialRampToValueAtTime(45, now + 0.6);
-      subGain.gain.setValueAtTime(0.25, now);
-      subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-      subOsc.connect(subGain);
-      subGain.connect(this.ctx.destination);
-      subOsc.start(now);
-      subOsc.stop(now + 0.8);
-
-      // Shimmering fanfare chord sequence
-      const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50, 1318.51, 1567.98, 2093.00];
-      notes.forEach((freq, idx) => {
-        if (!this.ctx) return;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = idx % 2 === 0 ? 'sine' : 'triangle';
-        osc.frequency.setValueAtTime(freq, now + idx * 0.07);
-        gain.gain.setValueAtTime(0.18, now + idx * 0.07);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 1.2);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now + idx * 0.07);
-        osc.stop(now + idx * 0.07 + 1.2);
+    this.withAudio((ctx, now) => {
+      this.filteredNoise(ctx, now, 0.26, 0.09, 180, 47, 'lowpass');
+      this.tone(ctx, 82, now, 0.5, 0.12, 'sine', 42);
+      [261.63, 329.63, 392, 523.25, 659.25, 783.99, 1_046.5, 1_318.51].forEach((frequency, index) => {
+        this.tone(ctx, frequency, now + index * 0.075, 0.72, 0.072, index % 2 ? 'triangle' : 'sine');
       });
-    } catch {}
+    }, true);
   }
 
-  /**
-   * Mystic ethereal sound when sacrificing to the Altar of Luck
-   */
   public playSacrificeSound() {
-    if (!this.enabled) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(220, now);
-      osc.frequency.exponentialRampToValueAtTime(880, now + 0.4);
-      osc.frequency.exponentialRampToValueAtTime(440, now + 0.8);
-      gain.gain.setValueAtTime(0.2, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.8);
-    } catch {}
+    this.withAudio((ctx, now) => {
+      this.filteredNoise(ctx, now, 0.32, 0.055, 520, 59, 'lowpass');
+      this.tone(ctx, 130.81, now, 0.52, 0.085, 'triangle', 523.25);
+      this.tone(ctx, 261.63, now + 0.19, 0.62, 0.045, 'sine', 196);
+      this.tone(ctx, 392, now + 0.46, 0.38, 0.03, 'sine');
+    }, true);
   }
 }
 
 export const sound = new SoundFX();
+

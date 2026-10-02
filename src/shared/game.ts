@@ -898,7 +898,7 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
   autoBuyer: {
     name: 'Celestial Auto-Buyer',
-    desc: 'Automatically purchases cheapest affordable standard upgrade on roll.',
+    desc: 'Buys the cheapest standard upgrade from spare Coins on a roll, keeping a 50-Coin reserve.',
     category: 'qol',
     maxLevel: 1,
     costPerLevel: 5,
@@ -1481,6 +1481,8 @@ export function offlineRollCap(s: PlayerState): number {
 /**
  * Paced coin progression formula.
  */
+export const AUTO_BUYER_COIN_RESERVE = 50;
+
 export function coinsForRarity(rarity: number): number {
   if (rarity <= 1) return 1;
   return Math.max(1, Math.round(Math.pow(rarity, 0.68)));
