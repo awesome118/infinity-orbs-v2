@@ -145,8 +145,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
             const active = displayed.remainingMs > 0 && displayed.tier > 0;
             const progress = globalBoosterProgress(displayed);
             const activationProgress = Math.max(0, Math.min(4, displayed.activationProgress ?? 0));
-            const drain = displayed.tier > 0 ? (1 + (displayed.tier - 1) * 0.5) : 1;
-            const effect = id === 'luck'
+                    const effect = id === 'luck'
               ? '×' + globalBoosterLuckMultiplier(displayed).toFixed(2) + ' Luck'
               : id === 'speed'
                 ? Math.round((1 - globalBoosterSpeedMultiplier(displayed)) * 100) + '% faster cooldown'
@@ -171,7 +170,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                   <div className="mt-1 flex items-center justify-between text-[10px]">
                     <span className="text-slate-400">
                       {active
-                        ? formatDuration(displayed.remainingMs / drain) + ' left'
+                        ? formatDuration(displayed.remainingMs) + ' left'
                         : displayed.tier > 0
                           ? 'Ready to continue Tier ' + displayed.tier
                           : 'Inactive'}
