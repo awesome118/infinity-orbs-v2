@@ -41,6 +41,7 @@ import {
   decayGlobalBoosterState,
   activateGlobalBoosterStack,
   globalBoosterCritChanceBonus,
+  globalBoosterLuckMultiplier,
   PURCHASE_PACKS,
   grantFreeShards,
   spendShards,
