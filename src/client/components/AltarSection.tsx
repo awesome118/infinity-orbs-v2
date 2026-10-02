@@ -15,7 +15,7 @@ import type { PlayerState } from '../../shared/game.js';
 import {
   calculateAltarMultipliers,
   altarCoinDevotionChancePercent,
-  MIN_ALTAR_COIN_OFFER,
+  altarCoinFloor,
 } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
@@ -33,7 +33,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
   now,
 }) => {
   const [selectedCoinOffer, setSelectedCoinOffer] = useState<number>(() =>
-    state.coins >= MIN_ALTAR_COIN_OFFER ? MIN_ALTAR_COIN_OFFER : 0
+    0
   );
   const [selectedShardOffer, setSelectedShardOffer] = useState<number>(0);
   const [sacrificing, setSacrificing] = useState(false);
@@ -63,15 +63,16 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
   const altarLevel = sacrifices.altarLevel ?? 0;
   const currentTotalCoins = sacrifices.coinsSacrificed ?? 0;
   const altarPity = sacrifices.altarPity ?? 0;
-  const selectedCoinChance = altarCoinDevotionChancePercent(selectedCoinOffer, altarPity);
-  const coinOfferMeetsFloor = selectedCoinOffer === 0 || selectedCoinOffer >= MIN_ALTAR_COIN_OFFER;
+  const currentCoinFloor = altarCoinFloor(altarLevel);
+  const selectedCoinChance = altarCoinDevotionChancePercent(selectedCoinOffer, altarPity, altarLevel);
+  const coinOfferMeetsFloor = selectedCoinOffer === 0 || selectedCoinOffer >= currentCoinFloor;
 
   const handleSacrificeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (
       sacrificing ||
       (selectedCoinOffer <= 0 && selectedShardOffer <= 0) ||
-      (selectedCoinOffer > 0 && selectedCoinOffer < MIN_ALTAR_COIN_OFFER)
+      (selectedCoinOffer > 0 && selectedCoinOffer < currentCoinFloor)
     ) return;
 
     setSacrificing(true);
@@ -85,7 +86,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
         origin: { y: 0.65 },
         colors: ['#f59e0b', '#ef4444', '#a855f7'],
       });
-      setSelectedCoinOffer(state.coins >= MIN_ALTAR_COIN_OFFER ? MIN_ALTAR_COIN_OFFER : 0);
+      setSelectedCoinOffer(state.coins >= currentCoinFloor ? currentCoinFloor : 0);
       setSelectedShardOffer(0);
     } finally {
       setSacrificing(false);
@@ -199,7 +200,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
                 ? 'Select a coin offering to see its breakthrough chance.'
                 : coinOfferMeetsFloor
                 ? 'Larger offerings improve the base chance. Failed attempts multiply it upward.'
-                : 'Coin offerings require at least ' + MIN_ALTAR_COIN_OFFER.toLocaleString() + ' Coins.'}
+                : 'Coin offerings require at least ' + currentCoinFloor.toLocaleString() + ' Coins.'}
             </div>
             <div className="mt-1 text-[10px] text-orange-300 font-bold">
               Failed attempts: {altarPity} • pity multiplies chance by 1.35× per failure (cap 90%)
@@ -277,7 +278,8 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
               {[
                 { label: '0', val: 0 },
                 { label: '1K', val: 1000 },
-                { label: '10K', val: 10000 },
+                { label: 'FLOOR', val: currentCoinFloor },
+                { label: '2× FLOOR', val: currentCoinFloor * 2 },
                 { label: '25%', val: Math.floor(state.coins * 0.25) },
                 { label: '50%', val: Math.floor(state.coins * 0.5) },
                 { label: 'MAX', val: state.coins },
@@ -293,7 +295,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
               ))}
             </div>
             <p className="text-[10px] text-slate-500">
-              Minimum coin offering: {MIN_ALTAR_COIN_OFFER.toLocaleString()}. Pity compounds by 1.35× per failed coin attempt.
+              Current minimum coin offering: {currentCoinFloor.toLocaleString()}. Pity compounds by 1.35× per failed coin attempt.
             </p>
           </div>
 
