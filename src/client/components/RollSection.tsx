@@ -34,7 +34,7 @@ interface RollSectionProps {
   state: PlayerState;
   lastOrb: Orb | null;
   lastBatch: Orb[];
-  batchSummary: { totalVal: number; coins: number; shards: number; xp: number } | null;
+  batchSummary: { totalVal: number; coins: number; shards: number; xp: number; frenzyCount?: number } | null;
   readyAt: number;
   now: number;
   busy: boolean;
@@ -42,7 +42,7 @@ interface RollSectionProps {
   worldEvent?: WorldEvent | null;
   onToggleAutoRoll: () => void;
   onRoll: () => Promise<void>;
-  onOrbFrenzy: () => Promise<void>;
+  onOrbFrenzy: (event: React.MouseEvent<HTMLButtonElement>) => Promise<void>;
   onOpenShareModal: (rarity: number) => void;
   onNewBest?: (orb: Orb, prevBest: number) => void;
 }
@@ -432,21 +432,21 @@ export const RollSection: React.FC<RollSectionProps> = ({
         </button>
 
         <button
-          onClick={() => void onOrbFrenzy()}
+          onClick={(event) => void onOrbFrenzy(event)}
           disabled={busy || Boolean(state.lastFrenzyDate && state.lastFrenzyDate === new Date().toISOString().slice(0, 10))}
           className={
             busy || Boolean(state.lastFrenzyDate && state.lastFrenzyDate === new Date().toISOString().slice(0, 10))
               ? 'w-full px-4 py-2.5 rounded-xl text-xs font-black bg-slate-900 border border-slate-800 text-slate-600 cursor-not-allowed'
               : 'w-full px-4 py-2.5 rounded-xl text-xs font-black bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-200 hover:bg-fuchsia-500/20 active:scale-95'
           }
-          title='Once per day: make one normal roll, automatically post its highest Orb, and let another player claim its Frenzy.'
+          title='Once per day: roll a baseline Orb, open the full game window, and unleash the Frenzy volley.'
         >
           <span className='inline-flex items-center justify-center gap-2'>
             <Sparkles className='w-4 h-4 text-fuchsia-300' />
             <span>
               {state.lastFrenzyDate === new Date().toISOString().slice(0, 10)
                 ? 'Orb Frenzy Used Today'
-                : 'Orb Frenzy • 1 Daily Roll + Auto Post'}
+                : 'Orb Frenzy • Open & Roll All'}
             </span>
           </span>
         </button>
@@ -600,6 +600,38 @@ export const RollSection: React.FC<RollSectionProps> = ({
           </div>
         )}
       </div>
+
+      {/* Orb Frenzy Result */}
+      {batchSummary?.frenzyCount ? (
+        <div className="w-full rounded-2xl border border-fuchsia-500/30 bg-gradient-to-r from-fuchsia-950/40 via-slate-900 to-purple-950/40 p-4 shadow-lg">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-300">Orb Frenzy</div>
+              <div className="mt-1 text-lg font-black text-white">
+                {batchSummary.frenzyCount.toLocaleString()} Orbs rolled
+              </div>
+            </div>
+            <Zap className="w-7 h-7 text-fuchsia-300" />
+          </div>
+          <div className="mt-2 text-xs text-slate-400">
+            The full Frenzy reward was applied server-side. The orbit above shows the best result from the volley.
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-xl bg-slate-950/50 border border-slate-800 px-2 py-2">
+              <div className="text-[10px] uppercase font-bold text-slate-500">Value</div>
+              <div className="text-sm font-black text-cyan-300">{batchSummary.totalVal.toLocaleString()}</div>
+            </div>
+            <div className="rounded-xl bg-slate-950/50 border border-slate-800 px-2 py-2">
+              <div className="text-[10px] uppercase font-bold text-slate-500">Coins</div>
+              <div className="text-sm font-black text-amber-300">+{batchSummary.coins.toLocaleString()}</div>
+            </div>
+            <div className="rounded-xl bg-slate-950/50 border border-slate-800 px-2 py-2">
+              <div className="text-[10px] uppercase font-bold text-slate-500">XP</div>
+              <div className="text-sm font-black text-purple-300">+{batchSummary.xp.toLocaleString()}</div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Multi Roll Batch Results Summary */}
       {batchSummary && multi > 1 && (
