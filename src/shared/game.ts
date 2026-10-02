@@ -249,8 +249,6 @@ export type GlobalBoosterSnapshot = Record<GlobalBoosterId, GlobalBoosterState>;
 export const GLOBAL_BOOSTER_STACK_MS = 30 * 60 * 1000;
 export const GLOBAL_BOOSTER_MAX_TIER = 10;
 export const GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER = 4;
-export const GLOBAL_BOOSTER_DRAIN_MULTIPLIER = (tier: number): number =>
-  Math.max(1, 1 + (Math.max(1, Math.min(GLOBAL_BOOSTER_MAX_TIER, tier)) - 1) * 0.5);
 
 export const GLOBAL_BOOSTERS: Record<GlobalBoosterId, GlobalBoosterInfo> = {
   luck: {
@@ -270,6 +268,24 @@ export const GLOBAL_BOOSTERS: Record<GlobalBoosterId, GlobalBoosterInfo> = {
   },
 };
 
+function normalizeGlobalBoosterState(
+  state: Partial<GlobalBoosterState> | null | undefined,
+  now: number,
+): GlobalBoosterState {
+  return {
+    tier: Math.max(0, Math.min(GLOBAL_BOOSTER_MAX_TIER, Math.floor(Number(state?.tier ?? 0) || 0))),
+    remainingMs: Math.max(0, Number(state?.remainingMs ?? 0) || 0),
+    updatedAt: Number(state?.updatedAt ?? now) || now,
+    activationProgress: Math.max(
+      0,
+      Math.min(
+        GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER - 1,
+        Math.floor(Number(state?.activationProgress ?? 0) || 0),
+      ),
+    ),
+  };
+}
+
 export function createInitialGlobalBoosters(now = Date.now()): GlobalBoosterSnapshot {
   return {
     luck: { tier: 0, remainingMs: 0, updatedAt: now, activationProgress: 0 },
@@ -279,45 +295,37 @@ export function createInitialGlobalBoosters(now = Date.now()): GlobalBoosterSnap
 }
 
 export function globalBoosterLuckMultiplier(state: GlobalBoosterState): number {
-  if (state.tier <= 0 || state.remainingMs <= 0) return 1;
-  return 1 + 0.20 * state.tier;
+  return state.tier > 0 && state.remainingMs > 0 ? 1 + 0.20 * state.tier : 1;
 }
 
 export function globalBoosterSpeedMultiplier(state: GlobalBoosterState): number {
-  if (state.tier <= 0 || state.remainingMs <= 0) return 1;
-  return Math.max(0.35, 1 - 0.05 * state.tier);
+  return state.tier > 0 && state.remainingMs > 0
+    ? Math.max(0.35, 1 - 0.05 * state.tier)
+    : 1;
 }
 
 export function globalBoosterCritChanceBonus(state: GlobalBoosterState): number {
-  if (state.tier <= 0 || state.remainingMs <= 0) return 0;
-  return 0.02 * state.tier;
+  return state.tier > 0 && state.remainingMs > 0 ? 0.02 * state.tier : 0;
 }
 
 export function globalBoosterCritLuckBonus(state: GlobalBoosterState): number {
-  if (state.tier <= 0 || state.remainingMs <= 0) return 0;
-  return 0.10 * state.tier;
+  return state.tier > 0 && state.remainingMs > 0 ? 0.10 * state.tier : 0;
 }
 
-export function decayGlobalBoosterState(state: GlobalBoosterState, now = Date.now()): GlobalBoosterState {
-  const tier = Math.max(0, Math.min(GLOBAL_BOOSTER_MAX_TIER, Math.floor(Number(state.tier) || 0)));
-  const activationProgress = Math.max(
-    0,
-    Math.min(GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER - 1, Math.floor(Number(state.activationProgress ?? 0) || 0)),
-  );
-
-  // Tier progression is permanent. Only the active duration expires. This keeps
-  // the four-activation progression from resetting to Tier 1 when a timer ends.
-  if (state.remainingMs <= 0 || tier <= 0) {
-    return { tier, remainingMs: 0, updatedAt: now, activationProgress };
+export function decayGlobalBoosterState(
+  state: GlobalBoosterState,
+  now = Date.now(),
+): GlobalBoosterState {
+  const normalized = normalizeGlobalBoosterState(state, now);
+  if (normalized.tier <= 0 || normalized.remainingMs <= 0) {
+    return { ...normalized, remainingMs: 0, updatedAt: now };
   }
 
-  const elapsed = Math.max(0, now - (state.updatedAt || now));
-  const drained = state.remainingMs - elapsed * GLOBAL_BOOSTER_DRAIN_MULTIPLIER(tier);
+  const elapsed = Math.max(0, now - normalized.updatedAt);
   return {
-    tier,
-    remainingMs: Math.max(0, drained),
+    ...normalized,
+    remainingMs: Math.max(0, normalized.remainingMs - elapsed),
     updatedAt: now,
-    activationProgress,
   };
 }
 
@@ -327,17 +335,10 @@ export function activateGlobalBoosterStack(
 ): GlobalBoosterState {
   const decayed = decayGlobalBoosterState(state, now);
 
-  // Each activation adds 30 minutes of active time and one step toward
-  // the next tier. Four activations advance a booster by one tier.
-  let tier = Math.max(0, Math.min(GLOBAL_BOOSTER_MAX_TIER, decayed.tier));
-  let activationProgress = Math.max(
-    0,
-    Math.min(GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER - 1, decayed.activationProgress ?? 0),
-  ) + 1;
+  let tier = decayed.tier;
+  let activationProgress = decayed.activationProgress + 1;
 
-  if (tier <= 0) {
-    tier = 1;
-  }
+  if (tier <= 0) tier = 1;
 
   if (tier < GLOBAL_BOOSTER_MAX_TIER && activationProgress >= GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER) {
     tier++;
@@ -355,8 +356,9 @@ export function activateGlobalBoosterStack(
 }
 
 export function globalBoosterProgress(state: GlobalBoosterState): number {
-  if (state.remainingMs <= 0 || state.tier <= 0) return 0;
-  return Math.round(Math.min(1, (state.activationProgress ?? 0) / GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER) * 100);
+  return Math.round(
+    Math.min(1, Math.max(0, state.activationProgress ?? 0) / GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER) * 100,
+  );
 }
 
 export interface PurchasePack {
