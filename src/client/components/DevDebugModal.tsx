@@ -32,6 +32,210 @@ const buttonBase =
   'rounded-xl border text-xs font-bold transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed';
 const panelBase = 'bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3';
 
+const SHORT_PLAYER_LOG_MAX_CHARS = 12_000;
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function shortNumber(value: unknown, maxDecimals = 3): string {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '?';
+  return Number(n.toFixed(maxDecimals)).toLocaleString('en-US', {
+    useGrouping: false,
+    maximumFractionDigits: maxDecimals,
+  });
+}
+
+function compactTimestamp(timestamp: unknown, baseTimestamp: number): string {
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts) || !Number.isFinite(baseTimestamp)) return '+?s';
+  const seconds = Math.max(0, Math.round((ts - baseTimestamp) / 1000));
+  return '+' + seconds.toLocaleString('en-US') + 's';
+}
+
+function shortenPlayerSpyLogs(
+  username: string,
+  userId: string,
+  logs: Array<Record<string, unknown>>,
+): string {
+  const baseTimestamp = Number(logs[0]?.timestamp ?? 0);
+  const meaningfulLogs = logs.filter(log => log.event !== 'roll-activation');
+
+  const rollStats = {
+    count: 0,
+    totalCoins: 0,
+    totalShards: 0,
+    totalXp: 0,
+    totalCrits: 0,
+    totalUnique: 0,
+    best: 0,
+    min: Infinity,
+    max: 0,
+  };
+
+  const standardLines = meaningfulLogs.map((log) => {
+    const event = String(log.event ?? 'event');
+    const details = recordValue(log.details);
+    const stamp = compactTimestamp(log.timestamp, baseTimestamp);
+
+    if (event === 'roll') {
+      rollStats.count += Number(details.processedRollCount ?? 0) || 0;
+      rollStats.totalCoins += Number(details.coinsGained ?? 0) || 0;
+      rollStats.totalShards += Number(details.shardsGained ?? 0) || 0;
+      rollStats.totalXp += Number(details.xpGained ?? 0) || 0;
+      rollStats.totalCrits += Number(details.criticalRolls ?? 0) || 0;
+      rollStats.totalUnique += Number(details.uniqueGained ?? 0) || 0;
+
+      const best = Number(details.bestRarity ?? 0) || 0;
+      rollStats.best = Math.max(rollStats.best, best);
+      if (best > 0) {
+        rollStats.min = Math.min(rollStats.min, best);
+        rollStats.max = Math.max(rollStats.max, best);
+      }
+
+      const samples = Array.isArray(details.sampleRarities)
+        ? details.sampleRarities.map(value => shortNumber(value, 0)).join(',')
+        : '';
+
+      return [
+        stamp,
+        'ROLLx' + String(details.processedRollCount ?? details.requestedRollCount ?? '?'),
+        samples ? 'R[' + samples + ']' : '',
+        'B' + shortNumber(details.bestRarity, 0),
+        'C+' + shortNumber(details.coinsGained, 0),
+        'X+' + shortNumber(details.xpGained, 0),
+        'S+' + shortNumber(details.shardsGained, 1),
+        'K+' + shortNumber(details.criticalRolls, 0),
+        'U+' + shortNumber(details.uniqueGained, 0),
+        'L' + shortNumber(details.luckMultiplier),
+        'Lv' + shortNumber(details.level, 0),
+      ].filter(Boolean).join(' | ');
+    }
+
+    if (event === 'upgrade-purchase') {
+      return [
+        stamp,
+        'UP',
+        String(details.upgrade ?? '?'),
+        String(details.levelBefore ?? '?') + '>' + String(details.levelAfter ?? '?'),
+        'C-' + shortNumber(details.cost, 0),
+      ].join(' | ');
+    }
+
+    if (event === 'altar-sacrifice') {
+      return [
+        stamp,
+        'ALTAR',
+        'C-' + shortNumber(details.coinsSacrificed, 0),
+        'S-' + shortNumber(details.shardsSacrificed, 0),
+        details.luckSurgeExtended ? 'SURGE+' : '',
+        details.altarLeveledUp ? 'LEVEL UP' : '',
+        details.snapshot ? 'Lv' + shortNumber(recordValue(details.snapshot).level, 0) : '',
+      ].filter(Boolean).join(' | ');
+    }
+
+    if (event === 'quest-claim') {
+      return [
+        stamp,
+        'QUEST',
+        String(details.questId ?? details.type ?? '?'),
+        'C+' + shortNumber(details.rewardCoins, 0),
+        'S+' + shortNumber(details.rewardShards, 0),
+        'T+' + shortNumber(details.rewardTokens, 0),
+      ].join(' | ');
+    }
+
+    return [
+      stamp,
+      event.replace(/-/g, '_').toUpperCase(),
+      ...Object.entries(details)
+        .filter(([key]) => !['snapshot', 'globalBoosters', 'before', 'after', 'userId'].includes(key))
+        .slice(0, 5)
+        .map(([key, value]) => {
+          if (value === null || value === undefined) return '';
+          if (typeof value === 'object') return key + '=' + JSON.stringify(value);
+          return key + '=' + String(value);
+        })
+        .filter(Boolean),
+    ].join(' | ');
+  });
+
+  const header = [
+    'Infinity Orbs Player Spy (shortened)',
+    'u/' + (username.replace(/^u\//i, '') || '?') + (userId ? ' · ID ' + userId.slice(-10) : ''),
+    'Events ' + logs.length + ' · Duplicate roll-activation entries and repeated state snapshots removed.',
+    'ROLL: t=elapsed seconds, R=sample rarities, B=best, C=coins, X=XP, S=shards, K=crits, U=uniques, L=luck multiplier, Lv=level.',
+    '',
+  ].join('\n');
+
+  const standard = header + standardLines.join('\n');
+  if (standard.length <= SHORT_PLAYER_LOG_MAX_CHARS) return standard;
+
+  const ultraLines = meaningfulLogs.map((log) => {
+    const event = String(log.event ?? 'event');
+    const details = recordValue(log.details);
+    const stamp = compactTimestamp(log.timestamp, baseTimestamp);
+
+    if (event === 'roll') {
+      const parts = [
+        stamp,
+        'R' + shortNumber(details.bestRarity, 0),
+        'C' + shortNumber(details.coinsGained, 0),
+        'X' + shortNumber(details.xpGained, 0),
+      ];
+      if (Number(details.shardsGained ?? 0)) parts.push('S' + shortNumber(details.shardsGained, 0));
+      if (Number(details.criticalRolls ?? 0)) parts.push('K' + shortNumber(details.criticalRolls, 0));
+      if (Number(details.uniqueGained ?? 0)) parts.push('U' + shortNumber(details.uniqueGained, 0));
+      return parts.join(' ');
+    }
+
+    if (event === 'upgrade-purchase') {
+      return stamp + ' UP ' + String(details.upgrade ?? '?') + ' ' + String(details.levelBefore ?? '?') + '>' + String(details.levelAfter ?? '?') + ' C-' + shortNumber(details.cost, 0);
+    }
+
+    if (event === 'altar-sacrifice') {
+      return stamp + ' ALTAR C-' + shortNumber(details.coinsSacrificed, 0) + ' S-' + shortNumber(details.shardsSacrificed, 0) + (details.luckSurgeExtended ? ' SURGE+' : '');
+    }
+
+    if (event === 'quest-claim') {
+      return stamp + ' QUEST ' + String(details.questId ?? details.type ?? '?') + ' C+' + shortNumber(details.rewardCoins, 0) + ' S+' + shortNumber(details.rewardShards, 0) + ' T+' + shortNumber(details.rewardTokens, 0);
+    }
+
+    return stamp + ' ' + event;
+  });
+
+  const ultraHeader = [
+    'Infinity Orbs Player Spy (ultra-short)',
+    'u/' + (username.replace(/^u\//i, '') || '?') + ' · ' + logs.length + ' events · activation duplicates/snapshots removed.',
+    'ROLL: t R=best rarity C=coins X=XP; S=shards K=crits U=uniques only when nonzero.',
+    '',
+  ].join('\n');
+
+  const ultra = ultraHeader + ultraLines.join('\n');
+  if (ultra.length <= SHORT_PLAYER_LOG_MAX_CHARS) return ultra;
+
+  const ultraText = ultraLines.join('\n');
+  const keepChars = Math.max(1000, Math.floor((SHORT_PLAYER_LOG_MAX_CHARS - ultraHeader.length - 260) / 2));
+  const first = ultraText.slice(0, keepChars);
+  const last = ultraText.slice(-keepChars);
+  const middleStart = first.split('\n').length;
+  const middleEnd = Math.max(middleStart, ultraLines.length - last.split('\n').length);
+  const omittedCount = Math.max(0, middleEnd - middleStart);
+  const summary = [
+    '',
+    '... middle omitted to stay under ' + SHORT_PLAYER_LOG_MAX_CHARS.toLocaleString() + ' characters ...',
+    'Rolls: ' + rollStats.count + ' · best: ' + (rollStats.best || '?') + ' · min: ' + (rollStats.min === Infinity ? '?' : rollStats.min) + ' · max: ' + (rollStats.max || '?'),
+    'Rewards in loaded logs: C+' + rollStats.totalCoins.toLocaleString() + ' X+' + rollStats.totalXp.toLocaleString() + ' S+' + rollStats.totalShards.toLocaleString() + ' K+' + rollStats.totalCrits.toLocaleString() + ' U+' + rollStats.totalUnique.toLocaleString(),
+    '',
+  ].join('\n');
+
+  return (ultraHeader + first + '\n...[' + omittedCount.toLocaleString() + ' compact events omitted]...\n' + last + summary).slice(0, SHORT_PLAYER_LOG_MAX_CHARS);
+}
+
+
 export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   onClose,
   onRefresh,
@@ -174,6 +378,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [playerSpyUsername, setPlayerSpyUsername] = useState('');
   const [playerSpyUserId, setPlayerSpyUserId] = useState('');
   const [playerSpyLoading, setPlayerSpyLoading] = useState(false);
+  const [playerSpyShortened, setPlayerSpyShortened] = useState(false);
 
   const loadCcuStats = async () => {
     setCcuLoading(true);
@@ -277,7 +482,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       setPlayerSpyUsername(data.username ?? username);
       setPlayerSpyUserId(data.userId ?? '');
       setPlayerSpyLogs(Array.isArray(data.logs) ? data.logs : []);
-      setMessage(`Loaded ${Array.isArray(data.logs) ? data.logs.length : 0} Player Spy events for u/${data.username ?? username}.`);
+      setPlayerSpyShortened(false);
+      setMessage('Loaded ' + (Array.isArray(data.logs) ? data.logs.length : 0) + ' Player Spy events for u/' + (data.username ?? username) + '.');
     } catch (e: any) {
       setMessage('Error: ' + (e?.message || 'Could not load Player Spy logs.'));
       setPlayerSpyLogs([]);
@@ -287,18 +493,29 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     }
   };
 
+  const fullPlayerSpyLog = () => JSON.stringify({
+    username: playerSpyUsername.trim().replace(/^u\//i, ''),
+    userId: playerSpyUserId || null,
+    exportedAt: new Date().toISOString(),
+    logCount: playerSpyLogs.length,
+    logs: playerSpyLogs,
+  }, null, 2);
+
+  const shortenedPlayerSpyLog = () => shortenPlayerSpyLogs(
+    playerSpyUsername.trim().replace(/^u\//i, ''),
+    playerSpyUserId,
+    playerSpyLogs,
+  );
+
   const copyPlayerSpy = async () => {
-    const payload = {
-      username: playerSpyUsername.trim().replace(/^u\//i, ''),
-      userId: playerSpyUserId || null,
-      exportedAt: new Date().toISOString(),
-      logCount: playerSpyLogs.length,
-      logs: playerSpyLogs,
-    };
-    const serialized = JSON.stringify(payload, null, 2);
+    const serialized = playerSpyShortened ? shortenedPlayerSpyLog() : fullPlayerSpyLog();
     try {
       await navigator.clipboard.writeText(serialized);
-      setMessage('Player Spy logs copied to clipboard. You may paste the JSON into chat for analysis.');
+      setMessage(
+        playerSpyShortened
+          ? 'Shortened Player Spy log copied. It is capped for chat-friendly size.'
+          : 'Player Spy logs copied to clipboard. You may paste the JSON into chat for analysis.',
+      );
     } catch {
       const textarea = document.getElementById('player-spy-log-copy') as HTMLTextAreaElement | null;
       if (!textarea) {
@@ -307,7 +524,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       }
       textarea.focus();
       textarea.select();
-      setMessage('Clipboard access was blocked. The Player Spy JSON is selected; copy it manually.');
+      setMessage('Clipboard access was blocked. The Player Spy log is selected; copy it manually.');
     }
   };
 
@@ -1315,20 +1532,28 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               {playerSpyLoading ? 'Loading…' : 'Spy'}
             </button>
             <button
-              title="Copy the Player Spy data as JSON so it can be analyzed externally or pasted into ChatGPT."
+              title="Toggle a compact Player Spy format that removes duplicate activation entries and repeated state snapshots so the log is small enough to paste into chat."
               disabled={playerSpyLogs.length === 0}
-              onClick={() => void copyPlayerSpy()}
-              className={buttonBase + ' bg-emerald-600/20 hover:bg-emerald-600/30 border-emerald-500/30 text-emerald-200 px-3 py-2'}
+              onClick={() => {
+                const next = !playerSpyShortened;
+                setPlayerSpyShortened(next);
+                setMessage(next
+                  ? 'Player Spy log shortened for chat. The detailed JSON is still available with Full Log.'
+                  : 'Player Spy log restored to full JSON.');
+              }}
+              className={buttonBase + ' bg-cyan-600/20 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-200 px-3 py-2'}
             >
-              <Copy className="inline w-3.5 h-3.5 mr-1" /> Copy
+              <ListRestart className="inline w-3.5 h-3.5 mr-1" /> {playerSpyShortened ? 'Full Log' : 'Shorten Log'}
             </button>
             <button
-              title="Delete all stored Player Spy telemetry for this player."
-              disabled={playerSpyLoading || !playerSpyUsername.trim()}
-              onClick={() => void clearPlayerSpy()}
-              className={buttonBase + ' bg-rose-600/20 hover:bg-rose-600/30 border-rose-500/30 text-rose-200 px-3 py-2'}
+              title={playerSpyShortened
+                ? 'Copy the shortened Player Spy log for pasting into ChatGPT or another analysis tool.'
+                : 'Copy the Player Spy data as JSON so it can be analyzed externally or pasted into ChatGPT.'}
+              disabled={playerSpyLogs.length === 0}
+              onClick={() => void copyPlayerSpy()}
+              className={buttonBase + ' bg-emerald-600/20 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-200 px-3 py-2'}
             >
-              <Trash2 className="inline w-3.5 h-3.5 mr-1" /> Clear
+              <Copy className="inline w-3.5 h-3.5 mr-1" /> {playerSpyShortened ? 'Copy Shortened' : 'Copy'}
             </button>
           </div>
 
@@ -1342,12 +1567,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             id="player-spy-log-copy"
             readOnly
             value={playerSpyLogs.length > 0
-              ? JSON.stringify({
-                  username: playerSpyUsername.replace(/^u\//i, ''),
-                  userId: playerSpyUserId || null,
-                  logCount: playerSpyLogs.length,
-                  logs: playerSpyLogs,
-                }, null, 2)
+              ? (playerSpyShortened
+                ? shortenedPlayerSpyLog()
+                : fullPlayerSpyLog())
               : 'No Player Spy logs loaded. Enter a Reddit username and press Spy.'}
             className="w-full min-h-72 max-h-[32rem] rounded-xl border border-slate-800 bg-black/40 p-3 text-[10px] leading-4 font-mono text-slate-300 resize-y"
             onFocus={e => e.currentTarget.select()}
