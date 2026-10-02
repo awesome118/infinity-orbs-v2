@@ -36,6 +36,7 @@ import {
   sacrificeToAltar,
   upgradeMasterySkill,
   getCollectionPage,
+  processOfflineFullNotification,
 } from './game.js';
 import {
   achievements,
@@ -548,6 +549,22 @@ export function createApp() {
       console.error('[Payments] Product lookup failed:', e instanceof Error ? e.stack ?? e.message : e);
       // Keep the shop usable in playtest if the payment catalog lookup is temporarily unavailable.
       return res.json(fallbackProducts);
+    }
+  });
+
+  app.post('/internal/scheduler/offline-orbs-full', async (req, res) => {
+    try {
+      const data = req.body?.data ?? {};
+      const userId = String(data.userId ?? '').trim();
+      const subredditName = String(data.subredditName ?? '').trim();
+      if (!userId || !subredditName) {
+        return res.status(400).json({ status: 'error', message: 'Missing offline notification job data.' });
+      }
+      await processOfflineFullNotification(userId, subredditName);
+      return res.status(200).json({ status: 'ok' });
+    } catch (e) {
+      console.error('Offline-orbs-full scheduler failed:', e);
+      return res.status(200).json({ status: 'error' });
     }
   });
 
