@@ -414,6 +414,9 @@ export interface PlayerStreak {
 
 export interface PlayerState {
   username?: string;
+  // Incremented whenever an admin wipes this account. Prevents stale in-flight
+  // requests from resurrecting pre-wipe save data.
+  saveGeneration?: number;
   gameBan?: {
     active: true;
     bannedAt: number;
@@ -898,6 +901,7 @@ export function createInitialState(now = Date.now()): PlayerState {
   const today = new Date(now).toISOString().slice(0, 10);
   return {
     coins: 50,
+    saveGeneration: 0,
     shards: 5,
     cosmicDust: 0,
     level: 1,
