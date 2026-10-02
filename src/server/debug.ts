@@ -20,6 +20,8 @@ import {
   getCcuPeaks,
   setFakeCcuBonus,
   sendPushNotificationTest,
+  getPlayerSpyLogs,
+  clearPlayerSpyLogs,
 } from './game.js';
 import { context, redis, reddit } from './devvit-mock.js';
 import {
@@ -359,6 +361,35 @@ debugRouter.get('/players', async (_req, res) => {
     res.json({ players: await listPlayers() });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to load player list.' });
+  }
+});
+
+debugRouter.get('/player-spy', async (req, res) => {
+  try {
+    const username = targetUsername(req.query?.username);
+    const userId = await resolveUserId(username);
+    const limit = Math.max(1, Math.min(500, Math.floor(Number(req.query?.limit ?? 500) || 500)));
+    const logs = await getPlayerSpyLogs(userId, limit);
+    res.json({
+      username,
+      userId,
+      logCount: logs.length,
+      logs,
+      generatedAt: Date.now(),
+    });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Could not load Player Spy logs.' });
+  }
+});
+
+debugRouter.post('/player-spy/clear', async (req, res) => {
+  try {
+    const username = targetUsername(req.body?.username);
+    const userId = await resolveUserId(username);
+    await clearPlayerSpyLogs(userId);
+    res.json({ ok: true, username, userId });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Could not clear Player Spy logs.' });
   }
 });
 
