@@ -410,6 +410,21 @@ export async function getOnlinePlayers(): Promise<number> {
   return touchOnlinePresence();
 }
 
+export async function getNotificationState(userId = currentUserId()): Promise<boolean> {
+  const id = String(userId ?? '').trim();
+  if (!id) return false;
+  return notifications.isOptedIn(id);
+}
+
+export async function setNotificationState(enabled: boolean): Promise<boolean> {
+  if (enabled) {
+    await notifications.optInCurrentUser();
+  } else {
+    await notifications.optOutCurrentUser();
+  }
+  return notifications.isOptedIn(currentUserId());
+}
+
 export async function getFakeCcuBonus(userId = currentUserId()): Promise<number> {
   const id = String(userId ?? '').trim();
   if (!id) return 0;
