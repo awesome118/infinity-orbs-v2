@@ -251,6 +251,54 @@ debugRouter.post('/announcement', async (req, res) => {
   }
 });
 
+debugRouter.get('/moderation/save', async (req, res) => {
+  try {
+    const name = targetUsername(req.query?.username);
+    const userId = await resolveUserId(name);
+    const generationRaw = await redis.get('player-generation:' + userId);
+    const raw = await redis.get('player:' + userId);
+    let save: Record<string, unknown> | null = null;
+    if (raw) {
+      try {
+        save = JSON.parse(String(raw)) as Record<string, unknown>;
+      } catch {
+        save = null;
+      }
+    }
+    const bans = await listGameBans();
+    const ban = bans.find(entry => entry.userId === userId) ?? null;
+    res.json({
+      username: name,
+      userId,
+      generation: Number.parseInt(String(generationRaw ?? '0'), 10) || 0,
+      ban,
+      exists: raw != null,
+      save: save
+        ? {
+            level: Number(save.level ?? 1),
+            xp: Number(save.xp ?? 0),
+            saveGeneration: Number(save.saveGeneration ?? 0),
+            coins: Number(save.coins ?? 0),
+            shards: Number(save.shards ?? 0),
+            totalRolls: Number(save.totalRolls ?? 0),
+            highestRarity: Number(save.highestRarity ?? 0),
+          }
+        : null,
+    });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Could not inspect player save.' });
+  }
+});
+
+debugRouter.post('/moderation/hard-reset', async (req, res) => {
+  try {
+    const result = await wipeUser(req.body?.username);
+    res.json({ ok: true, action: 'hard-reset', ...result });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Could not reset player save.' });
+  }
+});
+
 debugRouter.get('/context', (_req, res) => {
   res.json({
     username: context.username ?? null,
