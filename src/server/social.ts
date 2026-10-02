@@ -874,13 +874,18 @@ export async function postGlobalChatMessage(text: string): Promise<GlobalChatMes
   if (!messageText) throw new Error('Message cannot be empty.');
   if (messageText.length > 200) throw new Error('Messages must be 200 characters or fewer.');
 
+  const timestamp = Date.now();
   const message: GlobalChatMessage = {
-    id: `global-chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: `global-chat-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
     username: username().replace(/^u\//i, '') || 'Redditor',
     text: messageText,
-    timestamp: Date.now(),
+    timestamp,
     userId: user(),
   };
+
+  // Initialize the key before WATCH so the first write follows the same
+  // concrete-string path as later transactions in Redis/Valkey adapters.
+  await ensureRedisStringKey(GLOBAL_CHAT_KEY, '[]');
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(GLOBAL_CHAT_KEY);
