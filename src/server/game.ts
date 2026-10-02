@@ -31,6 +31,14 @@ import {
   type PremiumBoosterId,
   type AutomationId,
   type PaymentReceipt,
+  type GlobalBoosterId,
+  type GlobalBoosterSnapshot,
+
+  GLOBAL_BOOSTERS,
+  createInitialGlobalBoosters,
+  decayGlobalBoosterState,
+  activateGlobalBoosterStack,
+  globalBoosterCritChanceBonus,
 
   PREMIUM_BOOSTERS,
   AUTOMATIONS,
@@ -132,6 +140,87 @@ export async function getPaymentDebugLogs(limit = PAYMENT_DEBUG_LOG_LIMIT): Prom
 
 export async function clearPaymentDebugLogs(): Promise<void> {
   await redis.set(PAYMENT_DEBUG_LOG_KEY, JSON.stringify([]));
+}
+
+const GLOBAL_BOOSTERS_KEY = 'io:global-boosters:v4';
+const GLOBAL_BOOSTER_DEBUG_LOG_KEY = 'io:global-booster-debug-log:v1';
+const GLOBAL_BOOSTER_DEBUG_LOG_LIMIT = 300;
+
+function summarizeGlobalBoosterRaw(raw: unknown): unknown {
+  if (typeof raw !== 'string') return raw;
+  return raw.length > 12000 ? raw.slice(0, 12000) + '…[truncated]' : raw;
+}
+
+export async function appendGlobalBoosterDebugLog(
+  stage: string,
+  details: Record<string, unknown> = {},
+): Promise<void> {
+  const entry = {
+    at: new Date().toISOString(),
+    timestamp: Date.now(),
+    stage,
+    ...details,
+  };
+
+  try {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const txn = await redis.watch(GLOBAL_BOOSTER_DEBUG_LOG_KEY);
+      const raw = await redis.get(GLOBAL_BOOSTER_DEBUG_LOG_KEY);
+      let entries: Array<Record<string, unknown>> = [];
+
+      if (typeof raw === 'string' && raw.trim()) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            entries = parsed.filter(
+              (item): item is Record<string, unknown> =>
+                Boolean(item) && typeof item === 'object' && !Array.isArray(item),
+            );
+          }
+        } catch {
+          entries = [];
+        }
+      }
+
+      entries.push(entry);
+      if (entries.length > GLOBAL_BOOSTER_DEBUG_LOG_LIMIT) {
+        entries = entries.slice(-GLOBAL_BOOSTER_DEBUG_LOG_LIMIT);
+      }
+
+      await txn.multi();
+      await txn.set(GLOBAL_BOOSTER_DEBUG_LOG_KEY, JSON.stringify(entries));
+      const committed = await txn.exec();
+      if (committed !== null) return;
+    }
+  } catch (error) {
+    console.error('[Global Boosters] Could not persist debug log:', error);
+  }
+}
+
+export async function getGlobalBoosterDebugLogs(
+  limit = GLOBAL_BOOSTER_DEBUG_LOG_LIMIT,
+): Promise<Array<Record<string, unknown>>> {
+  const raw = await redis.get(GLOBAL_BOOSTER_DEBUG_LOG_KEY);
+  if (typeof raw !== 'string' || !raw.trim()) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const entries = parsed.filter(
+      (item): item is Record<string, unknown> =>
+        Boolean(item) && typeof item === 'object' && !Array.isArray(item),
+    );
+    return entries.slice(-Math.max(
+      1,
+      Math.min(GLOBAL_BOOSTER_DEBUG_LOG_LIMIT, Math.floor(limit)),
+    ));
+  } catch {
+    return [];
+  }
+}
+
+export async function clearGlobalBoosterDebugLogs(): Promise<void> {
+  await redis.set(GLOBAL_BOOSTER_DEBUG_LOG_KEY, JSON.stringify([]));
 }
 export interface DeveloperAnnouncement {
   message: string;
@@ -298,6 +387,154 @@ export async function getOnlinePlayers(): Promise<number> {
 }
 
 const FRENZY_POST_PREFIX = 'io:frenzy:post:';
+
+function parseGlobalBoosterSnapshot(
+  raw: unknown,
+  now: number,
+): GlobalBoosterSnapshot | null {
+  if (raw == null) return null;
+
+  let parsed: unknown = raw;
+  for (let depth = 0; depth < 12; depth++) {
+    if (typeof parsed === 'string') {
+      const text = parsed.trim();
+      if (!text) return null;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        return null;
+      }
+      continue;
+    }
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const record = parsed as Record<string, unknown>;
+
+    if (
+      record.luck && typeof record.luck === 'object' &&
+      record.speed && typeof record.speed === 'object' &&
+      record.crit && typeof record.crit === 'object'
+    ) {
+      return {
+        luck: decayGlobalBoosterState(record.luck as GlobalBoosterSnapshot['luck'], now),
+        speed: decayGlobalBoosterState(record.speed as GlobalBoosterSnapshot['speed'], now),
+        crit: decayGlobalBoosterState(record.crit as GlobalBoosterSnapshot['crit'], now),
+      };
+    }
+
+    let nested = false;
+    for (const wrapperKey of ['value', 'state', 'data', 'payload', 'result']) {
+      if (!(wrapperKey in record)) continue;
+      parsed = record[wrapperKey];
+      nested = true;
+      break;
+    }
+    if (!nested) return null;
+  }
+
+  return null;
+}
+
+export async function getGlobalBoosters(): Promise<GlobalBoosterSnapshot> {
+  const now = Date.now();
+  const raw = await redis.get(GLOBAL_BOOSTERS_KEY);
+  const snapshot = parseGlobalBoosterSnapshot(raw, now);
+
+  if (!snapshot) {
+    await appendGlobalBoosterDebugLog('read:missing-or-invalid', {
+      key: GLOBAL_BOOSTERS_KEY,
+      rawType: typeof raw,
+      rawIsNull: raw == null,
+      rawValue: summarizeGlobalBoosterRaw(raw),
+    });
+    return createInitialGlobalBoosters(now);
+  }
+
+  return snapshot;
+}
+
+async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSnapshot> {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const now = Date.now();
+    const txn = await redis.watch(GLOBAL_BOOSTERS_KEY);
+    const raw = await redis.get(GLOBAL_BOOSTERS_KEY);
+
+    await appendGlobalBoosterDebugLog('activate:redis-read', {
+      id,
+      attempt,
+      key: GLOBAL_BOOSTERS_KEY,
+      rawType: typeof raw,
+      rawIsNull: raw == null,
+      rawValue: summarizeGlobalBoosterRaw(raw),
+    });
+
+    const current = parseGlobalBoosterSnapshot(raw, now) ?? createInitialGlobalBoosters(now);
+    const before = current[id];
+    const after = activateGlobalBoosterStack(before, now);
+    current[id] = after;
+
+    await appendGlobalBoosterDebugLog('activate:state-computed', {
+      id,
+      attempt,
+      before,
+      after,
+    });
+
+    await txn.multi();
+    await txn.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(current));
+    const committed = await txn.exec();
+
+    if (committed !== null) {
+      const verifiedRaw = await redis.get(GLOBAL_BOOSTERS_KEY);
+      const verified = parseGlobalBoosterSnapshot(verifiedRaw, Date.now()) ?? current;
+      await appendGlobalBoosterDebugLog('activate:global-write-success', {
+        id,
+        attempt,
+        committed: true,
+        verifiedRawType: typeof verifiedRaw,
+        verifiedRaw: summarizeGlobalBoosterRaw(verifiedRaw),
+        verifiedSnapshot: verified,
+      });
+      return verified;
+    }
+
+    await appendGlobalBoosterDebugLog('activate:global-write-conflict', { id, attempt });
+  }
+
+  await appendGlobalBoosterDebugLog('activate:global-write-exhausted', { id });
+  throw new Error('The Global Booster was activated by another player. Please try again.');
+}
+
+export async function setGlobalBoosterDebugState(
+  id: GlobalBoosterId,
+  tier: number,
+  minutes: number,
+): Promise<{ tier: number; activationProgress: number; endsAt: number }> {
+  if (!GLOBAL_BOOSTERS[id]) throw new Error('Unknown Global Booster.');
+
+  const now = Date.now();
+  const safeTier = Math.max(0, Math.min(10, Math.floor(Number(tier) || 0)));
+  const safeMinutes = Math.max(1, Math.floor(Number(minutes) || 30));
+  const snapshot = await getGlobalBoosters();
+  const previous = snapshot[id];
+  const next = {
+    tier: safeTier,
+    activationProgress: 0,
+    endsAt: safeTier === 0 ? 0 : now + safeMinutes * 60_000,
+  };
+  snapshot[id] = next;
+  await redis.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(snapshot));
+
+  await appendGlobalBoosterDebugLog('admin:set', {
+    id,
+    previous,
+    next,
+    minutes: safeMinutes,
+    key: GLOBAL_BOOSTERS_KEY,
+  });
+
+  return next;
+}
 
 function playerKeyFor(userId: string): string {
   return `player:${userId}`;
@@ -607,9 +844,11 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
     state.shards = (state.shards ?? 0) + pack.shards;
     state.purchasedShards = (state.purchasedShards ?? 0) + pack.shards;
     state.lifetimeShards = (state.lifetimeShards ?? 0) + pack.shards;
+    state.globalBoosterCredits = (state.globalBoosterCredits ?? 0) + pack.globalBoosterCredits;
     const receipt: PaymentReceipt = {
       status: 'fulfilled',
       shards: pack.shards,
+      globalBoosterCredits: pack.globalBoosterCredits,
     };
     state.paymentReceipts[orderId] = receipt;
 
@@ -680,9 +919,16 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
     state.shards = Math.max(0, (state.shards ?? 0) - refundableShards);
     state.purchasedShards = Math.max(0, (state.purchasedShards ?? 0) - refundableShards);
 
+    const grantedCredits = typeof receipt === 'string'
+      ? pack.globalBoosterCredits
+      : Math.max(0, Number(receipt.globalBoosterCredits ?? 0) || 0);
+    const refundableCredits = Math.min(state.globalBoosterCredits ?? 0, grantedCredits);
+    state.globalBoosterCredits = Math.max(0, (state.globalBoosterCredits ?? 0) - refundableCredits);
+
     state.paymentReceipts[orderId] = {
       status: 'refunded',
       shards: grantedShards,
+      globalBoosterCredits: grantedCredits,
     };
     await txn.multi();
     await txn.set(pkey, JSON.stringify(state));
@@ -702,6 +948,7 @@ export async function loadRaw(): Promise<PlayerState> {
   const username = context.username ?? `reddit-user-${userId.slice(-8)}`;
   await registerPlayer(userId, username);
   const perks = await getPlayerGuildPerks(username);
+  const globalBoosters = await getGlobalBoosters();
 
 
   if (!raw) {
@@ -709,6 +956,7 @@ export async function loadRaw(): Promise<PlayerState> {
     s.username = username;
     s.saveGeneration = generation;
     s.guildPerks = perks;
+    s.globalBoosters = globalBoosters;
 
     return s;
   }
@@ -771,6 +1019,7 @@ export async function loadRaw(): Promise<PlayerState> {
     masterySkills: { ...base.masterySkills!, ...(parsed.masterySkills ?? {}) } as Record<MasterySkillId, number>,
     masteryPoints: parsed.masteryPoints ?? base.masteryPoints ?? 1,
     guildPerks: perks,
+    globalBoosters,
   };
 }
 
@@ -990,6 +1239,8 @@ export async function applyRolls(
   }
 
 
+  s.globalBoosters = await getGlobalBoosters();
+  const globalBoosters = s.globalBoosters;
   const worldEvent = await getCommunityEvent();
   const communityLuck = worldEvent.buffMultiplier ?? 1.15;
 
@@ -1010,7 +1261,8 @@ export async function applyRolls(
     const critChance =
       (s.upgrades.critChance ?? 0) * 0.03 +
       (s.masterySkills?.critMastery ?? 0) * 0.03 +
-      (s.guildPerks?.critRank ?? 0) * 0.015;
+      (s.guildPerks?.critRank ?? 0) * 0.015 +
+      globalBoosterCritChanceBonus(globalBoosters.crit);
     const isCrit = rng() < Math.min(1, critChance);
     let effectiveCm = cm;
     if (isCrit) {
@@ -1205,6 +1457,7 @@ export async function settleOffline(s: PlayerState): Promise<PlayerState> {
   checkPeriodicResets(s, now);
   resetFreeShardBudgetIfNeeded(s, now);
   s.onlinePlayers = await touchOnlinePresence();
+  s.globalBoosters = await getGlobalBoosters();
 
   await processAutomation(s);
 
@@ -1666,6 +1919,126 @@ export async function buyCosmetic(id: string): Promise<PlayerState> {
   s.activeCosmetic = id;
   await save(s);
   return s;
+}
+
+async function claimWorldBoosterActivation(
+  s: PlayerState,
+  id: GlobalBoosterId,
+  useCredit: boolean,
+): Promise<{ state: PlayerState; snapshot: GlobalBoosterSnapshot; usedCredit: boolean }> {
+  const cost = GLOBAL_BOOSTERS[id].costShards;
+  const userId = currentUserId();
+
+  await appendGlobalBoosterDebugLog('player:activation-start', {
+    userId,
+    username: context.username ?? null,
+    id,
+    useCredit,
+    costShards: cost,
+    currentShards: s.shards,
+    currentCredits: s.globalBoosterCredits ?? 0,
+    playerGlobalState: s.globalBoosters ?? null,
+  });
+
+  if (useCredit) {
+    if ((s.globalBoosterCredits ?? 0) <= 0) {
+      await appendGlobalBoosterDebugLog('player:activation-rejected-no-credit', {
+        userId,
+        id,
+        credits: s.globalBoosterCredits ?? 0,
+      });
+      throw new Error('No free Global Booster activations remain.');
+    }
+    s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) - 1;
+  } else {
+    if ((s.shards ?? 0) < cost) {
+      await appendGlobalBoosterDebugLog('player:activation-rejected-no-shards', {
+        userId,
+        id,
+        shards: s.shards,
+        required: cost,
+      });
+    }
+    spendShards(s, cost);
+  }
+
+  await appendGlobalBoosterDebugLog('player:currency-deducted', {
+    userId,
+    id,
+    useCredit,
+    shardsAfter: s.shards,
+    creditsAfter: s.globalBoosterCredits ?? 0,
+  });
+
+  try {
+    const snapshot = await updateGlobalBooster(id);
+    s.globalBoosters = snapshot;
+
+    await appendGlobalBoosterDebugLog('player:before-save', {
+      userId,
+      id,
+      useCredit,
+      snapshot,
+      shards: s.shards,
+      credits: s.globalBoosterCredits ?? 0,
+    });
+
+    await save(s);
+
+    await appendGlobalBoosterDebugLog('player:activation-success', {
+      userId,
+      id,
+      useCredit,
+      snapshot,
+      shardsAfter: s.shards,
+      creditsAfter: s.globalBoosterCredits ?? 0,
+    });
+
+    return { state: s, snapshot, usedCredit: useCredit };
+  } catch (error) {
+    if (useCredit) s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) + 1;
+    else s.shards = (s.shards ?? 0) + cost;
+
+    await appendGlobalBoosterDebugLog('player:activation-failed', {
+      userId,
+      id,
+      useCredit,
+      errorName: error instanceof Error ? error.name : null,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      refundedShards: useCredit ? 0 : cost,
+      refundedCredit: useCredit,
+    });
+
+    throw error;
+  }
+}
+
+export async function activateGlobalBooster(
+  id: GlobalBoosterId,
+  useCredit = false,
+): Promise<{ state: PlayerState; snapshot: GlobalBoosterSnapshot; usedCredit: boolean }> {
+  if (!GLOBAL_BOOSTERS[id]) throw new Error('Unknown Global Booster.');
+
+  const userId = currentUserId();
+  await appendGlobalBoosterDebugLog('player:request', {
+    userId,
+    username: context.username ?? null,
+    id,
+    useCredit,
+  });
+
+  const s = await settleOffline(await loadRaw());
+
+  await appendGlobalBoosterDebugLog('player:loaded-state', {
+    userId,
+    id,
+    useCredit,
+    shards: s.shards,
+    credits: s.globalBoosterCredits ?? 0,
+    globalBoosters: s.globalBoosters ?? null,
+  });
+
+  return claimWorldBoosterActivation(s, id, useCredit);
 }
 
 export async function activatePremiumBooster(id: PremiumBoosterId): Promise<PlayerState> {
