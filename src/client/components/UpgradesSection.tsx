@@ -226,12 +226,12 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
     },
     {
       id: 'critPower',
-      title: 'Critical Multiplier',
+      title: 'Crit Luck',
       icon: <ShieldAlert className="w-5 h-5 text-red-400" />,
       level: state.upgrades.critPower ?? 0,
       currentVal: `${currentCritPower}×`,
       nextVal: `${nextCritPower}×`,
-      desc: '+0.25x critical rarity multiplier per level.',
+      desc: '+0.25× rarity multiplier on critical rolls per level.',
       cost: upgradeCost('critPower', state.upgrades.critPower ?? 0),
     },
     {
