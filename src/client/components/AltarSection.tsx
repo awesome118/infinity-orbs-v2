@@ -107,7 +107,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
       {/* Altar Hero Banner */}
       <div className="bg-gradient-to-r from-orange-950/70 via-slate-900 to-purple-950/70 border border-orange-700/40 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
         {/* Animated Background Rays & Star */}
-        <div className="absolute -top-16 -right-16 w-64 h-64 bg-orange-600/15 rounded-full blur-3xl pointer-events-none" />
+        
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-500/20 border border-orange-400/40 text-orange-300 text-xs font-bold">
