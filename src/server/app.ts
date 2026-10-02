@@ -45,6 +45,8 @@ import {
   leaveGuild,
   postGuildMessage,
   buyGuildPerk,
+  setGuildTrust,
+  setGuildTaxRate,
   donateToGuild,
   leaderboard,
   shareText,
@@ -846,10 +848,31 @@ export function createApp() {
   app.post('/api/guilds/perk', async (req, res) => {
     try {
       const { perk } = req.body || {};
-      const validPerks = ['luckRank', 'speedRank', 'vaultRank', 'shardRank', 'critRank', 'coinRank'];
+      const validPerks = [
+        'luckRank', 'speedRank', 'vaultRank', 'shardRank', 'critRank', 'coinRank',
+        'memberCapacityRank', 'tokenYieldRank', 'guildXpRank',
+      ];
       if (!validPerks.includes(perk)) return res.status(400).json({ error: 'Invalid guild perk.' });
       res.json(await buyGuildPerk(perk));
     } catch (e) { badRequest(res, e, 'Failed to upgrade guild perk.'); }
+  });
+
+  app.post('/api/guilds/trust', async (req, res) => {
+    try {
+      const targetUsername = String(req.body?.username ?? '').trim();
+      if (!targetUsername) return res.status(400).json({ error: 'Guild member username is required.' });
+      res.json({ member: await setGuildTrust(targetUsername, req.body?.trusted === true) });
+    } catch (e) { badRequest(res, e, 'Could not change Trust status.'); }
+  });
+
+  app.post('/api/guilds/tax', async (req, res) => {
+    try {
+      const rate = Number(req.body?.rate);
+      if (!Number.isFinite(rate) || rate < 0 || rate > 10) {
+        return res.status(400).json({ error: 'Guild Tax must be between 0% and 10%.' });
+      }
+      res.json({ guild: await setGuildTaxRate(rate) });
+    } catch (e) { badRequest(res, e, 'Could not change Guild Tax.'); }
   });
 
   app.post('/api/guilds/donate', async (req, res) => {
