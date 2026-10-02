@@ -139,11 +139,19 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
         </div>
 
         <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
-          {(Object.keys(GLOBAL_BOOSTERS) as GlobalBoosterId[]).map(id => {
-            const raw = globalBoosters[id];
-            const displayed = decayGlobalBoosterState(raw, now);
-            const active = displayed.remainingMs > 0 && displayed.tier > 0;
-            const progress = globalBoosterProgress(displayed);
+          {(() => {
+            const globalIds = Object.keys(GLOBAL_BOOSTERS) as GlobalBoosterId[];
+            const activeGlobalBoosterId = globalIds.find(globalId => {
+              const displayed = decayGlobalBoosterState(globalBoosters[globalId], now);
+              return displayed.remainingMs > 0 && displayed.tier > 0;
+            }) ?? null;
+
+            return globalIds.map(id => {
+              const raw = globalBoosters[id];
+              const displayed = decayGlobalBoosterState(raw, now);
+              const active = displayed.remainingMs > 0 && displayed.tier > 0;
+              const blockedByOther = activeGlobalBoosterId !== null && activeGlobalBoosterId !== id;
+              const progress = globalBoosterProgress(displayed);
             const activationProgress = Math.max(0, Math.min(4, displayed.activationProgress ?? 0));
                     const effect = id === 'luck'
               ? '×' + globalBoosterLuckMultiplier(displayed).toFixed(2) + ' Luck'
@@ -189,14 +197,14 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                 <div className="mt-3 flex gap-2">
                   <button
                     onClick={() => void onActivateGlobalBooster(id, false)}
-                    disabled={busy || state.shards < GLOBAL_BOOSTERS[id].costShards}
+                    disabled={busy || blockedByOther || state.shards < GLOBAL_BOOSTERS[id].costShards}
                     className="flex-1 px-2.5 py-2 rounded-xl text-[10px] font-black bg-slate-800 hover:bg-slate-700 text-white disabled:text-slate-500 disabled:cursor-not-allowed"
                   >
-                    +30m • 25 💎
+                    {blockedByOther ? 'Unavailable' : '+30m • 25 💎'}
                   </button>
                   <button
                     onClick={() => void onActivateGlobalBooster(id, true)}
-                    disabled={busy || (state.globalBoosterCredits ?? 0) <= 0}
+                    disabled={busy || blockedByOther || (state.globalBoosterCredits ?? 0) <= 0}
                     className="px-2.5 py-2 rounded-xl text-[10px] font-black bg-fuchsia-600/20 border border-fuchsia-500/25 text-fuchsia-200 hover:bg-fuchsia-600/30 disabled:text-slate-600 disabled:cursor-not-allowed"
                     title="Use one free Global Booster activation"
                   >
@@ -205,7 +213,8 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                 </div>
               </div>
             );
-          })}
+            });
+          })()}
         </div>
       </section>
 
