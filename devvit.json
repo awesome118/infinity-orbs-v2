@@ -49,5 +49,12 @@
         "SUBMIT_POST"
       ]
     }
+  },
+  "scheduler": {
+    "tasks": {
+      "offline-orbs-full": {
+        "endpoint": "/internal/scheduler/offline-orbs-full"
+      }
+    }
   }
 }
