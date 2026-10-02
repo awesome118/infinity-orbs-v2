@@ -1635,7 +1635,7 @@ export async function claimOrbFrenzy(options: {
     Math.round(topCoin + Math.max(0, coinTotals - topCoin) * 0.20),
   );
 
-  const levelBenefits = getLevelBenefits(calculateLevelFromXp(s.xp || 0).level);
+  const levelBenefits = getLevelBenefits(s.level || 1);
   coinsGained = Math.round(
     coinsGained *
     levelBenefits.coinsMultiplier *
