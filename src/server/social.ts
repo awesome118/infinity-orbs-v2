@@ -793,8 +793,9 @@ export async function setCommunityEventConfig(config: {
       ev.tier = 1;
       ev.buffMultiplier = 1.15;
       ev.buffDescription = '+15% Global Luck Active';
-      ev.endsAt = (currentWeekNumber + 1) * 604_800_000;
+      ev.endsAt = weekEndMs(now);
       ev.completed = false;
+      ev.completedTier = 0;
     }
   if (config.reset) {
     ev.currentProgress = 0;
