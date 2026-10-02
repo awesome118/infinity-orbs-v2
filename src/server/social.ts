@@ -289,12 +289,12 @@ export async function setGuildTaxRate(rate: number) {
   });
 }
 
-export async function applyGuildTax(uname: string, coinsEarned: number): Promise<{ taxedCoins: number; tokensEarned: number }> {
+export async function applyGuildTax(coinsEarned: number): Promise<{ taxedCoins: number; tokensEarned: number }> {
   const safeCoins = Math.max(0, Math.floor(coinsEarned || 0));
   if (safeCoins < 100) return { taxedCoins: 0, tokensEarned: 0 };
 
   return updateGuilds(guilds => {
-    const guild = guilds.find(g => g.members.some(m => m.username === uname));
+    const guild = currentGuild(guilds);
     if (!guild) return { taxedCoins: 0, tokensEarned: 0 };
 
     const rate = Math.max(0, Math.min(10, Math.floor(Number(guild.taxRate ?? 0) || 0)));
