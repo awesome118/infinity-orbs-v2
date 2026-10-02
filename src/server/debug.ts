@@ -17,6 +17,7 @@ import {
   setGlobalBoosterDebugState,
   getGlobalBoosterDebugLogs,
   clearGlobalBoosterDebugLogs,
+  getCcuPeaks,
 } from './game.js';
 import { context, redis, reddit } from './devvit-mock.js';
 import {
@@ -101,6 +102,14 @@ debugRouter.post('/global-booster', async (req, res) => {
     res.json({ ok: true, id, state });
   } catch (e: any) {
     res.status(400).json({ error: e?.message || 'Failed to set Global Booster.' });
+  }
+});
+
+debugRouter.get('/ccu', async (_req, res) => {
+  try {
+    res.json(await getCcuPeaks());
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to load CCU statistics.' });
   }
 });
 
