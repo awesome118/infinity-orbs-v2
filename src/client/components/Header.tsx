@@ -1,5 +1,5 @@
 import React from 'react';
-import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star, Users, MessageSquarePlus } from 'lucide-react';
+import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star, Users, MessageSquarePlus, Bell, BellOff } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
 import { xpRequiredForLevel, LEVEL_MILESTONES, getLevelBenefits, onlinePlayerLuckMultiplier } from '../../shared/game.js';
 import { sound } from '../sound.js';
@@ -13,6 +13,8 @@ interface HeaderProps {
   onClaimOffline: () => void;
   onOpenDevDebug?: () => void;
   onOpenProfile?: () => void;
+  notificationsEnabled: boolean;
+  onToggleNotifications: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -24,6 +26,8 @@ export const Header: React.FC<HeaderProps> = ({
   onClaimOffline,
   onOpenDevDebug,
   onOpenProfile,
+  notificationsEnabled,
+  onToggleNotifications,
 }) => {
   const fmt = (n: number) => n.toLocaleString();
   const displayedLevel = Math.max(1, state.level || 1);
@@ -184,6 +188,20 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden sm:inline">Admin</span>
             </button>
           )}
+
+          {/* Reddit Notification Toggle */}
+          <button
+            onClick={() => {
+              sound.playClick();
+              onToggleNotifications();
+            }}
+            className="p-2 text-slate-400 hover:text-fuchsia-300 hover:bg-slate-800/80 rounded-lg transition-colors"
+            title={notificationsEnabled ? 'Disable Reddit notifications' : 'Enable Reddit notifications'}
+          >
+            {notificationsEnabled
+              ? <Bell className="w-4 h-4 text-fuchsia-400" />
+              : <BellOff className="w-4 h-4 text-slate-500" />}
+          </button>
 
           {/* Sound Toggle */}
           <button
