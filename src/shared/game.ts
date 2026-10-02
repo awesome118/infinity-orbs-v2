@@ -304,16 +304,22 @@ export function globalBoosterRemainingMs(
 export function activateGlobalBoosterStack(
   state: GlobalBoosterState | null | undefined,
   now = Date.now(),
+  maxTier = Number.MAX_SAFE_INTEGER,
 ): GlobalBoosterState {
   const current = decayGlobalBoosterState(state, now);
-  let tier = current.tier;
+  const safeMaxTier = Math.max(1, Math.floor(maxTier));
+  let tier = Math.min(Math.max(0, current.tier), safeMaxTier);
   let activationProgress = current.activationProgress + 1;
 
   if (tier <= 0) tier = 1;
 
   if (activationProgress >= GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER) {
-    tier += 1;
-    activationProgress = 0;
+    if (tier < safeMaxTier) {
+      tier += 1;
+      activationProgress = 0;
+    } else {
+      activationProgress = 0;
+    }
   }
 
   const endsAt = Math.max(now, current.endsAt) + GLOBAL_BOOSTER_DURATION_MS;
