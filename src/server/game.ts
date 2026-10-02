@@ -66,6 +66,73 @@ const ONLINE_PLAYERS_KEY = 'io:online:players';
 const SAVE_GENERATION_KEY_PREFIX = 'player-generation:';
 const PLAYER_REGISTRY_KEY = 'io:player-registry';
 const DEVELOPER_ANNOUNCEMENT_KEY = 'io:developer-announcement';
+
+const PAYMENT_DEBUG_LOG_KEY = 'io:payment-debug-log:v1';
+const PAYMENT_DEBUG_LOG_LIMIT = 200;
+
+export async function appendPaymentDebugLog(stage: string, details: Record<string, unknown> = {}): Promise<void> {
+  const entry = {
+    at: new Date().toISOString(),
+    timestamp: Date.now(),
+    stage,
+    ...details,
+  };
+
+  try {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const txn = await redis.watch(PAYMENT_DEBUG_LOG_KEY);
+      const raw = await txn.get(PAYMENT_DEBUG_LOG_KEY);
+      let entries: Array<Record<string, unknown>> = [];
+
+      if (typeof raw === 'string' && raw.trim()) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            entries = parsed.filter(
+              (item): item is Record<string, unknown> =>
+                Boolean(item) && typeof item === 'object' && !Array.isArray(item),
+            );
+          }
+        } catch {
+          entries = [];
+        }
+      }
+
+      entries.push(entry);
+      if (entries.length > PAYMENT_DEBUG_LOG_LIMIT) {
+        entries = entries.slice(-PAYMENT_DEBUG_LOG_LIMIT);
+      }
+
+      await txn.multi();
+      await txn.set(PAYMENT_DEBUG_LOG_KEY, JSON.stringify(entries));
+      const committed = await txn.exec();
+      if (committed !== null) return;
+    }
+  } catch (error) {
+    console.error('[Payments] Could not persist payment debug log:', error);
+  }
+}
+
+export async function getPaymentDebugLogs(limit = PAYMENT_DEBUG_LOG_LIMIT): Promise<Array<Record<string, unknown>>> {
+  const raw = await redis.get(PAYMENT_DEBUG_LOG_KEY);
+  if (typeof raw !== 'string' || !raw.trim()) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const entries = parsed.filter(
+      (item): item is Record<string, unknown> =>
+        Boolean(item) && typeof item === 'object' && !Array.isArray(item),
+    );
+    return entries.slice(-Math.max(1, Math.min(PAYMENT_DEBUG_LOG_LIMIT, Math.floor(limit))));
+  } catch {
+    return [];
+  }
+}
+
+export async function clearPaymentDebugLogs(): Promise<void> {
+  await redis.set(PAYMENT_DEBUG_LOG_KEY, JSON.stringify([]));
+}
 export interface DeveloperAnnouncement {
   message: string;
   updatedAt: number;
@@ -396,6 +463,14 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
   const pack = paymentGoodsForSku(sku);
   const pkey = playerKeyFor(userId);
   const generationKey = saveGenerationKeyFor(userId);
+  await appendPaymentDebugLog('grant:start', {
+    userId,
+    sku,
+    orderId,
+    playerKey: pkey,
+    generationKey,
+    packShards: pack.shards,
+  });
   await ensureRedisStringKey(generationKey, '0');
 
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -403,6 +478,18 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
     const generationRaw = await txn.get(generationKey);
     const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
     const raw = await txn.get(pkey);
+    await appendPaymentDebugLog('grant:redis-read', {
+      userId,
+      sku,
+      orderId,
+      attempt,
+      rawType: typeof raw,
+      rawIsNull: raw == null,
+      rawLength: typeof raw === 'string' ? raw.length : null,
+      rawPreview: typeof raw === 'string' ? raw.slice(0, 2000) : raw,
+      generation,
+      generationRaw,
+    });
 
     let state: PlayerState;
     if (raw == null) {
@@ -410,7 +497,31 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
       state.username = 'reddit-user-' + userId.slice(-8);
       state.saveGeneration = generation;
     } else {
-      const stored = parsePaymentPlayerState(raw);
+      let stored: PlayerState;
+      try {
+        stored = parsePaymentPlayerState(raw);
+        await appendPaymentDebugLog('grant:parsed-save', {
+          userId,
+          sku,
+          orderId,
+          attempt,
+          storedCoins: stored.coins,
+          storedShards: stored.shards,
+          storedTotalRolls: stored.totalRolls,
+          storedSaveGeneration: stored.saveGeneration ?? null,
+          hasPaymentReceipts: Boolean(stored.paymentReceipts),
+          paymentReceiptCount: stored.paymentReceipts ? Object.keys(stored.paymentReceipts).length : 0,
+        });
+      } catch (error) {
+        await appendPaymentDebugLog('grant:parse-failed', {
+          userId,
+          sku,
+          orderId,
+          attempt,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
       const storedGeneration = Math.max(0, Math.floor(Number(stored.saveGeneration ?? 0)));
 
       // A generation mismatch means an admin wipe happened after this save was
@@ -427,12 +538,23 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
       }
     }
 
+    await appendPaymentDebugLog('grant:state-selected', {
+      userId,
+      sku,
+      orderId,
+      attempt,
+      stateSaveGeneration: state.saveGeneration ?? null,
+      stateCoins: state.coins,
+      stateShards: state.shards,
+    });
+
     state.paymentReceipts = state.paymentReceipts ?? {};
     const existingReceipt = state.paymentReceipts[orderId];
     if (
       existingReceipt === 'fulfilled' ||
       (existingReceipt && typeof existingReceipt === 'object' && existingReceipt.status === 'fulfilled')
     ) {
+      await appendPaymentDebugLog('grant:already-fulfilled', { userId, sku, orderId, attempt });
       await txn.unwatch();
       return false;
     }
@@ -440,6 +562,7 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
       existingReceipt === 'refunded' ||
       (existingReceipt && typeof existingReceipt === 'object' && existingReceipt.status === 'refunded')
     ) {
+      await appendPaymentDebugLog('grant:already-refunded', { userId, sku, orderId, attempt });
       await txn.unwatch();
       return false;
     }
@@ -453,12 +576,39 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
     };
     state.paymentReceipts[orderId] = receipt;
 
+    await appendPaymentDebugLog('grant:about-to-write', {
+      userId,
+      sku,
+      orderId,
+      attempt,
+      nextShards: state.shards,
+      purchasedShards: state.purchasedShards,
+      lifetimeShards: state.lifetimeShards,
+    });
+
     await txn.multi();
     await txn.set(pkey, JSON.stringify(state));
     const committed = await txn.exec();
-    if (committed !== null) return true;
+    if (committed !== null) {
+      await appendPaymentDebugLog('grant:success', {
+        userId,
+        sku,
+        orderId,
+        attempt,
+        committed: true,
+      });
+      return true;
+    }
+
+    await appendPaymentDebugLog('grant:write-conflict', {
+      userId,
+      sku,
+      orderId,
+      attempt,
+    });
   }
 
+  await appendPaymentDebugLog('grant:exhausted', { userId, sku, orderId });
   throw new Error('Could not safely fulfill the purchase. Please retry.');
 }
 
