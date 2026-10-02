@@ -197,17 +197,17 @@ export function createApp() {
       }
 
       if (!Array.isArray(order.products) || order.products.length !== 1 || !order.products[0]?.sku) {
-        return res.json<PaymentHandlerResponse>({
+        return res.json({
           success: false,
           reason: 'Infinity Orbs purchases must contain one product.',
         });
       }
 
       await grantPurchasedPack(order.userId, order.products[0].sku, order.id);
-      return res.json<PaymentHandlerResponse>({ success: true });
+      return res.json({ success: true });
     } catch (e: unknown) {
       console.error('[Payments] Fulfillment failed:', e instanceof Error ? e.stack ?? e.message : e);
-      return res.json<PaymentHandlerResponse>({
+      return res.json({
         success: false,
         reason: e instanceof Error ? e.message : 'Unable to fulfill purchase.',
       });
@@ -218,23 +218,23 @@ export function createApp() {
     try {
       const order = req.body as Order;
       if (!order.userId || !order.id) {
-        return res.json<PaymentHandlerResponse>({
+        return res.json({
           success: false,
           reason: 'Refund order is missing an identity.',
         });
       }
       if (!Array.isArray(order.products) || order.products.length !== 1 || !order.products[0]?.sku) {
-        return res.json<PaymentHandlerResponse>({
+        return res.json({
           success: false,
           reason: 'Refund must identify one product.',
         });
       }
 
       await refundPurchasedPack(order.userId, order.products[0].sku, order.id);
-      return res.json<PaymentHandlerResponse>({ success: true });
+      return res.json({ success: true });
     } catch (e: unknown) {
       console.error('[Payments] Refund failed:', e instanceof Error ? e.stack ?? e.message : e);
-      return res.json<PaymentHandlerResponse>({
+      return res.json({
         success: false,
         reason: e instanceof Error ? e.message : 'Unable to process refund.',
       });
