@@ -13,6 +13,8 @@ import {
   RefreshCw,
   Flame,
   Shield,
+  Lock,
+  Megaphone,
 } from 'lucide-react';
 import type {
   PlayerState,
@@ -22,6 +24,7 @@ import type {
   AutomationId,
   GlobalBoosterId,
   GlobalBoosterSnapshot,
+  type FeatureId,
   PremiumBoosterId,
   Orb,
   RollResponse,
@@ -36,6 +39,7 @@ import type {
 import {
   cooldownMs,
   calculateCosmicDust,
+  FEATURE_UNLOCK_LEVELS,
 } from '../shared/game.js';
 import { sound } from './sound.js';
 import { Header } from './components/Header.js';
@@ -123,6 +127,7 @@ export function App() {
   });
   const [achievementsData, setAchievementsData] = useState<Achievement[]>([]);
   const [worldEvent, setWorldEvent] = useState<WorldEvent | null>(null);
+  const [developerAnnouncement, setDeveloperAnnouncement] = useState<{ message: string; updatedAt: number; updatedBy: string } | null>(null);
 
   // Modals
   const [shareRarity, setShareRarity] = useState<number | null>(null);
@@ -132,6 +137,32 @@ export function App() {
   const [soundEnabled, setSoundEnabled] = useState<boolean>(sound.enabled);
   const [newBestModalData, setNewBestModalData] = useState<{ orb: Orb; prevBest: number } | null>(null);
   const [frenzyRunTriggered, setFrenzyRunTriggered] = useState(false);
+
+  const featureForTab = (nextTab: ActiveTab): FeatureId | null => {
+    if (nextTab === 'upgrades') return 'upgrades';
+    if (nextTab === 'quests') return 'quests';
+    if (nextTab === 'collection') return 'collection';
+    if (nextTab === 'boosters') return 'boosters';
+    if (nextTab === 'shop') return 'shop';
+    if (nextTab === 'social') return 'social';
+    if (nextTab === 'altar') return 'altar';
+    if (nextTab === 'mastery') return 'mastery';
+    if (nextTab === 'profile') return 'prestige';
+    return null;
+  };
+
+  const changeTab = (nextTab: ActiveTab) => {
+    const feature = featureForTab(nextTab);
+    if (feature && (state?.level ?? 1) < FEATURE_UNLOCK_LEVELS[feature]) {
+      showToast(
+        `Reach Level ${FEATURE_UNLOCK_LEVELS[feature]} to unlock ${nextTab === 'profile' ? 'Prestige' : nextTab.charAt(0).toUpperCase() + nextTab.slice(1)}.`,
+        'info',
+      );
+      return;
+    }
+    sound.playClick();
+    setTab(nextTab);
+  };
 
   const showToast = (msg: string, type: 'info' | 'success' | 'warn' = 'info') => {
     setToast({ msg, type });
@@ -157,17 +188,19 @@ export function App() {
       // The admin may continue to use the normal game endpoints while testing a ban.
       if (me.gameBan?.active) return;
 
-      const [lb, gd, ach, we] = await Promise.all([
-        getJson<LeaderboardEntry[]>('/api/leaderboard'),
-        getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds'),
-        getJson<Achievement[]>('/api/achievements'),
+      const [lb, gd, ach, we, announcement] = await Promise.all([
+        getJson<LeaderboardEntry[]>('/api/leaderboard').catch(() => []),
+        getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds').catch(() => ({ guilds: [], mine: null })),
+        getJson<Achievement[]>('/api/achievements').catch(() => []),
         getJson<WorldEvent>('/api/world-event').catch(() => null),
+        getJson<{ message: string; updatedAt: number; updatedBy: string }>('/api/developer-announcement').catch(() => null),
       ]);
 
       setLeaderboardData(lb);
       setGuildData(gd);
       setAchievementsData(ach);
       if (we) setWorldEvent(we);
+      if (announcement) setDeveloperAnnouncement(announcement);
     } catch (e: any) {
       if (e?.message === 'REDDIT_LOGIN_REQUIRED') {
         setAuthRequired(true);
@@ -995,13 +1028,25 @@ export function App() {
         </div>
       )}
 
+      {developerAnnouncement?.message && (
+        <div className="border-b border-cyan-500/20 bg-cyan-500/5 px-4 py-3">
+          <div className="max-w-6xl mx-auto flex items-start gap-3">
+            <Megaphone className="w-4 h-4 mt-0.5 text-cyan-300 shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-wider font-black text-cyan-300">Developer Announcement</div>
+              <div className="mt-1 text-sm text-slate-200 whitespace-pre-wrap break-words">{developerAnnouncement.message}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Navigation Bar */}
       <div className="bg-slate-900/40 border-b border-slate-800/80 px-4 py-2 sticky top-[57px] z-20 backdrop-blur-md">
         <div className="max-w-6xl mx-auto flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
           <button
             onClick={() => {
               sound.playClick();
-              setTab('roll');
+              changeTab('roll');
             }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               tab === 'roll'
@@ -1016,7 +1061,7 @@ export function App() {
           <button
             onClick={() => {
               sound.playClick();
-              setTab('upgrades');
+              changeTab('upgrades');
             }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               tab === 'upgrades'
@@ -1026,12 +1071,13 @@ export function App() {
           >
             <Zap className="w-3.5 h-3.5 text-amber-400" />
             <span>Upgrades</span>
+            {featureForTab('upgrades' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('upgrades' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
           <button
             onClick={() => {
               sound.playClick();
-              setTab('boosters');
+              changeTab('boosters');
             }}
             className={tab === 'boosters'
               ? 'flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-md'
@@ -1039,12 +1085,13 @@ export function App() {
           >
             <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
             <span>Boosters</span>
+            {featureForTab('boosters' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('boosters' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
           <button
             onClick={() => {
               sound.playClick();
-              setTab('shop');
+              changeTab('shop');
             }}
             className={tab === 'shop'
               ? 'flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap bg-gradient-to-r from-amber-600 to-yellow-500 text-white shadow-md'
@@ -1052,12 +1099,13 @@ export function App() {
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-300" />
             <span>Shop</span>
+            {featureForTab('shop' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('shop' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
           <button
             onClick={() => {
               sound.playClick();
-              setTab('altar');
+              changeTab('altar');
             }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'altar'
@@ -1067,12 +1115,13 @@ export function App() {
           >
             <Flame className="w-3.5 h-3.5 text-orange-400 animate-flame" />
             <span>Altar</span>
+            {featureForTab('altar' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('altar' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
           <button
             onClick={() => {
               sound.playClick();
-              setTab('mastery');
+              changeTab('mastery');
             }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'mastery'
@@ -1082,6 +1131,7 @@ export function App() {
           >
             <Sparkles className="w-3.5 h-3.5 text-purple-400" />
             <span>Mastery</span>
+            {featureForTab('mastery' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('mastery' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
             {(state.masteryPoints ?? 0) > 0 && (
               <span className="w-2 h-2 rounded-full bg-amber-400" />
             )}
@@ -1090,7 +1140,7 @@ export function App() {
           <button
             onClick={() => {
               sound.playClick();
-              setTab('collection');
+              changeTab('collection');
             }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               tab === 'collection'
@@ -1100,12 +1150,13 @@ export function App() {
           >
             <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
             <span>Codex</span>
+            {featureForTab('collection' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('collection' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
           <button
             onClick={() => {
               sound.playClick();
-              setTab('quests');
+              changeTab('quests');
             }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'quests'
@@ -1115,6 +1166,7 @@ export function App() {
           >
             <Calendar className="w-3.5 h-3.5 text-emerald-400" />
             <span>Quests</span>
+            {featureForTab('quests' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('quests' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
             {(streakReady || questsReady) && (
               <span className="w-2 h-2 rounded-full bg-amber-400" />
             )}
@@ -1123,7 +1175,7 @@ export function App() {
           <button
             onClick={() => {
               sound.playClick();
-              setTab('social');
+              changeTab('social');
             }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               tab === 'social'
@@ -1133,12 +1185,13 @@ export function App() {
           >
             <Users className="w-3.5 h-3.5 text-indigo-400" />
             <span>Guilds & Social</span>
+            {featureForTab('social' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('social' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
           <button
             onClick={() => {
               sound.playClick();
-              setTab('achievements');
+              changeTab('achievements');
             }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'achievements'
@@ -1156,7 +1209,7 @@ export function App() {
           <button
             onClick={() => {
               sound.playClick();
-              setTab('profile');
+              changeTab('profile');
             }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'profile'
@@ -1166,6 +1219,7 @@ export function App() {
           >
             <Sparkles className="w-3.5 h-3.5 text-fuchsia-400" />
             <span>Prestige</span>
+            {featureForTab('profile' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('profile' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
             {prestigeReady && (
               <span className="w-2 h-2 rounded-full bg-fuchsia-400" />
             )}
@@ -1334,7 +1388,7 @@ export function App() {
           onClose={() => setShowDevModal(false)}
           onRefresh={refreshAll}
           onForceRollResult={res => {
-            setTab('roll');
+            changeTab('roll');
             setState(res.state);
             setLastOrb(res.orb);
             setLastBatch(res.batch ?? [res.orb]);
