@@ -31,6 +31,13 @@ function parseStoredJson<T>(raw: unknown): T | null {
   return null;
 }
 
+async function ensureRedisStringKey(keyName: string, fallback: string): Promise<void> {
+  const existing = await redis.get(keyName);
+  if (existing == null) {
+    await redis.set(keyName, fallback);
+  }
+}
+
 function parseGuildList(raw: unknown): Guild[] {
   const parsed = parseStoredJson<unknown>(raw);
   if (!Array.isArray(parsed)) return [];
@@ -67,10 +74,7 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
   // exist, Valkey returns nil for that command and the adapter cannot transform
   // the transaction result. Initialize the collection once so the watched GET
   // always has a concrete string reply.
-  const existing = await redis.get(GUILDS_KEY);
-  if (existing == null) {
-    await redis.set(GUILDS_KEY, '[]');
-  }
+  await ensureRedisStringKey(GUILDS_KEY, '[]');
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(GUILDS_KEY);
@@ -414,6 +418,8 @@ export async function getCommunityEvent(): Promise<WorldEvent> {
   const eventKey = COMMUNITY_EVENT_KEY;
   const tickKey = key('community_event_tick');
   const now = Date.now();
+  await ensureRedisStringKey(eventKey, JSON.stringify(COMMUNITY_WORLD_EVENT));
+  await ensureRedisStringKey(tickKey, String(now));
   const raw = await redis.get(eventKey);
 
   if (raw) {
@@ -478,6 +484,7 @@ export async function getCommunityEvent(): Promise<WorldEvent> {
 
 export async function addCommunityRolls(rolls: number): Promise<WorldEvent> {
   const amount = Math.max(0, Math.floor(Number(rolls)));
+  await ensureRedisStringKey(COMMUNITY_EVENT_KEY, JSON.stringify(COMMUNITY_WORLD_EVENT));
   if (amount <= 0) return getCommunityEvent();
 
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -525,6 +532,7 @@ export async function setCommunityEventConfig(config: {
   buffMultiplier?: number;
   reset?: boolean;
 }): Promise<WorldEvent> {
+  await ensureRedisStringKey(COMMUNITY_EVENT_KEY, JSON.stringify(COMMUNITY_WORLD_EVENT));
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(COMMUNITY_EVENT_KEY);
     const raw = await txn.get(COMMUNITY_EVENT_KEY);
