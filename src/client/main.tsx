@@ -35,6 +35,7 @@ import type {
   LeaderboardEntry,
   WorldEvent,
   GuildPerkId,
+  GuildMessage,
 } from '../shared/social.js';
 import {
   cooldownMs,
@@ -1075,18 +1076,20 @@ export function App() {
     }
   };
 
-  const handleSendGuildChat = async (text: string) => {
-    if (busy) return;
+  const handleSendGuildChat = async (text: string): Promise<GuildMessage> => {
+    if (busy) throw new Error('Another action is already in progress.');
     setBusy(true);
     try {
-      await getJson('/api/guilds/chat', {
+      const res = await getJson<{ message: GuildMessage }>('/api/guilds/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
       });
       void refreshAll();
+      return res.message;
     } catch (e: any) {
       showToast(e.message || 'Could not send message', 'warn');
+      throw e;
     } finally {
       setBusy(false);
     }
@@ -1628,7 +1631,6 @@ export function App() {
             state={state}
             onSacrifice={handleSacrifice}
             busy={busy}
-            now={now}
           />
         )}
 
