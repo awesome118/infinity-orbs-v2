@@ -67,7 +67,9 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
         guildXpRank: 0,
       };
     } else {
-      g.perks.memberCapacityRank ??= 0;
+      if (g.perks.memberCapacityRank == null) {
+        g.perks.memberCapacityRank = Math.min(40, Math.max(0, g.members.length - 10));
+      }
       g.perks.tokenYieldRank ??= 0;
       g.perks.guildXpRank ??= 0;
     }
@@ -182,7 +184,8 @@ export async function addGuildTokens(uname: string, amount: number) {
   await updateGuilds(guilds => {
     const guild = guilds.find(g => g.members.some(m => m.username === uname));
     if (!guild) return;
-    guild.tokens = (guild.tokens ?? 0) + amount;
+    const tokenMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05;
+    guild.tokens = (guild.tokens ?? 0) + Math.max(1, Math.floor(amount * tokenMultiplier));
     if (!guild.chat) guild.chat = [];
     guild.chat.push({
       id: `msg-${Date.now()}`,
