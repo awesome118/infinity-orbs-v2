@@ -716,8 +716,23 @@ export async function save(s: PlayerState) {
     const stateGeneration = Math.max(0, Math.floor(Number(s.saveGeneration ?? 0)));
 
     if (stateGeneration !== generation) {
+      // This request started before an admin wipe. Discard its stale mutation
+      // and adopt the fresh state already written by the wipe. Never let an
+      // old request resurrect pre-wipe data, and never strand the player with
+      // an avoidable invalidation error.
+      const currentRaw = await txn.get(playerKey);
+      const current = parseStoredJson<PlayerState>(currentRaw);
+      const currentGeneration = current
+        ? Math.max(0, Math.floor(Number(current.saveGeneration ?? -1)))
+        : -1;
+      const fresh = current && currentGeneration === generation
+        ? current
+        : createInitialState();
+      fresh.username = fresh.username ?? context.username ?? undefined;
+      fresh.saveGeneration = generation;
+      Object.assign(s, fresh);
       await txn.unwatch();
-      throw new Error('This save was invalidated by an admin wipe. Please reload the game.');
+      return;
     }
 
     s.saveGeneration = generation;
