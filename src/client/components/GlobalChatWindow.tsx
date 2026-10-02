@@ -31,8 +31,6 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
     }
   };
 
-export const GlobalChatWindow = memo(GlobalChatWindowComponent);
-
   useEffect(() => {
     void refreshChat();
     const interval = window.setInterval(() => void refreshChat(), open ? 3000 : 10000);
@@ -158,3 +156,6 @@ export const GlobalChatWindow = memo(GlobalChatWindowComponent);
     </section>
   );
 };
+
+
+export const GlobalChatWindow = memo(GlobalChatWindowComponent);
