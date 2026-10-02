@@ -203,6 +203,34 @@ export function onlinePlayerLuckMultiplier(onlinePlayers: number): number {
 
 export type GlobalBoosterId = 'luck' | 'speed' | 'crit';
 
+export type FeatureId =
+  | 'upgrades'
+  | 'quests'
+  | 'collection'
+  | 'boosters'
+  | 'shop'
+  | 'social'
+  | 'altar'
+  | 'mastery'
+  | 'prestige';
+
+export const FEATURE_UNLOCK_LEVELS: Record<FeatureId, number> = {
+  upgrades: 2,
+  quests: 3,
+  collection: 4,
+  boosters: 5,
+  shop: 5,
+  social: 7,
+  altar: 10,
+  mastery: 15,
+  prestige: 20,
+};
+
+export function featureUnlockLevel(feature: FeatureId): number {
+  return FEATURE_UNLOCK_LEVELS[feature];
+}
+
+
 export interface GlobalBoosterInfo {
   name: string;
   desc: string;
