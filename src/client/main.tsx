@@ -24,7 +24,7 @@ import type {
   AutomationId,
   GlobalBoosterId,
   GlobalBoosterSnapshot,
-  type FeatureId,
+  FeatureId,
   PremiumBoosterId,
   Orb,
   RollResponse,
