@@ -1417,6 +1417,24 @@ export function App() {
           <button
             onClick={() => {
               sound.playClick();
+              changeTab('boosters');
+            }}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
+              tab === 'boosters'
+                ? 'bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Dices className="w-3.5 h-3.5 text-fuchsia-300" />
+            <span>Boosters</span>
+            {featureForTab('boosters' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('boosters' as ActiveTab)!] && (
+              <Lock className="w-3 h-3 text-slate-600" />
+            )}
+          </button>
+
+          <button
+            onClick={() => {
+              sound.playClick();
               changeTab('altar');
             }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
