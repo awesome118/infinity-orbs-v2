@@ -571,6 +571,7 @@ export interface PlayerState {
     shardsSacrificed: number;
     altarLevel: number;
     luckSurgeUntil?: number; // timestamp
+    altarPity?: number; // consecutive failed coin breakthrough attempts
   };
   masteryPoints?: number;
   masterySkills?: Record<MasterySkillId, number>;
@@ -1232,10 +1233,10 @@ export function calculateAltarMultipliers(s: PlayerState): {
 
   // Coin devotion: scales smoothly with altar level and log of sacrificed coins
   const altarEffectMultiplier = getLevelBenefits(Math.max(1, s.level || 1)).altarEffectMultiplier;
+  // Coin offerings only increase this multiplier when they win a devotion
+  // breakthrough. The amount spent affects the chance, not guaranteed power.
   const coinDevotion =
-    (sacrifices.altarLevel * 0.08 +
-      Math.min(5, Math.log10(1 + (sacrifices.coinsSacrificed || 0) / 250) * 0.35)) *
-    altarEffectMultiplier;
+    (sacrifices.altarLevel * 0.08) * altarEffectMultiplier;
   const coinMultiplier = 1 + coinDevotion * resonatorBonus;
 
   // Shard devotion: 3% luck per shard sacrificed
@@ -1369,10 +1370,21 @@ export function codexDevotionLuckPercent(skillLevel: number, chain: number): num
   const safeChain = Math.max(0, Math.floor(Number(chain) || 0));
   if (safeLevel <= 0 || safeChain <= 0) return 0;
 
-  // Match the previous 50% per mastery level ceiling while making the
-  // progression directly reflect the player's longest Codex chain.
-  const percentPerLevel = Math.min(safeChain, 50);
-  return Math.round(safeLevel * percentPerLevel * 100) / 100;
+  // Each mastery level grants 0.3% Luck per number in the player's longest
+  // consecutive Codex rarity chain.
+  return Math.round(safeLevel * safeChain * 0.3 * 100) / 100;
+}
+
+export function altarCoinDevotionChancePercent(coins: number, pity = 0): number {
+  const safeCoins = Math.max(0, Math.floor(Number(coins) || 0));
+  const safePity = Math.max(0, Math.floor(Number(pity) || 0));
+  if (safeCoins <= 0) return 0;
+
+  // Coins create a breakthrough roll. Larger offerings help, but repeated
+  // failures build pity so the altar cannot indefinitely brick progress.
+  const baseChance = 0.08 + Math.min(0.52, Math.log10(1 + safeCoins / 100) * 0.08);
+  const pityBonus = Math.min(0.36, safePity * 0.06);
+  return Math.round(Math.min(0.95, baseChance + pityBonus) * 10000) / 100;
 }
 
 export function luckMultiplier(s: PlayerState): number {
