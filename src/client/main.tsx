@@ -77,7 +77,28 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, options);
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error || `HTTP ${res.status}: ${res.statusText}`);
+    const message = errorData.error || `HTTP ${res.status}: ${res.statusText}`;
+
+    // An admin wipe intentionally invalidates old in-flight requests. Those
+    // requests must never resurrect old data, but they also should not strand
+    // the player on a stale error screen. Reload once so the fresh generation
+    // is loaded from Redis.
+    if (String(message).includes('invalidated by an admin wipe')) {
+      try {
+        const recoveryKey = 'io-wipe-recovery';
+        if (window.sessionStorage.getItem(recoveryKey) !== '1') {
+          window.sessionStorage.setItem(recoveryKey, '1');
+          window.location.reload();
+          return await new Promise<T>(() => undefined);
+        }
+        window.sessionStorage.removeItem(recoveryKey);
+      } catch {
+        window.location.reload();
+        return await new Promise<T>(() => undefined);
+      }
+    }
+
+    throw new Error(message);
   }
   return res.json();
 }
@@ -176,6 +197,11 @@ export function App() {
       // Load the player's state first. Admin/debug status is auxiliary and must
       // never block the entire game from rendering if that endpoint is slow.
       const me = await getJsonWithTimeout<PlayerState>('/api/me');
+      try {
+        window.sessionStorage.removeItem('io-wipe-recovery');
+      } catch {
+        // sessionStorage can be unavailable in some embedded webviews.
+      }
       setState(me);
       setAuthRequired(false);
       setStartupError(null);
