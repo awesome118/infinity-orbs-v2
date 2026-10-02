@@ -203,8 +203,9 @@ export function createApp() {
     next();
   });
 
-  // Devvit sends payment fulfillment details as JSON. Buyer identity comes from
-  // the authenticated request context, while the order body supplies the SKU/ID.
+  // Devvit sends the complete payment Order to this endpoint. Use the order's
+  // userId as the entitlement owner because the fulfillment callback itself is
+  // not guaranteed to run with the buyer as the request context user.
   app.post('/internal/payments/fulfill', async (req, res) => {
     try {
       const order = req.body as Order;
