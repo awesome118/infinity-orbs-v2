@@ -1,5 +1,27 @@
-// Local in-memory implementation of the small Devvit service surface used by the game.
-// In production, src/server/index.ts swaps these live bindings for Devvit's real services.
+const localRedis = {
+  get: async (key: string): Promise<string | null> => store.get(key) ?? null,
+  hGet: async (key: string, field: string): Promise<string | undefined> => {
+    const raw = store.get(key);
+    if (!raw) return undefined;
+    const values = JSON.parse(raw) as Record<string, string>;
+    return values[field];
+  },
+  hSet: async (key: string, fieldValues: Record<string, string>): Promise<number> => {
+    const raw = store.get(key);
+    const values = raw ? JSON.parse(raw) as Record<string, string> : {};
+    let added = 0;
+    for (const [field, value] of Object.entries(fieldValues)) {
+      if (!(field in values)) added++;
+      values[field] = value;
+    }
+    store.set(key, JSON.stringify(values));
+    return added;
+  },
+  hGetAll: async (key: string): Promise<Record<string, string>> => {
+    const raw = store.get(key);
+    return raw ? JSON.parse(raw) as Record<string, string> : {};
+  },
+  mGet: async (keys: string[]): Promise<Array<string | null>> => keys.map(key => store.get(key) ?? null),ction, src/server/index.ts swaps these live bindings for Devvit's real services.
 
 const store = new Map<string, string>();
 
