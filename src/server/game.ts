@@ -72,6 +72,7 @@ const key = () => `player:${currentUserId()}`;
 const GAME_BANS_KEY = 'io:game-bans';
 const ONLINE_PLAYERS_KEY = 'io:online:players';
 const SAVE_GENERATION_KEY_PREFIX = 'player-generation:';
+const PLAYER_REGISTRY_KEY = 'io:player-registry';
 const DEVELOPER_ANNOUNCEMENT_KEY = 'io:developer-announcement';
 export interface DeveloperAnnouncement {
   message: string;
