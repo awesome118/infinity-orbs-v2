@@ -9,6 +9,8 @@ import {
   listGameBans,
   banGameUser,
   unbanGameUser,
+  getDeveloperAnnouncement,
+  setDeveloperAnnouncement,
 } from './game.js';
 import { context, redis, reddit } from './devvit-mock.js';
 import { setCommunityEventConfig } from './social.js';
@@ -229,6 +231,26 @@ async function setGlobalBooster(id: string, tier: number, minutes: number) {
 }
 
 // Read-only identity/context endpoint.
+debugRouter.get('/announcement', async (_req, res) => {
+  try {
+    res.json(await getDeveloperAnnouncement());
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to load developer announcement.' });
+  }
+});
+
+debugRouter.post('/announcement', async (req, res) => {
+  try {
+    const announcement = await setDeveloperAnnouncement(
+      String(req.body?.message ?? ''),
+      context.username ?? 'Developer',
+    );
+    res.json({ announcement });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to update developer announcement.' });
+  }
+});
+
 debugRouter.get('/context', (_req, res) => {
   res.json({
     username: context.username ?? null,
