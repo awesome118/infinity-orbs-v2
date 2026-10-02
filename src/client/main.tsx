@@ -201,10 +201,27 @@ export function App() {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(sound.enabled);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
+  const [notificationPromptShown, setNotificationPromptShown] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem('io-notification-prompt-shown') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [newBestModalData, setNewBestModalData] = useState<{ orb: Orb; prevBest: number } | null>(null);
   const [frenzyRunTriggered, setFrenzyRunTriggered] = useState(false);
   const lastBoosterAnnouncementAtRef = useRef(0);
   const boosterAnnouncementTimerRef = useRef<number | null>(null);
+  const dismissedDeveloperAnnouncementRef = useRef<number>(
+    (() => {
+      try {
+        return Number(window.localStorage.getItem('io-developer-announcement-dismissed-at') ?? 0) || 0;
+      } catch {
+        return 0;
+      }
+    })(),
+  );
 
   const featureForTab = (nextTab: ActiveTab): FeatureId | null => {
     if (nextTab === 'upgrades') return 'upgrades';
@@ -1063,7 +1080,7 @@ export function App() {
     showToast(type === 'bug' ? 'Bug report sent to the moderators.' : 'Suggestion sent to the moderators.', 'success');
   };
 
-  const handleToggleNotifications = async () => {
+  const handleToggleNotifications = async (): Promise<boolean> => {
     try {
       const enabled = !notificationsEnabled;
       const res = await getJson<{ enabled: boolean }>('/api/notifications', {
@@ -1071,13 +1088,23 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled }),
       });
-      setNotificationsEnabled(res.enabled === true);
+      const nextEnabled = res.enabled === true;
+      setNotificationsEnabled(nextEnabled);
       showToast(
-        res.enabled ? 'Reddit notifications enabled.' : 'Reddit notifications disabled.',
+        nextEnabled ? 'Reddit notifications enabled.' : 'Reddit notifications disabled.',
         'success',
       );
+      return true;
     } catch (e: any) {
       showToast(e.message || 'Could not update Reddit notification settings.', 'warn');
+      return false;
+    }
+  };
+
+  const handleEnableNotificationsFromPrompt = async () => {
+    const enabled = await handleToggleNotifications();
+    if (enabled) {
+      setShowNotificationPrompt(false);
     }
   };
 
