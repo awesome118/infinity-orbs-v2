@@ -22,8 +22,6 @@ import type {
   PrestigeUpgradeId,
   MasterySkillId,
   AutomationId,
-  GlobalBoosterId,
-  GlobalBoosterSnapshot,
   FeatureId,
   PremiumBoosterId,
   Orb,
@@ -265,24 +263,6 @@ export function App() {
     return () => clearInterval(interval);
   }, [tab]);
 
-  // Global Boosters are shared state, so keep the booster screen synchronized
-  // independently from the player's personal /api/me refresh cadence.
-  useEffect(() => {
-    if (tab !== 'boosters') return;
-
-    const refreshGlobalBoosters = () => {
-      void getJson<GlobalBoosterSnapshot>('/api/global-boosters')
-        .then(snapshot => {
-          setState(prev => prev ? { ...prev, globalBoosters: snapshot } : prev);
-        })
-        .catch(() => null);
-    };
-
-    refreshGlobalBoosters();
-    const interval = setInterval(refreshGlobalBoosters, 1500);
-    return () => clearInterval(interval);
-  }, [tab]);
-
   // Keep presence fresh and process server-side automation while the game is open.
   useEffect(() => {
     const presenceInterval = setInterval(() => {
@@ -519,28 +499,6 @@ export function App() {
       showToast('Premium booster activated.', 'success');
     } catch (e: any) {
       showToast(e.message || 'Could not activate booster', 'warn');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // World Booster
-  const handleActivateGlobalBooster = async (id: GlobalBoosterId, useCredit: boolean) => {
-    setBusy(true);
-    try {
-      const res = await getJson<{ state: PlayerState; snapshot: GlobalBoosterSnapshot; usedCredit: boolean }>('/api/global-boosters/activate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, useCredit }),
-      });
-      setState(res.state);
-      sound.playChime(960, 'sawtooth', 0.3);
-      showToast(
-        res.usedCredit ? 'World Booster activated for everyone with a free credit.' : 'World Booster activated for everyone.',
-        'success',
-      );
-    } catch (e: any) {
-      showToast(e.message || 'Could not activate World Booster', 'warn');
     } finally {
       setBusy(false);
     }
@@ -1306,14 +1264,8 @@ export function App() {
           <BoostersAndAutomation
             state={state}
             busy={busy}
-            globalBoosters={state.globalBoosters ?? {
-              luck: { tier: 0, remainingMs: 0, updatedAt: Date.now(), activationProgress: 0, endsAt: 0 },
-              speed: { tier: 0, remainingMs: 0, updatedAt: Date.now(), activationProgress: 0, endsAt: 0 },
-              crit: { tier: 0, remainingMs: 0, updatedAt: Date.now(), activationProgress: 0, endsAt: 0 },
-            }}
             worldEvent={worldEvent}
             onActivateBooster={handleActivatePremiumBooster}
-            onActivateGlobalBooster={handleActivateGlobalBooster}
             onBuyAutomation={handleBuyAutomation}
             onClaimCommunityReward={handleClaimCommunityReward}
           />
