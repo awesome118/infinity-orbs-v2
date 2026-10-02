@@ -250,6 +250,76 @@ function playerKeyFor(userId: string): string {
   return `player:${userId}`;
 }
 
+interface PlayerRegistryEntry {
+  username: string;
+  firstSeenAt: number;
+  lastSeenAt: number;
+}
+
+async function registerPlayer(userId: string, username: string): Promise<void> {
+  const now = Date.now();
+  let firstSeenAt = now;
+  const existingRaw = await redis.hGet(PLAYER_REGISTRY_KEY, userId);
+  if (existingRaw) {
+    const existing = parseStoredJson<Partial<PlayerRegistryEntry>>(existingRaw);
+    firstSeenAt = Math.max(0, Number(existing?.firstSeenAt ?? now) || now);
+  }
+  await redis.hSet(PLAYER_REGISTRY_KEY, {
+    [userId]: JSON.stringify({
+      username: String(username).trim().slice(0, 100),
+      firstSeenAt,
+      lastSeenAt: now,
+    } satisfies PlayerRegistryEntry),
+  });
+}
+
+export interface PlayerListEntry {
+  userId: string;
+  username: string;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  active: boolean;
+  level: number;
+  xp: number;
+  totalRolls: number;
+  highestRarity: number;
+  coins: number;
+  shards: number;
+}
+
+export async function listPlayers(): Promise<PlayerListEntry[]> {
+  const rawRegistry = await redis.hGetAll(PLAYER_REGISTRY_KEY);
+  const records = rawRegistry && typeof rawRegistry === 'object' ? rawRegistry as Record<string, string> : {};
+  const userIds = Object.keys(records);
+  if (userIds.length === 0) return [];
+
+  const now = Date.now();
+  const saves = await redis.mGet(userIds.map(id => playerKeyFor(id)));
+  const players = userIds.map((userId, index) => {
+    const registry = parseStoredJson<Partial<PlayerRegistryEntry>>(records[userId]) ?? {};
+    const save = saves[index] ? parseStoredJson<Partial<PlayerState>>(saves[index]) : null;
+    const lastSeenAt = Math.max(
+      Number(registry.lastSeenAt ?? 0) || 0,
+      Number(save?.lastSeenAt ?? 0) || 0,
+    );
+    return {
+      userId,
+      username: String(registry.username ?? save?.username ?? ('user-' + userId.slice(-8))).trim().slice(0, 100),
+      firstSeenAt: Math.max(0, Number(registry.firstSeenAt ?? 0) || 0),
+      lastSeenAt,
+      active: lastSeenAt >= now - 30_000,
+      level: Math.max(1, Number(save?.level ?? 1) || 1),
+      xp: Math.max(0, Number(save?.xp ?? 0) || 0),
+      totalRolls: Math.max(0, Number(save?.totalRolls ?? 0) || 0),
+      highestRarity: Math.max(0, Number(save?.highestRarity ?? 0) || 0),
+      coins: Math.max(0, Number(save?.coins ?? 0) || 0),
+      shards: Math.max(0, Number(save?.shards ?? 0) || 0),
+    } satisfies PlayerListEntry;
+  });
+  players.sort((a, b) => Number(b.active) - Number(a.active) || b.lastSeenAt - a.lastSeenAt || a.username.localeCompare(b.username));
+  return players;
+}
+
 function parseGlobalBoosterState(raw: string | null, fallback: GlobalBoosterState): GlobalBoosterState {
   if (!raw) return fallback;
   try {
@@ -459,6 +529,7 @@ export async function loadRaw(): Promise<PlayerState> {
   const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
   const raw = await redis.get(playerKey);
   const username = context.username ?? `reddit-user-${userId.slice(-8)}`;
+  await registerPlayer(userId, username);
   const perks = await getPlayerGuildPerks(username);
   const globalBoosters = await getGlobalBoosters();
 
