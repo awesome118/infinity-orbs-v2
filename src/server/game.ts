@@ -15,7 +15,6 @@ import {
   cooldownMs,
   rollsPerActivation,
   luckMultiplier,
-  MIN_ALTAR_COIN_OFFER,
   upgradeCost,
   prestigeUpgradeCost,
   calculatePrestigeDust,
