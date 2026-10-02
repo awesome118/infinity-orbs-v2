@@ -1,4 +1,4 @@
-import { redis, context } from './devvit-mock.js';
+import { redis, context, reddit } from './devvit-mock.js';
 import {
   createInitialState,
   type PlayerState,
@@ -75,6 +75,8 @@ const ONLINE_PLAYERS_KEY = 'io:online:players';
 const SAVE_GENERATION_KEY_PREFIX = 'player-generation:';
 const PLAYER_REGISTRY_KEY = 'io:player-registry';
 const DEVELOPER_ANNOUNCEMENT_KEY = 'io:developer-announcement';
+const GLOBAL_BOOSTER_ANNOUNCEMENT_KEY = 'io:global-booster-announcement';
+const PLAYER_FLAIR_KEY_PREFIX = 'io:player-flair:';
 
 const PAYMENT_DEBUG_LOG_KEY = 'io:payment-debug-log:v1';
 const PAYMENT_DEBUG_LOG_LIMIT = 200;
@@ -471,7 +473,7 @@ async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSn
 
     const current = parseGlobalBoosterSnapshot(raw, now) ?? createInitialGlobalBoosters(now);
     const before = current[id];
-    const after = activateGlobalBoosterStack(before, now);
+    const after = activateGlobalBoosterStack(before, now, id === 'speed' ? 10 : Number.MAX_SAFE_INTEGER);
     current[id] = after;
 
     await appendGlobalBoosterDebugLog('activate:state-computed', {
@@ -1124,6 +1126,59 @@ async function processAutomation(s: PlayerState): Promise<void> {
   }
 }
 
+async function syncRarityFlair(s: PlayerState): Promise<void> {
+  const username = String(context.username ?? s.username ?? '').trim();
+  const subredditName = String(context.subredditName ?? '').trim();
+  if (!username || !subredditName) return;
+
+  const highestRarity = Math.max(2, Math.floor(Number(s.highestRarity ?? 2) || 2));
+  const flairText = getOrbInfo(highestRarity).tier;
+  const flairKey = PLAYER_FLAIR_KEY_PREFIX + currentUserId();
+
+  try {
+    const current = await redis.get(flairKey);
+    if (String(current ?? '') === flairText) return;
+
+    await reddit.setUserFlair({
+      subredditName,
+      username,
+      text: flairText,
+    });
+    await redis.set(flairKey, flairText);
+  } catch (error) {
+    console.error('[Rarity Flair] Failed to update user flair:', error);
+  }
+}
+
+export async function getGlobalBoosterAnnouncement(): Promise<{
+  id: GlobalBoosterId;
+  name: string;
+  username: string;
+  activatedAt: number;
+} | null> {
+  try {
+    const raw = await redis.get(GLOBAL_BOOSTER_ANNOUNCEMENT_KEY);
+    if (!raw || typeof raw !== 'string') return null;
+    const parsed = JSON.parse(raw) as Partial<{
+      id: GlobalBoosterId;
+      name: string;
+      username: string;
+      activatedAt: number;
+    }>;
+    const activatedAt = Number(parsed.activatedAt ?? 0);
+    if (!parsed.id || !GLOBAL_BOOSTERS[parsed.id] || !Number.isFinite(activatedAt)) return null;
+    if (Date.now() - activatedAt > 10_000) return null;
+    return {
+      id: parsed.id,
+      name: String(parsed.name ?? GLOBAL_BOOSTERS[parsed.id].name),
+      username: String(parsed.username ?? 'Redditor'),
+      activatedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function save(s: PlayerState) {
   const userId = currentUserId();
   const playerKey = key();
@@ -1160,7 +1215,10 @@ export async function save(s: PlayerState) {
     await txn.multi();
     await txn.set(playerKey, JSON.stringify(s));
     const committed = await txn.exec();
-    if (committed !== null) return;
+    if (committed !== null) {
+      await syncRarityFlair(s);
+      return;
+    }
   }
 
   throw new Error('Could not safely save player data. Please retry.');
@@ -1928,7 +1986,17 @@ async function claimWorldBoosterActivation(
   s: PlayerState,
   id: GlobalBoosterId,
   useCredit: boolean,
-): Promise<{ state: PlayerState; snapshot: GlobalBoosterSnapshot; usedCredit: boolean }> {
+): Promise<{
+  state: PlayerState;
+  snapshot: GlobalBoosterSnapshot;
+  usedCredit: boolean;
+  announcement: {
+    id: GlobalBoosterId;
+    name: string;
+    username: string;
+    activatedAt: number;
+  };
+}> {
   const cost = GLOBAL_BOOSTERS[id].costShards;
   const userId = currentUserId();
 
@@ -1997,7 +2065,26 @@ async function claimWorldBoosterActivation(
       creditsAfter: s.globalBoosterCredits ?? 0,
     });
 
-    return { state: s, snapshot, usedCredit: useCredit };
+    const activatedAt = Date.now();
+    const activatedBy = String(context.username ?? s.username ?? 'Redditor').trim() || 'Redditor';
+    await redis.set(GLOBAL_BOOSTER_ANNOUNCEMENT_KEY, JSON.stringify({
+      id,
+      name: GLOBAL_BOOSTERS[id].name,
+      username: activatedBy,
+      activatedAt,
+    }));
+
+    return {
+      state: s,
+      snapshot,
+      usedCredit: useCredit,
+      announcement: {
+        id,
+        name: GLOBAL_BOOSTERS[id].name,
+        username: activatedBy,
+        activatedAt,
+      },
+    };
   } catch (error) {
     if (useCredit) s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) + 1;
     else s.shards = (s.shards ?? 0) + cost;
