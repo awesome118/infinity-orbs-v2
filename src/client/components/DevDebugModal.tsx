@@ -61,8 +61,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     last7Days: number;
     last30Days: number;
     allTime: number;
+    fakeCcuBonus: number;
+    effectiveLuckCcu: number;
   } | null>(null);
   const [ccuLoading, setCcuLoading] = useState(false);
+  const [fakeCcuInput, setFakeCcuInput] = useState('0');
 
   const [guildChatSpy, setGuildChatSpy] = useState<Array<{
     id: string;
@@ -185,6 +188,25 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   useEffect(() => {
     void loadCcuStats();
   }, []);
+
+  const setFakeCcu = async (bonus: number) => {
+    setCcuLoading(true);
+    try {
+      const res = await fetch('/api/dev/ccu/fake', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bonus }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not set fake CCU.');
+      setMessage(`Fake CCU set to +${Number(data.fakeCcuBonus ?? bonus).toLocaleString()}.`);
+      await loadCcuStats();
+    } catch (e: any) {
+      setMessage('Error: ' + (e?.message || 'Could not set fake CCU.'));
+    } finally {
+      setCcuLoading(false);
+    }
+  };
 
   const loadPaymentLogs = async () => {
     setPaymentLogsLoading(true);
@@ -463,6 +485,70 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             {message}
           </div>
         )}
+
+        <section className={panelBase + ' border border-fuchsia-500/30'}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fuchsia-300">
+                <Users className="w-4 h-4" /> Fake CCU
+              </div>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Adds a testing-only CCU offset to your Luck calculation. It does not change Current CCU or any historical Max CCU metric.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2 items-center">
+            <input
+              type="number"
+              min="0"
+              max="1000000"
+              step="1"
+              value={fakeCcuInput}
+              onChange={e => setFakeCcuInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key !== 'Enter') return;
+                void setFakeCcu(Math.max(0, Math.min(1_000_000, Math.floor(Number(fakeCcuInput) || 0))));
+              }}
+              className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
+              placeholder="Fake CCU to add"
+              title="Number of additional virtual players to add to the current real CCU for your Luck calculation."
+            />
+            <button
+              disabled={ccuLoading}
+              onClick={() => void setFakeCcu(Math.max(0, Math.min(1_000_000, Math.floor(Number(fakeCcuInput) || 0))))}
+              className={buttonBase + ' bg-fuchsia-600 hover:bg-fuchsia-500 border-fuchsia-500 text-white px-3 py-2'}
+            >
+              Set Fake CCU
+            </button>
+            <button
+              disabled={ccuLoading}
+              onClick={() => {
+                setFakeCcuInput('0');
+                void setFakeCcu(0);
+              }}
+              className={buttonBase + ' bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2'}
+            >
+              Clear
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-center">
+            <div className="rounded-xl bg-slate-900/80 border border-slate-800 px-3 py-3">
+              <div className="text-[10px] uppercase font-bold text-slate-500">Real CCU</div>
+              <div className="text-lg font-black text-cyan-300 font-mono mt-1">{(ccuStats?.current ?? 0).toLocaleString()}</div>
+            </div>
+            <div className="rounded-xl bg-slate-900/80 border border-slate-800 px-3 py-3">
+              <div className="text-[10px] uppercase font-bold text-slate-500">Luck CCU</div>
+              <div className="text-lg font-black text-fuchsia-300 font-mono mt-1">
+                {(ccuStats?.effectiveLuckCcu ?? ccuStats?.current ?? 0).toLocaleString()}
+              </div>
+              <div className="text-[9px] text-slate-500 mt-0.5">
+                +{(ccuStats?.fakeCcuBonus ?? 0).toLocaleString()} fake
+              </div>
+            </div>
+          </div>
+        </section>
 
         <section className={panelBase + ' border border-cyan-500/30'}>
           <div className="flex items-center justify-between gap-3">
