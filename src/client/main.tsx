@@ -68,8 +68,7 @@ type ActiveTab =
   | 'collection'
   | 'quests'
   | 'social'
-  | 'profile'
-  | 'achievements';
+  | 'profile';
 
 async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, options);
