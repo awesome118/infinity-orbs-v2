@@ -243,6 +243,7 @@ export function createInitialGlobalBoosters(_now = Date.now()): GlobalBoosterSna
     tier: 0,
     activationProgress: 0,
     endsAt: 0,
+    lastTickAt: now,
   });
   return {
     luck: inactive(),
@@ -1254,7 +1255,7 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
   const guildSpeedReduction = (s.guildPerks?.speedRank ?? 0) * 100;
   const masteryChronoReduction = (s.masterySkills?.chronoFlow ?? 0) * 120;
   const steadyHandsReduction = (s.prestigeUpgrades?.steadyHands ?? 0) * 100;
-  const levelBenefits = getLevelBenefits(calculateLevelFromXp(s.xp || 0).level);
+  const levelBenefits = getLevelBenefits(Math.max(1, s.level || 1));
   const levelReduction = levelBenefits.cooldownReductionMs;
 
   // Roll speed: 20 levels × 150ms = 3.0s total maximum reduction.
@@ -1294,7 +1295,7 @@ export function rollsPerActivation(s: PlayerState): number {
   // 4. Astral Mastery Celestial Volley: +1 ball per level
   balls += (s.masterySkills?.celestialVolley ?? 0);
   // 5. Level milestones and permanent prestige arsenal
-  const lvl = calculateLevelFromXp(s.xp || 0).level;
+  const lvl = Math.max(1, s.level || 1);
   balls += getLevelBenefits(lvl).bonusBalls;
   balls += (s.prestigeUpgrades?.astralArsenal ?? 0);
   if (isPremiumBoosterActive(s, 'barrage')) balls += 25;
@@ -1314,8 +1315,7 @@ export function luckMultiplier(s: PlayerState): number {
   const prestigeLuck = 1 + (s.prestigeUpgrades?.permLuck ?? 0) * 0.10;
 
   // 3. Level Perks Luck
-  const levelInfo = calculateLevelFromXp(s.xp || 0);
-  const totalLevelLuck = getLevelBenefits(levelInfo.level).luckMultiplier;
+  const totalLevelLuck = getLevelBenefits(Math.max(1, s.level || 1)).luckMultiplier;
 
   // 4. Sacrificial Altar Luck (Coins and Shards multiplicative with each other!)
   const { totalAltarMultiplier } = calculateAltarMultipliers(s);
