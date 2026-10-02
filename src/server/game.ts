@@ -75,6 +75,7 @@ const GAME_BANS_KEY = 'io:game-bans';
 const ONLINE_PLAYERS_KEY = 'io:online:players';
 const CCU_HOURLY_PREFIX = 'io:ccu:hour:';
 const CCU_ALL_TIME_KEY = 'io:ccu:all-time';
+const FAKE_CCU_KEY_PREFIX = 'io:fake-ccu:';
 const SAVE_GENERATION_KEY_PREFIX = 'player-generation:';
 const PLAYER_REGISTRY_KEY = 'io:player-registry';
 const DEVELOPER_ANNOUNCEMENT_KEY = 'io:developer-announcement';
@@ -409,12 +410,29 @@ export async function getOnlinePlayers(): Promise<number> {
   return touchOnlinePresence();
 }
 
+export async function getFakeCcuBonus(userId = currentUserId()): Promise<number> {
+  const id = String(userId ?? '').trim();
+  if (!id) return 0;
+  const raw = await redis.get(FAKE_CCU_KEY_PREFIX + id);
+  return Math.max(0, Math.min(1_000_000, Math.floor(Number(raw ?? 0) || 0)));
+}
+
+export async function setFakeCcuBonus(bonus: number, userId = currentUserId()): Promise<number> {
+  const safeBonus = Math.max(0, Math.min(1_000_000, Math.floor(Number(bonus) || 0)));
+  const id = String(userId ?? '').trim();
+  if (!id) throw new Error('Reddit account identity is unavailable.');
+  await redis.set(FAKE_CCU_KEY_PREFIX + id, String(safeBonus));
+  return safeBonus;
+}
+
 export async function getCcuPeaks(): Promise<{
   current: number;
   last24Hours: number;
   last7Days: number;
   last30Days: number;
   allTime: number;
+  fakeCcuBonus: number;
+  effectiveLuckCcu: number;
 }> {
   const now = Date.now();
   const current = await touchOnlinePresence();
@@ -427,12 +445,15 @@ export async function getCcuPeaks(): Promise<{
 
   const maxIn = (hours: number) => Math.max(current, ...values.slice(0, hours), 0);
   const allTimeRaw = await redis.get(CCU_ALL_TIME_KEY);
+  const fakeCcuBonus = await getFakeCcuBonus();
   return {
     current,
     last24Hours: maxIn(24),
     last7Days: maxIn(24 * 7),
     last30Days: maxIn(24 * 30),
     allTime: Math.max(0, Number.parseInt(String(allTimeRaw ?? '0'), 10) || 0, current),
+    fakeCcuBonus,
+    effectiveLuckCcu: current + fakeCcuBonus,
   };
 }
 
@@ -1361,8 +1382,12 @@ export async function applyRolls(
   const worldEvent = await getCommunityEvent();
   const communityLuck = worldEvent.buffMultiplier ?? 1.15;
 
-  // luckMultiplier already includes the current global Luck booster.
-  const baseLuck = luckMultiplier(s) * communityLuck;
+  // Fake CCU is an admin testing offset applied only to this player's luck calculation.
+  // The underlying CCU metric and historical peaks always remain based on real players.
+  const fakeCcuBonus = await getFakeCcuBonus();
+  const luckCcu = Math.max(1, Math.floor((s.onlinePlayers ?? 1) + fakeCcuBonus));
+  const luckState = luckCcu === (s.onlinePlayers ?? 1) ? s : { ...s, onlinePlayers: luckCcu };
+  const baseLuck = luckMultiplier(luckState) * communityLuck;
 
   // Apex Fortune Mastery: chance on multi-roll to double the luck of that activation
   const apexChance = Math.min(1, (s.masterySkills?.apexFortune ?? 0) * 0.05);
