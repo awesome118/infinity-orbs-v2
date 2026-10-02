@@ -57,7 +57,6 @@ import { RedditShareModal } from './components/RedditShareModal.js';
 import { RarityTableModal } from './components/RarityTableModal.js';
 import { NewBestModal } from './components/NewBestModal.js';
 import { BoostersAndAutomation } from './components/BoostersAndAutomation.js';
-import { ShopSection } from './components/ShopSection.js';
 import { DevDebugModal } from './components/DevDebugModal.js';
 import { FeedbackModal } from './components/FeedbackModal.js';
 import './styles.css';
@@ -66,7 +65,6 @@ type ActiveTab =
   | 'roll'
   | 'upgrades'
   | 'boosters'
-  | 'shop'
   | 'altar'
   | 'mastery'
   | 'collection'
@@ -210,7 +208,6 @@ export function App() {
     if (nextTab === 'quests') return 'quests';
     if (nextTab === 'collection') return 'collection';
     if (nextTab === 'boosters') return 'boosters';
-    if (nextTab === 'shop') return 'shop';
     if (nextTab === 'social') return 'social';
     if (nextTab === 'altar') return 'altar';
     if (nextTab === 'mastery') return 'mastery';
@@ -1207,64 +1204,6 @@ export function App() {
       {/* Main Navigation Bar */}
       <div className="bg-slate-900/40 border-b border-slate-800/80 px-4 py-2 sticky top-[57px] z-20 backdrop-blur-md">
         <div className="max-w-6xl mx-auto flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-          <button
-            onClick={() => {
-              sound.playClick();
-              changeTab('roll');
-            }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-              tab === 'roll'
-                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Dices className="w-3.5 h-3.5" />
-            <span>Roll</span>
-          </button>
-
-          <button
-            onClick={() => {
-              sound.playClick();
-              changeTab('upgrades');
-            }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-              tab === 'upgrades'
-                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
-            <span>Upgrades</span>
-            {featureForTab('upgrades' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('upgrades' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
-          </button>
-
-          <button
-            onClick={() => {
-              sound.playClick();
-              changeTab('boosters');
-            }}
-            className={tab === 'boosters'
-              ? 'flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-md'
-              : 'flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap text-slate-400 hover:text-white hover:bg-slate-800/60'}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
-            <span>Boosters</span>
-            {featureForTab('boosters' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('boosters' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
-          </button>
-
-          <button
-            onClick={() => {
-              sound.playClick();
-              changeTab('shop');
-            }}
-            className={tab === 'shop'
-              ? 'flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap bg-gradient-to-r from-amber-600 to-yellow-500 text-white shadow-md'
-              : 'flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap text-slate-400 hover:text-white hover:bg-slate-800/60'}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-            <span>Shop</span>
-            {featureForTab('shop' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('shop' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
-          </button>
 
           <button
             onClick={() => {
