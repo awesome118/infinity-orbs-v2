@@ -36,7 +36,6 @@ interface RollSectionProps {
   lastBatch: Orb[];
   batchSummary: { totalVal: number; coins: number; shards: number; xp: number; frenzyCount?: number } | null;
   readyAt: number;
-  now: number;
   busy: boolean;
   autoRoll: boolean;
   worldEvent?: WorldEvent | null;
@@ -71,7 +70,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
   lastBatch,
   batchSummary,
   readyAt,
-  now,
   busy,
   autoRoll,
   worldEvent,
@@ -82,6 +80,12 @@ export const RollSection: React.FC<RollSectionProps> = ({
   onNewBest,
 }) => {
   const [showBatchDetails, setShowBatchDetails] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(interval);
+  }, []);
   const [isRevealing, setIsRevealing] = useState(false);
   const [cooldownNotice, setCooldownNotice] = useState<string | null>(null);
   const [sonarActive, setSonarActive] = useState(() => sound.sonarMode);
@@ -292,21 +296,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
           <div className="absolute z-0 w-48 h-48 rounded-full border-4 border-cyan-400/90 animate-ping pointer-events-none" />
         )}
 
-        {/* Layered celestial animation field */}
-        <div className="absolute w-60 h-60 rounded-full border border-cyan-400/10 animate-celestial-spin pointer-events-none" />
-        <div className="absolute w-52 h-52 rounded-full border border-purple-400/10 animate-celestial-spin-reverse pointer-events-none" />
-        <div className="absolute w-48 h-48 rounded-full overflow-hidden pointer-events-none animate-energy-sweep opacity-50">
-          <div className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-cyan-300/40 to-transparent" />
-        </div>
-        <div className="absolute w-72 h-72 pointer-events-none animate-star-ring">
-          {[0,1,2,3,4,5].map(i => (
-            <span
-              key={i}
-              className="absolute left-1/2 top-1/2 w-1.5 h-1.5 rounded-full bg-white/70 shadow-[0_0_6px_rgba(255,255,255,0.65)]"
-              style={{ transform: "translate(-50%, -50%) rotate(" + (i * 60) + "deg) translateY(-" + (112 + (i % 2) * 18) + "px)" }}
-            />
-          ))}
-        </div>
+        {/* One restrained ring keeps the stage alive without turning the center into a screensaver. */}
+        <div className="absolute w-60 h-60 rounded-full border border-white/10 pointer-events-none" />
         {/* The Central Main Orb */}
         <div
           onClick={handleRollClick}
@@ -416,7 +407,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           onClick={handleRollClick}
           className={`w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ${
             canRoll
-              ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white shadow-indigo-500/25 hover:shadow-cyan-500/30'
+              ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-950/30'
               : busy
               ? 'bg-slate-800 text-slate-400 cursor-wait'
               : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700'
