@@ -1336,7 +1336,7 @@ export async function applyRolls(
   forcedRarity?: number,
   source: 'online' | 'offline' = 'online',
   rollCountOverride?: number
-): Promise<{ bestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number }> {
+): Promise<{ bestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number; rollCount: number }> {
   let bestRarity = 0;
   let totalVal = 0;
   let coinsGained = 0;
@@ -1568,7 +1568,7 @@ export async function applyRolls(
     isNew: s.collection[String(bestRarity)] === 1,
   };
 
-  return { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained };
+  return { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount };
 }
 
 async function sendOfflineFullNotification(userId: string, subredditName: string): Promise<boolean> {
@@ -1795,7 +1795,7 @@ export async function roll(isAuto = false): Promise<RollResponse> {
     throw new Error(`Cooldown: ${((cd - now + s.lastRollAt) / 1000).toFixed(1)}s`);
   }
 
-  const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained } = await applyRolls(s);
+  const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } = await applyRolls(s);
 
   // Only direct manual roll activations count toward the Auto Roll unlock.
   if (!isAuto) {
@@ -1820,6 +1820,7 @@ export async function roll(isAuto = false): Promise<RollResponse> {
     xpGained,
     state: s,
     rollsRemainingUntilNext: cd,
+    rollsProcessed: rollCount,
     dramaticReveal: bestOrb.rarity >= 100,
   };
 }
@@ -1831,7 +1832,7 @@ export async function claimOffline(): Promise<RollResponse> {
   s.offlineRolls = 0;
   await redis.del(OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId());
   await redis.del(OFFLINE_FULL_JOB_PREFIX + currentUserId());
-  const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained } = await applyRolls(s, batches, undefined, 'offline');
+  const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } = await applyRolls(s, batches, undefined, 'offline');
   const now = Date.now();
   s.lastRollAt = now;
   s.lastSeenAt = now;
@@ -1848,6 +1849,7 @@ export async function claimOffline(): Promise<RollResponse> {
     xpGained,
     state: s,
     rollsRemainingUntilNext: cooldownMs(s),
+    rollsProcessed: rollCount,
     dramaticReveal: bestOrb.rarity >= 100,
   };
 }
