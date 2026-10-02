@@ -221,11 +221,11 @@ export function createApp() {
   });
 
   // Reddit Payments fulfillment follows Devvit's Order contract exactly.
-  // The user identity for a payment comes from the Order, not from arbitrary request data.
+  // The payment order supplies the purchase details; the authenticated Devvit context supplies the buyer identity.
   app.post('/internal/payments/fulfill', async (req, res) => {
     try {
       const order = req.body as PaymentOrder;
-      const buyerUserId = String(order?.userId ?? '').trim();
+      const buyerUserId = String(context.userId ?? '').trim();
       const orderId = String(order?.id ?? '').trim();
       console.error('[Payments] Fulfill received:', JSON.stringify({
         id: order?.id ?? null,
@@ -238,7 +238,7 @@ export function createApp() {
       // Do not reject fulfillment solely because a status field is absent or
       // differs between payment environments. The official Devvit Web payments
       // example uses the fulfillment callback itself as the trusted signal and
-      // takes the buyer from context.userId.
+      // identifies the buyer through the authenticated Devvit context.
       if (!buyerUserId) {
         return res.json({
           success: false,
@@ -274,7 +274,7 @@ export function createApp() {
   app.post('/internal/payments/refund', async (req, res) => {
     try {
       const order = req.body as PaymentOrder;
-      const buyerUserId = String(order?.userId ?? '').trim();
+      const buyerUserId = String(context.userId ?? '').trim();
       const orderId = String(order?.id ?? '').trim();
       if (!buyerUserId || !orderId) {
         return res.json({
