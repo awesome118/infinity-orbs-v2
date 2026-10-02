@@ -182,6 +182,10 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     }
   };
 
+  useEffect(() => {
+    void loadCcuStats();
+  }, []);
+
   const loadPaymentLogs = async () => {
     setPaymentLogsLoading(true);
     try {
