@@ -1026,10 +1026,18 @@ export async function claimOffline(): Promise<RollResponse> {
 export async function buyUpgrade(id: UpgradeId): Promise<PlayerState> {
   const s = await settleOffline(await loadRaw());
   const level = s.upgrades[id] ?? 0;
-  const cost = upgradeCost(id, level);
-  if (id === 'auto' && level === 0 && s.totalRolls < 10) {
-    throw new Error('Auto Roll unlocks after 10 total rolls.');
+
+  // Auto Roll is a free, always-available unlock. Existing saves are migrated
+  // to level 1 by loadRaw(), so this path only handles legacy zero-level states.
+  if (id === 'auto') {
+    if (level === 0) {
+      s.upgrades.auto = 1;
+      await save(s);
+    }
+    return s;
   }
+
+  const cost = upgradeCost(id, level);
   if (!Number.isFinite(cost) || s.coins < cost) {
     throw new Error(`Need ${cost.toLocaleString()} Coins.`);
   }
@@ -1049,11 +1057,9 @@ export function autoBuyCheapest(s: PlayerState): boolean {
 
   for (const id of upgradeIds) {
     if (id === 'auto') {
-      if ((s.upgrades.auto ?? 0) === 0 && s.totalRolls >= 10 && s.coins >= AUTO_UNLOCK_COST) {
-        if (AUTO_UNLOCK_COST < lowestCost) {
-          lowestCost = AUTO_UNLOCK_COST;
-          bestId = id;
-        }
+      if ((s.upgrades.auto ?? 0) === 0) {
+        s.upgrades.auto = 1;
+        continue;
       }
       continue;
     }
@@ -1098,8 +1104,9 @@ export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent
       let cost = upgradeCost(id, level);
 
       if (id === 'auto' && level === 0) {
-        if (s.totalRolls < 10) continue;
-        cost = AUTO_UNLOCK_COST;
+        s.upgrades.auto = 1;
+        changed = true;
+        continue;
       }
 
       if (!Number.isFinite(cost) || cost > s.coins) continue;
