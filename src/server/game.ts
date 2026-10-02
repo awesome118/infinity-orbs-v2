@@ -1,5 +1,6 @@
 import { redis, context, reddit } from './devvit-mock.js';
-import { notifications, scheduler } from '@devvit/web/server';
+import { scheduler } from '@devvit/web/server';
+import { notifications } from '@devvit/notifications';
 import {
   createInitialState,
   type PlayerState,
@@ -408,6 +409,22 @@ async function touchOnlinePresence(): Promise<number> {
 
 export async function getOnlinePlayers(): Promise<number> {
   return touchOnlinePresence();
+}
+
+export async function sendPushNotificationTest(): Promise<void> {
+  const userId = currentUserId();
+  if (!(await notifications.isOptedIn(userId))) {
+    throw new Error('Enable Reddit notifications first, then run the push test.');
+  }
+  const subredditName = String(context.subredditName ?? '').trim();
+  await notifications.enqueue({
+    title: 'Infinity Orbs Test',
+    body: 'Push notifications are working.',
+    recipients: [{
+      userId,
+      ...(subredditName ? { link: `https://reddit.com/r/${subredditName}` } : {}),
+    }],
+  });
 }
 
 export async function getNotificationState(userId = currentUserId()): Promise<boolean> {
@@ -1414,13 +1431,17 @@ export async function applyRolls(
   const valueMul = 1 + (s.upgrades.valueBonus ?? 0) * 0.10;
 
   for (let i = 0; i < rollCount; i++) {
-    // Check Critical Roll (Base + Mastery + Guild perk)
+    // New-player hype: the third ball this account ever rolls is guaranteed
+    // to land in the 1/101 through 1/120 range. It cannot crit upward, so the
+    // guarantee is the exact advertised range.
+    const isGuaranteedThirdBall = s.totalRolls + i === 2;
+
     const critChance =
       (s.upgrades.critChance ?? 0) * 0.03 +
       (s.masterySkills?.critMastery ?? 0) * 0.03 +
       (s.guildPerks?.critRank ?? 0) * 0.015 +
       globalBoosterCritChanceBonus(globalBoosters.crit);
-    const isCrit = rng() < Math.min(1, critChance);
+    const isCrit = !isGuaranteedThirdBall && rng() < Math.min(1, critChance);
     let effectiveCm = cm;
     if (isCrit) {
       s.totalCrits = (s.totalCrits ?? 0) + 1;
@@ -1430,11 +1451,15 @@ export async function applyRolls(
       }
     }
 
-    // Continuum RNG generation with effective luck
+    // Continuum RNG generation with effective luck.
+    // The third lifetime ball overrides the random result with a guaranteed beginner drop.
     const minimumRarity = 2 + (s.prestigeUpgrades?.luckyFloor ?? 0);
-    const rolledRarity = (forcedRarity && i === 0)
-      ? forcedRarity
-      : Math.max(minimumRarity, rollContinuum(effectiveLuck, rng));
+    const beginnerRarity = 101 + Math.floor(rng() * 20);
+    const rolledRarity = isGuaranteedThirdBall
+      ? beginnerRarity
+      : (forcedRarity && i === 0)
+        ? forcedRarity
+        : Math.max(minimumRarity, rollContinuum(effectiveLuck, rng));
     const baseRarity = Math.max(minimumRarity, rolledRarity);
     const rarity = isCrit ? Math.min(10_000_000_000, Math.round(baseRarity * effectiveCm)) : baseRarity;
     const finalVal = Math.round(rarity * valueMul);
