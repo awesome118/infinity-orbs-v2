@@ -2210,6 +2210,12 @@ export async function claimDailyStreak(): Promise<{ state: PlayerState; rewardCo
   const s = await settleOffline(await loadRaw());
   const result = await claimDailyStreakFromState(s);
   await save(s);
+  await appendPlayerSpyLog('daily-streak-claim', {
+    day: result.day,
+    rewardCoins: result.rewardCoins,
+    rewardShards: result.rewardShards,
+    snapshot: playerSpySnapshot(s),
+  });
   return { state: s, ...result };
 }
 
@@ -2230,6 +2236,14 @@ export async function claimQuest(type: 'daily' | 'weekly', id: string): Promise<
   }
 
   await save(s);
+  await appendPlayerSpyLog('quest-claim', {
+    type,
+    questId: id,
+    rewardCoins: reward.rewardCoins,
+    rewardShards: reward.rewardShards,
+    rewardTokens: reward.rewardTokens,
+    snapshot: playerSpySnapshot(s),
+  });
   return {
     state: s,
     rewardCoins: reward.rewardCoins,
@@ -2623,6 +2637,13 @@ export async function activatePremiumBooster(id: PremiumBoosterId): Promise<Play
   spendShards(s, info.costShards);
   s.activeBoosters[id] = Math.max(now, s.activeBoosters[id] ?? 0) + info.durationMs;
   await save(s);
+  await appendPlayerSpyLog('premium-booster-activation', {
+    booster: id,
+    costShards: info.costShards,
+    durationMs: info.durationMs,
+    activeUntil: s.activeBoosters[id],
+    snapshot: playerSpySnapshot(s),
+  });
   return s;
 }
 
@@ -2638,6 +2659,11 @@ export async function buyAutomation(id: AutomationId): Promise<PlayerState> {
   spendShards(s, info.costShards);
   s.automations = { ...(s.automations ?? {}), [id]: true };
   await save(s);
+  await appendPlayerSpyLog('automation-purchase', {
+    automation: id,
+    costShards: info.costShards,
+    snapshot: playerSpySnapshot(s),
+  });
   return s;
 }
 
@@ -2646,6 +2672,12 @@ export async function claimCommunityReward(): Promise<{ state: PlayerState; rewa
   const result = await claimCommunityRewardFromState(s);
   if (result.rewardCoins <= 0) throw new Error('No new Community Reward is available.');
   await save(s);
+  await appendPlayerSpyLog('community-reward-claim', {
+    rewardCoins: result.rewardCoins,
+    rewardXp: result.rewardXp,
+    tier: result.tier,
+    snapshot: playerSpySnapshot(s),
+  });
   return { state: s, ...result };
 }
 
@@ -2685,6 +2717,12 @@ export async function startOrbFrenzy(options: {
   s.lastRollAt = Date.now();
   s.lastSeenAt = Date.now();
   await save(s);
+  await appendPlayerSpyLog('frenzy-start', {
+    rarity: result.bestOrb.rarity,
+    postId: context.postId ?? '',
+    forcedRarity: forcedRarity ?? null,
+    snapshot: playerSpySnapshot(s),
+  });
 
   return {
     state: s,
