@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { requestExpandedMode } from '@devvit/web/client';
 import {
   Sparkles,
   Zap,
@@ -103,6 +104,7 @@ export function App() {
     coins: number;
     shards: number;
     xp: number;
+    frenzyCount?: number;
   } | null>(null);
 
   const [readyAt, setReadyAt] = useState<number>(0);
@@ -129,6 +131,7 @@ export function App() {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(sound.enabled);
   const [newBestModalData, setNewBestModalData] = useState<{ orb: Orb; prevBest: number } | null>(null);
+  const [frenzyRunTriggered, setFrenzyRunTriggered] = useState(false);
 
   const showToast = (msg: string, type: 'info' | 'success' | 'warn' = 'info') => {
     setToast({ msg, type });
@@ -212,6 +215,47 @@ export function App() {
     }, 10_000);
     return () => clearInterval(presenceInterval);
   }, []);
+
+  useEffect(() => {
+    if (!state || frenzyRunTriggered) return;
+
+    void getJson<{
+      rarity: number;
+      ownerUsername: string;
+      createdAt: number;
+      claimedToday: boolean;
+      isOwner: boolean;
+      postId: string;
+      inGame?: boolean;
+      consumedAt?: number | null;
+    }>('/api/frenzy/info')
+      .then(info => {
+        if (!info.inGame || !info.isOwner || info.consumedAt) return;
+
+        setFrenzyRunTriggered(true);
+        setBusy(true);
+        return getJson<RollResponse>('/api/frenzy/claim', { method: 'POST' })
+          .then(res => {
+            setState(res.state);
+            setLastOrb(res.orb);
+            setLastBatch(res.batch ?? [res.orb]);
+            setBatchSummary({
+              totalVal: res.totalRollValue,
+              coins: res.coinsGained,
+              shards: res.shardsGained,
+              xp: res.xpGained,
+              frenzyCount: res.frenzyCount ?? 0,
+            });
+            setReadyAt(Date.now() + res.rollsRemainingUntilNext);
+            showToast(
+              `⚡ Orb Frenzy unleashed! ${(res.frenzyCount ?? 0).toLocaleString()} Orbs rolled.`,
+              'success',
+            );
+          });
+      })
+      .catch(() => null)
+      .finally(() => setBusy(false));
+  }, [state, frenzyRunTriggered]);
 
   // Social quests count only when the player actually opens the social area.
   // Background leaderboard/guild refreshes must not award the visit quest.
@@ -330,16 +374,17 @@ export function App() {
   };
 
   // Daily Orb Frenzy
-  const handleStartOrbFrenzy = async () => {
+  const handleStartOrbFrenzy = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    const nativeEvent = event.nativeEvent;
     setBusy(true);
     try {
       const res = await getJson<{ state: PlayerState; postId: string; url: string; rarity: number }>('/api/frenzy/start', { method: 'POST' });
       setState(res.state);
       sound.playEpicFanfare();
-      showToast(`Orb Frenzy posted: 1/${res.rarity.toLocaleString()}.`, 'success');
-      try {
-        window.open(res.url, '_blank', 'noopener,noreferrer');
-      } catch {}
+      showToast(`Orb Frenzy ready: 1/${res.rarity.toLocaleString()} baseline roll.`, 'success');
+      // Expand the current Reddit post into the full game window, where the
+      // pending Frenzy is automatically resolved and all generated orbs are applied.
+      await requestExpandedMode(nativeEvent, 'game');
     } catch (e: any) {
       showToast(e.message || 'Could not start Orb Frenzy', 'warn');
     } finally {
