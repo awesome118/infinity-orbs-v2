@@ -53,6 +53,7 @@ import {
   setGuildTaxRate,
   donateToGuild,
   leaderboard,
+  recordLeaderboard,
   shareText,
   getCommunityEvent,
 } from './social.js';
@@ -1017,6 +1018,9 @@ export function createApp() {
         postId = post.id;
       }
       await recordShareAction(s);
+      // The share itself makes the player eligible immediately, without
+      // requiring another roll before appearing on the leaderboard.
+      await recordLeaderboard(s);
       res.json({ success: true, id: postId, text });
     } catch (e) { badRequest(res, e, 'Could not create Reddit post.'); }
   });
