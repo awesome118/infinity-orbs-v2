@@ -65,7 +65,7 @@ type PaymentOrder = {
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
     getProducts(): Promise<unknown>;
-    getOrders(): Promise<unknown>;
+    getOrders(filters: { limit: number; sku?: string; buyer?: string; status?: string }): Promise<unknown>;
   };
 }).payments;
 
@@ -309,7 +309,7 @@ export function createApp() {
       const userId = String(context.userId ?? '').trim();
       if (!userId) return res.status(401).json({ error: 'REDDIT_LOGIN_REQUIRED' });
 
-      const rawOrders = await payments.getOrders();
+      const rawOrders = await payments.getOrders({ limit: 50, buyer: userId });
       const orders = Array.isArray(rawOrders)
         ? rawOrders
         : rawOrders && typeof rawOrders === 'object' && Array.isArray((rawOrders as { orders?: unknown }).orders)
