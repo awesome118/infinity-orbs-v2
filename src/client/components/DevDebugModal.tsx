@@ -250,7 +250,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               value={customRarity}
               onChange={e => setCustomRarity(e.target.value)}
               className="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
-              title="Enter the exact rarity to force for a test roll." placeholder="Rarity denominator"
+              placeholder="Rarity denominator"
             />
             <button title="Perform one roll at the exact rarity entered in the field." onClick={() => void handleForceRoll(Number(customRarity))} disabled={loading} className={`${buttonBase} bg-cyan-600 hover:bg-cyan-500 border-cyan-500 text-white px-4`}>
               Roll Exact
@@ -520,7 +520,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               title="Delete the selected player's Infinity Orbs save. This does not change their game-ban record."
               disabled={loading || !targetUser.trim()}
               onClick={() => {
-                if (!confirmation(`Delete all Infinity Orbs save data for u/${targetUser.replace(/^u\\//i, '')}?`)) return;
+                if (!confirmation(`Delete all Infinity Orbs save data for u/${targetUser.trim().replace(/^u\//i, '')}?`)) return;
                 void sendAdminAction('/api/dev/moderation/wipe-game', { username: targetUser });
               }}
               className={`${buttonBase} bg-rose-600 hover:bg-rose-500 border-rose-500 text-white px-3 py-2`}
@@ -531,7 +531,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               title="Delete the selected save and then apply the selected Infinity Orbs game ban."
               disabled={loading || !targetUser.trim()}
               onClick={() => {
-                if (!confirmation(`Wipe game data and game-ban u/${targetUser.replace(/^u\\//i, '')}?`)) return;
+                if (!confirmation(`Wipe game data and game-ban u/${targetUser.trim().replace(/^u\//i, '')}?`)) return;
                 void sendAdminAction('/api/dev/moderation/wipe-and-ban', {
                   username: targetUser,
                   durationDays: banDuration === 'permanent' ? null : Number(banDuration),
@@ -546,7 +546,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               title="Delete the selected save and remove the selected Infinity Orbs game ban."
               disabled={loading || !targetUser.trim()}
               onClick={() => {
-                if (!confirmation(`Wipe game data and unban u/${targetUser.replace(/^u\\//i, '')}?`)) return;
+                if (!confirmation(`Wipe game data and unban u/${targetUser.trim().replace(/^u\//i, '')}?`)) return;
                 void sendAdminAction('/api/dev/moderation/wipe-and-unban', { username: targetUser });
               }}
               className={`${buttonBase} bg-rose-600 hover:bg-rose-500 border-rose-500 text-white px-3 py-2`}
@@ -594,7 +594,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           {bannedUsers.length > 0 && (
             <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/80 divide-y divide-slate-800">
               {bannedUsers.map(user => (
-                <div key={user.id ?? user.username} className="flex items-center justify-between gap-2 px-3 py-2">
+                <div key={user.userId ?? user.username} className="flex items-center justify-between gap-2 px-3 py-2">
                   <div className="min-w-0">
                     <div className="text-xs font-mono text-slate-200">u/{user.username}</div>
                     <div className="text-[10px] text-slate-500">
