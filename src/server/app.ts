@@ -717,8 +717,8 @@ export function createApp() {
     res.status(400).json({ error: e instanceof Error ? e.message : fallback });
   };
 
-  app.post('/api/roll', async (_req, res) => {
-    try { res.json(await roll()); } catch (e) { badRequest(res, e, 'Roll failed.'); }
+  app.post('/api/roll', async (req, res) => {
+    try { res.json(await roll(req.body?.auto === true)); } catch (e) { badRequest(res, e, 'Roll failed.'); }
   });
 
   app.post('/api/offline/claim', async (_req, res) => {
