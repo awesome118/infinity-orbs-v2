@@ -231,10 +231,6 @@ export async function getOnlinePlayers(): Promise<number> {
 
 const FRENZY_POST_PREFIX = 'io:frenzy:post:';
 
-function globalBoosterKey(id: GlobalBoosterId): string {
-  return GLOBAL_BOOSTER_KEY_PREFIX + id;
-}
-
 function playerKeyFor(userId: string): string {
   return `player:${userId}`;
 }
@@ -779,8 +775,7 @@ export async function applyRolls(
     const critChance =
       (s.upgrades.critChance ?? 0) * 0.03 +
       (s.masterySkills?.critMastery ?? 0) * 0.03 +
-      (s.guildPerks?.critRank ?? 0) * 0.015 +
-      globalBoosterCritChanceBonus(globalBoosters.crit);
+      (s.guildPerks?.critRank ?? 0) * 0.015;
     const isCrit = rng() < Math.min(1, critChance);
     let effectiveCm = cm;
     if (isCrit) {
