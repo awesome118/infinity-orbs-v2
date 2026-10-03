@@ -225,10 +225,17 @@ export function App() {
   const [newBestModalData, setNewBestModalData] = useState<{ orb: Orb; prevBest: number } | null>(null);
   const [frenzyRunTriggered, setFrenzyRunTriggered] = useState(false);
   const stateRevisionRef = useRef(0);
+  const appliedServerRevisionRef = useRef(-1);
   const lastBoosterAnnouncementAtRef = useRef(0);
   const boosterAnnouncementTimerRef = useRef<number | null>(null);
 
   const applyPlayerState = useCallback((nextState: PlayerState) => {
+    const nextServerRevision = Number(nextState.stateRevision);
+    if (Number.isFinite(nextServerRevision)) {
+      if (nextServerRevision < appliedServerRevisionRef.current) return;
+      appliedServerRevisionRef.current = nextServerRevision;
+    }
+
     stateRevisionRef.current += 1;
     setState(nextState);
   }, []);
