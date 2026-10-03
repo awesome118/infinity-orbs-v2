@@ -288,8 +288,8 @@ export function decayGlobalBoosterState(
 
   if (tier <= 0 || endsAt <= now) {
     return {
-      tier,
-      activationProgress,
+      tier: 0,
+      activationProgress: 0,
       endsAt: 0,
       lastTickAt: now,
     };
@@ -341,6 +341,17 @@ export function globalBoosterProgress(state: GlobalBoosterState | null | undefin
     Math.min(1, Math.max(0, decayGlobalBoosterState(state, now).activationProgress) /
       GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER) * 100,
   );
+}
+
+export function globalBoosterTimeProgress(
+  state: GlobalBoosterState | null | undefined,
+  now = Date.now(),
+): number {
+  const remaining = globalBoosterRemainingMs(state, now);
+  if (remaining <= 0) return 0;
+  return Math.round(
+    Math.min(1, remaining / GLOBAL_BOOSTER_DURATION_MS) * 10000,
+  ) / 100;
 }
 
 export function globalBoosterLuckMultiplier(state: GlobalBoosterState | null | undefined, now = Date.now()): number {

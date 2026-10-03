@@ -25,7 +25,7 @@ import {
   GLOBAL_BOOSTERS,
   decayGlobalBoosterState,
   globalBoosterRemainingMs,
-  globalBoosterProgress,
+  globalBoosterTimeProgress,
   globalBoosterLuckMultiplier,
   globalBoosterSpeedMultiplier,
   globalBoosterCritChanceBonus,
@@ -99,7 +99,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   };
 
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 1000);
+    const interval = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(interval);
   }, []);
 
@@ -172,6 +172,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
             const remaining = globalBoosterRemainingMs(displayed, now);
             const active = remaining > 0 && displayed.tier > 0;
             const activationProgress = Math.max(0, Math.min(4, displayed.activationProgress ?? 0));
+            const timeProgress = globalBoosterTimeProgress(displayed, now);
             const timerDrainRate = displayed.tier > 0 ? 1 + displayed.tier * 0.10 : 1;
             const globalCost = Number(GLOBAL_BOOSTERS[id].costShards ?? 0);
             const canAffordGlobal = Number(state.shards ?? 0) >= globalCost;
@@ -193,9 +194,9 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                 <div className="mt-2">
                   <div className="h-2.5 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
                     <div
-                      className="h-full transition-all duration-700"
+                      className="h-full transition-[width] duration-200 ease-linear"
                       style={{
-                        width: globalBoosterProgress(displayed, now) + '%',
+                        width: timeProgress + '%',
                         backgroundColor: globalBoosterBarColor(displayed.tier),
                         boxShadow: '0 0 10px ' + globalBoosterBarColor(displayed.tier),
                       }}
