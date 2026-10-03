@@ -1584,7 +1584,12 @@ export async function save(s: PlayerState) {
 
     const latest = latestRaw == null ? null : parsePlayerStateValue(latestRaw);
     const latestRevision = Math.max(0, Math.floor(Number(latest?.stateRevision ?? 0)) || 0);
-    if (latestRevision !== expectedRevision) {
+    const saveKeyMissing = latestRaw == null;
+
+    // A missing player key is a recoverable first-save/persistence hole, not a
+    // stale-write conflict. The generation key is still watched above, so a
+    // concurrent write or account wipe aborts this transaction safely.
+    if (!saveKeyMissing && latestRevision !== expectedRevision) {
       await appendSaveDebugLog('revision-conflict', {
         attempt: attempt + 1,
         expectedRevision,
@@ -1597,6 +1602,18 @@ export async function save(s: PlayerState) {
       }, userId);
       await txn.unwatch();
       throw new Error('Player state changed while saving. Please retry.');
+    }
+
+    if (saveKeyMissing && expectedRevision > 0) {
+      await appendSaveDebugLog('missing-save-recovery', {
+        attempt: attempt + 1,
+        expectedRevision,
+        generation,
+        stateGeneration,
+        storedState: null,
+        incomingState: compactSaveState(s),
+        caller: saveCaller(),
+      }, userId);
     }
 
     const nextState = { ...s, saveGeneration: generation, stateRevision: expectedRevision + 1 };
