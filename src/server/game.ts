@@ -1427,9 +1427,12 @@ export async function save(s: PlayerState) {
   const generationKey = saveGenerationKeyFor(userId);
   await ensureRedisStringKey(generationKey, '0');
 
+  const expectedRevision = Math.max(0, Math.floor(Number(s.stateRevision ?? 0)) || 0);
+
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(playerKey, generationKey);
-    const generationRaw = await redis.get(generationKey);
+    const latestRaw = await txn.get(playerKey);
+    const generationRaw = await txn.get(generationKey);
     const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
     const stateGeneration = Math.max(0, Math.floor(Number(s.saveGeneration ?? 0)));
 
@@ -1453,11 +1456,19 @@ export async function save(s: PlayerState) {
       return;
     }
 
-    s.saveGeneration = generation;
+    const latest = latestRaw == null ? null : parsePlayerStateValue(latestRaw);
+    const latestRevision = Math.max(0, Math.floor(Number(latest?.stateRevision ?? 0)) || 0);
+    if (latestRevision !== expectedRevision) {
+      await txn.unwatch();
+      throw new Error('Player state changed while saving. Please retry.');
+    }
+
+    const nextState = { ...s, saveGeneration: generation, stateRevision: expectedRevision + 1 };
     await txn.multi();
-    await txn.set(playerKey, JSON.stringify(s));
+    await txn.set(playerKey, JSON.stringify(nextState));
     const committed = await txn.exec();
     if (committed !== null) {
+      Object.assign(s, nextState);
       await syncRarityFlair(s);
       return;
     }

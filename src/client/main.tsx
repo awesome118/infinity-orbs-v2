@@ -140,6 +140,36 @@ export function App() {
   const [readyAt, setReadyAt] = useState<number>(0);
   const [tab, setTab] = useState<ActiveTab>('roll');
   const [autoRoll, setAutoRoll] = useState<boolean>(false);
+
+  // Auto Roll is a player preference. Keep it across game sessions on this
+  // browser, but scope the setting to the logged-in Reddit username.
+  useEffect(() => {
+    const playerName = String(state?.username ?? '').trim();
+    if (!playerName || (state?.upgrades.auto ?? 0) <= 0) {
+      setAutoRoll(false);
+      return;
+    }
+    try {
+      setAutoRoll(window.localStorage.getItem(`io-auto-roll:${playerName}`) === '1');
+    } catch {
+      setAutoRoll(false);
+    }
+  }, [state?.username, state?.upgrades.auto]);
+
+  const handleToggleAutoRoll = useCallback(() => {
+    setAutoRoll(prev => {
+      const next = !prev;
+      const playerName = String(state?.username ?? '').trim();
+      if (playerName) {
+        try {
+          window.localStorage.setItem(`io-auto-roll:${playerName}`, next ? '1' : '0');
+        } catch {
+          // Local storage is optional in embedded webviews.
+        }
+      }
+      return next;
+    });
+  }, [state?.username]);
   const [isRolling, setIsRolling] = useState<boolean>(false);
   const [busy, setBusy] = useState<boolean>(false);
   const [toast, setToast] = useState<{ msg: string; type?: 'info' | 'success' | 'warn' } | null>(null);
@@ -522,7 +552,6 @@ export function App() {
       const previousBest = state?.highestRarity ?? 0;
       if (previousBest > 0 && res.orb.rarity > previousBest) {
         setNewBestModalData({ orb: res.orb, prevBest: previousBest });
-        setAutoRoll(false); // Pause auto roll for celebratory moment
       } else if (res.orb.rarity >= 100000) {
         showToast(`⭐ MYTHIC DROP! 1 / ${res.orb.rarity.toLocaleString()} Orb!`, 'success');
       } else if (res.orb.rarity >= 1000) {
@@ -1573,7 +1602,7 @@ export function App() {
             busy={isRolling}
             autoRoll={autoRoll}
             worldEvent={worldEvent}
-            onToggleAutoRoll={() => setAutoRoll(!autoRoll)}
+            onToggleAutoRoll={handleToggleAutoRoll}
             onRoll={handleRoll}
             onOrbFrenzy={handleStartOrbFrenzy}
             onOpenShareModal={r => setShareRarity(r)}

@@ -507,6 +507,8 @@ export interface PlayerStreak {
 
 export interface PlayerState {
   username?: string;
+  // Monotonic save version used to reject stale full-state writes.
+  stateRevision?: number;
   // Incremented whenever an admin wipes this account. Prevents stale in-flight
   // requests from resurrecting pre-wipe save data.
   saveGeneration?: number;
@@ -1011,6 +1013,7 @@ export function createInitialState(now = Date.now()): PlayerState {
   const today = new Date(now).toISOString().slice(0, 10);
   return {
     coins: 50,
+    stateRevision: 0,
     saveGeneration: 0,
     shards: 5,
     cosmicDust: 0,
