@@ -40,7 +40,10 @@ import type {
 import {
   cooldownMs,
   calculateCosmicDust,
+  calculateLevelFromXp,
   createInitialState,
+  grantFreeShards,
+  todayKey,
   rollsPerActivation,
   upgradeCost,
   prestigeUpgradeCost,
@@ -587,10 +590,29 @@ export function App() {
   // Background leaderboard/guild refreshes must not award the visit quest.
   useEffect(() => {
     if (tab !== 'social') return;
+
+    // Mark the visit locally before the server records it. The server response
+    // remains authoritative for quest progress and cross-device state.
+    const rollback = beginOptimisticState(current => {
+      const today = todayKey();
+      if (current.socialActivityDate === today) return current;
+      return {
+        ...current,
+        socialActivityDate: today,
+        dailyQuests: current.dailyQuests.map(q =>
+          q.id === 'daily-social' && !q.claimed
+            ? { ...q, progress: Math.min(q.target, q.progress + 1) }
+            : q
+        ),
+      };
+    });
+
     void getJson<{ ok: boolean; state: PlayerState }>('/api/social/visit', { method: 'POST' })
       .then(result => applyPlayerState(result.state))
-      .catch(() => null);
-  }, [tab]);
+      .catch(() => {
+        rollback?.();
+      });
+  }, [applyPlayerState, beginOptimisticState, tab]);
 
   // Roll action
   const handleRoll = useCallback(async (isAutoRoll = false) => {
@@ -1107,6 +1129,29 @@ export function App() {
   // Daily Streak
   const handleClaimDailyStreak = async () => {
     setBusy(true);
+    const rollback = beginOptimisticState(current => {
+      const today = todayKey();
+      if (current.streak.lastClaimDate === today) return current;
+      const yesterday = todayKey(Date.now() - 86_400_000);
+      const count =
+        current.streak.lastClaimDate === yesterday
+          ? current.streak.count + 1
+          : 1;
+      const day = ((count - 1) % 7) + 1;
+      const next = {
+        ...current,
+        coins: current.coins + day * 100,
+        lifetimeCoins: (current.lifetimeCoins ?? 0) + day * 100,
+        streak: {
+          ...current.streak,
+          count,
+          longestStreak: Math.max(current.streak.longestStreak, count),
+          lastClaimDate: today,
+        },
+      };
+      grantFreeShards(next, day === 7 ? 5 : day === 3 ? 1 : 0);
+      return next;
+    });
     try {
       const res = await getJson<{ state: PlayerState; rewardCoins: number; rewardShards: number }>(
         '/api/streak/claim',
@@ -1119,6 +1164,7 @@ export function App() {
         'success'
       );
     } catch (e: any) {
+      rollback?.();
       showToast(e.message || 'Could not claim streak', 'warn');
     } finally {
       setBusy(false);
@@ -1128,6 +1174,37 @@ export function App() {
   // Claim Quest
   const handleClaimQuest = async (type: 'daily' | 'weekly', id: string) => {
     setBusy(true);
+    const rollback = beginOptimisticState(current => {
+      const list = type === 'daily' ? current.dailyQuests : current.weeklyQuests;
+      const quest = list.find(item => item.id === id);
+      if (!quest || quest.claimed || quest.unlocked === false || quest.progress < quest.target) {
+        return current;
+      }
+
+      const next: PlayerState = {
+        ...current,
+        coins: current.coins + quest.rewardCoins,
+        lifetimeCoins: (current.lifetimeCoins ?? 0) + quest.rewardCoins,
+        questsCompleted: (current.questsCompleted ?? 0) + 1,
+        xp: current.xp + (quest.rewardXp ?? 0),
+      };
+      grantFreeShards(next, quest.rewardShards ?? 0);
+      const levelBefore = Math.max(1, current.level || 1);
+      const earnedLevel = calculateLevelFromXp(next.xp).level;
+      const levelAfter = Math.max(levelBefore, earnedLevel);
+      next.level = levelAfter;
+      if (levelAfter > levelBefore) {
+        next.masteryPoints = (next.masteryPoints ?? 0) + (levelAfter - levelBefore);
+      }
+
+      const updatedQuest = { ...quest, claimed: true };
+      if (type === 'daily') {
+        next.dailyQuests = next.dailyQuests.map(item => item.id === id ? updatedQuest : item);
+      } else {
+        next.weeklyQuests = next.weeklyQuests.map(item => item.id === id ? updatedQuest : item);
+      }
+      return next;
+    });
     try {
       const res = await getJson<{ state: PlayerState; rewardCoins: number; rewardShards?: number }>(
         '/api/quests/claim',
@@ -1141,6 +1218,7 @@ export function App() {
       sound.playChime(700, 'sine', 0.25);
       showToast(`Quest completed! +${res.rewardCoins.toLocaleString()} Coins`, 'success');
     } catch (e: any) {
+      rollback?.();
       showToast(e.message || 'Could not claim quest', 'warn');
     } finally {
       setBusy(false);
@@ -1150,6 +1228,30 @@ export function App() {
   // Prestige Reset
   const handlePrestige = async () => {
     setBusy(true);
+    const rollback = beginOptimisticState(current => {
+      const dustEarned = calculateCosmicDust(current);
+      if (dustEarned <= 0 || (current.collectionValue ?? 0) < 1_000_000) return current;
+
+      const inheritanceLevel = current.prestigeUpgrades?.cosmicInheritance ?? 0;
+      const keepPct = Math.min(0.50, inheritanceLevel * 0.10);
+      const keptCoins = Math.max(50, Math.floor(current.coins * keepPct));
+      const keptShards = Math.floor((current.shards ?? 0) * keepPct);
+
+      return {
+        ...current,
+        cosmicDust: (current.cosmicDust ?? 0) + dustEarned,
+        prestigeCount: (current.prestigeCount ?? 0) + 1,
+        masteryPoints: (current.masteryPoints ?? 0) + 3,
+        collectionValue: 0,
+        coins: keptCoins,
+        shards: keptShards,
+        upgrades: createInitialState().upgrades,
+        offlineRolls: 0,
+        rollsSinceBest: 0,
+        currentRunRolls: 0,
+        lastRollAt: null,
+      };
+    });
     try {
       const res = await getJson<{ state: PlayerState; dustGained?: number; cosmicDustEarned?: number }>('/api/prestige', {
         method: 'POST',
@@ -1159,6 +1261,7 @@ export function App() {
       const dust = res.dustGained ?? res.cosmicDustEarned ?? 0;
       showToast(`Prestige Complete! You earned +${dust} Cosmic Dust.`, 'success');
     } catch (e: any) {
+      rollback?.();
       showToast(e.message || 'Prestige failed', 'warn');
     } finally {
       setBusy(false);
