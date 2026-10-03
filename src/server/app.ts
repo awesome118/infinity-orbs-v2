@@ -60,7 +60,7 @@ import {
   getGlobalChat,
   postGlobalChatMessage,
 } from './social.js';
-import { context, reddit } from './devvit-mock.js';
+import { context, reddit, redis } from './devvit-mock.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, type FeatureId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
