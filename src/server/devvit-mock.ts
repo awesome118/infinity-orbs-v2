@@ -81,11 +81,18 @@ const localRedis = {
         staged.push([key, value]);
         return 'QUEUED';
       },
+      del: async (key: string) => {
+        staged.push([key, '']);
+        return 'QUEUED';
+      },
       exec: async () => {
         for (const key of keys) {
           if ((store.get(key) ?? null) !== (snapshot.get(key) ?? null)) return null;
         }
-        for (const [key, value] of staged) store.set(key, value);
+        for (const [key, value] of staged) {
+          if (value === '' && key !== undefined) store.delete(key);
+          else store.set(key, value);
+        }
         return [];
       },
       unwatch: async () => undefined,

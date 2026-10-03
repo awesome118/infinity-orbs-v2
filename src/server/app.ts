@@ -258,35 +258,139 @@ export function createApp() {
     next();
   });
 
-  // Serialize state-changing requests per player. The client is untrusted and may
-  // double-submit buttons or send concurrent requests, so mutations must not race.
+  // Serialize state-changing requests per player inside this server instance.
+  // Devvit can execute requests concurrently on different instances, so a Redis
+  // lock is also required to protect a player's full read-modify-write mutation.
   const mutationQueues = new Map<string, Promise<void>>();
+  const MUTATION_LOCK_PREFIX = 'player-mutation-lock:';
+  const MUTATION_LOCK_TTL_MS = 2 * 60_000;
+  const MUTATION_LOCK_WAIT_MS = 20_000;
+
+  const mutationLockKey = (playerKey: string) => MUTATION_LOCK_PREFIX + playerKey;
+
+  const mutationLockOwner = (): string =>
+    String(globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
+  const parseMutationLock = (raw: string | null): { owner: string; expiresAt: number } | null => {
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as { owner?: unknown; expiresAt?: unknown };
+      const owner = String(parsed.owner ?? '').trim();
+      const expiresAt = Number(parsed.expiresAt ?? 0);
+      if (!owner || !Number.isFinite(expiresAt)) return null;
+      return { owner, expiresAt };
+    } catch {
+      return null;
+    }
+  };
+
+  const acquireMutationLock = async (playerKey: string): Promise<{
+    lockKey: string;
+    owner: string;
+  }> => {
+    const lockKey = mutationLockKey(playerKey);
+    const owner = mutationLockOwner();
+    const deadline = Date.now() + MUTATION_LOCK_WAIT_MS;
+
+    while (Date.now() < deadline) {
+      const now = Date.now();
+      const txn = await redis.watch(lockKey);
+      const raw = await txn.get(lockKey);
+      const existing = parseMutationLock(raw);
+
+      if (existing && existing.expiresAt > now) {
+        await txn.unwatch();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        continue;
+      }
+
+      const value = JSON.stringify({
+        owner,
+        expiresAt: now + MUTATION_LOCK_TTL_MS,
+      });
+
+      await txn.multi();
+      await txn.set(lockKey, value);
+      const committed = await txn.exec();
+
+      if (committed !== null) {
+        return { lockKey, owner };
+      }
+    }
+
+    throw new Error('Another game action is still finishing. Please retry.');
+  };
+
+  const releaseMutationLock = async (lockKey: string, owner: string): Promise<void> => {
+    try {
+      const txn = await redis.watch(lockKey);
+      const raw = await txn.get(lockKey);
+      const existing = parseMutationLock(raw);
+      if (!existing || existing.owner !== owner) {
+        await txn.unwatch();
+        return;
+      }
+
+      await txn.multi();
+      await txn.del(lockKey);
+      await txn.exec();
+    } catch (error) {
+      console.error('[Mutation Lock] Failed to release lock:', error);
+    }
+  };
+
   app.use('/api', async (req, res, next) => {
     const mutatesState = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
     const readsAndPersistsPlayerState =
       req.method === 'GET' &&
       ['/me', '/leaderboard', '/guilds', '/achievements'].includes(req.path);
     if (!mutatesState && !readsAndPersistsPlayerState) return next();
+
     const playerKey = context.userId ?? req.ip ?? 'unknown';
     const previous = mutationQueues.get(playerKey) ?? Promise.resolve();
 
-    let release!: () => void;
-    const current = new Promise<void>(resolve => { release = resolve; });
+    let releaseLocal!: () => void;
+    const current = new Promise<void>(resolve => { releaseLocal = resolve; });
     const chain = previous.then(() => current);
     mutationQueues.set(playerKey, chain);
 
     await previous;
 
-    let released = false;
-    const releaseOnce = () => {
-      if (released) return;
-      released = true;
-      release();
+    if (!mutatesState) {
+      let released = false;
+      const releaseOnce = () => {
+        if (released) return;
+        released = true;
+        releaseLocal();
+        if (mutationQueues.get(playerKey) === chain) mutationQueues.delete(playerKey);
+      };
+      res.once('finish', releaseOnce);
+      res.once('close', releaseOnce);
+      return next();
+    }
+
+    let distributedLock: { lockKey: string; owner: string } | null = null;
+    try {
+      distributedLock = await acquireMutationLock(playerKey);
+      let released = false;
+      const releaseOnce = () => {
+        if (released) return;
+        released = true;
+        releaseLocal();
+        if (mutationQueues.get(playerKey) === chain) mutationQueues.delete(playerKey);
+        if (distributedLock) {
+          void releaseMutationLock(distributedLock.lockKey, distributedLock.owner);
+          distributedLock = null;
+        }
+      };
+      res.once('finish', releaseOnce);
+      res.once('close', releaseOnce);
+      return next();
+    } catch (error) {
+      releaseLocal();
       if (mutationQueues.get(playerKey) === chain) mutationQueues.delete(playerKey);
-    };
-    res.once('finish', releaseOnce);
-    res.once('close', releaseOnce);
-    next();
+      return next(error);
+    }
   });
 
   // Major systems unlock gradually so new players learn the core loop before
