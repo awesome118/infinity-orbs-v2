@@ -1591,6 +1591,20 @@ export async function save(s: PlayerState) {
     // A missing player key is a recoverable first-save/persistence hole, not a
     // stale-write conflict. The generation key is still watched above, so a
     // concurrent write or account wipe aborts this transaction safely.
+    if (!saveKeyMissing && !latest) {
+      await appendSaveDebugLog('unreadable-save', {
+        attempt: attempt + 1,
+        expectedRevision,
+        generation,
+        stateGeneration,
+        rawLength: typeof latestRaw === 'string' ? latestRaw.length : null,
+        rawPreview: typeof latestRaw === 'string' ? latestRaw.slice(0, 1000) : latestRaw,
+        caller: saveCaller(),
+      }, userId);
+      await txn.unwatch();
+      throw new Error('Your Infinity Orbs save data could not be read safely. No changes were written.');
+    }
+
     if (!saveKeyMissing && latestRevision !== expectedRevision) {
       await appendSaveDebugLog('revision-conflict', {
         attempt: attempt + 1,
