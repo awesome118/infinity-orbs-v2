@@ -74,38 +74,72 @@ type ActiveTab =
   | 'profile';
 
 async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options);
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    const message =
-      typeof errorData.error === 'string'
-        ? errorData.error
-        : typeof errorData.message === 'string'
-          ? errorData.message
-          : `HTTP ${res.status}: ${res.statusText}`;
+  const method = String(options?.method ?? 'GET').toUpperCase();
+  const isRead = method === 'GET' || method === 'HEAD';
+  const maxAttempts = isRead ? 3 : 1;
 
-    // An admin wipe intentionally invalidates old in-flight requests. Those
-    // requests must never resurrect old data, but they also should not strand
-    // the player on a stale error screen. Reload once so the fresh generation
-    // is loaded from Redis.
-    if (String(message).includes('invalidated by an admin wipe')) {
-      try {
-        const recoveryKey = 'io-wipe-recovery';
-        if (window.sessionStorage.getItem(recoveryKey) !== '1') {
-          window.sessionStorage.setItem(recoveryKey, '1');
-          window.location.reload();
-          return await new Promise<T>(() => undefined);
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const res = await fetch(url, options);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        const message =
+          typeof errorData.error === 'string'
+            ? errorData.error
+            : typeof errorData.message === 'string'
+              ? errorData.message
+              : `HTTP ${res.status}: ${res.statusText}`;
+
+        // An admin wipe intentionally invalidates old in-flight requests. Those
+        // requests must never resurrect old data, but they also should not strand
+        // the player on a stale error screen. Reload once so the fresh generation
+        // is loaded from Redis.
+        if (String(message).includes('invalidated by an admin wipe')) {
+          try {
+            const recoveryKey = 'io-wipe-recovery';
+            if (window.sessionStorage.getItem(recoveryKey) !== '1') {
+              window.sessionStorage.setItem(recoveryKey, '1');
+              window.location.reload();
+              return await new Promise<T>(() => undefined);
+            }
+            window.sessionStorage.removeItem(recoveryKey);
+          } catch {
+            window.location.reload();
+            return await new Promise<T>(() => undefined);
+          }
         }
-        window.sessionStorage.removeItem(recoveryKey);
-      } catch {
-        window.location.reload();
-        return await new Promise<T>(() => undefined);
-      }
-    }
 
-    throw new Error(message);
+        const retryableRead =
+          isRead &&
+          (res.status === 408 ||
+            res.status === 429 ||
+            res.status >= 500 ||
+            String(message).includes('Player state changed while saving'));
+
+        if (retryableRead && attempt < maxAttempts - 1) {
+          await new Promise(resolve => setTimeout(resolve, 80 * (attempt + 1)));
+          continue;
+        }
+
+        throw new Error(message);
+      }
+
+      return await res.json();
+    } catch (error: any) {
+      const retryableNetworkRead =
+        isRead &&
+        attempt < maxAttempts - 1 &&
+        error?.name !== 'AbortError';
+
+      if (retryableNetworkRead) {
+        await new Promise(resolve => setTimeout(resolve, 80 * (attempt + 1)));
+        continue;
+      }
+      throw error;
+    }
   }
-  return res.json();
+
+  throw new Error('Request failed.');
 }
 
 async function getJsonWithTimeout<T>(url: string, timeoutMs = 10_000, options?: RequestInit): Promise<T> {

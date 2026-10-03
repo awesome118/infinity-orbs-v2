@@ -2045,24 +2045,42 @@ export async function getCollectionPage(options: {
 }
 
 export async function getState(): Promise<PlayerState> {
-  try {
-    // Keep the entire read/settle/save cycle inside the recovery boundary. A
-    // wipe can race either loadRaw() or an automation save triggered by
-    // settleOffline(), not only the final explicit save below.
-    const s = await settleOffline(await loadRaw());
-    await save(s);
-    return s;
-  } catch (error) {
-    // /api/me is a recovery-safe read endpoint. If an admin wipe happened while
-    // this request was in flight, discard the stale state and immediately reload
-    // the fresh generation instead of trapping the player behind a reload error.
-    if (error instanceof Error && error.message.includes('invalidated by an admin wipe')) {
-      const fresh = await settleOffline(await loadRaw());
-      await save(fresh);
-      return fresh;
+  const maxRetries = 4;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      // Keep the entire read/settle/save cycle together. A player can open the
+      // game against multiple server instances at once, so a read can race
+      // another harmless read-side save even though each instance has its own
+      // in-memory request queue.
+      const s = await settleOffline(await loadRaw());
+      await save(s);
+      return s;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      if (message.includes('invalidated by an admin wipe')) {
+        const fresh = await settleOffline(await loadRaw());
+        await save(fresh);
+        return fresh;
+      }
+
+      if (!message.includes('Player state changed while saving')) {
+        throw error;
+      }
+
+      if (attempt >= maxRetries) {
+        // A /me read should not expose an internal optimistic-concurrency
+        // conflict after repeated attempts. Return the newest persisted state;
+        // the next refresh will settle any remaining offline work.
+        return await loadRaw();
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 40 * (attempt + 1)));
     }
-    throw error;
   }
+
+  throw new Error('Could not load player state.');
 }
 
 export async function getMe(): Promise<PlayerState> {
