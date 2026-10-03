@@ -151,22 +151,6 @@ export function App() {
     ));
   }, [state?.autoRollEnabled, state?.upgrades.auto]);
 
-  const handleToggleAutoRoll = useCallback(async () => {
-    const next = !autoRoll;
-    setAutoRoll(next);
-    try {
-      const res = await getJson<{ state: PlayerState }>('/api/auto-roll', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: next }),
-      });
-      applyPlayerState(res.state);
-      setAutoRoll(res.state.autoRollEnabled === true);
-    } catch {
-      setAutoRoll(!next);
-      showToast('Could not save Auto Roll preference.', 'warn');
-    }
-  }, [applyPlayerState, autoRoll]);
   const [isRolling, setIsRolling] = useState<boolean>(false);
   const [busy, setBusy] = useState<boolean>(false);
   const [toast, setToast] = useState<{ msg: string; type?: 'info' | 'success' | 'warn' } | null>(null);
@@ -289,6 +273,23 @@ export function App() {
       setToast(prev => (prev?.msg === msg ? null : prev));
     }, 4000);
   };
+
+  const handleToggleAutoRoll = useCallback(async () => {
+    const next = !autoRoll;
+    setAutoRoll(next);
+    try {
+      const res = await getJson<{ state: PlayerState }>('/api/auto-roll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      });
+      applyPlayerState(res.state);
+      setAutoRoll(res.state.autoRollEnabled === true);
+    } catch {
+      setAutoRoll(!next);
+      showToast('Could not save Auto Roll preference.', 'warn');
+    }
+  }, [applyPlayerState, autoRoll, showToast]);
 
   const refreshAll = useCallback(async () => {
     const revisionAtStart = stateRevisionRef.current;
