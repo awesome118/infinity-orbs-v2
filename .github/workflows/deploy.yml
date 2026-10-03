@@ -28,6 +28,14 @@ jobs:
       - name: Type-check
         run: npm run type-check
 
+      - name: Guard against invalid Devvit transaction reads
+        run: |
+          set -euo pipefail
+          if grep -R -nE '\\b(txn|tx)\\.get\\(' src; then
+            echo "Invalid Devvit transaction read detected. Use redis.get() after WATCH; TxClient.get() is a transaction builder."
+            exit 1
+          fi
+
       - name: Build
         run: npm run build
 
