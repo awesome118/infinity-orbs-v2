@@ -292,9 +292,13 @@ export function App() {
       if (!state) return null;
       const previousState = state;
       const nextState = patch(previousState);
-      stateRevisionRef.current += 1;
+      const optimisticRevision = stateRevisionRef.current + 1;
+      stateRevisionRef.current = optimisticRevision;
       setState(nextState);
       return () => {
+        // Never let a late failure restore an older snapshot over a newer
+        // optimistic action or an already-applied server response.
+        if (stateRevisionRef.current !== optimisticRevision) return;
         stateRevisionRef.current += 1;
         setState(previousState);
       };
