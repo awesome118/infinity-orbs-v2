@@ -1549,8 +1549,10 @@ export async function save(s: PlayerState) {
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(playerKey, generationKey);
-    const latestRaw = await txn.get(playerKey);
-    const generationRaw = await txn.get(generationKey);
+    // Devvit's TxClient is a command builder after WATCH/MULTI. Reads must use
+    // the Redis client itself, while WATCH keeps these keys protected until EXEC.
+    const latestRaw = await redis.get(playerKey);
+    const generationRaw = await redis.get(generationKey);
     const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
     const stateGeneration = Math.max(0, Math.floor(Number(s.saveGeneration ?? 0)));
 
