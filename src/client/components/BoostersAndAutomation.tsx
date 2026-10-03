@@ -192,13 +192,34 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                   </span>
                 </div>
                 <div className="mt-2">
-                  <div className="h-2.5 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
+                  <div className="relative h-2.5 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
+                    <div className="absolute inset-0 flex" aria-label={`Global ${GLOBAL_BOOSTERS[id].name} time`}>
+                      {Array.from({ length: 4 }, (_, segmentIndex) => {
+                        const segmentTier = segmentIndex < activationProgress
+                          ? displayed.tier
+                          : displayed.tier > 1
+                            ? displayed.tier - 1
+                            : 0;
+                        return (
+                          <div
+                            key={segmentIndex}
+                            className="h-full flex-1 min-w-0"
+                            style={{
+                              backgroundColor: segmentTier > 0
+                                ? globalBoosterBarColor(segmentTier)
+                                : 'transparent',
+                              boxShadow: segmentTier > 0
+                                ? `0 0 10px ${globalBoosterBarColor(segmentTier)}`
+                                : 'none',
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
                     <div
-                      className="h-full transition-[width] duration-200 ease-linear"
+                      className="absolute inset-y-0 right-0 bg-slate-800"
                       style={{
-                        width: timeProgress + '%',
-                        backgroundColor: globalBoosterBarColor(displayed.tier),
-                        boxShadow: '0 0 10px ' + globalBoosterBarColor(displayed.tier),
+                        width: `calc(${100 - timeProgress}% + 1px)`,
                       }}
                     />
                   </div>
