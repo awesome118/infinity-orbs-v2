@@ -31,8 +31,28 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Prepare Devvit authentication
+        env:
+          DEVVIT_TOKEN: ${{ secrets.DEVVIT_AUTH_TOKEN || secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEVVIT_TOKEN:-}" ]; then
+            echo "DEVVIT_AUTH_TOKEN/DEVVIT_TOKEN secret is missing."
+            exit 1
+          fi
+          mkdir -p "$HOME/.devvit"
+          printf '%s' "$DEVVIT_TOKEN" > "$HOME/.devvit/token"
+          chmod 600 "$HOME/.devvit/token"
+          if [ -n "${DEVVIT_SESSION_ID:-}" ]; then
+            printf '%s' "$DEVVIT_SESSION_ID" > "$HOME/.devvit/session-id"
+            chmod 600 "$HOME/.devvit/session-id"
+          fi
+
       - name: Upload to Devvit
         env:
-          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_AUTH_TOKEN || secrets.DEVVIT_TOKEN }}
           DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
-        run: npx devvit upload
+          CI: true
+        timeout-minutes: 10
+        run: timeout --signal=TERM --kill-after=30s 9m npx devvit upload
