@@ -40,6 +40,14 @@ import type {
 import {
   cooldownMs,
   calculateCosmicDust,
+  createInitialState,
+  rollsPerActivation,
+  upgradeCost,
+  prestigeUpgradeCost,
+  masterySkillCost,
+  PREMIUM_BOOSTERS,
+  AUTOMATIONS,
+  COSMETICS_LIST,
   FEATURE_UNLOCK_LEVELS,
 } from '../shared/game.js';
 import { sound } from './sound.js';
@@ -273,6 +281,24 @@ export function App() {
     stateRevisionRef.current += 1;
     setState(nextState);
   }, []);
+  // Mutations are optimistic on the client: update the visible state immediately,
+  // then let the server verify/save it. Rejections restore the exact prior state.
+  // The authoritative server response always replaces the speculative state.
+  const beginOptimisticState = useCallback(
+    (patch: (current: PlayerState) => PlayerState): (() => void) | null => {
+      if (!state) return null;
+      const previousState = state;
+      const nextState = patch(previousState);
+      stateRevisionRef.current += 1;
+      setState(nextState);
+      return () => {
+        stateRevisionRef.current += 1;
+        setState(previousState);
+      };
+    },
+    [state],
+  );
+
   const dismissedDeveloperAnnouncementRef = useRef<number>(
     (() => {
       try {
@@ -317,6 +343,10 @@ export function App() {
 
   const handleToggleAutoRoll = useCallback(async () => {
     const next = !autoRoll;
+    const rollback = beginOptimisticState(current => ({
+      ...current,
+      autoRollEnabled: next,
+    }));
     setAutoRoll(next);
     try {
       const res = await getJson<{ state: PlayerState }>('/api/auto-roll', {
@@ -327,10 +357,11 @@ export function App() {
       applyPlayerState(res.state);
       setAutoRoll(res.state.autoRollEnabled === true);
     } catch {
+      rollback?.();
       setAutoRoll(!next);
       showToast('Could not save Auto Roll preference.', 'warn');
     }
-  }, [applyPlayerState, autoRoll, showToast]);
+  }, [applyPlayerState, autoRoll, beginOptimisticState, showToast]);
 
   const refreshAll = useCallback(async () => {
     const revisionAtStart = stateRevisionRef.current;
@@ -564,6 +595,31 @@ export function App() {
   // Roll action
   const handleRoll = useCallback(async (isAutoRoll = false) => {
     if (isRolling) return;
+    const previousState = state;
+    const previousReadyAt = readyAt;
+    const previousWorldProgress = worldEvent?.currentProgress ?? null;
+    const predictedRolls = previousState ? Math.max(1, rollsPerActivation(previousState)) : 1;
+    const rollback = beginOptimisticState(current => ({
+      ...current,
+      totalRolls: current.totalRolls + predictedRolls,
+      manualRolls: isAutoRoll
+        ? current.manualRolls
+        : Math.min(10, (current.manualRolls ?? 0) + 1),
+      lastRollAt: Date.now(),
+      lastSeenAt: Date.now(),
+      upgrades:
+        !isAutoRoll && (current.manualRolls ?? 0) + 1 >= 3
+          ? { ...current.upgrades, auto: 1 }
+          : current.upgrades,
+    }));
+    // Start the cooldown immediately. The server response reconciles the exact
+    // cooldown once the authoritative roll has completed.
+    setReadyAt(Date.now() + cooldownMs(previousState ?? state!, isAutoRoll));
+    setWorldEvent(prev => (
+      prev
+        ? { ...prev, currentProgress: prev.currentProgress + predictedRolls }
+        : prev
+    ));
     setIsRolling(true);
     try {
       sound.playRollNormal();
@@ -597,11 +653,25 @@ export function App() {
         showToast(`★ Rare Find! 1 in ${res.orb.rarity.toLocaleString()}`, 'success');
       }
     } catch (e: any) {
+      rollback?.();
+      setReadyAt(previousReadyAt);
+      setWorldEvent(prev => (
+        prev && previousWorldProgress !== null
+          ? { ...prev, currentProgress: previousWorldProgress }
+          : prev
+      ));
       showToast(e.message || 'Roll failed', 'warn');
     } finally {
       setIsRolling(false);
     }
-  }, [isRolling, state]);
+  }, [
+    applyPlayerState,
+    beginOptimisticState,
+    isRolling,
+    readyAt,
+    state,
+    worldEvent?.currentProgress,
+  ]);
 
   // Auto roll watcher (paced steadily)
   useEffect(() => {
@@ -617,6 +687,21 @@ export function App() {
   // Buy Standard Upgrade
   const handleBuyUpgrade = async (id: UpgradeId) => {
     setBusy(true);
+    const rollback = beginOptimisticState(current => {
+      const level = current.upgrades[id] ?? 0;
+      if (id === 'auto') {
+        return (current.manualRolls ?? 0) >= 3
+          ? { ...current, upgrades: { ...current.upgrades, auto: 1 } }
+          : current;
+      }
+      const cost = upgradeCost(id, level);
+      if (!Number.isFinite(cost) || current.coins < cost) return current;
+      return {
+        ...current,
+        coins: current.coins - cost,
+        upgrades: { ...current.upgrades, [id]: level + 1 },
+      };
+    });
     try {
       const res = await getJson<{ state: PlayerState }>('/api/upgrade', {
         method: 'POST',
@@ -627,6 +712,7 @@ export function App() {
       sound.playChime(659.25, 'sine', 0.2);
       showToast(`Upgraded ${id.toUpperCase()} successfully!`, 'success');
     } catch (e: any) {
+      rollback?.();
       showToast(e.message || 'Upgrade failed', 'warn');
     } finally {
       setBusy(false);
@@ -636,6 +722,29 @@ export function App() {
   // Upgrade All Standard Upgrades
   const handleBuyAllUpgrades = async () => {
     setBusy(true);
+    const rollback = beginOptimisticState(current => {
+      const next: PlayerState = { ...current, upgrades: { ...current.upgrades } };
+      const ids: UpgradeId[] = [
+        'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
+        'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus',
+      ];
+      let purchases = 0;
+      let changed = true;
+      while (changed && purchases < 5_000) {
+        changed = false;
+        for (const id of ids) {
+          if (id === 'auto' || purchases >= 5_000) continue;
+          const level = next.upgrades[id] ?? 0;
+          const cost = upgradeCost(id, level);
+          if (!Number.isFinite(cost) || cost > next.coins) continue;
+          next.coins -= cost;
+          next.upgrades[id] = level + 1;
+          purchases++;
+          changed = true;
+        }
+      }
+      return next;
+    });
     try {
       const res = await getJson<{ state: PlayerState; totalSpent: number; upgradedCount: number }>('/api/upgrade/all', {
         method: 'POST',
@@ -649,6 +758,7 @@ export function App() {
         res.upgradedCount > 0 ? 'success' : 'info'
       );
     } catch (e: any) {
+      rollback?.();
       showToast(e.message || 'Upgrade All failed', 'warn');
     } finally {
       setBusy(false);
@@ -658,12 +768,27 @@ export function App() {
   // Turbo Roll Booster
   const handleActivateTurbo = async () => {
     setBusy(true);
+    const rollback = beginOptimisticState(current => {
+      if ((current.shards ?? 0) < 5) return current;
+      const now = Date.now();
+      const durationMs = (current.prestigeUpgrades?.chronoOverdrive ?? 0) > 0
+        ? 60 * 60 * 1000
+        : 30 * 60 * 1000;
+      const purchased = current.purchasedShards ?? 0;
+      return {
+        ...current,
+        shards: current.shards - 5,
+        purchasedShards: Math.max(0, purchased - Math.min(5, purchased)),
+        turboRollUntil: Math.max(now, current.turboRollUntil ?? 0) + durationMs,
+      };
+    });
     try {
       const res = await getJson<{ state: PlayerState }>('/api/turbo/activate', { method: 'POST' });
       applyPlayerState(res.state);
       sound.playChime(880, 'sawtooth', 0.3);
       showToast('Turbo Roll Activated! Cooldowns reduced by 20% for 30m.', 'success');
     } catch (e: any) {
+      rollback?.();
       showToast(e.message || 'Could not activate turbo roll', 'warn');
     } finally {
       setBusy(false);
@@ -712,6 +837,22 @@ export function App() {
 
   const handleActivateGlobalBooster = async (id: GlobalBoosterId, useCredit: boolean) => {
     setBusy(true);
+    const rollback = beginOptimisticState(current => {
+      if (useCredit) {
+        if ((current.globalBoosterCredits ?? 0) <= 0) return current;
+        return {
+          ...current,
+          globalBoosterCredits: Math.max(0, (current.globalBoosterCredits ?? 0) - 1),
+        };
+      }
+      if ((current.shards ?? 0) < 25) return current;
+      const purchased = current.purchasedShards ?? 0;
+      return {
+        ...current,
+        shards: current.shards - 25,
+        purchasedShards: Math.max(0, purchased - Math.min(25, purchased)),
+      };
+    });
     try {
       const res = await getJson<{
         state: PlayerState;
@@ -742,6 +883,7 @@ export function App() {
         'success',
       );
     } catch (e: any) {
+      rollback?.();
       showToast(e.message || 'Could not activate Global Booster', 'warn');
     } finally {
       setBusy(false);
@@ -750,6 +892,20 @@ export function App() {
 
   const handleActivatePremiumBooster = async (id: PremiumBoosterId) => {
     setBusy(true);
+    const rollback = beginOptimisticState(current => {
+      const info = PREMIUM_BOOSTERS[id];
+      if (!info || (current.shards ?? 0) < info.costShards) return current;
+      const purchased = current.purchasedShards ?? 0;
+      return {
+        ...current,
+        shards: current.shards - info.costShards,
+        purchasedShards: Math.max(0, purchased - Math.min(info.costShards, purchased)),
+        activeBoosters: {
+          ...(current.activeBoosters ?? {}),
+          [id]: Math.max(Date.now(), current.activeBoosters?.[id] ?? 0) + info.durationMs,
+        },
+      };
+    });
     try {
       const res = await getJson<{ state: PlayerState }>('/api/boosters/activate', {
         method: 'POST',
@@ -760,6 +916,7 @@ export function App() {
       sound.playChime(1046, 'sawtooth', 0.3);
       showToast('Premium booster activated.', 'success');
     } catch (e: any) {
+      rollback?.();
       showToast(e.message || 'Could not activate booster', 'warn');
     } finally {
       setBusy(false);
@@ -769,6 +926,17 @@ export function App() {
   // Permanent automation
   const handleBuyAutomation = async (id: AutomationId) => {
     setBusy(true);
+    const rollback = beginOptimisticState(current => {
+      const info = AUTOMATIONS[id];
+      if (!info || current.automations?.[id] || (current.shards ?? 0) < info.costShards) return current;
+      const purchased = current.purchasedShards ?? 0;
+      return {
+        ...current,
+        shards: current.shards - info.costShards,
+        purchasedShards: Math.max(0, purchased - Math.min(info.costShards, purchased)),
+        automations: { ...(current.automations ?? {}), [id]: true },
+      };
+    });
     try {
       const res = await getJson<{ state: PlayerState }>('/api/automation/buy', {
         method: 'POST',
@@ -779,6 +947,7 @@ export function App() {
       sound.playLevelUpFanfare();
       showToast('Automation unlocked.', 'success');
     } catch (e: any) {
+      rollback?.();
       showToast(e.message || 'Could not unlock automation', 'warn');
     } finally {
       setBusy(false);
@@ -814,6 +983,11 @@ export function App() {
   // Claim Offline Rolls
   const handleClaimOffline = async () => {
     setBusy(true);
+    const rollback = beginOptimisticState(current => ({
+      ...current,
+      offlineRolls: 0,
+      lastSeenAt: Date.now(),
+    }));
     try {
       const res = await getJson<RollResponse>('/api/offline/claim', { method: 'POST' });
       applyPlayerState(res.state);
@@ -832,6 +1006,7 @@ export function App() {
         'success'
       );
     } catch (e: any) {
+      rollback?.();
       showToast(e.message || 'Could not claim offline rolls', 'warn');
     } finally {
       setBusy(false);
@@ -841,7 +1016,26 @@ export function App() {
   // Altar Sacrifice
   const handleSacrifice = async (coins: number, shards: number): Promise<PlayerState> => {
     setBusy(true);
-    stateRevisionRef.current += 1;
+    const rollback = beginOptimisticState(current => {
+      if (current.coins < coins || (current.shards ?? 0) < shards) return current;
+      const sacrifices = current.sacrifices ?? {
+        coinsSacrificed: 0,
+        shardsSacrificed: 0,
+        altarLevel: 0,
+        luckSurgeUntil: 0,
+        altarPity: 0,
+      };
+      return {
+        ...current,
+        coins: current.coins - coins,
+        shards: (current.shards ?? 0) - shards,
+        sacrifices: {
+          ...sacrifices,
+          coinsSacrificed: (sacrifices.coinsSacrificed ?? 0) + coins,
+          shardsSacrificed: (sacrifices.shardsSacrificed ?? 0) + shards,
+        },
+      };
+    });
     try {
       const res = await getJson<{
         state: PlayerState;
@@ -873,6 +1067,7 @@ export function App() {
       }
       return res.state;
     } catch (e: any) {
+      rollback?.();
       showToast(e.message || 'Sacrifice failed', 'warn');
       throw e;
     } finally {
@@ -883,6 +1078,16 @@ export function App() {
   // Upgrade Mastery Skill
   const handleUpgradeMastery = async (skillId: MasterySkillId) => {
     setBusy(true);
+    const rollback = beginOptimisticState(current => {
+      const currentLevel = current.masterySkills?.[skillId] ?? 0;
+      const cost = masterySkillCost(skillId, currentLevel);
+      if ((current.masteryPoints ?? 0) < cost) return current;
+      return {
+        ...current,
+        masteryPoints: (current.masteryPoints ?? 0) - cost,
+        masterySkills: { ...(current.masterySkills ?? {}), [skillId]: currentLevel + 1 },
+      };
+    });
     try {
       const res = await getJson<{ state: PlayerState }>('/api/mastery/upgrade', {
         method: 'POST',
@@ -892,6 +1097,7 @@ export function App() {
       applyPlayerState(res.state);
       showToast('Mastery Skill enhanced!', 'success');
     } catch (e: any) {
+      rollback?.();
       showToast(e.message || 'Mastery upgrade failed', 'warn');
     } finally {
       setBusy(false);
@@ -962,6 +1168,19 @@ export function App() {
   // Buy Permanent Prestige Upgrade
   const handleBuyPrestigeUpgrade = async (id: PrestigeUpgradeId) => {
     setBusy(true);
+    const rollback = beginOptimisticState(current => {
+      const currentLevel = current.prestigeUpgrades?.[id] ?? 0;
+      const cost = prestigeUpgradeCost(id, currentLevel);
+      if ((current.cosmicDust ?? 0) < cost) return current;
+      return {
+        ...current,
+        cosmicDust: current.cosmicDust - cost,
+        prestigeUpgrades: {
+          ...(current.prestigeUpgrades ?? createInitialState().prestigeUpgrades),
+          [id]: currentLevel + 1,
+        },
+      };
+    });
     try {
       const res = await getJson<{ state: PlayerState }>('/api/prestige/upgrade', {
         method: 'POST',
@@ -972,6 +1191,7 @@ export function App() {
       sound.playChime(659.25, 'sine', 0.25);
       showToast('Permanent cosmic upgrade obtained!', 'success');
     } catch (e: any) {
+      rollback?.();
       showToast(e.message || 'Prestige upgrade failed', 'warn');
     } finally {
       setBusy(false);
@@ -981,6 +1201,16 @@ export function App() {
   // Astral Forge Dust Synthesis
   const handleSynthesizeDust = async () => {
     setBusy(true);
+    const rollback = beginOptimisticState(current => {
+      if ((current.shards ?? 0) < 10) return current;
+      const purchased = current.purchasedShards ?? 0;
+      return {
+        ...current,
+        shards: current.shards - 10,
+        purchasedShards: Math.max(0, purchased - Math.min(10, purchased)),
+        cosmicDust: (current.cosmicDust ?? 0) + 1,
+      };
+    });
     try {
       const res = await getJson<{ state: PlayerState; dustEarned: number }>('/api/prestige/synthesize', {
         method: 'POST',
@@ -990,6 +1220,7 @@ export function App() {
       showToast(`+${res.dustEarned} Cosmic Dust forged in the Astral Forge!`, 'success');
       void refreshAll();
     } catch (e: any) {
+      rollback?.();
       showToast(e.message || 'Synthesis failed', 'warn');
     } finally {
       setBusy(false);
@@ -1018,6 +1249,21 @@ export function App() {
   // Cosmetics
   const handleBuyCosmetic = async (id: string) => {
     setBusy(true);
+    const rollback = beginOptimisticState(current => {
+      const cosmetic = COSMETICS_LIST.find(item => item.id === id);
+      if (!cosmetic) return current;
+      if (current.unlockedCosmetics.includes(id)) return { ...current, activeCosmetic: id };
+      if (current.coins < cosmetic.costCoins || (current.shards ?? 0) < cosmetic.costShards) return current;
+      const purchased = current.purchasedShards ?? 0;
+      return {
+        ...current,
+        coins: current.coins - cosmetic.costCoins,
+        shards: current.shards - cosmetic.costShards,
+        purchasedShards: Math.max(0, purchased - Math.min(cosmetic.costShards, purchased)),
+        unlockedCosmetics: [...current.unlockedCosmetics, id],
+        activeCosmetic: id,
+      };
+    });
     try {
       const res = await getJson<{ state: PlayerState }>('/api/cosmetics/buy', {
         method: 'POST',
@@ -1028,6 +1274,7 @@ export function App() {
       sound.playChime(523.25, 'sine', 0.2);
       showToast('Cosmetic equipped!', 'success');
     } catch (e: any) {
+      rollback?.();
       showToast(e.message || 'Cosmetic purchase failed', 'warn');
     } finally {
       setBusy(false);
@@ -1120,6 +1367,17 @@ export function App() {
 
   const handleDonateGuild = async (coins: number, shards: number) => {
     setBusy(true);
+    const rollback = beginOptimisticState(current => {
+      if (current.coins < coins || (current.shards ?? 0) < shards) return current;
+      const purchased = current.purchasedShards ?? 0;
+      return {
+        ...current,
+        coins: current.coins - coins,
+        shards: (current.shards ?? 0) - shards,
+        purchasedShards: Math.max(0, purchased - Math.min(shards, purchased)),
+        guildContribution: (current.guildContribution ?? 0) + coins + shards * 1000,
+      };
+    });
     try {
       const res = await getJson<{ guild: Guild; tokensEarned: number; xpEarned: number; state: PlayerState }>('/api/guilds/donate', {
         method: 'POST',
@@ -1136,6 +1394,7 @@ export function App() {
       showToast(`Donated to Guild Treasury! (+${res.tokensEarned} Tokens, +${res.xpEarned} XP)`, 'success');
       void refreshAll();
     } catch (e: any) {
+      rollback?.();
       showToast(e.message || 'Donation failed', 'warn');
     } finally {
       setBusy(false);
