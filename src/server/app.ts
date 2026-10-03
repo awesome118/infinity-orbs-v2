@@ -326,7 +326,9 @@ export function createApp() {
   const releaseMutationLock = async (lockKey: string, owner: string): Promise<void> => {
     try {
       const txn = await redis.watch(lockKey);
-      const raw = await txn.get(lockKey);
+      // TxClient.get() queues a transaction command. Read the watched value
+      // through Redis itself before deciding whether the lock is ours.
+      const raw = await redis.get(lockKey);
       const existing = parseMutationLock(raw);
       if (!existing || existing.owner !== owner) {
         await txn.unwatch();
