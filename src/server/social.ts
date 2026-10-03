@@ -889,7 +889,8 @@ export async function postGlobalChatMessage(text: string): Promise<GlobalChatMes
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(GLOBAL_CHAT_KEY);
-    const raw = await txn.get(GLOBAL_CHAT_KEY);
+    // Read the watched value with Redis; TxClient.get() is a transaction builder.
+    const raw = await redis.get(GLOBAL_CHAT_KEY);
     const messages = await (async () => {
       const parsed = parseStoredJson<unknown>(raw);
       if (!Array.isArray(parsed)) return [] as GlobalChatMessage[];
