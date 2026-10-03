@@ -14,6 +14,8 @@ import {
   setDeveloperAnnouncement,
   getPaymentDebugLogs,
   clearPaymentDebugLogs,
+  getSaveDebugLogs,
+  clearSaveDebugLogs,
   setGlobalBoosterDebugState,
   getGlobalBoosterDebugLogs,
   clearGlobalBoosterDebugLogs,
@@ -78,6 +80,33 @@ debugRouter.post('/payment-logs/clear', async (_req, res) => {
     res.json({ ok: true });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to clear payment debug logs.' });
+  }
+});
+
+debugRouter.get('/save-logs', async (req, res) => {
+  try {
+    const username = String(req.query?.username ?? '').trim();
+    const userId = username ? await resolveUserId(targetUsername(username)) : undefined;
+    const limit = Math.max(1, Math.min(500, Math.floor(Number(req.query?.limit ?? 500) || 500)));
+    const logs = await getSaveDebugLogs(userId, limit);
+    res.json({
+      username: username || null,
+      userId: userId ?? null,
+      logCount: logs.length,
+      logs,
+      generatedAt: Date.now(),
+    });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to load save diagnostics.' });
+  }
+});
+
+debugRouter.post('/save-logs/clear', async (_req, res) => {
+  try {
+    await clearSaveDebugLogs();
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to clear save diagnostics.' });
   }
 });
 

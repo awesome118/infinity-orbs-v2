@@ -344,7 +344,8 @@ export function createApp() {
     const readsAndPersistsPlayerState =
       req.method === 'GET' &&
       ['/me', '/leaderboard', '/guilds', '/achievements'].includes(req.path);
-    if (!mutatesState && !readsAndPersistsPlayerState) return next();
+    const requiresPlayerSerialization = mutatesState || readsAndPersistsPlayerState;
+    if (!requiresPlayerSerialization) return next();
 
     const playerKey = context.userId ?? req.ip ?? 'unknown';
     const previous = mutationQueues.get(playerKey) ?? Promise.resolve();
@@ -355,19 +356,6 @@ export function createApp() {
     mutationQueues.set(playerKey, chain);
 
     await previous;
-
-    if (!mutatesState) {
-      let released = false;
-      const releaseOnce = () => {
-        if (released) return;
-        released = true;
-        releaseLocal();
-        if (mutationQueues.get(playerKey) === chain) mutationQueues.delete(playerKey);
-      };
-      res.once('finish', releaseOnce);
-      res.once('close', releaseOnce);
-      return next();
-    }
 
     let distributedLock: { lockKey: string; owner: string } | null = null;
     try {

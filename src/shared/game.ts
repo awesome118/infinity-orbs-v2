@@ -223,6 +223,7 @@ export interface GlobalBoosterState {
 export type GlobalBoosterSnapshot = Record<GlobalBoosterId, GlobalBoosterState>;
 
 export const GLOBAL_BOOSTER_DURATION_MS = 30 * 60 * 1000;
+export const GLOBAL_BOOSTER_BAR_DURATION_MS = 2 * 60 * 60 * 1000;
 export const GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER = 4;
 export const GLOBAL_BOOSTER_TIMER_ACCELERATION_PER_TIER = 0.10;
 
@@ -350,7 +351,7 @@ export function globalBoosterTimeProgress(
   const remaining = globalBoosterRemainingMs(state, now);
   if (remaining <= 0) return 0;
   return Math.round(
-    Math.min(1, remaining / GLOBAL_BOOSTER_DURATION_MS) * 10000,
+    Math.min(1, remaining / GLOBAL_BOOSTER_BAR_DURATION_MS) * 10000,
   ) / 100;
 }
 

@@ -94,6 +94,124 @@ const PLAYER_FLAIR_KEY_PREFIX = 'io:player-flair:';
 const PLAYER_SPY_LOG_KEY_PREFIX = 'io:player-spy:v1:';
 const PLAYER_SPY_LOG_LIMIT = 500;
 
+const SAVE_DEBUG_LOG_KEY = 'io:save-debug:v1';
+const SAVE_DEBUG_LOG_LIMIT = 500;
+
+export interface SaveDebugLog {
+  timestamp: number;
+  event: string;
+  userId: string;
+  username: string;
+  details: Record<string, unknown>;
+}
+
+function compactSaveState(s: PlayerState | null | undefined): Record<string, unknown> | null {
+  if (!s) return null;
+  return {
+    stateRevision: Number(s.stateRevision ?? 0),
+    saveGeneration: Number(s.saveGeneration ?? 0),
+    level: Number(s.level ?? 1),
+    coins: Number(s.coins ?? 0),
+    shards: Number(s.shards ?? 0),
+    totalRolls: Number(s.totalRolls ?? 0),
+    highestRarity: Number(s.highestRarity ?? 0),
+    manualRolls: Number(s.manualRolls ?? 0),
+    upgrades: { ...(s.upgrades ?? {}) },
+  };
+}
+
+function saveCaller(): string {
+  return (new Error().stack ?? '')
+    .split('\n')
+    .slice(2, 7)
+    .map(line => line.trim())
+    .join('\n');
+}
+
+async function appendSaveDebugLog(
+  event: string,
+  details: Record<string, unknown> = {},
+  userId = currentUserId(),
+): Promise<void> {
+  const id = String(userId ?? '').trim();
+  if (!id) return;
+
+  const entry: SaveDebugLog = {
+    timestamp: Date.now(),
+    event,
+    userId: id,
+    username: String(context.username ?? ''),
+    details,
+  };
+
+  try {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const txn = await redis.watch(SAVE_DEBUG_LOG_KEY);
+      const raw = await redis.get(SAVE_DEBUG_LOG_KEY);
+      let entries: SaveDebugLog[] = [];
+
+      if (typeof raw === 'string' && raw.trim()) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            entries = parsed.filter(
+              (item): item is SaveDebugLog =>
+                Boolean(item) &&
+                typeof item === 'object' &&
+                !Array.isArray(item) &&
+                typeof (item as Record<string, unknown>).event === 'string',
+            );
+          }
+        } catch {
+          entries = [];
+        }
+      }
+
+      entries.push(entry);
+      if (entries.length > SAVE_DEBUG_LOG_LIMIT) {
+        entries = entries.slice(-SAVE_DEBUG_LOG_LIMIT);
+      }
+
+      await txn.multi();
+      await txn.set(SAVE_DEBUG_LOG_KEY, JSON.stringify(entries));
+      const committed = await txn.exec();
+      if (committed !== null) return;
+    }
+  } catch (error) {
+    console.error('[Save Debug] Could not persist save diagnostic:', error);
+  }
+}
+
+export async function getSaveDebugLogs(
+  userId?: string,
+  limit = SAVE_DEBUG_LOG_LIMIT,
+): Promise<SaveDebugLog[]> {
+  const raw = await redis.get(SAVE_DEBUG_LOG_KEY);
+  if (typeof raw !== 'string' || !raw.trim()) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const normalizedUserId = String(userId ?? '').trim();
+    const entries = parsed.filter(
+      (item): item is SaveDebugLog =>
+        Boolean(item) &&
+        typeof item === 'object' &&
+        !Array.isArray(item) &&
+        typeof (item as Record<string, unknown>).event === 'string' &&
+        (!normalizedUserId || String((item as SaveDebugLog).userId ?? '') === normalizedUserId),
+    );
+    const safeLimit = Math.max(1, Math.min(SAVE_DEBUG_LOG_LIMIT, Math.floor(Number(limit) || SAVE_DEBUG_LOG_LIMIT)));
+    return entries.slice(-safeLimit);
+  } catch {
+    return [];
+  }
+}
+
+export async function clearSaveDebugLogs(): Promise<void> {
+  await redis.del(SAVE_DEBUG_LOG_KEY);
+}
+
 export interface PlayerSpyLog {
   timestamp: number;
   event: string;
@@ -1437,6 +1555,14 @@ export async function save(s: PlayerState) {
     const stateGeneration = Math.max(0, Math.floor(Number(s.saveGeneration ?? 0)));
 
     if (stateGeneration !== generation) {
+      await appendSaveDebugLog('generation-mismatch', {
+        expectedGeneration: stateGeneration,
+        storedGeneration: generation,
+        expectedRevision,
+        storedState: latestRaw == null ? null : compactSaveState(parsePlayerStateValue(latestRaw)),
+        incomingState: compactSaveState(s),
+        caller: saveCaller(),
+      }, userId);
       // This request started before an admin wipe. Discard its stale mutation
       // and adopt the fresh state already written by the wipe. Never let an
       // old request resurrect pre-wipe data, and never strand the player with
@@ -1459,6 +1585,16 @@ export async function save(s: PlayerState) {
     const latest = latestRaw == null ? null : parsePlayerStateValue(latestRaw);
     const latestRevision = Math.max(0, Math.floor(Number(latest?.stateRevision ?? 0)) || 0);
     if (latestRevision !== expectedRevision) {
+      await appendSaveDebugLog('revision-conflict', {
+        attempt: attempt + 1,
+        expectedRevision,
+        latestRevision,
+        generation,
+        stateGeneration,
+        storedState: latest ? compactSaveState(latest) : null,
+        incomingState: compactSaveState(s),
+        caller: saveCaller(),
+      }, userId);
       await txn.unwatch();
       throw new Error('Player state changed while saving. Please retry.');
     }
@@ -1472,6 +1608,16 @@ export async function save(s: PlayerState) {
       await syncRarityFlair(s);
       return;
     }
+
+    await appendSaveDebugLog('transaction-conflict', {
+      attempt: attempt + 1,
+      expectedRevision,
+      latestRevision,
+      generation,
+      stateGeneration,
+      incomingState: compactSaveState(s),
+      caller: saveCaller(),
+    }, userId);
   }
 
   throw new Error('Could not safely save player data. Please retry.');

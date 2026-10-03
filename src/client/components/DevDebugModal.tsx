@@ -254,6 +254,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [announcementLoaded, setAnnouncementLoaded] = useState(false);
   const [paymentLogs, setPaymentLogs] = useState<Array<Record<string, unknown>>>([]);
   const [paymentLogsLoading, setPaymentLogsLoading] = useState(false);
+  const [saveLogs, setSaveLogs] = useState<Array<Record<string, unknown>>>([]);
+  const [saveLogsLoading, setSaveLogsLoading] = useState(false);
   const [globalBooster, setGlobalBooster] = useState('luck');
   const [globalTier, setGlobalTier] = useState('1');
   const [globalMinutes, setGlobalMinutes] = useState('30');
@@ -429,6 +431,55 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       setMessage('Error: ' + (e?.message || 'Failed to send push test notification.'));
     } finally {
       setPushTestLoading(false);
+    }
+  };
+
+  const loadSaveLogs = async () => {
+    setSaveLogsLoading(true);
+    try {
+      const username = playerSpyUsername.trim().replace(/^u\//i, '');
+      const suffix = username ? '&username=' + encodeURIComponent(username) : '';
+      const res = await fetch('/api/dev/save-logs?limit=500' + suffix, { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load save diagnostics.');
+      setSaveLogs(Array.isArray(data.logs) ? data.logs : []);
+      setMessage('Loaded ' + (Array.isArray(data.logs) ? data.logs.length : 0) + ' save diagnostic entries' + (username ? ' for u/' + username : '') + '.');
+    } catch (e: any) {
+      setMessage('Error: ' + (e?.message || 'Could not load save diagnostics.'));
+    } finally {
+      setSaveLogsLoading(false);
+    }
+  };
+
+  const copySaveLogs = async () => {
+    const serialized = JSON.stringify(saveLogs, null, 2);
+    try {
+      await navigator.clipboard.writeText(serialized);
+      setMessage('Save diagnostics copied to clipboard.');
+    } catch {
+      const textarea = document.getElementById('save-debug-log-copy') as HTMLTextAreaElement | null;
+      if (!textarea) {
+        setMessage('Could not access the clipboard.');
+        return;
+      }
+      textarea.focus();
+      textarea.select();
+      setMessage('Clipboard access was blocked. The save diagnostics are selected; copy them manually.');
+    }
+  };
+
+  const clearSaveLogs = async () => {
+    setSaveLogsLoading(true);
+    try {
+      const res = await fetch('/api/dev/save-logs/clear', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not clear save diagnostics.');
+      setSaveLogs([]);
+      setMessage('Save diagnostics cleared.');
+    } catch (e: any) {
+      setMessage('Error: ' + (e?.message || 'Could not clear save diagnostics.'));
+    } finally {
+      setSaveLogsLoading(false);
     }
   };
 
@@ -971,6 +1022,38 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               Set Booster
             </button>
           </div>
+        </section>
+
+        <section className={panelBase + ' border border-rose-500/30'}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-300">
+                <Save className="w-4 h-4" /> Save Trace
+              </div>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Persistent diagnostics for save conflicts, including expected/stored revisions, generations, incoming state, stored state, and the save caller.
+                Use the Player Spy username field to filter this trace to one player.
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button title="Load recent save diagnostics, filtered by the Player Spy username when present." disabled={saveLogsLoading} onClick={() => void loadSaveLogs()} className={buttonBase + ' bg-slate-900 border-slate-700 text-slate-200 px-3 py-2'}>
+                {saveLogsLoading ? 'Loading…' : 'Refresh'}
+              </button>
+              <button title="Copy the complete save trace." disabled={saveLogs.length === 0} onClick={() => void copySaveLogs()} className={buttonBase + ' bg-emerald-600/20 border-emerald-500/30 text-emerald-200 px-3 py-2'}>
+                <Copy className="w-3.5 h-3.5 inline mr-1" /> Copy
+              </button>
+              <button title="Delete all save diagnostics." disabled={saveLogsLoading || saveLogs.length === 0} onClick={() => void clearSaveLogs()} className={buttonBase + ' bg-red-600/20 border-red-500/30 text-red-200 px-3 py-2'}>
+                <Trash2 className="w-3.5 h-3.5 inline mr-1" /> Clear
+              </button>
+            </div>
+          </div>
+          <textarea
+            id="save-debug-log-copy"
+            readOnly
+            value={saveLogs.length > 0 ? JSON.stringify(saveLogs, null, 2) : 'No save diagnostics loaded. Reproduce the player-state error, then press Refresh.'}
+            className="w-full min-h-56 max-h-96 rounded-xl border border-slate-800 bg-black/40 p-3 text-[10px] leading-4 font-mono text-slate-300 resize-y"
+            onFocus={e => e.currentTarget.select()}
+          />
         </section>
 
         <section className={panelBase}>
