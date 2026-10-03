@@ -939,7 +939,8 @@ export async function recordLeaderboard(s: PlayerState) {
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(leaderboardKey);
-    const raw = await txn.get(leaderboardKey);
+    // Read the watched value with Redis; TxClient.get() is a transaction builder.
+    const raw = await redis.get(leaderboardKey);
     const board: LeaderboardEntry[] = parseLeaderboardList(raw);
     const existing = board.find(e => e.username === name);
     if (existing) Object.assign(existing, next);
