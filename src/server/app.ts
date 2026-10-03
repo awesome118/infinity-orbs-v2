@@ -295,7 +295,9 @@ export function createApp() {
     while (Date.now() < deadline) {
       const now = Date.now();
       const txn = await redis.watch(lockKey);
-      const raw = await txn.get(lockKey);
+      // TxClient.get() queues a transaction command. Read the watched value
+      // through Redis itself so we inspect the actual current lock contents.
+      const raw = await redis.get(lockKey);
       const existing = parseMutationLock(raw);
 
       if (existing && existing.expiresAt > now) {
