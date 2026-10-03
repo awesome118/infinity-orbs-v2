@@ -33,6 +33,7 @@ import {
   recordSocialVisit,
   recordShareAction,
   save,
+  setAutoRollEnabled,
   sacrificeToAltar,
   upgradeMasterySkill,
   getCollectionPage,
@@ -751,6 +752,12 @@ export function createApp() {
 
   app.post('/api/roll', async (req, res) => {
     try { res.json(await roll(req.body?.auto === true)); } catch (e) { badRequest(res, e, 'Roll failed.'); }
+  });
+
+  app.post('/api/auto-roll', async (req, res) => {
+    try {
+      res.json({ state: await setAutoRollEnabled(req.body?.enabled === true) });
+    } catch (e) { badRequest(res, e, 'Auto Roll preference update failed.'); }
   });
 
   app.post('/api/offline/claim', async (_req, res) => {

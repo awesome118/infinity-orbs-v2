@@ -509,6 +509,8 @@ export interface PlayerState {
   username?: string;
   // Monotonic save version used to reject stale full-state writes.
   stateRevision?: number;
+  // Whether the player wants Auto Roll to remain enabled between sessions.
+  autoRollEnabled?: boolean;
   // Incremented whenever an admin wipes this account. Prevents stale in-flight
   // requests from resurrecting pre-wipe save data.
   saveGeneration?: number;
@@ -1015,6 +1017,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     coins: 50,
     stateRevision: 0,
     saveGeneration: 0,
+    autoRollEnabled: false,
     shards: 5,
     cosmicDust: 0,
     level: 1,

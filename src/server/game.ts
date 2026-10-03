@@ -2086,6 +2086,19 @@ export async function checkOffline(): Promise<PlayerState> {
   return settleOffline(s);
 }
 
+export async function setAutoRollEnabled(enabled: boolean): Promise<PlayerState> {
+  const s = await settleOffline(await loadRaw());
+  if ((s.upgrades.auto ?? 0) <= 0) {
+    s.autoRollEnabled = false;
+    await save(s);
+    throw new Error('Auto Roll is not unlocked yet.');
+  }
+
+  s.autoRollEnabled = Boolean(enabled);
+  await save(s);
+  return s;
+}
+
 export async function roll(isAuto = false): Promise<RollResponse> {
   const s = await settleOffline(await loadRaw());
   if (isAuto && (s.upgrades.auto ?? 0) <= 0) {

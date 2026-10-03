@@ -479,7 +479,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           ) : (
             <div className="text-[11px] text-slate-500 flex items-center gap-1">
               <AlertCircle className="w-3 h-3" />
-              <span>Auto Roll unlocks at 10 total rolls ({state.totalRolls}/10)</span>
+              <span>Auto Roll unlocks after 3 manual rolls ({state.manualRolls ?? 0}/3)</span>
             </div>
           )}
 

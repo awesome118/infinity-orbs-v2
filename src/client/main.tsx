@@ -141,35 +141,32 @@ export function App() {
   const [tab, setTab] = useState<ActiveTab>('roll');
   const [autoRoll, setAutoRoll] = useState<boolean>(false);
 
-  // Auto Roll is a player preference. Keep it across game sessions on this
-  // browser, but scope the setting to the logged-in Reddit username.
+  // Auto Roll is stored in the player save so it survives new sessions,
+  // different browsers, and Reddit's embedded webview storage boundaries.
   useEffect(() => {
-    const playerName = String(state?.username ?? '').trim();
-    if (!playerName || (state?.upgrades.auto ?? 0) <= 0) {
-      setAutoRoll(false);
-      return;
-    }
-    try {
-      setAutoRoll(window.localStorage.getItem(`io-auto-roll:${playerName}`) === '1');
-    } catch {
-      setAutoRoll(false);
-    }
-  }, [state?.username, state?.upgrades.auto]);
+    setAutoRoll(Boolean(
+      state &&
+      (state.upgrades.auto ?? 0) > 0 &&
+      state.autoRollEnabled === true,
+    ));
+  }, [state?.autoRollEnabled, state?.upgrades.auto]);
 
-  const handleToggleAutoRoll = useCallback(() => {
-    setAutoRoll(prev => {
-      const next = !prev;
-      const playerName = String(state?.username ?? '').trim();
-      if (playerName) {
-        try {
-          window.localStorage.setItem(`io-auto-roll:${playerName}`, next ? '1' : '0');
-        } catch {
-          // Local storage is optional in embedded webviews.
-        }
-      }
-      return next;
-    });
-  }, [state?.username]);
+  const handleToggleAutoRoll = useCallback(async () => {
+    const next = !autoRoll;
+    setAutoRoll(next);
+    try {
+      const res = await getJson<{ state: PlayerState }>('/api/auto-roll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      });
+      applyPlayerState(res.state);
+      setAutoRoll(res.state.autoRollEnabled === true);
+    } catch {
+      setAutoRoll(!next);
+      showToast('Could not save Auto Roll preference.', 'warn');
+    }
+  }, [applyPlayerState, autoRoll]);
   const [isRolling, setIsRolling] = useState<boolean>(false);
   const [busy, setBusy] = useState<boolean>(false);
   const [toast, setToast] = useState<{ msg: string; type?: 'info' | 'success' | 'warn' } | null>(null);
