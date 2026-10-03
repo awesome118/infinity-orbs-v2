@@ -75,7 +75,10 @@ const localRedis = {
     const snapshot = new Map(keys.map(key => [key, store.get(key)]));
     const staged: Array<[string, string]> = [];
     return {
-      get: async (key: string): Promise<string | null> => store.get(key) ?? null,
+      // TxClient is intentionally modeled without a read method. In Devvit,
+      // reads after WATCH must go through redis.get(), while this object queues
+      // writes for MULTI/EXEC. Keeping the mock honest prevents SDK misuse from
+      // passing local tests while failing in production.
       multi: async () => undefined,
       set: async (key: string, value: string) => {
         staged.push([key, value]);
