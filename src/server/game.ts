@@ -1285,7 +1285,8 @@ return withPlayerMutationLockFor(userId, async () => {
 
     // New receipts store the exact entitlement granted by this order. Old
     // status-only receipts migrate using the verified SKU payload.
-    const grantedShards = typeof receipt === 'string' ? pack.shards : receipt.shards;    const refundableShards = Math.min(state.purchasedShards ?? 0, grantedShards);
+    const grantedShards = typeof receipt === 'string' ? pack.shards : receipt.shards;
+    const refundableShards = Math.min(state.purchasedShards ?? 0, grantedShards);
     state.shards = Math.max(0, (state.shards ?? 0) - refundableShards);
     state.purchasedShards = Math.max(0, (state.purchasedShards ?? 0) - refundableShards);
 
@@ -1307,6 +1308,7 @@ return withPlayerMutationLockFor(userId, async () => {
     if (committed !== null) return;
   }
   throw new Error('Could not safely process the refund.');
+  });
 }
 
 export async function loadRaw(): Promise<PlayerState> {
@@ -3554,6 +3556,3 @@ export async function recordShareAction(s: PlayerState) {
   advanceQuestProgress(s, 'share', 1);
   await save(s);
 }
-
-});
-});
