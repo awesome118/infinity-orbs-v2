@@ -1771,7 +1771,12 @@ function addCoins(s: PlayerState, amount: number): number {
 }
 
 
-function advanceQuestProgress(s: PlayerState, type: 'roll' | 'rare' | 'value' | 'unique' | 'social' | 'share', amount: number) {
+function advanceQuestProgress(
+  s: PlayerState,
+  type: 'roll' | 'rare' | 'value' | 'unique' | 'social' | 'share',
+  amount: number,
+  discoveredQualifyingRarity = false,
+) {
   for (const q of s.dailyQuests) {
     if (q.claimed) continue;
     if (type === 'roll' && q.id.includes('rolls')) q.progress = Math.min(q.target, q.progress + amount);
@@ -1780,7 +1785,7 @@ function advanceQuestProgress(s: PlayerState, type: 'roll' | 'rare' | 'value' | 
     if (type === 'social' && q.id.includes('social')) q.progress = Math.min(q.target, q.progress + 1);
   }
   for (const q of s.weeklyQuests) {
-    if (type === 'rare' && amount >= 100) {
+    if (type === 'rare' && amount >= 100 && discoveredQualifyingRarity) {
       const shareQuest = s.weeklyQuests.find(weekly => weekly.id === 'weekly-share');
       if (shareQuest) shareQuest.unlocked = true;
     }
@@ -2053,7 +2058,9 @@ export async function applyRolls(
   }
 
   advanceQuestProgress(s, 'roll', rollCount);
-  if (bestRarity >= 100) advanceQuestProgress(s, 'rare', bestRarity);
+  if (bestRarity >= 100) {
+    advanceQuestProgress(s, 'rare', bestRarity, newRarityKeys.some(group => group.rarity >= 100));
+  }
   advanceQuestProgress(s, 'value', totalVal);
   advanceQuestProgress(s, 'unique', uniqueGained);
 
