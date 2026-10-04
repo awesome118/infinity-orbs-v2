@@ -376,7 +376,9 @@ export function createApp() {
         }
       };
       res.once('finish', releaseOnce);
-      res.once('close', releaseOnce);
+      res.once('close', () => {
+        if (res.writableEnded) releaseOnce();
+      });
       return next();
     } catch (error) {
       releaseLocal();
@@ -584,6 +586,7 @@ export function createApp() {
       const userId = String(context.userId ?? '').trim();
       if (!userId) return res.status(401).json({ error: 'REDDIT_LOGIN_REQUIRED' });
 
+      const requestedOrderId = String(req.body?.orderId ?? '').trim();
       const rawOrders = await payments.getOrders({ limit: 50, buyer: userId });
       const orders = Array.isArray(rawOrders)
         ? rawOrders
@@ -596,6 +599,7 @@ export function createApp() {
         if (!rawOrder || typeof rawOrder !== 'object') continue;
         const order = rawOrder as PaymentOrder;
         const orderId = paymentOrderId(order);
+        if (requestedOrderId && orderId !== requestedOrderId) continue;
         const status = paymentOrderStatus(order);
         if (status && status !== 'PAID') continue;
         if (!orderId) continue;
@@ -991,6 +995,12 @@ export function createApp() {
       if (!message) return res.status(400).json({ error: 'Please describe the bug or suggestion.' });
       if (message.length > 2000) return res.status(400).json({ error: 'Please keep feedback under 2,000 characters.' });
 
+      const feedbackUserId = String(context.userId ?? '').trim();
+      const feedbackRateKey = `io:feedback-rate:${feedbackUserId}`;
+      const lastFeedbackAt = Number(await redis.get(feedbackRateKey) ?? 0) || 0;
+      if (Date.now() - lastFeedbackAt < 60_000) {
+        return res.status(429).json({ error: 'Please wait before sending more feedback.' });
+      }
       const subredditName = String(context.subredditName ?? '').trim();
       const subredditId = String(context.subredditId ?? '').trim();
       const username = String(context.username ?? 'Redditor').trim() || 'Redditor';
@@ -1009,6 +1019,7 @@ export function createApp() {
         subject,
         bodyMarkdown,
       });
+      await redis.set(feedbackRateKey, String(Date.now()));
 
       res.json({ success: true, conversationId });
     } catch (e) {
