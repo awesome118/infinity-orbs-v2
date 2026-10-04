@@ -594,9 +594,10 @@ export async function postGuildMessage(text: string) {
   });
 }
 
-export async function contribute(value: number, rollCount = 1, bestRarity?: number) {
+export async function contribute(value: number, rollCount = 1, bestRarity?: number): Promise<{ bossRewardShards: number }> {
+  let bossRewardShards = 0;
   try {
-    if (value <= 0) return;
+    if (value <= 0) return { bossRewardShards: 0 };
     await updateGuilds(guilds => {
       const guild = guilds.find(g => g.members.some(m => memberMatches(m)));
       if (!guild) return;
@@ -623,7 +624,7 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
         if (guild.challenge.progress >= guild.challenge.target) {
           const reward = Math.max(1, Math.floor(
             guild.challenge.reward *
-            (1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05),
+            (1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * GUILD_TOKEN_YIELD_PER_RANK),
           ));
           guild.tokens += reward;
           if (!guild.chat) guild.chat = [];
@@ -669,6 +670,7 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
   } catch (err) {
     console.error('Error in guild contribution:', err);
   }
+  return { bossRewardShards };
 }
 
 // Community World Event System
