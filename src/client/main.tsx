@@ -577,13 +577,13 @@ export function App() {
     return () => clearInterval(interval);
   }, [tab]);
 
-  // Keep presence fresh and process server-side automation while the game is open.
+  // Presence is independent from player-state persistence. Do not poll /api/me
+  // here because game-state reads must never be responsible for saving the player.
   useEffect(() => {
     const presenceInterval = setInterval(() => {
-      const revisionAtStart = stateRevisionRef.current;
-      void getJson<PlayerState>('/api/me')
-        .then(nextState => {
-          if (revisionAtStart === stateRevisionRef.current) applyPlayerState(nextState);
+      void getJson<{ onlinePlayers: number }>('/api/online')
+        .then(({ onlinePlayers }) => {
+          setState(prev => prev ? { ...prev, onlinePlayers } : prev);
         })
         .catch(() => null);
     }, 10_000);
