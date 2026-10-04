@@ -115,14 +115,14 @@ function mergeConcurrentState(latest: PlayerState, incoming: PlayerState, baseli
     if (SAVE_MERGE_VOLATILE_FIELDS.has(field)) {
       if (field === 'lastSeenAt') {
         const latestSeen = Number((latest as unknown as Record<string, unknown>)[field] ?? 0) || 0;
-        const incomingSeen = Number((incoming as Record<string, unknown>)[field] ?? 0) || 0;
+        const incomingSeen = Number((incoming as unknown as Record<string, unknown>)[field] ?? 0) || 0;
         (merged as unknown as Record<string, unknown>)[field] = Math.max(latestSeen, incomingSeen);
       }
       continue;
     }
-    const latestValue = JSON.stringify((latest as Record<string, unknown>)[field]);
+    const latestValue = JSON.stringify((latest as unknown as Record<string, unknown>)[field]);
     if (latestValue !== baseline[field]) return null;
-    (merged as Record<string, unknown>)[field] = (incoming as Record<string, unknown>)[field];
+    (merged as unknown as Record<string, unknown>)[field] = (incoming as Record<string, unknown>)[field];
   }
   merged.stateRevision = Math.max(0, Math.floor(Number(latest.stateRevision ?? 0)) || 0);
   merged.saveGeneration = Math.max(0, Math.floor(Number(latest.saveGeneration ?? 0)) || 0);
