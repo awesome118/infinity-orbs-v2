@@ -1159,13 +1159,13 @@ export async function setCommunityEventConfig(config: {
     ev.currentProgress += config.addRolls;
   }
   while (ev.currentProgress >= ev.goal) {
-    ev.completed = true;
     ev.completedTier = Math.max(ev.completedTier ?? 0, ev.tier || 1);
     ev.currentProgress -= ev.goal;
-    ev.tier = (ev.tier || 1) + 1;
+    ev.tier = Math.min(10, (ev.tier || 1) + 1);
     ev.goal = Math.round(ev.goal * 2.2);
     ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
     ev.buffDescription = `+${Math.round((ev.buffMultiplier - 1) * 100)}% Global Luck Active`;
+    ev.completed = false;
   }
     await txn.multi();
     await txn.set(COMMUNITY_EVENT_KEY, JSON.stringify(ev));
