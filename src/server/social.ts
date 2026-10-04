@@ -1188,9 +1188,23 @@ export async function postGlobalChatMessage(text: string): Promise<GlobalChatMes
   if (!messageText) throw new Error('Message cannot be empty.');
   if (messageText.length > 200) throw new Error('Messages must be 200 characters or fewer.');
   const cooldownKey = key('global-chat-cooldown:' + user());
-  const lastMessageAt = Number(await redis.get(cooldownKey) ?? 0) || 0;
-  if (Date.now() - lastMessageAt < 1500) throw new Error('Please wait before sending another chat message.');
-  await redis.set(cooldownKey, String(Date.now()));
+  let cooldownReserved = false;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const now = Date.now();
+    const txn = await redis.watch(cooldownKey);
+    const lastMessageAt = Number(await redis.get(cooldownKey) ?? 0) || 0;
+    if (now - lastMessageAt < 1500) {
+      await txn.unwatch();
+      throw new Error('Please wait before sending another chat message.');
+    }
+    await txn.multi();
+    await txn.set(cooldownKey, String(now));
+    if (await txn.exec()) {
+      cooldownReserved = true;
+      break;
+    }
+  }
+  if (!cooldownReserved) throw new Error('Could not reserve chat cooldown. Please retry.');
 
   const timestamp = Date.now();
   const message: GlobalChatMessage = {
