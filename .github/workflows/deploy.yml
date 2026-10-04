@@ -68,6 +68,16 @@ jobs:
           set -euo pipefail
           npx devvit whoami
 
+      - name: Inspect r/infinityorbs installation
+        env:
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
+        run: |
+          set +e
+          npx devvit list installs r/infinityorbs
+          echo "Installed version lookup exit code: $?"
+          exit 0
+
       - name: Collect recent Devvit runtime logs
         env:
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
