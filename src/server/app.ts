@@ -41,6 +41,8 @@ import {
   processOfflineFullNotification,
   getNotificationState,
   setNotificationState,
+  settleOffline,
+  withPlayerMutationLock,
 } from './game.js';
 import {
   achievements,
@@ -781,9 +783,11 @@ export function createApp() {
   // Count an explicit visit to the social tab, not background API refreshes.
   app.post('/api/social/visit', async (_req, res) => {
     try {
-      const s = await getMe();
-      await recordSocialVisit(s);
-      res.json({ ok: true, state: s });
+      await withPlayerMutationLock(async () => {
+        const s = await settleOffline(await loadRaw());
+        await recordSocialVisit(s);
+        res.json({ ok: true, state: s });
+      });
     } catch (e: any) { badRequest(res, e, 'Could not record social visit.'); }
   });
 
@@ -1100,21 +1104,24 @@ export function createApp() {
       }
       const numCoins = Math.floor(numCoinsRaw);
       const numShards = Math.floor(numShardsRaw);
-      const s = await getMe();
-      if (s.coins < numCoins) throw new Error('Not enough coins.');
-      if ((s.shards ?? 0) < numShards) throw new Error('Not enough shards.');
-      s.coins -= numCoins;
-      s.shards = (s.shards ?? 0) - numShards;
-      s.guildContribution = (s.guildContribution ?? 0) + numCoins + (numShards * 1000);
-      await save(s);
-      const result = await donateToGuild(numCoins, numShards);
-      res.json({ ...result, state: s });
+      await withPlayerMutationLock(async () => {
+        const s = await settleOffline(await loadRaw());
+        if (s.coins < numCoins) throw new Error('Not enough coins.');
+        if ((s.shards ?? 0) < numShards) throw new Error('Not enough shards.');
+        s.coins -= numCoins;
+        s.shards = (s.shards ?? 0) - numShards;
+        s.guildContribution = (s.guildContribution ?? 0) + numCoins + (numShards * 1000);
+        await save(s);
+        const result = await donateToGuild(numCoins, numShards);
+        res.json({ ...result, state: s });
+      });
     } catch (e) { badRequest(res, e, 'Donation failed.'); }
   });
 
   app.post('/api/share', async (req, res) => {
     try {
-      const s = await getMe();
+      await withPlayerMutationLock(async () => {
+      const s = await settleOffline(await loadRaw());
       const value = Number(req.body?.rarity);
       if (!Number.isSafeInteger(value) || value <= 0 || (s.collection[String(value)] ?? 0) <= 0) {
         return res.status(400).json({ error: 'You can only share an orb you actually own.' });
@@ -1149,6 +1156,7 @@ export function createApp() {
       // requiring another roll before appearing on the leaderboard.
       await recordLeaderboard(s);
       res.json({ success: true, id: postId, text });
+      });
     } catch (e) { badRequest(res, e, 'Could not create Reddit post.'); }
   });
 
