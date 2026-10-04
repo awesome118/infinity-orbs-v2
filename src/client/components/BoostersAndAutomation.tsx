@@ -242,7 +242,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                   {displayed.tier > 0 && (
                     <div className="mt-1 text-[10px] text-slate-400">
                       Timer drain: <span className="font-black text-amber-300">×{timerDrainRate.toFixed(2)}</span> normal
-                      {' • '}{id === 'speed' && displayed.tier >= 10 ? 'Tier 10 MAX' : '10% faster per tier'}
+                      {' • '}{displayed.tier >= 10 ? 'Tier 10 MAX' : '10% faster per tier'}
                     </div>
                   )}
                 </div>
