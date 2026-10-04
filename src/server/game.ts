@@ -1745,7 +1745,7 @@ async function processAutomation(s: PlayerState): Promise<void> {
         queuePendingOperation(s, {
           id: newPendingOperationId('quest'),
           type: 'guild-tokens',
-          guildId: await getCurrentGuildId(),
+          guildId: (await getCurrentGuildId()) ?? null,
           amount: result.rewardTokens,
         });
       }
@@ -2285,7 +2285,7 @@ export async function applyRolls(
   queuePendingOperation(s, {
     id: pendingOperationId,
     type: 'roll-social',
-    guildId: guildTax.guildId,
+    guildId: guildTax.guildId ?? null,
     taxedCoins: guildTax.taxedCoins,
     guildTaxTokens: guildTax.tokensEarned,
     contributionValue: totalVal,
