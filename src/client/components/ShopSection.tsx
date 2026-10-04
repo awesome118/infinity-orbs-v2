@@ -72,9 +72,13 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
       .finally(() => setLoading(false));
   }, []);
 
-  const reconcilePurchase = async (baselineShards: number, baselineCredits: number): Promise<boolean> => {
+  const reconcilePurchase = async (baselineShards: number, baselineCredits: number, orderId = ''): Promise<boolean> => {
     try {
-      const reconcileRes = await fetch('/api/payments/reconcile', { method: 'POST' });
+      const reconcileRes = await fetch('/api/payments/reconcile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderId ? { orderId } : {}),
+      });
       if (!reconcileRes.ok) return false;
 
       const meRes = await fetch('/api/me');
@@ -104,7 +108,7 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
         let fulfillmentObserved = false;
         for (const delayMs of [0, 500, 1000, 2000, 3000]) {
           if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
-          if (await reconcilePurchase(baselineShards, baselineCredits)) {
+          if (await reconcilePurchase(baselineShards, baselineCredits, orderId)) {
             fulfillmentObserved = true;
             break;
           }
@@ -120,7 +124,7 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
         // or otherwise non-success response from the native payment bridge.
         // Reconcile before showing a hard failure so a paid entitlement is not
         // stranded behind a client-side parsing error.
-        if (await reconcilePurchase(baselineShards, baselineCredits)) {
+        if (await reconcilePurchase(baselineShards, baselineCredits, orderId)) {
           setMessage('Purchase complete. Your Shards and Global Booster credits were added.');
         } else {
           setMessage(formatPaymentError(result.errorMessage, 'Purchase was not completed.'));
@@ -128,7 +132,7 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
       }
     } catch (e: unknown) {
       console.error('[Payments] Client purchase exception:', e);
-      if (await reconcilePurchase(baselineShards, baselineCredits)) {
+      if (await reconcilePurchase(baselineShards, baselineCredits, orderId)) {
         setMessage('Purchase complete. Your Shards were added.');
       } else {
         setMessage(formatPaymentError(e, 'Purchase failed.'));
