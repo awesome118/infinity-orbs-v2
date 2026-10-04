@@ -1663,6 +1663,9 @@ export async function flushPendingPlayerOperations(
           bestRarity: operation.bestRarity,
           communityRolls: operation.communityRolls,
         });
+        if (result.taxRefundCoins > 0) {
+          addCoins(s, result.taxRefundCoins);
+        }
         bossRewardShards += grantUncappedShards(s, result.bossRewardShards);
       } else if (operation.type === 'guild-tokens') {
         await addGuildTokens(
