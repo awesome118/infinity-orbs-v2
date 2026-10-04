@@ -993,13 +993,41 @@ debugRouter.post('/moderation/wipe-and-ban', async (req, res) => {
 // console's most destructive action is still obvious.
 debugRouter.post('/reset-all', async (_req, res) => {
   try {
-      await withPlayerMutationLock(async () => {
-    const fresh = createInitialState();
-    fresh.username = context.username ?? fresh.username;
-    await save(fresh);
-    await recordLeaderboard(fresh);
-    res.json({ ok: true, state: fresh });
-        });} catch (e: any) {
-    res.status(500).json({ error: e.message });
+    await withPlayerMutationLock(async () => {
+      const userId = String(context.userId ?? '').trim();
+      if (!userId) throw new Error('REDDIT_LOGIN_REQUIRED');
+
+      const generationKey = `player-generation:${userId}`;
+      const playerKey = `player:${userId}`;
+      const currentRaw = await redis.get(generationKey);
+      const currentGeneration = Math.max(
+        0,
+        Number.parseInt(String(currentRaw ?? '0'), 10) || 0,
+      );
+      const generation = currentGeneration + 1;
+
+      // Reset All is an account reset, not a normal save. Never pass a pristine
+      // revision-0 state to save(), because that can only conflict with an
+      // existing progressed account and can leave a stale request fighting the
+      // reset. Bump the generation first so every older request becomes stale.
+      const fresh = createInitialState();
+      fresh.username = context.username ?? fresh.username;
+      fresh.saveGeneration = generation;
+      fresh.stateRevision = 0;
+
+      await redis.set(generationKey, String(generation));
+      await redis.set(playerKey, JSON.stringify(fresh));
+      await redis.del(`io:roll-ticket:${userId}`);
+      await removeLeaderboardEntry(fresh.username ?? context.username ?? '');
+
+      const persisted = await redis.get(playerKey);
+      if (persisted == null) {
+        throw new Error('Reset failed: player save was not persisted.');
+      }
+
+      res.json({ ok: true, state: fresh });
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to reset player state.' });
   }
 });
