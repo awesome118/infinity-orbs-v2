@@ -1638,7 +1638,10 @@ export async function save(s: PlayerState) {
     const committed = await txn.exec();
     if (committed !== null) {
       Object.assign(s, nextState);
-      await syncRarityFlair(s);
+      // Flair is cosmetic and must never hold the gameplay request hostage.
+      void syncRarityFlair(s).catch(error => {
+        console.error('[Rarity Flair] Background update failed:', error);
+      });
       return;
     }
 
@@ -1751,14 +1754,19 @@ export async function applyRolls(
   }
 
 
-  s.globalBoosters = await getGlobalBoosters();
+  // These reads are independent. Keep them parallel so a roll does not spend
+  // several sequential Redis round trips before it can even start rolling.
+  const [freshGlobalBoosters, worldEvent, fakeCcuBonus] = await Promise.all([
+    getGlobalBoosters(),
+    getCommunityEvent(),
+    getFakeCcuBonus(),
+  ]);
+  s.globalBoosters = freshGlobalBoosters;
   const globalBoosters = s.globalBoosters;
-  const worldEvent = await getCommunityEvent();
   const communityLuck = worldEvent.buffMultiplier ?? 1.15;
 
   // Fake CCU is an admin testing offset applied only to this player's luck calculation.
   // The underlying CCU metric and historical peaks always remain based on real players.
-  const fakeCcuBonus = await getFakeCcuBonus();
   const luckCcu = Math.max(1, Math.floor((s.onlinePlayers ?? 1) + fakeCcuBonus));
   const luckState = luckCcu === (s.onlinePlayers ?? 1) ? s : { ...s, onlinePlayers: luckCcu };
   // Community Luck is another additive source, kept transient rather than persisted.
@@ -2032,7 +2040,9 @@ export async function applyRolls(
       highestRarity: s.highestRarity,
     },
     userId: spyUserId,
-  }, spyUserId);
+  }, spyUserId).catch(error => {
+    console.error('[Player Spy] Background roll log failed:', error);
+  });
 
   return { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount };
 }
@@ -2320,14 +2330,21 @@ export async function roll(isAuto = false): Promise<RollResponse> {
   s.lastRollAt = now;
   s.lastSeenAt = now;
   await save(s);
-  await recordLeaderboard(s);
-  await appendPlayerSpyLog('roll-activation', {
+
+  // Leaderboard and diagnostics are not required to confirm the roll. Run them
+  // after persistence succeeds without blocking the HTTP response.
+  void recordLeaderboard(s).catch(error => {
+    console.error('[Leaderboard] Background update failed:', error);
+  });
+  void appendPlayerSpyLog('roll-activation', {
     mode: isAuto ? 'auto' : 'manual',
     processedRolls: rollCount,
     bestRarity: bestOrb.rarity,
     coinsGained,
     shardsGained,
     xpGained,
+  }).catch(error => {
+    console.error('[Player Spy] Background activation log failed:', error);
   });
 
   return {
