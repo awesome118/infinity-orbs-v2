@@ -102,21 +102,21 @@ function captureSaveBaseline(s: PlayerState): void {
     if (field === 'stateRevision' || field === 'saveGeneration' || field === 'globalBoosters') continue;
     try { baseline[field] = JSON.stringify(value); } catch { /* ignored */ }
   }
-  (s as PlayerState & Record<symbol, unknown>)[SAVE_BASELINE] = baseline;
+  (s as unknown as Record<symbol, unknown>)[SAVE_BASELINE] = baseline;
 }
 
 function mergeConcurrentState(latest: PlayerState, incoming: PlayerState, baseline: Record<string, string>): PlayerState | null {
   const merged: PlayerState = { ...latest };
   for (const field of Object.keys(incoming)) {
     if (field === 'stateRevision' || field === 'saveGeneration') continue;
-    const incomingValue = JSON.stringify((incoming as Record<string, unknown>)[field]);
+    const incomingValue = JSON.stringify((incoming as unknown as Record<string, unknown>)[field]);
     if (incomingValue === baseline[field]) continue;
     if (field === 'globalBoosters') continue;
     if (SAVE_MERGE_VOLATILE_FIELDS.has(field)) {
       if (field === 'lastSeenAt') {
-        const latestSeen = Number((latest as Record<string, unknown>)[field] ?? 0) || 0;
+        const latestSeen = Number((latest as unknown as Record<string, unknown>)[field] ?? 0) || 0;
         const incomingSeen = Number((incoming as Record<string, unknown>)[field] ?? 0) || 0;
-        (merged as Record<string, unknown>)[field] = Math.max(latestSeen, incomingSeen);
+        (merged as unknown as Record<string, unknown>)[field] = Math.max(latestSeen, incomingSeen);
       }
       continue;
     }
@@ -1446,7 +1446,11 @@ export async function loadRaw(): Promise<PlayerState> {
     guildPerks: perks,
     globalBoosters,
     purchasedShardLots: parsed.purchasedShardLots
-      ? Object.fromEntries(Object.entries(parsed.purchasedShardLots).map(([id, amount]) => [id, Math.max(0, Math.floor(Number(amount) || 0))]).filter(([, amount]) => amount > 0))
+      ? Object.fromEntries(
+          Object.entries(parsed.purchasedShardLots as Record<string, unknown>)
+            .map(([id, amount]) => [id, Math.max(0, Math.floor(Number(amount) || 0))] as const)
+            .filter(([, amount]) => amount > 0),
+        )
       : ((parsed.purchasedShards ?? 0) > 0 ? { legacy: Math.max(0, Math.floor(Number(parsed.purchasedShards) || 0)) } : {}),
   };
   captureSaveBaseline(loadedState);
@@ -1624,7 +1628,7 @@ export async function save(s: PlayerState) {
   await ensureRedisStringKey(generationKey, '0');
 
   let expectedRevision = Math.max(0, Math.floor(Number(s.stateRevision ?? 0)) || 0);
-  const baseline = (s as PlayerState & Record<symbol, unknown>)[SAVE_BASELINE] as Record<string, string> | undefined;
+  const baseline = (s as unknown as Record<symbol, unknown>)[SAVE_BASELINE] as Record<string, string> | undefined;
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(playerKey, generationKey);
@@ -2059,7 +2063,12 @@ export async function applyRolls(
 
   advanceQuestProgress(s, 'roll', rollCount);
   if (bestRarity >= 100) {
-    advanceQuestProgress(s, 'rare', bestRarity, newRarityKeys.some(group => group.rarity >= 100));
+    advanceQuestProgress(
+      s,
+      'rare',
+      bestRarity,
+      rarities.some((rarity, index) => rarity >= 100 && Boolean(batch[index]?.isNew)),
+    );
   }
   advanceQuestProgress(s, 'value', totalVal);
   advanceQuestProgress(s, 'unique', uniqueGained);
