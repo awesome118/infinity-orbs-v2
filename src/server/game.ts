@@ -1788,7 +1788,7 @@ function advanceQuestProgress(s: PlayerState, type: 'roll' | 'rare' | 'value' | 
     if (q.claimed) continue;
     if (type === 'roll' && q.id.includes('grind')) q.progress = Math.min(q.target, q.progress + amount);
     if (type === 'rare' && q.id.includes('epic') && amount >= 1000) q.progress = Math.min(q.target, q.progress + 1);
-    if (type === 'value' && q.id.includes('guild')) q.progress = Math.min(q.target, q.progress + amount);
+    if (type === 'value' && q.id.includes('guild') && s.guildPerks) q.progress = Math.min(q.target, q.progress + amount);
     // Only a genuine server-created share advances the share quest.
     if (type === 'share' && q.id.includes('share')) q.progress = Math.min(q.target, q.progress + 1);
   }
