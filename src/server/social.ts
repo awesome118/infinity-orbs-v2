@@ -161,7 +161,23 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
 
 async function loadGuilds(): Promise<Guild[]> {
   const raw = await redis.get(GUILDS_KEY);
-  return parseGuildList(raw);
+  const guilds = parseGuildList(raw);
+  const normalized = JSON.stringify(guilds);
+  if (raw !== normalized) {
+    // Week boundaries must be durable even if nobody mutates a guild.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const txn = await redis.watch(GUILDS_KEY);
+      const latestRaw = await redis.get(GUILDS_KEY);
+      if (latestRaw !== raw) {
+        await txn.unwatch();
+        return parseGuildList(latestRaw);
+      }
+      await txn.multi();
+      await txn.set(GUILDS_KEY, normalized);
+      if (await txn.exec()) break;
+    }
+  }
+  return guilds;
 }
 
 export interface GuildChatSpyGuild {
