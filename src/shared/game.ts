@@ -632,6 +632,8 @@ export interface PlayerState {
 
   lastFrenzyDate?: string;
   lastFrenzyClaimDate?: string;
+  /** Idempotency markers for Frenzy claims already committed to this player. */
+  frenzyClaimedPosts?: Record<string, number>;
   communityRewardClaimedTier?: number;
   paymentReceipts?: Record<string, PaymentReceipt | 'fulfilled' | 'refunded'>;
   currentRunRolls?: number;
