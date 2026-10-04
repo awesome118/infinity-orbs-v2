@@ -1658,7 +1658,7 @@ export async function save(
   const generationKey = saveGenerationKeyFor(userId);
   await ensureRedisStringKey(generationKey, '0');
 
-  const expectedRevision = Math.max(0, Math.floor(Number(s.stateRevision ?? 0)) || 0);
+  let expectedRevision = Math.max(0, Math.floor(Number(s.stateRevision ?? 0)) || 0);
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const watchedKeys = extraWrite ? [playerKey, generationKey, extraWrite.key] : [playerKey, generationKey];
@@ -1730,22 +1730,21 @@ export async function save(
       // any actual player data. Treat that case as an idempotent save instead
       // of surfacing a false conflict to the player.
       if (latest && saveStatesMatchIgnoringRevision(latest, s)) {
+        expectedRevision = latestRevision;
         s.stateRevision = latestRevision;
       } else {
         await appendSaveDebugLog('revision-conflict', {
-        attempt: attempt + 1,
-        expectedRevision,
-        latestRevision,
-        generation,
-        stateGeneration,
-        storedState: latest ? compactSaveState(latest) : null,
-        incomingState: compactSaveState(s),
-        caller: saveCaller(),
-      }, userId);
+          attempt: attempt + 1,
+          expectedRevision,
+          latestRevision,
+          generation,
+          stateGeneration,
+          storedState: latest ? compactSaveState(latest) : null,
+          incomingState: compactSaveState(s),
+          caller: saveCaller(),
+        }, userId);
         await txn.unwatch();
-        // The persisted state already contains exactly the state this request
-        // wanted to save. There is nothing left to write.
-        return;
+        throw new Error('Player state changed while saving. Please retry.');
       }
     }
 
