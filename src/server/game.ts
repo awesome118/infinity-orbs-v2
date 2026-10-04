@@ -1657,6 +1657,8 @@ export async function flushPendingPlayerOperations(
 
     const originalOperations = Array.isArray(s.pendingOperations) ? [...s.pendingOperations] : [];
     const originalShards = s.shards;
+    const originalCoins = s.coins;
+    const originalLifetimeCoins = s.lifetimeCoins;
     const originalGlobalBoosters = s.globalBoosters;
 
     try {
@@ -1699,6 +1701,8 @@ export async function flushPendingPlayerOperations(
       }
     } catch (error) {
       s.shards = originalShards;
+      s.coins = originalCoins;
+      s.lifetimeCoins = originalLifetimeCoins;
       s.globalBoosters = originalGlobalBoosters;
       s.pendingOperations = originalOperations;
       console.error('[Pending Operations] Settlement failed:', {
