@@ -2451,10 +2451,11 @@ export async function roll(
       | undefined;
 
     if (ticketId != null || ticketIndex != null) {
-      if (!ticketId || !Number.isSafeInteger(ticketIndex)) {
+      const requestedTicketIndex = ticketIndex;
+      if (!ticketId || !Number.isSafeInteger(requestedTicketIndex)) {
         throw new Error('Invalid roll prediction ticket.');
       }
-      const loaded = await loadRollTicketForUse(ticketId, ticketIndex);
+      const loaded = await loadRollTicketForUse(ticketId, requestedTicketIndex);
       const nextTicket: RollTicket = {
         ...loaded.ticket,
         nextIndex: loaded.ticket.nextIndex + 1,
@@ -2462,7 +2463,7 @@ export async function roll(
       ticketUse = {
         ticket: loaded.ticket,
         raw: loaded.raw,
-        index: ticketIndex,
+        index: requestedTicketIndex,
         nextValue: JSON.stringify(nextTicket),
       };
     }
