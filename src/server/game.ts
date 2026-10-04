@@ -959,31 +959,42 @@ export async function setGlobalBoosterDebugState(
 ): Promise<{ tier: number; activationProgress: number; endsAt: number }> {
   if (!GLOBAL_BOOSTERS[id]) throw new Error('Unknown Global Booster.');
 
-  const now = Date.now();
   const safeTier = Math.max(0, Math.min(GLOBAL_BOOSTER_MAX_TIER, Math.floor(Number(tier) || 0)));
   const safeMinutes = Math.max(1, Math.floor(Number(minutes) || 30));
-  const snapshot = await getGlobalBoosters();
-  const previous = snapshot[id];
-  const cappedTier = Math.min(GLOBAL_BOOSTER_MAX_TIER, safeTier);
-  const next = {
-    tier: cappedTier,
-    activationProgress: 0,
-    endsAt: cappedTier === 0
-      ? 0
-      : now + Math.min(safeMinutes * 60_000, GLOBAL_BOOSTER_BAR_DURATION_MS),
-  };
-  snapshot[id] = next;
-  await redis.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(snapshot));
 
-  await appendGlobalBoosterDebugLog('admin:set', {
-    id,
-    previous,
-    next,
-    minutes: safeMinutes,
-    key: GLOBAL_BOOSTERS_KEY,
-  });
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const now = Date.now();
+    const txn = await redis.watch(GLOBAL_BOOSTERS_KEY);
+    const raw = await redis.get(GLOBAL_BOOSTERS_KEY);
+    const snapshot = parseGlobalBoosterSnapshot(raw, now) ?? createInitialGlobalBoosters(now);
+    const previous = snapshot[id];
+    const next = {
+      tier: safeTier,
+      activationProgress: 0,
+      endsAt: safeTier === 0
+        ? 0
+        : now + Math.min(safeMinutes * 60_000, GLOBAL_BOOSTER_BAR_DURATION_MS),
+      lastTickAt: now,
+      segmentTiers: [],
+    };
+    snapshot[id] = next;
 
-  return next;
+    await txn.multi();
+    await txn.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(snapshot));
+    const committed = await txn.exec();
+    if (committed !== null) {
+      await appendGlobalBoosterDebugLog('admin:set', {
+        id,
+        previous,
+        next,
+        minutes: safeMinutes,
+        key: GLOBAL_BOOSTERS_KEY,
+      });
+      return next;
+    }
+  }
+
+  throw new Error('Global Booster state changed while applying the admin update. Please retry.');
 }
 
 function playerKeyFor(userId: string): string {
