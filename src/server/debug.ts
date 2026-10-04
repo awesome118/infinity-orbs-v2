@@ -497,6 +497,7 @@ debugRouter.post('/event', async (req, res) => {
 // Currency controls.
 debugRouter.post('/currency', async (req, res) => {
   try {
+      await withPlayerMutationLock(async () => {
     const { coins = 0, shards = 0, dust = 0 } = req.body || {};
     const s = await loadRaw();
     s.coins = Math.max(0, s.coins + finiteInteger(coins));
@@ -504,7 +505,7 @@ debugRouter.post('/currency', async (req, res) => {
     s.cosmicDust = Math.max(0, (s.cosmicDust ?? 0) + finiteInteger(dust));
     await save(s);
     res.json({ ok: true, state: s });
-  } catch (e: any) {
+        });} catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
@@ -514,6 +515,7 @@ debugRouter.post('/currency', async (req, res) => {
 // admin tooling cannot accidentally overwrite payment receipts or other metadata.
 debugRouter.post('/state', async (req, res) => {
   try {
+      await withPlayerMutationLock(async () => {
     const s = await loadRaw();
     const body = req.body || {};
 
@@ -613,13 +615,14 @@ debugRouter.post('/state', async (req, res) => {
     await save(s);
     await recordLeaderboard(s);
     res.json({ ok: true, state: s });
-  } catch (e: any) {
+        });} catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to set state.' });
   }
 });
 
 debugRouter.post('/preset', async (req, res) => {
   try {
+      await withPlayerMutationLock(async () => {
     const preset = String(req.body?.preset ?? '').trim();
     const s = await loadRaw();
     const fresh = createInitialState();
@@ -715,24 +718,26 @@ debugRouter.post('/preset', async (req, res) => {
     await save(s);
     await recordLeaderboard(s);
     res.json({ ok: true, preset, state: s });
-  } catch (e: any) {
+        });} catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to apply preset.' });
   }
 });
 
 debugRouter.post('/reset-cooldown', async (_req, res) => {
   try {
+      await withPlayerMutationLock(async () => {
     const s = await loadRaw();
     s.lastRollAt = 0;
     await save(s);
     res.json({ ok: true, state: s });
-  } catch (e: any) {
+        });} catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
 
 debugRouter.post('/unlock-upgrades', async (_req, res) => {
   try {
+      await withPlayerMutationLock(async () => {
     const s = await loadRaw();
     s.upgrades = {
       speed: 20,
@@ -750,48 +755,52 @@ debugRouter.post('/unlock-upgrades', async (_req, res) => {
     };
     await save(s);
     res.json({ ok: true, state: s });
-  } catch (e: any) {
+        });} catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
 
 debugRouter.post('/unlock-everything', async (_req, res) => {
   try {
+      await withPlayerMutationLock(async () => {
     const s = await loadRaw();
     setMaxProgression(s);
     await save(s);
     await recordLeaderboard(s);
     res.json({ ok: true, state: s });
-  } catch (e: any) {
+        });} catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to unlock everything.' });
   }
 });
 
 debugRouter.post('/add-offline', async (req, res) => {
   try {
+      await withPlayerMutationLock(async () => {
     const amount = finiteInteger(req.body?.amount ?? 50);
     const s = await loadRaw();
     s.offlineRolls = Math.min(1_000, Math.max(0, (s.offlineRolls ?? 0) + amount));
     await save(s);
     res.json({ ok: true, state: s });
-  } catch (e: any) {
+        });} catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
 
 debugRouter.post('/offline-set', async (req, res) => {
   try {
+      await withPlayerMutationLock(async () => {
     const s = await loadRaw();
     s.offlineRolls = Math.min(1_000, nonNegativeInteger(req.body?.amount));
     await save(s);
     res.json({ ok: true, state: s });
-  } catch (e: any) {
+        });} catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
 
 debugRouter.post('/reset-daily', async (_req, res) => {
   try {
+      await withPlayerMutationLock(async () => {
     const s = await loadRaw();
     s.lastFrenzyDate = '';
     s.lastFrenzyClaimDate = '';
@@ -806,13 +815,14 @@ debugRouter.post('/reset-daily', async (_req, res) => {
     }
     await save(s);
     res.json({ ok: true, state: s });
-  } catch (e: any) {
+        });} catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
 
 debugRouter.post('/force-roll', async (req, res) => {
   try {
+      await withPlayerMutationLock(async () => {
     const s = await loadRaw();
     const forcedRarity = Math.max(2, finiteInteger(req.body?.rarity, 1_000));
     const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained } = await applyRolls(s, 1, forcedRarity);
@@ -834,7 +844,7 @@ debugRouter.post('/force-roll', async (req, res) => {
       rollsRemainingUntilNext: cooldownMs(s),
       dramaticReveal: bestOrb.rarity >= 100,
     });
-  } catch (e: any) {
+        });} catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
@@ -861,12 +871,13 @@ debugRouter.post('/frenzy/claim', async (req, res) => {
 
 debugRouter.post('/frenzy/reset', async (_req, res) => {
   try {
+      await withPlayerMutationLock(async () => {
     const s = await loadRaw();
     s.lastFrenzyDate = '';
     s.lastFrenzyClaimDate = '';
     await save(s);
     res.json({ ok: true, state: s });
-  } catch (e: any) {
+        });} catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
@@ -982,12 +993,13 @@ debugRouter.post('/moderation/wipe-and-ban', async (req, res) => {
 // console's most destructive action is still obvious.
 debugRouter.post('/reset-all', async (_req, res) => {
   try {
+      await withPlayerMutationLock(async () => {
     const fresh = createInitialState();
     fresh.username = context.username ?? fresh.username;
     await save(fresh);
     await recordLeaderboard(fresh);
     res.json({ ok: true, state: fresh });
-  } catch (e: any) {
+        });} catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
