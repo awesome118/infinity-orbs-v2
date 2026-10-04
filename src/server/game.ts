@@ -1255,6 +1255,7 @@ return withPlayerMutationLockFor(userId, async () => {
 
   await appendPaymentDebugLog('grant:exhausted', { userId, sku, orderId });
   throw new Error('Could not safely fulfill the purchase. Please retry.');
+  });
 }
 
 export async function refundPurchasedPack(userId: string, sku: string, orderId: string): Promise<void> {
