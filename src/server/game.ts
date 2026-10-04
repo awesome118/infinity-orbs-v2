@@ -1087,6 +1087,7 @@ export async function hasReadablePlayerSave(userId: string): Promise<boolean> {
 }
 
 export async function grantPurchasedPack(userId: string, sku: string, orderId: string): Promise<boolean> {
+return withPlayerMutationLockFor(userId, async () => {
   const pack = paymentGoodsForSku(sku);
   const pkey = playerKeyFor(userId);
   const generationKey = saveGenerationKeyFor(userId);
@@ -1199,6 +1200,7 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
       return false;
     }
 
+    state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
     state.shards = (state.shards ?? 0) + pack.shards;
     state.purchasedShards = (state.purchasedShards ?? 0) + pack.shards;
     state.lifetimeShards = (state.lifetimeShards ?? 0) + pack.shards;
@@ -1247,6 +1249,7 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
 }
 
 export async function refundPurchasedPack(userId: string, sku: string, orderId: string): Promise<void> {
+return withPlayerMutationLockFor(userId, async () => {
   const pack = paymentGoodsForSku(sku);
   const pkey = playerKeyFor(userId);
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -1283,6 +1286,7 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
     const refundableCredits = Math.min(state.globalBoosterCredits ?? 0, grantedCredits);
     state.globalBoosterCredits = Math.max(0, (state.globalBoosterCredits ?? 0) - refundableCredits);
 
+    state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
     state.paymentReceipts[orderId] = {
       status: 'refunded',
       shards: grantedShards,
@@ -3545,3 +3549,6 @@ export async function recordShareAction(s: PlayerState) {
   advanceQuestProgress(s, 'share', 1);
   await save(s);
 }
+
+});
+});
