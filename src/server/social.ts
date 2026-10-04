@@ -382,7 +382,8 @@ export async function addGuildTokens(
   throw new Error('Guild data changed while awarding Guild Tokens. Please retry.');
 }
 
-export async function applyRollSocialEffectsAtomic(input: RollSocialEffectInput): Promise<{ bossRewardShards: number }> {
+export async function applyRollSocialEffectsAtomic(input: RollSocialEffectInput): Promise<{ bossRewardShards: number; taxRefundCoins: number }> {
+  const safeTax = Math.max(0, Math.floor(Number(input.taxedCoins) || 0));
   const safeTaxTokens = Math.max(0, Math.floor(Number(input.guildTaxTokens) || 0));
   const safeValue = Math.max(0, Math.floor(Number(input.contributionValue) || 0));
   const safeRolls = Math.max(0, Math.floor(Number(input.rollCount) || 0));
@@ -397,10 +398,13 @@ export async function applyRollSocialEffectsAtomic(input: RollSocialEffectInput)
 
   for (let attempt = 0; attempt < 8; attempt++) {
     const txn = await redis.watch(GUILDS_KEY, COMMUNITY_EVENT_KEY, opKey);
-    const existing = parseStoredJson<{ bossRewardShards?: number }>(await redis.get(opKey));
+    const existing = parseStoredJson<{ bossRewardShards?: number; taxRefundCoins?: number }>(await redis.get(opKey));
     if (existing) {
       await txn.unwatch();
-      return { bossRewardShards: Math.max(0, Math.floor(Number(existing.bossRewardShards ?? 0) || 0)) };
+      return {
+        bossRewardShards: Math.max(0, Math.floor(Number(existing.bossRewardShards ?? 0) || 0)),
+        taxRefundCoins: Math.max(0, Math.floor(Number(existing.taxRefundCoins ?? 0) || 0)),
+      };
     }
 
     const guilds = parseGuildList(await redis.get(GUILDS_KEY));
@@ -411,6 +415,7 @@ export async function applyRollSocialEffectsAtomic(input: RollSocialEffectInput)
       : currentGuild(guilds);
 
     let bossRewardShards = 0;
+    let taxRefundCoins = 0;
     if (guild) {
       if (safeTaxTokens > 0) {
         guild.tokens = (guild.tokens ?? 0) + safeTaxTokens;
@@ -493,6 +498,10 @@ export async function applyRollSocialEffectsAtomic(input: RollSocialEffectInput)
           }
         }
       }
+    } else if (safeTax > 0) {
+      // The player left or changed guilds after the roll was calculated. Do not
+      // turn that race into a permanent coin loss.
+      taxRefundCoins = safeTax;
     }
 
     const rawEvent = await redis.get(COMMUNITY_EVENT_KEY);
@@ -530,14 +539,14 @@ export async function applyRollSocialEffectsAtomic(input: RollSocialEffectInput)
       }
     }
 
-    const marker = JSON.stringify({ bossRewardShards });
+    const marker = JSON.stringify({ bossRewardShards, taxRefundCoins });
     await txn.multi();
     await txn.set(GUILDS_KEY, JSON.stringify(guilds));
     await txn.set(COMMUNITY_EVENT_KEY, JSON.stringify(ev));
     await txn.set(opKey, marker);
     const committed = await txn.exec();
     if (committed !== null) {
-      return { bossRewardShards };
+      return { bossRewardShards, taxRefundCoins };
     }
   }
 
