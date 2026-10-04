@@ -3211,11 +3211,15 @@ export async function claimOrbFrenzy(options: {
 
   const s = await settleOffline(await loadRaw());
   const today = new Date().toISOString().slice(0, 10);
+  s.frenzyClaimedPosts = s.frenzyClaimedPosts ?? {};
+  if (s.frenzyClaimedPosts[postId]) {
+    throw new Error('This Orb Frenzy has already been claimed.');
+  }
   if (s.lastFrenzyClaimDate === today) {
     throw new Error('You already claimed a Frenzy reward today.');
   }
 
-  const baseCount = Math.max(1, data.rarity);
+  const baseCount = Math.max(1, Math.min(250_000, Math.floor(Math.sqrt(Math.max(1, data.rarity)))));
   const frenzyVolleyEfficiency = (s.prestigeUpgrades?.frenzyVolley ?? 0) > 0
     ? Math.max(0, rollsPerActivation(s) - 1) * 0.20
     : 0;
