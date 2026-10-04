@@ -1834,6 +1834,7 @@ export async function applyRolls(
   let shardsGained = 0;
   let xpGained = 0;
   let uniqueGained = 0;
+  let discoveredQualifyingRarity = false;
   const batch: Orb[] = [];
   const rarities: number[] = [];
   let rollCount = rollCountOverride ?? (rollsPerActivation(s) * activationCount);
@@ -2067,7 +2068,7 @@ export async function applyRolls(
       s,
       'rare',
       bestRarity,
-      rarities.some((rarity, index) => rarity >= 100 && Boolean(batch[index]?.isNew)),
+      discoveredQualifyingRarity,
     );
   }
   advanceQuestProgress(s, 'value', totalVal);
