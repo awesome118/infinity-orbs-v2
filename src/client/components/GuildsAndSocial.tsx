@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import type {
   Guild,
+  GuildMember,
   LeaderboardEntry,
   WorldEvent,
   GuildPerkId,
@@ -46,6 +47,7 @@ interface GuildsAndSocialProps {
   onToggleGuildTrust?: (username: string, trusted: boolean) => Promise<void>;
   onSetGuildTax?: (rate: number) => Promise<void>;
   playerUsername?: string;
+  myMember?: GuildMember | null;
   playerCoins?: number;
   playerShards?: number;
   playerHasShared?: boolean;
@@ -92,6 +94,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   onToggleGuildTrust,
   onSetGuildTax,
   playerUsername = '',
+  myMember = null,
   playerCoins = 0,
   playerShards = 0,
   playerHasShared = false,
@@ -114,7 +117,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   }, [myGuild?.id, myGuild?.chat]);
 
   const fmt = (n: number) => n.toLocaleString();
-  const currentGuildMember = myGuild?.members.find(m => m.username === playerUsername);
+  const currentGuildMember = myMember ?? myGuild?.members.find(m => m.username === playerUsername);
   const canManageGuild = currentGuildMember?.role === 'owner' ||
     currentGuildMember?.role === 'officer' ||
     currentGuildMember?.trusted === true;
