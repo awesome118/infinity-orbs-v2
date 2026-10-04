@@ -314,6 +314,7 @@ export function App() {
   const stateRevisionRef = useRef(0);
   const refreshSequenceRef = useRef(0);
   const worldEventRequestRef = useRef(0);
+  const guildRequestRef = useRef(0);
   const worldEventMutationRef = useRef(0);
   const appliedServerRevisionRef = useRef(-1);
   const lastBoosterAnnouncementAtRef = useRef(0);
@@ -550,8 +551,9 @@ export function App() {
       }).catch(() => null);
 
       if (tab === 'social') {
+        const guildRequestId = ++guildRequestRef.current;
         void getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds').then(gd => {
-          if (gd) setGuildData(gd);
+          if (gd && guildRequestId === guildRequestRef.current) setGuildData(gd);
         }).catch(() => null);
       }
     }, pollInterval);
@@ -977,7 +979,6 @@ export function App() {
     const rollback = beginOptimisticState(current => {
       const info = PREMIUM_BOOSTERS[id];
       if (!info || (current.shards ?? 0) < info.costShards) return current;
-      const purchased = current.purchasedShards ?? 0;
       return {
         ...current,
         ...optimisticSpendShards(current, info.costShards),
@@ -1012,9 +1013,7 @@ export function App() {
       if (!info || current.automations?.[id] || (current.shards ?? 0) < info.costShards) return current;
       const purchased = current.purchasedShards ?? 0;
       return {
-        ...current,
-        shards: current.shards - info.costShards,
-        purchasedShards: Math.max(0, purchased - Math.min(info.costShards, purchased)),
+        ...optimisticSpendShards(current, info.costShards),
         automations: { ...(current.automations ?? {}), [id]: true },
       };
     });
@@ -1256,7 +1255,7 @@ export function App() {
       grantFreeShards(next, quest.rewardShards ?? 0);
       const levelBefore = Math.max(1, current.level || 1);
       const earnedLevel = calculateLevelFromXp(next.xp).level;
-      const levelAfter = Math.max(levelBefore, earnedLevel);
+      const levelAfter = earnedLevel;
       next.level = levelAfter;
       if (levelAfter > levelBefore) {
         next.masteryPoints = (next.masteryPoints ?? 0) + (levelAfter - levelBefore);
@@ -1301,6 +1300,24 @@ export function App() {
       const keepPct = Math.min(0.50, inheritanceLevel * 0.10);
       const keptCoins = Math.max(50, Math.floor(current.coins * keepPct));
       const keptShards = Math.floor((current.shards ?? 0) * keepPct);
+      const totalBefore = Math.max(0, Math.floor(Number(current.shards ?? 0) || 0));
+      const paidBefore = Math.min(
+        totalBefore,
+        Math.max(0, Math.floor(Number(current.purchasedShards ?? 0) || 0)),
+      );
+      const targetPaid = totalBefore > 0
+        ? Math.min(paidBefore, Math.floor(keptShards * paidBefore / totalBefore))
+        : 0;
+      const targetLots: Record<string, number> = {};
+      let remainingPaid = targetPaid;
+      for (const [orderId, amount] of Object.entries(current.purchasedShardLots ?? {})) {
+        if (remainingPaid <= 0) break;
+        const lot = Math.max(0, Math.floor(Number(amount) || 0));
+        const kept = Math.min(lot, remainingPaid);
+        if (kept > 0) targetLots[orderId] = kept;
+        remainingPaid -= kept;
+      }
+      if (remainingPaid > 0) targetLots.legacy = remainingPaid;
 
       return {
         ...current,
@@ -1310,6 +1327,8 @@ export function App() {
         collectionValue: 0,
         coins: keptCoins,
         shards: keptShards,
+        purchasedShards: targetPaid,
+        purchasedShardLots: targetLots,
         upgrades: createInitialState().upgrades,
         offlineRolls: 0,
         rollsSinceBest: 0,
