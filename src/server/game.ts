@@ -3355,7 +3355,9 @@ export async function claimOrbFrenzy(options: {
   applyXp(s, xpGained);
 
   advanceQuestProgress(s, 'roll', count);
-  advanceQuestProgress(s, 'rare', bestRarity);
+  if (bestRarity >= 100) {
+    advanceQuestProgress(s, 'rare', bestRarity, newRarityKeys.some(group => group.rarity >= 100));
+  }
   advanceQuestProgress(s, 'value', finalValue);
   advanceQuestProgress(s, 'unique', uniqueGained);
   const guildResult = await contribute(finalValue, count, bestRarity);
