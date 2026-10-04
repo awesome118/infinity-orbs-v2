@@ -365,7 +365,7 @@ export function decayGlobalBoosterState(
     endsAt,
     lastTickAt: now,
     segmentTiers: Array.isArray(state?.segmentTiers)
-      ? state!.segmentTiers!.map(v => Math.max(0, Math.floor(Number(v) || 0))).slice(-GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER)
+      ? state!.segmentTiers!.map(v => Math.min(GLOBAL_BOOSTER_MAX_TIER, Math.max(0, Math.floor(Number(v) || 0)))).slice(-GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER)
       : [],
   };
 }
