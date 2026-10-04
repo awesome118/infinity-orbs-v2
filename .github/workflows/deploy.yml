@@ -96,3 +96,14 @@ jobs:
           CI: true
         timeout-minutes: 10
         run: timeout --signal=TERM --kill-after=30s 9m npx devvit upload
+
+      - name: Install freshly uploaded version to r/infinityorbs
+        env:
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
+        run: |
+          set -euo pipefail
+          VERSION="$(npx devvit view infinity-orbs version)"
+          echo "Installing infinity-orbs@${VERSION} to r/infinityorbs"
+          npx devvit install r/infinityorbs "infinity-orbs@${VERSION}"
+          npx devvit list installs r/infinityorbs
