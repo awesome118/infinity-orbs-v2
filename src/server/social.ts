@@ -399,8 +399,10 @@ export async function applyRollSocialEffectsAtomic(input: RollSocialEffectInput)
     }
 
     const guilds = parseGuildList(await redis.get(GUILDS_KEY));
-    const guild = input.guildId
-      ? guilds.find(g => g.id === input.guildId)
+    const guild = input.guildId !== undefined
+      ? input.guildId === null
+        ? undefined
+        : guilds.find(g => g.id === input.guildId)
       : currentGuild(guilds);
 
     let bossRewardShards = 0;
