@@ -109,8 +109,10 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
     setMessage(null);
     const baselineShards = state.shards;
     const baselineCredits = state.globalBoosterCredits ?? 0;
+    let orderId = '';
     try {
       const result = await purchase(sku);
+      orderId = String((result as any)?.orderId ?? (result as any)?.order?.id ?? '').trim();
       console.error('[Payments] Client purchase result:', result);
       if (result.status === OrderResultStatus.STATUS_SUCCESS) {
         let fulfillmentObserved = false;
