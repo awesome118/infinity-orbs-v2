@@ -92,6 +92,8 @@ export interface Guild {
   chat?: GuildMessage[];
   bannerEffect?: string;
   taxRate?: number; // 0-10% of earned Coins converted to Guild Tokens
+  bossWeek?: number;
+  challengeWeek?: number;
 }
 
 export interface LeaderboardEntry {
@@ -166,7 +168,7 @@ export const CHALLENGE_POOL: GuildChallenge[] = [
   { type: 'rare', target: 5, progress: 0, reward: 750, label: 'Find five 1/100+ orbs' },
 ];
 
-export function createInitialGuildBoss(tier = 1): GuildBoss {
+export function createInitialGuildBoss(tier = 1, week = weekKey()): GuildBoss {
   const names = [
     'Chronos Leviathan',
     'Void Behemoth',
@@ -177,7 +179,7 @@ export function createInitialGuildBoss(tier = 1): GuildBoss {
   const name = names[(tier - 1) % names.length];
   const maxHp = 500_000 * Math.pow(2, tier - 1);
   return {
-    id: `boss-t${tier}-${Date.now()}`,
+    id: `boss-t${tier}-w${week}`,
     name,
     tier,
     maxHp,
