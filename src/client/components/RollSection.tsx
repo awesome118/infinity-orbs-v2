@@ -24,6 +24,7 @@ import {
   cooldownMs,
   rollsPerActivation,
   luckMultiplier,
+  critMultiplier,
   getOrbInfo,
   coinsForRarity,
 } from '../../shared/game.js';
@@ -34,7 +35,7 @@ interface RollSectionProps {
   state: PlayerState;
   lastOrb: Orb | null;
   lastBatch: Orb[];
-  batchSummary: { totalVal: number; coins: number; shards: number; xp: number; frenzyCount?: number } | null;
+  batchSummary: { totalVal: number; coins: number; shards: number; xp: number; rollsProcessed?: number; frenzyCount?: number } | null;
   readyAt: number;
   busy: boolean;
   autoRoll: boolean;
@@ -129,7 +130,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       items.push({ id: Date.now() + 2, text: `+${batchSummary.shards} Shard${batchSummary.shards > 1 ? 's' : ''}`, color: 'text-cyan-300' });
     }
     if (lastOrb?.isCrit) {
-      items.push({ id: Date.now() + 3, text: '⚡ 2× CRITICAL!', color: 'text-rose-400' });
+      items.push({ id: Date.now() + 3, text: `⚡ ${critMultiplier(state).toFixed(2)}× CRITICAL!`, color: 'text-rose-400' });
     }
     if (items.length > 0) {
       setFloatingRewards(items);
@@ -270,7 +271,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
         <div className="w-full bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 rounded-xl px-3 py-1.5 flex items-center justify-between text-xs text-amber-300">
           <div className="flex items-center gap-1.5 font-bold">
             <Flame className="w-4 h-4 text-amber-400" />
-            <span>TURBO ACTIVE (-20% Cooldown)</span>
+            <span>{`TURBO ACTIVE (${Math.round((1 - (state.prestigeUpgrades?.chronoOverdrive ? 0.65 : 0.75)) * 100)}% faster cooldown)`}</span>
           </div>
           <span className="font-mono font-medium">
             {Math.ceil((state.turboRollUntil - now) / 60000)}m left
@@ -348,7 +349,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           {/* Critical Roll Badge */}
           {displayOrb?.isCrit && (
             <div className="absolute -top-6 bg-gradient-to-r from-rose-500 to-amber-500 text-white text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-lg border border-amber-300">
-              ⚡ 2× CRITICAL ROLL
+              {`⚡ ${critMultiplier(state).toFixed(2)}× CRITICAL ROLL`}
             </div>
           )}
 
@@ -647,7 +648,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 text-purple-400" />
               <span className="text-sm font-bold text-white">
-                {lastBatch.length} Orbs Rolled
+                {batchSummary.rollsProcessed ?? lastBatch.length} Orbs Rolled
               </span>
               <span className="text-xs text-slate-400">
                 (Best: 1/{lastOrb?.rarity.toLocaleString()})
