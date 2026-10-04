@@ -1187,9 +1187,14 @@ export function createApp() {
         postId = post.id;
       }
       await recordShareAction(s);
-      // The share itself makes the player eligible immediately, without
-      // requiring another roll before appearing on the leaderboard.
-      await recordLeaderboard(s);
+      // Leaderboard telemetry is derived data. A telemetry failure must not turn
+      // an already-created Reddit post into a retryable error, which would create
+      // duplicate posts for the same share.
+      try {
+        await recordLeaderboard(s);
+      } catch (error) {
+        console.error('[Leaderboard] Failed to record shared player state:', error);
+      }
       res.json({ success: true, id: postId, text });
     } catch (e) { badRequest(res, e, 'Could not create Reddit post.'); }
   });
