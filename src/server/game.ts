@@ -95,6 +95,7 @@ const GLOBAL_BOOSTER_ANNOUNCEMENT_KEY = 'io:global-booster-announcement';
 const OFFLINE_FULL_NOTIFICATION_PREFIX = 'io:offline-full-notified:';
 const OFFLINE_FULL_JOB_PREFIX = 'io:offline-full-job:';
 const OFFLINE_FULL_RETRY_MS = 5 * 60_000;
+const OFFLINE_FULL_JOB_RESERVATION_PREFIX = 'pending:';
 const PENDING_OPERATION_MAX = 50;
 const PLAYER_FLAIR_KEY_PREFIX = 'io:player-flair:';
 
