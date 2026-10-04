@@ -1255,6 +1255,8 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
 
     state.shards = (state.shards ?? 0) + pack.shards;
     state.purchasedShards = (state.purchasedShards ?? 0) + pack.shards;
+    state.purchasedShardLots = state.purchasedShardLots ?? {};
+    state.purchasedShardLots[orderId] = Math.max(0, Math.floor(Number(state.purchasedShardLots[orderId] ?? 0) || 0)) + pack.shards;
     state.lifetimeShards = (state.lifetimeShards ?? 0) + pack.shards;
     state.globalBoosterCredits = (state.globalBoosterCredits ?? 0) + pack.globalBoosterCredits;
     const receipt: PaymentReceipt = {
@@ -1325,11 +1327,22 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
       return;
     }
 
-    // New receipts store the exact entitlement granted by this order. Old
-    // status-only receipts migrate using the verified SKU payload.
-    const grantedShards = typeof receipt === 'string' ? pack.shards : receipt.shards;    const refundableShards = Math.min(state.purchasedShards ?? 0, grantedShards);
+    // New receipts store the exact entitlement granted by this order.
+    // Refund only the still-unspent portion belonging to this order.
+    const grantedShards = typeof receipt === 'string' ? pack.shards : Math.max(0, Number(receipt.shards ?? 0) || 0);
+    state.purchasedShardLots = state.purchasedShardLots ?? {};
+    const legacyRefundPool = typeof receipt === 'string'
+      ? Math.max(0, Number(state.purchasedShardLots.legacy ?? 0) || 0)
+      : 0;
+    const orderLot = Math.max(0, Number(state.purchasedShardLots[orderId] ?? 0) || 0);
+    const refundableShards = Math.min(grantedShards, orderLot > 0 ? orderLot : legacyRefundPool);
     state.shards = Math.max(0, (state.shards ?? 0) - refundableShards);
     state.purchasedShards = Math.max(0, (state.purchasedShards ?? 0) - refundableShards);
+    const shardLotKey = orderLot > 0 ? orderId : 'legacy';
+    if (refundableShards > 0) {
+      state.purchasedShardLots[shardLotKey] = Math.max(0, (state.purchasedShardLots[shardLotKey] ?? 0) - refundableShards);
+      if (state.purchasedShardLots[shardLotKey] <= 0) delete state.purchasedShardLots[shardLotKey];
+    }
 
     const grantedCredits = typeof receipt === 'string'
       ? pack.globalBoosterCredits
