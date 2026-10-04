@@ -288,7 +288,7 @@ function socialOperationKey(operationId: string): string {
 
 export interface RollSocialEffectInput {
   operationId: string;
-  guildId?: string;
+  guildId?: string | null;
   taxedCoins: number;
   guildTaxTokens: number;
   contributionValue: number;
