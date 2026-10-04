@@ -80,14 +80,22 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
         body: JSON.stringify(orderId ? { orderId } : {}),
       });
       if (!reconcileRes.ok) return false;
+      const reconciliation = await reconcileRes.json().catch(() => ({}));
+      const granted = Number(reconciliation?.granted ?? 0) || 0;
+      if (granted > 0) {
+        await onPurchased();
+        return true;
+      }
 
+      if (orderId) return false;
+
+      // Legacy fallback when the native bridge did not expose an order ID.
       const meRes = await fetch('/api/me');
       if (!meRes.ok) return false;
       const next = await meRes.json() as PlayerState;
       const fulfilled =
         next.shards > baselineShards ||
         (next.globalBoosterCredits ?? 0) > baselineCredits;
-
       if (fulfilled) await onPurchased();
       return fulfilled;
     } catch {
