@@ -2028,11 +2028,7 @@ export function App() {
           <BoostersAndAutomation
             state={state}
             busy={busy}
-            globalBoosters={state.globalBoosters ?? {
-              luck: { tier: 0, activationProgress: 0, endsAt: 0 },
-              speed: { tier: 0, activationProgress: 0, endsAt: 0 },
-              crit: { tier: 0, activationProgress: 0, endsAt: 0 },
-            }}
+            globalBoosters={globalBoosters}
             worldEvent={worldEvent}
             onActivateBooster={handleActivatePremiumBooster}
             onActivateGlobalBooster={handleActivateGlobalBooster}
