@@ -2199,20 +2199,61 @@ export async function applyRolls(
 
 async function sendOfflineFullNotification(userId: string, subredditName: string): Promise<boolean> {
   const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
-  if (await redis.get(notificationKey)) return false;
+  const pendingPrefix = 'pending:';
+  const reservationTimeoutMs = 10 * 60_000;
 
   if (!(await notifications.isOptedIn(userId))) return false;
 
-  await notifications.enqueue({
-    title: 'Infinity Orbs',
-    body: 'your offline orbs are full, make sure to collect them! ',
-    recipients: [{
-      userId,
-      link: `https://reddit.com/r/${subredditName}`,
-    }],
-  });
-  await redis.set(notificationKey, '1');
-  return true;
+  let reservation: string | null = null;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const now = Date.now();
+    const txn = await redis.watch(notificationKey);
+    const raw = await redis.get(notificationKey);
+    if (raw === '1') {
+      await txn.unwatch();
+      return false;
+    }
+
+    const pendingAt = raw?.startsWith(pendingPrefix) ? Number(raw.slice(pendingPrefix.length)) : 0;
+    if (pendingAt > 0 && now - pendingAt < reservationTimeoutMs) {
+      await txn.unwatch();
+      return false;
+    }
+
+    reservation = `${pendingPrefix}${now}`;
+    await txn.multi();
+    await txn.set(notificationKey, reservation);
+    const committed = await txn.exec();
+    if (committed !== null) break;
+    reservation = null;
+  }
+
+  if (!reservation) throw new Error('Could not reserve offline notification delivery.');
+
+  try {
+    await notifications.enqueue({
+      title: 'Infinity Orbs',
+      body: 'your offline orbs are full, make sure to collect them! ',
+      recipients: [{
+        userId,
+        link: `https://reddit.com/r/${subredditName}`,
+      }],
+    });
+
+    await redis.set(notificationKey, '1');
+    return true;
+  } catch (error) {
+    const cleanup = await redis.watch(notificationKey);
+    const current = await redis.get(notificationKey);
+    if (current === reservation) {
+      await cleanup.multi();
+      await cleanup.del(notificationKey);
+      await cleanup.exec();
+    } else {
+      await cleanup.unwatch();
+    }
+    throw error;
+  }
 }
 
 async function scheduleOfflineFullNotification(
@@ -2225,15 +2266,58 @@ async function scheduleOfflineFullNotification(
   if (!(await notifications.isOptedIn(userId))) return;
 
   const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
-  if (await redis.get(jobKey)) return;
+  const reservationTimeoutMs = 10 * 60_000;
+  let reservation: string | null = null;
 
-  const safeRunAt = Math.max(Date.now() + 1_000, runAt);
-  const jobId = await context.scheduler.runJob({
-    name: 'offline-orbs-full',
-    data: { userId, subredditName },
-    runAt: new Date(safeRunAt),
-  });
-  await redis.set(jobKey, jobId);
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const now = Date.now();
+    const txn = await redis.watch(jobKey);
+    const raw = await redis.get(jobKey);
+    const pendingAt = raw?.startsWith('pending:') ? Number(raw.slice('pending:'.length)) : 0;
+    if (raw && !(pendingAt > 0 && now - pendingAt >= reservationTimeoutMs)) {
+      await txn.unwatch();
+      return;
+    }
+
+    reservation = `pending:${now}`;
+    await txn.multi();
+    await txn.set(jobKey, reservation);
+    const committed = await txn.exec();
+    if (committed !== null) break;
+    reservation = null;
+  }
+
+  if (!reservation) throw new Error('Could not reserve offline notification scheduling.');
+
+  try {
+    const safeRunAt = Math.max(Date.now() + 1_000, runAt);
+    const jobId = await context.scheduler.runJob({
+      name: 'offline-orbs-full',
+      data: { userId, subredditName },
+      runAt: new Date(safeRunAt),
+    });
+
+    const txn = await redis.watch(jobKey);
+    const current = await redis.get(jobKey);
+    if (current !== reservation) {
+      await txn.unwatch();
+      return;
+    }
+    await txn.multi();
+    await txn.set(jobKey, jobId);
+    await txn.exec();
+  } catch (error) {
+    const cleanup = await redis.watch(jobKey);
+    const current = await redis.get(jobKey);
+    if (current === reservation) {
+      await cleanup.multi();
+      await cleanup.del(jobKey);
+      await cleanup.exec();
+    } else {
+      await cleanup.unwatch();
+    }
+    throw error;
+  }
 }
 
 export async function processOfflineFullNotification(
