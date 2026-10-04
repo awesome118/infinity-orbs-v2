@@ -89,7 +89,7 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   },
   apexFortune: {
     name: 'Apex Fortune',
-    desc: '5% chance per level on multi-rolls to double the luck of that activation.',
+    desc: '3% chance per level on multi-rolls to double the luck of that activation (up to 45%).',
     maxLevel: 15,
     costMultiplier: 3,
   },
@@ -213,6 +213,15 @@ export function grantFreeShards(s: PlayerState, requested: number, now = Date.no
   return granted;
 }
 
+/** Shards earned from guaranteed rewards that must not be lost to the gameplay daily cap. */
+export function grantUncappedShards(s: PlayerState, requested: number): number {
+  const amount = Math.max(0, Math.floor(Number(requested) || 0));
+  if (amount <= 0) return 0;
+  s.shards = (s.shards ?? 0) + amount;
+  s.lifetimeShards = (s.lifetimeShards ?? 0) + amount;
+  return amount;
+}
+
 
 export function spendShards(s: PlayerState, requested: number): number {
   const amount = Math.max(0, Math.floor(requested));
@@ -278,6 +287,7 @@ export const GLOBAL_BOOSTER_DURATION_MS = 30 * 60 * 1000;
 export const GLOBAL_BOOSTER_BAR_DURATION_MS = 2 * 60 * 60 * 1000;
 export const GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER = 4;
 export const GLOBAL_BOOSTER_TIMER_ACCELERATION_PER_TIER = 0.10;
+export const GLOBAL_BOOSTER_MAX_TIER = 10;
 
 export const GLOBAL_BOOSTERS: Record<GlobalBoosterId, {
   name: string;
@@ -320,7 +330,7 @@ export function decayGlobalBoosterState(
   state: GlobalBoosterState | null | undefined,
   now = Date.now(),
 ): GlobalBoosterState {
-  const tier = Math.max(0, Math.floor(Number(state?.tier ?? 0) || 0));
+  const tier = Math.min(GLOBAL_BOOSTER_MAX_TIER, Math.max(0, Math.floor(Number(state?.tier ?? 0) || 0)));
   const activationProgress = Math.max(
     0,
     Math.min(
@@ -371,10 +381,10 @@ export function globalBoosterRemainingMs(
 export function activateGlobalBoosterStack(
   state: GlobalBoosterState | null | undefined,
   now = Date.now(),
-  maxTier = Number.MAX_SAFE_INTEGER,
+  maxTier = GLOBAL_BOOSTER_MAX_TIER,
 ): GlobalBoosterState {
   const current = decayGlobalBoosterState(state, now);
-  const safeMaxTier = Math.max(1, Math.floor(maxTier));
+  const safeMaxTier = Math.max(1, Math.min(GLOBAL_BOOSTER_MAX_TIER, Math.floor(maxTier)));
   let tier = Math.min(Math.max(0, current.tier), safeMaxTier);
   let activationProgress = current.activationProgress + 1;
   if (tier <= 0) tier = 1;
@@ -420,24 +430,28 @@ export function globalBoosterTimeProgress(
 
 export function globalBoosterLuckMultiplier(state: GlobalBoosterState | null | undefined, now = Date.now()): number {
   const current = decayGlobalBoosterState(state, now);
-  return current.tier > 0 && current.endsAt > now ? 1 + 0.10 * current.tier : 1;
+  const tier = Math.min(GLOBAL_BOOSTER_MAX_TIER, current.tier);
+  return tier > 0 && current.endsAt > now ? 1 + 0.10 * tier : 1;
 }
 
 export function globalBoosterSpeedMultiplier(state: GlobalBoosterState | null | undefined, now = Date.now()): number {
   const current = decayGlobalBoosterState(state, now);
-  return current.tier > 0 && current.endsAt > now
-    ? Math.max(0.35, 1 - 0.05 * current.tier)
+  const tier = Math.min(GLOBAL_BOOSTER_MAX_TIER, current.tier);
+  return tier > 0 && current.endsAt > now
+    ? Math.max(0.35, 1 - 0.05 * tier)
     : 1;
 }
 
 export function globalBoosterCritChanceBonus(state: GlobalBoosterState | null | undefined, now = Date.now()): number {
   const current = decayGlobalBoosterState(state, now);
-  return current.tier > 0 && current.endsAt > now ? 0.02 * current.tier : 0;
+  const tier = Math.min(GLOBAL_BOOSTER_MAX_TIER, current.tier);
+  return tier > 0 && current.endsAt > now ? 0.02 * tier : 0;
 }
 
 export function globalBoosterCritLuckBonus(state: GlobalBoosterState | null | undefined, now = Date.now()): number {
   const current = decayGlobalBoosterState(state, now);
-  return current.tier > 0 && current.endsAt > now ? 0.10 * current.tier : 0;
+  const tier = Math.min(GLOBAL_BOOSTER_MAX_TIER, current.tier);
+  return tier > 0 && current.endsAt > now ? 0.10 * tier : 0;
 }
 
 const GLOBAL_BOOSTER_BAR_COLORS = [
@@ -580,6 +594,29 @@ export interface PlayerStreak {
   longestStreak: number;
 }
 
+export type PendingPlayerOperation =
+  | {
+      id: string;
+      type: 'roll-social';
+      taxedCoins: number;
+      guildTaxTokens: number;
+      contributionValue: number;
+      rollCount: number;
+      bestRarity: number;
+      communityRolls: number;
+    }
+  | {
+      id: string;
+      type: 'guild-tokens';
+      amount: number;
+    }
+  | {
+      id: string;
+      type: 'global-booster';
+      boosterId: GlobalBoosterId;
+      useCredit: boolean;
+    };
+
 export interface PlayerState {
   username?: string;
   // Monotonic save version used to reject stale full-state writes.
@@ -638,6 +675,8 @@ export interface PlayerState {
   /** Remaining purchased Shards by payment order. Legacy balances can be migrated into "legacy". */
   purchasedShardLots?: Record<string, number>;
   globalBoosterCredits?: number;
+  /** Durable cross-store work that must be settled after the player save commits. */
+  pendingOperations?: PendingPlayerOperation[];
   /** Remaining free Global Booster activations by payment order. Legacy balances use the "legacy" lot. */
   globalBoosterCreditLots?: Record<string, number>;
   globalBoosters?: GlobalBoosterSnapshot;
@@ -1178,6 +1217,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     purchasedShards: 0,
     globalBoosterCredits: 0,
     globalBoosterCreditLots: {},
+    pendingOperations: [],
     globalBoosters: createInitialGlobalBoosters(now),
 
     lastFrenzyDate: '',
