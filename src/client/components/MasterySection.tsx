@@ -13,7 +13,7 @@ import {
   Award,
 } from 'lucide-react';
 import type { PlayerState, MasterySkillId } from '../../shared/game.js';
-import { MASTERY_SKILLS, masterySkillCost } from '../../shared/game.js';
+import { MASTERY_SKILLS, masterySkillCost, highestCodexChain, codexDevotionLuckPercent } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface MasterySectionProps {
@@ -187,9 +187,9 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
           {filteredSkills.map(([skillId, skill]) => {
             const currentLevel = state.masterySkills?.[skillId] ?? 0;
             const isCodexDevotion = skillId === 'celestialSurge';
-            const codexChain = isCodexDevotion ? highestCodexChain(state.collection) : 0;
+            const codexChain = isCodexDevotion ? Math.max(0, Math.floor(Number(state.codexChain ?? 0) || 0)) : 0;
             const codexLuckPercent = isCodexDevotion
-              ? codexDevotionLuckPercent(currentLevel, codexChain)
+              ? Math.max(0, Number(state.codexDevotionLuckPercent ?? 0) || 0)
               : 0;
             const isMax = currentLevel >= skill.maxLevel;
             const cost = masterySkillCost(skillId, currentLevel);
