@@ -31,7 +31,7 @@ import type {
 } from '../../shared/game.js';
 import {
   calculateCosmicDust,
-  xpRequiredForLevel,
+  calculateLevelFromXp,
   LEVEL_MILESTONES,
   COSMETICS,
   PRESTIGE_UPGRADES,
@@ -144,19 +144,8 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
     }
   };
 
-  const displayedLevel = Math.max(1, state.level || 1);
-  let xpBeforeLevel = 0;
-  for (let level = 1; level < displayedLevel; level++) {
-    xpBeforeLevel += xpRequiredForLevel(level);
-  }
-  const levelXpRequired = xpRequiredForLevel(displayedLevel);
-  const currentLevelXp = Math.max(0, (state.xp || 0) - xpBeforeLevel);
-  const levelInfo = {
-    level: displayedLevel,
-    currentLevelXp,
-    nextLevelXp: levelXpRequired,
-    progressPercent: Math.min(100, Math.round((currentLevelXp / levelXpRequired) * 100)),
-  };
+  const levelInfo = calculateLevelFromXp(state.xp || 0);
+  const displayedLevel = levelInfo.level;
   const levelBenefits = getLevelBenefits(displayedLevel);
 
   return (
@@ -195,9 +184,9 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
         {/* EXP Progress Bar */}
         <div className="space-y-2 bg-slate-950/60 border border-purple-900/40 p-4 rounded-2xl">
           <div className="flex items-center justify-between text-xs font-mono">
-            <span className="text-slate-300 font-bold">Progress to Level {levelInfo.level + 1}</span>
+            <span className="text-slate-300 font-bold">{displayedLevel >= 1000 ? 'Maximum Level' : 'Progress to Level ' + (displayedLevel + 1)}</span>
             <span className="text-purple-300">
-              {fmt(levelInfo.currentLevelXp)} / {fmt(levelInfo.nextLevelXp)} XP ({levelInfo.progressPercent}%)
+              {displayedLevel >= 1000 ? 'MAX' : fmt(levelInfo.currentLevelXp) + ' / ' + fmt(levelInfo.nextLevelXp) + ' XP'} ({levelInfo.progressPercent}%)
             </span>
           </div>
           <div className="w-full bg-slate-900 rounded-full h-3 overflow-hidden border border-slate-800 p-0.5">
