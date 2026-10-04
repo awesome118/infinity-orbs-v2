@@ -52,6 +52,8 @@ import {
   AUTOMATIONS,
   COSMETICS_LIST,
   FEATURE_UNLOCK_LEVELS,
+  predictRollActivation,
+  rollTicketSeed,
 } from '../shared/game.js';
 import { sound } from './sound.js';
 import { Header } from './components/Header.js';
@@ -271,6 +273,25 @@ export function App() {
   const [frenzyRunTriggered, setFrenzyRunTriggered] = useState(false);
   const stateRevisionRef = useRef(0);
   const appliedServerRevisionRef = useRef(-1);
+  const stateRef = useRef<PlayerState | null>(null);
+  const rollTicketRef = useRef<{
+    ticketId: string;
+    seed: number;
+    nextIndex: number;
+    rollsRemaining: number;
+    expiresAt: number;
+  } | null>(null);
+  const rollTicketRequestRef = useRef<Promise<{
+    ticketId: string;
+    seed: number;
+    nextIndex: number;
+    rollsRemaining: number;
+    expiresAt: number;
+  }> | null>(null);
+  const rollActionLockRef = useRef(false);
+  const mutationQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingMutationCountRef = useRef(0);
+  const mutationResyncNeededRef = useRef(false);
   const lastBoosterAnnouncementAtRef = useRef(0);
   const boosterAnnouncementTimerRef = useRef<number | null>(null);
 
@@ -281,6 +302,7 @@ export function App() {
       appliedServerRevisionRef.current = nextServerRevision;
     }
 
+    stateRef.current = nextState;
     stateRevisionRef.current += 1;
     setState(nextState);
   }, []);
@@ -305,6 +327,35 @@ export function App() {
     },
     [state],
   );
+
+  const enqueueMutation = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
+    const run = mutationQueueRef.current.then(task, task);
+    mutationQueueRef.current = run.then(() => undefined, () => undefined);
+    return run;
+  }, []);
+
+  const ensureRollTicket = useCallback(async () => {
+    const current = rollTicketRef.current;
+    if (current && current.nextIndex < 30 && current.expiresAt > Date.now()) {
+      return current;
+    }
+
+    if (!rollTicketRequestRef.current) {
+      rollTicketRequestRef.current = getJson<{
+        ticketId: string;
+        seed: number;
+        nextIndex: number;
+        rollsRemaining: number;
+        expiresAt: number;
+      }>('/api/roll-ticket').finally(() => {
+        rollTicketRequestRef.current = null;
+      });
+    }
+
+    const ticket = await rollTicketRequestRef.current;
+    rollTicketRef.current = ticket;
+    return ticket;
+  }, []);
 
   const dismissedDeveloperAnnouncementRef = useRef<number>(
     (() => {
@@ -420,6 +471,11 @@ export function App() {
       console.error('Refresh error:', e);
     }
   }, []);
+
+  useEffect(() => {
+    if (!stateRef.current) return;
+    void ensureRollTicket().catch(() => null);
+  }, [state?.stateRevision, ensureRollTicket]);
 
   // Initial load. Timer updates stay local to the screens that display them.
   useEffect(() => {
@@ -619,84 +675,110 @@ export function App() {
   }, [applyPlayerState, beginOptimisticState, tab]);
 
   // Roll action
-  const handleRoll = useCallback(async (isAutoRoll = false) => {
-    if (isRolling) return;
-    const previousState = state;
-    const previousReadyAt = readyAt;
-    const previousWorldProgress = worldEvent?.currentProgress ?? null;
-    const predictedRolls = previousState ? Math.max(1, rollsPerActivation(previousState)) : 1;
-    const rollback = beginOptimisticState(current => ({
-      ...current,
-      totalRolls: current.totalRolls + predictedRolls,
-      manualRolls: isAutoRoll
-        ? current.manualRolls
-        : Math.min(10, (current.manualRolls ?? 0) + 1),
-      lastRollAt: Date.now(),
-      lastSeenAt: Date.now(),
-      upgrades:
-        !isAutoRoll && (current.manualRolls ?? 0) + 1 >= 3
-          ? { ...current.upgrades, auto: 1 }
-          : current.upgrades,
-    }));
-    // Start the cooldown immediately. The server response reconciles the exact
-    // cooldown once the authoritative roll has completed.
-    setReadyAt(Date.now() + cooldownMs(previousState ?? state!, isAutoRoll));
-    setWorldEvent(prev => (
-      prev
-        ? { ...prev, currentProgress: prev.currentProgress + predictedRolls }
-        : prev
-    ));
-    setIsRolling(true);
-    try {
-      sound.playRollNormal();
-      const res = await getJson<RollResponse>('/api/roll', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auto: isAutoRoll }),
-      });
-      applyPlayerState(res.state);
-      setLastOrb(res.orb);
-      setLastBatch(res.batch ?? [res.orb]);
-      setBatchSummary({
-        totalVal: res.totalRollValue,
-        coins: res.coinsGained,
-        shards: res.shardsGained,
-        xp: res.xpGained,
-      });
-      setReadyAt(Date.now() + res.rollsRemainingUntilNext);
+  const handleRoll = useCallback((isAutoRoll = false) => {
+    if (rollActionLockRef.current) return;
+    const currentState = stateRef.current;
+    if (!currentState) return;
 
-      // Immediately bump local rolling counter progress on every roll
-      setWorldEvent(prev => (prev ? { ...prev, currentProgress: prev.currentProgress + (res.rollsProcessed ?? res.batch?.length ?? 1) } : null));
-      maybePromptForNotifications(state?.totalRolls ?? 0, res.state.totalRolls);
+    rollActionLockRef.current = true;
 
-      // Trigger New Best Ball Celebration Modal!
-      const previousBest = state?.highestRarity ?? 0;
-      if (previousBest > 0 && res.orb.rarity > previousBest) {
-        setNewBestModalData({ orb: res.orb, prevBest: previousBest });
-      } else if (res.orb.rarity >= 100000) {
-        showToast(`⭐ MYTHIC DROP! 1 / ${res.orb.rarity.toLocaleString()} Orb!`, 'success');
-      } else if (res.orb.rarity >= 1000) {
-        showToast(`★ Rare Find! 1 in ${res.orb.rarity.toLocaleString()}`, 'success');
+    void (async () => {
+      try {
+        const ticket = await ensureRollTicket();
+        const ticketIndex = ticket.nextIndex;
+        const prediction = predictRollActivation(
+          currentState,
+          rollTicketSeed(ticket.seed, ticketIndex),
+          isAutoRoll,
+          worldEvent?.buffMultiplier ?? 1.15,
+        );
+
+        rollTicketRef.current = {
+          ...ticket,
+          nextIndex: ticketIndex + 1,
+          rollsRemaining: Math.max(0, 30 - (ticketIndex + 1)),
+        };
+
+        sound.playRollNormal();
+
+        // The complete reward/state simulation happens locally first. The server
+        // later recomputes it from the same ticketed RNG stream and replaces this
+        // prediction with authoritative state when the mutation queue catches up.
+        stateRef.current = prediction.state;
+        stateRevisionRef.current += 1;
+        setState(prediction.state);
+        setLastOrb(prediction.orb);
+        setLastBatch(prediction.batch);
+        setBatchSummary({
+          totalVal: prediction.totalValueGained,
+          coins: prediction.coinsGained,
+          shards: prediction.shardsGained,
+          xp: prediction.xpGained,
+        });
+        setReadyAt(Date.now() + cooldownMs(prediction.state, isAutoRoll));
+        setWorldEvent(prev =>
+          prev
+            ? { ...prev, currentProgress: prev.currentProgress + prediction.rollsProcessed }
+            : prev,
+        );
+        setIsRolling(false);
+
+        pendingMutationCountRef.current += 1;
+        void enqueueMutation(async () => {
+          try {
+            const res = await getJson<RollResponse>('/api/roll', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                auto: isAutoRoll,
+                ticketId: ticket.ticketId,
+                ticketIndex,
+              }),
+            });
+
+            pendingMutationCountRef.current -= 1;
+            if (pendingMutationCountRef.current === 0) {
+              applyPlayerState(res.state);
+              setLastOrb(res.orb);
+              setLastBatch(res.batch ?? [res.orb]);
+              setBatchSummary({
+                totalVal: res.totalRollValue,
+                coins: res.coinsGained,
+                shards: res.shardsGained,
+                xp: res.xpGained,
+              });
+              setReadyAt(Date.now() + res.rollsRemainingUntilNext);
+              mutationResyncNeededRef.current = false;
+            }
+
+            maybePromptForNotifications(currentState.totalRolls, res.state.totalRolls);
+          } catch (error: any) {
+            pendingMutationCountRef.current -= 1;
+            mutationResyncNeededRef.current = true;
+            rollTicketRef.current = null;
+
+            if (pendingMutationCountRef.current === 0) {
+              await refreshAll().catch(() => null);
+              mutationResyncNeededRef.current = false;
+            }
+
+            showToast(error?.message || 'Roll verification failed. State refreshed.', 'warn');
+          }
+        });
+      } catch (error: any) {
+        rollTicketRef.current = null;
+        showToast(error?.message || 'Could not prepare the next roll.', 'warn');
+        setIsRolling(false);
+      } finally {
+        rollActionLockRef.current = false;
       }
-    } catch (e: any) {
-      rollback?.();
-      setReadyAt(previousReadyAt);
-      setWorldEvent(prev => (
-        prev && previousWorldProgress !== null
-          ? { ...prev, currentProgress: previousWorldProgress }
-          : prev
-      ));
-      showToast(e.message || 'Roll failed', 'warn');
-    } finally {
-      setIsRolling(false);
-    }
+    })();
   }, [
     applyPlayerState,
-    beginOptimisticState,
-    isRolling,
-    readyAt,
-    state,
-    worldEvent?.currentProgress,
+    enqueueMutation,
+    ensureRollTicket,
+    refreshAll,
+    worldEvent?.buffMultiplier,
   ]);
 
   // Auto roll watcher (paced steadily)
@@ -711,84 +793,141 @@ export function App() {
   }, [autoRoll, state, readyAt, isRolling, handleRoll]);
 
   // Buy Standard Upgrade
-  const handleBuyUpgrade = async (id: UpgradeId) => {
-    setBusy(true);
-    const rollback = beginOptimisticState(current => {
-      const level = current.upgrades[id] ?? 0;
-      if (id === 'auto') {
-        return (current.manualRolls ?? 0) >= 3
-          ? { ...current, upgrades: { ...current.upgrades, auto: 1 } }
-          : current;
-      }
-      const cost = upgradeCost(id, level);
-      if (!Number.isFinite(cost) || current.coins < cost) return current;
-      return {
-        ...current,
-        coins: current.coins - cost,
-        upgrades: { ...current.upgrades, [id]: level + 1 },
-      };
-    });
-    try {
-      const res = await getJson<{ state: PlayerState }>('/api/upgrade', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
-      applyPlayerState(res.state);
-      sound.playChime(659.25, 'sine', 0.2);
-      showToast(`Upgraded ${id.toUpperCase()} successfully!`, 'success');
-    } catch (e: any) {
-      rollback?.();
-      showToast(e.message || 'Upgrade failed', 'warn');
-    } finally {
-      setBusy(false);
+  const handleBuyUpgrade = (id: UpgradeId) => {
+    const currentState = stateRef.current;
+    if (!currentState) return;
+
+    const level = currentState.upgrades[id] ?? 0;
+    const cost = upgradeCost(id, level);
+    const canBuy = id === 'auto'
+      ? (currentState.manualRolls ?? 0) >= 3
+      : Number.isFinite(cost) && currentState.coins >= cost;
+
+    if (!canBuy) {
+      showToast(
+        id === 'auto'
+          ? `Auto Roll unlocks after 3 manual rolls (${currentState.manualRolls ?? 0}/3).`
+          : Number.isFinite(cost)
+            ? `Need ${cost.toLocaleString()} Coins.`
+            : 'Upgrade is already at its maximum level.',
+        'warn',
+      );
+      return;
     }
+
+    const nextState: PlayerState = id === 'auto'
+      ? {
+          ...currentState,
+          upgrades: { ...currentState.upgrades, auto: 1 },
+        }
+      : {
+          ...currentState,
+          coins: currentState.coins - cost,
+          upgrades: { ...currentState.upgrades, [id]: level + 1 },
+        };
+
+    // Upgrade instantly on the client. The queued server command is the
+    // authority and will either confirm it or trigger a state resync.
+    stateRef.current = nextState;
+    stateRevisionRef.current += 1;
+    setState(nextState);
+    sound.playChime(659.25, 'sine', 0.2);
+
+    pendingMutationCountRef.current += 1;
+    void enqueueMutation(async () => {
+      try {
+        const res = await getJson<{ state: PlayerState }>('/api/upgrade', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        });
+
+        pendingMutationCountRef.current -= 1;
+        if (pendingMutationCountRef.current === 0) {
+          applyPlayerState(res.state);
+          mutationResyncNeededRef.current = false;
+          showToast(`Upgraded ${id.toUpperCase()} successfully!`, 'success');
+        }
+      } catch (error: any) {
+        pendingMutationCountRef.current -= 1;
+        mutationResyncNeededRef.current = true;
+        if (pendingMutationCountRef.current === 0) {
+          await refreshAll().catch(() => null);
+          mutationResyncNeededRef.current = false;
+        }
+        showToast(error?.message || 'Upgrade verification failed. State refreshed.', 'warn');
+      }
+    });
   };
 
   // Upgrade All Standard Upgrades
-  const handleBuyAllUpgrades = async () => {
-    setBusy(true);
-    const rollback = beginOptimisticState(current => {
-      const next: PlayerState = { ...current, upgrades: { ...current.upgrades } };
-      const ids: UpgradeId[] = [
-        'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
-        'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus',
-      ];
-      let purchases = 0;
-      let changed = true;
-      while (changed && purchases < 5_000) {
-        changed = false;
-        for (const id of ids) {
-          if (id === 'auto' || purchases >= 5_000) continue;
-          const level = next.upgrades[id] ?? 0;
-          const cost = upgradeCost(id, level);
-          if (!Number.isFinite(cost) || cost > next.coins) continue;
-          next.coins -= cost;
-          next.upgrades[id] = level + 1;
-          purchases++;
-          changed = true;
-        }
+  const handleBuyAllUpgrades = () => {
+    const currentState = stateRef.current;
+    if (!currentState) return;
+
+    const next: PlayerState = {
+      ...currentState,
+      upgrades: { ...currentState.upgrades },
+    };
+    const ids: UpgradeId[] = [
+      'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
+      'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus',
+    ];
+    let purchases = 0;
+
+    let changed = true;
+    while (changed && purchases < 5_000) {
+      changed = false;
+      for (const id of ids) {
+        if (id === 'auto' || purchases >= 5_000) continue;
+        const level = next.upgrades[id] ?? 0;
+        const cost = upgradeCost(id, level);
+        if (!Number.isFinite(cost) || cost > next.coins) continue;
+        next.coins -= cost;
+        next.upgrades[id] = level + 1;
+        purchases++;
+        changed = true;
       }
-      return next;
-    });
-    try {
-      const res = await getJson<{ state: PlayerState; totalSpent: number; upgradedCount: number }>('/api/upgrade/all', {
-        method: 'POST',
-      });
-      applyPlayerState(res.state);
-      sound.playChime(523.25, 'triangle', 0.3);
-      showToast(
-        res.upgradedCount > 0
-          ? `Bought ${res.upgradedCount} upgrade level${res.upgradedCount === 1 ? '' : 's'} for ${res.totalSpent.toLocaleString()} Coins.`
-          : 'No upgrades are currently affordable.',
-        res.upgradedCount > 0 ? 'success' : 'info'
-      );
-    } catch (e: any) {
-      rollback?.();
-      showToast(e.message || 'Upgrade All failed', 'warn');
-    } finally {
-      setBusy(false);
     }
+
+    if (purchases <= 0) {
+      showToast('No upgrades are currently affordable.', 'info');
+      return;
+    }
+
+    stateRef.current = next;
+    stateRevisionRef.current += 1;
+    setState(next);
+    sound.playChime(523.25, 'triangle', 0.3);
+
+    pendingMutationCountRef.current += 1;
+    void enqueueMutation(async () => {
+      try {
+        const res = await getJson<{ state: PlayerState; totalSpent: number; upgradedCount: number }>('/api/upgrade/all', {
+          method: 'POST',
+        });
+
+        pendingMutationCountRef.current -= 1;
+        if (pendingMutationCountRef.current === 0) {
+          applyPlayerState(res.state);
+          mutationResyncNeededRef.current = false;
+          showToast(
+            res.upgradedCount > 0
+              ? `Bought ${res.upgradedCount} upgrade level${res.upgradedCount === 1 ? '' : 's'} for ${res.totalSpent.toLocaleString()} Coins.`
+              : 'No upgrades are currently affordable.',
+            res.upgradedCount > 0 ? 'success' : 'info',
+          );
+        }
+      } catch (error: any) {
+        pendingMutationCountRef.current -= 1;
+        mutationResyncNeededRef.current = true;
+        if (pendingMutationCountRef.current === 0) {
+          await refreshAll().catch(() => null);
+          mutationResyncNeededRef.current = false;
+        }
+        showToast(error?.message || 'Upgrade verification failed. State refreshed.', 'warn');
+      }
+    });
   };
 
   // Turbo Roll Booster
