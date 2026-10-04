@@ -3714,7 +3714,7 @@ export async function claimOrbFrenzy(options: {
   s.collectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.collectionValue ?? 0) + finalValue);
   s.lifetimeCollectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.lifetimeCollectionValue ?? 0) + finalValue);
   s.totalCrits = (s.totalCrits ?? 0) + critCount;
-  const guildTax = await applyGuildTax(coinsGained);
+  const guildTax = await getGuildTaxPreview(coinsGained);
   coinsGained = Math.max(0, coinsGained - guildTax.taxedCoins);
   s.coins += coinsGained;
   s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
@@ -3744,13 +3744,22 @@ export async function claimOrbFrenzy(options: {
   }
   advanceQuestProgress(s, 'value', finalValue);
   advanceQuestProgress(s, 'unique', uniqueGained);
-  const guildResult = await contribute(finalValue, count, bestRarity);
-  if (guildResult.bossRewardShards > 0) {
-    finalShardsGained += grantFreeShards(s, guildResult.bossRewardShards);
-  }
-  await addCommunityRolls(count);
+  const pendingOperationId = newPendingOperationId('frenzy-roll');
+  queuePendingOperation(s, {
+    id: pendingOperationId,
+    type: 'roll-social',
+    guildId: guildTax.guildId,
+    taxedCoins: guildTax.taxedCoins,
+    guildTaxTokens: guildTax.tokensEarned,
+    contributionValue: finalValue,
+    rollCount: count,
+    bestRarity,
+    communityRolls: count,
+  });
 
   await save(s);
+  const frenzySideEffects = await flushPendingPlayerOperations(s, pendingOperationId, true);
+  finalShardsGained += frenzySideEffects.bossRewardShards;
 
   if (data.inGame === true) {
     try {
