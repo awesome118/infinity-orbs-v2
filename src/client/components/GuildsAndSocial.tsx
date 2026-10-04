@@ -117,7 +117,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   }, [myGuild?.id, myGuild?.chat]);
 
   const fmt = (n: number) => n.toLocaleString();
-  const currentGuildMember = myMember ?? myGuild?.members.find(m => m.username === playerUsername);
+  const currentGuildMember = myMember;
   const canManageGuild = currentGuildMember?.role === 'owner' ||
     currentGuildMember?.role === 'officer' ||
     currentGuildMember?.trusted === true;
