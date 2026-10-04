@@ -621,7 +621,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                   </div>
 
                   <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                    {myGuild.members
+                    {[...myGuild.members]
                       .sort((a, b) => b.contribution - a.contribution)
                       .map((m, idx) => (
                         <div
@@ -646,7 +646,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                             <span className="font-mono text-amber-400 font-semibold">
                               +{fmt(m.contribution)}
                             </span>
-                            {playerUsername === myGuild.members.find(x => x.role === 'owner')?.username &&
+                            {currentGuildMember?.role === 'owner' &&
                               m.username !== playerUsername && onToggleGuildTrust && (
                               <button
                                 type="button"
