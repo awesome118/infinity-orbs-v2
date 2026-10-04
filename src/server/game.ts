@@ -1335,6 +1335,9 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
       lifetimeShards: state.lifetimeShards,
     });
 
+    state.saveGeneration = generation;
+    state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
+    captureSaveBaseline(state);
     await txn.multi();
     await txn.set(pkey, JSON.stringify(state));
     const committed = await txn.exec();
