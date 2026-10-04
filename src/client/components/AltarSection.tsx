@@ -227,7 +227,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
             {shardMultiplier}× <span className="text-xs font-normal text-cyan-400">Shard Multiplier</span>
           </div>
           <p className="text-[11px] text-slate-400">
-            {sacrifices.shardsSacrificed} Shards permanently infused (+3% multiplicative luck per shard).
+            {sacrifices.shardsSacrificed} Shards permanently infused (+2% multiplicative luck per shard).
           </p>
         </div>
 
@@ -277,7 +277,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
               type="range"
               min={0}
               max={state.coins}
-              step={Math.max(1, Math.floor(state.coins / 100))}
+              step={1}
               value={selectedCoinOffer}
               onChange={e => setSelectedCoinOffer(Number(e.target.value))}
               className="w-full accent-amber-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
