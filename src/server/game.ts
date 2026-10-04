@@ -3329,6 +3329,9 @@ export async function claimOrbFrenzy(options: {
   s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
   s.lastFrenzyClaimDate = today;
 
+  s.frenzyClaimedPosts = s.frenzyClaimedPosts ?? {};
+  s.frenzyClaimedPosts[postId] = Date.now();
+
   if (data.inGame === true) {
     await redis.set(FRENZY_POST_PREFIX + postId, JSON.stringify({
       ...data,
