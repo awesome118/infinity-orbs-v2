@@ -933,7 +933,7 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
   chronoOverdrive: {
     name: 'Turbo Duration',
-    desc: 'Turbo lasts 60m with 30% cooldown reduction.',
+    desc: 'Turbo lasts 60m with 35% faster cooldown.',
     category: 'alchemy',
     maxLevel: 2,
     costPerLevel: 4,
