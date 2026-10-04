@@ -1546,7 +1546,7 @@ export function predictRollActivation(
     ...sourceState,
     upgrades: { ...sourceState.upgrades },
     prestigeUpgrades: { ...sourceState.prestigeUpgrades },
-    masterySkills: { ...(sourceState.masterySkills ?? {}) },
+    masterySkills: { ...(sourceState.masterySkills ?? {}) } as Record<MasterySkillId, number>,
     collection: { ...(sourceState.collection ?? {}) },
     globalBoosters: sourceState.globalBoosters
       ? JSON.parse(JSON.stringify(sourceState.globalBoosters)) as GlobalBoosterSnapshot
