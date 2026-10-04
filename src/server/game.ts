@@ -2057,7 +2057,8 @@ export async function applyRolls(
   advanceQuestProgress(s, 'value', totalVal);
   advanceQuestProgress(s, 'unique', uniqueGained);
 
-  await contribute(totalVal, rollCount, bestRarity);
+  const guildResult = await contribute(totalVal, rollCount, bestRarity);
+  if (guildResult.bossRewardShards > 0) shardsGained += grantFreeShards(s, guildResult.bossRewardShards);
   await addCommunityRolls(rollCount);
 
   const bestInfo = getOrbInfo(bestRarity);
