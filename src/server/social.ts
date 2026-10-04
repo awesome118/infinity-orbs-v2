@@ -100,12 +100,13 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
 }
 
 function memberMatches(member: Guild['members'][number], requestedUsername?: string): boolean {
+  const currentUserId = String(user() ?? '').trim();
+  const requested = String(requestedUsername ?? '').trim();
   const currentUsername = username();
-  return Boolean(
-    (member.userId && member.userId === user()) ||
-    member.username === requestedUsername ||
-    member.username === currentUsername,
-  );
+  // A member with a durable userId must only be matched by that userId.
+  // Usernames are presentation data and can become stale or change.
+  if (member.userId) return Boolean(currentUserId) && member.userId === currentUserId;
+  return member.username === requested || member.username === currentUsername;
 }
 
 function currentGuild(guilds: Guild[]): Guild | undefined {
@@ -255,23 +256,261 @@ export async function getPlayerGuildPerks(uname: string, uid?: string) {
   return mine?.perks;
 }
 
-export async function addGuildTokens(uname: string, amount: number) {
-  if (amount <= 0) return;
-  await updateGuilds(guilds => {
-    const guild = guilds.find(g => g.members.some(m => m.username === uname));
-    if (!guild) return;
+export async function getCurrentGuildId(uid = user(), uname = username()): Promise<string | undefined> {
+  const guilds = await loadGuilds();
+  return guilds.find(g => g.members.some(m => {
+    if (m.userId) return m.userId === uid;
+    return m.username === uname;
+  }))?.id;
+}
+
+const SOCIAL_OPERATION_KEY_PREFIX = 'io:social-op:v1:';
+
+function socialOperationKey(operationId: string): string {
+  return SOCIAL_OPERATION_KEY_PREFIX + operationId;
+}
+
+export interface RollSocialEffectInput {
+  operationId: string;
+  guildId?: string;
+  taxedCoins: number;
+  guildTaxTokens: number;
+  contributionValue: number;
+  rollCount: number;
+  bestRarity: number;
+  communityRolls: number;
+}
+
+export async function getGuildTaxPreview(coinsEarned: number): Promise<{
+  guildId?: string;
+  taxedCoins: number;
+  tokensEarned: number;
+}> {
+  const safeCoins = Math.max(0, Math.floor(Number(coinsEarned) || 0));
+  if (safeCoins <= 0) return { taxedCoins: 0, tokensEarned: 0 };
+
+  const guilds = await loadGuilds();
+  const guild = currentGuild(guilds);
+  if (!guild) return { taxedCoins: 0, tokensEarned: 0 };
+
+  const rate = Math.max(0, Math.min(10, Math.floor(Number(guild.taxRate ?? 0) || 0)));
+  const taxedCoins = Math.min(safeCoins, Math.floor(safeCoins * rate / 100));
+  if (taxedCoins <= 0) return { guildId: guild.id, taxedCoins: 0, tokensEarned: 0 };
+
+  const tokenMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * GUILD_TOKEN_YIELD_PER_RANK;
+  const tokensEarned = Math.max(1, Math.floor((taxedCoins / 100) * tokenMultiplier));
+  return { guildId: guild.id, taxedCoins, tokensEarned };
+}
+
+export async function addGuildTokens(
+  uname: string,
+  amount: number,
+  operationId?: string,
+  guildId?: string,
+): Promise<void> {
+  const safeAmount = Math.max(0, Math.floor(Number(amount) || 0));
+  if (safeAmount <= 0) return;
+
+  const opId = String(operationId ?? '').trim();
+  const opKey = opId ? socialOperationKey(opId) : null;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const watchKeys = opKey ? [GUILDS_KEY, opKey] : [GUILDS_KEY];
+    const txn = await redis.watch(...watchKeys);
+    if (opKey) {
+      const existing = parseStoredJson<{ done?: boolean }>(await redis.get(opKey));
+      if (existing?.done) {
+        await txn.unwatch();
+        return;
+      }
+    }
+    const raw = await redis.get(GUILDS_KEY);
+    const guilds = parseGuildList(raw);
+    const guild = guilds.find(g =>
+      guild.id === guildId &&
+      g.members.some(m => memberMatches(m)),
+    );
+    if (!guild) {
+      if (opKey) {
+        await txn.multi();
+        await txn.set(opKey, JSON.stringify({ done: true }));
+        if (await txn.exec()) return;
+      } else {
+        await txn.unwatch();
+        return;
+      }
+      continue;
+    }
+
     const tokenMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * GUILD_TOKEN_YIELD_PER_RANK;
-    guild.tokens = (guild.tokens ?? 0) + Math.max(1, Math.floor(amount * tokenMultiplier));
+    guild.tokens = (guild.tokens ?? 0) + Math.max(1, Math.floor(safeAmount * tokenMultiplier));
     if (!guild.chat) guild.chat = [];
     guild.chat.push({
       id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       username: 'System',
-      text: `${uname} contributed +${amount} Guild Tokens from quest.`,
+      text: `${uname} contributed +${safeAmount} Guild Tokens from quest.`,
       timestamp: Date.now(),
       isSystem: true,
     });
     if (guild.chat.length > 50) guild.chat.shift();
-  });
+
+    await txn.multi();
+    await txn.set(GUILDS_KEY, JSON.stringify(guilds));
+    if (opKey) await txn.set(opKey, JSON.stringify({ done: true }));
+    if (await txn.exec()) return;
+  }
+  throw new Error('Guild data changed while awarding Guild Tokens. Please retry.');
+}
+
+export async function applyRollSocialEffectsAtomic(input: RollSocialEffectInput): Promise<{ bossRewardShards: number }> {
+  const safeTax = Math.max(0, Math.floor(Number(input.taxedCoins) || 0));
+  const safeTaxTokens = Math.max(0, Math.floor(Number(input.guildTaxTokens) || 0));
+  const safeValue = Math.max(0, Math.floor(Number(input.contributionValue) || 0));
+  const safeRolls = Math.max(0, Math.floor(Number(input.rollCount) || 0));
+  const safeBest = Math.max(0, Math.floor(Number(input.bestRarity) || 0));
+  const safeCommunityRolls = Math.max(0, Math.floor(Number(input.communityRolls) || 0));
+  const opKey = socialOperationKey(input.operationId);
+
+  await ensureRedisStringKey(GUILDS_KEY, '[]');
+  await ensureRedisStringKey(COMMUNITY_EVENT_KEY, JSON.stringify(COMMUNITY_WORLD_EVENT));
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const txn = await redis.watch(GUILDS_KEY, COMMUNITY_EVENT_KEY, opKey);
+    const existing = parseStoredJson<{ bossRewardShards?: number }>(await redis.get(opKey));
+    if (existing) {
+      await txn.unwatch();
+      return { bossRewardShards: Math.max(0, Math.floor(Number(existing.bossRewardShards ?? 0) || 0)) };
+    }
+
+    const guilds = parseGuildList(await redis.get(GUILDS_KEY));
+    const guild = input.guildId
+      ? guilds.find(g => g.id === input.guildId && g.members.some(m => memberMatches(m)))
+      : undefined;
+
+    if (guild) {
+      if (safeTax > 0 && safeTaxTokens > 0) {
+        guild.tokens = (guild.tokens ?? 0) + safeTaxTokens;
+      }
+
+      if (safeValue > 0) {
+        const member = guild.members.find(m => memberMatches(m));
+        if (member) {
+          const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * GUILD_XP_MULTIPLIER_PER_RANK;
+          const tokenMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * GUILD_TOKEN_YIELD_PER_RANK;
+          member.contribution = Math.max(0, Number(member.contribution ?? 0)) + safeValue;
+          guild.xp = Math.max(0, Number(guild.xp ?? 0)) +
+            Math.max(1, Math.floor(Math.max(1, Math.floor(safeValue / 250)) * xpMultiplier));
+          guild.level = 1 + Math.floor(guild.xp / 500);
+          guild.tokens = (guild.tokens ?? 0) + Math.max(1, Math.floor(Math.max(1, Math.floor(safeValue / 25000)) * tokenMultiplier));
+
+          if (guild.challenge) {
+            if (guild.challenge.type === 'value') guild.challenge.progress += safeValue;
+            else if (guild.challenge.type === 'rolls') guild.challenge.progress += safeRolls;
+            else if (guild.challenge.type === 'rare' && safeBest >= 100) guild.challenge.progress += 1;
+
+            if (guild.challenge.progress >= guild.challenge.target) {
+              const reward = Math.max(1, Math.floor(
+                guild.challenge.reward *
+                (1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * GUILD_TOKEN_YIELD_PER_RANK),
+              ));
+              guild.tokens = (guild.tokens ?? 0) + reward;
+              if (!guild.chat) guild.chat = [];
+              guild.chat.push({
+                id: `msg-${Date.now()}-challenge-${input.operationId}`,
+                username: 'System',
+                text: `Guild challenge completed! +${reward} Guild Tokens added to treasury.`,
+                timestamp: Date.now(),
+                isSystem: true,
+              });
+              const nextIdx =
+                (CHALLENGE_POOL.findIndex(challenge => challenge.type === guild.challenge!.type) + 1) %
+                CHALLENGE_POOL.length;
+              guild.challenge = { ...CHALLENGE_POOL[nextIdx], progress: 0 };
+            }
+          }
+
+          if (guild.boss && !guild.boss.defeated) {
+            const damage = Math.round(safeValue + safeRolls * 25);
+            guild.boss.currentHp = Math.max(0, guild.boss.currentHp - damage);
+            if (!guild.boss.contributors) guild.boss.contributors = {};
+            guild.boss.contributors[user()] = (guild.boss.contributors[user()] ?? 0) + damage;
+
+            let bossRewardShards = 0;
+            if (guild.boss.currentHp <= 0) {
+              guild.boss.defeated = true;
+              const tokensReward = Math.max(1, Math.floor(
+                guild.boss.rewardTokens *
+                (1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05),
+              ));
+              guild.tokens = (guild.tokens ?? 0) + tokensReward;
+              bossRewardShards = Math.max(0, Math.floor(guild.boss.rewardShards ?? 0));
+              if (!guild.chat) guild.chat = [];
+              guild.chat.push({
+                id: `msg-${Date.now()}-boss-${input.operationId}`,
+                username: 'System',
+                text: `🏆 RAID BOSS SLAIN! ${guild.boss.name} was defeated! +${tokensReward} Guild Tokens added to treasury!`,
+                timestamp: Date.now(),
+                isSystem: true,
+              });
+              const result = { bossRewardShards };
+              await txn.multi();
+              await txn.set(GUILDS_KEY, JSON.stringify(guilds));
+              // Community update and idempotency marker are committed with the guild mutation below.
+              // Placeholder write here is intentionally deferred until the common commit path.
+            }
+          }
+        }
+      }
+    }
+
+    let rawEvent = await redis.get(COMMUNITY_EVENT_KEY);
+    const now = Date.now();
+    const currentWeekNumber = weekKey(now);
+    const ev: WorldEvent = rawEvent
+      ? parseStoredJson<WorldEvent>(rawEvent) ?? { ...COMMUNITY_WORLD_EVENT }
+      : { ...COMMUNITY_WORLD_EVENT };
+    if (ev.weekId !== currentWeekNumber || now >= ev.endsAt) {
+      ev.id = `world-event-w${currentWeekNumber}`;
+      ev.title = 'Weekly Community Milestone';
+      ev.description = 'Community rolls contributed this week toward dynamic tier goals.';
+      ev.goal = 100_000;
+      ev.currentProgress = 0;
+      ev.tier = 1;
+      ev.buffMultiplier = 1.15;
+      ev.buffDescription = '+15% Global Luck Active';
+      ev.endsAt = weekEndMs(now);
+      ev.completed = false;
+      ev.completedTier = 0;
+      ev.weekId = currentWeekNumber;
+    }
+    let bonusShards = 0;
+    if (safeCommunityRolls > 0) {
+      ev.currentProgress += safeCommunityRolls;
+      while (ev.currentProgress >= ev.goal) {
+        ev.completed = true;
+        ev.completedTier = Math.max(ev.completedTier ?? 0, ev.tier || 1);
+        ev.currentProgress -= ev.goal;
+        ev.tier = Math.min(10, (ev.tier || 1) + 1);
+        ev.goal = Math.round(ev.goal * 2.2);
+        ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
+        ev.buffDescription = `+${Math.round((ev.buffMultiplier - 1) * 100)}% Global Luck Active`;
+      }
+    }
+
+    const finalBossReward = guild?.boss?.defeated
+      ? 0
+      : 0;
+    const marker = JSON.stringify({ bossRewardShards: Math.max(0, Math.floor(Number(finalBossReward) || 0)) });
+
+    await txn.multi();
+    await txn.set(GUILDS_KEY, JSON.stringify(guilds));
+    await txn.set(COMMUNITY_EVENT_KEY, JSON.stringify(ev));
+    await txn.set(opKey, marker);
+    if (await txn.exec()) {
+      return { bossRewardShards: Math.max(0, Math.floor(Number(finalBossReward) || 0)) };
+    }
+  }
+
+  throw new Error('Guild/community data changed while processing rolls. Please retry.');
 }
 
 export async function buyGuildPerk(perk: GuildPerkId) {
@@ -370,7 +609,7 @@ export async function setGuildTaxRate(rate: number) {
 
 export async function applyGuildTax(coinsEarned: number): Promise<{ taxedCoins: number; tokensEarned: number }> {
   const safeCoins = Math.max(0, Math.floor(coinsEarned || 0));
-  if (safeCoins < 100) return { taxedCoins: 0, tokensEarned: 0 };
+  if (safeCoins <= 0) return { taxedCoins: 0, tokensEarned: 0 };
 
   return updateGuilds(guilds => {
     const guild = currentGuild(guilds);
@@ -614,9 +853,23 @@ export async function postGuildMessage(text: string) {
     throw new Error('You are muted from Guild Chat.');
   }
   const cooldownKey = key('guild-chat-cooldown:' + user());
-  const lastMessageAt = Number(await redis.get(cooldownKey) ?? 0) || 0;
-  if (Date.now() - lastMessageAt < 1500) throw new Error('Please wait before sending another Guild Chat message.');
-  await redis.set(cooldownKey, String(Date.now()));
+  let reserved = false;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const txn = await redis.watch(cooldownKey);
+    const lastMessageAt = Number(await redis.get(cooldownKey) ?? 0) || 0;
+    const now = Date.now();
+    if (now - lastMessageAt < 1500) {
+      await txn.unwatch();
+      throw new Error('Please wait before sending another Guild Chat message.');
+    }
+    await txn.multi();
+    await txn.set(cooldownKey, String(now));
+    if (await txn.exec()) {
+      reserved = true;
+      break;
+    }
+  }
+  if (!reserved) throw new Error('Could not reserve Guild Chat cooldown. Please retry.');
 
   return updateGuilds(guilds => {
     const guild = currentGuild(guilds);
@@ -712,6 +965,7 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
     });
   } catch (err) {
     console.error('Error in guild contribution:', err);
+    throw err;
   }
   return { bossRewardShards };
 }
