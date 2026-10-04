@@ -10,7 +10,7 @@ import type {
 } from '../shared/social.js';
 import { ACHIEVEMENTS, CHALLENGE_POOL, challengeForWeek, COMMUNITY_WORLD_EVENT, createInitialGuildBoss } from '../shared/social.js';
 import type { PlayerState } from '../shared/game.js';
-import { cooldownMs, createInitialState, grantFreeShards, weekEndMs, weekKey } from '../shared/game.js';
+import { cooldownMs, createInitialState, grantFreeShards, weekEndMs, weekKey, GUILD_LUCK_PER_RANK, GUILD_SPEED_REDUCTION_MS_PER_RANK, GUILD_OFFLINE_CAPACITY_PER_RANK, GUILD_SHARD_CHANCE_PER_RANK, GUILD_CRIT_CHANCE_PER_RANK, GUILD_COIN_MULTIPLIER_PER_RANK, GUILD_TOKEN_YIELD_PER_RANK, GUILD_XP_MULTIPLIER_PER_RANK } from '../shared/game.js';
 
 const user = () => context.userId ?? 'unknown';
 const username = () => context.username ?? `reddit-user-${user().slice(-8)}`;
