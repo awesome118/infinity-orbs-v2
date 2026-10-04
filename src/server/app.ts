@@ -158,7 +158,11 @@ function paymentOrderStatus(order: PaymentOrder): string {
 function paymentOrderId(order: PaymentOrder): string {
   return paymentString(order.id);
 }
-async function verifyPaymentOrder(orderId: string, candidateUserId: string): Promise<{ sku: string; status: string } | null> {
+async function verifyPaymentOrder(
+  orderId: string,
+  candidateUserId: string,
+  allowedStatuses: string[] = ['PAID'],
+): Promise<{ sku: string; status: string } | null> {
   const id = String(orderId ?? '').trim();
   const buyer = String(candidateUserId ?? '').trim();
   if (!id || !buyer) return null;
@@ -176,7 +180,7 @@ async function verifyPaymentOrder(orderId: string, candidateUserId: string): Pro
       if (paymentOrderId(candidate) !== id) continue;
       const sku = paymentProductSku(candidate);
       const status = paymentOrderStatus(candidate);
-      if (!sku || (status && status !== 'PAID')) return null;
+      if (!sku || (status && !allowedStatuses.includes(status))) return null;
       return { sku, status };
     }
   } catch (error) {
@@ -193,6 +197,7 @@ async function verifyPaymentOrder(orderId: string, candidateUserId: string): Pro
 async function resolvePaymentBuyerId(
   order: PaymentOrder,
   orderId: string,
+  allowedStatuses: string[] = ['PAID'],
 ): Promise<{ userId: string; sku: string } | null> {
   const orderCandidates = [
     paymentString(order.userId),
@@ -204,7 +209,7 @@ async function resolvePaymentBuyerId(
 
   const uniqueCandidates = [...new Set(orderCandidates)];
   for (const candidate of uniqueCandidates) {
-    const verified = await verifyPaymentOrder(orderId, candidate);
+    const verified = await verifyPaymentOrder(orderId, candidate, allowedStatuses);
     if (verified) {
       await appendPaymentDebugLog('buyer:provider-verified', {
         orderId,
@@ -495,7 +500,7 @@ export function createApp() {
       const orderId = paymentOrderId(order);
       const envelopeSku = paymentProductSku(order);
       const status = paymentOrderStatus(order);
-      const verifiedPayment = await resolvePaymentBuyerId(order, orderId);
+      const verifiedPayment = await resolvePaymentBuyerId(order, orderId, ['PAID', 'REFUNDED']);
       const buyerUserId = verifiedPayment?.userId ?? '';
       const productSku = verifiedPayment?.sku ?? '';
 
