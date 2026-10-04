@@ -104,6 +104,17 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(npx devvit view infinity-orbs version)"
-          echo "Installing infinity-orbs@${VERSION} to r/infinityorbs"
+          echo "Installing main Infinity Orbs build infinity-orbs@${VERSION} to r/infinityorbs"
           npx devvit install r/infinityorbs "infinity-orbs@${VERSION}"
           npx devvit list installs r/infinityorbs
+
+      - name: Install same build to r/infinity_orbs_dev
+        env:
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
+        run: |
+          set -euo pipefail
+          VERSION="$(npx devvit view infinity-orbs version)"
+          echo "Installing unstable Infinity Orbs build infinity-orbs@${VERSION} to r/infinity_orbs_dev"
+          npx devvit install r/infinity_orbs_dev "infinity-orbs@${VERSION}"
+          npx devvit list installs r/infinity_orbs_dev
