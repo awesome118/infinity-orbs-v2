@@ -25,6 +25,7 @@ import {
   getPlayerSpyLogs,
   clearPlayerSpyLogs,
 } from './game.js';
+import { withPlayerMutationLockFor } from './player-lock.js';
 import { context, redis, reddit } from './devvit-mock.js';
 import {
   setCommunityEventConfig,
@@ -222,6 +223,8 @@ async function resolveUserId(username: string): Promise<string> {
 async function wipeUser(username: string): Promise<{ username: string; userId: string; generation: number }> {
   const name = targetUsername(username);
   const userId = await resolveUserId(name);
+
+  return withPlayerMutationLockFor(userId, async () => {
   const generationKey = `player-generation:${userId}`;
   const playerKey = `player:${userId}`;
 
@@ -252,6 +255,7 @@ async function wipeUser(username: string): Promise<{ username: string; userId: s
   }
 
   return { username: name, userId, generation };
+  });
 }
 
 function setMaxProgression(s: Awaited<ReturnType<typeof loadRaw>>): void {
