@@ -2778,7 +2778,7 @@ export async function roll(isAuto = false): Promise<RollResponse> {
     throw new Error(`Cooldown: ${((cd - now + s.lastRollAt) / 1000).toFixed(1)}s`);
   }
 
-  const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } = await applyRolls(s);
+  let { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } = await applyRolls(s);
 
   // Only direct manual roll activations count toward the Auto Roll unlock.
   if (!isAuto) {
@@ -2829,7 +2829,7 @@ export async function claimOffline(): Promise<RollResponse> {
   s.offlineRolls = 0;
   await redis.del(OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId());
   await redis.del(OFFLINE_FULL_JOB_PREFIX + currentUserId());
-  const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } = await applyRolls(s, batches, undefined, 'offline');
+  let { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } = await applyRolls(s, batches, undefined, 'offline');
   const now = Date.now();
   s.lastRollAt = now;
   s.lastSeenAt = now;
