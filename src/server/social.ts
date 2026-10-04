@@ -267,7 +267,7 @@ export async function addGuildTokens(uname: string, amount: number) {
   await updateGuilds(guilds => {
     const guild = guilds.find(g => g.members.some(m => m.username === uname));
     if (!guild) return;
-    const tokenMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05;
+    const tokenMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * GUILD_TOKEN_YIELD_PER_RANK;
     guild.tokens = (guild.tokens ?? 0) + Math.max(1, Math.floor(amount * tokenMultiplier));
     if (!guild.chat) guild.chat = [];
     guild.chat.push({
@@ -404,7 +404,7 @@ export async function donateToGuild(coins: number, shards: number) {
     const safeCoins = Math.max(0, Math.floor(coins || 0));
     const safeShards = Math.max(0, Math.floor(shards || 0));
     const tokenMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05;
-    const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * 0.10;
+    const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * GUILD_XP_MULTIPLIER_PER_RANK;
 
     const tokenGain = Math.floor((Math.floor(safeCoins / 500) * 5 + safeShards * 5) * tokenMultiplier);
     const xpGain = Math.max(0, Math.floor((Math.floor(safeCoins / 50) + safeShards * 25) * xpMultiplier));
@@ -569,12 +569,16 @@ export async function leaveGuild() {
 }
 
 export async function postGuildMessage(text: string) {
-  const clean = text.trim().slice(0, 200);
+  const clean = text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').replace(/\s+/g, ' ').trim().slice(0, 200);
   if (!clean) throw new Error('Message cannot be empty.');
 
   if (await isGuildChatMuted()) {
     throw new Error('You are muted from Guild Chat.');
   }
+  const cooldownKey = key('guild-chat-cooldown:' + user());
+  const lastMessageAt = Number(await redis.get(cooldownKey) ?? 0) || 0;
+  if (Date.now() - lastMessageAt < 1500) throw new Error('Please wait before sending another Guild Chat message.');
+  await redis.set(cooldownKey, String(Date.now()));
 
   return updateGuilds(guilds => {
     const guild = currentGuild(guilds);
@@ -656,6 +660,7 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
             (1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05),
           ));
           guild.tokens += tokensReward;
+          bossRewardShards = Math.max(0, Math.floor(guild.boss.rewardShards ?? 0));
           if (!guild.chat) guild.chat = [];
           guild.chat.push({
             id: `msg-${Date.now()}-boss`,
@@ -760,6 +765,7 @@ export async function addCommunityRolls(rolls: number): Promise<WorldEvent> {
     }
     ev.currentProgress += amount;
     while (ev.currentProgress >= ev.goal) {
+      ev.completed = true;
       ev.completedTier = Math.max(ev.completedTier ?? 0, ev.tier || 1);
       ev.tier = (ev.tier || 1) + 1;
       ev.goal = Math.round(ev.goal * 2.2);
