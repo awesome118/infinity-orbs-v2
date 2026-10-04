@@ -145,6 +145,30 @@ export const AUTOMATIONS: Record<AutomationId, { name: string; desc: string; cos
 
 export const FREE_SHARD_DAILY_CAP = 50;
 
+export const STREAK_REWARDS = [
+  { day: 1, coins: 100, shards: 0 },
+  { day: 2, coins: 200, shards: 0 },
+  { day: 3, coins: 300, shards: 1 },
+  { day: 4, coins: 400, shards: 0 },
+  { day: 5, coins: 500, shards: 0 },
+  { day: 6, coins: 600, shards: 0 },
+  { day: 7, coins: 700, shards: 5 },
+] as const;
+
+export const GUILD_LUCK_PER_RANK = 0.02;
+export const GUILD_SPEED_REDUCTION_MS_PER_RANK = 40;
+export const GUILD_OFFLINE_CAPACITY_PER_RANK = 100;
+export const GUILD_SHARD_CHANCE_PER_RANK = 0.002;
+export const GUILD_CRIT_CHANCE_PER_RANK = 0.015;
+export const GUILD_COIN_MULTIPLIER_PER_RANK = 0.10;
+export const GUILD_TOKEN_YIELD_PER_RANK = 0.05;
+export const GUILD_XP_MULTIPLIER_PER_RANK = 0.10;
+
+export function streakRewardForDay(day: number): (typeof STREAK_REWARDS)[number] {
+  const index = Math.max(1, Math.min(7, Math.floor(Number(day) || 1))) - 1;
+  return STREAK_REWARDS[index];
+}
+
 export function todayKey(now = Date.now()): string {
   return new Date(now).toISOString().slice(0, 10);
 }
@@ -572,6 +596,8 @@ export interface PlayerState {
   freeShardsEarnedToday?: number;
   lastFreeShardReset?: string;
   purchasedShards?: number;
+  /** Remaining purchased Shards by payment order. Legacy balances can be migrated into "legacy". */
+  purchasedShardLots?: Record<string, number>;
   globalBoosterCredits?: number;
   globalBoosters?: GlobalBoosterSnapshot;
 
@@ -1307,7 +1333,7 @@ export function critMultiplier(s: PlayerState): number {
 
 export function cooldownMs(s: PlayerState, isAuto = false): number {
   const permReduction = (s.prestigeUpgrades?.permSpeed ?? 0) * 300;
-  const guildSpeedReduction = (s.guildPerks?.speedRank ?? 0) * 100;
+  const guildSpeedReduction = (s.guildPerks?.speedRank ?? 0) * GUILD_SPEED_REDUCTION_MS_PER_RANK;
   const masteryChronoReduction = (s.masterySkills?.chronoFlow ?? 0) * 120;
   const steadyHandsReduction = (s.prestigeUpgrades?.steadyHands ?? 0) * 100;
   const levelBenefits = getLevelBenefits(Math.max(1, s.level || 1));
@@ -1455,7 +1481,7 @@ export function luckMultiplier(s: PlayerState): number {
   ) / 100;
 
   // 4. Guild Perk Luck
-  additiveBonus += (s.guildPerks?.luckRank ?? 0) * 0.03;
+  additiveBonus += (s.guildPerks?.luckRank ?? 0) * GUILD_LUCK_PER_RANK;
 
   // 5. Dry-streak pity Luck
   if ((s.prestigeUpgrades?.resonanceMeter ?? 0) > 0) {
@@ -1468,9 +1494,7 @@ export function luckMultiplier(s: PlayerState): number {
   // 6. Online population Luck
   additiveBonus += Math.max(0, onlinePlayerLuckMultiplier(s.onlinePlayers ?? 1) - 1);
 
-  // 7. Temporary Luck boosters remain additive to the base pool.
-  if (isPremiumBoosterActive(s, 'fortune')) additiveBonus += 3.0; // 4× becomes +300%.
-  additiveBonus += Math.max(0, globalBoosterLuckMultiplier(s.globalBoosters?.luck) - 1);
+  // 7. Temporary Luck boosters modify the completed Luck value, not the base pool.
 
   // 8. Multiplicative long-term layers.
   // Permanent Luck is ×1.05 per level, rather than +5% into the additive pool.
@@ -1478,12 +1502,16 @@ export function luckMultiplier(s: PlayerState): number {
   const { totalAltarMultiplier } = calculateAltarMultipliers(s);
 
   const baseLuck = 1 + additiveBonus;
-  return Math.round(baseLuck * prestigeMultiplier * totalAltarMultiplier * 100) / 100;
+  const fortuneMultiplier = isPremiumBoosterActive(s, 'fortune') ? 4 : 1;
+  const globalLuckMultiplier = globalBoosterLuckMultiplier(s.globalBoosters?.luck);
+  return Math.round(
+    baseLuck * prestigeMultiplier * totalAltarMultiplier * fortuneMultiplier * globalLuckMultiplier * 100,
+  ) / 100;
 }
 
 export function offlineRollCap(s: PlayerState): number {
   const permVaultBonus = (s.prestigeUpgrades?.vaultCap ?? 0) * 250;
-  const guildVaultBonus = (s.guildPerks?.vaultRank ?? 0) * 100;
+  const guildVaultBonus = (s.guildPerks?.vaultRank ?? 0) * GUILD_OFFLINE_CAPACITY_PER_RANK;
   const masteryVaultBonus = (s.masterySkills?.infiniteVault ?? 0) * 200;
   const deepVaultBonus = (s.prestigeUpgrades?.deepVault ?? 0) * 250;
   return Math.min(
