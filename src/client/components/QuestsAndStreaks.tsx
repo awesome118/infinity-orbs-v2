@@ -11,6 +11,7 @@ import {
   Shield,
 } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
+import { STREAK_REWARDS } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface QuestsAndStreaksProps {
@@ -31,15 +32,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
   const alreadyClaimedStreak = state.streak.lastClaimDate === today;
   const currentStreakDay = ((state.streak.count - 1) % 7) + 1;
 
-  const streakRewards = [
-    { day: 1, coins: 50, shards: 0 },
-    { day: 2, coins: 100, shards: 0 },
-    { day: 3, coins: 150, shards: 1 },
-    { day: 4, coins: 200, shards: 0 },
-    { day: 5, coins: 250, shards: 0 },
-    { day: 6, coins: 300, shards: 0 },
-    { day: 7, coins: 350, shards: 5 },
-  ];
+  const streakRewards = STREAK_REWARDS;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
