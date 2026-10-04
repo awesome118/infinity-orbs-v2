@@ -392,7 +392,11 @@ export function activateGlobalBoosterStack(
     }
   }
 
-  const endsAt = Math.max(now, current.endsAt) + GLOBAL_BOOSTER_DURATION_MS;
+  // One visual bar represents at most two hours of active booster time.
+  const endsAt = Math.min(
+    now + GLOBAL_BOOSTER_BAR_DURATION_MS,
+    Math.max(now, current.endsAt) + GLOBAL_BOOSTER_DURATION_MS,
+  );
   return { tier, activationProgress, endsAt, lastTickAt: now, segmentTiers };
 }
 
@@ -634,6 +638,8 @@ export interface PlayerState {
   /** Remaining purchased Shards by payment order. Legacy balances can be migrated into "legacy". */
   purchasedShardLots?: Record<string, number>;
   globalBoosterCredits?: number;
+  /** Remaining free Global Booster activations by payment order. Legacy balances use the "legacy" lot. */
+  globalBoosterCreditLots?: Record<string, number>;
   globalBoosters?: GlobalBoosterSnapshot;
 
   lastFrenzyDate?: string;
@@ -1171,6 +1177,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     lastFreeShardReset: today,
     purchasedShards: 0,
     globalBoosterCredits: 0,
+    globalBoosterCreditLots: {},
     globalBoosters: createInitialGlobalBoosters(now),
 
     lastFrenzyDate: '',
