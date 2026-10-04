@@ -248,7 +248,10 @@ export async function guildInfo() {
 
 export async function getPlayerGuildPerks(uname: string, uid?: string) {
   const guilds = await loadGuilds();
-  const mine = guilds.find(g => g.members.some(m => (uid && m.userId === uid) || m.username === uname));
+  const mine = uid
+    ? guilds.find(g => g.members.some(m => m.userId === uid))
+      ?? guilds.find(g => g.members.some(m => !m.userId && m.username === uname))
+    : guilds.find(g => g.members.some(m => m.username === uname));
   return mine?.perks;
 }
 
@@ -261,7 +264,7 @@ export async function addGuildTokens(uname: string, amount: number) {
     guild.tokens = (guild.tokens ?? 0) + Math.max(1, Math.floor(amount * tokenMultiplier));
     if (!guild.chat) guild.chat = [];
     guild.chat.push({
-      id: `msg-${Date.now()}`,
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       username: 'System',
       text: `${uname} contributed +${amount} Guild Tokens from quest.`,
       timestamp: Date.now(),
@@ -311,7 +314,7 @@ export async function buyGuildPerk(perk: GuildPerkId) {
 
     if (!guild.chat) guild.chat = [];
     guild.chat.push({
-      id: `msg-${Date.now()}`,
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       username: 'System',
       text: `${username()} upgraded ${perkNames[perk]} to Level ${guild.perks[perk]}.`,
       timestamp: Date.now(),
@@ -590,7 +593,7 @@ export async function leaveGuild() {
       }
       if (!guild.chat) guild.chat = [];
       guild.chat.push({
-        id: `msg-${Date.now()}`,
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         username: 'System',
         text: `${username()} left the guild.`,
         timestamp: Date.now(),
@@ -802,6 +805,7 @@ export async function addCommunityRolls(rolls: number): Promise<WorldEvent> {
     while (ev.currentProgress >= ev.goal) {
       ev.completed = true;
       ev.completedTier = Math.max(ev.completedTier ?? 0, ev.tier || 1);
+      ev.currentProgress -= ev.goal;
       ev.tier = (ev.tier || 1) + 1;
       ev.goal = Math.round(ev.goal * 2.2);
       ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
@@ -874,7 +878,9 @@ export async function setCommunityEventConfig(config: {
     ev.currentProgress += config.addRolls;
   }
   while (ev.currentProgress >= ev.goal) {
+    ev.completed = true;
     ev.completedTier = Math.max(ev.completedTier ?? 0, ev.tier || 1);
+    ev.currentProgress -= ev.goal;
     ev.tier = (ev.tier || 1) + 1;
     ev.goal = Math.round(ev.goal * 2.2);
     ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
