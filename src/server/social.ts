@@ -249,17 +249,7 @@ export async function guildInfo() {
 export async function getPlayerGuildPerks(uname: string, uid?: string) {
   const guilds = await loadGuilds();
   const mine = guilds.find(g => g.members.some(m => (uid && m.userId === uid) || m.username === uname));
-  return mine?.perks ?? {
-    luckRank: 0,
-    speedRank: 0,
-    vaultRank: 0,
-    shardRank: 0,
-    critRank: 0,
-    coinRank: 0,
-    memberCapacityRank: 0,
-    tokenYieldRank: 0,
-    guildXpRank: 0,
-  };
+  return mine?.perks;
 }
 
 export async function addGuildTokens(uname: string, amount: number) {
@@ -923,9 +913,16 @@ export async function getGlobalChat(): Promise<GlobalChatMessage[]> {
 }
 
 export async function postGlobalChatMessage(text: string): Promise<GlobalChatMessage> {
-  const messageText = String(text ?? '').trim();
+  const messageText = String(text ?? '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (!messageText) throw new Error('Message cannot be empty.');
   if (messageText.length > 200) throw new Error('Messages must be 200 characters or fewer.');
+  const cooldownKey = key('global-chat-cooldown:' + user());
+  const lastMessageAt = Number(await redis.get(cooldownKey) ?? 0) || 0;
+  if (Date.now() - lastMessageAt < 1500) throw new Error('Please wait before sending another chat message.');
+  await redis.set(cooldownKey, String(Date.now()));
 
   const timestamp = Date.now();
   const message: GlobalChatMessage = {
