@@ -558,7 +558,7 @@ export function App() {
 
       if (tab === 'social') {
         const guildRequestId = ++guildRequestRef.current;
-        void getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds').then(gd => {
+        void getJson<{ guilds: Guild[]; mine: Guild | null; myMember: GuildMember | null }>('/api/guilds').then(gd => {
           if (gd && guildRequestId === guildRequestRef.current) setGuildData(gd);
         }).catch(() => null);
       }
