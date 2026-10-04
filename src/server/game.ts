@@ -2451,7 +2451,7 @@ export async function roll(
       | undefined;
 
     if (ticketId != null || ticketIndex != null) {
-      const requestedTicketIndex = ticketIndex;
+      const requestedTicketIndex = Number(ticketIndex);
       if (!ticketId || !Number.isSafeInteger(requestedTicketIndex)) {
         throw new Error('Invalid roll prediction ticket.');
       }
