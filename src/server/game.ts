@@ -35,6 +35,7 @@ import {
   type AutomationId,
   type PaymentReceipt,
   type GlobalBoosterId,
+  type PendingPlayerOperation,
   type GlobalBoosterSnapshot,
 
   GLOBAL_BOOSTERS,
@@ -47,6 +48,7 @@ import {
   AUTOMATIONS,
   PURCHASE_PACKS,
   grantFreeShards,
+  grantUncappedShards,
   spendShards,
   resetFreeShardBudgetIfNeeded,
   weekKey,
@@ -58,6 +60,7 @@ import {
   codexDevotionLuckPercent,
   altarCoinDevotionChancePercent,
   streakRewardForDay,
+  GLOBAL_BOOSTER_MAX_TIER,
   GUILD_SHARD_CHANCE_PER_RANK,
   altarCoinFloor,
 } from '../shared/game.js';
@@ -67,6 +70,9 @@ import {
   addGuildTokens,
   applyGuildTax,
   getPlayerGuildPerks,
+  getCurrentGuildId,
+  getGuildTaxPreview,
+  applyRollSocialEffectsAtomic,
   addCommunityRolls,
   getCommunityEvent,
 } from './social.js';
@@ -91,6 +97,7 @@ const GLOBAL_BOOSTER_ANNOUNCEMENT_KEY = 'io:global-booster-announcement';
 const OFFLINE_FULL_NOTIFICATION_PREFIX = 'io:offline-full-notified:';
 const OFFLINE_FULL_JOB_PREFIX = 'io:offline-full-job:';
 const OFFLINE_FULL_RETRY_MS = 5 * 60_000;
+const PENDING_OPERATION_MAX = 50;
 const PLAYER_FLAIR_KEY_PREFIX = 'io:player-flair:';
 
 const SAVE_BASELINE = Symbol('save-baseline');
@@ -146,7 +153,7 @@ function settlementPersistenceSignature(s: PlayerState): string {
     lastFrenzyClaimDate: s.lastFrenzyClaimDate, communityRewardClaimedTier: s.communityRewardClaimedTier,
     currentRunRolls: s.currentRunRolls, questsCompleted: s.questsCompleted, guildContribution: s.guildContribution,
     sacrifices: s.sacrifices, masteryPoints: s.masteryPoints, masterySkills: s.masterySkills,
-    socialActivityDate: s.socialActivityDate, lastShareAt: s.lastShareAt,
+    socialActivityDate: s.socialActivityDate, lastShareAt: s.lastShareAt, pendingOperations: s.pendingOperations,
   });
 }
 
@@ -864,14 +871,32 @@ export async function getGlobalBoosters(): Promise<GlobalBoosterSnapshot> {
   return snapshot;
 }
 
-async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSnapshot> {
+async function updateGlobalBooster(
+  id: GlobalBoosterId,
+  operationId?: string,
+): Promise<GlobalBoosterSnapshot> {
+  const opId = String(operationId ?? '').trim();
+  const opKey = opId ? `io:global-booster-op:v1:${opId}` : null;
+
   for (let attempt = 0; attempt < 8; attempt++) {
     const now = Date.now();
-    const txn = await redis.watch(GLOBAL_BOOSTERS_KEY);
+    const watchKeys = opKey ? [GLOBAL_BOOSTERS_KEY, opKey] : [GLOBAL_BOOSTERS_KEY];
+    const txn = await redis.watch(...watchKeys);
+
+    if (opKey) {
+      const existingRaw = await redis.get(opKey);
+      const existing = parseStoredJson<GlobalBoosterSnapshot>(existingRaw);
+      if (existing?.luck && existing.speed && existing.crit) {
+        await txn.unwatch();
+        return existing;
+      }
+    }
+
     const raw = await redis.get(GLOBAL_BOOSTERS_KEY);
 
     await appendGlobalBoosterDebugLog('activate:redis-read', {
       id,
+      operationId: opId || null,
       attempt,
       key: GLOBAL_BOOSTERS_KEY,
       rawType: typeof raw,
@@ -881,11 +906,16 @@ async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSn
 
     const current = parseGlobalBoosterSnapshot(raw, now) ?? createInitialGlobalBoosters(now);
     const before = current[id];
-    const after = activateGlobalBoosterStack(before, now, id === 'speed' ? 10 : Number.MAX_SAFE_INTEGER);
+    const after = activateGlobalBoosterStack(
+      before,
+      now,
+      GLOBAL_BOOSTER_MAX_TIER,
+    );
     current[id] = after;
 
     await appendGlobalBoosterDebugLog('activate:state-computed', {
       id,
+      operationId: opId || null,
       attempt,
       before,
       after,
@@ -893,6 +923,7 @@ async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSn
 
     await txn.multi();
     await txn.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(current));
+    if (opKey) await txn.set(opKey, JSON.stringify(current));
     const committed = await txn.exec();
 
     if (committed !== null) {
@@ -900,19 +931,27 @@ async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSn
       const verified = parseGlobalBoosterSnapshot(verifiedRaw, Date.now()) ?? current;
       await appendGlobalBoosterDebugLog('activate:global-write-success', {
         id,
+        operationId: opId || null,
         attempt,
         committed: true,
         verifiedRawType: typeof verifiedRaw,
         verifiedRaw: summarizeGlobalBoosterRaw(verifiedRaw),
         verifiedSnapshot: verified,
       });
-      return verified;
+      return opId ? current : verified;
     }
 
-    await appendGlobalBoosterDebugLog('activate:global-write-conflict', { id, attempt });
+    await appendGlobalBoosterDebugLog('activate:global-write-conflict', {
+      id,
+      operationId: opId || null,
+      attempt,
+    });
   }
 
-  await appendGlobalBoosterDebugLog('activate:global-write-exhausted', { id });
+  await appendGlobalBoosterDebugLog('activate:global-write-exhausted', {
+    id,
+    operationId: opId || null,
+  });
   throw new Error('The Global Booster was activated by another player. Please try again.');
 }
 
@@ -1502,8 +1541,12 @@ export async function loadRaw(): Promise<PlayerState> {
     purchasedShardLots: normalizedPurchasedShardLots,
     globalBoosterCredits: normalizedGlobalBoosterCreditBalance,
     globalBoosterCreditLots: normalizedGlobalBoosterCreditLots,
+    pendingOperations: normalizedPendingOperations,
   };
   captureSaveBaseline(loadedState);
+  await flushPendingPlayerOperations(loadedState).catch(error => {
+    console.error('[Pending Operations] Background flush failed during load:', error);
+  });
   return loadedState;
 }
 
@@ -1590,8 +1633,12 @@ async function processAutomation(s: PlayerState): Promise<void> {
     for (const q of quests) {
       const result = applyQuestReward(s, q);
       if (result.rewardTokens > 0) {
-        const username = context.username ?? ('reddit-user-' + currentUserId().slice(-8));
-        await addGuildTokens(username, result.rewardTokens);
+        queuePendingOperation(s, {
+          id: newPendingOperationId('quest'),
+          type: 'guild-tokens',
+          guildId: await getCurrentGuildId(),
+          amount: result.rewardTokens,
+        });
       }
     }
   }
@@ -1876,7 +1923,7 @@ export async function applyRolls(
   forcedRarity?: number,
   source: 'online' | 'offline' = 'online',
   rollCountOverride?: number
-): Promise<{ bestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number; rollCount: number }> {
+): Promise<{ bestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number; rollCount: number; pendingOperationId?: string }> {
   let bestRarity = 0;
   let bestIsCrit = false;
   let bestIsNew = false;
@@ -2078,7 +2125,7 @@ export async function applyRolls(
     coinsGained = Math.round(coinsGained * (1 + (s.prestigeUpgrades.offlineOverdrive * 0.50)));
   }
 
-  const guildTax = await applyGuildTax(coinsGained);
+  const guildTax = await getGuildTaxPreview(coinsGained);
   coinsGained = Math.max(0, coinsGained - guildTax.taxedCoins);
   s.coins += coinsGained;
   shardsGained = grantFreeShards(s, shardsGained);
@@ -2125,9 +2172,18 @@ export async function applyRolls(
   advanceQuestProgress(s, 'value', totalVal);
   advanceQuestProgress(s, 'unique', uniqueGained);
 
-  const guildResult = await contribute(totalVal, rollCount, bestRarity);
-  if (guildResult.bossRewardShards > 0) shardsGained += grantFreeShards(s, guildResult.bossRewardShards);
-  await addCommunityRolls(rollCount);
+  const pendingOperationId = newPendingOperationId('roll');
+  queuePendingOperation(s, {
+    id: pendingOperationId,
+    type: 'roll-social',
+    guildId: guildTax.guildId,
+    taxedCoins: guildTax.taxedCoins,
+    guildTaxTokens: guildTax.tokensEarned,
+    contributionValue: totalVal,
+    rollCount,
+    bestRarity,
+    communityRolls: rollCount,
+  });
 
   const bestInfo = getOrbInfo(bestRarity);
   const bestOrb: Orb = {
@@ -2194,7 +2250,7 @@ export async function applyRolls(
     userId: spyUserId,
   }, spyUserId);
 
-  return { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount };
+  return { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount, pendingOperationId };
 }
 
 async function sendOfflineFullNotification(userId: string, subredditName: string): Promise<boolean> {
@@ -2483,6 +2539,9 @@ export async function getState(): Promise<PlayerState> {
       const persistentChanged = settlementPersistenceSignature(settled) !== beforeSignature;
       const presenceNeedsSave = (settled.lastSeenAt ?? 0) - previousLastSeenAt >= 30_000;
       if (persistentChanged || presenceNeedsSave) await save(settled);
+      await flushPendingPlayerOperations(settled).catch(error => {
+        console.error('[Pending Operations] Background settlement failed:', error);
+      });
       return settled;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -2556,7 +2615,7 @@ export async function roll(isAuto = false): Promise<RollResponse> {
     throw new Error(`Cooldown: ${((cd - now + s.lastRollAt) / 1000).toFixed(1)}s`);
   }
 
-  const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } = await applyRolls(s);
+  const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount, pendingOperationId } = await applyRolls(s);
 
   // Only direct manual roll activations count toward the Auto Roll unlock.
   if (!isAuto) {
@@ -2569,6 +2628,8 @@ export async function roll(isAuto = false): Promise<RollResponse> {
   s.lastRollAt = now;
   s.lastSeenAt = now;
   await save(s);
+  const rollSideEffects = await flushPendingPlayerOperations(s, pendingOperationId);
+  shardsGained += rollSideEffects.bossRewardShards;
   try {
     await recordLeaderboard(s);
   } catch (error) {
@@ -2605,11 +2666,13 @@ export async function claimOffline(): Promise<RollResponse> {
   s.offlineRolls = 0;
   await redis.del(OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId());
   await redis.del(OFFLINE_FULL_JOB_PREFIX + currentUserId());
-  const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } = await applyRolls(s, batches, undefined, 'offline');
+  const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount, pendingOperationId } = await applyRolls(s, batches, undefined, 'offline');
   const now = Date.now();
   s.lastRollAt = now;
   s.lastSeenAt = now;
   await save(s);
+  const offlineSideEffects = await flushPendingPlayerOperations(s, pendingOperationId);
+  shardsGained += offlineSideEffects.bossRewardShards;
   try {
     await recordLeaderboard(s);
   } catch (error) {
@@ -2759,8 +2822,12 @@ export async function claimQuest(type: 'daily' | 'weekly', id: string): Promise<
   const reward = applyQuestReward(s, quest);
 
   if (quest.rewardTokens && quest.rewardTokens > 0) {
-    const username = context.username ?? `reddit-user-${currentUserId().slice(-8)}`;
-    await addGuildTokens(username, quest.rewardTokens);
+    queuePendingOperation(s, {
+      id: newPendingOperationId('quest'),
+      type: 'guild-tokens',
+      guildId: await getCurrentGuildId(),
+      amount: quest.rewardTokens,
+    });
   }
 
   await save(s);
@@ -2780,6 +2847,39 @@ export async function claimQuest(type: 'daily' | 'weekly', id: string): Promise<
   };
 }
 
+function retainPurchasedShardProvenanceAfterPrestige(s: PlayerState, keptShards: number): void {
+  const totalBefore = Math.max(0, Math.floor(Number(s.shards ?? 0) || 0));
+  const paidBefore = Math.min(
+    totalBefore,
+    Math.max(0, Math.floor(Number(s.purchasedShards ?? 0) || 0)),
+  );
+  const targetTotal = Math.max(0, Math.floor(keptShards));
+  const targetPaid = totalBefore > 0
+    ? Math.min(paidBefore, Math.floor(targetTotal * paidBefore / totalBefore))
+    : 0;
+
+  const lots = Object.fromEntries(
+    Object.entries(s.purchasedShardLots ?? {})
+      .map(([id, amount]) => [id, Math.max(0, Math.floor(Number(amount) || 0))] as const)
+      .filter(([, amount]) => amount > 0),
+  );
+  let remaining = targetPaid;
+  const retainedLots: Record<string, number> = {};
+  for (const [orderId, amount] of Object.entries(lots)) {
+    if (remaining <= 0) break;
+    const kept = Math.min(amount, remaining);
+    if (kept > 0) retainedLots[orderId] = kept;
+    remaining -= kept;
+  }
+
+  if (targetPaid > Object.values(retainedLots).reduce((sum, amount) => sum + amount, 0)) {
+    const missing = targetPaid - Object.values(retainedLots).reduce((sum, amount) => sum + amount, 0);
+    retainedLots.legacy = (retainedLots.legacy ?? 0) + missing;
+  }
+
+  s.purchasedShards = targetPaid;
+  s.purchasedShardLots = retainedLots;
+}
 export async function prestige(): Promise<{ state: PlayerState; cosmicDustEarned: number; dustGained: number }> {
   const s = await settleOffline(await loadRaw());
   const dustEarned = calculateCosmicDust(s);
@@ -2798,6 +2898,7 @@ export async function prestige(): Promise<{ state: PlayerState; cosmicDustEarned
   const keptShards = Math.floor((s.shards ?? 0) * keepPct);
 
   // Strict reset of current run collection value, coins, and base upgrades
+  retainPurchasedShardProvenanceAfterPrestige(s, keptShards);
   s.collectionValue = 0;
   s.coins = keptCoins;
   s.shards = keptShards;
@@ -3111,30 +3212,27 @@ async function claimWorldBoosterActivation(
     creditsAfter: s.globalBoosterCredits ?? 0,
   });
 
+  const operationId = newPendingOperationId('global-booster');
+  queuePendingOperation(s, {
+    id: operationId,
+    type: 'global-booster',
+    boosterId: id,
+    useCredit,
+  });
+
+  await appendGlobalBoosterDebugLog('player:before-save', {
+    userId,
+    id,
+    useCredit,
+    operationId,
+    shards: s.shards,
+    credits: s.globalBoosterCredits ?? 0,
+  });
+
   try {
-    const snapshot = await updateGlobalBooster(id);
-    s.globalBoosters = snapshot;
-
-    await appendGlobalBoosterDebugLog('player:before-save', {
-      userId,
-      id,
-      useCredit,
-      snapshot,
-      shards: s.shards,
-      credits: s.globalBoosterCredits ?? 0,
-    });
-
     await save(s);
-
-    await appendGlobalBoosterDebugLog('player:activation-success', {
-      userId,
-      id,
-      useCredit,
-      snapshot,
-      shardsAfter: s.shards,
-      creditsAfter: s.globalBoosterCredits ?? 0,
-    });
-
+    const settled = await flushPendingPlayerOperations(s, operationId, true);
+    const snapshot = settled.globalBoosterSnapshot ?? await getGlobalBoosters();
     const activatedAt = Date.now();
     const activatedBy = String(context.username ?? s.username ?? 'Redditor').trim() || 'Redditor';
     try {
@@ -3148,6 +3246,16 @@ async function claimWorldBoosterActivation(
       console.error('[Global Booster] Announcement write failed after activation:', error);
     }
 
+    await appendGlobalBoosterDebugLog('player:activation-success', {
+      userId,
+      id,
+      useCredit,
+      operationId,
+      snapshot,
+      shardsAfter: s.shards,
+      creditsAfter: s.globalBoosterCredits ?? 0,
+    });
+
     return {
       state: s,
       snapshot,
@@ -3160,24 +3268,21 @@ async function claimWorldBoosterActivation(
       },
     };
   } catch (error) {
-    // Restore the exact currency provenance if the global activation path fails
-    // before the player save commits.
     s.shards = previousShards;
     s.purchasedShards = previousPurchasedShards;
     s.purchasedShardLots = previousPurchasedShardLots;
     s.globalBoosterCredits = previousGlobalBoosterCredits;
     s.globalBoosterCreditLots = previousGlobalBoosterCreditLots;
-
     await appendGlobalBoosterDebugLog('player:activation-failed', {
       userId,
       id,
       useCredit,
       errorName: error instanceof Error ? error.name : null,
       errorMessage: error instanceof Error ? error.message : String(error),
-      refundedShards: useCredit ? 0 : cost,
-      refundedCredit: useCredit,
+      operationId,
+      // The operation remains durable when player save already committed.
+      pendingOperationRetained: Array.isArray(s.pendingOperations) && s.pendingOperations.some(op => op.id === operationId),
     });
-
     throw error;
   }
 }
@@ -3637,4 +3742,24 @@ export async function recordShareAction(s: PlayerState) {
   s.lastShareAt = now;
   advanceQuestProgress(s, 'share', 1);
   await save(s);
-}
+}  const normalizedPendingOperations: PendingPlayerOperation[] = Array.isArray(parsed.pendingOperations)
+    ? parsed.pendingOperations
+      .filter((operation): operation is PendingPlayerOperation => {
+        if (!operation || typeof operation !== 'object') return false;
+        const candidate = operation as Record<string, unknown>;
+        if (typeof candidate.id !== 'string' || !candidate.id) return false;
+        if (candidate.type === 'roll-social') {
+          return ['taxedCoins', 'guildTaxTokens', 'contributionValue', 'rollCount', 'bestRarity', 'communityRolls']
+            .every(key => Number.isFinite(Number(candidate[key])));
+        }
+        if (candidate.type === 'guild-tokens') {
+          return Number.isFinite(Number(candidate.amount));
+        }
+        return candidate.type === 'global-booster' &&
+          typeof candidate.boosterId === 'string' &&
+          Boolean(GLOBAL_BOOSTERS[candidate.boosterId as GlobalBoosterId]) &&
+          typeof candidate.useCredit === 'boolean';
+      })
+      .slice(-PENDING_OPERATION_MAX)
+    : [];
+
