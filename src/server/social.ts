@@ -341,10 +341,10 @@ export async function addGuildTokens(
     }
     const raw = await redis.get(GUILDS_KEY);
     const guilds = parseGuildList(raw);
-    const guild = guilds.find(g =>
-      guild.id === guildId &&
-      g.members.some(m => memberMatches(m)),
-    );
+    const guild = guilds.find(g => {
+      if (guildId) return g.id === guildId;
+      return g.members.some(m => memberMatches(m));
+    });
     if (!guild) {
       if (opKey) {
         await txn.multi();
@@ -400,8 +400,8 @@ export async function applyRollSocialEffectsAtomic(input: RollSocialEffectInput)
 
     const guilds = parseGuildList(await redis.get(GUILDS_KEY));
     const guild = input.guildId
-      ? guilds.find(g => g.id === input.guildId && g.members.some(m => memberMatches(m)))
-      : undefined;
+      ? guilds.find(g => g.id === input.guildId)
+      : currentGuild(guilds);
 
     let bossRewardShards = 0;
     if (guild) {
@@ -410,7 +410,8 @@ export async function applyRollSocialEffectsAtomic(input: RollSocialEffectInput)
       }
 
       if (safeValue > 0) {
-        const member = guild.members.find(m => memberMatches(m));
+        const member = guild.members.find(m => m.userId === user()) ??
+          guild.members.find(m => !m.userId && m.username === username());
         if (member) {
           const xpMultiplier =
             1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * GUILD_XP_MULTIPLIER_PER_RANK;
