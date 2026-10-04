@@ -10,7 +10,7 @@ import type {
 } from '../shared/social.js';
 import { ACHIEVEMENTS, CHALLENGE_POOL, challengeForWeek, COMMUNITY_WORLD_EVENT, createInitialGuildBoss } from '../shared/social.js';
 import type { PlayerState } from '../shared/game.js';
-import { cooldownMs, createInitialState, grantFreeShards, weekEndMs, weekKey, GUILD_LUCK_PER_RANK, GUILD_SPEED_REDUCTION_MS_PER_RANK, GUILD_OFFLINE_CAPACITY_PER_RANK, GUILD_SHARD_CHANCE_PER_RANK, GUILD_CRIT_CHANCE_PER_RANK, GUILD_COIN_MULTIPLIER_PER_RANK, GUILD_TOKEN_YIELD_PER_RANK, GUILD_XP_MULTIPLIER_PER_RANK } from '../shared/game.js';
+import { cooldownMs, createInitialState, grantFreeShards, spendShards, weekEndMs, weekKey, GUILD_LUCK_PER_RANK, GUILD_SPEED_REDUCTION_MS_PER_RANK, GUILD_OFFLINE_CAPACITY_PER_RANK, GUILD_SHARD_CHANCE_PER_RANK, GUILD_CRIT_CHANCE_PER_RANK, GUILD_COIN_MULTIPLIER_PER_RANK, GUILD_TOKEN_YIELD_PER_RANK, GUILD_XP_MULTIPLIER_PER_RANK } from '../shared/game.js';
 
 const user = () => context.userId ?? 'unknown';
 const username = () => context.username ?? `reddit-user-${user().slice(-8)}`;
@@ -394,46 +394,91 @@ export async function applyGuildTax(coinsEarned: number): Promise<{ taxedCoins: 
   });
 }
 
-export async function donateToGuild(coins: number, shards: number) {
-  return updateGuilds(guilds => {
-    const guild = currentGuild(guilds);
-    if (!guild) throw new Error('You are not in a guild.');
+export async function donateToGuildAtomic(coins: number, shards: number) {
+  const safeCoins = Math.max(0, Math.floor(Number(coins) || 0));
+  const safeShards = Math.max(0, Math.floor(Number(shards) || 0));
+  const playerKey = 'player:' + user();
+  const generationKey = 'player-generation:' + user();
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const txn = await redis.watch(GUILDS_KEY, playerKey, generationKey);
+    const [guildRaw, playerRaw, generationRaw] = await Promise.all([
+      redis.get(GUILDS_KEY),
+      redis.get(playerKey),
+      redis.get(generationKey),
+    ]);
+    const guilds = parseStoredJson<Guild[]>(guildRaw) ?? [];
+    const state = parseStoredJson<PlayerState>(playerRaw);
+    const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
+    if (!state) {
+      await txn.unwatch();
+      throw new Error('Player state unavailable.');
+    }
+    if (Math.max(0, Math.floor(Number(state.saveGeneration ?? 0))) !== generation) {
+      await txn.unwatch();
+      throw new Error('Your Infinity Orbs save was invalidated by an admin wipe. Please reload.');
+    }
+
+    const guild = guilds.find(g => g.members.some(m => memberMatches(m)));
+    if (!guild) {
+      await txn.unwatch();
+      throw new Error('You are not in a guild.');
+    }
     const member = guild.members.find(m => memberMatches(m));
-    if (!member) throw new Error('Guild member not found.');
-
-    const safeCoins = Math.max(0, Math.floor(coins || 0));
-    const safeShards = Math.max(0, Math.floor(shards || 0));
-    const tokenMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05;
-    const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * GUILD_XP_MULTIPLIER_PER_RANK;
-
-    const tokenGain = Math.floor((Math.floor(safeCoins / 500) * 5 + safeShards * 5) * tokenMultiplier);
-    const xpGain = Math.max(0, Math.floor((Math.floor(safeCoins / 50) + safeShards * 25) * xpMultiplier));
-    if (tokenGain <= 0 && xpGain <= 0) {
+    if (!member) {
+      await txn.unwatch();
+      throw new Error('Guild member not found.');
+    }
+    if (state.coins < safeCoins || (state.shards ?? 0) < safeShards) {
+      await txn.unwatch();
+      throw new Error('Not enough Coins or Shards.');
+    }
+    if (safeCoins === 0 && safeShards === 0) {
+      await txn.unwatch();
       throw new Error('Donation must be at least 500 Coins or 1 Shard.');
     }
 
-    member.contribution += safeCoins + (safeShards * 1000);
+    const tokenMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * GUILD_TOKEN_YIELD_PER_RANK;
+    const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * GUILD_XP_MULTIPLIER_PER_RANK;
+    const tokenGain = Math.floor((Math.floor(safeCoins / 500) * 5 + safeShards * 5) * tokenMultiplier);
+    const xpGain = Math.max(0, Math.floor((Math.floor(safeCoins / 50) + safeShards * 25) * xpMultiplier));
+    if (tokenGain <= 0 && xpGain <= 0) {
+      await txn.unwatch();
+      throw new Error('Donation must be at least 500 Coins or 1 Shard.');
+    }
+
+    state.coins -= safeCoins;
+    if (safeShards > 0) spendShards(state, safeShards);
+    state.guildContribution = (state.guildContribution ?? 0) + safeCoins + safeShards * 1000;
+    state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
+    state.saveGeneration = generation;
+
+    member.contribution += safeCoins + safeShards * 1000;
     guild.xp += xpGain;
     guild.level = 1 + Math.floor(guild.xp / 500);
     guild.tokens = (guild.tokens ?? 0) + tokenGain;
-
     if (!guild.chat) guild.chat = [];
     const parts: string[] = [];
-    if (safeCoins > 0) parts.push(`${safeCoins.toLocaleString()} Coins`);
-    if (safeShards > 0) parts.push(`${safeShards} Shards`);
-
+    if (safeCoins > 0) parts.push(safeCoins.toLocaleString() + ' Coins');
+    if (safeShards > 0) parts.push(safeShards + ' Shards');
     guild.chat.push({
-      id: `msg-${Date.now()}-donate`,
+      id: 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
       username: 'System',
-      text: `${username()} donated ${parts.join(' and ')} (+${tokenGain} Tokens, +${xpGain} Guild XP).`,
+      text: username() + ' donated ' + parts.join(' and ') + ' (+' + tokenGain + ' Tokens, +' + xpGain + ' Guild XP).',
       timestamp: Date.now(),
       isSystem: true,
     });
     if (guild.chat.length > 50) guild.chat.shift();
 
-    return { guild, tokensEarned: tokenGain, xpEarned: xpGain };
-  });
+    await txn.multi();
+    await txn.set(GUILDS_KEY, JSON.stringify(guilds));
+    await txn.set(playerKey, JSON.stringify(state));
+    const committed = await txn.exec();
+    if (committed !== null) return { guild, tokensEarned: tokenGain, xpEarned: xpGain, state };
+  }
+  throw new Error('Guild donation changed while saving. Please retry.');
 }
+
 
 export async function createGuild(name: string, tag: string) {
   const cleanName = name.trim().slice(0, 32);
