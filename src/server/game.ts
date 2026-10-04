@@ -1501,6 +1501,7 @@ export async function loadRaw(): Promise<PlayerState> {
           .filter(([, amount]) => amount > 0),
       )
     : {};
+  const hasPurchasedShardScalar = Object.prototype.hasOwnProperty.call(parsed, 'purchasedShards');
   const legacyPurchasedShards = Math.max(0, Math.floor(Number(parsed.purchasedShards ?? 0) || 0));
   const purchasedLotTotalBeforeLegacy = Object.values(normalizedPurchasedShardLots)
     .reduce((sum, amount) => sum + amount, 0);
@@ -1508,10 +1509,27 @@ export async function loadRaw(): Promise<PlayerState> {
     normalizedPurchasedShardLots.legacy =
       (normalizedPurchasedShardLots.legacy ?? 0) + (legacyPurchasedShards - purchasedLotTotalBeforeLegacy);
   }
-  const normalizedPurchasedShardBalance = Math.min(
-    Math.max(0, Math.floor(Number(parsed.shards ?? base.shards) || 0)),
-    Object.values(normalizedPurchasedShardLots).reduce((sum, amount) => sum + amount, 0),
-  );
+  const currentShardBalance = Math.max(0, Math.floor(Number(parsed.shards ?? base.shards) || 0));
+  const lotTotalAfterLegacy = Object.values(normalizedPurchasedShardLots)
+    .reduce((sum, amount) => sum + amount, 0);
+  // The legacy scalar is evidence of how many paid shards remain; lot data must
+  // never exceed the player's actual current balance, or future free shards could
+  // accidentally revive stale paid provenance.
+  const normalizedPurchasedShardBalance = hasPurchasedShardScalar
+    ? Math.min(currentShardBalance, legacyPurchasedShards)
+    : Math.min(currentShardBalance, lotTotalAfterLegacy);
+  let purchasedLotRemainder = normalizedPurchasedShardBalance;
+  for (const orderId of Object.keys(normalizedPurchasedShardLots)) {
+    const lot = normalizedPurchasedShardLots[orderId];
+    const keep = Math.min(lot, purchasedLotRemainder);
+    if (keep <= 0) delete normalizedPurchasedShardLots[orderId];
+    else normalizedPurchasedShardLots[orderId] = keep;
+    purchasedLotRemainder -= keep;
+  }
+  if (purchasedLotRemainder > 0) {
+    normalizedPurchasedShardLots.legacy =
+      (normalizedPurchasedShardLots.legacy ?? 0) + purchasedLotRemainder;
+  }
 
   const normalizedGlobalBoosterCreditLots = parsed.globalBoosterCreditLots
     ? Object.fromEntries(
