@@ -29,6 +29,7 @@ import type {
   GuildPerkId,
   GuildMessage,
 } from '../../shared/social.js';
+import { maxGuildMembers } from '../../shared/social.js';
 import { sound } from '../sound.js';
 
 interface GuildsAndSocialProps {
@@ -216,7 +217,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                         </span>
                       </div>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        {myGuild.members.length} / {10 + Math.min(40, myGuild.perks?.memberCapacityRank ?? 0)} Members • {fmt(myGuild.tokens ?? 0)} Guild Tokens • {fmt(myGuild.xp ?? 0)} Guild XP
+                        {myGuild.members.length} / {maxGuildMembers(myGuild.perks?.memberCapacityRank ?? 0)} Members • {fmt(myGuild.tokens ?? 0)} Guild Tokens • {fmt(myGuild.xp ?? 0)} Guild XP
                       </p>
                     </div>
                   </div>
@@ -615,7 +616,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                       <span>Member Contributions</span>
                     </h3>
                     <span className="text-xs text-slate-400">
-                      {myGuild.members.length} / 50
+                      {myGuild.members.length} / {maxGuildMembers(myGuild.perks?.memberCapacityRank ?? 0)}
                     </span>
                   </div>
 
@@ -761,7 +762,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                         <div>
                           <h4 className="text-sm font-bold text-white">{g.name}</h4>
                           <span className="text-xs text-slate-400">
-                            Lv {g.level} • {g.members.length}/50 Members
+                            Lv {g.level} • {g.members.length}/{maxGuildMembers(g.perks?.memberCapacityRank ?? 0)} Members
                           </span>
                         </div>
                       </div>
