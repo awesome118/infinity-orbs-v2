@@ -1500,7 +1500,7 @@ export async function loadRaw(): Promise<PlayerState> {
     Math.min(
       10,
       totalRollsForNormalization,
-      Number(parsed.manualRolls ?? totalRollsForNormalization) || 0,
+      Math.floor(Number(parsed.manualRolls ?? totalRollsForNormalization) || 0),
     ),
   );
   const normalizedUpgrades = {
@@ -1589,6 +1589,9 @@ export async function loadRaw(): Promise<PlayerState> {
     ...cleanParsed,
     upgrades: normalizedUpgrades,
     manualRolls: normalizedManualRolls,
+    level: calculateLevelFromXp(
+      Math.max(0, Math.floor(Number(parsed.xp ?? 0) || 0)),
+    ).level,
     saveGeneration: generation,
     username,
     prestigeUpgrades: { ...base.prestigeUpgrades, ...(parsed.prestigeUpgrades ?? {}) },
@@ -1631,8 +1634,11 @@ function newPendingOperationId(prefix: string): string {
 function queuePendingOperation(s: PlayerState, operation: PendingPlayerOperation): void {
   const operations = Array.isArray(s.pendingOperations) ? s.pendingOperations.filter(Boolean) : [];
   if (operations.some(existing => existing.id === operation.id)) return;
+  if (operations.length >= PENDING_OPERATION_MAX) {
+    throw new Error('Shared operation queue is temporarily full. Please retry.');
+  }
   operations.push(operation);
-  s.pendingOperations = operations.slice(-PENDING_OPERATION_MAX);
+  s.pendingOperations = operations;
 }
 
 export async function flushPendingPlayerOperations(
