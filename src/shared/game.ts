@@ -234,7 +234,11 @@ export function spendShards(s: PlayerState, requested: number): number {
         }
       }
     }
-    s.purchasedShards = Math.max(0, (s.purchasedShards ?? 0) - (Math.min(amount, Math.max(0, Math.floor(s.purchasedShards ?? 0))) - remainingPaid));
+    // Legacy saves may not have a lot map. Treat their scalar purchased balance
+    // as the legacy lot so spending still reduces the provenance counter.
+    if (remainingPaid > 0 && !lots) remainingPaid = 0;
+    const paidBefore = Math.min(amount, Math.max(0, Math.floor(s.purchasedShards ?? 0)));
+    s.purchasedShards = Math.max(0, paidBefore === 0 ? (s.purchasedShards ?? 0) : (s.purchasedShards ?? 0) - (paidBefore - remainingPaid));
   }
   return amount;
 }
@@ -258,6 +262,8 @@ export interface GlobalBoosterState {
   activationProgress: number;
   endsAt: number;
   lastTickAt?: number;
+  /** Most recent 30-minute segment tiers shown in the 2-hour bar. */
+  segmentTiers?: number[];
 }
 
 export type GlobalBoosterSnapshot = Record<GlobalBoosterId, GlobalBoosterState>;
@@ -295,6 +301,7 @@ export function createInitialGlobalBoosters(now = Date.now()): GlobalBoosterSnap
     activationProgress: 0,
     endsAt: 0,
     lastTickAt: now,
+    segmentTiers: [],
   });
   return {
     luck: inactive(),
@@ -341,6 +348,9 @@ export function decayGlobalBoosterState(
     activationProgress,
     endsAt,
     lastTickAt: now,
+    segmentTiers: Array.isArray(state?.segmentTiers)
+      ? state!.segmentTiers!.map(v => Math.max(0, Math.floor(Number(v) || 0))).slice(-GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER)
+      : [],
   };
 }
 
@@ -361,8 +371,11 @@ export function activateGlobalBoosterStack(
   const safeMaxTier = Math.max(1, Math.floor(maxTier));
   let tier = Math.min(Math.max(0, current.tier), safeMaxTier);
   let activationProgress = current.activationProgress + 1;
-
   if (tier <= 0) tier = 1;
+
+  const segmentTier = tier;
+  const segmentTiers = [...(current.segmentTiers ?? []), segmentTier]
+    .slice(-GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER);
 
   if (activationProgress >= GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER) {
     if (tier < safeMaxTier) {
@@ -374,7 +387,7 @@ export function activateGlobalBoosterStack(
   }
 
   const endsAt = Math.max(now, current.endsAt) + GLOBAL_BOOSTER_DURATION_MS;
-  return { tier, activationProgress, endsAt, lastTickAt: now };
+  return { tier, activationProgress, endsAt, lastTickAt: now, segmentTiers };
 }
 
 export function globalBoosterProgress(state: GlobalBoosterState | null | undefined, now = Date.now()): number {
