@@ -53,6 +53,7 @@ import {
   setGuildTrust,
   setGuildTaxRate,
   donateToGuild,
+  donateToGuildAtomic,
   leaderboard,
   recordLeaderboard,
   shareText,
