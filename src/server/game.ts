@@ -1638,7 +1638,10 @@ export async function withPlayerMutationLock<T>(fn: () => Promise<T>): Promise<T
 
   for (let attempt = 0; attempt < 80; attempt++) {
     // Devvit Redis supports NX + expiration for short-lived atomic leases.
-    await redis.set(lockKey, token, { nx: true, expiration: 15 });
+    await redis.set(lockKey, token, {
+      nx: true,
+      expiration: new Date(Date.now() + 15_000),
+    });
     const owner = await redis.get(lockKey);
     if (owner === token) {
       try {
