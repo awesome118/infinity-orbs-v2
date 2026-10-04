@@ -242,6 +242,11 @@ export function App() {
     mine: null,
   });
   const [worldEvent, setWorldEvent] = useState<WorldEvent | null>(null);
+  const [globalBoosters, setGlobalBoosters] = useState<GlobalBoosterSnapshot>({
+    luck: { tier: 0, activationProgress: 0, endsAt: 0, segmentTiers: [] },
+    speed: { tier: 0, activationProgress: 0, endsAt: 0, segmentTiers: [] },
+    crit: { tier: 0, activationProgress: 0, endsAt: 0, segmentTiers: [] },
+  });
   const [developerAnnouncement, setDeveloperAnnouncement] = useState<{ message: string; updatedAt: number; updatedBy: string } | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState(false);
 
@@ -275,14 +280,16 @@ export function App() {
   const boosterAnnouncementTimerRef = useRef<number | null>(null);
 
   const applyPlayerState = useCallback((nextState: PlayerState) => {
-    const nextServerRevision = Number(nextState.stateRevision);
+    if (nextState.globalBoosters) setGlobalBoosters(nextState.globalBoosters);
+    const { globalBoosters: _sharedBoosters, ...playerOnlyState } = nextState;
+    const nextServerRevision = Number(playerOnlyState.stateRevision);
     if (Number.isFinite(nextServerRevision)) {
       if (nextServerRevision < appliedServerRevisionRef.current) return;
       appliedServerRevisionRef.current = nextServerRevision;
     }
 
     stateRevisionRef.current += 1;
-    setState(nextState);
+    setState(playerOnlyState);
   }, []);
   // Mutations are optimistic on the client: update the visible state immediately,
   // then let the server verify/save it. Rejections restore the exact prior state.
@@ -509,7 +516,7 @@ export function App() {
       void getJson<GlobalBoosterSnapshot>('/api/global-boosters')
         .then(snapshot => {
           if (snapshot) {
-            setState(prev => prev ? { ...prev, globalBoosters: snapshot } : prev);
+            setGlobalBoosters(snapshot);
           }
         })
         .catch(() => null);
@@ -666,7 +673,6 @@ export function App() {
       setReadyAt(Date.now() + res.rollsRemainingUntilNext);
 
       // Immediately bump local rolling counter progress on every roll
-      setWorldEvent(prev => (prev ? { ...prev, currentProgress: prev.currentProgress + (res.rollsProcessed ?? res.batch?.length ?? 1) } : null));
       maybePromptForNotifications(state?.totalRolls ?? 0, res.state.totalRolls);
 
       // Trigger New Best Ball Celebration Modal!
@@ -800,11 +806,9 @@ export function App() {
       const durationMs = (current.prestigeUpgrades?.chronoOverdrive ?? 0) > 0
         ? 60 * 60 * 1000
         : 30 * 60 * 1000;
-      const purchased = current.purchasedShards ?? 0;
       return {
         ...current,
         shards: current.shards - 5,
-        purchasedShards: Math.max(0, purchased - Math.min(5, purchased)),
         turboRollUntil: Math.max(now, current.turboRollUntil ?? 0) + durationMs,
       };
     });
@@ -876,7 +880,6 @@ export function App() {
       return {
         ...current,
         shards: current.shards - 25,
-        purchasedShards: Math.max(0, purchased - Math.min(25, purchased)),
       };
     });
     try {
@@ -925,7 +928,6 @@ export function App() {
       return {
         ...current,
         shards: current.shards - info.costShards,
-        purchasedShards: Math.max(0, purchased - Math.min(info.costShards, purchased)),
         activeBoosters: {
           ...(current.activeBoosters ?? {}),
           [id]: Math.max(Date.now(), current.activeBoosters?.[id] ?? 0) + info.durationMs,
@@ -1314,7 +1316,6 @@ export function App() {
       return {
         ...current,
         shards: current.shards - 10,
-        purchasedShards: Math.max(0, purchased - Math.min(10, purchased)),
         cosmicDust: (current.cosmicDust ?? 0) + 1,
       };
     });
@@ -1366,7 +1367,6 @@ export function App() {
         ...current,
         coins: current.coins - cosmetic.costCoins,
         shards: current.shards - cosmetic.costShards,
-        purchasedShards: Math.max(0, purchased - Math.min(cosmetic.costShards, purchased)),
         unlockedCosmetics: [...current.unlockedCosmetics, id],
         activeCosmetic: id,
       };
@@ -1481,7 +1481,6 @@ export function App() {
         ...current,
         coins: current.coins - coins,
         shards: (current.shards ?? 0) - shards,
-        purchasedShards: Math.max(0, purchased - Math.min(shards, purchased)),
         guildContribution: (current.guildContribution ?? 0) + coins + shards * 1000,
       };
     });
