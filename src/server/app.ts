@@ -1169,14 +1169,40 @@ export function createApp() {
   });
   app.post('/api/share', async (req, res) => {
     try {
+      const shareUserId = String(context.userId ?? '').trim();
+      if (!shareUserId) return res.status(401).json({ error: 'REDDIT_LOGIN_REQUIRED' });
+
       const s = await getMe();
       const value = Number(req.body?.rarity);
       if (!Number.isSafeInteger(value) || value < 100 || (s.collection[String(value)] ?? 0) <= 0) {
         return res.status(400).json({ error: 'You can only share a Rare (1/100+) orb you actually own.' });
       }
+
+      const pendingKey = 'io:share-pending:' + shareUserId;
+      const pending = paymentRecord(await redis.get(pendingKey));
+
+      // Recover a post that was created before the player save completed.
+      if (pending && Number(pending.rarity) === value) {
+        const existingPostId = paymentString(pending.postId);
+        const createdAt = Number(pending.createdAt ?? 0) || 0;
+        if (existingPostId && Date.now() - createdAt < 24 * 60 * 60_000) {
+          if (!(s.lastShareAt && Date.now() - s.lastShareAt < 30_000)) {
+            await recordShareAction(s);
+          }
+          await redis.del(pendingKey);
+          return res.json({
+            success: true,
+            id: existingPostId,
+            text: String(pending.text ?? shareText(s, value)),
+            recovered: true,
+          });
+        }
+      }
+
       if (s.lastShareAt && Date.now() - s.lastShareAt < 30_000) {
         return res.status(429).json({ error: 'Please wait before sharing another orb.' });
       }
+
       const subredditName = context.subredditName;
       const username = String(context.username ?? s.username ?? 'a player').trim().replace(/^u\//i, '') || 'a player';
       const text = shareText(s, value);
@@ -1187,29 +1213,106 @@ export function createApp() {
         totalRolls: s.totalRolls,
         collectionValue: s.collectionValue,
       };
-      let postId = `share-${Date.now()}`;
-      if (subredditName) {
-        const post = await reddit.submitCustomPost({
-          runAs: 'USER',
-          subredditName,
-          title: `u/${username} found a 1/${value.toLocaleString()} Orb in Infinity Orbs!`,
-          entry: 'default',
-          postData,
-          userGeneratedContent: { text },
-        });
-        postId = post.id;
+
+      const reservation = JSON.stringify({
+        rarity: value,
+        username,
+        text,
+        createdAt: Date.now(),
+        postId: null,
+      });
+
+      let reserved = false;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const txn = await redis.watch(pendingKey);
+        const existingRaw = await redis.get(pendingKey);
+        const existing = paymentRecord(existingRaw);
+        if (existing) {
+          const existingPostId = paymentString(existing.postId);
+          const existingRarity = Number(existing.rarity);
+          const existingCreatedAt = Number(existing.createdAt ?? 0) || 0;
+          if (existingPostId && existingRarity === value && Date.now() - existingCreatedAt < 24 * 60 * 60_000) {
+            await txn.unwatch();
+            if (!(s.lastShareAt && Date.now() - s.lastShareAt < 30_000)) {
+              await recordShareAction(s);
+            }
+            await redis.del(pendingKey);
+            return res.json({
+              success: true,
+              id: existingPostId,
+              text: String(existing.text ?? text),
+              recovered: true,
+            });
+          }
+          if (existingRarity === value && Date.now() - existingCreatedAt < 2 * 60_000) {
+            await txn.unwatch();
+            return res.status(409).json({ error: 'A share is already being finalized. Please retry.' });
+          }
+        }
+
+        await txn.multi();
+        await txn.set(pendingKey, reservation);
+        if (await txn.exec()) {
+          reserved = true;
+          break;
+        }
       }
-      await recordShareAction(s);
-      // Leaderboard telemetry is derived data. A telemetry failure must not turn
-      // an already-created Reddit post into a retryable error, which would create
-      // duplicate posts for the same share.
+      if (!reserved) return res.status(409).json({ error: 'Could not reserve this share. Please retry.' });
+
+      let postId = 'share-' + Date.now();
+      try {
+        if (subredditName) {
+          const post = await reddit.submitCustomPost({
+            runAs: 'USER',
+            subredditName,
+            title: 'u/' + username + ' found a 1/' + value.toLocaleString() + ' Orb in Infinity Orbs!',
+            entry: 'default',
+            postData,
+            userGeneratedContent: { text },
+          });
+          postId = post.id;
+        }
+
+        const publishTxn = await redis.watch(pendingKey);
+        const currentPending = await redis.get(pendingKey);
+        if (currentPending !== reservation) {
+          await publishTxn.unwatch();
+          throw new Error('Share reservation changed while publishing.');
+        }
+
+        await publishTxn.multi();
+        await publishTxn.set(pendingKey, JSON.stringify({
+          rarity: value,
+          username,
+          text,
+          createdAt: Date.now(),
+          postId,
+        }));
+        if ((await publishTxn.exec()) === null) {
+          throw new Error('Share reservation changed while recording the post.');
+        }
+
+        await recordShareAction(s);
+        await redis.del(pendingKey);
+      } catch (error) {
+        // Do not delete a reservation that already contains the real Reddit
+        // post ID. That record is the recovery path that prevents duplicates.
+        const currentPending = paymentRecord(await redis.get(pendingKey));
+        if (!currentPending || !paymentString(currentPending.postId)) {
+          await redis.del(pendingKey).catch(() => undefined);
+        }
+        throw error;
+      }
+
       try {
         await recordLeaderboard(s);
       } catch (error) {
         console.error('[Leaderboard] Failed to record shared player state:', error);
       }
-      res.json({ success: true, id: postId, text });
-    } catch (e) { badRequest(res, e, 'Could not create Reddit post.'); }
+      return res.json({ success: true, id: postId, text });
+    } catch (e) {
+      badRequest(res, e, 'Could not create Reddit post.');
+    }
   });
 
   return app;
