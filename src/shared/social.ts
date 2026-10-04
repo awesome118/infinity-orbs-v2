@@ -3,6 +3,12 @@ import { weekKey, weekEndMs } from './game.js';
 export type GuildRole = 'owner' | 'officer' | 'member';
 export type ChallengeType = 'rolls' | 'value' | 'rare';
 
+export const BASE_GUILD_MEMBERS = 10;
+export const MAX_GUILD_CAPACITY_RANK = 40;
+export function maxGuildMembers(memberCapacityRank = 0): number {
+  return BASE_GUILD_MEMBERS + Math.min(MAX_GUILD_CAPACITY_RANK, Math.max(0, Math.floor(Number(memberCapacityRank) || 0)));
+}
+
 export interface GuildMember {
   username: string;
   userId?: string;
