@@ -1259,6 +1259,9 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
     state.purchasedShardLots[orderId] = Math.max(0, Math.floor(Number(state.purchasedShardLots[orderId] ?? 0) || 0)) + pack.shards;
     state.lifetimeShards = (state.lifetimeShards ?? 0) + pack.shards;
     state.globalBoosterCredits = (state.globalBoosterCredits ?? 0) + pack.globalBoosterCredits;
+    state.globalBoosterCreditLots = state.globalBoosterCreditLots ?? {};
+    state.globalBoosterCreditLots[orderId] =
+      Math.max(0, Math.floor(Number(state.globalBoosterCreditLots[orderId] ?? 0) || 0)) + pack.globalBoosterCredits;
     const receipt: PaymentReceipt = {
       status: 'fulfilled',
       shards: pack.shards,
@@ -1347,8 +1350,22 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
     const grantedCredits = typeof receipt === 'string'
       ? pack.globalBoosterCredits
       : Math.max(0, Number(receipt.globalBoosterCredits ?? 0) || 0);
-    const refundableCredits = Math.min(state.globalBoosterCredits ?? 0, grantedCredits);
-    state.globalBoosterCredits = Math.max(0, (state.globalBoosterCredits ?? 0) - refundableCredits);
+    state.globalBoosterCreditLots = state.globalBoosterCreditLots ?? {};
+    const orderCreditLot = Math.max(0, Number(state.globalBoosterCreditLots[orderId] ?? 0) || 0);
+    const legacyCreditPool = typeof receipt === 'string'
+      ? Math.max(0, Number(state.globalBoosterCreditLots.legacy ?? 0) || 0)
+      : 0;
+    const refundableCredits = Math.min(grantedCredits, orderCreditLot > 0 ? orderCreditLot : legacyCreditPool);
+    const creditLotKey = orderCreditLot > 0 ? orderId : 'legacy';
+    if (refundableCredits > 0) {
+      state.globalBoosterCreditLots[creditLotKey] = Math.max(
+        0,
+        (state.globalBoosterCreditLots[creditLotKey] ?? 0) - refundableCredits,
+      );
+      if (state.globalBoosterCreditLots[creditLotKey] <= 0) delete state.globalBoosterCreditLots[creditLotKey];
+    }
+    state.globalBoosterCredits = Object.values(state.globalBoosterCreditLots)
+      .reduce((sum, amount) => sum + Math.max(0, Math.floor(Number(amount) || 0)), 0);
 
     state.paymentReceipts[orderId] = {
       status: 'refunded',
@@ -1405,14 +1422,13 @@ export async function loadRaw(): Promise<PlayerState> {
 
   const base = createInitialState();
   const cleanParsed = { ...(parsed as PlayerState & Record<string, unknown>) };
+  const totalRollsForNormalization = Math.max(0, Math.floor(Number(parsed.totalRolls ?? 0) || 0));
   const normalizedManualRolls = Math.max(
     0,
     Math.min(
       10,
-      Number(
-        parsed.manualRolls ??
-        Math.min(Number(parsed.totalRolls ?? 0), 10),
-      ) || 0,
+      totalRollsForNormalization,
+      Number(parsed.manualRolls ?? totalRollsForNormalization) || 0,
     ),
   );
   const normalizedUpgrades = {
@@ -1421,6 +1437,42 @@ export async function loadRaw(): Promise<PlayerState> {
     // Auto Roll is free and unlocks automatically at 3 manual roll activations.
     auto: normalizedManualRolls >= 3 ? 1 : 0,
   };
+  const normalizedPurchasedShardLots = parsed.purchasedShardLots
+    ? Object.fromEntries(
+        Object.entries(parsed.purchasedShardLots as Record<string, unknown>)
+          .map(([id, amount]) => [id, Math.max(0, Math.floor(Number(amount) || 0))] as const)
+          .filter(([, amount]) => amount > 0),
+      )
+    : {};
+  const legacyPurchasedShards = Math.max(0, Math.floor(Number(parsed.purchasedShards ?? 0) || 0));
+  const purchasedLotTotalBeforeLegacy = Object.values(normalizedPurchasedShardLots)
+    .reduce((sum, amount) => sum + amount, 0);
+  if (legacyPurchasedShards > purchasedLotTotalBeforeLegacy) {
+    normalizedPurchasedShardLots.legacy =
+      (normalizedPurchasedShardLots.legacy ?? 0) + (legacyPurchasedShards - purchasedLotTotalBeforeLegacy);
+  }
+  const normalizedPurchasedShardBalance = Math.min(
+    Math.max(0, Math.floor(Number(parsed.shards ?? base.shards) || 0)),
+    Object.values(normalizedPurchasedShardLots).reduce((sum, amount) => sum + amount, 0),
+  );
+
+  const normalizedGlobalBoosterCreditLots = parsed.globalBoosterCreditLots
+    ? Object.fromEntries(
+        Object.entries(parsed.globalBoosterCreditLots as Record<string, unknown>)
+          .map(([id, amount]) => [id, Math.max(0, Math.floor(Number(amount) || 0))] as const)
+          .filter(([, amount]) => amount > 0),
+      )
+    : {};
+  const legacyGlobalBoosterCredits = Math.max(0, Math.floor(Number(parsed.globalBoosterCredits ?? 0) || 0));
+  const creditLotTotalBeforeLegacy = Object.values(normalizedGlobalBoosterCreditLots)
+    .reduce((sum, amount) => sum + amount, 0);
+  if (legacyGlobalBoosterCredits > creditLotTotalBeforeLegacy) {
+    normalizedGlobalBoosterCreditLots.legacy =
+      (normalizedGlobalBoosterCreditLots.legacy ?? 0) + (legacyGlobalBoosterCredits - creditLotTotalBeforeLegacy);
+  }
+  const normalizedGlobalBoosterCreditBalance = Object.values(normalizedGlobalBoosterCreditLots)
+    .reduce((sum, amount) => sum + amount, 0);
+
   const loadedState: PlayerState = {
     ...base,
     ...cleanParsed,
@@ -1440,18 +1492,16 @@ export async function loadRaw(): Promise<PlayerState> {
       shardsSacrificed: parsed.sacrifices?.shardsSacrificed ?? base.sacrifices!.shardsSacrificed,
       altarLevel: parsed.sacrifices?.altarLevel ?? base.sacrifices!.altarLevel,
       luckSurgeUntil: parsed.sacrifices?.luckSurgeUntil ?? base.sacrifices!.luckSurgeUntil,
+      altarPity: Math.max(0, Math.floor(Number(parsed.sacrifices?.altarPity ?? base.sacrifices!.altarPity ?? 0) || 0)),
     },
     masterySkills: { ...base.masterySkills!, ...(parsed.masterySkills ?? {}) } as Record<MasterySkillId, number>,
     masteryPoints: parsed.masteryPoints ?? base.masteryPoints ?? 1,
     guildPerks: perks,
     globalBoosters,
-    purchasedShardLots: parsed.purchasedShardLots
-      ? Object.fromEntries(
-          Object.entries(parsed.purchasedShardLots as Record<string, unknown>)
-            .map(([id, amount]) => [id, Math.max(0, Math.floor(Number(amount) || 0))] as const)
-            .filter(([, amount]) => amount > 0),
-        )
-      : ((parsed.purchasedShards ?? 0) > 0 ? { legacy: Math.max(0, Math.floor(Number(parsed.purchasedShards) || 0)) } : {}),
+    purchasedShards: normalizedPurchasedShardBalance,
+    purchasedShardLots: normalizedPurchasedShardLots,
+    globalBoosterCredits: normalizedGlobalBoosterCreditBalance,
+    globalBoosterCreditLots: normalizedGlobalBoosterCreditLots,
   };
   captureSaveBaseline(loadedState);
   return loadedState;
@@ -1463,7 +1513,8 @@ function applyXp(s: PlayerState, amount: number): void {
   const earnedLevel = calculateLevelFromXp(s.xp).level;
 
   // Keep the displayed level synchronized with the XP actually earned.
-  const newLevel = Math.max(oldLevel, earnedLevel);
+  // XP is authoritative. A stale/corrupt cached level must not outrun the XP curve.
+  const newLevel = earnedLevel;
   s.level = newLevel;
   if (newLevel > oldLevel) {
     s.masteryPoints = (s.masteryPoints ?? 0) + (newLevel - oldLevel);
@@ -2434,7 +2485,11 @@ export async function roll(isAuto = false): Promise<RollResponse> {
   s.lastRollAt = now;
   s.lastSeenAt = now;
   await save(s);
-  await recordLeaderboard(s);
+  try {
+    await recordLeaderboard(s);
+  } catch (error) {
+    console.error('[Leaderboard] Failed to record committed player state:', error);
+  }
   await appendPlayerSpyLog('roll-activation', {
     mode: isAuto ? 'auto' : 'manual',
     processedRolls: rollCount,
@@ -2471,7 +2526,11 @@ export async function claimOffline(): Promise<RollResponse> {
   s.lastRollAt = now;
   s.lastSeenAt = now;
   await save(s);
-  await recordLeaderboard(s);
+  try {
+    await recordLeaderboard(s);
+  } catch (error) {
+    console.error('[Leaderboard] Failed to record committed player state:', error);
+  }
 
   return {
     orb: bestOrb,
@@ -2907,6 +2966,11 @@ async function claimWorldBoosterActivation(
 }> {
   const cost = GLOBAL_BOOSTERS[id].costShards;
   const userId = currentUserId();
+  const previousShards = s.shards;
+  const previousPurchasedShards = s.purchasedShards ?? 0;
+  const previousPurchasedShardLots = { ...(s.purchasedShardLots ?? {}) };
+  const previousGlobalBoosterCredits = s.globalBoosterCredits ?? 0;
+  const previousGlobalBoosterCreditLots = { ...(s.globalBoosterCreditLots ?? {}) };
 
   await appendGlobalBoosterDebugLog('player:activation-start', {
     userId,
@@ -2928,7 +2992,21 @@ async function claimWorldBoosterActivation(
       });
       throw new Error('No free Global Booster activations remain.');
     }
-    s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) - 1;
+    s.globalBoosterCreditLots = s.globalBoosterCreditLots ?? {};
+    let remainingCredit = 1;
+    for (const orderId of Object.keys(s.globalBoosterCreditLots)) {
+      if (remainingCredit <= 0) break;
+      const lot = Math.max(0, Math.floor(Number(s.globalBoosterCreditLots[orderId] ?? 0) || 0));
+      const used = Math.min(lot, remainingCredit);
+      if (used > 0) {
+        s.globalBoosterCreditLots[orderId] = lot - used;
+        if (s.globalBoosterCreditLots[orderId] <= 0) delete s.globalBoosterCreditLots[orderId];
+        remainingCredit -= used;
+      }
+    }
+    if (remainingCredit > 0) throw new Error('Global Booster credit ledger is inconsistent. Please reload.');
+    s.globalBoosterCredits = Object.values(s.globalBoosterCreditLots)
+      .reduce((sum, amount) => sum + Math.max(0, Math.floor(Number(amount) || 0)), 0);
   } else {
     if ((s.shards ?? 0) < cost) {
       await appendGlobalBoosterDebugLog('player:activation-rejected-no-shards', {
@@ -2975,12 +3053,16 @@ async function claimWorldBoosterActivation(
 
     const activatedAt = Date.now();
     const activatedBy = String(context.username ?? s.username ?? 'Redditor').trim() || 'Redditor';
-    await redis.set(GLOBAL_BOOSTER_ANNOUNCEMENT_KEY, JSON.stringify({
-      id,
-      name: GLOBAL_BOOSTERS[id].name,
-      username: activatedBy,
-      activatedAt,
-    }));
+    try {
+      await redis.set(GLOBAL_BOOSTER_ANNOUNCEMENT_KEY, JSON.stringify({
+        id,
+        name: GLOBAL_BOOSTERS[id].name,
+        username: activatedBy,
+        activatedAt,
+      }));
+    } catch (error) {
+      console.error('[Global Booster] Announcement write failed after activation:', error);
+    }
 
     return {
       state: s,
@@ -2994,8 +3076,13 @@ async function claimWorldBoosterActivation(
       },
     };
   } catch (error) {
-    if (useCredit) s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) + 1;
-    else s.shards = (s.shards ?? 0) + cost;
+    // Restore the exact currency provenance if the global activation path fails
+    // before the player save commits.
+    s.shards = previousShards;
+    s.purchasedShards = previousPurchasedShards;
+    s.purchasedShardLots = previousPurchasedShardLots;
+    s.globalBoosterCredits = previousGlobalBoosterCredits;
+    s.globalBoosterCreditLots = previousGlobalBoosterCreditLots;
 
     await appendGlobalBoosterDebugLog('player:activation-failed', {
       userId,
@@ -3141,7 +3228,12 @@ export async function startOrbFrenzy(options: {
   s.lastFrenzyDate = today;
   s.lastRollAt = Date.now();
   s.lastSeenAt = Date.now();
-  await save(s);
+  try {
+    await save(s);
+  } catch (error) {
+    await redis.del(postKey).catch(() => undefined);
+    throw error;
+  }
   await appendPlayerSpyLog('frenzy-start', {
     rarity: result.bestOrb.rarity,
     postId: context.postId ?? '',
