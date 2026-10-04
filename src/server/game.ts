@@ -133,6 +133,15 @@ function saveCaller(): string {
     .join('\n');
 }
 
+function saveStatesMatchIgnoringRevision(a: PlayerState, b: PlayerState): boolean {
+  const normalize = (state: PlayerState): string => {
+    const copy = JSON.parse(JSON.stringify(state)) as Record<string, unknown>;
+    delete copy.stateRevision;
+    return JSON.stringify(copy);
+  };
+  return normalize(a) === normalize(b);
+}
+
 async function appendSaveDebugLog(
   event: string,
   details: Record<string, unknown> = {},
@@ -1717,7 +1726,13 @@ export async function save(
     }
 
     if (!saveKeyMissing && latestRevision !== expectedRevision) {
-      await appendSaveDebugLog('revision-conflict', {
+      // A duplicate/read-only caller may race another save without changing
+      // any actual player data. Treat that case as an idempotent save instead
+      // of surfacing a false conflict to the player.
+      if (latest && saveStatesMatchIgnoringRevision(latest, s)) {
+        s.stateRevision = latestRevision;
+      } else {
+        await appendSaveDebugLog('revision-conflict', {
         attempt: attempt + 1,
         expectedRevision,
         latestRevision,
@@ -1727,8 +1742,11 @@ export async function save(
         incomingState: compactSaveState(s),
         caller: saveCaller(),
       }, userId);
-      await txn.unwatch();
-      throw new Error('Player state changed while saving. Please retry.');
+        await txn.unwatch();
+        // The persisted state already contains exactly the state this request
+        // wanted to save. There is nothing left to write.
+        return;
+      }
     }
 
     if (saveKeyMissing && expectedRevision > 0) {
