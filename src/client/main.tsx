@@ -1111,7 +1111,20 @@ export function App() {
       return {
         ...current,
         masteryPoints: (current.masteryPoints ?? 0) - cost,
-        masterySkills: { ...createInitialState().masterySkills, ...(current.masterySkills ?? {}), [skillId]: currentLevel + 1 },
+        masterySkills: {
+          continuumLuck: current.masterySkills?.continuumLuck ?? 0,
+          prosperity: current.masterySkills?.prosperity ?? 0,
+          shardAttunement: current.masterySkills?.shardAttunement ?? 0,
+          critMastery: current.masterySkills?.critMastery ?? 0,
+          chronoFlow: current.masterySkills?.chronoFlow ?? 0,
+          infiniteVault: current.masterySkills?.infiniteVault ?? 0,
+          cosmicAttunement: current.masterySkills?.cosmicAttunement ?? 0,
+          celestialSurge: current.masterySkills?.celestialSurge ?? 0,
+          pityAccelerant: current.masterySkills?.pityAccelerant ?? 0,
+          apexFortune: current.masterySkills?.apexFortune ?? 0,
+          celestialVolley: current.masterySkills?.celestialVolley ?? 0,
+          [skillId]: currentLevel + 1,
+        },
       };
     });
     try {
