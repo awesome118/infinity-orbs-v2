@@ -218,8 +218,24 @@ export function spendShards(s: PlayerState, requested: number): number {
   const amount = Math.max(0, Math.floor(requested));
   if ((s.shards ?? 0) < amount) throw new Error('Not enough Shards.');
   s.shards -= amount;
-  const paidPortion = Math.min(amount, s.purchasedShards ?? 0);
-  if (paidPortion > 0) s.purchasedShards = (s.purchasedShards ?? 0) - paidPortion;
+
+  let remainingPaid = Math.min(amount, Math.max(0, Math.floor(s.purchasedShards ?? 0)));
+  if (remainingPaid > 0) {
+    const lots = s.purchasedShardLots;
+    if (lots) {
+      for (const orderId of Object.keys(lots)) {
+        if (remainingPaid <= 0) break;
+        const lot = Math.max(0, Math.floor(Number(lots[orderId]) || 0));
+        const used = Math.min(lot, remainingPaid);
+        if (used > 0) {
+          lots[orderId] = lot - used;
+          remainingPaid -= used;
+          if (lots[orderId] <= 0) delete lots[orderId];
+        }
+      }
+    }
+    s.purchasedShards = Math.max(0, (s.purchasedShards ?? 0) - (Math.min(amount, Math.max(0, Math.floor(s.purchasedShards ?? 0))) - remainingPaid));
+  }
   return amount;
 }
 export function isPremiumBoosterActive(s: PlayerState, id: PremiumBoosterId, now = Date.now()): boolean {
