@@ -160,7 +160,7 @@ function paymentOrderId(order: PaymentOrder): string {
 }
 
 async function resolvePaymentBuyerId(order: PaymentOrder, orderId: string): Promise<string> {
-  const directCandidates = [
+  const claimedCandidates = [
     paymentString(order.userId),
     paymentString(order.buyerUserId),
     paymentBuyerFromObject(order.buyer),
@@ -168,42 +168,57 @@ async function resolvePaymentBuyerId(order: PaymentOrder, orderId: string): Prom
     paymentString(context.userId),
   ].filter(Boolean);
 
-  const uniqueCandidates = [...new Set(directCandidates)];
-  const readability: Array<{ userId: string; readable: boolean }> = [];
+  const candidates = [...new Set(claimedCandidates)];
+  if (!orderId || candidates.length === 0) {
+    await appendPaymentDebugLog('buyer:verification-failed', {
+      orderId: orderId || null,
+      reason: !orderId ? 'missing-order-id' : 'no-candidate-user-id',
+      candidates,
+    });
+    return '';
+  }
 
-  for (const candidate of uniqueCandidates) {
-    const readable = await hasReadablePlayerSave(candidate);
-    readability.push({ userId: candidate, readable });
-    if (readable) {
-      await appendPaymentDebugLog('buyer:resolved-existing-save', {
-        orderId,
-        candidates: readability,
-        selectedUserId: candidate,
-        contextUserId: paymentString(context.userId) || null,
+  // Never select an account merely because its save exists. The callback body is
+  // transport data, so the order must be independently present in the trusted
+  // payment history for the candidate buyer.
+  for (const candidate of candidates) {
+    try {
+      const rawOrders = await payments.getOrders({ limit: 50, buyer: candidate });
+      const orders = Array.isArray(rawOrders)
+        ? rawOrders
+        : rawOrders && typeof rawOrders === 'object' && Array.isArray((rawOrders as { orders?: unknown }).orders)
+          ? (rawOrders as { orders: unknown[] }).orders
+          : [];
+
+      const matchingOrder = orders.find(raw => {
+        if (!raw || typeof raw !== 'object') return false;
+        return paymentOrderId(raw as PaymentOrder) === orderId;
       });
-      return candidate;
+
+      if (matchingOrder) {
+        const trustedStatus = paymentOrderStatus(matchingOrder as PaymentOrder);
+        await appendPaymentDebugLog('buyer:verified-provider-order', {
+          orderId,
+          selectedUserId: candidate,
+          providerStatus: trustedStatus || null,
+        });
+        return candidate;
+      }
+    } catch (error) {
+      await appendPaymentDebugLog('buyer:provider-order-lookup-failed', {
+        orderId,
+        candidate,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  const contextUserId = paymentString(context.userId);
-  if (contextUserId) {
-    await appendPaymentDebugLog('buyer:resolved-context', {
-      orderId,
-      candidates: readability,
-      selectedUserId: contextUserId,
-      contextUserId,
-    });
-    return contextUserId;
-  }
-
-  const fallback = uniqueCandidates[0] ?? '';
-  await appendPaymentDebugLog('buyer:resolved-order-fallback', {
+  await appendPaymentDebugLog('buyer:verification-failed', {
     orderId,
-    candidates: readability,
-    selectedUserId: fallback || null,
-    contextUserId: null,
+    candidates,
+    contextUserId: paymentString(context.userId) || null,
   });
-  return fallback;
+  return '';
 }
 
 export function createApp() {
