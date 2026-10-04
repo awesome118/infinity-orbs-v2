@@ -201,7 +201,7 @@ export const COMMUNITY_WORLD_EVENT: WorldEvent = {
   title: 'Weekly Community Milestone',
   description: 'Community rolls contributed this week toward dynamic tier goals.',
   goal: 100_000,
-  currentProgress: 14_250,
+  currentProgress: 0,
   buffDescription: '+15% Global Luck Active',
   buffMultiplier: 1.15,
   endsAt: weekEndMs(),
