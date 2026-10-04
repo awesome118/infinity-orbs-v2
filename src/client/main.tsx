@@ -931,7 +931,6 @@ export function App() {
         };
       }
       if ((current.shards ?? 0) < 25) return current;
-      const purchased = current.purchasedShards ?? 0;
       return {
         ...current,
         ...optimisticSpendShards(current, 25),
@@ -1011,7 +1010,6 @@ export function App() {
     const rollback = beginOptimisticState(current => {
       const info = AUTOMATIONS[id];
       if (!info || current.automations?.[id] || (current.shards ?? 0) < info.costShards) return current;
-      const purchased = current.purchasedShards ?? 0;
       return {
         ...optimisticSpendShards(current, info.costShards),
         automations: { ...(current.automations ?? {}), [id]: true },
@@ -1391,7 +1389,6 @@ export function App() {
     setBusy(true);
     const rollback = beginOptimisticState(current => {
       if ((current.shards ?? 0) < 10) return current;
-      const purchased = current.purchasedShards ?? 0;
       return {
         ...current,
         ...optimisticSpendShards(current, 10),
@@ -1555,7 +1552,6 @@ export function App() {
     setBusy(true);
     const rollback = beginOptimisticState(current => {
       if (current.coins < coins || (current.shards ?? 0) < shards) return current;
-      const purchased = current.purchasedShards ?? 0;
       return {
         ...current,
         coins: current.coins - coins,
