@@ -217,29 +217,35 @@ export function grantFreeShards(s: PlayerState, requested: number, now = Date.no
 export function spendShards(s: PlayerState, requested: number): number {
   const amount = Math.max(0, Math.floor(requested));
   if ((s.shards ?? 0) < amount) throw new Error('Not enough Shards.');
-  s.shards -= amount;
+  if (amount <= 0) return 0;
 
-  let remainingPaid = Math.min(amount, Math.max(0, Math.floor(s.purchasedShards ?? 0)));
-  if (remainingPaid > 0) {
-    const lots = s.purchasedShardLots;
-    if (lots) {
-      for (const orderId of Object.keys(lots)) {
-        if (remainingPaid <= 0) break;
-        const lot = Math.max(0, Math.floor(Number(lots[orderId]) || 0));
-        const used = Math.min(lot, remainingPaid);
-        if (used > 0) {
-          lots[orderId] = lot - used;
-          remainingPaid -= used;
-          if (lots[orderId] <= 0) delete lots[orderId];
-        }
-      }
+  // Spend free/gameplay-earned Shards first. Purchased Shards remain refundable
+  // until the player actually needs to consume them.
+  const purchasedBalance = Math.min(
+    Math.max(0, Math.floor(s.purchasedShards ?? 0)),
+    Math.max(0, Math.floor(s.shards ?? 0)),
+  );
+  const freeBalance = Math.max(0, (s.shards ?? 0) - purchasedBalance);
+  const purchasedToSpend = Math.max(0, amount - Math.min(amount, freeBalance));
+
+  s.shards -= amount;
+  if (purchasedToSpend <= 0) return amount;
+
+  const lots = s.purchasedShardLots ?? { legacy: purchasedBalance };
+  let remainingPaid = purchasedToSpend;
+  for (const orderId of Object.keys(lots)) {
+    if (remainingPaid <= 0) break;
+    const lot = Math.max(0, Math.floor(Number(lots[orderId]) || 0));
+    const used = Math.min(lot, remainingPaid);
+    if (used > 0) {
+      lots[orderId] = lot - used;
+      remainingPaid -= used;
+      if (lots[orderId] <= 0) delete lots[orderId];
     }
-    // Legacy saves may not have a lot map. Treat their scalar purchased balance
-    // as the legacy lot so spending still reduces the provenance counter.
-    if (remainingPaid > 0 && !lots) remainingPaid = 0;
-    const paidBefore = Math.min(amount, Math.max(0, Math.floor(s.purchasedShards ?? 0)));
-    s.purchasedShards = Math.max(0, paidBefore === 0 ? (s.purchasedShards ?? 0) : (s.purchasedShards ?? 0) - (paidBefore - remainingPaid));
   }
+
+  s.purchasedShards = Math.max(0, purchasedBalance - (purchasedToSpend - remainingPaid));
+  s.purchasedShardLots = lots;
   return amount;
 }
 export function isPremiumBoosterActive(s: PlayerState, id: PremiumBoosterId, now = Date.now()): boolean {
