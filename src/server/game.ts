@@ -1323,6 +1323,7 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
       globalBoosterCredits: pack.globalBoosterCredits,
     };
     state.paymentReceipts[orderId] = receipt;
+    state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
 
     await appendPaymentDebugLog('grant:about-to-write', {
       userId,
@@ -1443,6 +1444,7 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
       shards: grantedShards,
       globalBoosterCredits: grantedCredits,
     };
+    state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
     state.stateRevision = currentStateRevision + 1;
     await txn.multi();
     await txn.set(pkey, JSON.stringify(state));
