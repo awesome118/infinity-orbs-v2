@@ -1512,6 +1512,27 @@ export async function loadRaw(): Promise<PlayerState> {
   const normalizedGlobalBoosterCreditBalance = Object.values(normalizedGlobalBoosterCreditLots)
     .reduce((sum, amount) => sum + amount, 0);
 
+  const normalizedPendingOperations: PendingPlayerOperation[] = Array.isArray(parsed.pendingOperations)
+    ? parsed.pendingOperations
+      .filter((operation): operation is PendingPlayerOperation => {
+        if (!operation || typeof operation !== 'object') return false;
+        const candidate = operation as Record<string, unknown>;
+        if (typeof candidate.id !== 'string' || !candidate.id) return false;
+        if (candidate.type === 'roll-social') {
+          return ['taxedCoins', 'guildTaxTokens', 'contributionValue', 'rollCount', 'bestRarity', 'communityRolls']
+            .every(key => Number.isFinite(Number(candidate[key])));
+        }
+        if (candidate.type === 'guild-tokens') {
+          return Number.isFinite(Number(candidate.amount));
+        }
+        return candidate.type === 'global-booster' &&
+          typeof candidate.boosterId === 'string' &&
+          Boolean(GLOBAL_BOOSTERS[candidate.boosterId as GlobalBoosterId]) &&
+          typeof candidate.useCredit === 'boolean';
+      })
+      .slice(-PENDING_OPERATION_MAX)
+    : [];
+
   const loadedState: PlayerState = {
     ...base,
     ...cleanParsed,
@@ -1548,6 +1569,78 @@ export async function loadRaw(): Promise<PlayerState> {
     console.error('[Pending Operations] Background flush failed during load:', error);
   });
   return loadedState;
+}
+
+function newPendingOperationId(prefix: string): string {
+  const sample = new Uint32Array(2);
+  globalThis.crypto.getRandomValues(sample);
+  return `${prefix}-${Date.now().toString(36)}-${sample[0].toString(36)}${sample[1].toString(36)}`;
+}
+
+function queuePendingOperation(s: PlayerState, operation: PendingPlayerOperation): void {
+  const operations = Array.isArray(s.pendingOperations) ? s.pendingOperations.filter(Boolean) : [];
+  if (operations.some(existing => existing.id === operation.id)) return;
+  operations.push(operation);
+  s.pendingOperations = operations.slice(-PENDING_OPERATION_MAX);
+}
+
+export async function flushPendingPlayerOperations(
+  s: PlayerState,
+  onlyOperationId?: string,
+  strictTarget = false,
+): Promise<{ bossRewardShards: number; globalBoosterSnapshot?: GlobalBoosterSnapshot }> {
+  let bossRewardShards = 0;
+  let globalBoosterSnapshot: GlobalBoosterSnapshot | undefined;
+  const pending = Array.isArray(s.pendingOperations) ? [...s.pendingOperations] : [];
+
+  for (const operation of pending) {
+    if (onlyOperationId && operation.id !== onlyOperationId) continue;
+
+    const originalOperations = Array.isArray(s.pendingOperations) ? [...s.pendingOperations] : [];
+    const originalShards = s.shards;
+    const originalGlobalBoosters = s.globalBoosters;
+
+    try {
+      if (operation.type === 'roll-social') {
+        const result = await applyRollSocialEffectsAtomic({
+          operationId: operation.id,
+          guildId: operation.guildId,
+          taxedCoins: operation.taxedCoins,
+          guildTaxTokens: operation.guildTaxTokens,
+          contributionValue: operation.contributionValue,
+          rollCount: operation.rollCount,
+          bestRarity: operation.bestRarity,
+          communityRolls: operation.communityRolls,
+        });
+        bossRewardShards += grantUncappedShards(s, result.bossRewardShards);
+      } else if (operation.type === 'guild-tokens') {
+        await addGuildTokens(
+          context.username ?? ('reddit-user-' + currentUserId().slice(-8)),
+          operation.amount,
+          operation.id,
+          operation.guildId,
+        );
+      } else if (operation.type === 'global-booster') {
+        globalBoosterSnapshot = await updateGlobalBooster(operation.boosterId, operation.id);
+        s.globalBoosters = globalBoosterSnapshot;
+      }
+
+      s.pendingOperations = originalOperations.filter(existing => existing.id !== operation.id);
+      await save(s);
+    } catch (error) {
+      s.shards = originalShards;
+      s.globalBoosters = originalGlobalBoosters;
+      s.pendingOperations = originalOperations;
+      console.error('[Pending Operations] Settlement failed:', {
+        operationId: operation.id,
+        type: operation.type,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (strictTarget && onlyOperationId === operation.id) throw error;
+    }
+  }
+
+  return { bossRewardShards, globalBoosterSnapshot };
 }
 
 function applyXp(s: PlayerState, amount: number): void {
@@ -3742,24 +3835,4 @@ export async function recordShareAction(s: PlayerState) {
   s.lastShareAt = now;
   advanceQuestProgress(s, 'share', 1);
   await save(s);
-}  const normalizedPendingOperations: PendingPlayerOperation[] = Array.isArray(parsed.pendingOperations)
-    ? parsed.pendingOperations
-      .filter((operation): operation is PendingPlayerOperation => {
-        if (!operation || typeof operation !== 'object') return false;
-        const candidate = operation as Record<string, unknown>;
-        if (typeof candidate.id !== 'string' || !candidate.id) return false;
-        if (candidate.type === 'roll-social') {
-          return ['taxedCoins', 'guildTaxTokens', 'contributionValue', 'rollCount', 'bestRarity', 'communityRolls']
-            .every(key => Number.isFinite(Number(candidate[key])));
-        }
-        if (candidate.type === 'guild-tokens') {
-          return Number.isFinite(Number(candidate.amount));
-        }
-        return candidate.type === 'global-booster' &&
-          typeof candidate.boosterId === 'string' &&
-          Boolean(GLOBAL_BOOSTERS[candidate.boosterId as GlobalBoosterId]) &&
-          typeof candidate.useCredit === 'boolean';
-      })
-      .slice(-PENDING_OPERATION_MAX)
-    : [];
-
+}
