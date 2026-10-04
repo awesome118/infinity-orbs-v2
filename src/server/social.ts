@@ -342,7 +342,7 @@ export async function addGuildTokens(
     const raw = await redis.get(GUILDS_KEY);
     const guilds = parseGuildList(raw);
     const guild = guilds.find(g => {
-      if (guildId) return g.id === guildId;
+      if (guildId !== undefined) return guildId !== null && g.id === guildId;
       return g.members.some(m => memberMatches(m));
     });
     if (!guild) {
