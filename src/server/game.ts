@@ -3315,7 +3315,7 @@ export async function claimOrbFrenzy(options: {
     if (group.rarity >= 1_000) return sum + group.count;
     return sum;
   }, 0);
-  const shardsGained = grantFreeShards(s, rarityShards + procShards);
+  let finalShardsGained = grantFreeShards(s, rarityShards + procShards);
 
   const previousHighest = s.highestRarity;
   s.totalRolls += count;
@@ -3332,13 +3332,6 @@ export async function claimOrbFrenzy(options: {
   s.frenzyClaimedPosts = s.frenzyClaimedPosts ?? {};
   s.frenzyClaimedPosts[postId] = Date.now();
 
-  if (data.inGame === true) {
-    await redis.set(FRENZY_POST_PREFIX + postId, JSON.stringify({
-      ...data,
-      consumedAt: Date.now(),
-    }));
-  }
-
   const bestRarity = topRarity;
   const newRarityKeys = groups.filter(
     group => (s.collection[String(group.rarity)] ?? 0) <= 0,
@@ -3352,23 +3345,30 @@ export async function claimOrbFrenzy(options: {
   s.highestRarity = Math.max(s.highestRarity, bestRarity);
   s.rollsSinceBest = bestRarity > previousHighest ? 0 : (s.rollsSinceBest ?? 0) + count;
 
-  const oldLevel = Math.max(1, s.level || 1);
-  s.xp += xpGained;
-  const earnedLevel = calculateLevelFromXp(s.xp).level;
-  const newLevel = Math.max(oldLevel, Math.min(oldLevel + 1, earnedLevel));
-  s.level = newLevel;
-  if (newLevel > oldLevel) {
-    s.masteryPoints = (s.masteryPoints ?? 0) + 1;
-  }
+  applyXp(s, xpGained);
 
   advanceQuestProgress(s, 'roll', count);
   advanceQuestProgress(s, 'rare', bestRarity);
   advanceQuestProgress(s, 'value', finalValue);
   advanceQuestProgress(s, 'unique', uniqueGained);
-  await contribute(finalValue, count, bestRarity);
+  const guildResult = await contribute(finalValue, count, bestRarity);
+  if (guildResult.bossRewardShards > 0) {
+    finalShardsGained += grantFreeShards(s, guildResult.bossRewardShards);
+  }
   await addCommunityRolls(count);
 
   await save(s);
+
+  if (data.inGame === true) {
+    try {
+      await redis.set(FRENZY_POST_PREFIX + postId, JSON.stringify({
+        ...data,
+        consumedAt: Date.now(),
+      }));
+    } catch (error) {
+      console.error('Failed to mark in-game Frenzy consumed after save:', error);
+    }
+  }
 
   const orbInfo = getOrbInfo(bestRarity);
   const bestOrb: Orb = {
@@ -3386,7 +3386,7 @@ export async function claimOrbFrenzy(options: {
     totalValueGained: finalValue,
     totalRollValue: finalValue,
     coinsGained,
-    shardsGained,
+    shardsGained: finalShardsGained,
     xpGained,
     state: s,
     rollsRemainingUntilNext: cooldownMs(s),
