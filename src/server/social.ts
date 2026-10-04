@@ -1075,6 +1075,8 @@ export async function claimAchievement(_s: PlayerState, id: string) {
     state.coins += achievement.rewardCoins;
     state.lifetimeCoins = (state.lifetimeCoins ?? 0) + achievement.rewardCoins;
     const rewardShards = grantFreeShards(state, achievement.rewardShards ?? 0);
+    state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
+    state.saveGeneration = generation;
 
     await txn.multi();
     await txn.set(playerKey, JSON.stringify(state));
