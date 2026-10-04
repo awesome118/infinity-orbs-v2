@@ -488,6 +488,35 @@ export type PrestigeUpgradeId =
   | 'offlineFortune'
   | 'frenzyVolley';
 
+export function createSeededRandom(seed: number): () => number {
+  let state = (Math.floor(Number(seed)) >>> 0) || 0x6d2b79f5;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
+  };
+}
+
+export function rollTicketSeed(seed: number, index: number): number {
+  let x = ((Math.floor(Number(seed)) >>> 0) ^ Math.imul(Math.max(0, Math.floor(Number(index))), 0x9e3779b9)) >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x85ebca6b) >>> 0;
+  x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35) >>> 0;
+  return (x ^ (x >>> 16)) >>> 0;
+}
+
+export interface RollPrediction {
+  state: PlayerState;
+  orb: Orb;
+  batch: Orb[];
+  totalValueGained: number;
+  coinsGained: number;
+  shardsGained: number;
+  xpGained: number;
+  rollsProcessed: number;
+}
+
 export interface Orb {
   rarity: number;
   rolledAt: number;
@@ -1507,6 +1536,201 @@ export function coinsForRarity(rarity: number): number {
 /**
  * Sustainable upgrade costs
  */
+export function predictRollActivation(
+  sourceState: PlayerState,
+  seed: number,
+  isAuto = false,
+  communityLuckMultiplier = 1.15,
+): RollPrediction {
+  const s: PlayerState = {
+    ...sourceState,
+    upgrades: { ...sourceState.upgrades },
+    prestigeUpgrades: { ...sourceState.prestigeUpgrades },
+    masterySkills: { ...(sourceState.masterySkills ?? {}) },
+    collection: { ...(sourceState.collection ?? {}) },
+    globalBoosters: sourceState.globalBoosters
+      ? JSON.parse(JSON.stringify(sourceState.globalBoosters)) as GlobalBoostersSnapshot
+      : sourceState.globalBoosters,
+  };
+  const rng = createSeededRandom(seed);
+  const levelBenefits = getLevelBenefits(Math.max(1, s.level || 1));
+  const valueMul = 1 + (s.upgrades.valueBonus ?? 0) * 0.10;
+  let rollCount = rollsPerActivation(s);
+
+  const magnetLevel = s.prestigeUpgrades?.stellarMagnet ?? 0;
+  if (rollCount > 1 && magnetLevel > 0 && rng() < 0.10 * magnetLevel) {
+    rollCount += 2;
+  }
+
+  const baseLuck = luckMultiplier(s) + Math.max(0, communityLuckMultiplier - 1);
+  const apexChance = Math.min(0.45, (s.masterySkills?.apexFortune ?? 0) * 0.03);
+  const effectiveLuck = rollCount > 1 && rng() < apexChance ? baseLuck * 2 : baseLuck;
+  const cm = critMultiplier(s);
+  const critChance = Math.min(
+    0.40,
+    (s.upgrades.critChance ?? 0) * 0.03 +
+    (s.masterySkills?.critMastery ?? 0) * 0.03 +
+    (s.guildPerks?.critRank ?? 0) * 0.015 +
+    globalBoosterCritChanceBonus(s.globalBoosters?.crit),
+  );
+
+  const rarities: number[] = [];
+  const batch: Orb[] = [];
+  let bestRarity = 0;
+  let totalValueGained = 0;
+  let shardsGained = 0;
+  let xpGained = 0;
+  let uniqueGained = 0;
+
+  for (let i = 0; i < rollCount; i++) {
+    const isGuaranteedThirdBall = s.totalRolls + i === 2;
+    const isCrit = !isGuaranteedThirdBall && rng() < critChance;
+    let effectiveCm = cm;
+
+    if (isCrit) {
+      s.totalCrits = (s.totalCrits ?? 0) + 1;
+      const supernovaLevel = s.prestigeUpgrades?.supernova ?? 0;
+      if (supernovaLevel > 0 && rng() < supernovaLevel * 0.10) {
+        effectiveCm = cm * 2.5;
+      }
+    }
+
+    const minimumRarity = 2 + (s.prestigeUpgrades?.luckyFloor ?? 0);
+    const beginnerRarity = 101 + Math.floor(rng() * 20);
+    const rolledRarity = isGuaranteedThirdBall
+      ? beginnerRarity
+      : Math.max(minimumRarity, rollContinuum(effectiveLuck, rng));
+    const rarity = isCrit
+      ? Math.min(10_000_000_000, Math.round(rolledRarity * effectiveCm))
+      : rolledRarity;
+
+    const finalVal = Math.round(rarity * valueMul);
+    const isNew = !s.collection[String(rarity)];
+    if (isNew) uniqueGained++;
+    s.collection[String(rarity)] = (s.collection[String(rarity)] ?? 0) + 1;
+    s.totalRolls++;
+    s.currentRunRolls = (s.currentRunRolls ?? 0) + 1;
+    s.collectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.collectionValue ?? 0) + finalVal);
+    s.lifetimeCollectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.lifetimeCollectionValue ?? 0) + finalVal);
+    if (rarity > s.highestRarity) {
+      s.highestRarity = rarity;
+      s.rollsSinceBest = 0;
+    } else {
+      s.rollsSinceBest = (s.rollsSinceBest ?? 0) + 1;
+    }
+    bestRarity = Math.max(bestRarity, rarity);
+
+    let earnedShards = 0;
+    if (rarity >= 1_000_000) earnedShards = 10;
+    else if (rarity >= 100_000) earnedShards = 5;
+    else if (rarity >= 10_000) earnedShards = 2;
+    else if (rarity >= 1_000) earnedShards = 1;
+
+    const shardProcChance = Math.min(
+      1,
+      (s.upgrades.shardChance ?? 0) * 0.0015 +
+      (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
+      (s.guildPerks?.shardRank ?? 0) * 0.0005 +
+      levelBenefits.shardChance,
+    );
+    if (rng() < shardProcChance) earnedShards += 1;
+
+    shardsGained += earnedShards;
+    const earnedXp = Math.round(
+      Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) *
+      (1 + (s.upgrades.xpBonus ?? 0) * 0.20) *
+      levelBenefits.xpMultiplier,
+    );
+    xpGained += earnedXp;
+
+    if (batch.length < 50) {
+      const info = getOrbInfo(rarity);
+      batch.push({
+        rarity,
+        rolledAt: Date.now(),
+        tier: info.tier,
+        name: info.name,
+        isNew,
+        isCrit,
+      });
+    }
+    rarities.push(rarity);
+    totalValueGained += finalVal;
+  }
+
+  rarities.sort((a, b) => b - a);
+  const topCoins = Math.round(coinsForRarity(rarities[0] ?? 2));
+  const extraCoins = rarities.slice(1).reduce(
+    (sum, rarity) => sum + Math.max(1, Math.round(coinsForRarity(rarity) * 0.20)),
+    0,
+  );
+  let coinsGained = Math.round(
+    (topCoins + extraCoins) *
+    levelBenefits.coinsMultiplier *
+    (1 + (s.upgrades.coinBonus ?? 0) * 0.15) *
+    (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
+    (1 + (s.guildPerks?.coinRank ?? 0) * 0.10),
+  );
+
+  const lowRarityCoins = rarities
+    .filter(rarity => rarity < 100)
+    .reduce((sum, rarity) => sum + Math.max(1, Math.round(coinsForRarity(rarity))), 0);
+
+  if ((s.prestigeUpgrades?.autoFilter ?? 0) > 0 && lowRarityCoins > 0) {
+    coinsGained += Math.round(lowRarityCoins * 0.25);
+  }
+
+  const transLevel = s.prestigeUpgrades?.transmutation ?? 0;
+  if (transLevel > 0) {
+    coinsGained += Math.round(lowRarityCoins * (transLevel * 0.15));
+    for (let i = 0; i < rollCount; i++) {
+      if (rng() < 0.01 * transLevel) shardsGained += 1;
+    }
+  }
+
+  if (isPremiumBoosterActive(s, 'ascension')) {
+    xpGained *= 10;
+  }
+  s.coins += coinsGained;
+  s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
+  s.shards = Math.max(0, (s.shards ?? 0) + shardsGained);
+  s.xp += xpGained;
+
+  const oldLevel = Math.max(1, sourceState.level || 1);
+  const earnedLevel = calculateLevelFromXp(s.xp).level;
+  const newLevel = Math.max(oldLevel, Math.min(oldLevel + 1, earnedLevel));
+  s.level = newLevel;
+  if (newLevel > oldLevel) s.masteryPoints = (s.masteryPoints ?? 0) + 1;
+
+  s.manualRolls = isAuto
+    ? Math.min(10, s.manualRolls ?? 0)
+    : Math.min(10, (s.manualRolls ?? 0) + 1);
+  if (!isAuto && s.manualRolls >= 3) s.upgrades.auto = 1;
+  s.lastRollAt = Date.now();
+  s.lastSeenAt = Date.now();
+
+  const bestInfo = getOrbInfo(bestRarity);
+  const bestOrb: Orb = {
+    rarity: bestRarity,
+    rolledAt: Date.now(),
+    tier: bestInfo.tier,
+    name: bestInfo.name,
+    isNew: true,
+    isCrit: bestRarity > (sourceState.highestRarity ?? 0),
+  };
+
+  return {
+    state: s,
+    orb: bestOrb,
+    batch,
+    totalValueGained,
+    coinsGained,
+    shardsGained,
+    xpGained,
+    rollsProcessed: rollCount,
+  };
+}
+
 export function upgradeCost(id: UpgradeId, level: number): number {
   if (id === 'auto') return level ? Infinity : 0;
   // Roll Speed has a deliberate cap: 20 levels, totaling at most 3 seconds.
