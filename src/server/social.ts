@@ -322,7 +322,7 @@ export async function addGuildTokens(
   uname: string,
   amount: number,
   operationId?: string,
-  guildId?: string,
+  guildId?: string | null,
 ): Promise<void> {
   const safeAmount = Math.max(0, Math.floor(Number(amount) || 0));
   if (safeAmount <= 0) return;
