@@ -411,7 +411,7 @@ export async function applyRollSocialEffectsAtomic(input: RollSocialEffectInput)
     const guild = input.guildId !== undefined
       ? input.guildId === null
         ? undefined
-        : guilds.find(g => g.id === input.guildId)
+        : guilds.find(g => g.id === input.guildId && g.members.some(m => memberMatches(m)))
       : currentGuild(guilds);
 
     let bossRewardShards = 0;
