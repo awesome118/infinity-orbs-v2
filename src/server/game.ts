@@ -2661,6 +2661,7 @@ export async function settleOffline(s: PlayerState): Promise<PlayerState> {
         userId,
         subredditName,
         now + Math.max(1_000, (cap - s.offlineRolls) * tickMs),
+        s.saveGeneration,
       );
     } catch (error) {
       console.error('Failed to schedule offline-orbs-full notification:', error);
