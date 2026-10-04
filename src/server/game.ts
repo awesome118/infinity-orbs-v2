@@ -61,6 +61,7 @@ import {
   altarCoinDevotionChancePercent,
   streakRewardForDay,
   GLOBAL_BOOSTER_MAX_TIER,
+  GLOBAL_BOOSTER_BAR_DURATION_MS,
   GUILD_SHARD_CHANCE_PER_RANK,
   altarCoinFloor,
 } from '../shared/game.js';
@@ -126,7 +127,7 @@ function mergeConcurrentState(latest: PlayerState, incoming: PlayerState, baseli
     }
     const latestValue = JSON.stringify((latest as unknown as Record<string, unknown>)[field]);
     if (latestValue !== baseline[field]) return null;
-    (merged as unknown as Record<string, unknown>)[field] = (incoming as Record<string, unknown>)[field];
+    (merged as unknown as Record<string, unknown>)[field] = (incoming as unknown as Record<string, unknown>)[field];
   }
   merged.stateRevision = Math.max(0, Math.floor(Number(latest.stateRevision ?? 0)) || 0);
   merged.saveGeneration = Math.max(0, Math.floor(Number(latest.saveGeneration ?? 0)) || 0);
