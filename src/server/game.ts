@@ -1,4 +1,5 @@
 import { redis, context, reddit } from './devvit-mock.js';
+import { withPlayerMutationLock } from './player-lock.js';
 import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
@@ -95,8 +96,6 @@ const PLAYER_FLAIR_KEY_PREFIX = 'io:player-flair:';
 const ROLL_TICKET_KEY_PREFIX = 'io:roll-ticket:';
 const ROLL_TICKET_COUNT = 30;
 const ROLL_TICKET_TTL_MS = 10 * 60_000;
-const PLAYER_MUTATION_LOCK_PREFIX = 'io:player-mutation-lock:';
-
 const PLAYER_SPY_LOG_KEY_PREFIX = 'io:player-spy:v1:';
 const PLAYER_SPY_LOG_LIMIT = 500;
 
@@ -1632,31 +1631,6 @@ async function loadRollTicketForUse(
   return { ticket, raw };
 }
 
-export async function withPlayerMutationLock<T>(fn: () => Promise<T>): Promise<T> {
-  const lockKey = PLAYER_MUTATION_LOCK_PREFIX + currentUserId();
-  const token = `lock-${Date.now().toString(36)}-${randomUint32().toString(36)}`;
-
-  for (let attempt = 0; attempt < 80; attempt++) {
-    // Devvit Redis supports NX + expiration for short-lived atomic leases.
-    await redis.set(lockKey, token, {
-      nx: true,
-      expiration: new Date(Date.now() + 15_000),
-    });
-    const owner = await redis.get(lockKey);
-    if (owner === token) {
-      try {
-        return await fn();
-      } finally {
-        const currentOwner = await redis.get(lockKey);
-        if (currentOwner === token) await redis.del(lockKey);
-      }
-    }
-    await new Promise(resolve => setTimeout(resolve, 20));
-  }
-
-  throw new Error('Player state is busy. Please retry.');
-}
-
 export async function save(
   s: PlayerState,
   extraWrite?: { key: string; expectedValue: string | null; nextValue: string },
@@ -2431,6 +2405,7 @@ export async function checkOffline(): Promise<PlayerState> {
 }
 
 export async function setAutoRollEnabled(enabled: boolean): Promise<PlayerState> {
+  return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   if ((s.upgrades.auto ?? 0) <= 0) {
     s.autoRollEnabled = false;
@@ -2441,7 +2416,8 @@ export async function setAutoRollEnabled(enabled: boolean): Promise<PlayerState>
   s.autoRollEnabled = Boolean(enabled);
   await save(s);
   return s;
-}
+
+  });}
 
 export async function roll(
   isAuto = false,
@@ -2537,6 +2513,7 @@ export async function roll(
   });
 }
 export async function claimOffline(): Promise<RollResponse> {
+  return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   if (s.offlineRolls <= 0) throw new Error('No offline rolls waiting.');
   const batches = s.offlineRolls;
@@ -2563,7 +2540,8 @@ export async function claimOffline(): Promise<RollResponse> {
     rollsProcessed: rollCount,
     dramaticReveal: bestOrb.rarity >= 100,
   };
-}
+
+  });}
 
 export async function buyUpgrade(id: UpgradeId): Promise<PlayerState> {
   return withPlayerMutationLock(async () => {
@@ -2673,6 +2651,7 @@ export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent
 }
 
 export async function claimDailyStreak(): Promise<{ state: PlayerState; rewardCoins: number; rewardShards: number; day: number }> {
+  return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const result = await claimDailyStreakFromState(s);
   await save(s);
@@ -2683,9 +2662,11 @@ export async function claimDailyStreak(): Promise<{ state: PlayerState; rewardCo
     snapshot: playerSpySnapshot(s),
   });
   return { state: s, ...result };
-}
+
+  });}
 
 export async function claimQuest(type: 'daily' | 'weekly', id: string): Promise<{ state: PlayerState; rewardCoins: number; rewardShards: number; rewardTokens: number }> {
+  return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const list = type === 'daily' ? s.dailyQuests : s.weeklyQuests;
   const quest = list.find(q => q.id === id);
@@ -2716,9 +2697,11 @@ export async function claimQuest(type: 'daily' | 'weekly', id: string): Promise<
     rewardShards: reward.rewardShards,
     rewardTokens: reward.rewardTokens,
   };
-}
+
+  });}
 
 export async function prestige(): Promise<{ state: PlayerState; cosmicDustEarned: number; dustGained: number }> {
+  return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const dustEarned = calculateCosmicDust(s);
   if (dustEarned <= 0 || (s.collectionValue ?? 0) < 1_000_000) {
@@ -2756,9 +2739,11 @@ export async function prestige(): Promise<{ state: PlayerState; cosmicDustEarned
     snapshot: playerSpySnapshot(s),
   });
   return { state: s, cosmicDustEarned: dustEarned, dustGained: dustEarned };
-}
+
+  });}
 
 export async function buyPrestigeUpgrade(id: PrestigeUpgradeId): Promise<PlayerState> {
+  return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const info = PRESTIGE_UPGRADES[id];
   if (!info) throw new Error('Unknown prestige upgrade.');
@@ -2785,7 +2770,8 @@ export async function buyPrestigeUpgrade(id: PrestigeUpgradeId): Promise<PlayerS
     snapshot: playerSpySnapshot(s),
   });
   return s;
-}
+
+  });}
 
 export async function sacrificeToAltar(coins: number, shards: number): Promise<{
   state: PlayerState;
@@ -2794,6 +2780,7 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
   altarBreakthroughChance: number;
   altarPity: number;
 }> {
+  return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const numCoins = finiteNonNegativeInteger(coins);
   const numShards = finiteNonNegativeInteger(shards);
@@ -2880,9 +2867,11 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
     altarBreakthroughChance,
     altarPity,
   };
-}
+
+  });}
 
 export async function upgradeMasterySkill(skillId: MasterySkillId): Promise<PlayerState> {
+  return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const skill = MASTERY_SKILLS[skillId];
   if (!skill) throw new Error('Unknown mastery skill.');
@@ -2924,9 +2913,11 @@ export async function upgradeMasterySkill(skillId: MasterySkillId): Promise<Play
     snapshot: playerSpySnapshot(s),
   });
   return s;
-}
+
+  });}
 
 export async function synthesizeDust(): Promise<{ state: PlayerState; dustEarned: number }> {
+  return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   if ((s.prestigeUpgrades?.shardSynthesis ?? 0) < 1) {
     throw new Error('Astral Forge prestige upgrade is required to synthesize Cosmic Dust.');
@@ -2944,9 +2935,11 @@ export async function synthesizeDust(): Promise<{ state: PlayerState; dustEarned
     snapshot: playerSpySnapshot(s),
   });
   return { state: s, dustEarned: 1 };
-}
+
+  });}
 
 export async function buyCosmetic(id: string): Promise<PlayerState> {
+  return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const cosmetic = COSMETICS_LIST.find(c => c.id === id);
   if (!cosmetic) throw new Error('Cosmetic not found.');
@@ -2972,7 +2965,8 @@ export async function buyCosmetic(id: string): Promise<PlayerState> {
     snapshot: playerSpySnapshot(s),
   });
   return s;
-}
+
+  });}
 
 async function claimWorldBoosterActivation(
   s: PlayerState,
@@ -3109,6 +3103,7 @@ export async function activateGlobalBooster(
     activatedAt: number;
   };
 }> {
+  return withPlayerMutationLock(async () => {
   if (!GLOBAL_BOOSTERS[id]) throw new Error('Unknown Global Booster.');
 
   const userId = currentUserId();
@@ -3131,9 +3126,11 @@ export async function activateGlobalBooster(
   });
 
   return claimWorldBoosterActivation(s, id, useCredit);
-}
+
+  });}
 
 export async function activatePremiumBooster(id: PremiumBoosterId): Promise<PlayerState> {
+  return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const info = PREMIUM_BOOSTERS[id];
   if (!info) throw new Error('Unknown premium booster.');
@@ -3154,9 +3151,11 @@ export async function activatePremiumBooster(id: PremiumBoosterId): Promise<Play
     snapshot: playerSpySnapshot(s),
   });
   return s;
-}
+
+  });}
 
 export async function buyAutomation(id: AutomationId): Promise<PlayerState> {
+  return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const info = AUTOMATIONS[id];
   if (!info) throw new Error('Unknown automation.');
@@ -3174,9 +3173,11 @@ export async function buyAutomation(id: AutomationId): Promise<PlayerState> {
     snapshot: playerSpySnapshot(s),
   });
   return s;
-}
+
+  });}
 
 export async function claimCommunityReward(): Promise<{ state: PlayerState; rewardCoins: number; rewardXp: number; nextClaimAt: number; tier: number }> {
+  return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const result = await claimCommunityRewardFromState(s);
   if (result.rewardCoins <= 0) throw new Error('No new Community Reward is available.');
@@ -3188,13 +3189,15 @@ export async function claimCommunityReward(): Promise<{ state: PlayerState; rewa
     snapshot: playerSpySnapshot(s),
   });
   return { state: s, ...result };
-}
+
+  });}
 
 export async function startOrbFrenzy(options: {
   bypassDailyLimit?: boolean;
   forcedRarity?: number;
   adminTest?: boolean;
 } = {}): Promise<{ state: PlayerState; postId: string; url: string; rarity: number }> {
+  return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const today = new Date().toISOString().slice(0, 10);
   if (!options.bypassDailyLimit && s.lastFrenzyDate === today) {
@@ -3239,7 +3242,8 @@ export async function startOrbFrenzy(options: {
     rarity: result.bestOrb.rarity,
     url: '',
   };
-}
+
+  });}
 
 export async function getOrbFrenzyInfo(): Promise<{
   rarity: number;
@@ -3277,6 +3281,7 @@ export async function claimOrbFrenzy(options: {
   allowAdminTestOwner?: boolean;
   postId?: string;
 } = {}): Promise<RollResponse> {
+  return withPlayerMutationLock(async () => {
   const postId = options.postId ?? context.postId;
   if (options.postId && options.allowAdminTestOwner !== true) {
     throw new Error('Explicit Frenzy post targeting is admin-only.');
@@ -3487,7 +3492,8 @@ export async function claimOrbFrenzy(options: {
     dramaticReveal: bestRarity >= 100,
     frenzyCount: count,
   };
-}
+
+  });}
 
 
 function sampleBinomial(n: number, p: number): number {
@@ -3508,6 +3514,7 @@ function sampleBinomial(n: number, p: number): number {
 }
 
 export async function activateTurbo(): Promise<PlayerState> {
+  return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const costShards = 5;
   if (s.shards < costShards) {
@@ -3518,7 +3525,8 @@ export async function activateTurbo(): Promise<PlayerState> {
   s.turboRollUntil = Math.max(Date.now(), s.turboRollUntil ?? 0) + durationMs;
   await save(s);
   return s;
-}
+
+  });}
 
 export async function recordSocialVisit(s: PlayerState) {
   const today = new Date().toISOString().slice(0, 10);
