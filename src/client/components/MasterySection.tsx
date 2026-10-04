@@ -13,7 +13,7 @@ import {
   Award,
 } from 'lucide-react';
 import type { PlayerState, MasterySkillId } from '../../shared/game.js';
-import { MASTERY_SKILLS, masterySkillCost, highestCodexChain, codexDevotionLuckPercent } from '../../shared/game.js';
+import { MASTERY_SKILLS, masterySkillCost } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface MasterySectionProps {
