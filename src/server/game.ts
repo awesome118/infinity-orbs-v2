@@ -57,6 +57,8 @@ import {
   highestCodexChain,
   codexDevotionLuckPercent,
   altarCoinDevotionChancePercent,
+  streakRewardForDay,
+  GUILD_SHARD_CHANCE_PER_RANK,
   altarCoinFloor,
 } from '../shared/game.js';
 import {
@@ -90,6 +92,63 @@ const OFFLINE_FULL_NOTIFICATION_PREFIX = 'io:offline-full-notified:';
 const OFFLINE_FULL_JOB_PREFIX = 'io:offline-full-job:';
 const OFFLINE_FULL_RETRY_MS = 5 * 60_000;
 const PLAYER_FLAIR_KEY_PREFIX = 'io:player-flair:';
+
+const SAVE_BASELINE = Symbol('save-baseline');
+const SAVE_MERGE_VOLATILE_FIELDS = new Set(['lastSeenAt', 'onlinePlayers', 'globalBoosters', 'codexChain', 'codexDevotionLuckPercent']);
+
+function captureSaveBaseline(s: PlayerState): void {
+  const baseline: Record<string, string> = {};
+  for (const [field, value] of Object.entries(s)) {
+    if (field === 'stateRevision' || field === 'saveGeneration' || field === 'globalBoosters') continue;
+    try { baseline[field] = JSON.stringify(value); } catch { /* ignored */ }
+  }
+  (s as PlayerState & Record<symbol, unknown>)[SAVE_BASELINE] = baseline;
+}
+
+function mergeConcurrentState(latest: PlayerState, incoming: PlayerState, baseline: Record<string, string>): PlayerState | null {
+  const merged: PlayerState = { ...latest };
+  for (const field of Object.keys(incoming)) {
+    if (field === 'stateRevision' || field === 'saveGeneration') continue;
+    const incomingValue = JSON.stringify((incoming as Record<string, unknown>)[field]);
+    if (incomingValue === baseline[field]) continue;
+    if (field === 'globalBoosters') continue;
+    if (SAVE_MERGE_VOLATILE_FIELDS.has(field)) {
+      if (field === 'lastSeenAt') {
+        const latestSeen = Number((latest as Record<string, unknown>)[field] ?? 0) || 0;
+        const incomingSeen = Number((incoming as Record<string, unknown>)[field] ?? 0) || 0;
+        (merged as Record<string, unknown>)[field] = Math.max(latestSeen, incomingSeen);
+      }
+      continue;
+    }
+    const latestValue = JSON.stringify((latest as Record<string, unknown>)[field]);
+    if (latestValue !== baseline[field]) return null;
+    (merged as Record<string, unknown>)[field] = (incoming as Record<string, unknown>)[field];
+  }
+  merged.stateRevision = Math.max(0, Math.floor(Number(latest.stateRevision ?? 0)) || 0);
+  merged.saveGeneration = Math.max(0, Math.floor(Number(latest.saveGeneration ?? 0)) || 0);
+  return merged;
+}
+
+function settlementPersistenceSignature(s: PlayerState): string {
+  return JSON.stringify({
+    coins: s.coins, shards: s.shards, cosmicDust: s.cosmicDust, level: s.level, xp: s.xp,
+    totalRolls: s.totalRolls, manualRolls: s.manualRolls, totalCrits: s.totalCrits,
+    lifetimeCoins: s.lifetimeCoins, lifetimeShards: s.lifetimeShards, highestRarity: s.highestRarity,
+    collectionValue: s.collectionValue, lifetimeCollectionValue: s.lifetimeCollectionValue,
+    offlineRolls: s.offlineRolls, claimedAchievements: s.claimedAchievements, upgrades: s.upgrades,
+    prestigeCount: s.prestigeCount, prestigeUpgrades: s.prestigeUpgrades, streak: s.streak,
+    dailyQuests: s.dailyQuests, weeklyQuests: s.weeklyQuests, lastDailyReset: s.lastDailyReset,
+    lastWeeklyReset: s.lastWeeklyReset, rollsSinceBest: s.rollsSinceBest, activeCosmetic: s.activeCosmetic,
+    unlockedCosmetics: s.unlockedCosmetics, turboRollUntil: s.turboRollUntil, activeBoosters: s.activeBoosters,
+    automations: s.automations, freeShardsEarnedToday: s.freeShardsEarnedToday,
+    purchasedShards: s.purchasedShards, purchasedShardLots: s.purchasedShardLots,
+    globalBoosterCredits: s.globalBoosterCredits, lastFrenzyDate: s.lastFrenzyDate,
+    lastFrenzyClaimDate: s.lastFrenzyClaimDate, communityRewardClaimedTier: s.communityRewardClaimedTier,
+    currentRunRolls: s.currentRunRolls, questsCompleted: s.questsCompleted, guildContribution: s.guildContribution,
+    sacrifices: s.sacrifices, masteryPoints: s.masteryPoints, masterySkills: s.masterySkills,
+    socialActivityDate: s.socialActivityDate, lastShareAt: s.lastShareAt,
+  });
+}
 
 const PLAYER_SPY_LOG_KEY_PREFIX = 'io:player-spy:v1:';
 const PLAYER_SPY_LOG_LIMIT = 500;
@@ -1310,7 +1369,7 @@ export async function loadRaw(): Promise<PlayerState> {
     s.saveGeneration = generation;
     s.guildPerks = perks;
     s.globalBoosters = globalBoosters;
-
+    captureSaveBaseline(s);
     return s;
   }
 
@@ -1327,7 +1386,7 @@ export async function loadRaw(): Promise<PlayerState> {
     fresh.username = username;
     fresh.saveGeneration = generation;
     fresh.guildPerks = perks;
-
+    captureSaveBaseline(fresh);
     return fresh;
   }
 
@@ -1349,7 +1408,7 @@ export async function loadRaw(): Promise<PlayerState> {
     // Auto Roll is free and unlocks automatically at 3 manual roll activations.
     auto: normalizedManualRolls >= 3 ? 1 : 0,
   };
-  return {
+  const loadedState: PlayerState = {
     ...base,
     ...cleanParsed,
     upgrades: normalizedUpgrades,
@@ -1373,7 +1432,12 @@ export async function loadRaw(): Promise<PlayerState> {
     masteryPoints: parsed.masteryPoints ?? base.masteryPoints ?? 1,
     guildPerks: perks,
     globalBoosters,
+    purchasedShardLots: parsed.purchasedShardLots
+      ? Object.fromEntries(Object.entries(parsed.purchasedShardLots).map(([id, amount]) => [id, Math.max(0, Math.floor(Number(amount) || 0))]).filter(([, amount]) => amount > 0))
+      : ((parsed.purchasedShards ?? 0) > 0 ? { legacy: Math.max(0, Math.floor(Number(parsed.purchasedShards) || 0)) } : {}),
   };
+  captureSaveBaseline(loadedState);
+  return loadedState;
 }
 
 function applyXp(s: PlayerState, amount: number): void {
@@ -1415,8 +1479,9 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
   s.streak.lastClaimDate = today;
 
   const day = ((s.streak.count - 1) % 7) + 1;
-  const rewardCoins = day * 100;
-  const rewardShards = grantFreeShards(s, day === 7 ? 5 : day === 3 ? 1 : 0);
+  const reward = streakRewardForDay(day);
+  const rewardCoins = reward.coins;
+  const rewardShards = grantFreeShards(s, reward.shards);
   addCoins(s, rewardCoins);
   return { rewardCoins, rewardShards, day };
 }
@@ -1545,7 +1610,8 @@ export async function save(s: PlayerState) {
   const generationKey = saveGenerationKeyFor(userId);
   await ensureRedisStringKey(generationKey, '0');
 
-  const expectedRevision = Math.max(0, Math.floor(Number(s.stateRevision ?? 0)) || 0);
+  let expectedRevision = Math.max(0, Math.floor(Number(s.stateRevision ?? 0)) || 0);
+  const baseline = (s as PlayerState & Record<symbol, unknown>)[SAVE_BASELINE] as Record<string, string> | undefined;
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(playerKey, generationKey);
@@ -1606,6 +1672,22 @@ export async function save(s: PlayerState) {
     }
 
     if (!saveKeyMissing && latestRevision !== expectedRevision) {
+      const merged = latest && baseline ? mergeConcurrentState(latest, s, baseline) : null;
+      if (merged) {
+        await appendSaveDebugLog('revision-merge', {
+          attempt: attempt + 1,
+          expectedRevision,
+          latestRevision,
+          generation,
+          stateGeneration,
+          mergedState: compactSaveState(merged),
+          caller: saveCaller(),
+        }, userId);
+        Object.assign(s, merged);
+        expectedRevision = latestRevision;
+        await txn.unwatch();
+        continue;
+      }
       await appendSaveDebugLog('revision-conflict', {
         attempt: attempt + 1,
         expectedRevision,
@@ -1638,6 +1720,7 @@ export async function save(s: PlayerState) {
     const committed = await txn.exec();
     if (committed !== null) {
       Object.assign(s, nextState);
+      captureSaveBaseline(s);
       await syncRarityFlair(s);
       return;
     }
@@ -1722,6 +1805,8 @@ export async function applyRolls(
   rollCountOverride?: number
 ): Promise<{ bestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number; rollCount: number }> {
   let bestRarity = 0;
+  let bestIsCrit = false;
+  let bestIsNew = false;
   let totalVal = 0;
   let coinsGained = 0;
   let shardsGained = 0;
@@ -1830,6 +1915,8 @@ export async function applyRolls(
 
     if (rarity > bestRarity) {
       bestRarity = rarity;
+      bestIsCrit = isCrit;
+      bestIsNew = isNew;
     }
 
     const xpBonusMul =
@@ -1849,7 +1936,7 @@ export async function applyRolls(
       1,
       (s.upgrades.shardChance ?? 0) * 0.0015 +
       (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
-      (s.guildPerks?.shardRank ?? 0) * 0.0005 +
+      (s.guildPerks?.shardRank ?? 0) * GUILD_SHARD_CHANCE_PER_RANK +
       levelBenefits.shardChance
     );
     if (rng() < shardProcChance) {
@@ -1924,18 +2011,8 @@ export async function applyRolls(
 
   // Ascension increases XP by 10× while preserving the existing level logic.
   const effectiveXpGained = isPremiumBoosterActive(s, 'ascension') ? xpGained * 10 : xpGained;
-  s.xp += effectiveXpGained;
+  applyXp(s, effectiveXpGained);
   xpGained = effectiveXpGained;
-
-  // Rich EXP Level Progression. XP may skip future thresholds, but the
-  // displayed/active level only advances one step at a time.
-  const oldLevel = Math.max(1, s.level || 1);
-  const earnedLevel = calculateLevelFromXp(s.xp).level;
-  const newLevel = Math.max(oldLevel, Math.min(oldLevel + 1, earnedLevel));
-  s.level = newLevel;
-  if (newLevel > oldLevel) {
-    s.masteryPoints = (s.masteryPoints ?? 0) + 1;
-  }
   s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
 
   // Singularity Tithe: award every threshold crossed, including large offline batches.
@@ -1976,7 +2053,8 @@ export async function applyRolls(
     rolledAt: now,
     tier: bestInfo.tier,
     name: bestInfo.name,
-    isNew: s.collection[String(bestRarity)] === 1,
+    isNew: bestIsNew,
+    isCrit: bestIsCrit,
   };
 
   await appendPlayerSpyLog('roll', {
@@ -2232,9 +2310,14 @@ export async function getState(): Promise<PlayerState> {
       // game against multiple server instances at once, so a read can race
       // another harmless read-side save even though each instance has its own
       // in-memory request queue.
-      const s = await settleOffline(await loadRaw());
-      await save(s);
-      return s;
+      const s = await loadRaw();
+      const beforeSignature = settlementPersistenceSignature(s);
+      const previousLastSeenAt = s.lastSeenAt ?? 0;
+      const settled = await settleOffline(s);
+      const persistentChanged = settlementPersistenceSignature(settled) !== beforeSignature;
+      const presenceNeedsSave = (settled.lastSeenAt ?? 0) - previousLastSeenAt >= 30_000;
+      if (persistentChanged || presenceNeedsSave) await save(settled);
+      return settled;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
 
@@ -2549,10 +2632,7 @@ export async function prestige(): Promise<{ state: PlayerState; cosmicDustEarned
   s.rollsSinceBest = 0;
   s.currentRunRolls = 0;
   s.lastRollAt = null;
-
-  if (!s.claimedAchievements.includes('first-prestige')) {
-    s.claimedAchievements.push('first-prestige');
-  }
+  s.manualRolls = 0;
 
   await save(s);
   await appendPlayerSpyLog('prestige', {
@@ -2629,7 +2709,7 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
   const previousPity = sacrifices.altarPity ?? 0;
 
   s.coins -= numCoins;
-  s.shards = (s.shards ?? 0) - numShards;
+  if (numShards > 0) spendShards(s, numShards);
 
   sacrifices.coinsSacrificed = (sacrifices.coinsSacrificed ?? 0) + numCoins;
   sacrifices.shardsSacrificed = (sacrifices.shardsSacrificed ?? 0) + numShards;
