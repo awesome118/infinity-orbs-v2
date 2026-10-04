@@ -2347,44 +2347,32 @@ export async function getCollectionPage(options: {
 }
 
 export async function getState(): Promise<PlayerState> {
-  return withPlayerMutationLock(async () => {
-    const maxRetries = 4;
+  // GET /api/me must remain a read operation. Previously this path called
+  // settleOffline() and save(), which meant every background refresh could
+  // increment stateRevision and race a real mutation.
+  const s = await loadRaw();
+  const now = Date.now();
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      // Keep the entire read/settle/save cycle together. A player can open the
-      // game against multiple server instances at once, so a read can race
-      // another harmless read-side save even though each instance has its own
-      // in-memory request queue.
-      const s = await settleOffline(await loadRaw());
-      await save(s);
-      return s;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+  // These are presentation-only projections. They are intentionally not saved.
+  // The next real mutation settles and persists the authoritative state.
+  checkPeriodicResets(s, now);
+  resetFreeShardBudgetIfNeeded(s, now);
+  s.onlinePlayers = await touchOnlinePresence();
+  s.globalBoosters = await getGlobalBoosters();
 
-      if (message.includes('invalidated by an admin wipe')) {
-        const fresh = await settleOffline(await loadRaw());
-        await save(fresh);
-        return fresh;
-      }
-
-      if (!message.includes('Player state changed while saving')) {
-        throw error;
-      }
-
-      if (attempt >= maxRetries) {
-        // A /me read should not expose an internal optimistic-concurrency
-        // conflict after repeated attempts. Return the newest persisted state;
-        // the next refresh will settle any remaining offline work.
-        return await loadRaw();
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 40 * (attempt + 1)));
-    }
+  // Show currently accumulated offline rolls without consuming/persisting them.
+  const tickMs = effectiveOfflineTickMs(s);
+  const diff = now - (s.lastSeenAt || now);
+  if (diff >= tickMs) {
+    const earned = Math.floor(diff / tickMs);
+    s.offlineRolls = Math.min(
+      offlineRollCap(s),
+      (s.offlineRolls || 0) + earned,
+    );
   }
+  s.lastSeenAt = now;
 
-    throw new Error('Could not load player state.');
-  });
+  return s;
 }
 
 export async function getMe(): Promise<PlayerState> {
