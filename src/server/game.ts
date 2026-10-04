@@ -1323,7 +1323,6 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
       globalBoosterCredits: pack.globalBoosterCredits,
     };
     state.paymentReceipts[orderId] = receipt;
-    state.stateRevision = currentStateRevision + 1;
 
     await appendPaymentDebugLog('grant:about-to-write', {
       userId,
