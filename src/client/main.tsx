@@ -1113,7 +1113,11 @@ export function App() {
       return {
         ...current,
         masteryPoints: (current.masteryPoints ?? 0) - cost,
-        masterySkills: { ...(current.masterySkills ?? {}), [skillId]: currentLevel + 1 },
+        masterySkills: {
+          ...createInitialState().masterySkills,
+          ...(current.masterySkills ?? {}),
+          [skillId]: currentLevel + 1,
+        },
       };
     });
     try {
