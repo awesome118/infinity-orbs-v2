@@ -179,6 +179,7 @@ export function App() {
     coins: number;
     shards: number;
     xp: number;
+    rollsProcessed?: number;
     frenzyCount?: number;
   } | null>(null);
 
@@ -669,6 +670,7 @@ export function App() {
         coins: res.coinsGained,
         shards: res.shardsGained,
         xp: res.xpGained,
+        rollsProcessed: res.rollsProcessed,
       });
       setReadyAt(Date.now() + res.rollsRemainingUntilNext);
 
@@ -709,12 +711,12 @@ export function App() {
   useEffect(() => {
     if (!autoRoll || !state || state.upgrades.auto === 0) return;
     const interval = setInterval(() => {
-      if (Date.now() >= readyAt && !isRolling) {
+      if (Date.now() >= readyAt && !isRolling && !busy) {
         void handleRoll(true);
       }
     }, 300);
     return () => clearInterval(interval);
-  }, [autoRoll, state, readyAt, isRolling, handleRoll]);
+  }, [autoRoll, state, readyAt, isRolling, busy, handleRoll]);
 
   // Buy Standard Upgrade
   const handleBuyUpgrade = async (id: UpgradeId) => {
@@ -1026,6 +1028,7 @@ export function App() {
         coins: res.coinsGained,
         shards: res.shardsGained,
         xp: res.xpGained,
+        rollsProcessed: res.rollsProcessed,
       });
       setReadyAt(Date.now() + res.rollsRemainingUntilNext);
       sound.playEpicFanfare();
