@@ -2542,9 +2542,20 @@ export async function processOfflineFullNotification(
   const jobGeneration = job ? Math.max(0, Math.floor(Number(job.saveGeneration ?? 0) || 0)) : null;
   const generationRaw = await redis.get(saveGenerationKeyFor(userId));
   const currentGeneration = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
-  const generation = expectedGeneration == null ? jobGeneration : Math.max(0, Math.floor(Number(expectedGeneration) || 0));
+  const generation = expectedGeneration == null
+    ? jobGeneration
+    : Math.max(0, Math.floor(Number(expectedGeneration) || 0));
+  if (jobGeneration != null && generation != null && jobGeneration !== generation) {
+    console.warn('[Offline Notification] Ignoring a scheduler invocation whose generation does not match its job.', {
+      userId,
+      jobGeneration,
+      expectedGeneration: generation,
+    });
+    return;
+  }
   if (generation != null && generation !== currentGeneration) {
-    await redis.del(jobKey);
+    // Never delete the key here. A fresh-generation job may already be stored
+    // under the same user and belongs to the current save.
     return;
   }
 
