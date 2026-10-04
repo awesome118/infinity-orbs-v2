@@ -39,6 +39,26 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Validate Devvit token format
+        env:
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const raw = process.env.DEVVIT_AUTH_TOKEN ?? '';
+          console.log('DEVVIT_AUTH_TOKEN present:', raw.length > 0);
+          console.log('Length:', raw.length);
+          try {
+            const parsed = JSON.parse(raw);
+            const keys = Object.keys(parsed).sort();
+            console.log('JSON object:', true);
+            console.log('Keys:', keys.join(', '));
+            console.log('Contains token field:', typeof parsed.token === 'string' && parsed.token.length > 0);
+            console.log('Contains refresh token field:', typeof parsed.refreshToken === 'string' && parsed.refreshToken.length > 0);
+          } catch {
+            console.log('JSON object:', false);
+          }
+          NODE
       - name: Verify Devvit authentication
         env:
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
