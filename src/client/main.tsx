@@ -311,10 +311,11 @@ export function App() {
   // The authoritative server response always replaces the speculative state.
   const beginOptimisticState = useCallback(
     (patch: (current: PlayerState) => PlayerState): (() => void) | null => {
-      if (!state) return null;
-      const previousState = state;
+      const previousState = stateRef.current;
+      if (!previousState) return null;
       const nextState = patch(previousState);
       const optimisticRevision = stateRevisionRef.current + 1;
+      stateRef.current = nextState;
       stateRevisionRef.current = optimisticRevision;
       setState(nextState);
       return () => {
