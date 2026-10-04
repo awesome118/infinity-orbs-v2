@@ -2,6 +2,7 @@ import express from 'express';
 import { debugRouter, isDebugUser } from './debug.js';
 import {
   getMe,
+  getRollTicket,
   roll,
   buyUpgrade,
   buyAllUpgrades,
@@ -846,8 +847,19 @@ export function createApp() {
     res.status(400).json({ error: e instanceof Error ? e.message : fallback });
   };
 
+  app.get('/api/roll-ticket', async (_req, res) => {
+    try { res.json(await getRollTicket()); }
+    catch (e) { res.status(500).json({ error: e instanceof Error ? e.message : 'Could not create roll prediction ticket.' }); }
+  });
+
   app.post('/api/roll', async (req, res) => {
-    try { res.json(await roll(req.body?.auto === true)); } catch (e) { badRequest(res, e, 'Roll failed.'); }
+    try {
+      res.json(await roll(
+        req.body?.auto === true,
+        typeof req.body?.ticketId === 'string' ? req.body.ticketId : undefined,
+        Number.isSafeInteger(req.body?.ticketIndex) ? req.body.ticketIndex : undefined,
+      ));
+    } catch (e) { badRequest(res, e, 'Roll failed.'); }
   });
 
   app.post('/api/auto-roll', async (req, res) => {
