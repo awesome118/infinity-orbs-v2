@@ -349,7 +349,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
               ))}
             </div>
             <p className="text-[10px] text-slate-500">
-              Shards do not roll for Devotion. Each gives +3% permanent multiplicative luck and extends the +25% Luck Surge by 15 minutes.
+              Shards do not roll for Devotion. Each gives +2% permanent multiplicative luck and extends the +25% Luck Surge by 15 minutes.
             </p>
           </div>
         </div>
