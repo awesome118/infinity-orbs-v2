@@ -257,9 +257,14 @@ export async function unmuteGuildChatUser(userId: string): Promise<boolean> {
 export async function guildInfo() {
   const guilds = await loadGuilds();
   const mine = currentGuild(guilds);
+  const myMember = mine?.members.find(member =>
+    member.userId === user() ||
+    (!member.userId && member.username === username()),
+  ) ?? null;
   return {
     guilds: guilds.sort((a, b) => b.xp - a.xp).slice(0, 20),
     mine: mine ?? null,
+    myMember,
   };
 }
 
