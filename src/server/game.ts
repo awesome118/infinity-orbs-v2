@@ -2594,7 +2594,7 @@ export async function processOfflineFullNotification(
   if (currentOfflineRolls < cap) {
     const fullAt = now + Math.max(1_000, (cap - currentOfflineRolls) * tickMs);
     await redis.del(jobKey);
-    await scheduleOfflineFullNotification(userId, subredditName, fullAt);
+    await scheduleOfflineFullNotification(userId, subredditName, fullAt, currentGeneration);
     return;
   }
 
@@ -2604,7 +2604,7 @@ export async function processOfflineFullNotification(
   } catch (error) {
     console.error('Failed to send scheduled offline-orbs-full notification:', error);
     await redis.del(jobKey);
-    await scheduleOfflineFullNotification(userId, subredditName, now + OFFLINE_FULL_RETRY_MS);
+    await scheduleOfflineFullNotification(userId, subredditName, now + OFFLINE_FULL_RETRY_MS, currentGeneration);
   }
 }
 
