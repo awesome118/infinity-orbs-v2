@@ -59,6 +59,7 @@ jobs:
             console.log('JSON object:', false);
           }
           NODE
+
       - name: Verify Devvit authentication
         env:
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
@@ -66,6 +67,17 @@ jobs:
         run: |
           set -euo pipefail
           npx devvit whoami
+
+      - name: Collect recent Devvit runtime logs
+        env:
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=5s 20s npx devvit logs r/infinityorbs infinity-orbs --since=15m --verbose
+          status=$?
+          echo "devvit logs exit code: $status"
+          exit 0
 
       - name: Upload to Devvit
         env:
