@@ -2431,6 +2431,8 @@ async function scheduleOfflineFullNotification(
   if (!(await notifications.isOptedIn(userId))) return;
 
   const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
+  const generationRaw = await redis.get(saveGenerationKeyFor(userId));
+  const saveGeneration = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
   const reservationTimeoutMs = 10 * 60_000;
   let reservation: string | null = null;
 
@@ -2458,7 +2460,7 @@ async function scheduleOfflineFullNotification(
     const safeRunAt = Math.max(Date.now() + 1_000, runAt);
     const jobId = await context.scheduler.runJob({
       name: 'offline-orbs-full',
-      data: { userId, subredditName },
+      data: { userId, subredditName, saveGeneration },
       runAt: new Date(safeRunAt),
     });
 
@@ -2469,7 +2471,7 @@ async function scheduleOfflineFullNotification(
       return;
     }
     await txn.multi();
-    await txn.set(jobKey, jobId);
+    await txn.set(jobKey, JSON.stringify({ jobId, saveGeneration }));
     await txn.exec();
   } catch (error) {
     const cleanup = await redis.watch(jobKey);
@@ -2488,9 +2490,21 @@ async function scheduleOfflineFullNotification(
 export async function processOfflineFullNotification(
   userId: string,
   subredditName: string,
+  expectedGeneration?: number,
 ): Promise<void> {
   const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
-  if (!(await redis.get(jobKey))) return;
+  const jobRaw = await redis.get(jobKey);
+  if (!jobRaw) return;
+  const job = parseStoredJson<{ jobId?: string; saveGeneration?: number }>(jobRaw);
+  const jobGeneration = job ? Math.max(0, Math.floor(Number(job.saveGeneration ?? 0) || 0)) : null;
+  const generationRaw = await redis.get(saveGenerationKeyFor(userId));
+  const currentGeneration = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
+  const generation = expectedGeneration == null ? jobGeneration : Math.max(0, Math.floor(Number(expectedGeneration) || 0));
+  if (generation != null && generation !== currentGeneration) {
+    await redis.del(jobKey);
+    return;
+  }
+
 
   const raw = await redis.get('player:' + userId);
   if (!raw) {
