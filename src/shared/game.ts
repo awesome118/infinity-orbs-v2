@@ -598,7 +598,7 @@ export type PendingPlayerOperation =
   | {
       id: string;
       type: 'roll-social';
-      guildId?: string;
+      guildId?: string | null;
       taxedCoins: number;
       guildTaxTokens: number;
       contributionValue: number;
@@ -609,7 +609,7 @@ export type PendingPlayerOperation =
   | {
       id: string;
       type: 'guild-tokens';
-      guildId?: string;
+      guildId?: string | null;
       amount: number;
     }
   | {
