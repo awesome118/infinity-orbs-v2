@@ -158,9 +158,43 @@ function paymentOrderStatus(order: PaymentOrder): string {
 function paymentOrderId(order: PaymentOrder): string {
   return paymentString(order.id);
 }
+async function verifyPaymentOrder(orderId: string, candidateUserId: string): Promise<{ sku: string; status: string } | null> {
+  const id = String(orderId ?? '').trim();
+  const buyer = String(candidateUserId ?? '').trim();
+  if (!id || !buyer) return null;
 
-async function resolvePaymentBuyerId(order: PaymentOrder, orderId: string): Promise<string> {
-  const claimedCandidates = [
+  try {
+    const rawOrders = await payments.getOrders({ limit: 50, buyer });
+    const orders = Array.isArray(rawOrders)
+      ? rawOrders
+      : rawOrders && typeof rawOrders === 'object' && Array.isArray((rawOrders as { orders?: unknown }).orders)
+        ? (rawOrders as { orders: unknown[] }).orders
+        : [];
+    for (const rawOrder of orders) {
+      if (!rawOrder || typeof rawOrder !== 'object') continue;
+      const candidate = rawOrder as PaymentOrder;
+      if (paymentOrderId(candidate) !== id) continue;
+      const sku = paymentProductSku(candidate);
+      const status = paymentOrderStatus(candidate);
+      if (!sku || (status && status !== 'PAID')) return null;
+      return { sku, status };
+    }
+  } catch (error) {
+    await appendPaymentDebugLog('buyer:provider-order-check-failed', {
+      orderId: id,
+      candidateUserId: buyer,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return null;
+}
+
+
+async function resolvePaymentBuyerId(
+  order: PaymentOrder,
+  orderId: string,
+): Promise<{ userId: string; sku: string } | null> {
+  const orderCandidates = [
     paymentString(order.userId),
     paymentString(order.buyerUserId),
     paymentBuyerFromObject(order.buyer),
@@ -168,57 +202,26 @@ async function resolvePaymentBuyerId(order: PaymentOrder, orderId: string): Prom
     paymentString(context.userId),
   ].filter(Boolean);
 
-  const candidates = [...new Set(claimedCandidates)];
-  if (!orderId || candidates.length === 0) {
-    await appendPaymentDebugLog('buyer:verification-failed', {
-      orderId: orderId || null,
-      reason: !orderId ? 'missing-order-id' : 'no-candidate-user-id',
-      candidates,
-    });
-    return '';
-  }
-
-  // Never select an account merely because its save exists. The callback body is
-  // transport data, so the order must be independently present in the trusted
-  // payment history for the candidate buyer.
-  for (const candidate of candidates) {
-    try {
-      const rawOrders = await payments.getOrders({ limit: 50, buyer: candidate });
-      const orders = Array.isArray(rawOrders)
-        ? rawOrders
-        : rawOrders && typeof rawOrders === 'object' && Array.isArray((rawOrders as { orders?: unknown }).orders)
-          ? (rawOrders as { orders: unknown[] }).orders
-          : [];
-
-      const matchingOrder = orders.find(raw => {
-        if (!raw || typeof raw !== 'object') return false;
-        return paymentOrderId(raw as PaymentOrder) === orderId;
-      });
-
-      if (matchingOrder) {
-        const trustedStatus = paymentOrderStatus(matchingOrder as PaymentOrder);
-        await appendPaymentDebugLog('buyer:verified-provider-order', {
-          orderId,
-          selectedUserId: candidate,
-          providerStatus: trustedStatus || null,
-        });
-        return candidate;
-      }
-    } catch (error) {
-      await appendPaymentDebugLog('buyer:provider-order-lookup-failed', {
+  const uniqueCandidates = [...new Set(orderCandidates)];
+  for (const candidate of uniqueCandidates) {
+    const verified = await verifyPaymentOrder(orderId, candidate);
+    if (verified) {
+      await appendPaymentDebugLog('buyer:provider-verified', {
         orderId,
-        candidate,
-        error: error instanceof Error ? error.message : String(error),
+        selectedUserId: candidate,
+        sku: verified.sku,
+        contextUserId: paymentString(context.userId) || null,
       });
+      return { userId: candidate, sku: verified.sku };
     }
   }
 
-  await appendPaymentDebugLog('buyer:verification-failed', {
+  await appendPaymentDebugLog('buyer:provider-verification-failed', {
     orderId,
-    candidates,
+    candidates: uniqueCandidates,
     contextUserId: paymentString(context.userId) || null,
   });
-  return '';
+  return null;
 }
 
 export function createApp() {
@@ -490,9 +493,11 @@ export function createApp() {
 
       const order = normalizePaymentOrder(req.body);
       const orderId = paymentOrderId(order);
-      const productSku = paymentProductSku(order);
+      const envelopeSku = paymentProductSku(order);
       const status = paymentOrderStatus(order);
-      const buyerUserId = await resolvePaymentBuyerId(order, orderId);
+      const verifiedPayment = await resolvePaymentBuyerId(order, orderId);
+      const buyerUserId = verifiedPayment?.userId ?? '';
+      const productSku = verifiedPayment?.sku ?? '';
 
       console.error('[Payments] Fulfill received:', JSON.stringify({
         id: orderId || null,
@@ -518,7 +523,7 @@ export function createApp() {
       if (!buyerUserId) {
         return res.json({
           success: false,
-          reason: 'Unable to identify the purchasing Reddit account.',
+          reason: 'Payment order could not be verified against its purchasing Reddit account.',
         });
       }
       if (status && status !== 'PAID') {
@@ -530,7 +535,9 @@ export function createApp() {
       if (!productSku) {
         return res.json({
           success: false,
-          reason: 'Infinity Orbs purchases must contain one product.',
+          reason: envelopeSku
+            ? 'Payment order product could not be verified against the provider record.'
+            : 'Infinity Orbs purchases must contain one product.',
         });
       }
       if (!orderId) {
@@ -570,8 +577,9 @@ export function createApp() {
     try {
       const order = normalizePaymentOrder(req.body);
       const orderId = paymentOrderId(order);
-      const productSku = paymentProductSku(order);
-      const buyerUserId = await resolvePaymentBuyerId(order, orderId);
+      const verifiedPayment = await resolvePaymentBuyerId(order, orderId);
+      const buyerUserId = verifiedPayment?.userId ?? '';
+      const productSku = verifiedPayment?.sku ?? '';
 
       if (!buyerUserId || !orderId) {
         return res.json({
