@@ -32,6 +32,7 @@ import type {
 } from '../shared/game.js';
 import type {
   Guild,
+  GuildMember,
   LeaderboardEntry,
   WorldEvent,
   GuildPerkId,
@@ -274,9 +275,14 @@ export function App() {
 
   // Social & Community state
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
-  const [guildData, setGuildData] = useState<{ guilds: Guild[]; mine: Guild | null }>({
+  const [guildData, setGuildData] = useState<{
+    guilds: Guild[];
+    mine: Guild | null;
+    myMember: GuildMember | null;
+  }>({
     guilds: [],
     mine: null,
+    myMember: null,
   });
   const [worldEvent, setWorldEvent] = useState<WorldEvent | null>(null);
   const [globalBoosters, setGlobalBoosters] = useState<GlobalBoosterSnapshot>({
@@ -446,7 +452,7 @@ export function App() {
 
       const [lb, gd, we, announcement, notificationState] = await Promise.all([
         getJson<LeaderboardEntry[]>('/api/leaderboard').catch(() => []),
-        getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds').catch(() => ({ guilds: [], mine: null })),
+        getJson<{ guilds: Guild[]; mine: Guild | null; myMember: GuildMember | null }>('/api/guilds').catch(() => ({ guilds: [], mine: null, myMember: null })),
         getJson<WorldEvent>('/api/world-event').catch(() => null),
         getJson<{ message: string; updatedAt: number; updatedBy: string }>('/api/developer-announcement').catch(() => null),
         getJson<{ enabled: boolean }>('/api/notifications').catch(() => ({ enabled: false })),
@@ -2148,6 +2154,7 @@ export function App() {
           <GuildsAndSocial
             guilds={guildData.guilds}
             myGuild={guildData.mine}
+            myMember={guildData.myMember}
             leaderboard={leaderboardData}
             worldEvent={worldEvent}
             onCreateGuild={handleCreateGuild}
