@@ -65,15 +65,12 @@ import {
   altarCoinFloor,
 } from '../shared/game.js';
 import {
-  contribute,
   recordLeaderboard,
   addGuildTokens,
-  applyGuildTax,
   getPlayerGuildPerks,
   getCurrentGuildId,
   getGuildTaxPreview,
   applyRollSocialEffectsAtomic,
-  addCommunityRolls,
   getCommunityEvent,
 } from './social.js';
 
@@ -1274,6 +1271,10 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
     });
 
     state.paymentReceipts = state.paymentReceipts ?? {};
+    const currentStateRevision = Math.max(
+      0,
+      Math.floor(Number(state.stateRevision ?? 0)) || 0,
+    );
     const existingReceipt = state.paymentReceipts[orderId];
     if (
       existingReceipt === 'fulfilled' ||
@@ -1307,6 +1308,7 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
       globalBoosterCredits: pack.globalBoosterCredits,
     };
     state.paymentReceipts[orderId] = receipt;
+    state.stateRevision = currentStateRevision + 1;
 
     await appendPaymentDebugLog('grant:about-to-write', {
       userId,
@@ -1347,15 +1349,28 @@ export async function grantPurchasedPack(userId: string, sku: string, orderId: s
 export async function refundPurchasedPack(userId: string, sku: string, orderId: string): Promise<void> {
   const pack = paymentGoodsForSku(sku);
   const pkey = playerKeyFor(userId);
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const txn = await redis.watch(pkey);
+  const generationKey = saveGenerationKeyFor(userId);
+  await ensureRedisStringKey(generationKey, '0');
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const txn = await redis.watch(pkey, generationKey);
+    const generationRaw = await redis.get(generationKey);
+    const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
     const raw = await redis.get(pkey);
     if (raw == null) {
       await txn.unwatch();
       return;
     }
     const state = parsePaymentPlayerState(raw);
+    const stateGeneration = Math.max(0, Math.floor(Number(state.saveGeneration ?? 0)) || 0);
+    if (stateGeneration !== generation) {
+      await txn.unwatch();
+      throw new Error('The payment arrived for an invalidated player save. Please reconcile the purchase again.');
+    }
     state.paymentReceipts = state.paymentReceipts ?? {};
+    const currentStateRevision = Math.max(
+      0,
+      Math.floor(Number(state.stateRevision ?? 0)) || 0,
+    );
     const receipt = state.paymentReceipts[orderId];
     if (!receipt) {
       await txn.unwatch();
@@ -1411,6 +1426,7 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
       shards: grantedShards,
       globalBoosterCredits: grantedCredits,
     };
+    state.stateRevision = currentStateRevision + 1;
     await txn.multi();
     await txn.set(pkey, JSON.stringify(state));
     const committed = await txn.exec();
