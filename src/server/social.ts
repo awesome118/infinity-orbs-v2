@@ -88,12 +88,12 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
       member.userId = member.userId || undefined;
     }
     if (!g.boss || (g as any).bossWeek !== currentWeek) {
-      g.boss = createInitialGuildBoss(Math.max(1, Math.min(10, g.level || 1)));
-      (g as any).bossWeek = currentWeek;
+      g.boss = createInitialGuildBoss(Math.max(1, Math.min(10, g.level || 1)), currentWeek);
+      g.bossWeek = currentWeek;
     }
     if (!g.challenge || (g as any).challengeWeek !== currentWeek) {
       g.challenge = challengeForWeek();
-      (g as any).challengeWeek = currentWeek;
+      g.challengeWeek = currentWeek;
     }
   }
   return guilds;
