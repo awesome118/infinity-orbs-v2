@@ -1169,6 +1169,7 @@ export function createInitialState(now = Date.now()): PlayerState {
 
     lastFrenzyDate: '',
     lastFrenzyClaimDate: '',
+    frenzyClaimedPosts: {},
     communityRewardClaimedTier: 0,
     currentRunRolls: 0,
     questsCompleted: 0,
@@ -1178,6 +1179,7 @@ export function createInitialState(now = Date.now()): PlayerState {
       shardsSacrificed: 0,
       altarLevel: 0,
       luckSurgeUntil: 0,
+      altarPity: 0,
     },
     masteryPoints: 0,
     masterySkills: {
