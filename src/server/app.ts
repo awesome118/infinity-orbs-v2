@@ -500,7 +500,7 @@ export function createApp() {
       const orderId = paymentOrderId(order);
       const envelopeSku = paymentProductSku(order);
       const status = paymentOrderStatus(order);
-      const verifiedPayment = await resolvePaymentBuyerId(order, orderId, ['PAID', 'REFUNDED']);
+      const verifiedPayment = await resolvePaymentBuyerId(order, orderId, ['PAID']);
       const buyerUserId = verifiedPayment?.userId ?? '';
       const productSku = verifiedPayment?.sku ?? '';
 
@@ -582,7 +582,7 @@ export function createApp() {
     try {
       const order = normalizePaymentOrder(req.body);
       const orderId = paymentOrderId(order);
-      const verifiedPayment = await resolvePaymentBuyerId(order, orderId);
+      const verifiedPayment = await resolvePaymentBuyerId(order, orderId, ['REFUNDED']);
       const buyerUserId = verifiedPayment?.userId ?? '';
       const productSku = verifiedPayment?.sku ?? '';
 
