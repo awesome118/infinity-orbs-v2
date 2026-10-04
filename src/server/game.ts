@@ -960,7 +960,7 @@ export async function setGlobalBoosterDebugState(
   if (!GLOBAL_BOOSTERS[id]) throw new Error('Unknown Global Booster.');
 
   const now = Date.now();
-  const safeTier = Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(Number(tier) || 0)));
+  const safeTier = Math.max(0, Math.min(GLOBAL_BOOSTER_MAX_TIER, Math.floor(Number(tier) || 0)));
   const safeMinutes = Math.max(1, Math.floor(Number(minutes) || 30));
   const snapshot = await getGlobalBoosters();
   const previous = snapshot[id];
@@ -1643,6 +1643,14 @@ export async function flushPendingPlayerOperations(
 
       s.pendingOperations = originalOperations.filter(existing => existing.id !== operation.id);
       await save(s);
+      // Once the cleared pending operation is durably saved on the player,
+      // its cross-store idempotency marker can be reclaimed. Keeping it forever
+      // would leak one Redis key per roll/quest/booster activation.
+      if (operation.type === 'global-booster') {
+        await redis.del('io:global-booster-op:v1:' + operation.id).catch(() => undefined);
+      } else {
+        await redis.del('io:social-op:v1:' + operation.id).catch(() => undefined);
+      }
     } catch (error) {
       s.shards = originalShards;
       s.globalBoosters = originalGlobalBoosters;
