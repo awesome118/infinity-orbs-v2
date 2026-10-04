@@ -678,10 +678,16 @@ export function createApp() {
       const data = req.body?.data ?? {};
       const userId = String(data.userId ?? '').trim();
       const subredditName = String(data.subredditName ?? '').trim();
-      if (!userId || !subredditName) {
-        return res.status(400).json({ status: 'error', message: 'Missing offline notification job data.' });
+      const saveGeneration = Number(data.saveGeneration);
+      if (
+        !userId ||
+        !subredditName ||
+        !Number.isSafeInteger(saveGeneration) ||
+        saveGeneration < 0
+      ) {
+        return res.status(400).json({ status: 'error', message: 'Invalid offline notification job data.' });
       }
-      await processOfflineFullNotification(userId, subredditName);
+      await processOfflineFullNotification(userId, subredditName, saveGeneration);
       return res.status(200).json({ status: 'ok' });
     } catch (e) {
       console.error('Offline-orbs-full scheduler failed:', e);
@@ -1011,10 +1017,28 @@ export function createApp() {
       if (message.length > 2000) return res.status(400).json({ error: 'Please keep feedback under 2,000 characters.' });
 
       const feedbackUserId = String(context.userId ?? '').trim();
+      if (!feedbackUserId) return res.status(401).json({ error: 'REDDIT_LOGIN_REQUIRED' });
       const feedbackRateKey = `io:feedback-rate:${feedbackUserId}`;
-      const lastFeedbackAt = Number(await redis.get(feedbackRateKey) ?? 0) || 0;
-      if (Date.now() - lastFeedbackAt < 60_000) {
-        return res.status(429).json({ error: 'Please wait before sending more feedback.' });
+      let feedbackReservation: string | null = null;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const now = Date.now();
+        const txn = await redis.watch(feedbackRateKey);
+        const rawRate = await redis.get(feedbackRateKey);
+        const lastFeedbackAt = rawRate?.startsWith('pending:')
+          ? now
+          : Number(rawRate ?? 0) || 0;
+        if (now - lastFeedbackAt < 60_000) {
+          await txn.unwatch();
+          return res.status(429).json({ error: 'Please wait before sending more feedback.' });
+        }
+        feedbackReservation = `pending:${now}`;
+        await txn.multi();
+        await txn.set(feedbackRateKey, feedbackReservation);
+        if (await txn.exec()) break;
+        feedbackReservation = null;
+      }
+      if (!feedbackReservation) {
+        return res.status(429).json({ error: 'Please retry feedback in a moment.' });
       }
       const subredditName = String(context.subredditName ?? '').trim();
       const subredditId = String(context.subredditId ?? '').trim();
@@ -1029,14 +1053,26 @@ export function createApp() {
         `**From:** u/${username}\\n\\n` +
         message;
 
-      const conversationId = await reddit.modMail.createModInboxConversation({
-        subredditId,
-        subject,
-        bodyMarkdown,
-      });
-      await redis.set(feedbackRateKey, String(Date.now()));
-
-      res.json({ success: true, conversationId });
+      try {
+        const conversationId = await reddit.modMail.createModInboxConversation({
+          subredditId,
+          subject,
+          bodyMarkdown,
+        });
+        await redis.set(feedbackRateKey, String(Date.now()));
+        res.json({ success: true, conversationId });
+      } catch (error) {
+        const cleanup = await redis.watch(feedbackRateKey);
+        const currentRate = await redis.get(feedbackRateKey);
+        if (currentRate === feedbackReservation) {
+          await cleanup.multi();
+          await cleanup.del(feedbackRateKey);
+          await cleanup.exec();
+        } else {
+          await cleanup.unwatch();
+        }
+        throw error;
+      }
     } catch (e) {
       badRequest(res, e, 'Could not send feedback to modmail.');
     }
