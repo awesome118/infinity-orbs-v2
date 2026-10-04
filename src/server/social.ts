@@ -112,7 +112,7 @@ function currentGuild(guilds: Guild[]): Guild | undefined {
   return guilds.find(g => g.members.some(member => memberMatches(member)));
 }
 
-function maxGuildMembers(guild: Guild): number {
+function maxGuildMembersForGuild(guild: Guild): number {
   return 10 + Math.min(40, Math.max(0, Math.floor(guild.perks?.memberCapacityRank ?? 0)));
 }
 
@@ -502,7 +502,7 @@ export async function joinGuild(guildId: string) {
     }
     const guild = guilds.find(g => g.id === guildId);
     if (!guild) throw new Error('Guild not found.');
-    const capacity = maxGuildMembers(guild);
+    const capacity = maxGuildMembersForGuild(guild);
     if (guild.members.length >= capacity) {
       throw new Error(`That guild is full (${guild.members.length}/${capacity}).`);
     }
@@ -598,10 +598,10 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
   try {
     if (value <= 0) return;
     await updateGuilds(guilds => {
-      const guild = guilds.find(g => g.members.some(m => m.username === username()));
+      const guild = guilds.find(g => g.members.some(m => memberMatches(m)));
       if (!guild) return;
 
-      const member = guild.members.find(m => m.username === username());
+      const member = guild.members.find(m => memberMatches(m));
       if (!member) return;
 
       const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * 0.10;
