@@ -2479,6 +2479,7 @@ async function scheduleOfflineFullNotification(
   userId: string,
   subredditName: string,
   runAt: number,
+  expectedGeneration?: number,
 ): Promise<void> {
   if (!subredditName || !userId) return;
   if (await redis.get(OFFLINE_FULL_NOTIFICATION_PREFIX + userId)) return;
@@ -2486,7 +2487,9 @@ async function scheduleOfflineFullNotification(
 
   const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
   const generationRaw = await redis.get(saveGenerationKeyFor(userId));
-  const saveGeneration = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
+  const saveGeneration = expectedGeneration == null
+    ? Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0)
+    : Math.max(0, Math.floor(Number(expectedGeneration) || 0));
   const reservationTimeoutMs = 10 * 60_000;
   let reservation: string | null = null;
 
