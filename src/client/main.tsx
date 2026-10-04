@@ -1445,9 +1445,8 @@ export function App() {
       if (current.unlockedCosmetics.includes(id)) return { ...current, activeCosmetic: id };
       if (current.coins < cosmetic.costCoins || (current.shards ?? 0) < cosmetic.costShards) return current;
       return {
-        ...current,
-        coins: current.coins - cosmetic.costCoins,
         ...optimisticSpendShards(current, cosmetic.costShards),
+        coins: current.coins - cosmetic.costCoins,
         unlockedCosmetics: [...current.unlockedCosmetics, id],
         activeCosmetic: id,
       };
@@ -1558,9 +1557,8 @@ export function App() {
     const rollback = beginOptimisticState(current => {
       if (current.coins < coins || (current.shards ?? 0) < shards) return current;
       return {
-        ...current,
-        coins: current.coins - coins,
         ...optimisticSpendShards(current, shards),
+        coins: current.coins - coins,
         guildContribution: (current.guildContribution ?? 0) + coins + shards * 1000,
       };
     });
