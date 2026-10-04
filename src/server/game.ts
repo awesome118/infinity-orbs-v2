@@ -142,7 +142,7 @@ function settlementPersistenceSignature(s: PlayerState): string {
     unlockedCosmetics: s.unlockedCosmetics, turboRollUntil: s.turboRollUntil, activeBoosters: s.activeBoosters,
     automations: s.automations, freeShardsEarnedToday: s.freeShardsEarnedToday,
     purchasedShards: s.purchasedShards, purchasedShardLots: s.purchasedShardLots,
-    globalBoosterCredits: s.globalBoosterCredits, lastFrenzyDate: s.lastFrenzyDate,
+    globalBoosterCredits: s.globalBoosterCredits, frenzyClaimedPosts: s.frenzyClaimedPosts, lastFrenzyDate: s.lastFrenzyDate,
     lastFrenzyClaimDate: s.lastFrenzyClaimDate, communityRewardClaimedTier: s.communityRewardClaimedTier,
     currentRunRolls: s.currentRunRolls, questsCompleted: s.questsCompleted, guildContribution: s.guildContribution,
     sacrifices: s.sacrifices, masteryPoints: s.masteryPoints, masterySkills: s.masterySkills,
