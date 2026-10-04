@@ -1,4 +1,5 @@
 import { context, redis } from './devvit-mock.js';
+import { withPlayerMutationLockFor } from './player-lock.js';
 import type {
   Guild,
   LeaderboardEntry,
@@ -986,6 +987,7 @@ export async function achievements(s: PlayerState): Promise<Achievement[]> {
 }
 
 export async function claimAchievement(_s: PlayerState, id: string) {
+  return withPlayerMutationLockFor(user(), async () => {
   const achievement = ACHIEVEMENTS.find(a => a.id === id);
   if (!achievement) throw new Error('Achievement not found.');
 
@@ -1022,6 +1024,7 @@ export async function claimAchievement(_s: PlayerState, id: string) {
     }
 
     state.claimedAchievements.push(id);
+    state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
     state.coins += achievement.rewardCoins;
     state.lifetimeCoins = (state.lifetimeCoins ?? 0) + achievement.rewardCoins;
     const rewardShards = grantFreeShards(state, achievement.rewardShards ?? 0);
@@ -1035,7 +1038,9 @@ export async function claimAchievement(_s: PlayerState, id: string) {
   }
 
   throw new Error('Player data changed while claiming the achievement. Please retry.');
-}
+
+    });
+  }
 
 export function shareText(s: PlayerState, rarity: number) {
   return `I just found a 1/${rarity.toLocaleString()} Orb in Infinity Orbs!\n\nPlayer: ${username()}\nRoll #${s.totalRolls.toLocaleString()} • Collection Value ${s.collectionValue.toLocaleString()}\n\nCan you beat probability?`;
