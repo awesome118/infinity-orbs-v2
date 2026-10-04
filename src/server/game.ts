@@ -964,11 +964,13 @@ export async function setGlobalBoosterDebugState(
   const safeMinutes = Math.max(1, Math.floor(Number(minutes) || 30));
   const snapshot = await getGlobalBoosters();
   const previous = snapshot[id];
-  const cappedTier = id === 'speed' ? Math.min(10, safeTier) : safeTier;
+  const cappedTier = Math.min(GLOBAL_BOOSTER_MAX_TIER, safeTier);
   const next = {
     tier: cappedTier,
     activationProgress: 0,
-    endsAt: cappedTier === 0 ? 0 : now + safeMinutes * 60_000,
+    endsAt: cappedTier === 0
+      ? 0
+      : now + Math.min(safeMinutes * 60_000, GLOBAL_BOOSTER_BAR_DURATION_MS),
   };
   snapshot[id] = next;
   await redis.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(snapshot));
