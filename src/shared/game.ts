@@ -1549,7 +1549,7 @@ export function predictRollActivation(
     masterySkills: { ...(sourceState.masterySkills ?? {}) },
     collection: { ...(sourceState.collection ?? {}) },
     globalBoosters: sourceState.globalBoosters
-      ? JSON.parse(JSON.stringify(sourceState.globalBoosters)) as GlobalBoostersSnapshot
+      ? JSON.parse(JSON.stringify(sourceState.globalBoosters)) as GlobalBoosterSnapshot
       : sourceState.globalBoosters,
   };
   const rng = createSeededRandom(seed);
@@ -1715,7 +1715,7 @@ export function predictRollActivation(
     rolledAt: Date.now(),
     tier: bestInfo.tier,
     name: bestInfo.name,
-    isNew: true,
+    isNew: (sourceState.collection?.[String(bestRarity)] ?? 0) <= 0,
     isCrit: bestRarity > (sourceState.highestRarity ?? 0),
   };
 
