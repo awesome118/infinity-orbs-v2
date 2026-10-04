@@ -52,7 +52,6 @@ import {
   buyGuildPerk,
   setGuildTrust,
   setGuildTaxRate,
-  donateToGuild,
   donateToGuildAtomic,
   leaderboard,
   recordLeaderboard,
@@ -1089,18 +1088,10 @@ export function createApp() {
       }
       const numCoins = Math.floor(numCoinsRaw);
       const numShards = Math.floor(numShardsRaw);
-      const s = await getMe();
-      if (s.coins < numCoins) throw new Error('Not enough coins.');
-      if ((s.shards ?? 0) < numShards) throw new Error('Not enough shards.');
-      s.coins -= numCoins;
-      s.shards = (s.shards ?? 0) - numShards;
-      s.guildContribution = (s.guildContribution ?? 0) + numCoins + (numShards * 1000);
-      await save(s);
-      const result = await donateToGuild(numCoins, numShards);
-      res.json({ ...result, state: s });
+      const result = await donateToGuildAtomic(numCoins, numShards);
+      res.json(result);
     } catch (e) { badRequest(res, e, 'Donation failed.'); }
   });
-
   app.post('/api/share', async (req, res) => {
     try {
       const s = await getMe();
