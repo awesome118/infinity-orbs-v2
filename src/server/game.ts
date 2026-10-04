@@ -2751,7 +2751,7 @@ export async function roll(isAuto = false): Promise<RollResponse> {
   s.lastRollAt = now;
   s.lastSeenAt = now;
   await save(s);
-  const rollSideEffects = await flushPendingPlayerOperations(s, pendingOperationId);
+  const rollSideEffects = await flushPendingPlayerOperations(s);
   shardsGained += rollSideEffects.bossRewardShards;
   try {
     await recordLeaderboard(s);
@@ -2794,7 +2794,7 @@ export async function claimOffline(): Promise<RollResponse> {
   s.lastRollAt = now;
   s.lastSeenAt = now;
   await save(s);
-  const offlineSideEffects = await flushPendingPlayerOperations(s, pendingOperationId);
+  const offlineSideEffects = await flushPendingPlayerOperations(s);
   shardsGained += offlineSideEffects.bossRewardShards;
   try {
     await recordLeaderboard(s);
@@ -2954,6 +2954,7 @@ export async function claimQuest(type: 'daily' | 'weekly', id: string): Promise<
   }
 
   await save(s);
+  await flushPendingPlayerOperations(s);
   await appendPlayerSpyLog('quest-claim', {
     type,
     questId: id,
