@@ -1438,7 +1438,6 @@ export function App() {
       if (!cosmetic) return current;
       if (current.unlockedCosmetics.includes(id)) return { ...current, activeCosmetic: id };
       if (current.coins < cosmetic.costCoins || (current.shards ?? 0) < cosmetic.costShards) return current;
-      const purchased = current.purchasedShards ?? 0;
       return {
         ...current,
         coins: current.coins - cosmetic.costCoins,
