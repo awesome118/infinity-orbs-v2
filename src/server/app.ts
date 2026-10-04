@@ -579,7 +579,7 @@ export function createApp() {
       });
     }
   });
-  app.post('/api/payments/reconcile', async (_req, res) => {
+  app.post('/api/payments/reconcile', async (req, res) => {
     try {
       const userId = String(context.userId ?? '').trim();
       if (!userId) return res.status(401).json({ error: 'REDDIT_LOGIN_REQUIRED' });
@@ -1104,8 +1104,8 @@ export function createApp() {
     try {
       const s = await getMe();
       const value = Number(req.body?.rarity);
-      if (!Number.isSafeInteger(value) || value <= 0 || (s.collection[String(value)] ?? 0) <= 0) {
-        return res.status(400).json({ error: 'You can only share an orb you actually own.' });
+      if (!Number.isSafeInteger(value) || value < 100 || (s.collection[String(value)] ?? 0) <= 0) {
+        return res.status(400).json({ error: 'You can only share a Rare (1/100+) orb you actually own.' });
       }
       if (s.lastShareAt && Date.now() - s.lastShareAt < 30_000) {
         return res.status(429).json({ error: 'Please wait before sharing another orb.' });
