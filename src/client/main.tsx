@@ -676,7 +676,7 @@ export function App() {
   }, [applyPlayerState, beginOptimisticState, tab]);
 
   // Roll action
-  const handleRoll = useCallback((isAutoRoll = false) => {
+  const handleRoll = useCallback(async (isAutoRoll = false) => {
     if (rollActionLockRef.current) return;
     const currentState = stateRef.current;
     if (!currentState) return;
@@ -794,7 +794,7 @@ export function App() {
   }, [autoRoll, state, readyAt, isRolling, handleRoll]);
 
   // Buy Standard Upgrade
-  const handleBuyUpgrade = (id: UpgradeId) => {
+  const handleBuyUpgrade = async (id: UpgradeId) => {
     const currentState = stateRef.current;
     if (!currentState) return;
 
@@ -862,7 +862,7 @@ export function App() {
   };
 
   // Upgrade All Standard Upgrades
-  const handleBuyAllUpgrades = () => {
+  const handleBuyAllUpgrades = async () => {
     const currentState = stateRef.current;
     if (!currentState) return;
 
