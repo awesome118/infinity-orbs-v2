@@ -59,7 +59,7 @@ jobs:
 
       - name: Verify Devvit authentication
         env:
-          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_AUTH_TOKEN }}
           DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
         run: |
           set -euo pipefail
