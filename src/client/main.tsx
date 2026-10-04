@@ -168,6 +168,42 @@ async function getJsonWithTimeout<T>(url: string, timeoutMs = 10_000, options?: 
   }
 }
 
+function optimisticSpendShards(state: PlayerState, amount: number): PlayerState {
+  const spend = Math.max(0, Math.floor(Number(amount) || 0));
+  if (spend <= 0) return state;
+
+  const total = Math.max(0, Math.floor(Number(state.shards ?? 0) || 0));
+  const purchased = Math.min(
+    total,
+    Math.max(0, Math.floor(Number(state.purchasedShards ?? 0) || 0)),
+  );
+  const freeBalance = Math.max(0, total - purchased);
+  const purchasedToSpend = Math.min(purchased, Math.max(0, spend - freeBalance));
+  if (purchasedToSpend <= 0) {
+    return { ...state, shards: Math.max(0, total - spend) };
+  }
+
+  const lots = { ...(state.purchasedShardLots ?? {}) };
+  let remaining = purchasedToSpend;
+  for (const orderId of Object.keys(lots)) {
+    if (remaining <= 0) break;
+    const lot = Math.max(0, Math.floor(Number(lots[orderId] ?? 0) || 0));
+    const used = Math.min(lot, remaining);
+    if (used > 0) {
+      lots[orderId] = lot - used;
+      if (lots[orderId] <= 0) delete lots[orderId];
+      remaining -= used;
+    }
+  }
+
+  return {
+    ...state,
+    shards: Math.max(0, total - spend),
+    purchasedShards: Math.max(0, purchased - (purchasedToSpend - remaining)),
+    purchasedShardLots: lots,
+  };
+}
+
 export function App() {
   const [state, setState] = useState<PlayerState | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
@@ -276,6 +312,9 @@ export function App() {
   const [newBestModalData, setNewBestModalData] = useState<{ orb: Orb; prevBest: number } | null>(null);
   const [frenzyRunTriggered, setFrenzyRunTriggered] = useState(false);
   const stateRevisionRef = useRef(0);
+  const refreshSequenceRef = useRef(0);
+  const worldEventRequestRef = useRef(0);
+  const worldEventMutationRef = useRef(0);
   const appliedServerRevisionRef = useRef(-1);
   const lastBoosterAnnouncementAtRef = useRef(0);
   const boosterAnnouncementTimerRef = useRef<number | null>(null);
@@ -379,7 +418,9 @@ export function App() {
   }, [applyPlayerState, autoRoll, beginOptimisticState, showToast]);
 
   const refreshAll = useCallback(async () => {
+    const refreshId = ++refreshSequenceRef.current;
     const revisionAtStart = stateRevisionRef.current;
+    const worldMutationAtStart = worldEventMutationRef.current;
     try {
       // Load the player's state first. Admin/debug status is auxiliary and must
       // never block the entire game from rendering if that endpoint is slow.
@@ -389,7 +430,7 @@ export function App() {
       } catch {
         // sessionStorage can be unavailable in some embedded webviews.
       }
-      if (revisionAtStart !== stateRevisionRef.current) return;
+      if (revisionAtStart !== stateRevisionRef.current || refreshId !== refreshSequenceRef.current) return;
       applyPlayerState(me);
       setAuthRequired(false);
       setStartupError(null);
@@ -410,9 +451,10 @@ export function App() {
         getJson<{ enabled: boolean }>('/api/notifications').catch(() => ({ enabled: false })),
       ]);
 
+      if (refreshId !== refreshSequenceRef.current) return;
       setLeaderboardData(lb);
       setGuildData(gd);
-      if (we) setWorldEvent(we);
+      if (we && worldMutationAtStart === worldEventMutationRef.current) setWorldEvent(we);
       if (announcement) setDeveloperAnnouncement(announcement);
       setNotificationsEnabled(notificationState.enabled === true);
     } catch (e: any) {
@@ -495,8 +537,16 @@ export function App() {
   useEffect(() => {
     const pollInterval = tab === 'social' ? 3000 : 8000;
     const interval = setInterval(() => {
+      const requestId = ++worldEventRequestRef.current;
+      const mutationAtRequest = worldEventMutationRef.current;
       void getJson<WorldEvent>('/api/world-event').then(we => {
-        if (we) setWorldEvent(we);
+        if (
+          we &&
+          requestId === worldEventRequestRef.current &&
+          mutationAtRequest === worldEventMutationRef.current
+        ) {
+          setWorldEvent(we);
+        }
       }).catch(() => null);
 
       if (tab === 'social') {
@@ -649,6 +699,7 @@ export function App() {
     // Start the cooldown immediately. The server response reconciles the exact
     // cooldown once the authoritative roll has completed.
     setReadyAt(Date.now() + cooldownMs(previousState ?? state!, isAutoRoll));
+    worldEventMutationRef.current += 1;
     setWorldEvent(prev => (
       prev
         ? { ...prev, currentProgress: prev.currentProgress + predictedRolls }
@@ -810,7 +861,7 @@ export function App() {
         : 30 * 60 * 1000;
       return {
         ...current,
-        shards: current.shards - 5,
+        ...optimisticSpendShards(current, 5),
         turboRollUntil: Math.max(now, current.turboRollUntil ?? 0) + durationMs,
       };
     });
@@ -881,7 +932,7 @@ export function App() {
       const purchased = current.purchasedShards ?? 0;
       return {
         ...current,
-        shards: current.shards - 25,
+        ...optimisticSpendShards(current, 25),
       };
     });
     try {
@@ -929,7 +980,7 @@ export function App() {
       const purchased = current.purchasedShards ?? 0;
       return {
         ...current,
-        shards: current.shards - info.costShards,
+        ...optimisticSpendShards(current, info.costShards),
         activeBoosters: {
           ...(current.activeBoosters ?? {}),
           [id]: Math.max(Date.now(), current.activeBoosters?.[id] ?? 0) + info.durationMs,
@@ -1263,6 +1314,7 @@ export function App() {
         offlineRolls: 0,
         rollsSinceBest: 0,
         currentRunRolls: 0,
+        manualRolls: 0,
         lastRollAt: null,
       };
     });
@@ -1323,7 +1375,7 @@ export function App() {
       const purchased = current.purchasedShards ?? 0;
       return {
         ...current,
-        shards: current.shards - 10,
+        ...optimisticSpendShards(current, 10),
         cosmicDust: (current.cosmicDust ?? 0) + 1,
       };
     });
@@ -1374,7 +1426,7 @@ export function App() {
       return {
         ...current,
         coins: current.coins - cosmetic.costCoins,
-        shards: current.shards - cosmetic.costShards,
+        ...optimisticSpendShards(current, cosmetic.costShards),
         unlockedCosmetics: [...current.unlockedCosmetics, id],
         activeCosmetic: id,
       };
@@ -1488,7 +1540,7 @@ export function App() {
       return {
         ...current,
         coins: current.coins - coins,
-        shards: (current.shards ?? 0) - shards,
+        ...optimisticSpendShards(current, shards),
         guildContribution: (current.guildContribution ?? 0) + coins + shards * 1000,
       };
     });
