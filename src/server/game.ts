@@ -58,6 +58,8 @@ import {
   codexDevotionLuckPercent,
   altarCoinDevotionChancePercent,
   altarCoinFloor,
+  createSeededRandom,
+  rollTicketSeed,
 } from '../shared/game.js';
 import {
   contribute,
@@ -90,6 +92,10 @@ const OFFLINE_FULL_NOTIFICATION_PREFIX = 'io:offline-full-notified:';
 const OFFLINE_FULL_JOB_PREFIX = 'io:offline-full-job:';
 const OFFLINE_FULL_RETRY_MS = 5 * 60_000;
 const PLAYER_FLAIR_KEY_PREFIX = 'io:player-flair:';
+const ROLL_TICKET_KEY_PREFIX = 'io:roll-ticket:';
+const ROLL_TICKET_COUNT = 30;
+const ROLL_TICKET_TTL_MS = 10 * 60_000;
+const PLAYER_MUTATION_LOCK_PREFIX = 'io:player-mutation-lock:';
 
 const PLAYER_SPY_LOG_KEY_PREFIX = 'io:player-spy:v1:';
 const PLAYER_SPY_LOG_LIMIT = 500;
@@ -1534,7 +1540,124 @@ export async function getGlobalBoosterAnnouncement(): Promise<{
   }
 }
 
-export async function save(s: PlayerState) {
+interface RollTicket {
+  id: string;
+  seed: number;
+  nextIndex: number;
+  expiresAt: number;
+}
+
+function rollTicketKey(userId = currentUserId()): string {
+  return ROLL_TICKET_KEY_PREFIX + userId;
+}
+
+function randomUint32(): number {
+  const sample = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(sample);
+  return sample[0];
+}
+
+export async function getRollTicket(): Promise<{
+  ticketId: string;
+  seed: number;
+  nextIndex: number;
+  rollsRemaining: number;
+  expiresAt: number;
+}> {
+  const ticketKey = rollTicketKey();
+  const now = Date.now();
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const txn = await redis.watch(ticketKey);
+    const raw = await redis.get(ticketKey);
+    const current = parseStoredJson<RollTicket>(raw);
+
+    if (
+      current &&
+      current.id &&
+      Number.isFinite(current.seed) &&
+      current.nextIndex >= 0 &&
+      current.nextIndex < ROLL_TICKET_COUNT &&
+      current.expiresAt > now
+    ) {
+      await txn.unwatch();
+      return {
+        ticketId: current.id,
+        seed: current.seed,
+        nextIndex: current.nextIndex,
+        rollsRemaining: ROLL_TICKET_COUNT - current.nextIndex,
+        expiresAt: current.expiresAt,
+      };
+    }
+
+    const ticket: RollTicket = {
+      id: `rt-${now.toString(36)}-${randomUint32().toString(36)}`,
+      seed: randomUint32(),
+      nextIndex: 0,
+      expiresAt: now + ROLL_TICKET_TTL_MS,
+    };
+
+    await txn.multi();
+    await txn.set(ticketKey, JSON.stringify(ticket));
+    const committed = await txn.exec();
+    if (committed !== null) {
+      return {
+        ticketId: ticket.id,
+        seed: ticket.seed,
+        nextIndex: 0,
+        rollsRemaining: ROLL_TICKET_COUNT,
+        expiresAt: ticket.expiresAt,
+      };
+    }
+  }
+
+  throw new Error('Could not create a roll prediction ticket. Please retry.');
+}
+
+async function loadRollTicketForUse(
+  ticketId: string,
+  ticketIndex: number,
+): Promise<{ ticket: RollTicket; raw: string }> {
+  const raw = await redis.get(rollTicketKey());
+  const ticket = parseStoredJson<RollTicket>(raw);
+
+  if (!raw || !ticket) throw new Error('Roll prediction ticket is unavailable. Refresh the game.');
+  if (ticket.id !== ticketId) throw new Error('Roll prediction ticket is stale. Refresh the game.');
+  if (ticket.expiresAt <= Date.now()) throw new Error('Roll prediction ticket expired. Refresh the game.');
+  if (ticketIndex !== ticket.nextIndex) throw new Error('Roll prediction ticket is out of order. Refresh the game.');
+  if (ticketIndex < 0 || ticketIndex >= ROLL_TICKET_COUNT) {
+    throw new Error('Roll prediction ticket is exhausted. Refresh the game.');
+  }
+
+  return { ticket, raw };
+}
+
+export async function withPlayerMutationLock<T>(fn: () => Promise<T>): Promise<T> {
+  const lockKey = PLAYER_MUTATION_LOCK_PREFIX + currentUserId();
+  const token = `lock-${Date.now().toString(36)}-${randomUint32().toString(36)}`;
+
+  for (let attempt = 0; attempt < 80; attempt++) {
+    // Devvit Redis supports NX + expiration for short-lived atomic leases.
+    await redis.set(lockKey, token, { nx: true, expiration: 15 });
+    const owner = await redis.get(lockKey);
+    if (owner === token) {
+      try {
+        return await fn();
+      } finally {
+        const currentOwner = await redis.get(lockKey);
+        if (currentOwner === token) await redis.del(lockKey);
+      }
+    }
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+
+  throw new Error('Player state is busy. Please retry.');
+}
+
+export async function save(
+  s: PlayerState,
+  extraWrite?: { key: string; expectedValue: string | null; nextValue: string },
+) {
   const userId = currentUserId();
   s.codexChain = highestCodexChain(s.collection);
   s.codexDevotionLuckPercent = codexDevotionLuckPercent(
@@ -1548,11 +1671,18 @@ export async function save(s: PlayerState) {
   const expectedRevision = Math.max(0, Math.floor(Number(s.stateRevision ?? 0)) || 0);
 
   for (let attempt = 0; attempt < 6; attempt++) {
-    const txn = await redis.watch(playerKey, generationKey);
+    const watchedKeys = extraWrite ? [playerKey, generationKey, extraWrite.key] : [playerKey, generationKey];
+    const txn = await redis.watch(...watchedKeys);
     // Devvit's TxClient is a command builder after WATCH/MULTI. Reads must use
     // the Redis client itself, while WATCH keeps these keys protected until EXEC.
     const latestRaw = await redis.get(playerKey);
     const generationRaw = await redis.get(generationKey);
+    const extraRaw = extraWrite ? await redis.get(extraWrite.key) : null;
+
+    if (extraWrite && extraRaw !== extraWrite.expectedValue) {
+      await txn.unwatch();
+      throw new Error('Roll prediction ticket changed. Refresh the game.');
+    }
     const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
     const stateGeneration = Math.max(0, Math.floor(Number(s.saveGeneration ?? 0)));
 
@@ -1635,6 +1765,7 @@ export async function save(s: PlayerState) {
     const nextState = { ...s, saveGeneration: generation, stateRevision: expectedRevision + 1 };
     await txn.multi();
     await txn.set(playerKey, JSON.stringify(nextState));
+    if (extraWrite) await txn.set(extraWrite.key, extraWrite.nextValue);
     const committed = await txn.exec();
     if (committed !== null) {
       Object.assign(s, nextState);
@@ -1722,7 +1853,8 @@ export async function applyRolls(
   activationCount = 1,
   forcedRarity?: number,
   source: 'online' | 'offline' = 'online',
-  rollCountOverride?: number
+  rollCountOverride?: number,
+  randomOverride?: () => number,
 ): Promise<{ bestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number; rollCount: number }> {
   let bestRarity = 0;
   let totalVal = 0;
@@ -1745,7 +1877,7 @@ export async function applyRolls(
     highestRarity: s.highestRarity,
   };
   const requestedRollCount = rollCount;
-  const rng = serverRandom;
+  const rng = randomOverride ?? serverRandom;
 
   // Astral Magnetism proc: chance for multi-rolls to pull 2 bonus orbs
   const magnetLevel = s.prestigeUpgrades?.stellarMagnet ?? 0;
@@ -2234,7 +2366,8 @@ export async function getCollectionPage(options: {
 }
 
 export async function getState(): Promise<PlayerState> {
-  const maxRetries = 4;
+  return withPlayerMutationLock(async () => {
+    const maxRetries = 4;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -2269,7 +2402,8 @@ export async function getState(): Promise<PlayerState> {
     }
   }
 
-  throw new Error('Could not load player state.');
+    throw new Error('Could not load player state.');
+  });
 }
 
 export async function getMe(): Promise<PlayerState> {
@@ -2306,62 +2440,98 @@ export async function setAutoRollEnabled(enabled: boolean): Promise<PlayerState>
   return s;
 }
 
-export async function roll(isAuto = false): Promise<RollResponse> {
-  const s = await settleOffline(await loadRaw());
-  if (isAuto && (s.upgrades.auto ?? 0) <= 0) {
-    throw new Error('Auto Roll is not unlocked yet.');
-  }
-  const now = Date.now();
-  const cd = cooldownMs(s, isAuto);
-  if (s.lastRollAt !== null && now - s.lastRollAt < cd) {
-    throw new Error(`Cooldown: ${((cd - now + s.lastRollAt) / 1000).toFixed(1)}s`);
-  }
+export async function roll(
+  isAuto = false,
+  ticketId?: string,
+  ticketIndex?: number,
+): Promise<RollResponse> {
+  return withPlayerMutationLock(async () => {
+    let ticketUse:
+      | { ticket: RollTicket; raw: string; index: number; nextValue: string }
+      | undefined;
 
-  const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } = await applyRolls(s);
-
-  // Only direct manual roll activations count toward the Auto Roll unlock.
-  if (!isAuto) {
-    s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + 1);
-    if (s.manualRolls >= 3) {
-      s.upgrades.auto = 1;
+    if (ticketId != null || ticketIndex != null) {
+      if (!ticketId || !Number.isSafeInteger(ticketIndex)) {
+        throw new Error('Invalid roll prediction ticket.');
+      }
+      const loaded = await loadRollTicketForUse(ticketId, ticketIndex);
+      const nextTicket: RollTicket = {
+        ...loaded.ticket,
+        nextIndex: loaded.ticket.nextIndex + 1,
+      };
+      ticketUse = {
+        ticket: loaded.ticket,
+        raw: loaded.raw,
+        index: ticketIndex,
+        nextValue: JSON.stringify(nextTicket),
+      };
     }
-  }
 
-  s.lastRollAt = now;
-  s.lastSeenAt = now;
-  await save(s);
+    const s = await settleOffline(await loadRaw());
+    if (isAuto && (s.upgrades.auto ?? 0) <= 0) {
+      throw new Error('Auto Roll is not unlocked yet.');
+    }
 
-  // Leaderboard and diagnostics are not required to confirm the roll. Run them
-  // after persistence succeeds without blocking the HTTP response.
-  void recordLeaderboard(s).catch(error => {
-    console.error('[Leaderboard] Background update failed:', error);
+    const now = Date.now();
+    const cd = cooldownMs(s, isAuto);
+    if (s.lastRollAt !== null && now - s.lastRollAt < cd) {
+      throw new Error(`Cooldown: ${((cd - now + s.lastRollAt) / 1000).toFixed(1)}s`);
+    }
+
+    const deterministicRng = ticketUse
+      ? createSeededRandom(rollTicketSeed(ticketUse.ticket.seed, ticketUse.index))
+      : undefined;
+    const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } =
+      await applyRolls(s, 1, undefined, 'online', undefined, deterministicRng);
+
+    if (!isAuto) {
+      s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + 1);
+      if (s.manualRolls >= 3) s.upgrades.auto = 1;
+    }
+
+    s.lastRollAt = now;
+    s.lastSeenAt = now;
+
+    await save(
+      s,
+      ticketUse
+        ? {
+            key: rollTicketKey(),
+            expectedValue: ticketUse.raw,
+            nextValue: ticketUse.nextValue,
+          }
+        : undefined,
+    );
+
+    void recordLeaderboard(s).catch(error => {
+      console.error('[Leaderboard] Background update failed:', error);
+    });
+    void appendPlayerSpyLog('roll-activation', {
+      mode: isAuto ? 'auto' : 'manual',
+      processedRolls: rollCount,
+      bestRarity: bestOrb.rarity,
+      coinsGained,
+      shardsGained,
+      xpGained,
+    }).catch(error => {
+      console.error('[Player Spy] Background activation log failed:', error);
+    });
+
+    return {
+      orb: bestOrb,
+      batch,
+      totalValueGained: totalVal,
+      totalRollValue: totalVal,
+      coinsGained,
+      shardsGained,
+      xpGained,
+      state: s,
+      rollsRemainingUntilNext: cd,
+      rollsProcessed: rollCount,
+      dramaticReveal: bestOrb.rarity >= 100,
+    };
   });
-  void appendPlayerSpyLog('roll-activation', {
-    mode: isAuto ? 'auto' : 'manual',
-    processedRolls: rollCount,
-    bestRarity: bestOrb.rarity,
-    coinsGained,
-    shardsGained,
-    xpGained,
-  }).catch(error => {
-    console.error('[Player Spy] Background activation log failed:', error);
-  });
-
-  return {
-    orb: bestOrb,
-    batch,
-    totalValueGained: totalVal,
-    totalRollValue: totalVal,
-    coinsGained,
-    shardsGained,
-    xpGained,
-    state: s,
-    rollsRemainingUntilNext: cd,
-    rollsProcessed: rollCount,
-    dramaticReveal: bestOrb.rarity >= 100,
-  };
 }
-
 export async function claimOffline(): Promise<RollResponse> {
   const s = await settleOffline(await loadRaw());
   if (s.offlineRolls <= 0) throw new Error('No offline rolls waiting.');
@@ -2392,6 +2562,7 @@ export async function claimOffline(): Promise<RollResponse> {
 }
 
 export async function buyUpgrade(id: UpgradeId): Promise<PlayerState> {
+  return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const level = s.upgrades[id] ?? 0;
 
@@ -2423,6 +2594,7 @@ export async function buyUpgrade(id: UpgradeId): Promise<PlayerState> {
     snapshot: playerSpySnapshot(s),
   });
   return s;
+  });
 }
 
 export function autoBuyCheapest(s: PlayerState): boolean {
@@ -2452,6 +2624,7 @@ export function autoBuyCheapest(s: PlayerState): boolean {
 }
 
 export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent: number; upgradedCount: number }> {
+  return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const upgradeIds: UpgradeId[] = [
     'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
@@ -2492,6 +2665,7 @@ export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent
   }
 
   return { state: s, totalSpent, upgradedCount };
+  });
 }
 
 export async function claimDailyStreak(): Promise<{ state: PlayerState; rewardCoins: number; rewardShards: number; day: number }> {
