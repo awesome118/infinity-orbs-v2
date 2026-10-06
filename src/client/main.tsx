@@ -248,6 +248,8 @@ export function App() {
   const [developerAnnouncement, setDeveloperAnnouncement] = useState<{ message: string; updatedAt: number; updatedBy: string } | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState(false);
 
+  // TODO(post-verification): restore the subreddit follow prompt and +200-roll reward
+  // once the Devvit app has completed Reddit verification/approval.
   // Modals
   const [shareRarity, setShareRarity] = useState<number | null>(null);
   const [showOddsModal, setShowOddsModal] = useState<boolean>(false);
