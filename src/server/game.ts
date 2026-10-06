@@ -1917,7 +1917,10 @@ export async function applyRolls(
 
   const cm = critMultiplier(s);
   const levelBenefits = getLevelBenefits(s.level || 1);
-  const valueMul = 1 + (s.upgrades.valueBonus ?? 0) * 0.10;
+  const valueMul =
+    1 +
+    (s.upgrades.valueBonus ?? 0) * 0.10 +
+    (s.prestigeUpgrades?.cosmicValuation ?? 0) * 0.05;
 
   const critChance =
     (s.upgrades.critChance ?? 0) * 0.03 +
@@ -1996,6 +1999,7 @@ export async function applyRolls(
       (s.upgrades.shardChance ?? 0) * 0.0015 +
       (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
       (s.guildPerks?.shardRank ?? 0) * 0.0005 +
+      (s.prestigeUpgrades?.shardResonator ?? 0) * 0.0025 +
       levelBenefits.shardChance
     );
     if (rng() < shardProcChance) {
@@ -2084,13 +2088,19 @@ export async function applyRolls(
   }
   s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
 
-  // Singularity Tithe: award every threshold crossed, including large offline batches.
+  // Singularity Tithe only counts single-orb online activations. Multi-roll,
+  // auto-roll batches, and offline claims never advance this counter.
   const titheLevel = s.prestigeUpgrades?.singularityTithe ?? 0;
-  if (titheLevel > 0) {
-    const interval = Math.max(1, Math.floor(200 / titheLevel));
-    const before = Math.floor((s.totalRolls - rollCount) / interval);
-    const after = Math.floor(s.totalRolls / interval);
-    if (after > before) s.cosmicDust = (s.cosmicDust ?? 0) + (after - before);
+  if (titheLevel > 0 && source === 'online' && rollCount === 1) {
+    const before = Math.max(0, Math.floor(s.singularityTitheSingleRolls ?? 0));
+    const after = before + 1;
+    s.singularityTitheSingleRolls = after;
+    const milestonesBefore = Math.floor(before / 1_000);
+    const milestonesAfter = Math.floor(after / 1_000);
+    const milestonesCrossed = milestonesAfter - milestonesBefore;
+    if (milestonesCrossed > 0) {
+      s.cosmicDust = (s.cosmicDust ?? 0) + milestonesCrossed * titheLevel;
+    }
   }
 
   // Mastery Engine: permanent Mastery Point income from sustained rolling.
