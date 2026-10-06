@@ -1116,7 +1116,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'Activate Global Speed',
         () => request<{ state: any }>('/api/global-boosters/activate', { id: 'speed' }),
-        (result: any) => `global speed tier=${shortNumber(result.state?.globalBoosters?.speed?.tier, 0)} · ${stateSummary(result)},
+        (result: any) => `global speed tier=${shortNumber(result.state?.globalBoosters?.speed?.tier, 0)} · ${stateSummary(result)}`,
       );
       await step(
         'Set 25 Shards',
