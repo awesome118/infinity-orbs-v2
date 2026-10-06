@@ -38,6 +38,7 @@ import {
   prestigeUpgradeCost,
   SHARD_SYNTHESIS_COST,
   getLevelBenefits,
+  formatNumber,
 } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
@@ -60,7 +61,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
 }) => {
   const [confirmingPrestige, setConfirmingPrestige] = useState(false);
   const [filterCategory, setFilterCategory] = useState<'all' | 'qol' | 'core' | 'alchemy'>('all');
-  const fmt = (n: number) => n.toLocaleString();
+  const fmt = (n: number) => formatNumber(n);
 
   const currentRunVal = state.collectionValue ?? 0;
   const pendingDust = calculateCosmicDust(state);
