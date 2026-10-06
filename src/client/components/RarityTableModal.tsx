@@ -1,12 +1,14 @@
 import React from 'react';
 import { X, ShieldCheck, Coins } from 'lucide-react';
-import { CONTINUUM_TIERS, type ContinuumTierMilestone } from '../../shared/game.js';
+import { visibleContinuumTiers, type ContinuumTierMilestone } from '../../shared/game.js';
 
 interface RarityTableModalProps {
   onClose: () => void;
+  highestRarity: number;
 }
 
-export const RarityTableModal: React.FC<RarityTableModalProps> = ({ onClose }) => {
+export const RarityTableModal: React.FC<RarityTableModalProps> = ({ onClose, highestRarity }) => {
+  const visibleTiers = visibleContinuumTiers(highestRarity);
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-2xl w-full space-y-4 shadow-2xl relative max-h-[85vh] flex flex-col">
@@ -33,6 +35,11 @@ export const RarityTableModal: React.FC<RarityTableModalProps> = ({ onClose }) =
           <p className="text-slate-400">
             Orbs generate continuously: any number <code className="text-cyan-300">R ≥ 2</code> is obtainable. At 1× Luck, the chance of rolling at least R is <code className="text-cyan-300">1 / R</code>. Luck increases the tail weight with diminishing returns instead of multiplying the rolled rarity directly.
           </p>
+          {highestRarity < 9 && (
+            <p className="text-amber-300">
+              The upper half of the continuum is hidden until you discover a 1/9 orb.
+            </p>
+          )}
         </div>
 
         {/* Continuum Milestones Table */}
@@ -44,7 +51,7 @@ export const RarityTableModal: React.FC<RarityTableModalProps> = ({ onClose }) =
             <span className="text-right">Coins Yield</span>
           </div>
 
-          {CONTINUUM_TIERS.map((tier: ContinuumTierMilestone) => (
+          {visibleTiers.map((tier: ContinuumTierMilestone) => (
             <div
               key={tier.tier}
               className="grid grid-cols-4 items-center px-4 py-2.5 text-xs hover:bg-slate-900/40 transition-colors"
