@@ -3,7 +3,7 @@ import {
   X, Wrench, Coins, Gem, Sparkles, Zap, RotateCcw, Play, Shield, Megaphone,
   Users,
   Ban, UserX, CheckCircle2, RefreshCw, Flame,
-  Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy,
+  Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy, ClipboardCheck,
 } from 'lucide-react';
 import type { RollResponse } from '../../shared/game.js';
 import { sound } from '../sound.js';
@@ -279,6 +279,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     targetSubreddit: string;
   } | null>(null);
   const [followStatsLoading, setFollowStatsLoading] = useState(false);
+  const [fullTestRunning, setFullTestRunning] = useState(false);
+  const [fullTestLogs, setFullTestLogs] = useState<Array<{
+    action: string;
+    status: 'PASS' | 'FAIL' | 'SKIP';
+    durationMs: number;
+    detail: string;
+  }>>([]);
 
   const [guildChatSpy, setGuildChatSpy] = useState<Array<{
     id: string;
@@ -804,6 +811,397 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     await sendAdminAction('/api/dev/preset', { preset });
   };
 
+  const runFullComprehensiveTest = async () => {
+    if (fullTestRunning) return;
+
+    setFullTestRunning(true);
+    setFullTestLogs([]);
+    setMessage('');
+
+    const startedAt = performance.now();
+    let passed = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    const appendTestLog = (
+      action: string,
+      status: 'PASS' | 'FAIL' | 'SKIP',
+      durationMs: number,
+      detail: string,
+    ) => {
+      setFullTestLogs(previous => [
+        ...previous,
+        {
+          action,
+          status,
+          durationMs: Math.max(0, Math.round(durationMs)),
+          detail,
+        },
+      ].slice(-200));
+    };
+
+    const request = async <T,>(url: string, body?: unknown): Promise<T> => {
+      const response = await fetch(url, {
+        method: body === undefined ? 'GET' : 'POST',
+        headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof data?.error === 'string'
+            ? data.error
+            : `${response.status} ${response.statusText}`,
+        );
+      }
+      return data as T;
+    };
+
+    const step = async <T,>(
+      action: string,
+      fn: () => Promise<T>,
+      detail: (result: T) => string = () => '',
+    ): Promise<T | null> => {
+      const stepStarted = performance.now();
+      try {
+        const result = await fn();
+        passed += 1;
+        appendTestLog(action, 'PASS', performance.now() - stepStarted, detail(result));
+        return result;
+      } catch (error) {
+        failed += 1;
+        appendTestLog(
+          action,
+          'FAIL',
+          performance.now() - stepStarted,
+          error instanceof Error ? error.message : String(error),
+        );
+        return null;
+      }
+    };
+
+    const skip = (action: string, reason: string) => {
+      skipped += 1;
+      appendTestLog(action, 'SKIP', 0, reason);
+    };
+
+    const stateSummary = (result: unknown): string => {
+      const state = recordValue(recordValue(result).state);
+      const fields = [
+        `coins=${shortNumber(state.coins, 0)}`,
+        `shards=${shortNumber(state.shards, 0)}`,
+        `xp=${shortNumber(state.xp, 0)}`,
+        `level=${shortNumber(state.level, 0)}`,
+      ];
+      return fields.join(' · ');
+    };
+
+    const rollOnce = async (label: string, auto = false) => {
+      await request('/api/dev/reset-cooldown', {});
+      const ticket = await request<{
+        ticketId: string;
+        nextIndex: number;
+      }>('/api/roll-ticket');
+      return step(
+        label,
+        () => request<RollResponse>('/api/roll', {
+          auto,
+          ticketId: ticket.ticketId,
+          ticketIndex: ticket.nextIndex,
+        }),
+        result =>
+          `1/${shortNumber(result.orb?.rarity, 0)} · processed=${shortNumber(result.rollsProcessed, 0)} · coins +${shortNumber(result.coinsGained, 0)} · XP +${shortNumber(result.xpGained, 0)}`,
+      );
+    };
+
+    try {
+      await step(
+        '1. Wipe save',
+        () => request('/api/dev/reset-all', {}),
+        result => `fresh save written · ${stateSummary(result)}`,
+      );
+
+      await step(
+        '2. Seed test state',
+        () => request('/api/dev/state', {
+          coins: 1_000,
+          shards: 50,
+          xp: 100_000,
+          totalRolls: 0,
+          totalCrits: 0,
+          highestRarity: 0,
+          collectionValue: 0,
+          lifetimeCollectionValue: 0,
+          offlineRolls: 0,
+          currentRunRolls: 0,
+          rollsSinceBest: 0,
+          lastRollAt: 0,
+          lastSeenAt: Date.now(),
+          onlinePlayers: 1,
+        }),
+        result => `coins=1,000 · shards=50 · XP=100,000`,
+      );
+
+      const upgradeIds = ['speed', 'luck', 'multi', 'coinBonus', 'xpBonus', 'critChance'] as const;
+      for (const id of upgradeIds) {
+        if (['coinBonus', 'xpBonus', 'critChance'].includes(id)) {
+          await step(
+            `Set 1,000 Coins before ${id}`,
+            () => request('/api/dev/state', { coins: 1_000 }),
+            () => 'admin state mutation',
+          );
+        }
+        await step(
+          `Buy ${id}`,
+          () => request<{ state: any }>('/api/upgrade', { id }),
+          result => `${id}=${shortNumber(recordValue(recordValue(result).state).upgrades?.[id], 0)} · ${stateSummary(result)}`,
+        );
+      }
+
+      await step(
+        'Test manual roll + ticket',
+        () => rollOnce('manual roll'),
+        () => 'ticketed client roll endpoint returned authoritative state',
+      );
+
+      await step(
+        'Luck test · normal CCU sample',
+        async () => {
+          await request('/api/dev/ccu/fake', { bonus: 0 });
+          const rarities: number[] = [];
+          for (let i = 0; i < 5; i++) {
+            const result = await rollOnce(`luck baseline roll ${i + 1}`);
+            if (result) rarities.push(result.orb.rarity);
+          }
+          return rarities;
+        },
+        rarities => {
+          const values = (rarities as number[]);
+          const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+          return `n=${values.length} · avg rarity=${shortNumber(average, 0)} · best=${shortNumber(Math.max(0, ...values), 0)}`;
+        },
+      );
+
+      await step(
+        'Luck test · high CCU sample',
+        async () => {
+          await request('/api/dev/ccu/fake', { bonus: 1_000 });
+          const rarities: number[] = [];
+          for (let i = 0; i < 5; i++) {
+            const result = await rollOnce(`luck high-CCU roll ${i + 1}`);
+            if (result) rarities.push(result.orb.rarity);
+          }
+          return rarities;
+        },
+        rarities => {
+          const values = rarities as number[];
+          const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+          return `n=${values.length} · avg rarity=${shortNumber(average, 0)} · best=${shortNumber(Math.max(0, ...values), 0)}`;
+        },
+      );
+
+      await step(
+        'Clear fake CCU',
+        () => request('/api/dev/ccu/fake', { bonus: 0 }),
+        () => 'luck calculation returned to real CCU',
+      );
+
+      await step(
+        'Set 100,000 Coins',
+        () => request('/api/dev/state', { coins: 100_000 }),
+        () => 'admin currency mutation',
+      );
+
+      await step(
+        'Upgrade All',
+        () => request<{ state: any }>('/api/upgrade/all', {}),
+        result => `all standard upgrades exercised · ${stateSummary(result)}`,
+      );
+
+      const autoRoll = await rollOnce('Manual roll for Auto Roll unlock');
+      if (!autoRoll) skip('Auto Roll unlock prerequisite', 'manual roll failed');
+      const autoRoll2 = await rollOnce('Second manual roll for Auto Roll unlock');
+      if (!autoRoll2) skip('Auto Roll unlock prerequisite', 'second manual roll failed');
+      const autoRoll3 = await rollOnce('Third manual roll for Auto Roll unlock');
+      if (!autoRoll3) skip('Auto Roll unlock prerequisite', 'third manual roll failed');
+
+      const autoEnabled = await step(
+        'Enable Auto Roll',
+        () => request<{ state: any }>('/api/auto-roll', { enabled: true }),
+        result => stateSummary(result),
+      );
+      if (autoEnabled) {
+        await rollOnce('Auto Roll execution', true);
+      }
+
+      await step(
+        'Seed Offline Rolls',
+        () => request('/api/dev/state', {
+          offlineRolls: 2,
+          lastSeenAt: Date.now(),
+        }),
+        () => 'offlineRolls=2',
+      );
+      await step(
+        'Claim Offline Rolls',
+        () => request<RollResponse>('/api/offline/claim', {}),
+        result => `processed=${shortNumber(result.rollsProcessed, 0)} · ${stateSummary(result)}`,
+      );
+
+      await step(
+        'Claim Daily Streak',
+        () => request<{ state: any }>('/api/streak/claim', {}),
+        result => `streak=${shortNumber(recordValue(recordValue(result).state).streak?.count, 0)}`,
+      );
+
+      await step(
+        'Prepare Daily + Weekly Quests',
+        () => request('/api/dev/state', { questState: 'ready' }),
+        () => 'all quests marked complete and unclaimed',
+      );
+
+      const meForQuest = await step(
+        'Load quest state',
+        () => request<any>('/api/me'),
+        result => `daily=${Array.isArray(result.dailyQuests) ? result.dailyQuests.length : 0} · weekly=${Array.isArray(result.weeklyQuests) ? result.weeklyQuests.length : 0}`,
+      );
+      const firstQuestId = meForQuest && Array.isArray(meForQuest.dailyQuests) ? meForQuest.dailyQuests[0]?.id : null;
+      if (firstQuestId) {
+        await step(
+          'Claim Daily Quest',
+          () => request('/api/quests/claim', { type: 'daily', id: firstQuestId }),
+          () => `claimed ${firstQuestId}`,
+        );
+      } else {
+        skip('Claim Daily Quest', 'no daily quest id returned');
+      }
+
+      await step(
+        'Altar shard sacrifice',
+        async () => {
+          await request('/api/dev/state', { coins: 2_000, shards: 1 });
+          return request('/api/altar/sacrifice', { coins: 0, shards: 1 });
+        },
+        result => `luck surge extended=${String(result.luckSurgeExtended)} · ${stateSummary(result)}`,
+      );
+
+      await step(
+        'Seed premium Booster currency',
+        () => request('/api/dev/state', { shards: 100 }),
+        () => 'shards=100',
+      );
+      await step(
+        'Activate Prosperity booster',
+        () => request<{ state: any }>('/api/boosters/activate', { id: 'prosperity' }),
+        result => `prosperity active · ${stateSummary(result)}`,
+      );
+
+      await step(
+        'Set 50 Shards',
+        () => request('/api/dev/state', { shards: 50 }),
+        () => 'shards=50',
+      );
+      await step(
+        'Activate Global Luck',
+        () => request<{ state: any }>('/api/global-boosters/activate', { id: 'luck' }),
+        result => `global luck tier=${shortNumber(recordValue(recordValue(result).state).globalBoosters?.luck?.tier, 0)} · ${stateSummary(result)}`,
+      );
+      await step(
+        'Set 25 Shards',
+        () => request('/api/dev/state', { shards: 25 }),
+        () => 'shards=25',
+      );
+      await step(
+        'Activate Global Speed',
+        () => request<{ state: any }>('/api/global-boosters/activate', { id: 'speed' }),
+        result => `global speed tier=${shortNumber(recordValue(recordValue(result).state).globalBoosters?.speed?.tier, 0)} · ${stateSummary(result)}`,
+      );
+      await step(
+        'Set 25 Shards',
+        () => request('/api/dev/state', { shards: 25 }),
+        () => 'shards=25',
+      );
+      await step(
+        'Activate Global Crit',
+        () => request<{ state: any }>('/api/global-boosters/activate', { id: 'crit' }),
+        result => `global crit tier=${shortNumber(recordValue(recordValue(result).state).globalBoosters?.crit?.tier, 0)} · ${stateSummary(result)}`,
+      );
+
+      await step(
+        'Prepare Prestige',
+        () => request('/api/dev/state', {
+          coins: 10_000,
+          shards: 0,
+          collectionValue: 100_000_000,
+          lifetimeCollectionValue: 100_000_000,
+          lastRollAt: 0,
+        }),
+        () => 'collectionValue=100,000,000 · expected dust=10',
+      );
+
+      const prestigeResult = await step(
+        'Prestige',
+        () => request<{ state: any; dustGained: number }>('/api/prestige', {}),
+        result => `dust +${shortNumber(result.dustGained, 0)} · prestigeCount=${shortNumber(recordValue(result.state).prestigeCount, 0)}`,
+      );
+
+      if (prestigeResult) {
+        const prestigeUpgrade = await step(
+          'Buy Prestige Upgrade · permLuck',
+          () => request<{ state: any }>('/api/prestige/upgrade', { id: 'permLuck' }),
+          result => `permLuck=${shortNumber(recordValue(recordValue(result).state).prestigeUpgrades?.permLuck, 0)}`,
+        );
+        if (prestigeUpgrade) {
+          await step(
+            'Buy Mastery Skill · continuumLuck',
+            () => request<{ state: any }>('/api/mastery/upgrade', { skillId: 'continuumLuck' }),
+            result => `continuumLuck=${shortNumber(recordValue(recordValue(result).state).masterySkills?.continuumLuck, 0)}`,
+          );
+        }
+      } else {
+        skip('Buy Prestige Upgrade · permLuck', 'prestige failed');
+        skip('Buy Mastery Skill · continuumLuck', 'prestige failed');
+      }
+
+      await step(
+        'Seed Dust Synthesis',
+        () => request('/api/dev/state', { shards: 10 }),
+        () => 'shards=10',
+      );
+      await step(
+        'Synthesize Cosmic Dust',
+        () => request<{ state: any; dustEarned: number }>('/api/prestige/synthesize', {}),
+        result => `dust +${shortNumber(result.dustEarned, 0)} · ${stateSummary(result)}`,
+      );
+
+      await step(
+        'Final client state read',
+        () => request<any>('/api/me'),
+        result => `level=${shortNumber(result.level, 0)} · rolls=${shortNumber(result.totalRolls, 0)} · highest=${shortNumber(result.highestRarity, 0)} · dust=${shortNumber(result.cosmicDust, 0)}`,
+      );
+
+      const totalMs = performance.now() - startedAt;
+      setMessage(
+        `Full test finished in ${Math.round(totalMs).toLocaleString()}ms · ${passed} passed · ${failed} failed · ${skipped} skipped.`,
+      );
+      await onRefresh().catch(() => null);
+    } catch (error) {
+      const totalMs = performance.now() - startedAt;
+      failed += 1;
+      appendTestLog(
+        'Runner',
+        'FAIL',
+        totalMs,
+        error instanceof Error ? error.message : String(error),
+      );
+      setMessage(
+        `Full test aborted after ${Math.round(totalMs).toLocaleString()}ms · ${passed} passed · ${failed} failed · ${skipped} skipped.`,
+      );
+    } finally {
+      setFullTestRunning(false);
+    }
+  };
+
   const confirmation = (text: string) => window.confirm(text);
   const requestWipeConfirmation = (action: 'wipe-game' | 'wipe-and-ban' | 'wipe-and-unban') => {
     const username = targetUser.trim().replace(/^u\//i, '');
@@ -877,6 +1275,63 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
         )}
 
+        <section className={panelBase + ' border border-emerald-500/30'}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-300">
+                <ClipboardCheck className="w-4 h-4" /> Full Comprehensive Test
+              </div>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Rebuilds the current admin save, mutates test data, and drives the same client API endpoints used by gameplay. This intentionally changes the save.
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                disabled={fullTestRunning}
+                title="Run the full end-to-end admin test. This wipes and rewrites the current admin save."
+                onClick={() => {
+                  if (!window.confirm('Run the full comprehensive test? It will wipe and rewrite your current Infinity Orbs save.')) return;
+                  void runFullComprehensiveTest();
+                }}
+                className={buttonBase + ' bg-emerald-600 hover:bg-emerald-500 border-emerald-500 text-white px-3 py-2'}
+              >
+                <ClipboardCheck className="inline w-3.5 h-3.5 mr-1" />
+                {fullTestRunning ? 'Running…' : 'Run Full Test'}
+              </button>
+              <button
+                disabled={fullTestRunning || fullTestLogs.length === 0}
+                title="Copy the current comprehensive test log."
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(
+                      fullTestLogs.map(log =>
+                        `[${log.status}] ${log.action} · ${log.durationMs}ms · ${log.detail}`,
+                      ).join('\n'),
+                    );
+                    setMessage('Full comprehensive test log copied.');
+                  } catch {
+                    setMessage('Could not copy the comprehensive test log.');
+                  }
+                }}
+                className={buttonBase + ' bg-slate-900 border-slate-700 text-slate-200 px-3 py-2'}
+              >
+                <Copy className="inline w-3.5 h-3.5 mr-1" /> Copy Log
+              </button>
+            </div>
+          </div>
+
+          {fullTestLogs.length > 0 ? (
+            <pre className="max-h-96 overflow-auto rounded-xl border border-slate-800 bg-black/30 p-3 text-[10px] leading-4 font-mono text-slate-300 whitespace-pre-wrap">
+{fullTestLogs.map((log, index) =>
+  `[${log.status}] ${log.action} · ${log.durationMs}ms${log.detail ? ` · ${log.detail}` : ''}${index === fullTestLogs.length - 1 && fullTestRunning ? ' · running…' : ''}`,
+).join('\n')}
+            </pre>
+          ) : (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-center text-xs text-slate-500">
+              No comprehensive test has been run in this admin session.
+            </div>
+          )}
+        </section>
         <section className={panelBase + ' border border-orange-500/30'}>
           <div className="flex items-center justify-between gap-3">
             <div>
