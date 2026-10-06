@@ -39,6 +39,7 @@ import type {
 } from '../shared/social.js';
 import {
   formatRarity,
+  formatNumber,
   cooldownMs,
   calculateCosmicDust,
   calculateLevelFromXp,
@@ -631,7 +632,7 @@ export function App() {
           });
           setReadyAt(Date.now() + res.rollsRemainingUntilNext);
           showToast(
-            `⚡ Orb Frenzy unleashed! ${(res.frenzyCount ?? 0).toLocaleString()} Orbs rolled.`,
+            `⚡ Orb Frenzy unleashed! ${formatNumber(res.frenzyCount ?? 0)} Orbs rolled.`,
             'success',
           );
           return;
@@ -812,7 +813,7 @@ export function App() {
         id === 'auto'
           ? `Auto Roll unlocks after 3 manual rolls (${currentState.manualRolls ?? 0}/3).`
           : Number.isFinite(cost)
-            ? `Need ${cost.toLocaleString()} Coins.`
+            ? `Need ${formatNumber(cost)} Coins.`
             : 'Upgrade is already at its maximum level.',
         'warn',
       );
@@ -917,7 +918,7 @@ export function App() {
           mutationResyncNeededRef.current = false;
           showToast(
             res.upgradedCount > 0
-              ? `Bought ${res.upgradedCount} upgrade level${res.upgradedCount === 1 ? '' : 's'} for ${res.totalSpent.toLocaleString()} Coins.`
+              ? `Bought ${res.upgradedCount} upgrade level${res.upgradedCount === 1 ? '' : 's'} for ${formatNumber(res.totalSpent)} Coins.`
               : 'No upgrades are currently affordable.',
             res.upgradedCount > 0 ? 'success' : 'info',
           );
@@ -1138,7 +1139,7 @@ export function App() {
       if (res.rewardCoins > 0) {
         sound.playChime(880, 'triangle', 0.3);
         showToast(
-          `Community cache claimed! +${res.rewardCoins.toLocaleString()} Coins, +${res.rewardXp.toLocaleString()} XP.`,
+          `Community cache claimed! +${formatNumber(res.rewardCoins)} Coins, +${formatNumber(res.rewardXp)} XP.`,
           'success',
         );
       }
@@ -1171,7 +1172,7 @@ export function App() {
       setReadyAt(Date.now() + res.rollsRemainingUntilNext);
       sound.playEpicFanfare();
       showToast(
-        `Claimed ${(res.rollsProcessed ?? res.batch?.length ?? 0).toLocaleString()} offline rolls! Highest: 1/${formatRarity(res.orb.rarity)}`,
+        `Claimed ${formatNumber(res.rollsProcessed ?? res.batch?.length ?? 0)} offline rolls! Highest: 1/${formatRarity(res.orb.rarity)}`,
         'success'
       );
     } catch (e: any) {
