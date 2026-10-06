@@ -8,6 +8,7 @@ import {
   buyAllUpgrades,
   claimOffline,
   subscribeToSubredditFromPrompt,
+  claimFollowReward,
   getFollowPromptStats,
   claimDailyStreak,
   claimQuest,
@@ -788,6 +789,12 @@ export function createApp() {
     try {
       res.json(await subscribeToSubredditFromPrompt());
     } catch (e: any) { badRequest(res, e, 'Could not follow the subreddit.'); }
+  });
+
+  app.post('/api/follow-reward', async (_req, res) => {
+    try {
+      res.json(await claimFollowReward());
+    } catch (e: any) { badRequest(res, e, 'Could not claim the 200-roll reward.'); }
   });
 
   // Count an explicit visit to the social tab, not background API refreshes.
