@@ -665,7 +665,13 @@ export type RarityTierName =
   | 'Mythic'
   | 'Relic'
   | 'Divine'
-  | 'Transcendent';
+  | 'Transcendent'
+  | 'Ascendant'
+  | 'Eternal'
+  | 'Celestial'
+  | 'Infinite'
+  | 'Absolute'
+  | 'Omniversal';
 
 export interface RarityTierInfo {
   rarity: number;
@@ -677,6 +683,12 @@ export interface RarityTierInfo {
 }
 
 export function getOrbTier(rarity: number): RarityTierName {
+  if (rarity >= 100_000_000_000_000) return 'Omniversal';
+  if (rarity >= 10_000_000_000_000) return 'Absolute';
+  if (rarity >= 1_000_000_000_000) return 'Infinite';
+  if (rarity >= 100_000_000_000) return 'Celestial';
+  if (rarity >= 10_000_000_000) return 'Eternal';
+  if (rarity >= 1_000_000_000) return 'Ascendant';
   if (rarity >= 100_000_000) return 'Transcendent';
   if (rarity >= 10_000_000) return 'Divine';
   if (rarity >= 1_000_000) return 'Relic';
@@ -698,6 +710,12 @@ const TIER_NAMES: Record<RarityTierName, string[]> = {
   Relic: ['Infinite Relic', 'Omega Fragment', 'Primordial Core', 'Eternal Horizon', 'Void Monolith'],
   Divine: ['Divine Eternity', 'Celestial Pantheon', 'Omnipresent Eye', 'Seraphic Sphere'],
   Transcendent: ['The Absolute Zero', 'Infinity Point', 'Cosmic Monolith', 'Genesis Void'],
+  Ascendant: ['Redshift Orb', 'Pulsar Orb', 'Neutron Orb', 'Quasar Prime'],
+  Eternal: ['Eventide Orb', 'Worldline Orb', 'Stellar Crown', 'Eternal Core'],
+  Celestial: ['Heavenfall Orb', 'Solar Flare Orb', 'Astral Crown', 'Celestial Engine'],
+  Infinite: ['Infinite Horizon', 'Endless Core', 'Void Singularity', 'Infinity Seed'],
+  Absolute: ['Absolute Orb', 'First Principle', 'Origin Point', 'Final Horizon'],
+  Omniversal: ['Omniversal Eye', 'Totality Core', 'Everything Orb', 'The Last Constant'],
 };
 
 const TIER_COLORS: Record<RarityTierName, { color: string; bgGradient: string }> = {
@@ -737,7 +755,41 @@ const TIER_COLORS: Record<RarityTierName, { color: string; bgGradient: string }>
     color: '#ffffff',
     bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #a855f7 35%, #06b6d4 70%, #030712 100%)',
   },
+  Ascendant: {
+    color: '#fb7185',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #fecdd3, #e11d48 45%, #4c0519 100%)',
+  },
+  Eternal: {
+    color: '#14b8a6',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #99f6e4, #0f766e 50%, #042f2e 100%)',
+  },
+  Celestial: {
+    color: '#f97316',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #fed7aa, #ea580c 45%, #431407 100%)',
+  },
+  Infinite: {
+    color: '#22d3ee',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #cffafe, #0891b2 45%, #082f49 100%)',
+  },
+  Absolute: {
+    color: '#e879f9',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #fae8ff, #c026d3 45%, #4a044e 100%)',
+  },
+  Omniversal: {
+    color: '#f8fafc',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #f0abfc 30%, #22d3ee 58%, #030712 100%)',
+  },
 };
+
+export function formatRarity(rarity: number): string {
+  const safe = Math.max(0, Number(rarity) || 0);
+  if (safe >= 1_000_000_000) {
+    const exponent = Math.floor(Math.log10(safe));
+    const mantissa = safe / Math.pow(10, exponent);
+    return `${mantissa.toFixed(2).replace(/\\.?0+$/, '')}e${exponent}`;
+  }
+  return safe.toLocaleString();
+}
 
 export function getOrbInfo(rarity: number): RarityTierInfo {
   const tier = getOrbTier(rarity);
@@ -749,7 +801,7 @@ export function getOrbInfo(rarity: number): RarityTierInfo {
     rarity,
     name,
     tier,
-    approxChance: `1 / ${rarity.toLocaleString()}`,
+    approxChance: `1 / ${formatRarity(rarity)}`,
     color,
     bgGradient,
   };
@@ -765,17 +817,24 @@ export function getOrbInfo(rarity: number): RarityTierInfo {
  * instead of multiplying the rolled rarity directly. This keeps high Luck
  * valuable without turning ordinary rolls into giant outliers.
  */
-export function luckRarityExponent(luck: number): number {
+// Luck is deliberately a gentle tail multiplier. At 1× Luck the distribution
+// remains P(Rarity >= R) ≈ 1/R; higher Luck improves the scale slowly instead of
+// changing the distribution's exponent and making extreme drops commonplace.
+export function luckRarityFactor(luck: number): number {
   const rawLuck = Number(luck);
   const effectiveLuck = Number.isFinite(rawLuck) ? Math.max(1, rawLuck) : 1;
-  return 1 + Math.min(0.50, Math.log2(effectiveLuck) * 0.14);
+  return Math.min(12, Math.pow(effectiveLuck, 0.20));
+}
+
+// Kept for compatibility with older callers. The continuum no longer changes its exponent.
+export function luckRarityExponent(_luck: number): number {
+  return 1;
 }
 
 export function rollContinuum(luck: number, random: () => number = Math.random): number {
   const u = Math.max(1e-12, Math.min(1 - 1e-12, random()));
-  const exponent = luckRarityExponent(luck);
-  const rarity = Math.floor(1 / Math.pow(u, exponent));
-  return Math.min(10_000_000_000, Math.max(2, rarity));
+  const rarity = Math.floor((1 / u) * luckRarityFactor(luck));
+  return Math.min(1_000_000_000_000_000, Math.max(2, rarity));
 }
 
 export interface ContinuumTierMilestone {
@@ -796,7 +855,13 @@ export const CONTINUUM_TIERS: ContinuumTierMilestone[] = [
   { tier: 'Mythic', minRarity: 100000, label: '1 / 100,000 - 1 / 999,999', approxChance: '~0.0009%', coinsPerOrb: '100,000 - 999,999 Coins', color: '#a855f7' },
   { tier: 'Relic', minRarity: 1000000, label: '1 / 1,000,000 - 1 / 9,999,999', approxChance: '~0.00009%', coinsPerOrb: '1,000,000 - 9,999,999 Coins', color: '#f59e0b' },
   { tier: 'Divine', minRarity: 10000000, label: '1 / 10,000,000 - 1 / 99,999,999', approxChance: '~0.000009%', coinsPerOrb: '10,000,000 - 99,999,999 Coins', color: '#38bdf8' },
-  { tier: 'Transcendent', minRarity: 100000000, label: '1 / 100,000,000+', approxChance: '~0.000001%', coinsPerOrb: '100,000,000+ Coins', color: '#ffffff' },
+  { tier: 'Transcendent', minRarity: 100000000, label: '1 / 1e8 - 1 / 1e9', approxChance: '~0.0000009%', coinsPerOrb: '1e8 - 1e9 Coins', color: '#ffffff' },
+  { tier: 'Ascendant', minRarity: 1000000000, label: '1 / 1e9 - 1 / 1e10', approxChance: '~0.00000009%', coinsPerOrb: '1e9 - 1e10 Coins', color: '#fb7185' },
+  { tier: 'Eternal', minRarity: 10000000000, label: '1 / 1e10 - 1 / 1e11', approxChance: '~0.000000009%', coinsPerOrb: '1e10 - 1e11 Coins', color: '#14b8a6' },
+  { tier: 'Celestial', minRarity: 100000000000, label: '1 / 1e11 - 1 / 1e12', approxChance: '~0.0000000009%', coinsPerOrb: '1e11 - 1e12 Coins', color: '#f97316' },
+  { tier: 'Infinite', minRarity: 1000000000000, label: '1 / 1e12 - 1 / 1e13', approxChance: '~0.00000000009%', coinsPerOrb: '1e12 - 1e13 Coins', color: '#22d3ee' },
+  { tier: 'Absolute', minRarity: 10000000000000, label: '1 / 1e13 - 1 / 1e14', approxChance: '~0.000000000009%', coinsPerOrb: '1e13 - 1e14 Coins', color: '#e879f9' },
+  { tier: 'Omniversal', minRarity: 100000000000000, label: '1 / 1e14+', approxChance: '~0.0000000000009%', coinsPerOrb: '1e14+ Coins', color: '#f8fafc' },
 ];
 
 export interface CosmeticItem {
