@@ -12,7 +12,8 @@ import {
   Gem,
   Award,
 } from 'lucide-react';
-import type { PlayerState, MasterySkillId } from '../../shared/game.js';
+import type { PlayerState, MasterySkillId 
+  formatNumber,} from '../../shared/game.js';
 import { MASTERY_SKILLS, masterySkillCost, highestCodexChain, codexDevotionLuckPercent } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
@@ -84,7 +85,7 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
   const [activeBranch, setActiveBranch] = useState<'all' | 'fortune' | 'temporal' | 'alchemy' | 'cosmos'>('all');
   const [lastUpgradedSkill, setLastUpgradedSkill] = useState<MasterySkillId | null>(null);
 
-  const fmt = (n: number) => n.toLocaleString();
+  const fmt = (n: number) => formatNumber(n);
 
   const handleMasteryClick = async (skillId: MasterySkillId) => {
     sound.playLevelUpFanfare();
