@@ -45,6 +45,7 @@ import {
   getNotificationState,
   setNotificationState,
   settleOffline,
+  formatRarity,
 } from './game.js';
 import {
   achievements,
@@ -1167,7 +1168,7 @@ export function createApp() {
         const post = await reddit.submitCustomPost({
           runAs: 'USER',
           subredditName,
-          title: `u/${username} found a 1/${value.toLocaleString()} Orb in Infinity Orbs!`,
+          title: `u/${username} found a 1/${formatRarity(value)} Orb`,
           entry: 'default',
           postData,
           userGeneratedContent: { text },
