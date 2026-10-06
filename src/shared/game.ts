@@ -864,7 +864,10 @@ export function luckRarityExponent(_luck: number): number {
 }
 
 export function rollContinuum(luck: number, random: () => number = Math.random): number {
-  const u = Math.max(1e-12, Math.min(1 - 1e-12, random()));
+  const sample = Number(random());
+  const u = Number.isFinite(sample)
+    ? Math.min(1 - Number.EPSILON, Math.max(Number.MIN_VALUE, sample))
+    : 0.5;
   const rarity = Math.floor((1 / u) * luckRarityFactor(luck));
   return Math.min(1_000_000_000_000_000_000, Math.max(2, rarity));
 }
