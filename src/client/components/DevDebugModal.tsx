@@ -1880,16 +1880,25 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       );
 
       await step(
-        'Contract · Rarity formatter handles new scale',
+        'Contract · Rarity formatter handles >9 scale',
         async () => {
-          const samples = [1_000_000_000, 1_000_000_000_000_000, 100_000_000_000_000_000];
-          for (const rarity of samples) {
+          const expected: Array<[number, string]> = [
+            [9, '9'],
+            [10, '1.00e1'],
+            [999, '9.99e2'],
+            [1_000_000_000, '1.00e9'],
+            [1_000_000_000_000_000, '1.00e15'],
+            [100_000_000_000_000_000, '1.00e17'],
+          ];
+          for (const [rarity, expectedValue] of expected) {
             const formatted = formatRarity(rarity);
-            if (!formatted || formatted === String(rarity)) throw new Error('Unexpected formatting for ' + rarity + ': ' + formatted);
+            if (formatted !== expectedValue) {
+              throw new Error('Unexpected formatting for ' + rarity + ': ' + formatted + ', expected ' + expectedValue + '.');
+            }
           }
-          return samples;
+          return expected;
         },
-        samples => samples.map(formatRarity).join(' · '),
+        samples => samples.map(([rarity, formatted]) => formatRarity(rarity) + ' (' + formatted + ')').join(' · '),
       );
 
       await step(
