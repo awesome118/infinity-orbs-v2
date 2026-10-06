@@ -30,6 +30,7 @@ import type {
   GuildPerkId,
   GuildMessage,
 } from '../../shared/social.js';
+import { formatRarity } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface GuildsAndSocialProps {
@@ -945,7 +946,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                     </div>
                     <span className="text-slate-400 text-[11px]">
                       {entry.totalRolls.toLocaleString()} rolls • Best: 1/
-                      {entry.highestRarity.toLocaleString()}
+                      {formatRarity(entry.highestRarity)}
                     </span>
                   </div>
                 </div>
