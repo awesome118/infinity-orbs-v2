@@ -651,7 +651,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
                 {lastBatch.length} Orbs Rolled
               </span>
               <span className="text-xs text-slate-400">
-                (Best: 1/{formatRarity(lastOrb?.rarity)})
+                (Best: 1/{lastOrb ? formatRarity(lastOrb.rarity) : '—'})
               </span>
             </div>
             <div className="flex items-center gap-3">
