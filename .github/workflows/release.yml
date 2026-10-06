@@ -1,0 +1,86 @@
+name: Release Infinity Orbs
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Guard against invalid Devvit transaction reads
+        run: |
+          set -euo pipefail
+          if grep -R -nE '\\b(txn|tx)\\.get\\(' src; then
+            echo "Invalid Devvit transaction read detected. Use redis.get() after WATCH; TxClient.get() is a transaction builder."
+            exit 1
+          fi
+
+      - name: Build
+        run: npm run build
+
+      - name: Validate release version
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          test "$VERSION" = "$TAG_VERSION"
+          echo "Release version: $VERSION"
+
+      - name: Configure Devvit authentication
+        env:
+          DEVVIT_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.devvit"
+          printf '%s' "$DEVVIT_TOKEN" > "$HOME/.devvit/token"
+          printf '%s' "$DEVVIT_SESSION_ID" > "$HOME/.devvit/session-id"
+          chmod 600 "$HOME/.devvit/token" "$HOME/.devvit/session-id"
+
+      - name: Verify Devvit authentication
+        run: |
+          set -euo pipefail
+          npx devvit whoami
+
+      - name: Submit version for Reddit review
+        env:
+          CI: true
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          npx devvit publish --version "$VERSION"
+
+      - name: Install release to r/infinityorbs
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          npx devvit install r/infinityorbs "infinity-orbs@$VERSION"
+          npx devvit list installs r/infinityorbs
+
+      - name: Install release to r/infinity_orbs_dev
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          npx devvit install r/infinity_orbs_dev "infinity-orbs@$VERSION"
+          npx devvit list installs r/infinity_orbs_dev
