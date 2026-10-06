@@ -2,8 +2,8 @@ name: Release Infinity Orbs
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - release-1.1.0
 
 jobs:
   release:
