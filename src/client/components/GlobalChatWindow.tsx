@@ -173,13 +173,18 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
                 <p className="min-w-0 break-words text-[11px] text-slate-400">{message.text}</p>
                 <button
                   type="button"
-                  onClick={() => void reportMessage(message)}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void reportMessage(message);
+                  }}
                   disabled={reportingId === message.id || reportedIds.has(message.id)}
-                  className="shrink-0 rounded-md border border-slate-800 bg-slate-950/70 px-2 py-1 text-[9px] font-bold text-slate-500 hover:border-rose-500/40 hover:bg-rose-950/20 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="relative z-20 shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-950/20 px-3 py-2 text-[10px] font-black text-rose-300 hover:border-rose-400/60 hover:bg-rose-950/40 hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer touch-manipulation"
                   title={reportedIds.has(message.id) ? 'Report sent to subreddit moderators' : 'Report this message'}
                   aria-label={reportedIds.has(message.id) ? 'Message reported' : 'Report message'}
                 >
-                  <Flag className="h-3 w-3" />
+                  <Flag className="h-3.5 w-3.5" />
+                  <span>{reportedIds.has(message.id) ? 'Sent' : reportingId === message.id ? 'Sending…' : 'Report'}</span>
                 </button>
               </div>
             </div>
