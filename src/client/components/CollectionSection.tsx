@@ -8,7 +8,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { visibleContinuumTiers, getOrbInfo, coinsForRarity, formatRarity } from '../../shared/game.js';
+import { visibleContinuumTiers, getOrbInfo, coinsForRarity, formatRarity, formatNumber } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface CollectionSectionProps {
@@ -43,7 +43,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
   const [loadError, setLoadError] = useState('');
   const [reloadToken, setReloadToken] = useState(0);
 
-  const fmt = (n: number) => n.toLocaleString();
+  const fmt = (n: number) => formatNumber(n);
   const visibleTiers = useMemo(
     () => visibleContinuumTiers(state.highestRarity || 0),
     [state.highestRarity],
