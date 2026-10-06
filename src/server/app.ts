@@ -9,7 +9,6 @@ import {
   claimOffline,
   subscribeToSubredditFromPrompt,
   getFollowPromptStats,
-  subscribeToSubredditForReward,
   claimDailyStreak,
   claimQuest,
   prestige,
@@ -787,14 +786,8 @@ export function createApp() {
   // deliberately a separate action so subscribing is an explicit user choice.
   app.post('/api/follow-subscribe', async (_req, res) => {
     try {
-      res.json(await subscribeToSubredditForReward());
+      res.json(await subscribeToSubredditFromPrompt());
     } catch (e: any) { badRequest(res, e, 'Could not follow the subreddit.'); }
-  });
-
-  app.post('/api/follow-reward', async (_req, res) => {
-    try {
-      res.json(await claimFollowReward());
-    } catch (e: any) { badRequest(res, e, 'Could not claim the follow reward.'); }
   });
 
   // Count an explicit visit to the social tab, not background API refreshes.
