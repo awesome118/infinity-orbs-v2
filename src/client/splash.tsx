@@ -23,7 +23,7 @@ function BrandMark() {
 
 function PublicShell({ children, compact = false }: { children: ReactNode; compact?: boolean }) {
   return (
-    <main className={\`io-public \${compact ? 'io-public-compact' : ''}\`}>
+    <main className={`io-public ${compact ? 'io-public-compact' : ''}`}>
       <div className="io-public-grid" aria-hidden="true" />
       <div className="io-public-glow" aria-hidden="true" />
       <div className="io-public-frame">
@@ -66,8 +66,8 @@ function SharedOrbPost({ data }: { data: SharedOrbPostData }) {
             className="io-public-tier"
             style={{
               color: info.color,
-              borderColor: \`\${info.color}55\`,
-              backgroundColor: \`\${info.color}10\`,
+              borderColor: `${info.color}55`,
+              backgroundColor: `${info.color}10`,
             }}
           >
             {info.tier}
@@ -79,10 +79,10 @@ function SharedOrbPost({ data }: { data: SharedOrbPostData }) {
             className="io-public-orb io-share-orb"
             style={{
               background: info.bgGradient,
-              borderColor: \`\${info.color}66\`,
-              boxShadow: \`0 0 34px \${info.color}22, inset 0 1px rgba(255,255,255,.32)\`,
+              borderColor: `${info.color}66`,
+              boxShadow: `0 0 34px ${info.color}22, inset 0 1px rgba(255,255,255,.32)`,
             }}
-            aria-label={\`1/\${formatRarity(rarity)} \${info.tier} Orb\`}
+            aria-label={`1/${formatRarity(rarity)} ${info.tier} Orb`}
           >
             <span className="io-public-orb-ring" />
             <span className="io-public-orb-tier">{info.tier}</span>
