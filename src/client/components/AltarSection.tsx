@@ -11,7 +11,8 @@ import {
   ShieldCheck,
   RotateCw,
 } from 'lucide-react';
-import type { PlayerState } from '../../shared/game.js';
+import type { PlayerState 
+  formatNumber,} from '../../shared/game.js';
 import {
   calculateAltarMultipliers,
   altarCoinDevotionChancePercent,
@@ -40,7 +41,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
   const [selectedShardOffer, setSelectedShardOffer] = useState<number>(0);
   const [sacrificing, setSacrificing] = useState(false);
 
-  const fmt = (n: number) => n.toLocaleString();
+  const fmt = (n: number) => formatNumber(n);
 
   const sacrifices = state.sacrifices ?? {
     coinsSacrificed: 0,
@@ -209,7 +210,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
                 ? 'Select a coin offering to see its breakthrough chance.'
                 : coinOfferMeetsFloor
                 ? 'Larger offerings improve the base chance. Failed attempts multiply it upward.'
-                : 'Coin offerings require at least ' + currentCoinFloor.toLocaleString() + ' Coins.'}
+                : 'Coin offerings require at least ' + formatNumber(currentCoinFloor) + ' Coins.'}
             </div>
             <div className="mt-1 text-[10px] text-orange-300 font-bold">
               Failed attempts: {altarPity} • pity multiplies chance by 1.35× per failure (cap 90%)
