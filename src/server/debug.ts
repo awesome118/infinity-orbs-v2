@@ -60,6 +60,7 @@ import {
   getLevelBenefits,
   LEVEL_MILESTONES,
   onlinePlayerLuckMultiplier,
+  highestCodexChain,
   globalBoosterLuckMultiplier,
   globalBoosterSpeedMultiplier,
   globalBoosterCritChanceBonus,
@@ -549,15 +550,7 @@ function buildStatSpyStats(
   const globalCritChance = globalBoosterCritChanceBonus(s.globalBoosters?.crit);
   const globalCritPower = globalBoosterCritLuckBonus(s.globalBoosters?.crit);
   const effectiveCcu = Math.max(1, Math.floor(currentCcu + fakeCcuBonus));
-  const codexChain = calculateLevelFromXp ? Math.max(0, (s.codexChain ?? 0) || 0) : 0;
-  const actualCodexChain = Math.max(
-    codexChain,
-    Object.keys(s.collection ?? {}).length > 0
-      ? Math.max(0, (s.collection && Object.keys(s.collection).length > 0
-        ? Math.floor(Number(s.codexChain ?? 0))
-        : 0))
-      : 0,
-  );
+  const codexChain = highestCodexChain(s.collection);
 
   // Compute the same pity stack logic used by luckMultiplier.
   const dryRolls = Math.max(0, Number(s.rollsSinceBest ?? 0));
@@ -574,8 +567,7 @@ function buildStatSpyStats(
   );
 
   const masteryLuckPct = Number(mastery.continuumLuck ?? 0) * 3;
-  const codexDevotionPct = Number(s.codexDevotionLuckPercent ?? 0) ||
-    Number(mastery.celestialSurge ?? 0) * Math.max(0, Number(s.codexChain ?? 0)) * 0.3;
+  const codexDevotionPct = Number(mastery.celestialSurge ?? 0) * codexChain * 0.3;
   const guildLuckPct = Number(guild.luckRank ?? 0) * 3;
   const onlineLuckPct = Math.max(0, onlinePlayerLuckMultiplier(effectiveCcu) - 1) * 100;
   const fortuneActive = isPremiumBoosterActive(s, 'fortune');
@@ -608,7 +600,7 @@ function buildStatSpyStats(
     statSource('Level progression', levelBaseLuckPct, 'pct', 'add', { level, detail: '+1% per level after Lv 1' }),
     statSource('Level milestones', milestoneLuckPct, 'pct', 'add', { level, detail: 'Milestone bonuses currently unlocked' }),
     statSource('Continuum Attunement', masteryLuckPct, 'pct', 'add', { level: Number(mastery.continuumLuck ?? 0), detail: '+3% per level' }),
-    statSource('Codex Devotion', codexDevotionPct, 'pct', 'add', { level: Number(mastery.celestialSurge ?? 0), detail: 'Based on longest consecutive rarity chain' }),
+    statSource('Codex Devotion', codexDevotionPct, 'pct', 'add', { level: Number(mastery.celestialSurge ?? 0), detail: 'Chain length ' + codexChain + ' (' + (Number(mastery.celestialSurge ?? 0) * codexChain) + ' chain-levels)' }),
     statSource('Guild Luck', guildLuckPct, 'pct', 'add', { level: Number(guild.luckRank ?? 0), detail: '+3% per rank' }),
     statSource('Dry Streak Luck', pityLuckPct, 'pct', 'add', { level: Number(prestige.resonanceMeter ?? 0), detail: pityStacks + ' active pity stack(s), every ' + pityInterval + ' dry rolls' }),
     statSource('Online population', onlineLuckPct, 'pct', 'add', { detail: 'Current CCU ' + effectiveCcu + ' (' + currentCcu + ' real + ' + fakeCcuBonus + ' test)' }),
@@ -827,7 +819,7 @@ function buildStatSpyStats(
       detail: 'Time between generated offline rolls; lower is faster.',
       sources: [
         statSource('Base interval', 60_000, 'ms', 'base'),
-        statSource('Offline Rate upgrade', Number(upgrades.offlineRate ?? 0) * 4, 'pct', 'reduction', { level: Number(upgrades.offlineRate ?? 0), detail: 'Reduces interval by 8% per level, subject to 60% reduction cap' }),
+        statSource('Offline Rate upgrade', Number(upgrades.offlineRate ?? 0) * 8, 'pct', 'reduction', { level: Number(upgrades.offlineRate ?? 0), detail: 'Reduces interval by 8% per level, subject to 60% reduction cap' }),
         statSource('Offline Overdrive', Math.max(0, 1 - Math.pow(1.5, -Math.min(3, Number(prestige.offlineOverdrive ?? 0)))) * 100, 'pct', 'multiply', { level: Number(prestige.offlineOverdrive ?? 0), detail: '50% faster per level, up to 3 levels' }),
       ],
     },
