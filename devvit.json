@@ -46,7 +46,8 @@
       "enable": true,
       "scope": "moderator",
       "asUser": [
-        "SUBMIT_POST"
+        "SUBMIT_POST",
+        "SUBSCRIBE_TO_SUBREDDIT"
       ]
     }
   },
