@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { purchase, OrderResultStatus } from '@devvit/web/client';
 import { Gem, ShoppingBag, Sparkles } from 'lucide-react';
-import type { PlayerState } from '../../shared/game.js';
+import type { PlayerState 
+  formatNumber,} from '../../shared/game.js';
 
 interface ShopProduct {
   sku: string;
@@ -152,7 +153,7 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
         <div className="mt-4 flex items-center gap-4">
           <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3">
             <span className="block text-[10px] uppercase font-black text-cyan-300/70">Shards</span>
-            <span className="text-xl font-black text-cyan-200">{state.shards.toLocaleString()} <Gem className="inline w-4 h-4" /></span>
+            <span className="text-xl font-black text-cyan-200">{formatNumber(state.shards)} <Gem className="inline w-4 h-4" /></span>
           </div>
           <div className="rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/10 px-4 py-3">
             <span className="block text-[10px] uppercase font-black text-fuchsia-300/70">Free Global Boosts</span>
