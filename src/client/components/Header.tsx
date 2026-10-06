@@ -91,7 +91,8 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="bg-slate-900/90 border-b border-slate-800/80 backdrop-blur-md sticky top-0 z-30 px-4 py-3">
+    <>
+      <header className="bg-slate-900/90 border-b border-slate-800/80 backdrop-blur-md sticky top-0 z-30 px-4 py-3">
       <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
         {/* Brand & Player Identity & EXP Bar */}
         <div className="flex items-center space-x-3">
@@ -298,5 +299,6 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
       )}
+    </>
   );
 };
