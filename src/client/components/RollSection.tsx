@@ -150,13 +150,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const luck = luckMultiplier(state);
   const isAutoUnlocked = (state.upgrades.auto ?? 0) > 0;
   const isTurbo = Boolean(state.turboRollUntil && state.turboRollUntil > now);
-  let xpBeforeLevel = 0;
-  for (let level = 1; level < Math.max(1, state.level || 1); level++) {
-    xpBeforeLevel += Math.max(1, Math.floor(70 * Math.pow(level, 1.30)));
-  }
-  const currentLevelXp = Math.max(0, (state.xp ?? 0) - xpBeforeLevel);
-  const nextLevelXp = Math.max(1, Math.floor(70 * Math.pow(Math.max(1, state.level || 1), 1.30)));
-  const xpProgress = Math.min(100, Math.round((currentLevelXp / nextLevelXp) * 100));
   const visibleTiers = visibleContinuumTiers(state.highestRarity || 0);
   const tiersReached = visibleTiers.filter(tier => (state.highestRarity || 0) >= tier.minRarity).length;
   const nextTier = visibleTiers.find(tier => (state.highestRarity || 0) < tier.minRarity);
