@@ -2048,10 +2048,27 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       );
 
       await step(
-        'Seed Dust Synthesis',
-        () => request('/api/dev/state', { shards: 10, xp: 32_000 }),
-        () => 'shards=10 · XP=32,000 (Level 20 unlock)',
+        'Restore Clean Final Test State',
+        async () => {
+          await request('/api/dev/reset-all', {});
+          return request('/api/dev/state', {
+            coins: 100_000,
+            shards: 10,
+            xp: 32_000,
+            prestigeUpgrades: { shardSynthesis: 1 },
+            lastRollAt: 0,
+            lastSeenAt: Date.now(),
+          });
+        },
+        result => 'fresh final fixture · ' + stateSummary(result),
       );
+
+      await step(
+        'Seed Final Baseline Orb',
+        () => request<any>('/api/dev/force-roll', { rarity: 100, randomValue: 0.999999 }),
+        result => '1/' + formatRarity(result.orb?.rarity) + ' · tier=' + result.orb?.tier,
+      );
+
       await step(
         'Synthesize Cosmic Dust',
         () => request<{ state: any; dustEarned: number }>('/api/prestige/synthesize', {}),
