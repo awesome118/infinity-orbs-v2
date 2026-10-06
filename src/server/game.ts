@@ -1797,9 +1797,15 @@ export async function save(
 }
 
 function serverRandom(): number {
-  const sample = new Uint32Array(1);
+  // Use 64 bits of entropy so the extended rarity continuum is actually
+  // reachable. A 32-bit sample bottoms out around 1 / 4.3 billion, which made
+  // the upper rarity tiers mathematically decorative.
+  const sample = new BigUint64Array(1);
   globalThis.crypto.getRandomValues(sample);
-  return sample[0] / 4_294_967_296;
+  const denominator = 18_446_744_073_709_551_616;
+  const value = Number(sample[0]) / denominator;
+  if (value >= 1) return 0.9999999999999999;
+  return Math.max(Number.MIN_VALUE, value);
 }
 
 function finiteNonNegativeInteger(value: unknown, fallback = 0): number {
