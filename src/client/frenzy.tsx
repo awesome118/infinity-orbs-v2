@@ -119,7 +119,7 @@ function FrenzyPost() {
               <h1>Orb Frenzy</h1>
               <p><span>u/{info.ownerUsername}</span> opened a daily Frenzy from a <strong>1/{formatRarity(info.rarity)}</strong> discovery.</p>
             </div>
-            <div className="io-public-tier" style={{ color: orb.color, borderColor: \`\${orb.color}55\`, backgroundColor: \`\${orb.color}10\` }}>
+            <div className="io-public-tier" style={{ color: orb.color, borderColor: `${orb.color}55`, backgroundColor: `${orb.color}10` }}>
               {orb.tier}
             </div>
           </div>
@@ -129,8 +129,8 @@ function FrenzyPost() {
               className="io-public-orb io-frenzy-orb"
               style={{
                 background: orb.bgGradient,
-                borderColor: \`\${orb.color}66\`,
-                boxShadow: \`0 0 42px \${orb.color}24, inset 0 1px rgba(255,255,255,.32)\`,
+                borderColor: `${orb.color}66`,
+                boxShadow: `0 0 42px ${orb.color}24, inset 0 1px rgba(255,255,255,.32)`,
               }}
             >
               <span className="io-public-orb-ring" />
