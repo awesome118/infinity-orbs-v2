@@ -8,7 +8,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { visibleContinuumTiers, getOrbInfo, coinsForRarity } from '../../shared/game.js';
+import { visibleContinuumTiers, getOrbInfo, coinsForRarity, formatRarity } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface CollectionSectionProps {
@@ -131,7 +131,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
                 Highest Orb
               </span>
               <span className="text-lg font-black text-purple-300">
-                1 / {fmt(state.highestRarity || 2)}
+                1 / {formatRarity(state.highestRarity || 2)}
               </span>
             </div>
           </div>
@@ -160,7 +160,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
                     {milestone.tier}
                   </span>
                   <span className="text-[9px] font-mono text-slate-400 mt-0.5">
-                    1/{milestone.minRarity >= 1000000 ? `${milestone.minRarity / 1000000}M` : milestone.minRarity >= 1000 ? `${milestone.minRarity / 1000}k` : milestone.minRarity}
+                    1/{formatRarity(milestone.minRarity)}
                   </span>
                 </div>
               );
@@ -248,11 +248,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
                       style={{ background: info.bgGradient }}
                     >
                       <span className="text-[10px] font-black text-white/90 drop-shadow">
-                        1/{item.rarity >= 1_000_000
-                          ? `${(item.rarity / 1_000_000).toFixed(1)}M`
-                          : item.rarity >= 1_000
-                          ? `${(item.rarity / 1_000).toFixed(0)}k`
-                          : item.rarity}
+                        1/{formatRarity(item.rarity)}
                       </span>
                     </div>
 
@@ -274,7 +270,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
                       <h3 className="text-sm font-black text-white truncate mt-1">{info.name}</h3>
 
                       <div className="flex items-center justify-between text-xs text-slate-400 mt-1">
-                        <span className="font-mono text-[11px]">1 in {fmt(item.rarity)}</span>
+                        <span className="font-mono text-[11px]">1 in {formatRarity(item.rarity)}</span>
                         <span className="text-amber-400 font-semibold text-[11px]">
                           +{fmt(coinsForRarity(item.rarity))} Coins
                         </span>
