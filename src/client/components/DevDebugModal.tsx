@@ -29,6 +29,53 @@ type AdminContext = {
   } | null;
 };
 
+type StatSpySource = {
+  label: string;
+  level?: number;
+  value: number;
+  unit: 'pct' | 'mult' | 'ms' | 'count' | 'chance' | 'capacity' | 'rarity';
+  kind: 'base' | 'add' | 'multiply' | 'reduction' | 'special';
+  active?: boolean;
+  detail?: string;
+};
+
+type StatSpyStat = {
+  id: string;
+  label: string;
+  total: number;
+  unit: 'pct' | 'mult' | 'ms' | 'count' | 'chance' | 'capacity' | 'rarity';
+  detail?: string;
+  sources: StatSpySource[];
+};
+
+type StatSpyData = {
+  username: string;
+  userId: string;
+  generatedAt: number;
+  summary: {
+    level: number;
+    xp: number;
+    totalRolls: number;
+    highestRarity: number;
+    coins: number;
+    shards: number;
+    cosmicDust: number;
+    prestigeCount: number;
+    currentCcu: number;
+    fakeCcuBonus: number;
+    effectiveCcu: number;
+  };
+  stats: StatSpyStat[];
+  allocations: {
+    upgrades: Record<string, number>;
+    prestigeUpgrades: Record<string, number>;
+    masterySkills: Record<string, number>;
+    guildPerks: Record<string, number>;
+    globalBoosters: Record<string, { tier?: number; endsAt?: number; activationProgress?: number }>;
+    activeBoosters: Record<string, number>;
+  };
+};
+
 const buttonBase =
   'rounded-xl border text-xs font-bold transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed';
 const panelBase = 'bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3';
@@ -53,6 +100,41 @@ function shortNumber(value: unknown, maxDecimals = 3): string {
 function shortRarity(value: unknown): string {
   const n = Number(value);
   return Number.isFinite(n) ? formatRarity(n) : '?';
+}
+
+function formatStatSpyValue(value: number, unit: StatSpySource['unit']): string {
+  if (!Number.isFinite(value)) return '?';
+  switch (unit) {
+    case 'pct':
+    case 'chance':
+      return (value >= 0 ? '+' : '') + value.toFixed(2) + '%';
+    case 'mult':
+      return value.toFixed(3) + '×';
+    case 'ms':
+      return formatNumber(Math.round(value)) + ' ms';
+    case 'count':
+    case 'capacity':
+      return formatNumber(Math.round(value));
+    case 'rarity':
+      return formatRarity(Math.round(value));
+  }
+}
+
+function formatStatSpyTotal(value: number, unit: StatSpyStat['unit']): string {
+  switch (unit) {
+    case 'pct':
+    case 'chance':
+      return (value * 100).toFixed(2) + '%';
+    case 'mult':
+      return value.toFixed(3) + '×';
+    case 'ms':
+      return formatNumber(Math.round(value)) + ' ms';
+    case 'count':
+    case 'capacity':
+      return formatNumber(Math.round(value));
+    case 'rarity':
+      return formatRarity(Math.round(value));
+  }
 }
 
 function compactTimestamp(timestamp: unknown, baseTimestamp: number): string {
@@ -407,6 +489,10 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     bannedUntil: number | null;
     reason: string;
   }>>([]);
+  const [statSpy, setStatSpy] = useState<StatSpyData | null>(null);
+  const [statSpyUsername, setStatSpyUsername] = useState('');
+  const [statSpyLoading, setStatSpyLoading] = useState(false);
+
   const [playerSpyLogs, setPlayerSpyLogs] = useState<Array<Record<string, unknown>>>([]);
   const [playerSpyUsername, setPlayerSpyUsername] = useState('');
   const [playerSpyUserId, setPlayerSpyUserId] = useState('');
@@ -543,6 +629,32 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       textarea.focus();
       textarea.select();
       setMessage('Clipboard access was blocked. The logs are selected; copy them manually.');
+    }
+  };
+
+  const loadStatSpy = async () => {
+    const username = statSpyUsername.trim().replace(/^u\//i, '');
+    if (!username) {
+      setMessage('Enter a Reddit username first.');
+      return;
+    }
+
+    setStatSpyLoading(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/dev/stat-spy?username=' + encodeURIComponent(username), {
+        cache: 'no-store',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load Stat Spy data.');
+      setStatSpy(data as StatSpyData);
+      setStatSpyUsername(data.username ?? username);
+      setMessage('Loaded full calculated stat breakdown for u/' + (data.username ?? username) + '.');
+    } catch (e: any) {
+      setStatSpy(null);
+      setMessage('Error: ' + (e?.message || 'Could not load Stat Spy data.'));
+    } finally {
+      setStatSpyLoading(false);
     }
   };
 
