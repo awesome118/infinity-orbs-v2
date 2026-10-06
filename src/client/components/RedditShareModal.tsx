@@ -68,8 +68,8 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
               className="io-public-tier"
               style={{
                 color: info.color,
-                borderColor: \`\${info.color}55\`,
-                backgroundColor: \`\${info.color}10\`,
+                borderColor: `${info.color}55`,
+                backgroundColor: `${info.color}10`,
               }}
             >
               {info.tier}
@@ -83,8 +83,8 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
               className="io-public-orb io-share-preview-orb-mark"
               style={{
                 background: info.bgGradient,
-                borderColor: \`\${info.color}66\`,
-                boxShadow: \`0 0 30px \${info.color}22, inset 0 1px rgba(255,255,255,.3)\`,
+                borderColor: `${info.color}66`,
+                boxShadow: `0 0 30px ${info.color}22, inset 0 1px rgba(255,255,255,.3)`,
               }}
             >
               <span className="io-public-orb-ring" />
