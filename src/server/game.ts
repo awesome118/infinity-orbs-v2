@@ -2649,18 +2649,25 @@ export async function claimFollowReward(): Promise<{
     const subscribedKey = FOLLOW_SUBSCRIBED_KEY_PREFIX + userId;
     const rewardKey = FOLLOW_REWARD_KEY_PREFIX + userId;
 
-    if (!(await redis.get(subscribedKey))) {
-      throw new Error('FOLLOW_REWARD_REQUIRES_SUBSCRIBE');
-    }
     if (await redis.get(rewardKey)) {
       throw new Error('FOLLOW_REWARD_ALREADY_CLAIMED');
+    }
+
+    // Explicit Reddit user action: the click that hits this endpoint subscribes
+    // the current user to the subreddit where the game is installed.
+    await reddit.subscribeToCurrentSubreddit();
+
+    const alreadyRecorded = Boolean(await redis.get(subscribedKey));
+    if (!alreadyRecorded) {
+      await redis.set(subscribedKey, String(Date.now()));
+      await redis.incr(FOLLOW_ACTION_COUNT_KEY);
     }
 
     const s = await settleOffline(await loadRaw());
     const result = await applyRolls(s, 1, undefined, 'online', FOLLOW_REWARD_ROLLS);
 
-    // The 200 rolls are real server-side rolls, but they count as one reward
-    // activation rather than pretending the player manually clicked 200 times.
+    // 200 real server-side rolls, counted as one reward activation for
+    // manual-roll progression and Auto Roll unlocking.
     s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + 1);
     if (s.manualRolls >= 3) s.upgrades.auto = 1;
     s.lastRollAt = Date.now();
