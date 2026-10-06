@@ -21,6 +21,7 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
   const [successPostId, setSuccessPostId] = useState<string | null>(null);
 
   const info = getOrbInfo(rarity);
+  const fmt = (n: number) => n.toLocaleString();
 
   const handleShare = async () => {
     setBusy(true);
