@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Sparkles, Users, Zap } from 'lucide-react';
+import { ArrowRight, Flame, Users, Zap } from 'lucide-react';
 import './styles.css';
-import { formatRarity } from '../shared/game.js';
+import { formatNumber, formatRarity, getOrbInfo } from '../shared/game.js';
 
 interface FrenzyInfo {
   rarity: number;
@@ -11,6 +11,18 @@ interface FrenzyInfo {
   claimedToday: boolean;
   isOwner: boolean;
   postId: string;
+}
+
+function PublicBrand() {
+  return (
+    <div className="io-public-brand">
+      <div className="io-public-brand-mark" aria-hidden="true"><span>∞</span></div>
+      <div>
+        <div className="io-public-brand-title">Infinity Orbs</div>
+        <div className="io-public-brand-subtitle">ROLL · COLLECT · GO FURTHER</div>
+      </div>
+    </div>
+  );
 }
 
 function FrenzyPost() {
@@ -27,8 +39,8 @@ function FrenzyPost() {
       const data = await res.json();
       setInfo(data);
       setClaimed(Boolean(data.claimedToday));
-    } catch (e: any) {
-      setError(e.message || 'Could not load Frenzy.');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not load Frenzy.');
     }
   };
 
@@ -47,64 +59,128 @@ function FrenzyPost() {
         coins: data.coinsGained,
         xp: data.xpGained,
       });
-    } catch (e: any) {
-      setError(e.message || 'Could not claim Frenzy.');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not claim Frenzy.');
     } finally {
       setLoading(false);
     }
   };
 
   if (error && !info) {
-    return <main className="min-h-screen bg-slate-950 text-slate-100 p-6 flex items-center justify-center"><div className="max-w-lg rounded-2xl border border-rose-500/20 bg-slate-900 p-5 text-sm">{error}</div></main>;
+    return (
+      <main className="io-public">
+        <div className="io-public-grid" aria-hidden="true" />
+        <div className="io-public-frame io-public-error">
+          <PublicBrand />
+          <section className="io-public-card">
+            <div className="io-public-eyebrow io-public-eyebrow-error">Frenzy error</div>
+            <h1>Could not load Orb Frenzy</h1>
+            <p>{error}</p>
+          </section>
+        </div>
+      </main>
+    );
   }
-  if (!info) return <main className="min-h-screen bg-slate-950 text-slate-500 p-6 flex items-center justify-center">Loading Orb Frenzy...</main>;
+
+  if (!info) {
+    return (
+      <main className="io-public">
+        <div className="io-public-grid" aria-hidden="true" />
+        <div className="io-public-frame">
+          <PublicBrand />
+          <section className="io-public-card io-public-loading">
+            <div className="io-public-loader" />
+            <strong>Loading Orb Frenzy</strong>
+            <span>Checking the current post state…</span>
+          </section>
+        </div>
+      </main>
+    );
+  }
+
+  const orb = getOrbInfo(info.rarity);
+  const canClaim = !info.isOwner && !claimed && !result;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 p-5 flex items-center justify-center">
-      <section className="w-full max-w-xl rounded-3xl border border-fuchsia-500/25 bg-gradient-to-br from-slate-900 via-fuchsia-950/15 to-slate-900 p-6 shadow-2xl">
-        <div className="flex items-center gap-3">
-          <div className="p-3 rounded-2xl bg-fuchsia-500/10 border border-fuchsia-500/20">
-            <Zap className="w-7 h-7 text-fuchsia-300" />
-          </div>
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-300">Orb Frenzy</p>
-            <h1 className="text-2xl font-black">1/{formatRarity(info.rarity)}</h1>
-          </div>
-        </div>
+    <main className="io-public">
+      <div className="io-public-grid" aria-hidden="true" />
+      <div className="io-public-glow" aria-hidden="true" />
+      <div className="io-public-frame">
+        <PublicBrand />
 
-        <p className="mt-4 text-sm text-slate-300">
-          {info.ownerUsername} found this Orb and used their daily Frenzy. Click the post to unleash
-          a server-generated batch based on that exact rarity.
-        </p>
+        <section className="io-public-card io-frenzy-card">
+          <div className="io-public-eyebrow io-public-eyebrow-frenzy">
+            <Flame className="w-3.5 h-3.5" />
+            Community event
+          </div>
 
-        {result ? (
-          <div className="mt-5 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4">
-            <div className="text-sm font-black text-emerald-200">Frenzy claimed!</div>
-            <div className="mt-1 text-xs text-slate-300">
-              {result.count.toLocaleString()} Orbs rolled · Coins +{result.coins.toLocaleString()} · XP +{result.xp.toLocaleString()}
+          <div className="io-frenzy-heading">
+            <div>
+              <h1>Orb Frenzy</h1>
+              <p><span>u/{info.ownerUsername}</span> opened a daily Frenzy from a <strong>1/{formatRarity(info.rarity)}</strong> discovery.</p>
+            </div>
+            <div className="io-public-tier" style={{ color: orb.color, borderColor: \`\${orb.color}55\`, backgroundColor: \`\${orb.color}10\` }}>
+              {orb.tier}
             </div>
           </div>
-        ) : (
-          <button
-            onClick={() => void claim()}
-            disabled={loading || claimed || info.isOwner}
-            className="mt-5 w-full rounded-2xl bg-gradient-to-r from-fuchsia-600 to-purple-600 px-5 py-4 text-sm font-black text-white hover:from-fuchsia-500 hover:to-purple-500 disabled:bg-slate-800 disabled:text-slate-500"
-          >
-            {info.isOwner ? 'Your Frenzy' : claimed ? 'Already Claimed Today' : loading ? 'Rolling Frenzy...' : 'Unleash the Frenzy'}
-          </button>
-        )}
 
-        {error && <p className="mt-3 text-xs text-rose-300">{error}</p>}
+          <div className="io-frenzy-hero">
+            <div
+              className="io-public-orb io-frenzy-orb"
+              style={{
+                background: orb.bgGradient,
+                borderColor: \`\${orb.color}66\`,
+                boxShadow: \`0 0 42px \${orb.color}24, inset 0 1px rgba(255,255,255,.32)\`,
+              }}
+            >
+              <span className="io-public-orb-ring" />
+              <span className="io-public-orb-tier">{orb.tier}</span>
+              <strong>1/{formatRarity(info.rarity)}</strong>
+              <small>{orb.name}</small>
+            </div>
 
-        <div className="mt-5 flex items-center gap-2 text-[11px] text-slate-500">
-          <Users className="w-3.5 h-3.5" />
-          <span>Each player can claim one other player's Frenzy per day.</span>
-        </div>
-        <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>The Frenzy post is created when its owner presses the button.</span>
-        </div>
-      </section>
+            <div className="io-frenzy-stats">
+              <div>
+                <span>STARTED BY</span>
+                <strong>u/{info.ownerUsername}</strong>
+              </div>
+              <div>
+                <span>BASE DISCOVERY</span>
+                <strong>1/{formatRarity(info.rarity)}</strong>
+              </div>
+              <div>
+                <span>YOUR DAILY CLAIM</span>
+                <strong>{claimed ? 'USED' : 'AVAILABLE'}</strong>
+              </div>
+            </div>
+          </div>
+
+          {result ? (
+            <div className="io-public-result">
+              <div className="io-public-eyebrow io-public-eyebrow-success">Frenzy claimed</div>
+              <strong>{formatNumber(result.count)} Orbs rolled</strong>
+              <p>+{formatNumber(result.coins)} Coins · +{formatNumber(result.xp)} XP</p>
+            </div>
+          ) : (
+            <button
+              onClick={() => void claim()}
+              disabled={!canClaim || loading}
+              className="io-public-button io-public-button-primary io-frenzy-button"
+            >
+              <Zap className="w-4 h-4" />
+              {info.isOwner ? 'Your Frenzy' : claimed ? 'Already Claimed Today' : loading ? 'Unleashing…' : 'Unleash the Frenzy'}
+              {canClaim && <ArrowRight className="w-4 h-4" />}
+            </button>
+          )}
+
+          {error && <p className="io-public-inline-error">{error}</p>}
+
+          <div className="io-public-note">
+            <div><Users className="w-3.5 h-3.5" /> One Frenzy claim per player, per day.</div>
+            <div><Flame className="w-3.5 h-3.5" /> The batch is generated by the server from the displayed discovery.</div>
+          </div>
+        </section>
+      </div>
     </main>
   );
 }
