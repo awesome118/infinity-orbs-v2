@@ -954,7 +954,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         await step(
           `Buy ${id}`,
           () => request<{ state: any }>('/api/upgrade', { id }),
-          result => `${id}=${shortNumber(recordValue(recordValue(result).state).upgrades?.[id], 0)} · ${stateSummary(result)}`,
+          result => `${id}=${shortNumber(recordValue(recordValue(recordValue(result).state).upgrades)[id], 0)} · ${stateSummary(result)}`,
         );
       }
 
@@ -1104,7 +1104,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'Activate Global Luck',
         () => request<{ state: any }>('/api/global-boosters/activate', { id: 'luck' }),
-        result => `global luck tier=${shortNumber(recordValue(recordValue(result).state).globalBoosters?.luck?.tier, 0)} · ${stateSummary(result)}`,
+        result => `global luck tier=${shortNumber(recordValue(recordValue(recordValue(result).state).globalBoosters).luck?.tier, 0)} · ${stateSummary(result)}`,
       );
       await step(
         'Set 25 Shards',
@@ -1114,7 +1114,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'Activate Global Speed',
         () => request<{ state: any }>('/api/global-boosters/activate', { id: 'speed' }),
-        result => `global speed tier=${shortNumber(recordValue(recordValue(result).state).globalBoosters?.speed?.tier, 0)} · ${stateSummary(result)}`,
+        result => `global speed tier=${shortNumber(recordValue(recordValue(recordValue(result).state).globalBoosters).speed?.tier, 0)} · ${stateSummary(result)}`,
       );
       await step(
         'Set 25 Shards',
@@ -1124,7 +1124,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'Activate Global Crit',
         () => request<{ state: any }>('/api/global-boosters/activate', { id: 'crit' }),
-        result => `global crit tier=${shortNumber(recordValue(recordValue(result).state).globalBoosters?.crit?.tier, 0)} · ${stateSummary(result)}`,
+        result => `global crit tier=${shortNumber(recordValue(recordValue(recordValue(result).state).globalBoosters).crit?.tier, 0)} · ${stateSummary(result)}`,
       );
 
       await step(
@@ -1149,13 +1149,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         const prestigeUpgrade = await step(
           'Buy Prestige Upgrade · permLuck',
           () => request<{ state: any }>('/api/prestige/upgrade', { id: 'permLuck' }),
-          result => `permLuck=${shortNumber(recordValue(recordValue(result).state).prestigeUpgrades?.permLuck, 0)}`,
+          result => `permLuck=${shortNumber(recordValue(recordValue(recordValue(result).state).prestigeUpgrades).permLuck, 0)}`,
         );
         if (prestigeUpgrade) {
           await step(
             'Buy Mastery Skill · continuumLuck',
             () => request<{ state: any }>('/api/mastery/upgrade', { skillId: 'continuumLuck' }),
-            result => `continuumLuck=${shortNumber(recordValue(recordValue(result).state).masterySkills?.continuumLuck, 0)}`,
+            result => `continuumLuck=${shortNumber(recordValue(recordValue(recordValue(result).state).masterySkills).continuumLuck, 0)}`,
           );
         }
       } else {
