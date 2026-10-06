@@ -1,330 +1,194 @@
-// Web Audio API Synthesizer for ORBS — zero external audio dependencies
+// A small, synthesized sound palette: soft instrument pips for play, and a restrained
+// harmonic lift when an unusually rare orb appears. No audio files or network calls.
+type ToneOptions = {
+  type?: OscillatorType;
+  gain?: number;
+  pan?: number;
+  attack?: number;
+  endFrequency?: number;
+};
+
 class SoundFX {
   private ctx: AudioContext | null = null;
-  public enabled: boolean = true;
-  public sonarMode: boolean = false;
-  public sonarThreshold: number = 100;
+  private output: GainNode | null = null;
+  private echo: DelayNode | null = null;
+  private echoFeedback: GainNode | null = null;
+  private echoWet: GainNode | null = null;
+  private rollIndex = 0;
+  public enabled = true;
+  public sonarMode = false;
+  public sonarThreshold = 100;
 
   constructor() {
     try {
       const saved = localStorage.getItem('orbs_sound_enabled');
       this.enabled = saved !== null ? saved === 'true' : true;
-      const savedSonar = localStorage.getItem('orbs_sonar_mode');
-      this.sonarMode = savedSonar === 'true';
-      const savedThreshold = localStorage.getItem('orbs_sonar_threshold');
-      if (savedThreshold) {
-        this.sonarThreshold = Math.max(10, parseInt(savedThreshold, 10) || 100);
-      }
+      this.sonarMode = localStorage.getItem('orbs_sonar_mode') === 'true';
+      const threshold = Number(localStorage.getItem('orbs_sonar_threshold'));
+      if (Number.isFinite(threshold) && threshold >= 10) this.sonarThreshold = threshold;
     } catch {
       this.enabled = true;
-      this.sonarMode = false;
-      this.sonarThreshold = 100;
     }
   }
 
-  private initCtx() {
-    if (!this.ctx && typeof window !== 'undefined') {
+  private initCtx(): AudioContext | null {
+    if (typeof window === 'undefined') return null;
+    if (!this.ctx) {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (AudioCtx) {
-        this.ctx = new AudioCtx();
-      }
+      if (!AudioCtx) return null;
+      this.ctx = new AudioCtx();
+      this.output = this.ctx.createGain();
+      this.output.gain.value = 0.72;
+
+      const compressor = this.ctx.createDynamicsCompressor();
+      compressor.threshold.value = -22;
+      compressor.knee.value = 18;
+      compressor.ratio.value = 8;
+      compressor.attack.value = 0.004;
+      compressor.release.value = 0.2;
+      this.output.connect(compressor);
+      compressor.connect(this.ctx.destination);
+
+      this.echo = this.ctx.createDelay(0.35);
+      this.echo.delayTime.value = 0.17;
+      this.echoFeedback = this.ctx.createGain();
+      this.echoFeedback.gain.value = 0.13;
+      this.echoWet = this.ctx.createGain();
+      this.echoWet.gain.value = 0.12;
+      this.output.connect(this.echo);
+      this.echo.connect(this.echoFeedback);
+      this.echoFeedback.connect(this.echo);
+      this.echo.connect(this.echoWet);
+      this.echoWet.connect(compressor);
     }
-    if (this.ctx && this.ctx.state === 'suspended') {
-      void this.ctx.resume();
+    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    return this.ctx;
+  }
+
+  private tone(frequency: number, startOffset: number, duration: number, options: ToneOptions = {}) {
+    const ctx = this.initCtx();
+    if (!ctx || !this.output) return;
+    const start = ctx.currentTime + startOffset;
+    const end = start + duration;
+    const osc = ctx.createOscillator();
+    const envelope = ctx.createGain();
+    osc.type = options.type ?? 'sine';
+    osc.frequency.setValueAtTime(Math.max(1, frequency), start);
+    if (options.endFrequency && options.endFrequency > 0) {
+      osc.frequency.exponentialRampToValueAtTime(options.endFrequency, end);
     }
+    const peak = Math.max(0.0002, options.gain ?? 0.06);
+    const attack = Math.min(options.attack ?? 0.008, duration * 0.4);
+    envelope.gain.setValueAtTime(0.0001, start);
+    envelope.gain.linearRampToValueAtTime(peak, start + attack);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, end);
+    osc.connect(envelope);
+    if (typeof ctx.createStereoPanner === 'function') {
+      const panner = ctx.createStereoPanner();
+      panner.pan.value = Math.max(-1, Math.min(1, options.pan ?? 0));
+      envelope.connect(panner);
+      panner.connect(this.output);
+    } else {
+      envelope.connect(this.output);
+    }
+    osc.start(start);
+    osc.stop(end + 0.01);
+  }
+
+  private sequence(notes: number[], spacing: number, duration: number, gain: number, type: OscillatorType = 'sine') {
+    notes.forEach((note, index) => {
+      this.tone(note, index * spacing, duration, {
+        type,
+        gain: gain * (index === notes.length - 1 ? 0.84 : 0.58),
+        pan: notes.length > 1 ? (index / (notes.length - 1) - 0.5) * 0.3 : 0,
+      });
+    });
   }
 
   public toggle(): boolean {
     this.enabled = !this.enabled;
-    try {
-      localStorage.setItem('orbs_sound_enabled', String(this.enabled));
-    } catch {}
-    if (this.enabled) {
-      this.playChime(440, 'sine', 0.1);
-    }
+    try { localStorage.setItem('orbs_sound_enabled', String(this.enabled)); } catch {}
+    if (this.enabled) this.playClick();
     return this.enabled;
   }
 
   public setSonarMode(active: boolean) {
     this.sonarMode = active;
-    try {
-      localStorage.setItem('orbs_sonar_mode', String(active));
-    } catch {}
-    if (active) {
-      this.playSonarPing(this.sonarThreshold);
-    }
+    try { localStorage.setItem('orbs_sonar_mode', String(active)); } catch {}
+    if (active) this.playSonarPing(this.sonarThreshold);
   }
 
   public setSonarThreshold(threshold: number) {
     this.sonarThreshold = threshold;
-    try {
-      localStorage.setItem('orbs_sonar_threshold', String(threshold));
-    } catch {}
+    try { localStorage.setItem('orbs_sonar_threshold', String(threshold)); } catch {}
     this.playSonarPing(threshold);
   }
 
   public playClick() {
     if (!this.enabled || this.sonarMode) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(320, this.ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(120, this.ctx.currentTime + 0.05);
-      gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.05);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start();
-      osc.stop(this.ctx.currentTime + 0.05);
-    } catch {}
+    this.tone(560, 0, 0.065, { type: 'sine', gain: 0.026, endFrequency: 440, attack: 0.004 });
+    this.tone(840, 0.012, 0.05, { type: 'sine', gain: 0.009, pan: 0.12 });
   }
 
   public playChime(freq = 523.25, type: OscillatorType = 'sine', duration = 0.25) {
     if (!this.enabled || this.sonarMode) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-      gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start();
-      osc.stop(this.ctx.currentTime + duration);
-    } catch {}
+    this.tone(freq, 0, duration, { type, gain: 0.065, attack: 0.012 });
+    this.tone(freq * 1.5, 0.018, duration * 0.7, { type: 'sine', gain: 0.014, pan: 0.14 });
   }
 
   public playRollNormal() {
     if (!this.enabled || this.sonarMode) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-      [440, 554.37, 659.25].forEach((freq, idx) => {
-        if (!this.ctx) return;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, now + idx * 0.04);
-        gain.gain.setValueAtTime(0.08, now + idx * 0.04);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.04 + 0.18);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now + idx * 0.04);
-        osc.stop(now + idx * 0.04 + 0.18);
-      });
-    } catch {}
+    const scale = [392, 440, 493.88, 587.33, 440, 523.25];
+    const note = scale[this.rollIndex++ % scale.length];
+    this.tone(note, 0, 0.105, { type: 'sine', gain: 0.035, endFrequency: note * 0.98, attack: 0.006 });
+    this.tone(note * 1.5, 0.045, 0.11, { type: 'triangle', gain: 0.016, pan: 0.16, attack: 0.009 });
   }
 
-  /**
-   * Crystal Celestial Sonar Ping for rare orb drops.
-   * Plays even in Silent Mode!
-   */
+  /** An airy, unmistakable ping used by the optional rare-drop alert. */
   public playSonarPing(rarity: number) {
     if (!this.enabled) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-
-      // Dynamic frequency scaling based on rarity
-      const baseFreq = rarity >= 10_000 ? 1318.51 : rarity >= 1_000 ? 1046.50 : 880;
-      const harmonicFreq = baseFreq * 1.5;
-
-      const osc1 = this.ctx.createOscillator();
-      const osc2 = this.ctx.createOscillator();
-      const gain1 = this.ctx.createGain();
-      const gain2 = this.ctx.createGain();
-
-      osc1.type = 'sine';
-      osc2.type = 'sine';
-
-      osc1.frequency.setValueAtTime(baseFreq, now);
-      osc2.frequency.setValueAtTime(harmonicFreq, now + 0.05);
-
-      gain1.gain.setValueAtTime(0.22, now);
-      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
-
-      gain2.gain.setValueAtTime(0.15, now + 0.05);
-      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
-
-      osc1.connect(gain1);
-      gain1.connect(this.ctx.destination);
-
-      osc2.connect(gain2);
-      gain2.connect(this.ctx.destination);
-
-      osc1.start(now);
-      osc1.stop(now + 0.55);
-
-      osc2.start(now + 0.05);
-      osc2.stop(now + 0.65);
-    } catch {}
+    const root = rarity >= 10_000 ? 987.77 : rarity >= 1_000 ? 783.99 : 659.25;
+    this.tone(root, 0, 0.58, { type: 'sine', gain: 0.12, attack: 0.02 });
+    this.tone(root * 1.25, 0.075, 0.66, { type: 'sine', gain: 0.064, pan: 0.18, attack: 0.02 });
+    this.tone(root * 1.5, 0.17, 0.78, { type: 'sine', gain: 0.035, pan: -0.16, attack: 0.025 });
   }
 
   public playRareRiser() {
     if (!this.enabled || this.sonarMode) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(220, now);
-      osc.frequency.exponentialRampToValueAtTime(880, now + 0.7);
-      gain.gain.setValueAtTime(0.02, now);
-      gain.gain.linearRampToValueAtTime(0.12, now + 0.6);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.8);
-    } catch {}
+    this.tone(293.66, 0, 0.38, { type: 'sine', gain: 0.04, endFrequency: 587.33, attack: 0.08 });
+    this.sequence([392, 493.88, 587.33], 0.11, 0.3, 0.045, 'triangle');
   }
 
   public playEpicFanfare() {
     if (!this.enabled) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-      // Major triad arpeggio + bell
-      const notes = [523.25, 659.25, 783.99, 1046.5];
-      notes.forEach((f, i) => {
-        if (!this.ctx) return;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(f, now + i * 0.1);
-        gain.gain.setValueAtTime(0.15, now + i * 0.1);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.5);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now + i * 0.1);
-        osc.stop(now + i * 0.1 + 0.5);
-      });
-    } catch {}
+    this.sequence([392, 493.88, 587.33, 783.99], 0.105, 0.54, 0.105);
+    this.tone(196, 0, 0.38, { type: 'sine', gain: 0.045, endFrequency: 174.61, attack: 0.05 });
+    this.tone(1174.66, 0.34, 0.42, { type: 'sine', gain: 0.024, pan: 0.2 });
   }
 
   public playMythicFanfare() {
     if (!this.enabled) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-      const notes = [440, 554.37, 659.25, 880, 1108.73, 1318.51, 1760];
-      notes.forEach((f, i) => {
-        if (!this.ctx) return;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(f, now + i * 0.08);
-        gain.gain.setValueAtTime(0.18, now + i * 0.08);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 1.2);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now + i * 0.08);
-        osc.stop(now + i * 0.08 + 1.2);
-      });
-    } catch {}
+    this.tone(130.81, 0, 0.75, { type: 'sine', gain: 0.075, endFrequency: 98, attack: 0.05 });
+    this.sequence([261.63, 329.63, 392, 493.88, 587.33, 783.99], 0.105, 0.88, 0.11);
+    this.tone(987.77, 0.56, 0.95, { type: 'sine', gain: 0.04, pan: 0.2 });
+    this.tone(1174.66, 0.68, 0.9, { type: 'sine', gain: 0.022, pan: -0.18 });
   }
 
-  /**
-   * Super flashy upgrade level-up sound effect with ascending sparkle chimes.
-   */
   public playLevelUpFanfare() {
     if (!this.enabled) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-      const chord = [523.25, 659.25, 783.99, 1046.5, 1318.51];
-      chord.forEach((freq, idx) => {
-        if (!this.ctx) return;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(freq, now + idx * 0.05);
-        gain.gain.setValueAtTime(0.16, now + idx * 0.05);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.05 + 0.4);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now + idx * 0.05);
-        osc.stop(now + idx * 0.05 + 0.4);
-      });
-    } catch {}
+    this.sequence([392, 493.88, 587.33, 783.99, 987.77], 0.075, 0.45, 0.08, 'triangle');
   }
 
-  /**
-   * Thunderous triumphant fanfare for rolling a NEW ALL-TIME BEST BALL!
-   */
   public playNewBestFanfare() {
     if (!this.enabled) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-
-      // Sub-bass impact
-      const subOsc = this.ctx.createOscillator();
-      const subGain = this.ctx.createGain();
-      subOsc.type = 'sine';
-      subOsc.frequency.setValueAtTime(110, now);
-      subOsc.frequency.exponentialRampToValueAtTime(45, now + 0.6);
-      subGain.gain.setValueAtTime(0.25, now);
-      subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-      subOsc.connect(subGain);
-      subGain.connect(this.ctx.destination);
-      subOsc.start(now);
-      subOsc.stop(now + 0.8);
-
-      // Shimmering fanfare chord sequence
-      const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50, 1318.51, 1567.98, 2093.00];
-      notes.forEach((freq, idx) => {
-        if (!this.ctx) return;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = idx % 2 === 0 ? 'sine' : 'triangle';
-        osc.frequency.setValueAtTime(freq, now + idx * 0.07);
-        gain.gain.setValueAtTime(0.18, now + idx * 0.07);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 1.2);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now + idx * 0.07);
-        osc.stop(now + idx * 0.07 + 1.2);
-      });
-    } catch {}
+    this.tone(98, 0, 0.66, { type: 'sine', gain: 0.09, endFrequency: 65.41, attack: 0.025 });
+    this.sequence([293.66, 369.99, 440, 587.33, 739.99, 880, 1174.66], 0.09, 0.82, 0.105);
   }
 
-  /**
-   * Mystic ethereal sound when sacrificing to the Altar of Luck
-   */
   public playSacrificeSound() {
     if (!this.enabled) return;
-    try {
-      this.initCtx();
-      if (!this.ctx) return;
-      const now = this.ctx.currentTime;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(220, now);
-      osc.frequency.exponentialRampToValueAtTime(880, now + 0.4);
-      osc.frequency.exponentialRampToValueAtTime(440, now + 0.8);
-      gain.gain.setValueAtTime(0.2, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.8);
-    } catch {}
+    this.tone(220, 0, 0.62, { type: 'sine', gain: 0.055, endFrequency: 440, attack: 0.08 });
+    this.tone(329.63, 0.18, 0.56, { type: 'sine', gain: 0.04, endFrequency: 164.81, pan: 0.12 });
   }
 }
 
