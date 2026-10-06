@@ -17,7 +17,8 @@ import {
   Check,
   ArrowUpRight,
 } from 'lucide-react';
-import type { PlayerState, MasterySkillId } from '../../shared/game.js';
+import type { PlayerState, MasterySkillId 
+  formatNumber,} from '../../shared/game.js';
 import {
   MASTERY_SKILLS,
   masterySkillCost,
@@ -40,7 +41,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
   busy,
   now,
 }) => {
-  const fmt = (n: number) => n.toLocaleString();
+  const fmt = (n: number) => formatNumber(n);
 
   // Sacrifice Altar stats
   const coinsSacrificed = state.sacrifices?.coinsSacrificed ?? 0;
