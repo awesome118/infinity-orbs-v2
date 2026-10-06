@@ -34,7 +34,7 @@ import {
   muteGuildChatUser,
   unmuteGuildChatUser,
 } from './social.js';
-import { cooldownMs, createInitialState, calculateLevelFromXp, COSMETICS_LIST, PRESTIGE_UPGRADES, MASTERY_SKILLS } from '../shared/game.js';
+import {\n  cooldownMs,\n  createInitialState,\n  calculateLevelFromXp,\n  COSMETICS_LIST,\n  PRESTIGE_UPGRADES,\n  MASTERY_SKILLS,\n  luckMultiplier,\n  rollsPerActivation,\n  offlineRollCap,\n  effectiveOfflineTickMs,\n  calculateAltarMultipliers,\n  calculateCosmicDust,\n  calculatePrestigeDust,\n  critMultiplier,\n  autoUnlocked,\n} from '../shared/game.js';
 import { recordLeaderboard } from './social.js';
 
 const DEBUG_USERS = new Set([
@@ -512,6 +512,32 @@ debugRouter.post('/event', async (req, res) => {
 });
 
 // Currency controls.
+debugRouter.get('/mechanics', async (_req, res) => {
+  try {
+    const s = await loadRaw();
+    res.json({
+      ok: true,
+      mechanics: {
+        luckMultiplier: luckMultiplier(s),
+        cooldownMs: cooldownMs(s, false),
+        autoCooldownMs: cooldownMs(s, true),
+        rollsPerActivation: rollsPerActivation(s),
+        offlineRollCap: offlineRollCap(s),
+        effectiveOfflineTickMs: effectiveOfflineTickMs(s),
+        critMultiplier: critMultiplier(s),
+        altar: calculateAltarMultipliers(s),
+        basePrestigeDust: calculatePrestigeDust(s.collectionValue ?? 0),
+        prestigeDust: calculateCosmicDust(s),
+        autoUnlocked: autoUnlocked(s),
+        synthesisUnlocked: (s.prestigeUpgrades?.shardSynthesis ?? 0) >= 1 && (s.level ?? 1) >= 20,
+      },
+      state: s,
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to inspect game mechanics.' });
+  }
+});
+
 debugRouter.post('/currency', async (req, res) => {
   try {
       await withPlayerMutationLock(async () => {
@@ -843,7 +869,15 @@ debugRouter.post('/force-roll', async (req, res) => {
       await withPlayerMutationLock(async () => {
     const s = await loadRaw();
     const forcedRarity = Math.max(2, finiteInteger(req.body?.rarity, 1_000));
-    const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained } = await applyRolls(s, 1, forcedRarity);
+    const source = req.body?.source === 'offline' ? 'offline' : 'online';
+    const hasRandomValue = req.body?.randomValue !== undefined;
+    const randomValue = hasRandomValue ? Number(req.body.randomValue) : null;
+    if (hasRandomValue && (!Number.isFinite(randomValue) || randomValue < 0 || randomValue >= 1)) {
+      throw new Error('randomValue must be a number from 0 inclusive to 1 exclusive.');
+    }
+    const randomOverride = hasRandomValue ? () => randomValue as number : undefined;
+    const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained } =
+      await applyRolls(s, 1, forcedRarity, source, undefined, randomOverride);
     const now = Date.now();
     s.lastRollAt = now;
     s.lastSeenAt = now;
@@ -859,7 +893,7 @@ debugRouter.post('/force-roll', async (req, res) => {
       shardsGained,
       xpGained,
       state: s,
-      rollsRemainingUntilNext: cooldownMs(s),
+      rollsRemainingUntilNext: cooldownMs(s),\n      source,
       dramaticReveal: bestOrb.rarity >= 100,
     });
         });} catch (e: any) {
