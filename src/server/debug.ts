@@ -623,9 +623,9 @@ function buildStatSpyStats(
     statSource('Steady Hands', Number(prestige.steadyHands ?? 0) * 100, 'ms', 'reduction', { level: Number(prestige.steadyHands ?? 0), detail: '-100ms per level' }),
     statSource('Temporal Compression', Number(prestige.temporalCompression ?? 0) * 75, 'ms', 'reduction', { level: Number(prestige.temporalCompression ?? 0), detail: '-75ms per level' }),
     statSource('Level milestone speed', levelBenefits.cooldownReductionMs, 'ms', 'reduction', { level, detail: 'Unlocked at level milestones' }),
-    statSource('Auto-Roll Speed', Math.max(0, 1 - (1 - (Number(prestige.autoOverclock ?? 0) * 0.05))) * 100, 'pct', 'multiply', { level: Number(prestige.autoOverclock ?? 0), detail: '-5% auto cooldown per level' }),
-    statSource('Turbo', 25, 'pct', 'multiply', { active: Boolean(s.turboRollUntil && Date.now() < s.turboRollUntil), detail: Number(prestige.chronoOverdrive ?? 0) > 0 ? '-35% active, otherwise -25%' }),
-    statSource('Hyperdrive', 25, 'pct', 'multiply', { active: isPremiumBoosterActive(s, 'hyperdrive'), detail: '-75% while active' }),
+    statSource('Auto-Roll Speed', 1 - (Number(prestige.autoOverclock ?? 0) * 0.05), 'mult', 'multiply', { level: Number(prestige.autoOverclock ?? 0), detail: '×0.95 auto cooldown per level' }),
+    statSource('Turbo', Number(prestige.chronoOverdrive ?? 0) > 0 ? 0.65 : 0.75, 'mult', 'multiply', { active: Boolean(s.turboRollUntil && Date.now() < s.turboRollUntil), detail: Number(prestige.chronoOverdrive ?? 0) > 0 ? '×0.65 while active with Turbo Duration' : '×0.75 while active' }),
+    statSource('Hyperdrive', 0.25, 'mult', 'multiply', { active: isPremiumBoosterActive(s, 'hyperdrive'), detail: '×0.25 while active' }),
     statSource('Global Speed', globalSpeed, 'mult', 'multiply', { level: Number(s.globalBoosters?.speed?.tier ?? 0), active: globalSpeed < 1, detail: '0.95× per tier, capped at 0.35×' }),
   ];
 
@@ -679,7 +679,7 @@ function buildStatSpyStats(
   const vaultSources: StatSpySource[] = [
     statSource('Base vault', 30, 'capacity', 'base'),
     statSource('Auto upgrade', Number(upgrades.auto ?? 0) * 20, 'capacity', 'add', { level: Number(upgrades.auto ?? 0), detail: '+20 capacity per Auto level' }),
-    statSource('Speed upgrade', Number(upgrades.speed ?? 0) * 0.04 * 30, 'capacity', 'add', { level: Number(upgrades.speed ?? 0), detail: '+4% of base capacity per level' }),
+    statSource('Speed upgrade', Number(upgrades.speed ?? 0) * 4, 'pct', 'multiply', { level: Number(upgrades.speed ?? 0), detail: '+4% vault-capacity multiplier per level' }),
     statSource('Vault Expansion', Number(prestige.vaultCap ?? 0) * 250, 'capacity', 'add', { level: Number(prestige.vaultCap ?? 0), detail: '+250 per level' }),
     statSource('Guild Vault', Number(guild.vaultRank ?? 0) * 100, 'capacity', 'add', { level: Number(guild.vaultRank ?? 0), detail: '+100 per rank' }),
     statSource('Vault Architecture', Number(mastery.infiniteVault ?? 0) * 200, 'capacity', 'add', { level: Number(mastery.infiniteVault ?? 0), detail: '+200 per level' }),
@@ -799,8 +799,8 @@ function buildStatSpyStats(
       unit: 'mult',
       sources: [
         statSource('Base value', 1, 'mult', 'base'),
-        statSource('Value Bonus upgrade', 1 + Number(upgrades.valueBonus ?? 0) * 0.10, 'mult', 'multiply', { level: Number(upgrades.valueBonus ?? 0), detail: '+10% per level' }),
-        statSource('Cosmic Valuation', 1 + Number(prestige.cosmicValuation ?? 0) * 0.05, 'mult', 'multiply', { level: Number(prestige.cosmicValuation ?? 0), detail: '+5% per level' }),
+        statSource('Value Bonus upgrade', Number(upgrades.valueBonus ?? 0) * 10, 'pct', 'add', { level: Number(upgrades.valueBonus ?? 0), detail: '+10 percentage points per level' }),
+        statSource('Cosmic Valuation', Number(prestige.cosmicValuation ?? 0) * 5, 'pct', 'add', { level: Number(prestige.cosmicValuation ?? 0), detail: '+5 percentage points per level' }),
       ],
     },
     {
@@ -840,8 +840,8 @@ function buildStatSpyStats(
       unit: 'mult',
       sources: [
         statSource('Base dust', 1, 'mult', 'base'),
-        statSource('Dust Bounty', 1 + Number(prestige.dustBounty ?? 0) * 0.15, 'mult', 'multiply', { level: Number(prestige.dustBounty ?? 0), detail: '+15% per level' }),
-        statSource('Cosmic Affinity', 1 + Number(mastery.cosmicAttunement ?? 0) * 0.08, 'mult', 'multiply', { level: Number(mastery.cosmicAttunement ?? 0), detail: '+8% per level' }),
+        statSource('Dust Bounty', Number(prestige.dustBounty ?? 0) * 15, 'pct', 'add', { level: Number(prestige.dustBounty ?? 0), detail: '+15 percentage points per level' }),
+        statSource('Cosmic Affinity', Number(mastery.cosmicAttunement ?? 0) * 8, 'pct', 'add', { level: Number(mastery.cosmicAttunement ?? 0), detail: '+8 percentage points per level' }),
       ],
     },
     {
