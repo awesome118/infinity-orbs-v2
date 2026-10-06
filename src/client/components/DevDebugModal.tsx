@@ -2026,15 +2026,16 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       );
 
       await step(
-        'API · Roll ticket issues unique IDs',
+        'API · Roll ticket reuse is stable',
         async () => {
           const a = await request<any>('/api/roll-ticket');
           const b = await request<any>('/api/roll-ticket');
-          if (!a.ticketId || !b.ticketId || a.ticketId === b.ticketId) throw new Error('Roll tickets were not unique.');
-          if (Number(b.nextIndex) !== Number(a.nextIndex) + 1) throw new Error('Roll ticket index did not advance sequentially.');
+          if (!a.ticketId || a.ticketId !== b.ticketId) throw new Error('Active roll ticket was not reused.');
+          if (Number(b.nextIndex) !== Number(a.nextIndex)) throw new Error('Repeated ticket reads changed nextIndex.');
+          if (!(Number(a.expiresAt) > Date.now())) throw new Error('Active roll ticket is already expired.');
           return { a, b };
         },
-        result => 'ticket index ' + result.a.nextIndex + ' → ' + result.b.nextIndex,
+        result => 'ticket=' + result.a.ticketId + ' · index=' + result.a.nextIndex + ' · active',
       );
 
       await step(
