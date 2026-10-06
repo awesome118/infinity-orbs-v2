@@ -1643,20 +1643,22 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         await step(
           'Mechanic · Frenzy Volley',
           async () => {
+            // Claim the baseline before creating the upgraded Frenzy. Both admin
+            // tests use the current post ID, so the first post must not be overwritten.
             await request('/api/dev/frenzy/reset', {});
             await setMechanicState({ frenzyVolley: 0 }, { upgrades: { ...zeroUpgrades, multi: 1 } });
             const normalStart = await request<any>('/api/dev/frenzy/start', { rarity: 100 });
             const normalBeforeClaim = Number(normalStart.state?.totalRolls ?? 0);
+            const normalClaim = await request<any>('/api/dev/frenzy/claim', { postId: normalStart.postId });
+            const normalCount = Number(normalClaim.state?.totalRolls ?? 0) - normalBeforeClaim;
 
             await request('/api/dev/frenzy/reset', {});
             await setMechanicState({ frenzyVolley: 1 }, { upgrades: { ...zeroUpgrades, multi: 1 } });
             const volleyStart = await request<any>('/api/dev/frenzy/start', { rarity: 100 });
             const volleyBeforeClaim = Number(volleyStart.state?.totalRolls ?? 0);
-
-            const normalClaim = await request<any>('/api/dev/frenzy/claim', { postId: normalStart.postId });
             const volleyClaim = await request<any>('/api/dev/frenzy/claim', { postId: volleyStart.postId });
-            const normalCount = Number(normalClaim.state?.totalRolls ?? 0) - normalBeforeClaim;
             const volleyCount = Number(volleyClaim.state?.totalRolls ?? 0) - volleyBeforeClaim;
+
             if (normalCount !== 100 || volleyCount !== 120) {
               throw new Error('Frenzy Volley expected 100 → 120 bonus rolls, got ' + normalCount + ' → ' + volleyCount + '.');
             }
