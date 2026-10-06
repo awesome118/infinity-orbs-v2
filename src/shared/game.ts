@@ -812,12 +812,16 @@ const TIER_COLORS: Record<RarityTierName, { color: string; bgGradient: string }>
 
 export function formatRarity(rarity: number): string {
   const safe = Math.max(0, Number(rarity) || 0);
-  if (safe >= 1_000_000_000) {
+  if (safe > 9) {
     const exponent = Math.floor(Math.log10(safe));
     const mantissa = safe / Math.pow(10, exponent);
-    return `${mantissa.toFixed(2).replace(/\\.?0+$/, '')}e${exponent}`;
+    return `${mantissa.toFixed(2)}e${exponent}`;
   }
   return safe.toLocaleString();
+}
+
+function rarityRangeLabel(minRarity: number, maxRarity: number): string {
+  return `1 / ${formatRarity(minRarity)} - 1 / ${formatRarity(maxRarity)}`;
 }
 
 export function getOrbInfo(rarity: number): RarityTierInfo {
@@ -882,24 +886,24 @@ export interface ContinuumTierMilestone {
 }
 
 export const CONTINUUM_TIERS: ContinuumTierMilestone[] = [
-  { tier: 'Common', minRarity: 2, label: '1 / 2 - 1 / 9', approxChance: '~90.0%', coinsPerOrb: '2 - 9 Coins', color: '#94a3b8' },
-  { tier: 'Uncommon', minRarity: 10, label: '1 / 10 - 1 / 99', approxChance: '~9.0%', coinsPerOrb: '10 - 99 Coins', color: '#38bdf8' },
-  { tier: 'Rare', minRarity: 100, label: '1 / 100 - 1 / 999', approxChance: '~0.9%', coinsPerOrb: '100 - 999 Coins', color: '#c084fc' },
-  { tier: 'Epic', minRarity: 1000, label: '1 / 1,000 - 1 / 9,999', approxChance: '~0.09%', coinsPerOrb: '1,000 - 9,999 Coins', color: '#fb923c' },
-  { tier: 'Legendary', minRarity: 10000, label: '1 / 10,000 - 1 / 99,999', approxChance: '~0.009%', coinsPerOrb: '10,000 - 99,999 Coins', color: '#4ade80' },
-  { tier: 'Mythic', minRarity: 100000, label: '1 / 100,000 - 1 / 999,999', approxChance: '~0.0009%', coinsPerOrb: '100,000 - 999,999 Coins', color: '#a855f7' },
-  { tier: 'Relic', minRarity: 1000000, label: '1 / 1,000,000 - 1 / 9,999,999', approxChance: '~0.00009%', coinsPerOrb: '1,000,000 - 9,999,999 Coins', color: '#f59e0b' },
-  { tier: 'Divine', minRarity: 10000000, label: '1 / 10,000,000 - 1 / 99,999,999', approxChance: '~0.000009%', coinsPerOrb: '10,000,000 - 99,999,999 Coins', color: '#38bdf8' },
-  { tier: 'Transcendent', minRarity: 100000000, label: '1 / 1e8 - 1 / 1e9', approxChance: '~0.0000009%', coinsPerOrb: '1e8 - 1e9 Coins', color: '#ffffff' },
-  { tier: 'Ascendant', minRarity: 1000000000, label: '1 / 1e9 - 1 / 1e10', approxChance: '~0.00000009%', coinsPerOrb: '1e9 - 1e10 Coins', color: '#fb7185' },
-  { tier: 'Eternal', minRarity: 10000000000, label: '1 / 1e10 - 1 / 1e11', approxChance: '~0.000000009%', coinsPerOrb: '1e10 - 1e11 Coins', color: '#14b8a6' },
-  { tier: 'Celestial', minRarity: 100000000000, label: '1 / 1e11 - 1 / 1e12', approxChance: '~0.0000000009%', coinsPerOrb: '1e11 - 1e12 Coins', color: '#f97316' },
-  { tier: 'Infinite', minRarity: 1000000000000, label: '1 / 1e12 - 1 / 1e13', approxChance: '~0.00000000009%', coinsPerOrb: '1e12 - 1e13 Coins', color: '#22d3ee' },
-  { tier: 'Absolute', minRarity: 10000000000000, label: '1 / 1e13 - 1 / 1e14', approxChance: '~0.000000000009%', coinsPerOrb: '1e13 - 1e14 Coins', color: '#e879f9' },
-  { tier: 'Omniversal', minRarity: 100000000000000, label: '1 / 1e14 - 1 / 1e14+', approxChance: '~0.0000000000009%', coinsPerOrb: '1e14+ Coins', color: '#f8fafc' },
-  { tier: 'Paradox', minRarity: 1000000000000000, label: '1 / 1e15 - 1 / 1e16', approxChance: '~0.00000000000009%', coinsPerOrb: '1e15 - 1e16 Coins', color: '#ef4444' },
-  { tier: 'Beyond', minRarity: 10000000000000000, label: '1 / 1e16 - 1 / 1e17', approxChance: '~0.000000000000009%', coinsPerOrb: '1e16 - 1e17 Coins', color: '#8b5cf6' },
-  { tier: 'Endless', minRarity: 100000000000000000, label: '1 / 1e17+', approxChance: '~0.0000000000000009%', coinsPerOrb: '1e17+ Coins', color: '#f1f5f9' },
+  { tier: 'Common', minRarity: 2, label: rarityRangeLabel(2, 9), approxChance: '~90.0%', coinsPerOrb: '2 - 9 Coins', color: '#94a3b8' },
+  { tier: 'Uncommon', minRarity: 10, label: rarityRangeLabel(10, 99), approxChance: '~9.0%', coinsPerOrb: '10 - 99 Coins', color: '#38bdf8' },
+  { tier: 'Rare', minRarity: 100, label: rarityRangeLabel(100, 999), approxChance: '~0.9%', coinsPerOrb: '100 - 999 Coins', color: '#c084fc' },
+  { tier: 'Epic', minRarity: 1000, label: rarityRangeLabel(1000, 9999), approxChance: '~0.09%', coinsPerOrb: '1,000 - 9,999 Coins', color: '#fb923c' },
+  { tier: 'Legendary', minRarity: 10000, label: rarityRangeLabel(10000, 99999), approxChance: '~0.009%', coinsPerOrb: '10,000 - 99,999 Coins', color: '#4ade80' },
+  { tier: 'Mythic', minRarity: 100000, label: rarityRangeLabel(100000, 999999), approxChance: '~0.0009%', coinsPerOrb: '100,000 - 999,999 Coins', color: '#a855f7' },
+  { tier: 'Relic', minRarity: 1000000, label: rarityRangeLabel(1000000, 9999999), approxChance: '~0.00009%', coinsPerOrb: '1,000,000 - 9,999,999 Coins', color: '#f59e0b' },
+  { tier: 'Divine', minRarity: 10000000, label: rarityRangeLabel(10000000, 99999999), approxChance: '~0.000009%', coinsPerOrb: '10,000,000 - 99,999,999 Coins', color: '#38bdf8' },
+  { tier: 'Transcendent', minRarity: 100000000, label: rarityRangeLabel(100000000, 999999999), approxChance: '~0.0000009%', coinsPerOrb: '1e8 - 1e9 Coins', color: '#ffffff' },
+  { tier: 'Ascendant', minRarity: 1000000000, label: rarityRangeLabel(1000000000, 9999999999), approxChance: '~0.00000009%', coinsPerOrb: '1e9 - 1e10 Coins', color: '#fb7185' },
+  { tier: 'Eternal', minRarity: 10000000000, label: rarityRangeLabel(10000000000, 99999999999), approxChance: '~0.000000009%', coinsPerOrb: '1e10 - 1e11 Coins', color: '#14b8a6' },
+  { tier: 'Celestial', minRarity: 100000000000, label: rarityRangeLabel(100000000000, 999999999999), approxChance: '~0.0000000009%', coinsPerOrb: '1e11 - 1e12 Coins', color: '#f97316' },
+  { tier: 'Infinite', minRarity: 1000000000000, label: rarityRangeLabel(1000000000000, 9999999999999), approxChance: '~0.00000000009%', coinsPerOrb: '1e12 - 1e13 Coins', color: '#22d3ee' },
+  { tier: 'Absolute', minRarity: 10000000000000, label: rarityRangeLabel(10000000000000, 99999999999999), approxChance: '~0.000000000009%', coinsPerOrb: '1e13 - 1e14 Coins', color: '#e879f9' },
+  { tier: 'Omniversal', minRarity: 100000000000000, label: `1 / ${formatRarity(100000000000000)}+`, approxChance: '~0.0000000000009%', coinsPerOrb: '1e14+ Coins', color: '#f8fafc' },
+  { tier: 'Paradox', minRarity: 1000000000000000, label: rarityRangeLabel(1000000000000000, 9999999999999999), approxChance: '~0.00000000000009%', coinsPerOrb: '1e15 - 1e16 Coins', color: '#ef4444' },
+  { tier: 'Beyond', minRarity: 10000000000000000, label: rarityRangeLabel(10000000000000000, 99999999999999999), approxChance: '~0.000000000000009%', coinsPerOrb: '1e16 - 1e17 Coins', color: '#8b5cf6' },
+  { tier: 'Endless', minRarity: 100000000000000000, label: `1 / ${formatRarity(100000000000000000)}+`, approxChance: '~0.0000000000000009%', coinsPerOrb: '1e17+ Coins', color: '#f1f5f9' },
 ];
 
 export const CONTINUUM_DISCOVERY_UNLOCK_RARITY = 9;
