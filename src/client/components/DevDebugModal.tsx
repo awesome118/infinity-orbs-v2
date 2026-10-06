@@ -5,6 +5,7 @@ import {
   Ban, UserX, CheckCircle2, RefreshCw, Flame,
   Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy, ClipboardCheck,
 } from 'lucide-react';
+import { PRESTIGE_UPGRADES } from '../../shared/game.js';
 import type { RollResponse } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
@@ -1151,25 +1152,128 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       );
 
       if (prestigeResult) {
-        const prestigeUpgrade = await step(
-          'Buy Prestige Upgrade · permLuck',
-          () => request<{ state: any }>('/api/prestige/upgrade', { id: 'permLuck' }),
-          (result: any) => `permLuck=${shortNumber(result.state?.prestigeUpgrades?.permLuck, 0)}`,
+        await step(
+          'Seed Prestige Dust',
+          () => request('/api/dev/state', {
+            cosmicDust: 1_000,
+            coins: 100_000,
+            shards: 0,
+          }),
+          () => 'cosmicDust=1,000 for the full prestige upgrade sweep',
         );
-        const astralForge = await step(
-          'Buy Prestige Upgrade · Astral Forge',
-          () => request<{ state: any }>('/api/prestige/upgrade', { id: 'shardSynthesis' }),
-          (result: any) => `shardSynthesis=${shortNumber(result.state?.prestigeUpgrades?.shardSynthesis, 0)}`,
-        );
-        if (prestigeUpgrade) {
+
+        for (const id of Object.keys(PRESTIGE_UPGRADES) as Array<keyof typeof PRESTIGE_UPGRADES>) {
           await step(
-            'Buy Mastery Skill · continuumLuck',
-            () => request<{ state: any }>('/api/mastery/upgrade', { skillId: 'continuumLuck' }),
-            (result: any) => `continuumLuck=${shortNumber(result.state?.masterySkills?.continuumLuck, 0)}`,
+            `Buy Prestige Upgrade · ${PRESTIGE_UPGRADES[id].name}`,
+            async () => {
+              const beforeState = await request<any>('/api/me');
+              const before = Number(beforeState?.prestigeUpgrades?.[id] ?? 0);
+              const result = await request<{ state: any }>('/api/prestige/upgrade', { id });
+              const after = Number(result.state?.prestigeUpgrades?.[id] ?? 0);
+              if (after !== before + 1) {
+                throw new Error(`${id} did not increment from ${before} to ${before + 1}.`);
+              }
+              return result;
+            },
+            (result: any) => `${id}=${shortNumber(result.state?.prestigeUpgrades?.[id], 0)} · dust=${shortNumber(result.state?.cosmicDust, 0)}`,
           );
         }
+
+        await step(
+          'Buy Mastery Skill · continuumLuck',
+          () => request<{ state: any }>('/api/mastery/upgrade', { skillId: 'continuumLuck' }),
+          (result: any) => `continuumLuck=${shortNumber(result.state?.masterySkills?.continuumLuck, 0)}`,
+        );
+
+        await step(
+          'Test Singularity Tithe · single-roll boundary',
+          async () => {
+            await request('/api/dev/state', {
+              level: 1,
+              xp: 0,
+              totalRolls: 999,
+              singularityTitheSingleRolls: 999,
+              cosmicDust: 0,
+              lastRollAt: 0,
+              upgrades: {
+                multi: 0,
+                clusterRoll: 0,
+                auto: 0,
+              },
+              prestigeUpgrades: {
+                astralBarrage: 0,
+                astralArsenal: 0,
+                singularityTithe: 1,
+              },
+              masterySkills: {
+                celestialVolley: 0,
+              },
+              activeBoosters: {
+                barrage: 0,
+              },
+            });
+            const result = await rollOnce('tithe single roll');
+            const state = recordValue(recordValue(result).state);
+            const counter = Number(state.singularityTitheSingleRolls ?? 0);
+            const dust = Number(state.cosmicDust ?? 0);
+            if (counter !== 1_000 || dust < 1) {
+              throw new Error(`Expected 1,000 single rolls and at least 1 Dust, got counter=${counter}, dust=${dust}.`);
+            }
+            return result;
+          },
+          (result: any) => `singleRolls=${shortNumber(result.state?.singularityTitheSingleRolls, 0)} · dust=${shortNumber(result.state?.cosmicDust, 0)}`,
+        );
+
+        await step(
+          'Test Singularity Tithe · multi-roll excluded',
+          async () => {
+            await request('/api/dev/state', {
+              singularityTitheSingleRolls: 1_000,
+              cosmicDust: 0,
+              lastRollAt: 0,
+              upgrades: {
+                multi: 1,
+                clusterRoll: 0,
+                auto: 0,
+              },
+              prestigeUpgrades: {
+                astralBarrage: 0,
+                astralArsenal: 0,
+                singularityTithe: 1,
+              },
+              masterySkills: {
+                celestialVolley: 0,
+              },
+              activeBoosters: {
+                barrage: 0,
+              },
+            });
+            const result = await rollOnce('tithe multi roll');
+            const state = recordValue(recordValue(result).state);
+            const counter = Number(state.singularityTitheSingleRolls ?? 0);
+            const dust = Number(state.cosmicDust ?? 0);
+            if (counter !== 1_000 || dust !== 0) {
+              throw new Error(`Multi-roll advanced Tithe unexpectedly: counter=${counter}, dust=${dust}.`);
+            }
+            return result;
+          },
+          (result: any) => `singleRolls=${shortNumber(result.state?.singularityTitheSingleRolls, 0)} · dust=${shortNumber(result.state?.cosmicDust, 0)} · processed=${shortNumber(result.rollsProcessed, 0)}`,
+        );
+
+        await step(
+          'Restore Prestige Test State',
+          () => request('/api/dev/state', {
+            prestigeUpgrades: Object.fromEntries(
+              Object.keys(PRESTIGE_UPGRADES).map(id => [id, 1]),
+            ),
+          }),
+          () => 'all prestige upgrades restored to level 1',
+        );
       } else {
-        skip('Buy Prestige Upgrade · permLuck', 'prestige failed');
+        skip('Full Prestige Upgrade Sweep', 'prestige failed');
+        skip('Test Singularity Tithe · single-roll boundary', 'prestige failed');
+        skip('Test Singularity Tithe · multi-roll excluded', 'prestige failed');
+        skip('Restore Prestige Test State', 'prestige failed');
         skip('Buy Mastery Skill · continuumLuck', 'prestige failed');
       }
 
