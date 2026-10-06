@@ -46,53 +46,6 @@ export const Header: React.FC<HeaderProps> = ({
   };
   const nextMilestone = LEVEL_MILESTONES.find(m => m.level > displayedLevel);
   const levelBenefits = getLevelBenefits(displayedLevel);
-  return () => window.clearTimeout(timer);
-  }, [hasStartedPlaying]);
-
-  React.useEffect(() => {
-    const onFollowPromptTest = () => {
-      try { localStorage.removeItem(followDismissedKey); } catch {}
-      openFollowPrompt();
-    };
-    window.addEventListener('io-follow-prompt-test', onFollowPromptTest);
-    return () => window.removeEventListener('io-follow-prompt-test', onFollowPromptTest);
-  }, []);
-
-  const dismissFollowPrompt = () => {
-    try { localStorage.setItem(followDismissedKey, 'true'); } catch {}
-    setFollowPromptOpen(false);
-  };
-
-  const followAndClaim = async () => {
-    if (followBusy || followCompleted) return;
-    setFollowBusy(true);
-    setFollowError(null);
-    try {
-      const response = await fetch('/api/follow-reward', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(typeof data?.error === 'string' ? data.error : 'Could not follow the subreddit.');
-      }
-
-      try { localStorage.setItem(followDismissedKey, 'true'); } catch {}
-      setFollowCompleted(true);
-      sound.playChime(880, 'sine', 0.3);
-      window.setTimeout(() => {
-        setFollowPromptOpen(false);
-        window.location.reload();
-      }, 700);
-    } catch (error) {
-      console.error('[Follow Reward] Follow/reward failed:', error);
-      setFollowError(error instanceof Error ? error.message : 'Could not follow the subreddit.');
-    } finally {
-      setFollowBusy(false);
-    }
-  };
-
   return (
     <>
       <header className="app-header bg-slate-900/90 border-b border-slate-800/80 backdrop-blur-md sticky top-0 z-30 px-4 py-3">
