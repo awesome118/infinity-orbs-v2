@@ -46,26 +46,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
   const nextMilestone = LEVEL_MILESTONES.find(m => m.level > displayedLevel);
   const levelBenefits = getLevelBenefits(displayedLevel);
-  const [followPromptOpen, setFollowPromptOpen] = React.useState(false);
-  const [followBusy, setFollowBusy] = React.useState(false);
-  const [followError, setFollowError] = React.useState<string | null>(null);
-  const [followCompleted, setFollowCompleted] = React.useState(false);
-  const hasStartedPlaying = (state.totalRolls ?? 0) > 0;
-  const followDismissedKey = 'io-follow-prompt-dismissed-v5';
-
-  const openFollowPrompt = () => {
-    setFollowError(null);
-    setFollowCompleted(false);
-    setFollowPromptOpen(true);
-  };
-
-  React.useEffect(() => {
-    if (!hasStartedPlaying) return;
-    try {
-      if (localStorage.getItem(followDismissedKey) === 'true') return;
-    } catch {}
-    const timer = window.setTimeout(openFollowPrompt, 3 * 60 * 1000);
-    return () => window.clearTimeout(timer);
+  return () => window.clearTimeout(timer);
   }, [hasStartedPlaying]);
 
   React.useEffect(() => {
@@ -280,53 +261,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
     </header>
-      {followPromptOpen && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-5 shadow-2xl space-y-4">
-            <div>
-              <div className="flex items-center gap-2 text-white font-extrabold text-base">
-                <Users className="w-5 h-5 text-orange-400" />
-                <span>Follow the subreddit</span>
-              </div>
-              <p className="mt-2 text-sm leading-5 text-slate-400">
-                Follow <span className="text-white font-semibold">r/infinityorbs</span> to keep up with Infinity Orbs.
-                Click the button and you&apos;ll get <span className="text-amber-300 font-bold">200 free rolls</span>.
-              </p>
-              <p className="mt-2 text-[10px] leading-4 text-slate-500">
-                The button follows the subreddit through Reddit and then grants the one-time reward.
-              </p>
-            </div>
-
-            {followError && (
-              <p className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
-                {followError}
-              </p>
-            )}
-
-            {followCompleted && (
-              <p className="text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
-                Followed. 200 rolls added.
-              </p>
-            )}
-
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                disabled={followBusy || followCompleted}
-                onClick={() => { sound.playClick(); void followAndClaim(); }}
-                className="w-full py-2.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-60 text-white text-sm font-bold transition-colors"
-              >
-                {followBusy ? 'Following…' : followCompleted ? 'Followed · +200 rolls' : 'Follow subreddit · +200 rolls'}
-              </button>
-              <button
-                type="button"
-                onClick={() => { sound.playClick(); dismissFollowPrompt(); }}
-                className="w-full py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 transition-colors"
-              >
-                Maybe later
-              </button>
-            </div>
-          </div>
+/div>
         </div>
       )}
     </>
