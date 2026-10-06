@@ -33,6 +33,8 @@ import {
   listGuildChatSpy,
   muteGuildChatUser,
   unmuteGuildChatUser,
+  listChatReports,
+  markChatReportRead,
 } from './social.js';
 import {
   cooldownMs,
@@ -389,6 +391,22 @@ debugRouter.post('/announcement', async (req, res) => {
     res.json({ announcement });
   } catch (e: any) {
     res.status(400).json({ error: e?.message || 'Failed to update developer announcement.' });
+  }
+});
+
+debugRouter.get('/chat-reports', async (_req, res) => {
+  try {
+    res.json(await listChatReports());
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to load chat reports.' });
+  }
+});
+
+debugRouter.post('/chat-reports/read', async (req, res) => {
+  try {
+    res.json(await markChatReportRead(String(req.body?.reportId ?? '')));
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to mark chat report as read.' });
   }
 });
 
