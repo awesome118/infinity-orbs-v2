@@ -123,9 +123,6 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
 
   const handleReportChat = async (message: GuildMessage) => {
     if (message.isSystem || reportingId) return;
-    const confirmed = window.confirm(`Report u/${message.username}'s message to the subreddit moderators?`);
-    if (!confirmed) return;
-
     setReportingId(message.id);
     try {
       const response = await fetch('/api/guilds/chat/report', {
@@ -734,8 +731,8 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                                   type="button"
                                   onClick={() => void handleReportChat(msg)}
                                   disabled={reportingId === msg.id || reportedIds.has(msg.id)}
-                                  className="shrink-0 rounded-md px-1.5 py-1 text-[9px] text-slate-600 hover:bg-slate-800 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
-                                  title={reportedIds.has(msg.id) ? 'Report sent to subreddit moderators' : 'Report message to subreddit moderators'}
+                                  className="shrink-0 rounded-md border border-slate-800 bg-slate-950/70 px-2 py-1 text-[9px] font-bold text-slate-500 hover:border-rose-500/40 hover:bg-rose-950/20 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
+                                  title={reportedIds.has(msg.id) ? 'Report sent to subreddit moderators' : 'Report this message'}
                                   aria-label={reportedIds.has(msg.id) ? 'Message reported' : 'Report message'}
                                 >
                                   <Flag className="h-3 w-3" />
