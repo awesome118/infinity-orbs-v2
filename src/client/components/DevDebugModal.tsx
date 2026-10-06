@@ -274,12 +274,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [ccuLoading, setCcuLoading] = useState(false);
   const [fakeCcuInput, setFakeCcuInput] = useState('0');
   const [pushTestLoading, setPushTestLoading] = useState(false);
-  const [followStats, setFollowStats] = useState<{
-    recordedFollowActions: number;
-    totalSubscribers: number | null;
-    targetSubreddit: string;
-  } | null>(null);
-  const [followStatsLoading, setFollowStatsLoading] = useState(false);
+
   const [fullTestRunning, setFullTestRunning] = useState(false);
   const [fullTestCurrentAction, setFullTestCurrentAction] = useState('');
   const [fullTestLogs, setFullTestLogs] = useState<Array<{
@@ -414,7 +409,6 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
 
   useEffect(() => {
     void loadCcuStats();
-    void loadFollowStats();
   }, []);
 
   const setFakeCcu = async (bonus: number) => {
@@ -434,25 +428,6 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     } finally {
       setCcuLoading(false);
     }
-  };
-
-  const loadFollowStats = async () => {
-    setFollowStatsLoading(true);
-    try {
-      const res = await fetch('/api/dev/follow-stats', { cache: 'no-store' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Could not load follow statistics.');
-      setFollowStats(data);
-    } catch (e: any) {
-      setMessage('Error: ' + (e?.message || 'Could not load follow statistics.'));
-    } finally {
-      setFollowStatsLoading(false);
-    }
-  };
-
-  const showFollowPromptTest = () => {
-    window.dispatchEvent(new Event('io-follow-prompt-test'));
-    setMessage('Follow prompt triggered for this game session.');
   };
 
   const sendPushTest = async () => {
@@ -1472,48 +1447,6 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </div>
           )}
         </section>
-        <section className={panelBase + ' border border-orange-500/30'}>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-orange-300">
-                <Users className="w-4 h-4" /> Follow Prompt
-              </div>
-              <p className="mt-1 text-[11px] text-slate-500">
-                Trigger the follow prompt immediately for testing and inspect subreddit metrics.
-              </p>
-            </div>
-            <div className="flex gap-2 shrink-0">
-              <button onClick={showFollowPromptTest} className={buttonBase + ' bg-orange-600 hover:bg-orange-500 border-orange-500 text-white px-3 py-2'}>
-                Show Prompt
-              </button>
-              <button
-                disabled={followStatsLoading}
-                onClick={() => void loadFollowStats()}
-                className={buttonBase + ' bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2'}
-              >
-                {followStatsLoading ? 'Refreshing…' : 'Refresh'}
-              </button>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2">
-              <div className="text-[10px] uppercase font-bold text-slate-500">Prompt follow actions</div>
-              <div className="text-lg font-black text-orange-300">{followStats?.recordedFollowActions?.toLocaleString() ?? '—'}</div>
-            </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2">
-              <div className="text-[10px] uppercase font-bold text-slate-500">
-                r/{followStats?.targetSubreddit ?? 'infinityorbs'} subscribers
-              </div>
-              <div className="text-lg font-black text-emerald-300">
-                {followStats?.totalSubscribers == null ? '—' : followStats.totalSubscribers.toLocaleString()}
-              </div>
-            </div>
-          </div>
-          <p className="text-[10px] text-slate-600">
-            Reddit does not expose whether a viewer was already subscribed, so prompt follow actions are not guaranteed net-new followers.
-          </p>
-        </section>
-
         <section className={panelBase + ' border border-fuchsia-500/30'}>
           <div className="flex items-center justify-between gap-3">
             <div>
