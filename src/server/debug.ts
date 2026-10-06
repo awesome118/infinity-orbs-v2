@@ -24,7 +24,7 @@ import {
   sendPushNotificationTest,
   getPlayerSpyLogs,
   clearPlayerSpyLogs,
-  getFollowRewardStats,
+  getFollowPromptStats,
 } from './game.js';
 import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import { context, redis, reddit } from './devvit-mock.js';
@@ -171,6 +171,14 @@ debugRouter.post('/push-test', async (_req, res) => {
     res.json({ ok: true, message: 'Push test notification enqueued.' });
   } catch (e: any) {
     res.status(400).json({ error: e?.message || 'Failed to send push test notification.' });
+  }
+});
+
+debugRouter.get('/follow-stats', async (_req, res) => {
+  try {
+    res.json(await getFollowPromptStats());
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to load follow statistics.' });
   }
 });
 
