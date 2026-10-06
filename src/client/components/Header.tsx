@@ -47,29 +47,96 @@ export const Header: React.FC<HeaderProps> = ({
   const nextMilestone = LEVEL_MILESTONES.find(m => m.level > displayedLevel);
   const levelBenefits = getLevelBenefits(displayedLevel);
   const [followPromptOpen, setFollowPromptOpen] = React.useState(false);
-  const [followRewardState, setFollowRewardState] = React.useState<'idle' | 'claiming' | 'error'>('idle');
+  const [followStep, setFollowStep] = React.useState<'follow' | 'claim'>('follow');
+  const [followBusy, setFollowBusy] = React.useState(false);
+  const [followError, setFollowError] = React.useState<string | null>(null);
   const hasStartedPlaying = (state.totalRolls ?? 0) > 0;
+  const followDismissedKey = 'io-follow-prompt-dismissed-v2';
+  const followStateKey = 'io-follow-prompt-state-v2';
+
+  const openFollowPrompt = () => {
+    let savedStep: 'follow' | 'claim' = 'follow';
+    try {
+      if (localStorage.getItem(followStateKey) === 'followed') savedStep = 'claim';
+    } catch {
+      // Storage is optional in embedded Reddit webviews.
+    }
+    setFollowStep(savedStep);
+    setFollowError(null);
+    setFollowPromptOpen(true);
+  };
 
   React.useEffect(() => {
     if (!hasStartedPlaying) return;
     try {
-      if (localStorage.getItem('io-follow-prompt-dismissed-v1') === 'true') return;
+      if (localStorage.getItem(followDismissedKey) === 'true') return;
     } catch {
       // Storage is optional in embedded Reddit webviews.
     }
 
-    const timer = window.setTimeout(() => setFollowPromptOpen(true), 3 * 60 * 1000);
+    const timer = window.setTimeout(openFollowPrompt, 3 * 60 * 1000);
     return () => window.clearTimeout(timer);
   }, [hasStartedPlaying]);
 
+  React.useEffect(() => {
+    const onFollowPromptTest = () => {
+      try {
+        localStorage.removeItem(followDismissedKey);
+        localStorage.removeItem(followStateKey);
+      } catch {
+        // Best effort for the admin test trigger.
+      }
+      setFollowStep('follow');
+      setFollowError(null);
+      setFollowPromptOpen(true);
+    };
+
+    window.addEventListener('io-follow-prompt-test', onFollowPromptTest);
+    return () => window.removeEventListener('io-follow-prompt-test', onFollowPromptTest);
+  }, []);
+
   const dismissFollowPrompt = () => {
-    try { localStorage.setItem('io-follow-prompt-dismissed-v1', 'true'); } catch { /* best effort */ }
+    try { localStorage.setItem(followDismissedKey, 'true'); } catch { /* best effort */ }
     setFollowPromptOpen(false);
   };
 
+  const followSubreddit = async () => {
+    if (followBusy) return;
+    setFollowBusy(true);
+    setFollowError(null);
+
+    try {
+      const response = await fetch('/api/follow-subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof data?.error === 'string' ? data.error : 'Could not follow the subreddit.');
+      }
+
+      try {
+        localStorage.setItem(followStateKey, 'followed');
+        localStorage.removeItem(followDismissedKey);
+      } catch {
+        // Best effort only.
+      }
+
+      sound.playChime(660, 'sine', 0.2);
+      setFollowStep('claim');
+    } catch (error) {
+      console.error('[Follow Prompt] Subscribe failed:', error);
+      setFollowError(error instanceof Error ? error.message : 'Could not follow the subreddit.');
+    } finally {
+      setFollowBusy(false);
+    }
+  };
+
   const claimFollowReward = async () => {
-    if (followRewardState === 'claiming') return;
-    setFollowRewardState('claiming');
+    if (followBusy) return;
+    setFollowBusy(true);
+    setFollowError(null);
 
     try {
       const response = await fetch('/api/follow-reward', {
@@ -78,15 +145,25 @@ export const Header: React.FC<HeaderProps> = ({
         body: '{}',
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(typeof data?.error === 'string' ? data.error : 'Could not claim the reward.');
+      if (!response.ok) {
+        throw new Error(typeof data?.error === 'string' ? data.error : 'Could not claim the reward.');
+      }
 
-      try { localStorage.setItem('io-follow-prompt-dismissed-v1', 'true'); } catch { /* best effort */ }
+      try {
+        localStorage.setItem(followDismissedKey, 'true');
+        localStorage.removeItem(followStateKey);
+      } catch {
+        // Best effort only.
+      }
+
       sound.playChime(880, 'sine', 0.3);
       setFollowPromptOpen(false);
       window.setTimeout(() => window.location.reload(), 350);
     } catch (error) {
       console.error('[Follow Reward] Claim failed:', error);
-      setFollowRewardState('error');
+      setFollowError(error instanceof Error ? error.message : 'Could not claim the reward.');
+    } finally {
+      setFollowBusy(false);
     }
   };
 
@@ -267,30 +344,49 @@ export const Header: React.FC<HeaderProps> = ({
                 <span>Follow the subreddit</span>
               </div>
               <p className="mt-2 text-sm leading-5 text-slate-400">
-                Follow <span className="text-white font-semibold">r/infinityorbs</span> to keep up with the game.
-                Click the button below and you&apos;ll get <span className="text-amber-300 font-bold">200 free rolls</span>.
+                Follow the subreddit from this button. Once the follow is confirmed, you can claim
+                <span className="text-amber-300 font-bold"> 200 free rolls</span>.
               </p>
             </div>
 
-            {followRewardState === 'error' && (
+            {followError && (
               <p className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
-                The reward could not be claimed. Try the button again.
+                {followError}
               </p>
             )}
 
             <div className="flex flex-col gap-2">
-              <a
-                href="https://www.reddit.com/r/infinityorbs/"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => { sound.playClick(); void claimFollowReward(); }}
-                className={'w-full py-2.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold text-center transition-colors ' + (followRewardState === 'claiming' ? 'opacity-60 pointer-events-none' : '')}
-              >
-                {followRewardState === 'claiming' ? 'Adding 200 rolls…' : 'Follow subreddit · +200 rolls'}
-              </a>
+              {followStep === 'follow' ? (
+                <button
+                  type="button"
+                  disabled={followBusy}
+                  onClick={() => {
+                    sound.playClick();
+                    void followSubreddit();
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold text-center transition-colors"
+                >
+                  {followBusy ? 'Following…' : 'Follow subreddit'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={followBusy}
+                  onClick={() => {
+                    sound.playClick();
+                    void claimFollowReward();
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-sm font-bold text-center transition-colors"
+                >
+                  {followBusy ? 'Adding 200 rolls…' : 'Claim 200 free rolls'}
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => { sound.playClick(); dismissFollowPrompt(); }}
+                onClick={() => {
+                  sound.playClick();
+                  dismissFollowPrompt();
+                }}
                 className="w-full py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 transition-colors"
               >
                 Maybe later
