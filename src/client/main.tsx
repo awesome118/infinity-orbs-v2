@@ -987,7 +987,7 @@ export function App() {
       // In expanded mode the current game window is already open, so the
       // pending Frenzy effect below will immediately roll the full volley.
       if (getWebViewMode() === 'expanded') {
-        showToast(`⚡ Orb Frenzy ready: 1/${res.rarity.toLocaleString()} baseline roll.`, 'success');
+        showToast(`⚡ Orb Frenzy ready: 1/${formatRarity(res.rarity)} baseline roll.`, 'success');
       }
     } catch (e: any) {
       showToast(e.message || 'Could not start Orb Frenzy', 'warn');
@@ -1168,7 +1168,7 @@ export function App() {
       setReadyAt(Date.now() + res.rollsRemainingUntilNext);
       sound.playEpicFanfare();
       showToast(
-        `Claimed ${(res.rollsProcessed ?? res.batch?.length ?? 0).toLocaleString()} offline rolls! Highest: 1/${res.orb.rarity.toLocaleString()}`,
+        `Claimed ${(res.rollsProcessed ?? res.batch?.length ?? 0).toLocaleString()} offline rolls! Highest: 1/${formatRarity(res.orb.rarity)}`,
         'success'
       );
     } catch (e: any) {
