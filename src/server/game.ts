@@ -1863,6 +1863,7 @@ export async function applyRolls(
   randomOverride?: () => number,
 ): Promise<{ bestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number; rollCount: number }> {
   let bestRarity = 0;
+  let bestIsCrit = false;
   let totalVal = 0;
   let coinsGained = 0;
   let shardsGained = 0;
@@ -1979,6 +1980,9 @@ export async function applyRolls(
 
     if (rarity > bestRarity) {
       bestRarity = rarity;
+      bestIsCrit = isCrit;
+    } else if (rarity === bestRarity && isCrit) {
+      bestIsCrit = true;
     }
 
     const xpBonusMul =
@@ -2133,6 +2137,7 @@ export async function applyRolls(
     tier: bestInfo.tier,
     name: bestInfo.name,
     isNew: s.collection[String(bestRarity)] === 1,
+    isCrit: bestIsCrit,
   };
 
   await appendPlayerSpyLog('roll', {
