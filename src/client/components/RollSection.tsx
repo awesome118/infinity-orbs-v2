@@ -25,6 +25,7 @@ import {
   rollsPerActivation,
   luckMultiplier,
   getOrbInfo,
+  formatRarity,
   coinsForRarity,
 } from '../../shared/game.js';
 import { sound } from '../sound.js';
@@ -336,7 +337,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
             <div className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow-md font-mono">
               {displayOrb
-                ? `1 / ${displayOrb.rarity.toLocaleString()}`
+                ? `1 / ${formatRarity(displayOrb.rarity)}`
                 : '1 / ∞'}
             </div>
 
@@ -650,7 +651,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
                 {lastBatch.length} Orbs Rolled
               </span>
               <span className="text-xs text-slate-400">
-                (Best: 1/{lastOrb?.rarity.toLocaleString()})
+                (Best: 1/{formatRarity(lastOrb?.rarity)})
               </span>
             </div>
             <div className="flex items-center gap-3">
@@ -692,7 +693,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
                   >
                     <div className="flex items-center gap-1.5 font-mono">
                       {isBest && <Crown className="w-3 h-3 text-amber-400 flex-shrink-0" />}
-                      <span>1/{orb.rarity.toLocaleString()}</span>
+                      <span>1/{formatRarity(orb.rarity)}</span>
                     </div>
                     <span className="font-bold text-[10px]" style={{ color: info.color }}>
                       {info.tier}
@@ -715,7 +716,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           className="flex items-center gap-2 bg-orange-600/20 hover:bg-orange-600/30 border border-orange-500/40 text-orange-300 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg cursor-pointer"
         >
           <Share2 className="w-3.5 h-3.5" />
-          <span>Share 1/{lastOrb.rarity.toLocaleString()} to Reddit</span>
+          <span>Share 1/{formatRarity(lastOrb.rarity)} to Reddit</span>
         </button>
       )}
 
