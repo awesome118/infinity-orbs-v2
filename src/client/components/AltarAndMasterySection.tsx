@@ -17,9 +17,9 @@ import {
   Check,
   ArrowUpRight,
 } from 'lucide-react';
-import type { PlayerState, MasterySkillId 
-  formatNumber,} from '../../shared/game.js';
+import type { PlayerState, MasterySkillId } from '../../shared/game.js';
 import {
+  formatNumber,
   MASTERY_SKILLS,
   masterySkillCost,
   luckMultiplier,
