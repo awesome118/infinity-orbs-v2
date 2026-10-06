@@ -12,9 +12,8 @@ import {
   Gem,
   Award,
 } from 'lucide-react';
-import type { PlayerState, MasterySkillId 
-  formatNumber,} from '../../shared/game.js';
-import { MASTERY_SKILLS, masterySkillCost, highestCodexChain, codexDevotionLuckPercent } from '../../shared/game.js';
+import type { PlayerState, MasterySkillId } from '../../shared/game.js';
+import { formatNumber, MASTERY_SKILLS, masterySkillCost, highestCodexChain, codexDevotionLuckPercent } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface MasterySectionProps {
