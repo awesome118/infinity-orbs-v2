@@ -47,22 +47,15 @@ export const Header: React.FC<HeaderProps> = ({
   const nextMilestone = LEVEL_MILESTONES.find(m => m.level > displayedLevel);
   const levelBenefits = getLevelBenefits(displayedLevel);
   const [followPromptOpen, setFollowPromptOpen] = React.useState(false);
-  const [followStep, setFollowStep] = React.useState<'follow' | 'claim'>('follow');
   const [followBusy, setFollowBusy] = React.useState(false);
   const [followError, setFollowError] = React.useState<string | null>(null);
+  const [followCompleted, setFollowCompleted] = React.useState(false);
   const hasStartedPlaying = (state.totalRolls ?? 0) > 0;
-  const followDismissedKey = 'io-follow-prompt-dismissed-v2';
-  const followStateKey = 'io-follow-prompt-state-v2';
+  const followDismissedKey = 'io-follow-prompt-dismissed-v3';
 
   const openFollowPrompt = () => {
-    let savedStep: 'follow' | 'claim' = 'follow';
-    try {
-      if (localStorage.getItem(followStateKey) === 'followed') savedStep = 'claim';
-    } catch {
-      // Storage is optional in embedded Reddit webviews.
-    }
-    setFollowStep(savedStep);
     setFollowError(null);
+    setFollowCompleted(false);
     setFollowPromptOpen(true);
   };
 
@@ -70,41 +63,29 @@ export const Header: React.FC<HeaderProps> = ({
     if (!hasStartedPlaying) return;
     try {
       if (localStorage.getItem(followDismissedKey) === 'true') return;
-    } catch {
-      // Storage is optional in embedded Reddit webviews.
-    }
-
+    } catch {}
     const timer = window.setTimeout(openFollowPrompt, 3 * 60 * 1000);
     return () => window.clearTimeout(timer);
   }, [hasStartedPlaying]);
 
   React.useEffect(() => {
     const onFollowPromptTest = () => {
-      try {
-        localStorage.removeItem(followDismissedKey);
-        localStorage.removeItem(followStateKey);
-      } catch {
-        // Best effort for the admin test trigger.
-      }
-      setFollowStep('follow');
-      setFollowError(null);
-      setFollowPromptOpen(true);
+      try { localStorage.removeItem(followDismissedKey); } catch {}
+      openFollowPrompt();
     };
-
     window.addEventListener('io-follow-prompt-test', onFollowPromptTest);
     return () => window.removeEventListener('io-follow-prompt-test', onFollowPromptTest);
   }, []);
 
   const dismissFollowPrompt = () => {
-    try { localStorage.setItem(followDismissedKey, 'true'); } catch { /* best effort */ }
+    try { localStorage.setItem(followDismissedKey, 'true'); } catch {}
     setFollowPromptOpen(false);
   };
 
   const followSubreddit = async () => {
-    if (followBusy) return;
+    if (followBusy || followCompleted) return;
     setFollowBusy(true);
     setFollowError(null);
-
     try {
       const response = await fetch('/api/follow-subscribe', {
         method: 'POST',
@@ -112,56 +93,14 @@ export const Header: React.FC<HeaderProps> = ({
         body: '{}',
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(typeof data?.error === 'string' ? data.error : 'Could not follow the subreddit.');
-      }
-
-      try {
-        localStorage.setItem(followStateKey, 'followed');
-        localStorage.removeItem(followDismissedKey);
-      } catch {
-        // Best effort only.
-      }
-
+      if (!response.ok) throw new Error(typeof data?.error === 'string' ? data.error : 'Could not follow the subreddit.');
+      setFollowCompleted(true);
+      try { localStorage.setItem(followDismissedKey, 'true'); } catch {}
       sound.playChime(660, 'sine', 0.2);
-      setFollowStep('claim');
+      window.setTimeout(() => setFollowPromptOpen(false), 700);
     } catch (error) {
       console.error('[Follow Prompt] Subscribe failed:', error);
       setFollowError(error instanceof Error ? error.message : 'Could not follow the subreddit.');
-    } finally {
-      setFollowBusy(false);
-    }
-  };
-
-  const claimFollowReward = async () => {
-    if (followBusy) return;
-    setFollowBusy(true);
-    setFollowError(null);
-
-    try {
-      const response = await fetch('/api/follow-reward', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(typeof data?.error === 'string' ? data.error : 'Could not claim the reward.');
-      }
-
-      try {
-        localStorage.setItem(followDismissedKey, 'true');
-        localStorage.removeItem(followStateKey);
-      } catch {
-        // Best effort only.
-      }
-
-      sound.playChime(880, 'sine', 0.3);
-      setFollowPromptOpen(false);
-      window.setTimeout(() => window.location.reload(), 350);
-    } catch (error) {
-      console.error('[Follow Reward] Claim failed:', error);
-      setFollowError(error instanceof Error ? error.message : 'Could not claim the reward.');
     } finally {
       setFollowBusy(false);
     }
@@ -344,49 +283,34 @@ export const Header: React.FC<HeaderProps> = ({
                 <span>Follow the subreddit</span>
               </div>
               <p className="mt-2 text-sm leading-5 text-slate-400">
-                Follow the subreddit from this button. Once the follow is confirmed, you can claim
-                <span className="text-amber-300 font-bold"> 200 free rolls</span>.
+                Follow the subreddit to keep up with Infinity Orbs. Pressing the button will subscribe your Reddit account to the subreddit where this game is running.
+              </p>
+              <p className="mt-2 text-[10px] leading-4 text-slate-500">
+                This is a direct Reddit action on your account and only happens when you press Follow.
               </p>
             </div>
-
             {followError && (
               <p className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
                 {followError}
               </p>
             )}
-
+            {followCompleted && (
+              <p className="text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
+                Follow action completed.
+              </p>
+            )}
             <div className="flex flex-col gap-2">
-              {followStep === 'follow' ? (
-                <button
-                  type="button"
-                  disabled={followBusy}
-                  onClick={() => {
-                    sound.playClick();
-                    void followSubreddit();
-                  }}
-                  className="w-full py-2.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold text-center transition-colors"
-                >
-                  {followBusy ? 'Following…' : 'Follow subreddit'}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled={followBusy}
-                  onClick={() => {
-                    sound.playClick();
-                    void claimFollowReward();
-                  }}
-                  className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-sm font-bold text-center transition-colors"
-                >
-                  {followBusy ? 'Adding 200 rolls…' : 'Claim 200 free rolls'}
-                </button>
-              )}
               <button
                 type="button"
-                onClick={() => {
-                  sound.playClick();
-                  dismissFollowPrompt();
-                }}
+                disabled={followBusy || followCompleted}
+                onClick={() => { sound.playClick(); void followSubreddit(); }}
+                className="w-full py-2.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-60 text-white text-sm font-bold transition-colors"
+              >
+                {followBusy ? 'Following…' : followCompleted ? 'Followed' : 'Follow subreddit'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { sound.playClick(); dismissFollowPrompt(); }}
                 className="w-full py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 transition-colors"
               >
                 Maybe later
