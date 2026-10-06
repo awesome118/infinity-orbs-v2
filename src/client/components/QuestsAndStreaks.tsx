@@ -10,8 +10,8 @@ import {
   Award,
   Shield,
 } from 'lucide-react';
-import type { PlayerState 
-  formatNumber,} from '../../shared/game.js';
+import type { PlayerState } from '../../shared/game.js';
+import { formatNumber } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface QuestsAndStreaksProps {
