@@ -44,7 +44,7 @@
     "payments": false,
     "reddit": {
       "enable": true,
-      "scope": "user",
+      "scope": "moderator",
       "asUser": [
         "SUBMIT_POST",
         "SUBSCRIBE_TO_SUBREDDIT"
