@@ -1873,7 +1873,7 @@ export function App() {
   const prestigeReady = calculateCosmicDust(state) > 0;
 
   return (
-    <div className="io-ui min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white">
+    <div className="app-shell io-ui min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white">
       {/* Sticky Top Header */}
       <Header
         state={state}
@@ -1992,17 +1992,17 @@ export function App() {
       )}
 
       {/* Main Navigation Bar */}
-      <div className="io-nav bg-slate-900/55 border-b border-slate-800/80 px-4 py-2 sticky top-[57px] z-20 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+      <div className="io-nav app-nav bg-slate-900/55 border-b border-slate-800/80 px-4 py-2 sticky top-[57px] z-20 backdrop-blur-md">
+        <div className="nav-shell max-w-6xl mx-auto flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
 
           <button
             onClick={() => {
               sound.playClick();
               changeTab('roll');
             }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               tab === 'roll'
-                ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-md'
+                ? 'is-active bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-md'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
             }`}
           >
@@ -2015,9 +2015,9 @@ export function App() {
               sound.playClick();
               changeTab('upgrades');
             }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
+            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'upgrades'
-                ? 'bg-gradient-to-r from-amber-600 to-yellow-500 text-white shadow-md'
+                ? 'is-active bg-gradient-to-r from-amber-600 to-yellow-500 text-white shadow-md'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
             }`}
           >
@@ -2031,9 +2031,9 @@ export function App() {
               sound.playClick();
               changeTab('boosters');
             }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
+            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'boosters'
-                ? 'bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white shadow-md'
+                ? 'is-active bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white shadow-md'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
             }`}
           >
@@ -2049,9 +2049,9 @@ export function App() {
               sound.playClick();
               changeTab('altar');
             }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
+            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'altar'
-                ? 'bg-gradient-to-r from-orange-600 to-amber-500 text-white shadow-md'
+                ? 'is-active bg-gradient-to-r from-orange-600 to-amber-500 text-white shadow-md'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
             }`}
           >
@@ -2065,9 +2065,9 @@ export function App() {
               sound.playClick();
               changeTab('mastery');
             }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
+            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'mastery'
-                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+                ? 'is-active bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
             }`}
           >
@@ -2084,9 +2084,9 @@ export function App() {
               sound.playClick();
               changeTab('collection');
             }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               tab === 'collection'
-                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+                ? 'is-active bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
             }`}
           >
@@ -2100,9 +2100,9 @@ export function App() {
               sound.playClick();
               changeTab('quests');
             }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
+            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'quests'
-                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+                ? 'is-active bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
             }`}
           >
@@ -2119,9 +2119,9 @@ export function App() {
               sound.playClick();
               changeTab('social');
             }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               tab === 'social'
-                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+                ? 'is-active bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
             }`}
           >
@@ -2135,9 +2135,9 @@ export function App() {
               sound.playClick();
               changeTab('profile');
             }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
+            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'profile'
-                ? 'bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white shadow-md'
+                ? 'is-active bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white shadow-md'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
             }`}
           >
@@ -2152,7 +2152,7 @@ export function App() {
       </div>
 
       {/* Main Container Content */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+      <main className="app-main flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8">
         {tab === 'roll' && (
           <RollSection
             state={state}
