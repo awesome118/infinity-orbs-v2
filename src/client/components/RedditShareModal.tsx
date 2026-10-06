@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { X, ArrowBigUp, Share2, CheckCircle2, MessageSquare } from 'lucide-react';
+import { ArrowBigUp, ArrowRight, CheckCircle2, MessageSquare, Share2, X } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { getOrbInfo, formatRarity } from '../../shared/game.js';
+import { formatNumber, formatRarity, getOrbInfo } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface RedditShareModalProps {
@@ -21,7 +21,6 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
   const [successPostId, setSuccessPostId] = useState<string | null>(null);
 
   const info = getOrbInfo(rarity);
-  const fmt = (n: number) => n.toLocaleString();
 
   const handleShare = async () => {
     setBusy(true);
@@ -38,122 +37,102 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl relative">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg"
-        >
-          <X className="w-5 h-5" />
+    <div className="io-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="io-modal-card bg-slate-900 text-slate-100 relative w-full max-w-xl">
+        <button onClick={onClose} className="io-modal-close" aria-label="Close share dialog">
+          <X className="w-4 h-4" />
         </button>
 
-        <div className="flex items-center gap-2">
-          <Share2 className="w-5 h-5 text-orange-500" />
-          <h3 className="text-lg font-black text-white">Share to Reddit</h3>
+        <div className="io-modal-heading">
+          <div className="io-public-brand-mark io-modal-mark" aria-hidden="true"><span>∞</span></div>
+          <div>
+            <div className="io-public-eyebrow">
+              <Share2 className="w-3.5 h-3.5" />
+              Share discovery
+            </div>
+            <h3>Post this Orb to Reddit</h3>
+          </div>
         </div>
 
-        <p className="text-xs text-slate-400">
-          Show off your luck to the subreddit! Your rare Orb discovery will be formatted into an interactive community post.
+        <p className="io-modal-intro">
+          Turn this discovery into a playable community post with the same presentation as the game.
         </p>
 
-        {/* Mock Reddit Post Preview (GDD Section 18) */}
-        <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-4 space-y-3">
-          {/* Post Header */}
-          <div className="flex items-center justify-between text-xs text-slate-400">
-            <div className="flex items-center gap-1.5 font-medium">
-              <span className="font-bold text-white">r/InfinityOrbs</span>
-              <span>• Posted by u/you</span>
-              <span>• Just now</span>
+        <div className="io-share-preview">
+          <div className="io-share-preview-head">
+            <div>
+              <span>r/infinityorbs</span>
+              <small>posted by u/you · just now</small>
             </div>
             <span
-              className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase"
+              className="io-public-tier"
               style={{
                 color: info.color,
-                backgroundColor: `${info.color}22`,
-                borderColor: `${info.color}44`,
+                borderColor: \`\${info.color}55\`,
+                backgroundColor: \`\${info.color}10\`,
               }}
             >
-              {info.tier} Drop
+              {info.tier}
             </span>
           </div>
 
-          {/* Post Title */}
-          <h4 className="text-sm font-bold text-white">
-            I just found a 1/{formatRarity(rarity)} Orb ({info.name}) in Infinity Orbs!
-          </h4>
+          <h4>u/you found a 1/{formatRarity(rarity)} Orb</h4>
 
-          {/* Post Body Preview */}
-          <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-800/80 text-xs text-slate-300 space-y-2">
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <div
-                className="w-24 h-24 sm:w-28 sm:h-28 rounded-full flex flex-col items-center justify-center font-black text-white shrink-0 border-2 border-white/20 shadow-2xl relative"
-                style={{
-                  background: info.bgGradient,
-                  boxShadow: `0 0 35px ${info.color}77`,
-                }}
-              >
-                <div className="absolute inset-2 rounded-full border border-white/30" />
-                <span className="text-[10px] font-black uppercase tracking-wider">{info.tier}</span>
-                <span className="text-base sm:text-lg font-black font-mono">1/{formatRarity(rarity)}</span>
-                <span className="text-[10px] text-white/90 mt-0.5">{info.name}</span>
-              </div>
-              <div className="text-center sm:text-left">
-                <span className="font-bold text-white block">{info.name}</span>
-                <span className="text-slate-400">Theoretical Odds: 1 in {formatRarity(rarity)}</span>
-              </div>
+          <div className="io-share-preview-orb">
+            <div
+              className="io-public-orb io-share-preview-orb-mark"
+              style={{
+                background: info.bgGradient,
+                borderColor: \`\${info.color}66\`,
+                boxShadow: \`0 0 30px \${info.color}22, inset 0 1px rgba(255,255,255,.3)\`,
+              }}
+            >
+              <span className="io-public-orb-ring" />
+              <span className="io-public-orb-tier">{info.tier}</span>
+              <strong>1/{formatRarity(rarity)}</strong>
+              <small>{info.name}</small>
             </div>
-
-            <div className="pt-2 border-t border-slate-800 grid grid-cols-2 gap-2 text-[11px] text-slate-400">
-              <div>Roll #{fmt(state.totalRolls)}</div>
-              <div>Collection Value: {fmt(state.collectionValue)}</div>
+            <div>
+              <strong>{info.name}</strong>
+              <p>Odds: 1 in {formatRarity(rarity)}</p>
+              <p>Roll #{formatNumber(state.totalRolls)}</p>
             </div>
           </div>
 
-          {/* Reddit Action Bar Simulation */}
-          <div className="flex items-center gap-4 text-xs text-slate-400 pt-1">
-            <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-lg">
-              <ArrowBigUp className="w-4 h-4 text-orange-500" />
-              <span className="font-bold text-orange-400">Vote</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <MessageSquare className="w-3.5 h-3.5" />
-              <span>Comments</span>
-            </div>
+          <div className="io-share-preview-stats">
+            <span><b>{formatNumber(state.totalRolls)}</b> rolls</span>
+            <span><b>{formatNumber(state.collectionValue)}</b> collection value</span>
+          </div>
+
+          <div className="io-share-preview-actions">
+            <span><ArrowBigUp className="w-4 h-4" /> Vote</span>
+            <span><MessageSquare className="w-4 h-4" /> Comments</span>
           </div>
         </div>
 
-        {/* Status or Submit Button */}
         {successPostId ? (
-          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 text-center space-y-1">
-            <CheckCircle2 className="w-6 h-6 text-emerald-400 mx-auto" />
-            <h4 className="text-sm font-bold text-emerald-300">Shared to Subreddit!</h4>
-            <p className="text-xs text-slate-400">
-              Your post is live for other players to upvote and admire.
-            </p>
-            <button
-              onClick={onClose}
-              className="mt-3 px-4 py-1.5 bg-slate-800 text-white rounded-xl text-xs font-bold"
-            >
-              Close
-            </button>
+          <div className="io-modal-success">
+            <CheckCircle2 className="w-5 h-5" />
+            <div>
+              <strong>Shared to r/infinityorbs</strong>
+              <span>The discovery post is ready for other players.</span>
+            </div>
           </div>
         ) : (
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={onClose}
-              className="flex-1 py-2.5 rounded-xl bg-slate-800 text-slate-400 text-xs font-bold"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleShare}
-              disabled={busy}
-              className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg active:scale-95 transition-all"
-            >
+          <div className="io-modal-actions">
+            <button onClick={onClose} className="io-public-button io-public-button-secondary">Cancel</button>
+            <button onClick={handleShare} disabled={busy} className="io-public-button io-public-button-primary">
               <Share2 className="w-4 h-4" />
-              <span>{busy ? 'Posting to Reddit...' : 'Confirm & Post'}</span>
+              {busy ? 'Posting…' : 'Post to Reddit'}
+              {!busy && <ArrowRight className="w-4 h-4" />}
             </button>
           </div>
+        )}
+
+        {successPostId && (
+          <button onClick={onClose} className="io-public-button io-public-button-secondary io-modal-close-button">
+            Close
+          </button>
         )}
       </div>
     </div>
