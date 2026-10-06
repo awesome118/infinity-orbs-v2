@@ -1,5 +1,5 @@
 import { redis, context, reddit } from './devvit-mock.js';
-import { withPlayerMutationLock } from './player-lock.js';
+import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
