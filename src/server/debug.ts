@@ -142,9 +142,9 @@ debugRouter.post('/global-booster', async (req, res) => {
 
 debugRouter.get('/follow-reward', async (_req, res) => {
   try {
-    res.json(await getFollowRewardStats());
+    res.json(await getFollowPromptStats());
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || 'Failed to load follow reward statistics.' });
+    res.status(500).json({ error: e?.message || 'Failed to load follow statistics.' });
   }
 });
 
