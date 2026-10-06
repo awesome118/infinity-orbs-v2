@@ -25,6 +25,9 @@ import {
   getPlayerSpyLogs,
   clearPlayerSpyLogs,
   getFollowPromptStats,
+  getGlobalBoosters,
+  getFakeCcuBonus,
+  getOnlinePlayers,
 } from './game.js';
 import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import { context, redis, reddit } from './devvit-mock.js';
@@ -35,6 +38,8 @@ import {
   unmuteGuildChatUser,
   listChatReports,
   markChatReportRead,
+  getPlayerGuildPerks,
+  getCommunityEvent,
 } from './social.js';
 import {
   cooldownMs,
@@ -52,6 +57,15 @@ import {
   calculatePrestigeDust,
   critMultiplier,
   autoUnlocked,
+  getLevelBenefits,
+  LEVEL_MILESTONES,
+  onlinePlayerLuckMultiplier,
+  globalBoosterLuckMultiplier,
+  globalBoosterSpeedMultiplier,
+  globalBoosterCritChanceBonus,
+  globalBoosterCritLuckBonus,
+  isPremiumBoosterActive,
+  type PlayerState,
 } from '../shared/game.js';
 import { recordLeaderboard } from './social.js';
 
@@ -445,6 +459,458 @@ debugRouter.get('/players', async (_req, res) => {
     res.json({ players: await listPlayers() });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to load player list.' });
+  }
+});
+
+
+
+type StatSpySource = {
+  label: string;
+  level?: number;
+  value: number;
+  unit: 'pct' | 'mult' | 'ms' | 'count' | 'chance' | 'capacity' | 'rarity';
+  kind: 'base' | 'add' | 'multiply' | 'reduction' | 'special';
+  active?: boolean;
+  detail?: string;
+};
+
+type StatSpyStat = {
+  id: string;
+  label: string;
+  total: number;
+  unit: 'pct' | 'mult' | 'ms' | 'count' | 'chance' | 'capacity' | 'rarity';
+  detail?: string;
+  sources: StatSpySource[];
+};
+
+async function loadPlayerForStatSpy(userId: string, username: string): Promise<PlayerState> {
+  const raw = await redis.get('player:' + userId);
+  if (raw == null) throw new Error('No Infinity Orbs save exists for u/' + username + '.');
+
+  let parsed: unknown = raw;
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      throw new Error('The stored save for u/' + username + ' is not valid player data.');
+    }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('The stored save for u/' + username + ' is not valid player data.');
+  }
+
+  const saved = parsed as Partial<PlayerState>;
+  const base = createInitialState();
+  const guildPerks = await getPlayerGuildPerks(username, userId);
+  const globalBoosters = await getGlobalBoosters();
+
+  return {
+    ...base,
+    ...saved,
+    username,
+    upgrades: { ...base.upgrades, ...(saved.upgrades ?? {}) },
+    prestigeUpgrades: { ...base.prestigeUpgrades, ...(saved.prestigeUpgrades ?? {}) },
+    masterySkills: { ...base.masterySkills, ...(saved.masterySkills ?? {}) } as Record<string, number>,
+    collection: saved.collection ?? {},
+    sacrifices: { ...base.sacrifices, ...(saved.sacrifices ?? {}) },
+    guildPerks,
+    globalBoosters,
+  } as PlayerState;
+}
+
+function statSource(
+  label: string,
+  value: number,
+  unit: StatSpySource['unit'],
+  kind: StatSpySource['kind'],
+  options: Pick<StatSpySource, 'level' | 'active' | 'detail'> = {},
+): StatSpySource {
+  return { label, value, unit, kind, ...options };
+}
+
+function buildStatSpyStats(
+  s: PlayerState,
+  currentCcu: number,
+  fakeCcuBonus: number,
+  communityLuckBonus: number,
+): StatSpyStat[] {
+  const level = Math.max(1, Math.floor(Number(s.level) || 1));
+  const levelBenefits = getLevelBenefits(level);
+  const upgrades = s.upgrades ?? createInitialState().upgrades;
+  const prestige = s.prestigeUpgrades ?? createInitialState().prestigeUpgrades;
+  const mastery = s.masterySkills ?? createInitialState().masterySkills!;
+  const guild = s.guildPerks ?? {
+    luckRank: 0, speedRank: 0, vaultRank: 0, shardRank: 0, critRank: 0, coinRank: 0,
+  };
+
+  const altar = calculateAltarMultipliers(s);
+  const globalLuck = globalBoosterLuckMultiplier(s.globalBoosters?.luck);
+  const globalSpeed = globalBoosterSpeedMultiplier(s.globalBoosters?.speed);
+  const globalCritChance = globalBoosterCritChanceBonus(s.globalBoosters?.crit);
+  const globalCritPower = globalBoosterCritLuckBonus(s.globalBoosters?.crit);
+  const effectiveCcu = Math.max(1, Math.floor(currentCcu + fakeCcuBonus));
+  const codexChain = calculateLevelFromXp ? Math.max(0, (s.codexChain ?? 0) || 0) : 0;
+  const actualCodexChain = Math.max(
+    codexChain,
+    Object.keys(s.collection ?? {}).length > 0
+      ? Math.max(0, (s.collection && Object.keys(s.collection).length > 0
+        ? Math.floor(Number(s.codexChain ?? 0))
+        : 0))
+      : 0,
+  );
+
+  // Compute the same pity stack logic used by luckMultiplier.
+  const dryRolls = Math.max(0, Number(s.rollsSinceBest ?? 0));
+  const pityInterval = Math.max(6, 18 - (Number(mastery.pityAccelerant ?? 0) * 2));
+  const pityStacks = Math.min(50, Math.floor(dryRolls / pityInterval));
+  const pityLuckPct = (Number(prestige.resonanceMeter ?? 0) * 1) * pityStacks;
+
+  const levelBaseLuckPct = Math.max(0, level - 1);
+  const milestoneLuckPct = LEVEL_MILESTONES.reduce(
+    (sum, milestone) => level >= milestone.level
+      ? sum + Math.max(0, (milestone.bonusLuckMultiplier ?? 1) - 1) * 100
+      : sum,
+    0,
+  );
+
+  const masteryLuckPct = Number(mastery.continuumLuck ?? 0) * 3;
+  const codexDevotionPct = Number(s.codexDevotionLuckPercent ?? 0) ||
+    Number(mastery.celestialSurge ?? 0) * Math.max(0, Number(s.codexChain ?? 0)) * 0.3;
+  const guildLuckPct = Number(guild.luckRank ?? 0) * 3;
+  const onlineLuckPct = Math.max(0, onlinePlayerLuckMultiplier(effectiveCcu) - 1) * 100;
+  const fortuneActive = isPremiumBoosterActive(s, 'fortune');
+  const fortunePct = fortuneActive ? 300 : 0;
+  const globalLuckPct = Math.max(0, globalLuck - 1) * 100;
+  const astralReservePct = Number(prestige.astralReserve ?? 0) * 2;
+
+  // luckMultiplier() applies permanent Luck and the Altar as multiplicative layers.
+  const additiveBaseLuck =
+    1 +
+    (Number(upgrades.luck ?? 0) * 0.05) +
+    Math.max(0, levelBenefits.luckMultiplier - 1) +
+    (Number(mastery.continuumLuck ?? 0) * 0.03) +
+    (codexDevotionPct / 100) +
+    (Number(guild.luckRank ?? 0) * 0.03) +
+    ((pityLuckPct) / 100) +
+    ((onlineLuckPct) / 100) +
+    (fortunePct / 100) +
+    ((globalLuckPct) / 100) +
+    (astralReservePct / 100);
+
+  const permanentLuckFactor = Math.pow(1.05, Math.max(0, Number(prestige.permLuck ?? 0)));
+  const finalLuck = Math.round(
+    ((additiveBaseLuck * permanentLuckFactor * altar.totalAltarMultiplier) + communityLuckBonus) * 100,
+  ) / 100;
+
+  const luckSources: StatSpySource[] = [
+    statSource('Base', 1, 'mult', 'base'),
+    statSource('Luck upgrade', Number(upgrades.luck ?? 0) * 5, 'pct', 'add', { level: Number(upgrades.luck ?? 0), detail: '+5% per level' }),
+    statSource('Level progression', levelBaseLuckPct, 'pct', 'add', { level, detail: '+1% per level after Lv 1' }),
+    statSource('Level milestones', milestoneLuckPct, 'pct', 'add', { level, detail: 'Milestone bonuses currently unlocked' }),
+    statSource('Continuum Attunement', masteryLuckPct, 'pct', 'add', { level: Number(mastery.continuumLuck ?? 0), detail: '+3% per level' }),
+    statSource('Codex Devotion', codexDevotionPct, 'pct', 'add', { level: Number(mastery.celestialSurge ?? 0), detail: 'Based on longest consecutive rarity chain' }),
+    statSource('Guild Luck', guildLuckPct, 'pct', 'add', { level: Number(guild.luckRank ?? 0), detail: '+3% per rank' }),
+    statSource('Dry Streak Luck', pityLuckPct, 'pct', 'add', { level: Number(prestige.resonanceMeter ?? 0), detail: pityStacks + ' active pity stack(s), every ' + pityInterval + ' dry rolls' }),
+    statSource('Online population', onlineLuckPct, 'pct', 'add', { detail: 'Current CCU ' + effectiveCcu + ' (' + currentCcu + ' real + ' + fakeCcuBonus + ' test)' }),
+    statSource('Fortune Surge', fortunePct, 'pct', 'add', { active: fortuneActive, detail: 'Active premium booster adds +300%' }),
+    statSource('Global Luck', globalLuckPct, 'pct', 'add', { level: Number(s.globalBoosters?.luck?.tier ?? 0), active: globalLuck > 1, detail: '+10% per active global tier' }),
+    statSource('Astral Reserve', astralReservePct, 'pct', 'add', { level: Number(prestige.astralReserve ?? 0), detail: '+2% per level' }),
+    statSource('Permanent Luck layer', permanentLuckFactor, 'mult', 'multiply', { level: Number(prestige.permLuck ?? 0), detail: '×1.05 per prestige level' }),
+    statSource('Altar layer', altar.totalAltarMultiplier, 'mult', 'multiply', { detail: 'Coin sacrifice × Shard infusion × Luck Surge' }),
+    statSource('Community Luck', communityLuckBonus * 100, 'pct', 'add', { detail: 'Current community event bonus, applied to roll Luck after normal Luck calculation' }),
+  ];
+
+  const manualCooldown = cooldownMs(s, false);
+  const autoCooldown = cooldownMs(s, true);
+  const speedSources: StatSpySource[] = [
+    statSource('Base cooldown', 15_000, 'ms', 'base'),
+    statSource('Speed upgrade', Number(upgrades.speed ?? 0) * 150, 'ms', 'reduction', { level: Number(upgrades.speed ?? 0), detail: '-150ms per level' }),
+    statSource('Permanent Speed Floor', Number(prestige.permSpeed ?? 0) * 300, 'ms', 'reduction', { level: Number(prestige.permSpeed ?? 0), detail: '-300ms to cooldown and floor per level' }),
+    statSource('Guild Speed', Number(guild.speedRank ?? 0) * 100, 'ms', 'reduction', { level: Number(guild.speedRank ?? 0), detail: 'Floor reduction only' }),
+    statSource('Chrono Flow', Number(mastery.chronoFlow ?? 0) * 120, 'ms', 'reduction', { level: Number(mastery.chronoFlow ?? 0), detail: 'Floor reduction only' }),
+    statSource('Steady Hands', Number(prestige.steadyHands ?? 0) * 100, 'ms', 'reduction', { level: Number(prestige.steadyHands ?? 0), detail: '-100ms per level' }),
+    statSource('Temporal Compression', Number(prestige.temporalCompression ?? 0) * 75, 'ms', 'reduction', { level: Number(prestige.temporalCompression ?? 0), detail: '-75ms per level' }),
+    statSource('Level milestone speed', levelBenefits.cooldownReductionMs, 'ms', 'reduction', { level, detail: 'Unlocked at level milestones' }),
+    statSource('Auto-Roll Speed', Math.max(0, 1 - (1 - (Number(prestige.autoOverclock ?? 0) * 0.05))) * 100, 'pct', 'multiply', { level: Number(prestige.autoOverclock ?? 0), detail: '-5% auto cooldown per level' }),
+    statSource('Turbo', 25, 'pct', 'multiply', { active: Boolean(s.turboRollUntil && Date.now() < s.turboRollUntil), detail: Number(prestige.chronoOverdrive ?? 0) > 0 ? '-35% active, otherwise -25%' }),
+    statSource('Hyperdrive', 25, 'pct', 'multiply', { active: isPremiumBoosterActive(s, 'hyperdrive'), detail: '-75% while active' }),
+    statSource('Global Speed', globalSpeed, 'mult', 'multiply', { level: Number(s.globalBoosters?.speed?.tier ?? 0), active: globalSpeed < 1, detail: '0.95× per tier, capped at 0.35×' }),
+  ];
+
+  const ballsSources: StatSpySource[] = [
+    statSource('Base activation', 1, 'count', 'base'),
+    statSource('Multi upgrade', Number(upgrades.multi ?? 0), 'count', 'add', { level: Number(upgrades.multi ?? 0), detail: '+1 per level' }),
+    statSource('Cluster Roll', Number(upgrades.clusterRoll ?? 0), 'count', 'add', { level: Number(upgrades.clusterRoll ?? 0), detail: '+1 per level' }),
+    statSource('Astral Barrage', Number(prestige.astralBarrage ?? 0), 'count', 'add', { level: Number(prestige.astralBarrage ?? 0), detail: '+1 per level' }),
+    statSource('Celestial Volley', Number(mastery.celestialVolley ?? 0), 'count', 'add', { level: Number(mastery.celestialVolley ?? 0), detail: '+1 per level' }),
+    statSource('Level bonus balls', levelBenefits.bonusBalls, 'count', 'add', { level, detail: 'From unlocked level milestones' }),
+    statSource('Astral Arsenal', Number(prestige.astralArsenal ?? 0), 'count', 'add', { level: Number(prestige.astralArsenal ?? 0), detail: '+1 per level' }),
+    statSource('Barrage booster', 25, 'count', 'add', { active: isPremiumBoosterActive(s, 'barrage'), detail: '+25 while active' }),
+  ];
+
+  const rawCritChance = Number(upgrades.critChance ?? 0) * 0.03 +
+    Number(mastery.critMastery ?? 0) * 0.03 +
+    Number(guild.critRank ?? 0) * 0.015 +
+    globalCritChance;
+  const critChance = Math.min(0.40, rawCritChance);
+  const critPower = critMultiplier(s);
+
+  const coinMultiplier =
+    levelBenefits.coinsMultiplier *
+    (1 + Number(upgrades.coinBonus ?? 0) * 0.15) *
+    (1 + Number(mastery.prosperity ?? 0) * 0.12) *
+    (1 + Number(guild.coinRank ?? 0) * 0.10);
+
+  const offlineCoinMultiplier =
+    (1 + Number(prestige.offlineFortune ?? 0) * 0.25) *
+    (1 + Number(prestige.offlineOverdrive ?? 0) * 0.50);
+
+  const shardChance = Math.min(
+    1,
+    Number(upgrades.shardChance ?? 0) * 0.0015 +
+    Number(mastery.shardAttunement ?? 0) * 0.001 +
+    Number(guild.shardRank ?? 0) * 0.0005 +
+    Number(prestige.shardResonator ?? 0) * 0.0025 +
+    levelBenefits.shardChance,
+  );
+
+  const xpMultiplier =
+    (1 + Number(upgrades.xpBonus ?? 0) * 0.20) *
+    levelBenefits.xpMultiplier *
+    (isPremiumBoosterActive(s, 'ascension') ? 10 : 1);
+
+  const valueMultiplier =
+    1 +
+    Number(upgrades.valueBonus ?? 0) * 0.10 +
+    Number(prestige.cosmicValuation ?? 0) * 0.05;
+
+  const vaultSources: StatSpySource[] = [
+    statSource('Base vault', 30, 'capacity', 'base'),
+    statSource('Auto upgrade', Number(upgrades.auto ?? 0) * 20, 'capacity', 'add', { level: Number(upgrades.auto ?? 0), detail: '+20 capacity per Auto level' }),
+    statSource('Speed upgrade', Number(upgrades.speed ?? 0) * 0.04 * 30, 'capacity', 'add', { level: Number(upgrades.speed ?? 0), detail: '+4% of base capacity per level' }),
+    statSource('Vault Expansion', Number(prestige.vaultCap ?? 0) * 250, 'capacity', 'add', { level: Number(prestige.vaultCap ?? 0), detail: '+250 per level' }),
+    statSource('Guild Vault', Number(guild.vaultRank ?? 0) * 100, 'capacity', 'add', { level: Number(guild.vaultRank ?? 0), detail: '+100 per rank' }),
+    statSource('Vault Architecture', Number(mastery.infiniteVault ?? 0) * 200, 'capacity', 'add', { level: Number(mastery.infiniteVault ?? 0), detail: '+200 per level' }),
+    statSource('Deep Vault', Number(prestige.deepVault ?? 0) * 250, 'capacity', 'add', { level: Number(prestige.deepVault ?? 0), detail: '+250 per level' }),
+  ];
+
+  const prestigeDustMultiplier =
+    1 +
+    Number(prestige.dustBounty ?? 0) * 0.15 +
+    Number(mastery.cosmicAttunement ?? 0) * 0.08;
+
+  const stats: StatSpyStat[] = [
+    {
+      id: 'luck',
+      label: 'Effective Luck',
+      total: finalLuck,
+      unit: 'mult',
+      detail: 'Final roll Luck before Apex Fortune. Permanent Luck and Altar are multiplicative layers.',
+      sources: luckSources,
+    },
+    {
+      id: 'cooldown',
+      label: 'Roll Cooldown',
+      total: manualCooldown,
+      unit: 'ms',
+      detail: 'Manual cooldown; Auto cooldown is shown separately below.',
+      sources: speedSources.concat([
+        statSource('Auto cooldown', autoCooldown, 'ms', 'special', { detail: 'Final Auto-Roll cooldown with all active Auto modifiers' }),
+      ]),
+    },
+    {
+      id: 'autoCooldown',
+      label: 'Auto-Roll Cooldown',
+      total: autoCooldown,
+      unit: 'ms',
+      detail: 'Final cooldown used by Auto Roll.',
+      sources: speedSources,
+    },
+    {
+      id: 'balls',
+      label: 'Orbs per Activation',
+      total: rollsPerActivation(s),
+      unit: 'count',
+      detail: 'Includes permanent, mastery, level, and active barrage sources.',
+      sources: ballsSources,
+    },
+    {
+      id: 'critChance',
+      label: 'Critical Chance',
+      total: critChance,
+      unit: 'chance',
+      detail: 'Hard capped at 40%.',
+      sources: [
+        statSource('Crit Chance upgrade', Number(upgrades.critChance ?? 0) * 3, 'pct', 'add', { level: Number(upgrades.critChance ?? 0), detail: '+3 percentage points per level' }),
+        statSource('Critical Overdrive', Number(mastery.critMastery ?? 0) * 3, 'pct', 'add', { level: Number(mastery.critMastery ?? 0), detail: '+3 percentage points per level' }),
+        statSource('Guild Crit', Number(guild.critRank ?? 0) * 1.5, 'pct', 'add', { level: Number(guild.critRank ?? 0), detail: '+1.5 percentage points per rank' }),
+        statSource('Global Crit', globalCritChance * 100, 'pct', 'add', { level: Number(s.globalBoosters?.crit?.tier ?? 0), active: globalCritChance > 0, detail: '+2 percentage points per active tier' }),
+      ],
+    },
+    {
+      id: 'critPower',
+      label: 'Critical Multiplier',
+      total: critPower,
+      unit: 'mult',
+      sources: [
+        statSource('Base critical', 2, 'mult', 'base'),
+        statSource('Crit Power upgrade', Number(upgrades.critPower ?? 0) * 0.25, 'mult', 'add', { level: Number(upgrades.critPower ?? 0), detail: '+0.25× per level' }),
+        statSource('Critical Overdrive', Number(mastery.critMastery ?? 0) * 0.30, 'mult', 'add', { level: Number(mastery.critMastery ?? 0), detail: '+0.30× per level' }),
+        statSource('Global Crit', globalCritPower, 'mult', 'add', { level: Number(s.globalBoosters?.crit?.tier ?? 0), active: globalCritPower > 0, detail: '+0.10× per active tier' }),
+      ],
+    },
+    {
+      id: 'coins',
+      label: 'Coin Multiplier',
+      total: coinMultiplier,
+      unit: 'mult',
+      detail: 'Normal roll coin multiplier, before special low-rarity salvage/transmutation effects.',
+      sources: [
+        statSource('Base coins', 1, 'mult', 'base'),
+        statSource('Level coins', levelBenefits.coinsMultiplier, 'mult', 'multiply', { level, detail: '+3% per level, with milestone multipliers' }),
+        statSource('Coin Bonus upgrade', 1 + Number(upgrades.coinBonus ?? 0) * 0.15, 'mult', 'multiply', { level: Number(upgrades.coinBonus ?? 0), detail: '+15% per level' }),
+        statSource('Midas Touch', 1 + Number(mastery.prosperity ?? 0) * 0.12, 'mult', 'multiply', { level: Number(mastery.prosperity ?? 0), detail: '+12% per level' }),
+        statSource('Guild Coin', 1 + Number(guild.coinRank ?? 0) * 0.10, 'mult', 'multiply', { level: Number(guild.coinRank ?? 0), detail: '+10% per rank' }),
+        statSource('Offline coin layer', offlineCoinMultiplier, 'mult', 'multiply', { detail: 'Only applies to offline roll rewards' }),
+      ],
+    },
+    {
+      id: 'xp',
+      label: 'XP Multiplier',
+      total: xpMultiplier,
+      unit: 'mult',
+      sources: [
+        statSource('Base XP', 1, 'mult', 'base'),
+        statSource('XP Bonus upgrade', 1 + Number(upgrades.xpBonus ?? 0) * 0.20, 'mult', 'multiply', { level: Number(upgrades.xpBonus ?? 0), detail: '+20% per level' }),
+        statSource('Level XP', levelBenefits.xpMultiplier, 'mult', 'multiply', { level, detail: 'Unlocked milestone multipliers' }),
+        statSource('Ascension', 10, 'mult', 'multiply', { active: isPremiumBoosterActive(s, 'ascension'), detail: '×10 while active' }),
+      ],
+    },
+    {
+      id: 'shardChance',
+      label: 'Bonus Shard Chance',
+      total: shardChance,
+      unit: 'chance',
+      detail: 'Proc chance for +1 bonus Shard, capped at 100%.',
+      sources: [
+        statSource('Shard Chance upgrade', Number(upgrades.shardChance ?? 0) * 0.15, 'pct', 'add', { level: Number(upgrades.shardChance ?? 0), detail: '+0.15 percentage points per level' }),
+        statSource('Shard Resonance', Number(mastery.shardAttunement ?? 0) * 0.10, 'pct', 'add', { level: Number(mastery.shardAttunement ?? 0), detail: '+0.10 percentage points per level' }),
+        statSource('Guild Shard', Number(guild.shardRank ?? 0) * 0.05, 'pct', 'add', { level: Number(guild.shardRank ?? 0), detail: '+0.05 percentage points per rank' }),
+        statSource('Shard Resonator', Number(prestige.shardResonator ?? 0) * 0.25, 'pct', 'add', { level: Number(prestige.shardResonator ?? 0), detail: '+0.25 percentage points per level' }),
+        statSource('Level shard chance', levelBenefits.shardChance * 100, 'pct', 'add', { level, detail: 'From unlocked level milestones' }),
+      ],
+    },
+    {
+      id: 'value',
+      label: 'Collection Value Multiplier',
+      total: valueMultiplier,
+      unit: 'mult',
+      sources: [
+        statSource('Base value', 1, 'mult', 'base'),
+        statSource('Value Bonus upgrade', 1 + Number(upgrades.valueBonus ?? 0) * 0.10, 'mult', 'multiply', { level: Number(upgrades.valueBonus ?? 0), detail: '+10% per level' }),
+        statSource('Cosmic Valuation', 1 + Number(prestige.cosmicValuation ?? 0) * 0.05, 'mult', 'multiply', { level: Number(prestige.cosmicValuation ?? 0), detail: '+5% per level' }),
+      ],
+    },
+    {
+      id: 'vault',
+      label: 'Offline Roll Capacity',
+      total: Math.min(1_000, offlineRollCap(s)),
+      unit: 'capacity',
+      detail: 'Hard cap is 1,000 stored offline rolls.',
+      sources: vaultSources,
+    },
+    {
+      id: 'offlineRate',
+      label: 'Offline Roll Interval',
+      total: effectiveOfflineTickMs(s),
+      unit: 'ms',
+      detail: 'Time between generated offline rolls; lower is faster.',
+      sources: [
+        statSource('Base interval', 60_000, 'ms', 'base'),
+        statSource('Offline Rate upgrade', Number(upgrades.offlineRate ?? 0) * 4, 'pct', 'reduction', { level: Number(upgrades.offlineRate ?? 0), detail: 'Reduces interval by 8% per level, subject to 60% reduction cap' }),
+        statSource('Offline Overdrive', Math.max(0, 1 - Math.pow(1.5, -Math.min(3, Number(prestige.offlineOverdrive ?? 0)))) * 100, 'pct', 'multiply', { level: Number(prestige.offlineOverdrive ?? 0), detail: '50% faster per level, up to 3 levels' }),
+      ],
+    },
+    {
+      id: 'minimumRarity',
+      label: 'Minimum Orb Rarity',
+      total: 2 + Number(prestige.luckyFloor ?? 0),
+      unit: 'rarity',
+      sources: [
+        statSource('Base minimum', 2, 'rarity', 'base'),
+        statSource('Lucky Floor', Number(prestige.luckyFloor ?? 0), 'rarity', 'add', { level: Number(prestige.luckyFloor ?? 0), detail: '+1 minimum rarity per level' }),
+      ],
+    },
+    {
+      id: 'prestigeDust',
+      label: 'Prestige Cosmic Dust Multiplier',
+      total: prestigeDustMultiplier,
+      unit: 'mult',
+      sources: [
+        statSource('Base dust', 1, 'mult', 'base'),
+        statSource('Dust Bounty', 1 + Number(prestige.dustBounty ?? 0) * 0.15, 'mult', 'multiply', { level: Number(prestige.dustBounty ?? 0), detail: '+15% per level' }),
+        statSource('Cosmic Affinity', 1 + Number(mastery.cosmicAttunement ?? 0) * 0.08, 'mult', 'multiply', { level: Number(mastery.cosmicAttunement ?? 0), detail: '+8% per level' }),
+      ],
+    },
+    {
+      id: 'frenzyVolley',
+      label: 'Frenzy Volley Efficiency',
+      total: 1 + (Number(prestige.frenzyVolley ?? 0) > 0 ? Math.max(0, (rollsPerActivation(s) - 1) * 0.20) : 0),
+      unit: 'mult',
+      detail: 'Special Frenzy scaling applied to additional multiballs.',
+      sources: [
+        statSource('Base Frenzy', 1, 'mult', 'base'),
+        statSource('Frenzy Volley', Number(prestige.frenzyVolley ?? 0) > 0 ? 0.20 : 0, 'pct', 'add', { level: Number(prestige.frenzyVolley ?? 0), detail: '+20% efficiency per additional multiball while unlocked' }),
+      ],
+    },
+  ];
+
+  return stats;
+}
+
+debugRouter.get('/stat-spy', async (req, res) => {
+  try {
+    const username = targetUsername(req.query?.username);
+    const userId = await resolveUserId(username);
+    const [state, currentCcu, fakeCcuBonus, communityEvent] = await Promise.all([
+      loadPlayerForStatSpy(userId, username),
+      getOnlinePlayers(),
+      getFakeCcuBonus(userId),
+      getCommunityEvent(),
+    ]);
+    const communityLuckBonus = Math.max(0, Number(communityEvent?.buffMultiplier ?? 1.15) - 1);
+    state.onlinePlayers = Math.max(1, Math.floor(currentCcu + fakeCcuBonus));
+
+    const stats = buildStatSpyStats(state, currentCcu, fakeCcuBonus, communityLuckBonus);
+    res.json({
+      username,
+      userId,
+      generatedAt: Date.now(),
+      summary: {
+        level: Number(state.level ?? 1),
+        xp: Number(state.xp ?? 0),
+        totalRolls: Number(state.totalRolls ?? 0),
+        highestRarity: Number(state.highestRarity ?? 0),
+        coins: Number(state.coins ?? 0),
+        shards: Number(state.shards ?? 0),
+        cosmicDust: Number(state.cosmicDust ?? 0),
+        prestigeCount: Number(state.prestigeCount ?? 0),
+        currentCcu,
+        fakeCcuBonus,
+        effectiveCcu: Math.max(1, Math.floor(currentCcu + fakeCcuBonus)),
+      },
+      stats,
+      allocations: {
+        upgrades: state.upgrades,
+        prestigeUpgrades: state.prestigeUpgrades,
+        masterySkills: state.masterySkills,
+        guildPerks: state.guildPerks,
+        globalBoosters: state.globalBoosters,
+        activeBoosters: state.activeBoosters ?? {},
+      },
+    });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Could not load Stat Spy data.' });
   }
 });
 
