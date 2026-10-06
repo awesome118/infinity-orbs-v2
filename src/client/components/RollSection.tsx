@@ -154,12 +154,12 @@ export const RollSection: React.FC<RollSectionProps> = ({
     if (prevOrbRef.current === lastOrb) return;
     prevOrbRef.current = lastOrb;
 
+    let revealTimer: number | null = null;
     if (!hasInstantUpgrade || !instantRevealActive) {
       setIsRevealing(true);
-      const revealTimer = setTimeout(() => {
+      revealTimer = window.setTimeout(() => {
         setIsRevealing(false);
       }, 400);
-      return () => clearTimeout(revealTimer);
     } else {
       setIsRevealing(false);
     }
@@ -167,20 +167,22 @@ export const RollSection: React.FC<RollSectionProps> = ({
     // Screen shake on rare drop
     if (lastOrb.rarity >= 1000) {
       setIsShaking(true);
-      setTimeout(() => setIsShaking(false), 450);
+      const shakeTimer = window.setTimeout(() => setIsShaking(false), 450);
+      // Keep the timer local to this effect cleanup below.
+      void shakeTimer;
     }
 
     // Audio & celebratory fanfare (throttled to avoid stutter at high speeds)
     const nowTs = Date.now();
     const isSilentSonar = hasSonarUpgrade && sound.sonarMode;
+    let sonarTimer: number | null = null;
 
     if (isSilentSonar) {
       // In Celestial Sonar Silent Mode: only ping on rare orbs!
       if (lastOrb.rarity >= sound.sonarThreshold) {
         sound.playSonarPing(lastOrb.rarity);
         setSonarPinging(true);
-        const timer = setTimeout(() => setSonarPinging(false), 900);
-        return () => clearTimeout(timer);
+        sonarTimer = window.setTimeout(() => setSonarPinging(false), 900);
       }
     } else {
       if (lastOrb.rarity >= 100_000 && nowTs - lastFanfareTimeRef.current > 1200) {
@@ -205,7 +207,12 @@ export const RollSection: React.FC<RollSectionProps> = ({
         sound.playRollNormal();
       }
     }
-  }, [lastOrb, hasInstantUpgrade, instantRevealActive, hasSonarUpgrade]);
+
+    return () => {
+      if (revealTimer !== null) window.clearTimeout(revealTimer);
+      if (sonarTimer !== null) window.clearTimeout(sonarTimer);
+    };
+  }, [lastOrb, hasSonarUpgrade, instantRevealActive, hasInstantUpgrade]);
 
   const displayOrb = lastOrb;
   const orbInfo = displayOrb ? getOrbInfo(displayOrb.rarity) : null;
