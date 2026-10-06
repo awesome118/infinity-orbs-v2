@@ -5,7 +5,7 @@ import {
   Ban, UserX, CheckCircle2, RefreshCw, Flame,
   Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy, ClipboardCheck,
 } from 'lucide-react';
-import { PRESTIGE_UPGRADES } from '../../shared/game.js';
+import { PRESTIGE_UPGRADES, CONTINUUM_TIERS, getOrbInfo, visibleContinuumTiers, formatRarity } from '../../shared/game.js';
 import type { RollResponse } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
@@ -1828,6 +1828,224 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         skip('Full Prestige Mechanic Sweep', 'prestige failed');
         skip('Restore Prestige Test State', 'prestige failed');
       }
+
+      await step(
+        'Contract · Rarity ladder has 18 tiers',
+        async () => {
+          if (CONTINUUM_TIERS.length !== 18) {
+            throw new Error('Expected 18 rarity tiers, found ' + CONTINUUM_TIERS.length + '.');
+          }
+          for (let i = 1; i < CONTINUUM_TIERS.length; i++) {
+            if (!(CONTINUUM_TIERS[i].minRarity > CONTINUUM_TIERS[i - 1].minRarity)) {
+              throw new Error('Rarity thresholds are not strictly increasing at ' + CONTINUUM_TIERS[i].tier + '.');
+            }
+          }
+          return CONTINUUM_TIERS;
+        },
+        tiers => tiers.slice(-3).map(tier => tier.tier).join(' → '),
+      );
+
+      await step(
+        'Contract · Hidden rarity gate',
+        async () => {
+          const hidden = visibleContinuumTiers(8);
+          const revealed = visibleContinuumTiers(9);
+          if (hidden.length !== 9) throw new Error('Rarity gate exposed ' + hidden.length + ' tiers before 1/9.');
+          if (revealed.length !== 18) throw new Error('Rarity gate revealed ' + revealed.length + ' tiers at 1/9.');
+          return { hidden, revealed };
+        },
+        result => '8 highest → ' + result.hidden.length + ' visible · 9 highest → ' + result.revealed.length + ' visible',
+      );
+
+      await step(
+        'Contract · New rarity metadata',
+        async () => {
+          const expected: Array<[number, string]> = [
+            [1_000_000_000_000_000, 'Paradox'],
+            [10_000_000_000_000_000, 'Beyond'],
+            [100_000_000_000_000_000, 'Endless'],
+          ];
+          for (const [rarity, tier] of expected) {
+            const info = getOrbInfo(rarity);
+            if (info.tier !== tier) throw new Error('1/' + formatRarity(rarity) + ' mapped to ' + info.tier + ', expected ' + tier + '.');
+          }
+          return expected;
+        },
+        expected => expected.map(item => item[1]).join(', '),
+      );
+
+      await step(
+        'Contract · Rarity formatter handles new scale',
+        async () => {
+          const samples = [1_000_000_000, 1_000_000_000_000_000, 100_000_000_000_000_000];
+          for (const rarity of samples) {
+            const formatted = formatRarity(rarity);
+            if (!formatted || formatted === String(rarity)) throw new Error('Unexpected formatting for ' + rarity + ': ' + formatted);
+          }
+          return samples;
+        },
+        samples => samples.map(formatRarity).join(' · '),
+      );
+
+      await step(
+        'API · Force-roll 1/1e15 Paradox',
+        async () => {
+          await request('/api/dev/state', { xp: 32_000, highestRarity: 9 });
+          const result = await request<any>('/api/dev/force-roll', { rarity: 1_000_000_000_000_000, randomValue: 0.999999 });
+          if (result.orb?.tier !== 'Paradox') throw new Error('Expected Paradox, got ' + result.orb?.tier + '.');
+          return result;
+        },
+        result => '1/' + formatRarity(result.orb.rarity) + ' · ' + result.orb.tier,
+      );
+
+      await step(
+        'API · Force-roll 1/1e16 Beyond',
+        async () => {
+          const result = await request<any>('/api/dev/force-roll', { rarity: 10_000_000_000_000_000, randomValue: 0.999999 });
+          if (result.orb?.tier !== 'Beyond') throw new Error('Expected Beyond, got ' + result.orb?.tier + '.');
+          return result;
+        },
+        result => '1/' + formatRarity(result.orb.rarity) + ' · ' + result.orb.tier,
+      );
+
+      await step(
+        'API · Force-roll 1/1e17 Endless',
+        async () => {
+          const result = await request<any>('/api/dev/force-roll', { rarity: 100_000_000_000_000_000, randomValue: 0.999999 });
+          if (result.orb?.tier !== 'Endless') throw new Error('Expected Endless, got ' + result.orb?.tier + '.');
+          return result;
+        },
+        result => '1/' + formatRarity(result.orb.rarity) + ' · ' + result.orb.tier,
+      );
+
+      await step(
+        'API · High-rarity collection persistence',
+        async () => {
+          const me = await request<any>('/api/me');
+          if (Number(me.highestRarity) < 100_000_000_000_000_000) {
+            throw new Error('Highest rarity did not persist: ' + me.highestRarity + '.');
+          }
+          const collection = await request<any>('/api/collection?offset=0&limit=100&tier=all&sort=rarity_desc');
+          const found = Array.isArray(collection.items) && collection.items.some((item: any) => Number(item.rarity) === 100_000_000_000_000_000);
+          if (!found) throw new Error('1/1e17 orb was not returned by the collection endpoint.');
+          return { me, collection };
+        },
+        result => 'highest=' + formatRarity(result.me.highestRarity) + ' · collection=' + result.collection.total + ' entries',
+      );
+
+      await step(
+        'API · Chat report creates admin notification',
+        async () => {
+          const message = await request<any>('/api/chat', { text: '[ADMIN TEST] chat-report notification check' });
+          await request('/api/chat/report', { messageId: message.id });
+          const reports = await request<any>('/api/dev/chat-reports');
+          const match = Array.isArray(reports.reports)
+            ? reports.reports.find((report: any) => report.messageId === message.id)
+            : null;
+          if (!match) throw new Error('Admin chat report record was not created.');
+          if (Number(reports.unreadCount) < 1) throw new Error('Admin chat report notification count did not increase.');
+          return { message, reports, match };
+        },
+        result => 'report=' + result.match.reportId + ' · unread=' + result.reports.unreadCount,
+      );
+
+      await step(
+        'API · Duplicate chat report rejected',
+        async () => {
+          const message = await request<any>('/api/chat', { text: '[ADMIN TEST] duplicate-report check' });
+          await request('/api/chat/report', { messageId: message.id });
+          let rejected = false;
+          try {
+            await request('/api/chat/report', { messageId: message.id });
+          } catch (error) {
+            rejected = true;
+          }
+          if (!rejected) throw new Error('Duplicate chat report was accepted.');
+          const reports = await request<any>('/api/dev/chat-reports');
+          const matches = Array.isArray(reports.reports)
+            ? reports.reports.filter((report: any) => report.messageId === message.id)
+            : [];
+          if (matches.length !== 1) throw new Error('Duplicate report created ' + matches.length + ' records.');
+          return message;
+        },
+        result => 'message=' + result.id + ' · duplicate rejected',
+      );
+
+      await step(
+        'API · Chat report can be marked read',
+        async () => {
+          const reports = await request<any>('/api/dev/chat-reports');
+          const unread = Array.isArray(reports.reports) ? reports.reports.find((report: any) => !report.readAt) : null;
+          if (!unread) throw new Error('No unread chat report was available for the read-state check.');
+          await request('/api/dev/chat-reports/read', { reportId: unread.reportId });
+          const after = await request<any>('/api/dev/chat-reports');
+          const refreshed = after.reports?.find((report: any) => report.reportId === unread.reportId);
+          if (!refreshed?.readAt) throw new Error('Chat report was not marked read.');
+          return after;
+        },
+        result => 'unread after read=' + result.unreadCount,
+      );
+
+      await step(
+        'API · Invalid chat report rejected',
+        async () => {
+          let rejected = false;
+          try {
+            await request('/api/chat/report', { messageId: 'does-not-exist' });
+          } catch {
+            rejected = true;
+          }
+          if (!rejected) throw new Error('Invalid chat message ID was accepted for reporting.');
+          return true;
+        },
+        () => 'invalid report rejected',
+      );
+
+      await step(
+        'API · Negative admin state clamps safely',
+        async () => {
+          const result = await request<any>('/api/dev/state', { coins: -999_999_999, shards: -999_999_999, xp: -999_999_999, offlineRolls: -5 });
+          const state = result.state;
+          if (state.coins < 0 || state.shards < 0 || state.xp < 0 || state.offlineRolls < 0) {
+            throw new Error('Negative values survived admin state mutation.');
+          }
+          return state;
+        },
+        state => 'coins=' + state.coins + ' · shards=' + state.shards + ' · xp=' + state.xp + ' · offline=' + state.offlineRolls,
+      );
+
+      await step(
+        'API · Unknown admin state fields ignored',
+        async () => {
+          await request<any>('/api/dev/state', { definitelyNotARealField: 123456 });
+          const result = await request<any>('/api/me');
+          if ('definitelyNotARealField' in result) throw new Error('Unknown field leaked into player state.');
+          return result;
+        },
+        () => 'allowlist preserved',
+      );
+
+      await step(
+        'API · Roll ticket issues unique IDs',
+        async () => {
+          const a = await request<any>('/api/roll-ticket');
+          const b = await request<any>('/api/roll-ticket');
+          if (!a.ticketId || !b.ticketId || a.ticketId === b.ticketId) throw new Error('Roll tickets were not unique.');
+          if (Number(b.nextIndex) !== Number(a.nextIndex) + 1) throw new Error('Roll ticket index did not advance sequentially.');
+          return { a, b };
+        },
+        result => 'ticket index ' + result.a.nextIndex + ' → ' + result.b.nextIndex,
+      );
+
+      await step(
+        'API · Player state refresh preserves high-rarity best',
+        async () => {
+          const result = await request<any>('/api/me');
+          if (Number(result.highestRarity) < 100_000_000_000_000_000) throw new Error('High-rarity best regressed during refresh.');
+          return result;
+        },
+        result => 'highest=' + formatRarity(result.highestRarity),
+      );
 
       await step(
         'Seed Dust Synthesis',
