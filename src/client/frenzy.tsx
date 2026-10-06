@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Sparkles, Users, Zap } from 'lucide-react';
 import './styles.css';
+import { formatRarity } from '../shared/game.js';
 
 interface FrenzyInfo {
   rarity: number;
@@ -67,7 +68,7 @@ function FrenzyPost() {
           </div>
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-300">Orb Frenzy</p>
-            <h1 className="text-2xl font-black">1/{info.rarity.toLocaleString()}</h1>
+            <h1 className="text-2xl font-black">1/{info.formatRarity(rarity)}</h1>
           </div>
         </div>
 
