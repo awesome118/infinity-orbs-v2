@@ -11,9 +11,9 @@ import {
   ShieldCheck,
   RotateCw,
 } from 'lucide-react';
-import type { PlayerState 
-  formatNumber,} from '../../shared/game.js';
+import type { PlayerState } from '../../shared/game.js';
 import {
+  formatNumber,
   calculateAltarMultipliers,
   altarCoinDevotionChancePercent,
   altarCoinFloor,
