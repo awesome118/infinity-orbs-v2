@@ -3164,6 +3164,129 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           )}
         </section>
 
+        <section className={panelBase + ' border border-cyan-500/30'}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-300">
+                <Gauge className="w-4 h-4" /> Stat Spy
+              </div>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Calculates effective gameplay stats for a player and shows exactly what each upgrade, level bonus, mastery skill, prestige upgrade, guild perk, booster, Altar layer, CCU effect, and cap contributes.
+              </p>
+            </div>
+            {statSpy && <span className="text-[10px] text-slate-600 font-mono">updated {new Date(statSpy.generatedAt).toLocaleTimeString()}</span>}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+            <input
+              value={statSpyUsername}
+              onChange={e => setStatSpyUsername(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') void loadStatSpy();
+              }}
+              title="Enter the Reddit username whose calculated stats you want to inspect."
+              placeholder="Reddit username, without u/"
+              className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+            />
+            <button
+              title="Load the player's complete calculated stat breakdown."
+              disabled={statSpyLoading || !statSpyUsername.trim()}
+              onClick={() => void loadStatSpy()}
+              className={buttonBase + ' bg-cyan-600 hover:bg-cyan-500 border-cyan-500 text-slate-950 px-4 py-2'}
+            >
+              <Gauge className="inline w-3.5 h-3.5 mr-1" />
+              {statSpyLoading ? 'Loading…' : 'Spy Stats'}
+            </button>
+          </div>
+
+          {statSpy && (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  ['Level', formatNumber(statSpy.summary.level)],
+                  ['XP', formatNumber(statSpy.summary.xp)],
+                  ['Rolls', formatNumber(statSpy.summary.totalRolls)],
+                  ['Best', '1/' + formatRarity(Math.max(1, statSpy.summary.highestRarity))],
+                  ['Coins', formatNumber(statSpy.summary.coins)],
+                  ['Shards', formatNumber(statSpy.summary.shards)],
+                  ['Dust', formatNumber(statSpy.summary.cosmicDust)],
+                  ['Prestiges', formatNumber(statSpy.summary.prestigeCount)],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl border border-slate-800 bg-slate-900/65 p-2.5">
+                    <div className="text-[8px] font-black uppercase tracking-wider text-slate-500">{label}</div>
+                    <div className="mt-1 text-xs font-mono font-bold text-slate-200 truncate">{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-2">
+                {statSpy.stats.map(stat => (
+                  <details key={stat.id} open className="rounded-xl border border-slate-800 bg-slate-900/55 overflow-hidden">
+                    <summary className="cursor-pointer list-none px-3 py-2.5 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-bold text-slate-200">{stat.label}</div>
+                        {stat.detail && <div className="text-[9px] text-slate-500 mt-0.5">{stat.detail}</div>}
+                      </div>
+                      <div className="shrink-0 text-sm font-mono font-black text-cyan-200">{formatStatSpyTotal(stat.total, stat.unit)}</div>
+                    </summary>
+
+                    <div className="border-t border-slate-800 divide-y divide-slate-800/70">
+                      {stat.sources.map((source, index) => (
+                        <div key={source.label + '-' + index} className={"px-3 py-2 flex items-start justify-between gap-3 " + (source.active === false ? 'opacity-40' : '')}>
+                          <div className="min-w-0">
+                            <div className="text-[10px] text-slate-300">
+                              {source.label}
+                              {source.level !== undefined && <span className="ml-1 text-[9px] text-slate-600">Lv {formatNumber(source.level)}</span>}
+                              {source.active === false && <span className="ml-2 text-[8px] uppercase tracking-wider text-slate-600">inactive</span>}
+                            </div>
+                            {source.detail && <div className="mt-0.5 text-[8px] leading-3.5 text-slate-600">{source.detail}</div>}
+                          </div>
+                          <span className={"shrink-0 font-mono text-[10px] " + (
+                            source.kind === 'base' ? 'text-slate-400' :
+                            source.kind === 'reduction' ? 'text-emerald-300' :
+                            source.kind === 'multiply' ? 'text-amber-300' :
+                            source.kind === 'special' ? 'text-purple-300' :
+                            'text-cyan-300'
+                          )}>
+                            {formatStatSpyValue(source.value, source.unit)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                {[
+                  ['Standard upgrades', statSpy.allocations.upgrades],
+                  ['Prestige upgrades', statSpy.allocations.prestigeUpgrades],
+                  ['Mastery skills', statSpy.allocations.masterySkills],
+                  ['Guild perks', statSpy.allocations.guildPerks],
+                ].map(([title, values]) => (
+                  <div key={title as string} className="rounded-xl border border-slate-800 bg-slate-900/55 p-3">
+                    <div className="text-[9px] font-black uppercase tracking-wider text-slate-500 mb-2">{title as string}</div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                      {Object.entries(values as Record<string, number>).map(([id, level]) => (
+                        <div key={id} className="flex items-center justify-between gap-2 text-[9px]">
+                          <span className="text-slate-500 truncate">{id}</span>
+                          <span className="font-mono text-slate-300">{formatNumber(Number(level) || 0)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="rounded-xl border border-slate-800 bg-slate-900/55 p-3 text-[9px] text-slate-500">
+                Current CCU: <span className="font-mono text-slate-300">{formatNumber(statSpy.summary.currentCcu)}</span>
+                {' · '}Stat Spy test CCU: <span className="font-mono text-slate-300">+{formatNumber(statSpy.summary.fakeCcuBonus)}</span>
+                {' · '}Effective CCU for Luck: <span className="font-mono text-cyan-300">{formatNumber(statSpy.summary.effectiveCcu)}</span>
+              </div>
+            </>
+          )}
+        </section>
+
         <section className={panelBase + ' border border-fuchsia-500/30'}>
           <div className="flex items-center justify-between gap-3">
             <div>
