@@ -860,6 +860,50 @@ const GLOBAL_CHAT_KEY = key('global-chat:v1');
 const GLOBAL_CHAT_MAX_MESSAGES = 100;
 const CHAT_REPORTS_KEY = key('chat-reports:v1');
 
+export interface ChatReportRecord {
+  reportId: string;
+  scope: 'Global Chat' | 'Guild Chat';
+  messageId: string;
+  author: string;
+  authorUserId: string;
+  reporter: string;
+  reporterUserId: string;
+  text: string;
+  reportedAt: number;
+  readAt?: number;
+}
+
+export async function listChatReports(): Promise<{ reports: ChatReportRecord[]; unreadCount: number }> {
+  const raw = await redis.hGetAll(CHAT_REPORTS_KEY);
+  const reports: ChatReportRecord[] = [];
+  if (raw && typeof raw === 'object') {
+    for (const [reportId, stored] of Object.entries(raw as Record<string, string>)) {
+      const parsed = parseStoredJson<ChatReportRecord>(stored);
+      if (!parsed) continue;
+      reports.push({ ...parsed, reportId: parsed.reportId || reportId });
+    }
+  }
+  reports.sort((a, b) => Number(b.reportedAt || 0) - Number(a.reportedAt || 0));
+  return {
+    reports,
+    unreadCount: reports.reduce((count, report) => count + (report.readAt ? 0 : 1), 0),
+  };
+}
+
+export async function markChatReportRead(reportId: string): Promise<{ success: true }> {
+  const id = String(reportId ?? '').trim();
+  if (!id) throw new Error('Report ID is required.');
+  const raw = await redis.hGet(CHAT_REPORTS_KEY, id);
+  const parsed = parseStoredJson<ChatReportRecord>(raw);
+  if (!parsed) throw new Error('That chat report no longer exists.');
+  if (!parsed.readAt) {
+    await redis.hSet(CHAT_REPORTS_KEY, {
+      [id]: JSON.stringify({ ...parsed, reportId: id, readAt: Date.now() }),
+    });
+  }
+  return { success: true };
+}
+
 async function submitChatReport(
   scope: 'Global Chat' | 'Guild Chat',
   message: GlobalChatMessage | GuildMessage,
@@ -905,6 +949,9 @@ async function submitChatReport(
       messageId: message.id,
       author,
       scope,
+      authorUserId: String(message.userId ?? 'unknown'),
+      text: String(message.text ?? ''),
+      readAt: undefined,
     }),
   });
 
