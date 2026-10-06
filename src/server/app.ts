@@ -45,7 +45,6 @@ import {
   getNotificationState,
   setNotificationState,
   settleOffline,
-  formatRarity,
 } from './game.js';
 import {
   achievements,
@@ -71,7 +70,7 @@ import {
 import { context, reddit, redis } from './devvit-mock.js';
 import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
-import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, type FeatureId } from '../shared/game.js';
+import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, formatRarity, type FeatureId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
 
 const payments = (devvitServer as typeof devvitServer & {
