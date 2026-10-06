@@ -542,6 +542,7 @@ debugRouter.post('/state', async (req, res) => {
       'lifetimeCollectionValue', 'offlineRolls', 'prestigeCount', 'rollsSinceBest',
       'turboRollUntil', 'onlinePlayers', 'purchasedShards',
       'currentRunRolls', 'questsCompleted', 'guildContribution', 'masteryPoints',
+      'singularityTitheSingleRolls',
       'communityRewardClaimedAt', 'communityRewardClaimedTier',
     ];
 
