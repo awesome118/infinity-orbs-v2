@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, ArrowBigUp, Share2, CheckCircle2, MessageSquare } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { getOrbInfo } from '../../shared/game.js';
+import { getOrbInfo, formatRarity } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface RedditShareModalProps {
@@ -21,7 +21,6 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
   const [successPostId, setSuccessPostId] = useState<string | null>(null);
 
   const info = getOrbInfo(rarity);
-  const fmt = (n: number) => n.toLocaleString();
 
   const handleShare = async () => {
     setBusy(true);
@@ -79,7 +78,7 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
 
           {/* Post Title */}
           <h4 className="text-sm font-bold text-white">
-            I just found a 1/{fmt(rarity)} Orb ({info.name}) in Infinity Orbs!
+            I just found a 1/{formatRarity(rarity)} Orb ({info.name}) in Infinity Orbs!
           </h4>
 
           {/* Post Body Preview */}
@@ -94,12 +93,12 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
               >
                 <div className="absolute inset-2 rounded-full border border-white/30" />
                 <span className="text-[10px] font-black uppercase tracking-wider">{info.tier}</span>
-                <span className="text-base sm:text-lg font-black font-mono">1/{fmt(rarity)}</span>
+                <span className="text-base sm:text-lg font-black font-mono">1/{formatRarity(rarity)}</span>
                 <span className="text-[10px] text-white/90 mt-0.5">{info.name}</span>
               </div>
               <div className="text-center sm:text-left">
                 <span className="font-bold text-white block">{info.name}</span>
-                <span className="text-slate-400">Theoretical Odds: 1 in {fmt(rarity)}</span>
+                <span className="text-slate-400">Theoretical Odds: 1 in {formatRarity(rarity)}</span>
               </div>
             </div>
 
