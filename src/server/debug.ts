@@ -912,6 +912,7 @@ debugRouter.post('/force-roll', async (req, res) => {
       rollsRemainingUntilNext: cooldownMs(s),
       source,
       dramaticReveal: bestOrb.rarity >= 100,
+      rollsProcessed: batch.length,
     });
         });} catch (e: any) {
     res.status(500).json({ error: e.message });
