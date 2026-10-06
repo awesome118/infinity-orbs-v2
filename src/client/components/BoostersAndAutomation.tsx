@@ -35,6 +35,7 @@ import {
   PREMIUM_BOOSTERS,
   onlinePlayerLuckMultiplier,
   premiumBoosterRemainingMs,
+  formatNumber,
 } from '../../shared/game.js';
 
 interface BoostersAndAutomationProps {
@@ -128,7 +129,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-2">
               <span className="block text-[10px] uppercase font-black text-cyan-300/70">Online</span>
-              <span className="text-lg font-black text-cyan-200">{onlinePlayers.toLocaleString()}</span>
+              <span className="text-lg font-black text-cyan-200">{formatNumber(onlinePlayers)}</span>
             </div>
             <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2">
               <span className="block text-[10px] uppercase font-black text-emerald-300/70">Online Luck</span>
@@ -143,7 +144,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
             <span className="text-slate-500 ml-2">Gameplay earnings are capped server-side.</span>
           </div>
           <div className="text-slate-400">
-            {state.shards.toLocaleString()} Shards available
+            {formatNumber(state.shards)} Shards available
           </div>
         </div>
       </section>
@@ -251,7 +252,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                     disabled={activatingGlobalBooster !== null || !canAffordGlobal}
                     className="flex-1 px-2.5 py-2 rounded-xl text-[10px] font-black bg-slate-800 hover:bg-slate-700 text-white disabled:text-slate-500 disabled:cursor-not-allowed"
                   >
-                    {`+30m • ${globalCost.toLocaleString()} 💎`}
+                    {`+30m • ${formatNumber(globalCost)} 💎`}
                   </button>
                   <button
                     onClick={() => void handleGlobalActivation(id, true)}
@@ -336,7 +337,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
             <div className="mt-3">
               <div className="flex items-center justify-between gap-2 text-[10px]">
                 <span className="font-black text-emerald-300">
-                  {(worldEvent?.currentProgress ?? 0).toLocaleString()} / {(worldEvent?.goal ?? 100_000).toLocaleString()} rolls
+                  {formatNumber(worldEvent?.currentProgress ?? 0)} / {formatNumber(worldEvent?.goal ?? 100_000)} rolls
                 </span>
                 <span className="font-bold text-slate-500">
                   {communityRewardReady ? `Tier ${nextCommunityRewardTier} ready` : `Tier ${worldEvent?.tier ?? 1} in progress`}
