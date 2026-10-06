@@ -68,7 +68,7 @@ function FrenzyPost() {
           </div>
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-300">Orb Frenzy</p>
-            <h1 className="text-2xl font-black">1/{info.formatRarity(rarity)}</h1>
+            <h1 className="text-2xl font-black">1/{formatRarity(info.rarity)}</h1>
           </div>
         </div>
 
