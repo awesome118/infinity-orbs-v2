@@ -261,9 +261,6 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
     </header>
-/div>
-        </div>
-      )}
     </>
   );
 };
