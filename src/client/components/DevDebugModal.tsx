@@ -973,6 +973,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             const result = await rollOnce(`luck baseline roll ${i + 1}`);
             if (result) rarities.push(result.orb.rarity);
           }
+          if (rarities.length !== 5) throw new Error(`Only ${rarities.length}/5 baseline luck rolls completed.`);
           return rarities;
         },
         rarities => {
@@ -991,6 +992,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             const result = await rollOnce(`luck high-CCU roll ${i + 1}`);
             if (result) rarities.push(result.orb.rarity);
           }
+          if (rarities.length !== 5) throw new Error(`Only ${rarities.length}/5 high-CCU luck rolls completed.`);
           return rarities;
         },
         rarities => {
