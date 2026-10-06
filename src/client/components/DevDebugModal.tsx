@@ -1297,7 +1297,6 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 disabled={fullTestRunning}
                 title="Run the full end-to-end admin test. This wipes and rewrites the current admin save."
                 onClick={() => {
-                  if (!window.confirm('Run the full comprehensive test? It will wipe and rewrite your current Infinity Orbs save.')) return;
                   void runFullComprehensiveTest();
                 }}
                 className={buttonBase + ' bg-emerald-600 hover:bg-emerald-500 border-emerald-500 text-white px-3 py-2'}
