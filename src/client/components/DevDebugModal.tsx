@@ -5,7 +5,7 @@ import {
   Ban, UserX, CheckCircle2, RefreshCw, Flame,
   Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy, ClipboardCheck,
 } from 'lucide-react';
-import { PRESTIGE_UPGRADES, CONTINUUM_TIERS, getOrbInfo, visibleContinuumTiers, formatRarity } from '../../shared/game.js';
+import { PRESTIGE_UPGRADES, CONTINUUM_TIERS, getOrbInfo, visibleContinuumTiers, formatRarity, formatNumber } from '../../shared/game.js';
 import type { RollResponse } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
@@ -442,7 +442,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Could not set fake CCU.');
-      setMessage(`Fake CCU set to +${Number(data.fakeCcuBonus ?? bonus).toLocaleString()}.`);
+      setMessage(`Fake CCU set to +${formatNumber(Number(data.fakeCcuBonus ?? bonus))}.`);
       await loadCcuStats();
     } catch (e: any) {
       setMessage('Error: ' + (e?.message || 'Could not set fake CCU.'));
@@ -2103,7 +2103,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
 
       const totalMs = performance.now() - startedAt;
       setMessage(
-        `Full test finished in ${Math.round(totalMs).toLocaleString()}ms · ${passed} passed · ${failed} failed · ${skipped} skipped.`,
+        `Full test finished in ${formatNumber(Math.round(totalMs))}ms · ${passed} passed · ${failed} failed · ${skipped} skipped.`,
       );
       setFullTestCurrentAction('Completed');
       await onRefresh().catch(() => null);
@@ -2936,7 +2936,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                   const data = await res.json().catch(() => ({}));
                   if (!res.ok) throw new Error(data.error || 'Could not inspect player save.');
                   const save = data.save;
-                  setMessage('Save: ' + (data.exists ? 'exists' : 'missing') + ' | Level ' + (save?.level ?? 1) + ' | XP ' + Number(save?.xp ?? 0).toLocaleString() + ' | Gen ' + (save?.saveGeneration ?? 0) + '/' + (data.generation ?? 0) + ' | Ban: ' + (data.ban ? 'ACTIVE' : 'none'));
+                  setMessage('Save: ' + (data.exists ? 'exists' : 'missing') + ' | Level ' + (save?.level ?? 1) + ' | XP ' + formatNumber(Number(save?.xp ?? 0)) + ' | Gen ' + (save?.saveGeneration ?? 0) + '/' + (data.generation ?? 0) + ' | Ban: ' + (data.ban ? 'ACTIVE' : 'none'));
                 } catch (e: any) {
                   setMessage('Error: ' + (e?.message || 'Could not inspect player save.'));
                 } finally {
@@ -3038,7 +3038,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                       <span className="text-xs font-mono text-slate-200 truncate">u/{player.username}</span>
                       {player.active && <span className="text-[9px] font-black uppercase text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-1.5 py-0.5">Active</span>}
                     </div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">Level {player.level} · {player.totalRolls.toLocaleString()} rolls · Best 1/{formatRarity(Math.max(1, player.highestRarity))}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Level {player.level} · {formatNumber(player.totalRolls)} rolls · Best 1/{formatRarity(Math.max(1, player.highestRarity))}</div>
                   </div>
                   <div className="shrink-0 text-right">
                     <div className="text-[10px] text-slate-400">{player.active ? 'Online now' : player.lastSeenAt ? new Date(player.lastSeenAt).toLocaleString() : 'No recent activity'}</div>
