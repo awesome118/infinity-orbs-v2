@@ -98,10 +98,8 @@ const ROLL_TICKET_COUNT = 30;
 const ROLL_TICKET_TTL_MS = 10 * 60_000;
 const PLAYER_SPY_LOG_KEY_PREFIX = 'io:player-spy:v1:';
 const PLAYER_SPY_LOG_LIMIT = 500;
-const FOLLOW_REWARD_KEY_PREFIX = 'io:follow-reward:v1:';
-const FOLLOW_SUBSCRIBED_KEY_PREFIX = 'io:follow-subscribed:v1:';
-const FOLLOW_ACTION_COUNT_KEY = 'io:follow-actions:v1';
-const FOLLOW_REWARD_ROLLS = 200;
+const FOLLOW_SUBSCRIBED_KEY_PREFIX = 'io:follow-prompt-subscribed:v2:';
+const FOLLOW_ACTION_COUNT_KEY = 'io:follow-prompt-actions:v2';
 const FOLLOW_TARGET_SUBREDDIT = 'infinityorbs';
 
 const SAVE_DEBUG_LOG_KEY = 'io:save-debug:v1';
@@ -1953,7 +1951,7 @@ export async function applyRolls(
         ? forcedRarity
         : Math.max(minimumRarity, rollContinuum(effectiveLuck, rng));
     const baseRarity = Math.max(minimumRarity, rolledRarity);
-    const rarity = isCrit ? Math.min(10_000_000_000, Math.round(baseRarity * effectiveCm)) : baseRarity;
+    const rarity = isCrit ? Math.min(1_000_000_000_000_000, Math.round(baseRarity * effectiveCm)) : baseRarity;
     const finalVal = Math.round(rarity * valueMul);
 
     totalVal += finalVal;
@@ -2587,50 +2585,53 @@ export async function getFollowRewardStats(): Promise<{
   };
 }
 
-export async function claimFollowReward(): Promise<{
-  state: PlayerState;
-  rollsGranted: number;
-  bestRarity: number;
-  coinsGained: number;
-  shardsGained: number;
-  xpGained: number;
+export async function subscribeToSubredditFromPrompt(): Promise<{
+  subredditName: string;
+  recordedAction: boolean;
 }> {
   return withPlayerMutationLock(async () => {
-    const rewardKey = FOLLOW_REWARD_KEY_PREFIX + currentUserId();
-    const subscribeKey = FOLLOW_SUBSCRIBED_KEY_PREFIX + currentUserId();
-    const alreadyClaimed = await redis.get(rewardKey);
-    if (alreadyClaimed) throw new Error('FOLLOW_REWARD_ALREADY_CLAIMED');
-    if (!(await redis.get(subscribeKey))) throw new Error('FOLLOW_REWARD_REQUIRES_SUBSCRIBE');
+    const userId = currentUserId();
+    await reddit.subscribeToCurrentSubreddit();
 
-    const s = await settleOffline(await loadRaw());
-    const result = await applyRolls(s, 1, undefined, 'online', FOLLOW_REWARD_ROLLS);
-
-    // One free-roll activation advances manual progression once, rather than 200 button presses.
-    s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + 1);
-    if (s.manualRolls >= 3) s.upgrades.auto = 1;
-    s.lastRollAt = Date.now();
-    s.lastSeenAt = Date.now();
-
-    await save(s);
-    await redis.set(rewardKey, String(Date.now()));
-    await recordLeaderboard(s);
-    void appendPlayerSpyLog('follow-reward-claim', {
-      rollsGranted: FOLLOW_REWARD_ROLLS,
-      bestRarity: result.bestOrb.rarity,
-      coinsGained: result.coinsGained,
-      shardsGained: result.shardsGained,
-      xpGained: result.xpGained,
-    }).catch(error => console.error('[Follow Reward] Spy log failed:', error));
+    const userKey = FOLLOW_SUBSCRIBED_KEY_PREFIX + userId;
+    const alreadyRecorded = Boolean(await redis.get(userKey));
+    if (!alreadyRecorded) {
+      await redis.set(userKey, String(Date.now()));
+      await redis.incr(FOLLOW_ACTION_COUNT_KEY);
+    }
 
     return {
-      state: s,
-      rollsGranted: FOLLOW_REWARD_ROLLS,
-      bestRarity: result.bestOrb.rarity,
-      coinsGained: result.coinsGained,
-      shardsGained: result.shardsGained,
-      xpGained: result.xpGained,
+      subredditName: String(context.subredditName ?? ''),
+      recordedAction: !alreadyRecorded,
     };
   });
+}
+
+export async function getFollowPromptStats(): Promise<{
+  recordedFollowActions: number;
+  totalSubscribers: number | null;
+  targetSubreddit: string;
+}> {
+  const rawCount = await redis.get(FOLLOW_ACTION_COUNT_KEY);
+  const recordedFollowActions = Math.max(
+    0,
+    Number.parseInt(String(rawCount ?? '0'), 10) || 0,
+  );
+
+  let totalSubscribers: number | null = null;
+  try {
+    const info = await reddit.getSubredditInfoByName(FOLLOW_TARGET_SUBREDDIT);
+    const count = Number(info?.subscribersCount);
+    totalSubscribers = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : null;
+  } catch (error) {
+    console.error('[Follow Prompt] Could not read subreddit subscriber count:', error);
+  }
+
+  return {
+    recordedFollowActions,
+    totalSubscribers,
+    targetSubreddit: FOLLOW_TARGET_SUBREDDIT,
+  };
 }
 
 export async function claimOffline(): Promise<RollResponse> {
@@ -3466,8 +3467,8 @@ export async function claimOrbFrenzy(options: {
     : 0;
 
   const normalCritCount = Math.max(0, critCount - supernovaCount);
-  const normalCritRarity = Math.min(10_000_000_000, Math.round(data.rarity * critMultiplier(s)));
-  const supernovaRarity = Math.min(10_000_000_000, Math.round(data.rarity * critMultiplier(s) * 2.5));
+  const normalCritRarity = Math.min(1_000_000_000_000_000, Math.round(data.rarity * critMultiplier(s)));
+  const supernovaRarity = Math.min(1_000_000_000_000_000, Math.round(data.rarity * critMultiplier(s) * 2.5));
 
   const groups = [
     { count: count - critCount, rarity: data.rarity },
