@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { Crown, Sparkles, Share2, ArrowRight, Zap, Trophy, Star } from 'lucide-react';
 import type { Orb } from '../../shared/game.js';
-import { getOrbInfo } from '../../shared/game.js';
+import { getOrbInfo, formatRarity } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface NewBestModalProps {
