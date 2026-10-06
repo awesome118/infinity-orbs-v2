@@ -2298,7 +2298,7 @@ export function App() {
 
       {/* Fair RNG Odds Table Modal (Design Pillar 2.5) */}
       {showOddsModal && (
-        <RarityTableModal onClose={() => setShowOddsModal(false)} />
+        <RarityTableModal highestRarity={state.highestRarity || 0} onClose={() => setShowOddsModal(false)} />
       )}
 
       {/* Admin Console */}
