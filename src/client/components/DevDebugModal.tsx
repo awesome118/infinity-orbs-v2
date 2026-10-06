@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   X, Wrench, Coins, Gem, Sparkles, Zap, RotateCcw, Play, Shield, Megaphone,
-  Users,
+  Users, BellRing,
   Ban, UserX, CheckCircle2, RefreshCw, Flame,
   Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy, ClipboardCheck,
 } from 'lucide-react';
@@ -307,6 +307,22 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [guildChatSpyLoading, setGuildChatSpyLoading] = useState(false);
   const [guildChatSpyLoaded, setGuildChatSpyLoaded] = useState(false);
   const [guildChatMuteUser, setGuildChatMuteUser] = useState('');
+
+  type ChatReport = {
+    reportId: string;
+    scope: 'Global Chat' | 'Guild Chat';
+    messageId: string;
+    author: string;
+    authorUserId: string;
+    reporter: string;
+    reporterUserId: string;
+    text: string;
+    reportedAt: number;
+    readAt?: number;
+  };
+  const [chatReports, setChatReports] = useState<ChatReport[]>([]);
+  const [chatReportsUnread, setChatReportsUnread] = useState(0);
+  const [chatReportsLoading, setChatReportsLoading] = useState(false);
 
   const [frenzyRarity, setFrenzyRarity] = useState('');
   const [frenzyPostId, setFrenzyPostId] = useState('');
@@ -614,6 +630,46 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       setPlayerSpyLoading(false);
     }
   };
+
+  const loadChatReports = async (quiet = false) => {
+    if (!quiet) setChatReportsLoading(true);
+    try {
+      const res = await fetch('/api/dev/chat-reports', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load chat reports.');
+      const reports = Array.isArray(data.reports) ? data.reports as ChatReport[] : [];
+      setChatReports(reports);
+      setChatReportsUnread(Number(data.unreadCount) || 0);
+    } catch (e: any) {
+      if (!quiet) setMessage('Error: ' + (e?.message || 'Could not load chat reports.'));
+    } finally {
+      if (!quiet) setChatReportsLoading(false);
+    }
+  };
+
+  const markChatReportRead = async (reportId: string) => {
+    try {
+      const res = await fetch('/api/dev/chat-reports/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reportId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not mark chat report as read.');
+      setChatReports(prev => prev.map(report =>
+        report.reportId === reportId ? { ...report, readAt: Date.now() } : report,
+      ));
+      setChatReportsUnread(prev => Math.max(0, prev - 1));
+    } catch (e: any) {
+      setMessage('Error: ' + (e?.message || 'Could not mark chat report as read.'));
+    }
+  };
+
+  useEffect(() => {
+    void loadChatReports();
+    const interval = window.setInterval(() => void loadChatReports(true), 5000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const loadGuildChatSpy = async (quiet = false) => {
     if (!quiet) setGuildChatSpyLoading(true);
@@ -1885,6 +1941,49 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           <div className="text-xs font-semibold px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-emerald-400">
             {message}
           </div>
+        )}
+
+        {chatReportsUnread > 0 && (
+          <section className="rounded-2xl border border-rose-500/50 bg-rose-950/25 p-4 space-y-3 shadow-lg shadow-rose-950/20">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-rose-200">
+                  <BellRing className="w-4 h-4" /> Chat Report Notification
+                  <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[9px] text-white">{chatReportsUnread} new</span>
+                </div>
+                <p className="mt-1 text-[10px] text-rose-200/70">
+                  A player reported an in-game chat message. Review the report below and mark it read after handling it.
+                </p>
+              </div>
+              <button
+                disabled={chatReportsLoading}
+                onClick={() => void loadChatReports()}
+                className={buttonBase + ' bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/30 text-rose-200 px-3 py-2'}
+              >
+                {chatReportsLoading ? 'Loading…' : 'Refresh'}
+              </button>
+            </div>
+            <div className="space-y-2">
+              {chatReports.filter(report => !report.readAt).slice(0, 5).map(report => (
+                <div key={report.reportId} className="rounded-xl border border-rose-500/20 bg-black/20 p-3">
+                  <div className="flex items-center justify-between gap-2 text-[10px]">
+                    <span className="font-bold text-slate-200">{report.scope} · u/{report.author}</span>
+                    <span className="text-slate-600">{new Date(report.reportedAt).toLocaleString()}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-300 whitespace-pre-wrap break-words">{report.text}</p>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[9px] text-slate-500">Reported by u/{report.reporter} · message {report.messageId}</span>
+                    <button
+                      onClick={() => void markChatReportRead(report.reportId)}
+                      className={buttonBase + ' bg-rose-600/20 hover:bg-rose-600/30 border-rose-500/40 text-rose-100 px-2.5 py-1.5'}
+                    >
+                      Mark read
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
 
         <section className={panelBase + ' border border-emerald-500/30'}>
