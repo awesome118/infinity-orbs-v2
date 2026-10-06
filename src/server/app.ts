@@ -930,7 +930,7 @@ export function createApp() {
         'transmutation', 'shardSynthesis', 'astralBarrage', 'cosmicInheritance',
         'autoBuyer', 'supernova', 'altarResonator', 'offlineOverdrive', 'singularityTithe',
         'luckyFloor', 'astralArsenal', 'deepVault', 'masteryEngine', 'steadyHands', 'offlineFortune',
-        'frenzyVolley'
+        'frenzyVolley', 'astralReserve', 'temporalCompression', 'shardResonator', 'cosmicValuation'
       ];
       if (!validIds.includes(id)) return res.status(400).json({ error: 'Invalid prestige upgrade.' });
       res.json({ state: await buyPrestigeUpgrade(id) });
