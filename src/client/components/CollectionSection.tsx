@@ -8,7 +8,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { CONTINUUM_TIERS, getOrbInfo, coinsForRarity } from '../../shared/game.js';
+import { visibleContinuumTiers, getOrbInfo, coinsForRarity } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface CollectionSectionProps {
@@ -44,20 +44,13 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
   const [reloadToken, setReloadToken] = useState(0);
 
   const fmt = (n: number) => n.toLocaleString();
+  const visibleTiers = useMemo(
+    () => visibleContinuumTiers(state.highestRarity || 0),
+    [state.highestRarity],
+  );
   const tiersList = useMemo(
-    () => [
-      'all',
-      'Common',
-      'Uncommon',
-      'Rare',
-      'Epic',
-      'Legendary',
-      'Mythic',
-      'Relic',
-      'Divine',
-      'Transcendent',
-    ],
-    [],
+    () => ['all', ...visibleTiers.map(tier => tier.tier)],
+    [visibleTiers],
   );
 
   useEffect(() => {
@@ -149,7 +142,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
             Continuum Tier Milestones
           </span>
           <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-1.5 text-center">
-            {CONTINUUM_TIERS.map(milestone => {
+            {visibleTiers.map(milestone => {
               const reached = (state.highestRarity || 0) >= milestone.minRarity;
               return (
                 <div
