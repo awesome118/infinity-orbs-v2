@@ -50,14 +50,6 @@ interface RollSectionProps {
   onNewBest?: (orb: Orb, prevBest: number) => void;
 }
 
-function formatCompactRarity(r: number): string {
-  if (r >= 1_000_000_000) return `${(r / 1_000_000_000).toFixed(1)}B`;
-  if (r >= 1_000_000) return `${(r / 1_000_000).toFixed(1)}M`;
-  if (r >= 10_000) return `${Math.round(r / 1_000)}k`;
-  if (r >= 1_000) return `${(r / 1_000).toFixed(1)}k`;
-  return r.toLocaleString();
-}
-
 function formatTimeLeft(ms: number): string {
   if (ms <= 0) return 'Resetting soon';
   const totalSecs = Math.floor(ms / 1000);
