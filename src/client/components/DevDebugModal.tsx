@@ -1028,9 +1028,10 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         async () => {
           const result = await request<{ state: any }>('/api/auto-roll', { enabled: true });
           const state = recordValue(result.state);
-          if (Number(state.upgrades?.auto ?? 0) < 1 || Number(state.manualRolls ?? 0) < 3) {
+          const upgrades = recordValue(state.upgrades);
+          if (Number(upgrades.auto ?? 0) < 1 || Number(state.manualRolls ?? 0) < 3) {
             throw new Error(
-              `Auto Roll did not unlock at 3 manual rolls (manualRolls=${state.manualRolls ?? 0}, auto=${state.upgrades?.auto ?? 0}).`,
+              `Auto Roll did not unlock at 3 manual rolls (manualRolls=${state.manualRolls ?? 0}, auto=${upgrades.auto ?? 0}).`,
             );
           }
           return result;
