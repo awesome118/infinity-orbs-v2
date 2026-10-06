@@ -758,7 +758,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               <div className="latest-orb-mark"><Award className="h-5 w-5" /></div>
               <div className="min-w-0">
                 <div className="latest-orb-name">{displayOrb.name}</div>
-                <div className="latest-orb-rarity">1 / {displayOrb.rarity.toLocaleString()}</div>
+                <div className="latest-orb-rarity">1 / {formatRarity(displayOrb.rarity)}</div>
               </div>
             </div>
           ) : (
@@ -775,7 +775,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           {nextTier ? (
             <>
               <div className="field-level"><strong className="!text-[21px]">{nextTier.tier}</strong><span>tier</span></div>
-              <div className="field-stat-row mt-2"><span>Threshold</span><strong>1 / {nextTier.minRarity.toLocaleString()}</strong></div>
+              <div className="field-stat-row mt-2"><span>Threshold</span><strong>1 / {formatRarity(nextTier.minRarity)}</strong></div>
             </>
           ) : (
             <p className="field-empty">Every listed horizon is behind you. The continuum keeps going.</p>
