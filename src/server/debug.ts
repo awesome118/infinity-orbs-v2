@@ -24,6 +24,7 @@ import {
   sendPushNotificationTest,
   getPlayerSpyLogs,
   clearPlayerSpyLogs,
+  getFollowRewardStats,
 } from './game.js';
 import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import { context, redis, reddit } from './devvit-mock.js';
@@ -136,6 +137,14 @@ debugRouter.post('/global-booster', async (req, res) => {
     res.json({ ok: true, id, state });
   } catch (e: any) {
     res.status(400).json({ error: e?.message || 'Failed to set Global Booster.' });
+  }
+});
+
+debugRouter.get('/follow-reward', async (_req, res) => {
+  try {
+    res.json(await getFollowRewardStats());
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to load follow reward statistics.' });
   }
 });
 
