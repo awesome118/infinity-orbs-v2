@@ -38,6 +38,7 @@ import type {
   GuildMessage,
 } from '../shared/social.js';
 import {
+  formatRarity,
   cooldownMs,
   calculateCosmicDust,
   calculateLevelFromXp,
