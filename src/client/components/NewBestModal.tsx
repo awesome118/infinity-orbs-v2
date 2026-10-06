@@ -109,7 +109,7 @@ export const NewBestModal: React.FC<NewBestModalProps> = ({
                 {orbInfo.tier}
               </span>
               <div className="text-sm font-black text-white font-mono">
-                1 / {orb.rarity.toLocaleString()}
+                1 / {formatRarity(orb.rarity)}
               </div>
               <div className="text-[10px] text-white/90">
                 {orbInfo.name}
@@ -188,7 +188,7 @@ export const NewBestModal: React.FC<NewBestModalProps> = ({
               {orbInfo.tier}
             </span>
             <div className="text-xl sm:text-2xl font-black text-white font-mono drop-shadow-md">
-              1 / {orb.rarity.toLocaleString()}
+              1 / {formatRarity(orb.rarity)}
             </div>
             <div className="text-xs font-bold text-white/90 drop-shadow mt-0.5">
               {orbInfo.name}
