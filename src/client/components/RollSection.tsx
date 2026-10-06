@@ -17,6 +17,7 @@ import {
   Filter,
   Compass,
   Globe,
+  Award,
 } from 'lucide-react';
 import type { PlayerState, Orb } from '../../shared/game.js';
 import type { WorldEvent } from '../../shared/social.js';
@@ -28,6 +29,18 @@ import {
   formatRarity,
   coinsForRarity,
 } from '../../shared/game.js';
+
+const CONTINUUM_HORIZONS = [
+  { tier: 'Common', minRarity: 2 },
+  { tier: 'Uncommon', minRarity: 10 },
+  { tier: 'Rare', minRarity: 100 },
+  { tier: 'Epic', minRarity: 1_000 },
+  { tier: 'Legendary', minRarity: 10_000 },
+  { tier: 'Mythic', minRarity: 100_000 },
+  { tier: 'Relic', minRarity: 1_000_000 },
+  { tier: 'Divine', minRarity: 10_000_000 },
+  { tier: 'Transcendent', minRarity: 100_000_000 },
+];
 import { sound } from '../sound.js';
 import { OrbOrbit } from './OrbOrbit.js';
 
@@ -147,6 +160,15 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const luck = luckMultiplier(state);
   const isAutoUnlocked = (state.upgrades.auto ?? 0) > 0;
   const isTurbo = Boolean(state.turboRollUntil && state.turboRollUntil > now);
+  let xpBeforeLevel = 0;
+  for (let level = 1; level < Math.max(1, state.level || 1); level++) {
+    xpBeforeLevel += Math.max(1, Math.floor(70 * Math.pow(level, 1.30)));
+  }
+  const currentLevelXp = Math.max(0, (state.xp ?? 0) - xpBeforeLevel);
+  const nextLevelXp = Math.max(1, Math.floor(70 * Math.pow(Math.max(1, state.level || 1), 1.30)));
+  const xpProgress = Math.min(100, Math.round((currentLevelXp / nextLevelXp) * 100));
+  const tiersReached = CONTINUUM_HORIZONS.filter(tier => (state.highestRarity || 0) >= tier.minRarity).length;
+  const nextTier = CONTINUUM_HORIZONS.find(tier => (state.highestRarity || 0) < tier.minRarity);
 
   // Smooth or instant reveal on new roll
   useEffect(() => {
@@ -244,10 +266,19 @@ export const RollSection: React.FC<RollSectionProps> = ({
   };
 
   const hasMultipleOrbs = lastBatch.length > 1;
-  const orbitRadius = 152;
+  const orbitRadius = typeof window !== 'undefined' && window.innerWidth < 400 ? 118 : 152;
 
   return (
-    <div className="flex flex-col items-center justify-center max-w-2xl mx-auto space-y-4">
+    <div className="roll-layout">
+      <section className="roll-main flex flex-col items-center justify-center max-w-2xl mx-auto space-y-4">
+        <div className="roll-heading w-full">
+          <div>
+            <span className="roll-kicker">Infinity Orbs / Field Log</span>
+            <h2 className="roll-title">Reach beyond the known.</h2>
+            <p className="roll-intro">Every roll opens a new point in the continuum.</p>
+          </div>
+          <span className="signal-live">Signal clear</span>
+        </div>
       {/* Weekly Cosmos Milestone Goal Banner */}
       {worldEvent && (
         <div className="w-full bg-gradient-to-r from-purple-950/70 via-slate-900 to-indigo-950/70 border border-purple-500/30 rounded-2xl p-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-lg">
@@ -287,7 +318,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       )}
 
       {/* Main Celestial Orb Stage (Orbits & Main Orb are concentric and centered together) */}
-      <div className={`relative w-full flex items-center justify-center py-6 sm:py-8 select-none ${isShaking ? 'animate-screen-shake' : ''}`}>
+      <div className={`roll-stage relative w-full flex items-center justify-center select-none ${isShaking ? 'animate-screen-shake' : ''}`}>
         {/* Ambient Glow Background centered on orb */}
         <div
           className="absolute w-64 h-64 rounded-full blur-3xl opacity-20 pointer-events-none transition-colors duration-700"
@@ -410,10 +441,10 @@ export const RollSection: React.FC<RollSectionProps> = ({
       </div>
 
       {/* Primary Action Button */}
-      <div className="flex flex-col items-center gap-3 w-full max-w-sm">
+      <div className="roll-controls flex flex-col items-center gap-3 w-full max-w-sm">
         <button
           onClick={handleRollClick}
-          className={`w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ${
+          className={`roll-button ${canRoll ? 'is-ready' : 'is-waiting'} w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ${
             canRoll
               ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-950/30'
               : busy
@@ -746,6 +777,58 @@ export const RollSection: React.FC<RollSectionProps> = ({
           <span className="font-bold text-purple-300">+{Math.max(0, state.level - 1)}% Luck</span>
         </div>
       </div>
+        </section>
+
+      <aside className="roll-sidebar" aria-label="Run summary">
+        <section className="field-card">
+          <div className="field-card-header">
+            <span className="field-label">Your run</span>
+            <span className="field-label">{state.prestigeCount > 0 ? 'Cycle ' + (state.prestigeCount + 1) : 'First cycle'}</span>
+          </div>
+          <div className="field-level"><strong>{state.level}</strong><span>research level</span></div>
+          <div className="field-progress" aria-label={String(xpProgress) + '% to next level'}><span style={{ width: String(xpProgress) + '%' }} /></div>
+          <div className="field-stat-list">
+            <div className="field-stat-row"><span>Rolls logged</span><strong>{state.totalRolls.toLocaleString()}</strong></div>
+            <div className="field-stat-row"><span>Best signal</span><strong>1 / {(state.highestRarity || 0).toLocaleString()}</strong></div>
+            <div className="field-stat-row"><span>Orbs catalogued</span><strong>{Object.values(state.collection || {}).filter(count => count > 0).length.toLocaleString()}</strong></div>
+          </div>
+        </section>
+
+        <section className="field-card">
+          <div className="field-card-header">
+            <span className="field-label">Latest discovery</span>
+            {displayOrb?.isNew && <span className="text-[9px] font-extrabold uppercase tracking-wider text-amber-300">New</span>}
+          </div>
+          {displayOrb ? (
+            <div className="latest-orb">
+              <div className="latest-orb-mark"><Award className="h-5 w-5" /></div>
+              <div className="min-w-0">
+                <div className="latest-orb-name">{displayOrb.name}</div>
+                <div className="latest-orb-rarity">1 / {displayOrb.rarity.toLocaleString()}</div>
+              </div>
+            </div>
+          ) : (
+            <p className="field-empty">The first signal is waiting. Roll to record your opening discovery.</p>
+          )}
+          {displayOrb && orbInfo && <div className="field-stat-row mt-3 !border-t-0 !pt-0"><span>Continuum class</span><strong style={{ color: orbInfo.color }}>{orbInfo.tier}</strong></div>}
+        </section>
+
+        <section className="field-card">
+          <div className="field-card-header">
+            <span className="field-label">Next horizon</span>
+            <span className="text-[10px] font-bold text-teal-200">{tiersReached} / {CONTINUUM_HORIZONS.length}</span>
+          </div>
+          {nextTier ? (
+            <>
+              <div className="field-level"><strong className="!text-[21px]">{nextTier.tier}</strong><span>tier</span></div>
+              <div className="field-stat-row mt-2"><span>Threshold</span><strong>1 / {nextTier.minRarity.toLocaleString()}</strong></div>
+            </>
+          ) : (
+            <p className="field-empty">Every listed horizon is behind you. The continuum keeps going.</p>
+          )}
+          <p className="field-note mt-3">“The rarest things are <em>still out there.</em>”</p>
+        </section>
+      </aside>
     </div>
   );
 };
