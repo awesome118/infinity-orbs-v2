@@ -1189,7 +1189,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           });
         };
 
-        const readMechanics = async () => {
+        const readMechanics = async (): Promise<any> => {
           const result = await request<any>('/api/dev/mechanics');
           return recordValue(result.mechanics);
         };
