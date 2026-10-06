@@ -486,7 +486,11 @@ export type PrestigeUpgradeId =
   | 'masteryEngine'
   | 'steadyHands'
   | 'offlineFortune'
-  | 'frenzyVolley';
+  | 'frenzyVolley'
+  | 'astralReserve'
+  | 'temporalCompression'
+  | 'shardResonator'
+  | 'cosmicValuation';
 
 export function createSeededRandom(seed: number): () => number {
   let state = (Math.floor(Number(seed)) >>> 0) || 0x6d2b79f5;
@@ -603,6 +607,10 @@ export interface PlayerState {
   purchasedShards?: number;
   globalBoosterCredits?: number;
   globalBoosters?: GlobalBoosterSnapshot;
+
+  // Lifetime count of completed single-orb online activations used by
+  // Singularity Tithe. Multi-roll, auto-roll batches, and offline batches do not add to it.
+  singularityTitheSingleRolls?: number;
 
   lastFrenzyDate?: string;
   lastFrenzyClaimDate?: string;
@@ -1099,6 +1107,35 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
     costPerLevel: 3,
     qol: true,
   },
+  astralReserve: {
+    name: 'Astral Reserve',
+    desc: '+2% Luck per level.',
+    category: 'core',
+    maxLevel: 10,
+    costPerLevel: 4,
+  },
+  temporalCompression: {
+    name: 'Temporal Compression',
+    desc: '-75ms cooldown floor per level.',
+    category: 'qol',
+    maxLevel: 5,
+    costPerLevel: 4,
+    qol: true,
+  },
+  shardResonator: {
+    name: 'Shard Resonator',
+    desc: '+0.25% bonus Shard chance per level.',
+    category: 'alchemy',
+    maxLevel: 8,
+    costPerLevel: 4,
+  },
+  cosmicValuation: {
+    name: 'Cosmic Valuation',
+    desc: '+5% Collection Value from rolls per level.',
+    category: 'alchemy',
+    maxLevel: 5,
+    costPerLevel: 5,
+  },
 };
 
 export function createInitialDailyQuests(): QuestItem[] {
@@ -1187,6 +1224,10 @@ export function createInitialState(now = Date.now()): PlayerState {
       steadyHands: 0,
       offlineFortune: 0,
       frenzyVolley: 0,
+      astralReserve: 0,
+      temporalCompression: 0,
+      shardResonator: 0,
+      cosmicValuation: 0,
     },
     streak: { count: 1, lastClaimDate: '', longestStreak: 1 },
     dailyQuests: createInitialDailyQuests(),
@@ -1269,7 +1310,13 @@ export const LEVEL_MILESTONES: LevelMilestonePerk[] = [
 ];
 
 export function xpRequiredForLevel(level: number): number {
-  return Math.floor(70 * Math.pow(Math.max(1, level), 1.30));
+  const safeLevel = Math.max(1, Math.floor(Number(level) || 1));
+  const base = Math.floor(70 * Math.pow(safeLevel, 1.30));
+  // Levels through 25 retain the existing curve. After 25, each additional
+  // level increases its XP requirement by another 10%, progressively slowing
+  // late-game leveling without changing the early game.
+  const lateGameMultiplier = safeLevel <= 25 ? 1 : 1 + (safeLevel - 25) * 0.10;
+  return Math.floor(base * lateGameMultiplier);
 }
 
 export interface LevelBenefits {
@@ -1407,6 +1454,7 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
   const guildSpeedReduction = (s.guildPerks?.speedRank ?? 0) * 100;
   const masteryChronoReduction = (s.masterySkills?.chronoFlow ?? 0) * 120;
   const steadyHandsReduction = (s.prestigeUpgrades?.steadyHands ?? 0) * 100;
+  const temporalCompressionReduction = (s.prestigeUpgrades?.temporalCompression ?? 0) * 75;
   const levelBenefits = getLevelBenefits(Math.max(1, s.level || 1));
   const levelReduction = levelBenefits.cooldownReductionMs;
 
@@ -1414,7 +1462,16 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
   const speedLevel = Math.min(20, Math.max(0, s.upgrades.speed ?? 0));
   const coinReduction = speedLevel * 150;
 
-  const floor = Math.max(800, 2000 - permReduction - guildSpeedReduction - masteryChronoReduction - steadyHandsReduction - levelReduction);
+  const floor = Math.max(
+    800,
+    2000 -
+      permReduction -
+      guildSpeedReduction -
+      masteryChronoReduction -
+      steadyHandsReduction -
+      temporalCompressionReduction -
+      levelReduction,
+  );
   let cd = Math.max(floor, BASE_COOLDOWN_MS - coinReduction);
 
   if (isAuto && (s.prestigeUpgrades?.autoOverclock ?? 0) > 0) {
@@ -1568,6 +1625,8 @@ export function luckMultiplier(s: PlayerState): number {
   // 7. Temporary Luck boosters remain additive to the base pool.
   if (isPremiumBoosterActive(s, 'fortune')) additiveBonus += 3.0; // 4× becomes +300%.
   additiveBonus += Math.max(0, globalBoosterLuckMultiplier(s.globalBoosters?.luck) - 1);
+
+  additiveBonus += (s.prestigeUpgrades?.astralReserve ?? 0) * 0.02;
 
   // 8. Multiplicative long-term layers.
   // Permanent Luck is ×1.05 per level, rather than +5% into the additive pool.
@@ -1865,6 +1924,10 @@ export function prestigeUpgradeCost(id: PrestigeUpgradeId, level: number): numbe
     steadyHands: 3,
     offlineFortune: 3,
     frenzyVolley: 25,
+    astralReserve: 4,
+    temporalCompression: 4,
+    shardResonator: 4,
+    cosmicValuation: 5,
   };
   const base = bases[id] ?? 2;
   return Math.round(base * Math.pow(1.5, level));
