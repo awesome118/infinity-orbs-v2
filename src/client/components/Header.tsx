@@ -47,15 +47,15 @@ export const Header: React.FC<HeaderProps> = ({
   const nextMilestone = LEVEL_MILESTONES.find(m => m.level > displayedLevel);
   const levelBenefits = getLevelBenefits(displayedLevel);
   const [followPromptOpen, setFollowPromptOpen] = React.useState(false);
+  const [followStep, setFollowStep] = React.useState<'follow' | 'claim'>('follow');
   const [followBusy, setFollowBusy] = React.useState(false);
   const [followError, setFollowError] = React.useState<string | null>(null);
-  const [followCompleted, setFollowCompleted] = React.useState(false);
   const hasStartedPlaying = (state.totalRolls ?? 0) > 0;
-  const followDismissedKey = 'io-follow-prompt-dismissed-v3';
+  const followDismissedKey = 'io-follow-prompt-dismissed-v4';
 
   const openFollowPrompt = () => {
     setFollowError(null);
-    setFollowCompleted(false);
+    setFollowStep('follow');
     setFollowPromptOpen(true);
   };
 
@@ -83,7 +83,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const followSubreddit = async () => {
-    if (followBusy || followCompleted) return;
+    if (followBusy) return;
     setFollowBusy(true);
     setFollowError(null);
     try {
@@ -94,13 +94,37 @@ export const Header: React.FC<HeaderProps> = ({
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(typeof data?.error === 'string' ? data.error : 'Could not follow the subreddit.');
-      setFollowCompleted(true);
-      try { localStorage.setItem(followDismissedKey, 'true'); } catch {}
+
+      setFollowStep('claim');
       sound.playChime(660, 'sine', 0.2);
-      window.setTimeout(() => setFollowPromptOpen(false), 700);
     } catch (error) {
       console.error('[Follow Prompt] Subscribe failed:', error);
       setFollowError(error instanceof Error ? error.message : 'Could not follow the subreddit.');
+    } finally {
+      setFollowBusy(false);
+    }
+  };
+
+  const claimFollowReward = async () => {
+    if (followBusy) return;
+    setFollowBusy(true);
+    setFollowError(null);
+    try {
+      const response = await fetch('/api/follow-reward', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof data?.error === 'string' ? data.error : 'Could not claim the 200-roll reward.');
+
+      try { localStorage.setItem(followDismissedKey, 'true'); } catch {}
+      sound.playChime(880, 'sine', 0.3);
+      setFollowPromptOpen(false);
+      window.setTimeout(() => window.location.reload(), 350);
+    } catch (error) {
+      console.error('[Follow Reward] Claim failed:', error);
+      setFollowError(error instanceof Error ? error.message : 'Could not claim the 200-roll reward.');
     } finally {
       setFollowBusy(false);
     }
@@ -282,32 +306,55 @@ export const Header: React.FC<HeaderProps> = ({
                 <Users className="w-5 h-5 text-orange-400" />
                 <span>Follow the subreddit</span>
               </div>
-              <p className="mt-2 text-sm leading-5 text-slate-400">
-                Follow the subreddit to keep up with Infinity Orbs. Pressing the button will subscribe your Reddit account to the subreddit where this game is running.
-              </p>
-              <p className="mt-2 text-[10px] leading-4 text-slate-500">
-                This is a direct Reddit action on your account and only happens when you press Follow.
-              </p>
+              {followStep === 'follow' ? (
+                <>
+                  <p className="mt-2 text-sm leading-5 text-slate-400">
+                    Follow <span className="text-white font-semibold">r/infinityorbs</span> to keep up with Infinity Orbs.
+                    Click the button below to follow the subreddit.
+                  </p>
+                  <p className="mt-2 text-sm leading-5 text-slate-400">
+                    Once you follow it, you&apos;ll unlock <span className="text-amber-300 font-bold">200 free rolls</span>.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-2 text-sm leading-5 text-slate-400">
+                    You followed the subreddit.
+                  </p>
+                  <p className="mt-2 text-sm leading-5 text-slate-400">
+                    Your reward is ready: <span className="text-amber-300 font-bold">200 free rolls</span>.
+                  </p>
+                </>
+              )}
             </div>
+
             {followError && (
               <p className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
                 {followError}
               </p>
             )}
-            {followCompleted && (
-              <p className="text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
-                Follow action completed.
-              </p>
-            )}
+
             <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                disabled={followBusy || followCompleted}
-                onClick={() => { sound.playClick(); void followSubreddit(); }}
-                className="w-full py-2.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-60 text-white text-sm font-bold transition-colors"
-              >
-                {followBusy ? 'Following…' : followCompleted ? 'Followed' : 'Follow subreddit'}
-              </button>
+              {followStep === 'follow' ? (
+                <button
+                  type="button"
+                  disabled={followBusy}
+                  onClick={() => { sound.playClick(); void followSubreddit(); }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-60 text-white text-sm font-bold transition-colors"
+                >
+                  {followBusy ? 'Following…' : 'Follow subreddit'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={followBusy}
+                  onClick={() => { sound.playClick(); void claimFollowReward(); }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-slate-950 text-sm font-bold transition-colors"
+                >
+                  {followBusy ? 'Adding 200 rolls…' : 'Claim 200 free rolls'}
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => { sound.playClick(); dismissFollowPrompt(); }}
