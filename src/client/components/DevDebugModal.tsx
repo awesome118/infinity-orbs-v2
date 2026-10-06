@@ -1156,6 +1156,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           () => request<{ state: any }>('/api/prestige/upgrade', { id: 'permLuck' }),
           (result: any) => `permLuck=${shortNumber(result.state?.prestigeUpgrades?.permLuck, 0)}`,
         );
+        const astralForge = await step(
+          'Buy Prestige Upgrade · Astral Forge',
+          () => request<{ state: any }>('/api/prestige/upgrade', { id: 'shardSynthesis' }),
+          (result: any) => `shardSynthesis=${shortNumber(result.state?.prestigeUpgrades?.shardSynthesis, 0)}`,
+        );
         if (prestigeUpgrade) {
           await step(
             'Buy Mastery Skill · continuumLuck',
