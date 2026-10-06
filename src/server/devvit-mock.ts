@@ -172,6 +172,13 @@ const localReddit = {
     console.log('[Reddit Mock] Custom post submitted:', options.title);
     return { id: `reddit-post-${Date.now()}` };
   },
+  subscribeToCurrentSubreddit: async () => {
+    console.log('[Reddit Mock] Subscribed current user to current subreddit.');
+  },
+  getSubredditInfoByName: async (_subredditName: string) => ({
+    name: _subredditName,
+    subscribersCount: 0,
+  }),
 };
 
 export let redis: any = localRedis;
