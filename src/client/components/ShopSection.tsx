@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { purchase, OrderResultStatus } from '@devvit/web/client';
 import { Gem, ShoppingBag, Sparkles } from 'lucide-react';
-import type { PlayerState 
-  formatNumber,} from '../../shared/game.js';
+import { formatNumber } from '../../shared/game.js';
+import type { PlayerState } from '../../shared/game.js';
 
 interface ShopProduct {
   sku: string;
