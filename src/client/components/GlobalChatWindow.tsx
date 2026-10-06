@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
-import { MessageCircle, Minimize2, Send, X } from 'lucide-react';
+import { Flag, MessageCircle, Minimize2, Send, X } from 'lucide-react';
 import type { GlobalChatMessage } from '../../shared/social.js';
 
 interface GlobalChatWindowProps {
@@ -20,6 +20,8 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
   const [messages, setMessages] = useState<GlobalChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [reportingId, setReportingId] = useState<string | null>(null);
+  const [reportedIds, setReportedIds] = useState<Set<string>>(() => new Set());
   const endRef = useRef<HTMLDivElement | null>(null);
   const refreshRequestRef = useRef(0);
 
@@ -56,6 +58,32 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
     if (!open) return;
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, open]);
+
+  const reportMessage = async (message: GlobalChatMessage) => {
+    if (reportingId) return;
+    const confirmed = window.confirm(`Report u/${message.username}'s message to the subreddit moderators?`);
+    if (!confirmed) return;
+
+    setReportingId(message.id);
+    try {
+      const response = await fetch('/api/chat/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId: message.id }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || 'Could not report message.');
+      setReportedIds(prev => {
+        const next = new Set(prev);
+        next.add(message.id);
+        return next;
+      });
+    } catch (error) {
+      console.error('Global chat report error:', error);
+    } finally {
+      setReportingId(null);
+    }
+  };
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,7 +140,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
           <MessageCircle className="w-4 h-4 text-indigo-300" />
           <div>
             <h3 className="text-sm font-black text-white">Global Chat</h3>
-            <p className="text-[9px] text-slate-500">Everyone in the game can see these messages.</p>
+            <p className="text-[9px] text-slate-500">Everyone in the game can see these messages. Messages can be reported to subreddit moderators.</p>
           </div>
         </div>
         <button
@@ -144,7 +172,19 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
                   {new Date(message.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                 </span>
               </div>
-              <p className="mt-0.5 break-words text-[11px] text-slate-400">{message.text}</p>
+              <div className="mt-1 flex items-start justify-between gap-2">
+                <p className="min-w-0 break-words text-[11px] text-slate-400">{message.text}</p>
+                <button
+                  type="button"
+                  onClick={() => void reportMessage(message)}
+                  disabled={reportingId === message.id || reportedIds.has(message.id)}
+                  className="shrink-0 rounded-md px-1.5 py-1 text-[9px] text-slate-600 hover:bg-slate-800 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
+                  title={reportedIds.has(message.id) ? 'Report sent to subreddit moderators' : 'Report message to subreddit moderators'}
+                  aria-label={reportedIds.has(message.id) ? 'Message reported' : 'Report message'}
+                >
+                  <Flag className="h-3 w-3" />
+                </button>
+              </div>
             </div>
           ))
         )}

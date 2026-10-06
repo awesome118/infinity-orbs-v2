@@ -1,4 +1,4 @@
-import { context, redis } from './devvit-mock.js';
+import { context, redis, reddit } from './devvit-mock.js';
 import { withPlayerMutationLockFor } from './player-lock.js';
 import type {
   Guild,
@@ -569,6 +569,16 @@ export async function leaveGuild() {
   });
 }
 
+export async function reportGuildChatMessage(messageId: string): Promise<{ success: true }> {
+  const cleanId = String(messageId ?? '').trim();
+  if (!cleanId) throw new Error('Message ID is required.');
+  const guild = currentGuild(await loadGuilds());
+  if (!guild) throw new Error('You are not in a guild.');
+  const message = (guild.chat ?? []).find(item => item.id === cleanId);
+  if (!message || message.isSystem) throw new Error('That chat message is no longer available to report.');
+  return submitChatReport('Guild Chat', message);
+}
+
 export async function postGuildMessage(text: string) {
   const clean = text.trim().slice(0, 200);
   if (!clean) throw new Error('Message cannot be empty.');
@@ -848,6 +858,58 @@ export async function setCommunityEventConfig(config: {
 
 const GLOBAL_CHAT_KEY = key('global-chat:v1');
 const GLOBAL_CHAT_MAX_MESSAGES = 100;
+const CHAT_REPORTS_KEY = key('chat-reports:v1');
+
+async function submitChatReport(
+  scope: 'Global Chat' | 'Guild Chat',
+  message: GlobalChatMessage | GuildMessage,
+): Promise<{ success: true }> {
+  const reporterId = user();
+  if (!reporterId || reporterId === 'unknown') throw new Error('Your Reddit identity is unavailable.');
+
+  const reportKey = `${scope === 'Global Chat' ? 'global' : 'guild'}:${message.id}:${reporterId}`;
+  if (await redis.hGet(CHAT_REPORTS_KEY, reportKey)) {
+    throw new Error('You already reported this message.');
+  }
+
+  const author = String(message.username ?? 'Redditor').trim().replace(/^u\\//i, '') || 'Redditor';
+  const reporter = String(username()).trim().replace(/^u\\//i, '') || 'Redditor';
+  const subredditId = String(context.subredditId ?? '').trim();
+  if (!subredditId) throw new Error('Subreddit context is unavailable.');
+
+  const bodyMarkdown = [
+    '**Infinity Orbs chat report**',
+    `**Room:** ${scope}`,
+    `**Author:** u/${author}`,
+    `**Author user ID:** ${String(message.userId ?? 'unknown')}`,
+    `**Reported by:** u/${reporter}`,
+    `**Reporter user ID:** ${reporterId}`,
+    `**Message ID:** ${message.id}`,
+    `**Sent:** ${new Date(Number(message.timestamp) || Date.now()).toISOString()}`,
+    '',
+    '**Reported message:**',
+    ...String(message.text ?? '').split('\\n').map(line => `> ${line}`),
+  ].join('\\n');
+
+  await reddit.modMail.createModInboxConversation({
+    subredditId,
+    subject: `Chat report • ${scope} • u/${author}`.slice(0, 100),
+    bodyMarkdown,
+  });
+
+  await redis.hSet(CHAT_REPORTS_KEY, {
+    [reportKey]: JSON.stringify({
+      reportedAt: Date.now(),
+      reporterId,
+      reporter,
+      messageId: message.id,
+      author,
+      scope,
+    }),
+  });
+
+  return { success: true };
+}
 
 export async function getGlobalChat(): Promise<GlobalChatMessage[]> {
   const raw = await redis.get(GLOBAL_CHAT_KEY);
@@ -868,6 +930,14 @@ export async function getGlobalChat(): Promise<GlobalChatMessage[]> {
     .filter(message => message.id && message.text)
     .sort((a, b) => a.timestamp - b.timestamp)
     .slice(-GLOBAL_CHAT_MAX_MESSAGES);
+}
+
+export async function reportGlobalChatMessage(messageId: string): Promise<{ success: true }> {
+  const cleanId = String(messageId ?? '').trim();
+  if (!cleanId) throw new Error('Message ID is required.');
+  const message = (await getGlobalChat()).find(item => item.id === cleanId);
+  if (!message) throw new Error('That chat message is no longer available to report.');
+  return submitChatReport('Global Chat', message);
 }
 
 export async function postGlobalChatMessage(text: string): Promise<GlobalChatMessage> {

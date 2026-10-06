@@ -21,6 +21,7 @@ import {
   Zap,
   UserCheck,
   UserPlus,
+  Flag,
 } from 'lucide-react';
 import type {
   Guild,
@@ -102,6 +103,8 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const [chatInput, setChatInput] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [chatMessages, setChatMessages] = useState<GuildMessage[]>([]);
+  const [reportingId, setReportingId] = useState<string | null>(null);
+  const [reportedIds, setReportedIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     setChatMessages(prev => {
@@ -117,6 +120,32 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const canManageGuild = currentGuildMember?.role === 'owner' ||
     currentGuildMember?.role === 'officer' ||
     currentGuildMember?.trusted === true;
+
+  const handleReportChat = async (message: GuildMessage) => {
+    if (message.isSystem || reportingId) return;
+    const confirmed = window.confirm(`Report u/${message.username}'s message to the subreddit moderators?`);
+    if (!confirmed) return;
+
+    setReportingId(message.id);
+    try {
+      const response = await fetch('/api/guilds/chat/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId: message.id }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || 'Could not report message.');
+      setReportedIds(prev => {
+        const next = new Set(prev);
+        next.add(message.id);
+        return next;
+      });
+    } catch (error) {
+      console.error('Guild chat report error:', error);
+    } finally {
+      setReportingId(null);
+    }
+  };
 
   const handleSendChat = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -673,10 +702,13 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                 {/* Guild Chat / Feed */}
                 <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between space-y-3 h-80">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-                      <MessageSquare className="w-4 h-4 text-cyan-400" />
-                      <span>Guild Chat Feed</span>
-                    </h3>
+                    <div>
+                      <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                        <MessageSquare className="w-4 h-4 text-cyan-400" />
+                        <span>Guild Chat Feed</span>
+                      </h3>
+                      <p className="mt-0.5 text-[9px] text-slate-600">Messages can be reported to subreddit moderators.</p>
+                    </div>
                   </div>
 
                   {/* Message History */}
@@ -692,11 +724,26 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                           }`}
                         >
                           {!msg.isSystem && (
-                            <span className="font-bold text-cyan-400 block text-[10px] mb-0.5">
-                              {msg.username}
-                            </span>
+                            <>
+                              <span className="font-bold text-cyan-400 block text-[10px] mb-0.5">
+                                {msg.username}
+                              </span>
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="min-w-0 break-words">{msg.text}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleReportChat(msg)}
+                                  disabled={reportingId === msg.id || reportedIds.has(msg.id)}
+                                  className="shrink-0 rounded-md px-1.5 py-1 text-[9px] text-slate-600 hover:bg-slate-800 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
+                                  title={reportedIds.has(msg.id) ? 'Report sent to subreddit moderators' : 'Report message to subreddit moderators'}
+                                  aria-label={reportedIds.has(msg.id) ? 'Message reported' : 'Report message'}
+                                >
+                                  <Flag className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </>
                           )}
-                          <span>{msg.text}</span>
+                          {msg.isSystem && <span>{msg.text}</span>}
                         </div>
                       ))
                     ) : (

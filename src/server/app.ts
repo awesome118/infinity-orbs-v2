@@ -64,6 +64,8 @@ import {
   getCommunityEvent,
   getGlobalChat,
   postGlobalChatMessage,
+  reportGlobalChatMessage,
+  reportGuildChatMessage,
 } from './social.js';
 import { context, reddit, redis } from './devvit-mock.js';
 import { withPlayerMutationLock } from './player-lock.js';
@@ -777,6 +779,11 @@ export function createApp() {
     catch (e) { badRequest(res, e, 'Could not send chat message.'); }
   });
 
+  app.post('/api/chat/report', async (req, res) => {
+    try { res.json(await reportGlobalChatMessage(req.body?.messageId ?? '')); }
+    catch (e) { badRequest(res, e, 'Could not report chat message.'); }
+  });
+
   app.get('/api/guilds', async (_req, res) => {
     try {
       res.json(await guildInfo());
@@ -1071,6 +1078,11 @@ export function createApp() {
   app.post('/api/guilds/chat', async (req, res) => {
     try { res.json({ message: await postGuildMessage(req.body?.text ?? '') }); }
     catch (e) { badRequest(res, e, 'Could not post message.'); }
+  });
+
+  app.post('/api/guilds/chat/report', async (req, res) => {
+    try { res.json(await reportGuildChatMessage(req.body?.messageId ?? '')); }
+    catch (e) { badRequest(res, e, 'Could not report guild chat message.'); }
   });
 
   app.post('/api/guilds/perk', async (req, res) => {
