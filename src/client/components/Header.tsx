@@ -114,16 +114,16 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className="bg-slate-900/90 border-b border-slate-800/80 backdrop-blur-md sticky top-0 z-30 px-4 py-3">
-      <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <header className="app-header bg-slate-900/90 border-b border-slate-800/80 backdrop-blur-md sticky top-0 z-30 px-4 py-3">
+      <div className="header-inner max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
         {/* Brand & Player Identity & EXP Bar */}
-        <div className="flex items-center space-x-3">
-          <div className="relative w-10 h-10 rounded-xl border border-purple-400/35 bg-slate-950 flex items-center justify-center">
-            <div className="w-full h-full rounded-[10px] flex items-center justify-center font-semibold text-xl text-purple-200">
+        <div className="brand-lockup flex items-center space-x-3">
+          <div className="brand-mark relative w-10 h-10 rounded-xl border border-purple-400/35 bg-slate-950 flex items-center justify-center">
+            <div className="brand-glyph w-full h-full rounded-[10px] flex items-center justify-center font-semibold text-xl text-purple-200">
               ∞
             </div>
           </div>
-          <div>
+          <div className="brand-copy">
             <div className="flex items-center gap-2">
               <h1 className="font-extrabold text-base sm:text-lg tracking-tight text-white flex items-center gap-1.5">
                 Infinity Orbs
@@ -165,7 +165,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Currencies & Global Actions */}
-        <div className="flex items-center gap-2 sm:gap-4 ml-auto">
+        <div className="header-actions flex items-center gap-2 sm:gap-4 ml-auto">
           {/* Live player count / social luck */}
           <div
             className="hidden sm:flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-2.5 py-1.5 text-[10px] font-black text-indigo-200"
@@ -177,7 +177,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Currencies */}
-          <div className="flex items-center gap-2 bg-slate-950/70 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-semibold">
+          <div className="header-resource-row resource-chip flex items-center gap-2 bg-slate-950/70 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-semibold">
             {/* Coins */}
             <div className="flex items-center gap-1 text-amber-400" title="Coins (Coins = Orb Rarity)">
               <Coins className="w-3.5 h-3.5" />
@@ -208,7 +208,7 @@ export const Header: React.FC<HeaderProps> = ({
           {state.offlineRolls > 0 && (
             <button
               onClick={onClaimOffline}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3 py-1.5 rounded-xl shadow-md transition-all"
+              className="offline-button flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3 py-1.5 rounded-xl shadow-md transition-all"
               title="Claim rolls accumulated while away"
             >
               <Zap className="w-3.5 h-3.5" />
@@ -219,7 +219,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Fair RNG Odds Button */}
           <button
             onClick={onOpenOdds}
-            className="p-2 text-slate-400 hover:text-cyan-300 hover:bg-slate-800/80 rounded-lg transition-colors"
+            className="header-icon-button p-2 text-slate-400 hover:text-cyan-300 hover:bg-slate-800/80 rounded-lg transition-colors"
             title="View Probability & Drop Odds"
           >
             <HelpCircle className="w-4 h-4" />
@@ -231,7 +231,7 @@ export const Header: React.FC<HeaderProps> = ({
               sound.playClick();
               onOpenFeedback();
             }}
-            className="p-2 text-slate-400 hover:text-amber-300 hover:bg-slate-800/80 rounded-lg transition-colors"
+            className="header-icon-button p-2 text-slate-400 hover:text-amber-300 hover:bg-slate-800/80 rounded-lg transition-colors"
             title="Report a bug or send a suggestion"
           >
             <MessageSquarePlus className="w-4 h-4" />
@@ -258,7 +258,7 @@ export const Header: React.FC<HeaderProps> = ({
               sound.playClick();
               onToggleNotifications();
             }}
-            className="p-2 text-slate-400 hover:text-fuchsia-300 hover:bg-slate-800/80 rounded-lg transition-colors"
+            className="header-icon-button p-2 text-slate-400 hover:text-fuchsia-300 hover:bg-slate-800/80 rounded-lg transition-colors"
             title={notificationsEnabled ? 'Disable Reddit notifications' : 'Enable Reddit notifications'}
           >
             {notificationsEnabled
