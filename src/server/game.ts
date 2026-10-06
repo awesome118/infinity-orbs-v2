@@ -3547,7 +3547,10 @@ export async function claimOrbFrenzy(options: {
     { count: supernovaCount, rarity: supernovaRarity },
   ].filter(group => group.count > 0);
 
-  const valueMul = 1 + (s.upgrades.valueBonus ?? 0) * 0.10;
+  const valueMul =
+    1 +
+    (s.upgrades.valueBonus ?? 0) * 0.10 +
+    (s.prestigeUpgrades?.cosmicValuation ?? 0) * 0.05;
   const maxSafe = Number.MAX_SAFE_INTEGER;
   const safeMultiplyAdd = (sum: number, count: number, value: number): number => {
     if (sum >= maxSafe || count <= 0 || value <= 0) return Math.min(maxSafe, sum);
@@ -3600,6 +3603,7 @@ export async function claimOrbFrenzy(options: {
     (s.upgrades.shardChance ?? 0) * 0.0015 +
     (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
     (s.guildPerks?.shardRank ?? 0) * 0.0005 +
+    (s.prestigeUpgrades?.shardResonator ?? 0) * 0.0025 +
     levelBenefits.shardChance,
   );
   const procShards = sampleBinomial(count, shardChance);
