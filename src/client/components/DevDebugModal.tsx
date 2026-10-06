@@ -280,6 +280,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   } | null>(null);
   const [followStatsLoading, setFollowStatsLoading] = useState(false);
   const [fullTestRunning, setFullTestRunning] = useState(false);
+  const [fullTestCurrentAction, setFullTestCurrentAction] = useState('');
   const [fullTestLogs, setFullTestLogs] = useState<Array<{
     action: string;
     status: 'PASS' | 'FAIL' | 'SKIP';
@@ -815,6 +816,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     if (fullTestRunning) return;
 
     setFullTestRunning(true);
+    setFullTestCurrentAction('Starting comprehensive test…');
     setFullTestLogs([]);
     setMessage('');
 
@@ -863,6 +865,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       detail: (result: T) => string = () => '',
     ): Promise<T | null> => {
       const stepStarted = performance.now();
+      setFullTestCurrentAction(action);
       try {
         const result = await fn();
         passed += 1;
@@ -1186,6 +1189,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       setMessage(
         `Full test finished in ${Math.round(totalMs).toLocaleString()}ms · ${passed} passed · ${failed} failed · ${skipped} skipped.`,
       );
+      setFullTestCurrentAction('Completed');
       await onRefresh().catch(() => null);
     } catch (error) {
       const totalMs = performance.now() - startedAt;
@@ -1199,6 +1203,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       setMessage(
         `Full test aborted after ${Math.round(totalMs).toLocaleString()}ms · ${passed} passed · ${failed} failed · ${skipped} skipped.`,
       );
+      setFullTestCurrentAction('Aborted');
     } finally {
       setFullTestRunning(false);
     }
@@ -1321,6 +1326,31 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               </button>
             </div>
           </div>
+
+          {fullTestRunning && (
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <RefreshCw className="w-3.5 h-3.5 text-emerald-300 animate-spin shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[10px] uppercase tracking-wider font-black text-emerald-300">
+                    Test running
+                  </div>
+                  <div className="text-xs text-slate-200 truncate" title={fullTestCurrentAction}>
+                    {fullTestCurrentAction || 'Working…'}
+                  </div>
+                </div>
+                <div className="text-[10px] font-mono text-slate-400 shrink-0">
+                  {fullTestLogs.length} completed
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!fullTestRunning && fullTestCurrentAction && fullTestLogs.length > 0 && (
+            <div className="text-[10px] text-slate-500">
+              Last run: <span className="text-slate-300">{fullTestCurrentAction}</span> · {fullTestLogs.length} logged steps
+            </div>
+          )}
 
           {fullTestLogs.length > 0 ? (
             <pre className="max-h-96 overflow-auto rounded-xl border border-slate-800 bg-black/30 p-3 text-[10px] leading-4 font-mono text-slate-300 whitespace-pre-wrap">
