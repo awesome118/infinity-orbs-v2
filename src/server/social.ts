@@ -872,8 +872,8 @@ async function submitChatReport(
     throw new Error('You already reported this message.');
   }
 
-  const author = String(message.username ?? 'Redditor').trim().replace(/^u\\//i, '') || 'Redditor';
-  const reporter = String(username()).trim().replace(/^u\\//i, '') || 'Redditor';
+  const author = String(message.username ?? 'Redditor').trim().replace(/^u\//i, '') || 'Redditor';
+  const reporter = String(username()).trim().replace(/^u\//i, '') || 'Redditor';
   const subredditId = String(context.subredditId ?? '').trim();
   if (!subredditId) throw new Error('Subreddit context is unavailable.');
 
