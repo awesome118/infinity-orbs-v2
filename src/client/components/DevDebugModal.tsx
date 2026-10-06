@@ -1126,113 +1126,603 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         result => `dust +${shortNumber(result.dustGained, 0)} · prestigeCount=${shortNumber(recordValue(result.state).prestigeCount, 0)}`,
       );
 
+
       if (prestigeResult) {
         await step(
           'Seed Prestige Dust',
           () => request('/api/dev/state', {
             cosmicDust: 1_000,
             coins: 100_000,
-            shards: 0,
+            shards: 50,
           }),
-          () => 'cosmicDust=1,000 for the full prestige upgrade sweep',
+          () => 'cosmicDust=1,000 · mechanic tests use isolated prestige states',
         );
 
-        for (const id of Object.keys(PRESTIGE_UPGRADES) as Array<keyof typeof PRESTIGE_UPGRADES>) {
-          await step(
-            `Buy Prestige Upgrade · ${PRESTIGE_UPGRADES[id].name}`,
-            async () => {
-              const beforeState = await request<any>('/api/me');
-              const before = Number(beforeState?.prestigeUpgrades?.[id] ?? 0);
-              const result = await request<{ state: any }>('/api/prestige/upgrade', { id });
-              const after = Number(result.state?.prestigeUpgrades?.[id] ?? 0);
-              if (after !== before + 1) {
-                throw new Error(`${id} did not increment from ${before} to ${before + 1}.`);
-              }
-              return result;
+        const zeroPrestige = Object.fromEntries(
+          Object.keys(PRESTIGE_UPGRADES).map(id => [id, 0]),
+        );
+
+        const zeroUpgrades = {
+          speed: 0, multi: 0, clusterRoll: 0, auto: 0, luck: 0, coinBonus: 0,
+          shardChance: 0, xpBonus: 0, critChance: 0, critPower: 0,
+          offlineRate: 0, valueBonus: 0,
+        };
+
+        const zeroMastery = {
+          continuumLuck: 0, prosperity: 0, shardAttunement: 0, critMastery: 0,
+          chronoFlow: 0, infiniteVault: 0, cosmicAttunement: 0, celestialSurge: 0,
+          pityAccelerant: 0, apexFortune: 0, celestialVolley: 0,
+        };
+
+        const setMechanicState = async (
+          prestigeOverrides: Record<string, number> = {},
+          extra: Record<string, unknown> = {},
+        ) => {
+          return request('/api/dev/state', {
+            coins: 100_000,
+            shards: 50,
+            cosmicDust: 0,
+            xp: 0,
+            totalRolls: 0,
+            totalCrits: 0,
+            highestRarity: 0,
+            collectionValue: 0,
+            lifetimeCollectionValue: 0,
+            offlineRolls: 0,
+            currentRunRolls: 0,
+            rollsSinceBest: 0,
+            lastRollAt: 0,
+            lastSeenAt: Date.now(),
+            onlinePlayers: 1,
+            turboRollUntil: 0,
+            upgrades: zeroUpgrades,
+            prestigeUpgrades: { ...zeroPrestige, ...prestigeOverrides },
+            masterySkills: zeroMastery,
+            activeBoosters: {},
+            sacrifices: {
+              coinsSacrificed: 0,
+              shardsSacrificed: 0,
+              altarLevel: 0,
+              luckSurgeUntil: 0,
             },
-            (result: any) => `${id}=${shortNumber(result.state?.prestigeUpgrades?.[id], 0)} · dust=${shortNumber(result.state?.cosmicDust, 0)}`,
-          );
-        }
+            ...extra,
+          });
+        };
+
+        const readMechanics = async () => {
+          const result = await request<any>('/api/dev/mechanics');
+          return recordValue(result.mechanics);
+        };
+
+        const clearWorldBoosters = async () => {
+          for (const id of ['luck', 'speed', 'crit'] as const) {
+            await request('/api/dev/global-booster', { id, tier: 0, minutes: 1 });
+          }
+        };
 
         await step(
-          'Buy Mastery Skill · continuumLuck',
-          () => request<{ state: any }>('/api/mastery/upgrade', { skillId: 'continuumLuck' }),
-          (result: any) => `continuumLuck=${shortNumber(result.state?.masterySkills?.continuumLuck, 0)}`,
+          'Clear Global Boosters for mechanic tests',
+          async () => {
+            await clearWorldBoosters();
+            return readMechanics();
+          },
+          (result: any) => 'luck=' + shortNumber(result.luckMultiplier) + ' · cooldown=' + shortNumber(result.cooldownMs, 0) + 'ms',
         );
 
         await step(
-          'Test Singularity Tithe · single-roll boundary',
+          'Mechanic · Permanent Luck',
           async () => {
-            await request('/api/dev/state', {
-              level: 1,
-              xp: 0,
-              totalRolls: 999,
-              singularityTitheSingleRolls: 999,
-              cosmicDust: 0,
-              lastRollAt: 0,
-              upgrades: {
-                multi: 0,
-                clusterRoll: 0,
-                auto: 0,
-              },
-              prestigeUpgrades: {
-                astralBarrage: 0,
-                astralArsenal: 0,
-                singularityTithe: 1,
-              },
-              masterySkills: {
-                celestialVolley: 0,
-              },
-              activeBoosters: {
-                barrage: 0,
-              },
-            });
-            const result = await rollOnce('tithe single roll');
-            const state = recordValue(recordValue(result).state);
-            const counter = Number(state.singularityTitheSingleRolls ?? 0);
-            const dust = Number(state.cosmicDust ?? 0);
-            if (counter !== 1_000 || dust < 1) {
-              throw new Error(`Expected 1,000 single rolls and at least 1 Dust, got counter=${counter}, dust=${dust}.`);
+            await setMechanicState();
+            const before = await readMechanics();
+            await setMechanicState({ permLuck: 1 });
+            const after = await readMechanics();
+            if (!(Number(after.luckMultiplier) > Number(before.luckMultiplier))) {
+              throw new Error('Luck did not increase: ' + before.luckMultiplier + ' → ' + after.luckMultiplier + '.');
             }
-            return result;
+            return { before, after };
           },
-          (result: any) => `singleRolls=${shortNumber(result.state?.singularityTitheSingleRolls, 0)} · dust=${shortNumber(result.state?.cosmicDust, 0)}`,
+          result => 'Luck ' + shortNumber(result.before.luckMultiplier) + ' → ' + shortNumber(result.after.luckMultiplier),
         );
 
         await step(
-          'Test Singularity Tithe · multi-roll excluded',
+          'Mechanic · Permanent Speed',
           async () => {
-            await request('/api/dev/state', {
-              singularityTitheSingleRolls: 1_000,
-              cosmicDust: 0,
-              lastRollAt: 0,
-              upgrades: {
-                multi: 1,
-                clusterRoll: 0,
-                auto: 0,
-              },
-              prestigeUpgrades: {
-                astralBarrage: 0,
-                astralArsenal: 0,
-                singularityTithe: 1,
-              },
-              masterySkills: {
-                celestialVolley: 0,
-              },
-              activeBoosters: {
-                barrage: 0,
-              },
-            });
-            const result = await rollOnce('tithe multi roll');
-            const state = recordValue(recordValue(result).state);
-            const counter = Number(state.singularityTitheSingleRolls ?? 0);
-            const dust = Number(state.cosmicDust ?? 0);
-            if (counter !== 1_000 || dust !== 0) {
-              throw new Error(`Multi-roll advanced Tithe unexpectedly: counter=${counter}, dust=${dust}.`);
+            await setMechanicState();
+            const before = await readMechanics();
+            await setMechanicState({ permSpeed: 1 });
+            const after = await readMechanics();
+            if (!(Number(after.cooldownMs) < Number(before.cooldownMs))) {
+              throw new Error('Cooldown did not decrease: ' + before.cooldownMs + ' → ' + after.cooldownMs + '.');
+            }
+            return { before, after };
+          },
+          result => 'Cooldown ' + shortNumber(result.before.cooldownMs, 0) + 'ms → ' + shortNumber(result.after.cooldownMs, 0) + 'ms',
+        );
+
+        await step(
+          'Mechanic · Vault Expansion',
+          async () => {
+            await setMechanicState();
+            const before = await readMechanics();
+            await setMechanicState({ vaultCap: 1 });
+            const after = await readMechanics();
+            const delta = Number(after.offlineRollCap) - Number(before.offlineRollCap);
+            if (delta !== 250) throw new Error('Offline cap delta was ' + delta + ', expected 250.');
+            return { before, after };
+          },
+          result => 'Offline cap ' + shortNumber(result.before.offlineRollCap, 0) + ' → ' + shortNumber(result.after.offlineRollCap, 0),
+        );
+
+        await step(
+          'Mechanic · Cosmic Dust Bounty',
+          async () => {
+            await setMechanicState({ dustBounty: 0 }, { collectionValue: 100_000_000 });
+            const before = await readMechanics();
+            await setMechanicState({ dustBounty: 1 }, { collectionValue: 100_000_000 });
+            const after = await readMechanics();
+            if (Number(before.prestigeDust) !== 10 || Number(after.prestigeDust) !== 11) {
+              throw new Error('Expected Dust 10 → 11, got ' + before.prestigeDust + ' → ' + after.prestigeDust + '.');
+            }
+            return { before, after };
+          },
+          result => 'Prestige Dust ' + shortNumber(result.before.prestigeDust, 0) + ' → ' + shortNumber(result.after.prestigeDust, 0),
+        );
+
+        await step(
+          'Mechanic · Silent Alert Mode',
+          async () => {
+            await setMechanicState({ sonarPing: 1 });
+            await onRefresh();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const button = Array.from(document.querySelectorAll('button'))
+              .find(el => (el as HTMLButtonElement).title === 'Silent Mode: Mutes standard rolls and alerts with a crystal chime on rare drops') as HTMLButtonElement | undefined;
+            if (!button) throw new Error('Sonar control did not unlock after prestige state was applied.');
+            button.click();
+            await new Promise(resolve => setTimeout(resolve, 25));
+            if (!button.textContent?.includes('SILENT')) throw new Error('Sonar control did not enable Silent Mode.');
+            return { text: button.textContent.trim() };
+          },
+          result => 'Client control unlocked · ' + result.text,
+        );
+
+        await step(
+          'Mechanic · Sonar Ping Rare Trigger',
+          async () => {
+            const forced = await request<any>('/api/dev/force-roll', { rarity: 100, randomValue: 0.999999 });
+            onForceRollResult?.(forced);
+            await new Promise(resolve => setTimeout(resolve, 75));
+            const pulse = document.querySelector('[class*="border-cyan-400/90"]');
+            if (!pulse) throw new Error('Rare roll did not trigger the Sonar Ping visual pulse.');
+            sound.setSonarMode(false);
+            return forced;
+          },
+          result => 'Forced 1/' + shortNumber(result.orb?.rarity, 0) + ' · Sonar pulse triggered',
+        );
+
+        await step(
+          'Mechanic · Skip Animations',
+          async () => {
+            await setMechanicState({ instantReveal: 1 });
+            try { localStorage.setItem('orbs_instant_reveal', 'false'); } catch {}
+            await onRefresh();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const button = Array.from(document.querySelectorAll('button'))
+              .find(el => (el as HTMLButtonElement).title === 'Skip roll animations for instant reveals') as HTMLButtonElement | undefined;
+            if (!button) throw new Error('Instant Reveal control did not unlock after prestige state was applied.');
+            button.click();
+            await new Promise(resolve => setTimeout(resolve, 25));
+            if (!button.textContent?.includes('INSTANT')) throw new Error('Instant Reveal control did not toggle to INSTANT.');
+            try { localStorage.setItem('orbs_instant_reveal', 'false'); } catch {}
+            return { text: button.textContent.trim() };
+          },
+          result => 'Client control unlocked · ' + result.text,
+        );
+
+        await step(
+          'Mechanic · Auto-Roll Speed',
+          async () => {
+            await setMechanicState();
+            const before = await readMechanics();
+            await setMechanicState({ autoOverclock: 1 });
+            const after = await readMechanics();
+            if (!(Number(after.autoCooldownMs) < Number(before.autoCooldownMs))) {
+              throw new Error('Auto cooldown did not decrease: ' + before.autoCooldownMs + ' → ' + after.autoCooldownMs + '.');
+            }
+            return { before, after };
+          },
+          result => 'Auto cooldown ' + shortNumber(result.before.autoCooldownMs, 0) + 'ms → ' + shortNumber(result.after.autoCooldownMs, 0) + 'ms',
+        );
+
+        await step(
+          'Mechanic · Common Salvage',
+          async () => {
+            await setMechanicState({ autoFilter: 0 });
+            const base = await request<any>('/api/dev/force-roll', { rarity: 9, randomValue: 0.999999 });
+            await setMechanicState({ autoFilter: 1 });
+            const boosted = await request<any>('/api/dev/force-roll', { rarity: 9, randomValue: 0.999999 });
+            if (!(Number(boosted.coinsGained) > Number(base.coinsGained))) {
+              throw new Error('Common Salvage did not increase coins: ' + base.coinsGained + ' → ' + boosted.coinsGained + '.');
+            }
+            return { base, boosted };
+          },
+          result => 'Coins ' + shortNumber(result.base.coinsGained, 0) + ' → ' + shortNumber(result.boosted.coinsGained, 0) + ' on 1/9',
+        );
+
+        await step(
+          'Mechanic · Dry Streak Luck',
+          async () => {
+            await setMechanicState(
+              { resonanceMeter: 1 },
+              { highestRarity: 1_000_000_000_000, rollsSinceBest: 17 },
+            );
+            const beforeState = await request<any>('/api/me');
+            const before = await readMechanics();
+            if (Number(beforeState.rollsSinceBest) !== 17) {
+              throw new Error('Failed to seed pity at 17: got ' + beforeState.rollsSinceBest + '.');
+            }
+            await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
+            const afterState = await request<any>('/api/me');
+            const after = await readMechanics();
+            if (Number(afterState.rollsSinceBest) !== 18 || !(Number(after.luckMultiplier) > Number(before.luckMultiplier))) {
+              throw new Error('Pity did not activate at 18: rollsSinceBest=' + afterState.rollsSinceBest + ', Luck ' + before.luckMultiplier + ' → ' + after.luckMultiplier + '.');
+            }
+            return {
+              beforeLuck: before.luckMultiplier,
+              afterLuck: after.luckMultiplier,
+              beforeRolls: beforeState.rollsSinceBest,
+              afterRolls: afterState.rollsSinceBest,
+            };
+          },
+          result => 'Pity rolls ' + result.beforeRolls + ' → ' + result.afterRolls + ' · Luck ' + shortNumber(result.beforeLuck) + ' → ' + shortNumber(result.afterLuck),
+        );
+
+        await step(
+          'Mechanic · Multi-Roll Extra',
+          async () => {
+            await setMechanicState({ stellarMagnet: 5 }, { upgrades: { ...zeroUpgrades, multi: 1 } });
+            const result = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0 });
+            if (Number(result.rollsProcessed) !== 4) {
+              throw new Error('Stellar Magnet expected 4 processed orbs, got ' + result.rollsProcessed + '.');
             }
             return result;
           },
-          (result: any) => `singleRolls=${shortNumber(result.state?.singularityTitheSingleRolls, 0)} · dust=${shortNumber(result.state?.cosmicDust, 0)} · processed=${shortNumber(result.rollsProcessed, 0)}`,
+          result => 'Processed ' + shortNumber(result.rollsProcessed, 0) + ' (base multi=2 + magnet=2)',
+        );
+
+        await step(
+          'Mechanic · Turbo Duration',
+          async () => {
+            await setMechanicState({ chronoOverdrive: 0 }, { shards: 10 });
+            const normal = await request<any>('/api/turbo/activate', {});
+            await setMechanicState({ chronoOverdrive: 1 }, { shards: 10 });
+            const upgraded = await request<any>('/api/turbo/activate', {});
+            const remainingNormal = Number(normal.state?.turboRollUntil) - Date.now();
+            const remainingUpgraded = Number(upgraded.state?.turboRollUntil) - Date.now();
+            if (remainingNormal < 29 * 60_000 || remainingUpgraded < 59 * 60_000) {
+              throw new Error('Turbo durations were too short: ' + Math.round(remainingNormal / 60000) + 'm → ' + Math.round(remainingUpgraded / 60000) + 'm.');
+            }
+            return { remainingNormal, remainingUpgraded };
+          },
+          result => 'Turbo remaining ≈ ' + Math.round(result.remainingNormal / 60000) + 'm → ' + Math.round(result.remainingUpgraded / 60000) + 'm',
+        );
+
+        await step(
+          'Mechanic · Transmutation',
+          async () => {
+            await setMechanicState({ transmutation: 0 });
+            const base = await request<any>('/api/dev/force-roll', { rarity: 9, randomValue: 0.999999 });
+            await setMechanicState({ transmutation: 1 });
+            const upgraded = await request<any>('/api/dev/force-roll', { rarity: 9, randomValue: 0.999999 });
+            if (!(Number(upgraded.coinsGained) > Number(base.coinsGained))) {
+              throw new Error('Transmutation did not increase low-rarity coins: ' + base.coinsGained + ' → ' + upgraded.coinsGained + '.');
+            }
+            return { base, upgraded };
+          },
+          result => 'Coins ' + shortNumber(result.base.coinsGained, 0) + ' → ' + shortNumber(result.upgraded.coinsGained, 0) + ' on 1/9',
+        );
+
+        await step(
+          'Mechanic · Dust Synthesis',
+          async () => {
+            await setMechanicState({ shardSynthesis: 1 }, { shards: 10, xp: 32_000 });
+            const before = await request<any>('/api/me');
+            if (Number(before.level) < 20) {
+              throw new Error('Could not seed Level 20 for synthesis; got Level ' + before.level + '.');
+            }
+            const result = await request<any>('/api/prestige/synthesize', {});
+            if (Number(result.dustEarned) !== 1 || Number(result.state?.shards) !== 0) {
+              throw new Error('Synthesis result was Dust=' + result.dustEarned + ', Shards=' + result.state?.shards + '.');
+            }
+            return result;
+          },
+          result => '10 Shards → +' + shortNumber(result.dustEarned, 0) + ' Cosmic Dust',
+        );
+
+        await step(
+          'Mechanic · Astral Barrage',
+          async () => {
+            await setMechanicState({ astralBarrage: 1 });
+            const result = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
+            if (Number(result.rollsProcessed) !== 2) {
+              throw new Error('Astral Barrage expected 2 processed orbs, got ' + result.rollsProcessed + '.');
+            }
+            return result;
+          },
+          result => 'Processed ' + shortNumber(result.rollsProcessed, 0) + ' (base=1 + barrage=1)',
+        );
+
+        await step(
+          'Mechanic · Cosmic Inheritance',
+          async () => {
+            await setMechanicState(
+              { cosmicInheritance: 1 },
+              { coins: 1_000, shards: 100, collectionValue: 1_000_000, lifetimeCollectionValue: 1_000_000 },
+            );
+            const result = await request<any>('/api/prestige', {});
+            if (Number(result.state?.coins) !== 100 || Number(result.state?.shards) !== 10) {
+              throw new Error('Inheritance expected 10% retention: Coins=' + result.state?.coins + ', Shards=' + result.state?.shards + '.');
+            }
+            return result;
+          },
+          result => 'Prestige retained Coins=' + shortNumber(result.state?.coins, 0) + ' · Shards=' + shortNumber(result.state?.shards, 0),
+        );
+
+        await step(
+          'Mechanic · Celestial Auto-Buyer',
+          async () => {
+            await setMechanicState({ autoBuyer: 1 }, { coins: 100 });
+            const before = await request<any>('/api/me');
+            const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValue: 0.999999 });
+            const beforeSpeed = Number(before.upgrades?.speed ?? 0);
+            const afterSpeed = Number(result.state?.upgrades?.speed ?? 0);
+            if (afterSpeed !== beforeSpeed + 1) {
+              throw new Error('Auto-Buyer did not buy the cheapest upgrade: speed ' + beforeSpeed + ' → ' + afterSpeed + '.');
+            }
+            return { beforeSpeed, afterSpeed, result };
+          },
+          result => 'Cheapest upgrade bought automatically · speed ' + result.beforeSpeed + ' → ' + result.afterSpeed,
+        );
+
+        await step(
+          'Mechanic · Supernova Burst',
+          async () => {
+            await setMechanicState(
+              { supernova: 5 },
+              { totalRolls: 10, upgrades: { ...zeroUpgrades, critChance: 20 } },
+            );
+            const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValue: 0 });
+            if (Number(result.orb?.rarity) !== 45 || !result.orb?.isCrit) {
+              throw new Error('Supernova expected 1/45 with deterministic crit, got 1/' + result.orb?.rarity + ', crit=' + result.orb?.isCrit + '.');
+            }
+            return result;
+          },
+          result => 'Forced crit supernova produced 1/' + shortNumber(result.orb?.rarity, 0),
+        );
+
+        await step(
+          'Mechanic · Altar Resonator',
+          async () => {
+            const sacrifices = { coinsSacrificed: 0, shardsSacrificed: 5, altarLevel: 5, luckSurgeUntil: 0 };
+            await setMechanicState({ altarResonator: 0 }, { sacrifices });
+            const before = await readMechanics();
+            await setMechanicState({ altarResonator: 1 }, { sacrifices });
+            const after = await readMechanics();
+            if (!(Number(after.altar?.totalAltarMultiplier) > Number(before.altar?.totalAltarMultiplier))) {
+              throw new Error('Altar multiplier did not increase: ' + before.altar?.totalAltarMultiplier + ' → ' + after.altar?.totalAltarMultiplier + '.');
+            }
+            return { before, after };
+          },
+          result => 'Altar multiplier ' + shortNumber(result.before.altar?.totalAltarMultiplier) + ' → ' + shortNumber(result.after.altar?.totalAltarMultiplier),
+        );
+
+        await step(
+          'Mechanic · Offline Overdrive',
+          async () => {
+            await setMechanicState({ offlineOverdrive: 0 });
+            const base = await readMechanics();
+            await setMechanicState({ offlineOverdrive: 1 });
+            const boosted = await readMechanics();
+            if (!(Number(boosted.effectiveOfflineTickMs) < Number(base.effectiveOfflineTickMs))) {
+              throw new Error('Offline tick did not improve: ' + base.effectiveOfflineTickMs + ' → ' + boosted.effectiveOfflineTickMs + '.');
+            }
+            return { base, boosted };
+          },
+          result => 'Offline tick ' + shortNumber(result.base.effectiveOfflineTickMs, 0) + 'ms → ' + shortNumber(result.boosted.effectiveOfflineTickMs, 0) + 'ms',
+        );
+
+        await step(
+          'Mechanic · Singularity Tithe',
+          async () => {
+            await setMechanicState(
+              { singularityTithe: 1 },
+              { totalRolls: 17, singularityTitheSingleRolls: 999, highestRarity: 1_000_000_000, rollsSinceBest: 17 },
+            );
+            const result = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
+            const state = recordValue(result.state);
+            if (Number(state.singularityTitheSingleRolls) !== 1_000 || Number(state.cosmicDust) < 1) {
+              throw new Error('Tithe failed at 1,000 single rolls: counter=' + state.singularityTitheSingleRolls + ', dust=' + state.cosmicDust + '.');
+            }
+
+            await setMechanicState(
+              { singularityTithe: 1 },
+              { totalRolls: 18, singularityTitheSingleRolls: 1_000, cosmicDust: 0, upgrades: { ...zeroUpgrades, multi: 1 } },
+            );
+            const multi = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
+            const multiState = recordValue(multi.state);
+            if (Number(multiState.singularityTitheSingleRolls) !== 1_000 || Number(multiState.cosmicDust) !== 0) {
+              throw new Error('Multi-roll advanced Tithe: counter=' + multiState.singularityTitheSingleRolls + ', dust=' + multiState.cosmicDust + '.');
+            }
+            return { result, multi };
+          },
+          result => 'Single-roll boundary passed at 1,000 · multi-roll excluded (counter stays ' + shortNumber(result.multi.state?.singularityTitheSingleRolls, 0) + ')',
+        );
+
+        await step(
+          'Mechanic · Lucky Floor',
+          async () => {
+            await setMechanicState({ luckyFloor: 5 });
+            const result = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
+            if (Number(result.orb?.rarity) < 7) {
+              throw new Error('Lucky Floor produced 1/' + result.orb?.rarity + '; expected at least 1/7.');
+            }
+            return result;
+          },
+          result => 'Forced 1/2 floor raised minimum to 1/' + shortNumber(result.orb?.rarity, 0),
+        );
+
+        await step(
+          'Mechanic · Astral Arsenal',
+          async () => {
+            await setMechanicState({ astralArsenal: 1 });
+            const result = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
+            if (Number(result.rollsProcessed) !== 2) {
+              throw new Error('Astral Arsenal expected 2 processed orbs, got ' + result.rollsProcessed + '.');
+            }
+            return result;
+          },
+          result => 'Processed ' + shortNumber(result.rollsProcessed, 0) + ' (base=1 + arsenal=1)',
+        );
+
+        await step(
+          'Mechanic · Deep Vault',
+          async () => {
+            await setMechanicState();
+            const before = await readMechanics();
+            await setMechanicState({ deepVault: 1 });
+            const after = await readMechanics();
+            const delta = Number(after.offlineRollCap) - Number(before.offlineRollCap);
+            if (delta !== 250) throw new Error('Deep Vault delta was ' + delta + ', expected 250.');
+            return { before, after };
+          },
+          result => 'Offline cap ' + shortNumber(result.before.offlineRollCap, 0) + ' → ' + shortNumber(result.after.offlineRollCap, 0),
+        );
+
+        await step(
+          'Mechanic · Mastery Engine',
+          async () => {
+            await setMechanicState({ masteryEngine: 1 }, { totalRolls: 99, masteryPoints: 0 });
+            const result = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
+            if (Number(result.state?.totalRolls) !== 100 || Number(result.state?.masteryPoints) !== 1) {
+              throw new Error('Mastery Engine expected 99 → 100 rolls and +1 point, got rolls=' + result.state?.totalRolls + ', points=' + result.state?.masteryPoints + '.');
+            }
+            return result;
+          },
+          result => 'Rolls ' + shortNumber(result.state?.totalRolls, 0) + ' · Mastery Points=' + shortNumber(result.state?.masteryPoints, 0),
+        );
+
+        await step(
+          'Mechanic · Steady Hands',
+          async () => {
+            await setMechanicState();
+            const before = await readMechanics();
+            await setMechanicState({ steadyHands: 1 });
+            const after = await readMechanics();
+            if (!(Number(after.cooldownMs) < Number(before.cooldownMs))) {
+              throw new Error('Cooldown did not decrease: ' + before.cooldownMs + ' → ' + after.cooldownMs + '.');
+            }
+            return { before, after };
+          },
+          result => 'Cooldown ' + shortNumber(result.before.cooldownMs, 0) + 'ms → ' + shortNumber(result.after.cooldownMs, 0) + 'ms',
+        );
+
+        await step(
+          'Mechanic · Offline Fortune',
+          async () => {
+            await setMechanicState({ offlineFortune: 0 });
+            const base = await request<any>('/api/dev/force-roll', { rarity: 9, randomValue: 0.999999, source: 'offline' });
+            await setMechanicState({ offlineFortune: 1 });
+            const upgraded = await request<any>('/api/dev/force-roll', { rarity: 9, randomValue: 0.999999, source: 'offline' });
+            if (!(Number(upgraded.coinsGained) > Number(base.coinsGained))) {
+              throw new Error('Offline Fortune did not increase offline Coins: ' + base.coinsGained + ' → ' + upgraded.coinsGained + '.');
+            }
+            return { base, upgraded };
+          },
+          result => 'Offline Coins ' + shortNumber(result.base.coinsGained, 0) + ' → ' + shortNumber(result.upgraded.coinsGained, 0),
+        );
+
+        await step(
+          'Mechanic · Frenzy Volley',
+          async () => {
+            await request('/api/dev/frenzy/reset', {});
+            await setMechanicState({ frenzyVolley: 0 }, { upgrades: { ...zeroUpgrades, multi: 1 } });
+            const normalStart = await request<any>('/api/dev/frenzy/start', { rarity: 100 });
+            const normalBeforeClaim = Number(normalStart.state?.totalRolls ?? 0);
+
+            await request('/api/dev/frenzy/reset', {});
+            await setMechanicState({ frenzyVolley: 1 }, { upgrades: { ...zeroUpgrades, multi: 1 } });
+            const volleyStart = await request<any>('/api/dev/frenzy/start', { rarity: 100 });
+            const volleyBeforeClaim = Number(volleyStart.state?.totalRolls ?? 0);
+
+            const normalClaim = await request<any>('/api/dev/frenzy/claim', { postId: normalStart.postId });
+            const volleyClaim = await request<any>('/api/dev/frenzy/claim', { postId: volleyStart.postId });
+            const normalCount = Number(normalClaim.state?.totalRolls ?? 0) - normalBeforeClaim;
+            const volleyCount = Number(volleyClaim.state?.totalRolls ?? 0) - volleyBeforeClaim;
+            if (normalCount !== 100 || volleyCount !== 120) {
+              throw new Error('Frenzy Volley expected 100 → 120 bonus rolls, got ' + normalCount + ' → ' + volleyCount + '.');
+            }
+            return { normalCount, volleyCount };
+          },
+          result => 'Frenzy claim rolls ' + result.normalCount + ' → ' + result.volleyCount,
+        );
+
+        await step(
+          'Mechanic · Astral Reserve',
+          async () => {
+            await setMechanicState();
+            const before = await readMechanics();
+            await setMechanicState({ astralReserve: 1 });
+            const after = await readMechanics();
+            if (!(Number(after.luckMultiplier) > Number(before.luckMultiplier))) {
+              throw new Error('Astral Reserve did not increase Luck: ' + before.luckMultiplier + ' → ' + after.luckMultiplier + '.');
+            }
+            return { before, after };
+          },
+          result => 'Luck ' + shortNumber(result.before.luckMultiplier) + ' → ' + shortNumber(result.after.luckMultiplier),
+        );
+
+        await step(
+          'Mechanic · Temporal Compression',
+          async () => {
+            await setMechanicState();
+            const before = await readMechanics();
+            await setMechanicState({ temporalCompression: 1 });
+            const after = await readMechanics();
+            if (!(Number(after.cooldownMs) < Number(before.cooldownMs))) {
+              throw new Error('Cooldown did not decrease: ' + before.cooldownMs + ' → ' + after.cooldownMs + '.');
+            }
+            return { before, after };
+          },
+          result => 'Cooldown ' + shortNumber(result.before.cooldownMs, 0) + 'ms → ' + shortNumber(result.after.cooldownMs, 0) + 'ms',
+        );
+
+        await step(
+          'Mechanic · Shard Resonator',
+          async () => {
+            await setMechanicState({ shardResonator: 0 }, { shards: 0 });
+            const base = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0 });
+            await setMechanicState({ shardResonator: 1 }, { shards: 0 });
+            const upgraded = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0 });
+            if (Number(upgraded.shardsGained) <= Number(base.shardsGained)) {
+              throw new Error('Shard Resonator did not increase shard proc: ' + base.shardsGained + ' → ' + upgraded.shardsGained + '.');
+            }
+            return { base, upgraded };
+          },
+          result => 'Shards ' + shortNumber(result.base.shardsGained, 0) + ' → ' + shortNumber(result.upgraded.shardsGained, 0) + ' with deterministic proc',
+        );
+
+        await step(
+          'Mechanic · Cosmic Valuation',
+          async () => {
+            await setMechanicState({ cosmicValuation: 0 });
+            const base = await request<any>('/api/dev/force-roll', { rarity: 100, randomValue: 0.999999 });
+            await setMechanicState({ cosmicValuation: 1 });
+            const upgraded = await request<any>('/api/dev/force-roll', { rarity: 100, randomValue: 0.999999 });
+            if (Number(upgraded.totalValueGained) !== 105) {
+              throw new Error('Cosmic Valuation expected 100 → 105 value, got ' + base.totalValueGained + ' → ' + upgraded.totalValueGained + '.');
+            }
+            return { base, upgraded };
+          },
+          result => 'Collection Value ' + shortNumber(result.base.totalValueGained, 0) + ' → ' + shortNumber(result.upgraded.totalValueGained, 0),
         );
 
         await step(
@@ -1242,14 +1732,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               Object.keys(PRESTIGE_UPGRADES).map(id => [id, 1]),
             ),
           }),
-          () => 'all prestige upgrades restored to level 1',
+          () => 'all prestige upgrades set to level 1 after functional testing',
         );
       } else {
-        skip('Full Prestige Upgrade Sweep', 'prestige failed');
-        skip('Test Singularity Tithe · single-roll boundary', 'prestige failed');
-        skip('Test Singularity Tithe · multi-roll excluded', 'prestige failed');
+        skip('Full Prestige Mechanic Sweep', 'prestige failed');
         skip('Restore Prestige Test State', 'prestige failed');
-        skip('Buy Mastery Skill · continuumLuck', 'prestige failed');
       }
 
       await step(
