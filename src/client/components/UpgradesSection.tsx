@@ -28,6 +28,7 @@ import {
   luckMultiplier,
   effectiveOfflineTickMs,
   critMultiplier,
+  formatNumber,
 } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
@@ -48,7 +49,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
 }) => {
   const [recentUpgradeId, setRecentUpgradeId] = useState<UpgradeId | null>(null);
   const [upgradingAll, setUpgradingAll] = useState(false);
-  const fmt = (n: number) => n.toLocaleString();
+  const fmt = (n: number) => formatNumber(n);
   const standardUpgradeMaxLevels: Partial<Record<UpgradeId, number>> = { speed: 20 };
 
   const handleUpgradeClick = async (u: (typeof upgradesData)[0]) => {
