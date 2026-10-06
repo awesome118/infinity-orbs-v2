@@ -823,7 +823,10 @@ export function getOrbInfo(rarity: number): RarityTierInfo {
 export function luckRarityFactor(luck: number): number {
   const rawLuck = Number(luck);
   const effectiveLuck = Number.isFinite(rawLuck) ? Math.max(1, rawLuck) : 1;
-  return Math.min(12, Math.pow(effectiveLuck, 0.20));
+  // Luck should make rare results meaningfully better without turning the
+  // upper tail into routine drops.  Every full order of magnitude of Luck
+  // adds only 0.75× to the rarity scale, capped at 5×.
+  return Math.min(5, 1 + Math.log10(effectiveLuck) * 0.75);
 }
 
 // Kept for compatibility with older callers. The continuum no longer changes its exponent.
@@ -1666,7 +1669,7 @@ export function predictRollActivation(
       ? beginnerRarity
       : Math.max(minimumRarity, rollContinuum(effectiveLuck, rng));
     const rarity = isCrit
-      ? Math.min(10_000_000_000, Math.round(rolledRarity * effectiveCm))
+      ? Math.min(1_000_000_000_000_000, Math.round(rolledRarity * effectiveCm))
       : rolledRarity;
 
     const finalVal = Math.round(rarity * valueMul);
