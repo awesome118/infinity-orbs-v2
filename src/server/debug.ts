@@ -887,11 +887,11 @@ debugRouter.post('/force-roll', async (req, res) => {
     const forcedRarity = Math.max(2, finiteInteger(req.body?.rarity, 1_000));
     const source = req.body?.source === 'offline' ? 'offline' : 'online';
     const hasRandomValue = req.body?.randomValue !== undefined;
-    const randomValue = hasRandomValue ? Number(req.body.randomValue) : null;
+    const randomValue = Number(req.body?.randomValue);
     if (hasRandomValue && (!Number.isFinite(randomValue) || randomValue < 0 || randomValue >= 1)) {
       throw new Error('randomValue must be a number from 0 inclusive to 1 exclusive.');
     }
-    const randomOverride = hasRandomValue ? () => randomValue as number : undefined;
+    const randomOverride = hasRandomValue ? () => randomValue : undefined;
     const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained } =
       await applyRolls(s, 1, forcedRarity, source, undefined, randomOverride);
     const now = Date.now();
