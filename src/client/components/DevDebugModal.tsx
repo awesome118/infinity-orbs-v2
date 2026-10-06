@@ -50,6 +50,11 @@ function shortNumber(value: unknown, maxDecimals = 3): string {
   });
 }
 
+function shortRarity(value: unknown): string {
+  const n = Number(value);
+  return Number.isFinite(n) ? formatRarity(n) : '?';
+}
+
 function compactTimestamp(timestamp: unknown, baseTimestamp: number): string {
   const ts = Number(timestamp);
   if (!Number.isFinite(ts) || !Number.isFinite(baseTimestamp)) return '+?s';
@@ -105,7 +110,7 @@ function shortenPlayerSpyLogs(
         stamp,
         'ROLLx' + String(details.processedRollCount ?? details.requestedRollCount ?? '?'),
         samples ? 'R[' + samples + ']' : '',
-        'B' + shortNumber(details.bestRarity, 0),
+        'B' + shortRarity(details.bestRarity),
         'C+' + shortNumber(details.coinsGained, 0),
         'X+' + shortNumber(details.xpGained, 0),
         'S+' + shortNumber(details.shardsGained, 1),
@@ -183,7 +188,7 @@ function shortenPlayerSpyLogs(
     if (event === 'roll') {
       const parts = [
         stamp,
-        'R' + shortNumber(details.bestRarity, 0),
+        'R' + shortRarity(details.bestRarity),
         'C' + shortNumber(details.coinsGained, 0),
         'X' + shortNumber(details.xpGained, 0),
       ];
@@ -1017,7 +1022,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         rarities => {
           const values = (rarities as number[]);
           const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
-          return `n=${values.length} · avg rarity=${shortNumber(average, 0)} · best=${shortNumber(Math.max(0, ...values), 0)}`;
+          return `n=${values.length} · avg rarity=${shortRarity(average)} · best=${shortRarity(Math.max(0, ...values))}`;
         },
       );
 
@@ -1041,7 +1046,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         rarities => {
           const values = rarities as number[];
           const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
-          return `n=${values.length} · avg rarity=${shortNumber(average, 0)} · best=${shortNumber(Math.max(0, ...values), 0)}`;
+          return `n=${values.length} · avg rarity=${shortRarity(average)} · best=${shortRarity(Math.max(0, ...values))}`;
         },
       );
 
@@ -1389,7 +1394,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             sound.setSonarMode(false);
             return forced;
           },
-          result => 'Forced 1/' + shortNumber(result.orb?.rarity, 0) + ' · Sonar pulse triggered',
+          result => 'Forced 1/' + shortRarity(result.orb?.rarity) + ' · Sonar pulse triggered',
         );
 
         await step(
@@ -1589,7 +1594,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             }
             return result;
           },
-          result => 'Forced crit supernova produced 1/' + shortNumber(result.orb?.rarity, 0),
+          result => 'Forced crit supernova produced 1/' + shortRarity(result.orb?.rarity),
         );
 
         await step(
@@ -1660,7 +1665,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             }
             return result;
           },
-          result => 'Forced 1/2 floor raised minimum to 1/' + shortNumber(result.orb?.rarity, 0),
+          result => 'Forced 1/2 floor raised minimum to 1/' + shortRarity(result.orb?.rarity),
         );
 
         await step(
@@ -2093,7 +2098,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'Final client state read',
         () => request<any>('/api/me'),
-        result => `level=${shortNumber(result.level, 0)} · rolls=${shortNumber(result.totalRolls, 0)} · highest=${shortNumber(result.highestRarity, 0)} · dust=${shortNumber(result.cosmicDust, 0)}`,
+        result => `level=${shortNumber(result.level, 0)} · rolls=${shortNumber(result.totalRolls, 0)} · highest=${shortRarity(result.highestRarity)} · dust=${shortNumber(result.cosmicDust, 0)}`,
       );
 
       const totalMs = performance.now() - startedAt;
@@ -2663,7 +2668,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
           <div className="flex flex-wrap gap-1.5">
             {[100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000].map(v => (
-              <button title={`Force one roll at exact rarity 1/${v.toLocaleString()}.`} key={v} onClick={() => void handleForceRoll(v)} disabled={loading} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-1.5 font-mono`}>
+              <button title={`Force one roll at exact rarity 1/${formatRarity(v)}.`} key={v} onClick={() => void handleForceRoll(v)} disabled={loading} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-1.5 font-mono`}>
                 1/{v.toLocaleString()}
               </button>
             ))}
@@ -2783,7 +2788,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               <RotateCcw className="inline w-3.5 h-3.5 mr-1" /> Reset Frenzy Flags
             </button>
             {[100, 10_000, 1_000_000, 100_000_000].map(v => (
-              <button title={`Use 1/${v.toLocaleString()} as the forced Frenzy rarity.`} key={v} disabled={loading} onClick={() => setFrenzyRarity(String(v))} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-1.5 font-mono`}>
+              <button title={`Use 1/${formatRarity(v)} as the forced Frenzy rarity.`} key={v} disabled={loading} onClick={() => setFrenzyRarity(String(v))} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-1.5 font-mono`}>
                 1/{v.toLocaleString()}
               </button>
             ))}
