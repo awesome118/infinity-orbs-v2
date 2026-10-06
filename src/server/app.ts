@@ -785,12 +785,6 @@ export function createApp() {
 
   // Reddit's user-action API performs the actual subscription. Reward claiming is
   // deliberately a separate action so subscribing is an explicit user choice.
-  app.post('/api/follow-subscribe', async (_req, res) => {
-    try {
-      res.json(await subscribeToSubredditFromPrompt());
-    } catch (e: any) { badRequest(res, e, 'Could not follow the subreddit.'); }
-  });
-
   app.post('/api/follow-reward', async (_req, res) => {
     try {
       res.json(await claimFollowReward());
