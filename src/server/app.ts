@@ -7,6 +7,7 @@ import {
   buyUpgrade,
   buyAllUpgrades,
   claimOffline,
+  claimFollowReward,
   claimDailyStreak,
   claimQuest,
   prestige,
@@ -42,7 +43,6 @@ import {
   getNotificationState,
   setNotificationState,
   settleOffline,
-  withPlayerMutationLock,
 } from './game.js';
 import {
   achievements,
@@ -64,6 +64,7 @@ import {
   postGlobalChatMessage,
 } from './social.js';
 import { context, reddit, redis } from './devvit-mock.js';
+import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, type FeatureId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
@@ -778,6 +779,14 @@ export function createApp() {
     try {
       res.json(await guildInfo());
     } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch guilds.' }); }
+  });
+
+  // Following the main subreddit is rewarded once per Reddit account.
+  // The client opens Reddit in a new tab while this endpoint grants the reward server-side.
+  app.post('/api/follow-reward', async (_req, res) => {
+    try {
+      res.json(await claimFollowReward());
+    } catch (e: any) { badRequest(res, e, 'Could not claim the follow reward.'); }
   });
 
   // Count an explicit visit to the social tab, not background API refreshes.

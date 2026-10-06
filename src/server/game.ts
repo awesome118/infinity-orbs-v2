@@ -98,6 +98,8 @@ const ROLL_TICKET_COUNT = 30;
 const ROLL_TICKET_TTL_MS = 10 * 60_000;
 const PLAYER_SPY_LOG_KEY_PREFIX = 'io:player-spy:v1:';
 const PLAYER_SPY_LOG_LIMIT = 500;
+const FOLLOW_REWARD_KEY_PREFIX = 'io:follow-reward:v1:';
+const FOLLOW_REWARD_ROLLS = 200;
 
 const SAVE_DEBUG_LOG_KEY = 'io:save-debug:v1';
 const SAVE_DEBUG_LOG_LIMIT = 500;
@@ -2524,6 +2526,50 @@ export async function roll(
     };
   });
 }
+export async function claimFollowReward(): Promise<{
+  state: PlayerState;
+  rollsGranted: number;
+  bestRarity: number;
+  coinsGained: number;
+  shardsGained: number;
+  xpGained: number;
+}> {
+  return withPlayerMutationLock(async () => {
+    const rewardKey = FOLLOW_REWARD_KEY_PREFIX + currentUserId();
+    const alreadyClaimed = await redis.get(rewardKey);
+    if (alreadyClaimed) throw new Error('FOLLOW_REWARD_ALREADY_CLAIMED');
+
+    const s = await settleOffline(await loadRaw());
+    const result = await applyRolls(s, 1, undefined, 'online', FOLLOW_REWARD_ROLLS);
+
+    // One free-roll activation advances manual progression once, rather than 200 button presses.
+    s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + 1);
+    if (s.manualRolls >= 3) s.upgrades.auto = 1;
+    s.lastRollAt = Date.now();
+    s.lastSeenAt = Date.now();
+
+    await save(s);
+    await redis.set(rewardKey, String(Date.now()));
+    await recordLeaderboard(s);
+    void appendPlayerSpyLog('follow-reward-claim', {
+      rollsGranted: FOLLOW_REWARD_ROLLS,
+      bestRarity: result.bestOrb.rarity,
+      coinsGained: result.coinsGained,
+      shardsGained: result.shardsGained,
+      xpGained: result.xpGained,
+    }).catch(error => console.error('[Follow Reward] Spy log failed:', error));
+
+    return {
+      state: s,
+      rollsGranted: FOLLOW_REWARD_ROLLS,
+      bestRarity: result.bestOrb.rarity,
+      coinsGained: result.coinsGained,
+      shardsGained: result.shardsGained,
+      xpGained: result.xpGained,
+    };
+  });
+}
+
 export async function claimOffline(): Promise<RollResponse> {
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());

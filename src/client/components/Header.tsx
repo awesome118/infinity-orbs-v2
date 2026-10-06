@@ -46,6 +46,49 @@ export const Header: React.FC<HeaderProps> = ({
   };
   const nextMilestone = LEVEL_MILESTONES.find(m => m.level > displayedLevel);
   const levelBenefits = getLevelBenefits(displayedLevel);
+  const [followPromptOpen, setFollowPromptOpen] = React.useState(false);
+  const [followRewardState, setFollowRewardState] = React.useState<'idle' | 'claiming' | 'error'>('idle');
+  const hasStartedPlaying = (state.totalRolls ?? 0) > 0;
+
+  React.useEffect(() => {
+    if (!hasStartedPlaying) return;
+    try {
+      if (localStorage.getItem('io-follow-prompt-dismissed-v1') === 'true') return;
+    } catch {
+      // Storage is optional in embedded Reddit webviews.
+    }
+
+    const timer = window.setTimeout(() => setFollowPromptOpen(true), 3 * 60 * 1000);
+    return () => window.clearTimeout(timer);
+  }, [hasStartedPlaying]);
+
+  const dismissFollowPrompt = () => {
+    try { localStorage.setItem('io-follow-prompt-dismissed-v1', 'true'); } catch { /* best effort */ }
+    setFollowPromptOpen(false);
+  };
+
+  const claimFollowReward = async () => {
+    if (followRewardState === 'claiming') return;
+    setFollowRewardState('claiming');
+
+    try {
+      const response = await fetch('/api/follow-reward', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof data?.error === 'string' ? data.error : 'Could not claim the reward.');
+
+      try { localStorage.setItem('io-follow-prompt-dismissed-v1', 'true'); } catch { /* best effort */ }
+      sound.playChime(880, 'sine', 0.3);
+      setFollowPromptOpen(false);
+      window.setTimeout(() => window.location.reload(), 350);
+    } catch (error) {
+      console.error('[Follow Reward] Claim failed:', error);
+      setFollowRewardState('error');
+    }
+  };
 
   return (
     <header className="bg-slate-900/90 border-b border-slate-800/80 backdrop-blur-md sticky top-0 z-30 px-4 py-3">
@@ -214,5 +257,46 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
     </header>
+      {followPromptOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-5 shadow-2xl space-y-4">
+            <div>
+              <div className="flex items-center gap-2 text-white font-extrabold text-base">
+                <Users className="w-5 h-5 text-orange-400" />
+                <span>Follow the subreddit</span>
+              </div>
+              <p className="mt-2 text-sm leading-5 text-slate-400">
+                Follow <span className="text-white font-semibold">r/infinityorbs</span> to keep up with the game.
+                Click the button below and you&apos;ll get <span className="text-amber-300 font-bold">200 free rolls</span>.
+              </p>
+            </div>
+
+            {followRewardState === 'error' && (
+              <p className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
+                The reward could not be claimed. Try the button again.
+              </p>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <a
+                href="https://www.reddit.com/r/infinityorbs/"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => { sound.playClick(); void claimFollowReward(); }}
+                className={'w-full py-2.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold text-center transition-colors ' + (followRewardState === 'claiming' ? 'opacity-60 pointer-events-none' : '')}
+              >
+                {followRewardState === 'claiming' ? 'Adding 200 rolls…' : 'Follow subreddit · +200 rolls'}
+              </a>
+              <button
+                type="button"
+                onClick={() => { sound.playClick(); dismissFollowPrompt(); }}
+                className="w-full py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                Maybe later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
   );
 };

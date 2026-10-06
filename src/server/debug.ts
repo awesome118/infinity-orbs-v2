@@ -25,7 +25,7 @@ import {
   getPlayerSpyLogs,
   clearPlayerSpyLogs,
 } from './game.js';
-import { withPlayerMutationLockFor } from './player-lock.js';
+import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import { context, redis, reddit } from './devvit-mock.js';
 import {
   setCommunityEventConfig,
