@@ -10,7 +10,8 @@ import {
   Award,
   Shield,
 } from 'lucide-react';
-import type { PlayerState } from '../../shared/game.js';
+import type { PlayerState 
+  formatNumber,} from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface QuestsAndStreaksProps {
@@ -26,7 +27,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
   onClaimQuest,
   busy,
 }) => {
-  const fmt = (n: number) => n.toLocaleString();
+  const fmt = (n: number) => formatNumber(n);
   const today = new Date().toISOString().slice(0, 10);
   const alreadyClaimedStreak = state.streak.lastClaimDate === today;
   const currentStreakDay = ((state.streak.count - 1) % 7) + 1;
