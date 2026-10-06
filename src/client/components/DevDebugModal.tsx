@@ -1302,14 +1302,15 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           'Mechanic · Silent Alert Mode',
           async () => {
             await setMechanicState({ sonarPing: 1 });
+            sound.setSonarMode(false);
             await onRefresh();
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise(resolve => setTimeout(resolve, 150));
             const button = Array.from(document.querySelectorAll('button'))
               .find(el => (el as HTMLButtonElement).title === 'Silent Mode: Mutes standard rolls and alerts with a crystal chime on rare drops') as HTMLButtonElement | undefined;
             if (!button) throw new Error('Sonar control did not unlock after prestige state was applied.');
             button.click();
-            await new Promise(resolve => setTimeout(resolve, 25));
-            if (!button.textContent?.includes('SILENT')) throw new Error('Sonar control did not enable Silent Mode.');
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (!sound.sonarMode || !button.textContent?.includes('SILENT')) throw new Error('Sonar control did not enable Silent Mode.');
             return { text: button.textContent.trim() };
           },
           result => 'Client control unlocked · ' + result.text,
@@ -1486,7 +1487,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           async () => {
             await setMechanicState(
               { cosmicInheritance: 1 },
-              { coins: 1_000, shards: 100, collectionValue: 1_000_000, lifetimeCollectionValue: 1_000_000 },
+              { coins: 1_000, shards: 100, xp: 32_000, collectionValue: 1_000_000, lifetimeCollectionValue: 1_000_000 },
             );
             const result = await request<any>('/api/prestige', {});
             if (Number(result.state?.coins) !== 100 || Number(result.state?.shards) !== 10) {
@@ -1773,8 +1774,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
 
       await step(
         'Seed Dust Synthesis',
-        () => request('/api/dev/state', { shards: 10 }),
-        () => 'shards=10',
+        () => request('/api/dev/state', { shards: 10, xp: 32_000 }),
+        () => 'shards=10 · XP=32,000 (Level 20 unlock)',
       );
       await step(
         'Synthesize Cosmic Dust',
