@@ -8,6 +8,7 @@ import {
   buyAllUpgrades,
   claimOffline,
   claimFollowReward,
+  subscribeToSubredditForReward,
   claimDailyStreak,
   claimQuest,
   prestige,
@@ -781,8 +782,14 @@ export function createApp() {
     } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch guilds.' }); }
   });
 
-  // Following the main subreddit is rewarded once per Reddit account.
-  // The client opens Reddit in a new tab while this endpoint grants the reward server-side.
+  // Reddit's user-action API performs the actual subscription. Reward claiming is
+  // deliberately a separate action so subscribing is an explicit user choice.
+  app.post('/api/follow-subscribe', async (_req, res) => {
+    try {
+      res.json(await subscribeToSubredditForReward());
+    } catch (e: any) { badRequest(res, e, 'Could not follow the subreddit.'); }
+  });
+
   app.post('/api/follow-reward', async (_req, res) => {
     try {
       res.json(await claimFollowReward());
