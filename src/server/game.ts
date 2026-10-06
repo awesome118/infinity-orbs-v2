@@ -99,7 +99,10 @@ const ROLL_TICKET_TTL_MS = 10 * 60_000;
 const PLAYER_SPY_LOG_KEY_PREFIX = 'io:player-spy:v1:';
 const PLAYER_SPY_LOG_LIMIT = 500;
 const FOLLOW_REWARD_KEY_PREFIX = 'io:follow-reward:v1:';
+const FOLLOW_SUBSCRIBED_KEY_PREFIX = 'io:follow-subscribed:v1:';
+const FOLLOW_ACTION_COUNT_KEY = 'io:follow-actions:v1';
 const FOLLOW_REWARD_ROLLS = 200;
+const FOLLOW_TARGET_SUBREDDIT = 'infinityorbs';
 
 const SAVE_DEBUG_LOG_KEY = 'io:save-debug:v1';
 const SAVE_DEBUG_LOG_LIMIT = 500;
@@ -2526,6 +2529,64 @@ export async function roll(
     };
   });
 }
+export async function subscribeToSubredditForReward(): Promise<{
+  subredditName: string;
+  recordedAction: boolean;
+  totalSubscribers: number | null;
+}> {
+  return withPlayerMutationLock(async () => {
+    const userId = currentUserId();
+    const actionKey = FOLLOW_SUBSCRIBED_KEY_PREFIX + userId;
+    const alreadyRecorded = Boolean(await redis.get(actionKey));
+
+    await reddit.subscribeToCurrentSubreddit();
+
+    let recordedAction = false;
+    if (!alreadyRecorded) {
+      await redis.set(actionKey, String(Date.now()));
+      await redis.incr(FOLLOW_ACTION_COUNT_KEY);
+      recordedAction = true;
+    }
+
+    let totalSubscribers: number | null = null;
+    try {
+      const info = await reddit.getSubredditInfoByName(FOLLOW_TARGET_SUBREDDIT);
+      const count = Number(info?.subscribersCount);
+      totalSubscribers = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : null;
+    } catch (error) {
+      console.error('[Follow Reward] Could not read subreddit subscriber count:', error);
+    }
+
+    return {
+      subredditName: String(context.subredditName ?? FOLLOW_TARGET_SUBREDDIT),
+      recordedAction,
+      totalSubscribers,
+    };
+  });
+}
+
+export async function getFollowRewardStats(): Promise<{
+  followActions: number;
+  totalSubscribers: number | null;
+  subredditName: string;
+}> {
+  const rawCount = await redis.get(FOLLOW_ACTION_COUNT_KEY);
+  const followActions = Math.max(0, Number.parseInt(String(rawCount ?? '0'), 10) || 0);
+  let totalSubscribers: number | null = null;
+  try {
+    const info = await reddit.getSubredditInfoByName(FOLLOW_TARGET_SUBREDDIT);
+    const count = Number(info?.subscribersCount);
+    totalSubscribers = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : null;
+  } catch (error) {
+    console.error('[Follow Reward] Could not read subreddit subscriber count:', error);
+  }
+  return {
+    followActions,
+    totalSubscribers,
+    subredditName: FOLLOW_TARGET_SUBREDDIT,
+  };
+}
+
 export async function claimFollowReward(): Promise<{
   state: PlayerState;
   rollsGranted: number;
@@ -2536,8 +2597,10 @@ export async function claimFollowReward(): Promise<{
 }> {
   return withPlayerMutationLock(async () => {
     const rewardKey = FOLLOW_REWARD_KEY_PREFIX + currentUserId();
+    const subscribeKey = FOLLOW_SUBSCRIBED_KEY_PREFIX + currentUserId();
     const alreadyClaimed = await redis.get(rewardKey);
     if (alreadyClaimed) throw new Error('FOLLOW_REWARD_ALREADY_CLAIMED');
+    if (!(await redis.get(subscribeKey))) throw new Error('FOLLOW_REWARD_REQUIRES_SUBSCRIBE');
 
     const s = await settleOffline(await loadRaw());
     const result = await applyRolls(s, 1, undefined, 'online', FOLLOW_REWARD_ROLLS);
