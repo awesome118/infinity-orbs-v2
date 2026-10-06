@@ -19,8 +19,7 @@ import {
   Globe,
   Award,
 } from 'lucide-react';
-import type { PlayerState, Orb 
-  formatNumber,} from '../../shared/game.js';
+import type { PlayerState, Orb } from '../../shared/game.js';
 import type { WorldEvent } from '../../shared/social.js';
 import {
   cooldownMs,
@@ -30,6 +29,7 @@ import {
   formatRarity,
   coinsForRarity,
   visibleContinuumTiers,
+  formatNumber,
 } from '../../shared/game.js';
 
 import { sound } from '../sound.js';
