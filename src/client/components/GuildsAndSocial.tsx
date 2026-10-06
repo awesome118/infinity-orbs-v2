@@ -30,8 +30,7 @@ import type {
   GuildPerkId,
   GuildMessage,
 } from '../../shared/social.js';
-import { formatRarity 
-  formatNumber,} from '../../shared/game.js';
+import { formatRarity, formatNumber } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface GuildsAndSocialProps {
