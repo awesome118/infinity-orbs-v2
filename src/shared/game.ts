@@ -679,7 +679,10 @@ export type RarityTierName =
   | 'Celestial'
   | 'Infinite'
   | 'Absolute'
-  | 'Omniversal';
+  | 'Omniversal'
+  | 'Paradox'
+  | 'Beyond'
+  | 'Endless';
 
 export interface RarityTierInfo {
   rarity: number;
@@ -691,6 +694,9 @@ export interface RarityTierInfo {
 }
 
 export function getOrbTier(rarity: number): RarityTierName {
+  if (rarity >= 100_000_000_000_000_000) return 'Endless';
+  if (rarity >= 10_000_000_000_000_000) return 'Beyond';
+  if (rarity >= 1_000_000_000_000_000) return 'Paradox';
   if (rarity >= 100_000_000_000_000) return 'Omniversal';
   if (rarity >= 10_000_000_000_000) return 'Absolute';
   if (rarity >= 1_000_000_000_000) return 'Infinite';
@@ -724,6 +730,9 @@ const TIER_NAMES: Record<RarityTierName, string[]> = {
   Infinite: ['Infinite Horizon', 'Endless Core', 'Void Singularity', 'Infinity Seed'],
   Absolute: ['Absolute Orb', 'First Principle', 'Origin Point', 'Final Horizon'],
   Omniversal: ['Omniversal Eye', 'Totality Core', 'Everything Orb', 'The Last Constant'],
+  Paradox: ['Paradox Orb', 'Contradiction Core', 'Broken Loop', 'Null Point'],
+  Beyond: ['Beyond Orb', 'Outer Core', 'Far Point', 'Unknown Edge'],
+  Endless: ['Endless Orb', 'Final Loop', 'Last Horizon', 'Zero Point'],
 };
 
 const TIER_COLORS: Record<RarityTierName, { color: string; bgGradient: string }> = {
@@ -787,6 +796,18 @@ const TIER_COLORS: Record<RarityTierName, { color: string; bgGradient: string }>
     color: '#f8fafc',
     bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #f0abfc 30%, #22d3ee 58%, #030712 100%)',
   },
+  Paradox: {
+    color: '#ef4444',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #fecaca, #dc2626 45%, #450a0a 100%)',
+  },
+  Beyond: {
+    color: '#8b5cf6',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #ddd6fe, #7c3aed 45%, #2e1065 100%)',
+  },
+  Endless: {
+    color: '#f1f5f9',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #64748b 35%, #0f172a 80%, #020617 100%)',
+  },
 };
 
 export function formatRarity(rarity: number): string {
@@ -845,7 +866,7 @@ export function luckRarityExponent(_luck: number): number {
 export function rollContinuum(luck: number, random: () => number = Math.random): number {
   const u = Math.max(1e-12, Math.min(1 - 1e-12, random()));
   const rarity = Math.floor((1 / u) * luckRarityFactor(luck));
-  return Math.min(1_000_000_000_000_000, Math.max(2, rarity));
+  return Math.min(1_000_000_000_000_000_000, Math.max(2, rarity));
 }
 
 export interface ContinuumTierMilestone {
@@ -872,8 +893,19 @@ export const CONTINUUM_TIERS: ContinuumTierMilestone[] = [
   { tier: 'Celestial', minRarity: 100000000000, label: '1 / 1e11 - 1 / 1e12', approxChance: '~0.0000000009%', coinsPerOrb: '1e11 - 1e12 Coins', color: '#f97316' },
   { tier: 'Infinite', minRarity: 1000000000000, label: '1 / 1e12 - 1 / 1e13', approxChance: '~0.00000000009%', coinsPerOrb: '1e12 - 1e13 Coins', color: '#22d3ee' },
   { tier: 'Absolute', minRarity: 10000000000000, label: '1 / 1e13 - 1 / 1e14', approxChance: '~0.000000000009%', coinsPerOrb: '1e13 - 1e14 Coins', color: '#e879f9' },
-  { tier: 'Omniversal', minRarity: 100000000000000, label: '1 / 1e14+', approxChance: '~0.0000000000009%', coinsPerOrb: '1e14+ Coins', color: '#f8fafc' },
+  { tier: 'Omniversal', minRarity: 100000000000000, label: '1 / 1e14 - 1 / 1e14+', approxChance: '~0.0000000000009%', coinsPerOrb: '1e14+ Coins', color: '#f8fafc' },
+  { tier: 'Paradox', minRarity: 1000000000000000, label: '1 / 1e15 - 1 / 1e16', approxChance: '~0.00000000000009%', coinsPerOrb: '1e15 - 1e16 Coins', color: '#ef4444' },
+  { tier: 'Beyond', minRarity: 10000000000000000, label: '1 / 1e16 - 1 / 1e17', approxChance: '~0.000000000000009%', coinsPerOrb: '1e16 - 1e17 Coins', color: '#8b5cf6' },
+  { tier: 'Endless', minRarity: 100000000000000000, label: '1 / 1e17+', approxChance: '~0.0000000000000009%', coinsPerOrb: '1e17+ Coins', color: '#f1f5f9' },
 ];
+
+export const CONTINUUM_DISCOVERY_UNLOCK_RARITY = 9;
+
+export function visibleContinuumTiers(highestRarity: number): ContinuumTierMilestone[] {
+  return Number(highestRarity) >= CONTINUUM_DISCOVERY_UNLOCK_RARITY
+    ? CONTINUUM_TIERS
+    : CONTINUUM_TIERS.slice(0, 9);
+}
 
 export interface CosmeticItem {
   id: string;
