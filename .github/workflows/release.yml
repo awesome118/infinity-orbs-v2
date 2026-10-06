@@ -65,6 +65,7 @@ jobs:
       - name: Submit version for Reddit review
         env:
           CI: true
+          DEVVIT_ALLOW_SOURCE_UPLOAD: 1
         timeout-minutes: 10
         run: |
           set -euo pipefail
