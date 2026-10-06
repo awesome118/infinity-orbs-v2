@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, ShieldCheck, Coins } from 'lucide-react';
 import { visibleContinuumTiers } from '../../shared/game.js';
+import type { ContinuumTierMilestone } from '../../shared/game.js';
 
 interface RarityTableModalProps {
   onClose: () => void;
