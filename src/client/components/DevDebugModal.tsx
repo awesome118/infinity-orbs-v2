@@ -875,23 +875,21 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       return fields.join(' · ');
     };
 
-    const rollOnce = async (label: string, auto = false) => {
+    const rollOnce = async (auto = false): Promise<RollResponse> => {
       await request('/api/dev/reset-cooldown', {});
       const ticket = await request<{
         ticketId: string;
         nextIndex: number;
       }>('/api/roll-ticket');
-      return step(
-        label,
-        () => request<RollResponse>('/api/roll', {
-          auto,
-          ticketId: ticket.ticketId,
-          ticketIndex: ticket.nextIndex,
-        }),
-        result =>
-          `1/${shortNumber(result.orb?.rarity, 0)} · processed=${shortNumber(result.rollsProcessed, 0)} · coins +${shortNumber(result.coinsGained, 0)} · XP +${shortNumber(result.xpGained, 0)}`,
-      );
+      return request<RollResponse>('/api/roll', {
+        auto,
+        ticketId: ticket.ticketId,
+        ticketIndex: ticket.nextIndex,
+      });
     };
+
+    const rollDetail = (result: RollResponse): string =>
+      `1/${shortNumber(result.orb?.rarity, 0)} · processed=${shortNumber(result.rollsProcessed, 0)} · coins +${shortNumber(result.coinsGained, 0)} · XP +${shortNumber(result.xpGained, 0)}`;
 
     try {
       await step(
@@ -939,8 +937,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
 
       await step(
         'Test manual roll + ticket',
-        () => rollOnce('manual roll'),
-        () => 'ticketed client roll endpoint returned authoritative state',
+        () => rollOnce(false),
+        rollDetail,
       );
 
       await step(
@@ -949,10 +947,15 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           await request('/api/dev/ccu/fake', { bonus: 0 });
           const rarities: number[] = [];
           for (let i = 0; i < 5; i++) {
-            const result = await rollOnce(`luck baseline roll ${i + 1}`);
-            if (result) rarities.push(result.orb.rarity);
+            try {
+              const result = await rollOnce(false);
+              rarities.push(result.orb.rarity);
+            } catch (error) {
+              throw new Error(
+                `Baseline luck roll ${i + 1}/5 failed: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            }
           }
-          if (rarities.length !== 5) throw new Error(`Only ${rarities.length}/5 baseline luck rolls completed.`);
           return rarities;
         },
         rarities => {
@@ -968,10 +971,15 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           await request('/api/dev/ccu/fake', { bonus: 1_000 });
           const rarities: number[] = [];
           for (let i = 0; i < 5; i++) {
-            const result = await rollOnce(`luck high-CCU roll ${i + 1}`);
-            if (result) rarities.push(result.orb.rarity);
+            try {
+              const result = await rollOnce(false);
+              rarities.push(result.orb.rarity);
+            } catch (error) {
+              throw new Error(
+                `High-CCU luck roll ${i + 1}/5 failed: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            }
           }
-          if (rarities.length !== 5) throw new Error(`Only ${rarities.length}/5 high-CCU luck rolls completed.`);
           return rarities;
         },
         rarities => {
@@ -999,20 +1007,42 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         result => `all standard upgrades exercised · ${stateSummary(result)}`,
       );
 
-      const autoRoll = await rollOnce('Manual roll for Auto Roll unlock');
-      if (!autoRoll) skip('Auto Roll unlock prerequisite', 'manual roll failed');
-      const autoRoll2 = await rollOnce('Second manual roll for Auto Roll unlock');
-      if (!autoRoll2) skip('Auto Roll unlock prerequisite', 'second manual roll failed');
-      const autoRoll3 = await rollOnce('Third manual roll for Auto Roll unlock');
-      if (!autoRoll3) skip('Auto Roll unlock prerequisite', 'third manual roll failed');
+      await step(
+        'Manual roll for Auto Roll unlock · 1/3',
+        () => rollOnce(false),
+        rollDetail,
+      );
+      await step(
+        'Manual roll for Auto Roll unlock · 2/3',
+        () => rollOnce(false),
+        rollDetail,
+      );
+      await step(
+        'Manual roll for Auto Roll unlock · 3/3',
+        () => rollOnce(false),
+        rollDetail,
+      );
 
       const autoEnabled = await step(
         'Enable Auto Roll',
-        () => request<{ state: any }>('/api/auto-roll', { enabled: true }),
-        result => stateSummary(result),
+        async () => {
+          const result = await request<{ state: any }>('/api/auto-roll', { enabled: true });
+          const state = recordValue(result.state);
+          if (Number(state.upgrades?.auto ?? 0) < 1 || Number(state.manualRolls ?? 0) < 3) {
+            throw new Error(
+              `Auto Roll did not unlock at 3 manual rolls (manualRolls=${state.manualRolls ?? 0}, auto=${state.upgrades?.auto ?? 0}).`,
+            );
+          }
+          return result;
+        },
+        stateSummary,
       );
       if (autoEnabled) {
-        await rollOnce('Auto Roll execution', true);
+        await step(
+          'Auto Roll execution',
+          () => rollOnce(true),
+          rollDetail,
+        );
       }
 
       await step(
