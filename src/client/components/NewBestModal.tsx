@@ -201,7 +201,7 @@ export const NewBestModal: React.FC<NewBestModalProps> = ({
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span>Previous Record:</span>
             <span className="font-mono font-bold text-slate-300">
-              {prevBest > 0 ? `1 / ${prevBest.toLocaleString()}` : 'None'}
+              {prevBest > 0 ? `1 / ${formatRarity(prevBest)}` : 'None'}
             </span>
           </div>
           <div className="flex items-center justify-between text-sm font-bold text-emerald-400 border-t border-slate-800/80 pt-2">
