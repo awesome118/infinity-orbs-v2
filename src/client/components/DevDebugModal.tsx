@@ -945,7 +945,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     };
 
     const rollDetail = (result: RollResponse): string =>
-      `1/${shortNumber(result.orb?.rarity, 0)} · processed=${shortNumber(result.rollsProcessed, 0)} · coins +${shortNumber(result.coinsGained, 0)} · XP +${shortNumber(result.xpGained, 0)}`;
+      `1/${formatRarity(result.orb?.rarity)} · processed=${shortNumber(result.rollsProcessed, 0)} · coins +${shortNumber(result.coinsGained, 0)} · XP +${shortNumber(result.xpGained, 0)}`;
 
     try {
       await step(
@@ -1360,6 +1360,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           async () => {
             await setMechanicState({ sonarPing: 1 });
             sound.setSonarMode(false);
+            const rollNav = Array.from(document.querySelectorAll('button.nav-tab'))
+              .find(el => el.textContent?.trim() === 'Roll') as HTMLButtonElement | undefined;
+            if (!rollNav) throw new Error('Roll navigation control was not found.');
+            rollNav.click();
+            await new Promise(resolve => setTimeout(resolve, 50));
             await onRefresh();
             await new Promise(resolve => setTimeout(resolve, 150));
             const button = Array.from(document.querySelectorAll('button'))
@@ -3019,7 +3024,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                       <span className="text-xs font-mono text-slate-200 truncate">u/{player.username}</span>
                       {player.active && <span className="text-[9px] font-black uppercase text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-1.5 py-0.5">Active</span>}
                     </div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">Level {player.level} · {player.totalRolls.toLocaleString()} rolls · Best 1/{Math.max(1, player.highestRarity).toLocaleString()}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Level {player.level} · {player.totalRolls.toLocaleString()} rolls · Best 1/{formatRarity(Math.max(1, player.highestRarity))}</div>
                   </div>
                   <div className="shrink-0 text-right">
                     <div className="text-[10px] text-slate-400">{player.active ? 'Online now' : player.lastSeenAt ? new Date(player.lastSeenAt).toLocaleString() : 'No recent activity'}</div>
