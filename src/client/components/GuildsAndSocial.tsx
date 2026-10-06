@@ -30,7 +30,8 @@ import type {
   GuildPerkId,
   GuildMessage,
 } from '../../shared/social.js';
-import { formatRarity } from '../../shared/game.js';
+import { formatRarity 
+  formatNumber,} from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface GuildsAndSocialProps {
@@ -76,7 +77,7 @@ export const RollingCounter: React.FC<{ value: number; durationMs?: number }> = 
     return () => cancelAnimationFrame(frameId);
   }, [value, durationMs]);
 
-  return <span>{displayValue.toLocaleString()}</span>;
+  return <span>{formatNumber(displayValue)}</span>;
 };
 
 export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
@@ -116,7 +117,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     });
   }, [myGuild?.id, myGuild?.chat]);
 
-  const fmt = (n: number) => n.toLocaleString();
+  const fmt = (n: number) => formatNumber(n);
   const currentGuildMember = myGuild?.members.find(m => m.username === playerUsername);
   const canManageGuild = currentGuildMember?.role === 'owner' ||
     currentGuildMember?.role === 'officer' ||
@@ -950,7 +951,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                       )}
                     </div>
                     <span className="text-slate-400 text-[11px]">
-                      {entry.totalRolls.toLocaleString()} rolls • Best: 1/
+                      {formatNumber(entry.totalRolls)} rolls • Best: 1/
                       {formatRarity(entry.highestRarity)}
                     </span>
                   </div>
