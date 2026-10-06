@@ -1472,7 +1472,15 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
       temporalCompressionReduction -
       levelReduction,
   );
-  let cd = Math.max(floor, BASE_COOLDOWN_MS - coinReduction);
+  // Prestige cooldown investments reduce the active cooldown as well as
+  // lowering its minimum floor. Otherwise a 15s base cooldown makes these
+  // upgrades effectively inert at ordinary roll speeds.
+  const directPrestigeReduction =
+    permReduction + steadyHandsReduction + temporalCompressionReduction;
+  let cd = Math.max(
+    floor,
+    BASE_COOLDOWN_MS - coinReduction - directPrestigeReduction,
+  );
 
   if (isAuto && (s.prestigeUpgrades?.autoOverclock ?? 0) > 0) {
     const overclockFactor = 1 - (s.prestigeUpgrades.autoOverclock * 0.05);
