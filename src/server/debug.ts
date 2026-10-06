@@ -34,7 +34,23 @@ import {
   muteGuildChatUser,
   unmuteGuildChatUser,
 } from './social.js';
-import {\n  cooldownMs,\n  createInitialState,\n  calculateLevelFromXp,\n  COSMETICS_LIST,\n  PRESTIGE_UPGRADES,\n  MASTERY_SKILLS,\n  luckMultiplier,\n  rollsPerActivation,\n  offlineRollCap,\n  effectiveOfflineTickMs,\n  calculateAltarMultipliers,\n  calculateCosmicDust,\n  calculatePrestigeDust,\n  critMultiplier,\n  autoUnlocked,\n} from '../shared/game.js';
+import {
+  cooldownMs,
+  createInitialState,
+  calculateLevelFromXp,
+  COSMETICS_LIST,
+  PRESTIGE_UPGRADES,
+  MASTERY_SKILLS,
+  luckMultiplier,
+  rollsPerActivation,
+  offlineRollCap,
+  effectiveOfflineTickMs,
+  calculateAltarMultipliers,
+  calculateCosmicDust,
+  calculatePrestigeDust,
+  critMultiplier,
+  autoUnlocked,
+} from '../shared/game.js';
 import { recordLeaderboard } from './social.js';
 
 const DEBUG_USERS = new Set([
@@ -893,7 +909,8 @@ debugRouter.post('/force-roll', async (req, res) => {
       shardsGained,
       xpGained,
       state: s,
-      rollsRemainingUntilNext: cooldownMs(s),\n      source,
+      rollsRemainingUntilNext: cooldownMs(s),
+      source,
       dramaticReveal: bestOrb.rarity >= 100,
     });
         });} catch (e: any) {
