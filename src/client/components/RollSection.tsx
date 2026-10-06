@@ -19,7 +19,8 @@ import {
   Globe,
   Award,
 } from 'lucide-react';
-import type { PlayerState, Orb } from '../../shared/game.js';
+import type { PlayerState, Orb 
+  formatNumber,} from '../../shared/game.js';
 import type { WorldEvent } from '../../shared/social.js';
 import {
   cooldownMs,
@@ -119,7 +120,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
     if (!batchSummary) return;
     const items: { id: number; text: string; color: string }[] = [];
     if (batchSummary.coins > 0) {
-      items.push({ id: Date.now() + 1, text: `+${batchSummary.coins.toLocaleString()} Coins`, color: 'text-amber-300' });
+      items.push({ id: Date.now() + 1, text: `+${formatNumber(batchSummary.coins)} Coins`, color: 'text-amber-300' });
     }
     if (batchSummary.shards > 0) {
       items.push({ id: Date.now() + 2, text: `+${batchSummary.shards} Shard${batchSummary.shards > 1 ? 's' : ''}`, color: 'text-cyan-300' });
@@ -262,7 +263,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
                 </span>
               </div>
               <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                {worldEvent.currentProgress.toLocaleString()} / {worldEvent.goal.toLocaleString()} rolls contributed
+                {formatNumber(worldEvent.currentProgress)} / {formatNumber(worldEvent.goal)} rolls contributed
               </div>
             </div>
           </div>
@@ -382,7 +383,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
         {displayOrb && !hasMultipleOrbs && (
           <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full shadow-sm">
             <Coins className="w-3.5 h-3.5" />
-            <span>+{coinsForRarity(displayOrb.rarity).toLocaleString()} Coins</span>
+            <span>+{formatNumber(coinsForRarity(displayOrb.rarity))} Coins</span>
           </div>
         )}
 
@@ -622,7 +623,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
             <div>
               <div className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-300">Orb Frenzy</div>
               <div className="mt-1 text-lg font-black text-white">
-                {batchSummary.frenzyCount.toLocaleString()} Orbs rolled
+                {formatNumber(batchSummary.frenzyCount)} Orbs rolled
               </div>
             </div>
             <Zap className="w-7 h-7 text-fuchsia-300" />
@@ -633,15 +634,15 @@ export const RollSection: React.FC<RollSectionProps> = ({
           <div className="mt-3 grid grid-cols-3 gap-2 text-center">
             <div className="rounded-xl bg-slate-950/50 border border-slate-800 px-2 py-2">
               <div className="text-[10px] uppercase font-bold text-slate-500">Value</div>
-              <div className="text-sm font-black text-cyan-300">{batchSummary.totalVal.toLocaleString()}</div>
+              <div className="text-sm font-black text-cyan-300">{formatNumber(batchSummary.totalVal)}</div>
             </div>
             <div className="rounded-xl bg-slate-950/50 border border-slate-800 px-2 py-2">
               <div className="text-[10px] uppercase font-bold text-slate-500">Coins</div>
-              <div className="text-sm font-black text-amber-300">+{batchSummary.coins.toLocaleString()}</div>
+              <div className="text-sm font-black text-amber-300">+{formatNumber(batchSummary.coins)}</div>
             </div>
             <div className="rounded-xl bg-slate-950/50 border border-slate-800 px-2 py-2">
               <div className="text-[10px] uppercase font-bold text-slate-500">XP</div>
-              <div className="text-sm font-black text-purple-300">+{batchSummary.xp.toLocaleString()}</div>
+              <div className="text-sm font-black text-purple-300">+{formatNumber(batchSummary.xp)}</div>
             </div>
           </div>
         </div>
@@ -662,7 +663,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
             </div>
             <div className="flex items-center gap-3">
               <span className="text-xs font-semibold text-amber-400">
-                +{batchSummary.coins.toLocaleString()} Coins
+                +{formatNumber(batchSummary.coins)} Coins
               </span>
               {batchSummary.shards > 0 && (
                 <span className="text-xs font-semibold text-cyan-400">
