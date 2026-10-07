@@ -30,7 +30,17 @@ import type {
   GuildPerkId,
   GuildMessage,
 } from '../../shared/social.js';
-import { formatRarity, formatNumber } from '../../shared/game.js';
+import {
+  formatRarity,
+  formatNumber,
+  decayGuildComboState,
+  guildComboRemainingMs,
+  guildComboLuckMultiplier,
+  guildComboSpeedMultiplier,
+  guildComboCritChanceBonus,
+  guildComboCritLuckBonus,
+  guildComboTimeProgress,
+} from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface GuildsAndSocialProps {
@@ -99,6 +109,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   busy,
 }) => {
   const [activeTab, setActiveTab] = useState<'guild' | 'leaderboard' | 'event'>('guild');
+  const [now, setNow] = useState(Date.now());
   const [createName, setCreateName] = useState('');
   const [createTag, setCreateTag] = useState('');
   const [chatInput, setChatInput] = useState('');
@@ -106,6 +117,11 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const [chatMessages, setChatMessages] = useState<GuildMessage[]>([]);
   const [reportingId, setReportingId] = useState<string | null>(null);
   const [reportedIds, setReportedIds] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     setChatMessages(prev => {
@@ -261,35 +277,123 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                   </button>
                 </div>
 
-                {/* Guild Weekly Challenge */}
-                {myGuild.challenge && (
-                  <div className="mt-5 pt-4 border-t border-slate-800/80">
-                    <div className="flex items-center justify-between text-xs font-bold mb-1.5">
-                      <span className="text-purple-300 flex items-center gap-1.5">
+                {/* Guild Tasks */}
+                <div className="mt-5 pt-4 border-t border-slate-800/80 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
                         <Flame className="w-4 h-4 text-amber-400" />
-                        <span>Weekly Challenge: {myGuild.challenge.label}</span>
-                      </span>
-                      <span className="text-amber-400">
-                        Reward: +{fmt(myGuild.challenge.reward)} Tokens
-                      </span>
+                        <span className="text-sm font-black text-white">Guild Tasks</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Guild Tokens come only from completing these tasks. Each completion makes that task harder.
+                      </p>
                     </div>
-                    <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
-                      <div
-                        className="h-full bg-gradient-to-r from-purple-500 to-amber-400 transition-all"
-                        style={{
-                          width: `${Math.min(100, (myGuild.challenge.progress / myGuild.challenge.target) * 100)}%`,
-                        }}
-                      />
-                    </div>
-                    <div className="flex justify-between text-[11px] text-slate-400 mt-1">
-                      <span>Progress</span>
-                      <span>
-                        {fmt(myGuild.challenge.progress)} / {fmt(myGuild.challenge.target)}
-                      </span>
-                    </div>
+                    <span className="text-[10px] font-bold text-amber-300">
+                      {fmt(myGuild.taskCompletions ?? 0)} completed
+                    </span>
                   </div>
-                )}
-              </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
+                    {(myGuild.tasks ?? []).map(task => {
+                      const target = Math.max(1, task.target);
+                      const progress = Math.max(0, Math.min(target, task.progress));
+                      const percent = Math.min(100, (progress / target) * 100);
+                      return (
+                        <div key={task.id} className="bg-slate-950/60 border border-slate-800 rounded-2xl p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] font-black text-purple-200">{task.type.toUpperCase()}</span>
+                            <span className="text-[10px] font-black text-amber-300 border border-amber-500/30 bg-amber-500/10 rounded-lg px-2 py-0.5">
+                              Tier {task.tier}
+                            </span>
+                          </div>
+                          <p className="text-xs font-bold text-white mt-2">{task.label}</p>
+                          <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800 mt-2">
+                            <div
+                              className="h-full bg-gradient-to-r from-purple-500 to-amber-400 transition-all"
+                              style={{ width: `${percent}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                            <span>{fmt(progress)} / {fmt(target)}</span>
+                            <span className="text-amber-300">+{fmt(task.reward)} Tokens</span>
+                          </div>
+                          <div className="text-[10px] text-fuchsia-300 mt-1">+{fmt(task.guildXpReward)} Guild XP</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {(() => {
+                    const combo = decayGuildComboState(myGuild.combo, now);
+                    const remaining = guildComboRemainingMs(combo, now);
+                    const active = combo.tier > 0 && remaining > 0;
+                    const effectLuck = guildComboLuckMultiplier(combo, now);
+                    const effectSpeed = guildComboSpeedMultiplier(combo, now);
+                    const effectCrit = guildComboCritChanceBonus(combo, now);
+                    const effectCritPower = guildComboCritLuckBonus(combo, now);
+                    const durationProgress = guildComboTimeProgress(combo, now);
+                    return (
+                      <div className="rounded-2xl border border-fuchsia-500/30 bg-fuchsia-950/15 p-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <Zap className="w-4 h-4 text-fuchsia-300" />
+                              <span className="text-sm font-black text-white">Guild Combo</span>
+                              <span className="text-[10px] font-black text-fuchsia-200 border border-fuchsia-500/30 bg-fuchsia-500/10 rounded-lg px-2 py-0.5">
+                                {active ? `Tier ${combo.tier}` : 'Inactive'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-400 mt-1">
+                              Complete Guild Tasks to charge it. Guild Combo gives half the strength of Global Boosters, all three at once.
+                            </p>
+                          </div>
+                          <div className="text-right text-[10px] text-slate-400">
+                            {active
+                              ? <span className="font-mono text-fuchsia-200">{Math.ceil(remaining / 1000)}s remaining</span>
+                              : <span>Waiting for task completions</span>}
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex gap-1">
+                          {Array.from({ length: 4 }, (_, index) => (
+                            <div
+                              key={index}
+                              className={`h-2.5 flex-1 rounded-full border ${index < (combo.activationProgress ?? 0)
+                                ? 'bg-fuchsia-400 border-fuchsia-300'
+                                : 'bg-slate-900 border-slate-800'}`}
+                            />
+                          ))}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mt-3 text-[10px]">
+                          <div className="rounded-xl bg-slate-950/70 border border-slate-800 p-2">
+                            <div className="text-slate-500">Luck</div>
+                            <div className="font-black text-emerald-300">×{effectLuck.toFixed(2)}</div>
+                          </div>
+                          <div className="rounded-xl bg-slate-950/70 border border-slate-800 p-2">
+                            <div className="text-slate-500">Speed</div>
+                            <div className="font-black text-cyan-300">{Math.round((1 - effectSpeed) * 100)}% faster</div>
+                          </div>
+                          <div className="rounded-xl bg-slate-950/70 border border-slate-800 p-2">
+                            <div className="text-slate-500">Crit Chance</div>
+                            <div className="font-black text-rose-300">+{Math.round(effectCrit * 100)}%</div>
+                          </div>
+                          <div className="rounded-xl bg-slate-950/70 border border-slate-800 p-2">
+                            <div className="text-slate-500">Crit Multiplier</div>
+                            <div className="font-black text-amber-300">+{effectCritPower.toFixed(2)}×</div>
+                          </div>
+                        </div>
+
+                        <div className="mt-2 text-[10px] text-slate-500">
+                          {active
+                            ? `Time: ${durationProgress.toFixed(1)}% of base duration remaining.`
+                            : 'Higher combo tiers drain faster and add less time per task completion.'}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
 
               {/* Weekly Guild Raid Boss */}
               {myGuild.boss && (
@@ -321,9 +425,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
 
                     <div className="text-right text-xs font-mono text-slate-400 bg-slate-950/60 border border-slate-800 px-3 py-1.5 rounded-xl">
                       <span>Bounty: </span>
-                      <span className="text-amber-300 font-bold">+{myGuild.boss.rewardTokens} Tokens</span>
-                      <span> & </span>
-                      <span className="text-cyan-300 font-bold">+{myGuild.boss.rewardShards} Shards</span>
+                      <span className="text-fuchsia-300 font-bold">+{myGuild.boss.rewardGuildXp ?? 0} Guild XP</span>
                     </div>
                   </div>
 
@@ -361,7 +463,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                   <div>
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-5 h-5 text-amber-400" />
-                      <h3 className="text-base font-black text-white">Guild Upgrades (9 Shared Bonuses)</h3>
+                      <h3 className="text-base font-black text-white">Guild Upgrades (8 Passive Bonuses)</h3>
                     </div>
                     <p className="text-xs text-slate-400 mt-0.5">
                       Passive bonuses applied to all guild members. Upgrade using shared Guild Tokens.
@@ -439,15 +541,6 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                       effect: `+${Math.min(40, myGuild.perks?.memberCapacityRank ?? 0)} Max Members (10 base)`,
                     },
                     {
-                      id: 'tokenYieldRank' as const,
-                      name: 'Token Yield',
-                      desc: '+5% Guild Tokens generated per rank.',
-                      icon: <Gem className="w-4 h-4 text-amber-300" />,
-                      rank: myGuild.perks?.tokenYieldRank ?? 0,
-                      max: 20,
-                      effect: `+${((myGuild.perks?.tokenYieldRank ?? 0) * 5)}% Token Yield`,
-                    },
-                    {
                       id: 'guildXpRank' as const,
                       name: 'Guild Growth',
                       desc: '+10% Guild XP generated per rank.',
@@ -518,6 +611,73 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                   })}
                 </div>
 
+                {/* New Guild Rewards */}
+                <div className="rounded-2xl border border-fuchsia-500/25 bg-fuchsia-950/10 p-4 space-y-3 mb-3.5">
+                  <div>
+                    <h4 className="text-sm font-black text-white flex items-center gap-2">
+                      <Trophy className="w-4 h-4 text-fuchsia-300" />
+                      Guild Rewards
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Spend task-earned Guild Tokens on bonuses tied to the task loop.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {[
+                      {
+                        id: 'taskBountyRank' as const,
+                        name: 'Task Bounty',
+                        desc: '+5% Guild Tokens from completed tasks per rank.',
+                        rank: myGuild.perks?.taskBountyRank ?? myGuild.perks?.tokenYieldRank ?? 0,
+                        max: 20,
+                        effect: `+${((myGuild.perks?.taskBountyRank ?? myGuild.perks?.tokenYieldRank ?? 0) * 5)}% Task Tokens`,
+                      },
+                      {
+                        id: 'comboRank' as const,
+                        name: 'Combo Reserve',
+                        desc: '+5% Guild Combo duration per rank.',
+                        rank: myGuild.perks?.comboRank ?? 0,
+                        max: 10,
+                        effect: `+${((myGuild.perks?.comboRank ?? 0) * 5)}% Combo Time`,
+                      },
+                    ].map(reward => {
+                      const isMax = reward.rank >= reward.max;
+                      const costBase = reward.id === 'comboRank' ? 150 : 100;
+                      const exponent = reward.id === 'comboRank' ? 1.55 : 1.65;
+                      const cost = Math.max(1, Math.round(costBase * Math.pow(reward.rank + 1, exponent)));
+                      const canAfford = (myGuild.tokens ?? 0) >= cost && !isMax;
+                      return (
+                        <div key={reward.id} className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-black text-white">{reward.name}</span>
+                            <span className="text-[10px] font-bold text-fuchsia-200 bg-fuchsia-500/10 border border-fuchsia-500/20 rounded-lg px-2 py-0.5">
+                              Rank {reward.rank}/{reward.max}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-1">{reward.desc}</p>
+                          <div className="text-[10px] font-semibold text-emerald-300 mt-2">{reward.effect}</div>
+                          <button
+                            onClick={() => {
+                              if (onBuyGuildPerk) {
+                                sound.playClick();
+                                void onBuyGuildPerk(reward.id);
+                              }
+                            }}
+                            disabled={!canAfford || busy || isMax || !canManageGuild}
+                            className={`w-full py-2 mt-3 rounded-xl text-[11px] font-bold transition-all ${isMax
+                              ? 'bg-slate-900 text-slate-500 border border-slate-800'
+                              : canAfford && canManageGuild
+                              ? 'bg-fuchsia-600 hover:bg-fuchsia-500 text-white cursor-pointer'
+                              : 'bg-slate-900 text-slate-500 border border-slate-800 cursor-not-allowed'}`}
+                          >
+                            {isMax ? 'Max Rank' : canManageGuild ? `Upgrade (${fmt(cost)} Tokens)` : 'Trusted Members Only'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                   <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4">
                     <div className="flex items-center justify-between gap-3">
@@ -527,7 +687,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                           Guild Tax
                         </h4>
                         <p className="text-[11px] text-slate-400 mt-1">
-                          Converts a percentage of members' earned Coins into Guild Tokens at 100 Coins per Token.
+                          Converts a percentage of members' earned Coins into Guild XP at 100 Coins per XP.
                         </p>
                       </div>
                       <span className="text-lg font-black text-amber-300">{myGuild.taxRate ?? 0}%</span>
