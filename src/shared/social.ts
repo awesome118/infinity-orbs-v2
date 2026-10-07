@@ -1,4 +1,4 @@
-import { weekKey, weekEndMs } from './game.js';
+import { weekKey, weekEndMs, type GuildComboState } from './game.js';
 
 export type GuildRole = 'owner' | 'officer' | 'member';
 export type ChallengeType = 'rolls' | 'value' | 'rare';
@@ -17,6 +17,17 @@ export interface GuildChallenge {
   target: number;
   progress: number;
   reward: number;
+  label: string;
+}
+
+export interface GuildTask {
+  id: string;
+  type: ChallengeType;
+  tier: number;
+  target: number;
+  progress: number;
+  reward: number;
+  guildXpReward: number;
   label: string;
 }
 
@@ -44,7 +55,9 @@ export interface GuildPerks {
   critRank?: number; // +1.5% critical roll chance per rank
   coinRank?: number; // +10% coins earned per rank
   memberCapacityRank?: number; // +1 maximum member per rank, max 40
-  tokenYieldRank?: number; // +5% Guild Tokens generated per rank
+  tokenYieldRank?: number; // Legacy alias for taskBountyRank.
+  taskBountyRank?: number; // +5% Guild Tokens from completed Guild Tasks per rank.
+  comboRank?: number; // +5% Guild Combo time per rank.
   guildXpRank?: number; // +10% Guild XP generated per rank
 }
 
@@ -57,6 +70,8 @@ export type GuildPerkId =
   | 'coinRank'
   | 'memberCapacityRank'
   | 'tokenYieldRank'
+  | 'taskBountyRank'
+  | 'comboRank'
   | 'guildXpRank';
 
 export interface GuildBoss {
@@ -65,8 +80,9 @@ export interface GuildBoss {
   tier: number;
   maxHp: number;
   currentHp: number;
-  rewardTokens: number;
-  rewardShards: number;
+  rewardTokens?: number; // Legacy field; no longer granted.
+  rewardShards?: number; // Legacy field; no longer granted by the boss.
+  rewardGuildXp?: number;
   defeated: boolean;
   contributors: Record<string, number>; // username -> damage
 }
@@ -81,6 +97,9 @@ export interface Guild {
   members: GuildMember[];
   createdAt: number;
   challenge: GuildChallenge;
+  tasks?: GuildTask[];
+  taskCompletions?: number;
+  combo?: GuildComboState;
   boss?: GuildBoss;
   perks?: GuildPerks;
   chat?: GuildMessage[];
@@ -160,6 +179,73 @@ export const CHALLENGE_POOL: GuildChallenge[] = [
   { type: 'rare', target: 5, progress: 0, reward: 750, label: 'Find five 1/100+ orbs' },
 ];
 
+const GUILD_TASK_BASES: Record<ChallengeType, {
+  target: number;
+  reward: number;
+  guildXpReward: number;
+  label: (target: number) => string;
+}> = {
+  rolls: {
+    target: 500,
+    reward: 125,
+    guildXpReward: 75,
+    label: target => `Perform ${target.toLocaleString()} guild rolls`,
+  },
+  value: {
+    target: 50_000,
+    reward: 175,
+    guildXpReward: 90,
+    label: target => `Accumulate ${target.toLocaleString()} collection value`,
+  },
+  rare: {
+    target: 5,
+    reward: 250,
+    guildXpReward: 120,
+    label: target => `Find ${target.toLocaleString()} orbs at 1/100+ rarity`,
+  },
+};
+
+export function createGuildTask(
+  type: ChallengeType,
+  tier = 1,
+  guildLevel = 1,
+): GuildTask {
+  const safeTier = Math.max(1, Math.floor(Number(tier) || 1));
+  const safeLevel = Math.max(1, Math.floor(Number(guildLevel) || 1));
+  const levelScale = 1 + Math.min(2.5, Math.sqrt(Math.max(0, safeLevel - 1)) * 0.05);
+  const typeScale = type === 'rolls' ? 1.35 : type === 'value' ? 1.45 : 1.30;
+  const base = GUILD_TASK_BASES[type];
+
+  const target = Math.max(1, Math.floor(
+    base.target * Math.pow(typeScale, safeTier - 1) * levelScale,
+  ));
+  const reward = Math.max(1, Math.floor(
+    Math.min(25_000, base.reward * Math.pow(1.22, safeTier - 1)),
+  ));
+  const guildXpReward = Math.max(25, Math.floor(
+    Math.min(10_000, base.guildXpReward * Math.pow(1.18, safeTier - 1)),
+  ));
+
+  return {
+    id: `guild-task-${type}-t${safeTier}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    type,
+    tier: safeTier,
+    target,
+    progress: 0,
+    reward,
+    guildXpReward,
+    label: base.label(target),
+  };
+}
+
+export function createInitialGuildTasks(guildLevel = 1): GuildTask[] {
+  return [
+    createGuildTask('rolls', 1, guildLevel),
+    createGuildTask('value', 1, guildLevel),
+    createGuildTask('rare', 1, guildLevel),
+  ];
+}
+
 export function createInitialGuildBoss(tier = 1): GuildBoss {
   const names = [
     'Chronos Leviathan',
@@ -176,8 +262,9 @@ export function createInitialGuildBoss(tier = 1): GuildBoss {
     tier,
     maxHp,
     currentHp: maxHp,
-    rewardTokens: 100 * tier,
-    rewardShards: 10 * tier,
+    rewardTokens: 0,
+    rewardShards: 0,
+    rewardGuildXp: 250 * tier,
     defeated: false,
     contributors: {},
   };
