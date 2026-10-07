@@ -629,7 +629,9 @@ export function App() {
           setFrenzyRunTriggered(true);
           setBusy(true);
           setIsRolling(true);
-          const res = await getJson<RollResponse>('/api/frenzy/claim', { method: 'POST' });
+          const res = await enqueueMutation(() =>
+            getJson<RollResponse>('/api/frenzy/claim', { method: 'POST' }),
+          );
 
           if (cancelled) return;
           applyPlayerState(res.state);
@@ -668,16 +670,17 @@ export function App() {
     };
 
     void resolveFrenzy().finally(() => {
-      if (!cancelled) {
-        setIsRolling(false);
-        setBusy(false);
-      }
+      // State updates can restart this effect and mark the current run as
+      // cancelled. The request still owns the global loading state, so always
+      // release it here or the Roll button can remain stuck in ROLLING forever.
+      setIsRolling(false);
+      setBusy(false);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [state, frenzyRunTriggered, applyPlayerState]);
+  }, [state, frenzyRunTriggered, applyPlayerState, enqueueMutation]);
 
   useEffect(() => {
     const startedAt = Date.now();

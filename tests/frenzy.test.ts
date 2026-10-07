@@ -179,3 +179,15 @@ test('Roll and Frenzy mutations share the client mutation queue', () => {
   );
   assert.match(source, /setFrenzyArmed\(false\);[\s\S]*?await refreshAll\(\)\.catch/);
 });
+
+test('Frenzy auto-claim always releases the game loading state', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
+  assert.match(
+    source,
+    /void resolveFrenzy\(\)\.finally\(\(\) => \{[\s\S]*?setIsRolling\(false\);[\s\S]*?setBusy\(false\);[\s\S]*?\}\);/,
+  );
+  assert.match(
+    source,
+    /const res = await enqueueMutation\(\(\) =>[\s\S]*?\/api\/frenzy\/claim/,
+  );
+});
