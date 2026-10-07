@@ -101,8 +101,9 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
       if (g.perks.memberCapacityRank == null) {
         g.perks.memberCapacityRank = Math.min(40, Math.max(0, g.members.length - 10));
       }
-      g.perks.tokenYieldRank ??= 0;
-      g.perks.taskBountyRank ??= Math.max(0, Math.floor(Number(g.perks.tokenYieldRank ?? 0) || 0));
+      const legacyTaskBounty = Math.max(0, Math.floor(Number(g.perks.tokenYieldRank ?? 0) || 0));
+      const currentTaskBounty = Math.max(0, Math.floor(Number(g.perks.taskBountyRank ?? 0) || 0));
+      g.perks.taskBountyRank = Math.max(legacyTaskBounty, currentTaskBounty);
       g.perks.tokenYieldRank = g.perks.taskBountyRank;
       g.perks.comboRank ??= 0;
       g.perks.guildXpRank ??= 0;
