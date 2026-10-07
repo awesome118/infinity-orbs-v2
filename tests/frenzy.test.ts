@@ -191,3 +191,27 @@ test('Frenzy auto-claim always releases the game loading state', () => {
     /const res = await enqueueMutation\(\(\) =>[\s\S]*?\/api\/frenzy\/claim/,
   );
 });
+
+
+test('client roll reveal displays the exact authoritative payout', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/client/components/RollSection.tsx'), 'utf8');
+  const main = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
+  assert.match(source, /reward-burst/);
+  assert.match(source, /batchSummary\.coins/);
+  assert.match(source, /batchSummary\.xp/);
+  assert.match(source, /batchSummary\.shards/);
+  assert.match(source, /batchSummary\.totalVal/);
+  assert.match(source, /roll-reward-summary/);
+  assert.doesNotMatch(source, /coinsForRarity\(displayOrb\.rarity\)/);
+  assert.match(main, /setBatchSummary\(\{[\s\S]*?coins: (?:res|prediction)\.coinsGained,[\s\S]*?xp: (?:res|prediction)\.xpGained/);
+});
+
+test('daily Frenzy popup closes when it arms the next manual roll', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
+  assert.match(
+    source,
+    /onClick=\{\(\) => \{[\s\S]*?setShowFrenzyPrompt\(false\);[\s\S]*?void handleStartOrbFrenzy\(\);[\s\S]*?\}\}/,
+  );
+  assert.match(source, /Charge My Frenzy/);
+  assert.match(source, /Your next manual Roll creates the post/);
+});
