@@ -37,7 +37,6 @@ import {
   type PaymentReceipt,
   type GlobalBoosterId,
   type GlobalBoosterSnapshot,
-  type GuildComboState,
 
   GLOBAL_BOOSTERS,
   createInitialGlobalBoosters,
