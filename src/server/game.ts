@@ -21,6 +21,7 @@ import {
   calculatePrestigeDust,
   offlineRollCap,
   getOrbInfo,
+  formatRarity,
   createInitialDailyQuests,
   createInitialWeeklyQuests,
   COSMETICS_LIST,
@@ -44,7 +45,9 @@ import {
   activateGlobalBoosterStack,
   globalBoosterCritChanceBonus,
   guildComboCritChanceBonus,
-  frenzyOrbCountForRarity,
+  frenzyClaimCountForRarity,
+  grantFrenzyOwnerShards,
+  FRENZY_OWNER_SHARD_REWARD,
 
   PREMIUM_BOOSTERS,
   AUTOMATIONS,
@@ -758,6 +761,52 @@ export async function getCcuPeaks(): Promise<{
 }
 
 const FRENZY_POST_PREFIX = 'io:frenzy:post:';
+
+function isFrenzyTestAdmin(): boolean {
+  return String(context.username ?? '')
+    .trim()
+    .replace(/^u\//i, '')
+    .toLowerCase() === 'shadow_fen';
+}
+
+async function grantFrenzyOwnerReward(
+  ownerId: string,
+  amount = FRENZY_OWNER_SHARD_REWARD,
+): Promise<number> {
+  const safeOwnerId = String(ownerId ?? '').trim();
+  if (!safeOwnerId || safeOwnerId === 'unknown') return 0;
+
+  const ownerKey = playerKeyFor(safeOwnerId);
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const txn = await redis.watch(ownerKey);
+    const raw = await redis.get(ownerKey);
+    if (raw == null) {
+      await txn.unwatch();
+      throw new Error('Frenzy owner save was not found.');
+    }
+
+    const ownerState = parsePlayerStateValue(raw);
+    if (!ownerState) {
+      await txn.unwatch();
+      throw new Error('Frenzy owner save could not be read safely.');
+    }
+
+    const granted = grantFrenzyOwnerShards(ownerState, amount);
+    const currentRevision = Math.max(
+      0,
+      Math.floor(Number(ownerState.stateRevision ?? 0)) || 0,
+    );
+    const nextState = { ...ownerState, stateRevision: currentRevision + 1 };
+
+    await txn.multi();
+    await txn.set(ownerKey, JSON.stringify(nextState));
+    const committed = await txn.exec();
+    if (committed !== null) return granted;
+  }
+
+  throw new Error('Could not safely grant the Frenzy owner reward.');
+}
+
 
 function parseGlobalBoosterSnapshot(
   raw: unknown,
@@ -3402,52 +3451,71 @@ export async function startOrbFrenzy(options: {
   adminTest?: boolean;
 } = {}): Promise<{ state: PlayerState; postId: string; url: string; rarity: number }> {
   return withPlayerMutationLock(async () => {
-  const s = await settleOffline(await loadRaw());
-  const today = new Date().toISOString().slice(0, 10);
-  if (!options.bypassDailyLimit && s.lastFrenzyDate === today) {
-    throw new Error('Orb Frenzy is already used today.');
-  }
+    const s = await settleOffline(await loadRaw());
+    const today = new Date().toISOString().slice(0, 10);
+    if (!options.bypassDailyLimit && s.lastFrenzyDate === today) {
+      throw new Error('Orb Frenzy is already used today.');
+    }
 
-  // Frenzy now stays inside the current game post. The owner gets one normal
-  // roll to determine the Frenzy rarity, then the game expands and unleashes
-  // the full Frenzy volley in the normal game window.
-  const forcedRarity = options.forcedRarity == null
-    ? undefined
-    : Math.max(2, Math.floor(Number(options.forcedRarity)));
-  const result = await applyRolls(s, 1, forcedRarity, 'online', 1);
+    const forcedRarity = options.forcedRarity == null
+      ? undefined
+      : Math.max(2, Math.floor(Number(options.forcedRarity)));
+    const result = await applyRolls(s, 1, forcedRarity, 'online', 1);
 
-  const postId = context.postId ?? 'no-post';
-  const postKey = FRENZY_POST_PREFIX + postId;
-  await redis.set(postKey, JSON.stringify({
-    ownerId: currentUserId(),
-    ownerUsername: context.username ?? 'Redditor',
-    rarity: result.bestOrb.rarity,
-    subredditName: context.subredditName ?? '',
-    createdAt: Date.now(),
-    adminTest: options.adminTest === true,
-    inGame: true,
-    consumedAt: null,
-  }));
+    const subredditName = String(context.subredditName ?? '').trim();
+    if (!subredditName) throw new Error('Subreddit context is unavailable.');
 
-  s.lastFrenzyDate = today;
-  s.lastRollAt = Date.now();
-  s.lastSeenAt = Date.now();
-  await save(s);
-  await appendPlayerSpyLog('frenzy-start', {
-    rarity: result.bestOrb.rarity,
-    postId: context.postId ?? '',
-    forcedRarity: forcedRarity ?? null,
-    snapshot: playerSpySnapshot(s),
+    const ownerUsername = String(context.username ?? s.username ?? 'Redditor')
+      .trim()
+      .replace(/^u\//i, '') || 'Redditor';
+    const rarity = result.bestOrb.rarity;
+    const postText =
+      `u/${ownerUsername} got a 1/${formatRarity(rarity)} ball in their Frenzy.\n\n` +
+      `Click below to claim it! You can only claim one a day.\n\n` +
+      `When someone claims your Frenzy, you receive +${FRENZY_OWNER_SHARD_REWARD} Shards. ` +
+      `This reward bypasses the 50 Shard daily cap.`;
+    const post = await reddit.submitCustomPost({
+      runAs: 'USER',
+      subredditName,
+      title: `u/${ownerUsername} got a 1/${formatRarity(rarity)} ball in their Frenzy`,
+      entry: 'frenzy',
+      userGeneratedContent: { text: postText },
+    });
+    const postId = String(post?.id ?? '').trim();
+    if (!postId) throw new Error('Could not create the Frenzy post.');
+
+    const adminTest = options.adminTest === true || isFrenzyTestAdmin();
+    await redis.set(FRENZY_POST_PREFIX + postId, JSON.stringify({
+      ownerId: currentUserId(),
+      ownerUsername,
+      rarity,
+      subredditName,
+      adminTest,
+      inGame: true,
+      createdAt: Date.now(),
+      consumedAt: null,
+    }));
+
+    s.lastFrenzyDate = today;
+    s.lastRollAt = Date.now();
+    s.lastSeenAt = Date.now();
+    await save(s);
+    await appendPlayerSpyLog('frenzy-start', {
+      rarity,
+      postId,
+      forcedRarity: forcedRarity ?? null,
+      adminTest,
+      snapshot: playerSpySnapshot(s),
+    });
+
+    return {
+      state: s,
+      postId,
+      rarity,
+      url: `https://reddit.com/r/${subredditName}/comments/${postId}`,
+    };
   });
-
-  return {
-    state: s,
-    postId: context.postId ?? '',
-    rarity: result.bestOrb.rarity,
-    url: '',
-  };
-
-  });}
+}
 
 export async function getOrbFrenzyInfo(): Promise<{
   rarity: number;
@@ -3455,29 +3523,46 @@ export async function getOrbFrenzyInfo(): Promise<{
   createdAt: number;
   claimedToday: boolean;
   isOwner: boolean;
+  canClaim: boolean;
+  selfClaimTest: boolean;
   postId: string;
   inGame?: boolean;
-  consumedAt?: number | null;
 }> {
   const postId = context.postId;
   if (!postId) throw new Error('This is not an Orb Frenzy post.');
+
   const raw = await redis.get(FRENZY_POST_PREFIX + postId);
   if (!raw) throw new Error('Orb Frenzy post data was not found.');
+
   const data = parseStoredJson<{
-    ownerId: string; ownerUsername: string; rarity: number; createdAt: number; inGame?: boolean; consumedAt?: number;
+    ownerId: string;
+    ownerUsername: string;
+    rarity: number;
+    createdAt: number;
+    adminTest?: boolean;
+    inGame?: boolean;
   }>(raw);
   if (!data) throw new Error('Orb Frenzy data is corrupted.');
+
   const today = new Date().toISOString().slice(0, 10);
   const s = await getMe();
+  const claimedToday = s.lastFrenzyClaimDate === today;
+  const isOwner = data.ownerId === currentUserId();
+  const selfClaimTest =
+    isOwner &&
+    data.adminTest === true &&
+    isFrenzyTestAdmin();
+
   return {
     rarity: data.rarity,
     ownerUsername: data.ownerUsername,
     createdAt: data.createdAt,
-    claimedToday: s.lastFrenzyClaimDate === today,
-    isOwner: data.ownerId === currentUserId(),
+    claimedToday,
+    isOwner,
+    canClaim: !claimedToday && (!isOwner || selfClaimTest),
+    selfClaimTest,
     postId,
     inGame: data.inGame === true,
-    consumedAt: data.consumedAt ?? null,
   };
 }
 
@@ -3505,17 +3590,13 @@ export async function claimOrbFrenzy(options: {
   }>(raw);
   if (!data) throw new Error('Orb Frenzy data is corrupted.');
 
-  if (data.inGame === true) {
-    if (data.ownerId !== currentUserId()) {
-      throw new Error('This in-game Orb Frenzy belongs to another player.');
-    }
-    if (data.consumedAt) {
-      throw new Error('This Orb Frenzy has already been unleashed.');
-    }
-  } else if (
-    data.ownerId === currentUserId() &&
-    !(options.allowAdminTestOwner === true && data.adminTest === true)
-  ) {
+  const isOwner = data.ownerId === currentUserId();
+  const ownerSelfClaimAllowed =
+    isOwner &&
+    data.adminTest === true &&
+    (isFrenzyTestAdmin() || options.allowAdminTestOwner === true);
+
+  if (isOwner && !ownerSelfClaimAllowed) {
     throw new Error('You cannot claim your own Orb Frenzy.');
   }
 
@@ -3525,13 +3606,10 @@ export async function claimOrbFrenzy(options: {
     throw new Error('You already claimed a Frenzy reward today.');
   }
 
-  const baseCount = frenzyOrbCountForRarity(data.rarity);
-  const frenzyVolleyEfficiency = (s.prestigeUpgrades?.frenzyVolley ?? 0) > 0
-    ? Math.max(0, rollsPerActivation(s) - 1) * 0.20
-    : 0;
-  const count = Math.max(
-    1,
-    Math.min(50_000_000, Math.floor(baseCount * (1 + frenzyVolleyEfficiency))),
+  const count = frenzyClaimCountForRarity(
+    data.rarity,
+    rollsPerActivation(s),
+    s.prestigeUpgrades?.frenzyVolley ?? 0,
   );
 
   const critChance = Math.min(
@@ -3639,13 +3717,6 @@ export async function claimOrbFrenzy(options: {
   s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
   s.lastFrenzyClaimDate = today;
 
-  if (data.inGame === true) {
-    await redis.set(FRENZY_POST_PREFIX + postId, JSON.stringify({
-      ...data,
-      consumedAt: Date.now(),
-    }));
-  }
-
   const bestRarity = topRarity;
   const newRarityKeys = groups.filter(
     group => (s.collection[String(group.rarity)] ?? 0) <= 0,
@@ -3675,7 +3746,23 @@ export async function claimOrbFrenzy(options: {
   await contribute(finalValue, count, bestRarity);
   await addCommunityRolls(count);
 
+  let ownerRewardShards = 0;
+  if (isOwner) {
+    ownerRewardShards = grantFrenzyOwnerShards(s, FRENZY_OWNER_SHARD_REWARD);
+  }
+
   await save(s);
+
+  if (!isOwner) {
+    try {
+      ownerRewardShards = await grantFrenzyOwnerReward(
+        data.ownerId,
+        FRENZY_OWNER_SHARD_REWARD,
+      );
+    } catch (error) {
+      console.error('[Orb Frenzy] Failed to grant owner Shards:', error);
+    }
+  }
 
   const orbInfo = getOrbInfo(bestRarity);
   const bestOrb: Orb = {
@@ -3693,7 +3780,7 @@ export async function claimOrbFrenzy(options: {
     totalValueGained: finalValue,
     totalRollValue: finalValue,
     coinsGained,
-    shardsGained,
+    shardsGained: shardsGained + (isOwner ? ownerRewardShards : 0),
     xpGained,
     state: s,
     rollsRemainingUntilNext: cooldownMs(s),
