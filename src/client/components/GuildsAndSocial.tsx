@@ -16,7 +16,6 @@ import {
   Gem,
   Check,
   Coins,
-  ArrowUpRight,
   Sword,
   Zap,
   UserCheck,
@@ -53,12 +52,9 @@ interface GuildsAndSocialProps {
   onLeaveGuild: () => Promise<void>;
   onSendMessage: (text: string) => Promise<GuildMessage>;
   onBuyGuildPerk?: (perk: GuildPerkId) => Promise<void>;
-  onDonateGuild?: (coins: number, shards: number) => Promise<void>;
   onToggleGuildTrust?: (username: string, trusted: boolean) => Promise<void>;
   onSetGuildTax?: (rate: number) => Promise<void>;
   playerUsername?: string;
-  playerCoins?: number;
-  playerShards?: number;
   playerHasShared?: boolean;
   busy: boolean;
 }
@@ -99,12 +95,9 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   onLeaveGuild,
   onSendMessage,
   onBuyGuildPerk,
-  onDonateGuild,
   onToggleGuildTrust,
   onSetGuildTax,
   playerUsername = '',
-  playerCoins = 0,
-  playerShards = 0,
   playerHasShared = false,
   busy,
 }) => {
@@ -724,76 +717,6 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                   </div>
                 </div>
               </div>
-
-              {/* Guild Donation Station */}
-              {onDonateGuild && (
-                <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-black text-white flex items-center gap-2">
-                        <ArrowUpRight className="w-4 h-4 text-emerald-400" />
-                        <span>Guild Treasury Donation</span>
-                      </h3>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Donate coins or shards to increase Guild XP. Guild Tokens can only come from Guild Tasks.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-                    <button
-                      onClick={() => {
-                        sound.playClick();
-                        void onDonateGuild(1000, 0);
-                      }}
-                      disabled={busy || playerCoins < 1000}
-                      className="p-3 rounded-2xl bg-slate-950/70 hover:bg-slate-950 border border-slate-800 hover:border-amber-500/40 text-left transition-all disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
-                    >
-                      <div className="flex items-center justify-between text-xs font-bold text-amber-300">
-                        <span className="flex items-center gap-1">
-                          <Coins className="w-3.5 h-3.5" /> 1,000 Coins
-                        </span>
-                        <span className="text-[10px] text-emerald-400">+10 Tokens</span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 block mt-1">+20 Guild XP</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        sound.playClick();
-                        void onDonateGuild(10000, 0);
-                      }}
-                      disabled={busy || playerCoins < 10000}
-                      className="p-3 rounded-2xl bg-slate-950/70 hover:bg-slate-950 border border-slate-800 hover:border-amber-500/40 text-left transition-all disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
-                    >
-                      <div className="flex items-center justify-between text-xs font-bold text-amber-300">
-                        <span className="flex items-center gap-1">
-                          <Coins className="w-3.5 h-3.5" /> 10,000 Coins
-                        </span>
-                        <span className="text-[10px] text-emerald-400">+100 Tokens</span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 block mt-1">+200 Guild XP</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        sound.playClick();
-                        void onDonateGuild(0, 5);
-                      }}
-                      disabled={busy || playerShards < 5}
-                      className="p-3 rounded-2xl bg-slate-950/70 hover:bg-slate-950 border border-slate-800 hover:border-cyan-500/40 text-left transition-all disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
-                    >
-                      <div className="flex items-center justify-between text-xs font-bold text-cyan-300">
-                        <span className="flex items-center gap-1">
-                          <Gem className="w-3.5 h-3.5" /> 5 Shards
-                        </span>
-                        <span className="text-[10px] text-emerald-400">+25 Tokens</span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 block mt-1">+125 Guild XP</span>
-                    </button>
-                  </div>
-                </div>
-              )}
 
               {/* Members List & Chat Columns */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
