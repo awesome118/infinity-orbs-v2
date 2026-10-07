@@ -13,6 +13,7 @@ interface DevDebugModalProps {
   onClose: () => void;
   onRefresh: () => Promise<void>;
   onForceRollResult?: (res: RollResponse) => void;
+  onForceFrenzyPopup?: () => void;
 }
 
 type AdminContext = {
@@ -2952,6 +2953,17 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </div>
           )}
           <div className="flex flex-wrap gap-2">
+            <button
+              title="Open the Daily Frenzy popup immediately in the game so its interaction can be tested."
+              disabled={loading}
+              onClick={() => {
+                sound.playClick();
+                onForceFrenzyPopup?.();
+              }}
+              className={`${buttonBase} bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/30 text-purple-300 px-3 py-2`}
+            >
+              <BellRing className="inline w-3.5 h-3.5 mr-1" /> Force Frenzy Popup
+            </button>
             <button title="Clear Frenzy flags so another Frenzy test can run immediately." disabled={loading} onClick={() => void sendAdminAction('/api/dev/frenzy/reset')} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}>
               <RotateCcw className="inline w-3.5 h-3.5 mr-1" /> Reset Frenzy Flags
             </button>
