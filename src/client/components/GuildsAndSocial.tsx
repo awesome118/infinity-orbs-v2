@@ -426,6 +426,8 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                     <div className="text-right text-xs font-mono text-slate-400 bg-slate-950/60 border border-slate-800 px-3 py-1.5 rounded-xl">
                       <span>Bounty: </span>
                       <span className="text-fuchsia-300 font-bold">+{myGuild.boss.rewardGuildXp ?? 0} Guild XP</span>
+                      <span> & </span>
+                      <span className="text-cyan-300 font-bold">+{myGuild.boss.rewardShards ?? 0} Shards</span>
                     </div>
                   </div>
 
@@ -732,7 +734,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                         <span>Guild Treasury Donation</span>
                       </h3>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        Donate coins or shards to increase guild XP and earn Guild Tokens.
+                        Donate coins or shards to increase Guild XP. Guild Tokens can only come from Guild Tasks.
                       </p>
                     </div>
                   </div>
