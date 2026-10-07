@@ -8,7 +8,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { visibleContinuumTiers, getOrbInfo, coinsForRarity, formatRarity, formatNumber } from '../../shared/game.js';
+import { visibleContinuumTiers, getOrbInfo, coinsForRarity, formatRarity, formatNumber, bestCodexChain } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface CollectionSectionProps {
@@ -48,6 +48,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
     () => visibleContinuumTiers(state.highestRarity || 0),
     [state.highestRarity],
   );
+  const codexChain = useMemo(() => bestCodexChain(state.collection), [state.collection]);
   const tiersList = useMemo(
     () => ['all', ...visibleTiers.map(tier => tier.tier)],
     [visibleTiers],
@@ -133,6 +134,31 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
               <span className="text-lg font-black text-purple-300">
                 1 / {formatRarity(state.highestRarity || 2)}
               </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 pt-4 border-t border-slate-800">
+          <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <span className="text-[10px] uppercase tracking-wider font-black text-cyan-300 block">
+                  Codex Devotion
+                </span>
+                <span className="text-xs text-slate-400">
+                  Your longest consecutive rarity chain
+                </span>
+              </div>
+              <div className="text-right">
+                <div className="text-sm font-black font-mono text-white">
+                  {codexChain.length > 0
+                    ? `1/${formatRarity(codexChain.start)} → 1/${formatRarity(codexChain.end)}`
+                    : 'No chain yet'}
+                </div>
+                <div className="text-[10px] font-bold text-emerald-300 mt-0.5">
+                  {codexChain.length} {codexChain.length === 1 ? 'rarity' : 'rarities'} in chain
+                </div>
+              </div>
             </div>
           </div>
         </div>
