@@ -29,6 +29,9 @@ jobs:
       - name: Type-check
         run: npm run type-check
 
+      - name: Mechanics tests
+        run: npm test
+
       - name: Guard against invalid Devvit transaction reads
         run: |
           set -euo pipefail
