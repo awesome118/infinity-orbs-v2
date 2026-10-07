@@ -1,4 +1,5 @@
 name: Deploy Devvit
+# Fresh auth retry trigger
 
 on:
   push:
