@@ -236,7 +236,7 @@ export const GUILD_COMBO_DURATION_DECAY_PER_TIER = 0.85;
 export const GUILD_COMBO_TIMER_ACCELERATION_PER_TIER = 0.25;
 
 
-export const FRENZY_LOG_BASE = 1.2;
+export const FRENZY_LOG_BASE = 1.05;
 export const FRENZY_MIN_ORBS = 1;
 
 export function frenzyOrbCountForRarity(rarity: number): number {
@@ -1712,30 +1712,58 @@ export function autoUnlocked(s: PlayerState): boolean {
 
 // Luck sources contribute additively to one total Luck factor. The RNG then
 // applies diminishing returns to that factor's effect on the rarity tail.
-export function highestCodexChain(collection: Record<string, number> | null | undefined): number {
-  const rarities = Object.entries(collection ?? {})
-    .filter(([rarity, count]) => {
-      const value = Number(rarity);
-      return Number.isFinite(value) && value >= 2 && count > 0;
-    })
-    .map(([rarity]) => Math.floor(Number(rarity)))
-    .filter(Number.isFinite)
-    .sort((a, b) => a - b);
+export interface CodexChain {
+  start: number;
+  end: number;
+  length: number;
+}
 
-  if (rarities.length === 0) return 0;
+export function bestCodexChain(collection: Record<string, number> | null | undefined): CodexChain {
+  const rarities = [...new Set(
+    Object.entries(collection ?? {})
+      .filter(([rarity, count]) => {
+        const value = Number(rarity);
+        return Number.isFinite(value) && value >= 2 && count > 0;
+      })
+      .map(([rarity]) => Math.floor(Number(rarity)))
+      .filter(Number.isFinite),
+  )].sort((a, b) => a - b);
 
-  let best = 1;
-  let current = 1;
-  for (let i = 1; i < rarities.length; i++) {
-    if (rarities[i] === rarities[i - 1] + 1) {
-      current++;
-      best = Math.max(best, current);
-    } else if (rarities[i] !== rarities[i - 1]) {
-      current = 1;
+  if (rarities.length === 0) return { start: 0, end: 0, length: 0 };
+
+  let bestStart = rarities[0];
+  let bestEnd = rarities[0];
+  let currentStart = rarities[0];
+
+  for (let i = 1; i <= rarities.length; i++) {
+    const previous = rarities[i - 1];
+    const current = rarities[i];
+    if (i < rarities.length && current === previous + 1) continue;
+
+    const currentEnd = previous;
+    const currentLength = currentEnd - currentStart + 1;
+    const bestLength = bestEnd - bestStart + 1;
+
+    if (
+      currentLength > bestLength ||
+      (currentLength === bestLength && currentEnd > bestEnd)
+    ) {
+      bestStart = currentStart;
+      bestEnd = currentEnd;
     }
+
+    currentStart = current;
   }
 
-  return best;
+  return {
+    start: bestStart,
+    end: bestEnd,
+    length: bestEnd - bestStart + 1,
+  };
+}
+
+export function highestCodexChain(collection: Record<string, number> | null | undefined): number {
+  return bestCodexChain(collection).length;
 }
 
 export function codexDevotionLuckPercent(skillLevel: number, chain: number): number {
