@@ -1655,7 +1655,7 @@ export function App() {
         guilds: prev.guilds.map(g => (g.id === res.guild.id ? res.guild : g)),
       }));
       sound.playChime(784, 'triangle', 0.25);
-      showToast(`Donated to Guild Treasury! (+${res.tokensEarned} Tokens, +${res.xpEarned} XP)`, 'success');
+      showToast(`Guild contribution added! (+${res.xpEarned} Guild XP)`, 'success');
       void refreshAll();
     } catch (e: any) {
       rollback?.();
