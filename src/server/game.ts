@@ -37,12 +37,14 @@ import {
   type PaymentReceipt,
   type GlobalBoosterId,
   type GlobalBoosterSnapshot,
+  type GuildComboState,
 
   GLOBAL_BOOSTERS,
   createInitialGlobalBoosters,
   decayGlobalBoosterState,
   activateGlobalBoosterStack,
   globalBoosterCritChanceBonus,
+  guildComboCritChanceBonus,
 
   PREMIUM_BOOSTERS,
   AUTOMATIONS,
@@ -65,9 +67,9 @@ import {
 import {
   contribute,
   recordLeaderboard,
-  addGuildTokens,
   applyGuildTax,
   getPlayerGuildPerks,
+  getPlayerGuildCombo,
   addCommunityRolls,
   getCommunityEvent,
 } from './social.js';
@@ -1326,8 +1328,11 @@ export async function loadRaw(): Promise<PlayerState> {
   const raw = await redis.get(playerKey);
   const username = context.username ?? `reddit-user-${userId.slice(-8)}`;
   await registerPlayer(userId, username);
-  const perks = await getPlayerGuildPerks(username, userId);
-  const globalBoosters = await getGlobalBoosters();
+  const [perks, guildCombo, globalBoosters] = await Promise.all([
+    getPlayerGuildPerks(username, userId),
+    getPlayerGuildCombo(username, userId),
+    getGlobalBoosters(),
+  ]);
 
 
   if (!raw) {
@@ -1335,6 +1340,7 @@ export async function loadRaw(): Promise<PlayerState> {
     s.username = username;
     s.saveGeneration = generation;
     s.guildPerks = perks;
+    s.guildCombo = guildCombo;
     s.globalBoosters = globalBoosters;
 
     return s;
@@ -1353,6 +1359,7 @@ export async function loadRaw(): Promise<PlayerState> {
     fresh.username = username;
     fresh.saveGeneration = generation;
     fresh.guildPerks = perks;
+    fresh.guildCombo = guildCombo;
 
     return fresh;
   }
@@ -1398,6 +1405,7 @@ export async function loadRaw(): Promise<PlayerState> {
     masterySkills: { ...base.masterySkills!, ...(parsed.masterySkills ?? {}) } as Record<MasterySkillId, number>,
     masteryPoints: parsed.masteryPoints ?? base.masteryPoints ?? 1,
     guildPerks: perks,
+    guildCombo,
     globalBoosters,
   };
 }
@@ -1424,7 +1432,7 @@ function applyQuestReward(s: PlayerState, quest: { rewardCoins: number; rewardSh
   return {
     rewardCoins: quest.rewardCoins,
     rewardShards,
-    rewardTokens: quest.rewardTokens ?? 0,
+    rewardTokens: 0,
   };
 }
 
@@ -1481,11 +1489,7 @@ async function processAutomation(s: PlayerState): Promise<void> {
       .filter(q => q.unlocked !== false && !q.claimed && q.progress >= q.target)
       .slice(0, 25);
     for (const q of quests) {
-      const result = applyQuestReward(s, q);
-      if (result.rewardTokens > 0) {
-        const username = context.username ?? ('reddit-user-' + currentUserId().slice(-8));
-        await addGuildTokens(username, result.rewardTokens);
-      }
+      applyQuestReward(s, q);
     }
   }
 
@@ -1933,7 +1937,8 @@ export async function applyRolls(
     (s.upgrades.critChance ?? 0) * 0.03 +
     (s.masterySkills?.critMastery ?? 0) * 0.03 +
     (s.guildPerks?.critRank ?? 0) * 0.015 +
-    globalBoosterCritChanceBonus(globalBoosters.crit);
+    globalBoosterCritChanceBonus(globalBoosters.crit) +
+    guildComboCritChanceBonus(s.guildCombo);
   const effectiveCritChance = Math.min(0.40, critChance);
 
   for (let i = 0; i < rollCount; i++) {
@@ -2880,11 +2885,6 @@ export async function claimQuest(type: 'daily' | 'weekly', id: string): Promise<
   if (quest.progress < quest.target) throw new Error('Quest requirement not met.');
 
   const reward = applyQuestReward(s, quest);
-
-  if (quest.rewardTokens && quest.rewardTokens > 0) {
-    const username = context.username ?? `reddit-user-${currentUserId().slice(-8)}`;
-    await addGuildTokens(username, quest.rewardTokens);
-  }
 
   await save(s);
   await appendPlayerSpyLog('quest-claim', {
