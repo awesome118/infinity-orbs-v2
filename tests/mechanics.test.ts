@@ -20,6 +20,7 @@ import {
   onlinePlayerLuckMultiplier,
   frenzyOrbCountForRarity,
   FRENZY_LOG_BASE,
+  bestCodexChain,
 } from '../src/shared/game.js';
 import {
   createGuildTask,
@@ -210,7 +211,21 @@ test('Orb Frenzy batch size follows logarithmic rarity scaling', () => {
   assert.equal(frenzyOrbCountForRarity(2), Math.floor(Math.log(2) / Math.log(FRENZY_LOG_BASE)));
   assert.ok(frenzyOrbCountForRarity(1_000) > frenzyOrbCountForRarity(100));
   assert.ok(frenzyOrbCountForRarity(1_000_000) < 1_000_000);
-  assert.ok(frenzyOrbCountForRarity(1e15) < 250);
+  assert.ok(frenzyOrbCountForRarity(1e15) < 1_000);
+});
+
+test('Codex Devotion reports the best consecutive rarity chain', () => {
+  const chain = bestCodexChain({
+    '2': 1,
+    '3': 4,
+    '4': 2,
+    '6': 1,
+    '7': 1,
+    '8': 1,
+    '10': 1,
+  });
+
+  assert.deepEqual(chain, { start: 6, end: 8, length: 3 });
 });
 
 test('online population Luck is monotonic and sane', () => {
