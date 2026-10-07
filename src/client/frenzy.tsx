@@ -92,19 +92,18 @@ function FrenzyPost() {
     setLoading(true);
     setError(null);
 
-    const claimRequest = fetch('/api/frenzy/claim', { method: 'POST' });
-
     try {
+      // Let the actual game entrypoint perform the claim. That keeps the Frenzy
+      // result, best orb, and reward summary inside the normal game UI.
       requestExpandedMode(event.nativeEvent, 'game');
       setOpenedGame(true);
-      void claimRequest.catch(() => null);
       return;
     } catch {
       // Some previews cannot expand. Finish the claim on this screen instead.
     }
 
     try {
-      const res = await claimRequest;
+      const res = await fetch('/api/frenzy/claim', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not claim Frenzy.');
       setClaimed(true);
