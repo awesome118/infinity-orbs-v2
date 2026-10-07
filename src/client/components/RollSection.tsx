@@ -567,7 +567,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
                 <span>Pity Luck</span>
               </div>
               <span className="font-mono text-cyan-300 font-bold">
-                +{((state.prestigeUpgrades?.resonanceMeter ?? 1) * Math.min(50, Math.floor((state.rollsSinceBest ?? 0) / Math.max(6, 18 - (state.masterySkills?.pityAccelerant ?? 0) * 2))))}% Pity Luck
+                +{((state.prestigeUpgrades?.resonanceMeter ?? 1) * Math.floor((state.rollsSinceBest ?? 0) / Math.max(6, 18 - (state.masterySkills?.pityAccelerant ?? 0) * 2)))}% Pity Luck
               </span>
             </div>
             <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
