@@ -525,44 +525,6 @@ export async function applyGuildTax(coinsEarned: number): Promise<{ taxedCoins: 
   });
 }
 
-export async function donateToGuild(coins: number, shards: number) {
-  return updateGuilds(guilds => {
-    const guild = currentGuild(guilds);
-    if (!guild) throw new Error('You are not in a guild.');
-    const member = guild.members.find(m => memberMatches(m));
-    if (!member) throw new Error('Guild member not found.');
-
-    const safeCoins = Math.max(0, Math.floor(coins || 0));
-    const safeShards = Math.max(0, Math.floor(shards || 0));
-    const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * 0.10;
-
-    const tokenGain = 0;
-    const xpGain = Math.max(0, Math.floor((Math.floor(safeCoins / 50) + safeShards * 25) * xpMultiplier));
-    if (tokenGain <= 0 && xpGain <= 0) {
-      throw new Error('Donation must be at least 500 Coins or 1 Shard.');
-    }
-
-    member.contribution += safeCoins + (safeShards * 1000);
-    guild.xp += xpGain;
-    guild.level = 1 + Math.floor(guild.xp / 500);
-
-    if (!guild.chat) guild.chat = [];
-    const parts: string[] = [];
-    if (safeCoins > 0) parts.push(`${safeCoins.toLocaleString()} Coins`);
-    if (safeShards > 0) parts.push(`${safeShards} Shards`);
-
-    guild.chat.push({
-      id: `msg-${Date.now()}-donate`,
-      username: 'System',
-      text: `${username()} donated ${parts.join(' and ')} (+${xpGain} Guild XP).`,
-      timestamp: Date.now(),
-      isSystem: true,
-    });
-    if (guild.chat.length > 50) guild.chat.shift();
-
-    return { guild, tokensEarned: 0, xpEarned: xpGain };
-  });
-}
 
 export async function createGuild(name: string, tag: string) {
   const cleanName = name.trim().slice(0, 32);
