@@ -147,7 +147,7 @@ function FrenzyPost() {
   }
 
   const orb = getOrbInfo(info.rarity);
-  const canClaim = info.canClaim && !claimed && !openedGame;
+  const canClaim = info.canClaim && !openedGame;
 
   return (
     <main className="io-public">
@@ -173,6 +173,19 @@ function FrenzyPost() {
             </p>
 
             <AnimatedRarity rarity={info.rarity} color={orb.color} />
+
+            <div
+              className="io-frenzy-orb-ball"
+              aria-label={orb.name + ' ball'}
+              style={{
+                background: orb.bgGradient,
+                borderColor: orb.color + '88',
+                boxShadow: '0 0 28px ' + orb.color + '44, inset -12px -14px 22px rgba(0,0,0,.28), inset 10px 10px 18px rgba(255,255,255,.2)',
+              }}
+            >
+              <div className="io-frenzy-orb-highlight" />
+              <div className="io-frenzy-orb-core" style={{ background: orb.color }} />
+            </div>
 
             <p className="io-frenzy-ball-label">ball in their Frenzy</p>
             <p className="io-frenzy-instruction">
@@ -204,10 +217,10 @@ function FrenzyPost() {
               <ArrowRight className="w-4 h-4" />
               {loading
                 ? 'Opening Game…'
-                : claimed
-                  ? 'Already Claimed Today'
-                  : info.selfClaimTest
-                    ? 'Claim Your Frenzy · Test'
+                : info.selfClaimTest
+                  ? 'Claim Your Frenzy · Test'
+                  : claimed
+                    ? 'Already Claimed Today'
                     : info.isOwner
                       ? 'Your Frenzy'
                       : 'Claim Frenzy · Open Game'}
@@ -219,9 +232,6 @@ function FrenzyPost() {
           <div className="io-public-note">
             <div><Users className="w-3.5 h-3.5" /> One Frenzy claim per player, per day.</div>
             <div><Flame className="w-3.5 h-3.5" /> Your Multi Roll multiplies the Frenzy size when you claim it.</div>
-            <div><Flame className="w-3.5 h-3.5" /> When someone claims this Frenzy, u/{info.ownerUsername} gets +5 Shards.</div>
-            <div><Flame className="w-3.5 h-3.5" /> That +5 Shard reward bypasses the 50 Shard daily cap.</div>
-            {info.selfClaimTest && <div><Users className="w-3.5 h-3.5" /> Self-claim is enabled for admin testing.</div>}
           </div>
         </section>
       </div>
