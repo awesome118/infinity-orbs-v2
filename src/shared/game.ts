@@ -222,6 +222,127 @@ export interface GlobalBoosterState {
 
 export type GlobalBoosterSnapshot = Record<GlobalBoosterId, GlobalBoosterState>;
 
+export interface GuildComboState {
+  tier: number;
+  activationProgress: number;
+  endsAt: number;
+  lastTickAt?: number;
+}
+
+export const GUILD_COMBO_BASE_DURATION_MS = 20 * 60 * 1000;
+export const GUILD_COMBO_ACTIVATIONS_PER_TIER = 4;
+export const GUILD_COMBO_MAX_TIER = 10;
+export const GUILD_COMBO_DURATION_DECAY_PER_TIER = 0.85;
+export const GUILD_COMBO_TIMER_ACCELERATION_PER_TIER = 0.25;
+
+export function createInitialGuildCombo(now = Date.now()): GuildComboState {
+  return { tier: 0, activationProgress: 0, endsAt: 0, lastTickAt: now };
+}
+
+export function decayGuildComboState(
+  state: GuildComboState | null | undefined,
+  now = Date.now(),
+): GuildComboState {
+  const tier = Math.max(0, Math.min(GUILD_COMBO_MAX_TIER, Math.floor(Number(state?.tier ?? 0) || 0)));
+  const activationProgress = Math.max(
+    0,
+    Math.min(
+      GUILD_COMBO_ACTIVATIONS_PER_TIER - 1,
+      Math.floor(Number(state?.activationProgress ?? 0) || 0),
+    ),
+  );
+  let endsAt = Math.max(0, Math.floor(Number(state?.endsAt ?? 0) || 0));
+  const previousTickAt = Math.max(0, Math.floor(Number(state?.lastTickAt ?? now) || now));
+  const elapsed = Math.max(0, now - previousTickAt);
+
+  if (tier > 0 && endsAt > 0 && elapsed > 0) {
+    endsAt -= Math.round(elapsed * tier * GUILD_COMBO_TIMER_ACCELERATION_PER_TIER);
+  }
+
+  if (tier <= 0 || endsAt <= now) {
+    return { tier: 0, activationProgress: 0, endsAt: 0, lastTickAt: now };
+  }
+
+  return { tier, activationProgress, endsAt, lastTickAt: now };
+}
+
+export function guildComboDurationMs(tier: number, durationMultiplier = 1): number {
+  const safeTier = Math.max(1, Math.min(GUILD_COMBO_MAX_TIER, Math.floor(Number(tier) || 1)));
+  return Math.max(
+    60_000,
+    Math.round(
+      GUILD_COMBO_BASE_DURATION_MS *
+      Math.pow(GUILD_COMBO_DURATION_DECAY_PER_TIER, safeTier - 1) *
+      Math.max(0.5, Number(durationMultiplier) || 1),
+    ),
+  );
+}
+
+export function activateGuildComboStack(
+  state: GuildComboState | null | undefined,
+  now = Date.now(),
+  maxTier = GUILD_COMBO_MAX_TIER,
+  durationMultiplier = 1,
+): GuildComboState {
+  const current = decayGuildComboState(state, now);
+  const safeMaxTier = Math.max(1, Math.min(GUILD_COMBO_MAX_TIER, Math.floor(maxTier)));
+  let tier = Math.min(Math.max(0, current.tier), safeMaxTier);
+  let activationProgress = current.activationProgress + 1;
+
+  if (tier <= 0) tier = 1;
+
+  if (activationProgress >= GUILD_COMBO_ACTIVATIONS_PER_TIER) {
+    if (tier < safeMaxTier) {
+      tier += 1;
+      activationProgress = 0;
+    } else {
+      activationProgress = 0;
+    }
+  }
+
+  const endsAt = Math.max(now, current.endsAt) + guildComboDurationMs(tier, durationMultiplier);
+  return { tier, activationProgress, endsAt, lastTickAt: now };
+}
+
+export function guildComboRemainingMs(state: GuildComboState | null | undefined, now = Date.now()): number {
+  return Math.max(0, decayGuildComboState(state, now).endsAt - now);
+}
+
+export function guildComboProgress(state: GuildComboState | null | undefined, now = Date.now()): number {
+  const current = decayGuildComboState(state, now);
+  return Math.round(
+    Math.min(1, Math.max(0, current.activationProgress) / GUILD_COMBO_ACTIVATIONS_PER_TIER) * 100,
+  );
+}
+
+export function guildComboTimeProgress(state: GuildComboState | null | undefined, now = Date.now()): number {
+  const remaining = guildComboRemainingMs(state, now);
+  if (remaining <= 0) return 0;
+  return Math.round(Math.min(1, remaining / GUILD_COMBO_BASE_DURATION_MS) * 10000) / 100;
+}
+
+export function guildComboLuckMultiplier(state: GuildComboState | null | undefined, now = Date.now()): number {
+  const current = decayGuildComboState(state, now);
+  return current.tier > 0 && current.endsAt > now ? 1 + 0.05 * current.tier : 1;
+}
+
+export function guildComboSpeedMultiplier(state: GuildComboState | null | undefined, now = Date.now()): number {
+  const current = decayGuildComboState(state, now);
+  return current.tier > 0 && current.endsAt > now
+    ? Math.max(0.60, 1 - 0.025 * current.tier)
+    : 1;
+}
+
+export function guildComboCritChanceBonus(state: GuildComboState | null | undefined, now = Date.now()): number {
+  const current = decayGuildComboState(state, now);
+  return current.tier > 0 && current.endsAt > now ? 0.01 * current.tier : 0;
+}
+
+export function guildComboCritLuckBonus(state: GuildComboState | null | undefined, now = Date.now()): number {
+  const current = decayGuildComboState(state, now);
+  return current.tier > 0 && current.endsAt > now ? 0.05 * current.tier : 0;
+}
+
 export const GLOBAL_BOOSTER_DURATION_MS = 30 * 60 * 1000;
 export const GLOBAL_BOOSTER_BAR_DURATION_MS = 2 * 60 * 60 * 1000;
 export const GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER = 4;
@@ -607,6 +728,7 @@ export interface PlayerState {
   purchasedShards?: number;
   globalBoosterCredits?: number;
   globalBoosters?: GlobalBoosterSnapshot;
+  guildCombo?: GuildComboState;
 
   // Lifetime count of completed single-orb online activations used by
   // Singularity Tithe. Multi-roll, auto-roll batches, and offline batches do not add to it.
@@ -1296,6 +1418,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     purchasedShards: 0,
     globalBoosterCredits: 0,
     globalBoosters: createInitialGlobalBoosters(now),
+    guildCombo: createInitialGuildCombo(now),
 
     lastFrenzyDate: '',
     lastFrenzyClaimDate: '',
@@ -1495,7 +1618,8 @@ export function critMultiplier(s: PlayerState): number {
   return 2.0 +
     (s.upgrades.critPower ?? 0) * 0.25 +
     masteryCritPower +
-    globalBoosterCritLuckBonus(s.globalBoosters?.crit);
+    globalBoosterCritLuckBonus(s.globalBoosters?.crit) +
+    guildComboCritLuckBonus(s.guildCombo);
 }
 
 export function cooldownMs(s: PlayerState, isAuto = false): number {
@@ -1546,7 +1670,9 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
   if (s.globalBoosters?.speed) {
     cd = Math.max(300, Math.round(cd * globalBoosterSpeedMultiplier(s.globalBoosters.speed)));
   }
-  return Math.round(cd);
+  if (s.guildCombo) {
+    cd = Math.max(300, Math.round(cd * guildComboSpeedMultiplier(s.guildCombo)));
+  }  return Math.round(cd);
 }
 
 // Multi roll upgrade is strictly LINEAR (+1 ball per level), plus multiple sources of +1 ball!
@@ -1682,6 +1808,7 @@ export function luckMultiplier(s: PlayerState): number {
   // 7. Temporary Luck boosters remain additive to the base pool.
   if (isPremiumBoosterActive(s, 'fortune')) additiveBonus += 3.0; // 4× becomes +300%.
   additiveBonus += Math.max(0, globalBoosterLuckMultiplier(s.globalBoosters?.luck) - 1);
+  additiveBonus += Math.max(0, guildComboLuckMultiplier(s.guildCombo) - 1);
 
   additiveBonus += (s.prestigeUpgrades?.astralReserve ?? 0) * 0.02;
 
@@ -1755,7 +1882,8 @@ export function predictRollActivation(
     (s.upgrades.critChance ?? 0) * 0.03 +
     (s.masterySkills?.critMastery ?? 0) * 0.03 +
     (s.guildPerks?.critRank ?? 0) * 0.015 +
-    globalBoosterCritChanceBonus(s.globalBoosters?.crit),
+    globalBoosterCritChanceBonus(s.globalBoosters?.crit) +
+    guildComboCritChanceBonus(s.guildCombo),
   );
 
   const rarities: number[] = [];
