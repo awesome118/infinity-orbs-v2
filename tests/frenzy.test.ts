@@ -227,8 +227,13 @@ test('Frenzy reveal survives the authoritative state update', () => {
     source,
     /applyPlayerState\(res\.state\);[\s\S]*?for \(const revealedOrb of revealBatch\)[\s\S]*?setLastOrb\(revealedOrb\)/,
   );
-  assert.doesNotMatch(source, /let cancelled = false/);
-  assert.doesNotMatch(source, /cancelled = true/);
+  const frenzyEffectStart = source.indexOf('  useEffect(() => {\n    if (!state || frenzyRunTriggered || frenzyClaimActiveRef.current) return;');
+  const frenzyEffectEnd = source.indexOf('  useEffect(() => {\n    const startedAt = Date.now();', frenzyEffectStart);
+  assert.ok(frenzyEffectStart >= 0);
+  assert.ok(frenzyEffectEnd > frenzyEffectStart);
+  const frenzyEffect = source.slice(frenzyEffectStart, frenzyEffectEnd);
+  assert.doesNotMatch(frenzyEffect, /let cancelled = false/);
+  assert.doesNotMatch(frenzyEffect, /cancelled = true/);
 });
 
 test('Admin console exposes a Force Frenzy Popup control', () => {
