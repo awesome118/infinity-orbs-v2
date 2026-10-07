@@ -1,5 +1,4 @@
 name: Deploy Devvit
-# Fresh deployment trigger
 
 on:
   push:
@@ -40,22 +39,11 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Verify Devvit authentication
-        env:
-          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_AUTH_TOKEN || secrets.DEVVIT_TOKEN }}
-        run: |
-          set -euo pipefail
-          test -n "$DEVVIT_AUTH_TOKEN" || { echo "Set DEVVIT_AUTH_TOKEN in GitHub Actions secrets to the full contents of ~/.devvit/token."; exit 1; }
-          npx devvit whoami
-
       - name: Upload to Devvit
         env:
           CI: true
-          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_AUTH_TOKEN || secrets.DEVVIT_TOKEN }}
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
         timeout-minutes: 10
-        run: timeout --signal=TERM --kill-after=30s 9m npx devvit upload
-
-
       - name: Install current build to r/infinity_orbs_dev
         run: |
           set -euo pipefail
