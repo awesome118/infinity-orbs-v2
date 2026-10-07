@@ -37,6 +37,7 @@ const username = () => context.username ?? `reddit-user-${user().slice(-8)}`;
 const key = (name: string) => `io:${name}`;
 const GUILDS_KEY = key('guilds');
 const GUILD_CHAT_MUTES_KEY = key('guild-chat-mutes:v1');
+const GUILD_TOKEN_RESET_KEY = key('guild-token-reset:v1');
 
 function parseStoredJson<T>(raw: unknown): T | null {
   if (raw == null) return null;
@@ -246,7 +247,21 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
 
 async function loadGuilds(): Promise<Guild[]> {
   const raw = await redis.get(GUILDS_KEY);
-  return parseGuildList(raw);
+  const guilds = parseGuildList(raw);
+
+  // One-time economy migration: clear all existing Guild Token treasury balances.
+  // The migration key prevents future loads from deleting newly earned task tokens.
+  const resetDone = await redis.get(GUILD_TOKEN_RESET_KEY);
+  if (!resetDone && guilds.length > 0) {
+    await updateGuilds(current => {
+      for (const guild of current) guild.tokens = 0;
+      return current;
+    });
+    await redis.set(GUILD_TOKEN_RESET_KEY, '1');
+    return parseGuildList(await redis.get(GUILDS_KEY));
+  }
+
+  return guilds;
 }
 
 export interface GuildChatSpyGuild {
