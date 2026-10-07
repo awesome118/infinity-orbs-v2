@@ -1521,7 +1521,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             if (!button) throw new Error('Instant Reveal control did not unlock after prestige state was applied.');
             button.click();
             await new Promise(resolve => setTimeout(resolve, 25));
-            if (!button.textContent?.includes('INSTANT')) throw new Error('Instant Reveal control did not toggle to INSTANT.');
+            const updatedButton = Array.from(document.querySelectorAll('button'))
+              .find(el => (el as HTMLButtonElement).title === 'Skip roll animations for instant reveals') as HTMLButtonElement | undefined;
+            if (!updatedButton?.textContent?.includes('INSTANT')) throw new Error('Instant Reveal control did not toggle to INSTANT.');
             try { localStorage.setItem('orbs_instant_reveal', 'false'); } catch {}
             return { text: button.textContent.trim() };
           },
