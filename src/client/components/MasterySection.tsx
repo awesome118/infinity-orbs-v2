@@ -13,7 +13,7 @@ import {
   Award,
 } from 'lucide-react';
 import type { PlayerState, MasterySkillId } from '../../shared/game.js';
-import { formatNumber, MASTERY_SKILLS, masterySkillCost, highestCodexChain, codexDevotionLuckPercent } from '../../shared/game.js';
+import { formatNumber, MASTERY_SKILLS, masterySkillCost, bestCodexChain, codexDevotionLuckPercent } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface MasterySectionProps {
@@ -187,9 +187,9 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
           {filteredSkills.map(([skillId, skill]) => {
             const currentLevel = state.masterySkills?.[skillId] ?? 0;
             const isCodexDevotion = skillId === 'celestialSurge';
-            const codexChain = isCodexDevotion ? highestCodexChain(state.collection) : 0;
+            const codexChain = isCodexDevotion ? bestCodexChain(state.collection) : { start: 0, end: 0, length: 0 };
             const codexLuckPercent = isCodexDevotion
-              ? codexDevotionLuckPercent(currentLevel, codexChain)
+              ? codexDevotionLuckPercent(currentLevel, codexChain.length)
               : 0;
             const isMax = currentLevel >= skill.maxLevel;
             const cost = masterySkillCost(skillId, currentLevel);
@@ -242,13 +242,13 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
                           Longest Codex Chain
                         </span>
                         <span className="text-sm font-black font-mono text-white">
-                          {codexChain}
+                          {codexChain.length}
                         </span>
                       </div>
                       <div className="mt-1 flex items-center justify-between gap-3">
                         <span className="text-[10px] text-slate-500">
-                          {codexChain > 0
-                            ? `+${(codexChain * 0.3).toFixed(1)}% per level`
+                          {codexChain.length > 0
+                            ? `1/${formatNumber(codexChain.start)} → 1/${formatNumber(codexChain.end)}`
                             : 'Collect consecutive rarities to build a chain'}
                         </span>
                         <span className="text-base font-black text-emerald-300">
