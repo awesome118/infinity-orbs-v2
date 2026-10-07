@@ -235,6 +235,18 @@ export const GUILD_COMBO_MAX_TIER = 10;
 export const GUILD_COMBO_DURATION_DECAY_PER_TIER = 0.85;
 export const GUILD_COMBO_TIMER_ACCELERATION_PER_TIER = 0.25;
 
+
+export const FRENZY_LOG_BASE = 1.2;
+export const FRENZY_MIN_ORBS = 1;
+
+export function frenzyOrbCountForRarity(rarity: number): number {
+  const safeRarity = Math.max(1, Number(rarity) || 1);
+  return Math.max(
+    FRENZY_MIN_ORBS,
+    Math.floor(Math.log(safeRarity) / Math.log(FRENZY_LOG_BASE)),
+  );
+}
+
 export function createInitialGuildCombo(now = Date.now()): GuildComboState {
   return { tier: 0, activationProgress: 0, endsAt: 0, lastTickAt: now };
 }
