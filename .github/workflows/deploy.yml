@@ -44,34 +44,24 @@ jobs:
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
         run: |
           set -euo pipefail
+          test -n "$DEVVIT_AUTH_TOKEN" || { echo "DEVVIT_TOKEN secret is missing."; exit 1; }
           node <<'NODE'
           const raw = process.env.DEVVIT_AUTH_TOKEN ?? '';
-          console.log('DEVVIT_AUTH_TOKEN present:', raw.length > 0);
-          console.log('Length:', raw.length);
           try {
             const parsed = JSON.parse(raw);
-            const keys = Object.keys(parsed).sort();
-            console.log('JSON object:', true);
-            console.log('Keys:', keys.join(', '));
-            console.log('Contains token field:', typeof parsed.token === 'string' && parsed.token.length > 0);
-            console.log('Contains refresh token field:', typeof parsed.refreshToken === 'string' && parsed.refreshToken.length > 0);
+            if (!parsed || typeof parsed !== 'object' || typeof parsed.token !== 'string') {
+              throw new Error('missing token field');
+            }
+            console.log('Devvit auth secret has the expected JSON token format.');
           } catch {
-            console.log('JSON object:', false);
+            console.error('DEVVIT_TOKEN must contain the full JSON contents of ~/.devvit/token.');
+            process.exit(1);
           }
           NODE
 
-      - name: Configure Devvit authentication
-        env:
-          DEVVIT_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
-          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$HOME/.devvit"
-          printf '%s' "$DEVVIT_TOKEN" > "$HOME/.devvit/token"
-          printf '%s' "$DEVVIT_SESSION_ID" > "$HOME/.devvit/session-id"
-          chmod 600 "$HOME/.devvit/token" "$HOME/.devvit/session-id"
-
       - name: Verify Devvit authentication
+        env:
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
         run: |
           set -euo pipefail
           npx devvit whoami
@@ -79,6 +69,7 @@ jobs:
       - name: Upload to Devvit
         env:
           CI: true
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
         timeout-minutes: 10
         run: timeout --signal=TERM --kill-after=30s 9m npx devvit upload
 
