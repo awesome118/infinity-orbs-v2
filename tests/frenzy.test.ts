@@ -215,3 +215,25 @@ test('daily Frenzy popup closes when it arms the next manual roll', () => {
   assert.match(source, /Charge My Frenzy/);
   assert.match(source, /Your next manual Roll creates the post/);
 });
+
+
+test('Frenzy reveal survives the authoritative state update', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
+  assert.match(source, /frenzyClaimActiveRef/);
+  assert.match(source, /componentMountedRef/);
+  assert.match(source, /for \(const revealedOrb of revealBatch\)/);
+  assert.match(source, /setLastOrb\(revealedOrb\)/);
+  assert.doesNotMatch(
+    source,
+    /if \(cancelled\) return;[\s\S]*?setLastOrb\(revealedOrb\)/,
+  );
+  assert.doesNotMatch(source, /return \(\) => \{\s*cancelled = true;\s*\};/);
+});
+
+test('Admin console exposes a Force Frenzy Popup control', () => {
+  const admin = readFileSync(resolve(process.cwd(), 'src/client/components/DevDebugModal.tsx'), 'utf8');
+  const main = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
+  assert.match(admin, /onForceFrenzyPopup/);
+  assert.match(admin, /Force Frenzy Popup/);
+  assert.match(main, /onForceFrenzyPopup=\{\(\) => \{[\s\S]*?setShowFrenzyPrompt\(true\)/);
+});
