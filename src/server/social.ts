@@ -38,6 +38,7 @@ const key = (name: string) => `io:${name}`;
 const GUILDS_KEY = key('guilds');
 const GUILD_CHAT_MUTES_KEY = key('guild-chat-mutes:v1');
 const GUILD_TOKEN_RESET_KEY = key('guild-token-reset:v1');
+const GUILD_UPGRADE_RESET_KEY = key('guild-upgrade-reset:v1');
 
 function parseStoredJson<T>(raw: unknown): T | null {
   if (raw == null) return null;
@@ -249,6 +250,32 @@ async function loadGuilds(): Promise<Guild[]> {
   const raw = await redis.get(GUILDS_KEY);
   const guilds = parseGuildList(raw);
 
+  // One-time update migration: reset every Guild Upgrade rank to its base value.
+  // The migration key ensures newly purchased upgrades are never wiped on later reads.
+  const upgradeResetDone = await redis.get(GUILD_UPGRADE_RESET_KEY);
+  if (!upgradeResetDone && guilds.length > 0) {
+    await updateGuilds(current => {
+      for (const guild of current) {
+        guild.perks = {
+          luckRank: 0,
+          speedRank: 0,
+          vaultRank: 0,
+          shardRank: 0,
+          critRank: 0,
+          coinRank: 0,
+          memberCapacityRank: 0,
+          tokenYieldRank: 0,
+          taskBountyRank: 0,
+          comboRank: 0,
+          guildXpRank: 0,
+        };
+      }
+      return current;
+    });
+    await redis.set(GUILD_UPGRADE_RESET_KEY, '1');
+    return parseGuildList(await redis.get(GUILDS_KEY));
+  }
+
   // One-time economy migration: clear all existing Guild Token treasury balances.
   // The migration key prevents future loads from deleting newly earned task tokens.
   const resetDone = await redis.get(GUILD_TOKEN_RESET_KEY);
@@ -328,6 +355,10 @@ export async function muteGuildChatUser(
   await redis.hSet(GUILD_CHAT_MUTES_KEY, {
     [record.userId]: JSON.stringify(record),
   });
+
+  // A mute is a full chat moderation action: block future messages and remove
+  // all retained historical messages from both Guild Chat and Global Chat.
+  await purgeChatMessagesForUser(record.userId, record.username);
   return record;
 }
 
@@ -998,6 +1029,42 @@ const GLOBAL_CHAT_KEY = key('global-chat:v1');
 const GLOBAL_CHAT_MAX_MESSAGES = 100;
 const CHAT_REPORTS_KEY = key('chat-reports:v1');
 
+async function purgeChatMessagesForUser(userId: string, targetUsername: string): Promise<void> {
+  const cleanUsername = String(targetUsername).trim().replace(/^u\//i, '').toLowerCase();
+
+  await updateGuilds(guilds => {
+    for (const guild of guilds) {
+      guild.chat = (guild.chat ?? []).filter(message => {
+        const messageUserId = String(message.userId ?? '').trim();
+        const messageUsername = String(message.username ?? '').trim().replace(/^u\//i, '').toLowerCase();
+        return messageUserId !== userId && messageUsername !== cleanUsername;
+      });
+    }
+  });
+
+  await ensureRedisStringKey(GLOBAL_CHAT_KEY, '[]');
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const txn = await redis.watch(GLOBAL_CHAT_KEY);
+    const raw = await redis.get(GLOBAL_CHAT_KEY);
+    const parsed = parseStoredJson<unknown>(raw);
+    const messages = Array.isArray(parsed)
+      ? parsed.filter(item => item && typeof item === 'object') as GlobalChatMessage[]
+      : [];
+    const retained = messages.filter(message => {
+      const messageUserId = String(message.userId ?? '').trim();
+      const messageUsername = String(message.username ?? '').trim().replace(/^u\//i, '').toLowerCase();
+      return messageUserId !== userId && messageUsername !== cleanUsername;
+    });
+
+    await txn.multi();
+    await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(retained.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
+    const committed = await txn.exec();
+    if (committed !== null) return;
+  }
+
+  throw new Error('Chat changed while applying the mute. Please retry.');
+}
+
 export interface ChatReportRecord {
   reportId: string;
   scope: 'Global Chat' | 'Guild Chat';
@@ -1100,6 +1167,22 @@ export async function getGlobalChat(): Promise<GlobalChatMessage[]> {
   const raw = await redis.get(GLOBAL_CHAT_KEY);
   const parsed = parseStoredJson<unknown>(raw);
   if (!Array.isArray(parsed)) return [];
+
+  // Also filter against the mute registry so a concurrent write can never make
+  // a muted user's message visible again after the purge.
+  const mutedIds = new Set<string>();
+  const mutedNames = new Set<string>();
+  const rawMutes = await redis.hGetAll(GUILD_CHAT_MUTES_KEY);
+  if (rawMutes && typeof rawMutes === 'object') {
+    for (const [userId, stored] of Object.entries(rawMutes as Record<string, string>)) {
+      if (!stored) continue;
+      const mute = parseStoredJson<import('../shared/social.js').GuildChatMuteRecord>(stored);
+      if (!mute) continue;
+      mutedIds.add(String(mute.userId || userId));
+      mutedNames.add(String(mute.username || '').replace(/^u\//i, '').toLowerCase());
+    }
+  }
+
   return parsed
     .filter(item => item && typeof item === 'object')
     .map(item => {
@@ -1112,7 +1195,12 @@ export async function getGlobalChat(): Promise<GlobalChatMessage[]> {
         userId: message.userId ? String(message.userId) : undefined,
       };
     })
-    .filter(message => message.id && message.text)
+    .filter(message => {
+      if (!message.id || !message.text) return false;
+      const messageUserId = String(message.userId ?? '').trim();
+      const messageUsername = message.username.replace(/^u\//i, '').trim().toLowerCase();
+      return !mutedIds.has(messageUserId) && !mutedNames.has(messageUsername);
+    })
     .sort((a, b) => a.timestamp - b.timestamp)
     .slice(-GLOBAL_CHAT_MAX_MESSAGES);
 }
@@ -1128,6 +1216,9 @@ export async function reportGlobalChatMessage(messageId: string): Promise<{ succ
 export async function postGlobalChatMessage(text: string): Promise<GlobalChatMessage> {
   const messageText = String(text ?? '').trim();
   if (!messageText) throw new Error('Message cannot be empty.');
+  if (await isGuildChatMuted()) {
+    throw new Error('You are muted from Chat.');
+  }
   if (messageText.length > 200) throw new Error('Messages must be 200 characters or fewer.');
 
   const timestamp = Date.now();
