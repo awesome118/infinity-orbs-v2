@@ -343,27 +343,16 @@ export async function getPlayerGuildPerks(uname: string, uid?: string) {
     coinRank: 0,
     memberCapacityRank: 0,
     tokenYieldRank: 0,
+    taskBountyRank: 0,
+    comboRank: 0,
     guildXpRank: 0,
   };
 }
 
-export async function addGuildTokens(uname: string, amount: number) {
-  if (amount <= 0) return;
-  await updateGuilds(guilds => {
-    const guild = guilds.find(g => g.members.some(m => m.username === uname));
-    if (!guild) return;
-    const tokenMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05;
-    guild.tokens = (guild.tokens ?? 0) + Math.max(1, Math.floor(amount * tokenMultiplier));
-    if (!guild.chat) guild.chat = [];
-    guild.chat.push({
-      id: `msg-${Date.now()}`,
-      username: 'System',
-      text: `${uname} contributed +${amount} Guild Tokens from quest.`,
-      timestamp: Date.now(),
-      isSystem: true,
-    });
-    if (guild.chat.length > 50) guild.chat.shift();
-  });
+export async function getPlayerGuildCombo(uname: string, uid?: string): Promise<GuildComboState> {
+  const guilds = await loadGuilds();
+  const mine = guilds.find(g => g.members.some(m => (uid && m.userId === uid) || m.username === uname));
+  return decayGuildComboState(mine?.combo);
 }
 
 export async function buyGuildPerk(perk: GuildPerkId) {
@@ -377,10 +366,16 @@ export async function buyGuildPerk(perk: GuildPerkId) {
 
     if (!guild.perks) guild.perks = {
       luckRank: 0, speedRank: 0, vaultRank: 0, shardRank: 0,
-      critRank: 0, coinRank: 0, memberCapacityRank: 0, tokenYieldRank: 0, guildXpRank: 0,
+      critRank: 0, coinRank: 0, memberCapacityRank: 0, tokenYieldRank: 0,
+      taskBountyRank: 0, comboRank: 0, guildXpRank: 0,
     };
 
-    const current = Math.max(0, Math.floor(guild.perks[perk] ?? 0));
+    if (perk === 'tokenYieldRank') perk = 'taskBountyRank';
+    const current = Math.max(0, Math.floor(
+      perk === 'taskBountyRank'
+        ? (guild.perks.taskBountyRank ?? guild.perks.tokenYieldRank ?? 0)
+        : (guild.perks[perk] ?? 0),
+    ));
     const max = guildPerkMax(perk);
     if (current >= max) throw new Error(`Perk is already max level (${max}).`);
 
@@ -391,6 +386,7 @@ export async function buyGuildPerk(perk: GuildPerkId) {
 
     guild.tokens -= cost;
     guild.perks[perk] = current + 1;
+    if (perk === 'taskBountyRank') guild.perks.tokenYieldRank = current + 1;
 
     const perkNames: Record<GuildPerkId, string> = {
       luckRank: 'Luck Aura',
@@ -400,7 +396,9 @@ export async function buyGuildPerk(perk: GuildPerkId) {
       critRank: 'Critical Alignment',
       coinRank: 'Prosperity Sigil',
       memberCapacityRank: 'Member Capacity',
-      tokenYieldRank: 'Token Yield',
+      tokenYieldRank: 'Task Bounty',
+      taskBountyRank: 'Task Bounty',
+      comboRank: 'Combo Reserve',
       guildXpRank: 'Guild Growth',
     };
 
@@ -460,22 +458,23 @@ export async function setGuildTaxRate(rate: number) {
   });
 }
 
-export async function applyGuildTax(coinsEarned: number): Promise<{ taxedCoins: number; tokensEarned: number }> {
+export async function applyGuildTax(coinsEarned: number): Promise<{ taxedCoins: number; tokensEarned: number; xpEarned: number }> {
   const safeCoins = Math.max(0, Math.floor(coinsEarned || 0));
-  if (safeCoins < 100) return { taxedCoins: 0, tokensEarned: 0 };
+  if (safeCoins < 100) return { taxedCoins: 0, tokensEarned: 0, xpEarned: 0 };
 
   return updateGuilds(guilds => {
     const guild = currentGuild(guilds);
-    if (!guild) return { taxedCoins: 0, tokensEarned: 0 };
+    if (!guild) return { taxedCoins: 0, tokensEarned: 0, xpEarned: 0 };
 
     const rate = Math.max(0, Math.min(10, Math.floor(Number(guild.taxRate ?? 0) || 0)));
     const taxedCoins = Math.min(safeCoins, Math.floor(safeCoins * rate / 100));
-    if (taxedCoins <= 0) return { taxedCoins: 0, tokensEarned: 0 };
+    if (taxedCoins <= 0) return { taxedCoins, tokensEarned: 0, xpEarned: 0 };
 
-    const tokenMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05;
-    const tokensEarned = Math.max(1, Math.floor((taxedCoins / 100) * tokenMultiplier));
-    guild.tokens = (guild.tokens ?? 0) + tokensEarned;
-    return { taxedCoins, tokensEarned };
+    const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * 0.10;
+    const xpEarned = Math.max(1, Math.floor((taxedCoins / 100) * xpMultiplier));
+    guild.xp += xpEarned;
+    guild.level = 1 + Math.floor(guild.xp / 500);
+    return { taxedCoins, tokensEarned: 0, xpEarned };
   });
 }
 
@@ -488,10 +487,9 @@ export async function donateToGuild(coins: number, shards: number) {
 
     const safeCoins = Math.max(0, Math.floor(coins || 0));
     const safeShards = Math.max(0, Math.floor(shards || 0));
-    const tokenMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05;
     const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * 0.10;
 
-    const tokenGain = Math.floor((Math.floor(safeCoins / 500) * 5 + safeShards * 5) * tokenMultiplier);
+    const tokenGain = 0;
     const xpGain = Math.max(0, Math.floor((Math.floor(safeCoins / 50) + safeShards * 25) * xpMultiplier));
     if (tokenGain <= 0 && xpGain <= 0) {
       throw new Error('Donation must be at least 500 Coins or 1 Shard.');
@@ -500,7 +498,6 @@ export async function donateToGuild(coins: number, shards: number) {
     member.contribution += safeCoins + (safeShards * 1000);
     guild.xp += xpGain;
     guild.level = 1 + Math.floor(guild.xp / 500);
-    guild.tokens = (guild.tokens ?? 0) + tokenGain;
 
     if (!guild.chat) guild.chat = [];
     const parts: string[] = [];
@@ -510,13 +507,13 @@ export async function donateToGuild(coins: number, shards: number) {
     guild.chat.push({
       id: `msg-${Date.now()}-donate`,
       username: 'System',
-      text: `${username()} donated ${parts.join(' and ')} (+${tokenGain} Tokens, +${xpGain} Guild XP).`,
+      text: `${username()} donated ${parts.join(' and ')} (+${xpGain} Guild XP).`,
       timestamp: Date.now(),
       isSystem: true,
     });
     if (guild.chat.length > 50) guild.chat.shift();
 
-    return { guild, tokensEarned: tokenGain, xpEarned: xpGain };
+    return { guild, tokensEarned: 0, xpEarned: xpGain };
   });
 }
 
