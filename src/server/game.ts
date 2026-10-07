@@ -44,6 +44,7 @@ import {
   activateGlobalBoosterStack,
   globalBoosterCritChanceBonus,
   guildComboCritChanceBonus,
+  frenzyOrbCountForRarity,
 
   PREMIUM_BOOSTERS,
   AUTOMATIONS,
@@ -3524,7 +3525,7 @@ export async function claimOrbFrenzy(options: {
     throw new Error('You already claimed a Frenzy reward today.');
   }
 
-  const baseCount = Math.max(1, data.rarity);
+  const baseCount = frenzyOrbCountForRarity(data.rarity);
   const frenzyVolleyEfficiency = (s.prestigeUpgrades?.frenzyVolley ?? 0) > 0
     ? Math.max(0, rollsPerActivation(s) - 1) * 0.20
     : 0;
