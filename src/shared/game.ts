@@ -821,7 +821,13 @@ export function formatNumber(value: number): string {
 }
 
 export function formatRarity(rarity: number): string {
-  return formatNumber(rarity);
+  const safe = Math.max(0, Number(rarity) || 0);
+  if (safe >= 10) {
+    const exponent = Math.floor(Math.log10(safe));
+    const mantissa = safe / Math.pow(10, exponent);
+    return `${mantissa.toFixed(2)}e${exponent}`;
+  }
+  return safe.toLocaleString('en-US');
 }
 
 function rarityRangeLabel(minRarity: number, maxRarity: number): string {
@@ -1666,7 +1672,7 @@ export function luckMultiplier(s: PlayerState): number {
   if ((s.prestigeUpgrades?.resonanceMeter ?? 0) > 0) {
     const dryRolls = s.rollsSinceBest ?? 0;
     const interval = Math.max(6, 18 - (s.masterySkills?.pityAccelerant ?? 0) * 2);
-    const stacks = Math.min(50, Math.floor(dryRolls / interval));
+    const stacks = Math.floor(dryRolls / interval);
     additiveBonus += (s.prestigeUpgrades.resonanceMeter * 0.01) * stacks;
   }
 
