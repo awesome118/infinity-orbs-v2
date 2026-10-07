@@ -39,6 +39,7 @@ import {
   listChatReports,
   markChatReportRead,
   getPlayerGuildPerks,
+  getPlayerGuildCombo,
   getCommunityEvent,
 } from './social.js';
 import {
@@ -65,6 +66,10 @@ import {
   globalBoosterSpeedMultiplier,
   globalBoosterCritChanceBonus,
   globalBoosterCritLuckBonus,
+  guildComboLuckMultiplier,
+  guildComboSpeedMultiplier,
+  guildComboCritChanceBonus,
+  guildComboCritLuckBonus,
   isPremiumBoosterActive,
   type PlayerState,
 } from '../shared/game.js';
@@ -502,8 +507,11 @@ async function loadPlayerForStatSpy(userId: string, username: string): Promise<P
 
   const saved = parsed as Partial<PlayerState>;
   const base = createInitialState();
-  const guildPerks = await getPlayerGuildPerks(username, userId);
-  const globalBoosters = await getGlobalBoosters();
+  const [guildPerks, guildCombo, globalBoosters] = await Promise.all([
+    getPlayerGuildPerks(username, userId),
+    getPlayerGuildCombo(username, userId),
+    getGlobalBoosters(),
+  ]);
 
   return {
     ...base,
@@ -515,6 +523,7 @@ async function loadPlayerForStatSpy(userId: string, username: string): Promise<P
     collection: saved.collection ?? {},
     sacrifices: { ...base.sacrifices, ...(saved.sacrifices ?? {}) },
     guildPerks,
+    guildCombo,
     globalBoosters,
   } as PlayerState;
 }
@@ -549,6 +558,10 @@ function buildStatSpyStats(
   const globalSpeed = globalBoosterSpeedMultiplier(s.globalBoosters?.speed);
   const globalCritChance = globalBoosterCritChanceBonus(s.globalBoosters?.crit);
   const globalCritPower = globalBoosterCritLuckBonus(s.globalBoosters?.crit);
+  const comboLuck = guildComboLuckMultiplier(s.guildCombo);
+  const comboSpeed = guildComboSpeedMultiplier(s.guildCombo);
+  const comboCritChance = guildComboCritChanceBonus(s.guildCombo);
+  const comboCritPower = guildComboCritLuckBonus(s.guildCombo);
   const effectiveCcu = Math.max(1, Math.floor(currentCcu + fakeCcuBonus));
   const codexChain = highestCodexChain(s.collection);
 
@@ -587,6 +600,7 @@ function buildStatSpyStats(
     ((onlineLuckPct) / 100) +
     (fortunePct / 100) +
     ((globalLuckPct) / 100) +
+    ((Math.max(0, comboLuck - 1) * 100) / 100) +
     (astralReservePct / 100);
 
   const permanentLuckFactor = Math.pow(1.05, Math.max(0, Number(prestige.permLuck ?? 0)));
@@ -606,6 +620,7 @@ function buildStatSpyStats(
     statSource('Online population', onlineLuckPct, 'pct', 'add', { detail: 'Current CCU ' + effectiveCcu + ' (' + currentCcu + ' real + ' + fakeCcuBonus + ' test)' }),
     statSource('Fortune Surge', fortunePct, 'pct', 'add', { active: fortuneActive, detail: 'Active premium booster adds +300%' }),
     statSource('Global Luck', globalLuckPct, 'pct', 'add', { level: Number(s.globalBoosters?.luck?.tier ?? 0), active: globalLuck > 1, detail: '+10% per active global tier' }),
+    statSource('Guild Combo Luck', Math.max(0, comboLuck - 1) * 100, 'pct', 'add', { level: Number(s.guildCombo?.tier ?? 0), active: comboLuck > 1, detail: '+5% per active combo tier' }),
     statSource('Astral Reserve', astralReservePct, 'pct', 'add', { level: Number(prestige.astralReserve ?? 0), detail: '+2% per level' }),
     statSource('Permanent Luck layer', permanentLuckFactor, 'mult', 'multiply', { level: Number(prestige.permLuck ?? 0), detail: '×1.05 per prestige level' }),
     statSource('Altar layer', altar.totalAltarMultiplier, 'mult', 'multiply', { detail: 'Coin sacrifice × Shard infusion × Luck Surge' }),
@@ -627,6 +642,7 @@ function buildStatSpyStats(
     statSource('Turbo', Number(prestige.chronoOverdrive ?? 0) > 0 ? 0.65 : 0.75, 'mult', 'multiply', { active: Boolean(s.turboRollUntil && Date.now() < s.turboRollUntil), detail: Number(prestige.chronoOverdrive ?? 0) > 0 ? '×0.65 while active with Turbo Duration' : '×0.75 while active' }),
     statSource('Hyperdrive', 0.25, 'mult', 'multiply', { active: isPremiumBoosterActive(s, 'hyperdrive'), detail: '×0.25 while active' }),
     statSource('Global Speed', globalSpeed, 'mult', 'multiply', { level: Number(s.globalBoosters?.speed?.tier ?? 0), active: globalSpeed < 1, detail: '0.95× per tier, capped at 0.35×' }),
+    statSource('Guild Combo Speed', comboSpeed, 'mult', 'multiply', { level: Number(s.guildCombo?.tier ?? 0), active: comboSpeed < 1, detail: 'Half Global Speed effect: -2.5 percentage points per tier' }),
   ];
 
   const ballsSources: StatSpySource[] = [
@@ -643,7 +659,8 @@ function buildStatSpyStats(
   const rawCritChance = Number(upgrades.critChance ?? 0) * 0.03 +
     Number(mastery.critMastery ?? 0) * 0.03 +
     Number(guild.critRank ?? 0) * 0.015 +
-    globalCritChance;
+    globalCritChance +
+    comboCritChance;
   const critChance = Math.min(0.40, rawCritChance);
   const critPower = critMultiplier(s);
 
@@ -737,6 +754,7 @@ function buildStatSpyStats(
         statSource('Critical Overdrive', Number(mastery.critMastery ?? 0) * 3, 'pct', 'add', { level: Number(mastery.critMastery ?? 0), detail: '+3 percentage points per level' }),
         statSource('Guild Crit', Number(guild.critRank ?? 0) * 1.5, 'pct', 'add', { level: Number(guild.critRank ?? 0), detail: '+1.5 percentage points per rank' }),
         statSource('Global Crit', globalCritChance * 100, 'pct', 'add', { level: Number(s.globalBoosters?.crit?.tier ?? 0), active: globalCritChance > 0, detail: '+2 percentage points per active tier' }),
+        statSource('Guild Combo Crit', comboCritChance * 100, 'pct', 'add', { level: Number(s.guildCombo?.tier ?? 0), active: comboCritChance > 0, detail: '+1 percentage point per active combo tier' }),
       ],
     },
     {
@@ -749,6 +767,7 @@ function buildStatSpyStats(
         statSource('Crit Power upgrade', Number(upgrades.critPower ?? 0) * 0.25, 'mult', 'add', { level: Number(upgrades.critPower ?? 0), detail: '+0.25× per level' }),
         statSource('Critical Overdrive', Number(mastery.critMastery ?? 0) * 0.30, 'mult', 'add', { level: Number(mastery.critMastery ?? 0), detail: '+0.30× per level' }),
         statSource('Global Crit', globalCritPower, 'mult', 'add', { level: Number(s.globalBoosters?.crit?.tier ?? 0), active: globalCritPower > 0, detail: '+0.10× per active tier' }),
+        statSource('Guild Combo Crit', comboCritPower, 'mult', 'add', { level: Number(s.guildCombo?.tier ?? 0), active: comboCritPower > 0, detail: '+0.05× per active combo tier' }),
       ],
     },
     {
