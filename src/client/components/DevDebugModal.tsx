@@ -2018,13 +2018,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       );
 
       await step(
-        'Contract · Rarity formatter handles >9 scale',
+        'Contract · Rarity formatter handles e8 threshold',
         async () => {
           const expected: Array<[number, string]> = [
             [9, '9'],
-            [10, '1.00e1'],
-            [999, '9.99e2'],
-            [1_000_000_000, '1.00e9'],
+            [99_999_999, '99,999,999'],
+            [100_000_000, '1.00e8'],
+            [999_000_000, '9.99e8'],
             [1_000_000_000_000_000, '1.00e15'],
             [100_000_000_000_000_000, '1.00e17'],
           ];
