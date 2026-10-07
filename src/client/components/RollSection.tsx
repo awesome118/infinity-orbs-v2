@@ -27,7 +27,6 @@ import {
   luckMultiplier,
   getOrbInfo,
   formatRarity,
-  coinsForRarity,
   visibleContinuumTiers,
   formatNumber,
 } from '../../shared/game.js';
@@ -130,27 +129,29 @@ export const RollSection: React.FC<RollSectionProps> = ({
   });
 
   const [isShaking, setIsShaking] = useState(false);
-  const [floatingRewards, setFloatingRewards] = useState<{ id: number; text: string; color: string }[]>([]);
+  const [rewardBurstActive, setRewardBurstActive] = useState(false);
+  const rewardBurstKeyRef = useRef(0);
+  const previousBatchSummaryRef = useRef<typeof batchSummary>(null);
 
-  // Update floating combat reward numbers when new batch finishes
+  // Show the exact reward totals returned by the roll response. Manual rolls get
+  // the full burst; Auto Roll keeps the persistent reward readout without turning
+  // the screen into a constant fireworks machine.
   useEffect(() => {
-    if (!batchSummary) return;
-    const items: { id: number; text: string; color: string }[] = [];
-    if (batchSummary.coins > 0) {
-      items.push({ id: Date.now() + 1, text: `+${formatNumber(batchSummary.coins)} Coins`, color: 'text-amber-300' });
-    }
-    if (batchSummary.shards > 0) {
-      items.push({ id: Date.now() + 2, text: `+${batchSummary.shards} Shard${batchSummary.shards > 1 ? 's' : ''}`, color: 'text-cyan-300' });
-    }
-    if (lastOrb?.isCrit) {
-      items.push({ id: Date.now() + 3, text: '⚡ 2× CRITICAL!', color: 'text-rose-400' });
-    }
-    if (items.length > 0) {
-      setFloatingRewards(items);
-      const timer = setTimeout(() => setFloatingRewards([]), 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [batchSummary, lastOrb]);
+    if (!batchSummary || previousBatchSummaryRef.current === batchSummary) return;
+    previousBatchSummaryRef.current = batchSummary;
+
+    const shouldAnimate =
+      !autoRoll ||
+      Boolean(lastOrb?.isCrit) ||
+      (lastOrb?.rarity ?? 0) >= 1_000;
+
+    if (!shouldAnimate) return;
+
+    rewardBurstKeyRef.current += 1;
+    setRewardBurstActive(true);
+    const timer = window.setTimeout(() => setRewardBurstActive(false), 1100);
+    return () => window.clearTimeout(timer);
+  }, [batchSummary, autoRoll, lastOrb]);
 
   // The main Roll button always uses the manual-roll cooldown; Auto Roll timing is tracked by the server response.
   const cd = cooldownMs(state, false);
@@ -337,17 +338,41 @@ export const RollSection: React.FC<RollSectionProps> = ({
               : 'radial-gradient(circle at 35% 30%, #6366f1, #312e81 65%, #0f172a)',
           }}
         >
-          {/* Floating Combat Rewards Text (+Coins, +Shards, Critical) */}
-          <div className="absolute -top-12 left-1/2 -translate-x-1/2 pointer-events-none z-30 flex flex-col items-center gap-1">
-            {floatingRewards.map(r => (
-              <span
-                key={r.id}
-                className={`font-black font-mono text-xs sm:text-sm drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] animate-float-up px-2 py-0.5 rounded-full bg-slate-950/80 border border-slate-700/60 shadow-lg ${r.color}`}
-              >
-                {r.text}
-              </span>
-            ))}
-          </div>
+          {/* Exact reward burst. These values come from the authoritative roll response. */}
+          {batchSummary && rewardBurstActive && (
+            <div
+              key={rewardBurstKeyRef.current}
+              className="reward-burst"
+              aria-live="polite"
+              aria-label="Roll rewards"
+            >
+              <div className="reward-burst-ring" />
+              <div className="reward-burst-title">REWARD</div>
+              <div className="reward-burst-row">
+                <div className="reward-chip reward-chip-coins">
+                  <Coins className="w-4 h-4" />
+                  <strong>+{formatNumber(batchSummary.coins)}</strong>
+                  <span>Coins</span>
+                </div>
+                <div className="reward-chip reward-chip-xp">
+                  <Sparkles className="w-4 h-4" />
+                  <strong>+{formatNumber(batchSummary.xp)}</strong>
+                  <span>XP</span>
+                </div>
+                <div className="reward-chip reward-chip-shards">
+                  <Zap className="w-4 h-4" />
+                  <strong>+{formatNumber(batchSummary.shards)}</strong>
+                  <span>Shards</span>
+                </div>
+                <div className="reward-chip reward-chip-value">
+                  <Award className="w-4 h-4" />
+                  <strong>+{formatNumber(batchSummary.totalVal)}</strong>
+                  <span>Value</span>
+                </div>
+              </div>
+              {lastOrb?.isCrit && <div className="reward-burst-crit">⚡ CRITICAL</div>}
+            </div>
+          )}
 
           {/* Subtle Inner Glass Ring */}
           <div className="absolute inset-2 rounded-full border border-white/20 pointer-events-none" />
@@ -398,11 +423,16 @@ export const RollSection: React.FC<RollSectionProps> = ({
           </div>
         )}
 
-        {/* Coins Yield Callout */}
-        {displayOrb && !hasMultipleOrbs && (
-          <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full shadow-sm">
-            <Coins className="w-3.5 h-3.5" />
-            <span>+{formatNumber(coinsForRarity(displayOrb.rarity))} Coins</span>
+        {/* Persistent exact reward readout, including all bonuses. */}
+        {batchSummary && (
+          <div className="roll-reward-summary" aria-live="polite">
+            <div className="roll-reward-label">Last Roll Reward</div>
+            <div className="roll-reward-values">
+              <span className="roll-reward-value coins"><Coins className="w-3.5 h-3.5" /> +{formatNumber(batchSummary.coins)} Coins</span>
+              <span className="roll-reward-value xp"><Sparkles className="w-3.5 h-3.5" /> +{formatNumber(batchSummary.xp)} XP</span>
+              <span className="roll-reward-value shards"><Zap className="w-3.5 h-3.5" /> +{formatNumber(batchSummary.shards)} Shards</span>
+              <span className="roll-reward-value value"><Award className="w-3.5 h-3.5" /> +{formatNumber(batchSummary.totalVal)} Value</span>
+            </div>
           </div>
         )}
 
@@ -663,10 +693,10 @@ export const RollSection: React.FC<RollSectionProps> = ({
           <div className="mt-2 text-xs text-slate-400">
             The full Frenzy reward was applied server-side. The orbit above shows the best result from the volley.
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
             <div className="rounded-xl bg-slate-950/50 border border-slate-800 px-2 py-2">
               <div className="text-[10px] uppercase font-bold text-slate-500">Value</div>
-              <div className="text-sm font-black text-cyan-300">{formatNumber(batchSummary.totalVal)}</div>
+              <div className="text-sm font-black text-cyan-300">+{formatNumber(batchSummary.totalVal)}</div>
             </div>
             <div className="rounded-xl bg-slate-950/50 border border-slate-800 px-2 py-2">
               <div className="text-[10px] uppercase font-bold text-slate-500">Coins</div>
@@ -675,6 +705,10 @@ export const RollSection: React.FC<RollSectionProps> = ({
             <div className="rounded-xl bg-slate-950/50 border border-slate-800 px-2 py-2">
               <div className="text-[10px] uppercase font-bold text-slate-500">XP</div>
               <div className="text-sm font-black text-purple-300">+{formatNumber(batchSummary.xp)}</div>
+            </div>
+            <div className="rounded-xl bg-slate-950/50 border border-slate-800 px-2 py-2">
+              <div className="text-[10px] uppercase font-bold text-slate-500">Shards</div>
+              <div className="text-sm font-black text-cyan-300">+{formatNumber(batchSummary.shards)}</div>
             </div>
           </div>
         </div>
