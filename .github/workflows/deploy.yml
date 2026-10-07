@@ -39,10 +39,26 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Configure Devvit authentication
+        env:
+          DEVVIT_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$DEVVIT_TOKEN" || { echo "DEVVIT_TOKEN GitHub secret is missing."; exit 1; }
+          mkdir -p "$HOME/.devvit"
+          printf '%s' "$DEVVIT_TOKEN" > "$HOME/.devvit/token"
+          if [ -n "${DEVVIT_SESSION_ID:-}" ]; then
+            printf '%s' "$DEVVIT_SESSION_ID" > "$HOME/.devvit/session-id"
+          fi
+          chmod 600 "$HOME/.devvit/token" "$HOME/.devvit/session-id" 2>/dev/null || true
+
       - name: Upload to Devvit
         env:
           CI: true
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
         timeout-minutes: 10
         run: timeout --signal=TERM --kill-after=30s 9m npx devvit upload
 
