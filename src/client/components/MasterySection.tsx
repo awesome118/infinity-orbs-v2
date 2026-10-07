@@ -13,7 +13,7 @@ import {
   Award,
 } from 'lucide-react';
 import type { PlayerState, MasterySkillId } from '../../shared/game.js';
-import { formatNumber, MASTERY_SKILLS, masterySkillCost, bestCodexChain, codexDevotionLuckPercent } from '../../shared/game.js';
+import { formatNumber, formatRarity, MASTERY_SKILLS, masterySkillCost, bestCodexChain, codexDevotionLuckPercent } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface MasterySectionProps {
@@ -248,7 +248,7 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
                       <div className="mt-1 flex items-center justify-between gap-3">
                         <span className="text-[10px] text-slate-500">
                           {codexChain.length > 0
-                            ? `1/${formatNumber(codexChain.start)} → 1/${formatNumber(codexChain.end)}`
+                            ? `1/${formatRarity(codexChain.start)} → 1/${formatRarity(codexChain.end)}`
                             : 'Collect consecutive rarities to build a chain'}
                         </span>
                         <span className="text-base font-black text-emerald-300">
