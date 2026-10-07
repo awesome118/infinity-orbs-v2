@@ -822,7 +822,7 @@ export function formatNumber(value: number): string {
 
 export function formatRarity(rarity: number): string {
   const safe = Math.max(0, Number(rarity) || 0);
-  if (safe >= 10) {
+  if (safe >= 100_000_000) {
     const exponent = Math.floor(Math.log10(safe));
     const mantissa = safe / Math.pow(10, exponent);
     return `${mantissa.toFixed(2)}e${exponent}`;
