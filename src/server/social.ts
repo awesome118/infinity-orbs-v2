@@ -6,12 +6,31 @@ import type {
   Achievement,
   GuildMessage,
   GuildPerkId,
+  GuildTask,
   WorldEvent,
   GlobalChatMessage,
 } from '../shared/social.js';
-import { ACHIEVEMENTS, CHALLENGE_POOL, challengeForWeek, COMMUNITY_WORLD_EVENT, createInitialGuildBoss } from '../shared/social.js';
+import {
+  ACHIEVEMENTS,
+  createGuildTask,
+  createInitialGuildTasks,
+  CHALLENGE_POOL,
+  challengeForWeek,
+  COMMUNITY_WORLD_EVENT,
+  createInitialGuildBoss,
+} from '../shared/social.js';
 import type { PlayerState } from '../shared/game.js';
-import { cooldownMs, createInitialState, grantFreeShards, weekEndMs, weekKey } from '../shared/game.js';
+import {
+  cooldownMs,
+  createInitialState,
+  grantFreeShards,
+  weekEndMs,
+  weekKey,
+  createInitialGuildCombo,
+  decayGuildComboState,
+  activateGuildComboStack,
+  type GuildComboState,
+} from '../shared/game.js';
 
 const user = () => context.userId ?? 'unknown';
 const username = () => context.username ?? `reddit-user-${user().slice(-8)}`;
@@ -74,6 +93,8 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
         coinRank: 0,
         memberCapacityRank: 0,
         tokenYieldRank: 0,
+        taskBountyRank: 0,
+        comboRank: 0,
         guildXpRank: 0,
       };
     } else {
@@ -81,6 +102,9 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
         g.perks.memberCapacityRank = Math.min(40, Math.max(0, g.members.length - 10));
       }
       g.perks.tokenYieldRank ??= 0;
+      g.perks.taskBountyRank ??= Math.max(0, Math.floor(Number(g.perks.tokenYieldRank ?? 0) || 0));
+      g.perks.tokenYieldRank = g.perks.taskBountyRank;
+      g.perks.comboRank ??= 0;
       g.perks.guildXpRank ??= 0;
     }
     g.taxRate = Math.max(0, Math.min(10, Math.floor(Number(g.taxRate ?? 0) || 0)));
@@ -92,12 +116,71 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
       g.boss = createInitialGuildBoss(Math.max(1, Math.min(10, g.level || 1)));
       (g as any).bossWeek = currentWeek;
     }
-    if (!g.challenge || (g as any).challengeWeek !== currentWeek) {
-      g.challenge = challengeForWeek();
-      (g as any).challengeWeek = currentWeek;
+    if (!Array.isArray(g.tasks) || g.tasks.length < 3) {
+      const generated = createInitialGuildTasks(g.level || 1);
+      if (g.challenge) {
+        generated[0] = {
+          ...generated[0],
+          type: g.challenge.type,
+          target: Math.max(1, Math.floor(g.challenge.target || generated[0].target)),
+          progress: Math.max(0, Math.min(
+            Math.max(1, Math.floor(g.challenge.target || generated[0].target)),
+            Math.floor(g.challenge.progress || 0),
+          )),
+          reward: Math.max(1, Math.floor(g.challenge.reward || generated[0].reward)),
+          label: g.challenge.label || generated[0].label,
+        };
+      }
+      g.tasks = generated;
+    } else {
+      g.tasks = g.tasks.slice(0, 3).map((task, index) => {
+        const type: GuildTask['type'] =
+          task.type === 'rolls' || task.type === 'value' || task.type === 'rare'
+            ? task.type
+            : generatedFallbackTaskType(index);
+        const generated = createGuildTask(
+          type,
+          Math.max(1, Math.floor(Number(task.tier ?? 1) || 1)),
+          g.level || 1,
+        );
+        const target = Math.max(1, Math.floor(Number(task.target ?? generated.target) || generated.target));
+        return {
+          ...generated,
+          ...task,
+          id: task.id || generated.id,
+          type,
+          tier: Math.max(1, Math.floor(Number(task.tier ?? generated.tier) || generated.tier)),
+          target,
+          progress: Math.max(0, Math.min(target, Math.floor(Number(task.progress ?? 0) || 0))),
+          reward: Math.max(1, Math.floor(Number(task.reward ?? generated.reward) || generated.reward)),
+          guildXpReward: Math.max(1, Math.floor(Number(task.guildXpReward ?? generated.guildXpReward) || generated.guildXpReward)),
+          label: String(task.label || generated.label),
+        };
+      });
     }
+
+    while (g.tasks.length < 3) {
+      g.tasks.push(createGuildTask(generatedFallbackTaskType(g.tasks.length), 1, g.level || 1));
+    }
+
+    g.taskCompletions = Math.max(0, Math.floor(Number(g.taskCompletions ?? 0) || 0));
+    g.combo = decayGuildComboState(g.combo, now);
+
+    const firstTask = g.tasks[0];
+    g.challenge = {
+      type: firstTask.type,
+      target: firstTask.target,
+      progress: Math.min(firstTask.target, firstTask.progress),
+      reward: firstTask.reward,
+      label: firstTask.label,
+    };
+    (g as any).challengeWeek = currentWeek;
   }
   return guilds;
+}
+
+function generatedFallbackTaskType(index: number): GuildTask['type'] {
+  return index === 0 ? 'rolls' : index === 1 ? 'value' : 'rare';
 }
 
 function memberMatches(member: Guild['members'][number], requestedUsername?: string): boolean {
@@ -123,13 +206,14 @@ function isTrustedMember(guild: Guild, member: Guild['members'][number]): boolea
 
 function guildPerkMax(perk: GuildPerkId): number {
   if (perk === 'memberCapacityRank') return 40;
-  if (perk === 'tokenYieldRank' || perk === 'guildXpRank') return 20;
+  if (perk === 'tokenYieldRank' || perk === 'taskBountyRank' || perk === 'guildXpRank') return 20;
+  if (perk === 'comboRank') return 10;
   return 10;
 }
 
 function guildPerkCost(perk: GuildPerkId, currentRank: number): number {
-  const base = perk === 'memberCapacityRank' ? 250 : 100;
-  const exponent = perk === 'memberCapacityRank' ? 1.45 : 1.65;
+  const base = perk === 'memberCapacityRank' ? 250 : perk === 'comboRank' ? 150 : 100;
+  const exponent = perk === 'memberCapacityRank' ? 1.45 : perk === 'comboRank' ? 1.55 : 1.65;
   return Math.max(1, Math.round(base * Math.pow(currentRank + 1, exponent)));
 }
 
