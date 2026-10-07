@@ -552,6 +552,9 @@ export async function createGuild(name: string, tag: string) {
       createdAt: now,
       taxRate: 0,
       challenge: challengeForWeek(),
+      tasks: createInitialGuildTasks(1),
+      taskCompletions: 0,
+      combo: createInitialGuildCombo(now),
       members: [{ username: username(), userId: user(), contribution: 0, role: 'owner', trusted: true, joinedAt: now }],
       chat: [{
         id: `msg-${now}`,
@@ -569,6 +572,8 @@ export async function createGuild(name: string, tag: string) {
         coinRank: 0,
         memberCapacityRank: 0,
         tokenYieldRank: 0,
+        taskBountyRank: 0,
+        comboRank: 0,
         guildXpRank: 0,
       },
     };
@@ -697,42 +702,80 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
       if (!member) return;
 
       const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * 0.10;
-      const tokenMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05;
+      const taskBountyMultiplier = 1 + Math.max(
+        0,
+        Math.floor(guild.perks?.taskBountyRank ?? guild.perks?.tokenYieldRank ?? 0),
+      ) * 0.05;
+      const comboDurationMultiplier = 1 + Math.max(
+        0,
+        Math.floor(guild.perks?.comboRank ?? 0),
+      ) * 0.05;
+
       member.contribution += value;
       guild.xp += Math.max(1, Math.floor(Math.max(1, Math.floor(value / 250)) * xpMultiplier));
       guild.level = 1 + Math.floor(guild.xp / 500);
-      guild.tokens += Math.max(1, Math.floor(Math.max(1, Math.floor(value / 25000)) * tokenMultiplier));
 
-      if (guild.challenge) {
-        if (guild.challenge.type === 'value') {
-          guild.challenge.progress += value;
-        } else if (guild.challenge.type === 'rolls') {
-          guild.challenge.progress += rollCount;
-        } else if (guild.challenge.type === 'rare' && (bestRarity ?? 0) >= 100) {
-          guild.challenge.progress += 1;
-        }
-
-        if (guild.challenge.progress >= guild.challenge.target) {
-          const reward = Math.max(1, Math.floor(
-            guild.challenge.reward *
-            (1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05),
-          ));
-          guild.tokens += reward;
-          if (!guild.chat) guild.chat = [];
-          guild.chat.push({
-            id: `msg-${Date.now()}-challenge`,
-            username: 'System',
-            text: `Guild challenge completed! +${reward} Guild Tokens added to treasury.`,
-            timestamp: Date.now(),
-            isSystem: true,
-          });
-
-          const nextIdx =
-            (CHALLENGE_POOL.findIndex(challenge => challenge.type === guild.challenge!.type) + 1) %
-            CHALLENGE_POOL.length;
-          guild.challenge = { ...CHALLENGE_POOL[nextIdx], progress: 0 };
-        }
+      if (!Array.isArray(guild.tasks) || guild.tasks.length < 3) {
+        guild.tasks = createInitialGuildTasks(guild.level);
       }
+
+      const now = Date.now();
+      const taskProgressValue = Math.max(0, Math.floor(value));
+      const taskProgressRolls = Math.max(0, Math.floor(rollCount));
+      const taskProgressRare = (bestRarity ?? 0) >= 100 ? 1 : 0;
+
+      for (let i = 0; i < guild.tasks.length; i++) {
+        const task = guild.tasks[i];
+        if (!task) continue;
+
+        if (task.type === 'value') task.progress += taskProgressValue;
+        else if (task.type === 'rolls') task.progress += taskProgressRolls;
+        else if (task.type === 'rare') task.progress += taskProgressRare;
+
+        if (task.progress < task.target) continue;
+
+        const overflow = Math.max(0, task.progress - task.target);
+        const reward = Math.max(1, Math.floor(task.reward * taskBountyMultiplier));
+        const xpReward = Math.max(1, Math.floor(task.guildXpReward * xpMultiplier));
+
+        guild.tokens = (guild.tokens ?? 0) + reward;
+        guild.xp += xpReward;
+        guild.level = 1 + Math.floor(guild.xp / 500);
+        guild.taskCompletions = (guild.taskCompletions ?? 0) + 1;
+        guild.combo = activateGuildComboStack(
+          guild.combo,
+          now,
+          10,
+          comboDurationMultiplier,
+        );
+
+        const completedTier = task.tier;
+        const replacement = createGuildTask(task.type, completedTier + 1, guild.level);
+        replacement.progress = Math.min(
+          Math.max(0, replacement.target - 1),
+          overflow,
+        );
+        guild.tasks[i] = replacement;
+
+        if (!guild.chat) guild.chat = [];
+        guild.chat.push({
+          id: `msg-${Date.now()}-task`,
+          username: 'System',
+          text: `Guild Task completed! Tier ${completedTier} → Tier ${completedTier + 1}. +${reward.toLocaleString()} Guild Tokens and +${xpReward.toLocaleString()} Guild XP.`,
+          timestamp: Date.now(),
+          isSystem: true,
+        });
+        if (guild.chat.length > 50) guild.chat.shift();
+      }
+
+      const firstTask = guild.tasks[0];
+      guild.challenge = {
+        type: firstTask.type,
+        target: firstTask.target,
+        progress: Math.min(firstTask.target, firstTask.progress),
+        reward: firstTask.reward,
+        label: firstTask.label,
+      };
 
       if (guild.boss && !guild.boss.defeated) {
         const damage = Math.round(value + rollCount * 25);
@@ -742,19 +785,18 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
 
         if (guild.boss.currentHp <= 0) {
           guild.boss.defeated = true;
-          const tokensReward = Math.max(1, Math.floor(
-            guild.boss.rewardTokens *
-            (1 + Math.max(0, Math.floor(guild.perks?.tokenYieldRank ?? 0)) * 0.05),
-          ));
-          guild.tokens += tokensReward;
+          const guildXpReward = Math.max(0, Math.floor(guild.boss.rewardGuildXp ?? 0));
+          guild.xp += guildXpReward;
+          guild.level = 1 + Math.floor(guild.xp / 500);
           if (!guild.chat) guild.chat = [];
           guild.chat.push({
             id: `msg-${Date.now()}-boss`,
             username: 'System',
-            text: `🏆 RAID BOSS SLAIN! ${guild.boss.name} was defeated! +${tokensReward} Guild Tokens added to treasury!`,
+            text: `🏆 RAID BOSS SLAIN! ${guild.boss.name} was defeated! +${guildXpReward.toLocaleString()} Guild XP.`,
             timestamp: Date.now(),
             isSystem: true,
           });
+          if (guild.chat.length > 50) guild.chat.shift();
         }
       }
     });
@@ -762,7 +804,6 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
     console.error('Error in guild contribution:', err);
   }
 }
-
 // Community World Event System
 export async function getCommunityEvent(): Promise<WorldEvent> {
   const eventKey = COMMUNITY_EVENT_KEY;
