@@ -1578,11 +1578,30 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             if (Number(afterState.rollsSinceBest) !== 18 || !(Number(after.luckMultiplier) > Number(before.luckMultiplier))) {
               throw new Error('Pity did not activate at 18: rollsSinceBest=' + afterState.rollsSinceBest + ', Luck ' + before.luckMultiplier + ' → ' + after.luckMultiplier + '.');
             }
+
+            // Contract: pity has no finite stack ceiling. Compare 50 vs 51
+            // stacks directly so a future UI refactor cannot silently re-cap it.
+            await setMechanicState(
+              { resonanceMeter: 1 },
+              { highestRarity: 1_000_000_000_000, rollsSinceBest: 900 },
+            );
+            const fiftyStacks = await readMechanics();
+            await setMechanicState(
+              { resonanceMeter: 1 },
+              { highestRarity: 1_000_000_000_000, rollsSinceBest: 918 },
+            );
+            const fiftyOneStacks = await readMechanics();
+            if (!(Number(fiftyOneStacks.luckMultiplier) > Number(fiftyStacks.luckMultiplier))) {
+              throw new Error('Pity is still capped: 50-stack Luck=' + fiftyStacks.luckMultiplier + ', 51-stack Luck=' + fiftyOneStacks.luckMultiplier + '.');
+            }
+
             return {
               beforeLuck: before.luckMultiplier,
               afterLuck: after.luckMultiplier,
               beforeRolls: beforeState.rollsSinceBest,
               afterRolls: afterState.rollsSinceBest,
+              fiftyStacksLuck: fiftyStacks.luckMultiplier,
+              fiftyOneStacksLuck: fiftyOneStacks.luckMultiplier,
             };
           },
           result => 'Pity rolls ' + result.beforeRolls + ' → ' + result.afterRolls + ' · Luck ' + shortNumber(result.beforeLuck) + ' → ' + shortNumber(result.afterLuck),
