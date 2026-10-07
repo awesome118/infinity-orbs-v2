@@ -281,7 +281,15 @@ export function App() {
   const [frenzyArmed, setFrenzyArmed] = useState(false);
   const [showFrenzyPrompt, setShowFrenzyPrompt] = useState(false);
   const frenzyPromptShownRef = useRef(false);
+  const frenzyClaimActiveRef = useRef(false);
+  const componentMountedRef = useRef(true);
   const stateRevisionRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      componentMountedRef.current = false;
+    };
+  }, []);
   const appliedServerRevisionRef = useRef(-1);
   const stateRef = useRef<PlayerState | null>(null);
   const rollTicketRef = useRef<{
@@ -603,9 +611,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!state || frenzyRunTriggered) return;
-
-    let cancelled = false;
+    if (!state || frenzyRunTriggered || frenzyClaimActiveRef.current) return;
 
     const resolveFrenzy = async () => {
       for (let attempt = 0; attempt < 12; attempt++) {
@@ -626,17 +632,23 @@ export function App() {
           // The game claims it here so the player gets the normal game UI/result.
           if (!info.inGame || !info.canClaim) return;
 
+          frenzyClaimActiveRef.current = true;
           setFrenzyRunTriggered(true);
           setBusy(true);
           setIsRolling(true);
+
           const res = await enqueueMutation(() =>
             getJson<RollResponse>('/api/frenzy/claim', { method: 'POST' }),
           );
 
-          if (cancelled) return;
-          applyPlayerState(res.state);
+          if (!componentMountedRef.current) return;
 
           const revealBatch = res.batch?.length ? res.batch : [res.orb];
+
+          // Apply the authoritative state without cancelling the visual reveal.
+          // The old effect was keyed to state, so this update tore down its own
+          // reveal loop before the first Orb could be shown.
+          applyPlayerState(res.state);
           setLastBatch(revealBatch);
           setBatchSummary({
             totalVal: res.totalRollValue,
@@ -647,17 +659,17 @@ export function App() {
           });
           setReadyAt(Date.now() + res.rollsRemainingUntilNext);
 
-          // Reveal the actual resolved Orbs one by one through the normal
-          // central Orb display. The server still settles the whole Frenzy
-          // atomically, but the player gets a real in-game roll sequence.
+          // This is the actual Frenzy volley returned by the server. Show each
+          // resolved Orb in sequence so the claim visibly rolls through the volley.
           for (const revealedOrb of revealBatch) {
-            if (cancelled) return;
+            if (!componentMountedRef.current) return;
             setLastOrb(revealedOrb);
-            await new Promise(resolve => window.setTimeout(resolve, 140));
+            await new Promise(resolve => window.setTimeout(resolve, 240));
           }
-          if (cancelled) return;
-          setLastOrb(res.orb);
 
+          if (!componentMountedRef.current) return;
+          setLastOrb(res.orb);
+          sound.playMythicFanfare();
           showToast(
             `⚡ Orb Frenzy claimed! ${formatNumber(res.frenzyCount ?? 0)} Orbs rolled.`,
             'success',
@@ -669,17 +681,14 @@ export function App() {
       }
     };
 
-    void resolveFrenzy().finally(() => {
-      // State updates can restart this effect and mark the current run as
-      // cancelled. The request still owns the global loading state, so always
-      // release it here or the Roll button can remain stuck in ROLLING forever.
-      setIsRolling(false);
-      setBusy(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    void resolveFrenzy()
+      .catch(error => {
+        showToast(error?.message || 'Could not claim Orb Frenzy.', 'warn');
+      })
+      .finally(() => {
+        setIsRolling(false);
+        setBusy(false);
+      });
   }, [state, frenzyRunTriggered, applyPlayerState, enqueueMutation]);
 
   useEffect(() => {
