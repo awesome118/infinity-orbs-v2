@@ -184,7 +184,7 @@ test('Frenzy auto-claim always releases the game loading state', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
   assert.match(
     source,
-    /void resolveFrenzy\(\)\.finally\(\(\) => \{[\s\S]*?setIsRolling\(false\);[\s\S]*?setBusy\(false\);[\s\S]*?\}\);/,
+    /void resolveFrenzy\(\)[\s\S]*?\.finally\(\(\) => \{[\s\S]*?setIsRolling\(false\);[\s\S]*?setBusy\(false\);[\s\S]*?\}\);/,
   );
   assert.match(
     source,
@@ -223,11 +223,12 @@ test('Frenzy reveal survives the authoritative state update', () => {
   assert.match(source, /componentMountedRef/);
   assert.match(source, /for \(const revealedOrb of revealBatch\)/);
   assert.match(source, /setLastOrb\(revealedOrb\)/);
-  assert.doesNotMatch(
+  assert.match(
     source,
-    /if \(cancelled\) return;[\s\S]*?setLastOrb\(revealedOrb\)/,
+    /applyPlayerState\(res\.state\);[\s\S]*?for \(const revealedOrb of revealBatch\)[\s\S]*?setLastOrb\(revealedOrb\)/,
   );
-  assert.doesNotMatch(source, /return \(\) => \{\s*cancelled = true;\s*\};/);
+  assert.doesNotMatch(source, /let cancelled = false/);
+  assert.doesNotMatch(source, /cancelled = true/);
 });
 
 test('Admin console exposes a Force Frenzy Popup control', () => {
