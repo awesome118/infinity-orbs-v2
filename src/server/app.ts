@@ -1090,7 +1090,7 @@ export function createApp() {
       const { perk } = req.body || {};
       const validPerks = [
         'luckRank', 'speedRank', 'vaultRank', 'shardRank', 'critRank', 'coinRank',
-        'memberCapacityRank', 'tokenYieldRank', 'guildXpRank',
+        'memberCapacityRank', 'tokenYieldRank', 'taskBountyRank', 'comboRank', 'guildXpRank',
       ];
       if (!validPerks.includes(perk)) return res.status(400).json({ error: 'Invalid guild perk.' });
       res.json(await buyGuildPerk(perk));
