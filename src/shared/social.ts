@@ -104,7 +104,7 @@ export interface Guild {
   perks?: GuildPerks;
   chat?: GuildMessage[];
   bannerEffect?: string;
-  taxRate?: number; // 0-10% of earned Coins converted to Guild Tokens
+  taxRate?: number; // 0-10% of earned Coins converted to Guild XP
 }
 
 export interface LeaderboardEntry {
@@ -263,7 +263,7 @@ export function createInitialGuildBoss(tier = 1): GuildBoss {
     maxHp,
     currentHp: maxHp,
     rewardTokens: 0,
-    rewardShards: 0,
+    rewardShards: 10 * tier,
     rewardGuildXp: 250 * tier,
     defeated: false,
     contributors: {},
