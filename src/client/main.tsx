@@ -418,11 +418,13 @@ export function App() {
     }));
     setAutoRoll(next);
     try {
-      const res = await getJson<{ state: PlayerState }>('/api/auto-roll', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: next }),
-      });
+      const res = await enqueueMutation(() =>
+        getJson<{ state: PlayerState }>('/api/auto-roll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: next }),
+        }),
+      );
       applyPlayerState(res.state);
       setAutoRoll(res.state.autoRollEnabled === true);
     } catch {
@@ -430,7 +432,7 @@ export function App() {
       setAutoRoll(!next);
       showToast('Could not save Auto Roll preference.', 'warn');
     }
-  }, [applyPlayerState, autoRoll, beginOptimisticState, showToast]);
+  }, [applyPlayerState, autoRoll, beginOptimisticState, enqueueMutation, showToast]);
 
   const refreshAll = useCallback(async () => {
     const revisionAtStart = stateRevisionRef.current;
@@ -740,12 +742,17 @@ export function App() {
     if (!currentState) return;
 
     rollActionLockRef.current = true;
+    let frenzySubmissionInFlight = false;
 
     void (async () => {
       try {
         if (!isAutoRoll && frenzyArmed) {
+          frenzySubmissionInFlight = true;
+          // Consume the armed state immediately so a failed request cannot
+          // leave the UI stuck in a dead "RELEASE FRENZY" state.
+          setFrenzyArmed(false);
           setIsRolling(true);
-          const res = await getJson<{
+          const res = await enqueueMutation(() => getJson<{
             state: PlayerState;
             postId: string;
             url: string;
@@ -760,7 +767,7 @@ export function App() {
             rollsRemainingUntilNext: number;
             rollsProcessed: number;
             dramaticReveal: boolean;
-          }>('/api/frenzy/start', { method: 'POST' });
+          }>('/api/frenzy/start', { method: 'POST' }));
 
           applyPlayerState(res.state);
           setFrenzyArmed(false);
@@ -866,6 +873,11 @@ export function App() {
         });
       } catch (error: any) {
         rollTicketRef.current = null;
+        setFrenzyArmed(false);
+        if (frenzySubmissionInFlight) {
+          // Re-read authoritative state before allowing another Frenzy attempt.
+          await refreshAll().catch(() => null);
+        }
         showToast(error?.message || 'Could not prepare the next roll.', 'warn');
         setIsRolling(false);
       } finally {
@@ -876,6 +888,7 @@ export function App() {
     applyPlayerState,
     enqueueMutation,
     ensureRollTicket,
+    enqueueMutation,
     refreshAll,
     worldEvent?.buffMultiplier,
     frenzyArmed,
@@ -1085,11 +1098,13 @@ export function App() {
         setAutoRoll(false);
 
         try {
-          const res = await getJson<{ state: PlayerState }>('/api/auto-roll', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ enabled: false }),
-          });
+          const res = await enqueueMutation(() =>
+            getJson<{ state: PlayerState }>('/api/auto-roll', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ enabled: false }),
+            }),
+          );
           applyPlayerState(res.state);
         } catch (error) {
           rollback?.();

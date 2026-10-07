@@ -1,8 +1,13 @@
 import { context, redis } from './devvit-mock.js';
 
 const PLAYER_MUTATION_LOCK_PREFIX = 'io:player-mutation-lock:';
-const PLAYER_MUTATION_LOCK_TTL_MS = 45_000;
-const PLAYER_MUTATION_LOCK_ATTEMPTS = 120;
+const PLAYER_MUTATION_LOCK_TTL_MS = 90_000;
+const PLAYER_MUTATION_LOCK_ATTEMPTS = 360;
+
+// Requests handled by the same runtime instance are serialized locally before
+// they ever contend for the distributed Redis lock. Redis still protects
+// concurrent requests handled by different server runtimes.
+const localMutationTails = new Map<string, Promise<void>>();
 
 function lockUserId(userId?: string): string {
   const id = String(userId ?? context.userId ?? '').trim();
@@ -21,31 +26,53 @@ export async function withPlayerMutationLockFor<T>(
   fn: () => Promise<T>,
 ): Promise<T> {
   const id = lockUserId(userId);
+
+  // Serialize same-player operations in this runtime first. This makes
+  // normal click bursts and background mutations deterministic locally.
+  const previous = localMutationTails.get(id) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  const tail = previous.then(() => gate);
+  localMutationTails.set(id, tail);
+
+  await previous;
+
   const lockKey = PLAYER_MUTATION_LOCK_PREFIX + id;
   const token = `lock-${Date.now().toString(36)}-${randomUint32().toString(36)}`;
 
-  for (let attempt = 0; attempt < PLAYER_MUTATION_LOCK_ATTEMPTS; attempt++) {
-    await redis.set(lockKey, token, {
-      nx: true,
-      expiration: new Date(Date.now() + PLAYER_MUTATION_LOCK_TTL_MS),
-    });
+  try {
+    for (let attempt = 0; attempt < PLAYER_MUTATION_LOCK_ATTEMPTS; attempt++) {
+      await redis.set(lockKey, token, {
+        nx: true,
+        expiration: new Date(Date.now() + PLAYER_MUTATION_LOCK_TTL_MS),
+      });
 
-    const owner = await redis.get(lockKey);
-    if (owner === token) {
-      try {
-        return await fn();
-      } finally {
-        const currentOwner = await redis.get(lockKey);
-        if (currentOwner === token) {
-          await redis.del(lockKey);
+      const owner = await redis.get(lockKey);
+      if (owner === token) {
+        try {
+          return await fn();
+        } finally {
+          const currentOwner = await redis.get(lockKey);
+          if (currentOwner === token) {
+            await redis.del(lockKey);
+          }
         }
       }
+
+      await new Promise(resolve => setTimeout(resolve, 25));
     }
 
-    await new Promise(resolve => setTimeout(resolve, 25));
-  }
+    throw new Error('Player state is busy. Please retry.');
+  } finally {
+    release();
 
-  throw new Error('Player state is busy. Please retry.');
+    // A newer queued mutation may already have replaced this entry.
+    if (localMutationTails.get(id) === tail) {
+      localMutationTails.delete(id);
+    }
+  }
 }
 
 export async function withPlayerMutationLock<T>(

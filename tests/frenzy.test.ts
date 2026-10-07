@@ -165,3 +165,17 @@ test('Frenzy submission returns the starter roll and marks it as a manual roll',
   assert.match(source, /rollsProcessed: result\.rollCount/);
   assert.match(source, /lastFrenzyDate = today/);
 });
+
+test('Roll and Frenzy mutations share the client mutation queue', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
+
+  assert.match(
+    source,
+    /const res = await enqueueMutation\(\(\) =>[\s\S]*?\/api\/auto-roll/,
+  );
+  assert.match(
+    source,
+    /frenzySubmissionInFlight = true;[\s\S]*?const res = await enqueueMutation\(\(\) => getJson<\{/,
+  );
+  assert.match(source, /setFrenzyArmed\(false\);[\s\S]*?await refreshAll\(\)\.catch/);
+});
