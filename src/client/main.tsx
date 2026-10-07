@@ -2397,24 +2397,27 @@ export function App() {
             </div>
             <h2 className="mt-2 text-2xl font-black text-white">Post today’s Frenzy</h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-400">
-              Turn today’s best roll into a public Frenzy that someone else can claim.
-              Every player can claim one Frenzy a day.
+              Charge a public Frenzy from today’s best roll. Your next manual Roll creates the post
+              and lets someone else claim it. Every player can claim one Frenzy a day.
             </p>
             <div className="io-frenzy-prompt-reward">
               <div className="text-3xl font-black text-fuchsia-200">+{FRENZY_OWNER_SHARD_REWARD} Shards</div>
               <div className="mt-1 text-xs leading-relaxed text-slate-400">
-                When someone claims your Frenzy, you receive these Shards. This reward
+                When someone claims your Frenzy, you receive these Shards. The reward
                 <strong className="text-slate-200"> bypasses the 50 Shard daily cap</strong>.
               </div>
             </div>
             <div className="io-modal-actions">
               <button
-                onClick={() => void handleStartOrbFrenzy()}
+                onClick={() => {
+                  setShowFrenzyPrompt(false);
+                  void handleStartOrbFrenzy();
+                }}
                 disabled={busy}
                 className="io-public-button io-public-button-primary"
               >
                 <Flame className="w-4 h-4" />
-                {busy ? 'Posting…' : 'Post My Frenzy'}
+                {busy ? 'Charging…' : 'Charge My Frenzy'}
               </button>
               <button
                 onClick={() => setShowFrenzyPrompt(false)}
