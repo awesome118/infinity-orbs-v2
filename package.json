@@ -15,7 +15,8 @@
     "login": "devvit login",
     "type-check": "tsc --noEmit -p tsconfig.client.json && tsc --noEmit -p tsconfig.server.json",
     "deploy": "npm run type-check && npm run build && devvit upload",
-    "launch": "npm run deploy && devvit publish"
+    "launch": "npm run deploy && devvit publish",
+    "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
