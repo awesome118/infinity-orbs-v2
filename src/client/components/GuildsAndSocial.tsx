@@ -394,6 +394,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                     );
                   })()}
                 </div>
+              </div>
 
               {/* Weekly Guild Raid Boss */}
               {myGuild.boss && (
