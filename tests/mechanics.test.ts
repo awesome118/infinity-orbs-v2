@@ -18,6 +18,8 @@ import {
   GUILD_COMBO_MAX_TIER,
   grantFreeShards,
   onlinePlayerLuckMultiplier,
+  frenzyOrbCountForRarity,
+  FRENZY_LOG_BASE,
 } from '../src/shared/game.js';
 import {
   createGuildTask,
@@ -201,6 +203,14 @@ test('free Shards respect the hard 50-per-day cap', () => {
   assert.equal(state.shards, 1);
   assert.equal(state.freeShardsEarnedToday, 50);
   assert.equal(grantFreeShards(state, 10, NOW), 0);
+});
+
+test('Orb Frenzy batch size follows logarithmic rarity scaling', () => {
+  assert.equal(frenzyOrbCountForRarity(1), 1);
+  assert.equal(frenzyOrbCountForRarity(2), Math.floor(Math.log(2) / Math.log(FRENZY_LOG_BASE)));
+  assert.ok(frenzyOrbCountForRarity(1_000) > frenzyOrbCountForRarity(100));
+  assert.ok(frenzyOrbCountForRarity(1_000_000) < 1_000_000);
+  assert.ok(frenzyOrbCountForRarity(1e15) < 250);
 });
 
 test('online population Luck is monotonic and sane', () => {
