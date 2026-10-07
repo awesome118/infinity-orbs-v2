@@ -1759,41 +1759,6 @@ export function App() {
     }
   };
 
-  const handleDonateGuild = async (coins: number, shards: number) => {
-    setBusy(true);
-    const rollback = beginOptimisticState(current => {
-      if (current.coins < coins || (current.shards ?? 0) < shards) return current;
-      const purchased = current.purchasedShards ?? 0;
-      return {
-        ...current,
-        coins: current.coins - coins,
-        shards: (current.shards ?? 0) - shards,
-        purchasedShards: Math.max(0, purchased - Math.min(shards, purchased)),
-        guildContribution: (current.guildContribution ?? 0) + coins + shards * 1000,
-      };
-    });
-    try {
-      const res = await getJson<{ guild: Guild; tokensEarned: number; xpEarned: number; state: PlayerState }>('/api/guilds/donate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ coins, shards }),
-      });
-      applyPlayerState(res.state);
-      setGuildData(prev => ({
-        ...prev,
-        mine: res.guild,
-        guilds: prev.guilds.map(g => (g.id === res.guild.id ? res.guild : g)),
-      }));
-      sound.playChime(784, 'triangle', 0.25);
-      showToast(`Guild contribution added! (+${res.xpEarned} Guild XP)`, 'success');
-      void refreshAll();
-    } catch (e: any) {
-      rollback?.();
-      showToast(e.message || 'Donation failed', 'warn');
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const handleSendGuildChat = async (text: string): Promise<GuildMessage> => {
     if (busy) throw new Error('Another action is already in progress.');
@@ -2374,12 +2339,9 @@ export function App() {
             onLeaveGuild={handleLeaveGuild}
             onSendMessage={handleSendGuildChat}
             onBuyGuildPerk={handleBuyGuildPerk}
-            onDonateGuild={handleDonateGuild}
             onToggleGuildTrust={handleToggleGuildTrust}
             onSetGuildTax={handleSetGuildTax}
             playerUsername={state.username ?? ''}
-            playerCoins={state.coins}
-            playerShards={state.shards}
             playerHasShared={Boolean(state.lastShareAt && state.lastShareAt > 0)}
             busy={busy}
           />
