@@ -40,37 +40,18 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Validate Devvit token format
-        env:
-          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
-        run: |
-          set -euo pipefail
-          test -n "$DEVVIT_AUTH_TOKEN" || { echo "DEVVIT_TOKEN secret is missing."; exit 1; }
-          node <<'NODE'
-          const raw = process.env.DEVVIT_AUTH_TOKEN ?? '';
-          try {
-            const parsed = JSON.parse(raw);
-            if (!parsed || typeof parsed !== 'object' || typeof parsed.token !== 'string') {
-              throw new Error('missing token field');
-            }
-            console.log('Devvit auth secret has the expected JSON token format.');
-          } catch {
-            console.error('DEVVIT_TOKEN must contain the full JSON contents of ~/.devvit/token.');
-            process.exit(1);
-          }
-          NODE
-
       - name: Verify Devvit authentication
         env:
-          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_AUTH_TOKEN || secrets.DEVVIT_TOKEN }}
         run: |
           set -euo pipefail
+          test -n "$DEVVIT_AUTH_TOKEN" || { echo "Set DEVVIT_AUTH_TOKEN in GitHub Actions secrets to the full contents of ~/.devvit/token."; exit 1; }
           npx devvit whoami
 
       - name: Upload to Devvit
         env:
           CI: true
-          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_AUTH_TOKEN || secrets.DEVVIT_TOKEN }}
         timeout-minutes: 10
         run: timeout --signal=TERM --kill-after=30s 9m npx devvit upload
 
