@@ -44,6 +44,8 @@ jobs:
           CI: true
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
         timeout-minutes: 10
+        run: timeout --signal=TERM --kill-after=30s 9m npx devvit upload
+
       - name: Install current build to r/infinity_orbs_dev
         run: |
           set -euo pipefail
