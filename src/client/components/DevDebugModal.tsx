@@ -3459,17 +3459,17 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <input
               value={guildChatMuteUser}
               onChange={e => setGuildChatMuteUser(e.target.value)}
-              title="Enter a Reddit username to mute or unmute from all Infinity Orbs Guild Chat."
+              title="Enter a Reddit username to mute or unmute from Global Chat and Guild Chat."
               placeholder="Reddit username, without u/"
               className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
             />
             <div className="flex gap-2">
               <button
-                title="Mute this account from every Infinity Orbs Guild Chat."
+                title="Mute this account from Global Chat and Guild Chat."
                 disabled={loading || !guildChatMuteUser.trim()}
                 onClick={async () => {
                   const name = guildChatMuteUser.trim().replace(/^u\//i, '');
-                  const data = await sendAdminAction('/api/dev/guild-chat/mute', { username: name }, false, 'Muted u/' + name + ' in Guild Chat.');
+                  const data = await sendAdminAction('/api/dev/guild-chat/mute', { username: name }, false, 'Muted u/' + name + ' from Global Chat and Guild Chat.');
                   if (data) {
                     setGuildChatMuteUser('');
                     await loadGuildChatSpy(true);
@@ -3480,11 +3480,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 Mute
               </button>
               <button
-                title="Unmute this account from every Infinity Orbs Guild Chat."
+                title="Unmute this account from Global Chat and Guild Chat."
                 disabled={loading || !guildChatMuteUser.trim()}
                 onClick={async () => {
                   const name = guildChatMuteUser.trim().replace(/^u\//i, '');
-                  const data = await sendAdminAction('/api/dev/guild-chat/unmute', { username: name }, false, 'Unmuted u/' + name + ' from Guild Chat.');
+                  const data = await sendAdminAction('/api/dev/guild-chat/unmute', { username: name }, false, 'Unmuted u/' + name + ' from Global Chat and Guild Chat.');
                   if (data) {
                     setGuildChatMuteUser('');
                     await loadGuildChatSpy(true);
@@ -3504,7 +3504,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 {guildChatMutes.map(mute => (
                   <button
                     key={mute.userId}
-                    title={'Unmute u/' + mute.username + ' from Guild Chat.'}
+                    title={'Unmute u/' + mute.username + ' from Global Chat and Guild Chat.'}
                     disabled={loading}
                     onClick={() => void toggleGuildChatMute(mute.username, true)}
                     className={buttonBase + ' bg-rose-500/10 border-rose-500/30 text-rose-200 px-2.5 py-1.5'}
