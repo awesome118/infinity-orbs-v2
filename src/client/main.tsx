@@ -2483,6 +2483,9 @@ export function App() {
         <DevDebugModal
           onClose={() => setShowDevModal(false)}
           onRefresh={refreshAll}
+          onForceFrenzyPopup={() => {
+            setShowFrenzyPrompt(true);
+          }}
           onForceRollResult={res => {
             changeTab('roll');
             applyPlayerState(res.state);
