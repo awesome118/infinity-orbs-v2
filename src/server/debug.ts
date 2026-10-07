@@ -555,7 +555,7 @@ function buildStatSpyStats(
   // Compute the same pity stack logic used by luckMultiplier.
   const dryRolls = Math.max(0, Number(s.rollsSinceBest ?? 0));
   const pityInterval = Math.max(6, 18 - (Number(mastery.pityAccelerant ?? 0) * 2));
-  const pityStacks = Math.min(50, Math.floor(dryRolls / pityInterval));
+  const pityStacks = Math.floor(dryRolls / pityInterval);
   const pityLuckPct = (Number(prestige.resonanceMeter ?? 0) * 1) * pityStacks;
 
   const levelBaseLuckPct = Math.max(0, level - 1);
@@ -1264,6 +1264,11 @@ debugRouter.post('/reset-cooldown', async (_req, res) => {
       await withPlayerMutationLock(async () => {
     const s = await loadRaw();
     s.lastRollAt = 0;
+    // Comprehensive admin tests use reset-cooldown as a hard boundary between
+    // independent rolls. Clear the prediction ticket too so an old UI request
+    // cannot consume the next test's ticket index.
+    const userId = String(context.userId ?? '').trim();
+    if (userId) await redis.del('io:roll-ticket:' + userId);
     await save(s);
     res.json({ ok: true, state: s });
         });} catch (e: any) {
