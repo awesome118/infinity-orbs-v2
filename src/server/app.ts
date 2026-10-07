@@ -57,7 +57,6 @@ import {
   buyGuildPerk,
   setGuildTrust,
   setGuildTaxRate,
-  donateToGuild,
   leaderboard,
   recordLeaderboard,
   shareText,
@@ -1115,31 +1114,6 @@ export function createApp() {
     } catch (e) { badRequest(res, e, 'Could not change Guild Tax.'); }
   });
 
-  app.post('/api/guilds/donate', async (req, res) => {
-    try {
-      const { coins = 0, shards = 0 } = req.body || {};
-      const numCoinsRaw = Number(coins);
-      const numShardsRaw = Number(shards);
-      if (!Number.isFinite(numCoinsRaw) || !Number.isFinite(numShardsRaw) ||
-          numCoinsRaw < 0 || numShardsRaw < 0 ||
-          !Number.isSafeInteger(Math.floor(numCoinsRaw)) || !Number.isSafeInteger(Math.floor(numShardsRaw))) {
-        return res.status(400).json({ error: 'Invalid donation amounts.' });
-      }
-      const numCoins = Math.floor(numCoinsRaw);
-      const numShards = Math.floor(numShardsRaw);
-      await withPlayerMutationLock(async () => {
-        const s = await settleOffline(await loadRaw());
-        if (s.coins < numCoins) throw new Error('Not enough coins.');
-        if ((s.shards ?? 0) < numShards) throw new Error('Not enough shards.');
-        s.coins -= numCoins;
-        s.shards = (s.shards ?? 0) - numShards;
-        s.guildContribution = (s.guildContribution ?? 0) + numCoins + (numShards * 1000);
-        await save(s);
-        const result = await donateToGuild(numCoins, numShards);
-        res.json({ ...result, state: s });
-      });
-    } catch (e) { badRequest(res, e, 'Donation failed.'); }
-  });
 
   app.post('/api/share', async (req, res) => {
     try {
