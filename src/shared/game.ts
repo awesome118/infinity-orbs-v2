@@ -1315,7 +1315,7 @@ export function createInitialDailyQuests(): QuestItem[] {
     { id: 'daily-rolls-100', title: 'Roll 100 Times', desc: 'Perform 100 rolls', target: 100, progress: 0, rewardCoins: 500, rewardShards: 1, rewardXp: 150, claimed: false },
     { id: 'daily-rare-100', title: 'Find Rare Orb', desc: 'Obtain an orb with 1/100+ rarity', target: 1, progress: 0, rewardCoins: 300, rewardXp: 100, claimed: false },
     { id: 'daily-unique-3', title: 'Unique Orbs', desc: 'Obtain 3 unique orbs today', target: 3, progress: 0, rewardCoins: 200, rewardXp: 80, claimed: false },
-    { id: 'daily-social', title: 'Guild Activity', desc: 'View guild or leaderboard', target: 1, progress: 0, rewardCoins: 150, rewardTokens: 10, rewardXp: 50, claimed: false },
+    { id: 'daily-social', title: 'Guild Activity', desc: 'View guild or leaderboard', target: 1, progress: 0, rewardCoins: 150, rewardXp: 50, claimed: false },
   ];
 }
 
@@ -1323,7 +1323,7 @@ export function createInitialWeeklyQuests(): QuestItem[] {
   return [
     { id: 'weekly-grind', title: 'Weekly Rolls', desc: 'Perform 1,000 rolls this week', target: 1000, progress: 0, rewardCoins: 5000, rewardShards: 5, rewardXp: 600, claimed: false },
     { id: 'weekly-epic', title: 'Find Epic Orb', desc: 'Obtain an Epic orb (1/1,000+)', target: 1, progress: 0, rewardCoins: 3000, rewardShards: 3, rewardXp: 400, claimed: false },
-    { id: 'weekly-guild', title: 'Collection Value', desc: 'Contribute 10,000 collection value', target: 10000, progress: 0, rewardCoins: 4000, rewardTokens: 50, rewardXp: 500, claimed: false },
+    { id: 'weekly-guild', title: 'Collection Value', desc: 'Contribute 10,000 collection value', target: 10000, progress: 0, rewardCoins: 4000, rewardXp: 500, claimed: false },
     { id: 'weekly-share', title: 'Share Post', desc: 'Share an orb to Reddit after discovering a Rare+ orb.', target: 1, progress: 0, rewardCoins: 1500, rewardShards: 2, rewardXp: 200, claimed: false, unlocked: false },
   ];
 }
