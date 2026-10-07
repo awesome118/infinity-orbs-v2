@@ -329,6 +329,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   onClose,
   onRefresh,
   onForceRollResult,
+  onForceFrenzyPopup,
 }) => {
   const [customRarity, setCustomRarity] = useState('100000');
   const [loading, setLoading] = useState(false);
