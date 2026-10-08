@@ -93,6 +93,12 @@ function FrenzyPost() {
     setError(null);
 
     try {
+      // Arm a short-lived server-side handoff before opening the game. The main
+      // game entrypoint may only auto-claim a Frenzy after this explicit action.
+      const arm = await fetch('/api/frenzy/arm', { method: 'POST' });
+      const armData = await arm.json().catch(() => ({}));
+      if (!arm.ok) throw new Error(armData.error || 'Could not arm Frenzy.');
+
       // Let the actual game entrypoint perform the claim. That keeps the Frenzy
       // result, best orb, and reward summary inside the normal game UI.
       requestExpandedMode(event.nativeEvent, 'game');
