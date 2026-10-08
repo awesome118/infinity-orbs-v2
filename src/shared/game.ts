@@ -1735,6 +1735,21 @@ export const OFFLINE_TICK_MS = 60_000; // 1 offline roll every 60 seconds
 
 export const SHARD_SYNTHESIS_COST = 10;
 export const SINGULARITY_TITHE_ROLLS_PER_DUST = 200;
+export function singularityTitheDustForRolls(
+  previousRolls: number,
+  processedRolls: number,
+  level: number,
+): number {
+  const before = Math.max(0, Math.floor(Number(previousRolls) || 0));
+  const rolls = Math.max(0, Math.floor(Number(processedRolls) || 0));
+  const safeLevel = Math.max(0, Math.floor(Number(level) || 0));
+  if (rolls === 0 || safeLevel === 0) return 0;
+
+  const milestonesBefore = Math.floor(before / SINGULARITY_TITHE_ROLLS_PER_DUST);
+  const milestonesAfter = Math.floor((before + rolls) / SINGULARITY_TITHE_ROLLS_PER_DUST);
+  return Math.max(0, milestonesAfter - milestonesBefore) * safeLevel;
+}
+
 
 export function effectiveOfflineTickMs(s: PlayerState): number {
   const rateReduction = (s.upgrades.offlineRate ?? 0) * 0.08;
