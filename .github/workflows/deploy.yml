@@ -47,10 +47,15 @@ jobs:
         env:
           DEVVIT_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
         run: |
           set -euo pipefail
           test -n "$DEVVIT_TOKEN" || {
             echo "DEVVIT_TOKEN GitHub secret is missing.";
+            exit 1;
+          }
+          test -n "$DEVVIT_SESSION_ID" || {
+            echo "DEVVIT_SESSION_ID GitHub secret is missing.";
             exit 1;
           }
           case "$DEVVIT_TOKEN" in
@@ -62,7 +67,8 @@ jobs:
           esac
           mkdir -p "$HOME/.devvit"
           printf '%s' "$DEVVIT_TOKEN" > "$HOME/.devvit/token"
-          chmod 600 "$HOME/.devvit/token"
+          printf '%s' "$DEVVIT_SESSION_ID" > "$HOME/.devvit/session-id"
+          chmod 600 "$HOME/.devvit/token" "$HOME/.devvit/session-id"
           echo "Checking Devvit authentication before upload..."
           npx devvit whoami
 
@@ -71,6 +77,7 @@ jobs:
           CI: true
           DEVVIT_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
         timeout-minutes: 10
         run: timeout --signal=TERM --kill-after=30s 9m npx devvit upload
 
