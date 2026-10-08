@@ -3585,7 +3585,7 @@ async function claimWorldBoosterActivation(
       username: activatedBy,
       boosterId: id,
       boosterName: GLOBAL_BOOSTERS[id].name,
-      usedCredit,
+      usedCredit: useCredit,
       tier: Number(snapshot[id].tier ?? 0),
       endsAt: Number(snapshot[id].endsAt ?? 0),
     });

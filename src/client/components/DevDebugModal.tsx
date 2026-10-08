@@ -362,6 +362,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [globalMinutes, setGlobalMinutes] = useState('30');
   const [globalBoosterCreditAmount, setGlobalBoosterCreditAmount] = useState('1');
   const [globalBoosterTargetUser, setGlobalBoosterTargetUser] = useState('');
+  const [globalBoosterGrantLoading, setGlobalBoosterGrantLoading] = useState(false);
   const [globalBoosterLogs, setGlobalBoosterLogs] = useState<Array<Record<string, unknown>>>([]);
   const [globalBoosterLogsLoading, setGlobalBoosterLogsLoading] = useState(false);
   const [globalBoosterActivationLog, setGlobalBoosterActivationLog] = useState<Array<{
@@ -868,7 +869,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
 
   const grantFreeGlobalBoosters = async (scope: 'user' | 'online' | 'all') => {
     const amount = Math.max(1, Math.min(1_000_000, Math.floor(Number(globalBoosterCreditAmount) || 1)));
-    if (scope === 'user' && !globalBoosterTargetUser.trim()) {
+    const cleanTargetUser = globalBoosterTargetUser.trim().replace(/^u\//i, '');
+    if (scope === 'user' && !cleanTargetUser) {
       setMessage('Enter a Reddit username first.');
       return;
     }
@@ -881,22 +883,36 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           : true;
     if (!confirmed) return;
 
-    const body: Record<string, unknown> = { scope, amount };
-    if (scope === 'user') body.username = globalBoosterTargetUser.trim().replace(/^u\//i, '');
+    setGlobalBoosterGrantLoading(true);
+    setMessage('');
+    try {
+      const body: Record<string, unknown> = { scope, amount };
+      if (scope === 'user') body.username = cleanTargetUser;
+      const res = await fetch('/api/dev/global-booster-credits/grant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Failed to grant free Global Booster credits.');
 
-    const data = await sendAdminAction(
-      '/api/dev/global-booster-credits/grant',
-      body,
-      true,
-      scope === 'user'
-        ? 'Granted ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to u/' + globalBoosterTargetUser.trim().replace(/^u\//i, '') + '.'
-        : scope === 'online'
-          ? 'Granted ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to ' + String(data?.affectedUsers ?? 0) + ' online player' + (Number(data?.affectedUsers ?? 0) === 1 ? '' : 's') + '.'
-          : 'Granted ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to ' + String(data?.affectedUsers ?? 0) + ' registered player' + (Number(data?.affectedUsers ?? 0) === 1 ? '' : 's') + '.'
-    );
-    if (data && scope === 'user') setGlobalBoosterTargetUser('');
+      sound.playClick();
+      const affectedUsers = Number(data?.affectedUsers ?? (scope === 'user' ? 1 : 0));
+      setMessage(
+        scope === 'user'
+          ? 'Granted ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to u/' + cleanTargetUser + '.'
+          : scope === 'online'
+            ? 'Granted ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to ' + affectedUsers.toLocaleString() + ' online player' + (affectedUsers === 1 ? '' : 's') + '.'
+            : 'Granted ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to ' + affectedUsers.toLocaleString() + ' registered player' + (affectedUsers === 1 ? '' : 's') + '.',
+      );
+      await onRefresh();
+      if (scope === 'user') setGlobalBoosterTargetUser('');
+    } catch (e: any) {
+      setMessage('Error: ' + (e?.message || 'Failed to grant free Global Booster credits.'));
+    } finally {
+      setGlobalBoosterGrantLoading(false);
+    }
   };
-
   const loadGlobalBoosterActivationLog = async (quiet = false) => {
     if (!quiet) setGlobalBoosterActivationLogLoading(true);
     try {
@@ -1171,16 +1187,30 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     };
 
     const rollOnce = async (auto = false): Promise<RollResponse> => {
-      await request('/api/dev/reset-cooldown', {});
-      const ticket = await request<{
-        ticketId: string;
-        nextIndex: number;
-      }>('/api/roll-ticket');
-      return request<RollResponse>('/api/roll', {
-        auto,
-        ticketId: ticket.ticketId,
-        ticketIndex: ticket.nextIndex,
-      });
+      let lastError: Error | null = null;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        try {
+          const ticket = await request<{ ticketId: string; nextIndex: number }>('/api/roll-ticket');
+          await request('/api/dev/reset-cooldown', {});
+          return await request<RollResponse>('/api/roll', {
+            auto,
+            ticketId: ticket.ticketId,
+            ticketIndex: ticket.nextIndex,
+          });
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          const message = lastError.message;
+          const retryable =
+            message.includes('Cooldown:') ||
+            message.includes('Roll prediction ticket is') ||
+            message.includes('Could not create a roll prediction ticket') ||
+            message.includes('Player state changed while saving') ||
+            message.includes('Could not safely save player data');
+          if (!retryable || attempt === 3) throw lastError;
+          await new Promise(resolve => setTimeout(resolve, 150 * (attempt + 1)));
+        }
+      }
+      throw lastError ?? new Error('Roll test failed.');
     };
 
     const rollDetail = (result: RollResponse): string =>
@@ -1220,6 +1250,16 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           lastSeenAt: Date.now(),
           onlinePlayers: 1,
           autoRollEnabled: false,
+          level: 34,
+          levelXpFloor: 0,
+          lastShareAt: 0,
+          automations: {
+            autoQuestClaim: false,
+            autoStreakClaim: false,
+            autoCommunityClaim: false,
+            autoOfflineClaim: false,
+            autoUpgrade: false,
+          },
         }),
         result => `coins=1,000 · shards=50 · XP=100,000`,
       );
@@ -1383,7 +1423,18 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
 
       await step(
         'Prepare Daily + Weekly Quests',
-        () => request('/api/dev/state', { questState: 'ready' }),
+        async () => request('/api/dev/state', {
+            questState: 'ready',
+            automations: {
+              autoQuestClaim: false,
+              autoStreakClaim: false,
+              autoCommunityClaim: false,
+              autoOfflineClaim: false,
+              autoUpgrade: false,
+            },
+            offlineRolls: 0,
+            lastSeenAt: Date.now(),
+          }),
         () => 'all quests marked complete and unclaimed',
       );
 
@@ -1424,9 +1475,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       );
 
       await step(
-        'Set 50 Shards',
-        () => request('/api/dev/state', { shards: 50 }),
-        () => 'shards=50',
+        'Set 100 Shards',
+        () => request('/api/dev/state', { shards: 100, lastSeenAt: Date.now() }),
+        () => 'shards=100',
       );
       await step(
         'Activate Global Luck',
@@ -1434,8 +1485,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         (result: any) => `global luck tier=${shortNumber(result.state?.globalBoosters?.luck?.tier, 0)} · ${stateSummary(result)}`,
       );
       await step(
-        'Set 25 Shards',
-        () => request('/api/dev/state', { shards: 25 }),
+        'Set 100 Shards',
+        () => request('/api/dev/state', { shards: 100, lastSeenAt: Date.now() }),
         () => 'shards=25',
       );
       await step(
@@ -1444,8 +1495,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         (result: any) => `global speed tier=${shortNumber(result.state?.globalBoosters?.speed?.tier, 0)} · ${stateSummary(result)}`,
       );
       await step(
-        'Set 25 Shards',
-        () => request('/api/dev/state', { shards: 25 }),
+        'Set 100 Shards',
+        () => request('/api/dev/state', { shards: 100, lastSeenAt: Date.now() }),
         () => 'shards=25',
       );
       await step(
@@ -1461,6 +1512,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           shards: 0,
           collectionValue: 100_000_000,
           lifetimeCollectionValue: 100_000_000,
+          xp: 100_000,
+          level: 20,
+          levelXpFloor: 0,
           lastRollAt: 0,
         }),
         () => 'collectionValue=100,000,000 · expected dust=10',
@@ -2350,6 +2404,12 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'API · Player state refresh preserves high-rarity best',
         async () => {
+          await request<any>('/api/dev/state', {
+            highestRarity: 100_000_000_000_000_000,
+            collection: { '100000000000000000': 1 },
+            lastShareAt: 0,
+            lastSeenAt: Date.now(),
+          });
           const result = await request<any>('/api/me');
           if (Number(result.highestRarity) < 100_000_000_000_000_000) throw new Error('High-rarity best regressed during refresh.');
           return result;
@@ -2552,6 +2612,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         "API · Offline claim consumes seeded rolls",
         async () => {
           await request<any>('/api/dev/offline-set', { amount: 3 });
+          await request<any>('/api/dev/state', { lastSeenAt: Date.now() });
           const result = await request<any>('/api/offline/claim', {});
           if (Number(result.rollsProcessed) !== 3) throw new Error('Offline claim processed ' + result.rollsProcessed + ', expected 3.');
           if (Number(result.state?.offlineRolls) !== 0) throw new Error('Offline rolls were not consumed.');
@@ -2792,7 +2853,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Global Luck can stack repeatedly",
         async () => {
-          await request<any>('/api/dev/state', { shards: 200 });
+          await request<any>('/api/dev/state', { shards: 200, lastSeenAt: Date.now() });
           for (let i = 0; i < 3; i += 1) {
             await request<any>('/api/global-boosters/activate', { id: 'luck' });
           }
@@ -3470,7 +3531,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <button
               title="Give the entered number of free Global Booster activation credits to one specific Reddit user."
-              disabled={loading || !globalBoosterTargetUser.trim()}
+              disabled={globalBoosterGrantLoading || !globalBoosterTargetUser.trim()}
               onClick={() => void grantFreeGlobalBoosters('user')}
               className={buttonBase + ' bg-emerald-600/20 hover:bg-emerald-600/30 border-emerald-500/40 text-emerald-200 px-3 py-2'}
             >
@@ -3478,7 +3539,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </button>
             <button
               title="Give the entered number of free Global Booster activation credits to every currently online player."
-              disabled={loading}
+              disabled={globalBoosterGrantLoading}
               onClick={() => void grantFreeGlobalBoosters('online')}
               className={buttonBase + ' bg-cyan-600/20 hover:bg-cyan-600/30 border-cyan-500/40 text-cyan-200 px-3 py-2'}
             >
@@ -3486,7 +3547,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </button>
             <button
               title="Give the entered number of free Global Booster activation credits to every player registered in Infinity Orbs."
-              disabled={loading}
+              disabled={globalBoosterGrantLoading}
               onClick={() => void grantFreeGlobalBoosters('all')}
               className={buttonBase + ' bg-fuchsia-600/20 hover:bg-fuchsia-600/30 border-fuchsia-500/40 text-fuchsia-200 px-3 py-2'}
             >

@@ -256,11 +256,11 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                   </button>
                   <button
                     onClick={() => void handleGlobalActivation(id, true)}
-                    disabled={activatingGlobalBooster !== null || (state.globalBoosterCredits ?? 0) <= 0}
+                    disabled={activatingGlobalBooster !== null}
                     className="px-2.5 py-2 rounded-xl text-[10px] font-black bg-fuchsia-600/20 border border-fuchsia-500/25 text-fuchsia-200 hover:bg-fuchsia-600/30 disabled:text-slate-600 disabled:cursor-not-allowed"
-                    title="Use one free Global Booster activation"
+                    title="Use one free Global Booster activation. The server is authoritative if the displayed credit count is stale."
                   >
-                    {activatingGlobalBooster === id ? 'Activating…' : 'Free'}
+                    {activatingGlobalBooster === id ? 'Activating…' : 'Free • ' + (state.globalBoosterCredits ?? 0)}
                   </button>
                 </div>
               </div>

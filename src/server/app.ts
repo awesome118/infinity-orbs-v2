@@ -74,7 +74,7 @@ import {
 import { context, reddit, redis } from './devvit-mock.js';
 import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
-import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, formatRarity, type FeatureId } from '../shared/game.js';
+import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, type FeatureId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
 
 const payments = (devvitServer as typeof devvitServer & {
@@ -421,12 +421,15 @@ export function createApp() {
     try {
       const s = await loadRaw();
       const requiredLevel = FEATURE_UNLOCK_LEVELS[feature];
-      if ((s.level || 1) < requiredLevel) {
+      const storedLevel = Math.max(1, Number(s.level) || 1);
+      const xpLevel = Math.max(1, calculateLevelFromXp(Number(s.xp) || 0).level);
+      const effectiveLevel = Math.max(storedLevel, xpLevel);
+      if (effectiveLevel < requiredLevel) {
         return res.status(403).json({
           error: `Reach Level ${requiredLevel} to unlock this feature.`,
           feature,
           requiredLevel,
-          currentLevel: s.level || 1,
+          currentLevel: effectiveLevel,
         });
       }
     } catch (e) {

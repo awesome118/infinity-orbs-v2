@@ -1224,6 +1224,7 @@ debugRouter.post('/state', async (req, res) => {
       'currentRunRolls', 'questsCompleted', 'guildContribution', 'masteryPoints',
       'singularityTitheSingleRolls',
       'communityRewardClaimedAt', 'communityRewardClaimedTier',
+      'level', 'levelXpFloor', 'globalBoosterCredits',
     ];
 
     for (const field of numericFields) {
@@ -1234,6 +1235,7 @@ debugRouter.post('/state', async (req, res) => {
       s.lastRollAt = body.lastRollAt === null ? null : nonNegativeInteger(body.lastRollAt);
     }
     if ('lastSeenAt' in body) s.lastSeenAt = nonNegativeInteger(body.lastSeenAt);
+    if ('lastShareAt' in body) s.lastShareAt = body.lastShareAt === null ? null : nonNegativeInteger(body.lastShareAt);
     if ('autoRollEnabled' in body) s.autoRollEnabled = Boolean(body.autoRollEnabled);
     for (const field of ['lastFrenzyDate', 'lastFrenzyClaimDate', 'lastDailyReset', 'lastWeeklyReset', 'lastFreeShardReset']) {
       if (typeof body[field] === 'string') (s as any)[field] = body[field];
