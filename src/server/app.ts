@@ -47,6 +47,7 @@ import {
   getNotificationState,
   setNotificationState,
   settleOffline,
+  recordPlayerHeartbeat,
 } from './game.js';
 import {
   achievements,
@@ -811,6 +812,14 @@ export function createApp() {
     try {
       res.json(await claimFollowReward());
     } catch (e: any) { badRequest(res, e, 'Could not claim the 200-roll reward.'); }
+  });
+
+  app.post('/api/activity/heartbeat', async (_req, res) => {
+    try {
+      res.json(await recordPlayerHeartbeat());
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Could not record player activity.' });
+    }
   });
 
   // Count an explicit visit to the social tab, not background API refreshes.

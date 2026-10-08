@@ -257,6 +257,17 @@ export function App() {
     void getJson<{ isBeta: boolean }>('/api/app-info').then(info => setIsBeta(info.isBeta === true)).catch(() => setIsBeta(false));
   }, []);
 
+  useEffect(() => {
+    if (!state) return;
+    const heartbeat = () => {
+      if (document.visibilityState === 'hidden') return;
+      void getJson('/api/activity/heartbeat', { method: 'POST' }).catch(() => null);
+    };
+    heartbeat();
+    const interval = window.setInterval(heartbeat, 30_000);
+    return () => window.clearInterval(interval);
+  }, [Boolean(state)]);
+
   // Social & Community state
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
   const [leaderboards, setLeaderboards] = useState<LeaderboardBoards | null>(null);
@@ -458,6 +469,15 @@ export function App() {
       showToast('Could not save Auto Roll preference.', 'warn');
     }
   }, [applyPlayerState, autoRoll, beginOptimisticState, enqueueMutation, showToast]);
+
+  const refreshLeaderboards = useCallback(async () => {
+    const [lb, lbs] = await Promise.all([
+      getJson<LeaderboardEntry[]>('/api/leaderboard'),
+      getJson<LeaderboardBoards>('/api/leaderboards'),
+    ]);
+    setLeaderboardData(lb);
+    setLeaderboards(lbs);
+  }, []);
 
   const refreshAll = useCallback(async () => {
     const revisionAtStart = stateRevisionRef.current;
@@ -2397,6 +2417,7 @@ export function App() {
             myGuild={guildData.mine}
             leaderboard={leaderboardData}
             leaderboards={leaderboards ?? undefined}
+            onRefreshLeaderboards={refreshLeaderboards}
             worldEvent={worldEvent}
             onCreateGuild={handleCreateGuild}
             onJoinGuild={handleJoinGuild}

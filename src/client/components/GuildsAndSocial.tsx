@@ -61,6 +61,7 @@ interface GuildsAndSocialProps {
   onSetGuildTax?: (rate: number) => Promise<void>;
   playerUsername?: string;
   playerHasShared?: boolean;
+  onRefreshLeaderboards?: () => Promise<void>;
   busy: boolean;
 }
 
@@ -106,6 +107,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   onSetGuildTax,
   playerUsername = '',
   playerHasShared = false,
+  onRefreshLeaderboards,
   busy,
 }) => {
   const [activeTab, setActiveTab] = useState<'guild' | 'leaderboard' | 'event'>('guild');
@@ -145,6 +147,11 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'leaderboard' || !onRefreshLeaderboards) return;
+    void onRefreshLeaderboards().catch(() => null);
+  }, [activeTab, onRefreshLeaderboards]);
 
   useEffect(() => {
     setChatMessages(prev => {

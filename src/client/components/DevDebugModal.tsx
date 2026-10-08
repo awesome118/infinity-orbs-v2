@@ -3326,13 +3326,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           />
         </section>
 
+        </div>
+        </details>
+
         <details open className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-slate-300">
-            <span>Controls & Simulation</span><span className="text-[10px] text-slate-600">Expand</span>
+            <span>Controls & Simulation</span><span className="text-[10px] text-slate-600">Collapse</span>
           </summary>
           <div className="mt-3 space-y-3">
-          </div>
-        </details>
 
         <section className={panelBase}>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fuchsia-300">
@@ -3698,13 +3699,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
         </section>
 
+        </div>
+        </details>
+
         <details className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-slate-300">
             <span>Players & Moderation</span><span className="text-[10px] text-slate-600">Expand</span>
           </summary>
           <div className="mt-3 space-y-3">
-          </div>
-        </details>
 
         <section className={`${panelBase} border border-rose-500/30`}>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-300">
@@ -4288,8 +4290,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         </section>
 
                   </div>
-        </details>
+        </section>
 
+        <details className="rounded-2xl border border-rose-500/40 bg-rose-950/10 p-3">
+          <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-rose-300">
+            <span>Destructive Testing</span><span className="text-[10px] text-rose-400/60">Expand</span>
+          </summary>
+          <div className="mt-3 space-y-3">
         <section className="bg-rose-950/20 border border-rose-500/40 rounded-2xl p-4 space-y-2">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-300">
             <Trash2 className="w-4 h-4" /> Destructive Testing
@@ -4311,6 +4318,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </button>
           </div>
         </section>
+          </div>
+        </details>
       </div>
     </div>
   );

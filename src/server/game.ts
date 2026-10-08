@@ -1034,8 +1034,7 @@ function playerKeyFor(userId: string): string {
   return `player:${userId}`;
 }
 
-const PLAYTIME_HEARTBEAT_CAP_MS = 30_000;
-const PLAYTIME_SESSION_GAP_MS = 5 * 60_000;
+const PLAYTIME_ACTIVE_GAP_MS = 5 * 60_000;
 
 interface PlayerRegistryEntry {
   username: string;
@@ -1046,11 +1045,11 @@ interface PlayerRegistryEntry {
   playtimeMs?: number;
 }
 
-async function registerPlayer(userId: string, username: string): Promise<void> {
-  const now = Date.now();
+async function touchPlayerActivity(userId: string, username: string, now = Date.now()): Promise<number> {
   let firstSeenAt = now;
   let lastLoginAt = now;
   let playtimeMs = 0;
+
   const existingRaw = await redis.hGet(PLAYER_REGISTRY_KEY, userId);
   if (existingRaw) {
     const existing = parseStoredJson<Partial<PlayerRegistryEntry>>(existingRaw);
@@ -1062,11 +1061,11 @@ async function registerPlayer(userId: string, username: string): Promise<void> {
     );
     const previousPlaytimeMs = Math.max(0, Number(existing?.playtimeMs ?? 0) || 0);
     const activityDelta = previousActivityAt > 0
-      ? Math.min(PLAYTIME_HEARTBEAT_CAP_MS, Math.max(0, now - previousActivityAt))
+      ? Math.min(PLAYTIME_ACTIVE_GAP_MS, Math.max(0, now - previousActivityAt))
       : 0;
 
     playtimeMs = previousPlaytimeMs + activityDelta;
-    if (now - previousActivityAt <= PLAYTIME_SESSION_GAP_MS && Number(existing?.lastLoginAt ?? 0) > 0) {
+    if (now - previousActivityAt <= PLAYTIME_ACTIVE_GAP_MS && Number(existing?.lastLoginAt ?? 0) > 0) {
       lastLoginAt = Number(existing?.lastLoginAt);
     }
   }
@@ -1081,6 +1080,18 @@ async function registerPlayer(userId: string, username: string): Promise<void> {
       playtimeMs,
     } satisfies PlayerRegistryEntry),
   });
+
+  return playtimeMs;
+}
+
+async function registerPlayer(userId: string, username: string): Promise<void> {
+  await touchPlayerActivity(userId, username);
+}
+
+export async function recordPlayerHeartbeat(): Promise<{ playtimeMs: number }> {
+  const userId = currentUserId();
+  const username = String(context.username ?? `reddit-user-${userId.slice(-8)}`);
+  return { playtimeMs: await touchPlayerActivity(userId, username) };
 }
 
 export interface PlayerListEntry {
@@ -1890,6 +1901,13 @@ export async function save(
   await ensureRedisStringKey(generationKey, '0');
 
   let expectedRevision = Math.max(0, Math.floor(Number(s.stateRevision ?? 0)) || 0);
+
+  // Lifetime playtime lives outside the save so resets/wipes cannot erase it.
+  // Every saved action also refreshes the activity clock.
+  await touchPlayerActivity(
+    userId,
+    String(s.username ?? context.username ?? `reddit-user-${userId.slice(-8)}`),
+  );
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const watchedKeys = extraWrite ? [playerKey, generationKey, extraWrite.key] : [playerKey, generationKey];

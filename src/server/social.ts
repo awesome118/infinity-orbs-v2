@@ -1381,25 +1381,68 @@ function sortLeaderboard(entries: LeaderboardEntry[], selector: (entry: Leaderbo
 }
 
 export async function leaderboards(): Promise<import('../shared/social.js').LeaderboardBoards> {
-  const raw = await redis.get(key('leaderboard'));
-  const board = parseLeaderboardList(raw);
-  const registryRaw = await redis.hGetAll(PLAYER_REGISTRY_KEY);
-  const registry = registryRaw && typeof registryRaw === 'object' ? registryRaw as Record<string, string> : {};
+  const rawRegistry = await redis.hGetAll(PLAYER_REGISTRY_KEY);
+  const registry = rawRegistry && typeof rawRegistry === 'object'
+    ? rawRegistry as Record<string, string>
+    : {};
+  const userIds = Object.keys(registry);
+  const saves = userIds.length > 0
+    ? await redis.mGet(userIds.map(id => `player:${id}`))
+    : [];
 
-  const enriched = board.map(entry => {
-    if (!entry.userId) return entry;
-    const parsed = parseStoredJson<{ playtimeMs?: unknown }>(registry[entry.userId]);
-    const playtimeMs = Math.max(0, Number(parsed?.playtimeMs ?? entry.playtimeMs ?? 0) || 0);
-    return { ...entry, playtimeMs };
-  });
+  const eligible: LeaderboardEntry[] = [];
+  const legacyRaw = await redis.get(key('leaderboard'));
+  const legacyBoard = parseLeaderboardList(legacyRaw);
+  const legacyById = new Map<string, LeaderboardEntry>();
+  for (const entry of legacyBoard) {
+    if (entry.userId) legacyById.set(entry.userId, entry);
+  }
+
+  for (let index = 0; index < userIds.length; index += 1) {
+    const userId = userIds[index];
+    const registryEntry = parseStoredJson<Partial<PlayerRegistryLeaderboardEntry>>(registry[userId]) ?? {};
+    const save = saves[index] ? parseStoredJson<Partial<PlayerState>>(saves[index]) : null;
+    if (!save) continue;
+
+    const sharedAt = Number(save.lastShareAt ?? 0) || 0;
+    if (sharedAt <= 0) continue;
+
+    const legacy = legacyById.get(userId);
+    const playtimeMs = Math.max(
+      0,
+      Number(registryEntry.playtimeMs ?? legacy?.playtimeMs ?? 0) || 0,
+    );
+
+    eligible.push({
+      username: String(registryEntry.username ?? save.username ?? legacy?.username ?? `user-${userId.slice(-8)}`).trim(),
+      userId,
+      value: Math.max(0, Number(save.collectionValue ?? legacy?.value ?? 0) || 0),
+      highestRarity: Math.max(0, Number(save.highestRarity ?? legacy?.highestRarity ?? 0) || 0),
+      totalRolls: Math.max(0, Number(save.totalRolls ?? legacy?.totalRolls ?? 0) || 0),
+      level: Math.max(1, Number(save.level ?? legacy?.level ?? 1) || 1),
+      sharedAt,
+      highestDryStreak: Math.max(
+        0,
+        Number(save.highestDryStreak ?? legacy?.highestDryStreak ?? save.rollsSinceBest ?? 0) || 0,
+      ),
+      playtimeMs,
+      title: legacy?.title,
+      guildTag: legacy?.guildTag,
+    });
+  }
 
   return {
-    collectionValue: sortLeaderboard(enriched, entry => entry.value),
-    mostRolls: sortLeaderboard(enriched, entry => entry.totalRolls),
-    highestDryStreak: sortLeaderboard(enriched, entry => entry.highestDryStreak ?? 0),
-    bestOrb: sortLeaderboard(enriched, entry => entry.highestRarity),
-    mostPlaytime: sortLeaderboard(enriched, entry => entry.playtimeMs ?? 0),
+    collectionValue: sortLeaderboard(eligible, entry => entry.value),
+    mostRolls: sortLeaderboard(eligible, entry => entry.totalRolls),
+    highestDryStreak: sortLeaderboard(eligible, entry => entry.highestDryStreak ?? 0),
+    bestOrb: sortLeaderboard(eligible, entry => entry.highestRarity),
+    mostPlaytime: sortLeaderboard(eligible, entry => entry.playtimeMs ?? 0),
   };
+}
+
+interface PlayerRegistryLeaderboardEntry {
+  username?: string;
+  playtimeMs?: number;
 }
 
 export async function leaderboard(): Promise<LeaderboardEntry[]> {
