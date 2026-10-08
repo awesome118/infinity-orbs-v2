@@ -36,6 +36,7 @@ const user = () => context.userId ?? 'unknown';
 const username = () => context.username ?? `reddit-user-${user().slice(-8)}`;
 const key = (name: string) => `io:${name}`;
 const GUILDS_KEY = key('guilds');
+const PLAYER_REGISTRY_KEY = key('player-registry');
 const GUILD_CHAT_MUTES_KEY = key('guild-chat-mutes:v1');
 const GUILD_TOKEN_RESET_KEY = key('guild-token-reset:v1');
 const GUILD_UPGRADE_RESET_KEY = key('guild-upgrade-reset:v1');
@@ -418,12 +419,66 @@ export async function unmuteGuildChatUser(userId: string): Promise<boolean> {
   return true;
 }
 
+async function hideGuildLastLogins(guild: Guild): Promise<Guild> {
+  return {
+    ...guild,
+    members: guild.members.map(member => {
+      const { lastLoginAt: _lastLoginAt, ...safeMember } = member;
+      return safeMember;
+    }),
+  };
+}
+
+async function hydrateGuildLastLogins(guild: Guild, actor: Guild['members'][number]): Promise<Guild> {
+  if (!isTrustedMember(guild, actor)) return hideGuildLastLogins(guild);
+
+  const rawRegistry = await redis.hGetAll(PLAYER_REGISTRY_KEY);
+  const records = rawRegistry && typeof rawRegistry === 'object'
+    ? rawRegistry as Record<string, string>
+    : {};
+
+  return {
+    ...guild,
+    members: guild.members.map(member => {
+      const activity = member.userId
+        ? parseStoredJson<Partial<{ lastLoginAt: number; lastSeenAt: number }>>(records[member.userId])
+        : null;
+      const lastLoginAt = Number(
+        activity?.lastLoginAt ??
+        activity?.lastSeenAt ??
+        member.lastLoginAt ??
+        0,
+      ) || 0;
+      return lastLoginAt > 0 ? { ...member, lastLoginAt } : { ...member };
+    }),
+  };
+}
+
 export async function guildInfo() {
   const guilds = await loadGuilds();
   const mine = currentGuild(guilds);
+  const visibleGuilds = guilds
+    .sort((a, b) => b.xp - a.xp)
+    .slice(0, 20)
+    .map(guild => ({
+      ...guild,
+      members: guild.members.map(member => {
+        const { lastLoginAt: _lastLoginAt, ...safeMember } = member;
+        return safeMember;
+      }),
+    }));
+
+  let visibleMine: Guild | null = null;
+  if (mine) {
+    const actor = mine.members.find(member => memberMatches(member));
+    visibleMine = actor
+      ? await hydrateGuildLastLogins(mine, actor)
+      : await hideGuildLastLogins(mine);
+  }
+
   return {
-    guilds: guilds.sort((a, b) => b.xp - a.xp).slice(0, 20),
-    mine: mine ?? null,
+    guilds: visibleGuilds,
+    mine: visibleMine,
   };
 }
 
@@ -530,6 +585,52 @@ export async function setGuildTrust(targetUsername: string, trusted: boolean) {
     return target;
   });
 }
+
+export async function kickGuildMember(targetUsername: string) {
+  const requested = String(targetUsername ?? '').trim().replace(/^u\//i, '').toLowerCase();
+  if (!requested) throw new Error('Guild member username is required.');
+
+  return updateGuilds(guilds => {
+    const guild = currentGuild(guilds);
+    if (!guild) throw new Error('You are not in a guild.');
+
+    const actor = guild.members.find(member => memberMatches(member));
+    if (!actor) throw new Error('Guild membership could not be verified.');
+
+    const target = guild.members.find(member => member.username.toLowerCase() === requested);
+    if (!target) throw new Error('Guild member not found.');
+    if (target.username === actor.username || (target.userId && target.userId === actor.userId)) {
+      throw new Error('You cannot kick yourself.');
+    }
+    if (target.role === 'owner') throw new Error('The guild owner cannot be kicked.');
+
+    if (actor.role !== 'owner') {
+      if (!isTrustedMember(guild, actor)) {
+        throw new Error('Only trusted members can kick Guild members.');
+      }
+      if (target.role === 'officer' || target.trusted === true) {
+        throw new Error('Trusted members can only kick non-trusted members.');
+      }
+    }
+
+    guild.members = guild.members.filter(member =>
+      !(member.username === target.username || (member.userId && target.userId && member.userId === target.userId)),
+    );
+
+    if (!guild.chat) guild.chat = [];
+    guild.chat.push({
+      id: 'msg-' + Date.now() + '-kick',
+      username: 'System',
+      text: actor.username + ' kicked ' + target.username + ' from the guild.',
+      timestamp: Date.now(),
+      isSystem: true,
+    });
+    if (guild.chat.length > 50) guild.chat.shift();
+
+    return { success: true, username: target.username };
+  });
+}
+
 
 export async function setGuildTaxRate(rate: number) {
   const safeRate = Math.max(0, Math.min(10, Math.floor(Number(rate) || 0)));
