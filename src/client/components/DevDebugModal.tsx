@@ -2276,6 +2276,636 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         result => 'highest=' + formatRarity(result.highestRarity),
       );
 
+
+      await step(
+        "API · Final fixture baseline",
+        async () => {
+          const result = await request<any>('/api/dev/reset-all', {});
+          const state = recordValue(result.state);
+          if (Number(state.coins) !== 50 || Number(state.shards) !== 5 || Number(state.xp) !== 0 || Number(state.level) !== 1) {
+            throw new Error('Reset baseline was not restored: coins=' + state.coins + ', shards=' + state.shards + ', xp=' + state.xp + ', level=' + state.level + '.');
+          }
+          return state;
+        },
+        state => 'coins=' + state.coins + ' · shards=' + state.shards + ' · xp=' + state.xp + ' · level=' + state.level,
+      );
+
+      await step(
+        "API · Nested upgrade state mutation",
+        async () => {
+          const result = await request<any>('/api/dev/state', { coins: 1_000, upgrades: { luck: 7 } });
+          if (Number(result.state?.upgrades?.luck) !== 7) throw new Error('Luck upgrade mutation did not persist.');
+          return result.state;
+        },
+        state => 'luck=' + state.upgrades.luck,
+      );
+
+      await step(
+        "API · Nested prestige state mutation",
+        async () => {
+          const result = await request<any>('/api/dev/state', { prestigeUpgrades: { permLuck: 3 } });
+          if (Number(result.state?.prestigeUpgrades?.permLuck) !== 3) throw new Error('Prestige mutation did not persist.');
+          return result.state;
+        },
+        state => 'permLuck=' + state.prestigeUpgrades.permLuck,
+      );
+
+      await step(
+        "API · Nested mastery state mutation",
+        async () => {
+          const result = await request<any>('/api/dev/state', { masterySkills: { continuumLuck: 4 } });
+          if (Number(result.state?.masterySkills?.continuumLuck) !== 4) throw new Error('Mastery mutation did not persist.');
+          return result.state;
+        },
+        state => 'continuumLuck=' + state.masterySkills.continuumLuck,
+      );
+
+      await step(
+        "API · Automation state mutation",
+        async () => {
+          const result = await request<any>('/api/dev/state', { automations: { autoQuestClaim: true } });
+          if (result.state?.automations?.autoQuestClaim !== true) throw new Error('Automation state mutation did not persist.');
+          return result.state;
+        },
+        state => 'autoQuestClaim=' + state.automations.autoQuestClaim,
+      );
+
+      await step(
+        "API · Active booster state mutation",
+        async () => {
+          const result = await request<any>('/api/dev/state', { activeBoosters: { fortune: Date.now() + 60_000 } });
+          if (!(Number(result.state?.activeBoosters?.fortune) > Date.now())) throw new Error('Active booster timestamp did not persist.');
+          return result.state;
+        },
+        state => 'fortune expiry=' + state.activeBoosters.fortune,
+      );
+
+      await step(
+        "API · Altar sacrifice state mutation",
+        async () => {
+          const result = await request<any>('/api/dev/state', {
+            sacrifices: { coinsSacrificed: 50_000, shardsSacrificed: 5, altarLevel: 3, luckSurgeUntil: 0 },
+          });
+          const sacrifices = result.state?.sacrifices;
+          if (Number(sacrifices?.altarLevel) !== 3 || Number(sacrifices?.shardsSacrificed) !== 5) {
+            throw new Error('Altar state mutation did not persist.');
+          }
+          return sacrifices;
+        },
+        value => 'altar=' + value.altarLevel + ' · infused shards=' + value.shardsSacrificed,
+      );
+
+      await step(
+        "API · Collection state sanitizes zero and negative counts",
+        async () => {
+          const result = await request<any>('/api/dev/state', { collection: { '2': 3, '3': 0, '4': -5, '5': 2 } });
+          const collection = recordValue(result.state?.collection);
+          if (Number(collection['2']) !== 3 || Number(collection['5']) !== 2 || '3' in collection || '4' in collection) {
+            throw new Error('Collection sanitizer did not remove invalid counts.');
+          }
+          return collection;
+        },
+        value => 'kept=' + Object.keys(value).join(','),
+      );
+
+      await step(
+        "API · Currency mutation adds exact integer amounts",
+        async () => {
+          await request<any>('/api/dev/state', { coins: 100, shards: 10, cosmicDust: 2 });
+          const result = await request<any>('/api/dev/currency', { coins: 25, shards: 3, dust: 4 });
+          if (Number(result.state?.coins) !== 125 || Number(result.state?.shards) !== 13 || Number(result.state?.cosmicDust) !== 6) {
+            throw new Error('Currency mutation produced the wrong totals.');
+          }
+          return result.state;
+        },
+        state => 'coins=' + state.coins + ' · shards=' + state.shards + ' · dust=' + state.cosmicDust,
+      );
+
+      await step(
+        "API · Currency mutation clamps negative totals",
+        async () => {
+          await request<any>('/api/dev/state', { coins: 10, shards: 5, cosmicDust: 2 });
+          const result = await request<any>('/api/dev/currency', { coins: -100, shards: -100, dust: -100 });
+          if (Number(result.state?.coins) !== 0 || Number(result.state?.shards) !== 0 || Number(result.state?.cosmicDust) !== 0) {
+            throw new Error('Negative currency total survived.');
+          }
+          return result.state;
+        },
+        state => 'coins=' + state.coins + ' · shards=' + state.shards + ' · dust=' + state.cosmicDust,
+      );
+
+      await step(
+        "API · Reset cooldown clears roll lock",
+        async () => {
+          await request<any>('/api/dev/state', { lastRollAt: Date.now() });
+          const result = await request<any>('/api/dev/reset-cooldown', {});
+          if (Number(result.state?.lastRollAt ?? 0) !== 0) throw new Error('Roll cooldown was not cleared.');
+          return result.state;
+        },
+        state => 'lastRollAt=' + state.lastRollAt,
+      );
+
+      await step(
+        "API · Force-roll honors deterministic rarity",
+        async () => {
+          const result = await request<any>('/api/dev/force-roll', { rarity: 12345, randomValue: 0.999999 });
+          if (Number(result.orb?.rarity) !== 12345) throw new Error('Force-roll returned 1/' + result.orb?.rarity + ' instead of 1/12345.');
+          return result;
+        },
+        result => 'forced 1/' + formatRarity(result.orb.rarity),
+      );
+
+      await step(
+        "API · Force-roll increments processed roll count",
+        async () => {
+          await request<any>('/api/dev/state', { totalRolls: 100, currentRunRolls: 0 });
+          const result = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
+          if (Number(result.state?.totalRolls) !== 101 || Number(result.state?.currentRunRolls) !== 1) {
+            throw new Error('Force-roll counters were not incremented.');
+          }
+          return result.state;
+        },
+        state => 'totalRolls=' + state.totalRolls + ' · currentRun=' + state.currentRunRolls,
+      );
+
+      await step(
+        "API · Force-roll persists collection entry",
+        async () => {
+          await request<any>('/api/dev/state', { collection: {}, highestRarity: 0, collectionValue: 0 });
+          const result = await request<any>('/api/dev/force-roll', { rarity: 777, randomValue: 0.999999 });
+          const collection = recordValue(result.state?.collection);
+          if (Number(collection['777']) !== 1) throw new Error('Forced rarity was not persisted in the collection.');
+          return result.state;
+        },
+        state => '1/777 count=' + state.collection['777'],
+      );
+
+      await step(
+        "API · Offline exact setter",
+        async () => {
+          const result = await request<any>('/api/dev/offline-set', { rolls: 17 });
+          if (Number(result.state?.offlineRolls) !== 17) throw new Error('Offline exact setter returned ' + result.state?.offlineRolls + '.');
+          return result.state;
+        },
+        state => 'offlineRolls=' + state.offlineRolls,
+      );
+
+      await step(
+        "API · Offline add increments stored rolls",
+        async () => {
+          await request<any>('/api/dev/offline-set', { rolls: 17 });
+          const result = await request<any>('/api/dev/add-offline', { rolls: 8 });
+          if (Number(result.state?.offlineRolls) !== 25) throw new Error('Offline add produced ' + result.state?.offlineRolls + ', expected 25.');
+          return result.state;
+        },
+        state => 'offlineRolls=' + state.offlineRolls,
+      );
+
+      await step(
+        "API · Offline claim consumes seeded rolls",
+        async () => {
+          await request<any>('/api/dev/offline-set', { rolls: 3 });
+          const result = await request<any>('/api/offline/claim', {});
+          if (Number(result.rollsProcessed) !== 3) throw new Error('Offline claim processed ' + result.rollsProcessed + ', expected 3.');
+          if (Number(result.state?.offlineRolls) !== 0) throw new Error('Offline rolls were not consumed.');
+          return result;
+        },
+        result => 'processed=' + result.rollsProcessed + ' · remaining=' + result.state.offlineRolls,
+      );
+
+      await step(
+        "API · Daily reset clears daily Frenzy and streak fields",
+        async () => {
+          await request<any>('/api/dev/state', {
+            lastFrenzyDate: '2020-01-01',
+            lastFrenzyClaimDate: '2020-01-01',
+            lastDailyReset: '2020-01-01',
+          });
+          const result = await request<any>('/api/dev/reset-daily', {});
+          const state = recordValue(result.state);
+          if (state.lastFrenzyDate === '2020-01-01' || state.lastFrenzyClaimDate === '2020-01-01') {
+            throw new Error('Daily reset did not clear daily Frenzy dates.');
+          }
+          return state;
+        },
+        () => 'daily reset applied',
+      );
+
+      await step(
+        "API · Online endpoint returns a nonnegative population",
+        async () => {
+          const result = await request<any>('/api/online');
+          if (!Number.isFinite(Number(result.onlinePlayers)) || Number(result.onlinePlayers) < 0) throw new Error('Invalid online population.');
+          return result;
+        },
+        result => 'onlinePlayers=' + result.onlinePlayers,
+      );
+
+      await step(
+        "API · Global Booster snapshot exposes all three boosters",
+        async () => {
+          const result = await request<any>('/api/global-boosters');
+          for (const id of ['luck', 'speed', 'crit']) {
+            if (!result.snapshot?.[id]) throw new Error('Missing Global Booster ' + id + '.');
+          }
+          return result.snapshot;
+        },
+        snapshot => 'luck=' + snapshot.luck.tier + ' · speed=' + snapshot.speed.tier + ' · crit=' + snapshot.crit.tier,
+      );
+
+      await step(
+        "API · Global Booster announcement is initially readable",
+        async () => {
+          const result = await request<any>('/api/global-booster-announcement');
+          if (typeof result !== 'object') throw new Error('Global Booster announcement response was not an object.');
+          return result;
+        },
+        result => result.username ? 'last activated by u/' + result.username : 'no active announcement',
+      );
+
+      await step(
+        "API · World event returns a structured community goal",
+        async () => {
+          const result = await request<any>('/api/world-event');
+          if (!result || typeof result !== 'object') throw new Error('World event response was invalid.');
+          if (!Number.isFinite(Number(result.goal)) || !Number.isFinite(Number(result.currentProgress))) throw new Error('World event goal/progress was invalid.');
+          return result;
+        },
+        result => 'progress=' + result.currentProgress + '/' + result.goal,
+      );
+
+      await step(
+        "API · Community event admin reset is reversible",
+        async () => {
+          const before = await request<any>('/api/world-event');
+          const changed = await request<any>('/api/dev/event', { goal: 1234, progress: 7, tier: 2, buffMultiplier: 1.25 });
+          if (Number(changed.event?.goal) !== 1234 || Number(changed.event?.currentProgress) !== 7 || Number(changed.event?.tier) !== 2) {
+            throw new Error('Community event admin mutation did not apply.');
+          }
+          await request<any>('/api/dev/event', {
+            goal: before.goal,
+            progress: before.currentProgress,
+            tier: before.tier,
+            buffMultiplier: before.buffMultiplier,
+          });
+          return changed.event;
+        },
+        event => 'temporary event=' + event.currentProgress + '/' + event.goal + ' · restored',
+      );
+
+      await step(
+        "API · Developer announcement round-trip",
+        async () => {
+          const message = '[ADMIN TEST] announcement round-trip ' + Date.now();
+          await request<any>('/api/dev/announcement', { message });
+          const result = await request<any>('/api/developer-announcement');
+          if (result.message !== message) throw new Error('Developer announcement did not round-trip.');
+          return result;
+        },
+        result => 'announcement=' + result.message,
+      );
+
+      await step(
+        "API · Dev context identifies the current session",
+        async () => {
+          const result = await request<any>('/api/dev/context');
+          if (!result.username || !result.userId) throw new Error('Admin context is missing username or userId.');
+          return result;
+        },
+        result => 'u/' + result.username + ' · id=' + result.userId,
+      );
+
+      await step(
+        "API · Dev status reports a healthy admin session",
+        async () => {
+          const result = await request<any>('/api/dev/status');
+          if (result.ok === false) throw new Error('Admin status reported failure.');
+          return result;
+        },
+        () => 'status readable',
+      );
+
+      await step(
+        "API · Mechanics inspector exposes every authoritative field",
+        async () => {
+          const result = await request<any>('/api/dev/mechanics');
+          const mechanics = recordValue(result.mechanics);
+          for (const key of ['luckMultiplier', 'cooldownMs', 'autoCooldownMs', 'rollsPerActivation', 'offlineRollCap', 'effectiveOfflineTickMs', 'critMultiplier', 'altar', 'basePrestigeDust', 'prestigeDust', 'autoUnlocked', 'synthesisUnlocked']) {
+            if (!(key in mechanics)) throw new Error('Mechanics field missing: ' + key + '.');
+          }
+          return mechanics;
+        },
+        mechanics => 'fields=' + Object.keys(mechanics).length,
+      );
+
+      await step(
+        "API · Stat Spy exposes allocations and source breakdowns",
+        async () => {
+          const context = await request<any>('/api/dev/context');
+          const result = await request<any>('/api/dev/stat-spy?username=' + encodeURIComponent(context.username));
+          if (!Array.isArray(result.stats) || result.stats.length === 0) throw new Error('Stat Spy returned no stats.');
+          if (!result.allocations || !result.summary) throw new Error('Stat Spy omitted summary or allocations.');
+          for (const stat of result.stats) {
+            if (!Array.isArray(stat.sources)) throw new Error('Stat Spy stat lacked source breakdown: ' + stat.label);
+          }
+          return result;
+        },
+        result => 'stats=' + result.stats.length + ' · sources broken down',
+      );
+
+      await step(
+        "API · Player Spy returns activity data",
+        async () => {
+          const context = await request<any>('/api/dev/context');
+          const result = await request<any>('/api/dev/player-spy?username=' + encodeURIComponent(context.username) + '&limit=20');
+          if (!Array.isArray(result.logs)) throw new Error('Player Spy did not return an array of logs.');
+          if (Number(result.logCount) !== result.logs.length) throw new Error('Player Spy logCount does not match returned logs.');
+          return result;
+        },
+        result => 'logs=' + result.logCount,
+      );
+
+      await step(
+        "API · Player Spy limit is honored",
+        async () => {
+          const context = await request<any>('/api/dev/context');
+          const result = await request<any>('/api/dev/player-spy?username=' + encodeURIComponent(context.username) + '&limit=1');
+          if (result.logs.length > 1) throw new Error('Player Spy returned more than the requested limit.');
+          return result;
+        },
+        result => 'returned=' + result.logs.length + ' · limit=1',
+      );
+
+      await step(
+        "API · Moderation save inspector sees the current save",
+        async () => {
+          const context = await request<any>('/api/dev/context');
+          const result = await request<any>('/api/dev/moderation/save?username=' + encodeURIComponent(context.username));
+          if (result.exists !== true || !result.save) throw new Error('Moderation save inspector could not read the current save.');
+          if (String(result.username).toLowerCase() !== String(context.username).toLowerCase()) throw new Error('Moderation save inspector resolved the wrong username.');
+          return result;
+        },
+        result => 'save exists · generation=' + result.generation,
+      );
+
+      await step(
+        "API · Player registry contains the admin account",
+        async () => {
+          const context = await request<any>('/api/dev/context');
+          const result = await request<any>('/api/dev/players');
+          const players = Array.isArray(result) ? result : result.players;
+          if (!Array.isArray(players)) throw new Error('Player list response was invalid.');
+          const match = players.find((player: any) => String(player.username).toLowerCase() === String(context.username).toLowerCase());
+          if (!match) throw new Error('Current admin player was not present in the registry.');
+          return match;
+        },
+        player => 'u/' + player.username + ' · level=' + player.level,
+      );
+
+      await step(
+        "API · Save debug log contains recent test activity",
+        async () => {
+          const result = await request<any>('/api/dev/save-logs');
+          const logs = Array.isArray(result) ? result : result.logs;
+          if (!Array.isArray(logs) || logs.length === 0) throw new Error('Save debug log is empty after state mutations.');
+          return logs;
+        },
+        logs => 'save logs=' + logs.length,
+      );
+
+      await step(
+        "API · Global Booster debug log records activations",
+        async () => {
+          await request<any>('/api/dev/state', { shards: 50 });
+          await request<any>('/api/global-boosters/activate', { id: 'luck' });
+          const result = await request<any>('/api/dev/global-booster-logs');
+          const logs = Array.isArray(result) ? result : result.logs;
+          if (!Array.isArray(logs) || logs.length === 0) throw new Error('Global Booster debug log did not record the activation.');
+          return logs;
+        },
+        logs => 'booster logs=' + logs.length,
+      );
+
+      await step(
+        "API · Global Luck activation changes its tier",
+        async () => {
+          const result = await request<any>('/api/global-boosters');
+          if (Number(result.snapshot?.luck?.tier) < 1) throw new Error('Global Luck did not activate.');
+          return result.snapshot.luck;
+        },
+        state => 'Luck tier=' + state.tier,
+      );
+
+      await step(
+        "API · Global Luck can stack repeatedly",
+        async () => {
+          await request<any>('/api/dev/state', { shards: 200 });
+          for (let i = 0; i < 3; i += 1) {
+            await request<any>('/api/global-boosters/activate', { id: 'luck' });
+          }
+          const result = await request<any>('/api/global-boosters');
+          if (Number(result.snapshot?.luck?.activationProgress) < 3 && Number(result.snapshot?.luck?.tier) < 2) {
+            throw new Error('Repeated Global Luck activation did not advance progress.');
+          }
+          return result.snapshot.luck;
+        },
+        state => 'Luck tier=' + state.tier + ' · progress=' + state.activationProgress,
+      );
+
+      await step(
+        "API · Global Speed activation reduces cooldown",
+        async () => {
+          await request<any>('/api/dev/global-booster', { id: 'speed', tier: 0, minutes: 1 });
+          await request<any>('/api/dev/state', { shards: 50 });
+          const before = await request<any>('/api/dev/mechanics');
+          await request<any>('/api/global-boosters/activate', { id: 'speed' });
+          const after = await request<any>('/api/dev/mechanics');
+          if (!(Number(after.mechanics.cooldownMs) < Number(before.mechanics.cooldownMs))) {
+            throw new Error('Global Speed did not reduce cooldown.');
+          }
+          return { before, after };
+        },
+        result => 'cooldown ' + result.before.mechanics.cooldownMs + 'ms → ' + result.after.mechanics.cooldownMs + 'ms',
+      );
+
+      await step(
+        "API · Global Crit activation returns a valid crit layer",
+        async () => {
+          await request<any>('/api/dev/global-booster', { id: 'crit', tier: 0, minutes: 1 });
+          await request<any>('/api/dev/state', { shards: 50 });
+          const before = await request<any>('/api/dev/mechanics');
+          await request<any>('/api/global-boosters/activate', { id: 'crit' });
+          const after = await request<any>('/api/dev/mechanics');
+          if (!Number.isFinite(Number(after.mechanics.critMultiplier)) || Number(after.mechanics.critMultiplier) < 1) {
+            throw new Error('Global Crit produced an invalid crit multiplier.');
+          }
+          if (Number(after.mechanics.critMultiplier) < Number(before.mechanics.critMultiplier)) {
+            throw new Error('Global Crit reduced the crit multiplier.');
+          }
+          return { before, after };
+        },
+        result => 'crit multiplier=' + result.after.mechanics.critMultiplier,
+      );
+
+      await step(
+        "API · Global Booster clear removes temporary state",
+        async () => {
+          await request<any>('/api/dev/global-booster', { id: 'luck', tier: 0, minutes: 1 });
+          await request<any>('/api/dev/global-booster', { id: 'speed', tier: 0, minutes: 1 });
+          await request<any>('/api/dev/global-booster', { id: 'crit', tier: 0, minutes: 1 });
+          const result = await request<any>('/api/global-boosters');
+          for (const id of ['luck', 'speed', 'crit']) {
+            if (Number(result.snapshot?.[id]?.tier) !== 0) throw new Error('Global ' + id + ' did not clear.');
+          }
+          return result.snapshot;
+        },
+        () => 'all global boosters cleared',
+      );
+
+      await step(
+        "API · Collection pagination obeys limit",
+        async () => {
+          await request<any>('/api/dev/state', { collection: { '2': 1, '3': 1, '4': 1, '5': 1, '6': 1 } });
+          const result = await request<any>('/api/collection?offset=0&limit=2&tier=all&sort=rarity_desc');
+          if (!Array.isArray(result.items) || result.items.length > 2) throw new Error('Collection pagination returned ' + result.items?.length + ' items for limit=2.');
+          return result;
+        },
+        result => 'returned=' + result.items.length + ' · limit=2',
+      );
+
+      await step(
+        "API · Collection rarity-desc sorting is ordered",
+        async () => {
+          const result = await request<any>('/api/collection?offset=0&limit=100&tier=all&sort=rarity_desc');
+          const rarities = (result.items ?? []).map((item: any) => Number(item.rarity));
+          for (let i = 1; i < rarities.length; i += 1) {
+            if (rarities[i] > rarities[i - 1]) throw new Error('Collection rarity-desc order broke at index ' + i + '.');
+          }
+          return rarities;
+        },
+        rarities => 'sorted ' + rarities.length + ' entries',
+      );
+
+      await step(
+        "API · Collection count sorting returns entries without crashing",
+        async () => {
+          const result = await request<any>('/api/collection?offset=0&limit=100&tier=all&sort=count');
+          if (!Array.isArray(result.items)) throw new Error('Collection count sort returned no items array.');
+          return result;
+        },
+        result => 'count-sorted entries=' + result.items.length,
+      );
+
+      await step(
+        "API · Leaderboard endpoint remains readable after state mutations",
+        async () => {
+          const result = await request<any>('/api/leaderboard');
+          const entries = Array.isArray(result) ? result : result.entries;
+          if (!Array.isArray(entries)) throw new Error('Leaderboard response was invalid.');
+          return entries;
+        },
+        entries => 'leaderboard entries=' + entries.length,
+      );
+
+      await step(
+        "API · Social visit mutation succeeds",
+        async () => {
+          const result = await request<any>('/api/social/visit', {});
+          if (result?.ok !== true) throw new Error('Social visit did not return ok=true.');
+          return result;
+        },
+        () => 'social visit recorded',
+      );
+
+      await step(
+        "API · Share creates an owned-orb community post",
+        async () => {
+          await request<any>('/api/dev/state', {
+            coins: 100_000,
+            shards: 50,
+            collection: { '100': 1 },
+            highestRarity: 100,
+            collectionValue: 100,
+            lastShareAt: 0,
+          });
+          const result = await request<any>('/api/share', { rarity: 100 });
+          if (result.success !== true || !result.id) throw new Error('Share endpoint did not create a post.');
+          return result;
+        },
+        result => 'shared post=' + result.id,
+      );
+
+      await step(
+        "API · Share immediately records leaderboard eligibility",
+        async () => {
+          const result = await request<any>('/api/leaderboard');
+          const entries = Array.isArray(result) ? result : result.entries;
+          const context = await request<any>('/api/dev/context');
+          const match = entries.find((entry: any) => String(entry.username).toLowerCase() === String(context.username).toLowerCase());
+          if (!match) throw new Error('Current player was not eligible immediately after sharing.');
+          if (!Number.isFinite(Number(match.sharedAt))) throw new Error('Leaderboard share timestamp was missing.');
+          return match;
+        },
+        entry => 'leaderboard share recorded at ' + entry.sharedAt,
+      );
+
+      await step(
+        "API · Share cooldown rejects immediate repeat posts",
+        async () => {
+          let rejected = false;
+          try {
+            await request<any>('/api/share', { rarity: 100 });
+          } catch {
+            rejected = true;
+          }
+          if (!rejected) throw new Error('Share cooldown allowed an immediate second post.');
+          return true;
+        },
+        () => '30-second share cooldown enforced',
+      );
+
+      await step(
+        "API · Frenzy admin start creates a dedicated post record",
+        async () => {
+          await request<any>('/api/dev/frenzy/reset', {});
+          await request<any>('/api/dev/state', { coins: 100_000, shards: 50, lastFrenzyDate: '', lastFrenzyClaimDate: '' });
+          const result = await request<any>('/api/dev/frenzy/start', { rarity: 250 });
+          if (!result.postId || !result.url || Number(result.orb?.rarity) !== 250) {
+            throw new Error('Admin Frenzy did not create the expected post/result.');
+          }
+          return result;
+        },
+        result => 'post=' + result.postId + ' · 1/' + formatRarity(result.orb.rarity),
+      );
+
+      await step(
+        "API · Frenzy admin claim returns the authoritative volley and owner reward",
+        async () => {
+          const start = await request<any>('/api/dev/frenzy/start', { rarity: 250 });
+          const before = await request<any>('/api/me');
+          const result = await request<any>('/api/dev/frenzy/claim', { postId: start.postId });
+          const processed = Number(result.state?.totalRolls) - Number(before.totalRolls);
+          if (!(processed >= 1) || !Array.isArray(result.batch) || result.batch.length < 1) {
+            throw new Error('Frenzy claim did not return a processed roll and visible batch.');
+          }
+          if (Number(result.shardsGained) < 5) throw new Error('Frenzy owner did not receive the +5 Shard reward.');
+          return result;
+        },
+        result => 'processed=' + result.rollsProcessed + ' · shards +' + result.shardsGained,
+      );
+
+      await step(
+        "API · Frenzy claim marks the player as claimed for today",
+        async () => {
+          const result = await request<any>('/api/me');
+          if (String(result.lastFrenzyClaimDate) !== new Date().toISOString().slice(0, 10)) {
+            throw new Error('Frenzy claim date was not persisted for today.');
+          }
+          return result;
+        },
+        result => 'lastFrenzyClaimDate=' + result.lastFrenzyClaimDate,
+      );
+
       await step(
         'Restore Clean Final Test State',
         async () => {
