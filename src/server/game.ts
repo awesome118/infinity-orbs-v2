@@ -2454,6 +2454,14 @@ export async function getState(): Promise<PlayerState> {
   const s = await loadRaw();
   const now = Date.now();
 
+  // Recompute Codex projections from the authoritative collection on every read.
+  // This prevents the displayed devotion chain from lagging behind newly collected rarities.
+  s.codexChain = highestCodexChain(s.collection);
+  s.codexDevotionLuckPercent = codexDevotionLuckPercent(
+    s.masterySkills?.celestialSurge ?? 0,
+    s.codexChain,
+  );
+
   // These are presentation-only projections. They are intentionally not saved.
   // The next real mutation settles and persists the authoritative state.
   checkPeriodicResets(s, now);
