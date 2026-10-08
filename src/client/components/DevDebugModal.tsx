@@ -1812,26 +1812,26 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           async () => {
             await setMechanicState(
               { singularityTithe: 1 },
-              { totalRolls: 17, singularityTitheSingleRolls: 999, highestRarity: 1_000_000_000, rollsSinceBest: 17 },
+              { totalRolls: 17, singularityTitheSingleRolls: 199, highestRarity: 1_000_000_000, rollsSinceBest: 17, cosmicDust: 0 },
             );
             const result = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
             const state = recordValue(result.state);
-            if (Number(state.singularityTitheSingleRolls) !== 1_000 || Number(state.cosmicDust) < 1) {
-              throw new Error('Tithe failed at 1,000 single rolls: counter=' + state.singularityTitheSingleRolls + ', dust=' + state.cosmicDust + '.');
+            if (Number(state.singularityTitheSingleRolls) !== 200 || Number(state.cosmicDust) < 1) {
+              throw new Error('Tithe failed at 200 processed rolls: counter=' + state.singularityTitheSingleRolls + ', dust=' + state.cosmicDust + '.');
             }
 
             await setMechanicState(
               { singularityTithe: 1 },
-              { totalRolls: 18, singularityTitheSingleRolls: 1_000, cosmicDust: 0, upgrades: { ...zeroUpgrades, multi: 1 } },
+              { totalRolls: 18, singularityTitheSingleRolls: 198, cosmicDust: 0, upgrades: { ...zeroUpgrades, multi: 1 } },
             );
             const multi = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
             const multiState = recordValue(multi.state);
-            if (Number(multiState.singularityTitheSingleRolls) !== 1_000 || Number(multiState.cosmicDust) !== 0) {
-              throw new Error('Multi-roll advanced Tithe: counter=' + multiState.singularityTitheSingleRolls + ', dust=' + multiState.cosmicDust + '.');
+            if (Number(multiState.singularityTitheSingleRolls) !== 200 || Number(multiState.cosmicDust) < 1) {
+              throw new Error('Multi-roll did not advance Tithe to 200: counter=' + multiState.singularityTitheSingleRolls + ', dust=' + multiState.cosmicDust + '.');
             }
             return { result, multi };
           },
-          result => 'Single-roll boundary passed at 1,000 · multi-roll excluded (counter stays ' + shortNumber(result.multi.state?.singularityTitheSingleRolls, 0) + ')',
+          result => '200-roll boundary passed · multi-roll counted (counter=' + shortNumber(result.multi.state?.singularityTitheSingleRolls, 0) + ')',
         );
 
         await step(
