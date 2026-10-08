@@ -1,7 +1,7 @@
 import React from 'react';
 import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star, Users, MessageSquarePlus, Bell, BellOff } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { xpRequiredForLevel, LEVEL_MILESTONES, getLevelBenefits, onlinePlayerLuckMultiplier } from '../../shared/game.js';
+import { LEVEL_MILESTONES, getLevelBenefits, getLevelProgress, onlinePlayerLuckMultiplier } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface HeaderProps {
@@ -30,20 +30,12 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleNotifications,
 }) => {
   const fmt = (n: number) => n.toLocaleString();
-  const displayedLevel = Math.max(1, state.level || 1);
-  let xpBeforeLevel = 0;
-  for (let level = 1; level < displayedLevel; level++) {
-    xpBeforeLevel += xpRequiredForLevel(level);
-  }
-  const levelXpRequired = xpRequiredForLevel(displayedLevel);
-  const currentLevelXp = Math.max(0, (state.xp || 0) - xpBeforeLevel);
-  const levelProgressPercent = Math.min(100, Math.round((currentLevelXp / levelXpRequired) * 100));
-  const levelInfo = {
-    level: displayedLevel,
-    currentLevelXp,
-    nextLevelXp: levelXpRequired,
-    progressPercent: levelProgressPercent,
-  };
+  const levelInfo = getLevelProgress(
+    Math.max(1, state.level || 1),
+    state.xp || 0,
+    state.levelXpFloor,
+  );
+  const displayedLevel = levelInfo.level;
   const nextMilestone = LEVEL_MILESTONES.find(m => m.level > displayedLevel);
   const levelBenefits = getLevelBenefits(displayedLevel);
   return (
