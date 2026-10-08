@@ -32,6 +32,10 @@ import {
   effectiveOfflineTickMs,
   critMultiplier,
   calculateLevelFromXp,
+  applyLevelProgress,
+  totalXpRequiredBeforeLevel,
+  singularityTitheDustForRolls,
+  SINGULARITY_TITHE_ROLLS_PER_DUST,
   type MasterySkillId,
   type PremiumBoosterId,
   type AutomationId,
@@ -1020,25 +1024,51 @@ function playerKeyFor(userId: string): string {
   return `player:${userId}`;
 }
 
+const PLAYTIME_HEARTBEAT_CAP_MS = 30_000;
+const PLAYTIME_SESSION_GAP_MS = 5 * 60_000;
+
 interface PlayerRegistryEntry {
   username: string;
   firstSeenAt: number;
   lastSeenAt: number;
+  lastLoginAt?: number;
+  lastActivityAt?: number;
+  playtimeMs?: number;
 }
 
 async function registerPlayer(userId: string, username: string): Promise<void> {
   const now = Date.now();
   let firstSeenAt = now;
+  let lastLoginAt = now;
+  let playtimeMs = 0;
   const existingRaw = await redis.hGet(PLAYER_REGISTRY_KEY, userId);
   if (existingRaw) {
     const existing = parseStoredJson<Partial<PlayerRegistryEntry>>(existingRaw);
     firstSeenAt = Math.max(0, Number(existing?.firstSeenAt ?? now) || now);
+
+    const previousActivityAt = Math.max(
+      0,
+      Number(existing?.lastActivityAt ?? existing?.lastSeenAt ?? 0) || 0,
+    );
+    const previousPlaytimeMs = Math.max(0, Number(existing?.playtimeMs ?? 0) || 0);
+    const activityDelta = previousActivityAt > 0
+      ? Math.min(PLAYTIME_HEARTBEAT_CAP_MS, Math.max(0, now - previousActivityAt))
+      : 0;
+
+    playtimeMs = previousPlaytimeMs + activityDelta;
+    if (now - previousActivityAt <= PLAYTIME_SESSION_GAP_MS && Number(existing?.lastLoginAt ?? 0) > 0) {
+      lastLoginAt = Number(existing?.lastLoginAt);
+    }
   }
+
   await redis.hSet(PLAYER_REGISTRY_KEY, {
     [userId]: JSON.stringify({
       username: String(username).trim().slice(0, 100),
       firstSeenAt,
       lastSeenAt: now,
+      lastLoginAt,
+      lastActivityAt: now,
+      playtimeMs,
     } satisfies PlayerRegistryEntry),
   });
 }
@@ -1051,6 +1081,7 @@ export interface PlayerListEntry {
   active: boolean;
   level: number;
   xp: number;
+  playtimeMs: number;
   totalRolls: number;
   highestRarity: number;
   coins: number;
@@ -1080,6 +1111,7 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
       active: lastSeenAt >= now - 30_000,
       level: Math.max(1, Number(save?.level ?? 1) || 1),
       xp: Math.max(0, Number(save?.xp ?? 0) || 0),
+      playtimeMs: Math.max(0, Number(registry.playtimeMs ?? 0) || 0),
       totalRolls: Math.max(0, Number(save?.totalRolls ?? 0) || 0),
       highestRarity: Math.max(0, Number(save?.highestRarity ?? 0) || 0),
       coins: Math.max(0, Number(save?.coins ?? 0) || 0),
@@ -1088,6 +1120,35 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
   });
   players.sort((a, b) => Number(b.active) - Number(a.active) || b.lastSeenAt - a.lastSeenAt || a.username.localeCompare(b.username));
   return players;
+}
+
+export async function getPlayerActivityStats(now = Date.now()): Promise<{
+  dailyActiveUsers: number;
+  weeklyActiveUsers: number;
+  monthlyActiveUsers: number;
+}> {
+  const rawRegistry = await redis.hGetAll(PLAYER_REGISTRY_KEY);
+  const records = rawRegistry && typeof rawRegistry === 'object' ? rawRegistry as Record<string, string> : {};
+  const cutoff24h = now - 24 * 60 * 60_000;
+  const cutoff7d = now - 7 * 24 * 60 * 60_000;
+  const cutoff30d = now - 30 * 24 * 60 * 60_000;
+
+  let dailyActiveUsers = 0;
+  let weeklyActiveUsers = 0;
+  let monthlyActiveUsers = 0;
+
+  for (const raw of Object.values(records)) {
+    const entry = parseStoredJson<Partial<PlayerRegistryEntry>>(raw) ?? {};
+    const lastSeenAt = Math.max(
+      Number(entry.lastSeenAt ?? 0) || 0,
+      Number(entry.lastActivityAt ?? 0) || 0,
+    );
+    if (lastSeenAt >= cutoff24h) dailyActiveUsers += 1;
+    if (lastSeenAt >= cutoff7d) weeklyActiveUsers += 1;
+    if (lastSeenAt >= cutoff30d) monthlyActiveUsers += 1;
+  }
+
+  return { dailyActiveUsers, weeklyActiveUsers, monthlyActiveUsers };
 }
 
 function paymentGoodsForSku(sku: string) {
@@ -1488,9 +1549,23 @@ export async function loadRaw(): Promise<PlayerState> {
     // Auto Roll is free and unlocks automatically at 3 manual roll activations.
     auto: normalizedManualRolls >= 3 ? 1 : 0,
   };
+
+  const parsedLevel = Math.max(1, Math.min(1000, Math.floor(Number(parsed.level ?? 1) || 1)));
+  const parsedXp = Math.max(0, Number(parsed.xp ?? 0) || 0);
+  const calculatedLevel = calculateLevelFromXp(parsedXp).level;
+  const storedLevelXpFloor = Number(parsed.levelXpFloor);
+  const levelXpFloor = Number.isFinite(storedLevelXpFloor)
+    ? Math.max(0, Math.min(parsedXp, storedLevelXpFloor))
+    : parsedLevel > calculatedLevel
+      ? parsedXp
+      : totalXpRequiredBeforeLevel(parsedLevel);
+
   return {
     ...base,
     ...cleanParsed,
+    level: parsedLevel,
+    xp: parsedXp,
+    levelXpFloor,
     upgrades: normalizedUpgrades,
     manualRolls: normalizedManualRolls,
     saveGeneration: generation,
@@ -1518,16 +1593,8 @@ export async function loadRaw(): Promise<PlayerState> {
 }
 
 function applyXp(s: PlayerState, amount: number): void {
-  const oldLevel = Math.max(1, s.level || 1);
   s.xp += Math.max(0, Math.floor(amount));
-  const earnedLevel = calculateLevelFromXp(s.xp).level;
-
-  // Keep the displayed level synchronized with the XP actually earned.
-  const newLevel = Math.max(oldLevel, earnedLevel);
-  s.level = newLevel;
-  if (newLevel > oldLevel) {
-    s.masteryPoints = (s.masteryPoints ?? 0) + (newLevel - oldLevel);
-  }
+  applyLevelProgress(s);
 }
 
 function applyQuestReward(s: PlayerState, quest: { rewardCoins: number; rewardShards?: number; rewardTokens?: number; rewardXp?: number; claimed: boolean }): { rewardCoins: number; rewardShards: number; rewardTokens: number } {
@@ -2199,30 +2266,19 @@ export async function applyRolls(
   s.xp += effectiveXpGained;
   xpGained = effectiveXpGained;
 
-  // Rich EXP Level Progression. XP may skip future thresholds, but the
-  // displayed/active level only advances one step at a time.
-  const oldLevel = Math.max(1, s.level || 1);
-  const earnedLevel = calculateLevelFromXp(s.xp).level;
-  const newLevel = Math.max(oldLevel, Math.min(oldLevel + 1, earnedLevel));
-  s.level = newLevel;
-  if (newLevel > oldLevel) {
-    s.masteryPoints = (s.masteryPoints ?? 0) + 1;
-  }
+  // Rich EXP Level Progression. Normal roll activations deliberately advance
+  // at most one level at a time, while applyXp/quest rewards can catch up safely.
+  applyLevelProgress(s, 1);
   s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
 
-  // Singularity Tithe only counts single-orb online activations. Multi-roll,
-  // auto-roll batches, and offline claims never advance this counter.
+  // Singularity Tithe pays +1 Cosmic Dust per 200 processed rolls per level.
+  // Every processed orb counts, including multi-roll, auto-roll, offline, and Frenzy rolls.
   const titheLevel = s.prestigeUpgrades?.singularityTithe ?? 0;
-  if (titheLevel > 0 && source === 'online' && rollCount === 1) {
+  if (titheLevel > 0 && rollCount > 0) {
     const before = Math.max(0, Math.floor(s.singularityTitheSingleRolls ?? 0));
-    const after = before + 1;
-    s.singularityTitheSingleRolls = after;
-    const milestonesBefore = Math.floor(before / 1_000);
-    const milestonesAfter = Math.floor(after / 1_000);
-    const milestonesCrossed = milestonesAfter - milestonesBefore;
-    if (milestonesCrossed > 0) {
-      s.cosmicDust = (s.cosmicDust ?? 0) + milestonesCrossed * titheLevel;
-    }
+    s.singularityTitheSingleRolls = before + rollCount;
+    const dustEarned = singularityTitheDustForRolls(before, rollCount, titheLevel);
+    if (dustEarned > 0) s.cosmicDust = (s.cosmicDust ?? 0) + dustEarned;
   }
 
   // Mastery Engine: permanent Mastery Point income from sustained rolling.
@@ -3811,13 +3867,16 @@ export async function claimOrbFrenzy(options: {
   s.highestRarity = Math.max(s.highestRarity, bestRarity);
   s.rollsSinceBest = bestRarity > previousHighest ? 0 : (s.rollsSinceBest ?? 0) + count;
 
-  const oldLevel = Math.max(1, s.level || 1);
   s.xp += xpGained;
-  const earnedLevel = calculateLevelFromXp(s.xp).level;
-  const newLevel = Math.max(oldLevel, Math.min(oldLevel + 1, earnedLevel));
-  s.level = newLevel;
-  if (newLevel > oldLevel) {
-    s.masteryPoints = (s.masteryPoints ?? 0) + 1;
+  applyLevelProgress(s, 1);
+
+  // Frenzy claim rolls are real processed rolls and therefore count toward Tithe.
+  const titheLevel = s.prestigeUpgrades?.singularityTithe ?? 0;
+  if (titheLevel > 0 && count > 0) {
+    const beforeTitheRolls = Math.max(0, Math.floor(s.singularityTitheSingleRolls ?? 0));
+    s.singularityTitheSingleRolls = beforeTitheRolls + count;
+    const dustEarned = singularityTitheDustForRolls(beforeTitheRolls, count, titheLevel);
+    if (dustEarned > 0) s.cosmicDust = (s.cosmicDust ?? 0) + dustEarned;
   }
 
   advanceQuestProgress(s, 'roll', count);
