@@ -1163,6 +1163,7 @@ export function createApp() {
           runAs: 'USER',
           subredditName,
           title: `u/${username} found a 1/${formatRarity(value)} Orb`,
+          flairText: 'discovery',
           entry: 'default',
           postData,
           userGeneratedContent: { text },
