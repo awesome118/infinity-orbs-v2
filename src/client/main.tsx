@@ -1483,13 +1483,7 @@ export function App() {
         xp: current.xp + (quest.rewardXp ?? 0),
       };
       grantFreeShards(next, quest.rewardShards ?? 0);
-      const levelBefore = Math.max(1, current.level || 1);
-      const earnedLevel = calculateLevelFromXp(next.xp).level;
-      const levelAfter = Math.max(levelBefore, earnedLevel);
-      next.level = levelAfter;
-      if (levelAfter > levelBefore) {
-        next.masteryPoints = (next.masteryPoints ?? 0) + (levelAfter - levelBefore);
-      }
+      applyLevelProgress(next);
 
       const updatedQuest = { ...quest, claimed: true };
       if (type === 'daily') {
@@ -1740,6 +1734,23 @@ export function App() {
       void refreshAll();
     } catch (e: any) {
       showToast(e.message || 'Could not change Trust status', 'warn');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleKickGuildMember = async (username: string) => {
+    setBusy(true);
+    try {
+      await getJson('/api/guilds/kick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username }),
+      });
+      showToast(username + ' was kicked from the guild.', 'success');
+      void refreshAll();
+    } catch (e: any) {
+      showToast(e.message || 'Could not kick guild member', 'warn');
     } finally {
       setBusy(false);
     }
@@ -2343,6 +2354,7 @@ export function App() {
             onSendMessage={handleSendGuildChat}
             onBuyGuildPerk={handleBuyGuildPerk}
             onToggleGuildTrust={handleToggleGuildTrust}
+            onKickGuildMember={handleKickGuildMember}
             onSetGuildTax={handleSetGuildTax}
             playerUsername={state.username ?? ''}
             playerHasShared={Boolean(state.lastShareAt && state.lastShareAt > 0)}
