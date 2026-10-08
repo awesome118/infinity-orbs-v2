@@ -29,6 +29,7 @@ import {
   formatRarity,
   visibleContinuumTiers,
   formatNumber,
+  frenzyCooldownRemaining,
 } from '../../shared/game.js';
 
 import { sound } from '../sound.js';
@@ -59,12 +60,6 @@ function formatTimeLeft(ms: number): string {
   const mins = Math.floor((totalSecs % 3600) / 60);
   if (days > 0) return `${days}d ${hours}h`;
   return `${hours}h ${mins}m`;
-}
-
-function nextFrenzyResetAt(now: number): number {
-  const next = new Date(now);
-  next.setUTCHours(24, 0, 0, 0);
-  return next.getTime();
 }
 
 function formatFrenzyCooldown(ms: number): string {
@@ -158,8 +153,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const remain = Math.max(0, readyAt - now);
   const freeRolls = Math.max(0, state.freeRolls ?? 0);
   const canRoll = (remain <= 0 || freeRolls > 0) && !busy;
-  const frenzyUsedToday = Boolean(state.lastFrenzyDate && state.lastFrenzyDate === new Date(now).toISOString().slice(0, 10));
-  const frenzyCooldownRemain = frenzyUsedToday ? Math.max(0, nextFrenzyResetAt(now) - now) : 0;
+  const frenzyCooldownRemain = frenzyCooldownRemaining(state.lastFrenzyAt, now);
+  const frenzyUsedToday = frenzyCooldownRemain > 0;
   const multi = rollsPerActivation(state);
   const luck = luckMultiplier(state);
   const isAutoUnlocked = (state.upgrades.auto ?? 0) > 0;
@@ -507,7 +502,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               ? 'w-full px-4 py-2.5 rounded-xl text-xs font-black bg-slate-900 border border-slate-800 text-slate-600 cursor-not-allowed'
               : 'w-full px-4 py-2.5 rounded-xl text-xs font-black bg-fuchsia-500/10 border border-fuchsia-500/30 text-fuchsia-200 hover:bg-fuchsia-500/20 active:scale-95'
           }
-          title={frenzyUsedToday ? 'Orb Frenzy returns at the next daily reset.' : 'Arm Orb Frenzy, then use your next manual Roll to submit it.'}
+          title={frenzyUsedToday ? 'Orb Frenzy returns after the 23-hour cooldown.' : 'Arm Orb Frenzy, then use your next manual Roll to submit it.'}
         >
           <span className='inline-flex items-center justify-center gap-2 w-full'>
             <Sparkles className='w-4 h-4 text-fuchsia-300' />

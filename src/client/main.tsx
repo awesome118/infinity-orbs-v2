@@ -50,6 +50,7 @@ import {
   grantFreeShards,
   todayKey,
   canShowDailyFrenzyPrompt,
+  frenzyCooldownRemaining,
   FRENZY_PROMPT_DELAY_MS,
   FRENZY_OWNER_SHARD_REWARD,
   rollsPerActivation,
@@ -719,7 +720,7 @@ export function App() {
       const now = Date.now();
       const current = stateRef.current;
       if (!current || now - startedAt < FRENZY_PROMPT_DELAY_MS) return;
-      if (!canShowDailyFrenzyPrompt(current.lastFrenzyDate, now)) return;
+      if (!canShowDailyFrenzyPrompt(current.lastFrenzyAt ?? current.lastFrenzyDate, now)) return;
       if (frenzyPromptShownRef.current) return;
 
       const storageKey = `io-frenzy-prompt-shown-${todayKey(now)}`;
@@ -1112,9 +1113,13 @@ export function App() {
 
     const current = stateRef.current;
     if (!current) return;
-    const today = todayKey();
-    if (current.lastFrenzyDate === today) {
-      showToast('Orb Frenzy is on cooldown until the next day.', 'warn');
+    const remaining = frenzyCooldownRemaining(current.lastFrenzyAt);
+    if (remaining > 0) {
+      const total = Math.ceil(remaining / 1000);
+      const hours = Math.floor(total / 3600);
+      const mins = Math.floor((total % 3600) / 60);
+      const secs = total % 60;
+      showToast('Orb Frenzy is on cooldown for ' + hours + ':' + String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0') + '.', 'warn');
       return;
     }
 

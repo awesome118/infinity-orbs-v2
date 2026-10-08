@@ -51,6 +51,10 @@ import {
   frenzyClaimCountForRarity,
   grantFrenzyOwnerShards,
   FRENZY_OWNER_SHARD_REWARD,
+  frenzyCooldownRemaining,
+  frenzyClaimCooldownRemaining,
+  frenzyPostExpiresAt,
+  isFrenzyPostExpired,
 
   PREMIUM_BOOSTERS,
   AUTOMATIONS,
@@ -802,13 +806,17 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
   if (!raw) throw new Error('This is not an Orb Frenzy post.');
   const data = parseStoredJson<{
     ownerId: string;
+    createdAt?: number;
     adminTest?: boolean;
     inGame?: boolean;
   }>(raw);
   if (!data || data.inGame !== true) throw new Error('This is not an Orb Frenzy post.');
 
   const s = await settleOffline(await loadRaw());
-  const today = new Date().toISOString().slice(0, 10);
+  const now = Date.now();
+  const createdAt = Number(data.createdAt ?? 0);
+  if (isFrenzyPostExpired(createdAt, now)) throw new Error('This Frenzy has expired.');
+  const claimCooldown = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
   const isOwner = data.ownerId === currentUserId();
   const selfClaimTest =
     isOwner &&
@@ -816,8 +824,8 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
     isFrenzyTestAdmin(s.username);
 
   if (isOwner && !selfClaimTest) throw new Error('You cannot claim your own Orb Frenzy.');
-  if (s.lastFrenzyClaimDate === today && !selfClaimTest) {
-    throw new Error('You already claimed a Frenzy reward today.');
+  if (claimCooldown > 0 && !selfClaimTest) {
+    throw new Error('Frenzy claim is on cooldown for ' + Math.ceil(claimCooldown / 1000) + ' more seconds.');
   }
 
   await redis.set(frenzyHandoffKey(currentUserId()), JSON.stringify({
@@ -3616,9 +3624,11 @@ export async function startOrbFrenzy(options: {
 } = {}): Promise<RollResponse & { postId: string; url: string; rarity: number }> {
   return withPlayerMutationLock(async () => {
     const s = await settleOffline(await loadRaw());
-    const today = new Date().toISOString().slice(0, 10);
-    if (!options.bypassDailyLimit && s.lastFrenzyDate === today) {
-      throw new Error('Orb Frenzy is already used today.');
+    const now = Date.now();
+    const postCooldown = frenzyCooldownRemaining(s.lastFrenzyAt, now);
+    const today = new Date(now).toISOString().slice(0, 10);
+    if (!options.bypassDailyLimit && postCooldown > 0) {
+      throw new Error('Orb Frenzy is on cooldown for ' + Math.ceil(postCooldown / 1000) + ' more seconds.');
     }
 
     const forcedRarity = options.forcedRarity == null
@@ -3633,9 +3643,11 @@ export async function startOrbFrenzy(options: {
       .trim()
       .replace(/^u\//i, '') || 'Redditor';
     const rarity = result.bestOrb.rarity;
+    const createdAt = Date.now();
+    const expiresAt = frenzyPostExpiresAt(createdAt);
     const postText =
       `u/${ownerUsername} got a 1/${formatRarity(rarity)} Orb in their Frenzy.\n\n` +
-      `Click below to claim it! You can only claim one a day.\n\n` +
+      `Click below to claim it! You can only claim one every 23 hours.\n\n` +
       `When someone claims your Frenzy, you receive +${FRENZY_OWNER_SHARD_REWARD} Shards. ` +
       `This reward bypasses the 50 Shard daily cap.`;
     const post = await reddit.submitCustomPost({
@@ -3657,13 +3669,15 @@ export async function startOrbFrenzy(options: {
       subredditName,
       adminTest,
       inGame: true,
-      createdAt: Date.now(),
+      createdAt,
+      expiresAt,
       consumedAt: null,
     }));
 
     s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + 1);
     if (s.manualRolls >= 3) s.upgrades.auto = 1;
     s.lastFrenzyDate = today;
+    s.lastFrenzyAt = createdAt;
     s.lastRollAt = Date.now();
     s.lastSeenAt = Date.now();
     await save(s);
@@ -3698,7 +3712,11 @@ export async function getOrbFrenzyInfo(): Promise<{
   rarity: number;
   ownerUsername: string;
   createdAt: number;
+  expiresAt: number;
+  expired: boolean;
   claimedToday: boolean;
+  claimCooldownRemainingMs: number;
+  claimCooldownEndsAt: number;
   isOwner: boolean;
   canClaim: boolean;
   selfClaimTest: boolean;
@@ -3716,14 +3734,19 @@ export async function getOrbFrenzyInfo(): Promise<{
     ownerUsername: string;
     rarity: number;
     createdAt: number;
+    expiresAt?: number;
     adminTest?: boolean;
     inGame?: boolean;
   }>(raw);
   if (!data) throw new Error('Orb Frenzy data is corrupted.');
 
-  const today = new Date().toISOString().slice(0, 10);
+  const now = Date.now();
+  const expiresAt = Number(data.expiresAt ?? frenzyPostExpiresAt(data.createdAt));
+  const expired = isFrenzyPostExpired(data.createdAt, now);
   const s = await getMe();
-  const claimedToday = s.lastFrenzyClaimDate === today;
+  const claimCooldownRemainingMs = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
+  const claimCooldownEndsAt = claimCooldownRemainingMs > 0 ? now + claimCooldownRemainingMs : 0;
+  const claimedToday = claimCooldownRemainingMs > 0;
   const isOwner = data.ownerId === currentUserId();
   const selfClaimTest =
     isOwner &&
@@ -3734,9 +3757,13 @@ export async function getOrbFrenzyInfo(): Promise<{
     rarity: data.rarity,
     ownerUsername: data.ownerUsername,
     createdAt: data.createdAt,
+    expiresAt,
+    expired,
     claimedToday,
+    claimCooldownRemainingMs,
+    claimCooldownEndsAt,
     isOwner,
-    canClaim: (!claimedToday || selfClaimTest) && (!isOwner || selfClaimTest),
+    canClaim: !expired && (claimCooldownRemainingMs <= 0 || selfClaimTest) && (!isOwner || selfClaimTest),
     selfClaimTest,
     postId,
     inGame: data.inGame === true,
@@ -3765,13 +3792,18 @@ export async function claimOrbFrenzy(options: {
     adminTest?: boolean;
     inGame?: boolean;
     consumedAt?: number;
+    createdAt?: number;
+    expiresAt?: number;
   }>(raw);
   if (!data) throw new Error('Orb Frenzy data is corrupted.');
 
   const isOwner = data.ownerId === currentUserId();
 
+  const now = Date.now();
+  const createdAt = Number(data.createdAt ?? 0);
+  if (isFrenzyPostExpired(createdAt, now)) throw new Error('This Frenzy has expired.');
   const s = await settleOffline(await loadRaw());
-  const today = new Date().toISOString().slice(0, 10);
+  const claimCooldown = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
   const ownerSelfClaimAllowed =
     isOwner &&
     data.adminTest === true &&
@@ -3782,8 +3814,8 @@ export async function claimOrbFrenzy(options: {
   }
 
   const selfClaimTest = isOwner && ownerSelfClaimAllowed;
-  if (s.lastFrenzyClaimDate === today && !selfClaimTest) {
-    throw new Error('You already claimed a Frenzy reward today.');
+  if (claimCooldown > 0 && !selfClaimTest) {
+    throw new Error('Frenzy claim is on cooldown for ' + Math.ceil(claimCooldown / 1000) + ' more seconds.');
   }
 
   const count = frenzyClaimCountForRarity(
@@ -3895,7 +3927,8 @@ export async function claimOrbFrenzy(options: {
   coinsGained = Math.max(0, coinsGained - guildTax.taxedCoins);
   s.coins += coinsGained;
   s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
-  s.lastFrenzyClaimDate = today;
+  s.lastFrenzyClaimDate = new Date(now).toISOString().slice(0, 10);
+  s.lastFrenzyClaimAt = now;
 
   const bestRarity = topRarity;
   const newRarityKeys = groups.filter(

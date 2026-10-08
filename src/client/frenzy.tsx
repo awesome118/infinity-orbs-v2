@@ -3,13 +3,17 @@ import { createRoot } from 'react-dom/client';
 import { requestExpandedMode } from '@devvit/web/client';
 import { ArrowRight, Flame, Users } from 'lucide-react';
 import './styles.css';
-import { formatRarity, getOrbInfo } from '../shared/game.js';
+import { formatRarity, getOrbInfo, FRENZY_POST_LIFETIME_MS } from '../shared/game.js';
 
 interface FrenzyInfo {
   rarity: number;
   ownerUsername: string;
   createdAt: number;
+  expiresAt: number;
+  expired: boolean;
   claimedToday: boolean;
+  claimCooldownRemainingMs: number;
+  claimCooldownEndsAt: number;
   isOwner: boolean;
   canClaim: boolean;
   selfClaimTest: boolean;
@@ -72,6 +76,7 @@ function FrenzyPost() {
   const [claimed, setClaimed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [openedGame, setOpenedGame] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
 
   const load = async () => {
     try {
@@ -86,6 +91,11 @@ function FrenzyPost() {
   };
 
   useEffect(() => { void load(); }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const claim = async (event: React.MouseEvent<HTMLButtonElement>) => {
     if (!info?.canClaim || loading) return;
@@ -112,7 +122,7 @@ function FrenzyPost() {
       const res = await fetch('/api/frenzy/claim', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not claim Frenzy.');
-      setClaimed(true);
+      await load();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not claim Frenzy.');
     } finally {
@@ -153,7 +163,20 @@ function FrenzyPost() {
   }
 
   const orb = getOrbInfo(info.rarity);
-  const canClaim = info.canClaim && !openedGame;
+  const expiresAt = info.expiresAt || info.createdAt + FRENZY_POST_LIFETIME_MS;
+  const expiresIn = Math.max(0, expiresAt - now);
+  const totalExpirySeconds = Math.ceil(expiresIn / 1000);
+  const expiryHours = Math.floor(totalExpirySeconds / 3600);
+  const expiryMinutes = Math.floor((totalExpirySeconds % 3600) / 60);
+  const expirySeconds = totalExpirySeconds % 60;
+  const expiryLabel = expiresIn <= 0 ? 'EXPIRED' : expiryHours + ':' + String(expiryMinutes).padStart(2, '0') + ':' + String(expirySeconds).padStart(2, '0');
+  const claimCooldownIn = Math.max(0, info.claimCooldownEndsAt - now);
+  const claimTotalSeconds = Math.ceil(claimCooldownIn / 1000);
+  const claimHours = Math.floor(claimTotalSeconds / 3600);
+  const claimMinutes = Math.floor((claimTotalSeconds % 3600) / 60);
+  const claimSeconds = claimTotalSeconds % 60;
+  const claimCooldownLabel = claimCooldownIn > 0 ? claimHours + ':' + String(claimMinutes).padStart(2, '0') + ':' + String(claimSeconds).padStart(2, '0') : '';
+  const canClaim = info.canClaim && !openedGame && expiresIn > 0 && claimCooldownIn <= 0;
 
   return (
     <main className="io-public">
@@ -199,6 +222,11 @@ function FrenzyPost() {
             </p>
           </div>
 
+          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-center" style={{ borderColor: orb.color + '33' }}>
+            <div className="text-[10px] uppercase tracking-widest font-black text-slate-500">Frenzy expires in</div>
+            <div className="mt-1 text-2xl font-black tabular-nums" style={{ color: expiresIn > 0 ? orb.color : '#94a3b8' }}>{expiryLabel}</div>
+          </div>
+
           <div className="io-frenzy-meta" style={{ borderColor: orb.color + '22' }}>
             <span>{orb.tier}</span>
             <span>{orb.name}</span>
@@ -225,18 +253,20 @@ function FrenzyPost() {
                 ? 'Opening Game…'
                 : info.selfClaimTest
                   ? 'Claim Your Frenzy · Test'
-                  : claimed
-                    ? 'Already Claimed Today'
+                  : claimed && claimCooldownIn > 0
+                    ? 'Claim Cooldown · ' + claimCooldownLabel
                     : info.isOwner
                       ? 'Your Frenzy'
-                      : 'Claim Frenzy · Open Game'}
+                      : expiresIn <= 0
+                        ? 'Frenzy Expired'
+                        : 'Claim Frenzy · Open Game'}
             </button>
           )}
 
           {error && <p className="io-public-inline-error">{error}</p>}
 
           <div className="io-public-note">
-            <div><Users className="w-3.5 h-3.5" /> One Frenzy claim per player, per day.</div>
+            <div><Users className="w-3.5 h-3.5" /> Claim cooldown: 23 hours per player.</div>
             <div><Flame className="w-3.5 h-3.5" /> Your Multi Roll multiplies the Frenzy size when you claim it.</div>
           </div>
         </section>

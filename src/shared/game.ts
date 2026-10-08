@@ -274,6 +274,9 @@ export const FRENZY_LOG_BASE = 1.05;
 export const FRENZY_MIN_ORBS = 1;
 export const FRENZY_OWNER_SHARD_REWARD = 5;
 export const FRENZY_PROMPT_DELAY_MS = 3 * 60_000;
+export const FRENZY_POST_COOLDOWN_MS = 23 * 60 * 60 * 1000;
+export const FRENZY_CLAIM_COOLDOWN_MS = 23 * 60 * 60 * 1000;
+export const FRENZY_POST_LIFETIME_MS = 24 * 60 * 60 * 1000;
 export const FRENZY_CLAIM_MAX_ORBS = 50_000_000;
 
 export function frenzyOrbCountForRarity(rarity: number): number {
@@ -318,11 +321,31 @@ export function grantFrenzyOwnerShards(
   return amount;
 }
 
-export function canShowDailyFrenzyPrompt(
-  lastFrenzyDate?: string,
-  now = Date.now(),
-): boolean {
-  return lastFrenzyDate !== todayKey(now);
+export function frenzyCooldownRemaining(lastFrenzyAt?: number, now = Date.now()): number {
+  const last = Number(lastFrenzyAt ?? 0);
+  if (!Number.isFinite(last) || last <= 0) return 0;
+  return Math.max(0, last + FRENZY_POST_COOLDOWN_MS - now);
+}
+
+export function frenzyClaimCooldownRemaining(lastFrenzyClaimAt?: number, now = Date.now()): number {
+  const last = Number(lastFrenzyClaimAt ?? 0);
+  if (!Number.isFinite(last) || last <= 0) return 0;
+  return Math.max(0, last + FRENZY_CLAIM_COOLDOWN_MS - now);
+}
+
+export function frenzyPostExpiresAt(createdAt: number): number {
+  const created = Number(createdAt) || 0;
+  return created > 0 ? created + FRENZY_POST_LIFETIME_MS : 0;
+}
+
+export function isFrenzyPostExpired(createdAt: number, now = Date.now()): boolean {
+  const expiresAt = frenzyPostExpiresAt(createdAt);
+  return expiresAt <= 0 || now >= expiresAt;
+}
+
+export function canShowDailyFrenzyPrompt(lastFrenzyAt?: number | string, now = Date.now()): boolean {
+  if (typeof lastFrenzyAt === 'number' && lastFrenzyAt > 0) return frenzyCooldownRemaining(lastFrenzyAt, now) <= 0;
+  return String(lastFrenzyAt ?? '') !== todayKey(now);
 }
 
 export function createInitialGuildCombo(now = Date.now()): GuildComboState {
@@ -832,7 +855,9 @@ export interface PlayerState {
   singularityTitheSingleRolls?: number;
 
   lastFrenzyDate?: string;
+  lastFrenzyAt?: number;
   lastFrenzyClaimDate?: string;
+  lastFrenzyClaimAt?: number;
   communityRewardClaimedTier?: number;
   paymentReceipts?: Record<string, PaymentReceipt | 'fulfilled' | 'refunded'>;
   currentRunRolls?: number;
@@ -1522,7 +1547,9 @@ export function createInitialState(now = Date.now()): PlayerState {
     guildCombo: createInitialGuildCombo(now),
 
     lastFrenzyDate: '',
+    lastFrenzyAt: 0,
     lastFrenzyClaimDate: '',
+    lastFrenzyClaimAt: 0,
     communityRewardClaimedTier: 0,
     currentRunRolls: 0,
     questsCompleted: 0,

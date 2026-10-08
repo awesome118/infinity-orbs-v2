@@ -11,7 +11,14 @@ import {
   FRENZY_OWNER_SHARD_REWARD,
   FRENZY_PROMPT_DELAY_MS,
   FRENZY_CLAIM_MAX_ORBS,
+  FRENZY_POST_COOLDOWN_MS,
+  FRENZY_CLAIM_COOLDOWN_MS,
+  FRENZY_POST_LIFETIME_MS,
   canShowDailyFrenzyPrompt,
+  frenzyCooldownRemaining,
+  frenzyClaimCooldownRemaining,
+  frenzyPostExpiresAt,
+  isFrenzyPostExpired,
   todayKey,
 } from '../src/shared/game.js';
 
@@ -55,18 +62,26 @@ test('Frenzy owner reward bypasses the normal 50-Shard daily cap', () => {
   assert.equal(state.freeShardsEarnedToday, 50);
 });
 
-test('Frenzy prompt is delayed by three minutes and is daily', () => {
+test('Frenzy cooldowns and expiry use precise timestamps', () => {
   assert.equal(FRENZY_PROMPT_DELAY_MS, 3 * 60_000);
-
-  const today = todayKey(NOW);
-  assert.equal(canShowDailyFrenzyPrompt(today, NOW), false);
-  assert.equal(canShowDailyFrenzyPrompt('yesterday', NOW), true);
+  assert.equal(FRENZY_POST_COOLDOWN_MS, 23 * 60 * 60 * 1000);
+  assert.equal(FRENZY_CLAIM_COOLDOWN_MS, 23 * 60 * 60 * 1000);
+  assert.equal(FRENZY_POST_LIFETIME_MS, 24 * 60 * 60 * 1000);
+  assert.equal(frenzyCooldownRemaining(NOW, NOW), FRENZY_POST_COOLDOWN_MS);
+  assert.equal(frenzyClaimCooldownRemaining(NOW, NOW), FRENZY_CLAIM_COOLDOWN_MS);
+  assert.equal(canShowDailyFrenzyPrompt(NOW, NOW), false);
+  assert.equal(canShowDailyFrenzyPrompt(NOW - FRENZY_POST_COOLDOWN_MS, NOW), true);
+  assert.equal(frenzyPostExpiresAt(NOW), NOW + FRENZY_POST_LIFETIME_MS);
+  assert.equal(isFrenzyPostExpired(NOW, NOW + FRENZY_POST_LIFETIME_MS - 1), false);
+  assert.equal(isFrenzyPostExpired(NOW, NOW + FRENZY_POST_LIFETIME_MS), true);
 });
 
 test('posted Frenzy opens the actual game entrypoint from the claim button', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/client/frenzy.tsx'), 'utf8');
   assert.match(source, /requestExpandedMode\(event\.nativeEvent, ['"]game['"]\)/);
-  assert.match(source, /Click below to claim it\. You can only claim one a day\./);
+  assert.match(source, /Click below to claim it/);
+  assert.match(source, /Frenzy expires in/);
+  assert.match(source, /setInterval\(\(\) => setNow\(Date\.now\(\)\), 1000\)/);
   assert.match(source, /io-frenzy-rarity-number/);
   assert.match(source, /Your Multi Roll multiplies the Frenzy size/);
   assert.doesNotMatch(source, /When someone claims this Frenzy/);
@@ -99,9 +114,11 @@ test('Frenzy posts use Orb terminology and claims return a visible Orb volley', 
   assert.match(server, /batch: visibleBatch/);
 });
 
-test('Frenzy claims expose one-per-day eligibility and test self-claim', () => {
+test('Frenzy claims expose 23-hour eligibility and expiry', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
-  assert.match(source, /canClaim: \(!claimedToday \|\| selfClaimTest\)/);
+  assert.match(source, /canClaim: !expired && \(claimCooldownRemainingMs <= 0 \|\| selfClaimTest\)/);
+  assert.match(source, /frenzyClaimCooldownRemaining/);
+  assert.match(source, /isFrenzyPostExpired/);
   assert.match(source, /selfClaimTest/);
   assert.match(source, /data\.adminTest === true/);
 });
@@ -144,6 +161,7 @@ test('Frenzy button shows a ticking daily cooldown after submission', () => {
   assert.match(source, /formatFrenzyCooldown/);
   assert.match(source, /Frenzy Cooldown/);
   assert.match(source, /disabled=\{busy \|\| frenzyArmed \|\| frenzyUsedToday\}/);
+  assert.match(source, /frenzyCooldownRemaining/);
 });
 
 test('admin self-claim works even when the normal daily claim is already used', () => {
@@ -164,6 +182,8 @@ test('Frenzy submission returns the starter roll and marks it as a manual roll',
   assert.match(source, /orb: result\.bestOrb/);
   assert.match(source, /rollsProcessed: result\.rollCount/);
   assert.match(source, /lastFrenzyDate = today/);
+  assert.match(source, /lastFrenzyAt = createdAt/);
+  assert.match(source, /expiresAt/);
 });
 
 test('Roll and Frenzy mutations share the client mutation queue', () => {
