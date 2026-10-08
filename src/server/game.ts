@@ -1684,25 +1684,52 @@ async function processAutomation(s: PlayerState): Promise<void> {
   }
 }
 
+function flairTextColorForBackground(backgroundColor: string): 'dark' | 'light' {
+  const match = String(backgroundColor ?? '').trim().match(/^#([0-9a-f]{6})$/i);
+  if (!match) return 'light';
+
+  const hex = match[1];
+  const srgb = [0, 2, 4].map(offset => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255);
+  const linear = srgb.map(channel =>
+    channel <= 0.04045
+      ? channel / 12.92
+      : Math.pow((channel + 0.055) / 1.055, 2.4),
+  );
+  const luminance = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  const lightContrast = 1.05 / (luminance + 0.05);
+  const darkContrast = (luminance + 0.05) / 0.05;
+  return lightContrast >= darkContrast ? 'light' : 'dark';
+}
+
 async function syncRarityFlair(s: PlayerState): Promise<void> {
   const username = String(context.username ?? s.username ?? '').trim();
   const subredditName = String(context.subredditName ?? '').trim();
   if (!username || !subredditName) return;
 
   const highestRarity = Math.max(2, Math.floor(Number(s.highestRarity ?? 2) || 2));
-  const flairText = getOrbInfo(highestRarity).tier;
+  const orbInfo = getOrbInfo(highestRarity);
+  const flairText = orbInfo.tier;
+  const backgroundColor = orbInfo.color;
+  const textColor = flairTextColorForBackground(backgroundColor);
   const flairKey = PLAYER_FLAIR_KEY_PREFIX + currentUserId();
+  const flairState = JSON.stringify({
+    text: flairText,
+    backgroundColor,
+    textColor,
+  });
 
   try {
     const current = await redis.get(flairKey);
-    if (String(current ?? '') === flairText) return;
+    if (String(current ?? '') === flairState) return;
 
     await reddit.setUserFlair({
       subredditName,
       username,
       text: flairText,
+      backgroundColor,
+      textColor,
     });
-    await redis.set(flairKey, flairText);
+    await redis.set(flairKey, flairState);
   } catch (error) {
     console.error('[Rarity Flair] Failed to update user flair:', error);
   }
@@ -3599,6 +3626,7 @@ export async function startOrbFrenzy(options: {
       runAs: 'USER',
       subredditName,
       title: `u/${ownerUsername} got a 1/${formatRarity(rarity)} Orb in their Frenzy`,
+      flairText: 'frenzy',
       entry: 'frenzy',
       userGeneratedContent: { text: postText },
     });
