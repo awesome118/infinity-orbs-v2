@@ -26,6 +26,8 @@ import {
   activateGlobalBooster,
   claimOrbFrenzy,
   getOrbFrenzyInfo,
+  getOrbFrenzyHandoff,
+  armOrbFrenzyClaim,
   startOrbFrenzy,
   grantPurchasedPack,
   refundPurchasedPack,
@@ -1005,6 +1007,16 @@ export function createApp() {
   app.post('/api/frenzy/start', async (_req, res) => {
     try { res.json(await startOrbFrenzy()); }
     catch (e) { badRequest(res, e, 'Could not start Orb Frenzy.'); }
+  });
+
+  app.post('/api/frenzy/arm', async (_req, res) => {
+    try { res.json(await armOrbFrenzyClaim()); }
+    catch (e) { badRequest(res, e, 'Could not arm Orb Frenzy.'); }
+  });
+
+  app.get('/api/frenzy/handoff', async (_req, res) => {
+    try { res.json(await getOrbFrenzyHandoff()); }
+    catch (e) { badRequest(res, e, 'Could not load Frenzy handoff.'); }
   });
 
   app.get('/api/frenzy/info', async (_req, res) => {
