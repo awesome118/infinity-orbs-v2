@@ -167,6 +167,16 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
     }
 
     g.taskCompletions = Math.max(0, Math.floor(Number(g.taskCompletions ?? 0) || 0));
+
+    // A combo is also the timer for the escalating task cycle. Once it expires,
+    // the entire task set starts over at tier 1 instead of leaving the guild
+    // permanently stuck with the old difficulty.
+    const comboEndsAt = Math.max(0, Math.floor(Number(g.combo?.endsAt ?? 0) || 0));
+    const comboTier = Math.max(0, Math.floor(Number(g.combo?.tier ?? 0) || 0));
+    const comboExpired = comboTier > 0 && comboEndsAt > 0 && comboEndsAt <= now;
+    if (comboExpired) {
+      g.tasks = createInitialGuildTasks(g.level || 1);
+    }
     g.combo = decayGuildComboState(g.combo, now);
 
     const firstTask = g.tasks[0];
@@ -249,6 +259,12 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
 async function loadGuilds(): Promise<Guild[]> {
   const raw = await redis.get(GUILDS_KEY);
   const guilds = parseGuildList(raw);
+  const now = Date.now();
+  const expiredCombo = guilds.some(g => {
+    const tier = Math.max(0, Math.floor(Number(g.combo?.tier ?? 0) || 0));
+    const endsAt = Math.max(0, Math.floor(Number(g.combo?.endsAt ?? 0) || 0));
+    return tier > 0 && endsAt > 0 && endsAt <= now;
+  });
 
   // One-time update migration: reset every Guild Upgrade rank to its base value.
   // The migration key ensures newly purchased upgrades are never wiped on later reads.
@@ -286,6 +302,31 @@ async function loadGuilds(): Promise<Guild[]> {
     });
     await redis.set(GUILD_TOKEN_RESET_KEY, '1');
     return parseGuildList(await redis.get(GUILDS_KEY));
+  }
+
+  if (expiredCombo) {
+    // Persist the expiry reset so a later read cannot resurrect the old task tiers.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const txn = await redis.watch(GUILDS_KEY);
+      const latestRaw = await redis.get(GUILDS_KEY);
+      const latest = parseGuildList(latestRaw);
+      const latestExpired = latest.some(g => {
+        const tier = Math.max(0, Math.floor(Number(g.combo?.tier ?? 0) || 0));
+        const endsAt = Math.max(0, Math.floor(Number(g.combo?.endsAt ?? 0) || 0));
+        return tier > 0 && endsAt > 0 && endsAt <= Date.now();
+      });
+      if (!latestExpired) {
+        await txn.unwatch();
+        return latest;
+      }
+
+      normalizeGuilds(latest, Date.now());
+      await txn.multi();
+      await txn.set(GUILDS_KEY, JSON.stringify(latest));
+      const committed = await txn.exec();
+      if (committed !== null) return latest;
+    }
+    throw new Error('Guild data changed while processing combo expiry. Please retry.');
   }
 
   return guilds;
