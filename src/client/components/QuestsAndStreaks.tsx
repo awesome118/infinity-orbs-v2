@@ -6,9 +6,7 @@ import {
   Flame,
   Gift,
   Coins,
-  Gem,
   Award,
-  Shield,
 } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
 import { formatNumber } from '../../shared/game.js';
@@ -44,80 +42,88 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Daily Login Streak Card (GDD Section 12) */}
-      <div className="bg-gradient-to-r from-slate-900 via-amber-950/20 to-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl">
+      {/* Daily Streak */}
+      <div className="bg-gradient-to-r from-slate-900 via-emerald-950/15 to-slate-900 border border-emerald-500/20 rounded-3xl p-5 sm:p-6 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-amber-400">
-              <Flame className="w-6 h-6 animate-pulse" />
+            <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-emerald-300">
+              <Flame className="w-6 h-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-black text-white">Daily Streak Routine</h2>
-                <span className="bg-amber-500/20 border border-amber-500/40 text-amber-300 font-black text-xs px-2 py-0.5 rounded-full">
-                  Day {state.streak.count} Streak
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-lg sm:text-xl font-black text-white">Daily Streak</h2>
+                <span className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-black text-xs px-2 py-0.5 rounded-full">
+                  {alreadyClaimedStreak ? 'Claimed' : 'Ready'}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Log in every day for escalating Coin and Shard rewards. Longest: {state.streak.longestStreak} days.
+                Current streak: <span className="font-black text-white">{Math.max(1, state.streak.count || 1)}</span> days · Longest: {state.streak.longestStreak} days.
               </p>
             </div>
           </div>
-
           <button
             onClick={() => {
               sound.playClick();
               void onClaimDailyStreak();
             }}
             disabled={alreadyClaimedStreak || busy}
-            className={`px-5 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${
-              !alreadyClaimedStreak
-                ? 'bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 shadow-lg shadow-amber-900/30 active:scale-95'
-                : 'bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed'
-            }`}
+            className={alreadyClaimedStreak ? 'bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed px-5 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2' : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-900/30 active:scale-95 px-5 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all'}
           >
             <Gift className="w-4 h-4" />
-            <span>{alreadyClaimedStreak ? 'Claimed for Today' : 'Claim Daily Reward'}</span>
+            <span>{alreadyClaimedStreak ? 'Claimed Today' : 'Claim Daily Reward'}</span>
           </button>
         </div>
-
-        {/* 7-Day Cycle Ribbon */}
-        <div className="grid grid-cols-7 gap-2 mt-5">
-          {streakRewards.map(item => {
-            const isCurrent = item.day === currentStreakDay;
-            const isCompleted = alreadyClaimedStreak ? item.day <= currentStreakDay : item.day < currentStreakDay;
-
-            return (
-              <div
-                key={item.day}
-                className={`flex flex-col items-center justify-center p-2 rounded-xl text-center border transition-all ${
-                  isCurrent
-                    ? 'bg-amber-500/20 border-amber-500/60 ring-2 ring-amber-400/30'
-                    : isCompleted
-                    ? 'bg-slate-950/60 border-slate-800 text-slate-500'
-                    : 'bg-slate-950/40 border-slate-900 text-slate-600'
-                }`}
-              >
-                <span className="text-[10px] font-bold uppercase block mb-1">
-                  Day {item.day}
-                </span>
-                <span className="text-xs font-black text-amber-300">
-                  +{item.coins}
-                </span>
-                {item.shards > 0 && (
-                  <span className="text-[10px] font-bold text-cyan-400 mt-0.5">
-                    +{item.shards} 💎
-                  </span>
-                )}
-                {isCompleted && (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 mt-1" />
-                )}
-              </div>
-            );
-          })}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-5">
+          {(() => {
+            const nextStreak = alreadyClaimedStreak
+              ? Math.max(1, state.streak.count || 1)
+              : state.streak.lastClaimDate
+                ? Math.max(1, state.streak.count || 1) + 1
+                : 1;
+            const day = ((nextStreak - 1) % 7) + 1;
+            return [
+              <div key="coins" className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                <span className="block text-[10px] uppercase font-black text-amber-300/70">Coins</span>
+                <span className="text-lg font-black text-white">+{fmt(day * 100)}</span>
+              </div>,
+              <div key="shards" className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
+                <span className="block text-[10px] uppercase font-black text-cyan-300/70">Shards</span>
+                <span className="text-lg font-black text-white">+{day === 7 ? 5 : day === 3 ? 1 : 0}</span>
+                <span className="block text-[9px] text-cyan-400/70">Daily reward, outside roll cap</span>
+              </div>,
+              <div key="rolls" className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-3">
+                <span className="block text-[10px] uppercase font-black text-purple-300/70">Free Rolls</span>
+                <span className="text-lg font-black text-white">+{day * 5}</span>
+                <span className="block text-[9px] text-slate-500">Manual rolls bypass cooldown</span>
+              </div>,
+              <div key="community" className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 p-3">
+                <span className="block text-[10px] uppercase font-black text-fuchsia-300/70">Community Tier</span>
+                <span className="text-lg font-black text-white">Tier {state.dailyStreakCommunity?.tier ?? 1}</span>
+                <span className="block text-[9px] text-slate-500">Streak count adds to progress</span>
+              </div>,
+            ];
+          })()}
+        </div>
+        <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-black uppercase tracking-wider text-emerald-300">Daily Streak Community Goal</div>
+              <div className="text-[11px] text-slate-500 mt-1">Each claim contributes your full streak number.</div>
+            </div>
+            <div className="text-right text-[10px] font-black text-slate-400">
+              {fmt(Math.max(0, state.dailyStreakCommunity?.currentProgress ?? 0))} / {fmt(Math.max(1, state.dailyStreakCommunity?.goal ?? 250))}
+            </div>
+          </div>
+          <div className="mt-2 h-2 rounded-full bg-slate-900 overflow-hidden border border-slate-800">
+            <div className="h-full bg-emerald-400 transition-all" style={{ width: Math.min(100, Math.max(0, state.dailyStreakCommunity?.currentProgress ?? 0) / Math.max(1, state.dailyStreakCommunity?.goal ?? 250) * 100) + "%" }} />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-3 text-[10px] font-bold">
+            <span className="text-emerald-300">+{Math.max(0, Math.round(((state.dailyStreakCommunity?.luckMultiplier ?? 1) - 1) * 100))}% Luck</span>
+            <span className="text-cyan-300">+{Math.max(0, Math.round((1 - (state.dailyStreakCommunity?.speedMultiplier ?? 1)) * 100))}% Speed</span>
+            <span className="text-slate-500">Next tier after the goal is completed.</span>
+          </div>
         </div>
       </div>
-
       {/* Daily Quests (GDD Section 11) */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">

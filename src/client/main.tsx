@@ -14,7 +14,6 @@ import {
   Shield,
   Lock,
   Megaphone,
-  Gift,
   X,
 } from 'lucide-react';
 import type {
@@ -82,7 +81,6 @@ import { GlobalChatWindow } from './components/GlobalChatWindow.js';
 import { DevDebugModal } from './components/DevDebugModal.js';
 import { FeedbackModal } from './components/FeedbackModal.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
-import { ShopSection } from './components/ShopSection.js';
 import { APP_VERSION } from '../shared/version.js';
 import './styles.css';
 
@@ -90,7 +88,6 @@ type ActiveTab =
   | 'roll'
   | 'upgrades'
   | 'boosters'
-  | 'shop'
   | 'altar'
   | 'mastery'
   | 'collection'
@@ -2184,19 +2181,7 @@ export function App() {
             <span>Upgrades</span>
             {featureForTab('upgrades' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('upgrades' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
-
-          <button
-            onClick={() => {
-              sound.playClick();
-              changeTab('shop');
-            }}
-            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${tab === 'shop' ? 'is-active bg-gradient-to-r from-emerald-600 to-cyan-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}`}
-          >
-            <Gift className="w-3.5 h-3.5 text-emerald-300" />
-            <span>Shop</span>
-          </button>
-
-          <button
+<button
             onClick={() => {
               sound.playClick();
               changeTab('boosters');
@@ -2349,15 +2334,6 @@ export function App() {
             onBuyAllUpgrades={handleBuyAllUpgrades}
             onActivateTurbo={handleActivateTurbo}
             busy={busy}
-          />
-        )}
-
-        {tab === 'shop' && (
-          <ShopSection
-            state={state}
-            busy={busy}
-            onClaimDailyStreak={handleClaimDailyStreak}
-            onPurchased={refreshAll}
           />
         )}
 
