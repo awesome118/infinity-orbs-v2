@@ -1017,20 +1017,36 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     };
 
     const request = async <T,>(url: string, body?: unknown): Promise<T> => {
-      const response = await fetch(url, {
-        method: body === undefined ? 'GET' : 'POST',
-        headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(
-          typeof data?.error === 'string'
+      let lastError: Error | null = null;
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const response = await fetch(url, {
+            method: body === undefined ? 'GET' : 'POST',
+            headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+            body: body === undefined ? undefined : JSON.stringify(body),
+          });
+          const data = await response.json().catch(() => ({}));
+
+          if (response.ok) return data as T;
+
+          const message = typeof data?.error === 'string'
             ? data.error
-            : `${response.status} ${response.statusText}`,
-        );
+            : response.status + ' ' + response.statusText;
+          lastError = new Error(message);
+
+          // Devvit can briefly return a 5xx while a Redis-backed mutation is settling.
+          // Retry only those transient server failures; keep genuine 4xx test failures immediate.
+          if (response.status < 500 || attempt === 2) throw lastError;
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          if (attempt === 2) throw lastError;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
       }
-      return data as T;
+
+      throw lastError ?? new Error('Request failed.');
     };
 
     const step = async <T,>(
