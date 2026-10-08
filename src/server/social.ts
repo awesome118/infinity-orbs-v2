@@ -258,9 +258,13 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
 
 async function loadGuilds(): Promise<Guild[]> {
   const raw = await redis.get(GUILDS_KEY);
-  const guilds = parseGuildList(raw);
+  const rawParsed = parseStoredJson<unknown>(raw);
+  const rawGuilds = Array.isArray(rawParsed)
+    ? rawParsed.filter(item => item && typeof item === 'object') as Guild[]
+    : [];
+  const guilds = normalizeGuilds(rawGuilds);
   const now = Date.now();
-  const expiredCombo = guilds.some(g => {
+  const expiredCombo = rawGuilds.some(g => {
     const tier = Math.max(0, Math.floor(Number(g.combo?.tier ?? 0) || 0));
     const endsAt = Math.max(0, Math.floor(Number(g.combo?.endsAt ?? 0) || 0));
     return tier > 0 && endsAt > 0 && endsAt <= now;
@@ -309,8 +313,12 @@ async function loadGuilds(): Promise<Guild[]> {
     for (let attempt = 0; attempt < 4; attempt++) {
       const txn = await redis.watch(GUILDS_KEY);
       const latestRaw = await redis.get(GUILDS_KEY);
-      const latest = parseGuildList(latestRaw);
-      const latestExpired = latest.some(g => {
+      const latestParsed = parseStoredJson<unknown>(latestRaw);
+      const latestRawGuilds = Array.isArray(latestParsed)
+        ? latestParsed.filter(item => item && typeof item === 'object') as Guild[]
+        : [];
+      const latest = normalizeGuilds(latestRawGuilds);
+      const latestExpired = latestRawGuilds.some(g => {
         const tier = Math.max(0, Math.floor(Number(g.combo?.tier ?? 0) || 0));
         const endsAt = Math.max(0, Math.floor(Number(g.combo?.endsAt ?? 0) || 0));
         return tier > 0 && endsAt > 0 && endsAt <= Date.now();
