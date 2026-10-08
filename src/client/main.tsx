@@ -43,6 +43,7 @@ import {
   cooldownMs,
   calculateCosmicDust,
   calculateLevelFromXp,
+  applyLevelProgress,
   createInitialState,
   grantFreeShards,
   todayKey,
