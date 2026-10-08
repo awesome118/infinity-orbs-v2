@@ -9,6 +9,17 @@ import { PRESTIGE_UPGRADES, CONTINUUM_TIERS, getOrbInfo, visibleContinuumTiers, 
 import type { RollResponse } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
+function formatPlaytime(ms: number): string {
+  const totalMinutes = Math.max(0, Math.floor(Number(ms) / 60_000));
+  if (totalMinutes < 60) return totalMinutes + 'm';
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours < 24) return minutes > 0 ? hours + 'h ' + minutes + 'm' : hours + 'h';
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return remainingHours > 0 ? days + 'd ' + remainingHours + 'h' : days + 'd';
+}
+
 interface DevDebugModalProps {
   onClose: () => void;
   onRefresh: () => Promise<void>;
@@ -483,7 +494,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     highestRarity: number;
     coins: number;
     shards: number;
+    playtimeMs: number;
   }>>([]);
+  const [playerActivity, setPlayerActivity] = useState({
+    dailyActiveUsers: 0,
+    weeklyActiveUsers: 0,
+    monthlyActiveUsers: 0,
+  });
   const [bannedUsers, setBannedUsers] = useState<Array<{
     username: string;
     userId?: string;
@@ -907,6 +924,12 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       if (!res.ok) throw new Error(data.error || 'Could not load player list.');
       const players = Array.isArray(data.players) ? data.players : [];
       setPlayerList(players);
+      const activity = data.activity && typeof data.activity === 'object' ? data.activity : {};
+      setPlayerActivity({
+        dailyActiveUsers: Math.max(0, Number(activity.dailyActiveUsers ?? 0) || 0),
+        weeklyActiveUsers: Math.max(0, Number(activity.weeklyActiveUsers ?? 0) || 0),
+        monthlyActiveUsers: Math.max(0, Number(activity.monthlyActiveUsers ?? 0) || 0),
+      });
       const activeCount = players.filter((player: { active?: boolean }) => player.active).length;
       setMessage('Loaded ' + players.length + ' player accounts (' + activeCount + ' active now).');
     } catch (e: any) {
@@ -3210,6 +3233,19 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </button>
           </div>
           <p className="text-[10px] text-slate-500">Active means the account contacted the game within the last 30 seconds. Active players stay at the top.</p>
+          <div className="grid grid-cols-3 gap-2 mt-3">
+            {[
+              ['DAU', playerActivity.dailyActiveUsers, 'Last 24 hours'],
+              ['WAU', playerActivity.weeklyActiveUsers, 'Last 7 days'],
+              ['MAU', playerActivity.monthlyActiveUsers, 'Last 30 days'],
+            ].map(([label, value, detail]) => (
+              <div key={String(label)} className="rounded-xl border border-slate-800 bg-slate-900/70 p-2.5 text-center">
+                <div className="text-[8px] font-black uppercase tracking-wider text-slate-500">{label}</div>
+                <div className="mt-1 text-sm font-mono font-black text-cyan-200">{formatNumber(Number(value))}</div>
+                <div className="text-[8px] text-slate-600">{detail}</div>
+              </div>
+            ))}
+          </div>
           {playerList.length > 0 ? (
             <div className="max-h-80 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/80 divide-y divide-slate-800">
               {playerList.map(player => (
@@ -3219,7 +3255,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                       <span className="text-xs font-mono text-slate-200 truncate">u/{player.username}</span>
                       {player.active && <span className="text-[9px] font-black uppercase text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-1.5 py-0.5">Active</span>}
                     </div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">Level {player.level} · {formatNumber(player.totalRolls)} rolls · Best 1/{formatRarity(Math.max(1, player.highestRarity))}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Level {player.level} · {formatNumber(player.totalRolls)} rolls · Playtime {formatPlaytime(player.playtimeMs)} · Best 1/{formatRarity(Math.max(1, player.highestRarity))}</div>
                   </div>
                   <div className="shrink-0 text-right">
                     <div className="text-[10px] text-slate-400">{player.active ? 'Online now' : player.lastSeenAt ? new Date(player.lastSeenAt).toLocaleString() : 'No recent activity'}</div>
