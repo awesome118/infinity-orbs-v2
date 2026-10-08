@@ -90,7 +90,7 @@ type ActiveTab =
   | 'upgrades'
   | 'boosters'
   | 'shop'
-  | 'altar
+  | 'altar'
   | 'mastery'
   | 'collection'
   | 'quests'
