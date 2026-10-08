@@ -2443,7 +2443,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Offline exact setter",
         async () => {
-          const result = await request<any>('/api/dev/offline-set', { rolls: 17 });
+          const result = await request<any>('/api/dev/offline-set', { amount: 17 });
           if (Number(result.state?.offlineRolls) !== 17) throw new Error('Offline exact setter returned ' + result.state?.offlineRolls + '.');
           return result.state;
         },
@@ -2453,8 +2453,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Offline add increments stored rolls",
         async () => {
-          await request<any>('/api/dev/offline-set', { rolls: 17 });
-          const result = await request<any>('/api/dev/add-offline', { rolls: 8 });
+          await request<any>('/api/dev/offline-set', { amount: 17 });
+          const result = await request<any>('/api/dev/add-offline', { amount: 8 });
           if (Number(result.state?.offlineRolls) !== 25) throw new Error('Offline add produced ' + result.state?.offlineRolls + ', expected 25.');
           return result.state;
         },
@@ -2464,7 +2464,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Offline claim consumes seeded rolls",
         async () => {
-          await request<any>('/api/dev/offline-set', { rolls: 3 });
+          await request<any>('/api/dev/offline-set', { amount: 3 });
           const result = await request<any>('/api/offline/claim', {});
           if (Number(result.rollsProcessed) !== 3) throw new Error('Offline claim processed ' + result.rollsProcessed + ', expected 3.');
           if (Number(result.state?.offlineRolls) !== 0) throw new Error('Offline rolls were not consumed.');
