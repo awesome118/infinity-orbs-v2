@@ -1451,6 +1451,7 @@ export async function loadRaw(): Promise<PlayerState> {
       shardsSacrificed: parsed.sacrifices?.shardsSacrificed ?? base.sacrifices!.shardsSacrificed,
       altarLevel: parsed.sacrifices?.altarLevel ?? base.sacrifices!.altarLevel,
       luckSurgeUntil: parsed.sacrifices?.luckSurgeUntil ?? base.sacrifices!.luckSurgeUntil,
+      altarPity: parsed.sacrifices?.altarPity ?? base.sacrifices!.altarPity ?? 0,
     },
     masterySkills: { ...base.masterySkills!, ...(parsed.masterySkills ?? {}) } as Record<MasterySkillId, number>,
     masteryPoints: parsed.masteryPoints ?? base.masteryPoints ?? 1,
