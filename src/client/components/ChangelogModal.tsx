@@ -6,6 +6,7 @@ interface ChangelogModalProps {
   onClose: () => void;
 }
 
+// Release notes are intentionally empty until the release author provides them.
 const entries: Array<{
   title: string;
   description: string;
