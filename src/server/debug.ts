@@ -17,8 +17,12 @@ import {
   getSaveDebugLogs,
   clearSaveDebugLogs,
   setGlobalBoosterDebugState,
+  appendGlobalBoosterDebugLog,
   getGlobalBoosterDebugLogs,
   clearGlobalBoosterDebugLogs,
+  appendGlobalBoosterActivationLog,
+  getGlobalBoosterActivationLog,
+  clearGlobalBoosterActivationLog,
   getCcuPeaks,
   setFakeCcuBonus,
   sendPushNotificationTest,
@@ -148,6 +152,24 @@ debugRouter.post('/save-logs/clear', async (_req, res) => {
     res.json({ ok: true });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to clear save diagnostics.' });
+  }
+});
+
+debugRouter.get('/global-boosters-log', async (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(100, Math.floor(Number(req.query.limit ?? 100) || 100)));
+    res.json({ logs: await getGlobalBoosterActivationLog(limit) });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to load Global Boosters Log.' });
+  }
+});
+
+debugRouter.post('/global-boosters-log/clear', async (_req, res) => {
+  try {
+    await clearGlobalBoosterActivationLog();
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to clear Global Boosters Log.' });
   }
 });
 

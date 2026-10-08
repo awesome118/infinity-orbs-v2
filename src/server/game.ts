@@ -514,6 +514,88 @@ export async function getGlobalBoosterDebugLogs(
 export async function clearGlobalBoosterDebugLogs(): Promise<void> {
   await redis.set(GLOBAL_BOOSTER_DEBUG_LOG_KEY, JSON.stringify([]));
 }
+
+const GLOBAL_BOOSTER_ACTIVATION_LOG_KEY = 'io:global-booster-activation-log:v1';
+const GLOBAL_BOOSTER_ACTIVATION_LOG_LIMIT = 500;
+
+export interface GlobalBoosterActivationLogEntry {
+  timestamp: number;
+  userId: string;
+  username: string;
+  boosterId: GlobalBoosterId;
+  boosterName: string;
+  usedCredit: boolean;
+  tier: number;
+  endsAt: number;
+}
+
+export async function appendGlobalBoosterActivationLog(
+  entry: GlobalBoosterActivationLogEntry,
+): Promise<void> {
+  try {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const txn = await redis.watch(GLOBAL_BOOSTER_ACTIVATION_LOG_KEY);
+      const raw = await redis.get(GLOBAL_BOOSTER_ACTIVATION_LOG_KEY);
+      let entries: GlobalBoosterActivationLogEntry[] = [];
+
+      if (typeof raw === 'string' && raw.trim()) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            entries = parsed.filter(
+              (item): item is GlobalBoosterActivationLogEntry =>
+                Boolean(item) &&
+                typeof item === 'object' &&
+                !Array.isArray(item) &&
+                Number.isFinite(Number((item as Record<string, unknown>).timestamp)) &&
+                typeof (item as Record<string, unknown>).boosterId === 'string',
+            );
+          }
+        } catch {
+          entries = [];
+        }
+      }
+
+      entries.push(entry);
+      if (entries.length > GLOBAL_BOOSTER_ACTIVATION_LOG_LIMIT) {
+        entries = entries.slice(-GLOBAL_BOOSTER_ACTIVATION_LOG_LIMIT);
+      }
+
+      await txn.multi();
+      await txn.set(GLOBAL_BOOSTER_ACTIVATION_LOG_KEY, JSON.stringify(entries));
+      const committed = await txn.exec();
+      if (committed !== null) return;
+    }
+  } catch (error) {
+    console.error('[Global Boosters] Could not persist activation log:', error);
+  }
+}
+
+export async function getGlobalBoosterActivationLog(limit = 100): Promise<GlobalBoosterActivationLogEntry[]> {
+  const safeLimit = Math.max(1, Math.min(GLOBAL_BOOSTER_ACTIVATION_LOG_LIMIT, Math.floor(Number(limit) || 100)));
+  const raw = await redis.get(GLOBAL_BOOSTER_ACTIVATION_LOG_KEY);
+  if (typeof raw !== 'string' || !raw.trim()) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const entries = parsed.filter(
+      (item): item is GlobalBoosterActivationLogEntry =>
+        Boolean(item) &&
+        typeof item === 'object' &&
+        !Array.isArray(item) &&
+        Number.isFinite(Number((item as Record<string, unknown>).timestamp)) &&
+        typeof (item as Record<string, unknown>).boosterId === 'string',
+    );
+    return entries.slice(-safeLimit).reverse();
+  } catch {
+    return [];
+  }
+}
+
+export async function clearGlobalBoosterActivationLog(): Promise<void> {
+  await redis.set(GLOBAL_BOOSTER_ACTIVATION_LOG_KEY, JSON.stringify([]));
+}
 export interface DeveloperAnnouncement {
   message: string;
   updatedAt: number;
@@ -3496,6 +3578,18 @@ async function claimWorldBoosterActivation(
 
     const activatedAt = Date.now();
     const activatedBy = String(context.username ?? s.username ?? 'Redditor').trim() || 'Redditor';
+
+    await appendGlobalBoosterActivationLog({
+      timestamp: activatedAt,
+      userId,
+      username: activatedBy,
+      boosterId: id,
+      boosterName: GLOBAL_BOOSTERS[id].name,
+      usedCredit,
+      tier: Number(snapshot[id].tier ?? 0),
+      endsAt: Number(snapshot[id].endsAt ?? 0),
+    });
+
     await redis.set(GLOBAL_BOOSTER_ANNOUNCEMENT_KEY, JSON.stringify({
       id,
       name: GLOBAL_BOOSTERS[id].name,

@@ -364,6 +364,17 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [globalBoosterTargetUser, setGlobalBoosterTargetUser] = useState('');
   const [globalBoosterLogs, setGlobalBoosterLogs] = useState<Array<Record<string, unknown>>>([]);
   const [globalBoosterLogsLoading, setGlobalBoosterLogsLoading] = useState(false);
+  const [globalBoosterActivationLog, setGlobalBoosterActivationLog] = useState<Array<{
+    timestamp: number;
+    userId: string;
+    username: string;
+    boosterId: 'luck' | 'speed' | 'crit';
+    boosterName: string;
+    usedCredit: boolean;
+    tier: number;
+    endsAt: number;
+  }>>([]);
+  const [globalBoosterActivationLogLoading, setGlobalBoosterActivationLogLoading] = useState(false);
   const [ccuStats, setCcuStats] = useState<{
     current: number;
     last24Hours: number;
@@ -886,6 +897,35 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     if (data && scope === 'user') setGlobalBoosterTargetUser('');
   };
 
+  const loadGlobalBoosterActivationLog = async (quiet = false) => {
+    if (!quiet) setGlobalBoosterActivationLogLoading(true);
+    try {
+      const res = await fetch('/api/dev/global-boosters-log?limit=100', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load Global Boosters Log.');
+      setGlobalBoosterActivationLog(Array.isArray(data.logs) ? data.logs : []);
+    } catch (e: any) {
+      if (!quiet) setMessage('Error: ' + (e?.message || 'Could not load Global Boosters Log.'));
+    } finally {
+      if (!quiet) setGlobalBoosterActivationLogLoading(false);
+    }
+  };
+
+  const clearGlobalBoosterActivationLog = async () => {
+    setGlobalBoosterActivationLogLoading(true);
+    try {
+      const res = await fetch('/api/dev/global-boosters-log/clear', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not clear Global Boosters Log.');
+      setGlobalBoosterActivationLog([]);
+      setMessage('Global Boosters Log cleared.');
+    } catch (e: any) {
+      setMessage('Error: ' + (e?.message || 'Could not clear Global Boosters Log.'));
+    } finally {
+      setGlobalBoosterActivationLogLoading(false);
+    }
+  };
+
   const loadGlobalBoosterLogs = async () => {
     setGlobalBoosterLogsLoading(true);
     try {
@@ -932,6 +972,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       setGlobalBoosterLogsLoading(false);
     }
   };
+
+  useEffect(() => {
+    void loadGlobalBoosterActivationLog(true);
+    const interval = window.setInterval(() => {
+      void loadGlobalBoosterActivationLog(true);
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const clearPaymentLogs = async () => {
     setPaymentLogsLoading(true);
@@ -3479,14 +3527,72 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           />
         </section>
 
+        <section className={panelBase + ' border border-emerald-500/30'}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-300">
+                <Database className="w-4 h-4" /> Global Boosters Log
+              </div>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Every successful player activation, newest first. Times are shown as normal dates and times.
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                title="Refresh the human-readable Global Boosters Log."
+                disabled={globalBoosterActivationLogLoading}
+                onClick={() => void loadGlobalBoosterActivationLog()}
+                className={buttonBase + ' bg-slate-900 border-slate-700 text-slate-200 px-3 py-2'}
+              >
+                {globalBoosterActivationLogLoading ? 'Loading…' : 'Refresh'}
+              </button>
+              <button
+                title="Clear the Global Boosters Log."
+                disabled={globalBoosterActivationLogLoading || globalBoosterActivationLog.length === 0}
+                onClick={() => void clearGlobalBoosterActivationLog()}
+                className={buttonBase + ' bg-red-600/20 border-red-500/30 text-red-200 px-3 py-2'}
+              >
+                <Trash2 className="w-3.5 h-3.5 inline mr-1" /> Clear
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-slate-800 overflow-hidden divide-y divide-slate-800/70">
+            {globalBoosterActivationLog.length > 0 ? globalBoosterActivationLog.map((entry, index) => (
+              <div
+                key={entry.timestamp + '-' + entry.userId + '-' + entry.boosterId + '-' + index}
+                className="px-3 py-3 bg-slate-900/45"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-black text-white">
+                      u/{entry.username} activated {entry.boosterName}
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-slate-400">
+                      {new Date(entry.timestamp).toLocaleString()} · Tier {entry.tier} · {entry.usedCredit ? 'Free activation' : '25 Shards'}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-[10px] text-slate-500">
+                    {entry.endsAt > entry.timestamp ? 'Ends ' + new Date(entry.endsAt).toLocaleString() : ''}
+                  </div>
+                </div>
+              </div>
+            )) : (
+              <div className="p-5 text-center text-xs text-slate-600">
+                No Global Booster activations have been recorded yet.
+              </div>
+            )}
+          </div>
+        </section>
+
         <section className={panelBase}>
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fuchsia-300">
-                <Database className="w-4 h-4" /> Global Booster Logs
+                <Database className="w-4 h-4" /> Global Booster Debug Trace
               </div>
               <p className="mt-1 text-[11px] text-slate-500">
-                Persistent trace of Global Booster reads, state calculations, atomic writes, player currency deduction, and save failures.
+                Low-level diagnostic trace for Global Booster reads, state calculations, writes, currency deduction, and failures.
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
