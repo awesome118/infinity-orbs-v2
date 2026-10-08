@@ -616,6 +616,9 @@ export function App() {
     const resolveFrenzy = async () => {
       for (let attempt = 0; attempt < 12; attempt++) {
         try {
+          const handoff = await getJson<{ armed: boolean }>('/api/frenzy/handoff');
+          if (!handoff.armed) return;
+
           const info = await getJson<{
             rarity: number;
             ownerUsername: string;
@@ -628,8 +631,8 @@ export function App() {
             inGame?: boolean;
           }>('/api/frenzy/info');
 
-          // Any posted Frenzy opens directly into the full game entrypoint.
-          // The game claims it here so the player gets the normal game UI/result.
+          // Only a Frenzy claim explicitly armed from the public Frenzy post
+          // may auto-claim here. Simply opening the game must never consume a Frenzy.
           if (!info.inGame || !info.canClaim) return;
 
           frenzyClaimActiveRef.current = true;
