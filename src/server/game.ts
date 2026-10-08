@@ -35,7 +35,6 @@ import {
   applyLevelProgress,
   totalXpRequiredBeforeLevel,
   singularityTitheDustForRolls,
-  SINGULARITY_TITHE_ROLLS_PER_DUST,
   type MasterySkillId,
   type PremiumBoosterId,
   type AutomationId,
