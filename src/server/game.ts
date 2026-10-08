@@ -761,6 +761,12 @@ export async function getCcuPeaks(): Promise<{
 }
 
 const FRENZY_POST_PREFIX = 'io:frenzy:post:';
+const FRENZY_HANDOFF_PREFIX = 'io:frenzy:handoff:';
+const FRENZY_HANDOFF_TTL_MS = 60_000;
+
+function frenzyHandoffKey(userId: string): string {
+  return FRENZY_HANDOFF_PREFIX + userId;
+}
 
 function isFrenzyTestAdmin(username?: string): boolean {
   const candidate = String(username ?? context.username ?? '')
@@ -768,6 +774,56 @@ function isFrenzyTestAdmin(username?: string): boolean {
     .replace(/^u\//i, '')
     .toLowerCase();
   return candidate === 'shadow_fen';
+}
+
+async function readFrenzyHandoff(userId: string): Promise<{ postId: string; expiresAt: number } | null> {
+  const raw = await redis.get(frenzyHandoffKey(userId));
+  const data = parseStoredJson<{ postId?: string; expiresAt?: number }>(raw);
+  const postId = String(data?.postId ?? '').trim();
+  const expiresAt = Number(data?.expiresAt ?? 0);
+  if (!postId || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    if (raw != null) await redis.del(frenzyHandoffKey(userId));
+    return null;
+  }
+  return { postId, expiresAt };
+}
+
+export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string }> {
+  const postId = String(context.postId ?? '').trim();
+  if (!postId) throw new Error('This is not an Orb Frenzy post.');
+
+  const raw = await redis.get(FRENZY_POST_PREFIX + postId);
+  if (!raw) throw new Error('This is not an Orb Frenzy post.');
+  const data = parseStoredJson<{
+    ownerId: string;
+    adminTest?: boolean;
+    inGame?: boolean;
+  }>(raw);
+  if (!data || data.inGame !== true) throw new Error('This is not an Orb Frenzy post.');
+
+  const s = await settleOffline(await loadRaw());
+  const today = new Date().toISOString().slice(0, 10);
+  const isOwner = data.ownerId === currentUserId();
+  const selfClaimTest =
+    isOwner &&
+    data.adminTest === true &&
+    isFrenzyTestAdmin(s.username);
+
+  if (isOwner && !selfClaimTest) throw new Error('You cannot claim your own Orb Frenzy.');
+  if (s.lastFrenzyClaimDate === today && !selfClaimTest) {
+    throw new Error('You already claimed a Frenzy reward today.');
+  }
+
+  await redis.set(frenzyHandoffKey(currentUserId()), JSON.stringify({
+    postId,
+    expiresAt: Date.now() + FRENZY_HANDOFF_TTL_MS,
+  }));
+  return { armed: true, postId };
+}
+
+export async function getOrbFrenzyHandoff(): Promise<{ armed: boolean; postId?: string }> {
+  const handoff = await readFrenzyHandoff(currentUserId());
+  return handoff ? { armed: true, postId: handoff.postId } : { armed: false };
 }
 
 async function grantFrenzyOwnerReward(
@@ -3593,7 +3649,8 @@ export async function claimOrbFrenzy(options: {
   postId?: string;
 } = {}): Promise<RollResponse> {
   return withPlayerMutationLock(async () => {
-  const postId = options.postId ?? context.postId;
+  const handoff = options.postId ? null : await readFrenzyHandoff(currentUserId());
+  const postId = options.postId ?? handoff?.postId ?? context.postId;
   if (options.postId && options.allowAdminTestOwner !== true) {
     throw new Error('Explicit Frenzy post targeting is admin-only.');
   }
@@ -3776,6 +3833,9 @@ export async function claimOrbFrenzy(options: {
   }
 
   await save(s);
+  if (handoff && handoff.postId === postId) {
+    await redis.del(frenzyHandoffKey(currentUserId()));
+  }
 
   if (!isOwner) {
     try {
