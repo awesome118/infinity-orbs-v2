@@ -58,6 +58,7 @@ import {
   postGuildMessage,
   buyGuildPerk,
   setGuildTrust,
+  kickGuildMember,
   setGuildTaxRate,
   leaderboard,
   recordLeaderboard,
@@ -1114,6 +1115,14 @@ export function createApp() {
       if (!targetUsername) return res.status(400).json({ error: 'Guild member username is required.' });
       res.json({ member: await setGuildTrust(targetUsername, req.body?.trusted === true) });
     } catch (e) { badRequest(res, e, 'Could not change Trust status.'); }
+  });
+
+  app.post('/api/guilds/kick', async (req, res) => {
+    try {
+      const targetUsername = String(req.body?.username ?? '').trim();
+      if (!targetUsername) return res.status(400).json({ error: 'Guild member username is required.' });
+      res.json(await kickGuildMember(targetUsername));
+    } catch (e) { badRequest(res, e, 'Could not kick guild member.'); }
   });
 
   app.post('/api/guilds/tax', async (req, res) => {
