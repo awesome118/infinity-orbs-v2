@@ -3,7 +3,7 @@ import {
   X, Wrench, Coins, Gem, Sparkles, Zap, RotateCcw, Play, Shield, Megaphone,
   Users, BellRing,
   Ban, UserX, CheckCircle2, RefreshCw, Flame,
-  Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy, ClipboardCheck,
+  Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy, ClipboardCheck, Gift,
 } from 'lucide-react';
 import { PRESTIGE_UPGRADES, CONTINUUM_TIERS, getOrbInfo, visibleContinuumTiers, formatRarity, formatNumber, frenzyOrbCountForRarity } from '../../shared/game.js';
 import type { RollResponse } from '../../shared/game.js';
@@ -360,6 +360,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [globalBooster, setGlobalBooster] = useState('luck');
   const [globalTier, setGlobalTier] = useState('1');
   const [globalMinutes, setGlobalMinutes] = useState('30');
+  const [globalBoosterCreditAmount, setGlobalBoosterCreditAmount] = useState('1');
+  const [globalBoosterTargetUser, setGlobalBoosterTargetUser] = useState('');
   const [globalBoosterLogs, setGlobalBoosterLogs] = useState<Array<Record<string, unknown>>>([]);
   const [globalBoosterLogsLoading, setGlobalBoosterLogsLoading] = useState(false);
   const [ccuStats, setCcuStats] = useState<{
@@ -851,6 +853,37 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         : 'Muted u/' + cleanName + ' in Guild Chat.',
     );
     if (data) await loadGuildChatSpy(true);
+  };
+
+  const grantFreeGlobalBoosters = async (scope: 'user' | 'online' | 'all') => {
+    const amount = Math.max(1, Math.min(1_000_000, Math.floor(Number(globalBoosterCreditAmount) || 1)));
+    if (scope === 'user' && !globalBoosterTargetUser.trim()) {
+      setMessage('Enter a Reddit username first.');
+      return;
+    }
+
+    const confirmed =
+      scope === 'all'
+        ? window.confirm('Give ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to every registered player?')
+        : scope === 'online'
+          ? window.confirm('Give ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to every currently online player?')
+          : true;
+    if (!confirmed) return;
+
+    const body: Record<string, unknown> = { scope, amount };
+    if (scope === 'user') body.username = globalBoosterTargetUser.trim().replace(/^u\//i, '');
+
+    const data = await sendAdminAction(
+      '/api/dev/global-booster-credits/grant',
+      body,
+      true,
+      scope === 'user'
+        ? 'Granted ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to u/' + globalBoosterTargetUser.trim().replace(/^u\//i, '') + '.'
+        : scope === 'online'
+          ? 'Granted ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to ' + String(data?.affectedUsers ?? 0) + ' online player' + (Number(data?.affectedUsers ?? 0) === 1 ? '' : 's') + '.'
+          : 'Granted ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to ' + String(data?.affectedUsers ?? 0) + ' registered player' + (Number(data?.affectedUsers ?? 0) === 1 ? '' : 's') + '.'
+    );
+    if (data && scope === 'user') setGlobalBoosterTargetUser('');
   };
 
   const loadGlobalBoosterLogs = async () => {
@@ -3356,6 +3389,60 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               className={buttonBase + ' bg-fuchsia-600 hover:bg-fuchsia-500 border-fuchsia-500 text-white px-3 py-2'}
             >
               Set Booster
+            </button>
+          </div>
+        </section>
+
+        <section className={panelBase + ' border border-emerald-500/30'}>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-300">
+            <Gift className="w-4 h-4" /> Give Free Global Boosters
+          </div>
+          <p className="text-[10px] text-slate-500">
+            Grants free Global Booster activation credits. Each credit can be used on Global Luck, Global Speed, or Global Crit.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-[1.3fr_0.6fr] gap-2">
+            <input
+              value={globalBoosterTargetUser}
+              onChange={e => setGlobalBoosterTargetUser(e.target.value)}
+              placeholder="Reddit username for one player"
+              title="Reddit username to receive free Global Booster activation credits."
+              className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+            />
+            <input
+              value={globalBoosterCreditAmount}
+              onChange={e => setGlobalBoosterCreditAmount(e.target.value)}
+              type="number"
+              min="1"
+              max="1000000"
+              title="Number of free Global Booster activation credits to grant."
+              className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
+              placeholder="Credits"
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <button
+              title="Give the entered number of free Global Booster activation credits to one specific Reddit user."
+              disabled={loading || !globalBoosterTargetUser.trim()}
+              onClick={() => void grantFreeGlobalBoosters('user')}
+              className={buttonBase + ' bg-emerald-600/20 hover:bg-emerald-600/30 border-emerald-500/40 text-emerald-200 px-3 py-2'}
+            >
+              Give to User
+            </button>
+            <button
+              title="Give the entered number of free Global Booster activation credits to every currently online player."
+              disabled={loading}
+              onClick={() => void grantFreeGlobalBoosters('online')}
+              className={buttonBase + ' bg-cyan-600/20 hover:bg-cyan-600/30 border-cyan-500/40 text-cyan-200 px-3 py-2'}
+            >
+              Give to Online
+            </button>
+            <button
+              title="Give the entered number of free Global Booster activation credits to every player registered in Infinity Orbs."
+              disabled={loading}
+              onClick={() => void grantFreeGlobalBoosters('all')}
+              className={buttonBase + ' bg-fuchsia-600/20 hover:bg-fuchsia-600/30 border-fuchsia-500/40 text-fuchsia-200 px-3 py-2'}
+            >
+              Give to All Users
             </button>
           </div>
         </section>

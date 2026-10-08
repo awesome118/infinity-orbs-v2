@@ -179,6 +179,50 @@ debugRouter.post('/global-booster', async (req, res) => {
   }
 });
 
+debugRouter.post('/global-booster-credits/grant', async (req, res) => {
+  try {
+    const scope = String(req.body?.scope ?? 'user');
+    const amount = Math.max(1, Math.min(1_000_000, Math.floor(Number(req.body?.amount) || 1)));
+
+    if (scope === 'user') {
+      const username = targetUsername(req.body?.username);
+      const userId = await resolveUserId(username);
+      const result = await grantGlobalBoosterCreditsToUser(userId, username, amount);
+      await appendGlobalBoosterCreditGrantLog(scope, amount, [result]);
+      return res.json({
+        ok: true,
+        scope,
+        amount,
+        affectedUsers: 1,
+        results: [result],
+      });
+    }
+
+    if (scope === 'online' || scope === 'all') {
+      const players = await listRegisteredPlayerIds();
+      const targets = scope === 'online' ? players.filter(player => player.active) : players;
+      const results: Array<{ userId: string; username: string; before: number; after: number }> = [];
+
+      for (const player of targets) {
+        results.push(await grantGlobalBoosterCreditsToUser(player.userId, player.username, amount));
+      }
+
+      await appendGlobalBoosterCreditGrantLog(scope, amount, results);
+      return res.json({
+        ok: true,
+        scope,
+        amount,
+        affectedUsers: results.length,
+        results,
+      });
+    }
+
+    return res.status(400).json({ error: 'Invalid Global Booster grant scope.' });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to grant free Global Booster credits.' });
+  }
+});
+
 debugRouter.get('/follow-reward', async (_req, res) => {
   try {
     res.json(await getFollowPromptStats());
@@ -247,6 +291,78 @@ function targetUsername(value: unknown): string {
   if (!name) throw new Error('A Reddit username is required.');
   return name;
 }
+
+const GLOBAL_BOOSTER_CREDIT_MAX = Number.MAX_SAFE_INTEGER;
+
+function parseAdminPlayerSave(raw: unknown): Record<string, any> {
+  if (raw == null) return createInitialState() as unknown as Record<string, any>;
+  if (typeof raw !== 'string') throw new Error('The target player save could not be read safely.');
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('The target player save could not be read safely.');
+    }
+    return parsed as Record<string, any>;
+  } catch {
+    throw new Error('The target player save could not be read safely.');
+  }
+}
+
+async function grantGlobalBoosterCreditsToUser(
+  userId: string,
+  username: string,
+  amount: number,
+): Promise<{ userId: string; username: string; before: number; after: number }> {
+  const id = String(userId ?? '').trim();
+  if (!id) throw new Error('The target player ID is missing.');
+  const safeUsername = targetUsername(username);
+  const safeAmount = Math.max(1, Math.min(GLOBAL_BOOSTER_CREDIT_MAX, Math.floor(Number(amount) || 1)));
+
+  return withPlayerMutationLockFor(id, async () => {
+    const playerKey = 'player:' + id;
+    const generationKey = 'player-generation:' + id;
+    const generation = Math.max(0, Number.parseInt(String(await redis.get(generationKey) ?? '0'), 10) || 0);
+    const state = parseAdminPlayerSave(await redis.get(playerKey));
+
+    const storedGeneration = Math.max(0, Number(state.saveGeneration ?? generation) || 0);
+    if (storedGeneration !== generation) {
+      throw new Error('The target player save changed generation. Refresh the admin console and try again.');
+    }
+
+    const before = Math.max(0, Number(state.globalBoosterCredits ?? 0) || 0);
+    const after = Math.min(GLOBAL_BOOSTER_CREDIT_MAX, before + safeAmount);
+    state.globalBoosterCredits = after;
+    state.username = safeUsername;
+    state.saveGeneration = generation;
+    state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0) || 0)) + 1;
+
+    await redis.set(playerKey, JSON.stringify(state));
+    return { userId: id, username: safeUsername, before, after };
+  });
+}
+
+async function appendGlobalBoosterCreditGrantLog(
+  scope: string,
+  amount: number,
+  results: Array<{ userId: string; username: string; before: number; after: number }>,
+): Promise<void> {
+  await appendGlobalBoosterDebugLog('admin:grant-credits', {
+    scope,
+    amount,
+    affectedUsers: results.length,
+    usernames: results.slice(0, 25).map(result => result.username),
+  });
+}
+
+async function listRegisteredPlayerIds(): Promise<Array<{ userId: string; username: string; active: boolean }>> {
+  const players = await listPlayers();
+  return players.map(player => ({
+    userId: player.userId,
+    username: player.username,
+    active: player.active,
+  }));
+}
+
 
 async function removeLeaderboardEntry(username: string): Promise<void> {
   const raw = await redis.get('io:leaderboard');
