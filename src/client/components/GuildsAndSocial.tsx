@@ -341,10 +341,19 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                               Complete Guild Tasks to charge it. Guild Combo gives half the strength of Global Boosters, all three at once.
                             </p>
                           </div>
-                          <div className="text-right text-[10px] text-slate-400">
-                            {active
-                              ? <span className="font-mono text-fuchsia-200">{Math.ceil(remaining / 1000)}s remaining</span>
-                              : <span>Waiting for task completions</span>}
+                          <div className="text-center sm:text-right min-w-[150px]">
+                            {active ? (
+                              <div className="rounded-xl border border-fuchsia-400/40 bg-fuchsia-500/10 px-3 py-2 shadow-lg shadow-fuchsia-950/30">
+                                <div className="text-[9px] font-black uppercase tracking-[0.16em] text-fuchsia-300">
+                                  Time Remaining
+                                </div>
+                                <div className="font-mono text-2xl sm:text-3xl font-black leading-none text-white mt-1 tabular-nums">
+                                  {Math.ceil(remaining / 1000)}s
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-500">Waiting for task completions</span>
+                            )}
                           </div>
                         </div>
 
@@ -378,10 +387,22 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                           </div>
                         </div>
 
+                        <div className="mt-3">
+                          <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                            <span>Combo time</span>
+                            <span>{active ? `${durationProgress.toFixed(1)}% remaining` : 'Expired'}</span>
+                          </div>
+                          <div className="h-2.5 w-full overflow-hidden rounded-full border border-slate-800 bg-slate-950">
+                            <div
+                              className="h-full rounded-full bg-fuchsia-400 transition-all duration-1000"
+                              style={{ width: `${active ? durationProgress : 0}%` }}
+                            />
+                          </div>
+                        </div>
                         <div className="mt-2 text-[10px] text-slate-500">
                           {active
-                            ? `Time: ${durationProgress.toFixed(1)}% of base duration remaining.`
-                            : 'Higher combo tiers drain faster and add less time per task completion.'}
+                            ? 'Higher combo tiers drain faster and add less time per task completion.'
+                            : 'Combo expired. All Guild Tasks reset to Tier 1.'}
                         </div>
                       </div>
                     );
