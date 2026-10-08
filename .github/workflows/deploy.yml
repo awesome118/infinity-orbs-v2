@@ -66,6 +66,14 @@ jobs:
         timeout-minutes: 10
         run: timeout --signal=TERM --kill-after=30s 9m npx devvit upload
 
+      - name: Install current build to r/infinityorbs
+        run: |
+          set -euo pipefail
+          VERSION="$(npx devvit view infinity-orbs version)"
+          echo "Installing production build infinity-orbs@${VERSION} to r/infinityorbs"
+          npx devvit install r/infinityorbs "infinity-orbs@${VERSION}"
+          npx devvit list installs r/infinityorbs
+
       - name: Install current build to r/infinity_orbs_dev
         run: |
           set -euo pipefail
