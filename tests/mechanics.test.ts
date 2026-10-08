@@ -17,6 +17,7 @@ import {
   GUILD_COMBO_ACTIVATIONS_PER_TIER,
   GUILD_COMBO_MAX_TIER,
   grantFreeShards,
+  grantRollShards,
   onlinePlayerLuckMultiplier,
   luckMultiplier,
   frenzyClaimCountForRarity,
@@ -236,17 +237,21 @@ test('Guild task rewards remain capped', () => {
   assert.ok(extreme.guildXpReward <= 10_000);
 });
 
-test('free Shards respect the hard 50-per-day cap', () => {
+test('roll Shards respect the hard 50-per-day cap while free reward Shards bypass it', () => {
   const state = createInitialState(NOW);
   state.lastFreeShardReset = new Date(NOW).toISOString().slice(0, 10);
   state.freeShardsEarnedToday = 49;
   state.shards = 0;
   state.lifetimeShards = 0;
 
-  assert.equal(grantFreeShards(state, 10, NOW), 1);
+  assert.equal(grantRollShards(state, 10, NOW), 1);
   assert.equal(state.shards, 1);
   assert.equal(state.freeShardsEarnedToday, 50);
-  assert.equal(grantFreeShards(state, 10, NOW), 0);
+  assert.equal(grantRollShards(state, 10, NOW), 0);
+
+  assert.equal(grantFreeShards(state, 10, NOW), 10);
+  assert.equal(state.shards, 11);
+  assert.equal(state.freeShardsEarnedToday, 50);
 });
 
 test('Orb Frenzy batch size follows logarithmic rarity scaling', () => {
@@ -280,6 +285,8 @@ test('online population Luck is monotonic and sane', () => {
 
 test('Astral Reserve adds exactly 2% Luck per level', () => {
   const state = createInitialState(NOW);
+  // Isolate Astral Reserve from the active Daily Streak Community buff.
+  state.dailyStreakCommunity = undefined;
   state.prestigeUpgrades.astralReserve = 0;
   assert.equal(luckMultiplier(state), 1);
 
