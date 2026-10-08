@@ -78,6 +78,7 @@ import { BoostersAndAutomation } from './components/BoostersAndAutomation.js';
 import { GlobalChatWindow } from './components/GlobalChatWindow.js';
 import { DevDebugModal } from './components/DevDebugModal.js';
 import { FeedbackModal } from './components/FeedbackModal.js';
+import { ChangelogModal } from './components/ChangelogModal.js';
 import { APP_VERSION } from '../shared/version.js';
 import './styles.css';
 
@@ -259,6 +260,7 @@ export function App() {
   const [shareRarity, setShareRarity] = useState<number | null>(null);
   const [showOddsModal, setShowOddsModal] = useState<boolean>(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState<boolean>(false);
+  const [showChangelogModal, setShowChangelogModal] = useState<boolean>(false);
   const [showDevModal, setShowDevModal] = useState<boolean>(false);
   const [boosterAnnouncement, setBoosterAnnouncement] = useState<{
     id: GlobalBoosterId;
@@ -1992,6 +1994,7 @@ export function App() {
         onToggleSound={() => setSoundEnabled(sound.toggle())}
         onOpenOdds={() => setShowOddsModal(true)}
         onOpenFeedback={() => setShowFeedbackModal(true)}
+        onOpenChangelog={() => setShowChangelogModal(true)}
         onClaimOffline={handleClaimOffline}
         onOpenDevDebug={isAdmin ? () => setShowDevModal(true) : undefined}
         onOpenProfile={() => changeTab('profile')}
@@ -2442,6 +2445,11 @@ export function App() {
 
       {/* Global Chat */}
       <GlobalChatWindow username={state.username ?? ''} />
+
+      {/* Changelog */}
+      {showChangelogModal && (
+        <ChangelogModal onClose={() => setShowChangelogModal(false)} />
+      )}
 
       {/* Feedback Modal */}
       {showFeedbackModal && (
