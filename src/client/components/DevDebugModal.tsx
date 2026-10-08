@@ -4290,7 +4290,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         </section>
 
                   </div>
-        </section>
+        </details>
 
         <details className="rounded-2xl border border-rose-500/40 bg-rose-950/10 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-rose-300">
