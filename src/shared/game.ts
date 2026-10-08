@@ -747,6 +747,10 @@ export interface PlayerState {
   cosmicDust: number;
   level: number;
   xp: number;
+  // Lifetime XP at the start of the current level. This preserves progression
+  // for accounts created under older XP curves while keeping the current curve
+  // for all future level-ups.
+  levelXpFloor?: number;
   totalRolls: number;
   manualRolls: number;
   totalCrits: number;
@@ -786,8 +790,8 @@ export interface PlayerState {
   globalBoosters?: GlobalBoosterSnapshot;
   guildCombo?: GuildComboState;
 
-  // Lifetime count of completed single-orb online activations used by
-  // Singularity Tithe. Multi-roll, auto-roll batches, and offline batches do not add to it.
+  // Lifetime roll counter used by Singularity Tithe. It counts processed orbs,
+  // including multi-roll and offline batches, once Tithe is active.
   singularityTitheSingleRolls?: number;
 
   lastFrenzyDate?: string;
@@ -1395,6 +1399,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     cosmicDust: 0,
     level: 1,
     xp: 0,
+    levelXpFloor: 0,
     totalRolls: 0,
     manualRolls: 0,
     totalCrits: 0,
@@ -1589,6 +1594,73 @@ export function getLevelBenefits(level: number): LevelBenefits {
   };
 }
 
+export function totalXpRequiredBeforeLevel(level: number): number {
+  const safeLevel = Math.max(1, Math.min(1000, Math.floor(Number(level) || 1)));
+  let total = 0;
+  for (let currentLevel = 1; currentLevel < safeLevel; currentLevel++) {
+    total += xpRequiredForLevel(currentLevel);
+  }
+  return total;
+}
+
+export function getLevelProgress(
+  level: number,
+  totalXp: number,
+  levelXpFloor?: number,
+): {
+  level: number;
+  currentLevelXp: number;
+  nextLevelXp: number;
+  progressPercent: number;
+} {
+  const safeLevel = Math.max(1, Math.min(1000, Math.floor(Number(level) || 1)));
+  const safeXp = Math.max(0, Number(totalXp) || 0);
+  const calculatedFloor = totalXpRequiredBeforeLevel(safeLevel);
+  const floor = Number.isFinite(Number(levelXpFloor))
+    ? Math.max(0, Math.min(safeXp, Number(levelXpFloor)))
+    : calculatedFloor;
+  const nextLevelXp = xpRequiredForLevel(safeLevel);
+  const currentLevelXp = Math.max(0, safeXp - floor);
+  return {
+    level: safeLevel,
+    currentLevelXp,
+    nextLevelXp,
+    progressPercent: Math.min(100, Math.round((currentLevelXp / nextLevelXp) * 100)),
+  };
+}
+
+export function applyLevelProgress(s: PlayerState, maxLevelsPerCall = Number.MAX_SAFE_INTEGER): number {
+  const MAX_LEVEL = 1000;
+  const maxLevels = Math.max(0, Math.floor(Number(maxLevelsPerCall) || 0));
+  if (maxLevels === 0) return 0;
+
+  let level = Math.max(1, Math.min(MAX_LEVEL, Math.floor(Number(s.level) || 1)));
+  const safeXp = Math.max(0, Number(s.xp) || 0);
+  let floor = Number(s.levelXpFloor);
+  if (!Number.isFinite(floor)) {
+    const curveFloor = totalXpRequiredBeforeLevel(level);
+    // A stored level that is ahead of the current XP curve is an account that
+    // predates a balance change. Start that player at their existing XP rather
+    // than requiring the retroactively raised cumulative threshold.
+    floor = safeXp < curveFloor ? safeXp : curveFloor;
+  }
+  floor = Math.max(0, Math.min(safeXp, floor));
+
+  let gained = 0;
+  while (level < MAX_LEVEL && gained < maxLevels) {
+    const required = xpRequiredForLevel(level);
+    if (safeXp - floor < required) break;
+    floor += required;
+    level += 1;
+    gained += 1;
+  }
+
+  s.level = level;
+  s.levelXpFloor = floor;
+  if (gained > 0) s.masteryPoints = (s.masteryPoints ?? 0) + gained;
+  return gained;
+}
+
 export function calculateLevelFromXp(totalXp: number): {
   level: number;
   currentLevelXp: number;
@@ -1662,6 +1734,7 @@ export const MAX_OFFLINE_ROLLS = 1_000;
 export const OFFLINE_TICK_MS = 60_000; // 1 offline roll every 60 seconds
 
 export const SHARD_SYNTHESIS_COST = 10;
+export const SINGULARITY_TITHE_ROLLS_PER_DUST = 200;
 
 export function effectiveOfflineTickMs(s: PlayerState): number {
   const rateReduction = (s.upgrades.offlineRate ?? 0) * 0.08;
