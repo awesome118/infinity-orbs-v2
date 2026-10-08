@@ -10,6 +10,7 @@ export interface GuildMember {
   role: GuildRole;
   trusted?: boolean;
   joinedAt?: number;
+  lastLoginAt?: number;
 }
 
 export interface GuildChallenge {
