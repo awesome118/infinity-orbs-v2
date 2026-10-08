@@ -23,6 +23,10 @@ import {
   frenzyOrbCountForRarity,
   FRENZY_LOG_BASE,
   bestCodexChain,
+  applyLevelProgress,
+  xpRequiredForLevel,
+  SINGULARITY_TITHE_ROLLS_PER_DUST,
+  singularityTitheDustForRolls,
 } from '../src/shared/game.js';
 import {
   createGuildTask,
@@ -30,6 +34,43 @@ import {
 } from '../src/shared/social.js';
 
 const NOW = 1_800_000_000_000;
+
+test('Level progression awards one Mastery Point per level gained', () => {
+  const state = createInitialState();
+  state.xp =
+    xpRequiredForLevel(1) +
+    xpRequiredForLevel(2) +
+    xpRequiredForLevel(3);
+  const gained = applyLevelProgress(state);
+  assert.equal(gained, 3);
+  assert.equal(state.level, 4);
+  assert.equal(state.masteryPoints, 3);
+});
+
+test('Legacy high-level accounts can progress after the XP curve changed', () => {
+  const state = createInitialState();
+  state.level = 320;
+  state.xp = 100_000_000;
+  delete state.levelXpFloor;
+
+  const firstPass = applyLevelProgress(state, 1);
+  assert.equal(firstPass, 0);
+  assert.equal(state.level, 320);
+  assert.equal(state.levelXpFloor, state.xp);
+
+  state.xp += xpRequiredForLevel(320);
+  const secondPass = applyLevelProgress(state, 1);
+  assert.equal(secondPass, 1);
+  assert.equal(state.level, 321);
+  assert.equal(state.masteryPoints, 1);
+});
+
+test('Singularity Tithe awards dust every 200 processed rolls and counts batches', () => {
+  assert.equal(SINGULARITY_TITHE_ROLLS_PER_DUST, 200);
+  assert.equal(singularityTitheDustForRolls(199, 1, 1), 1);
+  assert.equal(singularityTitheDustForRolls(198, 2, 2), 2);
+  assert.equal(singularityTitheDustForRolls(200, 100, 1), 0);
+});
 
 test('fresh state starts with an inactive Guild Combo', () => {
   const state = createInitialGuildCombo(NOW);
