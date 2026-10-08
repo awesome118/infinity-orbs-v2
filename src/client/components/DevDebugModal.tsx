@@ -875,14 +875,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       return;
     }
 
-    const confirmed =
-      scope === 'all'
-        ? window.confirm('Give ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to every registered player?')
-        : scope === 'online'
-          ? window.confirm('Give ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to every currently online player?')
-          : true;
-    if (!confirmed) return;
-
+    if (globalBoosterGrantLoading) return;
     setGlobalBoosterGrantLoading(true);
     setMessage('');
     try {
@@ -3539,19 +3532,19 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </button>
             <button
               title="Give the entered number of free Global Booster activation credits to every currently online player."
-              disabled={globalBoosterGrantLoading}
+              type="button"
               onClick={() => void grantFreeGlobalBoosters('online')}
               className={buttonBase + ' bg-cyan-600/20 hover:bg-cyan-600/30 border-cyan-500/40 text-cyan-200 px-3 py-2'}
             >
-              Give to Online
+              {globalBoosterGrantLoading ? 'Granting…' : 'Give to Online'}
             </button>
             <button
               title="Give the entered number of free Global Booster activation credits to every player registered in Infinity Orbs."
-              disabled={globalBoosterGrantLoading}
+              type="button"
               onClick={() => void grantFreeGlobalBoosters('all')}
               className={buttonBase + ' bg-fuchsia-600/20 hover:bg-fuchsia-600/30 border-fuchsia-500/40 text-fuchsia-200 px-3 py-2'}
             >
-              Give to All Users
+              {globalBoosterGrantLoading ? 'Granting…' : 'Give to All Users'}
             </button>
           </div>
         </section>
