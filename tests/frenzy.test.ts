@@ -157,7 +157,7 @@ test('Frenzy Roll button has a persistent lightning charge state and releases on
 
 test('Frenzy button shows a ticking daily cooldown after submission', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/client/components/RollSection.tsx'), 'utf8');
-  assert.match(source, /nextFrenzyResetAt/);
+  assert.match(source, /frenzyCooldownRemaining/);
   assert.match(source, /formatFrenzyCooldown/);
   assert.match(source, /Frenzy Cooldown/);
   assert.match(source, /disabled=\{busy \|\| frenzyArmed \|\| frenzyUsedToday\}/);
@@ -171,7 +171,7 @@ test('admin self-claim works even when the normal daily claim is already used', 
   assert.match(serverSource, /data\.adminTest === true/);
   assert.match(clientSource, /const canClaim = info\.canClaim && !openedGame/);
   assert.match(clientSource, /Claim Your Frenzy · Test/);
-  assert.match(serverSource, /if \(s\.lastFrenzyClaimDate === today && !selfClaimTest\)/);
+  assert.match(serverSource, /if \(claimCooldown > 0 && !selfClaimTest\)/);
 });
 
 
