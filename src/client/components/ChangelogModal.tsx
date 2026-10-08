@@ -1,43 +1,15 @@
 import React from 'react';
-import { BookOpen, Flame, Sparkles, Users, Target, Gem, X } from 'lucide-react';
+import { BookOpen, X } from 'lucide-react';
 import { APP_VERSION } from '../../shared/version.js';
 
 interface ChangelogModalProps {
   onClose: () => void;
 }
 
-const entries = [
-  {
-    icon: Sparkles,
-    title: 'Colored rarity flairs',
-    description: 'Your highest rarity flair now uses the color of its rarity tier, with readable text automatically chosen for the background.',
-  },
-  {
-    icon: Flame,
-    title: 'Frenzy flair',
-    description: 'Orb Frenzy posts are now tagged with the frenzy flair so they are easy to find.',
-  },
-  {
-    icon: BookOpen,
-    title: 'Discovery flair',
-    description: 'Shared Orb posts are now tagged with the discovery flair.',
-  },
-  {
-    icon: Users,
-    title: 'Guild Combo improvements',
-    description: 'The remaining Guild Combo time is more prominent, and task tiers reset when the combo expires.',
-  },
-  {
-    icon: Target,
-    title: 'Codex Devotion fix',
-    description: 'Codex Devotion now correctly displays and uses your best consecutive rarity chain.',
-  },
-  {
-    icon: Gem,
-    title: 'Altar pity cleanup',
-    description: 'Altar pity is capped at one layer instead of stacking indefinitely.',
-  },
-] as const;
+const entries: Array<{
+  title: string;
+  description: string;
+}> = [];
 
 export const ChangelogModal: React.FC<ChangelogModalProps> = ({ onClose }) => {
   return (
@@ -60,9 +32,6 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ onClose }) => {
             <h2 id="io-changelog-title" className="mt-1 text-2xl font-black text-white">
               Update {APP_VERSION}
             </h2>
-            <p className="mt-1 text-xs text-slate-500">
-              New features and player-facing changes.
-            </p>
           </div>
           <button
             onClick={onClose}
@@ -74,20 +43,13 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ onClose }) => {
         </div>
 
         <div className="mt-5 max-h-[60vh] overflow-y-auto pr-1 space-y-2">
-          {entries.map(({ icon: Icon, title, description }) => (
+          {entries.map(({ title, description }) => (
             <div
               key={title}
               className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"
             >
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 shrink-0 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
-                  <Icon className="w-4 h-4 text-purple-300" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-sm font-black text-white">{title}</div>
-                  <div className="mt-1 text-xs leading-relaxed text-slate-400">{description}</div>
-                </div>
-              </div>
+              <div className="text-sm font-black text-white">{title}</div>
+              <div className="mt-1 text-xs leading-relaxed text-slate-400">{description}</div>
             </div>
           ))}
         </div>
