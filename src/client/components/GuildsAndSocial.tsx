@@ -20,6 +20,7 @@ import {
   Zap,
   UserCheck,
   UserPlus,
+  UserMinus,
   Flag,
 } from 'lucide-react';
 import type {
@@ -53,6 +54,7 @@ interface GuildsAndSocialProps {
   onSendMessage: (text: string) => Promise<GuildMessage>;
   onBuyGuildPerk?: (perk: GuildPerkId) => Promise<void>;
   onToggleGuildTrust?: (username: string, trusted: boolean) => Promise<void>;
+  onKickGuildMember?: (username: string) => Promise<void>;
   onSetGuildTax?: (rate: number) => Promise<void>;
   playerUsername?: string;
   playerHasShared?: boolean;
@@ -96,6 +98,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   onSendMessage,
   onBuyGuildPerk,
   onToggleGuildTrust,
+  onKickGuildMember,
   onSetGuildTax,
   playerUsername = '',
   playerHasShared = false,
@@ -130,6 +133,12 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const canManageGuild = currentGuildMember?.role === 'owner' ||
     currentGuildMember?.role === 'officer' ||
     currentGuildMember?.trusted === true;
+  const canSeeLastLogins = canManageGuild;
+  const canKickGuildMember = (member: Guild['members'][number]): boolean => {
+    if (!currentGuildMember || member.username === playerUsername || member.role === 'owner') return false;
+    if (currentGuildMember.role === 'owner') return true;
+    return canManageGuild && member.role !== 'officer' && member.trusted !== true;
+  };
 
   const handleReportChat = async (message: GuildMessage) => {
     if (message.isSystem || reportingId) return;
@@ -746,7 +755,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                       <Users className="w-4 h-4 text-purple-400" />
-                      <span>Member Contributions</span>
+                      <span>Guild Players</span>
                     </h3>
                     <span className="text-xs text-slate-400">
                       {myGuild.members.length} / 50
@@ -774,6 +783,11 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                                 Trusted
                               </span>
                             )}
+                            {canSeeLastLogins && m.lastLoginAt ? (
+                              <span className="text-[9px] text-slate-600">
+                                Last login {new Date(m.lastLoginAt).toLocaleDateString()}
+                              </span>
+                            ) : null}
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-amber-400 font-semibold">
@@ -796,6 +810,21 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                               >
                                 <UserCheck className="w-3 h-3 inline mr-1" />
                                 {m.trusted ? 'Untrust' : 'Trust'}
+                              </button>
+                            )}
+                            {canKickGuildMember(m) && onKickGuildMember && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!window.confirm('Kick u/' + m.username + ' from the guild?')) return;
+                                  sound.playClick();
+                                  void onKickGuildMember(m.username);
+                                }}
+                                disabled={busy}
+                                className="px-2 py-1 rounded-lg text-[9px] font-bold border bg-rose-500/10 border-rose-500/30 text-rose-300 hover:bg-rose-500/20"
+                              >
+                                <UserMinus className="w-3 h-3 inline mr-1" />
+                                Kick
                               </button>
                             )}
                           </div>
