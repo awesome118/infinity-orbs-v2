@@ -180,6 +180,18 @@ test('Roll and Frenzy mutations share the client mutation queue', () => {
   assert.match(source, /setFrenzyArmed\(false\);[\s\S]*?await refreshAll\(\)\.catch/);
 });
 
+test('Frenzy auto-claim requires an explicit server-side handoff', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
+  assert.match(source, /\/api\/frenzy\/handoff/);
+  assert.match(source, /if \(!handoff\.armed\) return/);
+});
+
+test('Frenzy claim button arms the server-side handoff before opening the game', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/client/frenzy.tsx'), 'utf8');
+  assert.match(source, /\/api\/frenzy\/arm/);
+  assert.match(source, /requestExpandedMode\(event\.nativeEvent, 'game'\)/);
+});
+
 test('Frenzy auto-claim always releases the game loading state', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
   assert.match(
