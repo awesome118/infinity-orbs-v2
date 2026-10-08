@@ -2360,8 +2360,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         async () => {
           const result = await request<any>('/api/dev/state', { collection: { '2': 3, '3': 0, '4': -5, '5': 2 } });
           const collection = recordValue(result.state?.collection);
-          if (Number(collection['2']) !== 3 || Number(collection['5']) !== 2 || '3' in collection || '4' in collection) {
-            throw new Error('Collection sanitizer did not remove invalid counts.');
+          if (Number(collection['2']) !== 3 || Number(collection['5']) !== 2) {
+            throw new Error('Valid collection counts were not preserved.');
+          }
+          if (Number(collection['3'] ?? 0) !== 0 || Number(collection['4'] ?? 0) !== 0) {
+            throw new Error('Zero/negative collection counts were retained: 3=' + collection['3'] + ', 4=' + collection['4'] + '.');
           }
           return collection;
         },
@@ -2432,12 +2435,15 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         "API · Force-roll persists collection entry",
         async () => {
           await request<any>('/api/dev/state', { collection: {}, highestRarity: 0, collectionValue: 0 });
-          const result = await request<any>('/api/dev/force-roll', { rarity: 777, randomValue: 0.999999 });
-          const collection = recordValue(result.state?.collection);
-          if (Number(collection['777']) !== 1) throw new Error('Forced rarity was not persisted in the collection.');
-          return result.state;
+          await request<any>('/api/dev/force-roll', { rarity: 777, randomValue: 0.999999 });
+          const collection = await request<any>('/api/collection?offset=0&limit=100&tier=all&sort=rarity_desc');
+          const item = Array.isArray(collection.items)
+            ? collection.items.find((entry: any) => Number(entry.rarity) === 777)
+            : null;
+          if (!item || Number(item.count) < 1) throw new Error('Forced 1/777 orb was not persisted in the collection endpoint.');
+          return item;
         },
-        state => '1/777 count=' + state.collection['777'],
+        item => '1/777 count=' + item.count,
       );
 
       await step(
@@ -2494,11 +2500,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Online endpoint returns a nonnegative population",
         async () => {
+          await request<any>('/api/dev/state', { xp: 10_000 });
+          const unlocked = await request<any>('/api/me');
+          if (Number(unlocked.level) < 7) throw new Error('Could not prepare the Level 7 social fixture; level=' + unlocked.level + '.');
           const result = await request<any>('/api/online');
           if (!Number.isFinite(Number(result.onlinePlayers)) || Number(result.onlinePlayers) < 0) throw new Error('Invalid online population.');
           return result;
         },
-        result => 'onlinePlayers=' + result.onlinePlayers,
+        result => 'onlinePlayers=' + result.onlinePlayers + ' · social fixture unlocked',
       );
 
       await step(
@@ -2506,9 +2515,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         async () => {
           const result = await request<any>('/api/global-boosters');
           for (const id of ['luck', 'speed', 'crit']) {
-            if (!result.snapshot?.[id]) throw new Error('Missing Global Booster ' + id + '.');
+            if (!result?.[id]) throw new Error('Missing Global Booster ' + id + '.');
           }
-          return result.snapshot;
+          return result;
         },
         snapshot => 'luck=' + snapshot.luck.tier + ' · speed=' + snapshot.speed.tier + ' · crit=' + snapshot.crit.tier,
       );
@@ -2517,10 +2526,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         "API · Global Booster announcement is initially readable",
         async () => {
           const result = await request<any>('/api/global-booster-announcement');
-          if (typeof result !== 'object') throw new Error('Global Booster announcement response was not an object.');
+          if (result !== null && typeof result !== 'object') throw new Error('Global Booster announcement response was neither null nor an object.');
+          if (result && (!result.id || !result.name || !result.username || !Number.isFinite(Number(result.activatedAt)))) {
+            throw new Error('Active Global Booster announcement was missing required fields.');
+          }
           return result;
         },
-        result => result.username ? 'last activated by u/' + result.username : 'no active announcement',
+        result => result?.username ? 'last activated by u/' + result.username : 'no active announcement',
       );
 
       await step(
@@ -2690,8 +2702,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         "API · Global Luck activation changes its tier",
         async () => {
           const result = await request<any>('/api/global-boosters');
-          if (Number(result.snapshot?.luck?.tier) < 1) throw new Error('Global Luck did not activate.');
-          return result.snapshot.luck;
+          if (Number(result?.luck?.tier) < 1) throw new Error('Global Luck did not activate.');
+          return result.luck;
         },
         state => 'Luck tier=' + state.tier,
       );
@@ -2704,10 +2716,10 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             await request<any>('/api/global-boosters/activate', { id: 'luck' });
           }
           const result = await request<any>('/api/global-boosters');
-          if (Number(result.snapshot?.luck?.activationProgress) < 3 && Number(result.snapshot?.luck?.tier) < 2) {
+          if (Number(result?.luck?.activationProgress) < 3 && Number(result?.luck?.tier) < 2) {
             throw new Error('Repeated Global Luck activation did not advance progress.');
           }
-          return result.snapshot.luck;
+          return result.luck;
         },
         state => 'Luck tier=' + state.tier + ' · progress=' + state.activationProgress,
       );
@@ -2755,9 +2767,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           await request<any>('/api/dev/global-booster', { id: 'crit', tier: 0, minutes: 1 });
           const result = await request<any>('/api/global-boosters');
           for (const id of ['luck', 'speed', 'crit']) {
-            if (Number(result.snapshot?.[id]?.tier) !== 0) throw new Error('Global ' + id + ' did not clear.');
+            if (Number(result?.[id]?.tier) !== 0) throw new Error('Global ' + id + ' did not clear.');
           }
-          return result.snapshot;
+          return result;
         },
         () => 'all global boosters cleared',
       );
@@ -2889,9 +2901,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             throw new Error('Frenzy claim did not return a processed roll and visible batch.');
           }
           if (Number(result.shardsGained) < 5) throw new Error('Frenzy owner did not receive the +5 Shard reward.');
-          return result;
+          return { result, processed };
         },
-        result => 'processed=' + result.rollsProcessed + ' · shards +' + result.shardsGained,
+        result => 'processed=' + result.processed + ' · shards +' + result.result.shardsGained,
       );
 
       await step(
