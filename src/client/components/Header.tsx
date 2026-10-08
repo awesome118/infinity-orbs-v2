@@ -1,5 +1,5 @@
 import React from 'react';
-import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star, Users, MessageSquarePlus, Bell, BellOff } from 'lucide-react';
+import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star, Users, MessageSquarePlus, Bell, BellOff, ScrollText } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
 import { LEVEL_MILESTONES, getLevelBenefits, getLevelProgress, onlinePlayerLuckMultiplier } from '../../shared/game.js';
 import { sound } from '../sound.js';
@@ -10,6 +10,7 @@ interface HeaderProps {
   onToggleSound: () => void;
   onOpenOdds: () => void;
   onOpenFeedback: () => void;
+  onOpenChangelog: () => void;
   onClaimOffline: () => void;
   onOpenDevDebug?: () => void;
   onOpenProfile?: () => void;
@@ -23,6 +24,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleSound,
   onOpenOdds,
   onOpenFeedback,
+  onOpenChangelog,
   onClaimOffline,
   onOpenDevDebug,
   onOpenProfile,
@@ -149,6 +151,19 @@ export const Header: React.FC<HeaderProps> = ({
             title="View Probability & Drop Odds"
           >
             <HelpCircle className="w-4 h-4" />
+          </button>
+
+          {/* Changelog */}
+          <button
+            onClick={() => {
+              sound.playClick();
+              onOpenChangelog();
+            }}
+            className="header-icon-button p-2 text-slate-400 hover:text-purple-300 hover:bg-slate-800/80 rounded-lg transition-colors"
+            title="View Changelog"
+            aria-label="View Changelog"
+          >
+            <ScrollText className="w-4 h-4" />
           </button>
 
           {/* Bug report / suggestions */}
