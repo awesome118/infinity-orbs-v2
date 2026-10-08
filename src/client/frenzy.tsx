@@ -218,7 +218,7 @@ function FrenzyPost() {
 
             <p className="io-frenzy-orb-label">orb in their Frenzy</p>
             <p className="io-frenzy-instruction">
-              Click below to claim it. You can only claim one a day.
+              Click below to claim it. You can only claim one every 23 hours.
             </p>
           </div>
 
