@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { purchase, OrderResultStatus } from '@devvit/web/client';
-import { Gem, ShoppingBag, Sparkles } from 'lucide-react';
+import { Flame, Gem, Gift, ShoppingBag, Sparkles } from 'lucide-react';
 import { formatNumber } from '../../shared/game.js';
 import type { PlayerState } from '../../shared/game.js';
 
@@ -50,14 +50,29 @@ function normalizeProducts(raw: unknown): ShopProduct[] {
 interface ShopSectionProps {
   state: PlayerState;
   busy: boolean;
+  onClaimDailyStreak: () => Promise<void>;
   onPurchased: () => Promise<void>;
 }
 
-export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchased }) => {
+export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onClaimDailyStreak, onPurchased }) => {
   const [products, setProducts] = useState<ShopProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [buyingSku, setBuyingSku] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const today = new Date().toISOString().slice(0, 10);
+  const claimedToday = state.streak.lastClaimDate === today;
+  const currentCount = Math.max(1, state.streak.count || 1);
+  const nextStreak = claimedToday ? currentCount : state.streak.lastClaimDate ? currentCount + 1 : 1;
+  const day = ((nextStreak - 1) % 7) + 1;
+  const rewardCoins = day * 100;
+  const rewardShards = day === 7 ? 5 : day === 3 ? 1 : 0;
+  const rewardFreeRolls = day * 5;
+  const community = state.dailyStreakCommunity;
+  const communityGoal = Math.max(1, community?.goal ?? 250);
+  const communityProgress = Math.max(0, community?.currentProgress ?? 0);
+  const communityPercent = Math.min(100, communityProgress / communityGoal * 100);
+  const luckPercent = Math.max(0, Math.round(((community?.luckMultiplier ?? 1) - 1) * 100));
+  const speedPercent = Math.max(0, Math.round((1 - (community?.speedMultiplier ?? 1)) * 100));
 
   useEffect(() => {
     fetch('/api/products')
@@ -141,6 +156,27 @@ export const ShopSection: React.FC<ShopSectionProps> = ({ state, busy, onPurchas
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      <section className="rounded-3xl border border-emerald-500/20 bg-gradient-to-br from-slate-900 via-emerald-950/10 to-slate-900 p-5 shadow-xl">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+          <div><div className="flex items-center gap-2"><Flame className="w-5 h-5 text-emerald-300" /><h2 className="text-xl font-black text-white">Daily Streak</h2><span className="text-xs font-black text-emerald-300 border border-emerald-500/30 bg-emerald-500/10 rounded-full px-2 py-0.5">{claimedToday ? 'Claimed' : 'Ready'}</span></div><p className="mt-1 text-xs text-slate-400">Current streak: <span className="font-black text-white">{currentCount}</span> days · Longest: {state.streak.longestStreak} days.</p></div>
+          <button onClick={() => { if (!claimedToday && !busy) void onClaimDailyStreak(); }} disabled={claimedToday || busy}
+            className={claimedToday ? 'rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-black text-slate-500 border border-slate-700' : 'rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-black text-slate-950 hover:bg-emerald-400 active:scale-95 transition-all'}>
+            <Gift className="inline w-4 h-4 mr-1" />{claimedToday ? 'Claimed Today' : 'Claim Daily Reward'}
+          </button>
+        </div>
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3"><span className="block text-[10px] uppercase font-black text-amber-300/70">Coins</span><span className="text-lg font-black text-white">+{formatNumber(rewardCoins)}</span></div>
+          <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3"><span className="block text-[10px] uppercase font-black text-cyan-300/70">Shards</span><span className="text-lg font-black text-white">+{rewardShards}</span><span className="block text-[9px] text-cyan-400/70">Daily reward, outside roll cap</span></div>
+          <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-3"><span className="block text-[10px] uppercase font-black text-purple-300/70">Free Rolls</span><span className="text-lg font-black text-white">+{rewardFreeRolls}</span><span className="block text-[9px] text-slate-500">Manual rolls bypass cooldown</span></div>
+          <div className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 p-3"><span className="block text-[10px] uppercase font-black text-fuchsia-300/70">Community Tier</span><span className="text-lg font-black text-white">Tier {community?.tier ?? 1}</span><span className="block text-[9px] text-slate-500">Streak count adds to progress</span></div>
+        </div>
+        <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+          <div className="flex items-center justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-wider text-emerald-300">Daily Streak Community Goal</div><div className="text-[11px] text-slate-500 mt-1">Each claim contributes your full streak number.</div></div><div className="text-right text-[10px] font-black text-slate-400">{formatNumber(communityProgress)} / {formatNumber(communityGoal)}</div></div>
+          <div className="mt-2 h-2 rounded-full bg-slate-900 overflow-hidden border border-slate-800"><div className="h-full bg-emerald-400 transition-all" style={{width: communityPercent + '%'}} /></div>
+          <div className="mt-3 flex flex-wrap gap-3 text-[10px] font-bold"><span className="text-emerald-300">+{luckPercent}% Luck</span><span className="text-cyan-300">+{speedPercent}% Speed</span><span className="text-slate-500">Next tier after the goal is completed.</span></div>
+        </div>
+      </section>
+
       <section className="rounded-3xl border border-amber-500/20 bg-gradient-to-br from-slate-900 via-amber-950/10 to-slate-900 p-5 shadow-xl">
         <div className="flex items-center gap-2">
           <ShoppingBag className="w-5 h-5 text-amber-300" />

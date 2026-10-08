@@ -56,6 +56,7 @@ import {
   AUTOMATIONS,
   PURCHASE_PACKS,
   grantFreeShards,
+  grantRollShards,
   spendShards,
   resetFreeShardBudgetIfNeeded,
   weekKey,
@@ -78,6 +79,8 @@ import {
   getPlayerGuildCombo,
   addCommunityRolls,
   getCommunityEvent,
+  getDailyStreakCommunity,
+  addDailyStreakCommunityProgress,
 } from './social.js';
 
 
@@ -1494,10 +1497,11 @@ export async function loadRaw(): Promise<PlayerState> {
   const raw = await redis.get(playerKey);
   const username = context.username ?? `reddit-user-${userId.slice(-8)}`;
   await registerPlayer(userId, username);
-  const [perks, guildCombo, globalBoosters] = await Promise.all([
+  const [perks, guildCombo, globalBoosters, dailyStreakCommunity] = await Promise.all([
     getPlayerGuildPerks(username, userId),
     getPlayerGuildCombo(username, userId),
     getGlobalBoosters(),
+    getDailyStreakCommunity(),
   ]);
 
 
@@ -1508,6 +1512,7 @@ export async function loadRaw(): Promise<PlayerState> {
     s.guildPerks = perks;
     s.guildCombo = guildCombo;
     s.globalBoosters = globalBoosters;
+    s.dailyStreakCommunity = dailyStreakCommunity;
 
     return s;
   }
@@ -1526,6 +1531,8 @@ export async function loadRaw(): Promise<PlayerState> {
     fresh.saveGeneration = generation;
     fresh.guildPerks = perks;
     fresh.guildCombo = guildCombo;
+    fresh.globalBoosters = globalBoosters;
+    fresh.dailyStreakCommunity = dailyStreakCommunity;
 
     return fresh;
   }
@@ -1588,6 +1595,7 @@ export async function loadRaw(): Promise<PlayerState> {
     guildPerks: perks,
     guildCombo,
     globalBoosters,
+    dailyStreakCommunity,
   };
 }
 
@@ -1609,7 +1617,7 @@ function applyQuestReward(s: PlayerState, quest: { rewardCoins: number; rewardSh
   };
 }
 
-async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins: number; rewardShards: number; day: number }> {
+async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins: number; rewardShards: number; rewardFreeRolls: number; day: number; community: import('../shared/game.js').DailyStreakCommunityEvent }> {
   const today = new Date().toISOString().slice(0, 10);
   if (s.streak.lastClaimDate === today) throw new Error('Already claimed daily reward for today.');
 
@@ -1624,8 +1632,11 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
   const day = ((s.streak.count - 1) % 7) + 1;
   const rewardCoins = day * 100;
   const rewardShards = grantFreeShards(s, day === 7 ? 5 : day === 3 ? 1 : 0);
+  const rewardFreeRolls = day * 5;
+  s.freeRolls = (s.freeRolls ?? 0) + rewardFreeRolls;
   addCoins(s, rewardCoins);
-  return { rewardCoins, rewardShards, day };
+  s.dailyStreakCommunity = await addDailyStreakCommunityProgress(s.streak.count);
+  return { rewardCoins, rewardShards, rewardFreeRolls, day, community: s.dailyStreakCommunity };
 }
 
 async function claimCommunityRewardFromState(s: PlayerState): Promise<{ rewardCoins: number; rewardXp: number; nextClaimAt: number; tier: number }> {
@@ -2187,6 +2198,7 @@ export async function applyRolls(
       s.rollsSinceBest = 0;
     } else {
       s.rollsSinceBest = (s.rollsSinceBest ?? 0) + 1;
+      s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest);
     }
 
     if (rarity > bestRarity) {
@@ -2285,7 +2297,7 @@ export async function applyRolls(
   const guildTax = await applyGuildTax(coinsGained);
   coinsGained = Math.max(0, coinsGained - guildTax.taxedCoins);
   s.coins += coinsGained;
-  shardsGained = grantFreeShards(s, shardsGained);
+  shardsGained = grantRollShards(s, shardsGained);
 
   // Ascension increases XP by 10× while preserving the existing level logic.
   const effectiveXpGained = isPremiumBoosterActive(s, 'ascension') ? xpGained * 10 : xpGained;
@@ -2693,9 +2705,13 @@ export async function roll(
     }
 
     const now = Date.now();
+    const usingFreeRoll = !isAuto && (s.freeRolls ?? 0) > 0;
     const cd = cooldownMs(s, isAuto);
-    if (s.lastRollAt !== null && now - s.lastRollAt < cd) {
+    if (!usingFreeRoll && s.lastRollAt !== null && now - s.lastRollAt < cd) {
       throw new Error(`Cooldown: ${((cd - now + s.lastRollAt) / 1000).toFixed(1)}s`);
+    }
+    if (usingFreeRoll) {
+      s.freeRolls = Math.max(0, (s.freeRolls ?? 0) - 1);
     }
 
     const deterministicRng = ticketUse
@@ -3056,7 +3072,7 @@ export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent
   });
 }
 
-export async function claimDailyStreak(): Promise<{ state: PlayerState; rewardCoins: number; rewardShards: number; day: number }> {
+export async function claimDailyStreak(): Promise<{ state: PlayerState; rewardCoins: number; rewardShards: number; rewardFreeRolls: number; day: number; community: import('../shared/game.js').DailyStreakCommunityEvent }> {
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const result = await claimDailyStreakFromState(s);
@@ -3867,7 +3883,7 @@ export async function claimOrbFrenzy(options: {
     if (group.rarity >= 1_000) return sum + group.count;
     return sum;
   }, 0);
-  const shardsGained = grantFreeShards(s, rarityShards + procShards);
+  const shardsGained = grantRollShards(s, rarityShards + procShards);
 
   const previousHighest = s.highestRarity;
   s.totalRolls += count;
@@ -4028,4 +4044,7 @@ export async function recordShareAction(s: PlayerState) {
   s.lastShareAt = now;
   advanceQuestProgress(s, 'share', 1);
   await save(s);
+  void recordLeaderboard(s).catch(error => {
+    console.error('[Leaderboard] Share update failed:', error);
+  });
 }

@@ -168,6 +168,32 @@ export function weekKey(now = Date.now()): number {
   return Math.floor((weekStartMs(now) - WEEK_EPOCH_SUNDAY) / WEEK_MS);
 }
 
+export interface DailyStreakCommunityEvent {
+  id: string;
+  goal: number;
+  currentProgress: number;
+  tier: number;
+  completedTier: number;
+  luckMultiplier: number;
+  speedMultiplier: number;
+  endsAt: number;
+  weekId: number;
+}
+
+export function createInitialDailyStreakCommunity(now = Date.now()): DailyStreakCommunityEvent {
+  return {
+    id: 'daily-streak-w1',
+    goal: 250,
+    currentProgress: 0,
+    tier: 1,
+    completedTier: 0,
+    luckMultiplier: 1.50,
+    speedMultiplier: 0.99,
+    endsAt: weekEndMs(now),
+    weekId: weekKey(now),
+  };
+}
+
 export function resetFreeShardBudgetIfNeeded(s: PlayerState, now = Date.now()): void {
   const today = todayKey(now);
   if (s.lastFreeShardReset !== today) {
@@ -176,7 +202,16 @@ export function resetFreeShardBudgetIfNeeded(s: PlayerState, now = Date.now()): 
   }
 }
 
-export function grantFreeShards(s: PlayerState, requested: number, now = Date.now()): number {
+export function grantFreeShards(s: PlayerState, requested: number, _now = Date.now()): number {
+  const amount = Math.max(0, Math.floor(requested));
+  if (amount > 0) {
+    s.shards = (s.shards ?? 0) + amount;
+    s.lifetimeShards = (s.lifetimeShards ?? 0) + amount;
+  }
+  return amount;
+}
+
+export function grantRollShards(s: PlayerState, requested: number, now = Date.now()): number {
   resetFreeShardBudgetIfNeeded(s, now);
   const amount = Math.max(0, Math.floor(requested));
   const available = Math.max(0, FREE_SHARD_DAILY_CAP - (s.freeShardsEarnedToday ?? 0));
@@ -188,7 +223,6 @@ export function grantFreeShards(s: PlayerState, requested: number, now = Date.no
   }
   return granted;
 }
-
 
 export function spendShards(s: PlayerState, requested: number): number {
   const amount = Math.max(0, Math.floor(requested));
@@ -771,11 +805,14 @@ export interface PlayerState {
   prestigeCount: number;
   prestigeUpgrades: Record<PrestigeUpgradeId, number>;
   streak: PlayerStreak;
+  dailyStreakCommunity?: DailyStreakCommunityEvent;
   dailyQuests: QuestItem[];
   weeklyQuests: QuestItem[];
   lastDailyReset: string;
   lastWeeklyReset: string;
   rollsSinceBest: number;
+  highestDryStreak?: number;
+  freeRolls?: number;
   activeCosmetic: string;
   unlockedCosmetics: string[];
   turboRollUntil: number; // timestamp
@@ -1462,11 +1499,14 @@ export function createInitialState(now = Date.now()): PlayerState {
       cosmicValuation: 0,
     },
     streak: { count: 1, lastClaimDate: '', longestStreak: 1 },
+    dailyStreakCommunity: createInitialDailyStreakCommunity(now),
     dailyQuests: createInitialDailyQuests(),
     weeklyQuests: createInitialWeeklyQuests(),
     lastDailyReset: today,
     lastWeeklyReset: today,
     rollsSinceBest: 0,
+    highestDryStreak: 0,
+    freeRolls: 0,
     activeCosmetic: 'default',
     unlockedCosmetics: ['default'],
     turboRollUntil: 0,
@@ -1817,7 +1857,11 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
   }
   if (s.guildCombo) {
     cd = Math.max(300, Math.round(cd * guildComboSpeedMultiplier(s.guildCombo)));
-  }  return Math.round(cd);
+  }
+  if (s.dailyStreakCommunity?.speedMultiplier) {
+    cd = Math.max(300, Math.round(cd * s.dailyStreakCommunity.speedMultiplier));
+  }
+  return Math.round(cd);
 }
 
 // Multi roll upgrade is strictly LINEAR (+1 ball per level), plus multiple sources of +1 ball!
@@ -1982,6 +2026,7 @@ export function luckMultiplier(s: PlayerState): number {
   if (isPremiumBoosterActive(s, 'fortune')) additiveBonus += 3.0; // 4× becomes +300%.
   additiveBonus += Math.max(0, globalBoosterLuckMultiplier(s.globalBoosters?.luck) - 1);
   additiveBonus += Math.max(0, guildComboLuckMultiplier(s.guildCombo) - 1);
+  additiveBonus += Math.max(0, (s.dailyStreakCommunity?.luckMultiplier ?? 1) - 1);
 
   additiveBonus += (s.prestigeUpgrades?.astralReserve ?? 0) * 0.02;
 
@@ -2038,6 +2083,10 @@ export function predictRollActivation(
   };
   const rng = createSeededRandom(seed);
   const levelBenefits = getLevelBenefits(Math.max(1, s.level || 1));
+
+  if (!isAuto && (s.freeRolls ?? 0) > 0) {
+    s.freeRolls = Math.max(0, (s.freeRolls ?? 0) - 1);
+  }
   const valueMul = 1 + (s.upgrades.valueBonus ?? 0) * 0.10;
   let rollCount = rollsPerActivation(s);
 
@@ -2102,6 +2151,7 @@ export function predictRollActivation(
       s.rollsSinceBest = 0;
     } else {
       s.rollsSinceBest = (s.rollsSinceBest ?? 0) + 1;
+      s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest);
     }
     bestRarity = Math.max(bestRarity, rarity);
 

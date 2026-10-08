@@ -14,6 +14,7 @@ import {
   Shield,
   Lock,
   Megaphone,
+  Gift,
   X,
 } from 'lucide-react';
 import type {
@@ -33,6 +34,7 @@ import type {
 import type {
   Guild,
   LeaderboardEntry,
+  LeaderboardBoards,
   WorldEvent,
   GuildPerkId,
   GuildMessage,
@@ -79,6 +81,7 @@ import { GlobalChatWindow } from './components/GlobalChatWindow.js';
 import { DevDebugModal } from './components/DevDebugModal.js';
 import { FeedbackModal } from './components/FeedbackModal.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
+import { ShopSection } from './components/ShopSection.js';
 import { APP_VERSION } from '../shared/version.js';
 import './styles.css';
 
@@ -86,7 +89,8 @@ type ActiveTab =
   | 'roll'
   | 'upgrades'
   | 'boosters'
-  | 'altar'
+  | 'shop'
+  | 'altar
   | 'mastery'
   | 'collection'
   | 'quests'
@@ -194,6 +198,10 @@ export function App() {
   const [readyAt, setReadyAt] = useState<number>(0);
   const [tab, setTab] = useState<ActiveTab>('roll');
   const [autoRoll, setAutoRoll] = useState<boolean>(false);
+  const [isBeta, setIsBeta] = useState(false);
+  const [changelogUnread, setChangelogUnread] = useState(() => {
+    try { return window.localStorage.getItem('io-changelog-viewed-version') !== APP_VERSION; } catch { return true; }
+  });
 
   // Auto Roll is stored in the player save so it survives new sessions,
   // different browsers, and Reddit's embedded webview storage boundaries.
@@ -244,8 +252,13 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    void getJson<{ isBeta: boolean }>('/api/app-info').then(info => setIsBeta(info.isBeta === true)).catch(() => setIsBeta(false));
+  }, []);
+
   // Social & Community state
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
+  const [leaderboards, setLeaderboards] = useState<LeaderboardBoards | null>(null);
   const [guildData, setGuildData] = useState<{ guilds: Guild[]; mine: Guild | null }>({
     guilds: [],
     mine: null,
@@ -469,8 +482,9 @@ export function App() {
       // The admin may continue to use the normal game endpoints while testing a ban.
       if (me.gameBan?.active) return;
 
-      const [lb, gd, we, announcement, notificationState] = await Promise.all([
+      const [lb, lbs, gd, we, announcement, notificationState] = await Promise.all([
         getJson<LeaderboardEntry[]>('/api/leaderboard').catch(() => []),
+        getJson<LeaderboardBoards>('/api/leaderboards').catch(() => null),
         getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds').catch(() => ({ guilds: [], mine: null })),
         getJson<WorldEvent>('/api/world-event').catch(() => null),
         getJson<{ message: string; updatedAt: number; updatedBy: string }>('/api/developer-announcement').catch(() => null),
@@ -478,6 +492,7 @@ export function App() {
       ]);
 
       setLeaderboardData(lb);
+      setLeaderboards(lbs);
       setGuildData(gd);
       if (we) setWorldEvent(we);
       if (announcement) setDeveloperAnnouncement(announcement);
@@ -1994,7 +2009,12 @@ export function App() {
         onToggleSound={() => setSoundEnabled(sound.toggle())}
         onOpenOdds={() => setShowOddsModal(true)}
         onOpenFeedback={() => setShowFeedbackModal(true)}
-        onOpenChangelog={() => setShowChangelogModal(true)}
+        onOpenChangelog={() => {
+          try { window.localStorage.setItem('io-changelog-viewed-version', APP_VERSION); } catch {}
+          setChangelogUnread(false);
+          setShowChangelogModal(true);
+        }}
+        changelogUnread={isBeta && changelogUnread}
         onClaimOffline={handleClaimOffline}
         onOpenDevDebug={isAdmin ? () => setShowDevModal(true) : undefined}
         onOpenProfile={() => changeTab('profile')}
@@ -2138,6 +2158,17 @@ export function App() {
             <Zap className="w-3.5 h-3.5 text-amber-300" />
             <span>Upgrades</span>
             {featureForTab('upgrades' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('upgrades' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
+          </button>
+
+          <button
+            onClick={() => {
+              sound.playClick();
+              changeTab('shop');
+            }}
+            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${tab === 'shop' ? 'is-active bg-gradient-to-r from-emerald-600 to-cyan-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}`}
+          >
+            <Gift className="w-3.5 h-3.5 text-emerald-300" />
+            <span>Shop</span>
           </button>
 
           <button
@@ -2296,6 +2327,15 @@ export function App() {
           />
         )}
 
+        {tab === 'shop' && (
+          <ShopSection
+            state={state}
+            busy={busy}
+            onClaimDailyStreak={handleClaimDailyStreak}
+            onPurchased={refreshAll}
+          />
+        )}
+
         {tab === 'boosters' && (
           <BoostersAndAutomation
             state={state}
@@ -2351,6 +2391,7 @@ export function App() {
             guilds={guildData.guilds}
             myGuild={guildData.mine}
             leaderboard={leaderboardData}
+            leaderboards={leaderboards ?? undefined}
             worldEvent={worldEvent}
             onCreateGuild={handleCreateGuild}
             onJoinGuild={handleJoinGuild}

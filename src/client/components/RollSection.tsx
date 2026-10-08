@@ -156,7 +156,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
   // The main Roll button always uses the manual-roll cooldown; Auto Roll timing is tracked by the server response.
   const cd = cooldownMs(state, false);
   const remain = Math.max(0, readyAt - now);
-  const canRoll = remain <= 0 && !busy;
+  const freeRolls = Math.max(0, state.freeRolls ?? 0);
+  const canRoll = (remain <= 0 || freeRolls > 0) && !busy;
   const frenzyUsedToday = Boolean(state.lastFrenzyDate && state.lastFrenzyDate === new Date(now).toISOString().slice(0, 10));
   const frenzyCooldownRemain = frenzyUsedToday ? Math.max(0, nextFrenzyResetAt(now) - now) : 0;
   const multi = rollsPerActivation(state);
@@ -460,6 +461,12 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
       {/* Primary Action Button */}
       <div className="roll-controls flex flex-col items-center gap-3 w-full max-w-sm">
+        {freeRolls > 0 && (
+          <div className="text-[10px] font-black uppercase tracking-wider text-emerald-300 border border-emerald-500/30 bg-emerald-500/10 rounded-full px-3 py-1">
+            FREE ROLL READY · {freeRolls} LEFT
+          </div>
+        )}
+
         <button
           onClick={handleRollClick}
           className={'roll-button ' + (frenzyArmed ? 'frenzy-supercharged' : canRoll ? 'is-ready' : 'is-waiting') + ' w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ' +
@@ -486,7 +493,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               ? remain > 0
                 ? 'WAIT ' + (remain / 1000).toFixed(1) + 's'
                 : 'RELEASE FRENZY'
-              : remain > 0
+              : remain > 0 && freeRolls <= 0
               ? 'WAIT ' + (remain / 1000).toFixed(1) + 's'
               : 'ROLL ' + (multi > 1 ? '×' + multi : '')}
           </span>

@@ -61,6 +61,7 @@ import {
   kickGuildMember,
   setGuildTaxRate,
   leaderboard,
+  leaderboards,
   recordLeaderboard,
   shareText,
   getCommunityEvent,
@@ -250,7 +251,7 @@ export function createApp() {
   // Persistent player data is keyed by Reddit user ID. Logged-out users have
   // no account identity, so they must never reach player-state APIs.
   app.use('/api', (req, res, next) => {
-    if (req.path === '/health' || req.path === '/version') return next();
+    if (req.path === '/health' || req.path === '/version' || req.path === '/app-info') return next();
     const userId = String(context.userId ?? '').trim();
     if (!userId) {
       return res.status(401).json({
@@ -744,6 +745,12 @@ export function createApp() {
     res.json({ version: APP_VERSION });
   });
 
+  app.get('/api/app-info', (_req, res) => {
+    const subredditName = String(context.subredditName ?? '').trim().replace(/^r\//i, '').toLowerCase();
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ isBeta: subredditName === 'infinity_orbs_dev' });
+  });
+
   app.get('/api/me', async (_req, res) => {
     try { res.json(await getMe()); }
     catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch player state.' }); }
@@ -769,6 +776,12 @@ export function createApp() {
     try {
       res.json(await leaderboard());
     } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch leaderboard.' }); }
+  });
+
+  app.get('/api/leaderboards', async (_req, res) => {
+    try {
+      res.json(await leaderboards());
+    } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch leaderboards.' }); }
   });
 
   app.get('/api/chat', async (_req, res) => {

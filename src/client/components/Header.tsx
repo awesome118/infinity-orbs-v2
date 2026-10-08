@@ -11,6 +11,7 @@ interface HeaderProps {
   onOpenOdds: () => void;
   onOpenFeedback: () => void;
   onOpenChangelog: () => void;
+  changelogUnread?: boolean;
   onClaimOffline: () => void;
   onOpenDevDebug?: () => void;
   onOpenProfile?: () => void;
@@ -25,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenOdds,
   onOpenFeedback,
   onOpenChangelog,
+  changelogUnread = false,
   onClaimOffline,
   onOpenDevDebug,
   onOpenProfile,
@@ -154,17 +156,14 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           {/* Changelog */}
-          <button
-            onClick={() => {
-              sound.playClick();
-              onOpenChangelog();
-            }}
-            className="header-icon-button p-2 text-slate-400 hover:text-purple-300 hover:bg-slate-800/80 rounded-lg transition-colors"
-            title="View Changelog"
-            aria-label="View Changelog"
-          >
-            <ScrollText className="w-4 h-4" />
-          </button>
+          <div className={changelogUnread ? 'relative rounded-lg ring-2 ring-emerald-400/80 shadow-[0_0_16px_rgba(74,222,128,0.75)] animate-pulse' : 'relative rounded-lg'}>
+            {changelogUnread && <span className="absolute -top-1 -right-1 z-10 rounded-full bg-emerald-400 px-1.5 py-0.5 text-[8px] font-black text-slate-950 shadow-md">NEW</span>}
+            <button onClick={() => { sound.playClick(); onOpenChangelog(); }}
+              className="header-icon-button p-2 text-slate-400 hover:text-purple-300 hover:bg-slate-800/80 rounded-lg transition-colors"
+              title={changelogUnread ? 'New changelog since your last visit' : 'View Changelog'} aria-label="View Changelog">
+              <ScrollText className="w-4 h-4" />
+            </button>
+          </div>
 
           {/* Bug report / suggestions */}
           <button

@@ -8,7 +8,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { visibleContinuumTiers, getOrbInfo, coinsForRarity, formatRarity, formatNumber, bestCodexChain } from '../../shared/game.js';
+import { visibleContinuumTiers, getOrbInfo, coinsForRarity, formatRarity, formatNumber } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface CollectionSectionProps {
@@ -48,7 +48,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
     () => visibleContinuumTiers(state.highestRarity || 0),
     [state.highestRarity],
   );
-  const codexChain = useMemo(() => bestCodexChain(state.collection), [state.collection]);
+  const codexChain = Math.max(0, state.codexChain ?? 0);
   const tiersList = useMemo(
     () => ['all', ...visibleTiers.map(tier => tier.tier)],
     [visibleTiers],
@@ -151,12 +151,10 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
               </div>
               <div className="text-right">
                 <div className="text-sm font-black font-mono text-white">
-                  {codexChain.length > 0
-                    ? `1/${formatRarity(codexChain.start)} → 1/${formatRarity(codexChain.end)}`
-                    : 'No chain yet'}
+                  {codexChain > 0 ? `Best chain: ${codexChain}` : 'No chain yet'}
                 </div>
                 <div className="text-[10px] font-bold text-emerald-300 mt-0.5">
-                  {codexChain.length} {codexChain.length === 1 ? 'rarity' : 'rarities'} in chain
+                  {codexChain} {codexChain === 1 ? 'rarity' : 'rarities'} in chain
                 </div>
               </div>
             </div>

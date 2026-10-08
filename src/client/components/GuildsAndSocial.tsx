@@ -29,6 +29,8 @@ import type {
   WorldEvent,
   GuildPerkId,
   GuildMessage,
+  LeaderboardBoards,
+  LeaderboardId,
 } from '../../shared/social.js';
 import {
   formatRarity,
@@ -47,6 +49,7 @@ interface GuildsAndSocialProps {
   guilds: Guild[];
   myGuild: Guild | null;
   leaderboard: LeaderboardEntry[];
+  leaderboards?: LeaderboardBoards;
   worldEvent: WorldEvent | null;
   onCreateGuild: (name: string, tag: string) => Promise<boolean>;
   onJoinGuild: (id: string) => Promise<void>;
@@ -91,6 +94,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   guilds,
   myGuild,
   leaderboard,
+  leaderboards,
   worldEvent,
   onCreateGuild,
   onJoinGuild,
@@ -113,6 +117,29 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const [chatMessages, setChatMessages] = useState<GuildMessage[]>([]);
   const [reportingId, setReportingId] = useState<string | null>(null);
   const [reportedIds, setReportedIds] = useState<Set<string>>(() => new Set());
+  const [activeLeaderboard, setActiveLeaderboard] = useState<LeaderboardId>('collectionValue');
+  const leaderboardBoards: LeaderboardBoards = leaderboards ?? { collectionValue: leaderboard, mostRolls: leaderboard, highestDryStreak: leaderboard, bestOrb: leaderboard, mostPlaytime: leaderboard };
+  const leaderboardMeta: Array<{ id: LeaderboardId; label: string }> = [
+    { id: 'collectionValue', label: 'Collection Value' },
+    { id: 'mostRolls', label: 'Most Rolls' },
+    { id: 'highestDryStreak', label: 'Highest Dry Streak' },
+    { id: 'bestOrb', label: 'Best Orb' },
+    { id: 'mostPlaytime', label: 'Most Playtime' },
+  ];
+  const displayedLeaderboard = leaderboardBoards[activeLeaderboard];
+  const leaderboardMetric = (entry: LeaderboardEntry): string => {
+    switch (activeLeaderboard) {
+      case 'collectionValue': return `${fmt(entry.value)} Val`;
+      case 'mostRolls': return `${fmt(entry.totalRolls)} Rolls`;
+      case 'highestDryStreak': return `${fmt(entry.highestDryStreak ?? 0)} Dry`;
+      case 'bestOrb': return `1/${formatRarity(entry.highestRarity)}`;
+      case 'mostPlaytime': {
+        const minutes = Math.floor((entry.playtimeMs ?? 0) / 60000);
+        const hours = Math.floor(minutes / 60);
+        return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
+      }
+    }
+  };
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
@@ -1034,69 +1061,33 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h3 className="text-base font-black text-white flex items-center gap-2">
-                <Trophy className="w-5 h-5 text-amber-400" />
-                <span>Leaderboard</span>
-              </h3>
-              <span className="text-xs text-slate-400">Ranked by Total Collection Value</span>
+              <h3 className="text-base font-black text-white flex items-center gap-2"><Trophy className="w-5 h-5 text-amber-400" /><span>{leaderboardMeta.find(item => item.id === activeLeaderboard)?.label ?? 'Leaderboard'}</span></h3>
+              <span className="text-xs text-slate-400">Public rankings require at least one shared Orb post.</span>
             </div>
-            <div className={playerHasShared
-              ? 'text-right text-[10px] font-bold text-emerald-300'
-              : 'text-right text-[10px] font-bold text-amber-300'}
-            >
-              {playerHasShared
-                ? 'Leaderboard eligible'
-                : 'Share an Orb post to appear'}
+            <div className={playerHasShared ? 'text-right text-[10px] font-bold text-emerald-300' : 'text-right text-[10px] font-bold text-amber-300'}>
+              {playerHasShared ? 'Leaderboard eligible' : 'Share an Orb post to appear'}
             </div>
           </div>
-
-          {leaderboard.length === 0 && (
-            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-500">
-              No eligible players yet. A player must share at least one Orb post before entering the leaderboard.
-            </div>
-          )}
-
+          <div className="flex gap-1.5 overflow-x-auto pb-1">
+            {leaderboardMeta.map(board => (
+              <button key={board.id} onClick={() => { sound.playClick(); setActiveLeaderboard(board.id); }}
+                className={activeLeaderboard === board.id ? 'px-3 py-2 rounded-xl bg-purple-600 text-white text-[11px] font-black whitespace-nowrap' : 'px-3 py-2 rounded-xl bg-slate-900/70 border border-slate-800 text-slate-400 hover:text-white text-[11px] font-bold whitespace-nowrap'}>
+                {board.label}
+              </button>
+            ))}
+          </div>
+          {displayedLeaderboard.length === 0 && <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-500">No eligible players yet.</div>}
           <div className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-800/60">
-            {leaderboard.map((entry, idx) => (
-              <div
-                key={entry.username}
-                className="flex items-center justify-between p-3 sm:px-4 text-xs hover:bg-slate-800/40 transition-colors"
-              >
+            {displayedLeaderboard.map((entry, idx) => (
+              <div key={entry.username} className="flex items-center justify-between p-3 sm:px-4 text-xs hover:bg-slate-800/40 transition-colors">
                 <div className="flex items-center gap-3">
-                  <span
-                    className={`w-6 text-center font-black text-sm ${
-                      idx === 0
-                        ? 'text-amber-400'
-                        : idx === 1
-                        ? 'text-slate-300'
-                        : idx === 2
-                        ? 'text-amber-600'
-                        : 'text-slate-500'
-                    }`}
-                  >
-                    #{idx + 1}
-                  </span>
+                  <span className={`w-6 text-center font-black text-sm ${idx===0?'text-amber-400':idx===1?'text-slate-300':idx===2?'text-amber-600':'text-slate-500'}`}>#{idx+1}</span>
                   <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-white text-sm">{entry.username}</span>
-                      {entry.title && (
-                        <span className="text-[10px] text-slate-400 font-medium">
-                          • {entry.title}
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-slate-400 text-[11px]">
-                      {formatNumber(entry.totalRolls)} rolls • Best: 1/
-                      {formatRarity(entry.highestRarity)}
-                    </span>
+                    <div className="flex items-center gap-1.5"><span className="font-bold text-white text-sm">{entry.username}</span>{entry.title && <span className="text-[10px] text-slate-400 font-medium">• {entry.title}</span>}</div>
+                    <span className="text-slate-400 text-[11px]">{formatNumber(entry.totalRolls)} rolls • Best: 1/{formatRarity(entry.highestRarity)}</span>
                   </div>
                 </div>
-
-                <div className="text-right">
-                  <span className="text-amber-400 font-mono font-bold text-sm block">
-                    {fmt(entry.value)} Val
-                  </span>
-                </div>
+                <div className="text-right"><span className="text-amber-400 font-mono font-bold text-sm block">{leaderboardMetric(entry)}</span></div>
               </div>
             ))}
           </div>

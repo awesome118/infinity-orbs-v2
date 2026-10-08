@@ -118,7 +118,19 @@ export interface LeaderboardEntry {
   guildTag?: string;
   /** Timestamp of the player's first/most recent qualifying share. Required for leaderboard eligibility. */
   sharedAt?: number;
+  userId?: string;
+  highestDryStreak?: number;
+  playtimeMs?: number;
 }
+
+export type LeaderboardId =
+  | 'collectionValue'
+  | 'mostRolls'
+  | 'highestDryStreak'
+  | 'bestOrb'
+  | 'mostPlaytime';
+
+export type LeaderboardBoards = Record<LeaderboardId, LeaderboardEntry[]>;
 
 export interface GlobalChatMessage {
   id: string;

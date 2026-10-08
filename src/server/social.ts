@@ -19,10 +19,11 @@ import {
   COMMUNITY_WORLD_EVENT,
   createInitialGuildBoss,
 } from '../shared/social.js';
-import type { PlayerState } from '../shared/game.js';
+import type { DailyStreakCommunityEvent, PlayerState } from '../shared/game.js';
 import {
   cooldownMs,
   createInitialState,
+  createInitialDailyStreakCommunity,
   grantFreeShards,
   weekEndMs,
   weekKey,
@@ -1368,50 +1369,126 @@ export async function postGlobalChatMessage(text: string): Promise<GlobalChatMes
   throw new Error('Chat changed while sending your message. Please retry.');
 }
 
-export async function leaderboard(): Promise<LeaderboardEntry[]> {
-  const raw = await redis.get(key('leaderboard'));
-  const board: LeaderboardEntry[] = parseLeaderboardList(raw);
-
-  // A player must have successfully shared an Orb post before entering the
-  // public leaderboard. Legacy entries without sharedAt are intentionally
-  // hidden until the player shares again or rolls after having shared.
-  return board
+function sortLeaderboard(entries: LeaderboardEntry[], selector: (entry: LeaderboardEntry) => number): LeaderboardEntry[] {
+  return [...entries]
     .filter(entry => Number(entry.sharedAt ?? 0) > 0)
-    .sort((a, b) => b.value - a.value)
+    .sort((a, b) => {
+      const diff = selector(b) - selector(a);
+      if (diff !== 0) return diff;
+      return a.username.localeCompare(b.username);
+    })
     .slice(0, 25);
 }
 
+export async function leaderboards(): Promise<import('../shared/social.js').LeaderboardBoards> {
+  const raw = await redis.get(key('leaderboard'));
+  const board = parseLeaderboardList(raw);
+  const registryRaw = await redis.hGetAll(PLAYER_REGISTRY_KEY);
+  const registry = registryRaw && typeof registryRaw === 'object' ? registryRaw as Record<string, string> : {};
+
+  const enriched = board.map(entry => {
+    if (!entry.userId) return entry;
+    const parsed = parseStoredJson<{ playtimeMs?: unknown }>(registry[entry.userId]);
+    const playtimeMs = Math.max(0, Number(parsed?.playtimeMs ?? entry.playtimeMs ?? 0) || 0);
+    return { ...entry, playtimeMs };
+  });
+
+  return {
+    collectionValue: sortLeaderboard(enriched, entry => entry.value),
+    mostRolls: sortLeaderboard(enriched, entry => entry.totalRolls),
+    highestDryStreak: sortLeaderboard(enriched, entry => entry.highestDryStreak ?? 0),
+    bestOrb: sortLeaderboard(enriched, entry => entry.highestRarity),
+    mostPlaytime: sortLeaderboard(enriched, entry => entry.playtimeMs ?? 0),
+  };
+}
+
+export async function leaderboard(): Promise<LeaderboardEntry[]> {
+  return (await leaderboards()).collectionValue;
+}
+
 export async function recordLeaderboard(s: PlayerState) {
-  // Sharing a post is the gate for leaderboard participation.
   if (!(s.lastShareAt && Number(s.lastShareAt) > 0)) return;
 
   const leaderboardKey = key('leaderboard');
   const name = username();
+  const registry = parseStoredJson<{ playtimeMs?: unknown }>(await redis.hGet(PLAYER_REGISTRY_KEY, user()));
   const next: LeaderboardEntry = {
     username: name,
+    userId: user(),
     value: s.collectionValue,
     highestRarity: s.highestRarity,
     totalRolls: s.totalRolls,
     level: s.level,
     sharedAt: s.lastShareAt,
+    highestDryStreak: Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest ?? 0),
+    playtimeMs: Math.max(0, Number(registry?.playtimeMs ?? 0) || 0),
   };
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(leaderboardKey);
-    // Read the watched value with Redis; TxClient.get() is a transaction builder.
     const raw = await redis.get(leaderboardKey);
     const board: LeaderboardEntry[] = parseLeaderboardList(raw);
     const existing = board.find(e => e.username === name);
     if (existing) Object.assign(existing, next);
     else board.push(next);
     board.sort((a, b) => b.value - a.value);
-
     await txn.multi();
-    await txn.set(leaderboardKey, JSON.stringify(board.slice(0, 100)));
+    await txn.set(leaderboardKey, JSON.stringify(board.slice(0, 5000)));
     const committed = await txn.exec();
     if (committed !== null) return;
   }
   throw new Error('Leaderboard changed while recording the result. Please retry.');
+}
+
+const DAILY_STREAK_COMMUNITY_KEY = key('daily-streak-community');
+
+export async function getDailyStreakCommunity(): Promise<DailyStreakCommunityEvent> {
+  await ensureRedisStringKey(DAILY_STREAK_COMMUNITY_KEY, JSON.stringify(createInitialDailyStreakCommunity()));
+  const now = Date.now();
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const txn = await redis.watch(DAILY_STREAK_COMMUNITY_KEY);
+    const raw = await redis.get(DAILY_STREAK_COMMUNITY_KEY);
+    let event = parseStoredJson<DailyStreakCommunityEvent>(raw) ?? createInitialDailyStreakCommunity(now);
+    if (event.weekId !== weekKey(now) || now >= event.endsAt) {
+      event = createInitialDailyStreakCommunity(now);
+      event.id = `daily-streak-w${event.weekId}`;
+    }
+    await txn.multi();
+    await txn.set(DAILY_STREAK_COMMUNITY_KEY, JSON.stringify(event));
+    const committed = await txn.exec();
+    if (committed !== null) return event;
+  }
+  throw new Error('Daily Streak community goal changed while refreshing. Please retry.');
+}
+
+export async function addDailyStreakCommunityProgress(amount: number): Promise<DailyStreakCommunityEvent> {
+  const contribution = Math.max(0, Math.floor(Number(amount) || 0));
+  if (contribution <= 0) return getDailyStreakCommunity();
+  await ensureRedisStringKey(DAILY_STREAK_COMMUNITY_KEY, JSON.stringify(createInitialDailyStreakCommunity()));
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const txn = await redis.watch(DAILY_STREAK_COMMUNITY_KEY);
+    const raw = await redis.get(DAILY_STREAK_COMMUNITY_KEY);
+    const now = Date.now();
+    const currentWeek = weekKey(now);
+    let event = raw ? parseStoredJson<DailyStreakCommunityEvent>(raw) ?? createInitialDailyStreakCommunity(now) : createInitialDailyStreakCommunity(now);
+    if (event.weekId !== currentWeek || now >= event.endsAt) {
+      event = createInitialDailyStreakCommunity(now);
+      event.id = `daily-streak-w${currentWeek}`;
+    }
+    event.currentProgress += contribution;
+    while (event.currentProgress >= event.goal) {
+      event.completedTier = Math.max(event.completedTier ?? 0, event.tier);
+      event.tier += 1;
+      event.goal = Math.round(event.goal * 2.2);
+      event.luckMultiplier = Number((1 + event.tier * 0.50).toFixed(2));
+      event.speedMultiplier = Math.max(0.50, Number((1 - event.tier * 0.01).toFixed(2)));
+    }
+    await txn.multi();
+    await txn.set(DAILY_STREAK_COMMUNITY_KEY, JSON.stringify(event));
+    const committed = await txn.exec();
+    if (committed !== null) return event;
+  }
+  throw new Error('Daily Streak community goal changed while adding progress. Please retry.');
 }
 
 function unlocked(a: { id: string }, s: PlayerState): boolean {
