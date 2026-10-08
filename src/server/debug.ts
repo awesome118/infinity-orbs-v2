@@ -28,6 +28,7 @@ import {
   getGlobalBoosters,
   getFakeCcuBonus,
   getOnlinePlayers,
+  getPlayerActivityStats,
 } from './game.js';
 import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import { context, redis, reddit } from './devvit-mock.js';
@@ -462,7 +463,11 @@ debugRouter.post('/guild-chat/unmute', async (req, res) => {
 
 debugRouter.get('/players', async (_req, res) => {
   try {
-    res.json({ players: await listPlayers() });
+    const [players, activity] = await Promise.all([
+      listPlayers(),
+      getPlayerActivityStats(),
+    ]);
+    res.json({ players, activity });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to load player list.' });
   }
