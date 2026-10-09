@@ -477,8 +477,8 @@ export const GLOBAL_BOOSTERS: Record<GlobalBoosterId, {
     costShards: 25,
   },
   crit: {
-    name: 'Global Crit',
-    desc: 'Improves Crit Chance and Crit Multiplier for everyone.',
+    name: 'Global Crit Luck',
+    desc: 'Improves Crit Chance and Crit Luck for everyone.',
     costShards: 25,
   },
 };
