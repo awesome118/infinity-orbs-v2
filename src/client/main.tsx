@@ -81,6 +81,7 @@ import { GlobalChatWindow } from './components/GlobalChatWindow.js';
 import { DevDebugModal } from './components/DevDebugModal.js';
 import { FeedbackModal } from './components/FeedbackModal.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
+import { SplashScreen } from './components/SplashScreen.js';
 import { APP_VERSION } from '../shared/version.js';
 import './styles.css';
 
@@ -183,6 +184,7 @@ export function App() {
   const [state, setState] = useState<PlayerState | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
   const [startupError, setStartupError] = useState<string | null>(null);
+  const [splashEntered, setSplashEntered] = useState(false);
   const [lastOrb, setLastOrb] = useState<Orb | null>(null);
   const [lastBatch, setLastBatch] = useState<Orb[]>([]);
   const [batchSummary, setBatchSummary] = useState<{
@@ -647,7 +649,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!state || frenzyRunTriggered || frenzyClaimActiveRef.current) return;
+    if (!state || !splashEntered || frenzyRunTriggered || frenzyClaimActiveRef.current) return;
 
     const resolveFrenzy = async () => {
       for (let attempt = 0; attempt < 12; attempt++) {
@@ -728,7 +730,7 @@ export function App() {
         setIsRolling(false);
         setBusy(false);
       });
-  }, [state, frenzyRunTriggered, applyPlayerState, enqueueMutation]);
+  }, [state, splashEntered, frenzyRunTriggered, applyPlayerState, enqueueMutation]);
 
   useEffect(() => {
     const startedAt = Date.now();
@@ -1926,31 +1928,33 @@ export function App() {
   }
 
   if (!state) {
+    if (startupError) {
+      return (
+        <main className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 p-6">
+          <div className="w-full max-w-lg rounded-3xl border border-slate-800 bg-slate-900 p-8 text-center shadow-2xl">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-rose-500/30 bg-rose-500/10">
+              <Shield className="w-7 h-7 text-rose-400" />
+            </div>
+            <h1 className="mt-5 text-xl font-black text-white">Unable to connect</h1>
+            <p className="mt-2 text-sm text-slate-400">{startupError}</p>
+            <button
+              type="button"
+              onClick={() => { setStartupError(null); void refreshAll(); }}
+              className="mt-6 rounded-xl bg-purple-600 px-5 py-3 text-sm font-black text-white hover:bg-purple-500"
+            >
+              Retry
+            </button>
+          </div>
+        </main>
+      );
+    }
+
     return (
-      <main className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 p-6">
-        <div className="w-full max-w-lg rounded-3xl border border-slate-800 bg-slate-900 p-8 text-center shadow-2xl">
-          {startupError ? (
-            <>
-              <div className="mx-auto w-14 h-14 rounded-full bg-rose-500/10 border border-rose-500/30 flex items-center justify-center">
-                <Shield className="w-7 h-7 text-rose-400" />
-              </div>
-              <h1 className="mt-5 text-xl font-black text-white">Unable to connect</h1>
-              <p className="mt-2 text-sm text-slate-400">{startupError}</p>
-              <button
-                onClick={() => { setStartupError(null); void refreshAll(); }}
-                className="mt-6 px-5 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-sm"
-              >
-                Retry
-              </button>
-            </>
-          ) : (
-            <>
-              <RefreshCw className="mx-auto w-8 h-8 animate-spin text-purple-500" />
-              <p className="mt-3 text-sm font-semibold">Connecting to Infinity Orbs...</p>
-            </>
-          )}
-        </div>
-      </main>
+      <SplashScreen
+        ready={false}
+        hasProgress={false}
+        onEnter={() => undefined}
+      />
     );
   }
 
@@ -2021,6 +2025,18 @@ export function App() {
     state.dailyQuests.some(q => !q.claimed && q.progress >= q.target) ||
     state.weeklyQuests.some(q => !q.claimed && q.progress >= q.target);
   const prestigeReady = calculateCosmicDust(state) > 0;
+
+  if (!splashEntered) {
+    return (
+      <SplashScreen
+        ready={true}
+        hasProgress={(state.totalRolls ?? 0) > 0}
+        highestRarity={state.highestRarity ?? 2}
+        totalRolls={state.totalRolls ?? 0}
+        onEnter={() => setSplashEntered(true)}
+      />
+    );
+  }
 
   return (
     <div className="app-shell io-ui min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white">
