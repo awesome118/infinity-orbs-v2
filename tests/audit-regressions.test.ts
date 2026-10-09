@@ -201,3 +201,17 @@ test('community event rejects infinite and non-terminating progression values', 
   assert.match(add, /await txn\\.unwatch\\(\\)/);
   assert.match(add, /Number\\.MAX_SAFE_INTEGER/);
 });
+
+ 
+test('chat side effects use per-user atomic cooldowns and real newlines', () => {
+  const social = source('src/server/social.ts');
+  assert.match(social, /function enforceChatCooldown/);
+  assert.match(social, /nx:\\s*true/);
+  assert.match(social, /expiration:\\s*new Date/);
+  assert.match(social, /enforceChatCooldown\\('global', 2_000\\)/);
+  assert.match(social, /enforceChatCooldown\\('guild', 2_000\\)/);
+  assert.match(social, /enforceChatCooldown\\('report', 5_000\\)/);
+  assert.match(social, /split\\(\/\\\\r\\?\\\\n\//);
+  assert.match(social, /\\]\\.join\\('\\\\n'\\)/);
+  assert.doesNotMatch(social, /split\\('\\\\\\\\n'\\)/);
+});
