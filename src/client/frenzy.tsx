@@ -11,6 +11,7 @@ interface FrenzyInfo {
   createdAt: number;
   expiresAt: number;
   expired: boolean;
+  consumed?: boolean;
   claimedToday: boolean;
   claimCooldownRemainingMs: number;
   claimCooldownEndsAt: number;
@@ -218,7 +219,11 @@ function FrenzyPost() {
 
             <p className="io-frenzy-orb-label">orb in their Frenzy</p>
             <p className="io-frenzy-instruction">
-              Click below to claim it. You can only claim one every 23 hours.
+              {info.consumed
+                ? 'This Frenzy has already been claimed.'
+                : info.expired
+                  ? 'This Frenzy has expired.'
+                  : 'Click below to claim it. You can only claim one every 23 hours.'}
             </p>
           </div>
 
@@ -251,9 +256,11 @@ function FrenzyPost() {
               <ArrowRight className="w-4 h-4" />
               {loading
                 ? 'Opening Game…'
-                : info.selfClaimTest
-                  ? 'Claim Your Frenzy · Test'
-                  : claimed && claimCooldownIn > 0
+                : info.consumed
+                  ? 'Frenzy Already Claimed'
+                  : info.selfClaimTest
+                    ? 'Claim Your Frenzy · Test'
+                    : claimed && claimCooldownIn > 0
                     ? 'Claim Cooldown · ' + claimCooldownLabel
                     : info.isOwner
                       ? 'Your Frenzy'
