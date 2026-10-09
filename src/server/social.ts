@@ -67,7 +67,9 @@ function parseStoredJson<T>(raw: unknown): T | null {
 async function ensureRedisStringKey(keyName: string, fallback: string): Promise<void> {
   const existing = await redis.get(keyName);
   if (existing == null) {
-    await redis.set(keyName, fallback);
+    // Another request may initialize this key after our GET. NX prevents this
+    // fallback write from overwriting a real value created in that interval.
+    await redis.set(keyName, fallback, { nx: true });
   }
 }
 
