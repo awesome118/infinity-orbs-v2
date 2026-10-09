@@ -130,33 +130,31 @@ test('roll tickets disclose no RNG seed and client never predicts authoritative 
   const getTicketEnd = game.indexOf('async function loadRollTicketForUse', getTicketStart);
   assert.ok(getTicketStart >= 0 && getTicketEnd > getTicketStart);
   const ticketApi = game.slice(getTicketStart, getTicketEnd);
-  assert.doesNotMatch(ticketApi, /seed\\s*:/);
-  assert.doesNotMatch(ticketApi, /current\\.seed|ticket\\.seed/);
+  assert.doesNotMatch(ticketApi, /seed\s*:/);
+  assert.doesNotMatch(ticketApi, /current\.seed|ticket\.seed/);
   assert.doesNotMatch(client, /predictRollActivation|rollTicketSeed/);
   const rollStart = game.indexOf('export async function roll(');
   const rollEnd = game.indexOf('export async function subscribeToSubredditForReward', rollStart);
   assert.ok(rollStart >= 0 && rollEnd > rollStart);
   const roll = game.slice(rollStart, rollEnd);
   assert.doesNotMatch(roll, /createSeededRandom|rollTicketSeed/);
-  assert.match(roll, /await applyRolls\\(s, 1, undefined, 'online'\\)/);
-  assert.match(game, /const rng = randomOverride \\?\\? serverRandom/);
+  assert.match(roll, /await applyRolls\(s, 1, undefined, 'online'\)/);
+  assert.match(game, /const rng = randomOverride \?\? serverRandom/);
 });
 
- 
 test('player mutation lock renews its lease and releases only its own token', () => {
   const lock = source('src/server/player-lock.ts');
-  assert.match(lock, /renewOwnedLock\\(lockKey, token\\)/);
+  assert.match(lock, /renewOwnedLock\(lockKey, token\)/);
   assert.match(lock, /PLAYER_MUTATION_LOCK_TTL_MS \/ 3/);
   const releaseStart = lock.indexOf('async function releaseOwnedLock');
   const releaseEnd = lock.indexOf('export async function withPlayerMutationLockFor', releaseStart);
   assert.ok(releaseStart >= 0 && releaseEnd > releaseStart);
   const release = lock.slice(releaseStart, releaseEnd);
-  assert.match(release, /redis\\.watch\\(lockKey\\)/);
-  assert.match(release, /await txn\\.del\\(lockKey\\)/);
-  assert.doesNotMatch(release, /await redis\\.del\\(lockKey\\)/);
+  assert.match(release, /redis\.watch\(lockKey\)/);
+  assert.match(release, /await txn\.del\(lockKey\)/);
+  assert.doesNotMatch(release, /await redis\.del\(lockKey\)/);
 });
 
- 
 test('mastery upgrades reject inherited property names and ban middleware fails closed', () => {
   const app = source('src/server/app.ts');
   const game = source('src/server/game.ts');
@@ -164,17 +162,17 @@ test('mastery upgrades reject inherited property names and ban middleware fails 
   const routeEnd = app.indexOf("app.post('/api/cosmetics/buy'", routeStart);
   assert.ok(routeStart >= 0 && routeEnd > routeStart);
   const route = app.slice(routeStart, routeEnd);
-  assert.match(route, /hasOwnProperty\\.call\\(MASTERY_SKILLS, skillId\\)/);
-  assert.match(route, /status\\(400\\)/);
+  assert.match(route, /hasOwnProperty\.call\(MASTERY_SKILLS, skillId\)/);
+  assert.match(route, /status\(400\)/);
   const serviceStart = game.indexOf('export async function upgradeMasterySkill');
   const serviceEnd = game.indexOf('export async function synthesizeDust', serviceStart);
   assert.ok(serviceStart >= 0 && serviceEnd > serviceStart);
-  assert.match(game.slice(serviceStart, serviceEnd), /hasOwnProperty\\.call\\(MASTERY_SKILLS, skillId\\)/);
+  assert.match(game.slice(serviceStart, serviceEnd), /hasOwnProperty\.call\(MASTERY_SKILLS, skillId\)/);
   const banStart = app.indexOf("// Game bans are enforced server-side.");
   const banEnd = app.indexOf("// Reddit's payment callback", banStart);
   assert.ok(banStart >= 0 && banEnd > banStart);
-  assert.match(app.slice(banStart, banEnd), /status\\(503\\)/);
-  assert.match(app.slice(banStart, banEnd), /return next\\(\\)/);
+  assert.match(app.slice(banStart, banEnd), /status\(503\)/);
+  assert.match(app.slice(banStart, banEnd), /return next\(\)/);
 });
 
 test('Prestige optimistic state preserves Shards just like the server', () => {
@@ -183,51 +181,48 @@ test('Prestige optimistic state preserves Shards just like the server', () => {
   const end = client.indexOf('const handleBuyPrestigeUpgrade', start);
   assert.ok(start >= 0 && end > start);
   const prestige = client.slice(start, end);
-  assert.match(prestige, /shards:\\s*current\\.shards \\?\\? 0/);
-  assert.doesNotMatch(prestige, /shards:\\s*keptShards/);
+  assert.match(prestige, /shards:\s*current\.shards \?\? 0/);
+  assert.doesNotMatch(prestige, /shards:\s*keptShards/);
 });
 
- 
 test('community event rejects infinite and non-terminating progression values', () => {
   const social = source('src/server/social.ts');
   assert.match(social, /function validateCommunityEventConfig/);
-  assert.match(social, /Number\\.isFinite\\(config\\.buffMultiplier\\)/);
-  assert.match(social, /Number\\.isSafeInteger\\(amount\\)/);
-  assert.match(social, /assertSafeProgressionNumbers\\('Community event'/);
+  assert.match(social, /Number\.isFinite\(config\.buffMultiplier\)/);
+  assert.match(social, /Number\.isSafeInteger\(amount\)/);
+  assert.match(social, /assertSafeProgressionNumbers\('Community event'/);
   const addStart = social.indexOf('export async function addCommunityRolls');
   const addEnd = social.indexOf('export async function setCommunityEventConfig', addStart);
   assert.ok(addStart >= 0 && addEnd > addStart);
   const add = social.slice(addStart, addEnd);
-  assert.match(add, /await txn\\.unwatch\\(\\)/);
-  assert.match(add, /Number\\.MAX_SAFE_INTEGER/);
+  assert.match(add, /await txn\.unwatch\(\)/);
+  assert.match(add, /Number\.MAX_SAFE_INTEGER/);
 });
 
- 
 test('chat side effects use per-user atomic cooldowns and real newlines', () => {
   const social = source('src/server/social.ts');
   assert.match(social, /function enforceChatCooldown/);
-  assert.match(social, /nx:\\s*true/);
-  assert.match(social, /expiration:\\s*new Date/);
-  assert.match(social, /enforceChatCooldown\\('global', 2_000\\)/);
-  assert.match(social, /enforceChatCooldown\\('guild', 2_000\\)/);
-  assert.match(social, /enforceChatCooldown\\('report', 5_000\\)/);
-  assert.match(social, /split\\(\/\\\\r\\?\\\\n\//);
-  assert.match(social, /\\]\\.join\\('\\\\n'\\)/);
-  assert.doesNotMatch(social, /split\\('\\\\\\\\n'\\)/);
+  assert.match(social, /nx:\s*true/);
+  assert.match(social, /expiration:\s*new Date/);
+  assert.match(social, /enforceChatCooldown\('global', 2_000\)/);
+  assert.match(social, /enforceChatCooldown\('guild', 2_000\)/);
+  assert.match(social, /enforceChatCooldown\('report', 5_000\)/);
+  assert.ok(social.includes(".split(/\\r?\\n/)"));
+  assert.ok(social.includes("].join('\\n');"));
+  assert.doesNotMatch(social, /split\('\\\\n'\)/);
 });
 
- 
 test('Global Booster debug updates validate and CAS the full snapshot', () => {
   const game = source('src/server/game.ts');
   const start = game.indexOf('export async function setGlobalBoosterDebugState');
   const end = game.indexOf('function playerKeyFor', start);
   assert.ok(start >= 0 && end > start);
   const setter = game.slice(start, end);
-  assert.match(setter, /Number\\.isSafeInteger\\(tier\\)/);
-  assert.match(setter, /Number\\.isSafeInteger\\(minutes\\)/);
-  assert.match(setter, /hasOwnProperty\\.call\\(GLOBAL_BOOSTERS, id\\)/);
-  assert.match(setter, /redis\\.watch\\(GLOBAL_BOOSTERS_KEY\\)/);
-  assert.match(setter, /await txn\\.exec\\(\\)/);
-  assert.doesNotMatch(setter, /await redis\\.set\\(GLOBAL_BOOSTERS_KEY/);
+  assert.match(setter, /Number\.isSafeInteger\(tier\)/);
+  assert.match(setter, /Number\.isSafeInteger\(minutes\)/);
+  assert.match(setter, /hasOwnProperty\.call\(GLOBAL_BOOSTERS, id\)/);
+  assert.match(setter, /redis\.watch\(GLOBAL_BOOSTERS_KEY\)/);
+  assert.match(setter, /await txn\.exec\(\)/);
+  assert.doesNotMatch(setter, /await redis\.set\(GLOBAL_BOOSTERS_KEY/);
   assert.match(setter, /refusing to overwrite it/);
 });
