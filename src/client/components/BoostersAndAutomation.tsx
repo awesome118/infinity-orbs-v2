@@ -181,8 +181,8 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
               ? '×' + globalBoosterLuckMultiplier(displayed, now).toFixed(2) + ' Luck'
               : id === 'speed'
                 ? Math.round((1 - globalBoosterSpeedMultiplier(displayed, now)) * 100) + '% faster cooldown'
-                : '+' + Math.round(globalBoosterCritChanceBonus(displayed, now) * 100) + '% Crit, +' +
-                  globalBoosterCritLuckBonus(displayed, now).toFixed(1) + '× crit multiplier';
+                : '+' + Math.round(globalBoosterCritChanceBonus(displayed, now) * 100) + '% Crit Chance, +' +
+                  globalBoosterCritLuckBonus(displayed, now).toFixed(1) + '× Crit Luck';
 
             return (
               <div key={id} className="rounded-2xl border border-slate-800 bg-slate-950/65 p-3">
