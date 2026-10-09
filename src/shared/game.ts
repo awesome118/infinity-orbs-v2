@@ -456,7 +456,7 @@ export function guildComboCritLuckBonus(state: GuildComboState | null | undefine
   return current.tier > 0 && current.endsAt > now ? 0.05 * current.tier : 0;
 }
 
-export const GLOBAL_BOOSTER_DURATION_MS = 30 * 60 * 1000;
+export const GLOBAL_BOOSTER_DURATION_MS = 2 * 60 * 60 * 1000;
 export const GLOBAL_BOOSTER_BAR_DURATION_MS = 2 * 60 * 60 * 1000;
 export const GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER = 4;
 export const GLOBAL_BOOSTER_TIMER_ACCELERATION_PER_TIER = 0.10;
