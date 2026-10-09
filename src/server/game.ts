@@ -94,6 +94,24 @@ function currentUserId(): string {
   return userId;
 }
 
+// Multi-player mutations acquire every player/post lock in the same sorted
+// order. This avoids reciprocal Frenzy claims deadlocking while ensuring an
+// owner reward and claimant save cannot race each other's state revisions.
+async function withPlayerMutationLocksFor<T>(
+  userIds: string[],
+  fn: () => Promise<T>,
+): Promise<T> {
+  const orderedIds = Array.from(
+    new Set(userIds.map(id => String(id ?? '').trim()).filter(Boolean)),
+  ).sort();
+
+  const acquire = (index: number): Promise<T> => {
+    if (index >= orderedIds.length) return fn();
+    return withPlayerMutationLockFor(orderedIds[index], () => acquire(index + 1));
+  };
+  return acquire(0);
+}
+
 const key = () => `player:${currentUserId()}`;
 const GAME_BANS_KEY = 'io:game-bans';
 const ONLINE_PLAYERS_KEY = 'io:online:players';
@@ -3905,14 +3923,32 @@ export async function claimOrbFrenzy(options: {
   allowAdminTestOwner?: boolean;
   postId?: string;
 } = {}): Promise<RollResponse> {
-  return withPlayerMutationLock(async () => {
-  const handoff = options.postId ? null : await readFrenzyHandoff(currentUserId());
-  const postId = options.postId ?? handoff?.postId ?? context.postId;
   if (options.postId && options.allowAdminTestOwner !== true) {
     throw new Error('Explicit Frenzy post targeting is admin-only.');
   }
+
+  const claimantId = currentUserId();
+  const handoff = options.postId ? null : await readFrenzyHandoff(claimantId);
+  const postId = options.postId ?? handoff?.postId ?? context.postId;
   if (!postId) throw new Error('This is not an Orb Frenzy post.');
-  const raw = await redis.get(FRENZY_POST_PREFIX + postId);
+
+  const postKey = FRENZY_POST_PREFIX + postId;
+  const initialRaw = await redis.get(postKey);
+  if (!initialRaw) throw new Error('Orb Frenzy post data was not found.');
+  const initialData = parseStoredJson<{ ownerId?: string }>(initialRaw);
+  const lockedOwnerId = String(initialData?.ownerId ?? '').trim();
+  if (!lockedOwnerId) throw new Error('Orb Frenzy data is corrupted.');
+
+  // One stable lock order covers claimant state, owner state, and this post.
+  // The post lock prevents duplicate side effects before the atomic save guard;
+  // the owner lock prevents a reward writer from invalidating an in-flight owner save.
+  const postLockId = `__frenzy-post__:${postId}`;
+  const lockIds = lockedOwnerId === claimantId
+    ? [claimantId, postLockId]
+    : [claimantId, lockedOwnerId, postLockId];
+
+  return withPlayerMutationLocksFor(lockIds, async () => {
+  const raw = await redis.get(postKey);
   if (!raw) throw new Error('Orb Frenzy post data was not found.');
 
   const data = parseStoredJson<{
@@ -3927,9 +3963,12 @@ export async function claimOrbFrenzy(options: {
     expiresAt?: number;
   }>(raw);
   if (!data) throw new Error('Orb Frenzy data is corrupted.');
+  if (String(data.ownerId ?? '').trim() !== lockedOwnerId) {
+    throw new Error('Frenzy ownership changed. Please reopen the post.');
+  }
   if (data.consumedAt != null) throw new Error('This Orb Frenzy has already been claimed.');
 
-  const isOwner = data.ownerId === currentUserId();
+  const isOwner = data.ownerId === claimantId;
 
   const now = Date.now();
   const createdAt = Number(data.createdAt ?? 0);
@@ -4115,7 +4154,7 @@ export async function claimOrbFrenzy(options: {
     throw new Error('FRENZY_CLAIM_SAVE_INVALIDATED');
   }
   if (handoff && handoff.postId === postId) {
-    await redis.del(frenzyHandoffKey(currentUserId()));
+    await redis.del(frenzyHandoffKey(claimantId));
   }
 
   if (!isOwner) {
@@ -4172,7 +4211,8 @@ export async function claimOrbFrenzy(options: {
     frenzyCount: count,
   };
 
-  });}
+  });
+}
 
 
 function sampleBinomial(n: number, p: number): number {
