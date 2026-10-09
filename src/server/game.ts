@@ -72,8 +72,6 @@ import {
   codexDevotionLuckPercent,
   altarCoinDevotionChancePercent,
   altarCoinFloor,
-  createSeededRandom,
-  rollTicketSeed,
 } from '../shared/game.js';
 import {
   contribute,
@@ -1953,7 +1951,6 @@ export async function getGlobalBoosterAnnouncement(): Promise<{
 
 interface RollTicket {
   id: string;
-  seed: number;
   nextIndex: number;
   expiresAt: number;
 }
@@ -1970,7 +1967,6 @@ function randomUint32(): number {
 
 export async function getRollTicket(): Promise<{
   ticketId: string;
-  seed: number;
   nextIndex: number;
   rollsRemaining: number;
   expiresAt: number;
@@ -1986,7 +1982,6 @@ export async function getRollTicket(): Promise<{
     if (
       current &&
       current.id &&
-      Number.isFinite(current.seed) &&
       current.nextIndex >= 0 &&
       current.nextIndex < ROLL_TICKET_COUNT &&
       current.expiresAt > now
@@ -1994,7 +1989,6 @@ export async function getRollTicket(): Promise<{
       await txn.unwatch();
       return {
         ticketId: current.id,
-        seed: current.seed,
         nextIndex: current.nextIndex,
         rollsRemaining: ROLL_TICKET_COUNT - current.nextIndex,
         expiresAt: current.expiresAt,
@@ -2003,7 +1997,6 @@ export async function getRollTicket(): Promise<{
 
     const ticket: RollTicket = {
       id: `rt-${now.toString(36)}-${randomUint32().toString(36)}`,
-      seed: randomUint32(),
       nextIndex: 0,
       expiresAt: now + ROLL_TICKET_TTL_MS,
     };
@@ -2014,7 +2007,6 @@ export async function getRollTicket(): Promise<{
     if (committed !== null) {
       return {
         ticketId: ticket.id,
-        seed: ticket.seed,
         nextIndex: 0,
         rollsRemaining: ROLL_TICKET_COUNT,
         expiresAt: ticket.expiresAt,
@@ -2897,11 +2889,10 @@ export async function roll(
       s.freeRolls = Math.max(0, (s.freeRolls ?? 0) - 1);
     }
 
-    const deterministicRng = ticketUse
-      ? createSeededRandom(rollTicketSeed(ticketUse.ticket.seed, ticketUse.index))
-      : undefined;
+    // Roll outcomes are server-authoritative. Tickets only prevent duplicate or
+    // out-of-order submissions; no predictable client-shared PRNG stream is used.
     const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } =
-      await applyRolls(s, 1, undefined, 'online', undefined, deterministicRng);
+      await applyRolls(s, 1, undefined, 'online');
 
     if (!isAuto) {
       s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + 1);
