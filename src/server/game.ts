@@ -3966,6 +3966,9 @@ export async function claimOrbFrenzy(options: {
   if (String(data.ownerId ?? '').trim() !== lockedOwnerId) {
     throw new Error('Frenzy ownership changed. Please reopen the post.');
   }
+  if (handoff && handoff.expiresAt <= Date.now()) {
+    throw new Error('This Frenzy handoff expired. Please reopen the post.');
+  }
   if (data.consumedAt != null) throw new Error('This Orb Frenzy has already been claimed.');
 
   const isOwner = data.ownerId === claimantId;
