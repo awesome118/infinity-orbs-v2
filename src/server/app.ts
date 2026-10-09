@@ -74,7 +74,7 @@ import {
 import { context, reddit, redis } from './devvit-mock.js';
 import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
-import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, type FeatureId } from '../shared/game.js';
+import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, type FeatureId, type MasterySkillId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
 
 const payments = (devvitServer as typeof devvitServer & {
@@ -463,6 +463,9 @@ export function createApp() {
       }
     } catch (e) {
       console.error('Game ban check failed:', e);
+      return res.status(503).json({
+        error: 'Could not verify game ban status. Please retry.',
+      });
     }
     next();
   });
@@ -994,8 +997,14 @@ export function createApp() {
 
   app.post('/api/mastery/upgrade', async (req, res) => {
     try {
-      const { skillId } = req.body || {};
-      const state = await upgradeMasterySkill(skillId);
+      const skillId = req.body?.skillId;
+      if (
+        typeof skillId !== 'string' ||
+        !Object.prototype.hasOwnProperty.call(MASTERY_SKILLS, skillId)
+      ) {
+        return res.status(400).json({ error: 'Unknown mastery skill.' });
+      }
+      const state = await upgradeMasterySkill(skillId as MasterySkillId);
       res.json({ state });
     } catch (e) {
       badRequest(res, e, 'Mastery upgrade failed.');
