@@ -247,3 +247,16 @@ test('wiped saves cannot return mutation success and offline reminder keys survi
   assert.ok(claim.indexOf('await save(s)') < claim.indexOf('OFFLINE_FULL_NOTIFICATION_PREFIX'));
   assert.ok(claim.indexOf('await save(s)') < claim.indexOf('OFFLINE_FULL_JOB_PREFIX'));
 });
+
+
+test('Global Booster activation cannot replace corrupt data with defaults', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('async function updateGlobalBooster');
+  const end = game.indexOf('export async function setGlobalBoosterDebugState', start);
+  assert.ok(start >= 0 && end > start);
+  const updater = game.slice(start, end);
+  assert.match(updater, /raw == null\s*\?\s*createInitialGlobalBoosters\(now\)/);
+  assert.match(updater, /parseGlobalBoosterSnapshot\(raw, now\)/);
+  assert.match(updater, /Global Booster data is corrupted; refusing to overwrite it/);
+  assert.doesNotMatch(updater, /parseGlobalBoosterSnapshot\(raw, now\)\s*\?\?\s*createInitialGlobalBoosters/);
+});
