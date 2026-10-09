@@ -1970,7 +1970,7 @@ async function loadRollTicketForUse(
 
 export async function save(
   s: PlayerState,
-  extraWrite?: { key: string; expectedValue: string | null; nextValue: string },
+  extraWrite?: { key: string; expectedValue: string | null; nextValue: string; conflictMessage?: string },
 ) {
   const userId = currentUserId();
   s.codexChain = highestCodexChain(s.collection);
@@ -2002,7 +2002,7 @@ export async function save(
 
     if (extraWrite && extraRaw !== extraWrite.expectedValue) {
       await txn.unwatch();
-      throw new Error('Roll prediction ticket changed. Refresh the game.');
+      throw new Error(extraWrite.conflictMessage ?? 'Roll prediction ticket changed. Refresh the game.');
     }
     const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
     const stateGeneration = Math.max(0, Math.floor(Number(s.saveGeneration ?? 0)));
@@ -3020,8 +3020,24 @@ export async function claimFollowReward(): Promise<{
     s.lastRollAt = Date.now();
     s.lastSeenAt = Date.now();
 
-    await save(s);
-    await redis.set(rewardKey, String(Date.now()));
+    // Commit the 200-roll reward and its idempotency marker in the same
+    // WATCH/MULTI/EXEC transaction. A marker write failure must never allow a
+    // retry to grant the reward a second time.
+    const rewardMarker = String(
+      globalThis.crypto?.randomUUID?.() ??
+      `claimed-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    await save(s, {
+      key: rewardKey,
+      expectedValue: null,
+      nextValue: rewardMarker,
+      conflictMessage: 'FOLLOW_REWARD_ALREADY_CLAIMED',
+    });
+    // save() deliberately discards mutations invalidated by an admin wipe.
+    // Ensure that path did not report success without committing the marker.
+    if (await redis.get(rewardKey) !== rewardMarker) {
+      throw new Error('FOLLOW_REWARD_SAVE_INVALIDATED');
+    }
     await recordLeaderboard(s);
     void appendPlayerSpyLog('follow-reward-claim', {
       rollsGranted: FOLLOW_REWARD_ROLLS,
