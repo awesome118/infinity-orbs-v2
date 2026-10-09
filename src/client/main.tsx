@@ -2065,7 +2065,7 @@ export function App() {
         <div className="fixed top-[68px] left-1/2 -translate-x-1/2 z-50 pointer-events-none px-4 w-full flex justify-center animate-in slide-in-from-top-3 fade-in duration-200">
           <div className="max-w-xl rounded-2xl border border-fuchsia-400/40 bg-slate-950/95 px-4 py-3 shadow-2xl shadow-fuchsia-950/30 backdrop-blur-md text-center">
             <div className="text-sm font-black text-fuchsia-200">
-              u/{boosterAnnouncement.username} activated {boosterAnnouncement.name} booster for 30 minutes!
+              u/{boosterAnnouncement.username} activated {boosterAnnouncement.name} booster for 2 hours!
             </div>
           </div>
         </div>
