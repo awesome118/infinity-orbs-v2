@@ -215,3 +215,19 @@ test('chat side effects use per-user atomic cooldowns and real newlines', () => 
   assert.match(social, /\\]\\.join\\('\\\\n'\\)/);
   assert.doesNotMatch(social, /split\\('\\\\\\\\n'\\)/);
 });
+
+ 
+test('Global Booster debug updates validate and CAS the full snapshot', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('export async function setGlobalBoosterDebugState');
+  const end = game.indexOf('function playerKeyFor', start);
+  assert.ok(start >= 0 && end > start);
+  const setter = game.slice(start, end);
+  assert.match(setter, /Number\\.isSafeInteger\\(tier\\)/);
+  assert.match(setter, /Number\\.isSafeInteger\\(minutes\\)/);
+  assert.match(setter, /hasOwnProperty\\.call\\(GLOBAL_BOOSTERS, id\\)/);
+  assert.match(setter, /redis\\.watch\\(GLOBAL_BOOSTERS_KEY\\)/);
+  assert.match(setter, /await txn\\.exec\\(\\)/);
+  assert.doesNotMatch(setter, /await redis\\.set\\(GLOBAL_BOOSTERS_KEY/);
+  assert.match(setter, /refusing to overwrite it/);
+});
