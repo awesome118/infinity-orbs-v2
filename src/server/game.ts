@@ -1116,7 +1116,13 @@ async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSn
       rawValue: summarizeGlobalBoosterRaw(raw),
     });
 
-    const current = parseGlobalBoosterSnapshot(raw, now) ?? createInitialGlobalBoosters(now);
+    const current = raw == null
+      ? createInitialGlobalBoosters(now)
+      : parseGlobalBoosterSnapshot(raw, now);
+    if (!current) {
+      await txn.unwatch();
+      throw new Error('Global Booster data is corrupted; refusing to overwrite it.');
+    }
     const before = current[id];
     const after = activateGlobalBoosterStack(before, now, id === 'speed' ? 10 : Number.MAX_SAFE_INTEGER);
     current[id] = after;
