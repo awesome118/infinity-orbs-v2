@@ -141,3 +141,17 @@ test('roll tickets disclose no RNG seed and client never predicts authoritative 
   assert.match(roll, /await applyRolls\\(s, 1, undefined, 'online'\\)/);
   assert.match(game, /const rng = randomOverride \\?\\? serverRandom/);
 });
+
+ 
+test('player mutation lock renews its lease and releases only its own token', () => {
+  const lock = source('src/server/player-lock.ts');
+  assert.match(lock, /renewOwnedLock\\(lockKey, token\\)/);
+  assert.match(lock, /PLAYER_MUTATION_LOCK_TTL_MS \/ 3/);
+  const releaseStart = lock.indexOf('async function releaseOwnedLock');
+  const releaseEnd = lock.indexOf('export async function withPlayerMutationLockFor', releaseStart);
+  assert.ok(releaseStart >= 0 && releaseEnd > releaseStart);
+  const release = lock.slice(releaseStart, releaseEnd);
+  assert.match(release, /redis\\.watch\\(lockKey\\)/);
+  assert.match(release, /await txn\\.del\\(lockKey\\)/);
+  assert.doesNotMatch(release, /await redis\\.del\\(lockKey\\)/);
+});
