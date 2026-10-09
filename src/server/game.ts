@@ -1158,33 +1158,54 @@ export async function setGlobalBoosterDebugState(
   tier: number,
   minutes: number,
 ): Promise<{ tier: number; activationProgress: number; endsAt: number }> {
-  if (!GLOBAL_BOOSTERS[id]) throw new Error('Unknown Global Booster.');
+  if (!Object.prototype.hasOwnProperty.call(GLOBAL_BOOSTERS, id)) {
+    throw new Error('Unknown Global Booster.');
+  }
+  if (!Number.isSafeInteger(tier) || tier < 0 || tier > 1_000_000) {
+    throw new Error('Global Booster tier must be a finite integer between 0 and 1000000.');
+  }
+  if (!Number.isSafeInteger(minutes) || minutes < 1 || minutes > 10_080) {
+    throw new Error('Global Booster duration must be between 1 minute and 7 days.');
+  }
 
-  const now = Date.now();
-  const safeTier = Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(Number(tier) || 0)));
-  const safeMinutes = Math.max(1, Math.floor(Number(minutes) || 30));
-  const snapshot = await getGlobalBoosters();
-  const previous = snapshot[id];
-  const cappedTier = id === 'speed' ? Math.min(10, safeTier) : safeTier;
-  const next = {
-    tier: cappedTier,
-    activationProgress: 0,
-    endsAt: cappedTier === 0 ? 0 : now + safeMinutes * 60_000,
-  };
-  snapshot[id] = next;
-  await redis.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(snapshot));
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const now = Date.now();
+    const txn = await redis.watch(GLOBAL_BOOSTERS_KEY);
+    const raw = await redis.get(GLOBAL_BOOSTERS_KEY);
+    const snapshot = raw == null
+      ? createInitialGlobalBoosters(now)
+      : parseGlobalBoosterSnapshot(raw, now);
+    if (!snapshot) {
+      await txn.unwatch();
+      throw new Error('Global Booster data is corrupted; refusing to overwrite it.');
+    }
 
-  await appendGlobalBoosterDebugLog('admin:set', {
-    id,
-    previous,
-    next,
-    minutes: safeMinutes,
-    key: GLOBAL_BOOSTERS_KEY,
-  });
+    const previous = snapshot[id];
+    const cappedTier = id === 'speed' ? Math.min(10, tier) : tier;
+    const next = {
+      tier: cappedTier,
+      activationProgress: 0,
+      endsAt: cappedTier === 0 ? 0 : now + minutes * 60_000,
+    };
+    snapshot[id] = next;
 
-  return next;
+    await txn.multi();
+    await txn.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(snapshot));
+    const committed = await txn.exec();
+    if (committed !== null) {
+      await appendGlobalBoosterDebugLog('admin:set', {
+        id,
+        previous,
+        next,
+        minutes,
+        key: GLOBAL_BOOSTERS_KEY,
+      });
+      return next;
+    }
+  }
+
+  throw new Error('Global Boosters changed while applying the admin update. Please retry.');
 }
-
 function playerKeyFor(userId: string): string {
   return `player:${userId}`;
 }
