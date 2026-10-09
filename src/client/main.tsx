@@ -60,8 +60,7 @@ import {
   AUTOMATIONS,
   COSMETICS_LIST,
   FEATURE_UNLOCK_LEVELS,
-  predictRollActivation,
-  rollTicketSeed,
+
 } from '../shared/game.js';
 import { sound } from './sound.js';
 import { Header } from './components/Header.js';
@@ -321,14 +320,14 @@ export function App() {
   const stateRef = useRef<PlayerState | null>(null);
   const rollTicketRef = useRef<{
     ticketId: string;
-    seed: number;
+
     nextIndex: number;
     rollsRemaining: number;
     expiresAt: number;
   } | null>(null);
   const rollTicketRequestRef = useRef<Promise<{
     ticketId: string;
-    seed: number;
+
     nextIndex: number;
     rollsRemaining: number;
     expiresAt: number;
@@ -389,7 +388,7 @@ export function App() {
     if (!rollTicketRequestRef.current) {
       rollTicketRequestRef.current = getJson<{
         ticketId: string;
-        seed: number;
+
         nextIndex: number;
         rollsRemaining: number;
         expiresAt: number;
@@ -809,154 +808,103 @@ export function App() {
 
     rollActionLockRef.current = true;
     let frenzySubmissionInFlight = false;
+    setIsRolling(true);
 
-    void (async () => {
-      try {
-        if (!isAutoRoll && frenzyArmed) {
-          frenzySubmissionInFlight = true;
-          // Consume the armed state immediately so a failed request cannot
-          // leave the UI stuck in a dead "RELEASE FRENZY" state.
-          setFrenzyArmed(false);
-          setIsRolling(true);
-          const res = await enqueueMutation(() => getJson<{
-            state: PlayerState;
-            postId: string;
-            url: string;
-            rarity: number;
-            orb: Orb;
-            batch: Orb[];
-            totalValueGained: number;
-            totalRollValue: number;
-            coinsGained: number;
-            shardsGained: number;
-            xpGained: number;
-            rollsRemainingUntilNext: number;
-            rollsProcessed: number;
-            dramaticReveal: boolean;
-          }>('/api/frenzy/start', { method: 'POST' }));
-
-          applyPlayerState(res.state);
-          setFrenzyArmed(false);
-          setLastOrb(res.orb);
-          setLastBatch(res.batch ?? [res.orb]);
-          setBatchSummary({
-            totalVal: res.totalRollValue,
-            coins: res.coinsGained,
-            shards: res.shardsGained,
-            xp: res.xpGained,
-            frenzyCount: undefined,
-          });
-          setReadyAt(Date.now() + res.rollsRemainingUntilNext);
-          sound.playEpicFanfare();
-          showToast(
-            `🔥 Frenzy submitted! Your ${formatRarity(res.rarity)} roll is now posted.`,
-            'success',
-          );
-          setIsRolling(false);
-          return;
-        }
-
-        const ticket = await ensureRollTicket();
-        const ticketIndex = ticket.nextIndex;
-        const prediction = predictRollActivation(
-          currentState,
-          rollTicketSeed(ticket.seed, ticketIndex),
-          isAutoRoll,
-          worldEvent?.buffMultiplier ?? 1.15,
-        );
-
-        rollTicketRef.current = {
-          ...ticket,
-          nextIndex: ticketIndex + 1,
-          rollsRemaining: Math.max(0, 30 - (ticketIndex + 1)),
-        };
-
-        sound.playRollNormal();
-
-        // The complete reward/state simulation happens locally first. The server
-        // later recomputes it from the same ticketed RNG stream and replaces this
-        // prediction with authoritative state when the mutation queue catches up.
-        stateRef.current = prediction.state;
-        stateRevisionRef.current += 1;
-        setState(prediction.state);
-        setLastOrb(prediction.orb);
-        setLastBatch(prediction.batch);
-        setBatchSummary({
-          totalVal: prediction.totalValueGained,
-          coins: prediction.coinsGained,
-          shards: prediction.shardsGained,
-          xp: prediction.xpGained,
-        });
-        setReadyAt(Date.now() + cooldownMs(prediction.state, isAutoRoll));
-        setWorldEvent(prev =>
-          prev
-            ? { ...prev, currentProgress: prev.currentProgress + prediction.rollsProcessed }
-            : prev,
-        );
-        setIsRolling(false);
-
-        pendingMutationCountRef.current += 1;
-        void enqueueMutation(async () => {
-          try {
-            const res = await getJson<RollResponse>('/api/roll', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                auto: isAutoRoll,
-                ticketId: ticket.ticketId,
-                ticketIndex,
-              }),
-            });
-
-            pendingMutationCountRef.current -= 1;
-            if (pendingMutationCountRef.current === 0) {
-              applyPlayerState(res.state);
-              setLastOrb(res.orb);
-              setLastBatch(res.batch ?? [res.orb]);
-              setBatchSummary({
-                totalVal: res.totalRollValue,
-                coins: res.coinsGained,
-                shards: res.shardsGained,
-                xp: res.xpGained,
-              });
-              setReadyAt(Date.now() + res.rollsRemainingUntilNext);
-              mutationResyncNeededRef.current = false;
-            }
-
-            maybePromptForNotifications(currentState.totalRolls, res.state.totalRolls);
-          } catch (error: any) {
-            pendingMutationCountRef.current -= 1;
-            mutationResyncNeededRef.current = true;
-            rollTicketRef.current = null;
-
-            if (pendingMutationCountRef.current === 0) {
-              await refreshAll().catch(() => null);
-              mutationResyncNeededRef.current = false;
-            }
-
-            showToast(error?.message || 'Roll verification failed. State refreshed.', 'warn');
-          }
-        });
-      } catch (error: any) {
-        rollTicketRef.current = null;
+    try {
+      if (!isAutoRoll && frenzyArmed) {
+        frenzySubmissionInFlight = true;
+        // Consume the armed state immediately so a failed request cannot
+        // leave the UI stuck in a dead "RELEASE FRENZY" state.
         setFrenzyArmed(false);
-        if (frenzySubmissionInFlight) {
-          // Re-read authoritative state before allowing another Frenzy attempt.
-          await refreshAll().catch(() => null);
-        }
-        showToast(error?.message || 'Could not prepare the next roll.', 'warn');
-        setIsRolling(false);
-      } finally {
-        rollActionLockRef.current = false;
+        const res = await enqueueMutation(() => getJson<{
+          state: PlayerState;
+          postId: string;
+          url: string;
+          rarity: number;
+          orb: Orb;
+          batch: Orb[];
+          totalValueGained: number;
+          totalRollValue: number;
+          coinsGained: number;
+          shardsGained: number;
+          xpGained: number;
+          rollsRemainingUntilNext: number;
+          rollsProcessed: number;
+          dramaticReveal: boolean;
+        }>('/api/frenzy/start', { method: 'POST' }));
+
+        applyPlayerState(res.state);
+        setFrenzyArmed(false);
+        setLastOrb(res.orb);
+        setLastBatch(res.batch ?? [res.orb]);
+        setBatchSummary({
+          totalVal: res.totalRollValue,
+          coins: res.coinsGained,
+          shards: res.shardsGained,
+          xp: res.xpGained,
+          frenzyCount: undefined,
+        });
+        setReadyAt(Date.now() + res.rollsRemainingUntilNext);
+        sound.playEpicFanfare();
+        showToast(
+          `🔥 Frenzy submitted! Your ${formatRarity(res.rarity)} roll is now posted.`,
+          'success',
+        );
+        return;
       }
-    })();
+
+      // The UI may animate while the request is pending, but it must not know
+      // the outcome before the server commits it. Otherwise players can inspect
+      // future rewards and selectively submit only favorable rolls.
+      const ticket = await ensureRollTicket();
+      const ticketIndex = ticket.nextIndex;
+      rollTicketRef.current = {
+        ...ticket,
+        nextIndex: ticketIndex + 1,
+        rollsRemaining: Math.max(0, 30 - (ticketIndex + 1)),
+      };
+      sound.playRollNormal();
+
+      const res = await enqueueMutation(() => getJson<RollResponse>('/api/roll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auto: isAutoRoll,
+          ticketId: ticket.ticketId,
+          ticketIndex,
+        }),
+      }));
+
+      applyPlayerState(res.state);
+      setLastOrb(res.orb);
+      setLastBatch(res.batch ?? [res.orb]);
+      setBatchSummary({
+        totalVal: res.totalRollValue,
+        coins: res.coinsGained,
+        shards: res.shardsGained,
+        xp: res.xpGained,
+      });
+      setReadyAt(Date.now() + res.rollsRemainingUntilNext);
+      mutationResyncNeededRef.current = false;
+      maybePromptForNotifications(currentState.totalRolls, res.state.totalRolls);
+    } catch (error: any) {
+      rollTicketRef.current = null;
+      setFrenzyArmed(false);
+      mutationResyncNeededRef.current = true;
+      // A request might have committed before its response was lost. Read back
+      // authoritative state before the next roll attempt, for either path.
+      await refreshAll().catch(() => null);
+      mutationResyncNeededRef.current = false;
+      showToast(error?.message || 'Roll failed. State refreshed.', 'warn');
+    } finally {
+      setIsRolling(false);
+      rollActionLockRef.current = false;
+    }
   }, [
     applyPlayerState,
     enqueueMutation,
     ensureRollTicket,
-    enqueueMutation,
     refreshAll,
-    worldEvent?.buffMultiplier,
     frenzyArmed,
   ]);
 
