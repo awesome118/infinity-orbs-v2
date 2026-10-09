@@ -689,48 +689,81 @@ async function ensureRedisStringKey(keyName: string, fallback: string): Promise<
 
 async function readGameBans(): Promise<Record<string, GameBanRecord>> {
   const raw = await redis.get(GAME_BANS_KEY);
-  if (!raw) return {};
-  try {
-    return parseStoredJson<Record<string, GameBanRecord>>(raw) ?? {};
-  } catch {
-    return {};
+  if (raw == null || raw === '') return {};
+  const parsed = parseStoredJson<unknown>(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    // Failing open here would silently treat every player as unbanned, while
+    // later writes could erase the complete ban registry.
+    throw new Error('Game ban list could not be read safely.');
   }
+  return parsed as Record<string, GameBanRecord>;
 }
 
-async function writeGameBans(bans: Record<string, GameBanRecord>): Promise<void> {
-  await redis.set(GAME_BANS_KEY, JSON.stringify(bans));
+async function mutateGameBans<T>(
+  update: (bans: Record<string, GameBanRecord>) => { changed: boolean; result: T },
+): Promise<T> {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const txn = await redis.watch(GAME_BANS_KEY);
+    const raw = await redis.get(GAME_BANS_KEY);
+    let bans: Record<string, GameBanRecord> = {};
+    if (raw != null && raw !== '') {
+      const parsed = parseStoredJson<unknown>(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        await txn.unwatch();
+        throw new Error('Game ban list could not be read safely. No changes were applied.');
+      }
+      bans = parsed as Record<string, GameBanRecord>;
+    }
+
+    const outcome = update(bans);
+    if (!outcome.changed) {
+      await txn.unwatch();
+      return outcome.result;
+    }
+
+    await txn.multi();
+    await txn.set(GAME_BANS_KEY, JSON.stringify(bans));
+    const committed = await txn.exec();
+    if (committed !== null) return outcome.result;
+  }
+
+  throw new Error('Game ban list changed too frequently. Please retry.');
 }
 
 export async function getGameBanStatus(userId = context.userId ?? ''): Promise<GameBanStatus | null> {
   if (!userId) return null;
-  const bans = await readGameBans();
-  const ban = bans[userId];
-  if (!ban) return null;
-  if (ban.bannedUntil !== null && ban.bannedUntil <= Date.now()) {
-    delete bans[userId];
-    await writeGameBans(bans);
-    return null;
-  }
-  return { ...ban, active: true };
+  const now = Date.now();
+  return mutateGameBans(bans => {
+    const ban = bans[userId];
+    if (!ban) return { changed: false, result: null };
+    if (ban.bannedUntil !== null && ban.bannedUntil <= now) {
+      delete bans[userId];
+      return { changed: true, result: null };
+    }
+    return { changed: false, result: { ...ban, active: true } };
+  });
 }
 
 export async function listGameBans(): Promise<GameBanRecord[]> {
-  const bans = await readGameBans();
   const now = Date.now();
-  let changed = false;
-  const active: GameBanRecord[] = [];
+  return mutateGameBans(bans => {
+    let changed = false;
+    const active: GameBanRecord[] = [];
 
-  for (const [userId, ban] of Object.entries(bans)) {
-    if (ban.bannedUntil !== null && ban.bannedUntil <= now) {
-      delete bans[userId];
-      changed = true;
-      continue;
+    for (const [userId, ban] of Object.entries(bans)) {
+      if (ban.bannedUntil !== null && ban.bannedUntil <= now) {
+        delete bans[userId];
+        changed = true;
+        continue;
+      }
+      active.push(ban);
     }
-    active.push(ban);
-  }
 
-  if (changed) await writeGameBans(bans);
-  return active.sort((a, b) => b.bannedAt - a.bannedAt);
+    return {
+      changed,
+      result: active.sort((a, b) => b.bannedAt - a.bannedAt),
+    };
+  });
 }
 
 export async function banGameUser(options: {
@@ -752,18 +785,18 @@ export async function banGameUser(options: {
     reason: String(options.reason ?? 'Game moderation action').slice(0, 300),
     bannedBy: String(options.bannedBy ?? context.username ?? 'Admin').slice(0, 100),
   };
-  const bans = await readGameBans();
-  bans[options.userId] = ban;
-  await writeGameBans(bans);
-  return { ...ban, active: true };
+  return mutateGameBans(bans => {
+    bans[options.userId] = ban;
+    return { changed: true, result: { ...ban, active: true } };
+  });
 }
 
 export async function unbanGameUser(userId: string): Promise<boolean> {
-  const bans = await readGameBans();
-  if (!bans[userId]) return false;
-  delete bans[userId];
-  await writeGameBans(bans);
-  return true;
+  return mutateGameBans(bans => {
+    if (!bans[userId]) return { changed: false, result: false };
+    delete bans[userId];
+    return { changed: true, result: true };
+  });
 }
 const ONLINE_WINDOW_MS = 30_000;
 
