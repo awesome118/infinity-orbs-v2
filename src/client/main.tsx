@@ -652,6 +652,12 @@ export function App() {
     if (!state || !splashEntered || frenzyRunTriggered || frenzyClaimActiveRef.current) return;
 
     const resolveFrenzy = async () => {
+      let readyToClaim = false;
+      let lastPreflightError: unknown = null;
+
+      // Retry only the read-only handoff/info checks. Retrying the claim POST
+      // after a network error is unsafe because the server may have committed
+      // the reward even when the response did not reach this webview.
       for (let attempt = 0; attempt < 12; attempt++) {
         try {
           const handoff = await getJson<{ armed: boolean }>('/api/frenzy/handoff');
@@ -672,54 +678,61 @@ export function App() {
           // Only a Frenzy claim explicitly armed from the public Frenzy post
           // may auto-claim here. Simply opening the game must never consume a Frenzy.
           if (!info.inGame || !info.canClaim) return;
-
-          frenzyClaimActiveRef.current = true;
-          setFrenzyRunTriggered(true);
-          setBusy(true);
-          setIsRolling(true);
-
-          const res = await enqueueMutation(() =>
-            getJson<RollResponse>('/api/frenzy/claim', { method: 'POST' }),
-          );
-
-          if (!componentMountedRef.current) return;
-
-          const revealBatch = res.batch?.length ? res.batch : [res.orb];
-
-          // Apply the authoritative state without cancelling the visual reveal.
-          // The old effect was keyed to state, so this update tore down its own
-          // reveal loop before the first Orb could be shown.
-          applyPlayerState(res.state);
-          setLastBatch(revealBatch);
-          setBatchSummary({
-            totalVal: res.totalRollValue,
-            coins: res.coinsGained,
-            shards: res.shardsGained,
-            xp: res.xpGained,
-            frenzyCount: res.frenzyCount ?? 0,
-          });
-          setReadyAt(Date.now() + res.rollsRemainingUntilNext);
-
-          // This is the actual Frenzy volley returned by the server. Show each
-          // resolved Orb in sequence so the claim visibly rolls through the volley.
-          for (const revealedOrb of revealBatch) {
-            if (!componentMountedRef.current) return;
-            setLastOrb(revealedOrb);
-            await new Promise(resolve => window.setTimeout(resolve, 240));
-          }
-
-          if (!componentMountedRef.current) return;
-          setLastOrb(res.orb);
-          sound.playMythicFanfare();
-          showToast(
-            `⚡ Orb Frenzy claimed! ${formatNumber(res.frenzyCount ?? 0)} Orbs rolled.`,
-            'success',
-          );
-          return;
-        } catch {
-          await new Promise(resolve => setTimeout(resolve, 150));
+          readyToClaim = true;
+          break;
+        } catch (error) {
+          lastPreflightError = error;
+          if (attempt < 11) await new Promise(resolve => window.setTimeout(resolve, 150));
         }
       }
+
+      if (!readyToClaim) {
+        if (lastPreflightError) throw lastPreflightError;
+        return;
+      }
+
+      frenzyClaimActiveRef.current = true;
+      setFrenzyRunTriggered(true);
+      setBusy(true);
+      setIsRolling(true);
+
+      // Claim exactly once per attempt. A retry requires a fresh user action
+      // because a failed HTTP response cannot prove the server did not commit.
+      const res = await enqueueMutation(() =>
+        getJson<RollResponse>('/api/frenzy/claim', { method: 'POST' }),
+      );
+
+      if (!componentMountedRef.current) return;
+
+      const revealBatch = res.batch?.length ? res.batch : [res.orb];
+
+      // Apply the authoritative state without cancelling the visual reveal.
+      applyPlayerState(res.state);
+      setLastBatch(revealBatch);
+      setBatchSummary({
+        totalVal: res.totalRollValue,
+        coins: res.coinsGained,
+        shards: res.shardsGained,
+        xp: res.xpGained,
+        frenzyCount: res.frenzyCount ?? 0,
+      });
+      setReadyAt(Date.now() + res.rollsRemainingUntilNext);
+
+      // This is the actual Frenzy volley returned by the server. Show each
+      // resolved Orb in sequence so the claim visibly rolls through the volley.
+      for (const revealedOrb of revealBatch) {
+        if (!componentMountedRef.current) return;
+        setLastOrb(revealedOrb);
+        await new Promise(resolve => window.setTimeout(resolve, 240));
+      }
+
+      if (!componentMountedRef.current) return;
+      setLastOrb(res.orb);
+      sound.playMythicFanfare();
+      showToast(
+        `⚡ Orb Frenzy claimed! ${formatNumber(res.frenzyCount ?? 0)} Orbs rolled.`,
+        'success',
+      );
     };
 
     void resolveFrenzy()
