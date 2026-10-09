@@ -834,6 +834,7 @@ export async function postGuildMessage(text: string) {
   if (await isGuildChatMuted()) {
     throw new Error('You are muted from Guild Chat.');
   }
+  await enforceChatCooldown('guild', 2_000);
 
   return updateGuilds(guilds => {
     const guild = currentGuild(guilds);
@@ -1242,6 +1243,25 @@ export async function setCommunityEventConfig(config: {
 const GLOBAL_CHAT_KEY = key('global-chat:v1');
 const GLOBAL_CHAT_MAX_MESSAGES = 100;
 const CHAT_REPORTS_KEY = key('chat-reports:v1');
+const CHAT_COOLDOWN_PREFIX = key('chat-cooldown:v1:');
+
+async function enforceChatCooldown(scope: string, cooldownMs: number): Promise<void> {
+  const userId = user();
+  if (!userId || userId === 'unknown') throw new Error('Your Reddit identity is unavailable.');
+  const cooldownKey = CHAT_COOLDOWN_PREFIX + scope + ':' + userId;
+  const token = `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+  // SET NX is atomic across server instances. Readback distinguishes the
+  // request that acquired the cooldown from concurrent/later requests.
+  await redis.set(cooldownKey, token, {
+    nx: true,
+    expiration: new Date(Date.now() + Math.max(1_000, cooldownMs)),
+  });
+  if (await redis.get(cooldownKey) !== token) {
+    throw new Error('You are sending messages too quickly. Please wait a moment.');
+  }
+}
+
 
 async function purgeChatMessagesForUser(userId: string, targetUsername: string): Promise<void> {
   const cleanUsername = String(targetUsername).trim().replace(/^u\//i, '').toLowerCase();
@@ -1329,6 +1349,7 @@ async function submitChatReport(
 ): Promise<{ success: true }> {
   const reporterId = user();
   if (!reporterId || reporterId === 'unknown') throw new Error('Your Reddit identity is unavailable.');
+  await enforceChatCooldown('report', 5_000);
 
   const reportKey = `${scope === 'Global Chat' ? 'global' : 'guild'}:${message.id}:${reporterId}`;
   if (await redis.hGet(CHAT_REPORTS_KEY, reportKey)) {
@@ -1351,8 +1372,8 @@ async function submitChatReport(
     `**Sent:** ${new Date(Number(message.timestamp) || Date.now()).toISOString()}`,
     '',
     '**Reported message:**',
-    ...String(message.text ?? '').split('\\n').map(line => `> ${line}`),
-  ].join('\\n');
+    ...String(message.text ?? '').split(/\r?\n/).map(line => `> ${line}`),
+  ].join('\n');
 
   await reddit.modMail.createModInboxConversation({
     subredditId,
@@ -1434,6 +1455,7 @@ export async function postGlobalChatMessage(text: string): Promise<GlobalChatMes
     throw new Error('You are muted from Chat.');
   }
   if (messageText.length > 200) throw new Error('Messages must be 200 characters or fewer.');
+  await enforceChatCooldown('global', 2_000);
 
   const timestamp = Date.now();
   const message: GlobalChatMessage = {
