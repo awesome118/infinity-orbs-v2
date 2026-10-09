@@ -121,3 +121,23 @@ test('CCU peak recording uses a monotonic watched update', () => {
   assert.match(game, /await updateCcuPeak\(hourKey, ccu\)/);
   assert.match(game, /await updateCcuPeak\(CCU_ALL_TIME_KEY, ccu\)/);
 });
+
+ 
+test('roll tickets disclose no RNG seed and client never predicts authoritative rewards', () => {
+  const game = source('src/server/game.ts');
+  const client = source('src/client/main.tsx');
+  const getTicketStart = game.indexOf('export async function getRollTicket');
+  const getTicketEnd = game.indexOf('async function loadRollTicketForUse', getTicketStart);
+  assert.ok(getTicketStart >= 0 && getTicketEnd > getTicketStart);
+  const ticketApi = game.slice(getTicketStart, getTicketEnd);
+  assert.doesNotMatch(ticketApi, /seed\\s*:/);
+  assert.doesNotMatch(ticketApi, /current\\.seed|ticket\\.seed/);
+  assert.doesNotMatch(client, /predictRollActivation|rollTicketSeed/);
+  const rollStart = game.indexOf('export async function roll(');
+  const rollEnd = game.indexOf('export async function subscribeToSubredditForReward', rollStart);
+  assert.ok(rollStart >= 0 && rollEnd > rollStart);
+  const roll = game.slice(rollStart, rollEnd);
+  assert.doesNotMatch(roll, /createSeededRandom|rollTicketSeed/);
+  assert.match(roll, /await applyRolls\\(s, 1, undefined, 'online'\\)/);
+  assert.match(game, /const rng = randomOverride \\?\\? serverRandom/);
+});
