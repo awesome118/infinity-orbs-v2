@@ -66,3 +66,22 @@ test('global booster duration and UI copy agree on a two-hour activation', () =>
   assert.match(main, /activated \{boosterAnnouncement\.name\} booster for 2 hours!/);
   assert.doesNotMatch(boosters, /adds 30 minutes|\+30m/);
 });
+
+test('Frenzy claim reserves claimant, owner, and post locks in a deterministic order', () => {
+  const game = source('src/server/game.ts');
+  const helperStart = game.indexOf('async function withPlayerMutationLocksFor');
+  const helperEnd = game.indexOf('\nconst key =', helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart, 'multi-lock helper must exist');
+  const helper = game.slice(helperStart, helperEnd);
+  assert.match(helper, /\.sort\(\)/);
+
+  const start = game.indexOf('export async function claimOrbFrenzy');
+  const end = game.indexOf('\n\nfunction sampleBinomial', start);
+  assert.ok(start >= 0 && end > start, 'claim function must exist');
+  const claim = game.slice(start, end);
+  assert.match(claim, /const postLockId = `__frenzy-post__:\\$\{postId\}`/);
+  assert.match(claim, /return withPlayerMutationLocksFor\(lockIds/);
+  assert.match(claim, /if \(data\.consumedAt != null\)/);
+  assert.match(claim, /expectedValue: raw,[\s\S]*?nextValue: consumedPostValue/);
+  assert.match(claim, /if \(await redis\.get\(FRENZY_POST_PREFIX \+ postId\) !== consumedPostValue\)/);
+});
