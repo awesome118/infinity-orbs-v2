@@ -21,6 +21,45 @@ function randomUint32(): number {
   return sample[0];
 }
 
+
+async function renewOwnedLock(lockKey: string, token: string): Promise<boolean> {
+  const txn = await redis.watch(lockKey);
+  const owner = await redis.get(lockKey);
+  if (owner !== token) {
+    await txn.unwatch();
+    return false;
+  }
+
+  await txn.multi();
+  await txn.set(lockKey, token, {
+    expiration: new Date(Date.now() + PLAYER_MUTATION_LOCK_TTL_MS),
+  });
+  return (await txn.exec()) !== null;
+}
+
+async function releaseOwnedLock(lockKey: string, token: string): Promise<void> {
+  try {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const txn = await redis.watch(lockKey);
+      const owner = await redis.get(lockKey);
+      if (owner !== token) {
+        await txn.unwatch();
+        return;
+      }
+
+      await txn.multi();
+      await txn.del(lockKey);
+      const committed = await txn.exec();
+      if (committed !== null) return;
+    }
+    // Never fall back to an unguarded DEL. If ownership changes repeatedly,
+    // the correct behavior is to leave cleanup to the lease expiry.
+    console.error('[Player Lock] Could not safely release the lock; lease will expire.');
+  } catch (error) {
+    console.error('[Player Lock] Could not safely release the lock; lease will expire:', error);
+  }
+}
+
 export async function withPlayerMutationLockFor<T>(
   userId: string,
   fn: () => Promise<T>,
@@ -51,13 +90,32 @@ export async function withPlayerMutationLockFor<T>(
 
       const owner = await redis.get(lockKey);
       if (owner === token) {
+        // Renew the distributed lease while the callback is running. The
+        // renewal only extends this exact token; it never reacquires a lost
+        // lease, which would let an old callback impersonate a new owner.
+        let renewalInFlight = false;
+        const renewalTimer = setInterval(() => {
+          if (renewalInFlight) return;
+          renewalInFlight = true;
+          void renewOwnedLock(lockKey, token)
+            .then(renewed => {
+              if (!renewed) {
+                console.error('[Player Lock] Lease was lost before the callback finished.');
+              }
+            })
+            .catch(error => {
+              console.error('[Player Lock] Lease renewal failed; it may expire before the callback finishes:', error);
+            })
+            .finally(() => {
+              renewalInFlight = false;
+            });
+        }, Math.max(1_000, Math.floor(PLAYER_MUTATION_LOCK_TTL_MS / 3)));
+
         try {
           return await fn();
         } finally {
-          const currentOwner = await redis.get(lockKey);
-          if (currentOwner === token) {
-            await redis.del(lockKey);
-          }
+          clearInterval(renewalTimer);
+          await releaseOwnedLock(lockKey, token);
         }
       }
 
