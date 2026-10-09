@@ -155,3 +155,34 @@ test('player mutation lock renews its lease and releases only its own token', ()
   assert.match(release, /await txn\\.del\\(lockKey\\)/);
   assert.doesNotMatch(release, /await redis\\.del\\(lockKey\\)/);
 });
+
+ 
+test('mastery upgrades reject inherited property names and ban middleware fails closed', () => {
+  const app = source('src/server/app.ts');
+  const game = source('src/server/game.ts');
+  const routeStart = app.indexOf("app.post('/api/mastery/upgrade'");
+  const routeEnd = app.indexOf("app.post('/api/cosmetics/buy'", routeStart);
+  assert.ok(routeStart >= 0 && routeEnd > routeStart);
+  const route = app.slice(routeStart, routeEnd);
+  assert.match(route, /hasOwnProperty\\.call\\(MASTERY_SKILLS, skillId\\)/);
+  assert.match(route, /status\\(400\\)/);
+  const serviceStart = game.indexOf('export async function upgradeMasterySkill');
+  const serviceEnd = game.indexOf('export async function synthesizeDust', serviceStart);
+  assert.ok(serviceStart >= 0 && serviceEnd > serviceStart);
+  assert.match(game.slice(serviceStart, serviceEnd), /hasOwnProperty\\.call\\(MASTERY_SKILLS, skillId\\)/);
+  const banStart = app.indexOf("// Game bans are enforced server-side.");
+  const banEnd = app.indexOf("// Reddit's payment callback", banStart);
+  assert.ok(banStart >= 0 && banEnd > banStart);
+  assert.match(app.slice(banStart, banEnd), /status\\(503\\)/);
+  assert.match(app.slice(banStart, banEnd), /return next\\(\\)/);
+});
+
+test('Prestige optimistic state preserves Shards just like the server', () => {
+  const client = source('src/client/main.tsx');
+  const start = client.indexOf('const handlePrestige');
+  const end = client.indexOf('const handleBuyPrestigeUpgrade', start);
+  assert.ok(start >= 0 && end > start);
+  const prestige = client.slice(start, end);
+  assert.match(prestige, /shards:\\s*current\\.shards \\?\\? 0/);
+  assert.doesNotMatch(prestige, /shards:\\s*keptShards/);
+});
