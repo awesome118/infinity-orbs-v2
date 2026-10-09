@@ -260,3 +260,19 @@ test('Global Booster activation cannot replace corrupt data with defaults', () =
   assert.match(updater, /Global Booster data is corrupted; refusing to overwrite it/);
   assert.doesNotMatch(updater, /parseGlobalBoosterSnapshot\(raw, now\)\s*\?\?\s*createInitialGlobalBoosters/);
 });
+
+
+test('Daily Streak community progression rejects invalid loop state', () => {
+  const social = source('src/server/social.ts');
+  assert.match(social, /function validateDailyStreakCommunityEvent/);
+  assert.match(social, /Daily Streak community data is corrupted/);
+  assert.match(social, /Daily Streak contribution must be a finite safe integer/);
+  const start = social.indexOf('export async function addDailyStreakCommunityProgress');
+  const end = social.indexOf('function unlocked', start);
+  assert.ok(start >= 0 && end > start);
+  const add = social.slice(start, end);
+  assert.match(add, /Number\.isSafeInteger\(contribution\)/);
+  assert.match(add, /validateDailyStreakCommunityEvent\(event\)/);
+  assert.match(add, /Number\.MAX_SAFE_INTEGER/);
+  assert.doesNotMatch(add, /parseStoredJson<DailyStreakCommunityEvent>\(raw\) \?\? createInitialDailyStreakCommunity/);
+});
