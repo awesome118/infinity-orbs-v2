@@ -3865,6 +3865,7 @@ export async function getOrbFrenzyInfo(): Promise<{
     expiresAt?: number;
     adminTest?: boolean;
     inGame?: boolean;
+    consumedAt?: number | null;
   }>(raw);
   if (!data) throw new Error('Orb Frenzy data is corrupted.');
 
@@ -3887,11 +3888,12 @@ export async function getOrbFrenzyInfo(): Promise<{
     createdAt: data.createdAt,
     expiresAt,
     expired,
+    consumed: data.consumedAt != null,
     claimedToday,
     claimCooldownRemainingMs,
     claimCooldownEndsAt,
     isOwner,
-    canClaim: !expired && (claimCooldownRemainingMs <= 0 || selfClaimTest) && (!isOwner || selfClaimTest),
+    canClaim: !expired && data.consumedAt == null && (claimCooldownRemainingMs <= 0 || selfClaimTest) && (!isOwner || selfClaimTest),
     selfClaimTest,
     postId,
     inGame: data.inGame === true,
@@ -3919,11 +3921,12 @@ export async function claimOrbFrenzy(options: {
     subredditName: string;
     adminTest?: boolean;
     inGame?: boolean;
-    consumedAt?: number;
+    consumedAt?: number | null;
     createdAt?: number;
     expiresAt?: number;
   }>(raw);
   if (!data) throw new Error('Orb Frenzy data is corrupted.');
+  if (data.consumedAt != null) throw new Error('This Orb Frenzy has already been claimed.');
 
   const isOwner = data.ownerId === currentUserId();
 
@@ -4095,7 +4098,21 @@ export async function claimOrbFrenzy(options: {
     ownerRewardShards = grantFrenzyOwnerShards(s, FRENZY_OWNER_SHARD_REWARD);
   }
 
-  await save(s);
+  // Consume the post atomically with the claimant save. Different players
+  // have different player locks, so the watched post key prevents multiple
+  // claimants from winning the same Frenzy.
+  const consumedPostValue = JSON.stringify({ ...data, consumedAt: now });
+  await save(s, {
+    key: FRENZY_POST_PREFIX + postId,
+    expectedValue: raw,
+    nextValue: consumedPostValue,
+    conflictMessage: 'This Orb Frenzy has already been claimed.',
+  });
+  // save() intentionally discards pre-wipe mutations. Do not report a claim
+  // or award its owner if the claimant mutation was invalidated before commit.
+  if (await redis.get(FRENZY_POST_PREFIX + postId) !== consumedPostValue) {
+    throw new Error('FRENZY_CLAIM_SAVE_INVALIDATED');
+  }
   if (handoff && handoff.postId === postId) {
     await redis.del(frenzyHandoffKey(currentUserId()));
   }
