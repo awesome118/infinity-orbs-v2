@@ -800,14 +800,36 @@ export async function unbanGameUser(userId: string): Promise<boolean> {
 }
 const ONLINE_WINDOW_MS = 30_000;
 
+async function updateCcuPeak(keyName: string, ccu: number): Promise<void> {
+  const candidate = Math.max(0, Math.floor(Number(ccu) || 0));
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const txn = await redis.watch(keyName);
+    const current = Math.max(
+      0,
+      Number.parseInt(String(await redis.get(keyName) ?? '0'), 10) || 0,
+    );
+    if (candidate <= current) {
+      await txn.unwatch();
+      return;
+    }
+
+    await txn.multi();
+    await txn.set(keyName, String(candidate));
+    const committed = await txn.exec();
+    if (committed !== null) return;
+  }
+
+  throw new Error('CCU peak changed too frequently to update safely.');
+}
+
 async function recordCcuPeak(ccu: number, now: number): Promise<void> {
   const hour = Math.floor(now / 3_600_000);
   const hourKey = CCU_HOURLY_PREFIX + String(hour);
-  const allTime = Math.max(0, Number.parseInt(String(await redis.get(CCU_ALL_TIME_KEY) ?? '0'), 10) || 0);
-  const hourly = Math.max(0, Number.parseInt(String(await redis.get(hourKey) ?? '0'), 10) || 0);
 
-  if (ccu > hourly) await redis.set(hourKey, String(ccu));
-  if (ccu > allTime) await redis.set(CCU_ALL_TIME_KEY, String(ccu));
+  // WATCH keeps these values monotonic. Plain GET-then-SET let an older,
+  // lower concurrent sample overwrite a peak that had just been recorded.
+  await updateCcuPeak(hourKey, ccu);
+  await updateCcuPeak(CCU_ALL_TIME_KEY, ccu);
 }
 
 async function touchOnlinePresence(): Promise<number> {
