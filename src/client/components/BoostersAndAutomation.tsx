@@ -157,7 +157,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
               <Users className="w-4 h-4 text-fuchsia-300" />
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Each booster runs independently. Re-activating the same booster adds 30 minutes.
+              Each booster runs independently. Every activation adds 2 hours to its timer.
               Higher tiers also make its timer drain faster: every tier adds 10% to the timer drain rate.
               Tier 1 = ×1.10 drain, Tier 10 = ×2.00 drain.
             </p>
