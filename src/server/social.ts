@@ -967,6 +967,49 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
   }
 }
 // Community World Event System
+
+function assertSafeProgressionNumbers(label: string, goal: unknown, progress: unknown, tier: unknown): void {
+  // These fields feed a tier loop; Infinity, NaN, zero or negative goals can
+  // make that loop non-terminating. Keep progress below MAX_SAFE_INTEGER so
+  // the next goal always has room to grow and escape the loop.
+  const maxProgress = Number.MAX_SAFE_INTEGER - 1;
+  if (
+    !Number.isSafeInteger(goal) || Number(goal) < 1 ||
+    Number(goal) > Number.MAX_SAFE_INTEGER ||
+    !Number.isSafeInteger(progress) || Number(progress) < 0 ||
+    Number(progress) > maxProgress ||
+    !Number.isSafeInteger(tier) || Number(tier) < 1 ||
+    Number(tier) > maxProgress
+  ) {
+    throw new Error(`${label} progression data is invalid.`);
+  }
+}
+
+function validateCommunityEventConfig(config: {
+  goal?: number;
+  progress?: number;
+  addRolls?: number;
+  tier?: number;
+  buffMultiplier?: number;
+}): void {
+  const max = Number.MAX_SAFE_INTEGER - 1;
+  const integerOption = (name: string, value: number | undefined, min: number, cap = max) => {
+    if (value !== undefined && (!Number.isSafeInteger(value) || value < min || value > cap)) {
+      throw new Error(`Community event ${name} must be a finite safe integer in range.`);
+    }
+  };
+  integerOption('goal', config.goal, 1);
+  integerOption('progress', config.progress, 0);
+  integerOption('addRolls', config.addRolls, 0);
+  integerOption('tier', config.tier, 1);
+  if (
+    config.buffMultiplier !== undefined &&
+    (!Number.isFinite(config.buffMultiplier) || config.buffMultiplier < 1 || config.buffMultiplier > 1_000)
+  ) {
+    throw new Error('Community event multiplier must be finite and between 1 and 1000.');
+  }
+}
+
 export async function getCommunityEvent(): Promise<WorldEvent> {
   const eventKey = COMMUNITY_EVENT_KEY;
   const tickKey = key('community_event_tick');
@@ -975,9 +1018,10 @@ export async function getCommunityEvent(): Promise<WorldEvent> {
   await ensureRedisStringKey(tickKey, String(now));
   const raw = await redis.get(eventKey);
 
-  if (raw) {
+  if (raw != null) {
     const current = parseStoredJson<WorldEvent>(raw);
-    if (!current) return { ...COMMUNITY_WORLD_EVENT };
+    if (!current) throw new Error('Community event data is corrupted.');
+    assertSafeProgressionNumbers('Community event', current.goal, current.currentProgress, current.tier);
     const lastTickRaw = await redis.get(tickKey);
     const lastTick = lastTickRaw ? Number(lastTickRaw) : now;
     const currentWeekNumber = weekKey(now);
@@ -993,9 +1037,20 @@ export async function getCommunityEvent(): Promise<WorldEvent> {
     const latestTickRaw = await redis.get(tickKey);
     const latestNow = Date.now();
     const currentWeekNumber = weekKey(latestNow);
-    const ev: WorldEvent = latestRaw
-      ? parseStoredJson<WorldEvent>(latestRaw) ?? { ...COMMUNITY_WORLD_EVENT }
-      : { ...COMMUNITY_WORLD_EVENT };
+    const parsedLatest = latestRaw == null ? null : parseStoredJson<WorldEvent>(latestRaw);
+    if (latestRaw != null && !parsedLatest) {
+      await txn.unwatch();
+      throw new Error('Community event data is corrupted.');
+    }
+    const ev: WorldEvent = parsedLatest ?? { ...COMMUNITY_WORLD_EVENT };
+    if (parsedLatest) {
+      try {
+        assertSafeProgressionNumbers('Community event', ev.goal, ev.currentProgress, ev.tier);
+      } catch (error) {
+        await txn.unwatch();
+        throw error;
+      }
+    }
 
     if (ev.weekId !== currentWeekNumber || latestNow >= ev.endsAt) {
       ev.weekId = currentWeekNumber;
@@ -1025,7 +1080,10 @@ export async function getCommunityEvent(): Promise<WorldEvent> {
 }
 
 export async function addCommunityRolls(rolls: number): Promise<WorldEvent> {
-  const amount = Math.max(0, Math.floor(Number(rolls)));
+  const amount = Number(rolls);
+  if (!Number.isSafeInteger(amount) || amount < 0 || amount > Number.MAX_SAFE_INTEGER - 1) {
+    throw new Error('Community roll contribution must be a finite safe integer.');
+  }
   await ensureRedisStringKey(COMMUNITY_EVENT_KEY, JSON.stringify(COMMUNITY_WORLD_EVENT));
   if (amount <= 0) return getCommunityEvent();
 
@@ -1034,9 +1092,20 @@ export async function addCommunityRolls(rolls: number): Promise<WorldEvent> {
     const raw = await redis.get(COMMUNITY_EVENT_KEY);
     const now = Date.now();
     const currentWeekNumber = weekKey(now);
-    const ev: WorldEvent = raw
-      ? parseStoredJson<WorldEvent>(raw) ?? { ...COMMUNITY_WORLD_EVENT }
-      : { ...COMMUNITY_WORLD_EVENT };
+    const parsedEvent = raw == null ? null : parseStoredJson<WorldEvent>(raw);
+    if (raw != null && !parsedEvent) {
+      await txn.unwatch();
+      throw new Error('Community event data is corrupted.');
+    }
+    const ev: WorldEvent = parsedEvent ?? { ...COMMUNITY_WORLD_EVENT };
+    if (parsedEvent) {
+      try {
+        assertSafeProgressionNumbers('Community event', ev.goal, ev.currentProgress, ev.tier);
+      } catch (error) {
+        await txn.unwatch();
+        throw error;
+      }
+    }
     if (ev.weekId !== currentWeekNumber || now >= ev.endsAt) {
       ev.id = `world-event-w${currentWeekNumber}`;
       ev.title = 'Weekly Community Milestone';
@@ -1052,10 +1121,19 @@ export async function addCommunityRolls(rolls: number): Promise<WorldEvent> {
       ev.weekId = currentWeekNumber;
     }
     ev.currentProgress += amount;
+    try {
+      assertSafeProgressionNumbers('Community event', ev.goal, ev.currentProgress, ev.tier);
+    } catch (error) {
+      await txn.unwatch();
+      throw error;
+    }
     while (ev.currentProgress >= ev.goal) {
       ev.completedTier = Math.max(ev.completedTier ?? 0, ev.tier || 1);
       ev.tier = (ev.tier || 1) + 1;
-      ev.goal = Math.round(ev.goal * 2.2);
+      const nextGoal = Math.round(ev.goal * 2.2);
+      ev.goal = Number.isSafeInteger(nextGoal) && nextGoal > ev.goal
+        ? nextGoal
+        : Number.MAX_SAFE_INTEGER;
       ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
       ev.buffDescription = `+${Math.round((ev.buffMultiplier - 1) * 100)}% Global Luck Active`;
     }
@@ -1076,15 +1154,27 @@ export async function setCommunityEventConfig(config: {
   buffMultiplier?: number;
   reset?: boolean;
 }): Promise<WorldEvent> {
+  validateCommunityEventConfig(config);
   await ensureRedisStringKey(COMMUNITY_EVENT_KEY, JSON.stringify(COMMUNITY_WORLD_EVENT));
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(COMMUNITY_EVENT_KEY);
     const raw = await redis.get(COMMUNITY_EVENT_KEY);
     const now = Date.now();
     const currentWeekNumber = weekKey(now);
-    const ev: WorldEvent = raw
-      ? parseStoredJson<WorldEvent>(raw) ?? { ...COMMUNITY_WORLD_EVENT }
-      : { ...COMMUNITY_WORLD_EVENT };
+    const parsedEvent = raw == null ? null : parseStoredJson<WorldEvent>(raw);
+    if (raw != null && !parsedEvent) {
+      await txn.unwatch();
+      throw new Error('Community event data is corrupted.');
+    }
+    const ev: WorldEvent = parsedEvent ?? { ...COMMUNITY_WORLD_EVENT };
+    if (parsedEvent) {
+      try {
+        assertSafeProgressionNumbers('Community event', ev.goal, ev.currentProgress, ev.tier);
+      } catch (error) {
+        await txn.unwatch();
+        throw error;
+      }
+    }
 
     if (ev.weekId !== currentWeekNumber || now >= ev.endsAt) {
       ev.weekId = currentWeekNumber;
@@ -1125,10 +1215,19 @@ export async function setCommunityEventConfig(config: {
   if (typeof config.addRolls === 'number' && config.addRolls > 0) {
     ev.currentProgress += config.addRolls;
   }
+  try {
+    assertSafeProgressionNumbers('Community event', ev.goal, ev.currentProgress, ev.tier);
+  } catch (error) {
+    await txn.unwatch();
+    throw error;
+  }
   while (ev.currentProgress >= ev.goal) {
     ev.completedTier = Math.max(ev.completedTier ?? 0, ev.tier || 1);
     ev.tier = (ev.tier || 1) + 1;
-    ev.goal = Math.round(ev.goal * 2.2);
+    const nextGoal = Math.round(ev.goal * 2.2);
+    ev.goal = Number.isSafeInteger(nextGoal) && nextGoal > ev.goal
+      ? nextGoal
+      : Number.MAX_SAFE_INTEGER;
     ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
     ev.buffDescription = `+${Math.round((ev.buffMultiplier - 1) * 100)}% Global Luck Active`;
   }
