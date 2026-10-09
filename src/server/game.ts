@@ -2104,10 +2104,9 @@ export async function save(
         incomingState: compactSaveState(s),
         caller: saveCaller(),
       }, userId);
-      // This request started before an admin wipe. Discard its stale mutation
-      // and adopt the fresh state already written by the wipe. Never let an
-      // old request resurrect pre-wipe data, and never strand the player with
-      // an avoidable invalidation error.
+      // This request began before an admin wipe. Adopt the post-wipe state
+      // for any caller that catches the error, but do not report a successful
+      // mutation whose rewards/receipt/ticket were never committed.
       const currentRaw = await redis.get(playerKey);
       const current = parseStoredJson<PlayerState>(currentRaw);
       const currentGeneration = current
@@ -2120,7 +2119,7 @@ export async function save(
       fresh.saveGeneration = generation;
       Object.assign(s, fresh);
       await txn.unwatch();
-      return;
+      throw new Error('PLAYER_STATE_INVALIDATED_BY_WIPE');
     }
 
     const latest = latestRaw == null ? null : parsePlayerStateValue(latestRaw);
@@ -3151,14 +3150,22 @@ export async function claimOffline(): Promise<RollResponse> {
   if (s.offlineRolls <= 0) throw new Error('No offline rolls waiting.');
   const batches = s.offlineRolls;
   s.offlineRolls = 0;
-  await redis.del(OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId());
-  await redis.del(OFFLINE_FULL_JOB_PREFIX + currentUserId());
   const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } = await applyRolls(s, batches, undefined, 'offline');
   const now = Date.now();
   s.lastRollAt = now;
   s.lastSeenAt = now;
   await save(s);
-  await recordLeaderboard(s);
+  // Reminder/job state follows the durable claim. A roll or save failure above
+  // leaves both keys intact so the player can still receive the reminder.
+  await Promise.all([
+    redis.del(OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId()),
+    redis.del(OFFLINE_FULL_JOB_PREFIX + currentUserId()),
+  ]).catch(error => {
+    console.error('[Offline Claim] Reminder cleanup failed after save:', error);
+  });
+  await recordLeaderboard(s).catch(error => {
+    console.error('[Leaderboard] Offline-claim projection failed after save:', error);
+  });
 
   return {
     orb: bestOrb,
