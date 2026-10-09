@@ -3480,8 +3480,13 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
 export async function upgradeMasterySkill(skillId: MasterySkillId): Promise<PlayerState> {
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
+  if (
+    typeof skillId !== 'string' ||
+    !Object.prototype.hasOwnProperty.call(MASTERY_SKILLS, skillId)
+  ) {
+    throw new Error('Unknown mastery skill.');
+  }
   const skill = MASTERY_SKILLS[skillId];
-  if (!skill) throw new Error('Unknown mastery skill.');
 
   if (!s.masterySkills) {
     s.masterySkills = {
