@@ -1535,7 +1535,7 @@ export function App() {
         masteryPoints: (current.masteryPoints ?? 0) + 3,
         collectionValue: 0,
         coins: keptCoins,
-        shards: keptShards,
+        shards: current.shards ?? 0,
         upgrades: createInitialState().upgrades,
         offlineRolls: 0,
         rollsSinceBest: 0,
