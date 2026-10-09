@@ -252,7 +252,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                     disabled={activatingGlobalBooster !== null || !canAffordGlobal}
                     className="flex-1 px-2.5 py-2 rounded-xl text-[10px] font-black bg-slate-800 hover:bg-slate-700 text-white disabled:text-slate-500 disabled:cursor-not-allowed"
                   >
-                    {`+30m • ${formatNumber(globalCost)} 💎`}
+                    {`+2h • ${formatNumber(globalCost)} 💎`}
                   </button>
                   <button
                     onClick={() => void handleGlobalActivation(id, true)}
