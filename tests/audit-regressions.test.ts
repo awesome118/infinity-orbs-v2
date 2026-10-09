@@ -186,3 +186,18 @@ test('Prestige optimistic state preserves Shards just like the server', () => {
   assert.match(prestige, /shards:\\s*current\\.shards \\?\\? 0/);
   assert.doesNotMatch(prestige, /shards:\\s*keptShards/);
 });
+
+ 
+test('community event rejects infinite and non-terminating progression values', () => {
+  const social = source('src/server/social.ts');
+  assert.match(social, /function validateCommunityEventConfig/);
+  assert.match(social, /Number\\.isFinite\\(config\\.buffMultiplier\\)/);
+  assert.match(social, /Number\\.isSafeInteger\\(amount\\)/);
+  assert.match(social, /assertSafeProgressionNumbers\\('Community event'/);
+  const addStart = social.indexOf('export async function addCommunityRolls');
+  const addEnd = social.indexOf('export async function setCommunityEventConfig', addStart);
+  assert.ok(addStart >= 0 && addEnd > addStart);
+  const add = social.slice(addStart, addEnd);
+  assert.match(add, /await txn\\.unwatch\\(\\)/);
+  assert.match(add, /Number\\.MAX_SAFE_INTEGER/);
+});
