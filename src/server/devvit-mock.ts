@@ -118,8 +118,14 @@ const localRedis = {
           if ((readStore(key) ?? null) !== (snapshot.get(key) ?? null)) return null;
         }
         for (const [key, value] of staged) {
-          if (value === '' && key !== undefined) store.delete(key);
-          else store.set(key, value);
+          if (value === '' && key !== undefined) {
+            store.delete(key);
+            expirations.delete(key);
+          } else {
+            store.set(key, value);
+            // Redis SET clears an existing TTL unless one is provided.
+            expirations.delete(key);
+          }
         }
         return [];
       },
