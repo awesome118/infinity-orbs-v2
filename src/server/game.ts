@@ -1221,9 +1221,9 @@ interface PlayerRegistryEntry {
   playtimeMs?: number;
 }
 
-async function touchPlayerActivity(userId: string, username: string, activityNow = Date.activityNow()): Promise<number> {
+async function touchPlayerActivity(userId: string, username: string, now = Date.now()): Promise<number> {
   return withPlayerMutationLockFor(`activity:${userId}`, async () => {
-  const activityNow = Math.max(activityNow, Date.activityNow());
+  const activityNow = Math.max(now, Date.now());
   let firstSeenAt = activityNow;
   let lastLoginAt = activityNow;
   let playtimeMs = 0;
