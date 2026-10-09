@@ -1502,7 +1502,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         'Prepare Prestige',
         () => request('/api/dev/state', {
           coins: 10_000,
-          shards: 0,
+          shards: 123,
           collectionValue: 100_000_000,
           lifetimeCollectionValue: 100_000_000,
           xp: 100_000,
@@ -1516,7 +1516,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       const prestigeResult = await step(
         'Prestige',
         () => request<{ state: any; dustGained: number }>('/api/prestige', {}),
-        result => `dust +${shortNumber(result.dustGained, 0)} · prestigeCount=${shortNumber(recordValue(result.state).prestigeCount, 0)}`,
+        result => {
+          const state = recordValue(result.state);
+          if (Number(state.shards) !== 123) {
+            throw new Error('Prestige should preserve all 123 Shards, got ' + state.shards + '.');
+          }
+          return `dust +${shortNumber(result.dustGained, 0)} · shards preserved=${shortNumber(state.shards, 0)} · prestigeCount=${shortNumber(state.prestigeCount, 0)}`;
+        },
       );
 
 
@@ -1880,8 +1886,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               { coins: 1_000, shards: 100, xp: 32_000, collectionValue: 1_000_000, lifetimeCollectionValue: 1_000_000 },
             );
             const result = await request<any>('/api/prestige', {});
-            if (Number(result.state?.coins) !== 100 || Number(result.state?.shards) !== 10) {
-              throw new Error('Inheritance expected 10% retention: Coins=' + result.state?.coins + ', Shards=' + result.state?.shards + '.');
+            if (Number(result.state?.coins) !== 100 || Number(result.state?.shards) !== 100) {
+              throw new Error('Inheritance expected 10% Coin retention and full Shard preservation: Coins=' + result.state?.coins + ', Shards=' + result.state?.shards + '.');
             }
             return result;
           },

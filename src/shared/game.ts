@@ -1304,7 +1304,7 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
   cosmicInheritance: {
     name: 'Cosmic Inheritance',
-    desc: 'Keep 10% of Coins and Shards through prestige per level.',
+    desc: 'Keep 10% more Coins through prestige per level. Shards are always preserved.',
     category: 'alchemy',
     maxLevel: 5,
     costPerLevel: 3,

@@ -3237,13 +3237,13 @@ export async function prestige(): Promise<{ state: PlayerState; cosmicDustEarned
   s.prestigeCount = (s.prestigeCount ?? 0) + 1;
   s.masteryPoints = (s.masteryPoints ?? 0) + 3;
 
-  // Cosmic Inheritance Prestige Upgrade: retain 10% of coins and shards per level!
+  // Cosmic Inheritance only controls coin retention. Shards always survive prestige.
   const inheritanceLevel = s.prestigeUpgrades?.cosmicInheritance ?? 0;
   const keepPct = Math.min(0.50, inheritanceLevel * 0.10);
   const keptCoins = Math.max(50, Math.floor(s.coins * keepPct));
-  const keptShards = Math.floor((s.shards ?? 0) * keepPct);
+  const keptShards = Math.max(0, Math.floor(Number(s.shards ?? 0) || 0));
 
-  // Strict reset of current run collection value, coins, and base upgrades
+  // Reset current-run collection value, coins, and base upgrades while preserving Shards.
   s.collectionValue = 0;
   s.coins = keptCoins;
   s.shards = keptShards;
