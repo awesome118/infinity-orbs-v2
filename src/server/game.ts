@@ -1221,15 +1221,17 @@ interface PlayerRegistryEntry {
   playtimeMs?: number;
 }
 
-async function touchPlayerActivity(userId: string, username: string, now = Date.now()): Promise<number> {
-  let firstSeenAt = now;
-  let lastLoginAt = now;
+async function touchPlayerActivity(userId: string, username: string, activityNow = Date.activityNow()): Promise<number> {
+  return withPlayerMutationLockFor(`activity:${userId}`, async () => {
+  const activityNow = Math.max(activityNow, Date.activityNow());
+  let firstSeenAt = activityNow;
+  let lastLoginAt = activityNow;
   let playtimeMs = 0;
 
   const existingRaw = await redis.hGet(PLAYER_REGISTRY_KEY, userId);
   if (existingRaw) {
     const existing = parseStoredJson<Partial<PlayerRegistryEntry>>(existingRaw);
-    firstSeenAt = Math.max(0, Number(existing?.firstSeenAt ?? now) || now);
+    firstSeenAt = Math.max(0, Number(existing?.firstSeenAt ?? activityNow) || activityNow);
 
     const previousActivityAt = Math.max(
       0,
@@ -1237,11 +1239,11 @@ async function touchPlayerActivity(userId: string, username: string, now = Date.
     );
     const previousPlaytimeMs = Math.max(0, Number(existing?.playtimeMs ?? 0) || 0);
     const activityDelta = previousActivityAt > 0
-      ? Math.min(PLAYTIME_ACTIVE_GAP_MS, Math.max(0, now - previousActivityAt))
+      ? Math.min(PLAYTIME_ACTIVE_GAP_MS, Math.max(0, activityNow - previousActivityAt))
       : 0;
 
     playtimeMs = previousPlaytimeMs + activityDelta;
-    if (now - previousActivityAt <= PLAYTIME_ACTIVE_GAP_MS && Number(existing?.lastLoginAt ?? 0) > 0) {
+    if (activityNow - previousActivityAt <= PLAYTIME_ACTIVE_GAP_MS && Number(existing?.lastLoginAt ?? 0) > 0) {
       lastLoginAt = Number(existing?.lastLoginAt);
     }
   }
@@ -1250,14 +1252,15 @@ async function touchPlayerActivity(userId: string, username: string, now = Date.
     [userId]: JSON.stringify({
       username: String(username).trim().slice(0, 100),
       firstSeenAt,
-      lastSeenAt: now,
+      lastSeenAt: activityNow,
       lastLoginAt,
-      lastActivityAt: now,
+      lastActivityAt: activityNow,
       playtimeMs,
     } satisfies PlayerRegistryEntry),
   });
 
   return playtimeMs;
+  });
 }
 
 async function registerPlayer(userId: string, username: string): Promise<void> {
