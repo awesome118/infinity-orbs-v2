@@ -3842,6 +3842,7 @@ export async function getOrbFrenzyInfo(): Promise<{
   createdAt: number;
   expiresAt: number;
   expired: boolean;
+  consumed: boolean;
   claimedToday: boolean;
   claimCooldownRemainingMs: number;
   claimCooldownEndsAt: number;
