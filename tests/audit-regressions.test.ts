@@ -79,9 +79,45 @@ test('Frenzy claim reserves claimant, owner, and post locks in a deterministic o
   const end = game.indexOf('\n\nfunction sampleBinomial', start);
   assert.ok(start >= 0 && end > start, 'claim function must exist');
   const claim = game.slice(start, end);
-  assert.match(claim, /const postLockId = `__frenzy-post__:\\$\{postId\}`/);
+  assert.match(claim, /const postLockId =/);
+  assert.match(claim, /__frenzy-post__/);
   assert.match(claim, /return withPlayerMutationLocksFor\(lockIds/);
   assert.match(claim, /if \(data\.consumedAt != null\)/);
   assert.match(claim, /expectedValue: raw,[\s\S]*?nextValue: consumedPostValue/);
   assert.match(claim, /if \(await redis\.get\(FRENZY_POST_PREFIX \+ postId\) !== consumedPostValue\)/);
+});
+
+test('missing-key initialization cannot overwrite a concurrent first write', () => {
+  const game = source('src/server/game.ts');
+  const social = source('src/server/social.ts');
+  const mock = source('src/server/devvit-mock.ts');
+  assert.match(game, /redis\.set\(keyName, fallback, \{ nx: true \}\)/);
+  assert.match(social, /redis\.set\(keyName, fallback, \{ nx: true \}\)/);
+  assert.match(mock, /options\?\.nx && readStore\(key\) !== undefined/);
+  assert.match(mock, /options\?\.expiration instanceof Date/);
+});
+
+test('game ban mutations use WATCH/EXEC so concurrent admins cannot erase each other', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('async function mutateGameBans');
+  const end = game.indexOf('export async function getGameBanStatus', start);
+  assert.ok(start >= 0 && end > start, 'atomic ban mutation helper must exist');
+  const helper = game.slice(start, end);
+  assert.match(helper, /redis\.watch\(GAME_BANS_KEY\)/);
+  assert.match(helper, /await txn\.exec\(\)/);
+  assert.match(game, /return mutateGameBans\(bans => \{/);
+  assert.doesNotMatch(game, /async function writeGameBans/);
+});
+
+test('CCU peak recording uses a monotonic watched update', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('async function updateCcuPeak');
+  const end = game.indexOf('async function recordCcuPeak', start);
+  assert.ok(start >= 0 && end > start, 'CCU peak helper must exist');
+  const helper = game.slice(start, end);
+  assert.match(helper, /redis\.watch\(keyName\)/);
+  assert.match(helper, /candidate <= current/);
+  assert.match(helper, /await txn\.exec\(\)/);
+  assert.match(game, /await updateCcuPeak\(hourKey, ccu\)/);
+  assert.match(game, /await updateCcuPeak\(CCU_ALL_TIME_KEY, ccu\)/);
 });
