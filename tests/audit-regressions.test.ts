@@ -226,3 +226,24 @@ test('Global Booster debug updates validate and CAS the full snapshot', () => {
   assert.doesNotMatch(setter, /await redis\.set\(GLOBAL_BOOSTERS_KEY/);
   assert.match(setter, /refusing to overwrite it/);
 });
+
+
+test('wiped saves cannot return mutation success and offline reminder keys survive failed claims', () => {
+  const game = source('src/server/game.ts');
+  const saveStart = game.indexOf('export async function save(');
+  const saveEnd = game.indexOf('export async function loadRaw', saveStart);
+  assert.ok(saveStart >= 0 && saveEnd > saveStart);
+  const save = game.slice(saveStart, saveEnd);
+  const mismatch = save.indexOf('if (stateGeneration !== generation)');
+  const mismatchEnd = save.indexOf('const latest =', mismatch);
+  assert.ok(mismatch >= 0 && mismatchEnd > mismatch);
+  assert.match(save.slice(mismatch, mismatchEnd), /PLAYER_STATE_INVALIDATED_BY_WIPE/);
+  assert.doesNotMatch(save.slice(mismatch, mismatchEnd), /Object\.assign\(s, fresh\);\s*await txn\.unwatch\(\);\s*return;/);
+
+  const claimStart = game.indexOf('export async function claimOffline');
+  const claimEnd = game.indexOf('export async function buyUpgrade', claimStart);
+  assert.ok(claimStart >= 0 && claimEnd > claimStart);
+  const claim = game.slice(claimStart, claimEnd);
+  assert.ok(claim.indexOf('await save(s)') < claim.indexOf('OFFLINE_FULL_NOTIFICATION_PREFIX'));
+  assert.ok(claim.indexOf('await save(s)') < claim.indexOf('OFFLINE_FULL_JOB_PREFIX'));
+});
