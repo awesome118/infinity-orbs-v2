@@ -417,3 +417,68 @@ test('automatic offline claims only clear reminder keys after the player save co
   assert.ok(committedIndex >= 0 && playerStateIndex > committedIndex);
   assert.ok(actionsIndex > playerStateIndex, 'reminder cleanup must run only after the saved state is durable');
 });
+
+
+test('game ban registry fails closed on malformed stored rows and unrepresentable duration inputs', () => {
+  const game = source('src/server/game.ts');
+  const parserStart = game.indexOf('function parseGameBanRegistry');
+  const parserEnd = game.indexOf('async function readGameBans', parserStart);
+  assert.ok(parserStart >= 0 && parserEnd > parserStart);
+  const parser = game.slice(parserStart, parserEnd);
+  assert.match(parser, /if \(raw == null\) return Object\.create\(null\)/);
+  assert.match(parser, /bannedUntil.*=== null/);
+  assert.match(parser, /Number\.isSafeInteger/);
+  assert.match(parser, /malformed record/);
+
+  const mutatorStart = game.indexOf('async function mutateGameBans');
+  const mutatorEnd = game.indexOf('export async function getGameBanStatus', mutatorStart);
+  const mutator = game.slice(mutatorStart, mutatorEnd);
+  assert.match(mutator, /bans = parseGameBanRegistry\(raw\)/);
+  assert.doesNotMatch(mutator, /raw !== ''/);
+
+  const banStart = game.indexOf('export async function banGameUser');
+  const banEnd = game.indexOf('export async function unbanGameUser', banStart);
+  assert.ok(banStart >= 0 && banEnd > banStart);
+  const ban = game.slice(banStart, banEnd);
+  assert.match(ban, /Number\.isSafeInteger\(requestedDays\)/);
+  assert.match(ban, /maximumDays/);
+  assert.match(ban, /Number\.isSafeInteger\(bannedUntil\)/);
+});
+
+test('targeted wipes and Reset All write generation plus fresh save atomically', () => {
+  const debug = source('src/server/debug.ts');
+  const helperStart = debug.indexOf('async function resetPlayerGenerationAndSave');
+  const helperEnd = debug.indexOf('async function wipeUser', helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart);
+  const helper = debug.slice(helperStart, helperEnd);
+  assert.match(helper, /redis\.watch\(generationKey, playerKey\)/);
+  assert.match(helper, /await txn\.multi\(\)/);
+  assert.match(helper, /txn\.set\(generationKey/);
+  assert.match(helper, /txn\.set\(playerKey/);
+  assert.match(helper, /await txn\.exec\(\)/);
+  assert.doesNotMatch(helper, /await redis\.set\(generationKey/);
+  assert.doesNotMatch(helper, /await redis\.set\(playerKey/);
+
+  const wipeStart = debug.indexOf('async function wipeUser');
+  const wipeEnd = debug.indexOf('function setMaxProgression', wipeStart);
+  assert.ok(wipeStart >= 0 && wipeEnd > wipeStart);
+  assert.match(debug.slice(wipeStart, wipeEnd), /resetPlayerGenerationAndSave\(userId, name\)/);
+
+  const resetStart = debug.indexOf("debugRouter.post('/reset-all'");
+  assert.ok(resetStart >= 0);
+  assert.match(debug.slice(resetStart, resetStart + 2200), /resetPlayerGenerationAndSave\(/);
+  assert.doesNotMatch(debug.slice(resetStart, resetStart + 2200), /await redis\.set\(generationKey/);
+});
+
+test('account cleanup never overwrites a concurrent leaderboard update or replaces corrupt data with an empty board', () => {
+  const debug = source('src/server/debug.ts');
+  const start = debug.indexOf('async function removeLeaderboardEntry');
+  const end = debug.indexOf('async function resolveUserId', start);
+  assert.ok(start >= 0 && end > start);
+  const cleanup = debug.slice(start, end);
+  assert.match(cleanup, /redis\.watch\(leaderboardKey\)/);
+  assert.match(cleanup, /await txn\.exec\(\)/);
+  assert.match(cleanup, /Leaderboard data is corrupted/);
+  assert.match(cleanup, /Leaderboard data is malformed/);
+  assert.doesNotMatch(cleanup, /catch \{\s*parsed = \[\]/);
+});
