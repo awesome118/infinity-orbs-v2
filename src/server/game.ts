@@ -3002,6 +3002,7 @@ export async function processOfflineFullNotification(
   subredditName: string,
   jobToken?: string,
 ): Promise<void> {
+  return withPlayerMutationLockFor(`offline-notification:${userId}`, async () => {
   const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
   const jobRaw = await redis.get(jobKey);
   const marker = parseOfflineFullJobMarker(jobRaw);
@@ -3056,6 +3057,7 @@ export async function processOfflineFullNotification(
     const cleared = await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
     if (cleared) await scheduleOfflineFullNotification(userId, subredditName, now + OFFLINE_FULL_RETRY_MS);
   }
+  });
 }
 
 export async function settleOffline(s: PlayerState): Promise<PlayerState> {
@@ -3095,8 +3097,12 @@ export async function settleOffline(s: PlayerState): Promise<PlayerState> {
   const subredditName = String(context.subredditName ?? '').trim();
   if (userId && subredditName && s.offlineRolls >= cap) {
     try {
-      await sendOfflineFullNotification(userId, subredditName);
-      await redis.del(OFFLINE_FULL_JOB_PREFIX + userId);
+      await withPlayerMutationLockFor(`offline-notification:${userId}`, async () => {
+        await sendOfflineFullNotification(userId, subredditName);
+        const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
+        const currentJob = await redis.get(jobKey);
+        if (currentJob != null) await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+      });
     } catch (error) {
       console.error('Failed to send offline-orbs-full notification:', error);
     }

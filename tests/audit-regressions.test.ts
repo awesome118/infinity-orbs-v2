@@ -649,3 +649,18 @@ test('live presence survives optimistic and authoritative state replacement, and
   assert.match(auth, /appliedServerRevisionRef\.current = -1/);
   assert.match(auth, /rollTicketRef\.current = null/);
 });
+
+
+test('scheduled and request-triggered offline notifications share one per-player worker lock', () => {
+  const game = source('src/server/game.ts');
+  const processorStart = game.indexOf('export async function processOfflineFullNotification');
+  const processorEnd = game.indexOf('export async function settleOffline', processorStart);
+  assert.ok(processorStart >= 0 && processorEnd > processorStart);
+  const processor = game.slice(processorStart, processorEnd);
+  assert.match(processor, /withPlayerMutationLockFor/);
+  assert.match(processor, /offline-notification:/);
+  const settle = game.slice(processorEnd, game.indexOf('export interface CollectionPageItem', processorEnd));
+  assert.match(settle, /withPlayerMutationLockFor/);
+  assert.match(settle, /offline-notification:/);
+  assert.doesNotMatch(settle, /await redis\.del\(OFFLINE_FULL_JOB_PREFIX \+ userId\)/);
+});
