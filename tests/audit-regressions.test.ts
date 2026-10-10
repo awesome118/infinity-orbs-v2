@@ -385,7 +385,7 @@ test('Daily Streak reward and community tier commit atomically with player state
     'shared event must prepare before local streak or rewards mutate',
   );
   const automationStart = game.indexOf('async function processAutomation');
-  const automationEnd = game.indexOf('function offlineClaimCooldown', automationStart);
+  const automationEnd = game.indexOf('function flairTextColorForBackground', automationStart);
   assert.ok(automationStart >= 0 && automationEnd > automationStart);
   const automation = game.slice(automationStart, automationEnd);
   assert.match(automation, /await claimDailyStreakFromState\(s\)[\s\S]*?catch \(error\)/);
