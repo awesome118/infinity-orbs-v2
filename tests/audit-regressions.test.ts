@@ -374,3 +374,23 @@ test('Daily Streak reward and community tier commit atomically with player state
   assert.doesNotMatch(claim, /await addDailyStreakCommunityProgress/);
   assert.match(social, /export async function prepareDailyStreakCommunityProgress/);
 });
+
+
+test('roll rewards commit atomically with Guild and community progress', () => {
+  const game = source('src/server/game.ts');
+  const social = source('src/server/social.ts');
+  const rollStart = game.indexOf('export async function applyRolls');
+  const rollEnd = game.indexOf('async function sendOfflineFullNotification', rollStart);
+  assert.ok(rollStart >= 0 && rollEnd > rollStart);
+  const roll = game.slice(rollStart, rollEnd);
+  assert.match(roll, /prepareGuildRollEffects\(/);
+  assert.match(roll, /stageSaveExtraWrite\(s, guildEffects\.extraWrite\)/);
+  assert.match(roll, /prepareCommunityRolls\(rollCount, pendingCommunityWrite\)/);
+  assert.match(roll, /stageSaveExtraWrite\(s, \{/);
+  assert.doesNotMatch(roll, /await applyGuildTax\(/);
+  assert.doesNotMatch(roll, /await contribute\(/);
+  assert.doesNotMatch(roll, /await addCommunityRolls\(/);
+  assert.match(social, /export async function prepareGuildRollEffects/);
+  assert.match(social, /export async function prepareCommunityRolls/);
+  assert.match(game, /function getPendingSaveExtraWrite/);
+});
