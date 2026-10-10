@@ -458,6 +458,20 @@ test('Daily Streak reward and community tier commit atomically with player state
 });
 
 
+test('rolling Shard grants fail closed on malformed daily counters and requests', () => {
+  const shared = source('src/shared/game.ts');
+  const start = shared.indexOf('export function grantRollShards');
+  const end = shared.indexOf('export function spendShards', start);
+  assert.ok(start >= 0 && end > start);
+  const grant = shared.slice(start, end);
+  assert.match(grant, /Number\.isFinite\(requested\)/);
+  assert.match(grant, /Number\.isSafeInteger\(rawEarnedToday\)/);
+  assert.match(grant, /: FREE_SHARD_DAILY_CAP/);
+  assert.match(grant, /Math\.max\(0, FREE_SHARD_DAILY_CAP - earnedToday\)/);
+  assert.match(grant, /s\.freeShardsEarnedToday = earnedToday \+ granted/);
+  assert.match(grant, /Number\.isSafeInteger\(lifetimeShards\)/);
+});
+
 test('roll rewards commit atomically with Guild and community progress', () => {
   const game = source('src/server/game.ts');
   const social = source('src/server/social.ts');

@@ -213,13 +213,29 @@ export function grantFreeShards(s: PlayerState, requested: number, _now = Date.n
 
 export function grantRollShards(s: PlayerState, requested: number, now = Date.now()): number {
   resetFreeShardBudgetIfNeeded(s, now);
-  const amount = Math.max(0, Math.floor(requested));
-  const available = Math.max(0, FREE_SHARD_DAILY_CAP - (s.freeShardsEarnedToday ?? 0));
+  const amount = Number.isFinite(requested)
+    ? Math.max(0, Math.floor(requested))
+    : 0;
+
+  // Treat a genuinely missing legacy counter as a fresh day's zero, but never
+  // let a malformed counter (e.g. a persisted string/NaN) bypass the daily cap.
+  const rawEarnedToday = s.freeShardsEarnedToday;
+  const earnedToday = rawEarnedToday == null
+    ? 0
+    : Number.isSafeInteger(rawEarnedToday) && rawEarnedToday >= 0
+      ? Math.min(FREE_SHARD_DAILY_CAP, rawEarnedToday)
+      : FREE_SHARD_DAILY_CAP;
+  s.freeShardsEarnedToday = earnedToday;
+  const available = Math.max(0, FREE_SHARD_DAILY_CAP - earnedToday);
   const granted = Math.min(amount, available);
   if (granted > 0) {
     s.shards = (s.shards ?? 0) + granted;
-    s.lifetimeShards = (s.lifetimeShards ?? 0) + granted;
-    s.freeShardsEarnedToday = (s.freeShardsEarnedToday ?? 0) + granted;
+    const lifetimeShards = s.lifetimeShards;
+    s.lifetimeShards =
+      (Number.isSafeInteger(lifetimeShards) && (lifetimeShards ?? 0) >= 0
+        ? Number(lifetimeShards)
+        : 0) + granted;
+    s.freeShardsEarnedToday = earnedToday + granted;
   }
   return granted;
 }
