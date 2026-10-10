@@ -1131,13 +1131,13 @@ test('client ignores a conflicting Shards balance at an unchanged server revisio
 test('share route treats leaderboard projection as best-effort after the durable share action', () => {
   const app = source('src/server/app.ts');
   const start = app.indexOf("app.post('/api/share'");
-  const end = app.indexOf('\\n  return app;', start);
+  const end = app.indexOf('\n  return app;', start);
   assert.ok(start >= 0 && end > start, 'share route must exist');
   const route = app.slice(start, end);
-  assert.match(route, /await recordShareAction\\(s\\)/);
+  assert.match(route, /await recordShareAction\(s\)/);
   assert.doesNotMatch(
     route,
-    /await recordLeaderboard\\(s\\)/,
+    /await recordLeaderboard\(s\)/,
     'the route must not turn a successful post/state save into an apparent failure if a leaderboard projection fails',
   );
 });
