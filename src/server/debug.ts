@@ -202,19 +202,26 @@ debugRouter.post('/global-booster', async (req, res) => {
 });
 
 debugRouter.post('/global-booster-credits/grant', async (req, res) => {
+  const operationId = String(req.body?.operationId ?? '').trim();
   try {
+    if (!/^[a-zA-Z0-9_-]{8,128}$/.test(operationId)) {
+      return res.status(400).json({ error: 'A valid grant operation ID is required.' });
+    }
     const scope = String(req.body?.scope ?? 'user');
     const amount = Math.max(1, Math.min(1_000_000, Math.floor(Number(req.body?.amount) || 1)));
 
     if (scope === 'user') {
       const username = targetUsername(req.body?.username);
       const userId = await resolveUserId(username);
-      const result = await grantGlobalBoosterCreditsToUser(userId, username, amount);
-      await appendGlobalBoosterCreditGrantLog(scope, amount, [result]);
+      const result = await grantGlobalBoosterCreditsToUser(userId, username, amount, operationId);
+      await appendGlobalBoosterCreditGrantLog(scope, amount, operationId, [result]).catch(error => {
+        console.error('[Admin Global Boosters] Grant succeeded but audit logging failed:', error);
+      });
       return res.json({
         ok: true,
         scope,
         amount,
+        operationId,
         affectedUsers: 1,
         results: [result],
       });
@@ -222,26 +229,43 @@ debugRouter.post('/global-booster-credits/grant', async (req, res) => {
 
     if (scope === 'online' || scope === 'all') {
       const players = await listRegisteredPlayerIds();
-      const targets = scope === 'online' ? players.filter(player => player.active) : players;
-      const results: Array<{ userId: string; username: string; before: number; after: number }> = [];
+      const targetPlayers = scope === 'online' ? players.filter(player => player.active) : players;
+      const results: Array<{ userId: string; username: string; before: number; after: number; alreadyApplied?: boolean }> = [];
+      const failures: Array<{ userId: string; username: string; error: string }> = [];
 
-      for (const player of targets) {
-        results.push(await grantGlobalBoosterCreditsToUser(player.userId, player.username, amount));
+      for (const player of targetPlayers) {
+        try {
+          results.push(await grantGlobalBoosterCreditsToUser(player.userId, player.username, amount, operationId));
+        } catch (error) {
+          failures.push({
+            userId: player.userId,
+            username: player.username,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
 
-      await appendGlobalBoosterCreditGrantLog(scope, amount, results);
-      return res.json({
-        ok: true,
+      await appendGlobalBoosterCreditGrantLog(scope, amount, operationId, results, failures).catch(error => {
+        console.error('[Admin Global Boosters] Batch completed but audit logging failed:', error);
+      });
+      const response = {
+        ok: failures.length === 0,
+        partial: failures.length > 0,
         scope,
         amount,
+        operationId,
         affectedUsers: results.length,
+        attemptedUsers: targetPlayers.length,
         results,
-      });
+        failures,
+      };
+      if (failures.length > 0) return res.status(207).json(response);
+      return res.json(response);
     }
 
     return res.status(400).json({ error: 'Invalid Global Booster grant scope.' });
   } catch (e: any) {
-    res.status(400).json({ error: e?.message || 'Failed to grant free Global Booster credits.' });
+    res.status(400).json({ error: e?.message || 'Failed to grant free Global Booster credits.', operationId: operationId || null });
   }
 });
 
@@ -334,45 +358,115 @@ async function grantGlobalBoosterCreditsToUser(
   userId: string,
   username: string,
   amount: number,
-): Promise<{ userId: string; username: string; before: number; after: number }> {
+  operationId: string,
+): Promise<{ userId: string; username: string; before: number; after: number; alreadyApplied?: boolean }> {
   const id = String(userId ?? '').trim();
   if (!id) throw new Error('The target player ID is missing.');
   const safeUsername = targetUsername(username);
   const safeAmount = Math.max(1, Math.min(GLOBAL_BOOSTER_CREDIT_MAX, Math.floor(Number(amount) || 1)));
+  const receiptField = 'adminGlobalBoosterGrantReceiptsV1';
+  const playerKey = 'player:' + id;
+  const generationKey = 'player-generation:' + id;
 
   return withPlayerMutationLockFor(id, async () => {
-    const playerKey = 'player:' + id;
-    const generationKey = 'player-generation:' + id;
-    const generation = Math.max(0, Number.parseInt(String(await redis.get(generationKey) ?? '0'), 10) || 0);
-    const state = parseAdminPlayerSave(await redis.get(playerKey));
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const txn = await redis.watch(playerKey, generationKey);
+      const generationRaw = await redis.get(generationKey);
+      const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
+      const raw = await redis.get(playerKey);
+      let state: Record<string, any>;
+      try {
+        state = parseAdminPlayerSave(raw);
+      } catch (error) {
+        await txn.unwatch();
+        throw error;
+      }
 
-    const storedGeneration = Math.max(0, Number(state.saveGeneration ?? generation) || 0);
-    if (storedGeneration !== generation) {
-      throw new Error('The target player save changed generation. Refresh the admin console and try again.');
+      const storedGeneration = Math.max(0, Number(state.saveGeneration ?? generation) || 0);
+      if (storedGeneration !== generation) {
+        await txn.unwatch();
+        throw new Error('The target player save changed generation. Refresh the admin console and try again.');
+      }
+
+      const rawReceipts = state[receiptField];
+      if (rawReceipts != null && (typeof rawReceipts !== 'object' || Array.isArray(rawReceipts))) {
+        await txn.unwatch();
+        throw new Error('The target player grant receipts are corrupted; refusing a possibly duplicate grant.');
+      }
+      const receipts = (rawReceipts ?? {}) as Record<string, any>;
+      const previousReceipt = receipts[operationId];
+      if (previousReceipt != null) {
+        await txn.unwatch();
+        if (
+          typeof previousReceipt !== 'object' ||
+          previousReceipt.amount !== safeAmount ||
+          !Number.isSafeInteger(previousReceipt.before) ||
+          !Number.isSafeInteger(previousReceipt.after)
+        ) {
+          throw new Error('This grant operation ID was already used with different or invalid data.');
+        }
+        return {
+          userId: id,
+          username: safeUsername,
+          before: previousReceipt.before,
+          after: previousReceipt.after,
+          alreadyApplied: true,
+        };
+      }
+
+      const rawCredits = state.globalBoosterCredits ?? 0;
+      if (!Number.isSafeInteger(rawCredits) || Number(rawCredits) < 0 || Number(rawCredits) > GLOBAL_BOOSTER_CREDIT_MAX) {
+        await txn.unwatch();
+        throw new Error('The target player Global Booster credit balance is invalid; no grant was applied.');
+      }
+      const before = Number(rawCredits);
+      const after = Math.min(GLOBAL_BOOSTER_CREDIT_MAX, before + safeAmount);
+      state.globalBoosterCredits = after;
+      state.username = safeUsername;
+      state.saveGeneration = generation;
+      const currentRevision = Number(state.stateRevision ?? 0);
+      if (!Number.isSafeInteger(currentRevision) || currentRevision < 0 || currentRevision >= Number.MAX_SAFE_INTEGER) {
+        await txn.unwatch();
+        throw new Error('The target player save revision is invalid; no grant was applied.');
+      }
+      state.stateRevision = currentRevision + 1;
+
+      const nextReceipts: Record<string, any> = { ...receipts };
+      nextReceipts[operationId] = { amount: safeAmount, before, after, createdAt: Date.now() };
+      const receiptKeys = Object.keys(nextReceipts);
+      // Bound state growth but retain enough recent request IDs for safe retries.
+      for (const oldId of receiptKeys.slice(0, Math.max(0, receiptKeys.length - 64))) {
+        delete nextReceipts[oldId];
+      }
+      state[receiptField] = nextReceipts;
+
+      await txn.multi();
+      await txn.set(playerKey, JSON.stringify(state));
+      if (await txn.exec() !== null) {
+        return { userId: id, username: safeUsername, before, after };
+      }
     }
 
-    const before = Math.max(0, Number(state.globalBoosterCredits ?? 0) || 0);
-    const after = Math.min(GLOBAL_BOOSTER_CREDIT_MAX, before + safeAmount);
-    state.globalBoosterCredits = after;
-    state.username = safeUsername;
-    state.saveGeneration = generation;
-    state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0) || 0)) + 1;
-
-    await redis.set(playerKey, JSON.stringify(state));
-    return { userId: id, username: safeUsername, before, after };
+    throw new Error('The target player save changed too frequently. Retry the same grant operation.');
   });
 }
 
 async function appendGlobalBoosterCreditGrantLog(
   scope: string,
   amount: number,
-  results: Array<{ userId: string; username: string; before: number; after: number }>,
+  operationId: string,
+  results: Array<{ userId: string; username: string; before: number; after: number; alreadyApplied?: boolean }>,
+  failures: Array<{ userId: string; username: string; error: string }> = [],
 ): Promise<void> {
   await appendGlobalBoosterDebugLog('admin:grant-credits', {
     scope,
     amount,
+    operationId,
     affectedUsers: results.length,
+    replayedUsers: results.filter(result => result.alreadyApplied).length,
+    failedUsers: failures.length,
     usernames: results.slice(0, 25).map(result => result.username),
+    failures: failures.slice(0, 25),
   });
 }
 
