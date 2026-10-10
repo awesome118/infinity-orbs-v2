@@ -1320,6 +1320,7 @@ test('bulk Global Booster grants resume by idempotency receipt and report partia
   assert.match(grant, /await txn\.set\(receiptKey, receipt\)/);
   assert.match(grant, /await txn\.set\(playerKey, JSON\.stringify\(state\)\)/);
   assert.match(grant, /await txn\.exec\(\)/);
+  assert.match(grant, /does not have enough credit capacity/);
 
   const routeStart = debug.indexOf("debugRouter.post('/global-booster-credits/grant'");
   const routeEnd = debug.indexOf("debugRouter.get('/follow-reward'", routeStart);
