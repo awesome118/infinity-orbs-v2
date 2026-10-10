@@ -343,6 +343,21 @@ export function App() {
 
   const applyPlayerState = useCallback((nextState: PlayerState) => {
     const nextServerRevision = Number(nextState.stateRevision);
+    const currentState = stateRef.current;
+
+    // A state revision represents one durable player snapshot. If two responses
+    // claim the same revision but disagree on Shards, one is stale or malformed.
+    // Do not let it erase a just-confirmed roll reward (or an optimistic wallet
+    // change) while the authoritative mutation response is still in flight.
+    if (
+      Number.isFinite(nextServerRevision) &&
+      nextServerRevision === appliedServerRevisionRef.current &&
+      currentState &&
+      (nextState.shards ?? 0) !== (currentState.shards ?? 0)
+    ) {
+      return;
+    }
+
     if (Number.isFinite(nextServerRevision)) {
       if (nextServerRevision < appliedServerRevisionRef.current) return;
       appliedServerRevisionRef.current = nextServerRevision;

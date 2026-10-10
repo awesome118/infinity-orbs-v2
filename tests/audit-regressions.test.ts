@@ -826,3 +826,19 @@ test('Global Chat mutations fail closed rather than overwriting malformed histor
   const postEnd = social.indexOf('function sortLeaderboard', postStart);
   assert.match(social.slice(postStart, postEnd), /const messages = parseGlobalChatList\(raw\)/);
 });
+
+test('client ignores a conflicting Shards balance at an unchanged server revision', () => {
+  const main = source('src/client/main.tsx');
+  const start = main.indexOf('const applyPlayerState = useCallback');
+  const end = main.indexOf('// Mutations are optimistic', start);
+  assert.ok(start >= 0 && end > start, 'authoritative player-state applier must exist');
+  const applier = main.slice(start, end);
+  assert.match(applier, /nextServerRevision === appliedServerRevisionRef\.current/);
+  assert.match(applier, /nextState\.shards/);
+  assert.match(applier, /currentState\.shards/);
+  assert.match(
+    applier,
+    /nextServerRevision === appliedServerRevisionRef\.current[\s\S]*?return;/,
+    'same-revision wallet conflicts must be ignored before state is replaced',
+  );
+});
