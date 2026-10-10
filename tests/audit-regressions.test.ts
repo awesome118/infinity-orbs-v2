@@ -898,6 +898,23 @@ test('persisted PlayerState parser rejects malformed wallet and roll-counter cor
   assert.match(parser, /if \(!validCoreState\) return null/);
 });
 
+test('every loaded PlayerState has a valid revision, including new and legacy saves', () => {
+  const game = source('src/server/game.ts');
+  const parserStart = game.indexOf('function parsePlayerStateValue');
+  const parserEnd = game.indexOf('function parsePaymentPlayerState', parserStart);
+  assert.ok(parserStart >= 0 && parserEnd > parserStart);
+  const parser = game.slice(parserStart, parserEnd);
+  assert.match(parser, /record\.stateRevision == null/);
+  assert.match(parser, /Number\.isSafeInteger\(record\.stateRevision\)/);
+  const loadStart = game.indexOf('export async function loadRaw');
+  const loadEnd = game.indexOf('function applyXp', loadStart);
+  assert.ok(loadStart >= 0 && loadEnd > loadStart);
+  const loader = game.slice(loadStart, loadEnd);
+  assert.match(loader, /s\.stateRevision = 0/);
+  assert.match(loader, /fresh\.stateRevision = 0/);
+  assert.match(loader, /stateRevision: Math\.max\(0, Math\.floor\(Number\(parsed\.stateRevision \?\? 0\)\) \|\| 0\)/);
+});
+
 test('client ignores a conflicting Shards balance at an unchanged server revision', () => {
   const main = source('src/client/main.tsx');
   const start = main.indexOf('const applyPlayerState = useCallback');

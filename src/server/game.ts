@@ -1537,7 +1537,11 @@ function parsePlayerStateValue(value: unknown, depth = 0): PlayerState | null {
       Number.isSafeInteger(record.shards) &&
       Number(record.shards) >= 0 &&
       Number.isSafeInteger(record.totalRolls) &&
-      Number(record.totalRolls) >= 0;
+      Number(record.totalRolls) >= 0 &&
+      (
+        record.stateRevision == null ||
+        (Number.isSafeInteger(record.stateRevision) && Number(record.stateRevision) >= 0)
+      );
     if (!validCoreState) return null;
     return record as unknown as PlayerState;
   }
@@ -1880,6 +1884,9 @@ export async function loadRaw(): Promise<PlayerState> {
     const s = createInitialState();
     s.username = username;
     s.saveGeneration = generation;
+    // Even an unsaved/brand-new account must participate in the same
+    // monotonic client/server revision contract as a persisted account.
+    s.stateRevision = 0;
     s.guildPerks = perks;
     s.guildCombo = guildCombo;
     s.globalBoosters = globalBoosters;
@@ -1900,6 +1907,7 @@ export async function loadRaw(): Promise<PlayerState> {
     const fresh = createInitialState();
     fresh.username = username;
     fresh.saveGeneration = generation;
+    fresh.stateRevision = 0;
     fresh.guildPerks = perks;
     fresh.guildCombo = guildCombo;
     fresh.globalBoosters = globalBoosters;
@@ -1946,6 +1954,9 @@ export async function loadRaw(): Promise<PlayerState> {
     upgrades: normalizedUpgrades,
     manualRolls: normalizedManualRolls,
     saveGeneration: generation,
+    // Legacy saves predate stateRevision. Normalize them to revision zero so
+    // delayed reads cannot bypass the client's stale-snapshot rejection.
+    stateRevision: Math.max(0, Math.floor(Number(parsed.stateRevision ?? 0)) || 0),
     username,
     prestigeUpgrades: { ...base.prestigeUpgrades, ...(parsed.prestigeUpgrades ?? {}) },
     collection: parsed.collection ?? {},
