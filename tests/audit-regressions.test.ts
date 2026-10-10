@@ -379,6 +379,20 @@ test('Daily Streak reward and community tier commit atomically with player state
   assert.match(claim, /prepareDailyStreakCommunityProgress/);
   assert.match(claim, /stageSaveExtraWrite\(s/);
   assert.doesNotMatch(claim, /await addDailyStreakCommunityProgress/);
+  assert.ok(
+    claim.indexOf('const communityUpdate = await prepareDailyStreakCommunityProgress') <
+      claim.indexOf('s.streak.count = nextStreakCount'),
+    'shared event must prepare before local streak or rewards mutate',
+  );
+  const automationStart = game.indexOf('async function processAutomation');
+  const automationEnd = game.indexOf('function offlineClaimCooldown', automationStart);
+  assert.ok(automationStart >= 0 && automationEnd > automationStart);
+  const automation = game.slice(automationStart, automationEnd);
+  assert.match(automation, /await claimDailyStreakFromState\(s\)[\s\S]*?catch \(error\)/);
+  const loadStart = game.indexOf('export async function loadRaw');
+  const loadEnd = game.indexOf('function applyXp', loadStart);
+  assert.ok(loadStart >= 0 && loadEnd > loadStart);
+  assert.match(game.slice(loadStart, loadEnd), /getDailyStreakCommunity\(\)\.catch\(error =>/);
   assert.match(social, /export async function prepareDailyStreakCommunityProgress/);
 });
 

@@ -1866,7 +1866,13 @@ export async function loadRaw(): Promise<PlayerState> {
     getPlayerGuildPerks(username, userId),
     getPlayerGuildCombo(username, userId),
     getGlobalBoosters(),
-    getDailyStreakCommunity(),
+    getDailyStreakCommunity().catch(error => {
+      // A corrupt shared event should not brick ordinary gameplay. This is a
+      // display-only fallback; reward/progress mutations still read and validate
+      // the durable event and will fail closed until it is repaired.
+      console.error('[Daily Streak] Shared event read failed; using display-only defaults.', error);
+      return createInitialState().dailyStreakCommunity!;
+    }),
   ]);
 
 
@@ -1987,26 +1993,40 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
   if (s.streak.lastClaimDate === today) throw new Error('Already claimed daily reward for today.');
 
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  if (s.streak.lastClaimDate === yesterday) s.streak.count++;
-  else if (!s.streak.lastClaimDate) s.streak.count = 1;
-  else s.streak.count = 1;
+  const previousCount = s.streak.count;
+  const previousLongest = s.streak.longestStreak;
+  if (
+    !Number.isSafeInteger(previousCount) || previousCount < 1 ||
+    !Number.isSafeInteger(previousLongest) || previousLongest < 1
+  ) {
+    throw new Error('Saved Daily Streak data is invalid; no reward was granted.');
+  }
+  const nextStreakCount = s.streak.lastClaimDate === yesterday ? previousCount + 1 : 1;
+  if (!Number.isSafeInteger(nextStreakCount)) {
+    throw new Error('Daily Streak count reached its supported limit; no reward was granted.');
+  }
 
-  s.streak.longestStreak = Math.max(s.streak.longestStreak, s.streak.count);
-  s.streak.lastClaimDate = today;
-
-  const day = ((s.streak.count - 1) % 7) + 1;
-  const rewardCoins = day * 100;
-  const rewardShards = grantFreeShards(s, day === 7 ? 5 : day === 3 ? 1 : 0);
-  const rewardFreeRolls = day * 5;
-  s.freeRolls = (s.freeRolls ?? 0) + rewardFreeRolls;
-  addCoins(s, rewardCoins);
-  const communityUpdate = await prepareDailyStreakCommunityProgress(s.streak.count);
+  // Prepare/validate the shared event before touching player rewards. If this
+  // separate shared record is corrupt or out of range, the attempt must leave
+  // the local streak, Shards, Coins and free rolls untouched.
+  const communityUpdate = await prepareDailyStreakCommunityProgress(nextStreakCount);
   stageSaveExtraWrite(s, {
     key: communityUpdate.key,
     expectedValue: communityUpdate.expectedValue,
     nextValue: communityUpdate.nextValue,
     conflictMessage: 'Daily Streak community progress changed while claiming. Please retry.',
   });
+
+  const day = ((nextStreakCount - 1) % 7) + 1;
+  const rewardCoins = day * 100;
+  const rewardShards = grantFreeShards(s, day === 7 ? 5 : day === 3 ? 1 : 0);
+  const rewardFreeRolls = day * 5;
+
+  s.streak.count = nextStreakCount;
+  s.streak.longestStreak = Math.max(previousLongest, nextStreakCount);
+  s.streak.lastClaimDate = today;
+  s.freeRolls = (s.freeRolls ?? 0) + rewardFreeRolls;
+  addCoins(s, rewardCoins);
   s.dailyStreakCommunity = communityUpdate.event;
   return { rewardCoins, rewardShards, rewardFreeRolls, day, community: s.dailyStreakCommunity };
 }
@@ -2036,7 +2056,14 @@ async function processAutomation(s: PlayerState): Promise<void> {
   if (s.automations?.autoStreakClaim) {
     const today = new Date().toISOString().slice(0, 10);
     if (s.streak.lastClaimDate !== today) {
-      await claimDailyStreakFromState(s);
+      try {
+        await claimDailyStreakFromState(s);
+      } catch (error) {
+        // Auto-claim is optional automation. A bad shared streak event or
+        // failed prepare must not prevent unrelated rolls/upgrades, and the
+        // claim prepares before changing the local player state.
+        console.error('[Automation] Auto-Streak claim failed; continuing without its reward.', error);
+      }
     }
   }
 
