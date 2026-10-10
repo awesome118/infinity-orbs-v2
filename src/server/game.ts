@@ -2088,7 +2088,14 @@ async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim
   }
 
   if (s.automations?.autoCommunityClaim) {
-    await claimCommunityRewardFromState(s);
+    try {
+      // Community rewards are optional automation. Corrupt or expired shared
+      // event data must not prevent a manual roll, upgrade, or other mutation.
+      // The claim reads/validates the event before changing the player state.
+      await claimCommunityRewardFromState(s);
+    } catch (error) {
+      console.error('[Automation] Auto-Community claim failed; continuing without its reward.', error);
+    }
   }
 
   if (!options.skipAutoOfflineClaim && s.automations?.autoOfflineClaim && s.offlineRolls > 0) {

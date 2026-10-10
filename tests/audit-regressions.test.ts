@@ -780,6 +780,22 @@ test('Frenzy start saves the post receipt atomically with its owner reward and c
 });
 
 
+test('optional Auto-Community Claim failure does not abort unrelated mutations', () => {
+  const game = source('src/server/game.ts');
+  const automationStart = game.indexOf('async function processAutomation');
+  const automationEnd = game.indexOf('function flairTextColorForBackground', automationStart);
+  assert.ok(automationStart >= 0 && automationEnd > automationStart);
+  const automation = game.slice(automationStart, automationEnd);
+  const blockStart = automation.indexOf('if (s.automations?.autoCommunityClaim)');
+  const blockEnd = automation.indexOf('if (!options.skipAutoOfflineClaim', blockStart);
+  assert.ok(blockStart >= 0 && blockEnd > blockStart);
+  const block = automation.slice(blockStart, blockEnd);
+  assert.match(block, /try \{/);
+  assert.match(block, /await claimCommunityRewardFromState\(s\)/);
+  assert.match(block, /catch \(error\)/);
+  assert.match(block, /continuing without its reward/);
+});
+
 test('manual offline claim bypasses only its duplicate Auto Offline Claim automation', () => {
   const game = source('src/server/game.ts');
   const start = game.indexOf('export async function claimOffline');
