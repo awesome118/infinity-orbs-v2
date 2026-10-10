@@ -633,3 +633,19 @@ test('player activity watch transaction preserves playtime updates and fences an
   assert.match(mock, /kind: 'hset'/);
   assert.match(mock, /Object\.assign\(values, write\.fields\)/);
 });
+
+
+test('live presence survives optimistic and authoritative state replacement, and auth reset clears revision guards', () => {
+  const client = source('src/client/main.tsx');
+  assert.match(client, /const onlinePlayersRef = useRef<number \| undefined>\(undefined\)/);
+  assert.match(client, /const mergedState = onlinePlayersRef\.current == null/);
+  assert.match(client, /onlinePlayersRef\.current = safeOnlinePlayers/);
+  assert.match(client, /stateRef\.current = \{ \.\.\.stateRef\.current, onlinePlayers: safeOnlinePlayers \}/);
+  const authIndex = client.indexOf("if (e?.message === 'REDDIT_LOGIN_REQUIRED')");
+  const authEnd = client.indexOf('const message = e?.message', authIndex);
+  assert.ok(authIndex >= 0 && authEnd > authIndex);
+  const auth = client.slice(authIndex, authEnd);
+  assert.match(auth, /stateRef\.current = null/);
+  assert.match(auth, /appliedServerRevisionRef\.current = -1/);
+  assert.match(auth, /rollTicketRef\.current = null/);
+});

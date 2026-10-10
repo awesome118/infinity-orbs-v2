@@ -318,6 +318,7 @@ export function App() {
   }, []);
   const appliedServerRevisionRef = useRef(-1);
   const stateRef = useRef<PlayerState | null>(null);
+  const onlinePlayersRef = useRef<number | undefined>(undefined);
   const rollTicketRef = useRef<{
     ticketId: string;
 
@@ -346,9 +347,19 @@ export function App() {
       appliedServerRevisionRef.current = nextServerRevision;
     }
 
-    stateRef.current = nextState;
+    if (
+      onlinePlayersRef.current == null &&
+      Number.isSafeInteger(nextState.onlinePlayers) &&
+      Number(nextState.onlinePlayers) >= 0
+    ) {
+      onlinePlayersRef.current = Number(nextState.onlinePlayers);
+    }
+    const mergedState = onlinePlayersRef.current == null
+      ? nextState
+      : { ...nextState, onlinePlayers: onlinePlayersRef.current };
+    stateRef.current = mergedState;
     stateRevisionRef.current += 1;
-    setState(nextState);
+    setState(mergedState);
   }, []);
   // Mutations are optimistic on the client: update the visible state immediately,
   // then let the server verify/save it. Rejections restore the exact prior state.
@@ -519,6 +530,12 @@ export function App() {
     } catch (e: any) {
       if (e?.message === 'REDDIT_LOGIN_REQUIRED') {
         setAuthRequired(true);
+        stateRef.current = null;
+        onlinePlayersRef.current = undefined;
+        appliedServerRevisionRef.current = -1;
+        stateRevisionRef.current += 1;
+        rollTicketRef.current = null;
+        rollTicketRequestRef.current = null;
         setState(null);
         setIsAdmin(false);
         setStartupError(null);
@@ -640,7 +657,14 @@ export function App() {
     const presenceInterval = setInterval(() => {
       void getJson<{ onlinePlayers: number }>('/api/online')
         .then(({ onlinePlayers }) => {
-          setState(prev => prev ? { ...prev, onlinePlayers } : prev);
+          const safeOnlinePlayers = Number.isSafeInteger(onlinePlayers)
+            ? Math.max(0, onlinePlayers)
+            : 0;
+          onlinePlayersRef.current = safeOnlinePlayers;
+          if (stateRef.current) {
+            stateRef.current = { ...stateRef.current, onlinePlayers: safeOnlinePlayers };
+          }
+          setState(prev => prev ? { ...prev, onlinePlayers: safeOnlinePlayers } : prev);
         })
         .catch(() => null);
     }, 10_000);
