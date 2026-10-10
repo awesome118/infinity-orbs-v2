@@ -85,6 +85,7 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
   // valid persisted economy state.
   for (const [field, minimum] of [['level', 1], ['xp', 0], ['tokens', 0]] as const) {
     const value = guild[field];
+    if (value == null) continue; // Legacy saves can omit core economy defaults.
     if (!Number.isSafeInteger(value) || Number(value) < minimum) throw invalid();
   }
   if (guild.createdAt != null &&
@@ -277,6 +278,12 @@ const COMMUNITY_EVENT_KEY = key('community_event');
 function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
   const currentWeek = weekKey(now);
   for (const g of guilds) {
+    // Legacy persisted Guilds may predate one or more of these fields. The
+    // parser rejects invalid present values, while normalization safely fills
+    // omitted values before reward/tax arithmetic uses them.
+    g.level ??= 1;
+    g.xp ??= 0;
+    g.tokens ??= 0;
     if (!g.perks) {
       g.perks = {
         luckRank: 0,

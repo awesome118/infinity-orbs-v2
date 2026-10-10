@@ -321,6 +321,14 @@ test('guild parser rejects malformed nested economy and boss state before normal
   const validator = social.slice(start, end);
   assert.match(validator, /perkCaps/);
   assert.match(validator, /guildXpRank: 20/);
+  assert.match(validator, /if \(value == null\) continue; \/\/ Legacy saves can omit core economy defaults/);
+  const normalizeStart = social.indexOf('function normalizeGuilds');
+  const normalizeEnd = social.indexOf('function generatedFallbackTaskType', normalizeStart);
+  assert.ok(normalizeStart >= 0 && normalizeEnd > normalizeStart);
+  const normalize = social.slice(normalizeStart, normalizeEnd);
+  assert.match(normalize, /g\.level \?\?= 1/);
+  assert.match(normalize, /g\.xp \?\?= 0/);
+  assert.match(normalize, /g\.tokens \?\?= 0/);
   assert.match(validator, /Number\.isSafeInteger\(member\.contribution\)/);
   assert.match(validator, /guild\.challenge != null/);
   assert.match(validator, /Number\(challenge\.progress\) > Number\(challenge\.target\)/);
