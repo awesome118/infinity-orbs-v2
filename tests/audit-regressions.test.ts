@@ -1246,3 +1246,20 @@ test('earned Coins and lifetime Coins stay within safe integer bounds', () => {
   assert.match(frenzy, /coinsGained = addCoins\(s, coinsGained\)/);
   assert.doesNotMatch(frenzy, /s\.coins \+= coinsGained/);
 });
+
+
+test('Frenzy claim does not add a fallible read after atomic reward commit', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('export async function claimOrbFrenzy');
+  const end = game.indexOf('function sampleBinomial', start);
+  assert.ok(start >= 0 && end > start);
+  const claim = game.slice(start, end);
+  const saveIndex = claim.indexOf('await save(s, [');
+  const returnIndex = claim.indexOf('return {', saveIndex);
+  assert.ok(saveIndex >= 0 && returnIndex > saveIndex);
+  const afterCommit = claim.slice(saveIndex, returnIndex);
+  assert.match(afterCommit, /FRENZY_POST_PREFIX \+ postId/);
+  assert.match(afterCommit, /\.\.\.ownerRewardWrites/);
+  assert.doesNotMatch(afterCommit, /await redis\.get\(FRENZY_POST_PREFIX \+ postId\)/);
+  assert.doesNotMatch(afterCommit, /FRENZY_CLAIM_SAVE_INVALIDATED/);
+});
