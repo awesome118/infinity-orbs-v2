@@ -1077,6 +1077,23 @@ test('every loaded PlayerState has a valid revision, including new and legacy sa
   assert.match(loader, /stateRevision: Math\.max\(0, Math\.floor\(Number\(parsed\.stateRevision \?\? 0\)\) \|\| 0\)/);
 });
 
+test('prestige upgrade purchase validates stored levels and Cosmic Dust before mutation', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('export async function buyPrestigeUpgrade');
+  const end = game.indexOf('export async function sacrificeToAltar', start);
+  assert.ok(start >= 0 && end > start);
+  const purchase = game.slice(start, end);
+  const levelGuard = purchase.indexOf('!Number.isSafeInteger(current)');
+  const dustGuard = purchase.indexOf('!Number.isSafeInteger(cosmicDust)');
+  const costGuard = purchase.indexOf('!Number.isSafeInteger(cost)');
+  const dustMutation = purchase.indexOf('s.cosmicDust = cosmicDust - cost');
+  assert.ok(levelGuard >= 0 && dustGuard > levelGuard && costGuard > dustGuard);
+  assert.ok(dustMutation > costGuard, 'wallet mutation must only happen after all guards');
+  assert.match(purchase, /current > info\.maxLevel/);
+  assert.match(purchase, /cosmicDust < 0/);
+  assert.match(purchase, /Saved Cosmic Dust balance is invalid/);
+});
+
 test('client orders PlayerState snapshots by generation before revision', () => {
   const main = source('src/client/main.tsx');
   assert.match(main, /const appliedServerGenerationRef = useRef\(-1\)/);

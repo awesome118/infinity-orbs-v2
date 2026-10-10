@@ -3919,15 +3919,36 @@ export async function buyPrestigeUpgrade(id: PrestigeUpgradeId): Promise<PlayerS
     s.prestigeUpgrades = createInitialState().prestigeUpgrades;
   }
   const current = s.prestigeUpgrades[id] ?? 0;
+  if (
+    typeof current !== 'number' ||
+    !Number.isSafeInteger(current) ||
+    current < 0 ||
+    current > info.maxLevel
+  ) {
+    throw new Error('Saved prestige upgrade level is invalid; no purchase was made.');
+  }
   if (current >= info.maxLevel) {
     throw new Error(`Upgrade ${info.name} is already at max level (${info.maxLevel}).`);
   }
+
+  const cosmicDust = s.cosmicDust;
+  if (
+    typeof cosmicDust !== 'number' ||
+    !Number.isSafeInteger(cosmicDust) ||
+    cosmicDust < 0
+  ) {
+    throw new Error('Saved Cosmic Dust balance is invalid; no purchase was made.');
+  }
+
   const cost = prestigeUpgradeCost(id, current);
-  if (s.cosmicDust < cost) {
+  if (!Number.isSafeInteger(cost) || cost < 0) {
+    throw new Error('Prestige upgrade cost is invalid; no purchase was made.');
+  }
+  if (cosmicDust < cost) {
     throw new Error(`Need ${cost} Cosmic Dust.`);
   }
 
-  s.cosmicDust -= cost;
+  s.cosmicDust = cosmicDust - cost;
   s.prestigeUpgrades[id] = current + 1;
   await save(s);
   await appendPlayerSpyLog('prestige-upgrade-purchase', {
