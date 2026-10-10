@@ -875,7 +875,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
 
   const grantFreeGlobalBoosters = async (scope: 'user' | 'online' | 'all') => {
     const amount = Math.max(1, Math.min(1_000_000, Math.floor(Number(globalBoosterCreditAmount) || 1)));
-    const cleanTargetUser = globalBoosterTargetUser.trim().replace(/^u\\//i, '');
+    const cleanTargetUser = globalBoosterTargetUser.trim().replace(/^u\//i, '');
     if (scope === 'user' && !cleanTargetUser) {
       setMessage('Enter a Reddit username first.');
       return;
@@ -937,7 +937,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             ? 'Granted ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to ' + affectedUsers.toLocaleString() + ' online player' + (affectedUsers === 1 ? '' : 's') + '.'
             : 'Granted ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to ' + affectedUsers.toLocaleString() + ' registered player' + (affectedUsers === 1 ? '' : 's') + '.',
       );
-      await onRefresh();
+      await onRefresh().catch(() => {});
       if (scope === 'user') setGlobalBoosterTargetUser('');
     } catch (e: any) {
       setMessage('Error: ' + (e?.message || 'Failed to grant free Global Booster credits.') + ' Retrying this same operation is safe.');
