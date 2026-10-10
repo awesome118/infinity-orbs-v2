@@ -334,3 +334,20 @@ test('Global Booster charge and stack share one atomic player save', () => {
   assert.match(claim, /nextValue: prepared\.nextValue/);
   assert.match(claim, /Activation committed, but announcement\/audit projection failed/);
 });
+
+
+test('malformed roll tickets are replaced or rejected before use', () => {
+  const game = source('src/server/game.ts');
+  const issueStart = game.indexOf('export async function getRollTicket');
+  const issueEnd = game.indexOf('async function loadRollTicketForUse', issueStart);
+  assert.ok(issueStart >= 0 && issueEnd > issueStart);
+  const issue = game.slice(issueStart, issueEnd);
+  assert.match(issue, /Number\.isSafeInteger\(current\.nextIndex\)/);
+  assert.match(issue, /Number\.isSafeInteger\(current\.expiresAt\)/);
+  assert.match(issue, /current\.id\.length <= 128/);
+  const useEnd = game.indexOf('export async function save(', issueEnd);
+  assert.ok(useEnd > issueEnd);
+  const use = game.slice(issueEnd, useEnd);
+  assert.match(use, /Number\.isSafeInteger\(ticket\.nextIndex\)/);
+  assert.match(use, /Roll prediction ticket data is corrupted/);
+});
