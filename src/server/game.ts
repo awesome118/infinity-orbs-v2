@@ -125,24 +125,25 @@ function stageSavePostCommitAction(s: PlayerState, action: SavePostCommitAction)
 async function clearOfflineReminderKeyIfUnchanged(
   keyName: string,
   expectedValue: unknown,
-): Promise<void> {
-  if (expectedValue == null) return;
+): Promise<boolean> {
+  if (expectedValue == null) return false;
   const expected = String(expectedValue);
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     const txn = await redis.watch(keyName);
     const current = await redis.get(keyName);
     if (current == null || String(current) !== expected) {
       await txn.unwatch();
-      return;
+      return false;
     }
 
     await txn.multi();
     // Empty string is treated as absent by the existing truthiness checks,
     // while WATCH/MULTI makes the compare-and-clear safe against a newer job.
     await txn.set(keyName, '');
-    if (await txn.exec() !== null) return;
+    if (await txn.exec() !== null) return true;
   }
+  return false;
 }
 
 function currentUserId(): string {
@@ -2864,6 +2865,45 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
   return true;
 }
 
+function parseOfflineFullJobMarker(
+  raw: unknown,
+): { token: string; legacy: boolean } | null {
+  if (typeof raw !== 'string' || !raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      parsed && typeof parsed === 'object' && !Array.isArray(parsed) &&
+      typeof parsed.token === 'string' && parsed.token.length > 0
+    ) {
+      return { token: parsed.token, legacy: false };
+    }
+  } catch {
+    // Older jobs stored only the scheduler's job ID. Keep a constrained
+    // compatibility path for them; all newly created jobs carry a token.
+  }
+  return { token: raw, legacy: true };
+}
+
+async function replaceOfflineFullJobMarkerIfUnchanged(
+  keyName: string,
+  expectedValue: string,
+  nextValue: string,
+  expiresAt: number,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const txn = await redis.watch(keyName);
+    const current = await redis.get(keyName);
+    if (current == null || String(current) !== expectedValue) {
+      await txn.unwatch();
+      return false;
+    }
+    await txn.multi();
+    await txn.set(keyName, nextValue, { expiration: new Date(expiresAt) });
+    if (await txn.exec() !== null) return true;
+  }
+  return false;
+}
+
 async function scheduleOfflineFullNotification(
   userId: string,
   subredditName: string,
@@ -2874,27 +2914,76 @@ async function scheduleOfflineFullNotification(
   if (!(await notifications.isOptedIn(userId))) return;
 
   const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
-  if (await redis.get(jobKey)) return;
+  const now = Date.now();
+  const maxDateMs = 8_640_000_000_000_000;
+  const requestedRunAt = Number(runAt);
+  const safeRunAt = Math.min(
+    maxDateMs - 1,
+    Math.max(now + 1_000, Number.isFinite(requestedRunAt) ? requestedRunAt : now + 1_000),
+  );
+  const expiresAt = Math.max(now + 60_000, Math.min(maxDateMs - 1, safeRunAt + OFFLINE_FULL_RETRY_MS * 2));
+  const token = `offline-job-${now.toString(36)}-${globalThis.crypto.randomUUID()}`;
+  const reservation = JSON.stringify({ token, jobId: null, runAt: safeRunAt });
 
-  const safeRunAt = Math.max(Date.now() + 1_000, runAt);
-  const jobId = await context.scheduler.runJob({
-    name: 'offline-orbs-full',
-    data: { userId, subredditName },
-    runAt: new Date(safeRunAt),
-  });
-  await redis.set(jobKey, jobId);
+  // Reserve before making the scheduler call. Two overlapping requests can no
+  // longer each create a live scheduler job for the same player.
+  let reserved = false;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const txn = await redis.watch(jobKey);
+    const existing = await redis.get(jobKey);
+    if (existing) {
+      await txn.unwatch();
+      return;
+    }
+    await txn.multi();
+    await txn.set(jobKey, reservation, { expiration: new Date(expiresAt) });
+    if (await txn.exec() !== null) {
+      reserved = true;
+      break;
+    }
+  }
+  if (!reserved) throw new Error('Offline reminder scheduling changed repeatedly. Please retry.');
+
+  try {
+    const jobId = await context.scheduler.runJob({
+      name: 'offline-orbs-full',
+      data: { userId, subredditName, jobToken: token },
+      runAt: new Date(safeRunAt),
+    });
+    const scheduled = JSON.stringify({ token, jobId: String(jobId), runAt: safeRunAt });
+    // If this reservation was superseded while runJob was in flight, do not
+    // overwrite the newer marker. The orphaned job will no-op on token mismatch.
+    await replaceOfflineFullJobMarkerIfUnchanged(jobKey, reservation, scheduled, expiresAt);
+  } catch (error) {
+    await clearOfflineReminderKeyIfUnchanged(jobKey, reservation).catch(() => false);
+    throw error;
+  }
 }
 
 export async function processOfflineFullNotification(
   userId: string,
   subredditName: string,
+  jobToken?: string,
 ): Promise<void> {
   const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
-  if (!(await redis.get(jobKey))) return;
+  const jobRaw = await redis.get(jobKey);
+  const marker = parseOfflineFullJobMarker(jobRaw);
+  if (!marker) return;
+
+  // Token-bearing jobs must still own the exact current reservation. A delayed
+  // worker from an older schedule cannot consume or delete a newer reminder.
+  if (jobToken) {
+    if (marker.legacy || marker.token !== jobToken) return;
+  } else if (!marker.legacy) {
+    // A pre-deployment job does not know the new token, so it must not handle
+    // a reservation created by this version.
+    return;
+  }
+  const expectedJobValue = String(jobRaw);
 
   const raw = await redis.get('player:' + userId);
   if (!raw) {
-    await redis.del(jobKey);
+    await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
     return;
   }
 
@@ -2902,7 +2991,8 @@ export async function processOfflineFullNotification(
   try {
     s = JSON.parse(String(raw)) as PlayerState;
   } catch {
-    await redis.del(jobKey);
+    // Keep corrupt player data fail-closed rather than removing its reminder.
+    console.error('[Offline Notification] Player save is malformed; preserving the job marker.');
     return;
   }
 
@@ -2916,18 +3006,18 @@ export async function processOfflineFullNotification(
 
   if (currentOfflineRolls < cap) {
     const fullAt = now + Math.max(1_000, (cap - currentOfflineRolls) * tickMs);
-    await redis.del(jobKey);
-    await scheduleOfflineFullNotification(userId, subredditName, fullAt);
+    const cleared = await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
+    if (cleared) await scheduleOfflineFullNotification(userId, subredditName, fullAt);
     return;
   }
 
   try {
     await sendOfflineFullNotification(userId, subredditName);
-    await redis.del(jobKey);
+    await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
   } catch (error) {
     console.error('Failed to send scheduled offline-orbs-full notification:', error);
-    await redis.del(jobKey);
-    await scheduleOfflineFullNotification(userId, subredditName, now + OFFLINE_FULL_RETRY_MS);
+    const cleared = await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
+    if (cleared) await scheduleOfflineFullNotification(userId, subredditName, now + OFFLINE_FULL_RETRY_MS);
   }
 }
 

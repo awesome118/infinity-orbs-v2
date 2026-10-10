@@ -677,10 +677,11 @@ export function createApp() {
       const data = req.body?.data ?? {};
       const userId = String(data.userId ?? '').trim();
       const subredditName = String(data.subredditName ?? '').trim();
+      const jobToken = String(data.jobToken ?? '').trim();
       if (!userId || !subredditName) {
         return res.status(400).json({ status: 'error', message: 'Missing offline notification job data.' });
       }
-      await processOfflineFullNotification(userId, subredditName);
+      await processOfflineFullNotification(userId, subredditName, jobToken || undefined);
       return res.status(200).json({ status: 'ok' });
     } catch (e) {
       console.error('Offline-orbs-full scheduler failed:', e);

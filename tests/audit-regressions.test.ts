@@ -541,3 +541,24 @@ test('Guild migration markers must be exactly the completed marker before skippi
   assert.ok(malformedGuard >= 0 && migrateIndex > malformedGuard);
   assert.doesNotMatch(migration, /if \(marker\) return/);
 });
+
+
+test('offline scheduler reservations prevent duplicate jobs and reject stale worker tokens', () => {
+  const game = source('src/server/game.ts');
+  const app = source('src/server/app.ts');
+  const scheduleStart = game.indexOf('async function scheduleOfflineFullNotification');
+  const processStart = game.indexOf('export async function processOfflineFullNotification', scheduleStart);
+  const processEnd = game.indexOf('export async function settleOffline', processStart);
+  assert.ok(scheduleStart >= 0 && processStart > scheduleStart && processEnd > processStart);
+  const scheduler = game.slice(scheduleStart, processStart);
+  assert.match(scheduler, /redis\.watch\(jobKey\)/);
+  assert.match(scheduler, /const reservation = JSON\.stringify\(\{ token, jobId: null/);
+  assert.match(scheduler, /jobToken: token/);
+  assert.match(scheduler, /replaceOfflineFullJobMarkerIfUnchanged/);
+  const processor = game.slice(processStart, processEnd);
+  assert.match(processor, /marker\.token !== jobToken/);
+  assert.match(processor, /marker\.legacy/);
+  assert.match(processor, /clearOfflineReminderKeyIfUnchanged\(jobKey, expectedJobValue\)/);
+  assert.doesNotMatch(processor, /await redis\.del\(jobKey\)/);
+  assert.match(app, /processOfflineFullNotification\(userId, subredditName, jobToken \|\| undefined\)/);
+});
