@@ -1530,6 +1530,36 @@ function paymentGoodsForSku(sku: string) {
   return pack;
 }
 
+function isRecordObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isStringList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(item => typeof item === 'string');
+}
+
+function isValidCollection(value: unknown): value is Record<string, number> {
+  if (!isRecordObject(value)) return false;
+  return Object.entries(value).every(([rarity, count]) => {
+    const numericRarity = Number(rarity);
+    return Number.isFinite(numericRarity) &&
+      Number.isInteger(numericRarity) && numericRarity >= 2 &&
+      Number.isSafeInteger(count) && Number(count) >= 0;
+  });
+}
+
+function normalizePlayerStreak(
+  value: unknown,
+  fallback: PlayerState['streak'],
+): PlayerState['streak'] {
+  const candidate = isRecordObject(value) ? { ...fallback, ...value } : fallback;
+  return (
+    Number.isSafeInteger(candidate.count) && Number(candidate.count) >= 0 &&
+    typeof candidate.lastClaimDate === 'string' &&
+    Number.isSafeInteger(candidate.longestStreak) && Number(candidate.longestStreak) >= 0
+  ) ? candidate as PlayerState['streak'] : fallback;
+}
+
 function isValidQuestList(value: unknown): value is QuestItem[] {
   if (!Array.isArray(value) || value.length === 0) return false;
   return value.every(item => {
@@ -2005,13 +2035,16 @@ export async function loadRaw(): Promise<PlayerState> {
     stateRevision: Math.max(0, Math.floor(Number(parsed.stateRevision ?? 0)) || 0),
     username,
     prestigeUpgrades: { ...base.prestigeUpgrades, ...(parsed.prestigeUpgrades ?? {}) },
-    collection: parsed.collection ?? {},
-    claimedAchievements: parsed.claimedAchievements ?? [],
-    streak: { ...base.streak, ...(parsed.streak ?? {}) },
+    // Malformed nested save shapes are optional progress data, not a reason to poison gameplay math.
+    collection: isValidCollection(parsed.collection) ? parsed.collection : base.collection,
+    claimedAchievements: isStringList(parsed.claimedAchievements) ? parsed.claimedAchievements : base.claimedAchievements,
+    streak: normalizePlayerStreak(parsed.streak, base.streak),
     // Corrupt quest entries must not make every later roll throw while advancing progress.
     dailyQuests: isValidQuestList(parsed.dailyQuests) ? parsed.dailyQuests : base.dailyQuests,
     weeklyQuests: isValidQuestList(parsed.weeklyQuests) ? parsed.weeklyQuests : base.weeklyQuests,
-    unlockedCosmetics: parsed.unlockedCosmetics?.length ? parsed.unlockedCosmetics : base.unlockedCosmetics,
+    unlockedCosmetics: isStringList(parsed.unlockedCosmetics) && parsed.unlockedCosmetics.length
+      ? parsed.unlockedCosmetics
+      : base.unlockedCosmetics,
     sacrifices: {
       coinsSacrificed: parsed.sacrifices?.coinsSacrificed ?? base.sacrifices!.coinsSacrificed,
       shardsSacrificed: parsed.sacrifices?.shardsSacrificed ?? base.sacrifices!.shardsSacrificed,
