@@ -675,3 +675,16 @@ test('Guild Chat username normalization uses a valid escaped slash regex', () =>
   assert.equal(info.split('replace(/^u' + slash + '//i').length - 1, 2);
   assert.equal(info.split('replace(/^u' + slash + slash + '//i').length - 1, 0);
 });
+
+
+test('optimistic rollback restores stateRef as well as React state without losing live presence', () => {
+  const client = source('src/client/main.tsx');
+  const start = client.indexOf('const beginOptimisticState');
+  const end = client.indexOf('const enqueueMutation', start);
+  assert.ok(start >= 0 && end > start);
+  const callback = client.slice(start, end);
+  assert.match(callback, /stateRevisionRef\.current !== optimisticRevision/);
+  assert.match(callback, /const restoredState = onlinePlayersRef\.current == null/);
+  assert.match(callback, /stateRef\.current = restoredState/);
+  assert.match(callback, /setState\(restoredState\)/);
+});

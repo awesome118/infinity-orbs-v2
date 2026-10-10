@@ -378,7 +378,11 @@ export function App() {
         // optimistic action or an already-applied server response.
         if (stateRevisionRef.current !== optimisticRevision) return;
         stateRevisionRef.current += 1;
-        setState(previousState);
+        const restoredState = onlinePlayersRef.current == null
+          ? previousState
+          : { ...previousState, onlinePlayers: onlinePlayersRef.current };
+        stateRef.current = restoredState;
+        setState(restoredState);
       };
     },
     [state],
