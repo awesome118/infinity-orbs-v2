@@ -387,21 +387,45 @@ async function listRegisteredPlayerIds(): Promise<Array<{ userId: string; userna
 
 
 async function removeLeaderboardEntry(username: string): Promise<void> {
-  const raw = await redis.get('io:leaderboard');
-  if (!raw) return;
-  const board = (() => {
-    if (typeof raw !== 'string') return Array.isArray(raw) ? raw as unknown as Array<{ username?: string }> : [];
-    try {
-      return JSON.parse(raw) as Array<{ username?: string }>;
-    } catch {
-      return [];
-    }
-  })();
+  const leaderboardKey = 'io:leaderboard';
   const normalized = normalizeUsername(username);
-  await redis.set(
-    'io:leaderboard',
-    JSON.stringify(board.filter(entry => normalizeUsername(entry.username) !== normalized)),
-  );
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const txn = await redis.watch(leaderboardKey);
+    const raw = await redis.get(leaderboardKey);
+    if (raw == null) {
+      await txn.unwatch();
+      return;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    } catch {
+      await txn.unwatch();
+      throw new Error('Leaderboard data is corrupted; refusing to replace it during account cleanup.');
+    }
+    if (
+      !Array.isArray(parsed) ||
+      !parsed.every(entry => entry && typeof entry === 'object' && !Array.isArray(entry) && typeof entry.username === 'string')
+    ) {
+      await txn.unwatch();
+      throw new Error('Leaderboard data is malformed; refusing to replace it during account cleanup.');
+    }
+
+    const board = parsed as Array<{ username: string }>;
+    const next = board.filter(entry => normalizeUsername(entry.username) !== normalized);
+    if (next.length === board.length) {
+      await txn.unwatch();
+      return;
+    }
+
+    await txn.multi();
+    await txn.set(leaderboardKey, JSON.stringify(next));
+    if (await txn.exec() !== null) return;
+  }
+
+  throw new Error('Leaderboard changed too frequently during account cleanup. Please retry.');
 }
 
 async function resolveUserId(username: string): Promise<string> {
@@ -414,30 +438,57 @@ async function resolveUserId(username: string): Promise<string> {
   return id;
 }
 
+async function resetPlayerGenerationAndSave(
+  userId: string,
+  username: string,
+): Promise<{ state: ReturnType<typeof createInitialState>; generation: number }> {
+  const generationKey = `player-generation:${userId}`;
+  const playerKey = `player:${userId}`;
+
+  // The generation bump and fresh save are one transaction. If either write
+  // fails, neither becomes visible; stale saves WATCH both keys and therefore
+  // cannot slip in between the two halves of a reset.
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const txn = await redis.watch(generationKey, playerKey);
+    const rawGeneration = await redis.get(generationKey);
+    const parsedGeneration = Number.parseInt(String(rawGeneration ?? '0'), 10);
+    const currentGeneration =
+      Number.isSafeInteger(parsedGeneration) && parsedGeneration >= 0
+        ? parsedGeneration
+        : 0;
+
+    if (currentGeneration >= Number.MAX_SAFE_INTEGER) {
+      await txn.unwatch();
+      throw new Error('Player save generation is exhausted and cannot be reset safely.');
+    }
+
+    const generation = currentGeneration + 1;
+    const fresh = createInitialState();
+    fresh.username = username;
+    fresh.saveGeneration = generation;
+    fresh.stateRevision = 0;
+
+    await txn.multi();
+    await txn.set(generationKey, String(generation));
+    await txn.set(playerKey, JSON.stringify(fresh));
+    const committed = await txn.exec();
+    if (committed !== null) return { state: fresh, generation };
+  }
+
+  throw new Error('Player data changed repeatedly while resetting. Please retry.');
+}
+
 async function wipeUser(username: string): Promise<{ username: string; userId: string; generation: number }> {
   const name = targetUsername(username);
   const userId = await resolveUserId(name);
 
   return withPlayerMutationLockFor(userId, async () => {
-  const generationKey = `player-generation:${userId}`;
-  const playerKey = `player:${userId}`;
-
-  const currentRaw = await redis.get(generationKey);
-  const currentGeneration = Math.max(0, Number.parseInt(String(currentRaw ?? '0'), 10) || 0);
-  const generation = currentGeneration + 1;
-
-  // Invalidate the old generation first, then replace the save with a fresh
-  // starting state instead of merely deleting it. This makes a wipe observable
-  // immediately even when the target player is actively online. Any in-flight
-  // request carrying the old generation still fails the generation check and
-  // cannot write the old state back over the reset.
-  const fresh = createInitialState();
-  fresh.username = name;
-  fresh.saveGeneration = generation;
-
-  await redis.set(generationKey, String(generation));
-  await redis.set(playerKey, JSON.stringify(fresh));
-  await removeLeaderboardEntry(name);
+  const { generation } = await resetPlayerGenerationAndSave(userId, name);
+  // Leaderboards are projections. A damaged projection must not make an already
+  // durable account reset appear to fail or prevent the unban step from running.
+  await removeLeaderboardEntry(name).catch(error => {
+    console.error('[Wipe] Leaderboard cleanup failed after the player reset committed:', error);
+  });
   // A plain wipe is a full account reset. Remove any existing game ban so the
   // wiped player can immediately start a fresh save. The dedicated wipe-and-ban
   // endpoint applies a new ban after this function returns.
@@ -1713,33 +1764,16 @@ debugRouter.post('/reset-all', async (_req, res) => {
       const userId = String(context.userId ?? '').trim();
       if (!userId) throw new Error('REDDIT_LOGIN_REQUIRED');
 
-      const generationKey = `player-generation:${userId}`;
-      const playerKey = `player:${userId}`;
-      const currentRaw = await redis.get(generationKey);
-      const currentGeneration = Math.max(
-        0,
-        Number.parseInt(String(currentRaw ?? '0'), 10) || 0,
+      const { state: fresh } = await resetPlayerGenerationAndSave(
+        userId,
+        context.username ?? `reddit-user-${userId.slice(-8)}`,
       );
-      const generation = currentGeneration + 1;
-
-      // Reset All is an account reset, not a normal save. Never pass a pristine
-      // revision-0 state to save(), because that can only conflict with an
-      // existing progressed account and can leave a stale request fighting the
-      // reset. Bump the generation first so every older request becomes stale.
-      const fresh = createInitialState();
-      fresh.username = context.username ?? fresh.username;
-      fresh.saveGeneration = generation;
-      fresh.stateRevision = 0;
-
-      await redis.set(generationKey, String(generation));
-      await redis.set(playerKey, JSON.stringify(fresh));
-      await redis.del(`io:roll-ticket:${userId}`);
-      await removeLeaderboardEntry(fresh.username ?? context.username ?? '');
-
-      const persisted = await redis.get(playerKey);
-      if (persisted == null) {
-        throw new Error('Reset failed: player save was not persisted.');
-      }
+      await redis.del(`io:roll-ticket:${userId}`).catch(error => {
+        console.error('[Reset All] Roll-ticket cleanup failed after the player reset committed:', error);
+      });
+      await removeLeaderboardEntry(fresh.username ?? context.username ?? '').catch(error => {
+        console.error('[Reset All] Leaderboard cleanup failed after the player reset committed:', error);
+      });
 
       res.json({ ok: true, state: fresh });
     });
