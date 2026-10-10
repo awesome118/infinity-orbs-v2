@@ -680,6 +680,21 @@ test('wipe-and-ban applies the ban before reset and never clears it after reset'
 });
 
 
+test('future registry timestamps cannot inflate DAU/WAU/MAU or online-player activity', () => {
+  const game = source('src/server/game.ts');
+  assert.match(game, /function validPastTimestamp\(value: unknown, now: number\): number/);
+  assert.match(game, /timestamp > now\) return 0/);
+  const statsStart = game.indexOf('export async function getPlayerActivityStats');
+  const statsEnd = game.indexOf('export async function getFollowPromptStats', statsStart);
+  assert.ok(statsStart >= 0 && statsEnd > statsStart);
+  assert.match(game.slice(statsStart, statsEnd), /validPastTimestamp\(entry\.lastSeenAt, now\)/);
+  assert.match(game.slice(statsStart, statsEnd), /validPastTimestamp\(entry\.lastActivityAt, now\)/);
+  const touchStart = game.indexOf('async function touchPlayerActivity');
+  const touchEnd = game.indexOf('async function registerPlayer', touchStart);
+  assert.ok(touchStart >= 0 && touchEnd > touchStart);
+  assert.match(game.slice(touchStart, touchEnd), /validPastTimestamp\(existing\?\.lastActivityAt, activityNow\)/);
+});
+
 test('player activity watch transaction preserves playtime updates and fences an expired activity lease', () => {
   const game = source('src/server/game.ts');
   const mock = source('src/server/devvit-mock.ts');

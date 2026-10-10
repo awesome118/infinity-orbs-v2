@@ -1353,6 +1353,14 @@ function playerKeyFor(userId: string): string {
 
 const PLAYTIME_ACTIVE_GAP_MS = 5 * 60_000;
 
+function validPastTimestamp(value: unknown, now: number): number {
+  const timestamp = Number(value);
+  // Registry timestamps originate on the server. Future/malformed values are
+  // not evidence of activity and must never pin a user as active indefinitely.
+  if (!Number.isSafeInteger(timestamp) || timestamp < 0 || timestamp > now) return 0;
+  return timestamp;
+}
+
 interface PlayerRegistryEntry {
   username: string;
   firstSeenAt: number;
@@ -1385,21 +1393,26 @@ async function touchPlayerActivity(userId: string, username: string, now = Date.
       let playtimeMs = 0;
       if (existingRaw) {
         const existing = parseStoredJson<Partial<PlayerRegistryEntry>>(existingRaw);
-        firstSeenAt = Math.max(0, Number(existing?.firstSeenAt ?? activityNow) || activityNow);
+        firstSeenAt = validPastTimestamp(existing?.firstSeenAt, activityNow) || activityNow;
         const previousActivityAt = Math.max(
-          0,
-          Number(existing?.lastActivityAt ?? existing?.lastSeenAt ?? 0) || 0,
+          validPastTimestamp(existing?.lastActivityAt, activityNow),
+          validPastTimestamp(existing?.lastSeenAt, activityNow),
         );
-        const previousPlaytimeMs = Math.max(0, Number(existing?.playtimeMs ?? 0) || 0);
+        const previousPlaytimeMs = Math.min(
+          Number.MAX_SAFE_INTEGER,
+          finiteNonNegativeInteger(existing?.playtimeMs, 0),
+        );
         const activityDelta = previousActivityAt > 0
           ? Math.min(PLAYTIME_ACTIVE_GAP_MS, Math.max(0, activityNow - previousActivityAt))
           : 0;
         playtimeMs = Math.min(Number.MAX_SAFE_INTEGER, previousPlaytimeMs + activityDelta);
+        const existingLastLoginAt = validPastTimestamp(existing?.lastLoginAt, activityNow);
         if (
+          previousActivityAt > 0 &&
           activityNow - previousActivityAt <= PLAYTIME_ACTIVE_GAP_MS &&
-          Number(existing?.lastLoginAt ?? 0) > 0
+          existingLastLoginAt > 0
         ) {
-          lastLoginAt = Number(existing?.lastLoginAt);
+          lastLoginAt = existingLastLoginAt;
         }
       }
 
@@ -1456,13 +1469,13 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
     const registry = parseStoredJson<Partial<PlayerRegistryEntry>>(records[userId]) ?? {};
     const save = saves[index] ? parseStoredJson<Partial<PlayerState>>(saves[index]) : null;
     const lastSeenAt = Math.max(
-      Number(registry.lastSeenAt ?? 0) || 0,
-      Number(save?.lastSeenAt ?? 0) || 0,
+      validPastTimestamp(registry.lastSeenAt, now),
+      validPastTimestamp(save?.lastSeenAt, now),
     );
     return {
       userId,
       username: String(registry.username ?? save?.username ?? ('user-' + userId.slice(-8))).trim().slice(0, 100),
-      firstSeenAt: Math.max(0, Number(registry.firstSeenAt ?? 0) || 0),
+      firstSeenAt: validPastTimestamp(registry.firstSeenAt, now),
       lastSeenAt,
       active: lastSeenAt >= now - 30_000,
       level: Math.max(1, Number(save?.level ?? 1) || 1),
@@ -1496,8 +1509,8 @@ export async function getPlayerActivityStats(now = Date.now()): Promise<{
   for (const raw of Object.values(records)) {
     const entry = parseStoredJson<Partial<PlayerRegistryEntry>>(raw) ?? {};
     const lastSeenAt = Math.max(
-      Number(entry.lastSeenAt ?? 0) || 0,
-      Number(entry.lastActivityAt ?? 0) || 0,
+      validPastTimestamp(entry.lastSeenAt, now),
+      validPastTimestamp(entry.lastActivityAt, now),
     );
     if (lastSeenAt >= cutoff24h) dailyActiveUsers += 1;
     if (lastSeenAt >= cutoff7d) weeklyActiveUsers += 1;
