@@ -478,7 +478,7 @@ async function resetPlayerGenerationAndSave(
   throw new Error('Player data changed repeatedly while resetting. Please retry.');
 }
 
-async function wipeUser(username: string): Promise<{ username: string; userId: string; generation: number }> {
+async function wipeUser(username: string, clearBanAfterWipe = true): Promise<{ username: string; userId: string; generation: number }> {
   const name = targetUsername(username);
   const userId = await resolveUserId(name);
 
@@ -492,7 +492,7 @@ async function wipeUser(username: string): Promise<{ username: string; userId: s
   // A plain wipe is a full account reset. Remove any existing game ban so the
   // wiped player can immediately start a fresh save. The dedicated wipe-and-ban
   // endpoint applies a new ban after this function returns.
-  await unbanGameUser(userId);
+  if (clearBanAfterWipe) await unbanGameUser(userId);
 
   const persisted = await redis.get(playerKey);
   if (persisted == null) {
@@ -1735,14 +1735,17 @@ debugRouter.post('/moderation/wipe-and-unban', async (req, res) => {
 });
 
 debugRouter.post('/moderation/wipe-and-ban', async (req, res) => {
+  let banApplied = false;
   try {
     const username = targetUsername(req.body?.username);
     const userId = await resolveUserId(username);
-    const result = await wipeUser(username);
     const durationValue = req.body?.durationDays;
     const durationDays = durationValue === '' || durationValue == null
       ? undefined
       : Math.max(1, finiteInteger(durationValue));
+
+    // Ban first, then wipe without unbanning. If reset fails, the safer partial
+    // outcome is a still-banned account, never a wiped account briefly unlocked.
     const ban = await banGameUser({
       userId,
       username,
@@ -1750,9 +1753,14 @@ debugRouter.post('/moderation/wipe-and-ban', async (req, res) => {
       reason: String(req.body?.reason ?? 'Game moderation action').slice(0, 300),
       bannedBy: context.username ?? 'shadow_fen',
     });
+    banApplied = true;
+    const result = await wipeUser(username, false);
     res.json({ ok: true, action: 'wipe-and-ban', ...result, ban });
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || 'Failed to wipe and ban game account.' });
+    res.status(500).json({
+      error: e?.message || 'Failed to wipe and ban game account.',
+      banApplied,
+    });
   }
 });
 

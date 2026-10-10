@@ -599,3 +599,21 @@ test('Guild Chat filters muted authors even if the history purge fails', () => {
   assert.match(info, /mutedUsernames\.has\(messageUsername\)/);
   assert.match(info, /filterMutedGuildChat\(hydrated\)/);
 });
+
+
+test('wipe-and-ban applies the ban before reset and never clears it after reset', () => {
+  const debug = source('src/server/debug.ts');
+  const wipeStart = debug.indexOf('async function wipeUser');
+  const wipeEnd = debug.indexOf('function setMaxProgression', wipeStart);
+  assert.ok(wipeStart >= 0 && wipeEnd > wipeStart);
+  const wipe = debug.slice(wipeStart, wipeEnd);
+  assert.match(wipe, /if \(clearBanAfterWipe\) await unbanGameUser\(userId\)/);
+
+  const routeStart = debug.indexOf("debugRouter.post('/moderation/wipe-and-ban'");
+  const routeEnd = debug.indexOf("debugRouter.post('/reset-all'", routeStart);
+  assert.ok(routeStart >= 0 && routeEnd > routeStart);
+  const route = debug.slice(routeStart, routeEnd);
+  assert.ok(route.indexOf('await banGameUser(') < route.indexOf('await wipeUser(username, false)'));
+  assert.match(route, /let banApplied = false/);
+  assert.match(route, /banApplied,?/);
+});
