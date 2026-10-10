@@ -1560,6 +1560,57 @@ function normalizePlayerStreak(
   ) ? candidate as PlayerState['streak'] : fallback;
 }
 
+function normalizeLevelRecord<T extends object>(
+  value: unknown,
+  defaults: T,
+  limits: Record<string, number>,
+): T {
+  const normalized: Record<string, unknown> = { ...defaults };
+  if (isRecordObject(value)) {
+    for (const key of Object.keys(normalized)) {
+      const candidate = value[key];
+      if (
+        typeof candidate === 'number' &&
+        Number.isSafeInteger(candidate) &&
+        candidate >= 0
+      ) {
+        const limit = Number.isSafeInteger(limits[key]) && limits[key] >= 0
+          ? limits[key]
+          : 100;
+        normalized[key] = Math.min(candidate, limit);
+      }
+    }
+  }
+  return normalized as T;
+}
+
+function buildStandardUpgradeLimits(): Record<string, number> {
+  const defaults = createInitialState().upgrades;
+  const limits: Record<string, number> = {};
+  for (const id of Object.keys(defaults) as UpgradeId[]) {
+    if (id === 'auto') {
+      limits[id] = 1;
+      continue;
+    }
+    let level = 0;
+    while (level < 256) {
+      const cost = upgradeCost(id, level);
+      if (!Number.isFinite(cost) || cost > Number.MAX_SAFE_INTEGER) break;
+      level += 1;
+    }
+    limits[id] = level;
+  }
+  return limits;
+}
+
+const STANDARD_UPGRADE_LEVEL_LIMITS = buildStandardUpgradeLimits();
+const PRESTIGE_UPGRADE_LEVEL_LIMITS = Object.fromEntries(
+  Object.entries(PRESTIGE_UPGRADES).map(([id, info]) => [id, info.maxLevel]),
+) as Record<PrestigeUpgradeId, number>;
+const MASTERY_SKILL_LEVEL_LIMITS = Object.fromEntries(
+  Object.entries(MASTERY_SKILLS).map(([id, info]) => [id, info.maxLevel]),
+) as Record<MasterySkillId, number>;
+
 function isValidQuestList(value: unknown): value is QuestItem[] {
   if (!Array.isArray(value) || value.length === 0) return false;
   return value.every(item => {
@@ -2002,12 +2053,23 @@ export async function loadRaw(): Promise<PlayerState> {
       ) || 0,
     ),
   );
-  const normalizedUpgrades = {
-    ...base.upgrades,
-    ...(parsed.upgrades ?? {}),
-    // Auto Roll is free and unlocks automatically at 3 manual roll activations.
-    auto: normalizedManualRolls >= 3 ? 1 : 0,
-  };
+  const normalizedUpgrades = normalizeLevelRecord(
+    parsed.upgrades,
+    base.upgrades,
+    STANDARD_UPGRADE_LEVEL_LIMITS,
+  );
+  // Auto Roll is free and unlocks automatically at 3 manual roll activations.
+  normalizedUpgrades.auto = normalizedManualRolls >= 3 ? 1 : 0;
+  const normalizedPrestigeUpgrades = normalizeLevelRecord(
+    parsed.prestigeUpgrades,
+    base.prestigeUpgrades,
+    PRESTIGE_UPGRADE_LEVEL_LIMITS,
+  );
+  const normalizedMasterySkills = normalizeLevelRecord(
+    parsed.masterySkills,
+    base.masterySkills!,
+    MASTERY_SKILL_LEVEL_LIMITS,
+  );
 
   const parsedLevel = Math.max(1, Math.min(1000, Math.floor(Number(parsed.level ?? 1) || 1)));
   const parsedXp = Math.max(0, Number(parsed.xp ?? 0) || 0);
@@ -2025,16 +2087,28 @@ export async function loadRaw(): Promise<PlayerState> {
     coins: finiteNonNegativeInteger(parsed.coins),
     lifetimeCoins: finiteNonNegativeInteger(parsed.lifetimeCoins ?? parsed.coins),
     level: parsedLevel,
-    xp: parsedXp,
+    xp: finiteNonNegativeInteger(parsedXp, base.xp),
     levelXpFloor,
     upgrades: normalizedUpgrades,
     manualRolls: normalizedManualRolls,
+    cosmicDust: finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust),
+    masteryPoints: finiteNonNegativeInteger(parsed.masteryPoints, base.masteryPoints),
+    totalCrits: finiteNonNegativeInteger(parsed.totalCrits, base.totalCrits),
+    lifetimeShards: finiteNonNegativeInteger(parsed.lifetimeShards, base.lifetimeShards),
+    rollsSinceBest: finiteNonNegativeInteger(parsed.rollsSinceBest, base.rollsSinceBest),
+    highestDryStreak: finiteNonNegativeInteger(parsed.highestDryStreak, base.highestDryStreak ?? 0),
+    freeRolls: finiteNonNegativeInteger(parsed.freeRolls, base.freeRolls ?? 0),
+    currentRunRolls: finiteNonNegativeInteger(parsed.currentRunRolls, base.currentRunRolls ?? 0),
+    prestigeCount: finiteNonNegativeInteger(parsed.prestigeCount, base.prestigeCount),
+    collectionValue: finiteNonNegativeNumber(parsed.collectionValue, base.collectionValue),
+    lifetimeCollectionValue: finiteNonNegativeNumber(parsed.lifetimeCollectionValue, base.lifetimeCollectionValue),
+    highestRarity: finiteNonNegativeNumber(parsed.highestRarity, base.highestRarity),
     saveGeneration: generation,
     // Legacy saves predate stateRevision. Normalize them to revision zero so
     // delayed reads cannot bypass the client's stale-snapshot rejection.
     stateRevision: Math.max(0, Math.floor(Number(parsed.stateRevision ?? 0)) || 0),
     username,
-    prestigeUpgrades: { ...base.prestigeUpgrades, ...(parsed.prestigeUpgrades ?? {}) },
+    prestigeUpgrades: normalizedPrestigeUpgrades,
     // Malformed nested save shapes are optional progress data, not a reason to poison gameplay math.
     collection: isValidCollection(parsed.collection) ? parsed.collection : base.collection,
     claimedAchievements: isStringList(parsed.claimedAchievements) ? parsed.claimedAchievements : base.claimedAchievements,
@@ -2046,14 +2120,13 @@ export async function loadRaw(): Promise<PlayerState> {
       ? parsed.unlockedCosmetics
       : base.unlockedCosmetics,
     sacrifices: {
-      coinsSacrificed: parsed.sacrifices?.coinsSacrificed ?? base.sacrifices!.coinsSacrificed,
-      shardsSacrificed: parsed.sacrifices?.shardsSacrificed ?? base.sacrifices!.shardsSacrificed,
-      altarLevel: parsed.sacrifices?.altarLevel ?? base.sacrifices!.altarLevel,
-      luckSurgeUntil: parsed.sacrifices?.luckSurgeUntil ?? base.sacrifices!.luckSurgeUntil,
-      altarPity: parsed.sacrifices?.altarPity ?? base.sacrifices!.altarPity ?? 0,
+      coinsSacrificed: finiteNonNegativeInteger(parsed.sacrifices?.coinsSacrificed, base.sacrifices!.coinsSacrificed),
+      shardsSacrificed: finiteNonNegativeInteger(parsed.sacrifices?.shardsSacrificed, base.sacrifices!.shardsSacrificed),
+      altarLevel: finiteNonNegativeInteger(parsed.sacrifices?.altarLevel, base.sacrifices!.altarLevel),
+      luckSurgeUntil: finiteNonNegativeInteger(parsed.sacrifices?.luckSurgeUntil, base.sacrifices!.luckSurgeUntil),
+      altarPity: finiteNonNegativeInteger(parsed.sacrifices?.altarPity, base.sacrifices!.altarPity ?? 0),
     },
-    masterySkills: { ...base.masterySkills!, ...(parsed.masterySkills ?? {}) } as Record<MasterySkillId, number>,
-    masteryPoints: parsed.masteryPoints ?? base.masteryPoints ?? 1,
+    masterySkills: normalizedMasterySkills,
     guildPerks: perks,
     guildCombo,
     globalBoosters,
@@ -2668,6 +2741,11 @@ function serverRandom(): number {
   const value = Number(sample[0]) / denominator;
   if (value >= 1) return 0.9999999999999999;
   return Math.max(Number.MIN_VALUE, value);
+}
+
+function finiteNonNegativeNumber(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
 function finiteNonNegativeInteger(value: unknown, fallback = 0): number {
