@@ -4771,13 +4771,20 @@ export async function claimOrbFrenzy(options: {
   advanceQuestProgress(s, 'unique', uniqueGained);
 
   const pendingCommunityWrite = getPendingSaveExtraWrite(s, 'io:community_event');
-  const communityUpdate = await prepareCommunityRolls(count, pendingCommunityWrite);
-  stageSaveExtraWrite(s, {
-    key: communityUpdate.key,
-    expectedValue: communityUpdate.expectedValue,
-    nextValue: communityUpdate.nextValue,
-    conflictMessage: 'Community event changed before the Frenzy claim saved. Please retry.',
-  });
+  try {
+    const communityUpdate = await prepareCommunityRolls(count, pendingCommunityWrite);
+    stageSaveExtraWrite(s, {
+      key: communityUpdate.key,
+      expectedValue: communityUpdate.expectedValue,
+      nextValue: communityUpdate.nextValue,
+      conflictMessage: 'Community event changed before the Frenzy claim saved. Please retry.',
+    });
+  } catch (error) {
+    // World Event progress is an optional projection, not a prerequisite for a
+    // valid Frenzy reward. Preserve corrupt shared data and still commit the
+    // claimant's reward, Guild effects, consumed post and owner reward atomically.
+    console.error('[Community Event] Frenzy progress not recorded; preserving shared data.', error);
+  }
 
   let ownerRewardShards = 0;
   let ownerRewardWrites: SaveExtraWrite[] = [];
