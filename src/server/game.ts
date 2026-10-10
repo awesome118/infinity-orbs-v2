@@ -6,6 +6,7 @@ const notifications = (notificationsModule as any).notifications;
 import {
   createInitialState,
   type PlayerState,
+  type QuestItem,
   type RollResponse,
   type UpgradeId,
   type PrestigeUpgradeId,
@@ -1529,6 +1530,33 @@ function paymentGoodsForSku(sku: string) {
   return pack;
 }
 
+function isValidQuestList(value: unknown): value is QuestItem[] {
+  if (!Array.isArray(value) || value.length === 0) return false;
+  return value.every(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    const quest = item as Record<string, unknown>;
+    const optionalRewardIsValid = (field: string) =>
+      quest[field] === undefined ||
+      quest[field] === null ||
+      (typeof quest[field] === 'number' &&
+        Number.isSafeInteger(quest[field]) &&
+        Number(quest[field]) >= 0);
+    return (
+      typeof quest.id === 'string' && quest.id.length > 0 &&
+      typeof quest.title === 'string' &&
+      typeof quest.desc === 'string' &&
+      Number.isSafeInteger(quest.target) && Number(quest.target) > 0 &&
+      Number.isSafeInteger(quest.progress) && Number(quest.progress) >= 0 &&
+      Number.isSafeInteger(quest.rewardCoins) && Number(quest.rewardCoins) >= 0 &&
+      typeof quest.claimed === 'boolean' &&
+      (quest.unlocked === undefined || typeof quest.unlocked === 'boolean') &&
+      optionalRewardIsValid('rewardShards') &&
+      optionalRewardIsValid('rewardTokens') &&
+      optionalRewardIsValid('rewardXp')
+    );
+  });
+}
+
 function parsePlayerStateValue(value: unknown, depth = 0): PlayerState | null {
   if (depth > 6 || value == null) return null;
 
@@ -1980,8 +2008,9 @@ export async function loadRaw(): Promise<PlayerState> {
     collection: parsed.collection ?? {},
     claimedAchievements: parsed.claimedAchievements ?? [],
     streak: { ...base.streak, ...(parsed.streak ?? {}) },
-    dailyQuests: parsed.dailyQuests?.length ? parsed.dailyQuests : base.dailyQuests,
-    weeklyQuests: parsed.weeklyQuests?.length ? parsed.weeklyQuests : base.weeklyQuests,
+    // Corrupt quest entries must not make every later roll throw while advancing progress.
+    dailyQuests: isValidQuestList(parsed.dailyQuests) ? parsed.dailyQuests : base.dailyQuests,
+    weeklyQuests: isValidQuestList(parsed.weeklyQuests) ? parsed.weeklyQuests : base.weeklyQuests,
     unlockedCosmetics: parsed.unlockedCosmetics?.length ? parsed.unlockedCosmetics : base.unlockedCosmetics,
     sacrifices: {
       coinsSacrificed: parsed.sacrifices?.coinsSacrificed ?? base.sacrifices!.coinsSacrificed,
