@@ -2076,8 +2076,8 @@ async function claimCommunityRewardFromState(s: PlayerState): Promise<{ rewardCo
   return { rewardCoins, rewardXp, nextClaimAt: 0, tier };
 }
 
-async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim?: boolean; skipOfflineNotifications?: boolean } = {}): Promise<void> {
-  if (s.automations?.autoStreakClaim) {
+async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim?: boolean; skipOfflineNotifications?: boolean; skipAutoStreakClaim?: boolean; skipAutoQuestClaim?: boolean; skipAutoCommunityClaim?: boolean } = {}): Promise<void> {
+  if (!options.skipAutoStreakClaim && s.automations?.autoStreakClaim) {
     const today = new Date().toISOString().slice(0, 10);
     if (s.streak.lastClaimDate !== today) {
       try {
@@ -2091,7 +2091,7 @@ async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim
     }
   }
 
-  if (s.automations?.autoQuestClaim) {
+  if (!options.skipAutoQuestClaim && s.automations?.autoQuestClaim) {
     const quests = [...s.dailyQuests, ...s.weeklyQuests]
       .filter(q => q.unlocked !== false && !q.claimed && q.progress >= q.target)
       .slice(0, 25);
@@ -2100,7 +2100,7 @@ async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim
     }
   }
 
-  if (s.automations?.autoCommunityClaim) {
+  if (!options.skipAutoCommunityClaim && s.automations?.autoCommunityClaim) {
     try {
       // Community rewards are optional automation. Corrupt or expired shared
       // event data must not prevent a manual roll, upgrade, or other mutation.
@@ -3171,7 +3171,7 @@ export async function processOfflineFullNotification(
   });
 }
 
-export async function settleOffline(s: PlayerState, options: { skipAutoOfflineClaim?: boolean; skipOfflineNotifications?: boolean } = {}): Promise<PlayerState> {
+export async function settleOffline(s: PlayerState, options: { skipAutoOfflineClaim?: boolean; skipOfflineNotifications?: boolean; skipAutoStreakClaim?: boolean; skipAutoQuestClaim?: boolean; skipAutoCommunityClaim?: boolean } = {}): Promise<PlayerState> {
   const now = Date.now();
   checkPeriodicResets(s, now);
   resetFreeShardBudgetIfNeeded(s, now);
@@ -3825,7 +3825,7 @@ export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent
 
 export async function claimDailyStreak(): Promise<{ state: PlayerState; rewardCoins: number; rewardShards: number; rewardFreeRolls: number; day: number; community: import('../shared/game.js').DailyStreakCommunityEvent }> {
   return withPlayerMutationLock(async () => {
-  const s = await settleOffline(await loadRaw());
+  const s = await settleOffline(await loadRaw(), { skipAutoStreakClaim: true });
   const result = await claimDailyStreakFromState(s);
   await save(s);
   await appendPlayerSpyLog('daily-streak-claim', {
@@ -3840,7 +3840,7 @@ export async function claimDailyStreak(): Promise<{ state: PlayerState; rewardCo
 
 export async function claimQuest(type: 'daily' | 'weekly', id: string): Promise<{ state: PlayerState; rewardCoins: number; rewardShards: number; rewardTokens: number }> {
   return withPlayerMutationLock(async () => {
-  const s = await settleOffline(await loadRaw());
+  const s = await settleOffline(await loadRaw(), { skipAutoQuestClaim: true });
   const list = type === 'daily' ? s.dailyQuests : s.weeklyQuests;
   const quest = list.find(q => q.id === id);
   if (!quest) throw new Error('Quest not found.');
@@ -4347,7 +4347,7 @@ export async function buyAutomation(id: AutomationId): Promise<PlayerState> {
 
 export async function claimCommunityReward(): Promise<{ state: PlayerState; rewardCoins: number; rewardXp: number; nextClaimAt: number; tier: number }> {
   return withPlayerMutationLock(async () => {
-  const s = await settleOffline(await loadRaw());
+  const s = await settleOffline(await loadRaw(), { skipAutoCommunityClaim: true });
   const result = await claimCommunityRewardFromState(s);
   if (result.rewardCoins <= 0) throw new Error('No new Community Reward is available.');
   await save(s);

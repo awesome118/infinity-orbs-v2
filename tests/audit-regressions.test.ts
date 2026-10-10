@@ -848,6 +848,33 @@ test('optional Auto-Community Claim failure does not abort unrelated mutations',
   assert.match(block, /continuing without its reward/);
 });
 
+test('manual Daily Streak, Quest and Community claims bypass their duplicate auto-claim', () => {
+  const game = source('src/server/game.ts');
+
+  const streakStart = game.indexOf('export async function claimDailyStreak');
+  const streakEnd = game.indexOf('export async function claimQuest', streakStart);
+  assert.ok(streakStart >= 0 && streakEnd > streakStart);
+  assert.match(game.slice(streakStart, streakEnd), /skipAutoStreakClaim: true/);
+
+  const questStart = game.indexOf('export async function claimQuest');
+  const questEnd = game.indexOf('export async function prestige', questStart);
+  assert.ok(questStart >= 0 && questEnd > questStart);
+  assert.match(game.slice(questStart, questEnd), /skipAutoQuestClaim: true/);
+
+  const communityStart = game.indexOf('export async function claimCommunityReward');
+  const communityEnd = game.indexOf('export async function startOrbFrenzy', communityStart);
+  assert.ok(communityStart >= 0 && communityEnd > communityStart);
+  assert.match(game.slice(communityStart, communityEnd), /skipAutoCommunityClaim: true/);
+
+  const automationStart = game.indexOf('async function processAutomation');
+  const automationEnd = game.indexOf('function flairTextColorForBackground', automationStart);
+  assert.ok(automationStart >= 0 && automationEnd > automationStart);
+  const automation = game.slice(automationStart, automationEnd);
+  assert.match(automation, /!options\.skipAutoStreakClaim && s\.automations\?\.autoStreakClaim/);
+  assert.match(automation, /!options\.skipAutoQuestClaim && s\.automations\?\.autoQuestClaim/);
+  assert.match(automation, /!options\.skipAutoCommunityClaim && s\.automations\?\.autoCommunityClaim/);
+});
+
 test('manual offline claim serializes with reminder workers and suppresses claim-time alerts', () => {
   const game = source('src/server/game.ts');
   const start = game.indexOf('export async function claimOffline');
