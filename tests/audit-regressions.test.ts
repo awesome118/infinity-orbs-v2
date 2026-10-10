@@ -825,6 +825,23 @@ test('optional Auto-Community Claim failure does not abort unrelated mutations',
   assert.match(block, /continuing without its reward/);
 });
 
+test('manual offline claim serializes with reminder workers and suppresses claim-time alerts', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('export async function claimOffline');
+  const end = game.indexOf('export async function buyUpgrade', start);
+  assert.ok(start >= 0 && end > start);
+  const manual = game.slice(start, end);
+  assert.match(manual, /withPlayerMutationLockFor\(notificationLock/);
+  assert.match(manual, /skipAutoOfflineClaim: true/);
+  assert.match(manual, /skipOfflineNotifications: true/);
+  const settleStart = game.indexOf('export async function settleOffline');
+  const settleEnd = game.indexOf('export interface CollectionPageItem', settleStart);
+  assert.ok(settleStart >= 0 && settleEnd > settleStart);
+  const settle = game.slice(settleStart, settleEnd);
+  assert.match(settle, /!options\.skipOfflineNotifications && userId && subredditName/);
+  assert.match(settle, /withPlayerMutationLockFor\(\`offline-notification:\$\{userId\}\`/);
+});
+
 test('manual offline claim bypasses only its duplicate Auto Offline Claim automation', () => {
   const game = source('src/server/game.ts');
   const start = game.indexOf('export async function claimOffline');

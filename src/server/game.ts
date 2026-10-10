@@ -2076,7 +2076,7 @@ async function claimCommunityRewardFromState(s: PlayerState): Promise<{ rewardCo
   return { rewardCoins, rewardXp, nextClaimAt: 0, tier };
 }
 
-async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim?: boolean } = {}): Promise<void> {
+async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim?: boolean; skipOfflineNotifications?: boolean } = {}): Promise<void> {
   if (s.automations?.autoStreakClaim) {
     const today = new Date().toISOString().slice(0, 10);
     if (s.streak.lastClaimDate !== today) {
@@ -3157,7 +3157,7 @@ export async function processOfflineFullNotification(
   });
 }
 
-export async function settleOffline(s: PlayerState, options: { skipAutoOfflineClaim?: boolean } = {}): Promise<PlayerState> {
+export async function settleOffline(s: PlayerState, options: { skipAutoOfflineClaim?: boolean; skipOfflineNotifications?: boolean } = {}): Promise<PlayerState> {
   const now = Date.now();
   checkPeriodicResets(s, now);
   resetFreeShardBudgetIfNeeded(s, now);
@@ -3192,7 +3192,7 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
   const cap = offlineRollCap(s);
   const userId = String(context.userId ?? '').trim();
   const subredditName = String(context.subredditName ?? '').trim();
-  if (userId && subredditName && s.offlineRolls >= cap) {
+  if (!options.skipOfflineNotifications && userId && subredditName && s.offlineRolls >= cap) {
     try {
       await withPlayerMutationLockFor(`offline-notification:${userId}`, async () => {
         await sendOfflineFullNotification(userId, subredditName);
@@ -3203,7 +3203,7 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
     } catch (error) {
       console.error('Failed to send offline-orbs-full notification:', error);
     }
-  } else if (userId && subredditName) {
+  } else if (!options.skipOfflineNotifications && userId && subredditName) {
     try {
       await scheduleOfflineFullNotification(
         userId,
@@ -3646,9 +3646,18 @@ export async function claimFollowReward(): Promise<{
 
 export async function claimOffline(): Promise<RollResponse> {
   return withPlayerMutationLock(async () => {
+  const notificationLock = `offline-notification:${currentUserId()}`;
+  // Serialize the manual claim against scheduled/request-triggered notification
+  // workers. Otherwise a worker can enqueue a stale "rolls are full" alert
+  // after this claim has saved and cleared the reminder.
+  return withPlayerMutationLockFor(notificationLock, async () => {
   // The manual button owns this claim path. Do not let Auto Offline Claim
-  // consume the rolls before this handler can build and save the response.
-  const s = await settleOffline(await loadRaw(), { skipAutoOfflineClaim: true });
+  // consume the rolls before this handler can build and save the response, and
+  // don't send or schedule a full-roll notification for rolls being claimed now.
+  const s = await settleOffline(await loadRaw(), {
+    skipAutoOfflineClaim: true,
+    skipOfflineNotifications: true,
+  });
   if (s.offlineRolls <= 0) throw new Error('No offline rolls waiting.');
   const batches = s.offlineRolls;
   s.offlineRolls = 0;
@@ -3689,7 +3698,9 @@ export async function claimOffline(): Promise<RollResponse> {
     dramaticReveal: bestOrb.rarity >= 100,
   };
 
-  });}
+  });
+  });
+}
 
 export async function buyUpgrade(id: UpgradeId): Promise<PlayerState> {
   return withPlayerMutationLock(async () => {
