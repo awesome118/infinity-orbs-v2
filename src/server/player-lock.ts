@@ -8,6 +8,8 @@ const PLAYER_MUTATION_LOCK_ATTEMPTS = 360;
 // they ever contend for the distributed Redis lock. Redis still protects
 // concurrent requests handled by different server runtimes.
 const localMutationTails = new Map<string, Promise<void>>();
+const activeMutationTokens = new Map<string, string>();
+
 
 function lockUserId(userId?: string): string {
   const id = String(userId ?? context.userId ?? '').trim();
@@ -21,6 +23,15 @@ function randomUint32(): number {
   return sample[0];
 }
 
+
+export function getActivePlayerMutationLock(
+  userId: string,
+): { key: string; token: string } | null {
+  const id = String(userId ?? '').trim();
+  if (!id) return null;
+  const token = activeMutationTokens.get(id);
+  return token ? { key: PLAYER_MUTATION_LOCK_PREFIX + id, token } : null;
+}
 
 async function renewOwnedLock(lockKey: string, token: string): Promise<boolean> {
   const txn = await redis.watch(lockKey);
@@ -90,6 +101,7 @@ export async function withPlayerMutationLockFor<T>(
 
       const owner = await redis.get(lockKey);
       if (owner === token) {
+        activeMutationTokens.set(id, token);
         // Renew the distributed lease while the callback is running. The
         // renewal only extends this exact token; it never reacquires a lost
         // lease, which would let an old callback impersonate a new owner.
@@ -116,6 +128,9 @@ export async function withPlayerMutationLockFor<T>(
         } finally {
           clearInterval(renewalTimer);
           await releaseOwnedLock(lockKey, token);
+          if (activeMutationTokens.get(id) === token) {
+            activeMutationTokens.delete(id);
+          }
         }
       }
 

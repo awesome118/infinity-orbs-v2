@@ -508,3 +508,21 @@ test('Frenzy claim commits owner reward, Guild effects, community progress, and 
   assert.doesNotMatch(claim, /await addCommunityRolls\(count\)/);
   assert.doesNotMatch(claim, /grantFrenzyOwnerReward/);
 });
+
+
+test('player saves watch and validate active distributed lease tokens before EXEC', () => {
+  const game = source('src/server/game.ts');
+  const lock = source('src/server/player-lock.ts');
+  assert.match(lock, /const activeMutationTokens = new Map<string, string>/);
+  assert.match(lock, /export function getActivePlayerMutationLock/);
+  const start = game.indexOf('export async function save(');
+  const end = game.indexOf('function serverRandom', start);
+  assert.ok(start >= 0 && end > start);
+  const save = game.slice(start, end);
+  assert.match(save, /getActivePlayerMutationLock\(id\)/);
+  assert.match(save, /activeLocks\.map\(item => item\.key\)/);
+  assert.match(save, /redis\.watch\(\.\.\.watchedKeys\)/);
+  assert.match(save, /actualToken !== activeLock\.token/);
+  assert.match(save, /PLAYER_MUTATION_LEASE_LOST/);
+  assert.ok(save.indexOf('actualToken !== activeLock.token') < save.indexOf('await txn.multi()'));
+});

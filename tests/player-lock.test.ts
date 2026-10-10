@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { withPlayerMutationLockFor } from '../src/server/player-lock.js';
+import { getActivePlayerMutationLock, withPlayerMutationLockFor } from '../src/server/player-lock.js';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -38,4 +38,20 @@ test('player mutation lock releases cleanly after a failed operation', async () 
   });
 
   assert.equal(ran, true);
+});
+
+
+test('active player lock exposes its fencing token only while ownership is held', async () => {
+  const userId = 'lock-fencing-player';
+  let token: string | null = null;
+  await withPlayerMutationLockFor(userId, async () => {
+    const active = getActivePlayerMutationLock(userId);
+    assert.ok(active);
+    assert.match(active!.key, /lock-fencing-player$/);
+    assert.ok(active!.token.length > 0);
+    token = active!.token;
+    assert.equal(getActivePlayerMutationLock(userId)?.token, token);
+  });
+
+  assert.equal(getActivePlayerMutationLock(userId), null);
 });

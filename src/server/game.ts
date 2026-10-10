@@ -1,5 +1,5 @@
 import { redis, context, reddit } from './devvit-mock.js';
-import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
+import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
@@ -2256,10 +2256,36 @@ export async function save(
   );
 
   for (let attempt = 0; attempt < 6; attempt++) {
-    const watchedKeys = [playerKey, generationKey, ...extraWrites.map(write => write.key)];
+    // A lease is not a fence by itself: if a callback outlives its TTL, a
+    // newer runtime can acquire the lock while the old callback is still live.
+    // Watch every currently-held participant lock alongside the player and
+    // side-write keys so a stale lease cannot commit after ownership changes.
+    const mutationUserIds = new Set<string>([userId]);
+    for (const write of extraWrites) {
+      if (write.key.startsWith('player:')) {
+        const sideUserId = write.key.slice('player:'.length).trim();
+        if (sideUserId) mutationUserIds.add(sideUserId);
+      }
+    }
+    const activeLocks = [...mutationUserIds]
+      .map(id => getActivePlayerMutationLock(id))
+      .filter((item): item is { key: string; token: string } => item !== null);
+    const watchedKeys = [...new Set([
+      playerKey,
+      generationKey,
+      ...extraWrites.map(write => write.key),
+      ...activeLocks.map(item => item.key),
+    ])];
     const txn = await redis.watch(...watchedKeys);
     // Devvit's TxClient is a command builder after WATCH/MULTI. Reads must use
     // the Redis client itself, while WATCH keeps these keys protected until EXEC.
+    for (const activeLock of activeLocks) {
+      const actualToken = await redis.get(activeLock.key);
+      if (actualToken !== activeLock.token) {
+        await txn.unwatch();
+        throw new Error('PLAYER_MUTATION_LEASE_LOST');
+      }
+    }
     const latestRaw = await redis.get(playerKey);
     const generationRaw = await redis.get(generationKey);
     const extraRaws = await Promise.all(extraWrites.map(write => redis.get(write.key)));
