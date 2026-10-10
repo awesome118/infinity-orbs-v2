@@ -1304,3 +1304,33 @@ test('malformed numeric upgrades and progression fields cannot poison future rew
   assert.match(game, /collectionValue: finiteNonNegativeNumber\(parsed\.collectionValue/);
   assert.match(game, /coinsSacrificed: finiteNonNegativeInteger\(parsed\.sacrifices\?\.coinsSacrificed/);
 });
+
+
+test('bulk Global Booster grants resume by idempotency receipt and report partial failures', () => {
+  const debug = source('src/server/debug.ts');
+  const grantStart = debug.indexOf('async function grantGlobalBoosterCreditsToUser');
+  const loggerStart = debug.indexOf('async function appendGlobalBoosterCreditGrantLog', grantStart);
+  assert.ok(grantStart >= 0 && loggerStart > grantStart);
+  const grant = debug.slice(grantStart, loggerStart);
+  assert.match(grant, /operationId: string/);
+  assert.match(grant, /await redis\.watch\(playerKey, generationKey\)/);
+  assert.match(grant, /receipts\[operationId\]/);
+  assert.match(grant, /alreadyApplied: true/);
+  assert.match(grant, /await txn\.set\(playerKey, JSON\.stringify\(state\)\)/);
+  assert.match(grant, /await txn\.exec\(\)/);
+
+  const routeStart = debug.indexOf("debugRouter.post('/global-booster-credits/grant'");
+  const routeEnd = debug.indexOf("debugRouter.get('/follow-reward'", routeStart);
+  assert.ok(routeStart >= 0 && routeEnd > routeStart);
+  const route = debug.slice(routeStart, routeEnd);
+  assert.match(route, /operationId = String\(req\.body\?\.operationId/);
+  assert.match(route, /failures\.push\(/);
+  assert.match(route, /res\.status\(207\)\.json\(response\)/);
+  assert.match(route, /Grant succeeded but audit logging failed/);
+
+  const modal = source('src/client/components/DevDebugModal.tsx');
+  assert.match(modal, /globalBoosterGrantOperationRef = useRef/);
+  assert.match(modal, /operationId: operation\.operationId/);
+  assert.match(modal, /Completed grants will not be duplicated/);
+  assert.match(modal, /globalBoosterGrantOperationRef\.current = null/);
+});
