@@ -1964,6 +1964,8 @@ export async function loadRaw(): Promise<PlayerState> {
   return {
     ...base,
     ...cleanParsed,
+    coins: finiteNonNegativeInteger(parsed.coins),
+    lifetimeCoins: finiteNonNegativeInteger(parsed.lifetimeCoins ?? parsed.coins),
     level: parsedLevel,
     xp: parsedXp,
     levelXpFloor,
@@ -2359,6 +2361,14 @@ export async function save(
   extraWrite?: SaveExtraWrite | SaveExtraWrite[],
 ) {
   const userId = currentUserId();
+  if (
+    !Number.isFinite(s.coins) || s.coins < 0 ||
+    (s.lifetimeCoins != null && (!Number.isFinite(s.lifetimeCoins) || s.lifetimeCoins < 0))
+  ) {
+    throw new Error('Player Coin balance is invalid; no changes were saved.');
+  }
+  s.coins = finiteNonNegativeInteger(s.coins);
+  s.lifetimeCoins = finiteNonNegativeInteger(s.lifetimeCoins ?? s.coins);
   const explicitWrites = extraWrite
     ? Array.isArray(extraWrite) ? extraWrite : [extraWrite]
     : [];
@@ -2600,13 +2610,26 @@ function serverRandom(): number {
 
 function finiteNonNegativeInteger(value: unknown, fallback = 0): number {
   const n = Number(value);
-  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : fallback;
+  return Number.isFinite(n)
+    ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(n)))
+    : fallback;
 }
 function addCoins(s: PlayerState, amount: number): number {
-  const gain = finiteNonNegativeInteger(amount);
-  if (gain <= 0) return 0;
-  s.coins += gain;
-  s.lifetimeCoins = (s.lifetimeCoins ?? 0) + gain;
+  if (!Number.isFinite(s.coins) || s.coins < 0) {
+    throw new Error('Saved Coin balance is invalid; no reward was applied.');
+  }
+  if (
+    s.lifetimeCoins != null &&
+    (!Number.isFinite(s.lifetimeCoins) || s.lifetimeCoins < 0)
+  ) {
+    throw new Error('Saved lifetime Coin total is invalid; no reward was applied.');
+  }
+  const currentCoins = finiteNonNegativeInteger(s.coins);
+  const requestedGain = finiteNonNegativeInteger(amount);
+  const gain = Math.min(requestedGain, Number.MAX_SAFE_INTEGER - currentCoins);
+  s.coins = currentCoins + gain;
+  const lifetimeCoins = finiteNonNegativeInteger(s.lifetimeCoins ?? currentCoins);
+  s.lifetimeCoins = Math.min(Number.MAX_SAFE_INTEGER, lifetimeCoins + gain);
   return gain;
 }
 
@@ -2889,7 +2912,7 @@ export async function applyRolls(
   );
   if (guildEffects.extraWrite) stageSaveExtraWrite(s, guildEffects.extraWrite);
   coinsGained = Math.max(0, coinsGained - guildEffects.taxedCoins);
-  s.coins += coinsGained;
+  coinsGained = addCoins(s, coinsGained);
   shardsGained = grantRollShards(s, shardsGained);
 
   // Ascension increases XP by 10× while preserving the existing level logic.
@@ -2900,7 +2923,7 @@ export async function applyRolls(
   // Rich EXP Level Progression. Normal roll activations deliberately advance
   // at most one level at a time, while applyXp/quest rewards can catch up safely.
   applyLevelProgress(s, 1);
-  s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
+  // Coin earnings and their lifetime statistic are capped independently at the safe-integer ceiling.
 
   // Singularity Tithe pays +1 Cosmic Dust per 200 processed rolls per level.
   // Every processed orb counts, including multi-roll, auto-roll, offline, and Frenzy rolls.
@@ -4762,8 +4785,7 @@ export async function claimOrbFrenzy(options: {
   );
   if (guildEffects.extraWrite) stageSaveExtraWrite(s, guildEffects.extraWrite);
   coinsGained = Math.max(0, coinsGained - guildEffects.taxedCoins);
-  s.coins += coinsGained;
-  s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
+  coinsGained = addCoins(s, coinsGained);
   s.lastFrenzyClaimDate = new Date(now).toISOString().slice(0, 10);
   s.lastFrenzyClaimAt = now;
   const newRarityKeys = groups.filter(
