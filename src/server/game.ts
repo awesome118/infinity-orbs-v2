@@ -4860,11 +4860,10 @@ export async function claimOrbFrenzy(options: {
     },
     ...ownerRewardWrites,
   ]);
-  // save() intentionally discards pre-wipe mutations. Do not report a claim
-  // or award its owner if the claimant mutation was invalidated before commit.
-  if (await redis.get(FRENZY_POST_PREFIX + postId) !== consumedPostValue) {
-    throw new Error('FRENZY_CLAIM_SAVE_INVALIDATED');
-  }
+  // save() rejects generation invalidation and returns only after the
+  // claimant, consumed-post receipt, and owner reward writes commit atomically.
+  // Do not perform a fallible post-commit GET: a read error here would report
+  // failure after the claim is already consumed and every reward is durable.
   if (handoff && handoff.postId === postId) {
     await redis.del(frenzyHandoffKey(claimantId));
   }
