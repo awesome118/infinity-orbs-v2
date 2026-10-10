@@ -2182,9 +2182,10 @@ export function predictRollActivation(
   let shardsGained = 0;
   let xpGained = 0;
   let uniqueGained = 0;
+  const lifetimeRollsBeforeBatch = s.totalRolls;
 
   for (let i = 0; i < rollCount; i++) {
-    const isGuaranteedThirdBall = s.totalRolls + i === 2;
+    const isGuaranteedThirdBall = lifetimeRollsBeforeBatch + i === 2;
     const isCrit = !isGuaranteedThirdBall && rng() < critChance;
     let effectiveCm = cm;
 
