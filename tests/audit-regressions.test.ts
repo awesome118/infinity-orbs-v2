@@ -701,3 +701,19 @@ test('loadRaw distinguishes a missing save from a present empty or malformed sav
   assert.match(loader, /stored save is not valid player data/);
   assert.doesNotMatch(loader, /if \(!raw\)/);
 });
+
+
+test('Frenzy start saves the post receipt atomically with its owner reward and cooldown', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('export async function startOrbFrenzy');
+  const end = game.indexOf('export async function claimOrbFrenzy', start);
+  assert.ok(start >= 0 && end > start);
+  const body = game.slice(start, end);
+  const createIndex = body.indexOf('await reddit.submitCustomPost');
+  const receiptIndex = body.indexOf('const frenzyPostValue = JSON.stringify');
+  const saveIndex = body.indexOf('await save(s, {', receiptIndex);
+  assert.ok(createIndex >= 0 && receiptIndex > createIndex && saveIndex > receiptIndex);
+  assert.match(body.slice(saveIndex, saveIndex + 500), /key: FRENZY_POST_PREFIX \+ postId/);
+  assert.match(body.slice(saveIndex, saveIndex + 500), /expectedValue: null/);
+  assert.doesNotMatch(body.slice(createIndex, saveIndex), /await redis\.set\(FRENZY_POST_PREFIX/);
+});

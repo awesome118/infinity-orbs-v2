@@ -4245,7 +4245,7 @@ export async function startOrbFrenzy(options: {
     if (!postId) throw new Error('Could not create the Frenzy post.');
 
     const adminTest = options.adminTest === true || isFrenzyTestAdmin(s.username) || isFrenzyTestAdmin(ownerUsername);
-    await redis.set(FRENZY_POST_PREFIX + postId, JSON.stringify({
+    const frenzyPostValue = JSON.stringify({
       ownerId: currentUserId(),
       ownerUsername,
       rarity,
@@ -4255,7 +4255,7 @@ export async function startOrbFrenzy(options: {
       createdAt,
       expiresAt,
       consumedAt: null,
-    }));
+    });
 
     s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + 1);
     if (s.manualRolls >= 3) s.upgrades.auto = 1;
@@ -4263,7 +4263,14 @@ export async function startOrbFrenzy(options: {
     s.lastFrenzyAt = createdAt;
     s.lastRollAt = Date.now();
     s.lastSeenAt = Date.now();
-    await save(s);
+    // Do not publish a claimable post record unless the owner's roll rewards,
+    // cooldown, Guild/community effects and post receipt all commit together.
+    await save(s, {
+      key: FRENZY_POST_PREFIX + postId,
+      expectedValue: null,
+      nextValue: frenzyPostValue,
+      conflictMessage: 'Frenzy post ID is already registered; no player state was saved.',
+    });
     await appendPlayerSpyLog('frenzy-start', {
       rarity,
       postId,
