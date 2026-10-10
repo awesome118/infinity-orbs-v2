@@ -82,9 +82,26 @@ import {
   addCommunityRolls,
   getCommunityEvent,
   getDailyStreakCommunity,
-  addDailyStreakCommunityProgress,
+  prepareDailyStreakCommunityProgress,
 } from './social.js';
 
+
+interface SaveExtraWrite {
+  key: string;
+  expectedValue: string | null;
+  nextValue: string;
+  conflictMessage?: string;
+}
+
+const pendingSaveExtraWrites = new WeakMap<PlayerState, SaveExtraWrite[]>();
+
+function stageSaveExtraWrite(s: PlayerState, write: SaveExtraWrite): void {
+  const existing = pendingSaveExtraWrites.get(s) ?? [];
+  if (existing.some(item => item.key === write.key)) {
+    throw new Error(`Duplicate pending save write for ${write.key}.`);
+  }
+  pendingSaveExtraWrites.set(s, [...existing, write]);
+}
 
 function currentUserId(): string {
   const userId = String(context.userId ?? '').trim();
@@ -1815,7 +1832,14 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
   const rewardFreeRolls = day * 5;
   s.freeRolls = (s.freeRolls ?? 0) + rewardFreeRolls;
   addCoins(s, rewardCoins);
-  s.dailyStreakCommunity = await addDailyStreakCommunityProgress(s.streak.count);
+  const communityUpdate = await prepareDailyStreakCommunityProgress(s.streak.count);
+  stageSaveExtraWrite(s, {
+    key: communityUpdate.key,
+    expectedValue: communityUpdate.expectedValue,
+    nextValue: communityUpdate.nextValue,
+    conflictMessage: 'Daily Streak community progress changed while claiming. Please retry.',
+  });
+  s.dailyStreakCommunity = communityUpdate.event;
   return { rewardCoins, rewardShards, rewardFreeRolls, day, community: s.dailyStreakCommunity };
 }
 
@@ -2054,9 +2078,24 @@ async function loadRollTicketForUse(
 
 export async function save(
   s: PlayerState,
-  extraWrite?: { key: string; expectedValue: string | null; nextValue: string; conflictMessage?: string },
+  extraWrite?: SaveExtraWrite | SaveExtraWrite[],
 ) {
   const userId = currentUserId();
+  const explicitWrites = extraWrite
+    ? Array.isArray(extraWrite) ? extraWrite : [extraWrite]
+    : [];
+  const extraWrites = [
+    ...(pendingSaveExtraWrites.get(s) ?? []),
+    ...explicitWrites,
+  ];
+  const writeKeys = extraWrites.map(write => write.key);
+  if (
+    new Set(writeKeys).size !== writeKeys.length ||
+    writeKeys.includes(key()) ||
+    writeKeys.includes(saveGenerationKeyFor(userId))
+  ) {
+    throw new Error('Invalid or duplicate extra writes in player save.');
+  }
   s.codexChain = highestCodexChain(s.collection);
   s.codexDevotionLuckPercent = codexDevotionLuckPercent(
     s.masterySkills?.celestialSurge ?? 0,
@@ -2076,17 +2115,21 @@ export async function save(
   );
 
   for (let attempt = 0; attempt < 6; attempt++) {
-    const watchedKeys = extraWrite ? [playerKey, generationKey, extraWrite.key] : [playerKey, generationKey];
+    const watchedKeys = [playerKey, generationKey, ...extraWrites.map(write => write.key)];
     const txn = await redis.watch(...watchedKeys);
     // Devvit's TxClient is a command builder after WATCH/MULTI. Reads must use
     // the Redis client itself, while WATCH keeps these keys protected until EXEC.
     const latestRaw = await redis.get(playerKey);
     const generationRaw = await redis.get(generationKey);
-    const extraRaw = extraWrite ? await redis.get(extraWrite.key) : null;
+    const extraRaws = await Promise.all(extraWrites.map(write => redis.get(write.key)));
 
-    if (extraWrite && extraRaw !== extraWrite.expectedValue) {
-      await txn.unwatch();
-      throw new Error(extraWrite.conflictMessage ?? 'Roll prediction ticket changed. Refresh the game.');
+    for (let index = 0; index < extraWrites.length; index += 1) {
+      const write = extraWrites[index];
+      const actual = extraRaws[index] == null ? null : String(extraRaws[index]);
+      if (actual !== write.expectedValue) {
+        await txn.unwatch();
+        throw new Error(write.conflictMessage ?? 'Shared state changed before the player save. Please retry.');
+      }
     }
     const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
     const stateGeneration = Math.max(0, Math.floor(Number(s.saveGeneration ?? 0)));
@@ -2114,6 +2157,7 @@ export async function save(
       fresh.username = fresh.username ?? context.username ?? undefined;
       fresh.saveGeneration = generation;
       Object.assign(s, fresh);
+      pendingSaveExtraWrites.delete(s);
       await txn.unwatch();
       throw new Error('PLAYER_STATE_INVALIDATED_BY_WIPE');
     }
@@ -2177,9 +2221,12 @@ export async function save(
     const nextState = { ...s, saveGeneration: generation, stateRevision: expectedRevision + 1 };
     await txn.multi();
     await txn.set(playerKey, JSON.stringify(nextState));
-    if (extraWrite) await txn.set(extraWrite.key, extraWrite.nextValue);
+    for (const write of extraWrites) {
+      await txn.set(write.key, write.nextValue);
+    }
     const committed = await txn.exec();
     if (committed !== null) {
+      pendingSaveExtraWrites.delete(s);
       Object.assign(s, nextState);
       // Flair is cosmetic and must never hold the gameplay request hostage.
       void syncRarityFlair(s).catch(error => {
