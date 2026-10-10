@@ -74,9 +74,23 @@ async function ensureRedisStringKey(keyName: string, fallback: string): Promise<
 }
 
 function parseGuildList(raw: unknown): Guild[] {
+  if (raw == null) return [];
   const parsed = parseStoredJson<unknown>(raw);
-  if (!Array.isArray(parsed)) return [];
-  return normalizeGuilds(parsed.filter(item => item && typeof item === 'object') as Guild[]);
+  if (!Array.isArray(parsed)) {
+    throw new Error('Guild data is corrupted; refusing to replace it.');
+  }
+  for (const item of parsed) {
+    if (
+      !item || typeof item !== 'object' || Array.isArray(item) ||
+      (('id' in item) && typeof (item as any).id !== 'string') ||
+      (('name' in item) && typeof (item as any).name !== 'string') ||
+      (('tag' in item) && typeof (item as any).tag !== 'string') ||
+      (('members' in item) && !Array.isArray((item as any).members))
+    ) {
+      throw new Error('Guild data contains a malformed record; refusing to replace it.');
+    }
+  }
+  return normalizeGuilds(parsed as Guild[]);
 }
 
 function parseLeaderboardList(raw: unknown): LeaderboardEntry[] {
@@ -234,7 +248,63 @@ function guildPerkCost(perk: GuildPerkId, currentRank: number): number {
   return Math.max(1, Math.round(base * Math.pow(currentRank + 1, exponent)));
 }
 
+async function applyGuildMigration(
+  markerKey: string,
+  migrate: (guilds: Guild[]) => void,
+): Promise<void> {
+  await ensureRedisStringKey(GUILDS_KEY, '[]');
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const txn = await redis.watch(GUILDS_KEY, markerKey);
+    const marker = await redis.get(markerKey);
+    if (marker != null) {
+      await txn.unwatch();
+      return;
+    }
+
+    const raw = await redis.get(GUILDS_KEY);
+    let guilds: Guild[];
+    try {
+      guilds = parseGuildList(raw);
+    } catch (error) {
+      await txn.unwatch();
+      throw error;
+    }
+    migrate(guilds);
+
+    await txn.multi();
+    await txn.set(GUILDS_KEY, JSON.stringify(guilds));
+    await txn.set(markerKey, '1');
+    const committed = await txn.exec();
+    if (committed !== null) return;
+  }
+  throw new Error('Guild migration changed while applying an update. Please retry.');
+}
+
+async function ensureGuildMigrations(): Promise<void> {
+  await applyGuildMigration(GUILD_UPGRADE_RESET_KEY, guilds => {
+    for (const guild of guilds) {
+      guild.perks = {
+        luckRank: 0,
+        speedRank: 0,
+        vaultRank: 0,
+        shardRank: 0,
+        critRank: 0,
+        coinRank: 0,
+        memberCapacityRank: 0,
+        tokenYieldRank: 0,
+        taskBountyRank: 0,
+        comboRank: 0,
+        guildXpRank: 0,
+      };
+    }
+  });
+  await applyGuildMigration(GUILD_TOKEN_RESET_KEY, guilds => {
+    for (const guild of guilds) guild.tokens = 0;
+  });
+}
+
 async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Promise<T> {
+  await ensureGuildMigrations();
   // The transaction client queues the pre-MULTI GET for EXEC. If the key does not
   // exist, Valkey returns nil for that command and the adapter cannot transform
   // the transaction result. Initialize the collection once so the watched GET
@@ -261,11 +331,9 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
 
 
 async function loadGuilds(): Promise<Guild[]> {
+  await ensureGuildMigrations();
   const raw = await redis.get(GUILDS_KEY);
-  const rawParsed = parseStoredJson<unknown>(raw);
-  const rawGuilds = Array.isArray(rawParsed)
-    ? rawParsed.filter(item => item && typeof item === 'object') as Guild[]
-    : [];
+  const rawGuilds = parseGuildList(raw);
   const guilds = normalizeGuilds(rawGuilds);
   const now = Date.now();
   const expiredCombo = rawGuilds.some(g => {
@@ -273,44 +341,6 @@ async function loadGuilds(): Promise<Guild[]> {
     const endsAt = Math.max(0, Math.floor(Number(g.combo?.endsAt ?? 0) || 0));
     return tier > 0 && endsAt > 0 && endsAt <= now;
   });
-
-  // One-time update migration: reset every Guild Upgrade rank to its base value.
-  // The migration key ensures newly purchased upgrades are never wiped on later reads.
-  const upgradeResetDone = await redis.get(GUILD_UPGRADE_RESET_KEY);
-  if (!upgradeResetDone && guilds.length > 0) {
-    await updateGuilds(current => {
-      for (const guild of current) {
-        guild.perks = {
-          luckRank: 0,
-          speedRank: 0,
-          vaultRank: 0,
-          shardRank: 0,
-          critRank: 0,
-          coinRank: 0,
-          memberCapacityRank: 0,
-          tokenYieldRank: 0,
-          taskBountyRank: 0,
-          comboRank: 0,
-          guildXpRank: 0,
-        };
-      }
-      return current;
-    });
-    await redis.set(GUILD_UPGRADE_RESET_KEY, '1');
-    return parseGuildList(await redis.get(GUILDS_KEY));
-  }
-
-  // One-time economy migration: clear all existing Guild Token treasury balances.
-  // The migration key prevents future loads from deleting newly earned task tokens.
-  const resetDone = await redis.get(GUILD_TOKEN_RESET_KEY);
-  if (!resetDone && guilds.length > 0) {
-    await updateGuilds(current => {
-      for (const guild of current) guild.tokens = 0;
-      return current;
-    });
-    await redis.set(GUILD_TOKEN_RESET_KEY, '1');
-    return parseGuildList(await redis.get(GUILDS_KEY));
-  }
 
   if (expiredCombo) {
     // Persist the expiry reset so a later read cannot resurrect the old task tiers.
