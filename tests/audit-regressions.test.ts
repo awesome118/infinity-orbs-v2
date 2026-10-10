@@ -1179,4 +1179,13 @@ test('third lifetime Orb guarantee uses an immutable pre-batch roll count', () =
   assert.match(roll, /const lifetimeRollsBeforeBatch = s\.totalRolls/);
   assert.match(roll, /forcedRarity == null && lifetimeRollsBeforeBatch \+ i === 2/);
   assert.doesNotMatch(roll, /s\.totalRolls \+ i === 2/);
+
+  const shared = source('src/shared/game.ts');
+  const predictionStart = shared.indexOf('export function predictRollActivation');
+  const predictionEnd = shared.indexOf('export function upgradeCost', predictionStart);
+  assert.ok(predictionStart >= 0 && predictionEnd > predictionStart);
+  const prediction = shared.slice(predictionStart, predictionEnd);
+  assert.match(prediction, /const lifetimeRollsBeforeBatch = s\.totalRolls/);
+  assert.match(prediction, /const isGuaranteedThirdBall = lifetimeRollsBeforeBatch \+ i === 2/);
+  assert.doesNotMatch(prediction, /s\.totalRolls \+ i === 2/);
 });
