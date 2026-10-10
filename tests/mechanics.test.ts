@@ -18,6 +18,7 @@ import {
   GUILD_COMBO_MAX_TIER,
   grantFreeShards,
   grantRollShards,
+  FREE_SHARD_DAILY_CAP,
   onlinePlayerLuckMultiplier,
   luckMultiplier,
   frenzyClaimCountForRarity,
@@ -252,6 +253,33 @@ test('roll Shards respect the hard 50-per-day cap while free reward Shards bypas
   assert.equal(grantFreeShards(state, 10, NOW), 10);
   assert.equal(state.shards, 11);
   assert.equal(state.freeShardsEarnedToday, 50);
+});
+
+test('malformed daily Shard counter fails closed without producing NaN', () => {
+  const state = createInitialState(NOW);
+  state.lastFreeShardReset = new Date(NOW).toISOString().slice(0, 10);
+  state.freeShardsEarnedToday = 'broken' as unknown as number;
+  state.shards = 0;
+  state.lifetimeShards = 'broken' as unknown as number;
+
+  assert.equal(grantRollShards(state, 7, NOW), 0);
+  assert.equal(state.freeShardsEarnedToday, FREE_SHARD_DAILY_CAP);
+  assert.equal(state.shards, 0);
+  assert.equal(Number.isFinite(state.lifetimeShards), true);
+});
+
+test('non-finite roll Shard request grants zero while preserving a valid budget', () => {
+  const state = createInitialState(NOW);
+  state.lastFreeShardReset = new Date(NOW).toISOString().slice(0, 10);
+  state.freeShardsEarnedToday = 12;
+  state.shards = 4;
+  state.lifetimeShards = 20;
+
+  assert.equal(grantRollShards(state, Number.NaN, NOW), 0);
+  assert.equal(grantRollShards(state, Number.POSITIVE_INFINITY, NOW), 0);
+  assert.equal(state.freeShardsEarnedToday, 12);
+  assert.equal(state.shards, 4);
+  assert.equal(state.lifetimeShards, 20);
 });
 
 test('Orb Frenzy batch size follows logarithmic rarity scaling', () => {
