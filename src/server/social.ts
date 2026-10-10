@@ -82,10 +82,21 @@ function parseGuildList(raw: unknown): Guild[] {
   for (const item of parsed) {
     if (
       !item || typeof item !== 'object' || Array.isArray(item) ||
-      (('id' in item) && typeof (item as any).id !== 'string') ||
-      (('name' in item) && typeof (item as any).name !== 'string') ||
-      (('tag' in item) && typeof (item as any).tag !== 'string') ||
-      (('members' in item) && !Array.isArray((item as any).members))
+      typeof (item as any).id !== 'string' ||
+      typeof (item as any).name !== 'string' ||
+      typeof (item as any).tag !== 'string' ||
+      !Number.isFinite((item as any).level) || Number((item as any).level) < 1 ||
+      !Number.isFinite((item as any).xp) || Number((item as any).xp) < 0 ||
+      !Number.isFinite((item as any).tokens) || Number((item as any).tokens) < 0 ||
+      !Array.isArray((item as any).members) ||
+      !(item as any).members.every((member: unknown) =>
+        !!member && typeof member === 'object' && !Array.isArray(member) &&
+        typeof (member as any).username === 'string' &&
+        ['owner', 'officer', 'member'].includes((member as any).role) &&
+        Number.isFinite((member as any).contribution) &&
+        Number((member as any).contribution) >= 0 &&
+        ((member as any).userId == null || typeof (member as any).userId === 'string')
+      )
     ) {
       throw new Error('Guild data contains a malformed record; refusing to replace it.');
     }
@@ -230,12 +241,15 @@ function generatedFallbackTaskType(index: number): GuildTask['type'] {
 }
 
 function memberMatches(member: Guild['members'][number], requestedUsername?: string): boolean {
-  const currentUsername = username();
-  return Boolean(
-    (member.userId && member.userId === user()) ||
-    member.username === requestedUsername ||
-    member.username === currentUsername,
-  );
+  // Admin/spy lookups explicitly name their target. Ordinary player membership
+  // must prefer the immutable Reddit user ID and only use username for legacy
+  // records that predate user IDs; a stale username must not impersonate an
+  // existing member whose stored ID belongs to another account.
+  if (requestedUsername) return member.username === requestedUsername;
+  if (typeof member.userId === 'string' && member.userId.length > 0) {
+    return member.userId === user();
+  }
+  return member.username === username();
 }
 
 function currentGuild(guilds: Guild[]): Guild | undefined {
