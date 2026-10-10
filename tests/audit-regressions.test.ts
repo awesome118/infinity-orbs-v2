@@ -1210,3 +1210,39 @@ test('critical rarity caps match the continuum ceiling and cannot downgrade high
   assert.match(claim, /Math\.min\(MAX_ORB_RARITY, Math\.round\(data\.rarity \* 5\)\)/);
   assert.doesNotMatch(game, /Math\.min\(1_000_000_000_000_000, Math\.round\((?:baseRarity|data\.rarity)/);
 });
+
+
+test('earned Coins and lifetime Coins stay within safe integer bounds', () => {
+  const game = source('src/server/game.ts');
+  assert.match(game, /function finiteNonNegativeInteger\(value: unknown, fallback = 0\): number \{[\s\S]*?Math\.min\(Number\.MAX_SAFE_INTEGER/);
+  assert.match(game, /function addCoins\(s: PlayerState, amount: number\): number \{[\s\S]*?Number\.MAX_SAFE_INTEGER - currentCoins/);
+
+  const loadStart = game.indexOf('export async function loadRaw');
+  const loadEnd = game.indexOf('function applyXp', loadStart);
+  assert.ok(loadStart >= 0 && loadEnd > loadStart);
+  const load = game.slice(loadStart, loadEnd);
+  assert.match(load, /coins: finiteNonNegativeInteger\(parsed\.coins\)/);
+  assert.match(load, /lifetimeCoins: finiteNonNegativeInteger\(parsed\.lifetimeCoins \?\? parsed\.coins\)/);
+
+  const saveStart = game.indexOf('export async function save(');
+  const saveEnd = game.indexOf('function serverRandom', saveStart);
+  assert.ok(saveStart >= 0 && saveEnd > saveStart);
+  const save = game.slice(saveStart, saveEnd);
+  assert.match(save, /Player Coin balance is invalid; no changes were saved/);
+  assert.match(save, /s\.coins = finiteNonNegativeInteger\(s\.coins\)/);
+
+  const rollStart = game.indexOf('export async function applyRolls');
+  const rollEnd = game.indexOf('async function sendOfflineFullNotification', rollStart);
+  assert.ok(rollStart >= 0 && rollEnd > rollStart);
+  const roll = game.slice(rollStart, rollEnd);
+  assert.match(roll, /coinsGained = addCoins\(s, coinsGained\)/);
+  assert.doesNotMatch(roll, /s\.coins \+= coinsGained/);
+  assert.doesNotMatch(roll, /s\.lifetimeCoins = \(s\.lifetimeCoins \?\? 0\) \+ coinsGained/);
+
+  const frenzyStart = game.indexOf('export async function claimOrbFrenzy');
+  const frenzyEnd = game.indexOf('function sampleBinomial', frenzyStart);
+  assert.ok(frenzyStart >= 0 && frenzyEnd > frenzyStart);
+  const frenzy = game.slice(frenzyStart, frenzyEnd);
+  assert.match(frenzy, /coinsGained = addCoins\(s, coinsGained\)/);
+  assert.doesNotMatch(frenzy, /s\.coins \+= coinsGained/);
+});
