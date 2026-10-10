@@ -462,27 +462,49 @@ export async function muteGuildChatUser(
   targetUsername: string,
   mutedBy = username(),
 ): Promise<import('../shared/social.js').GuildChatMuteRecord> {
-  const record: import('../shared/social.js').GuildChatMuteRecord = {
-    userId: String(userId),
-    username: String(targetUsername).trim().replace(/^u\//i, ''),
-    mutedAt: Date.now(),
-    mutedBy: String(mutedBy).trim() || 'Admin',
-  };
-  await redis.hSet(GUILD_CHAT_MUTES_KEY, {
-    [record.userId]: JSON.stringify(record),
-  });
+  const targetId = String(userId ?? '').trim();
+  if (!targetId) throw new Error('A valid user ID is required to mute chat.');
+  return withPlayerMutationLockFor('guild-chat-user:' + targetId, async () => {
+    const record: import('../shared/social.js').GuildChatMuteRecord = {
+      userId: targetId,
+      username: String(targetUsername).trim().replace(/^u\//i, ''),
+      mutedAt: Date.now(),
+      mutedBy: String(mutedBy).trim() || 'Admin',
+    };
+    if (!record.username) throw new Error('A valid username is required to mute chat.');
 
-  // A mute is a full chat moderation action: block future messages and remove
-  // all retained historical messages from both Guild Chat and Global Chat.
-  await purgeChatMessagesForUser(record.userId, record.username);
-  return record;
+    await redis.hSet(GUILD_CHAT_MUTES_KEY, {
+      [record.userId]: JSON.stringify(record),
+    });
+
+    // This lock is shared with chat post requests for this user. Once this
+    // purge completes, no pre-mute post can commit after it and later reappear.
+    await purgeChatMessagesForUser(record.userId, record.username);
+    return record;
+  });
 }
 
 export async function unmuteGuildChatUser(userId: string): Promise<boolean> {
-  const existing = await redis.hGet(GUILD_CHAT_MUTES_KEY, userId);
-  if (!existing) return false;
-  await redis.hSet(GUILD_CHAT_MUTES_KEY, { [userId]: '' });
-  return true;
+  const targetId = String(userId ?? '').trim();
+  if (!targetId) return false;
+  return withPlayerMutationLockFor('guild-chat-user:' + targetId, async () => {
+    const existing = await redis.hGet(GUILD_CHAT_MUTES_KEY, targetId);
+    if (!existing) return false;
+    const record = parseStoredJson<Partial<import('../shared/social.js').GuildChatMuteRecord>>(existing);
+    if (
+      !record ||
+      String(record.userId ?? '').trim() !== targetId ||
+      !String(record.username ?? '').trim()
+    ) {
+      throw new Error('Mute record is corrupted; refusing to unmute until it can be repaired.');
+    }
+
+    // A failed mute-time purge may have left old rows in storage. Purge again
+    // while the visibility guard still applies, then permit new posts.
+    await purgeChatMessagesForUser(targetId, String(record.username));
+    await redis.hSet(GUILD_CHAT_MUTES_KEY, { [targetId]: '' });
+    return true;
+  });
 }
 
 async function hideGuildLastLogins(guild: Guild): Promise<Guild> {
@@ -922,29 +944,31 @@ export async function reportGuildChatMessage(messageId: string): Promise<{ succe
 }
 
 export async function postGuildMessage(text: string) {
-  const clean = text.trim().slice(0, 200);
-  if (!clean) throw new Error('Message cannot be empty.');
+  return withPlayerMutationLockFor('guild-chat-user:' + user(), async () => {
+    const clean = text.trim().slice(0, 200);
+    if (!clean) throw new Error('Message cannot be empty.');
 
-  if (await isGuildChatMuted()) {
-    throw new Error('You are muted from Guild Chat.');
-  }
-  await enforceChatCooldown('guild', 2_000);
+    if (await isGuildChatMuted()) {
+      throw new Error('You are muted from Guild Chat.');
+    }
+    await enforceChatCooldown('guild', 2_000);
 
-  return updateGuilds(guilds => {
-    const guild = currentGuild(guilds);
-    if (!guild) throw new Error('You are not in a guild.');
-    if (!guild.chat) guild.chat = [];
+    return updateGuilds(guilds => {
+      const guild = currentGuild(guilds);
+      if (!guild) throw new Error('You are not in a guild.');
+      if (!guild.chat) guild.chat = [];
 
-    const msg: GuildMessage = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      username: username(),
-      userId: user(),
-      text: clean,
-      timestamp: Date.now(),
-    };
-    guild.chat.push(msg);
-    if (guild.chat.length > 50) guild.chat.shift();
-    return msg;
+      const msg: GuildMessage = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        username: username(),
+        userId: user(),
+        text: clean,
+        timestamp: Date.now(),
+      };
+      guild.chat.push(msg);
+      if (guild.chat.length > 50) guild.chat.shift();
+      return msg;
+    });
   });
 }
 
@@ -1709,47 +1733,49 @@ export async function reportGlobalChatMessage(messageId: string): Promise<{ succ
 }
 
 export async function postGlobalChatMessage(text: string): Promise<GlobalChatMessage> {
-  const messageText = String(text ?? '').trim();
-  if (!messageText) throw new Error('Message cannot be empty.');
-  if (await isGuildChatMuted()) {
-    throw new Error('You are muted from Chat.');
-  }
-  if (messageText.length > 200) throw new Error('Messages must be 200 characters or fewer.');
-  await enforceChatCooldown('global', 2_000);
+  return withPlayerMutationLockFor('guild-chat-user:' + user(), async () => {
+    const messageText = String(text ?? '').trim();
+    if (!messageText) throw new Error('Message cannot be empty.');
+    if (await isGuildChatMuted()) {
+      throw new Error('You are muted from Chat.');
+    }
+    if (messageText.length > 200) throw new Error('Messages must be 200 characters or fewer.');
+    await enforceChatCooldown('global', 2_000);
 
-  const timestamp = Date.now();
-  const message: GlobalChatMessage = {
-    id: `global-chat-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
-    username: username().replace(/^u\//i, '') || 'Redditor',
-    text: messageText,
-    timestamp,
-    userId: user(),
-  };
+    const timestamp = Date.now();
+    const message: GlobalChatMessage = {
+      id: `global-chat-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+      username: username().replace(/^u\//i, '') || 'Redditor',
+      text: messageText,
+      timestamp,
+      userId: user(),
+    };
 
-  // Initialize the key before WATCH so the first write follows the same
-  // concrete-string path as later transactions in Redis/Valkey adapters.
-  await ensureRedisStringKey(GLOBAL_CHAT_KEY, '[]');
+    // Initialize the key before WATCH so the first write follows the same
+    // concrete-string path as later transactions in Redis/Valkey adapters.
+    await ensureRedisStringKey(GLOBAL_CHAT_KEY, '[]');
 
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const txn = await redis.watch(GLOBAL_CHAT_KEY);
-    // Read the watched value with Redis; TxClient.get() is a transaction builder.
-    const raw = await redis.get(GLOBAL_CHAT_KEY);
-    const messages = await (async () => {
-      const parsed = parseStoredJson<unknown>(raw);
-      if (!Array.isArray(parsed)) return [] as GlobalChatMessage[];
-      return parsed.filter(item => item && typeof item === 'object') as GlobalChatMessage[];
-    })();
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const txn = await redis.watch(GLOBAL_CHAT_KEY);
+      // Read the watched value with Redis; TxClient.get() is a transaction builder.
+      const raw = await redis.get(GLOBAL_CHAT_KEY);
+      const messages = await (async () => {
+        const parsed = parseStoredJson<unknown>(raw);
+        if (!Array.isArray(parsed)) return [] as GlobalChatMessage[];
+        return parsed.filter(item => item && typeof item === 'object') as GlobalChatMessage[];
+      })();
 
-    messages.push(message);
-    messages.sort((a, b) => a.timestamp - b.timestamp);
+      messages.push(message);
+      messages.sort((a, b) => a.timestamp - b.timestamp);
 
-    await txn.multi();
-    await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(messages.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
-    const committed = await txn.exec();
-    if (committed !== null) return message;
-  }
+      await txn.multi();
+      await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(messages.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
+      const committed = await txn.exec();
+      if (committed !== null) return message;
+    }
 
-  throw new Error('Chat changed while sending your message. Please retry.');
+    throw new Error('Chat changed while sending your message. Please retry.');
+  });
 }
 
 function sortLeaderboard(entries: LeaderboardEntry[], selector: (entry: LeaderboardEntry) => number): LeaderboardEntry[] {

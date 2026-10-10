@@ -768,3 +768,23 @@ test('follow subscription marker and aggregate count commit atomically and idemp
   assert.match(follow, /Follow-action counter is corrupted or exhausted/);
   assert.doesNotMatch(follow, /await redis\.incr\(FOLLOW_ACTION_COUNT_KEY\)/);
 });
+
+
+test('chat posting and moderation share a per-user lock and unmute purges history before clearing the mute', () => {
+  const social = source('src/server/social.ts');
+  const muteStart = social.indexOf('export async function muteGuildChatUser');
+  const unmuteStart = social.indexOf('export async function unmuteGuildChatUser', muteStart);
+  const guildPostStart = social.indexOf('export async function postGuildMessage');
+  const globalPostStart = social.indexOf('export async function postGlobalChatMessage');
+  const nextFunctionAfterGlobal = social.indexOf('function sortLeaderboard', globalPostStart);
+  assert.ok(muteStart >= 0 && unmuteStart > muteStart && guildPostStart > unmuteStart && globalPostStart > guildPostStart);
+  const mute = social.slice(muteStart, unmuteStart);
+  const unmute = social.slice(unmuteStart, social.indexOf('async function hideGuildLastLogins', unmuteStart));
+  const guildPost = social.slice(guildPostStart, globalPostStart);
+  const globalPost = social.slice(globalPostStart, nextFunctionAfterGlobal);
+  for (const body of [mute, unmute, guildPost, globalPost]) {
+    assert.match(body, /withPlayerMutationLockFor\('guild-chat-user:' \+/);
+  }
+  assert.ok(unmute.indexOf('await purgeChatMessagesForUser') < unmute.indexOf("await redis.hSet(GUILD_CHAT_MUTES_KEY, { [targetId]: '' })"));
+  assert.match(unmute, /Mute record is corrupted; refusing to unmute/);
+});
