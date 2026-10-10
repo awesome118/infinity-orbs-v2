@@ -1707,57 +1707,67 @@ export async function getDailyStreakCommunity(): Promise<DailyStreakCommunityEve
   throw new Error('Daily Streak community goal changed while refreshing. Please retry.');
 }
 
-export async function addDailyStreakCommunityProgress(amount: number): Promise<DailyStreakCommunityEvent> {
+export async function prepareDailyStreakCommunityProgress(amount: number): Promise<{
+  event: DailyStreakCommunityEvent;
+  key: string;
+  expectedValue: string | null;
+  nextValue: string;
+}> {
   const contribution = Number(amount);
   if (!Number.isSafeInteger(contribution) || contribution < 0 || contribution > Number.MAX_SAFE_INTEGER - 1) {
     throw new Error('Daily Streak contribution must be a finite safe integer.');
   }
-  if (contribution <= 0) return getDailyStreakCommunity();
   await ensureRedisStringKey(DAILY_STREAK_COMMUNITY_KEY, JSON.stringify(createInitialDailyStreakCommunity()));
+
+  const raw = await redis.get(DAILY_STREAK_COMMUNITY_KEY);
+  const now = Date.now();
+  const currentWeek = weekKey(now);
+  const parsedEvent = raw == null ? null : parseStoredJson<DailyStreakCommunityEvent>(raw);
+  if (raw != null && !parsedEvent) {
+    throw new Error('Daily Streak community data is corrupted.');
+  }
+
+  let event = parsedEvent ?? createInitialDailyStreakCommunity(now);
+  if (parsedEvent) validateDailyStreakCommunityEvent(event);
+  if (event.weekId !== currentWeek || now >= event.endsAt) {
+    event = createInitialDailyStreakCommunity(now);
+    event.id = `daily-streak-w${currentWeek}`;
+  }
+
+  event.currentProgress += contribution;
+  validateDailyStreakCommunityEvent(event);
+  while (event.currentProgress >= event.goal) {
+    event.completedTier = Math.max(event.completedTier ?? 0, event.tier);
+    event.tier += 1;
+    const nextGoal = Math.round(event.goal * 2.2);
+    event.goal = Number.isSafeInteger(nextGoal) && nextGoal > event.goal
+      ? nextGoal
+      : Number.MAX_SAFE_INTEGER;
+    event.luckMultiplier = Number((1 + event.tier * 0.50).toFixed(2));
+    event.speedMultiplier = Math.max(0.50, Number((1 - event.tier * 0.01).toFixed(2)));
+  }
+
+  return {
+    event,
+    key: DAILY_STREAK_COMMUNITY_KEY,
+    expectedValue: raw == null ? null : String(raw),
+    nextValue: JSON.stringify(event),
+  };
+}
+
+export async function addDailyStreakCommunityProgress(amount: number): Promise<DailyStreakCommunityEvent> {
   for (let attempt = 0; attempt < 6; attempt++) {
-    const txn = await redis.watch(DAILY_STREAK_COMMUNITY_KEY);
-    const raw = await redis.get(DAILY_STREAK_COMMUNITY_KEY);
-    const now = Date.now();
-    const currentWeek = weekKey(now);
-    const parsedEvent = raw == null ? null : parseStoredJson<DailyStreakCommunityEvent>(raw);
-    if (raw != null && !parsedEvent) {
+    const prepared = await prepareDailyStreakCommunityProgress(amount);
+    const txn = await redis.watch(prepared.key);
+    const current = await redis.get(prepared.key);
+    if ((current == null ? null : String(current)) !== prepared.expectedValue) {
       await txn.unwatch();
-      throw new Error('Daily Streak community data is corrupted.');
-    }
-    let event = parsedEvent ?? createInitialDailyStreakCommunity(now);
-    if (parsedEvent) {
-      try {
-        validateDailyStreakCommunityEvent(event);
-      } catch (error) {
-        await txn.unwatch();
-        throw error;
-      }
-    }
-    if (event.weekId !== currentWeek || now >= event.endsAt) {
-      event = createInitialDailyStreakCommunity(now);
-      event.id = `daily-streak-w${currentWeek}`;
-    }
-    event.currentProgress += contribution;
-    try {
-      validateDailyStreakCommunityEvent(event);
-    } catch (error) {
-      await txn.unwatch();
-      throw error;
-    }
-    while (event.currentProgress >= event.goal) {
-      event.completedTier = Math.max(event.completedTier ?? 0, event.tier);
-      event.tier += 1;
-      const nextGoal = Math.round(event.goal * 2.2);
-      event.goal = Number.isSafeInteger(nextGoal) && nextGoal > event.goal
-        ? nextGoal
-        : Number.MAX_SAFE_INTEGER;
-      event.luckMultiplier = Number((1 + event.tier * 0.50).toFixed(2));
-      event.speedMultiplier = Math.max(0.50, Number((1 - event.tier * 0.01).toFixed(2)));
+      continue;
     }
     await txn.multi();
-    await txn.set(DAILY_STREAK_COMMUNITY_KEY, JSON.stringify(event));
+    await txn.set(prepared.key, prepared.nextValue);
     const committed = await txn.exec();
-    if (committed !== null) return event;
+    if (committed !== null) return prepared.event;
   }
   throw new Error('Daily Streak community goal changed while adding progress. Please retry.');
 }
