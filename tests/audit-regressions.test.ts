@@ -1288,3 +1288,19 @@ test('malformed nested player-save shapes fall back before reaching gameplay cod
   assert.match(game, /streak: normalizePlayerStreak\(parsed\.streak, base\.streak\)/);
   assert.match(game, /unlockedCosmetics: isStringList\(parsed\.unlockedCosmetics\)/);
 });
+
+
+test('malformed numeric upgrades and progression fields cannot poison future rewards', () => {
+  const game = source('src/server/game.ts');
+  assert.match(game, /function normalizeLevelRecord<T extends object>/);
+  assert.match(game, /const STANDARD_UPGRADE_LEVEL_LIMITS = buildStandardUpgradeLimits\(\)/);
+  assert.match(game, /const PRESTIGE_UPGRADE_LEVEL_LIMITS = Object\.fromEntries/);
+  assert.match(game, /const MASTERY_SKILL_LEVEL_LIMITS = Object\.fromEntries/);
+  assert.match(game, /upgrades: normalizedUpgrades/);
+  assert.match(game, /prestigeUpgrades: normalizedPrestigeUpgrades/);
+  assert.match(game, /masterySkills: normalizedMasterySkills/);
+  assert.match(game, /cosmicDust: finiteNonNegativeInteger\(parsed\.cosmicDust/);
+  assert.match(game, /masteryPoints: finiteNonNegativeInteger\(parsed\.masteryPoints/);
+  assert.match(game, /collectionValue: finiteNonNegativeNumber\(parsed\.collectionValue/);
+  assert.match(game, /coinsSacrificed: finiteNonNegativeInteger\(parsed\.sacrifices\?\.coinsSacrificed/);
+});
