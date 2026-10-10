@@ -1189,3 +1189,24 @@ test('third lifetime Orb guarantee uses an immutable pre-batch roll count', () =
   assert.match(prediction, /const isGuaranteedThirdBall = lifetimeRollsBeforeBatch \+ i === 2/);
   assert.doesNotMatch(prediction, /s\.totalRolls \+ i === 2/);
 });
+
+
+test('critical rarity caps match the continuum ceiling and cannot downgrade high-tier Orbs', () => {
+  const shared = source('src/shared/game.ts');
+  assert.match(shared, /export const MAX_ORB_RARITY = 1_000_000_000_000_000_000/);
+  assert.match(shared, /Math\.min\(MAX_ORB_RARITY, Math\.max\(2, rarity\)\)/);
+
+  const game = source('src/server/game.ts');
+  const applyStart = game.indexOf('export async function applyRolls');
+  const applyEnd = game.indexOf('async function sendOfflineFullNotification', applyStart);
+  assert.ok(applyStart >= 0 && applyEnd > applyStart);
+  const apply = game.slice(applyStart, applyEnd);
+  assert.match(apply, /Math\.min\(MAX_ORB_RARITY, Math\.round\(baseRarity \* effectiveCm\)\)/);
+  const claimStart = game.indexOf('export async function claimOrbFrenzy');
+  const claimEnd = game.indexOf('function sampleBinomial', claimStart);
+  assert.ok(claimStart >= 0 && claimEnd > claimStart);
+  const claim = game.slice(claimStart, claimEnd);
+  assert.match(claim, /Math\.min\(MAX_ORB_RARITY, Math\.round\(data\.rarity \* critMultiplier\(s\)\)\)/);
+  assert.match(claim, /Math\.min\(MAX_ORB_RARITY, Math\.round\(data\.rarity \* 5\)\)/);
+  assert.doesNotMatch(game, /Math\.min\(1_000_000_000_000_000, Math\.round\((?:baseRarity|data\.rarity)/);
+});
