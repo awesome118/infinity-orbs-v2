@@ -94,9 +94,24 @@ function parseGuildList(raw: unknown): Guild[] {
 }
 
 function parseLeaderboardList(raw: unknown): LeaderboardEntry[] {
+  if (raw == null) return [];
   const parsed = parseStoredJson<unknown>(raw);
-  if (!Array.isArray(parsed)) return [];
-  return parsed.filter(item => item && typeof item === 'object') as LeaderboardEntry[];
+  if (!Array.isArray(parsed)) {
+    throw new Error('Leaderboard data is corrupted; refusing to replace it.');
+  }
+  for (const item of parsed) {
+    if (
+      !item || typeof item !== 'object' || Array.isArray(item) ||
+      typeof (item as any).username !== 'string' ||
+      !Number.isFinite((item as any).value) || Number((item as any).value) < 0 ||
+      !Number.isFinite((item as any).highestRarity) || Number((item as any).highestRarity) < 0 ||
+      !Number.isFinite((item as any).totalRolls) || Number((item as any).totalRolls) < 0 ||
+      (('userId' in item) && typeof (item as any).userId !== 'string')
+    ) {
+      throw new Error('Leaderboard contains a malformed record; refusing to replace it.');
+    }
+  }
+  return parsed as LeaderboardEntry[];
 }
 const COMMUNITY_EVENT_KEY = key('community_event');
 
@@ -1545,7 +1560,14 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
 
   const eligible: LeaderboardEntry[] = [];
   const legacyRaw = await redis.get(key('leaderboard'));
-  const legacyBoard = parseLeaderboardList(legacyRaw);
+  // Legacy entries are only a fallback for the read projection. A corrupted
+  // board must not make the entire player-derived leaderboard unavailable.
+  let legacyBoard: LeaderboardEntry[] = [];
+  try {
+    legacyBoard = parseLeaderboardList(legacyRaw);
+  } catch (error) {
+    console.error('[Leaderboard] Ignoring corrupt legacy projection:', error);
+  }
   const legacyById = new Map<string, LeaderboardEntry>();
   for (const entry of legacyBoard) {
     if (entry.userId) legacyById.set(entry.userId, entry);
