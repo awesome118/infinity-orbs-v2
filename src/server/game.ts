@@ -2063,7 +2063,7 @@ async function claimCommunityRewardFromState(s: PlayerState): Promise<{ rewardCo
   return { rewardCoins, rewardXp, nextClaimAt: 0, tier };
 }
 
-async function processAutomation(s: PlayerState): Promise<void> {
+async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim?: boolean } = {}): Promise<void> {
   if (s.automations?.autoStreakClaim) {
     const today = new Date().toISOString().slice(0, 10);
     if (s.streak.lastClaimDate !== today) {
@@ -2091,7 +2091,7 @@ async function processAutomation(s: PlayerState): Promise<void> {
     await claimCommunityRewardFromState(s);
   }
 
-  if (s.automations?.autoOfflineClaim && s.offlineRolls > 0) {
+  if (!options.skipAutoOfflineClaim && s.automations?.autoOfflineClaim && s.offlineRolls > 0) {
     const batches = s.offlineRolls;
     s.offlineRolls = 0;
     await applyRolls(s, batches, undefined, 'offline');
@@ -3137,7 +3137,7 @@ export async function processOfflineFullNotification(
   });
 }
 
-export async function settleOffline(s: PlayerState): Promise<PlayerState> {
+export async function settleOffline(s: PlayerState, options: { skipAutoOfflineClaim?: boolean } = {}): Promise<PlayerState> {
   const now = Date.now();
   checkPeriodicResets(s, now);
   resetFreeShardBudgetIfNeeded(s, now);
@@ -3167,7 +3167,7 @@ export async function settleOffline(s: PlayerState): Promise<PlayerState> {
   s.lastSeenAt = now;
 
   // Process automation after newly earned offline rolls have been added.
-  await processAutomation(s);
+  await processAutomation(s, options);
 
   const cap = offlineRollCap(s);
   const userId = String(context.userId ?? '').trim();
@@ -3621,7 +3621,9 @@ export async function claimFollowReward(): Promise<{
 
 export async function claimOffline(): Promise<RollResponse> {
   return withPlayerMutationLock(async () => {
-  const s = await settleOffline(await loadRaw());
+  // The manual button owns this claim path. Do not let Auto Offline Claim
+  // consume the rolls before this handler can build and save the response.
+  const s = await settleOffline(await loadRaw(), { skipAutoOfflineClaim: true });
   if (s.offlineRolls <= 0) throw new Error('No offline rolls waiting.');
   const batches = s.offlineRolls;
   s.offlineRolls = 0;

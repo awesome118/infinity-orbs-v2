@@ -780,6 +780,24 @@ test('Frenzy start saves the post receipt atomically with its owner reward and c
 });
 
 
+test('manual offline claim bypasses only its duplicate Auto Offline Claim automation', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('export async function claimOffline');
+  const end = game.indexOf('export async function buyUpgrade', start);
+  assert.ok(start >= 0 && end > start);
+  const manual = game.slice(start, end);
+  assert.match(manual, /settleOffline\(await loadRaw\(\), \{ skipAutoOfflineClaim: true \}\)/);
+  const settleStart = game.indexOf('export async function settleOffline');
+  const settleEnd = game.indexOf('export async function getState', settleStart);
+  assert.ok(settleStart >= 0 && settleEnd > settleStart);
+  const settle = game.slice(settleStart, settleEnd);
+  assert.match(settle, /processAutomation\(s, options\)/);
+  const automationStart = game.indexOf('async function processAutomation');
+  const automationEnd = game.indexOf('function flairTextColorForBackground', automationStart);
+  assert.ok(automationStart >= 0 && automationEnd > automationStart);
+  assert.match(game.slice(automationStart, automationEnd), /!options\.skipAutoOfflineClaim && s\.automations\?\.autoOfflineClaim/);
+});
+
 test('manual offline claim compare-clears only reminder values observed before the saved claim', () => {
   const game = source('src/server/game.ts');
   const start = game.indexOf('export async function claimOffline');
