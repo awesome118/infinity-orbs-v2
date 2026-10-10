@@ -297,3 +297,22 @@ test('Guild migration marker and transformed guild data commit atomically', () =
   assert.match(social.slice(readerStart), /await ensureGuildMigrations\(\)/);
   assert.match(social, /Guild data is corrupted; refusing to replace it/);
 });
+
+
+test('corrupted leaderboard rows cannot be overwritten as an empty board', () => {
+  const social = source('src/server/social.ts');
+  const parserStart = social.indexOf('function parseLeaderboardList');
+  const parserEnd = social.indexOf('const COMMUNITY_EVENT_KEY', parserStart);
+  assert.ok(parserStart >= 0 && parserEnd > parserStart);
+  const parser = social.slice(parserStart, parserEnd);
+  assert.match(parser, /Leaderboard data is corrupted; refusing to replace it/);
+  assert.match(parser, /Leaderboard contains a malformed record/);
+  const recordStart = social.indexOf('export async function recordLeaderboard');
+  const recordEnd = social.indexOf('function validateDailyStreakCommunityEvent', recordStart);
+  assert.ok(recordStart >= 0 && recordEnd > recordStart);
+  assert.match(social.slice(recordStart, recordEnd), /parseLeaderboardList\(raw\)/);
+  const boardsStart = social.indexOf('export async function leaderboards()');
+  const boardsEnd = social.indexOf('\nexport async function ', boardsStart + 30);
+  assert.ok(boardsStart >= 0 && boardsEnd > boardsStart);
+  assert.match(social.slice(boardsStart, boardsEnd), /Ignoring corrupt legacy projection/);
+});
