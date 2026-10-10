@@ -276,3 +276,24 @@ test('Daily Streak community progression rejects invalid loop state', () => {
   assert.match(add, /Number\.MAX_SAFE_INTEGER/);
   assert.doesNotMatch(add, /parseStoredJson<DailyStreakCommunityEvent>\(raw\) \?\? createInitialDailyStreakCommunity/);
 });
+
+
+test('Guild migration marker and transformed guild data commit atomically', () => {
+  const social = source('src/server/social.ts');
+  assert.match(social, /async function applyGuildMigration/);
+  const start = social.indexOf('async function applyGuildMigration');
+  const end = social.indexOf('async function ensureGuildMigrations', start);
+  assert.ok(start >= 0 && end > start);
+  const migration = social.slice(start, end);
+  assert.match(migration, /redis\.watch\(GUILDS_KEY, markerKey\)/);
+  assert.match(migration, /await txn\.set\(GUILDS_KEY, JSON\.stringify\(guilds\)\)/);
+  assert.match(migration, /await txn\.set\(markerKey, '1'\)/);
+  assert.match(migration, /await txn\.exec\(\)/);
+  assert.match(migration, /if \(marker != null\)/);
+  const writerStart = social.indexOf('async function updateGuilds<T>');
+  const readerStart = social.indexOf('async function loadGuilds');
+  assert.ok(writerStart >= 0 && readerStart > writerStart);
+  assert.match(social.slice(writerStart, readerStart), /await ensureGuildMigrations\(\)/);
+  assert.match(social.slice(readerStart), /await ensureGuildMigrations\(\)/);
+  assert.match(social, /Guild data is corrupted; refusing to replace it/);
+});
