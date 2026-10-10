@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   X, Wrench, Coins, Gem, Sparkles, Zap, RotateCcw, Play, Shield, Megaphone,
   Users, BellRing,
@@ -363,6 +363,12 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [globalBoosterCreditAmount, setGlobalBoosterCreditAmount] = useState('1');
   const [globalBoosterTargetUser, setGlobalBoosterTargetUser] = useState('');
   const [globalBoosterGrantLoading, setGlobalBoosterGrantLoading] = useState(false);
+  const globalBoosterGrantOperationRef = useRef<{
+    operationId: string;
+    scope: 'user' | 'online' | 'all';
+    amount: number;
+    targetUser: string;
+  } | null>(null);
   const [globalBoosterLogs, setGlobalBoosterLogs] = useState<Array<Record<string, unknown>>>([]);
   const [globalBoosterLogsLoading, setGlobalBoosterLogsLoading] = useState(false);
   const [globalBoosterActivationLog, setGlobalBoosterActivationLog] = useState<Array<{
@@ -869,17 +875,34 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
 
   const grantFreeGlobalBoosters = async (scope: 'user' | 'online' | 'all') => {
     const amount = Math.max(1, Math.min(1_000_000, Math.floor(Number(globalBoosterCreditAmount) || 1)));
-    const cleanTargetUser = globalBoosterTargetUser.trim().replace(/^u\//i, '');
+    const cleanTargetUser = globalBoosterTargetUser.trim().replace(/^u\\//i, '');
     if (scope === 'user' && !cleanTargetUser) {
       setMessage('Enter a Reddit username first.');
       return;
     }
 
     if (globalBoosterGrantLoading) return;
+    const previousOperation = globalBoosterGrantOperationRef.current;
+    const sameOperation =
+      previousOperation?.scope === scope &&
+      previousOperation.amount === amount &&
+      previousOperation.targetUser.toLowerCase() === (scope === 'user' ? cleanTargetUser.toLowerCase() : '');
+    const operation = sameOperation && previousOperation
+      ? previousOperation
+      : {
+          operationId: `gb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+          scope,
+          amount,
+          targetUser: scope === 'user' ? cleanTargetUser : '',
+        };
+    // Keep the same id after network or partial-batch failures. The server stores
+    // per-player receipts, so retrying can resume without double-granting successes.
+    globalBoosterGrantOperationRef.current = operation;
+
     setGlobalBoosterGrantLoading(true);
     setMessage('');
     try {
-      const body: Record<string, unknown> = { scope, amount };
+      const body: Record<string, unknown> = { scope, amount, operationId: operation.operationId };
       if (scope === 'user') body.username = cleanTargetUser;
       const res = await fetch('/api/dev/global-booster-credits/grant', {
         method: 'POST',
@@ -887,13 +910,29 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || 'Failed to grant free Global Booster credits.');
+      if (data?.partial) {
+        await onRefresh().catch(() => {});
+        const failed = Array.isArray(data.failures) ? data.failures.length : 0;
+        setMessage(
+          'Partial batch: ' + Number(data.affectedUsers ?? 0).toLocaleString() +
+          ' of ' + Number(data.attemptedUsers ?? 0).toLocaleString() +
+          ' players processed; ' + failed.toLocaleString() +
+          ' failed. Click the same scope/amount again to retry safely. Completed grants will not be duplicated.',
+        );
+        return;
+      }
+      if (!res.ok || data?.ok !== true) {
+        throw new Error(data?.error || 'Failed to grant free Global Booster credits.');
+      }
 
+      globalBoosterGrantOperationRef.current = null;
       sound.playClick();
       const affectedUsers = Number(data?.affectedUsers ?? (scope === 'user' ? 1 : 0));
       setMessage(
         scope === 'user'
-          ? 'Granted ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to u/' + cleanTargetUser + '.'
+          ? (data?.results?.[0]?.alreadyApplied
+            ? 'This grant operation was already completed for u/' + cleanTargetUser + '.'
+            : 'Granted ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to u/' + cleanTargetUser + '.')
           : scope === 'online'
             ? 'Granted ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to ' + affectedUsers.toLocaleString() + ' online player' + (affectedUsers === 1 ? '' : 's') + '.'
             : 'Granted ' + amount.toLocaleString() + ' free Global Booster activation' + (amount === 1 ? '' : 's') + ' to ' + affectedUsers.toLocaleString() + ' registered player' + (affectedUsers === 1 ? '' : 's') + '.',
@@ -901,7 +940,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await onRefresh();
       if (scope === 'user') setGlobalBoosterTargetUser('');
     } catch (e: any) {
-      setMessage('Error: ' + (e?.message || 'Failed to grant free Global Booster credits.'));
+      setMessage('Error: ' + (e?.message || 'Failed to grant free Global Booster credits.') + ' Retrying this same operation is safe.');
     } finally {
       setGlobalBoosterGrantLoading(false);
     }
