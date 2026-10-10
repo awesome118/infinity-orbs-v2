@@ -841,6 +841,21 @@ test('Global Chat mutations fail closed rather than overwriting malformed histor
   assert.doesNotMatch(reader, /String\(message\.text \?\? ''\)/);
 });
 
+test('persisted PlayerState parser rejects malformed wallet and roll-counter core fields', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('function parsePlayerStateValue');
+  const end = game.indexOf('function parsePaymentPlayerState', start);
+  assert.ok(start >= 0 && end > start, 'shared player-state parser must exist');
+  const parser = game.slice(start, end);
+  assert.match(parser, /typeof record\.coins === 'number'/);
+  assert.match(parser, /Number\.isFinite\(record\.coins\)/);
+  assert.match(parser, /record\.coins >= 0/);
+  assert.match(parser, /Number\.isSafeInteger\(record\.shards\)/);
+  assert.match(parser, /Number\(record\.shards\) >= 0/);
+  assert.match(parser, /Number\.isSafeInteger\(record\.totalRolls\)/);
+  assert.match(parser, /if \(!validCoreState\) return null/);
+});
+
 test('client ignores a conflicting Shards balance at an unchanged server revision', () => {
   const main = source('src/client/main.tsx');
   const start = main.indexOf('const applyPlayerState = useCallback');

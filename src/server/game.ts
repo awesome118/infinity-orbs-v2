@@ -1526,8 +1526,19 @@ function parsePlayerStateValue(value: unknown, depth = 0): PlayerState | null {
 
   const record = value as Record<string, unknown>;
   // A real PlayerState has these required top-level fields. Do not mistake a
-  // Redis/proxy wrapper such as { value: '...' } for the save itself.
+  // Redis/proxy wrapper such as { value: '...' } for the save itself. Presence
+  // alone is not enough: coercion of a malformed wallet can turn arithmetic into
+  // NaN, which JSON.stringify silently persists as null.
   if ('coins' in record && 'shards' in record && 'totalRolls' in record) {
+    const validCoreState =
+      typeof record.coins === 'number' &&
+      Number.isFinite(record.coins) &&
+      record.coins >= 0 &&
+      Number.isSafeInteger(record.shards) &&
+      Number(record.shards) >= 0 &&
+      Number.isSafeInteger(record.totalRolls) &&
+      Number(record.totalRolls) >= 0;
+    if (!validCoreState) return null;
     return record as unknown as PlayerState;
   }
 
