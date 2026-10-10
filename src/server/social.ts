@@ -2091,6 +2091,19 @@ const DAILY_STREAK_COMMUNITY_KEY = key('daily-streak-community');
 export async function getDailyStreakCommunity(): Promise<DailyStreakCommunityEvent> {
   await ensureRedisStringKey(DAILY_STREAK_COMMUNITY_KEY, JSON.stringify(createInitialDailyStreakCommunity()));
   const now = Date.now();
+  const currentWeek = weekKey(now);
+
+  // The common read path must not WATCH/MULTI/SET an unchanged global event.
+  // Rewriting the same value invalidates concurrent claim/contribution WATCHes
+  // and lets high-frequency /api/me calls starve legitimate progress updates.
+  const currentRaw = await redis.get(DAILY_STREAK_COMMUNITY_KEY);
+  if (currentRaw != null) {
+    const current = parseStoredJson<DailyStreakCommunityEvent>(currentRaw);
+    if (!current) throw new Error('Daily Streak community data is corrupted.');
+    validateDailyStreakCommunityEvent(current);
+    if (current.weekId === currentWeek && now < current.endsAt) return current;
+  }
+
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(DAILY_STREAK_COMMUNITY_KEY);
     const raw = await redis.get(DAILY_STREAK_COMMUNITY_KEY);

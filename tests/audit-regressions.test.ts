@@ -269,6 +269,20 @@ test('Global Booster activation cannot replace corrupt data with defaults', () =
 });
 
 
+test('valid Daily Streak community reads avoid rewriting the watched global key', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('export async function getDailyStreakCommunity');
+  const end = social.indexOf('export async function prepareDailyStreakCommunityProgress', start);
+  assert.ok(start >= 0 && end > start);
+  const getter = social.slice(start, end);
+  const fastPath = getter.indexOf('const currentRaw = await redis.get(DAILY_STREAK_COMMUNITY_KEY)');
+  const watch = getter.indexOf('redis.watch(DAILY_STREAK_COMMUNITY_KEY)');
+  const returnCurrent = getter.indexOf('if (current.weekId === currentWeek && now < current.endsAt) return current');
+  assert.ok(fastPath >= 0 && watch > fastPath, 'common valid read must precede WATCH transaction');
+  assert.ok(returnCurrent > fastPath && returnCurrent < watch, 'current-week data should return without SET');
+  assert.match(getter, /Daily Streak community data is corrupted/);
+});
+
 test('Daily Streak community progression rejects invalid loop state', () => {
   const social = source('src/server/social.ts');
   assert.match(social, /function validateDailyStreakCommunityEvent/);
