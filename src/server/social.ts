@@ -1547,6 +1547,18 @@ async function enforceChatCooldown(scope: string, cooldownMs: number): Promise<v
 }
 
 
+function parseGlobalChatList(raw: unknown): GlobalChatMessage[] {
+  if (raw == null) return [];
+  const parsed = parseStoredJson<unknown>(raw);
+  if (!Array.isArray(parsed)) {
+    throw new Error('Global Chat history is corrupted; refusing to overwrite it.');
+  }
+  if (!parsed.every(item => item && typeof item === 'object' && !Array.isArray(item))) {
+    throw new Error('Global Chat history contains malformed messages; refusing to overwrite it.');
+  }
+  return parsed as GlobalChatMessage[];
+}
+
 async function purgeChatMessagesForUser(userId: string, targetUsername: string): Promise<void> {
   const cleanUsername = String(targetUsername).trim().replace(/^u\//i, '').toLowerCase();
 
@@ -1564,10 +1576,7 @@ async function purgeChatMessagesForUser(userId: string, targetUsername: string):
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(GLOBAL_CHAT_KEY);
     const raw = await redis.get(GLOBAL_CHAT_KEY);
-    const parsed = parseStoredJson<unknown>(raw);
-    const messages = Array.isArray(parsed)
-      ? parsed.filter(item => item && typeof item === 'object') as GlobalChatMessage[]
-      : [];
+    const messages = parseGlobalChatList(raw);
     const retained = messages.filter(message => {
       const messageUserId = String(message.userId ?? '').trim();
       const messageUsername = String(message.username ?? '').trim().replace(/^u\//i, '').toLowerCase();
@@ -1759,11 +1768,7 @@ export async function postGlobalChatMessage(text: string): Promise<GlobalChatMes
       const txn = await redis.watch(GLOBAL_CHAT_KEY);
       // Read the watched value with Redis; TxClient.get() is a transaction builder.
       const raw = await redis.get(GLOBAL_CHAT_KEY);
-      const messages = await (async () => {
-        const parsed = parseStoredJson<unknown>(raw);
-        if (!Array.isArray(parsed)) return [] as GlobalChatMessage[];
-        return parsed.filter(item => item && typeof item === 'object') as GlobalChatMessage[];
-      })();
+      const messages = parseGlobalChatList(raw);
 
       messages.push(message);
       messages.sort((a, b) => a.timestamp - b.timestamp);

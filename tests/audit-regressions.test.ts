@@ -804,3 +804,25 @@ test('roll-ticket requests are fenced across authentication resets', () => {
   const authEnd = client.indexOf('const message = e?.message', authStart);
   assert.match(client.slice(authStart, authEnd), /authSessionEpochRef\.current \+= 1/);
 });
+
+
+test('Global Chat mutations fail closed rather than overwriting malformed history with an empty list', () => {
+  const social = source('src/server/social.ts');
+  const parserStart = social.indexOf('function parseGlobalChatList');
+  const parserEnd = social.indexOf('async function purgeChatMessagesForUser', parserStart);
+  assert.ok(parserStart >= 0 && parserEnd > parserStart);
+  const parser = social.slice(parserStart, parserEnd);
+  assert.match(parser, /if \(raw == null\) return \[\]/);
+  assert.match(parser, /Global Chat history is corrupted; refusing to overwrite it/);
+  assert.match(parser, /Global Chat history contains malformed messages/);
+
+  const purgeStart = social.indexOf('async function purgeChatMessagesForUser');
+  const purgeEnd = social.indexOf('export interface ChatReportRecord', purgeStart);
+  const purge = social.slice(purgeStart, purgeEnd);
+  assert.match(purge, /const messages = parseGlobalChatList\(raw\)/);
+  assert.doesNotMatch(purge, /: \[\] as GlobalChatMessage\[\]/);
+
+  const postStart = social.indexOf('export async function postGlobalChatMessage');
+  const postEnd = social.indexOf('function sortLeaderboard', postStart);
+  assert.match(social.slice(postStart, postEnd), /const messages = parseGlobalChatList\(raw\)/);
+});
