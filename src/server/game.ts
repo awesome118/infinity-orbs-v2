@@ -3122,11 +3122,11 @@ export async function processOfflineFullNotification(
     return;
   }
 
-  let s: PlayerState;
-  try {
-    s = JSON.parse(String(raw)) as PlayerState;
-  } catch {
-    // Keep corrupt player data fail-closed rather than removing its reminder.
+  // Use the same strict parser as player mutations. Parsing JSON alone would
+  // accept structurally invalid saves and could send a full-roll alert from
+  // malformed counters or timestamps. Preserve the job so repair/retry remains possible.
+  const s = parsePlayerStateValue(raw);
+  if (!s) {
     console.error('[Offline Notification] Player save is malformed; preserving the job marker.');
     return;
   }

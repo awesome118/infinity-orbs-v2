@@ -741,6 +741,17 @@ test('live presence survives optimistic and authoritative state replacement, and
 });
 
 
+test('offline notification worker validates the persisted PlayerState before calculating cap', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('export async function processOfflineFullNotification');
+  const end = game.indexOf('export async function settleOffline', start);
+  assert.ok(start >= 0 && end > start);
+  const worker = game.slice(start, end);
+  assert.match(worker, /const s = parsePlayerStateValue\(raw\)/);
+  assert.match(worker, /if \(!s\)[\s\S]*?preserving the job marker/);
+  assert.doesNotMatch(worker, /JSON\.parse\(String\(raw\)\) as PlayerState/);
+});
+
 test('scheduled and request-triggered offline notifications share one per-player worker lock', () => {
   const game = source('src/server/game.ts');
   const processorStart = game.indexOf('export async function processOfflineFullNotification');
