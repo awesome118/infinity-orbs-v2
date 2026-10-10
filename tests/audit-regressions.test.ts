@@ -394,3 +394,26 @@ test('roll rewards commit atomically with Guild and community progress', () => {
   assert.match(social, /export async function prepareCommunityRolls/);
   assert.match(game, /function getPendingSaveExtraWrite/);
 });
+
+
+test('automatic offline claims only clear reminder keys after the player save commits', () => {
+  const game = source('src/server/game.ts');
+  const automationStart = game.indexOf('async function processAutomation');
+  const automationEnd = game.indexOf('function flairTextColorForBackground', automationStart);
+  assert.ok(automationStart >= 0 && automationEnd > automationStart);
+  const automation = game.slice(automationStart, automationEnd);
+  assert.match(automation, /stageSavePostCommitAction\(s, async \(\) =>/);
+  assert.doesNotMatch(automation, /redis\.del\(OFFLINE_FULL_(?:NOTIFICATION|JOB)_PREFIX/);
+  assert.match(automation, /clearOfflineReminderKeyIfUnchanged/);
+  assert.match(automation, /scheduleOfflineFullNotification/);
+
+  const saveStart = game.indexOf('export async function save(');
+  const saveEnd = game.indexOf('function serverRandom', saveStart);
+  assert.ok(saveStart >= 0 && saveEnd > saveStart);
+  const save = game.slice(saveStart, saveEnd);
+  const committedIndex = save.indexOf('if (committed !== null)');
+  const playerStateIndex = save.indexOf('Object.assign(s, nextState)', committedIndex);
+  const actionsIndex = save.indexOf('for (const action of postCommitActions)', committedIndex);
+  assert.ok(committedIndex >= 0 && playerStateIndex > committedIndex);
+  assert.ok(actionsIndex > playerStateIndex, 'reminder cleanup must run only after the saved state is durable');
+});
