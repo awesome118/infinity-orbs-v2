@@ -717,3 +717,26 @@ test('Frenzy start saves the post receipt atomically with its owner reward and c
   assert.match(body.slice(saveIndex, saveIndex + 500), /expectedValue: null/);
   assert.doesNotMatch(body.slice(createIndex, saveIndex), /await redis\.set\(FRENZY_POST_PREFIX/);
 });
+
+
+test('manual offline claim compare-clears only reminder values observed before the saved claim', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('export async function claimOffline');
+  const claim = game.slice(start, game.indexOf('export async function', start + 40));
+  assert.match(claim, /const \[previousNotification, previousJob\] = await Promise\.all/);
+  assert.match(claim, /await save\(s\)/);
+  assert.match(claim, /clearOfflineReminderKeyIfUnchanged\(notificationKey, previousNotification\)/);
+  assert.match(claim, /clearOfflineReminderKeyIfUnchanged\(jobKey, previousJob\)/);
+  assert.doesNotMatch(claim, /redis\.del\(OFFLINE_FULL_(?:NOTIFICATION|JOB)_PREFIX/);
+});
+
+test('rarity flair sync serializes side effects and rechecks saved rarity before caching', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('async function syncRarityFlair');
+  const flair = game.slice(start, game.indexOf('export async function save', start));
+  assert.match(flair, /withPlayerMutationLockFor\('flair:'/);
+  assert.match(flair, /redis\.get\(playerKeyFor\(userId\)\)/);
+  assert.match(flair, /const afterRaw = await redis\.get\(playerKeyFor\(userId\)\)/);
+  assert.match(flair, /if \(afterState === flairState\)/);
+  assert.match(flair, /leaving cache untouched/);
+});

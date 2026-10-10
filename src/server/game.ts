@@ -2096,37 +2096,61 @@ function flairTextColorForBackground(backgroundColor: string): 'dark' | 'light' 
 }
 
 async function syncRarityFlair(s: PlayerState): Promise<void> {
-  const username = String(context.username ?? s.username ?? '').trim();
+  const userId = currentUserId();
   const subredditName = String(context.subredditName ?? '').trim();
-  if (!username || !subredditName) return;
+  if (!userId || !subredditName) return;
 
-  const highestRarity = Math.max(2, Math.floor(Number(s.highestRarity ?? 2) || 2));
-  const orbInfo = getOrbInfo(highestRarity);
-  const flairText = orbInfo.tier;
-  const backgroundColor = orbInfo.color;
-  const textColor = flairTextColorForBackground(backgroundColor);
-  const flairKey = PLAYER_FLAIR_KEY_PREFIX + currentUserId();
-  const flairState = JSON.stringify({
-    text: flairText,
-    backgroundColor,
-    textColor,
-  });
+  // Saves schedule this as best-effort post-commit work. Serialize the external
+  // flair side effect separately from the player lock, then base every write on
+  // the newest durable state rather than whichever save happened to finish last.
+  await withPlayerMutationLockFor('flair:' + userId, async () => {
+    const flairKey = PLAYER_FLAIR_KEY_PREFIX + userId;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const raw = await redis.get(playerKeyFor(userId));
+      const latest = raw == null ? null : parsePlayerStateValue(raw);
+      const source = latest ?? s;
+      const username = String(context.username ?? source.username ?? '').trim();
+      if (!username) return;
 
-  try {
-    const current = await redis.get(flairKey);
-    if (String(current ?? '') === flairState) return;
+      const highestRarity = Math.max(2, Math.floor(Number(source.highestRarity ?? 2) || 2));
+      const orbInfo = getOrbInfo(highestRarity);
+      const flairText = orbInfo.tier;
+      const backgroundColor = orbInfo.color;
+      const textColor = flairTextColorForBackground(backgroundColor);
+      const flairState = JSON.stringify({ text: flairText, backgroundColor, textColor });
+      const current = await redis.get(flairKey);
+      if (String(current ?? '') === flairState) return;
 
-    await reddit.setUserFlair({
-      subredditName,
-      username,
-      text: flairText,
-      backgroundColor,
-      textColor,
-    });
-    await redis.set(flairKey, flairState);
-  } catch (error) {
+      await reddit.setUserFlair({
+        subredditName,
+        username,
+        text: flairText,
+        backgroundColor,
+        textColor,
+      });
+
+      // A newer save may have committed while Reddit was processing the update.
+      // Re-read before caching; if it changed, retry under the same flair lock.
+      const afterRaw = await redis.get(playerKeyFor(userId));
+      const after = afterRaw == null ? null : parsePlayerStateValue(afterRaw);
+      const afterRarity = Math.max(2, Math.floor(Number(after?.highestRarity ?? source.highestRarity ?? 2) || 2));
+      const afterOrb = getOrbInfo(afterRarity);
+      const afterState = JSON.stringify({
+        text: afterOrb.tier,
+        backgroundColor: afterOrb.color,
+        textColor: flairTextColorForBackground(afterOrb.color),
+      });
+      if (afterState === flairState) {
+        await redis.set(flairKey, flairState);
+        return;
+      }
+    }
+
+    // Do not cache a stale result. A later committed save will retry the sync.
+    console.error('[Rarity Flair] Player rarity kept changing during flair sync; leaving cache untouched.');
+  }).catch(error => {
     console.error('[Rarity Flair] Failed to update user flair:', error);
-  }
+  });
 }
 
 export async function getGlobalBoosterAnnouncement(): Promise<{
@@ -3526,12 +3550,18 @@ export async function claimOffline(): Promise<RollResponse> {
   const now = Date.now();
   s.lastRollAt = now;
   s.lastSeenAt = now;
+  const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId();
+  const jobKey = OFFLINE_FULL_JOB_PREFIX + currentUserId();
+  const [previousNotification, previousJob] = await Promise.all([
+    redis.get(notificationKey),
+    redis.get(jobKey),
+  ]);
   await save(s);
-  // Reminder/job state follows the durable claim. A roll or save failure above
-  // leaves both keys intact so the player can still receive the reminder.
+  // Clear only the reminder state observed before this claim. A newer reminder
+  // installed by a post-commit automation action must not be deleted.
   await Promise.all([
-    redis.del(OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId()),
-    redis.del(OFFLINE_FULL_JOB_PREFIX + currentUserId()),
+    clearOfflineReminderKeyIfUnchanged(notificationKey, previousNotification),
+    clearOfflineReminderKeyIfUnchanged(jobKey, previousJob),
   ]).catch(error => {
     console.error('[Offline Claim] Reminder cleanup failed after save:', error);
   });
