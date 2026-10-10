@@ -73,6 +73,109 @@ async function ensureRedisStringKey(keyName: string, fallback: string): Promise<
   }
 }
 
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validateGuildNestedState(guild: Record<string, unknown>): void {
+  const invalid = () => new Error('Guild data contains malformed nested state; refusing to replace it.');
+
+  if (guild.perks != null) {
+    if (!isRecordValue(guild.perks)) throw invalid();
+    const perkCaps: Record<string, number> = {
+      luckRank: 10,
+      speedRank: 10,
+      vaultRank: 10,
+      shardRank: 10,
+      critRank: 10,
+      coinRank: 10,
+      memberCapacityRank: 40,
+      tokenYieldRank: 20,
+      taskBountyRank: 20,
+      comboRank: 10,
+      guildXpRank: 20,
+    };
+    for (const [rank, cap] of Object.entries(perkCaps)) {
+      const value = guild.perks[rank];
+      if (value == null) continue; // Legacy saves may omit newer optional ranks.
+      if (!Number.isSafeInteger(value) || Number(value) < 0 || Number(value) > cap) {
+        throw invalid();
+      }
+    }
+  }
+
+  if (guild.combo != null) {
+    if (!isRecordValue(guild.combo)) throw invalid();
+    for (const field of ['tier', 'activationProgress', 'endsAt', 'lastTickAt']) {
+      const value = guild.combo[field];
+      if (value == null) continue; // Missing legacy timer fields decay to defaults.
+      if (!Number.isSafeInteger(value) || Number(value) < 0) throw invalid();
+    }
+    if (
+      (guild.combo.tier != null && Number(guild.combo.tier) > 10) ||
+      (guild.combo.activationProgress != null && Number(guild.combo.activationProgress) > 3)
+    ) {
+      throw invalid();
+    }
+  }
+
+  if (guild.tasks != null) {
+    if (!Array.isArray(guild.tasks)) throw invalid();
+    if (guild.tasks.length >= 3) {
+      for (const task of guild.tasks.slice(0, 3)) {
+        if (!isRecordValue(task)) throw invalid();
+        if (task.id != null && typeof task.id !== 'string') throw invalid();
+        if (task.label != null && typeof task.label !== 'string') throw invalid();
+        for (const field of ['tier', 'target', 'progress', 'reward', 'guildXpReward']) {
+          const value = task[field];
+          if (value == null) continue;
+          const minimum = field === 'progress' ? 0 : 1;
+          if (!Number.isSafeInteger(value) || Number(value) < minimum) throw invalid();
+        }
+      }
+    }
+  }
+
+  if (guild.chat != null) {
+    if (!Array.isArray(guild.chat)) throw invalid();
+    for (const message of guild.chat) {
+      if (
+        !isRecordValue(message) ||
+        typeof message.id !== 'string' || !message.id.trim() ||
+        typeof message.username !== 'string' || !message.username.trim() ||
+        typeof message.text !== 'string' || !message.text.trim() ||
+        !Number.isSafeInteger(message.timestamp) || Number(message.timestamp) < 0 ||
+        (message.userId != null && typeof message.userId !== 'string') ||
+        (message.isSystem != null && typeof message.isSystem !== 'boolean')
+      ) {
+        throw invalid();
+      }
+    }
+  }
+
+  // A current-week boss is actively mutated during rolls. Its fields must be
+  // numeric and bounded before normalizeGuilds()/boss damage math can touch it.
+  if (guild.boss != null && guild.bossWeek === weekKey()) {
+    if (!isRecordValue(guild.boss)) throw invalid();
+    const boss = guild.boss;
+    if (
+      typeof boss.id !== 'string' || !boss.id ||
+      typeof boss.name !== 'string' || !boss.name ||
+      !Number.isSafeInteger(boss.tier) || Number(boss.tier) < 1 || Number(boss.tier) > 10 ||
+      typeof boss.maxHp !== 'number' || !Number.isFinite(boss.maxHp) || boss.maxHp <= 0 ||
+      typeof boss.currentHp !== 'number' || !Number.isFinite(boss.currentHp) ||
+      boss.currentHp < 0 || boss.currentHp > boss.maxHp ||
+      typeof boss.defeated !== 'boolean' ||
+      !isRecordValue(boss.contributors) ||
+      !Object.values(boss.contributors).every(value =>
+        typeof value === 'number' && Number.isFinite(value) && value >= 0
+      )
+    ) {
+      throw invalid();
+    }
+  }
+}
+
 function parseGuildList(raw: unknown): Guild[] {
   if (raw == null) return [];
   const parsed = parseStoredJson<unknown>(raw);
@@ -100,6 +203,7 @@ function parseGuildList(raw: unknown): Guild[] {
     ) {
       throw new Error('Guild data contains a malformed record; refusing to replace it.');
     }
+    validateGuildNestedState(item as Record<string, unknown>);
   }
   return normalizeGuilds(parsed as Guild[]);
 }

@@ -285,6 +285,27 @@ test('Daily Streak community progression rejects invalid loop state', () => {
 });
 
 
+test('guild parser rejects malformed nested economy and boss state before normalization', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('function validateGuildNestedState');
+  const end = social.indexOf('function parseGuildList', start);
+  assert.ok(start >= 0 && end > start, 'nested Guild validator must exist before normalization');
+  const validator = social.slice(start, end);
+  assert.match(validator, /perkCaps/);
+  assert.match(validator, /guildXpRank: 20/);
+  assert.match(validator, /Number\.isSafeInteger\(value\)/);
+  assert.match(validator, /guild\.tasks != null/);
+  assert.match(validator, /!isRecordValue\(task\)/);
+  assert.match(validator, /guild\.chat != null/);
+  assert.match(validator, /typeof message\.text !== 'string'/);
+  assert.match(validator, /guild\.bossWeek === weekKey\(\)/);
+  assert.match(validator, /boss\.currentHp > boss\.maxHp/);
+  const parserStart = social.indexOf('function parseGuildList');
+  const parserEnd = social.indexOf('function parseLeaderboardList', parserStart);
+  assert.ok(parserStart >= 0 && parserEnd > parserStart);
+  assert.match(social.slice(parserStart, parserEnd), /validateGuildNestedState\(item as Record<string, unknown>\)/);
+});
+
 test('Guild migration marker and transformed guild data commit atomically', () => {
   const social = source('src/server/social.ts');
   assert.match(social, /async function applyGuildMigration/);
