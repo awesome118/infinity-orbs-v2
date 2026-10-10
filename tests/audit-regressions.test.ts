@@ -1313,7 +1313,7 @@ test('bulk Global Booster grants resume by idempotency receipt and report partia
   assert.ok(grantStart >= 0 && loggerStart > grantStart);
   const grant = debug.slice(grantStart, loggerStart);
   assert.match(grant, /operationId: string/);
-  assert.match(grant, /await redis\.watch\(playerKey, generationKey\)/);
+  assert.match(grant, /await redis\.watch\(playerKey, generationKey, receiptKey\)/);
   assert.match(grant, /const receiptKey = 'io:admin-global-booster-credit-grant:'/);
   assert.match(grant, /alreadyApplied: true/);
   assert.match(grant, /await redis\.get\(receiptKey\)/);
