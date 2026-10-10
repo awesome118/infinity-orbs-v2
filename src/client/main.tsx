@@ -317,6 +317,7 @@ export function App() {
       componentMountedRef.current = false;
     };
   }, []);
+  const appliedServerGenerationRef = useRef(-1);
   const appliedServerRevisionRef = useRef(-1);
   const stateRef = useRef<PlayerState | null>(null);
   const onlinePlayersRef = useRef<number | undefined>(undefined);
@@ -343,25 +344,39 @@ export function App() {
 
   const applyPlayerState = useCallback((nextState: PlayerState) => {
     const nextServerRevision = Number(nextState.stateRevision);
+    const nextServerGeneration = Number(nextState.saveGeneration);
     const currentState = stateRef.current;
 
-    // A state revision represents one durable player snapshot. If two responses
-    // claim the same revision but disagree on Shards, one is stale or malformed.
-    // Do not let it erase a just-confirmed roll reward (or an optimistic wallet
-    // change) while the authoritative mutation response is still in flight.
+    // Revisions restart when a save generation is replaced. Compare generation
+    // first, then revision within that generation, so a reset/wipe is accepted
+    // while delayed reads from the previous save are still rejected.
     if (
-      Number.isFinite(nextServerRevision) &&
-      nextServerRevision === appliedServerRevisionRef.current &&
-      currentState &&
-      (nextState.shards ?? 0) !== (currentState.shards ?? 0)
+      !Number.isSafeInteger(nextServerGeneration) || nextServerGeneration < 0 ||
+      !Number.isSafeInteger(nextServerRevision) || nextServerRevision < 0
     ) {
       return;
     }
+    if (nextServerGeneration < appliedServerGenerationRef.current) return;
 
-    if (Number.isFinite(nextServerRevision)) {
+    const isNewServerGeneration =
+      nextServerGeneration > appliedServerGenerationRef.current;
+    if (!isNewServerGeneration) {
       if (nextServerRevision < appliedServerRevisionRef.current) return;
-      appliedServerRevisionRef.current = nextServerRevision;
+
+      // A same-generation snapshot must not change balances without advancing
+      // the durable revision. That was allowing a delayed initial /api/me read
+      // to roll the resource bar back to zero after the first saved roll.
+      if (
+        nextServerRevision === appliedServerRevisionRef.current &&
+        currentState &&
+        (nextState.shards ?? 0) !== (currentState.shards ?? 0)
+      ) {
+        return;
+      }
     }
+
+    appliedServerGenerationRef.current = nextServerGeneration;
+    appliedServerRevisionRef.current = nextServerRevision;
 
     if (
       onlinePlayersRef.current == null &&
@@ -558,6 +573,7 @@ export function App() {
         setAuthRequired(true);
         stateRef.current = null;
         onlinePlayersRef.current = undefined;
+        appliedServerGenerationRef.current = -1;
         appliedServerRevisionRef.current = -1;
         stateRevisionRef.current += 1;
         authSessionEpochRef.current += 1;

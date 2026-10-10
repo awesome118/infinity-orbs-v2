@@ -915,6 +915,21 @@ test('every loaded PlayerState has a valid revision, including new and legacy sa
   assert.match(loader, /stateRevision: Math\.max\(0, Math\.floor\(Number\(parsed\.stateRevision \?\? 0\)\) \|\| 0\)/);
 });
 
+test('client orders PlayerState snapshots by generation before revision', () => {
+  const main = source('src/client/main.tsx');
+  assert.match(main, /const appliedServerGenerationRef = useRef\(-1\)/);
+  const start = main.indexOf('const applyPlayerState = useCallback');
+  const end = main.indexOf('// Mutations are optimistic', start);
+  assert.ok(start >= 0 && end > start);
+  const applier = main.slice(start, end);
+  assert.match(applier, /Number\(nextState\.saveGeneration\)/);
+  assert.match(applier, /nextServerGeneration < appliedServerGenerationRef\.current/);
+  assert.match(applier, /nextServerGeneration > appliedServerGenerationRef\.current/);
+  assert.match(applier, /!Number\.isSafeInteger\(nextServerRevision\)/);
+  assert.match(applier, /appliedServerGenerationRef\.current = nextServerGeneration/);
+  assert.match(main, /appliedServerGenerationRef\.current = -1/);
+});
+
 test('client ignores a conflicting Shards balance at an unchanged server revision', () => {
   const main = source('src/client/main.tsx');
   const start = main.indexOf('const applyPlayerState = useCallback');
