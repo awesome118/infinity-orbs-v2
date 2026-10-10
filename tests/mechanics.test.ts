@@ -255,6 +255,22 @@ test('roll Shards respect the hard 50-per-day cap while free reward Shards bypas
   assert.equal(state.freeShardsEarnedToday, 50);
 });
 
+test('Shard reward paths do not overflow the persisted balance's safe integer range', () => {
+  const state = createInitialState(NOW);
+  state.shards = Number.MAX_SAFE_INTEGER - 2;
+  state.lifetimeShards = Number.MAX_SAFE_INTEGER - 1;
+  state.lastFreeShardReset = new Date(NOW).toISOString().slice(0, 10);
+  state.freeShardsEarnedToday = 0;
+
+  assert.equal(grantFreeShards(state, 10, NOW), 1);
+  assert.equal(state.shards, Number.MAX_SAFE_INTEGER - 1);
+  assert.equal(state.lifetimeShards, Number.MAX_SAFE_INTEGER);
+  assert.equal(grantRollShards(state, 10, NOW), 0);
+  assert.equal(grantFreeShards(state, Number.POSITIVE_INFINITY, NOW), 0);
+  assert.equal(state.shards, Number.MAX_SAFE_INTEGER - 1);
+  assert.equal(state.lifetimeShards, Number.MAX_SAFE_INTEGER);
+});
+
 test('malformed daily Shard counter fails closed without producing NaN', () => {
   const state = createInitialState(NOW);
   state.lastFreeShardReset = new Date(NOW).toISOString().slice(0, 10);

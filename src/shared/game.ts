@@ -202,13 +202,46 @@ export function resetFreeShardBudgetIfNeeded(s: PlayerState, now = Date.now()): 
   }
 }
 
-export function grantFreeShards(s: PlayerState, requested: number, _now = Date.now()): number {
-  const amount = Math.max(0, Math.floor(requested));
-  if (amount > 0) {
-    s.shards = (s.shards ?? 0) + amount;
-    s.lifetimeShards = (s.lifetimeShards ?? 0) + amount;
+function addShardsWithinSafeIntegerLimit(s: PlayerState, requested: number): number {
+  const amount = Number.isFinite(requested)
+    ? Math.max(0, Math.floor(requested))
+    : 0;
+  const currentShards = s.shards ?? 0;
+  // The persisted-state parser already rejects invalid balances. Keep shared
+  // helpers defensive too, without silently resetting a bad balance to zero.
+  if (
+    typeof currentShards !== 'number' ||
+    !Number.isSafeInteger(currentShards) ||
+    currentShards < 0
+  ) {
+    return 0;
   }
-  return amount;
+
+  const rawLifetimeShards = s.lifetimeShards;
+  const lifetimeShards =
+    typeof rawLifetimeShards === 'number' &&
+    Number.isSafeInteger(rawLifetimeShards) &&
+    rawLifetimeShards >= 0
+      ? rawLifetimeShards
+      : 0;
+  s.lifetimeShards = lifetimeShards;
+
+  const safeRoom = Math.max(
+    0,
+    Math.min(
+      Number.MAX_SAFE_INTEGER - currentShards,
+      Number.MAX_SAFE_INTEGER - lifetimeShards,
+    ),
+  );
+  const granted = Math.min(amount, safeRoom);
+  s.shards = currentShards + granted;
+  s.lifetimeShards = lifetimeShards + granted;
+  return granted;
+}
+
+export function grantFreeShards(s: PlayerState, requested: number, _now = Date.now()): number {
+  // Free rewards intentionally bypass the rolling daily cap, not numeric safety.
+  return addShardsWithinSafeIntegerLimit(s, requested);
 }
 
 export function grantRollShards(s: PlayerState, requested: number, now = Date.now()): number {
@@ -222,27 +255,16 @@ export function grantRollShards(s: PlayerState, requested: number, now = Date.no
   const rawEarnedToday = s.freeShardsEarnedToday;
   const earnedToday = rawEarnedToday == null
     ? 0
-    : Number.isSafeInteger(rawEarnedToday) && typeof rawEarnedToday === 'number' && rawEarnedToday >= 0
+    : typeof rawEarnedToday === 'number' &&
+        Number.isSafeInteger(rawEarnedToday) &&
+        rawEarnedToday >= 0
       ? Math.min(FREE_SHARD_DAILY_CAP, rawEarnedToday)
       : FREE_SHARD_DAILY_CAP;
   s.freeShardsEarnedToday = earnedToday;
 
-  const rawLifetimeShards = s.lifetimeShards;
-  const lifetimeShards =
-    Number.isSafeInteger(rawLifetimeShards) &&
-    typeof rawLifetimeShards === 'number' &&
-    rawLifetimeShards >= 0
-      ? rawLifetimeShards
-      : 0;
-  s.lifetimeShards = lifetimeShards;
-
   const available = Math.max(0, FREE_SHARD_DAILY_CAP - earnedToday);
-  const granted = Math.min(amount, available);
-  if (granted > 0) {
-    s.shards = (s.shards ?? 0) + granted;
-    s.lifetimeShards = lifetimeShards + granted;
-    s.freeShardsEarnedToday = earnedToday + granted;
-  }
+  const granted = addShardsWithinSafeIntegerLimit(s, Math.min(amount, available));
+  s.freeShardsEarnedToday = earnedToday + granted;
   return granted;
 }
 
@@ -336,11 +358,8 @@ export function grantFrenzyOwnerShards(
   s: PlayerState,
   requested = FRENZY_OWNER_SHARD_REWARD,
 ): number {
-  const amount = Math.max(0, Math.floor(Number(requested) || 0));
-  if (amount <= 0) return 0;
-  s.shards = (s.shards ?? 0) + amount;
-  s.lifetimeShards = (s.lifetimeShards ?? 0) + amount;
-  return amount;
+  // Frenzy owner rewards bypass the daily cap but share the wallet's numeric bounds.
+  return addShardsWithinSafeIntegerLimit(s, Number(requested));
 }
 
 export function frenzyCooldownRemaining(lastFrenzyAt?: number, now = Date.now()): number {
