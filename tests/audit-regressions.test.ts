@@ -1141,3 +1141,30 @@ test('share route treats leaderboard projection as best-effort after the durable
     'the route must not turn a successful post/state save into an apparent failure if a leaderboard projection fails',
   );
 });
+
+
+test('optional World Event conflicts cannot block primary player rewards', () => {
+  const game = source('src/server/game.ts');
+  const saveStart = game.indexOf('export async function save(');
+  const saveEnd = game.indexOf('function serverRandom', saveStart);
+  assert.ok(saveStart >= 0 && saveEnd > saveStart);
+  const save = game.slice(saveStart, saveEnd);
+  assert.match(save, /if \(write\.optional\)/);
+  assert.match(save, /extraWrites\.splice\(index, 1\)/);
+  assert.match(save, /if \(optionalProjectionConflict\) continue;/);
+  assert.match(save, /pendingSaveExtraWrites\.set\(s, remaining\)/);
+
+  const rollStart = game.indexOf('export async function applyRolls');
+  const rollEnd = game.indexOf('async function sendOfflineFullNotification', rollStart);
+  assert.ok(rollStart >= 0 && rollEnd > rollStart);
+  const roll = game.slice(rollStart, rollEnd);
+  assert.match(roll, /Progress not recorded for this roll; preserving shared data/);
+  assert.match(roll, /key: communityUpdate\.key,[\s\S]*?optional: true/);
+
+  const claimStart = game.indexOf('export async function claimOrbFrenzy');
+  const claimEnd = game.indexOf('function sampleBinomial', claimStart);
+  assert.ok(claimStart >= 0 && claimEnd > claimStart);
+  const claim = game.slice(claimStart, claimEnd);
+  assert.match(claim, /Frenzy progress not recorded; preserving shared data/);
+  assert.match(claim, /key: communityUpdate\.key,[\s\S]*?optional: true/);
+});
