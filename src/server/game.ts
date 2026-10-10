@@ -1101,64 +1101,40 @@ export async function getGlobalBoosters(): Promise<GlobalBoosterSnapshot> {
   return snapshot;
 }
 
-async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSnapshot> {
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const now = Date.now();
-    const txn = await redis.watch(GLOBAL_BOOSTERS_KEY);
-    const raw = await redis.get(GLOBAL_BOOSTERS_KEY);
-
-    await appendGlobalBoosterDebugLog('activate:redis-read', {
-      id,
-      attempt,
-      key: GLOBAL_BOOSTERS_KEY,
-      rawType: typeof raw,
-      rawIsNull: raw == null,
-      rawValue: summarizeGlobalBoosterRaw(raw),
-    });
-
-    const current = raw == null
-      ? createInitialGlobalBoosters(now)
-      : parseGlobalBoosterSnapshot(raw, now);
-    if (!current) {
-      await txn.unwatch();
-      throw new Error('Global Booster data is corrupted; refusing to overwrite it.');
-    }
-    const before = current[id];
-    const after = activateGlobalBoosterStack(before, now, id === 'speed' ? 10 : Number.MAX_SAFE_INTEGER);
-    current[id] = after;
-
-    await appendGlobalBoosterDebugLog('activate:state-computed', {
-      id,
-      attempt,
-      before,
-      after,
-    });
-
-    await txn.multi();
-    await txn.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(current));
-    const committed = await txn.exec();
-
-    if (committed !== null) {
-      const verifiedRaw = await redis.get(GLOBAL_BOOSTERS_KEY);
-      const verified = parseGlobalBoosterSnapshot(verifiedRaw, Date.now()) ?? current;
-      await appendGlobalBoosterDebugLog('activate:global-write-success', {
-        id,
-        attempt,
-        committed: true,
-        verifiedRawType: typeof verifiedRaw,
-        verifiedRaw: summarizeGlobalBoosterRaw(verifiedRaw),
-        verifiedSnapshot: verified,
-      });
-      return verified;
-    }
-
-    await appendGlobalBoosterDebugLog('activate:global-write-conflict', { id, attempt });
+async function prepareGlobalBoosterActivation(id: GlobalBoosterId): Promise<{
+  snapshot: GlobalBoosterSnapshot;
+  expectedValue: string | null;
+  nextValue: string;
+}> {
+  const now = Date.now();
+  const raw = await redis.get(GLOBAL_BOOSTERS_KEY);
+  const current = raw == null
+    ? createInitialGlobalBoosters(now)
+    : parseGlobalBoosterSnapshot(raw, now);
+  if (!current) {
+    throw new Error('Global Booster data is corrupted; refusing to overwrite it.');
   }
 
-  await appendGlobalBoosterDebugLog('activate:global-write-exhausted', { id });
-  throw new Error('The Global Booster was activated by another player. Please try again.');
-}
+  const before = current[id];
+  const after = activateGlobalBoosterStack(
+    before,
+    now,
+    id === 'speed' ? 10 : Number.MAX_SAFE_INTEGER,
+  );
+  const snapshot: GlobalBoosterSnapshot = { ...current, [id]: after };
+  await appendGlobalBoosterDebugLog('activate:state-computed', {
+    id,
+    before,
+    after,
+    note: 'Pending atomic player/global save; no global write has occurred yet.',
+  });
 
+  return {
+    snapshot,
+    expectedValue: raw == null ? null : String(raw),
+    nextValue: JSON.stringify(snapshot),
+  };
+}
 export async function setGlobalBoosterDebugState(
   id: GlobalBoosterId,
   tier: number,
@@ -3648,49 +3624,67 @@ async function claimWorldBoosterActivation(
 
   if (useCredit) {
     if ((s.globalBoosterCredits ?? 0) <= 0) {
-      await appendGlobalBoosterDebugLog('player:activation-rejected-no-credit', {
-        userId,
-        id,
-        credits: s.globalBoosterCredits ?? 0,
-      });
       throw new Error('No free Global Booster activations remain.');
     }
     s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) - 1;
   } else {
-    if ((s.shards ?? 0) < cost) {
-      await appendGlobalBoosterDebugLog('player:activation-rejected-no-shards', {
-        userId,
-        id,
-        shards: s.shards,
-        required: cost,
-      });
-    }
+    if ((s.shards ?? 0) < cost) throw new Error('Not enough Shards for this Global Booster.');
     spendShards(s, cost);
   }
 
-  await appendGlobalBoosterDebugLog('player:currency-deducted', {
-    userId,
-    id,
-    useCredit,
-    shardsAfter: s.shards,
-    creditsAfter: s.globalBoosterCredits ?? 0,
-  });
-
+  let snapshot: GlobalBoosterSnapshot;
   try {
-    const snapshot = await updateGlobalBooster(id);
+    const prepared = await prepareGlobalBoosterActivation(id);
+    snapshot = prepared.snapshot;
     s.globalBoosters = snapshot;
 
-    await appendGlobalBoosterDebugLog('player:before-save', {
+    await appendGlobalBoosterDebugLog('player:before-atomic-save', {
       userId,
       id,
       useCredit,
-      snapshot,
       shards: s.shards,
       credits: s.globalBoosterCredits ?? 0,
+      snapshot,
     });
 
-    await save(s);
+    // Player currency and the shared Booster stack commit together under one
+    // WATCH/MULTI/EXEC. A failed player save can no longer leave a free Booster,
+    // and a conflicting Booster write cannot charge the player.
+    await save(s, {
+      key: GLOBAL_BOOSTERS_KEY,
+      expectedValue: prepared.expectedValue,
+      nextValue: prepared.nextValue,
+      conflictMessage: 'Global Booster changed before your activation committed. Please retry.',
+    });
+  } catch (error) {
+    // Nothing should have committed if the atomic save failed. This rollback is
+    // in-memory only; the previous persisted player save remains authoritative.
+    if (useCredit) s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) + 1;
+    else s.shards = (s.shards ?? 0) + cost;
+    await appendGlobalBoosterDebugLog('player:activation-failed-before-commit', {
+      userId,
+      id,
+      useCredit,
+      errorName: error instanceof Error ? error.name : null,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    }).catch(logError => {
+      console.error('[Global Booster] Failure log failed:', logError);
+    });
+    throw error;
+  }
 
+  // From this point onward the player charge and the Booster activation are
+  // durable. Logging/announcement failures must not turn a committed action
+  // into an apparent failure that can be retried for a second activation.
+  const activatedAt = Date.now();
+  const activatedBy = String(context.username ?? s.username ?? 'Redditor').trim() || 'Redditor';
+  const announcement = {
+    id,
+    name: GLOBAL_BOOSTERS[id].name,
+    username: activatedBy,
+    activatedAt,
+  };
+  try {
     await appendGlobalBoosterDebugLog('player:activation-success', {
       userId,
       id,
@@ -3699,10 +3693,6 @@ async function claimWorldBoosterActivation(
       shardsAfter: s.shards,
       creditsAfter: s.globalBoosterCredits ?? 0,
     });
-
-    const activatedAt = Date.now();
-    const activatedBy = String(context.username ?? s.username ?? 'Redditor').trim() || 'Redditor';
-
     await appendGlobalBoosterActivationLog({
       timestamp: activatedAt,
       userId,
@@ -3713,43 +3703,13 @@ async function claimWorldBoosterActivation(
       tier: Number(snapshot[id].tier ?? 0),
       endsAt: Number(snapshot[id].endsAt ?? 0),
     });
-
-    await redis.set(GLOBAL_BOOSTER_ANNOUNCEMENT_KEY, JSON.stringify({
-      id,
-      name: GLOBAL_BOOSTERS[id].name,
-      username: activatedBy,
-      activatedAt,
-    }));
-
-    return {
-      state: s,
-      snapshot,
-      usedCredit: useCredit,
-      announcement: {
-        id,
-        name: GLOBAL_BOOSTERS[id].name,
-        username: activatedBy,
-        activatedAt,
-      },
-    };
+    await redis.set(GLOBAL_BOOSTER_ANNOUNCEMENT_KEY, JSON.stringify(announcement));
   } catch (error) {
-    if (useCredit) s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) + 1;
-    else s.shards = (s.shards ?? 0) + cost;
-
-    await appendGlobalBoosterDebugLog('player:activation-failed', {
-      userId,
-      id,
-      useCredit,
-      errorName: error instanceof Error ? error.name : null,
-      errorMessage: error instanceof Error ? error.message : String(error),
-      refundedShards: useCredit ? 0 : cost,
-      refundedCredit: useCredit,
-    });
-
-    throw error;
+    console.error('[Global Booster] Activation committed, but announcement/audit projection failed:', error);
   }
-}
 
+  return { state: s, snapshot, usedCredit: useCredit, announcement };
+}
 export async function activateGlobalBooster(
   id: GlobalBoosterId,
   useCredit = false,
