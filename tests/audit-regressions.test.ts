@@ -5,6 +5,20 @@ import { resolve } from 'node:path';
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
+test('Follow Reward leaderboard projection failure is not reported as claim failure', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('export async function claimFollowReward');
+  const end = game.indexOf('export async function claimOffline', start);
+  assert.ok(start >= 0 && end > start);
+  const claim = game.slice(start, end);
+  const saveIndex = claim.indexOf('await save(s, {');
+  const markerIndex = claim.indexOf("if (await redis.get(rewardKey) !== rewardMarker)");
+  const projectionIndex = claim.indexOf('void recordLeaderboard(s).catch');
+  assert.ok(saveIndex >= 0 && markerIndex > saveIndex && projectionIndex > markerIndex);
+  assert.doesNotMatch(claim.slice(projectionIndex, claim.indexOf("void appendPlayerSpyLog", projectionIndex)), /await recordLeaderboard/);
+  assert.match(claim, /Leaderboard projection failed after reward commit/);
+});
+
 test('follow reward save and its idempotency marker commit through the same save transaction', () => {
   const game = source('src/server/game.ts');
   const start = game.indexOf('export async function claimFollowReward');

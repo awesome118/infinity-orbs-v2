@@ -3619,7 +3619,12 @@ export async function claimFollowReward(): Promise<{
     if (await redis.get(rewardKey) !== rewardMarker) {
       throw new Error('FOLLOW_REWARD_SAVE_INVALIDATED');
     }
-    await recordLeaderboard(s);
+    // The reward and its idempotency marker are already committed. The
+    // leaderboard is only a projection; its failure must not make the API
+    // report a failed claim that cannot be retried by the user.
+    void recordLeaderboard(s).catch(error => {
+      console.error('[Follow Reward] Leaderboard projection failed after reward commit:', error);
+    });
     void appendPlayerSpyLog('follow-reward-claim', {
       rollsGranted: FOLLOW_REWARD_ROLLS,
       bestRarity: result.bestOrb.rarity,
