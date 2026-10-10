@@ -80,6 +80,50 @@ function isRecordValue(value: unknown): value is Record<string, unknown> {
 function validateGuildNestedState(guild: Record<string, unknown>): void {
   const invalid = () => new Error('Guild data contains malformed nested state; refusing to replace it.');
 
+  // Numeric fields are used directly in reward, level and tax arithmetic.
+  // Finite fractional values or numbers above the exact-integer range are not
+  // valid persisted economy state.
+  for (const [field, minimum] of [['level', 1], ['xp', 0], ['tokens', 0]] as const) {
+    const value = guild[field];
+    if (!Number.isSafeInteger(value) || Number(value) < minimum) throw invalid();
+  }
+  if (guild.createdAt != null &&
+      (!Number.isSafeInteger(guild.createdAt) || Number(guild.createdAt) < 0)) {
+    throw invalid();
+  }
+
+  const members = guild.members;
+  if (!Array.isArray(members)) throw invalid();
+  for (const member of members) {
+    if (
+      !isRecordValue(member) ||
+      typeof member.username !== 'string' || !member.username.trim() ||
+      !['owner', 'officer', 'member'].includes(String(member.role)) ||
+      !Number.isSafeInteger(member.contribution) || Number(member.contribution) < 0 ||
+      (member.userId != null && typeof member.userId !== 'string') ||
+      (member.trusted != null && typeof member.trusted !== 'boolean') ||
+      (member.joinedAt != null && (!Number.isSafeInteger(member.joinedAt) || Number(member.joinedAt) < 0)) ||
+      (member.lastLoginAt != null && (!Number.isSafeInteger(member.lastLoginAt) || Number(member.lastLoginAt) < 0))
+    ) {
+      throw invalid();
+    }
+  }
+
+  if (guild.challenge != null) {
+    const challenge = guild.challenge;
+    if (
+      !isRecordValue(challenge) ||
+      !['rolls', 'value', 'rare'].includes(String(challenge.type)) ||
+      !Number.isSafeInteger(challenge.target) || Number(challenge.target) < 1 ||
+      !Number.isSafeInteger(challenge.progress) || Number(challenge.progress) < 0 ||
+      Number(challenge.progress) > Number(challenge.target) ||
+      !Number.isSafeInteger(challenge.reward) || Number(challenge.reward) < 1 ||
+      typeof challenge.label !== 'string' || !challenge.label.trim()
+    ) {
+      throw invalid();
+    }
+  }
+
   if (guild.perks != null) {
     if (!isRecordValue(guild.perks)) throw invalid();
     const perkCaps: Record<string, number> = {

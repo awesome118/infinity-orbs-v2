@@ -293,6 +293,10 @@ test('guild parser rejects malformed nested economy and boss state before normal
   const validator = social.slice(start, end);
   assert.match(validator, /perkCaps/);
   assert.match(validator, /guildXpRank: 20/);
+  assert.match(validator, /Number\.isSafeInteger\(member\.contribution\)/);
+  assert.match(validator, /guild\.challenge != null/);
+  assert.match(validator, /Number\(challenge\.progress\) > Number\(challenge\.target\)/);
+  assert.match(validator, /guild\.createdAt != null/);
   assert.match(validator, /Number\.isSafeInteger\(value\)/);
   assert.match(validator, /guild\.tasks != null/);
   assert.match(validator, /!isRecordValue\(task\)/);
