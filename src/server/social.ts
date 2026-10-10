@@ -1553,7 +1553,18 @@ function parseGlobalChatList(raw: unknown): GlobalChatMessage[] {
   if (!Array.isArray(parsed)) {
     throw new Error('Global Chat history is corrupted; refusing to overwrite it.');
   }
-  if (!parsed.every(item => item && typeof item === 'object' && !Array.isArray(item))) {
+  if (!parsed.every(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    const message = item as Record<string, unknown>;
+    return (
+      typeof message.id === 'string' && message.id.trim().length > 0 &&
+      typeof message.username === 'string' && message.username.trim().length > 0 &&
+      typeof message.text === 'string' && message.text.trim().length > 0 &&
+      message.text.length <= 200 &&
+      Number.isSafeInteger(message.timestamp) && Number(message.timestamp) >= 0 &&
+      (message.userId == null || typeof message.userId === 'string')
+    );
+  })) {
     throw new Error('Global Chat history contains malformed messages; refusing to overwrite it.');
   }
   return parsed as GlobalChatMessage[];

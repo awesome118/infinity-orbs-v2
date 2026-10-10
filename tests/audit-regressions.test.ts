@@ -428,6 +428,7 @@ test('game ban registry fails closed on malformed stored rows and unrepresentabl
   assert.match(parser, /if \(raw == null\) return Object\.create\(null\)/);
   assert.match(parser, /bannedUntil.*=== null/);
   assert.match(parser, /Number\.isSafeInteger/);
+  assert.match(parser, /Number\(\(value as any\)\.bannedUntil\) > Number\(\(value as any\)\.bannedAt\)/);
   assert.match(parser, /malformed record/);
 
   const mutatorStart = game.indexOf('async function mutateGameBans');
@@ -815,6 +816,12 @@ test('Global Chat mutations fail closed rather than overwriting malformed histor
   assert.match(parser, /if \(raw == null\) return \[\]/);
   assert.match(parser, /Global Chat history is corrupted; refusing to overwrite it/);
   assert.match(parser, /Global Chat history contains malformed messages/);
+  assert.match(parser, /typeof message\.id === 'string'/);
+  assert.match(parser, /typeof message\.username === 'string'/);
+  assert.match(parser, /typeof message\.text === 'string'/);
+  assert.match(parser, /message\.text\.length <= 200/);
+  assert.match(parser, /Number\.isSafeInteger\(message\.timestamp\)/);
+  assert.match(parser, /message\.userId == null \|\| typeof message\.userId === 'string'/);
 
   const purgeStart = social.indexOf('async function purgeChatMessagesForUser');
   const purgeEnd = social.indexOf('export interface ChatReportRecord', purgeStart);

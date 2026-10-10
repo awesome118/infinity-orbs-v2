@@ -765,7 +765,10 @@ function parseGameBanRegistry(raw: unknown): Record<string, GameBanRecord> {
       Number((value as any).bannedAt) < 0 ||
       !(
         (value as any).bannedUntil === null ||
-        (Number.isSafeInteger((value as any).bannedUntil) && Number((value as any).bannedUntil) >= 0)
+        (
+          Number.isSafeInteger((value as any).bannedUntil) &&
+          Number((value as any).bannedUntil) > Number((value as any).bannedAt)
+        )
       ) ||
       typeof (value as any).reason !== 'string' ||
       typeof (value as any).bannedBy !== 'string'
