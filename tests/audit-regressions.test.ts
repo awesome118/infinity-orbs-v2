@@ -1168,3 +1168,15 @@ test('optional World Event conflicts cannot block primary player rewards', () =>
   assert.match(claim, /Frenzy progress not recorded; preserving shared data/);
   assert.match(claim, /key: communityUpdate\.key,[\s\S]*?optional: true/);
 });
+
+
+test('third lifetime Orb guarantee uses an immutable pre-batch roll count', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('export async function applyRolls');
+  const end = game.indexOf('async function sendOfflineFullNotification', start);
+  assert.ok(start >= 0 && end > start);
+  const roll = game.slice(start, end);
+  assert.match(roll, /const lifetimeRollsBeforeBatch = s\.totalRolls/);
+  assert.match(roll, /forcedRarity == null && lifetimeRollsBeforeBatch \+ i === 2/);
+  assert.doesNotMatch(roll, /s\.totalRolls \+ i === 2/);
+});
