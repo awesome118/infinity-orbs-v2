@@ -1275,3 +1275,16 @@ test('malformed quest entries cannot break every subsequent player mutation', ()
   assert.match(game, /weeklyQuests: isValidQuestList\(parsed\.weeklyQuests\) \? parsed\.weeklyQuests : base\.weeklyQuests/);
   assert.doesNotMatch(game, /dailyQuests: parsed\.dailyQuests\?\.length \?/);
 });
+
+
+test('malformed nested player-save shapes fall back before reaching gameplay code', () => {
+  const game = source('src/server/game.ts');
+  assert.match(game, /function isRecordObject\(value: unknown\): value is Record<string, unknown>/);
+  assert.match(game, /function isStringList\(value: unknown\): value is string\[\]/);
+  assert.match(game, /function isValidCollection\(value: unknown\): value is Record<string, number>/);
+  assert.match(game, /function normalizePlayerStreak\(/);
+  assert.match(game, /collection: isValidCollection\(parsed\.collection\) \? parsed\.collection : base\.collection/);
+  assert.match(game, /claimedAchievements: isStringList\(parsed\.claimedAchievements\) \? parsed\.claimedAchievements : base\.claimedAchievements/);
+  assert.match(game, /streak: normalizePlayerStreak\(parsed\.streak, base\.streak\)/);
+  assert.match(game, /unlockedCosmetics: isStringList\(parsed\.unlockedCosmetics\)/);
+});
