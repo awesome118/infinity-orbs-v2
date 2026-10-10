@@ -1161,13 +1161,15 @@ export function luckRarityExponent(_luck: number): number {
   return 1;
 }
 
+export const MAX_ORB_RARITY = 1_000_000_000_000_000_000;
+
 export function rollContinuum(luck: number, random: () => number = Math.random): number {
   const sample = Number(random());
   const u = Number.isFinite(sample)
     ? Math.min(1 - Number.EPSILON, Math.max(Number.MIN_VALUE, sample))
     : 0.5;
   const rarity = Math.floor((1 / u) * luckRarityFactor(luck));
-  return Math.min(1_000_000_000_000_000_000, Math.max(2, rarity));
+  return Math.min(MAX_ORB_RARITY, Math.max(2, rarity));
 }
 
 export interface ContinuumTierMilestone {
@@ -2203,7 +2205,7 @@ export function predictRollActivation(
       ? beginnerRarity
       : Math.max(minimumRarity, rollContinuum(effectiveLuck, rng));
     const rarity = isCrit
-      ? Math.min(1_000_000_000_000_000, Math.round(rolledRarity * effectiveCm))
+      ? Math.min(MAX_ORB_RARITY, Math.round(rolledRarity * effectiveCm))
       : rolledRarity;
 
     const finalVal = Math.round(rarity * valueMul);
