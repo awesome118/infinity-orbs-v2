@@ -688,3 +688,16 @@ test('optimistic rollback restores stateRef as well as React state without losin
   assert.match(callback, /stateRef\.current = restoredState/);
   assert.match(callback, /setState\(restoredState\)/);
 });
+
+
+test('loadRaw distinguishes a missing save from a present empty or malformed save', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('export async function loadRaw');
+  const end = game.indexOf('function applyXp', start);
+  assert.ok(start >= 0 && end > start);
+  const loader = game.slice(start, end);
+  assert.match(loader, /if \(raw == null\)/);
+  assert.match(loader, /const parsed = parsePlayerStateValue\(raw\)/);
+  assert.match(loader, /stored save is not valid player data/);
+  assert.doesNotMatch(loader, /if \(!raw\)/);
+});

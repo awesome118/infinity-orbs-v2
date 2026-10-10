@@ -1856,7 +1856,7 @@ export async function loadRaw(): Promise<PlayerState> {
   ]);
 
 
-  if (!raw) {
+  if (raw == null) {
     const s = createInitialState();
     s.username = username;
     s.saveGeneration = generation;
