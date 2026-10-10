@@ -27,6 +27,15 @@ interface DevDebugModalProps {
   onForceFrenzyPopup?: () => void;
 }
 
+type GlobalBoosterGrantOperation = {
+  operationId: string;
+  scope: 'user' | 'online' | 'all';
+  amount: number;
+  targetUser: string;
+};
+
+const GLOBAL_BOOSTER_GRANT_PENDING_STORAGE_KEY = 'infinity-orbs:pending-global-booster-grant:v1';
+
 type AdminContext = {
   username: string | null;
   userId: string | null;
@@ -363,12 +372,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [globalBoosterCreditAmount, setGlobalBoosterCreditAmount] = useState('1');
   const [globalBoosterTargetUser, setGlobalBoosterTargetUser] = useState('');
   const [globalBoosterGrantLoading, setGlobalBoosterGrantLoading] = useState(false);
-  const globalBoosterGrantOperationRef = useRef<{
-    operationId: string;
-    scope: 'user' | 'online' | 'all';
-    amount: number;
-    targetUser: string;
-  } | null>(null);
+  const globalBoosterGrantOperationRef = useRef<GlobalBoosterGrantOperation | null>(null);
   const [globalBoosterLogs, setGlobalBoosterLogs] = useState<Array<Record<string, unknown>>>([]);
   const [globalBoosterLogsLoading, setGlobalBoosterLogsLoading] = useState(false);
   const [globalBoosterActivationLog, setGlobalBoosterActivationLog] = useState<Array<{
@@ -882,7 +886,30 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     }
 
     if (globalBoosterGrantLoading) return;
-    const previousOperation = globalBoosterGrantOperationRef.current;
+    let storedOperation: GlobalBoosterGrantOperation | null = null;
+    if (!globalBoosterGrantOperationRef.current) {
+      try {
+        const rawPending = typeof sessionStorage !== 'undefined'
+          ? sessionStorage.getItem(GLOBAL_BOOSTER_GRANT_PENDING_STORAGE_KEY)
+          : null;
+        const parsedPending = rawPending ? JSON.parse(rawPending) : null;
+        if (
+          parsedPending &&
+          typeof parsedPending.operationId === 'string' &&
+          ['user', 'online', 'all'].includes(parsedPending.scope) &&
+          Number.isSafeInteger(parsedPending.amount) &&
+          parsedPending.amount >= 1 &&
+          parsedPending.amount <= 1_000_000 &&
+          typeof parsedPending.targetUser === 'string'
+        ) {
+          storedOperation = parsedPending as GlobalBoosterGrantOperation;
+        }
+      } catch {
+        // Browser storage may be disabled; the in-memory receipt still prevents
+        // duplicate retries while the modal remains mounted.
+      }
+    }
+    const previousOperation = globalBoosterGrantOperationRef.current ?? storedOperation;
     const sameOperation =
       previousOperation?.scope === scope &&
       previousOperation.amount === amount &&
@@ -898,6 +925,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     // Keep the same id after network or partial-batch failures. The server stores
     // per-player receipts, so retrying can resume without double-granting successes.
     globalBoosterGrantOperationRef.current = operation;
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(GLOBAL_BOOSTER_GRANT_PENDING_STORAGE_KEY, JSON.stringify(operation));
+      }
+    } catch {
+      // The durable server receipt remains authoritative even if browser storage is unavailable.
+    }
 
     setGlobalBoosterGrantLoading(true);
     setMessage('');
@@ -926,6 +960,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       }
 
       globalBoosterGrantOperationRef.current = null;
+      try {
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.removeItem(GLOBAL_BOOSTER_GRANT_PENDING_STORAGE_KEY);
+        }
+      } catch {
+        // Storage cleanup must not turn a committed grant into a reported failure.
+      }
       sound.playClick();
       const affectedUsers = Number(data?.affectedUsers ?? (scope === 'user' ? 1 : 0));
       setMessage(
