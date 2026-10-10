@@ -2679,6 +2679,9 @@ export async function applyRolls(
     highestRarity: s.highestRarity,
   };
   const requestedRollCount = rollCount;
+  // Freeze the lifetime counter for this batch. s.totalRolls increments inside
+  // the loop, so using its live value plus i double-counts the current batch.
+  const lifetimeRollsBeforeBatch = s.totalRolls;
   const rng = randomOverride ?? serverRandom;
 
   // Astral Magnetism proc: chance for multi-rolls to pull 2 bonus orbs
@@ -2737,7 +2740,7 @@ export async function applyRolls(
     // New-player hype: the third Orb this account ever rolls is guaranteed
     // to land in the 1/101 through 1/120 range. It cannot crit upward, so the
     // guarantee is the exact advertised range.
-    const isGuaranteedThirdBall = forcedRarity == null && s.totalRolls + i === 2;
+    const isGuaranteedThirdBall = forcedRarity == null && lifetimeRollsBeforeBatch + i === 2;
 
     const isCrit = !isGuaranteedThirdBall && rng() < effectiveCritChance;
     let effectiveCm = cm;
