@@ -1391,7 +1391,10 @@ export async function prepareCommunityRolls(
     ev.completedTier = 0;
     ev.weekId = currentWeekNumber;
   }
-  ev.currentProgress += amount;
+  // Event progress is a presentation/bonus counter, not a player-action gate.
+  // Once it reaches the safe integer ceiling, keep rolling working rather than
+  // throwing on every ordinary roll because the aggregate can no longer grow.
+  ev.currentProgress = Math.min(Number.MAX_SAFE_INTEGER - 1, ev.currentProgress + amount);
   assertSafeProgressionNumbers('Community event', ev.goal, ev.currentProgress, ev.tier);
   while (ev.currentProgress >= ev.goal) {
     ev.completedTier = Math.max(ev.completedTier ?? 0, ev.tier || 1);

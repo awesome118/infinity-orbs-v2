@@ -197,6 +197,13 @@ test('community event rejects infinite and non-terminating progression values', 
   const add = social.slice(addStart, addEnd);
   assert.match(add, /await txn\.unwatch\(\)/);
   assert.match(add, /Number\.MAX_SAFE_INTEGER/);
+
+  const prepStart = social.indexOf('export async function prepareCommunityRolls');
+  const prepEnd = social.indexOf('export async function addCommunityRolls', prepStart);
+  assert.ok(prepStart >= 0 && prepEnd > prepStart);
+  const prepare = social.slice(prepStart, prepEnd);
+  assert.match(prepare, /ev\.currentProgress = Math\.min\(Number\.MAX_SAFE_INTEGER - 1, ev\.currentProgress \+ amount\)/);
+  assert.doesNotMatch(prepare, /ev\.currentProgress \+= amount/);
 });
 
 test('chat side effects use per-user atomic cooldowns and real newlines', () => {
