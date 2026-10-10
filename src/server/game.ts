@@ -72,6 +72,7 @@ import {
   codexDevotionLuckPercent,
   altarCoinDevotionChancePercent,
   altarCoinFloor,
+  MAX_ORB_RARITY,
 } from '../shared/game.js';
 import {
   recordLeaderboard,
@@ -2763,7 +2764,7 @@ export async function applyRolls(
         ? forcedRarity
         : Math.max(minimumRarity, rollContinuum(effectiveLuck, rng));
     const baseRarity = Math.max(minimumRarity, rolledRarity);
-    const rarity = isCrit ? Math.min(1_000_000_000_000_000, Math.round(baseRarity * effectiveCm)) : baseRarity;
+    const rarity = isCrit ? Math.min(MAX_ORB_RARITY, Math.round(baseRarity * effectiveCm)) : baseRarity;
     const finalVal = Math.round(rarity * valueMul);
 
     totalVal += finalVal;
@@ -4663,8 +4664,8 @@ export async function claimOrbFrenzy(options: {
     : 0;
 
   const normalCritCount = Math.max(0, critCount - supernovaCount);
-  const normalCritRarity = Math.min(1_000_000_000_000_000, Math.round(data.rarity * critMultiplier(s)));
-  const supernovaRarity = Math.min(1_000_000_000_000_000, Math.round(data.rarity * 5));
+  const normalCritRarity = Math.min(MAX_ORB_RARITY, Math.round(data.rarity * critMultiplier(s)));
+  const supernovaRarity = Math.min(MAX_ORB_RARITY, Math.round(data.rarity * 5));
 
   const groups = [
     { count: count - critCount, rarity: data.rarity },
