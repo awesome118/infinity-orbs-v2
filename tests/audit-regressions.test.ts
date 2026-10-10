@@ -440,6 +440,9 @@ test('Daily Streak reward and community tier commit atomically with player state
   assert.match(claim, /prepareDailyStreakCommunityProgress/);
   assert.match(claim, /stageSaveExtraWrite\(s/);
   assert.doesNotMatch(claim, /await addDailyStreakCommunityProgress/);
+  assert.match(claim, /previousCount < 0/);
+  assert.match(claim, /previousLongest < 0/);
+  assert.doesNotMatch(claim, /previousCount < 1|previousLongest < 1/);
   assert.ok(
     claim.indexOf('const communityUpdate = await prepareDailyStreakCommunityProgress') <
       claim.indexOf('s.streak.count = nextStreakCount'),

@@ -2020,8 +2020,8 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
   const previousCount = s.streak.count;
   const previousLongest = s.streak.longestStreak;
   if (
-    !Number.isSafeInteger(previousCount) || previousCount < 1 ||
-    !Number.isSafeInteger(previousLongest) || previousLongest < 1
+    !Number.isSafeInteger(previousCount) || previousCount < 0 ||
+    !Number.isSafeInteger(previousLongest) || previousLongest < 0
   ) {
     throw new Error('Saved Daily Streak data is invalid; no reward was granted.');
   }
