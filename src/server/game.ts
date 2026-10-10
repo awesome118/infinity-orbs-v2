@@ -1360,44 +1360,59 @@ interface PlayerRegistryEntry {
 }
 
 async function touchPlayerActivity(userId: string, username: string, now = Date.now()): Promise<number> {
-  return withPlayerMutationLockFor(`activity:${userId}`, async () => {
-  const activityNow = Math.max(now, Date.now());
-  let firstSeenAt = activityNow;
-  let lastLoginAt = activityNow;
-  let playtimeMs = 0;
+  const lockIdentity = `activity:${userId}`;
+  return withPlayerMutationLockFor(lockIdentity, async () => {
+    const activityNow = Math.max(now, Date.now());
+    const activeLock = getActivePlayerMutationLock(lockIdentity);
+    if (!activeLock) throw new Error('PLAYER_MUTATION_LEASE_LOST');
 
-  const existingRaw = await redis.hGet(PLAYER_REGISTRY_KEY, userId);
-  if (existingRaw) {
-    const existing = parseStoredJson<Partial<PlayerRegistryEntry>>(existingRaw);
-    firstSeenAt = Math.max(0, Number(existing?.firstSeenAt ?? activityNow) || activityNow);
+    // WATCH the whole hash because every user's registry entry shares one Redis
+    // key. A write from another activity callback invalidates our snapshot and
+    // forces a recompute instead of losing a newer playtime total.
+    for (let attempt = 0; attempt < 16; attempt += 1) {
+      const txn = await redis.watch(PLAYER_REGISTRY_KEY, activeLock.key);
+      if (await redis.get(activeLock.key) !== activeLock.token) {
+        await txn.unwatch();
+        throw new Error('PLAYER_MUTATION_LEASE_LOST');
+      }
 
-    const previousActivityAt = Math.max(
-      0,
-      Number(existing?.lastActivityAt ?? existing?.lastSeenAt ?? 0) || 0,
-    );
-    const previousPlaytimeMs = Math.max(0, Number(existing?.playtimeMs ?? 0) || 0);
-    const activityDelta = previousActivityAt > 0
-      ? Math.min(PLAYTIME_ACTIVE_GAP_MS, Math.max(0, activityNow - previousActivityAt))
-      : 0;
+      const existingRaw = await redis.hGet(PLAYER_REGISTRY_KEY, userId);
+      let firstSeenAt = activityNow;
+      let lastLoginAt = activityNow;
+      let playtimeMs = 0;
+      if (existingRaw) {
+        const existing = parseStoredJson<Partial<PlayerRegistryEntry>>(existingRaw);
+        firstSeenAt = Math.max(0, Number(existing?.firstSeenAt ?? activityNow) || activityNow);
+        const previousActivityAt = Math.max(
+          0,
+          Number(existing?.lastActivityAt ?? existing?.lastSeenAt ?? 0) || 0,
+        );
+        const previousPlaytimeMs = Math.max(0, Number(existing?.playtimeMs ?? 0) || 0);
+        const activityDelta = previousActivityAt > 0
+          ? Math.min(PLAYTIME_ACTIVE_GAP_MS, Math.max(0, activityNow - previousActivityAt))
+          : 0;
+        playtimeMs = Math.min(Number.MAX_SAFE_INTEGER, previousPlaytimeMs + activityDelta);
+        if (
+          activityNow - previousActivityAt <= PLAYTIME_ACTIVE_GAP_MS &&
+          Number(existing?.lastLoginAt ?? 0) > 0
+        ) {
+          lastLoginAt = Number(existing?.lastLoginAt);
+        }
+      }
 
-    playtimeMs = previousPlaytimeMs + activityDelta;
-    if (activityNow - previousActivityAt <= PLAYTIME_ACTIVE_GAP_MS && Number(existing?.lastLoginAt ?? 0) > 0) {
-      lastLoginAt = Number(existing?.lastLoginAt);
+      const next = JSON.stringify({
+        username: String(username).trim().slice(0, 100),
+        firstSeenAt,
+        lastSeenAt: activityNow,
+        lastLoginAt,
+        lastActivityAt: activityNow,
+        playtimeMs,
+      } satisfies PlayerRegistryEntry);
+      await txn.multi();
+      await txn.hSet(PLAYER_REGISTRY_KEY, { [userId]: next });
+      if (await txn.exec() !== null) return playtimeMs;
     }
-  }
-
-  await redis.hSet(PLAYER_REGISTRY_KEY, {
-    [userId]: JSON.stringify({
-      username: String(username).trim().slice(0, 100),
-      firstSeenAt,
-      lastSeenAt: activityNow,
-      lastLoginAt,
-      lastActivityAt: activityNow,
-      playtimeMs,
-    } satisfies PlayerRegistryEntry),
-  });
-
-  return playtimeMs;
+    throw new Error('Player activity changed repeatedly while recording playtime. Please retry.');
   });
 }
 

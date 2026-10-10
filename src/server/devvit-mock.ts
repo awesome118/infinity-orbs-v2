@@ -98,33 +98,48 @@ const localRedis = {
   },
   watch: async (...keys: string[]) => {
     const snapshot = new Map(keys.map(key => [key, readStore(key)]));
-    const staged: Array<[string, string]> = [];
+    const staged: Array<
+      | { kind: 'set'; key: string; value: string; expiration?: Date }
+      | { kind: 'del'; key: string }
+      | { kind: 'hset'; key: string; fields: Record<string, string> }
+    > = [];
     return {
       // TxClient is intentionally modeled without a read method. In Devvit,
       // reads after WATCH must go through redis.get(), while this object queues
       // writes for MULTI/EXEC. Keeping the mock honest prevents SDK misuse from
       // passing local tests while failing in production.
       multi: async () => undefined,
-      set: async (key: string, value: string) => {
-        staged.push([key, value]);
+      set: async (key: string, value: string, options?: { expiration?: Date }) => {
+        staged.push({ kind: 'set', key, value, expiration: options?.expiration });
+        return 'QUEUED';
+      },
+      hSet: async (key: string, fields: Record<string, string>) => {
+        staged.push({ kind: 'hset', key, fields: { ...fields } });
         return 'QUEUED';
       },
       del: async (key: string) => {
-        staged.push([key, '']);
+        staged.push({ kind: 'del', key });
         return 'QUEUED';
       },
       exec: async () => {
         for (const key of keys) {
           if ((readStore(key) ?? null) !== (snapshot.get(key) ?? null)) return null;
         }
-        for (const [key, value] of staged) {
-          if (value === '' && key !== undefined) {
-            store.delete(key);
-            expirations.delete(key);
-          } else {
-            store.set(key, value);
+        for (const write of staged) {
+          if (write.kind === 'del') {
+            store.delete(write.key);
+            expirations.delete(write.key);
+          } else if (write.kind === 'set') {
+            store.set(write.key, write.value);
             // Redis SET clears an existing TTL unless one is provided.
-            expirations.delete(key);
+            if (write.expiration instanceof Date) expirations.set(write.key, write.expiration.getTime());
+            else expirations.delete(write.key);
+          } else {
+            const raw = readStore(write.key);
+            const values = raw ? JSON.parse(raw) as Record<string, string> : {};
+            Object.assign(values, write.fields);
+            store.set(write.key, JSON.stringify(values));
+            expirations.delete(write.key);
           }
         }
         return [];

@@ -617,3 +617,19 @@ test('wipe-and-ban applies the ban before reset and never clears it after reset'
   assert.match(route, /let banApplied = false/);
   assert.match(route, /banApplied,?/);
 });
+
+
+test('player activity watch transaction preserves playtime updates and fences an expired activity lease', () => {
+  const game = source('src/server/game.ts');
+  const mock = source('src/server/devvit-mock.ts');
+  const start = game.indexOf('async function touchPlayerActivity');
+  const end = game.indexOf('async function registerPlayer', start);
+  assert.ok(start >= 0 && end > start);
+  const activity = game.slice(start, end);
+  assert.match(activity, /redis\.watch\(PLAYER_REGISTRY_KEY, activeLock\.key\)/);
+  assert.match(activity, /PLAYER_MUTATION_LEASE_LOST/);
+  assert.match(activity, /txn\.hSet\(PLAYER_REGISTRY_KEY/);
+  assert.match(activity, /if \(await txn\.exec\(\) !== null\) return playtimeMs/);
+  assert.match(mock, /kind: 'hset'/);
+  assert.match(mock, /Object\.assign\(values, write\.fields\)/);
+});
