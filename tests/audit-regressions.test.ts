@@ -316,3 +316,21 @@ test('corrupted leaderboard rows cannot be overwritten as an empty board', () =>
   assert.ok(boardsStart >= 0 && boardsEnd > boardsStart);
   assert.match(social.slice(boardsStart, boardsEnd), /Ignoring corrupt legacy projection/);
 });
+
+
+test('Global Booster charge and stack share one atomic player save', () => {
+  const game = source('src/server/game.ts');
+  const prepareStart = game.indexOf('async function prepareGlobalBoosterActivation');
+  const prepareEnd = game.indexOf('export async function setGlobalBoosterDebugState', prepareStart);
+  assert.ok(prepareStart >= 0 && prepareEnd > prepareStart);
+  assert.doesNotMatch(game.slice(prepareStart, prepareEnd), /await txn\.exec\(\)/);
+  const claimStart = game.indexOf('async function claimWorldBoosterActivation');
+  const claimEnd = game.indexOf('export async function activateGlobalBooster', claimStart);
+  assert.ok(claimStart >= 0 && claimEnd > claimStart);
+  const claim = game.slice(claimStart, claimEnd);
+  assert.match(claim, /await save\(s, \{/);
+  assert.match(claim, /key: GLOBAL_BOOSTERS_KEY/);
+  assert.match(claim, /expectedValue: prepared\.expectedValue/);
+  assert.match(claim, /nextValue: prepared\.nextValue/);
+  assert.match(claim, /Activation committed, but announcement\/audit projection failed/);
+});
