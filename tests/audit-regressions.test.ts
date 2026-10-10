@@ -460,6 +460,10 @@ test('roll rewards commit atomically with Guild and community progress', () => {
   assert.match(roll, /prepareGuildRollEffects\(/);
   assert.match(roll, /stageSaveExtraWrite\(s, guildEffects\.extraWrite\)/);
   assert.match(roll, /prepareCommunityRolls\(rollCount, pendingCommunityWrite\)/);
+  assert.match(roll, /getCommunityEvent\(\)\.catch\(error =>/);
+  assert.match(roll, /Read failed; rolling without the event bonus/);
+  assert.match(roll, /Progress not recorded for this roll; preserving shared data/);
+
   assert.match(roll, /stageSaveExtraWrite\(s, \{/);
   assert.doesNotMatch(roll, /await applyGuildTax\(/);
   assert.doesNotMatch(roll, /await contribute\(/);

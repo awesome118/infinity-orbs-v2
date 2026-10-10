@@ -2672,12 +2672,19 @@ export async function applyRolls(
   // several sequential Redis round trips before it can even start rolling.
   const [freshGlobalBoosters, worldEvent, fakeCcuBonus] = await Promise.all([
     getGlobalBoosters(),
-    getCommunityEvent(),
+    getCommunityEvent().catch(error => {
+      // The shared World Event is a bonus/progress feature, not a prerequisite
+      // for ordinary roll rewards. Keep corrupted/unavailable event data intact,
+      // but don't brick a player's roll because an admin-maintained side record
+      // could not be read.
+      console.error('[Community Event] Read failed; rolling without the event bonus.', error);
+      return null;
+    }),
     getFakeCcuBonus(),
   ]);
   s.globalBoosters = freshGlobalBoosters;
   const globalBoosters = s.globalBoosters;
-  const communityLuck = worldEvent.buffMultiplier ?? 1.15;
+  const communityLuck = worldEvent?.buffMultiplier ?? 1;
 
   // Fake CCU is an admin testing offset applied only to this player's luck calculation.
   // The underlying CCU metric and historical peaks always remain based on real players.
@@ -2902,13 +2909,20 @@ export async function applyRolls(
   advanceQuestProgress(s, 'unique', uniqueGained);
 
   const pendingCommunityWrite = getPendingSaveExtraWrite(s, 'io:community_event');
-  const communityUpdate = await prepareCommunityRolls(rollCount, pendingCommunityWrite);
-  stageSaveExtraWrite(s, {
-    key: communityUpdate.key,
-    expectedValue: communityUpdate.expectedValue,
-    nextValue: communityUpdate.nextValue,
-    conflictMessage: 'Community event changed before the roll saved. Please retry.',
-  });
+  try {
+    const communityUpdate = await prepareCommunityRolls(rollCount, pendingCommunityWrite);
+    stageSaveExtraWrite(s, {
+      key: communityUpdate.key,
+      expectedValue: communityUpdate.expectedValue,
+      nextValue: communityUpdate.nextValue,
+      conflictMessage: 'Community event changed before the roll saved. Please retry.',
+    });
+  } catch (error) {
+    // The World Event projection is best-effort. A corrupt shared event must
+    // never cause the primary player roll rewards to be discarded. Do not stage
+    // a replacement or clear the raw event: repair remains explicit/admin-only.
+    console.error('[Community Event] Progress not recorded for this roll; preserving shared data.', error);
+  }
 
   const bestInfo = getOrbInfo(bestRarity);
   const bestOrb: Orb = {
