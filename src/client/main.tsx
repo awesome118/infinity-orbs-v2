@@ -310,6 +310,7 @@ export function App() {
   const frenzyClaimActiveRef = useRef(false);
   const componentMountedRef = useRef(true);
   const stateRevisionRef = useRef(0);
+  const authSessionEpochRef = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -395,24 +396,30 @@ export function App() {
   }, []);
 
   const ensureRollTicket = useCallback(async () => {
+    const requestSessionEpoch = authSessionEpochRef.current;
     const current = rollTicketRef.current;
     if (current && current.nextIndex < 30 && current.expiresAt > Date.now()) {
       return current;
     }
 
     if (!rollTicketRequestRef.current) {
-      rollTicketRequestRef.current = getJson<{
+      const pending = getJson<{
         ticketId: string;
-
         nextIndex: number;
         rollsRemaining: number;
         expiresAt: number;
-      }>('/api/roll-ticket').finally(() => {
-        rollTicketRequestRef.current = null;
+      }>('/api/roll-ticket');
+      const tracked = pending.finally(() => {
+        // An older session's request must not clear a newer session's in-flight ticket.
+        if (rollTicketRequestRef.current === tracked) rollTicketRequestRef.current = null;
       });
+      rollTicketRequestRef.current = tracked;
     }
 
     const ticket = await rollTicketRequestRef.current;
+    if (requestSessionEpoch !== authSessionEpochRef.current) {
+      throw new Error('REDDIT_LOGIN_REQUIRED');
+    }
     rollTicketRef.current = ticket;
     return ticket;
   }, []);
@@ -538,6 +545,7 @@ export function App() {
         onlinePlayersRef.current = undefined;
         appliedServerRevisionRef.current = -1;
         stateRevisionRef.current += 1;
+        authSessionEpochRef.current += 1;
         rollTicketRef.current = null;
         rollTicketRequestRef.current = null;
         setState(null);

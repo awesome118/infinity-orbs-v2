@@ -788,3 +788,19 @@ test('chat posting and moderation share a per-user lock and unmute purges histor
   assert.ok(unmute.indexOf('await purgeChatMessagesForUser') < unmute.indexOf("await redis.hSet(GUILD_CHAT_MUTES_KEY, { [targetId]: '' })"));
   assert.match(unmute, /Mute record is corrupted; refusing to unmute/);
 });
+
+
+test('roll-ticket requests are fenced across authentication resets', () => {
+  const client = source('src/client/main.tsx');
+  assert.match(client, /const authSessionEpochRef = useRef\(0\)/);
+  const start = client.indexOf('const ensureRollTicket');
+  const end = client.indexOf('const dismissedDeveloperAnnouncementRef', start);
+  assert.ok(start >= 0 && end > start);
+  const ensure = client.slice(start, end);
+  assert.match(ensure, /const requestSessionEpoch = authSessionEpochRef\.current/);
+  assert.match(ensure, /requestSessionEpoch !== authSessionEpochRef\.current/);
+  assert.match(ensure, /if \(rollTicketRequestRef\.current === tracked\)/);
+  const authStart = client.indexOf("if (e?.message === 'REDDIT_LOGIN_REQUIRED')");
+  const authEnd = client.indexOf('const message = e?.message', authStart);
+  assert.match(client.slice(authStart, authEnd), /authSessionEpochRef\.current \+= 1/);
+});
