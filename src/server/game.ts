@@ -1105,42 +1105,65 @@ export async function getOrbFrenzyHandoff(): Promise<{ armed: boolean; postId?: 
   return handoff ? { armed: true, postId: handoff.postId } : { armed: false };
 }
 
-async function grantFrenzyOwnerReward(
+async function prepareFrenzyOwnerRewardWrites(
   ownerId: string,
   amount = FRENZY_OWNER_SHARD_REWARD,
-): Promise<number> {
+): Promise<{ granted: number; writes: SaveExtraWrite[] }> {
   const safeOwnerId = String(ownerId ?? '').trim();
-  if (!safeOwnerId || safeOwnerId === 'unknown') return 0;
-
-  const ownerKey = playerKeyFor(safeOwnerId);
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const txn = await redis.watch(ownerKey);
-    const raw = await redis.get(ownerKey);
-    if (raw == null) {
-      await txn.unwatch();
-      throw new Error('Frenzy owner save was not found.');
-    }
-
-    const ownerState = parsePlayerStateValue(raw);
-    if (!ownerState) {
-      await txn.unwatch();
-      throw new Error('Frenzy owner save could not be read safely.');
-    }
-
-    const granted = grantFrenzyOwnerShards(ownerState, amount);
-    const currentRevision = Math.max(
-      0,
-      Math.floor(Number(ownerState.stateRevision ?? 0)) || 0,
-    );
-    const nextState = { ...ownerState, stateRevision: currentRevision + 1 };
-
-    await txn.multi();
-    await txn.set(ownerKey, JSON.stringify(nextState));
-    const committed = await txn.exec();
-    if (committed !== null) return granted;
+  if (!safeOwnerId || safeOwnerId === 'unknown') {
+    throw new Error('Frenzy owner identity is missing; the claim was not consumed.');
   }
 
-  throw new Error('Could not safely grant the Frenzy owner reward.');
+  const ownerKey = playerKeyFor(safeOwnerId);
+  const ownerGenerationKey = saveGenerationKeyFor(safeOwnerId);
+  const [raw, generationRaw] = await Promise.all([
+    redis.get(ownerKey),
+    redis.get(ownerGenerationKey),
+  ]);
+  if (raw == null) throw new Error('Frenzy owner save was not found.');
+  const ownerState = parsePlayerStateValue(raw);
+  if (!ownerState) throw new Error('Frenzy owner save could not be read safely.');
+
+  const generationText = generationRaw == null ? '0' : String(generationRaw);
+  const generation = Number.parseInt(generationText, 10);
+  if (!Number.isSafeInteger(generation) || generation < 0) {
+    throw new Error('Frenzy owner save generation could not be read safely.');
+  }
+  const ownerGeneration = Math.max(0, Math.floor(Number(ownerState.saveGeneration ?? 0)) || 0);
+  if (ownerGeneration !== generation) {
+    throw new Error('Frenzy owner save changed generation; the claim was not consumed.');
+  }
+
+  const granted = grantFrenzyOwnerShards(ownerState, amount);
+  const currentRevision = Math.max(0, Math.floor(Number(ownerState.stateRevision ?? 0)) || 0);
+  if (currentRevision >= Number.MAX_SAFE_INTEGER) {
+    throw new Error('Frenzy owner save revision is exhausted; the claim was not consumed.');
+  }
+  const nextState = {
+    ...ownerState,
+    saveGeneration: generation,
+    stateRevision: currentRevision + 1,
+  };
+
+  // These side writes join the claimant save transaction. The post, claimant
+  // reward, owner Shards, and both generation guards either all commit or none do.
+  return {
+    granted,
+    writes: [
+      {
+        key: ownerGenerationKey,
+        expectedValue: generationRaw == null ? null : String(generationRaw),
+        nextValue: generationText,
+        conflictMessage: 'Frenzy owner save generation changed. Please retry.',
+      },
+      {
+        key: ownerKey,
+        expectedValue: String(raw),
+        nextValue: JSON.stringify(nextState),
+        conflictMessage: 'Frenzy owner save changed. Please retry.',
+      },
+    ],
+  };
 }
 
 
@@ -4347,19 +4370,29 @@ export async function claimOrbFrenzy(options: {
   const shardsGained = grantRollShards(s, rarityShards + procShards);
 
   const previousHighest = s.highestRarity;
+  const bestRarity = topRarity;
   s.totalRolls += count;
   s.currentRunRolls = (s.currentRunRolls ?? 0) + count;
   s.collectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.collectionValue ?? 0) + finalValue);
   s.lifetimeCollectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.lifetimeCollectionValue ?? 0) + finalValue);
   s.totalCrits = (s.totalCrits ?? 0) + critCount;
-  const guildTax = await applyGuildTax(coinsGained);
-  coinsGained = Math.max(0, coinsGained - guildTax.taxedCoins);
+
+  // Stage Guild taxes/contribution in the same save as this claim. A failed
+  // player save must not leave a consumed Guild tax, task credit, or roll count.
+  const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
+  const guildEffects = await prepareGuildRollEffects(
+    coinsGained,
+    finalValue,
+    count,
+    bestRarity,
+    pendingGuildWrite,
+  );
+  if (guildEffects.extraWrite) stageSaveExtraWrite(s, guildEffects.extraWrite);
+  coinsGained = Math.max(0, coinsGained - guildEffects.taxedCoins);
   s.coins += coinsGained;
   s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
   s.lastFrenzyClaimDate = new Date(now).toISOString().slice(0, 10);
   s.lastFrenzyClaimAt = now;
-
-  const bestRarity = topRarity;
   const newRarityKeys = groups.filter(
     group => (s.collection[String(group.rarity)] ?? 0) <= 0,
   );
@@ -4388,24 +4421,42 @@ export async function claimOrbFrenzy(options: {
   advanceQuestProgress(s, 'rare', bestRarity);
   advanceQuestProgress(s, 'value', finalValue);
   advanceQuestProgress(s, 'unique', uniqueGained);
-  await contribute(finalValue, count, bestRarity);
-  await addCommunityRolls(count);
+
+  const pendingCommunityWrite = getPendingSaveExtraWrite(s, 'io:community_event');
+  const communityUpdate = await prepareCommunityRolls(count, pendingCommunityWrite);
+  stageSaveExtraWrite(s, {
+    key: communityUpdate.key,
+    expectedValue: communityUpdate.expectedValue,
+    nextValue: communityUpdate.nextValue,
+    conflictMessage: 'Community event changed before the Frenzy claim saved. Please retry.',
+  });
 
   let ownerRewardShards = 0;
+  let ownerRewardWrites: SaveExtraWrite[] = [];
   if (isOwner) {
     ownerRewardShards = grantFrenzyOwnerShards(s, FRENZY_OWNER_SHARD_REWARD);
+  } else {
+    const ownerReward = await prepareFrenzyOwnerRewardWrites(
+      data.ownerId,
+      FRENZY_OWNER_SHARD_REWARD,
+    );
+    ownerRewardShards = ownerReward.granted;
+    ownerRewardWrites = ownerReward.writes;
   }
 
-  // Consume the post atomically with the claimant save. Different players
-  // have different player locks, so the watched post key prevents multiple
-  // claimants from winning the same Frenzy.
+  // Consume the post atomically with both the claimant save and the owner's
+  // reward. Different players have different locks, so the watched keys also
+  // protect the transaction if one of those distributed leases expires.
   const consumedPostValue = JSON.stringify({ ...data, consumedAt: now });
-  await save(s, {
-    key: FRENZY_POST_PREFIX + postId,
-    expectedValue: raw,
-    nextValue: consumedPostValue,
-    conflictMessage: 'This Orb Frenzy has already been claimed.',
-  });
+  await save(s, [
+    {
+      key: FRENZY_POST_PREFIX + postId,
+      expectedValue: raw,
+      nextValue: consumedPostValue,
+      conflictMessage: 'This Orb Frenzy has already been claimed.',
+    },
+    ...ownerRewardWrites,
+  ]);
   // save() intentionally discards pre-wipe mutations. Do not report a claim
   // or award its owner if the claimant mutation was invalidated before commit.
   if (await redis.get(FRENZY_POST_PREFIX + postId) !== consumedPostValue) {
@@ -4413,17 +4464,6 @@ export async function claimOrbFrenzy(options: {
   }
   if (handoff && handoff.postId === postId) {
     await redis.del(frenzyHandoffKey(claimantId));
-  }
-
-  if (!isOwner) {
-    try {
-      ownerRewardShards = await grantFrenzyOwnerReward(
-        data.ownerId,
-        FRENZY_OWNER_SHARD_REWARD,
-      );
-    } catch (error) {
-      console.error('[Orb Frenzy] Failed to grant owner Shards:', error);
-    }
   }
 
   const rolledAt = Date.now();

@@ -482,3 +482,29 @@ test('account cleanup never overwrites a concurrent leaderboard update or replac
   assert.match(cleanup, /Leaderboard data is malformed/);
   assert.doesNotMatch(cleanup, /catch \{\s*parsed = \[\]/);
 });
+
+
+test('Frenzy claim commits owner reward, Guild effects, community progress, and post consumption together', () => {
+  const game = source('src/server/game.ts');
+  const rewardStart = game.indexOf('async function prepareFrenzyOwnerRewardWrites');
+  const rewardEnd = game.indexOf('function parseGlobalBoosterSnapshot', rewardStart);
+  assert.ok(rewardStart >= 0 && rewardEnd > rewardStart);
+  const reward = game.slice(rewardStart, rewardEnd);
+  assert.match(reward, /ownerGenerationKey/);
+  assert.match(reward, /key: ownerGenerationKey/);
+  assert.match(reward, /key: ownerKey/);
+  assert.match(reward, /Number\.isSafeInteger\(generation\)/);
+
+  const claimStart = game.indexOf('export async function claimOrbFrenzy');
+  const claimEnd = game.indexOf('function sampleBinomial', claimStart);
+  assert.ok(claimStart >= 0 && claimEnd > claimStart);
+  const claim = game.slice(claimStart, claimEnd);
+  assert.match(claim, /prepareGuildRollEffects\(/);
+  assert.match(claim, /prepareCommunityRolls\(/);
+  assert.match(claim, /prepareFrenzyOwnerRewardWrites\(/);
+  assert.match(claim, /await save\(s, \[[\s\S]*?FRENZY_POST_PREFIX \+ postId[\s\S]*?\.\.\.ownerRewardWrites/);
+  assert.doesNotMatch(claim, /await applyGuildTax\(coinsGained\)/);
+  assert.doesNotMatch(claim, /await contribute\(finalValue/);
+  assert.doesNotMatch(claim, /await addCommunityRolls\(count\)/);
+  assert.doesNotMatch(claim, /grantFrenzyOwnerReward/);
+});
