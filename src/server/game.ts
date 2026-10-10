@@ -92,7 +92,10 @@ interface SaveExtraWrite {
   conflictMessage?: string;
 }
 
+type SavePostCommitAction = () => Promise<void>;
+
 const pendingSaveExtraWrites = new WeakMap<PlayerState, SaveExtraWrite[]>();
+const pendingSavePostCommitActions = new WeakMap<PlayerState, SavePostCommitAction[]>();
 
 function getPendingSaveExtraWrite(s: PlayerState, keyName: string): SaveExtraWrite | undefined {
   return pendingSaveExtraWrites.get(s)?.find(item => item.key === keyName);
@@ -112,6 +115,34 @@ function stageSaveExtraWrite(s: PlayerState, write: SaveExtraWrite): void {
   const merged = [...existing];
   merged[index] = { ...write, expectedValue: previous.expectedValue };
   pendingSaveExtraWrites.set(s, merged);
+}
+
+function stageSavePostCommitAction(s: PlayerState, action: SavePostCommitAction): void {
+  const existing = pendingSavePostCommitActions.get(s) ?? [];
+  pendingSavePostCommitActions.set(s, [...existing, action]);
+}
+
+async function clearOfflineReminderKeyIfUnchanged(
+  keyName: string,
+  expectedValue: unknown,
+): Promise<void> {
+  if (expectedValue == null) return;
+  const expected = String(expectedValue);
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const txn = await redis.watch(keyName);
+    const current = await redis.get(keyName);
+    if (current == null || String(current) !== expected) {
+      await txn.unwatch();
+      return;
+    }
+
+    await txn.multi();
+    // Empty string is treated as absent by the existing truthiness checks,
+    // while WATCH/MULTI makes the compare-and-clear safe against a newer job.
+    await txn.set(keyName, '');
+    if (await txn.exec() !== null) return;
+  }
 }
 
 function currentUserId(): string {
@@ -1901,8 +1932,33 @@ async function processAutomation(s: PlayerState): Promise<void> {
     s.offlineRolls = 0;
     await applyRolls(s, batches, undefined, 'offline');
     s.lastRollAt = Date.now();
-    await redis.del(OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId());
-    await redis.del(OFFLINE_FULL_JOB_PREFIX + currentUserId());
+
+    // Do not clear reminders before the player reward save commits. If save()
+    // fails, the old marker/job must remain so the next request can recover.
+    // Clearing is compare-and-set after commit, then we re-arm the next reminder.
+    const userId = currentUserId();
+    const subredditName = String(context.subredditName ?? '').trim();
+    const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
+    const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
+    const [notificationValue, jobValue] = await Promise.all([
+      redis.get(notificationKey),
+      redis.get(jobKey),
+    ]);
+    stageSavePostCommitAction(s, async () => {
+      await Promise.all([
+        clearOfflineReminderKeyIfUnchanged(notificationKey, notificationValue),
+        clearOfflineReminderKeyIfUnchanged(jobKey, jobValue),
+      ]);
+      if (subredditName) {
+        const cap = offlineRollCap(s);
+        const tickMs = effectiveOfflineTickMs(s);
+        await scheduleOfflineFullNotification(
+          userId,
+          subredditName,
+          Date.now() + Math.max(1_000, (cap - s.offlineRolls) * tickMs),
+        );
+      }
+    });
   }
 
   if (s.automations?.autoUpgrade) {
@@ -2169,6 +2225,7 @@ export async function save(
       fresh.saveGeneration = generation;
       Object.assign(s, fresh);
       pendingSaveExtraWrites.delete(s);
+      pendingSavePostCommitActions.delete(s);
       await txn.unwatch();
       throw new Error('PLAYER_STATE_INVALIDATED_BY_WIPE');
     }
@@ -2239,6 +2296,20 @@ export async function save(
     if (committed !== null) {
       pendingSaveExtraWrites.delete(s);
       Object.assign(s, nextState);
+
+      // Run deferred external side effects only after the durable player state
+      // has committed. Failures are logged and do not turn a successful reward
+      // grant into an apparent failed mutation that a client may retry.
+      const postCommitActions = pendingSavePostCommitActions.get(s) ?? [];
+      pendingSavePostCommitActions.delete(s);
+      for (const action of postCommitActions) {
+        try {
+          await action();
+        } catch (error) {
+          console.error('[Player Save] Post-commit side effect failed:', error);
+        }
+      }
+
       // Flair is cosmetic and must never hold the gameplay request hostage.
       void syncRarityFlair(s).catch(error => {
         console.error('[Rarity Flair] Background update failed:', error);
