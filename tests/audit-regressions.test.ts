@@ -664,3 +664,14 @@ test('scheduled and request-triggered offline notifications share one per-player
   assert.match(settle, /offline-notification:/);
   assert.doesNotMatch(settle, /await redis\.del\(OFFLINE_FULL_JOB_PREFIX \+ userId\)/);
 });
+
+
+test('Guild Chat username normalization uses a valid escaped slash regex', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('export async function guildInfo');
+  const end = social.indexOf('export async function getPlayerGuildPerks', start);
+  const info = social.slice(start, end);
+  const slash = String.fromCharCode(92);
+  assert.equal(info.split('replace(/^u' + slash + '//i').length - 1, 2);
+  assert.equal(info.split('replace(/^u' + slash + slash + '//i').length - 1, 0);
+});

@@ -490,8 +490,8 @@ async function wipeUser(username: string, clearBanAfterWipe = true): Promise<{ u
     console.error('[Wipe] Leaderboard cleanup failed after the player reset committed:', error);
   });
   // A plain wipe is a full account reset. Remove any existing game ban so the
-  // wiped player can immediately start a fresh save. The dedicated wipe-and-ban
-  // endpoint applies a new ban after this function returns.
+  // wiped player can immediately start a fresh save. The wipe-and-ban route passes
+  // false here because it commits the new ban before the reset begins.
   if (clearBanAfterWipe) await unbanGameUser(userId);
 
   const persisted = await redis.get(playerKey);

@@ -535,7 +535,7 @@ export async function guildInfo() {
       if (!raw) continue;
       mutedUserIds.add(String(userId).trim());
       const parsed = parseStoredJson<Partial<import('../shared/social.js').GuildChatMuteRecord>>(raw);
-      const normalized = String(parsed?.username ?? '').trim().replace(/^u\\//i, '').toLowerCase();
+      const normalized = String(parsed?.username ?? '').trim().replace(/^u\//i, '').toLowerCase();
       if (normalized) mutedUsernames.add(normalized);
       const storedId = String(parsed?.userId ?? '').trim();
       if (storedId) mutedUserIds.add(storedId);
@@ -545,7 +545,7 @@ export async function guildInfo() {
     ...guild,
     chat: (guild.chat ?? []).filter(message => {
       const messageUserId = String(message.userId ?? '').trim();
-      const messageUsername = String(message.username ?? '').trim().replace(/^u\\//i, '').toLowerCase();
+      const messageUsername = String(message.username ?? '').trim().replace(/^u\//i, '').toLowerCase();
       return !mutedUserIds.has(messageUserId) && !mutedUsernames.has(messageUsername);
     }),
   });
