@@ -2043,14 +2043,11 @@ export async function loadRaw(): Promise<PlayerState> {
 
   const base = createInitialState();
   const cleanParsed = { ...(parsed as PlayerState & Record<string, unknown>) };
-  const normalizedManualRolls = Math.max(
-    0,
-    Math.min(
-      10,
-      Number(
-        parsed.manualRolls ??
-        Math.min(Number(parsed.totalRolls ?? 0), 10),
-      ) || 0,
+  const normalizedManualRolls = Math.min(
+    10,
+    finiteNonNegativeInteger(
+      parsed.manualRolls ?? Math.min(Number(parsed.totalRolls ?? 0), 10),
+      0,
     ),
   );
   const normalizedUpgrades = normalizeLevelRecord(
@@ -2092,7 +2089,7 @@ export async function loadRaw(): Promise<PlayerState> {
     upgrades: normalizedUpgrades,
     manualRolls: normalizedManualRolls,
     cosmicDust: finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust),
-    masteryPoints: finiteNonNegativeInteger(parsed.masteryPoints, base.masteryPoints),
+    masteryPoints: finiteNonNegativeInteger(parsed.masteryPoints, base.masteryPoints ?? 0),
     totalCrits: finiteNonNegativeInteger(parsed.totalCrits, base.totalCrits),
     lifetimeShards: finiteNonNegativeInteger(parsed.lifetimeShards, base.lifetimeShards),
     rollsSinceBest: finiteNonNegativeInteger(parsed.rollsSinceBest, base.rollsSinceBest),
