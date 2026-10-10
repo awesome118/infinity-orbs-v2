@@ -74,12 +74,11 @@ import {
   altarCoinFloor,
 } from '../shared/game.js';
 import {
-  contribute,
   recordLeaderboard,
-  applyGuildTax,
   getPlayerGuildPerks,
   getPlayerGuildCombo,
-  addCommunityRolls,
+  prepareGuildRollEffects,
+  prepareCommunityRolls,
   getCommunityEvent,
   getDailyStreakCommunity,
   prepareDailyStreakCommunityProgress,
@@ -95,12 +94,24 @@ interface SaveExtraWrite {
 
 const pendingSaveExtraWrites = new WeakMap<PlayerState, SaveExtraWrite[]>();
 
+function getPendingSaveExtraWrite(s: PlayerState, keyName: string): SaveExtraWrite | undefined {
+  return pendingSaveExtraWrites.get(s)?.find(item => item.key === keyName);
+}
+
 function stageSaveExtraWrite(s: PlayerState, write: SaveExtraWrite): void {
   const existing = pendingSaveExtraWrites.get(s) ?? [];
-  if (existing.some(item => item.key === write.key)) {
-    throw new Error(`Duplicate pending save write for ${write.key}.`);
+  const index = existing.findIndex(item => item.key === write.key);
+  if (index < 0) {
+    pendingSaveExtraWrites.set(s, [...existing, write]);
+    return;
   }
-  pendingSaveExtraWrites.set(s, [...existing, write]);
+  const previous = existing[index];
+  if (previous.expectedValue !== write.expectedValue) {
+    throw new Error(`Conflicting staged versions for ${write.key}.`);
+  }
+  const merged = [...existing];
+  merged[index] = { ...write, expectedValue: previous.expectedValue };
+  pendingSaveExtraWrites.set(s, merged);
 }
 
 function currentUserId(): string {
@@ -2532,8 +2543,16 @@ export async function applyRolls(
     coinsGained = Math.round(coinsGained * (1 + (s.prestigeUpgrades.offlineOverdrive * 0.50)));
   }
 
-  const guildTax = await applyGuildTax(coinsGained);
-  coinsGained = Math.max(0, coinsGained - guildTax.taxedCoins);
+  const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
+  const guildEffects = await prepareGuildRollEffects(
+    coinsGained,
+    totalVal,
+    rollCount,
+    bestRarity,
+    pendingGuildWrite,
+  );
+  if (guildEffects.extraWrite) stageSaveExtraWrite(s, guildEffects.extraWrite);
+  coinsGained = Math.max(0, coinsGained - guildEffects.taxedCoins);
   s.coins += coinsGained;
   shardsGained = grantRollShards(s, shardsGained);
 
@@ -2577,8 +2596,14 @@ export async function applyRolls(
   advanceQuestProgress(s, 'value', totalVal);
   advanceQuestProgress(s, 'unique', uniqueGained);
 
-  await contribute(totalVal, rollCount, bestRarity);
-  await addCommunityRolls(rollCount);
+  const pendingCommunityWrite = getPendingSaveExtraWrite(s, 'io:community_event');
+  const communityUpdate = await prepareCommunityRolls(rollCount, pendingCommunityWrite);
+  stageSaveExtraWrite(s, {
+    key: communityUpdate.key,
+    expectedValue: communityUpdate.expectedValue,
+    nextValue: communityUpdate.nextValue,
+    conflictMessage: 'Community event changed before the roll saved. Please retry.',
+  });
 
   const bestInfo = getOrbInfo(bestRarity);
   const bestOrb: Orb = {
