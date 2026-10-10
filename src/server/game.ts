@@ -3487,10 +3487,36 @@ export async function claimFollowReward(): Promise<{
     // the current user to the subreddit where the game is installed.
     await reddit.subscribeToCurrentSubreddit();
 
-    const alreadyRecorded = Boolean(await redis.get(subscribedKey));
-    if (!alreadyRecorded) {
-      await redis.set(subscribedKey, String(Date.now()));
-      await redis.incr(FOLLOW_ACTION_COUNT_KEY);
+    // The per-user marker and global aggregate are one idempotent update.
+    // Separate SET then INCR could leave a permanent undercount if the second
+    // command failed after the marker had already made retries skip the count.
+    let actionCountRecorded = false;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const txn = await redis.watch(subscribedKey, FOLLOW_ACTION_COUNT_KEY);
+      const existingMarker = await redis.get(subscribedKey);
+      if (existingMarker) {
+        await txn.unwatch();
+        actionCountRecorded = true;
+        break;
+      }
+
+      const rawCount = await redis.get(FOLLOW_ACTION_COUNT_KEY);
+      const currentCount = rawCount == null ? 0 : Number(rawCount);
+      if (!Number.isSafeInteger(currentCount) || currentCount < 0 || currentCount >= Number.MAX_SAFE_INTEGER) {
+        await txn.unwatch();
+        throw new Error('Follow-action counter is corrupted or exhausted; the count was not changed.');
+      }
+
+      await txn.multi();
+      await txn.set(subscribedKey, String(Date.now()));
+      await txn.set(FOLLOW_ACTION_COUNT_KEY, String(currentCount + 1));
+      if (await txn.exec() !== null) {
+        actionCountRecorded = true;
+        break;
+      }
+    }
+    if (!actionCountRecorded) {
+      throw new Error('Follow-action count changed repeatedly. Please retry.');
     }
 
     const s = await settleOffline(await loadRaw());

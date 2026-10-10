@@ -753,3 +753,18 @@ test('leaderboard projection uses a newer durable save even when invoked with an
   assert.match(record, /value: source\.collectionValue/);
   assert.match(record, /totalRolls: source\.totalRolls/);
 });
+
+
+test('follow subscription marker and aggregate count commit atomically and idempotently', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('export async function claimFollowReward');
+  const end = game.indexOf('export async function claimOffline', start);
+  assert.ok(start >= 0 && end > start);
+  const follow = game.slice(start, end);
+  assert.match(follow, /redis\.watch\(subscribedKey, FOLLOW_ACTION_COUNT_KEY\)/);
+  assert.match(follow, /await txn\.set\(subscribedKey, String\(Date\.now\(\)\)\)/);
+  assert.match(follow, /await txn\.set\(FOLLOW_ACTION_COUNT_KEY, String\(currentCount \+ 1\)\)/);
+  assert.match(follow, /if \(await txn\.exec\(\) !== null\)/);
+  assert.match(follow, /Follow-action counter is corrupted or exhausted/);
+  assert.doesNotMatch(follow, /await redis\.incr\(FOLLOW_ACTION_COUNT_KEY\)/);
+});
