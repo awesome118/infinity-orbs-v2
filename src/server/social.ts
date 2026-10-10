@@ -523,23 +523,54 @@ async function hydrateGuildLastLogins(guild: Guild, actor: Guild['members'][numb
 export async function guildInfo() {
   const guilds = await loadGuilds();
   const mine = currentGuild(guilds);
+
+  // Mute is the visibility authority even if history purging partially fails.
+  // Treat any non-empty mute hash entry as muted; a corrupt row must not make
+  // prior messages visible again.
+  const rawMutes = await redis.hGetAll(GUILD_CHAT_MUTES_KEY);
+  const mutedUserIds = new Set<string>();
+  const mutedUsernames = new Set<string>();
+  if (rawMutes && typeof rawMutes === 'object') {
+    for (const [userId, raw] of Object.entries(rawMutes as Record<string, string>)) {
+      if (!raw) continue;
+      mutedUserIds.add(String(userId).trim());
+      const parsed = parseStoredJson<Partial<import('../shared/social.js').GuildChatMuteRecord>>(raw);
+      const normalized = String(parsed?.username ?? '').trim().replace(/^u\\//i, '').toLowerCase();
+      if (normalized) mutedUsernames.add(normalized);
+      const storedId = String(parsed?.userId ?? '').trim();
+      if (storedId) mutedUserIds.add(storedId);
+    }
+  }
+  const filterMutedGuildChat = (guild: Guild): Guild => ({
+    ...guild,
+    chat: (guild.chat ?? []).filter(message => {
+      const messageUserId = String(message.userId ?? '').trim();
+      const messageUsername = String(message.username ?? '').trim().replace(/^u\\//i, '').toLowerCase();
+      return !mutedUserIds.has(messageUserId) && !mutedUsernames.has(messageUsername);
+    }),
+  });
+
   const visibleGuilds = guilds
     .sort((a, b) => b.xp - a.xp)
     .slice(0, 20)
-    .map(guild => ({
-      ...guild,
-      members: guild.members.map(member => {
-        const { lastLoginAt: _lastLoginAt, ...safeMember } = member;
-        return safeMember;
-      }),
-    }));
+    .map(guild => {
+      const filtered = filterMutedGuildChat(guild);
+      return {
+        ...filtered,
+        members: filtered.members.map(member => {
+          const { lastLoginAt: _lastLoginAt, ...safeMember } = member;
+          return safeMember;
+        }),
+      };
+    });
 
   let visibleMine: Guild | null = null;
   if (mine) {
     const actor = mine.members.find(member => memberMatches(member));
-    visibleMine = actor
+    const hydrated = actor
       ? await hydrateGuildLastLogins(mine, actor)
       : await hideGuildLastLogins(mine);
+    visibleMine = filterMutedGuildChat(hydrated);
   }
 
   return {
@@ -1822,6 +1853,7 @@ export async function recordLeaderboard(s: PlayerState) {
     totalRolls: s.totalRolls,
     level: s.level,
     sharedAt: s.lastShareAt,
+    stateRevision: Math.max(0, Math.floor(Number(s.stateRevision ?? 0)) || 0),
     highestDryStreak: Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest ?? 0),
     playtimeMs: Math.max(0, Number(registry?.playtimeMs ?? 0) || 0),
   };
@@ -1830,9 +1862,15 @@ export async function recordLeaderboard(s: PlayerState) {
     const txn = await redis.watch(leaderboardKey);
     const raw = await redis.get(leaderboardKey);
     const board: LeaderboardEntry[] = parseLeaderboardList(raw);
-    const existing = board.find(e => e.username === name);
-    if (existing) Object.assign(existing, next);
-    else board.push(next);
+    const existing = board.find(e => (next.userId && e.userId === next.userId) || e.username === name);
+    if (existing) {
+      const existingRevision = Number(existing.stateRevision);
+      // WATCH protects list writes, not source freshness. An earlier async
+      // projection can finish later, so never replace a newer saved revision.
+      if (!Number.isSafeInteger(existingRevision) || existingRevision <= next.stateRevision!) {
+        Object.assign(existing, next);
+      }
+    } else board.push(next);
     board.sort((a, b) => b.value - a.value);
     await txn.multi();
     await txn.set(leaderboardKey, JSON.stringify(board.slice(0, 5000)));

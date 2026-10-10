@@ -1190,15 +1190,37 @@ function parseGlobalBoosterSnapshot(
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
     const record = parsed as Record<string, unknown>;
 
+    const isValidBoosterState = (value: unknown, id: GlobalBoosterId): value is GlobalBoosterSnapshot[GlobalBoosterId] => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+      const state = value as Record<string, unknown>;
+      if (
+        !Number.isSafeInteger(state.tier) || Number(state.tier) < 0 ||
+        (id === 'speed' && Number(state.tier) > 10) ||
+        !Number.isSafeInteger(state.activationProgress) ||
+        Number(state.activationProgress) < 0 ||
+        Number(state.activationProgress) >= 4 ||
+        !Number.isSafeInteger(state.endsAt) || Number(state.endsAt) < 0
+      ) return false;
+
+      if (state.lastTickAt != null) {
+        if (
+          !Number.isSafeInteger(state.lastTickAt) ||
+          Number(state.lastTickAt) < 0 ||
+          Number(state.lastTickAt) > now + 60_000
+        ) return false;
+      }
+      return true;
+    };
+
     if (
-      record.luck && typeof record.luck === 'object' &&
-      record.speed && typeof record.speed === 'object' &&
-      record.crit && typeof record.crit === 'object'
+      isValidBoosterState(record.luck, 'luck') &&
+      isValidBoosterState(record.speed, 'speed') &&
+      isValidBoosterState(record.crit, 'crit')
     ) {
       return {
-        luck: decayGlobalBoosterState(record.luck as GlobalBoosterSnapshot['luck'], now),
-        speed: decayGlobalBoosterState(record.speed as GlobalBoosterSnapshot['speed'], now),
-        crit: decayGlobalBoosterState(record.crit as GlobalBoosterSnapshot['crit'], now),
+        luck: decayGlobalBoosterState(record.luck, now),
+        speed: decayGlobalBoosterState(record.speed, now),
+        crit: decayGlobalBoosterState(record.crit, now),
       };
     }
 

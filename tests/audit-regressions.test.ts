@@ -562,3 +562,40 @@ test('offline scheduler reservations prevent duplicate jobs and reject stale wor
   assert.doesNotMatch(processor, /await redis\.del\(jobKey\)/);
   assert.match(app, /processOfflineFullNotification\(userId, subredditName, jobToken \|\| undefined\)/);
 });
+
+
+test('Global Booster mutations reject malformed nested state instead of freezing or normalizing it', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('function parseGlobalBoosterSnapshot');
+  const end = game.indexOf('export async function getGlobalBoosters', start);
+  assert.ok(start >= 0 && end > start);
+  const parser = game.slice(start, end);
+  assert.match(parser, /isValidBoosterState\(record\.luck, 'luck'\)/);
+  assert.match(parser, /isValidBoosterState\(record\.speed, 'speed'\)/);
+  assert.match(parser, /Number\.isSafeInteger\(state\.tier\)/);
+  assert.match(parser, /Number\(state\.tier\) > 10/);
+  assert.match(parser, /Number\(state\.lastTickAt\) > now \+ 60_000/);
+});
+
+test('leaderboard projection refuses stale player-state revisions', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('export async function recordLeaderboard');
+  const end = social.indexOf('function validateDailyStreakCommunityEvent', start);
+  assert.ok(start >= 0 && end > start);
+  const record = social.slice(start, end);
+  assert.match(record, /stateRevision: Math\.max/);
+  assert.match(record, /existingRevision <= next\.stateRevision!/);
+  assert.match(record, /existing\.userId === next\.userId/);
+});
+
+test('Guild Chat filters muted authors even if the history purge fails', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('export async function guildInfo');
+  const end = social.indexOf('export async function getPlayerGuildPerks', start);
+  assert.ok(start >= 0 && end > start);
+  const info = social.slice(start, end);
+  assert.match(info, /redis\.hGetAll\(GUILD_CHAT_MUTES_KEY\)/);
+  assert.match(info, /mutedUserIds\.has\(messageUserId\)/);
+  assert.match(info, /mutedUsernames\.has\(messageUsername\)/);
+  assert.match(info, /filterMutedGuildChat\(hydrated\)/);
+});
