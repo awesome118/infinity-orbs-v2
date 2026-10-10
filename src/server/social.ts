@@ -1704,8 +1704,7 @@ async function submitChatReport(
 
 export async function getGlobalChat(): Promise<GlobalChatMessage[]> {
   const raw = await redis.get(GLOBAL_CHAT_KEY);
-  const parsed = parseStoredJson<unknown>(raw);
-  if (!Array.isArray(parsed)) return [];
+  const parsed = parseGlobalChatList(raw);
 
   // Also filter against the mute registry so a concurrent write can never make
   // a muted user's message visible again after the purge.
@@ -1723,19 +1722,7 @@ export async function getGlobalChat(): Promise<GlobalChatMessage[]> {
   }
 
   return parsed
-    .filter(item => item && typeof item === 'object')
-    .map(item => {
-      const message = item as Partial<GlobalChatMessage>;
-      return {
-        id: String(message.id ?? ''),
-        username: String(message.username ?? 'Redditor'),
-        text: String(message.text ?? ''),
-        timestamp: Number(message.timestamp ?? 0) || 0,
-        userId: message.userId ? String(message.userId) : undefined,
-      };
-    })
     .filter(message => {
-      if (!message.id || !message.text) return false;
       const messageUserId = String(message.userId ?? '').trim();
       const messageUsername = message.username.replace(/^u\//i, '').trim().toLowerCase();
       return !mutedIds.has(messageUserId) && !mutedNames.has(messageUsername);

@@ -832,6 +832,13 @@ test('Global Chat mutations fail closed rather than overwriting malformed histor
   const postStart = social.indexOf('export async function postGlobalChatMessage');
   const postEnd = social.indexOf('function sortLeaderboard', postStart);
   assert.match(social.slice(postStart, postEnd), /const messages = parseGlobalChatList\(raw\)/);
+
+  const readStart = social.indexOf('export async function getGlobalChat');
+  const readEnd = social.indexOf('export async function postGlobalChatMessage', readStart);
+  assert.ok(readStart >= 0 && readEnd > readStart);
+  const reader = social.slice(readStart, readEnd);
+  assert.match(reader, /const parsed = parseGlobalChatList\(raw\)/);
+  assert.doesNotMatch(reader, /String\(message\.text \?\? ''\)/);
 });
 
 test('client ignores a conflicting Shards balance at an unchanged server revision', () => {
