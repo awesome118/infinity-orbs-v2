@@ -1012,6 +1012,149 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
     console.error('Error in guild contribution:', err);
   }
 }
+export async function prepareGuildRollEffects(
+  coinsEarned: number,
+  value: number,
+  rollCount: number,
+  bestRarity?: number,
+  pendingWrite?: { expectedValue: string | null; nextValue: string },
+): Promise<{
+  taxedCoins: number;
+  extraWrite?: { key: string; expectedValue: string | null; nextValue: string; conflictMessage?: string };
+}> {
+  await ensureGuildMigrations();
+  await ensureRedisStringKey(GUILDS_KEY, '[]');
+
+  const persistedRaw = await redis.get(GUILDS_KEY);
+  const sourceRaw = pendingWrite ? pendingWrite.nextValue : persistedRaw;
+  const guilds = parseGuildList(sourceRaw);
+  const guild = currentGuild(guilds);
+  if (!guild) {
+    return pendingWrite
+      ? { taxedCoins: 0, extraWrite: { key: GUILDS_KEY, ...pendingWrite } }
+      : { taxedCoins: 0 };
+  }
+
+  const capInteger = (value: number) =>
+    Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Number.isFinite(value) ? Math.floor(value) : 0));
+  const safeCoins = capInteger(coinsEarned);
+  const safeValue = capInteger(value);
+  const safeRolls = capInteger(rollCount);
+  let taxedCoins = 0;
+
+  if (safeCoins >= 100) {
+    const rate = Math.max(0, Math.min(10, Math.floor(Number(guild.taxRate ?? 0) || 0)));
+    taxedCoins = Math.min(safeCoins, Math.floor(safeCoins * rate / 100));
+    if (taxedCoins > 0) {
+      const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * 0.10;
+      const xpEarned = Math.max(1, Math.floor((taxedCoins / 100) * xpMultiplier));
+      guild.xp = capInteger(guild.xp + xpEarned);
+      guild.level = 1 + Math.floor(guild.xp / 500);
+    }
+  }
+
+  if (safeValue > 0) {
+    const member = guild.members.find(candidate => memberMatches(candidate));
+    if (member) {
+      const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * 0.10;
+      const taskBountyMultiplier = 1 + Math.max(
+        0,
+        Math.floor(guild.perks?.taskBountyRank ?? guild.perks?.tokenYieldRank ?? 0),
+      ) * 0.05;
+      const comboDurationMultiplier = 1 + Math.max(
+        0,
+        Math.floor(guild.perks?.comboRank ?? 0),
+      ) * 0.05;
+
+      member.contribution = capInteger(member.contribution + safeValue);
+      guild.xp = capInteger(guild.xp + Math.max(1, Math.floor(Math.max(1, Math.floor(safeValue / 250)) * xpMultiplier)));
+      guild.level = 1 + Math.floor(guild.xp / 500);
+
+      if (!Array.isArray(guild.tasks) || guild.tasks.length < 3) {
+        guild.tasks = createInitialGuildTasks(guild.level);
+      }
+      const now = Date.now();
+      const taskProgressValue = safeValue;
+      const taskProgressRolls = safeRolls;
+      const taskProgressRare = (bestRarity ?? 0) >= 100 ? 1 : 0;
+
+      for (let i = 0; i < guild.tasks.length; i++) {
+        const task = guild.tasks[i];
+        if (!task) continue;
+        if (task.type === 'value') task.progress = capInteger(task.progress + taskProgressValue);
+        else if (task.type === 'rolls') task.progress = capInteger(task.progress + taskProgressRolls);
+        else if (task.type === 'rare') task.progress = capInteger(task.progress + taskProgressRare);
+        if (task.progress < task.target) continue;
+
+        const overflow = Math.max(0, task.progress - task.target);
+        const reward = Math.max(1, Math.floor(task.reward * taskBountyMultiplier));
+        const xpReward = Math.max(1, Math.floor(task.guildXpReward * xpMultiplier));
+        guild.tokens = capInteger((guild.tokens ?? 0) + reward);
+        guild.xp = capInteger(guild.xp + xpReward);
+        guild.level = 1 + Math.floor(guild.xp / 500);
+        guild.taskCompletions = capInteger((guild.taskCompletions ?? 0) + 1);
+        guild.combo = activateGuildComboStack(guild.combo, now, 10, comboDurationMultiplier);
+
+        const completedTier = task.tier;
+        const replacement = createGuildTask(task.type, completedTier + 1, guild.level);
+        replacement.progress = Math.min(Math.max(0, replacement.target - 1), overflow);
+        guild.tasks[i] = replacement;
+        if (!guild.chat) guild.chat = [];
+        guild.chat.push({
+          id: `msg-${Date.now()}-task`,
+          username: 'System',
+          text: `Guild Task completed! Tier ${completedTier} → Tier ${completedTier + 1}. +${reward.toLocaleString()} Guild Tokens and +${xpReward.toLocaleString()} Guild XP.`,
+          timestamp: Date.now(),
+          isSystem: true,
+        });
+        if (guild.chat.length > 50) guild.chat.shift();
+      }
+
+      const firstTask = guild.tasks[0];
+      guild.challenge = {
+        type: firstTask.type,
+        target: firstTask.target,
+        progress: Math.min(firstTask.target, firstTask.progress),
+        reward: firstTask.reward,
+        label: firstTask.label,
+      };
+      if (guild.boss && !guild.boss.defeated) {
+        const damage = Math.min(Number.MAX_SAFE_INTEGER, Math.round(safeValue + safeRolls * 25));
+        guild.boss.currentHp = Math.max(0, guild.boss.currentHp - damage);
+        if (!guild.boss.contributors) guild.boss.contributors = {};
+        guild.boss.contributors[username()] = capInteger((guild.boss.contributors[username()] ?? 0) + damage);
+        if (guild.boss.currentHp <= 0) {
+          guild.boss.defeated = true;
+          const guildXpReward = Math.max(0, Math.floor(guild.boss.rewardGuildXp ?? 0));
+          guild.xp = capInteger(guild.xp + guildXpReward);
+          guild.level = 1 + Math.floor(guild.xp / 500);
+          if (!guild.chat) guild.chat = [];
+          guild.chat.push({
+            id: `msg-${Date.now()}-boss`,
+            username: 'System',
+            text: `🏆 RAID BOSS SLAIN! ${guild.boss.name} was defeated! +${guildXpReward.toLocaleString()} Guild XP.`,
+            timestamp: Date.now(),
+            isSystem: true,
+          });
+          if (guild.chat.length > 50) guild.chat.shift();
+        }
+      }
+    }
+  }
+
+  return {
+    taxedCoins,
+    extraWrite: {
+      key: GUILDS_KEY,
+      expectedValue: pendingWrite
+        ? pendingWrite.expectedValue
+        : persistedRaw == null ? null : String(persistedRaw),
+      nextValue: JSON.stringify(guilds),
+      conflictMessage: 'Guild data changed before the roll saved. Please retry.',
+    },
+  };
+}
+
 // Community World Event System
 
 function assertSafeProgressionNumbers(label: string, goal: unknown, progress: unknown, tier: unknown): void {
@@ -1125,69 +1268,92 @@ export async function getCommunityEvent(): Promise<WorldEvent> {
   throw new Error('Community event changed while refreshing. Please retry.');
 }
 
-export async function addCommunityRolls(rolls: number): Promise<WorldEvent> {
+export async function prepareCommunityRolls(
+  rolls: number,
+  pendingWrite?: { expectedValue: string | null; nextValue: string },
+): Promise<{
+  event: WorldEvent;
+  key: string;
+  expectedValue: string | null;
+  nextValue: string;
+}> {
   const amount = Number(rolls);
   if (!Number.isSafeInteger(amount) || amount < 0 || amount > Number.MAX_SAFE_INTEGER - 1) {
     throw new Error('Community roll contribution must be a finite safe integer.');
   }
   await ensureRedisStringKey(COMMUNITY_EVENT_KEY, JSON.stringify(COMMUNITY_WORLD_EVENT));
-  if (amount <= 0) return getCommunityEvent();
+  const persistedRaw = await redis.get(COMMUNITY_EVENT_KEY);
+  const sourceRaw = pendingWrite ? pendingWrite.nextValue : persistedRaw;
+  const parsedEvent = sourceRaw == null ? null : parseStoredJson<WorldEvent>(sourceRaw);
+  if (sourceRaw != null && !parsedEvent) {
+    throw new Error('Community event data is corrupted.');
+  }
 
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const txn = await redis.watch(COMMUNITY_EVENT_KEY);
-    const raw = await redis.get(COMMUNITY_EVENT_KEY);
-    const now = Date.now();
-    const currentWeekNumber = weekKey(now);
-    const parsedEvent = raw == null ? null : parseStoredJson<WorldEvent>(raw);
-    if (raw != null && !parsedEvent) {
-      await txn.unwatch();
+  const now = Date.now();
+  const currentWeekNumber = weekKey(now);
+  const ev: WorldEvent = parsedEvent
+    ? { ...parsedEvent }
+    : { ...COMMUNITY_WORLD_EVENT };
+  if (parsedEvent) {
+    assertSafeProgressionNumbers('Community event', ev.goal, ev.currentProgress, ev.tier);
+    if (
+      !Number.isSafeInteger(ev.endsAt) || ev.endsAt < 0 ||
+      !Number.isFinite(ev.buffMultiplier) || ev.buffMultiplier < 0 ||
+      (ev.weekId != null && !Number.isSafeInteger(ev.weekId))
+    ) {
       throw new Error('Community event data is corrupted.');
     }
-    const ev: WorldEvent = parsedEvent ?? { ...COMMUNITY_WORLD_EVENT };
-    if (parsedEvent) {
-      try {
-        assertSafeProgressionNumbers('Community event', ev.goal, ev.currentProgress, ev.tier);
-      } catch (error) {
-        await txn.unwatch();
-        throw error;
-      }
-    }
-    if (ev.weekId !== currentWeekNumber || now >= ev.endsAt) {
-      ev.id = `world-event-w${currentWeekNumber}`;
-      ev.title = 'Weekly Community Milestone';
-      ev.description = 'Community rolls contributed this week toward dynamic tier goals.';
-      ev.goal = 100_000;
-      ev.currentProgress = 0;
-      ev.tier = 1;
-      ev.buffMultiplier = 1.15;
-      ev.buffDescription = '+15% Global Luck Active';
-      ev.endsAt = weekEndMs(now);
-      ev.completed = false;
-      ev.completedTier = 0;
-      ev.weekId = currentWeekNumber;
-    }
-    ev.currentProgress += amount;
-    try {
-      assertSafeProgressionNumbers('Community event', ev.goal, ev.currentProgress, ev.tier);
-    } catch (error) {
-      await txn.unwatch();
-      throw error;
-    }
-    while (ev.currentProgress >= ev.goal) {
-      ev.completedTier = Math.max(ev.completedTier ?? 0, ev.tier || 1);
-      ev.tier = (ev.tier || 1) + 1;
-      const nextGoal = Math.round(ev.goal * 2.2);
-      ev.goal = Number.isSafeInteger(nextGoal) && nextGoal > ev.goal
-        ? nextGoal
-        : Number.MAX_SAFE_INTEGER;
-      ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
-      ev.buffDescription = `+${Math.round((ev.buffMultiplier - 1) * 100)}% Global Luck Active`;
-    }
+  }
+  if (ev.weekId !== currentWeekNumber || now >= ev.endsAt) {
+    ev.id = `world-event-w${currentWeekNumber}`;
+    ev.title = 'Weekly Community Milestone';
+    ev.description = 'Community rolls contributed this week toward dynamic tier goals.';
+    ev.goal = 100_000;
+    ev.currentProgress = 0;
+    ev.tier = 1;
+    ev.buffMultiplier = 1.15;
+    ev.buffDescription = '+15% Global Luck Active';
+    ev.endsAt = weekEndMs(now);
+    ev.completed = false;
+    ev.completedTier = 0;
+    ev.weekId = currentWeekNumber;
+  }
+  ev.currentProgress += amount;
+  assertSafeProgressionNumbers('Community event', ev.goal, ev.currentProgress, ev.tier);
+  while (ev.currentProgress >= ev.goal) {
+    ev.completedTier = Math.max(ev.completedTier ?? 0, ev.tier || 1);
+    ev.tier = (ev.tier || 1) + 1;
+    const nextGoal = Math.round(ev.goal * 2.2);
+    ev.goal = Number.isSafeInteger(nextGoal) && nextGoal > ev.goal
+      ? nextGoal
+      : Number.MAX_SAFE_INTEGER;
+    ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
+    ev.buffDescription = `+${Math.round((ev.buffMultiplier - 1) * 100)}% Global Luck Active`;
+  }
 
+  return {
+    event: ev,
+    key: COMMUNITY_EVENT_KEY,
+    expectedValue: pendingWrite
+      ? pendingWrite.expectedValue
+      : persistedRaw == null ? null : String(persistedRaw),
+    nextValue: JSON.stringify(ev),
+  };
+}
+
+export async function addCommunityRolls(rolls: number): Promise<WorldEvent> {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const prepared = await prepareCommunityRolls(rolls);
+    const txn = await redis.watch(prepared.key);
+    const current = await redis.get(prepared.key);
+    if ((current == null ? null : String(current)) !== prepared.expectedValue) {
+      await txn.unwatch();
+      continue;
+    }
     await txn.multi();
-    await txn.set(COMMUNITY_EVENT_KEY, JSON.stringify(ev));
+    await txn.set(prepared.key, prepared.nextValue);
     const committed = await txn.exec();
-    if (committed !== null) return ev;
+    if (committed !== null) return prepared.event;
   }
   throw new Error('Community progress changed while processing rolls. Please retry.');
 }
