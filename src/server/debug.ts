@@ -364,16 +364,52 @@ async function grantGlobalBoosterCreditsToUser(
   if (!id) throw new Error('The target player ID is missing.');
   const safeUsername = targetUsername(username);
   const safeAmount = Math.max(1, Math.min(GLOBAL_BOOSTER_CREDIT_MAX, Math.floor(Number(amount) || 1)));
-  const receiptField = 'adminGlobalBoosterGrantReceiptsV1';
   const playerKey = 'player:' + id;
   const generationKey = 'player-generation:' + id;
+  // Keep idempotency receipts outside the player save so a wipe cannot erase
+  // the proof that this admin operation has already granted the recipient.
+  const receiptKey = 'io:admin-global-booster-credit-grant:' +
+    encodeURIComponent(operationId) + ':' + encodeURIComponent(id);
 
   return withPlayerMutationLockFor(id, async () => {
     for (let attempt = 0; attempt < 8; attempt += 1) {
-      const txn = await redis.watch(playerKey, generationKey);
+      const txn = await redis.watch(playerKey, generationKey, receiptKey);
       const generationRaw = await redis.get(generationKey);
       const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
       const raw = await redis.get(playerKey);
+      const rawReceipt = await redis.get(receiptKey);
+
+      if (rawReceipt != null) {
+        let previousReceipt: any;
+        try {
+          previousReceipt = typeof rawReceipt === 'string' ? JSON.parse(rawReceipt) : rawReceipt;
+        } catch {
+          await txn.unwatch();
+          throw new Error('The grant idempotency receipt is corrupted; refusing a possibly duplicate grant.');
+        }
+        if (
+          !previousReceipt ||
+          typeof previousReceipt !== 'object' ||
+          !Number.isSafeInteger(previousReceipt.amount) ||
+          !Number.isSafeInteger(previousReceipt.before) ||
+          !Number.isSafeInteger(previousReceipt.after)
+        ) {
+          await txn.unwatch();
+          throw new Error('The grant idempotency receipt is malformed; refusing a possibly duplicate grant.');
+        }
+        await txn.unwatch();
+        if (previousReceipt.amount !== safeAmount) {
+          throw new Error('This grant operation ID was already used with a different amount.');
+        }
+        return {
+          userId: id,
+          username: safeUsername,
+          before: previousReceipt.before,
+          after: previousReceipt.after,
+          alreadyApplied: true,
+        };
+      }
+
       let state: Record<string, any>;
       try {
         state = parseAdminPlayerSave(raw);
@@ -388,32 +424,6 @@ async function grantGlobalBoosterCreditsToUser(
         throw new Error('The target player save changed generation. Refresh the admin console and try again.');
       }
 
-      const rawReceipts = state[receiptField];
-      if (rawReceipts != null && (typeof rawReceipts !== 'object' || Array.isArray(rawReceipts))) {
-        await txn.unwatch();
-        throw new Error('The target player grant receipts are corrupted; refusing a possibly duplicate grant.');
-      }
-      const receipts = (rawReceipts ?? {}) as Record<string, any>;
-      const previousReceipt = receipts[operationId];
-      if (previousReceipt != null) {
-        await txn.unwatch();
-        if (
-          typeof previousReceipt !== 'object' ||
-          previousReceipt.amount !== safeAmount ||
-          !Number.isSafeInteger(previousReceipt.before) ||
-          !Number.isSafeInteger(previousReceipt.after)
-        ) {
-          throw new Error('This grant operation ID was already used with different or invalid data.');
-        }
-        return {
-          userId: id,
-          username: safeUsername,
-          before: previousReceipt.before,
-          after: previousReceipt.after,
-          alreadyApplied: true,
-        };
-      }
-
       const rawCredits = state.globalBoosterCredits ?? 0;
       if (!Number.isSafeInteger(rawCredits) || Number(rawCredits) < 0 || Number(rawCredits) > GLOBAL_BOOSTER_CREDIT_MAX) {
         await txn.unwatch();
@@ -421,6 +431,10 @@ async function grantGlobalBoosterCreditsToUser(
       }
       const before = Number(rawCredits);
       const after = Math.min(GLOBAL_BOOSTER_CREDIT_MAX, before + safeAmount);
+      if (after <= before) {
+        await txn.unwatch();
+        throw new Error('The target player Global Booster credit balance is already at its cap.');
+      }
       state.globalBoosterCredits = after;
       state.username = safeUsername;
       state.saveGeneration = generation;
@@ -431,17 +445,10 @@ async function grantGlobalBoosterCreditsToUser(
       }
       state.stateRevision = currentRevision + 1;
 
-      const nextReceipts: Record<string, any> = { ...receipts };
-      nextReceipts[operationId] = { amount: safeAmount, before, after, createdAt: Date.now() };
-      const receiptKeys = Object.keys(nextReceipts);
-      // Bound state growth but retain enough recent request IDs for safe retries.
-      for (const oldId of receiptKeys.slice(0, Math.max(0, receiptKeys.length - 64))) {
-        delete nextReceipts[oldId];
-      }
-      state[receiptField] = nextReceipts;
-
+      const receipt = JSON.stringify({ amount: safeAmount, before, after, createdAt: Date.now() });
       await txn.multi();
       await txn.set(playerKey, JSON.stringify(state));
+      await txn.set(receiptKey, receipt);
       if (await txn.exec() !== null) {
         return { userId: id, username: safeUsername, before, after };
       }
