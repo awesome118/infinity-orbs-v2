@@ -1263,3 +1263,15 @@ test('Frenzy claim does not add a fallible read after atomic reward commit', () 
   assert.doesNotMatch(afterCommit, /await redis\.get\(FRENZY_POST_PREFIX \+ postId\)/);
   assert.doesNotMatch(afterCommit, /FRENZY_CLAIM_SAVE_INVALIDATED/);
 });
+
+
+test('malformed quest entries cannot break every subsequent player mutation', () => {
+  const game = source('src/server/game.ts');
+  assert.match(game, /function isValidQuestList\(value: unknown\): value is QuestItem\[\]/);
+  assert.match(game, /Number\.isSafeInteger\(quest\.target\)/);
+  assert.match(game, /Number\.isSafeInteger\(quest\.progress\)/);
+  assert.match(game, /typeof quest\.claimed === 'boolean'/);
+  assert.match(game, /dailyQuests: isValidQuestList\(parsed\.dailyQuests\) \? parsed\.dailyQuests : base\.dailyQuests/);
+  assert.match(game, /weeklyQuests: isValidQuestList\(parsed\.weeklyQuests\) \? parsed\.weeklyQuests : base\.weeklyQuests/);
+  assert.doesNotMatch(game, /dailyQuests: parsed\.dailyQuests\?\.length \?/);
+});
