@@ -226,16 +226,13 @@ function addShardsWithinSafeIntegerLimit(s: PlayerState, requested: number): num
       : 0;
   s.lifetimeShards = lifetimeShards;
 
-  const safeRoom = Math.max(
-    0,
-    Math.min(
-      Number.MAX_SAFE_INTEGER - currentShards,
-      Number.MAX_SAFE_INTEGER - lifetimeShards,
-    ),
-  );
+  // Lifetime totals are statistics, not spendable currency. Saturate the
+  // statistic independently so a maxed lifetime counter never blocks new
+  // Shards that still fit safely in the player's spendable balance.
+  const safeRoom = Math.max(0, Number.MAX_SAFE_INTEGER - currentShards);
   const granted = Math.min(amount, safeRoom);
   s.shards = currentShards + granted;
-  s.lifetimeShards = lifetimeShards + granted;
+  s.lifetimeShards = Math.min(Number.MAX_SAFE_INTEGER, lifetimeShards + granted);
   return granted;
 }
 

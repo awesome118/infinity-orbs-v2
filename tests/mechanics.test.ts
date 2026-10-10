@@ -262,12 +262,14 @@ test('Shard reward paths do not overflow the persisted balance's safe integer ra
   state.lastFreeShardReset = new Date(NOW).toISOString().slice(0, 10);
   state.freeShardsEarnedToday = 0;
 
-  assert.equal(grantFreeShards(state, 10, NOW), 1);
-  assert.equal(state.shards, Number.MAX_SAFE_INTEGER - 1);
+  assert.equal(grantFreeShards(state, 10, NOW), 2);
+  assert.equal(state.shards, Number.MAX_SAFE_INTEGER);
   assert.equal(state.lifetimeShards, Number.MAX_SAFE_INTEGER);
+  // The lifetime statistic saturates independently; if wallet space existed,
+  // maxing the lifetime statistic alone would not block the spendable balance.
   assert.equal(grantRollShards(state, 10, NOW), 0);
   assert.equal(grantFreeShards(state, Number.POSITIVE_INFINITY, NOW), 0);
-  assert.equal(state.shards, Number.MAX_SAFE_INTEGER - 1);
+  assert.equal(state.shards, Number.MAX_SAFE_INTEGER);
   assert.equal(state.lifetimeShards, Number.MAX_SAFE_INTEGER);
 });
 
