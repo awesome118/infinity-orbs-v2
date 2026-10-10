@@ -18,6 +18,7 @@ import {
   GUILD_COMBO_MAX_TIER,
   grantFreeShards,
   grantRollShards,
+  spendShards,
   FREE_SHARD_DAILY_CAP,
   onlinePlayerLuckMultiplier,
   luckMultiplier,
@@ -253,6 +254,18 @@ test('roll Shards respect the hard 50-per-day cap while free reward Shards bypas
   assert.equal(grantFreeShards(state, 10, NOW), 10);
   assert.equal(state.shards, 11);
   assert.equal(state.freeShardsEarnedToday, 50);
+});
+
+test('invalid Shard spend amounts are rejected before touching wallet state', () => {
+  const state = createInitialState(NOW);
+  state.shards = 8;
+  state.purchasedShards = 3;
+
+  assert.throws(() => spendShards(state, Number.NaN), /Invalid Shards amount/);
+  assert.throws(() => spendShards(state, Number.POSITIVE_INFINITY), /Invalid Shards amount/);
+  assert.throws(() => spendShards(state, Number.MAX_SAFE_INTEGER + 1), /Invalid Shards amount/);
+  assert.equal(state.shards, 8);
+  assert.equal(state.purchasedShards, 3);
 });
 
 test('Shard reward paths do not overflow the persisted balance's safe integer range', () => {

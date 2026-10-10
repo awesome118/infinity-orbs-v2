@@ -266,7 +266,9 @@ export function grantRollShards(s: PlayerState, requested: number, now = Date.no
 }
 
 export function spendShards(s: PlayerState, requested: number): number {
+  if (!Number.isFinite(requested)) throw new Error('Invalid Shards amount.');
   const amount = Math.max(0, Math.floor(requested));
+  if (!Number.isSafeInteger(amount)) throw new Error('Invalid Shards amount.');
   if ((s.shards ?? 0) < amount) throw new Error('Not enough Shards.');
   s.shards -= amount;
   const paidPortion = Math.min(amount, s.purchasedShards ?? 0);
