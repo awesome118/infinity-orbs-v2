@@ -744,16 +744,40 @@ async function ensureRedisStringKey(keyName: string, fallback: string): Promise<
   }
 }
 
-async function readGameBans(): Promise<Record<string, GameBanRecord>> {
-  const raw = await redis.get(GAME_BANS_KEY);
-  if (raw == null || raw === '') return {};
+function parseGameBanRegistry(raw: unknown): Record<string, GameBanRecord> {
+  if (raw == null) return Object.create(null) as Record<string, GameBanRecord>;
   const parsed = parseStoredJson<unknown>(raw);
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    // Failing open here would silently treat every player as unbanned, while
-    // later writes could erase the complete ban registry.
-    throw new Error('Game ban list could not be read safely.');
+    throw new Error('Game ban list could not be read safely. No changes were applied.');
   }
-  return parsed as Record<string, GameBanRecord>;
+
+  const bans = Object.create(null) as Record<string, GameBanRecord>;
+  for (const [keyName, value] of Object.entries(parsed)) {
+    if (
+      !keyName ||
+      !value || typeof value !== 'object' || Array.isArray(value) ||
+      typeof (value as any).userId !== 'string' ||
+      (value as any).userId.trim() !== keyName ||
+      typeof (value as any).username !== 'string' ||
+      !(value as any).username.trim() ||
+      !Number.isSafeInteger((value as any).bannedAt) ||
+      Number((value as any).bannedAt) < 0 ||
+      !(
+        (value as any).bannedUntil === null ||
+        (Number.isSafeInteger((value as any).bannedUntil) && Number((value as any).bannedUntil) >= 0)
+      ) ||
+      typeof (value as any).reason !== 'string' ||
+      typeof (value as any).bannedBy !== 'string'
+    ) {
+      throw new Error('Game ban list contains a malformed record. No changes were applied.');
+    }
+    bans[keyName] = value as GameBanRecord;
+  }
+  return bans;
+}
+
+async function readGameBans(): Promise<Record<string, GameBanRecord>> {
+  return parseGameBanRegistry(await redis.get(GAME_BANS_KEY));
 }
 
 async function mutateGameBans<T>(
@@ -762,14 +786,15 @@ async function mutateGameBans<T>(
   for (let attempt = 0; attempt < 8; attempt++) {
     const txn = await redis.watch(GAME_BANS_KEY);
     const raw = await redis.get(GAME_BANS_KEY);
-    let bans: Record<string, GameBanRecord> = {};
-    if (raw != null && raw !== '') {
-      const parsed = parseStoredJson<unknown>(raw);
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        await txn.unwatch();
-        throw new Error('Game ban list could not be read safely. No changes were applied.');
-      }
-      bans = parsed as Record<string, GameBanRecord>;
+    let bans: Record<string, GameBanRecord>;
+    try {
+      // Only a truly absent key is an empty registry. A present empty string,
+      // malformed JSON, or malformed row must fail closed instead of clearing
+      // bans or letting the request proceed as if every user were unbanned.
+      bans = parseGameBanRegistry(raw);
+    } catch (error) {
+      await txn.unwatch();
+      throw error;
     }
 
     const outcome = update(bans);
@@ -830,20 +855,46 @@ export async function banGameUser(options: {
   reason?: string;
   bannedBy?: string;
 }): Promise<GameBanStatus> {
-  const durationDays =
-    options.durationDays == null
-      ? null
-      : Math.max(1, Math.floor(Number(options.durationDays)));
+  const userId = String(options.userId ?? '').trim();
+  const username = String(options.username ?? '').trim().replace(/^u\//i, '');
+  if (!userId || !username) {
+    throw new Error('A valid game user ID and Reddit username are required.');
+  }
+
+  let durationDays: number | null = null;
+  if (options.durationDays != null) {
+    const requestedDays = Number(options.durationDays);
+    const maximumDateMs = 8_640_000_000_000_000;
+    const now = Date.now();
+    const maximumDays = Math.floor((maximumDateMs - now) / 86_400_000);
+    if (
+      !Number.isSafeInteger(requestedDays) ||
+      requestedDays < 1 ||
+      requestedDays > maximumDays
+    ) {
+      throw new Error('Ban duration must be a positive, safely representable number of days.');
+    }
+    durationDays = requestedDays;
+  }
+
+  const bannedAt = Date.now();
+  const bannedUntil = durationDays === null ? null : bannedAt + durationDays * 86_400_000;
+  if (
+    bannedUntil !== null &&
+    (!Number.isSafeInteger(bannedUntil) || bannedUntil <= bannedAt || bannedUntil > 8_640_000_000_000_000)
+  ) {
+    throw new Error('Ban expiry is outside the supported date range.');
+  }
   const ban: GameBanRecord = {
-    userId: options.userId,
-    username: options.username,
-    bannedAt: Date.now(),
-    bannedUntil: durationDays === null ? null : Date.now() + durationDays * 86_400_000,
+    userId,
+    username,
+    bannedAt,
+    bannedUntil,
     reason: String(options.reason ?? 'Game moderation action').slice(0, 300),
     bannedBy: String(options.bannedBy ?? context.username ?? 'Admin').slice(0, 100),
   };
   return mutateGameBans(bans => {
-    bans[options.userId] = ban;
+    bans[userId] = ban;
     return { changed: true, result: { ...ban, active: true } };
   });
 }
