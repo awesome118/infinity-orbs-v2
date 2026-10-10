@@ -430,10 +430,10 @@ async function grantGlobalBoosterCreditsToUser(
         throw new Error('The target player Global Booster credit balance is invalid; no grant was applied.');
       }
       const before = Number(rawCredits);
-      const after = Math.min(GLOBAL_BOOSTER_CREDIT_MAX, before + safeAmount);
-      if (after <= before) {
+      const after = before + safeAmount;
+      if (!Number.isSafeInteger(after) || after > GLOBAL_BOOSTER_CREDIT_MAX) {
         await txn.unwatch();
-        throw new Error('The target player Global Booster credit balance is already at its cap.');
+        throw new Error('The target player does not have enough credit capacity for the full requested grant.');
       }
       state.globalBoosterCredits = after;
       state.username = safeUsername;
