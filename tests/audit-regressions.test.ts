@@ -351,3 +351,26 @@ test('malformed roll tickets are replaced or rejected before use', () => {
   assert.match(use, /Number\.isSafeInteger\(ticket\.nextIndex\)/);
   assert.match(use, /Roll prediction ticket data is corrupted/);
 });
+
+
+test('Daily Streak reward and community tier commit atomically with player state', () => {
+  const game = source('src/server/game.ts');
+  const social = source('src/server/social.ts');
+  assert.match(game, /const pendingSaveExtraWrites = new WeakMap<PlayerState, SaveExtraWrite\[\]>/);
+  assert.match(game, /function stageSaveExtraWrite/);
+  const saveStart = game.indexOf('export async function save(');
+  const saveEnd = game.indexOf('function serverRandom', saveStart);
+  assert.ok(saveStart >= 0 && saveEnd > saveStart);
+  const save = game.slice(saveStart, saveEnd);
+  assert.match(save, /Array\.isArray\(extraWrite\)/);
+  assert.match(save, /redis\.watch\(\.\.\.watchedKeys\)/);
+  assert.match(save, /for \(const write of extraWrites\)/);
+  const claimStart = game.indexOf('async function claimDailyStreakFromState');
+  const claimEnd = game.indexOf('async function claimCommunityRewardFromState', claimStart);
+  assert.ok(claimStart >= 0 && claimEnd > claimStart);
+  const claim = game.slice(claimStart, claimEnd);
+  assert.match(claim, /prepareDailyStreakCommunityProgress/);
+  assert.match(claim, /stageSaveExtraWrite\(s/);
+  assert.doesNotMatch(claim, /await addDailyStreakCommunityProgress/);
+  assert.match(social, /export async function prepareDailyStreakCommunityProgress/);
+});
