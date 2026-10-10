@@ -1840,21 +1840,32 @@ export async function leaderboard(): Promise<LeaderboardEntry[]> {
 }
 
 export async function recordLeaderboard(s: PlayerState) {
-  if (!(s.lastShareAt && Number(s.lastShareAt) > 0)) return;
+  const userId = user();
+  const incomingRevision = Math.max(0, Math.floor(Number(s.stateRevision ?? 0)) || 0);
+  // Projection tasks run asynchronously. Prefer the newest durable save when
+  // an older callback resumes after a later mutation has already committed.
+  const persistedRaw = await redis.get(`player:${userId}`);
+  const persisted = parseStoredJson<Partial<PlayerState>>(persistedRaw);
+  const persistedRevision = Number(persisted?.stateRevision);
+  const source: PlayerState =
+    persisted && Number.isSafeInteger(persistedRevision) && persistedRevision > incomingRevision
+      ? persisted as PlayerState
+      : s;
+  if (!(source.lastShareAt && Number(source.lastShareAt) > 0)) return;
 
   const leaderboardKey = key('leaderboard');
   const name = username();
-  const registry = parseStoredJson<{ playtimeMs?: unknown }>(await redis.hGet(PLAYER_REGISTRY_KEY, user()));
+  const registry = parseStoredJson<{ playtimeMs?: unknown }>(await redis.hGet(PLAYER_REGISTRY_KEY, userId));
   const next: LeaderboardEntry = {
     username: name,
-    userId: user(),
-    value: s.collectionValue,
-    highestRarity: s.highestRarity,
-    totalRolls: s.totalRolls,
-    level: s.level,
-    sharedAt: s.lastShareAt,
-    stateRevision: Math.max(0, Math.floor(Number(s.stateRevision ?? 0)) || 0),
-    highestDryStreak: Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest ?? 0),
+    userId,
+    value: source.collectionValue,
+    highestRarity: source.highestRarity,
+    totalRolls: source.totalRolls,
+    level: source.level,
+    sharedAt: source.lastShareAt,
+    stateRevision: Math.max(0, Math.floor(Number(source.stateRevision ?? 0)) || 0),
+    highestDryStreak: Math.max(source.highestDryStreak ?? 0, source.rollsSinceBest ?? 0),
     playtimeMs: Math.max(0, Number(registry?.playtimeMs ?? 0) || 0),
   };
 

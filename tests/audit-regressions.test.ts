@@ -740,3 +740,16 @@ test('rarity flair sync serializes side effects and rechecks saved rarity before
   assert.match(flair, /if \(afterState === flairState\)/);
   assert.match(flair, /leaving cache untouched/);
 });
+
+
+test('leaderboard projection uses a newer durable save even when invoked with an older callback snapshot', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('export async function recordLeaderboard');
+  const end = social.indexOf('function validateDailyStreakCommunityEvent', start);
+  assert.ok(start >= 0 && end > start);
+  const record = social.slice(start, end);
+  assert.match(record, /const persistedRaw = await redis\.get/);
+  assert.match(record, /persistedRevision > incomingRevision/);
+  assert.match(record, /value: source\.collectionValue/);
+  assert.match(record, /totalRolls: source\.totalRolls/);
+});

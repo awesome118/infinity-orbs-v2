@@ -2983,7 +2983,8 @@ async function scheduleOfflineFullNotification(
     Math.max(now + 1_000, Number.isFinite(requestedRunAt) ? requestedRunAt : now + 1_000),
   );
   const expiresAt = Math.max(now + 60_000, Math.min(maxDateMs - 1, safeRunAt + OFFLINE_FULL_RETRY_MS * 2));
-  const token = `offline-job-${now.toString(36)}-${globalThis.crypto.randomUUID()}`;
+  const randomToken = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  const token = `offline-job-${now.toString(36)}-${randomToken}`;
   const reservation = JSON.stringify({ token, jobId: null, runAt: safeRunAt });
 
   // Reserve before making the scheduler call. Two overlapping requests can no
