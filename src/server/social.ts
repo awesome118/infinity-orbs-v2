@@ -285,9 +285,13 @@ async function applyGuildMigration(
   for (let attempt = 0; attempt < 8; attempt++) {
     const txn = await redis.watch(GUILDS_KEY, markerKey);
     const marker = await redis.get(markerKey);
-    if (marker != null) {
+    if (marker === '1') {
       await txn.unwatch();
       return;
+    }
+    if (marker != null) {
+      await txn.unwatch();
+      throw new Error('Guild migration marker is corrupted; refusing to rerun a destructive migration.');
     }
 
     const raw = await redis.get(GUILDS_KEY);

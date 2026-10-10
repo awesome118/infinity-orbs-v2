@@ -526,3 +526,18 @@ test('player saves watch and validate active distributed lease tokens before EXE
   assert.match(save, /PLAYER_MUTATION_LEASE_LOST/);
   assert.ok(save.indexOf('actualToken !== activeLock.token') < save.indexOf('await txn.multi()'));
 });
+
+
+test('Guild migration markers must be exactly the completed marker before skipping or mutating', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('async function applyGuildMigration');
+  const end = social.indexOf('async function ensureGuildMigrations', start);
+  assert.ok(start >= 0 && end > start);
+  const migration = social.slice(start, end);
+  assert.match(migration, /if \(marker === '1'\)/);
+  assert.match(migration, /if \(marker != null\)[\s\S]*?txn\.unwatch\(\)[\s\S]*?throw new Error\('Guild migration marker is corrupted/);
+  const malformedGuard = migration.indexOf("throw new Error('Guild migration marker is corrupted");
+  const migrateIndex = migration.indexOf('migrate(guilds)');
+  assert.ok(malformedGuard >= 0 && migrateIndex > malformedGuard);
+  assert.doesNotMatch(migration, /if \(marker\) return/);
+});
