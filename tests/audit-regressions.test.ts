@@ -1314,8 +1314,10 @@ test('bulk Global Booster grants resume by idempotency receipt and report partia
   const grant = debug.slice(grantStart, loggerStart);
   assert.match(grant, /operationId: string/);
   assert.match(grant, /await redis\.watch\(playerKey, generationKey\)/);
-  assert.match(grant, /receipts\[operationId\]/);
+  assert.match(grant, /const receiptKey = 'io:admin-global-booster-credit-grant:'/);
   assert.match(grant, /alreadyApplied: true/);
+  assert.match(grant, /await redis\.get\(receiptKey\)/);
+  assert.match(grant, /await txn\.set\(receiptKey, receipt\)/);
   assert.match(grant, /await txn\.set\(playerKey, JSON\.stringify\(state\)\)/);
   assert.match(grant, /await txn\.exec\(\)/);
 
@@ -1332,5 +1334,7 @@ test('bulk Global Booster grants resume by idempotency receipt and report partia
   assert.match(modal, /globalBoosterGrantOperationRef = useRef/);
   assert.match(modal, /operationId: operation\.operationId/);
   assert.match(modal, /Completed grants will not be duplicated/);
+  assert.match(modal, /GLOBAL_BOOSTER_GRANT_PENDING_STORAGE_KEY/);
+  assert.match(modal, /sessionStorage\.setItem\(GLOBAL_BOOSTER_GRANT_PENDING_STORAGE_KEY/);
   assert.match(modal, /globalBoosterGrantOperationRef\.current = null/);
 });
