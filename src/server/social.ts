@@ -2200,7 +2200,7 @@ function validateDailyStreakCommunityEvent(event: DailyStreakCommunityEvent): vo
     !event || typeof event.id !== 'string' ||
     !Number.isSafeInteger(event.completedTier) || event.completedTier < 0 ||
     !Number.isFinite(event.luckMultiplier) || event.luckMultiplier < 0 || event.luckMultiplier > 1_000_000 ||
-    !Number.isFinite(event.speedMultiplier) || event.speedMultiplier < 0 || event.speedMultiplier > 1_000 ||
+    !Number.isFinite(event.speedMultiplier) || event.speedMultiplier < 0.5 || event.speedMultiplier > 1 ||
     !Number.isSafeInteger(event.endsAt) || event.endsAt < 0 ||
     !Number.isSafeInteger(event.weekId) || event.weekId < 0
   ) {

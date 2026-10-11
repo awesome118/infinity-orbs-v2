@@ -616,3 +616,18 @@ test('World Event progression rejects a next tier at the unsupported safe-intege
   const config = social.slice(configStart, configEnd);
   assert.match(config, /nextCommunityMilestoneProgression\(ev\.goal, ev\.tier \|\| 1, 'Community event'\)/);
 });
+
+
+test('Daily Streak community speed multiplier is restricted to its gameplay domain', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('function validateDailyStreakCommunityEvent(');
+  const end = social.indexOf('\nconst DAILY_STREAK_COMMUNITY_KEY', start);
+  assert.ok(start >= 0 && end > start);
+  const validator = social.slice(start, end);
+  assert.match(validator, /event\.speedMultiplier < 0\.5/);
+  assert.match(validator, /event\.speedMultiplier > 1/);
+  assert.doesNotMatch(validator, /event\.speedMultiplier > 1_000/);
+  const shared = source('src/shared/game.ts');
+  assert.match(shared, /speedMultiplier: 0\.99/);
+  assert.match(social, /event\.speedMultiplier = Math\.max\(0\.50, Number\(\(1 - event\.tier \* 0\.01\)\.toFixed\(2\)\)\)/);
+});
