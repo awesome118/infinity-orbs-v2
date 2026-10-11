@@ -2677,7 +2677,15 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Force-roll increments processed roll count",
         async () => {
-          await request<any>('/api/dev/state', { totalRolls: 100, currentRunRolls: 0, xp: 600 });
+          await request<any>('/api/dev/state', {
+            totalRolls: 100,
+            currentRunRolls: 0,
+            xp: 600,
+            upgrades: { multi: 0, clusterRoll: 0 },
+            prestigeUpgrades: { astralBarrage: 0, astralArsenal: 0 },
+            masterySkills: { celestialVolley: 0 },
+            activeBoosters: { fortune: 0, hyperdrive: 0, barrage: 0, prosperity: 0, ascension: 0 },
+          });
           const result = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
           if (Number(result.state?.totalRolls) !== 101 || Number(result.state?.currentRunRolls) !== 1) {
             throw new Error('Force-roll counters were not incremented.');
@@ -2727,7 +2735,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         "API · Offline claim consumes seeded rolls",
         async () => {
           await request<any>('/api/dev/offline-set', { amount: 3 });
-          await request<any>('/api/dev/state', { lastSeenAt: Date.now(), xp: 600 });
+          await request<any>('/api/dev/state', {
+            lastSeenAt: Date.now(),
+            xp: 600,
+            upgrades: { multi: 0, clusterRoll: 0 },
+            prestigeUpgrades: { astralBarrage: 0, astralArsenal: 0 },
+            masterySkills: { celestialVolley: 0 },
+            activeBoosters: { fortune: 0, hyperdrive: 0, barrage: 0, prosperity: 0, ascension: 0 },
+          });
           const result = await request<any>('/api/offline/claim', {});
           if (Number(result.rollsProcessed) !== 3) throw new Error('Offline claim processed ' + result.rollsProcessed + ', expected 3.');
           if (Number(result.state?.offlineRolls) !== 0) throw new Error('Offline rolls were not consumed.');
