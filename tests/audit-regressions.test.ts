@@ -296,7 +296,7 @@ test('Global Booster debug updates validate and CAS the full snapshot', () => {
 test('wiped saves cannot return mutation success and offline reminder keys survive failed claims', () => {
   const game = source('src/server/game.ts');
   const saveStart = game.indexOf('export async function save(');
-  const saveEnd = game.indexOf('export async function loadRaw', saveStart);
+  const saveEnd = game.indexOf('function serverRandom', saveStart);
   assert.ok(saveStart >= 0 && saveEnd > saveStart);
   const save = game.slice(saveStart, saveEnd);
   const mismatch = save.indexOf('if (stateGeneration !== generation)');
