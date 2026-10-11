@@ -2810,6 +2810,20 @@ function checkPeriodicResets(s: PlayerState, now: number) {
   }
 }
 
+function effectiveRollCritChance(
+  s: PlayerState,
+  globalBoosters: GlobalBoosterSnapshot | null | undefined = s.globalBoosters,
+): number {
+  return Math.min(
+    0.40,
+    (s.upgrades.critChance ?? 0) * 0.03 +
+    (s.masterySkills?.critMastery ?? 0) * 0.03 +
+    (s.guildPerks?.critRank ?? 0) * 0.015 +
+    globalBoosterCritChanceBonus(globalBoosters?.crit) +
+    guildComboCritChanceBonus(s.guildCombo),
+  );
+}
+
 export async function applyRolls(
   s: PlayerState,
   activationCount = 1,
@@ -2900,13 +2914,7 @@ export async function applyRolls(
     (s.upgrades.valueBonus ?? 0) * 0.10 +
     (s.prestigeUpgrades?.cosmicValuation ?? 0) * 0.05;
 
-  const critChance =
-    (s.upgrades.critChance ?? 0) * 0.03 +
-    (s.masterySkills?.critMastery ?? 0) * 0.03 +
-    (s.guildPerks?.critRank ?? 0) * 0.015 +
-    globalBoosterCritChanceBonus(globalBoosters.crit) +
-    guildComboCritChanceBonus(s.guildCombo);
-  const effectiveCritChance = Math.min(0.40, critChance);
+  const effectiveCritChance = effectiveRollCritChance(s, globalBoosters);
 
   for (let i = 0; i < rollCount; i++) {
     // New-player hype: the third Orb this account ever rolls is guaranteed
@@ -4833,13 +4841,7 @@ export async function claimOrbFrenzy(options: {
     throw new Error('Frenzy roll counter would exceed the safe integer range; claim was not processed.');
   }
 
-  const critChance = Math.min(
-    1,
-    (s.upgrades.critChance ?? 0) * 0.03 +
-    (s.masterySkills?.critMastery ?? 0) * 0.03 +
-    (s.guildPerks?.critRank ?? 0) * 0.015 +
-    globalBoosterCritChanceBonus(s.globalBoosters?.crit),
-  );
+  const critChance = effectiveRollCritChance(s, s.globalBoosters);
   const critCount = sampleBinomial(count, critChance);
 
   const supernovaLevel = s.prestigeUpgrades?.supernova ?? 0;
@@ -4896,6 +4898,20 @@ export async function claimOrbFrenzy(options: {
     (isPremiumBoosterActive(s, 'prosperity') ? 10 : 1),
   );
 
+  const lowRarityCoins = groups
+    .filter(group => group.rarity < 100)
+    .reduce(
+      (sum, group) => sum + group.count * Math.max(1, Math.round(coinsForRarity(group.rarity))),
+      0,
+    );
+  if ((s.prestigeUpgrades?.autoFilter ?? 0) > 0 && lowRarityCoins > 0) {
+    coinsGained += Math.round(lowRarityCoins * 0.25);
+  }
+  const transmutationLevel = s.prestigeUpgrades?.transmutation ?? 0;
+  if (transmutationLevel > 0 && lowRarityCoins > 0) {
+    coinsGained += Math.round(lowRarityCoins * (transmutationLevel * 0.15));
+  }
+
   const xpForRarity = (rarity: number) =>
     Math.round(
       Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) *
@@ -4917,6 +4933,9 @@ export async function claimOrbFrenzy(options: {
     levelBenefits.shardChance,
   );
   const procShards = sampleBinomial(count, shardChance);
+  const transmutationShardProcs = transmutationLevel > 0
+    ? sampleBinomial(count, Math.min(1, 0.01 * transmutationLevel))
+    : 0;
   const rarityShards = groups.reduce((sum, group) => {
     if (group.rarity >= 1_000_000) return sum + group.count * 10;
     if (group.rarity >= 100_000) return sum + group.count * 5;
@@ -4924,7 +4943,7 @@ export async function claimOrbFrenzy(options: {
     if (group.rarity >= 1_000) return sum + group.count;
     return sum;
   }, 0);
-  const shardsGained = grantRollShards(s, rarityShards + procShards);
+  const shardsGained = grantRollShards(s, rarityShards + procShards + transmutationShardProcs);
 
   const previousHighest = s.highestRarity;
   const bestRarity = topRarity;
@@ -4959,7 +4978,12 @@ export async function claimOrbFrenzy(options: {
     s.collection[keyForRarity] = (s.collection[keyForRarity] ?? 0) + group.count;
   }
   s.highestRarity = Math.max(s.highestRarity, bestRarity);
-  s.rollsSinceBest = bestRarity > previousHighest ? 0 : (s.rollsSinceBest ?? 0) + count;
+  if (bestRarity > previousHighest) {
+    s.rollsSinceBest = 0;
+  } else {
+    s.rollsSinceBest = (s.rollsSinceBest ?? 0) + count;
+    s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest);
+  }
 
   s.xp += xpGained;
   applyLevelProgress(s, 1);
