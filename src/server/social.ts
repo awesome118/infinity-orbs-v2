@@ -1570,6 +1570,8 @@ export async function prepareCommunityRolls(
     ev.completedTier = 0;
     ev.weekId = currentWeekNumber;
   }
+  // Prove the stored goal can advance before preparing another event write.
+  nextCommunityMilestoneProgression(ev.goal, ev.tier || 1, 'Community event');
   // Keep the aggregate presentation counter below the safe-integer ceiling.
   // If a saturated goal can no longer advance safely, the progression helper
   // rejects the mutation before this prepared value is persisted.
@@ -1682,6 +1684,7 @@ export async function setCommunityEventConfig(config: {
   }
   try {
     assertSafeProgressionNumbers('Community event', ev.goal, ev.currentProgress, ev.tier);
+    nextCommunityMilestoneProgression(ev.goal, ev.tier || 1, 'Community event');
   } catch (error) {
     await txn.unwatch();
     throw error;
@@ -2192,6 +2195,9 @@ export async function prepareDailyStreakCommunityProgress(amount: number): Promi
     event.id = `daily-streak-w${currentWeek}`;
   }
 
+  // Fail closed before preparing a claim if the persisted milestone cannot
+  // derive another safe goal/tier. This keeps the loop finite and avoids writes.
+  nextCommunityMilestoneProgression(event.goal, event.tier || 1, 'Daily Streak community');
   event.currentProgress += contribution;
   validateDailyStreakCommunityEvent(event);
   while (event.currentProgress >= event.goal) {
