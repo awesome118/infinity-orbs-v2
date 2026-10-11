@@ -1339,3 +1339,29 @@ test('bulk Global Booster grants resume by idempotency receipt and report partia
   assert.match(modal, /sessionStorage\.setItem\(GLOBAL_BOOSTER_GRANT_PENDING_STORAGE_KEY/);
   assert.match(modal, /globalBoosterGrantOperationRef\.current = null/);
 });
+
+test('applyRolls preflights lifetime roll-counter capacity before shared reads and per-orb mutation', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('export async function applyRolls(');
+  const end = game.indexOf('\\nexport async function ', start + 1);
+  assert.ok(start >= 0 && end > start, 'applyRolls function must exist');
+  const applyRolls = game.slice(start, end);
+
+  const errorIndex = applyRolls.indexOf('Roll counter would exceed the safe integer range');
+  const sharedReadsIndex = applyRolls.indexOf('const [freshGlobalBoosters, worldEvent, fakeCcuBonus] = await Promise.all([');
+  const loopIndex = applyRolls.indexOf('for (let i = 0; i < rollCount; i++)');
+  const incrementIndex = applyRolls.indexOf('s.totalRolls++');
+
+  assert.ok(errorIndex >= 0, 'counter capacity guard must exist');
+  assert.ok(sharedReadsIndex > errorIndex, 'guard must run before shared Redis-backed reads');
+  assert.ok(loopIndex > sharedReadsIndex, 'roll loop must follow shared reads');
+  assert.ok(incrementIndex > loopIndex, 'lifetime counter increments only inside the guarded loop');
+
+  const guardStart = applyRolls.lastIndexOf('if (', errorIndex);
+  const guardEnd = applyRolls.indexOf('\\n  }', errorIndex);
+  assert.ok(guardStart >= 0 && guardEnd > guardStart, 'counter guard block must be complete');
+  const guard = applyRolls.slice(guardStart, guardEnd);
+  assert.match(guard, /!Number\\.isSafeInteger\\(s\\.totalRolls\\)/);
+  assert.match(guard, /!Number\\.isSafeInteger\\(rollCount\\)/);
+  assert.match(guard, /rollCount > Number\\.MAX_SAFE_INTEGER - s\\.totalRolls/);
+});
