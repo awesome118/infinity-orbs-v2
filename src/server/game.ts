@@ -1388,6 +1388,31 @@ interface PlayerRegistryEntry {
   playtimeMs?: number;
 }
 
+function parsePlayerRegistryEntryForMutation(raw: unknown, now: number): Partial<PlayerRegistryEntry> {
+  const invalid = () => new Error('Player activity registry entry is malformed; refusing to overwrite it.');
+  const parsed = parseStoredJson<unknown>(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw invalid();
+
+  const record = parsed as Record<string, unknown>;
+  const validTimestamp = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= now;
+  if (!validTimestamp(record.firstSeenAt) || !validTimestamp(record.lastSeenAt)) throw invalid();
+  for (const field of ['lastLoginAt', 'lastActivityAt'] as const) {
+    if (record[field] !== undefined && !validTimestamp(record[field])) throw invalid();
+  }
+  if (
+    record.playtimeMs !== undefined &&
+    (typeof record.playtimeMs !== 'number' ||
+      !Number.isSafeInteger(record.playtimeMs) ||
+      record.playtimeMs < 0)
+  ) {
+    throw invalid();
+  }
+  if (record.username !== undefined && typeof record.username !== 'string') throw invalid();
+
+  return record as Partial<PlayerRegistryEntry>;
+}
+
 async function touchPlayerActivity(userId: string, username: string, now = Date.now()): Promise<number> {
   const lockIdentity = `activity:${userId}`;
   return withPlayerMutationLockFor(lockIdentity, async () => {
@@ -1410,21 +1435,26 @@ async function touchPlayerActivity(userId: string, username: string, now = Date.
       let lastLoginAt = activityNow;
       let playtimeMs = 0;
       if (existingRaw) {
-        const existing = parseStoredJson<Partial<PlayerRegistryEntry>>(existingRaw);
-        firstSeenAt = validPastTimestamp(existing?.firstSeenAt, activityNow) || activityNow;
+        let existing: Partial<PlayerRegistryEntry>;
+        try {
+          existing = parsePlayerRegistryEntryForMutation(existingRaw, activityNow);
+        } catch (error) {
+          // Preserve malformed registry values for diagnosis/repair. The old
+          // fallback silently replaced firstSeenAt/playtimeMs with fresh zeros.
+          await txn.unwatch();
+          throw error;
+        }
+        firstSeenAt = existing.firstSeenAt!;
         const previousActivityAt = Math.max(
-          validPastTimestamp(existing?.lastActivityAt, activityNow),
-          validPastTimestamp(existing?.lastSeenAt, activityNow),
+          validPastTimestamp(existing.lastActivityAt, activityNow),
+          validPastTimestamp(existing.lastSeenAt, activityNow),
         );
-        const previousPlaytimeMs = Math.min(
-          Number.MAX_SAFE_INTEGER,
-          finiteNonNegativeInteger(existing?.playtimeMs, 0),
-        );
+        const previousPlaytimeMs = existing.playtimeMs ?? 0;
         const activityDelta = previousActivityAt > 0
           ? Math.min(PLAYTIME_ACTIVE_GAP_MS, Math.max(0, activityNow - previousActivityAt))
           : 0;
         playtimeMs = Math.min(Number.MAX_SAFE_INTEGER, previousPlaytimeMs + activityDelta);
-        const existingLastLoginAt = validPastTimestamp(existing?.lastLoginAt, activityNow);
+        const existingLastLoginAt = validPastTimestamp(existing.lastLoginAt, activityNow);
         if (
           previousActivityAt > 0 &&
           activityNow - previousActivityAt <= PLAYTIME_ACTIVE_GAP_MS &&
