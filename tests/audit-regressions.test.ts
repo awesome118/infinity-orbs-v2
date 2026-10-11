@@ -401,7 +401,7 @@ test('comprehensive admin tests reset cooldown before acquiring roll tickets and
   assert.match(modal, /prestigeUpgrades: \{ astralBarrage: 0, astralArsenal: 0 \}/);
   assert.match(modal, /masterySkills: \{ celestialVolley: 0 \}/);
   assert.match(modal, /activeBoosters: \{ fortune: 0, hyperdrive: 0, barrage: 0, prosperity: 0, ascension: 0 \}/);
-  assert.match(modal, /\{ xp: 600, collection: \{\}/);
+  assert.match(modal, /\\{ xp: 600, level: 4, levelXpFloor: 533, collection: \\{\\}/);
   assert.match(modal, /setSonarThreshold\(100\)/);
 });
 
