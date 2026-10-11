@@ -367,7 +367,7 @@ test('Daily Streak community progression rejects invalid loop state', () => {
 });
 
 
-test('guild parser rejects malformed nested economy and boss state before normalization', () => {
+test('guild parser validates nested state while repairing legacy challenge and boss projections', () => {
   const social = source('src/server/social.ts');
   const start = social.indexOf('function validateGuildNestedState');
   const end = social.indexOf('function parseGuildList', start);
@@ -385,7 +385,9 @@ test('guild parser rejects malformed nested economy and boss state before normal
   assert.match(normalize, /g\.tokens \?\?= 0/);
   assert.match(validator, /Number\.isSafeInteger\(member\.contribution\)/);
   assert.match(validator, /guild\.challenge != null/);
-  assert.match(validator, /Number\(challenge\.progress\) > Number\(challenge\.target\)/);
+  // Challenge is a legacy projection of task progress. Normalization clamps its progress.
+  assert.doesNotMatch(validator, /Number\(challenge\.progress\) > Number\(challenge\.target\)/);
+  assert.match(normalize, /progress: Math\.min\(firstTask\.target, firstTask\.progress\)/);
   assert.match(validator, /guild\.createdAt != null/);
   assert.match(validator, /Number\.isSafeInteger\(value\)/);
   assert.match(validator, /guild\.tasks != null/);
@@ -393,6 +395,10 @@ test('guild parser rejects malformed nested economy and boss state before normal
   assert.match(validator, /guild\.chat != null/);
   assert.match(validator, /typeof message\.text !== 'string'/);
   assert.match(validator, /guild\.bossWeek === weekKey\(\)/);
+  assert.match(validator, /Number\.isSafeInteger\(boss\.tier\)/);
+  assert.doesNotMatch(validator, /Number\(boss\.tier\) > 10/);
+  assert.match(normalize, /legacyBossTierAboveCap/);
+  assert.match(normalize, /g\.boss = createInitialGuildBoss\(Math\.max\(1, Math\.min\(10, g\.level \|\| 1\)\)\)/);
   assert.match(validator, /boss\.currentHp > boss\.maxHp/);
   const parserStart = social.indexOf('function parseGuildList');
   const parserEnd = social.indexOf('function parseLeaderboardList', parserStart);
