@@ -1890,6 +1890,30 @@ export async function markChatReportRead(reportId: string): Promise<{ success: t
   return { success: true };
 }
 
+async function releaseChatReportReservationAfterReceiptFailure(
+  reportKey: string,
+  reservationKey: string,
+  reservationToken: string,
+): Promise<void> {
+  // Watch both keys: deleting the reservation is safe only while our token still
+  // owns it and no durable report receipt appeared after the failed HSET.
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const txn = await redis.watch(reservationKey, CHAT_REPORTS_KEY);
+    const [currentToken, storedReport] = await Promise.all([
+      redis.get(reservationKey),
+      redis.hGet(CHAT_REPORTS_KEY, reportKey),
+    ]);
+    if (String(currentToken ?? '') !== reservationToken || storedReport != null) {
+      await txn.unwatch();
+      return;
+    }
+    await txn.multi();
+    await txn.del(reservationKey);
+    if (await txn.exec() !== null) return;
+  }
+  throw new Error('Chat report reservation changed repeatedly during receipt recovery.');
+}
+
 async function submitChatReport(
   scope: 'Global Chat' | 'Guild Chat',
   message: GlobalChatMessage | GuildMessage,
@@ -1951,9 +1975,26 @@ async function submitChatReport(
     reportedAt: Date.now(),
     status: 'pending',
   };
-  await redis.hSet(CHAT_REPORTS_KEY, {
-    [reportKey]: JSON.stringify(report),
-  });
+  try {
+    await redis.hSet(CHAT_REPORTS_KEY, {
+      [reportKey]: JSON.stringify(report),
+    });
+  } catch (error) {
+    // Modmail has not been called yet. Release the reservation only after a
+    // WATCH-confirmed read proves no durable report receipt exists; if HSET
+    // committed ambiguously, retain the dedupe marker and leave the record for
+    // admin review instead of risking a duplicate report.
+    try {
+      await releaseChatReportReservationAfterReceiptFailure(
+        reportKey,
+        reservationKey,
+        reservationToken,
+      );
+    } catch (recoveryError) {
+      console.error('[Chat Report] Could not reconcile failed pending receipt write.', recoveryError);
+    }
+    throw error;
+  }
 
   await reddit.modMail.createModInboxConversation({
     subredditId,

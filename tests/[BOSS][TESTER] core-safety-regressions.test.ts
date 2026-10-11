@@ -631,3 +631,23 @@ test('Daily Streak community speed multiplier is restricted to its gameplay doma
   assert.match(shared, /speedMultiplier: 0\.99/);
   assert.match(social, /event\.speedMultiplier = Math\.max\(0\.50, Number\(\(1 - event\.tier \* 0\.01\)\.toFixed\(2\)\)\)/);
 });
+
+
+test('failed chat-report receipt writes release only an uncommitted reservation', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('async function releaseChatReportReservationAfterReceiptFailure(');
+  const end = social.indexOf('\nasync function submitChatReport(', start);
+  assert.ok(start >= 0 && end > start);
+  const recovery = social.slice(start, end);
+  assert.match(recovery, /redis\.watch\(reservationKey, CHAT_REPORTS_KEY\)/);
+  assert.match(recovery, /String\(currentToken \?\? ''\) !== reservationToken/);
+  assert.match(recovery, /storedReport != null/);
+  assert.match(recovery, /await txn\.del\(reservationKey\)/);
+  assert.match(recovery, /await txn\.exec\(\) !== null/);
+
+  const submit = social.slice(end, social.indexOf('export async function getGlobalChat()', end));
+  const initialReceiptWrite = submit.indexOf('await redis.hSet(CHAT_REPORTS_KEY');
+  const recoveryCall = submit.indexOf('releaseChatReportReservationAfterReceiptFailure');
+  const modmail = submit.indexOf('reddit.modMail.createModInboxConversation');
+  assert.ok(initialReceiptWrite >= 0 && recoveryCall > initialReceiptWrite && modmail > recoveryCall);
+});
