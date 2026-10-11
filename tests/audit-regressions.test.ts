@@ -1470,3 +1470,30 @@ test('Global Booster polling synchronizes the state ref and survives stale playe
   assert.match(poll, /stateRef\.current = \{ \.\.\.stateRef\.current, globalBoosters: snapshot \}/);
   assert.match(poll, /setState\(prev => prev \? \{ \.\.\.prev, globalBoosters: snapshot \} : prev\)/);
 });
+
+
+test('Frenzy uses the same critical chance and conditional coin/Shard modifiers as normal rolls', () => {
+  const game = source('src/server/game.ts');
+
+  const critStart = game.indexOf('function effectiveRollCritChance(');
+  const normalStart = game.indexOf('export async function applyRolls(');
+  const frenzyStart = game.indexOf('export async function claimOrbFrenzy(');
+  assert.ok(critStart >= 0 && normalStart > critStart && frenzyStart > normalStart);
+
+  const critEnd = game.indexOf('\n}', critStart) + 2;
+  const critHelper = game.slice(critStart, critEnd);
+  assert.match(critHelper, /Math\.min\(\s*0\.40/);
+  assert.match(critHelper, /globalBoosterCritChanceBonus\(globalBoosters\?\.crit\)/);
+  assert.match(critHelper, /guildComboCritChanceBonus\(s\.guildCombo\)/);
+
+  const frenzyEnd = game.indexOf('\nexport async function ', frenzyStart + 1);
+  assert.ok(frenzyEnd > frenzyStart, 'claimOrbFrenzy should have a following export');
+  const frenzy = game.slice(frenzyStart, frenzyEnd);
+  assert.match(frenzy, /effectiveRollCritChance\(s, s\.globalBoosters\)/);
+  assert.match(frenzy, /const lowRarityCoins = groups[\s\S]*?group\.rarity < 100/);
+  assert.match(frenzy, /autoFilter[\s\S]*?Math\.round\(lowRarityCoins \* 0\.25\)/);
+  assert.match(frenzy, /transmutationLevel[\s\S]*?Math\.round\(lowRarityCoins \* \(transmutationLevel \* 0\.15\)\)/);
+  assert.match(frenzy, /sampleBinomial\(count, Math\.min\(1, 0\.01 \* transmutationLevel\)\)/);
+  assert.match(frenzy, /grantRollShards\(s, rarityShards \+ procShards \+ transmutationShardProcs\)/);
+  assert.match(frenzy, /s\.highestDryStreak = Math\.max\(s\.highestDryStreak \?\? 0, s\.rollsSinceBest\)/);
+});
