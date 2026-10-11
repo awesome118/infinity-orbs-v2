@@ -117,7 +117,6 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
       !['rolls', 'value', 'rare'].includes(String(challenge.type)) ||
       !Number.isSafeInteger(challenge.target) || Number(challenge.target) < 1 ||
       !Number.isSafeInteger(challenge.progress) || Number(challenge.progress) < 0 ||
-      Number(challenge.progress) > Number(challenge.target) ||
       !Number.isSafeInteger(challenge.reward) || Number(challenge.reward) < 1 ||
       typeof challenge.label !== 'string' || !challenge.label.trim()
     ) {
@@ -206,7 +205,9 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
     if (
       typeof boss.id !== 'string' || !boss.id ||
       typeof boss.name !== 'string' || !boss.name ||
-      !Number.isSafeInteger(boss.tier) || Number(boss.tier) < 1 || Number(boss.tier) > 10 ||
+      // Older app versions could persist a valid boss tier above the current cap.
+      // normalizeGuilds() replaces those legacy bosses with a current capped boss.
+      !Number.isSafeInteger(boss.tier) || Number(boss.tier) < 1 ||
       typeof boss.maxHp !== 'number' || !Number.isFinite(boss.maxHp) || boss.maxHp <= 0 ||
       typeof boss.currentHp !== 'number' || !Number.isFinite(boss.currentHp) ||
       boss.currentHp < 0 || boss.currentHp > boss.maxHp ||
@@ -318,7 +319,11 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
       if (member.role === 'owner') member.trusted = true;
       member.userId = member.userId || undefined;
     }
-    if (!g.boss || (g as any).bossWeek !== currentWeek) {
+    const existingBossTier = Number(g.boss?.tier);
+    const legacyBossTierAboveCap =
+      Number.isSafeInteger(existingBossTier) && existingBossTier > 10;
+    if (!g.boss || (g as any).bossWeek !== currentWeek || legacyBossTierAboveCap) {
+      // Repair legacy over-cap weekly bosses without discarding the Guild itself.
       g.boss = createInitialGuildBoss(Math.max(1, Math.min(10, g.level || 1)));
       (g as any).bossWeek = currentWeek;
     }
