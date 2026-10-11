@@ -2502,6 +2502,15 @@ export async function save(
   extraWrite?: SaveExtraWrite | SaveExtraWrite[],
 ) {
   const userId = currentUserId();
+  // Keep the persisted lifetime counter inside the same safe-integer range enforced
+  // by the player parser and every roll writer. Reject before any side writes.
+  if (
+    !Number.isSafeInteger(s.totalRolls) ||
+    s.totalRolls < 0 ||
+    s.totalRolls > Number.MAX_SAFE_INTEGER
+  ) {
+    throw new Error('Player lifetime roll counter is invalid; no changes were saved.');
+  }
   if (
     !Number.isFinite(s.coins) || s.coins < 0 ||
     (s.lifetimeCoins != null && (!Number.isFinite(s.lifetimeCoins) || s.lifetimeCoins < 0))
