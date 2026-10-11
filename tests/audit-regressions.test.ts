@@ -1115,6 +1115,17 @@ test('offline notification reservations distinguish reclaimable preparation from
   assert.ok(watchIndex >= 0 && readIndex > watchIndex && multiIndex > readIndex);
   assert.ok(deleteIndex > multiIndex && execIndex > deleteIndex);
 
+  const clearStart = game.indexOf('async function clearOfflineReminderKeyIfUnchanged');
+  const clearEnd = game.indexOf('\nfunction currentUserId', clearStart);
+  assert.ok(clearStart >= 0 && clearEnd > clearStart);
+  const clear = game.slice(clearStart, clearEnd);
+  assert.match(clear, /await txn\.del\(keyName\)/);
+  assert.doesNotMatch(clear, /txn\.set\(keyName,\s*''\)/);
+  assert.match(clear, /isNotificationMarker/);
+  assert.match(clear, /phase\?\.phase === 'sending'/);
+  assert.match(clear, /legacyPendingLeaseExpired/);
+  assert.match(clear, /marker !== '1'/);
+
   const senderStart = game.indexOf('async function sendOfflineFullNotification');
   const senderEnd = game.indexOf('function parseOfflineFullJobMarker', senderStart);
   assert.ok(senderStart >= 0 && senderEnd > senderStart);
@@ -1130,6 +1141,10 @@ test('offline notification reservations distinguish reclaimable preparation from
   assert.match(sender, /Offline notification reservation is still being prepared; retry later/);
   assert.match(sender, /OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS/);
   assert.match(sender, /commitOfflineNotificationMarkerIfUnchanged\(notificationKey, sendingToken\)/);
+  assert.match(sender, /const receiptCommitted = await commitOfflineNotificationMarkerIfUnchanged\(notificationKey, sendingToken\)/);
+  assert.match(sender, /if \(!receiptCommitted\)/);
+  assert.match(sender, /Provider accepted the attempt but the sent receipt could not be confirmed/);
+
   assert.match(sender, /staleSendingMarker/);
   assert.match(sender, /staleLegacyPendingMarker/);
 
