@@ -1164,15 +1164,15 @@ test('client ignores a conflicting Shards balance at an unchanged server revisio
   const applier = main.slice(start, end);
 
   const walletGuardStart = applier.indexOf(
-    'if (\\n        nextServerRevision === appliedServerRevisionRef.current &&',
+    'if (\n        nextServerRevision === appliedServerRevisionRef.current &&',
   );
-  const walletGuardEnd = applier.indexOf('\\n      }\\n    }', walletGuardStart);
+  const walletGuardEnd = applier.indexOf('\n      }\n    }', walletGuardStart);
   assert.ok(walletGuardStart >= 0 && walletGuardEnd > walletGuardStart,
     'same-revision Shard conflict guard must exist as its own branch');
   const walletGuard = applier.slice(walletGuardStart, walletGuardEnd);
-  assert.match(walletGuard, /nextServerRevision === appliedServerRevisionRef\\.current/);
-  assert.match(walletGuard, /nextState\\.shards/);
-  assert.match(walletGuard, /currentState\\.shards/);
+  assert.match(walletGuard, /nextServerRevision === appliedServerRevisionRef\.current/);
+  assert.match(walletGuard, /nextState\.shards/);
+  assert.match(walletGuard, /currentState\.shards/);
   assert.match(walletGuard, /return;/, 'a same-revision Shard conflict must be discarded');
   const stateWrite = applier.indexOf('stateRef.current = mergedState');
   assert.ok(stateWrite > walletGuardEnd,
@@ -1182,7 +1182,7 @@ test('client ignores a conflicting Shards balance at an unchanged server revisio
 test('refreshAll discards a late /api/me response after state has advanced', () => {
   const main = source('src/client/main.tsx');
   const start = main.indexOf('const refreshAll = useCallback');
-  const end = main.indexOf('\\n  }, []);', start);
+  const end = main.indexOf('\n  }, []);', start);
   assert.ok(start >= 0 && end > start, 'refreshAll must exist');
   const refresh = main.slice(start, end);
 
