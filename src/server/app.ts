@@ -50,8 +50,6 @@ import {
   recordPlayerHeartbeat,
 } from './game.js';
 import {
-  achievements,
-  claimAchievement,
   createGuild,
   guildInfo,
   joinGuild,
@@ -359,7 +357,7 @@ export function createApp() {
     const mutatesState = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
     const readsAndPersistsPlayerState =
       req.method === 'GET' &&
-      ['/me', '/leaderboard', '/guilds', '/achievements'].includes(req.path);
+      ['/me', '/leaderboard', '/guilds'].includes(req.path);
     const requiresPlayerSerialization = mutatesState || readsAndPersistsPlayerState;
     if (!requiresPlayerSerialization) return next();
 
@@ -891,11 +889,6 @@ export function createApp() {
   // the trusted Devvit username is exactly "shadow_fen".
   app.use('/api/dev', debugRouter);
 
-  app.get('/api/achievements', async (_req, res) => {
-    try { res.json(await achievements(await getMe())); }
-    catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch achievements.' }); }
-  });
-
   const badRequest = (res: express.Response, e: unknown, fallback: string) => {
     res.status(400).json({ error: e instanceof Error ? e.message : fallback });
   };
@@ -1099,13 +1092,6 @@ export function createApp() {
 
   app.post('/api/turbo/activate', async (_req, res) => {
     try { res.json({ state: await activateTurbo() }); } catch (e) { badRequest(res, e, 'Failed to activate Turbo Roll.'); }
-  });
-
-  app.post('/api/achievements/claim', async (req, res) => {
-    try {
-      const s = await getMe();
-      res.json(await claimAchievement(s, req.body?.id ?? ''));
-    } catch (e) { badRequest(res, e, 'Could not claim achievement.'); }
   });
 
   app.post('/api/guilds/create', async (req, res) => {
