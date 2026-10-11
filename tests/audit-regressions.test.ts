@@ -378,11 +378,11 @@ test('comprehensive admin tests reset cooldown before acquiring roll tickets and
   const mechanicEnd = modal.indexOf('const readMechanics', mechanicStart);
   assert.ok(mechanicStart >= 0 && mechanicEnd > mechanicStart);
   assert.match(modal.slice(mechanicStart, mechanicEnd), /xp: 600/);
-  assert.match(modal.slice(mechanicStart, mechanicEnd), /level: 4,\s*levelXpFloor: 543/);
+  assert.match(modal.slice(mechanicStart, mechanicEnd), /level: 4,\s*levelXpFloor: 533/);
   assert.match(modal.slice(mechanicStart, mechanicEnd), /freeShardsEarnedToday: 0/);
   assert.match(modal, /shardSynthesis: 1 \}, \{ shards: 10, xp: 32_000, level: 20, levelXpFloor: 0 \}/);
-  assert.match(modal, /totalRolls: 100, currentRunRolls: 0, xp: 600, level: 4, levelXpFloor: 543/);
-  assert.match(modal, /lastSeenAt: Date\.now\(\), xp: 600, level: 4, levelXpFloor: 543/);
+  assert.match(modal, /totalRolls: 100, currentRunRolls: 0, xp: 600, level: 4, levelXpFloor: 533/);
+  assert.match(modal, /lastSeenAt: Date\.now\(\), xp: 600, level: 4, levelXpFloor: 533/);
   assert.match(modal.slice(mechanicStart, mechanicEnd), /lastFreeShardReset: '2020-01-01'/);
   assert.match(modal, /await new Promise\(resolve => setTimeout\(resolve, 5_200\)\)/);
   assert.match(modal, /collection endpoint/);
