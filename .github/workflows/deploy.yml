@@ -1,10 +1,8 @@
 name: Deploy Devvit
-# Fresh auth retry trigger
 
+# Deliberately manual: pushes should not repeatedly trigger a costly deployment
+# attempt. Run this workflow only when explicitly requested in GitHub Actions.
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
