@@ -373,6 +373,11 @@ test('guild parser validates nested state while repairing legacy challenge and b
   const end = social.indexOf('function parseGuildList', start);
   assert.ok(start >= 0 && end > start, 'nested Guild validator must exist before normalization');
   const validator = social.slice(start, end);
+  assert.match(validator, /const invalid = \(field = 'unknown nested field'\)/);
+  assert.match(validator, /guild\.members\[\] \(invalid member fields\)/);
+  assert.match(validator, /guild\.challenge \(type\/target\/progress\/reward\/label\)/);
+  assert.match(validator, /guild\.combo\.\${field}/);
+  assert.match(validator, /guild\.tasks\[\]\.\${field}/);
   assert.match(validator, /perkCaps/);
   assert.match(validator, /guildXpRank: 20/);
   assert.match(validator, /if \(value == null\) continue; \/\/ Legacy saves can omit core economy defaults/);
