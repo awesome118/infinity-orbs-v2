@@ -62,10 +62,12 @@ test('prestige preserves the Shard balance', () => {
   assert.match(prestige, /s\.shards = keptShards/);
 });
 
-test('game viewport permits user zoom', () => {
-  const html = source('src/client/game.html');
-  assert.match(html, /name="viewport" content="width=device-width, initial-scale=1\.0"/);
-  assert.doesNotMatch(html, /user-scalable=no|maximum-scale=1\.0/);
+test('game and splash viewports permit user zoom', () => {
+  for (const path of ['src/client/game.html', 'src/client/splash.html']) {
+    const html = source(path);
+    assert.match(html, /name="viewport" content="width=device-width, initial-scale=1\.0"/);
+    assert.doesNotMatch(html, /user-scalable=no|maximum-scale=1\.0/);
+  }
 });
 
 test('community event config and persisted event data are validated before mutation', () => {
