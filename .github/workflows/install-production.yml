@@ -1,0 +1,81 @@
+name: Install Approved Version to Production
+
+# This workflow only installs a version that has already been approved by Reddit.
+# It does not upload or publish. Production changes require an explicit confirmation.
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Exact already-approved Devvit version to install (for example 1.2.2)."
+        required: true
+        type: string
+      confirm_approved:
+        description: "I verified that this exact version has received Reddit approval and authorize production installation."
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  install-production:
+    if: ${{ inputs.confirm_approved }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Require main branch before production install
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo "Refusing production installation from non-main ref: $GITHUB_REF"
+            exit 1
+          }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate approved version input
+        env:
+          REQUESTED_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || {
+            echo "Provide an exact semantic version such as 1.2.2."
+            exit 1
+          }
+          echo "Will install already-approved infinity-orbs@$REQUESTED_VERSION to r/infinityorbs."
+
+      - name: Validate Devvit CI token
+        env:
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$DEVVIT_AUTH_TOKEN" || {
+            echo "DEVVIT_TOKEN GitHub secret is missing."
+            exit 1
+          }
+          case "$DEVVIT_AUTH_TOKEN" in
+            \{*) ;;
+            *)
+              echo "DEVVIT_TOKEN must contain the complete JSON blob from ~/.devvit/token, not just the token string."
+              exit 1
+              ;;
+          esac
+
+      - name: Install the approved version to production
+        env:
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          npx devvit install r/infinityorbs "infinity-orbs@$VERSION"
+          npx devvit list installs r/infinityorbs
