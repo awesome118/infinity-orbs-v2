@@ -138,6 +138,7 @@ async function clearOfflineReminderKeyIfUnchanged(
 ): Promise<boolean> {
   if (expectedValue == null) return false;
   const expected = String(expectedValue);
+  const isNotificationMarker = keyName.startsWith(OFFLINE_FULL_NOTIFICATION_PREFIX);
 
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const txn = await redis.watch(keyName);
@@ -147,10 +148,37 @@ async function clearOfflineReminderKeyIfUnchanged(
       return false;
     }
 
+    if (isNotificationMarker) {
+      const marker = String(current);
+      const now = Date.now();
+      const phase = parseOfflineFullNotificationAttemptMarker(marker);
+      const legacyPendingStartedAt = offlineLegacyPendingMarkerStartedAt(marker, now);
+      const sendingLeaseExpired =
+        phase?.phase === 'sending' &&
+        now - phase.startedAt >= OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000;
+      const legacyPendingLeaseExpired =
+        legacyPendingStartedAt !== null &&
+        now - legacyPendingStartedAt >= OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000;
+
+      // A claim can cancel a pre-send reservation: the sender must still win
+      // the exact-token CAS before calling the provider. Do not remove a sending
+      // or legacy pending marker during its ambiguity lease, or a later call
+      // could duplicate a notification that was already accepted externally.
+      if (
+        marker !== '' &&
+        marker !== '1' &&
+        phase?.phase !== 'reserved' &&
+        !sendingLeaseExpired &&
+        !legacyPendingLeaseExpired
+      ) {
+        await txn.unwatch();
+        return false;
+      }
+    }
+
     await txn.multi();
-    // Empty string is treated as absent by the existing truthiness checks,
-    // while WATCH/MULTI makes the compare-and-clear safe against a newer job.
-    await txn.set(keyName, '');
+    // Delete the key. An empty-valued Redis key still blocks SET NX.
+    await txn.del(keyName);
     if (await txn.exec() !== null) return true;
   }
   return false;
