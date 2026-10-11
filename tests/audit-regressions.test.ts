@@ -1264,6 +1264,41 @@ test('persisted PlayerState parser rejects malformed wallet and roll-counter cor
   assert.match(parser, /if \(!validCoreState\) return null/);
 });
 
+test('payment fulfillment validates canonical saves and guards revision exhaustion before entitlement writes', () => {
+  const game = source('src/server/game.ts');
+  const parserStart = game.indexOf('function parsePaymentPlayerState');
+  const parserEnd = game.indexOf('export async function hasReadablePlayerSave', parserStart);
+  assert.ok(parserStart >= 0 && parserEnd > parserStart);
+  const parser = game.slice(parserStart, parserEnd);
+
+  const requiredCore = parser.indexOf("'coins' in record &&");
+  const canonicalValidation = parser.indexOf('const validatedState = parsePlayerStateValue(record)');
+  const invalidSaveGuard = parser.indexOf("throw new Error('Saved player data could not be read; the purchase was not applied.')");
+  const walletNormalization = parser.indexOf('const normalizedWalletShards =');
+  assert.ok(requiredCore >= 0 && canonicalValidation > requiredCore);
+  assert.ok(invalidSaveGuard > canonicalValidation);
+  assert.ok(walletNormalization > invalidSaveGuard);
+  assert.match(parser, /'coins' in record &&\s*'shards' in record &&\s*'totalRolls' in record/);
+  assert.match(parser, /\.\.\.validatedState,/);
+  assert.doesNotMatch(parser, /'coins' in record \|\|[\s\S]*?'paymentReceipts' in record/);
+
+  const grantStart = game.indexOf('export async function grantPurchasedPack');
+  const grantEnd = game.indexOf('export async function refundPurchasedPack', grantStart);
+  assert.ok(grantStart >= 0 && grantEnd > grantStart);
+  const grant = game.slice(grantStart, grantEnd);
+  const revisionRead = grant.indexOf('const currentRevision = normalizeSafeInteger(state.stateRevision, 0)');
+  const revisionGuard = grant.indexOf('if (currentRevision >= Number.MAX_SAFE_INTEGER)', revisionRead);
+  const shardLotWrite = grant.indexOf('state.purchasedShardLots[orderId] =');
+  const boosterLotWrite = grant.indexOf('state.globalBoosterCreditLots[orderId] =');
+  const revisionWrite = grant.indexOf('state.stateRevision = currentRevision + 1');
+  const receiptWrite = grant.indexOf('state.paymentReceipts[orderId] = receipt');
+  assert.ok(revisionRead >= 0 && revisionGuard > revisionRead);
+  assert.ok(shardLotWrite > revisionGuard, 'guard must precede purchased-Shard lot mutation');
+  assert.ok(boosterLotWrite > revisionGuard, 'guard must precede Booster-credit lot mutation');
+  assert.ok(revisionWrite > revisionGuard, 'only the checked revision may be incremented');
+  assert.ok(receiptWrite > revisionGuard, 'guard must precede fulfilled receipt mutation');
+});
+
 test('every loaded PlayerState has a valid revision, including new and legacy saves', () => {
   const game = source('src/server/game.ts');
   const parserStart = game.indexOf('function parsePlayerStateValue');
@@ -1319,14 +1354,41 @@ test('client ignores a conflicting Shards balance at an unchanged server revisio
   const end = main.indexOf('// Mutations are optimistic', start);
   assert.ok(start >= 0 && end > start, 'authoritative player-state applier must exist');
   const applier = main.slice(start, end);
-  assert.match(applier, /nextServerRevision === appliedServerRevisionRef\.current/);
-  assert.match(applier, /nextState\.shards/);
-  assert.match(applier, /currentState\.shards/);
-  assert.match(
-    applier,
-    /nextServerRevision === appliedServerRevisionRef\.current[\s\S]*?return;/,
-    'same-revision wallet conflicts must be ignored before state is replaced',
+
+  // Match the whole guard by meaning, not exact indentation or brace layout.
+  const walletGuardMatch = /if \(\s*nextServerRevision === appliedServerRevisionRef\.current &&[\s\S]*?\(nextState\.shards \?\? 0\) !== \(currentState\.shards \?\? 0\)[\s\S]*?\)\s*\{\s*return;\s*\}/.exec(applier);
+  assert.ok(walletGuardMatch, 'same-revision Shard conflict guard must discard a conflicting snapshot');
+  const walletGuard = walletGuardMatch[0];
+  assert.match(walletGuard, /nextServerRevision === appliedServerRevisionRef\.current/);
+  assert.match(walletGuard, /nextState\.shards/);
+  assert.match(walletGuard, /currentState\.shards/);
+  assert.match(walletGuard, /return;/, 'a same-revision Shard conflict must be discarded');
+
+  const stateWrite = applier.indexOf('stateRef.current = mergedState');
+  assert.ok(stateWrite > walletGuardMatch.index,
+    'the accepted state write must remain after the conflict guard');
+});
+
+
+test('refreshAll discards a late /api/me response after state has advanced', () => {
+  const main = source('src/client/main.tsx');
+  const start = main.indexOf('const refreshAll = useCallback');
+  const end = main.indexOf('\n  }, []);', start);
+  assert.ok(start >= 0 && end > start, 'refreshAll must exist');
+  const refresh = main.slice(start, end);
+
+  const revisionSnapshot = refresh.indexOf('const revisionAtStart = stateRevisionRef.current');
+  const request = refresh.indexOf("const me = await getJsonWithTimeout<PlayerState>('/api/me')");
+  const staleResponseGuard = refresh.indexOf(
+    'if (revisionAtStart !== stateRevisionRef.current) return;',
   );
+  const applyResponse = refresh.indexOf('applyPlayerState(me)');
+
+  assert.ok(revisionSnapshot >= 0 && request > revisionSnapshot);
+  assert.ok(staleResponseGuard > request,
+    'state revision must be rechecked after /api/me returns');
+  assert.ok(applyResponse > staleResponseGuard,
+    'a stale /api/me response must be rejected before applying its PlayerState');
 });
 
 test('share route treats leaderboard projection as best-effort after the durable share action', () => {
