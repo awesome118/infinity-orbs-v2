@@ -386,20 +386,22 @@ test('comprehensive admin tests reset cooldown before acquiring roll tickets and
   assert.match(modal.slice(mechanicStart, mechanicEnd), /lastFreeShardReset: '2020-01-01'/);
   assert.match(modal, /await new Promise\(resolve => setTimeout\(resolve, 5_200\)\)/);
   assert.match(modal, /collection endpoint/);
-  assert.match(modal, /totalRolls: 100, currentRunRolls: 0, xp: 600/);
   const rollCounterStart = modal.indexOf('"API · Force-roll increments processed roll count"');
   const rollCounterEnd = modal.indexOf('"API · Force-roll persists collection entry"', rollCounterStart);
   assert.ok(rollCounterStart >= 0 && rollCounterEnd > rollCounterStart);
-  assert.match(modal.slice(rollCounterStart, rollCounterEnd), /level: 4,\\s*levelXpFloor: 533/);
+  const rollCounterFixture = modal.slice(rollCounterStart, rollCounterEnd);
+  assert.ok(rollCounterFixture.includes('totalRolls: 100') && rollCounterFixture.includes('currentRunRolls: 0'));
+  assert.ok(rollCounterFixture.includes('level: 4,') && rollCounterFixture.includes('levelXpFloor: 533'));
   const offlineStart = modal.indexOf('"API · Offline claim consumes seeded rolls"');
   const offlineEnd = modal.indexOf('"API · Daily reset clears daily Frenzy and streak fields"', offlineStart);
   assert.ok(offlineStart >= 0 && offlineEnd > offlineStart);
-  assert.match(modal.slice(offlineStart, offlineEnd), /level: 4,\\s*levelXpFloor: 533/);
+  const offlineFixture = modal.slice(offlineStart, offlineEnd);
+  assert.ok(offlineFixture.includes('lastSeenAt: Date.now(),') && offlineFixture.includes('xp: 600,'));
+  assert.ok(offlineFixture.includes('level: 4,') && offlineFixture.includes('levelXpFloor: 533'));
   assert.match(modal, /prestigeUpgrades: \{ astralBarrage: 0, astralArsenal: 0 \}/);
   assert.match(modal, /masterySkills: \{ celestialVolley: 0 \}/);
   assert.match(modal, /activeBoosters: \{ fortune: 0, hyperdrive: 0, barrage: 0, prosperity: 0, ascension: 0 \}/);
   assert.match(modal, /\{ xp: 600, collection: \{\}/);
-  assert.match(modal, /lastSeenAt: Date\.now\(\), xp: 600/);
   assert.match(modal, /setSonarThreshold\(100\)/);
 });
 
