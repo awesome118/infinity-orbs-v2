@@ -1570,9 +1570,9 @@ export async function prepareCommunityRolls(
     ev.completedTier = 0;
     ev.weekId = currentWeekNumber;
   }
-  // Event progress is a presentation/bonus counter, not a player-action gate.
-  // Once it reaches the safe integer ceiling, keep rolling working rather than
-  // throwing on every ordinary roll because the aggregate can no longer grow.
+  // Keep the aggregate presentation counter below the safe-integer ceiling.
+  // If a saturated goal can no longer advance safely, the progression helper
+  // rejects the mutation before this prepared value is persisted.
   ev.currentProgress = Math.min(Number.MAX_SAFE_INTEGER - 1, ev.currentProgress + amount);
   assertSafeProgressionNumbers('Community event', ev.goal, ev.currentProgress, ev.tier);
   while (ev.currentProgress >= ev.goal) {
@@ -2195,8 +2195,8 @@ export async function prepareDailyStreakCommunityProgress(amount: number): Promi
   event.currentProgress += contribution;
   validateDailyStreakCommunityEvent(event);
   while (event.currentProgress >= event.goal) {
-    const next = nextCommunityMilestoneProgression(event.goal, event.tier, 'Daily Streak community');
-    event.completedTier = Math.max(event.completedTier ?? 0, event.tier);
+    const next = nextCommunityMilestoneProgression(event.goal, event.tier || 1, 'Daily Streak community');
+    event.completedTier = Math.max(event.completedTier ?? 0, event.tier || 1);
     event.goal = next.goal;
     event.tier = next.tier;
     event.luckMultiplier = Number((1 + event.tier * 0.50).toFixed(2));
