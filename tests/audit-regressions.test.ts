@@ -1092,6 +1092,46 @@ test('Global Chat mutations fail closed rather than overwriting malformed histor
   assert.doesNotMatch(reader, /String\(message\.text \?\? ''\)/);
 });
 
+test('offline notification reservations distinguish reclaimable preparation from ambiguous sending', () => {
+  const game = source('src/server/game.ts');
+  assert.match(game, /OFFLINE_FULL_RESERVATION_TTL_MS = 60_000/);
+
+  const parserStart = game.indexOf('function parseOfflineFullNotificationAttemptMarker');
+  const parserEnd = game.indexOf('async function deleteOfflineFullNotificationMarkerIfUnchanged', parserStart);
+  assert.ok(parserStart >= 0 && parserEnd > parserStart);
+  const parser = game.slice(parserStart, parserEnd);
+  assert.match(parser, /reserved-v2\|sending-v2/);
+  assert.match(parser, /phase: match\[1\] === 'reserved-v2' \? 'reserved' : 'sending'/);
+
+  const deleteStart = game.indexOf('async function deleteOfflineFullNotificationMarkerIfUnchanged');
+  const deleteEnd = game.indexOf('async function claimOfflineFullNotificationSendingIfUnchanged', deleteStart);
+  assert.ok(deleteStart >= 0 && deleteEnd > deleteStart);
+  const deleteMarker = game.slice(deleteStart, deleteEnd);
+  const watchIndex = deleteMarker.indexOf('await redis.watch(keyName)');
+  const readIndex = deleteMarker.indexOf('current = await redis.get(keyName)');
+  const multiIndex = deleteMarker.indexOf('await txn.multi()');
+  const deleteIndex = deleteMarker.indexOf('await txn.del(keyName)');
+  const execIndex = deleteMarker.indexOf('await txn.exec()');
+  assert.ok(watchIndex >= 0 && readIndex > watchIndex && multiIndex > readIndex);
+  assert.ok(deleteIndex > multiIndex && execIndex > deleteIndex);
+
+  const senderStart = game.indexOf('async function sendOfflineFullNotification');
+  const senderEnd = game.indexOf('function parseOfflineFullJobMarker', senderStart);
+  assert.ok(senderStart >= 0 && senderEnd > senderStart);
+  const sender = game.slice(senderStart, senderEnd);
+  const reserveIndex = sender.indexOf('await redis.set(notificationKey, reservedToken');
+  const verifyIndex = sender.indexOf('storedReservation = await redis.get(notificationKey)');
+  const sendingTransitionIndex = sender.indexOf('claimOfflineFullNotificationSendingIfUnchanged(');
+  const enqueueIndex = sender.indexOf('await notifications.enqueue(');
+  assert.ok(reserveIndex >= 0 && verifyIndex > reserveIndex);
+  assert.ok(sendingTransitionIndex > verifyIndex, 'sending phase must be claimed only after our reservation is verified');
+  assert.ok(enqueueIndex > sendingTransitionIndex, 'provider I/O must happen only after the CAS sending transition');
+  assert.match(sender, /if \(reservationWriteFailed && storedReservation == null\) throw reservationWriteError/);
+  assert.match(sender, /Offline notification reservation is still being prepared; retry later/);
+  assert.match(sender, /OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS/);
+  assert.match(sender, /commitOfflineNotificationMarkerIfUnchanged\(notificationKey, sendingToken\)/);
+});
+
 test('persisted PlayerState parser rejects malformed wallet and roll-counter core fields', () => {
   const game = source('src/server/game.ts');
   const start = game.indexOf('function parsePlayerStateValue');
