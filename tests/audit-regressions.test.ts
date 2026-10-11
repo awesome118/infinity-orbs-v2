@@ -1449,3 +1449,24 @@ test('Frenzy preflights lifetime roll-counter capacity before rewards and shared
   assert.match(guard, /!Number\.isSafeInteger\(count\)/);
   assert.match(guard, /count > Number\.MAX_SAFE_INTEGER - s\.totalRolls/);
 });
+
+
+test('Global Booster polling synchronizes the state ref and survives stale player snapshots', () => {
+  const main = source('src/client/main.tsx');
+  assert.match(main, /latestGlobalBoostersRef = useRef<GlobalBoosterSnapshot \| null>\(null\)/);
+
+  const applyStart = main.indexOf('const applyPlayerState = useCallback');
+  const applyEnd = main.indexOf('// Mutations are optimistic', applyStart);
+  assert.ok(applyStart >= 0 && applyEnd > applyStart);
+  const applier = main.slice(applyStart, applyEnd);
+  assert.match(applier, /latestGlobalBoostersRef\.current \?\? currentState\?\.globalBoosters \?\? nextState\.globalBoosters/);
+  assert.match(applier, /globalBoosters: currentGlobalBoosters/);
+
+  const pollStart = main.indexOf('const refreshGlobalBoosters = () =>');
+  const pollEnd = main.indexOf('}, [tab]);', pollStart);
+  assert.ok(pollStart >= 0 && pollEnd > pollStart);
+  const poll = main.slice(pollStart, pollEnd);
+  assert.match(poll, /latestGlobalBoostersRef\.current = snapshot/);
+  assert.match(poll, /stateRef\.current = \{ \.\.\.stateRef\.current, globalBoosters: snapshot \}/);
+  assert.match(poll, /setState\(prev => prev \? \{ \.\.\.prev, globalBoosters: snapshot \} : prev\)/);
+});
