@@ -1401,7 +1401,7 @@ function assertSafeProgressionNumbers(label: string, goal: unknown, progress: un
   const maxProgress = Number.MAX_SAFE_INTEGER - 1;
   if (
     !Number.isSafeInteger(goal) || Number(goal) < 1 ||
-    Number(goal) > Number.MAX_SAFE_INTEGER ||
+    Number(goal) > Number.MAX_SAFE_INTEGER - 1 ||
     !Number.isSafeInteger(progress) || Number(progress) < 0 ||
     Number(progress) > maxProgress ||
     !Number.isSafeInteger(tier) || Number(tier) < 1 ||
@@ -1566,7 +1566,11 @@ function nextCommunityMilestoneProgression(
     throw new Error(`${label} milestone cannot advance safely; no progress was saved.`);
   }
   const nextGoal = Math.round(goal * 2.2);
-  if (!Number.isSafeInteger(nextGoal) || nextGoal <= goal) {
+  if (
+    !Number.isSafeInteger(nextGoal) ||
+    nextGoal <= goal ||
+    nextGoal > Number.MAX_SAFE_INTEGER - 1
+  ) {
     throw new Error(`${label} goal exceeds the safe progression range; no progress was saved.`);
   }
   return { goal: nextGoal, tier: tier + 1 };
