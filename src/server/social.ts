@@ -1436,6 +1436,51 @@ function validateCommunityEventConfig(config: {
   }
 }
 
+function assertValidCommunityEvent(event: WorldEvent): void {
+  if (
+    !event ||
+    typeof event !== 'object' ||
+    Array.isArray(event) ||
+    typeof event.id !== 'string' ||
+    event.id.trim().length === 0 ||
+    typeof event.title !== 'string' ||
+    typeof event.description !== 'string' ||
+    typeof event.buffDescription !== 'string' ||
+    !Number.isSafeInteger(event.goal) ||
+    event.goal < 1 ||
+    event.goal > Number.MAX_SAFE_INTEGER - 1 ||
+    !Number.isSafeInteger(event.currentProgress) ||
+    event.currentProgress < 0 ||
+    event.currentProgress > Number.MAX_SAFE_INTEGER - 1 ||
+    !Number.isSafeInteger(event.tier) ||
+    event.tier < 1 ||
+    event.tier > Number.MAX_SAFE_INTEGER - 1 ||
+    !Number.isFinite(event.buffMultiplier) ||
+    event.buffMultiplier < 1 ||
+    event.buffMultiplier > 1_000 ||
+    !Number.isSafeInteger(event.endsAt) ||
+    event.endsAt < 0 ||
+    typeof event.completed !== 'boolean' ||
+    (event.completedTier !== undefined &&
+      (!Number.isSafeInteger(event.completedTier) ||
+        event.completedTier < 0 ||
+        event.completedTier > Number.MAX_SAFE_INTEGER - 1)) ||
+    (event.weekId !== undefined && !Number.isSafeInteger(event.weekId))
+  ) {
+    throw new Error('Community event data is invalid. No changes were written.');
+  }
+}
+
+function parseCommunityEventForMutation(raw: unknown): WorldEvent {
+  if (raw == null) return { ...COMMUNITY_WORLD_EVENT };
+  const event = parseStoredJson<WorldEvent>(raw);
+  if (!event || typeof event !== 'object' || Array.isArray(event)) {
+    throw new Error('Community event data could not be read safely. No changes were written.');
+  }
+  assertValidCommunityEvent(event);
+  return event;
+}
+
 export async function getCommunityEvent(): Promise<WorldEvent> {
   const eventKey = COMMUNITY_EVENT_KEY;
   const tickKey = key('community_event_tick');
@@ -1445,8 +1490,7 @@ export async function getCommunityEvent(): Promise<WorldEvent> {
   const raw = await redis.get(eventKey);
 
   if (raw != null) {
-    const current = parseStoredJson<WorldEvent>(raw);
-    if (!current) throw new Error('Community event data is corrupted.');
+    const current = parseCommunityEventForMutation(raw);
     assertSafeProgressionNumbers('Community event', current.goal, current.currentProgress, current.tier);
     const lastTickRaw = await redis.get(tickKey);
     const lastTick = lastTickRaw ? Number(lastTickRaw) : now;
@@ -1463,15 +1507,20 @@ export async function getCommunityEvent(): Promise<WorldEvent> {
     const latestTickRaw = await redis.get(tickKey);
     const latestNow = Date.now();
     const currentWeekNumber = weekKey(latestNow);
-    const parsedLatest = latestRaw == null ? null : parseStoredJson<WorldEvent>(latestRaw);
-    if (latestRaw != null && !parsedLatest) {
-      await txn.unwatch();
-      throw new Error('Community event data is corrupted.');
+    let parsedLatest: WorldEvent | null = null;
+    if (latestRaw != null) {
+      try {
+        parsedLatest = parseCommunityEventForMutation(latestRaw);
+      } catch (error) {
+        await txn.unwatch();
+        throw error;
+      }
     }
     const ev: WorldEvent = parsedLatest ?? { ...COMMUNITY_WORLD_EVENT };
     if (parsedLatest) {
       try {
         assertSafeProgressionNumbers('Community event', ev.goal, ev.currentProgress, ev.tier);
+        assertValidCommunityEvent(ev);
       } catch (error) {
         await txn.unwatch();
         throw error;
@@ -1536,10 +1585,7 @@ export async function prepareCommunityRolls(
   await ensureRedisStringKey(COMMUNITY_EVENT_KEY, JSON.stringify(COMMUNITY_WORLD_EVENT));
   const persistedRaw = await redis.get(COMMUNITY_EVENT_KEY);
   const sourceRaw = pendingWrite ? pendingWrite.nextValue : persistedRaw;
-  const parsedEvent = sourceRaw == null ? null : parseStoredJson<WorldEvent>(sourceRaw);
-  if (sourceRaw != null && !parsedEvent) {
-    throw new Error('Community event data is corrupted.');
-  }
+  const parsedEvent = sourceRaw == null ? null : parseCommunityEventForMutation(sourceRaw);
 
   const now = Date.now();
   const currentWeekNumber = weekKey(now);
@@ -1548,13 +1594,7 @@ export async function prepareCommunityRolls(
     : { ...COMMUNITY_WORLD_EVENT };
   if (parsedEvent) {
     assertSafeProgressionNumbers('Community event', ev.goal, ev.currentProgress, ev.tier);
-    if (
-      !Number.isSafeInteger(ev.endsAt) || ev.endsAt < 0 ||
-      !Number.isFinite(ev.buffMultiplier) || ev.buffMultiplier < 0 ||
-      (ev.weekId != null && !Number.isSafeInteger(ev.weekId))
-    ) {
-      throw new Error('Community event data is corrupted.');
-    }
+    assertValidCommunityEvent(ev);
   }
   if (ev.weekId !== currentWeekNumber || now >= ev.endsAt) {
     ev.id = `world-event-w${currentWeekNumber}`;
@@ -1628,15 +1668,20 @@ export async function setCommunityEventConfig(config: {
     const raw = await redis.get(COMMUNITY_EVENT_KEY);
     const now = Date.now();
     const currentWeekNumber = weekKey(now);
-    const parsedEvent = raw == null ? null : parseStoredJson<WorldEvent>(raw);
-    if (raw != null && !parsedEvent) {
-      await txn.unwatch();
-      throw new Error('Community event data is corrupted.');
+    let parsedEvent: WorldEvent | null = null;
+    if (raw != null) {
+      try {
+        parsedEvent = parseCommunityEventForMutation(raw);
+      } catch (error) {
+        await txn.unwatch();
+        throw error;
+      }
     }
     const ev: WorldEvent = parsedEvent ?? { ...COMMUNITY_WORLD_EVENT };
     if (parsedEvent) {
       try {
         assertSafeProgressionNumbers('Community event', ev.goal, ev.currentProgress, ev.tier);
+        assertValidCommunityEvent(ev);
       } catch (error) {
         await txn.unwatch();
         throw error;
