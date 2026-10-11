@@ -377,9 +377,12 @@ test('comprehensive admin tests reset cooldown before acquiring roll tickets and
   const mechanicStart = modal.indexOf('const setMechanicState = async');
   const mechanicEnd = modal.indexOf('const readMechanics', mechanicStart);
   assert.ok(mechanicStart >= 0 && mechanicEnd > mechanicStart);
-  assert.match(modal.slice(mechanicStart, mechanicEnd), /xp: 100_000/);
+  assert.match(modal.slice(mechanicStart, mechanicEnd), /xp: 600/);
   assert.match(modal, /await new Promise\(resolve => setTimeout\(resolve, 5_200\)\)/);
   assert.match(modal, /collection endpoint/);
+  assert.match(modal, /totalRolls: 100, currentRunRolls: 0, xp: 600/);
+  assert.match(modal, /\{ xp: 600, collection: \{\}/);
+  assert.match(modal, /lastSeenAt: Date\.now\(\), xp: 600/);
   assert.match(modal, /setSonarThreshold\(100\)/);
 });
 
