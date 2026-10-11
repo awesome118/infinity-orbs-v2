@@ -219,6 +219,14 @@ for (const scenario of invalidManifestCases) {
 }
 
 
+test('npm deploy script pins the exact package version instead of implicit patch bumping', () => {
+  const pkg = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'));
+  assert.equal(
+    pkg.scripts.deploy,
+    'npm run preflight && devvit upload --version $(node -p \'require("./package.json").version\')',
+  );
+});
+
 test('deployment workflow is manual, main-only, and installs only to the development subreddit', () => {
   const workflow = readFileSync(resolve(process.cwd(), '.github/workflows/deploy.yml'), 'utf8');
   assert.match(workflow, /workflow_dispatch:/);
