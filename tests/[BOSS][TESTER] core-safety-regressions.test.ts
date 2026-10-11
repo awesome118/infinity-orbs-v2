@@ -333,3 +333,29 @@ test('Altar submit state matches the actual coin-floor and non-empty-offer valid
   assert.ok(handlerStart >= 0 && handlerEnd > handlerStart);
   assert.match(altar.slice(handlerStart, handlerEnd), /selectedCoinOffer > 0 && selectedCoinOffer < currentCoinFloor/);
 });
+
+
+test('share cooldown is durable before Reddit post creation and quest progress cannot trigger duplicate retries', () => {
+  const app = source('src/server/app.ts');
+  const game = source('src/server/game.ts');
+  const start = app.indexOf("app.post('/api/share'");
+  const end = app.indexOf('\n  return app;', start);
+  assert.ok(start >= 0 && end > start, 'share route must exist');
+  const route = app.slice(start, end);
+  const reserve = route.indexOf('await reserveShareCooldown(s)');
+  const submit = route.indexOf('await reddit.submitCustomPost');
+  const quest = route.indexOf('await recordShareQuestProgress(s)');
+  assert.ok(reserve >= 0 && submit > reserve, 'cooldown must commit before external Reddit submit');
+  assert.ok(quest > submit, 'share quest progress must follow the external post');
+  const questCatch = route.indexOf('catch (progressError)', quest);
+  const success = route.indexOf('res.json({ success: true, id: postId, text })');
+  assert.ok(questCatch > quest && success > questCatch, 'quest save failure must not return a retry-triggering error after post success');
+  assert.ok(route.includes('Post completed but quest progress save failed; cooldown remains committed'));
+  const helperStart = game.indexOf('export async function reserveShareCooldown');
+  const helperEnd = game.indexOf('\n}', helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart, 'durable reservation helper must exist');
+  const helper = game.slice(helperStart, helperEnd);
+  assert.ok(helper.includes('assertShareCooldownAvailable(s, now)'));
+  assert.ok(helper.includes('s.lastShareAt = now'));
+  assert.ok(helper.includes('await save(s)'));
+});
