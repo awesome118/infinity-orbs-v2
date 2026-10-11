@@ -2686,6 +2686,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             totalRolls: 100,
             currentRunRolls: 0,
             xp: 600,
+            level: 4,
+            levelXpFloor: 533,
             upgrades: { multi: 0, clusterRoll: 0 },
             prestigeUpgrades: { astralBarrage: 0, astralArsenal: 0 },
             masterySkills: { celestialVolley: 0 },
@@ -2743,6 +2745,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           await request<any>('/api/dev/state', {
             lastSeenAt: Date.now(),
             xp: 600,
+            level: 4,
+            levelXpFloor: 533,
             upgrades: { multi: 0, clusterRoll: 0 },
             prestigeUpgrades: { astralBarrage: 0, astralArsenal: 0 },
             masterySkills: { celestialVolley: 0 },
