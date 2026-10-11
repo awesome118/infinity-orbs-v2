@@ -243,7 +243,20 @@ test('Celestial Auto-Buyer preserves its 50-Coin reserve when enabled', () => {
   const helper = game.slice(start, end);
   assert.match(helper, /const spendableCoins = Math\.max\(0, s\.coins - reserve\)/);
   assert.match(helper, /cost <= spendableCoins/);
-  assert.match(helper, /s\.coins - lowestCost >= reserve/);
+  assert.match(helper, /s\\.coins - lowestCost >= reserve/);
+
+  // The normal roll path must pass the reserve too. Checking only the
+  // automation path misses the common Auto-Buyer trigger in applyRolls().
+  const rollStart = game.indexOf('export async function applyRolls(');
+  const rollEnd = game.indexOf('\\nasync function sendOfflineFullNotification(', rollStart);
+  assert.ok(rollStart >= 0 && rollEnd > rollStart, 'applyRolls must exist');
+  const roll = game.slice(rollStart, rollEnd);
+  const autoBuyerStart = roll.indexOf('// Celestial Auto-Buyer Prestige Upgrade');
+  const autoBuyerEnd = roll.indexOf("advanceQuestProgress(s, 'roll'", autoBuyerStart);
+  assert.ok(autoBuyerStart >= 0 && autoBuyerEnd > autoBuyerStart, 'normal-roll Auto-Buyer block must exist');
+  const autoBuyer = roll.slice(autoBuyerStart, autoBuyerEnd);
+  assert.match(autoBuyer, /s\\.coins > AUTO_BUYER_COIN_RESERVE/);
+  assert.match(autoBuyer, /autoBuyCheapest\\(s, AUTO_BUYER_COIN_RESERVE\\)/);
 });
 
 
