@@ -1667,19 +1667,20 @@ function parsePlayerStateValue(value: unknown, depth = 0): PlayerState | null {
       Number.isSafeInteger(record.totalRolls) &&
       Number(record.totalRolls) >= 0 &&
       (
-        !('offlineRolls' in record) ||
-        (
-          Number.isSafeInteger(record.offlineRolls) &&
-          Number(record.offlineRolls) >= 0 &&
-          Number(record.offlineRolls) <= MAX_OFFLINE_ROLLS
-        )
-      ) &&
-      (
         record.stateRevision == null ||
         (Number.isSafeInteger(record.stateRevision) && Number(record.stateRevision) >= 0)
       );
     if (!validCoreState) return null;
-    return record as unknown as PlayerState;
+    // A corrupt offline vault is recoverable progress data, not a reason to brick
+    // the whole account save. Normalize it before any caller can process a batch.
+    const normalizedRecord = {
+      ...record,
+      offlineRolls: Math.min(
+        MAX_OFFLINE_ROLLS,
+        finiteNonNegativeInteger(record.offlineRolls, 0),
+      ),
+    };
+    return normalizedRecord as unknown as PlayerState;
   }
 
   for (const key of ['value', 'state', 'player', 'data', 'payload', 'result']) {
@@ -2094,6 +2095,11 @@ export async function loadRaw(): Promise<PlayerState> {
     ...cleanParsed,
     coins: finiteNonNegativeInteger(parsed.coins),
     lifetimeCoins: finiteNonNegativeInteger(parsed.lifetimeCoins ?? parsed.coins),
+    offlineRolls: Math.min(MAX_OFFLINE_ROLLS, finiteNonNegativeInteger(parsed.offlineRolls, base.offlineRolls)),
+    singularityTitheSingleRolls: finiteNonNegativeInteger(
+      parsed.singularityTitheSingleRolls,
+      base.singularityTitheSingleRolls ?? 0,
+    ),
     globalBoosterCredits: normalizeSafeInteger(parsed.globalBoosterCredits, base.globalBoosterCredits ?? 0),
     activeBoosters: normalizeActiveBoosters(parsed.activeBoosters),
     automations: normalizeAutomations(parsed.automations),
@@ -2267,9 +2273,12 @@ async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim
   }
 
   if (!options.skipAutoOfflineClaim && s.automations?.autoOfflineClaim === true && s.offlineRolls > 0) {
-    const batches = s.offlineRolls;
+    if (!Number.isSafeInteger(s.offlineRolls) || s.offlineRolls < 0) {
+      throw new Error('Saved offline roll count is invalid; no rolls were claimed.');
+    }
+    const batches = Math.min(offlineRollCap(s), s.offlineRolls);
     s.offlineRolls = 0;
-    await applyRolls(s, batches, undefined, 'offline');
+    if (batches > 0) await applyRolls(s, batches, undefined, 'offline');
     s.lastRollAt = Date.now();
 
     // Do not clear reminders before the player reward save commits. If save()
@@ -2917,6 +2926,18 @@ export async function applyRolls(
     rollCount > Number.MAX_SAFE_INTEGER - s.totalRolls
   ) {
     throw new Error('Roll counter would exceed the safe integer range; no rolls were processed.');
+  }
+  const titheLevelForBatch = s.prestigeUpgrades?.singularityTithe ?? 0;
+  if (
+    titheLevelForBatch > 0 &&
+    rollCount > 0 &&
+    (
+      !Number.isSafeInteger(s.singularityTitheSingleRolls) ||
+      (s.singularityTitheSingleRolls ?? 0) < 0 ||
+      rollCount > Number.MAX_SAFE_INTEGER - (s.singularityTitheSingleRolls ?? 0)
+    )
+  ) {
+    throw new Error('Singularity Tithe counter would exceed the safe integer range; no rolls were processed.');
   }
   const maxSupportedRollCount = offlineRollCap(s) * rollsPerActivation(s) + 2;
   if (!Number.isSafeInteger(maxSupportedRollCount) || rollCount > maxSupportedRollCount) {
@@ -3935,8 +3956,12 @@ export async function claimOffline(): Promise<RollResponse> {
     skipAutoOfflineClaim: true,
     skipOfflineNotifications: true,
   });
-  if (s.offlineRolls <= 0) throw new Error('No offline rolls waiting.');
-  const batches = s.offlineRolls;
+  if (!Number.isSafeInteger(s.offlineRolls) || s.offlineRolls < 0) {
+    throw new Error('Saved offline roll count is invalid; no rolls were claimed.');
+  }
+  const offlineCap = offlineRollCap(s);
+  const batches = Math.min(offlineCap, s.offlineRolls);
+  if (batches <= 0) throw new Error('No offline rolls waiting.');
   s.offlineRolls = 0;
   const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } = await applyRolls(s, batches, undefined, 'offline');
   const now = Date.now();
@@ -4890,6 +4915,20 @@ export async function claimOrbFrenzy(options: {
     rollsPerActivation(s),
     s.prestigeUpgrades?.frenzyVolley ?? 0,
   );
+
+  // Validate Tithe's lifetime counter before applying any claim rewards, too.
+  const titheLevelForClaim = s.prestigeUpgrades?.singularityTithe ?? 0;
+  if (
+    titheLevelForClaim > 0 &&
+    count > 0 &&
+    (
+      !Number.isSafeInteger(s.singularityTitheSingleRolls) ||
+      (s.singularityTitheSingleRolls ?? 0) < 0 ||
+      count > Number.MAX_SAFE_INTEGER - (s.singularityTitheSingleRolls ?? 0)
+    )
+  ) {
+    throw new Error('Singularity Tithe counter would exceed the safe integer range; Frenzy claim was not processed.');
+  }
 
   // This path writes totalRolls directly instead of going through applyRolls().
   // Reject an overflowing batch before reward mutation, shared Guild/community
