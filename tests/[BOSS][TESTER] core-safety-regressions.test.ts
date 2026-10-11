@@ -509,6 +509,10 @@ test('Frenzy start reconciles an ambiguous save through its atomic post receipt 
   assert.ok(recovery.includes('await redis.get(activeLock.key) !== activeLock.token'), 'retry requires live lock ownership');
   assert.ok(recovery.includes('throw saveError;'), 'changed generations/revisions must fail closed');
   assert.ok(recovery.includes('player state and receipt were written in one transaction'));
+  assert.ok(recovery.includes('confirmedUncommittedPost = true'), 'only a verified absent receipt authorizes compensation');
+  assert.ok(recovery.includes('const finalReceipt = await redis.get(frenzyPostKey)'), 'recheck for ambiguous commit before deleting');
+  assert.ok(recovery.includes('await postDeleter.delete()'), 'delete an uncommitted external post after the safe retry fails');
+  assert.ok(recovery.includes('manual cleanup may be required'), 'surface a deletion failure for operator follow-up');
 
 });
 
