@@ -1646,7 +1646,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             cosmicDust: 0,
             // Pin Level 4 and its XP floor so account history cannot add milestone orbs.
             level: 4,
-            levelXpFloor: 543,
+            levelXpFloor: 533,
             xp: 600,
             freeShardsEarnedToday: 0,
             totalRolls: 0,
@@ -2703,7 +2703,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Force-roll persists collection entry",
         async () => {
-          await request<any>('/api/dev/state', { xp: 600, level: 4, levelXpFloor: 543, collection: {}, highestRarity: 0, collectionValue: 0 });
+          await request<any>('/api/dev/state', { xp: 600, level: 4, levelXpFloor: 533, collection: {}, highestRarity: 0, collectionValue: 0 });
           await request<any>('/api/dev/force-roll', { rarity: 777, randomValue: 0.999999 });
           const collection = await request<any>('/api/collection?offset=0&limit=100&tier=all&sort=rarity_desc');
           const item = Array.isArray(collection.items)
