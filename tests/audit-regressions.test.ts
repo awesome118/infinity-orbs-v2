@@ -1419,3 +1419,33 @@ test('Guild expiry persistence rejects malformed watched snapshots instead of fi
   assert.match(load, /await txn\.unwatch\(\);\s*throw error/);
   assert.doesNotMatch(load, /latestParsed\]\.filter\(item => item && typeof item === 'object'\)/);
 });
+
+
+test('Frenzy preflights lifetime roll-counter capacity before rewards and shared side effects', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('export async function claimOrbFrenzy');
+  const end = game.indexOf('export async function getOrbFrenzyInfo', start);
+  assert.ok(start >= 0 && end > start, 'claimOrbFrenzy function must exist');
+  const frenzy = game.slice(start, end);
+
+  const countIndex = frenzy.indexOf('const count = frenzyClaimCountForRarity(');
+  const guardIndex = frenzy.indexOf('Frenzy roll counter would exceed the safe integer range');
+  const critIndex = frenzy.indexOf('const critChance = Math.min(');
+  const shardGrantIndex = frenzy.indexOf('grantRollShards(');
+  const guildStageIndex = frenzy.indexOf('prepareGuildRollEffects(');
+  const incrementIndex = frenzy.indexOf('s.totalRolls += count');
+
+  assert.ok(countIndex >= 0 && guardIndex > countIndex, 'final batch count must be established before its guard');
+  assert.ok(critIndex > guardIndex, 'counter capacity guard must run before reward calculations');
+  assert.ok(shardGrantIndex > guardIndex, 'counter capacity guard must run before Shard grants');
+  assert.ok(guildStageIndex > guardIndex, 'counter capacity guard must run before Guild side-effect staging');
+  assert.ok(incrementIndex > guardIndex, 'counter guard must run before lifetime roll count mutation');
+
+  const guardStart = frenzy.lastIndexOf('if (', guardIndex);
+  const guardEnd = frenzy.indexOf('\n  }', guardIndex);
+  assert.ok(guardStart >= 0 && guardEnd > guardStart, 'Frenzy counter guard block must be complete');
+  const guard = frenzy.slice(guardStart, guardEnd);
+  assert.match(guard, /!Number\.isSafeInteger\(s\.totalRolls\)/);
+  assert.match(guard, /!Number\.isSafeInteger\(count\)/);
+  assert.match(guard, /count > Number\.MAX_SAFE_INTEGER - s\.totalRolls/);
+});
