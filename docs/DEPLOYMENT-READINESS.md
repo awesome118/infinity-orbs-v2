@@ -51,11 +51,11 @@ npx devvit list installs r/infinity_orbs_dev
 
 Record the exact source commit, package version, uploaded version, and the version reported by `npx devvit list installs` for **both** subreddits. Stop if a command reports a different version or partial failure; do not blindly retry an ambiguous install.
 
-The GitHub Actions workflow **Deploy Devvit** has the same two-subreddit side effects. It is manual, requests the intended version, and requires `confirm_install=true`. It also requires the `DEVVIT_TOKEN` secret to contain the complete JSON blob from `~/.devvit/token`. Do not dispatch that workflow unless both subreddit installations are intended.
+The GitHub Actions workflow **Deploy Devvit** has the same two-subreddit side effects. It is manual, refuses non-`main` refs, requests the intended version, and requires `confirm_install=true`. It also requires the `DEVVIT_TOKEN` secret to contain the complete JSON blob from `~/.devvit/token`. Do not dispatch that workflow unless both subreddit installations are intended.
 
 ## 3. Submit for Reddit review only when separately authorized
 
-Publishing for review is not the same as uploading a version or installing it on the two subreddits. Use the explicit `Release Infinity Orbs` manual workflow only when review submission is approved. Enter the exact `package.json` version and set `confirm_publish=true`. The workflow checks version equality, runs preflight, verifies Devvit authentication, submits the requested version, and installs it to both subreddits.
+Publishing for review is not the same as uploading a version or installing it on the two subreddits. Use the explicit `Release Infinity Orbs` manual workflow only when review submission is approved. It also refuses non-`main` refs. Enter the exact `package.json` version and set `confirm_publish=true`. The workflow checks version equality, runs preflight, verifies Devvit authentication, submits the requested version, and installs it to both subreddits.
 
 Required GitHub Actions secrets for this workflow:
 - `DEVVIT_TOKEN`: complete Devvit token JSON.
