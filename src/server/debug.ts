@@ -1530,7 +1530,7 @@ debugRouter.post('/state', async (req, res) => {
       'currentRunRolls', 'questsCompleted', 'guildContribution', 'masteryPoints',
       'singularityTitheSingleRolls',
       'communityRewardClaimedAt', 'communityRewardClaimedTier',
-      'level', 'levelXpFloor', 'globalBoosterCredits',
+      'level', 'levelXpFloor', 'globalBoosterCredits', 'freeShardsEarnedToday',
     ];
 
     for (const field of numericFields) {
