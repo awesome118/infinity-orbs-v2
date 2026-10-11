@@ -1176,6 +1176,16 @@ test('offline notification reservations distinguish reclaimable preparation from
   assert.match(worker, /if \(!sent && cleared\)[\s\S]*?offlineNotificationPendingRetryAt\(notificationMarker\)[\s\S]*?true/);
   assert.match(worker, /markerReadFailed \|\| retryableMarker/);
   assert.match(worker, /scheduleOfflineFullNotification\([\s\S]*?retryAt,[\s\S]*?allowReservationRetry/);
+
+  const settleStart = game.indexOf('export async function settleOffline');
+  const settleEnd = game.indexOf('export interface CollectionPageItem', settleStart);
+  assert.ok(settleStart >= 0 && settleEnd > settleStart);
+  const settle = game.slice(settleStart, settleEnd);
+  assert.ok(settle.includes('const sent = await sendOfflineFullNotification(userId, subredditName)'));
+  assert.ok(settle.includes("if (sent || notificationMarker === '1')"));
+  assert.ok(settle.includes('offlineNotificationPendingRetryAt(notificationMarker)'));
+  assert.ok(settle.includes('Wait out the full ambiguity lease'));
+  assert.ok(settle.includes('Could not restore a retry after direct-send failure'));
 });
 
 test('persisted PlayerState parser rejects malformed wallet and roll-counter core fields', () => {
