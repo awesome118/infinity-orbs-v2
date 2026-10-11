@@ -3481,11 +3481,41 @@ export async function applyRolls(
   return { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount };
 }
 
+async function commitOfflineNotificationMarkerIfUnchanged(
+  keyName: string,
+  pendingToken: string,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const txn = await redis.watch(keyName);
+    const current = await redis.get(keyName);
+    if (current == null || String(current) !== pendingToken) {
+      await txn.unwatch();
+      return false;
+    }
+    await txn.multi();
+    await txn.set(keyName, '1');
+    if (await txn.exec() !== null) return true;
+  }
+  return false;
+}
+
 async function sendOfflineFullNotification(userId: string, subredditName: string): Promise<boolean> {
   const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
   if (await redis.get(notificationKey)) return false;
 
   if (!(await notifications.isOptedIn(userId))) return false;
+
+  // Reserve the single attempt before calling the external notification service.
+  // If enqueue succeeds but the receipt write fails (or the process dies in that
+  // gap), retries must not enqueue a duplicate notification. The pending token
+  // expires after a week if an interrupted request never reaches its final write.
+  const attemptNow = Date.now();
+  const pendingToken = `pending:${attemptNow.toString(36)}:${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+  await redis.set(notificationKey, pendingToken, {
+    nx: true,
+    expiration: new Date(attemptNow + 7 * 24 * 60 * 60_000),
+  });
+  if (await redis.get(notificationKey) !== pendingToken) return false;
 
   await notifications.enqueue({
     title: 'Infinity Orbs',
@@ -3495,7 +3525,11 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
       link: `https://reddit.com/r/${subredditName}`,
     }],
   });
-  await redis.set(notificationKey, '1');
+
+  // Compare-and-set prevents a concurrent offline-roll claim from clearing the
+  // pending marker and then having this request resurrect a stale receipt.
+  // If Redis fails here, the pending reservation remains and blocks duplicates.
+  await commitOfflineNotificationMarkerIfUnchanged(notificationKey, pendingToken);
   return true;
 }
 
