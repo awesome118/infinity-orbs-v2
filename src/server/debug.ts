@@ -563,6 +563,14 @@ async function grantGlobalBoosterCreditsToUser(
         throw error;
       }
 
+      if (raw == null) {
+        // A missing save follows loadRaw()'s fresh-state path. The watched
+        // generation key is authoritative after a wipe; do not strand admin
+        // grants on an otherwise valid account whose save has not been recreated.
+        state.saveGeneration = generation;
+        state.stateRevision = 0;
+      }
+
       const storedGeneration = Math.max(0, Number(state.saveGeneration ?? generation) || 0);
       if (storedGeneration !== generation) {
         await txn.unwatch();
