@@ -1,12 +1,21 @@
 name: Release Infinity Orbs
 
 on:
-  push:
-    branches:
-      - release-1.1.0
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Must exactly match package.json version."
+        required: true
+        type: string
+      confirm_publish:
+        description: "Explicitly authorize submission for Reddit review and installation to both subreddits."
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   release:
+    if: ${{ inputs.confirm_publish }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -24,27 +33,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type-check
-        run: npm run type-check
-
-      - name: Guard against invalid Devvit transaction reads
-        run: |
-          set -euo pipefail
-          if grep -R -nE '\b(txn|tx)\.get\(' src; then
-            echo "Invalid Devvit transaction read detected. Use redis.get() after WATCH; TxClient.get() is a transaction builder."
-            exit 1
-          fi
-
-      - name: Build
-        run: npm run build
-
-      - name: Validate release version
+      - name: Verify requested release version
+        env:
+          REQUESTED_VERSION: ${{ inputs.release_version }}
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./package.json').version")"
-          TAG_VERSION="${GITHUB_REF_NAME#release-}"
-          test "$VERSION" = "$TAG_VERSION"
-          echo "Release version: $VERSION"
+          test "$VERSION" = "$REQUESTED_VERSION" || {
+            echo "Version mismatch: package.json is $VERSION but requested $REQUESTED_VERSION."
+            exit 1
+          }
+          echo "Preparing infinity-orbs@$VERSION for Reddit review"
+
+      - name: Release preflight
+        run: npm run preflight
 
       - name: Configure Devvit authentication
         env:
@@ -52,36 +54,40 @@ jobs:
           DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
         run: |
           set -euo pipefail
+          test -n "$DEVVIT_TOKEN"
+          test -n "$DEVVIT_SESSION_ID"
           mkdir -p "$HOME/.devvit"
           printf '%s' "$DEVVIT_TOKEN" > "$HOME/.devvit/token"
           printf '%s' "$DEVVIT_SESSION_ID" > "$HOME/.devvit/session-id"
           chmod 600 "$HOME/.devvit/token" "$HOME/.devvit/session-id"
 
       - name: Verify Devvit authentication
-        run: |
-          set -euo pipefail
-          npx devvit whoami
+        run: npx devvit whoami
 
       - name: Submit version for Reddit review
         env:
           CI: true
           DEVVIT_ALLOW_SOURCE_UPLOAD: 1
+          REQUESTED_VERSION: ${{ inputs.release_version }}
         timeout-minutes: 10
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./package.json').version")"
+          test "$VERSION" = "$REQUESTED_VERSION"
           npx devvit publish --version "$VERSION"
 
       - name: Install release to r/infinityorbs
+        env:
+          VERSION: ${{ inputs.release_version }}
         run: |
           set -euo pipefail
-          VERSION="$(node -p "require('./package.json').version")"
           npx devvit install r/infinityorbs "infinity-orbs@$VERSION"
           npx devvit list installs r/infinityorbs
 
       - name: Install release to r/infinity_orbs_dev
+        env:
+          VERSION: ${{ inputs.release_version }}
         run: |
           set -euo pipefail
-          VERSION="$(node -p "require('./package.json').version")"
           npx devvit install r/infinity_orbs_dev "infinity-orbs@$VERSION"
           npx devvit list installs r/infinity_orbs_dev
