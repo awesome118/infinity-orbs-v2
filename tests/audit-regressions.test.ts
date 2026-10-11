@@ -1130,6 +1130,33 @@ test('offline notification reservations distinguish reclaimable preparation from
   assert.match(sender, /Offline notification reservation is still being prepared; retry later/);
   assert.match(sender, /OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS/);
   assert.match(sender, /commitOfflineNotificationMarkerIfUnchanged\(notificationKey, sendingToken\)/);
+  assert.match(sender, /staleSendingMarker/);
+  assert.match(sender, /staleLegacyPendingMarker/);
+
+  const retryAtStart = game.indexOf('function offlineNotificationPendingRetryAt');
+  const retryAtEnd = game.indexOf('function isRetryableOfflineFullNotificationMarker', retryAtStart);
+  assert.ok(retryAtStart >= 0 && retryAtEnd > retryAtStart);
+  const retryAt = game.slice(retryAtStart, retryAtEnd);
+  assert.match(retryAt, /parsed\?\.phase === 'reserved'/);
+  assert.match(retryAt, /parsed\?\.phase === 'sending'/);
+  assert.match(retryAt, /OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS \+ 60_000/);
+  assert.match(retryAt, /offlineLegacyPendingMarkerStartedAt\(marker, now\)/);
+
+  const schedulerStart = game.indexOf('async function scheduleOfflineFullNotification');
+  const schedulerEnd = game.indexOf('export async function processOfflineFullNotification', schedulerStart);
+  assert.ok(schedulerStart >= 0 && schedulerEnd > schedulerStart);
+  const scheduler = game.slice(schedulerStart, schedulerEnd);
+  assert.match(scheduler, /allowReservationRetry = false/);
+  assert.match(scheduler, /if \(notificationMarker === ''\)/);
+  assert.match(scheduler, /offlineNotificationPendingRetryAt\(notificationMarker\)/);
+
+  const workerStart = game.indexOf('export async function processOfflineFullNotification');
+  const workerEnd = game.indexOf('export async function settleOffline', workerStart);
+  assert.ok(workerStart >= 0 && workerEnd > workerStart);
+  const worker = game.slice(workerStart, workerEnd);
+  assert.match(worker, /if \(!sent && cleared\)[\s\S]*?offlineNotificationPendingRetryAt\(notificationMarker\)[\s\S]*?true/);
+  assert.match(worker, /markerReadFailed \|\| retryableMarker/);
+  assert.match(worker, /scheduleOfflineFullNotification\([\s\S]*?retryAt,[\s\S]*?allowReservationRetry/);
 });
 
 test('persisted PlayerState parser rejects malformed wallet and roll-counter core fields', () => {
