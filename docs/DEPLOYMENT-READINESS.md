@@ -7,7 +7,7 @@
 - Observed package version: `1.2.2`; observed main commit before preparation: `5c08bb81c7e0ad3787be572135cf16c82864f9f0`.
 - Required runtime: Node.js 24 or newer.
 - Release status at this snapshot: **NOT CLEARED TO SHIP**. The available evidence contains no successful current-main preflight/build/playtest result. Failed Actions runs visible at the time are older push-triggered runs with no step-level diagnostics, so they do not prove the current main build fails.
-- Known open release-review items: #54/#55 address a reported World Event goal-ceiling mismatch against persisted validation; #53 changes the offline-notification reservation/sending lifecycle. Review them against current `main` and test them before considering the relevant risks resolved. Other open PRs are not automatically required for release; triage each by whether the defect is present on current main.
+- Candidate fixes for the tracked risks are consolidated in draft PR [#57](https://github.com/awesome1184/infinity-orbs-v2/pull/57): World Event goal ceiling, offline-notification marker lifecycle, wrapped-save handling for admin Booster grants, payment-save/revision validation, and stale Shards response regression coverage. PR #57 is not merged or runtime-verified; these risks remain open until the exact candidate passes Node 24+ checks and targeted behavior tests. Older drafts #51, #53, #54, #55, #47, and #49 overlap this consolidation and should not be merged independently without reconciliation. Other open PRs must be triaged by whether the defect is present on current main.
 - This snapshot is historical context. Re-check main, PRs, runs, and live playtest immediately before any release.
 
 ## 1. Run the local preflight
