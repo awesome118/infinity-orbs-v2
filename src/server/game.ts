@@ -2851,6 +2851,17 @@ export async function applyRolls(
     rollCount += 2;
   }
 
+  // The player-state parser rejects unsafe lifetime roll counters. Refuse an
+  // invalid or overflowing batch before shared reads or per-orb mutations.
+  if (
+    !Number.isSafeInteger(s.totalRolls) ||
+    s.totalRolls < 0 ||
+    !Number.isSafeInteger(rollCount) ||
+    rollCount < 0 ||
+    rollCount > Number.MAX_SAFE_INTEGER - s.totalRolls
+  ) {
+    throw new Error('Roll counter would exceed the safe integer range; no rolls were processed.');
+  }
 
   // These reads are independent. Keep them parallel so a roll does not spend
   // several sequential Redis round trips before it can even start rolling.
