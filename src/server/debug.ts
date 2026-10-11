@@ -358,15 +358,52 @@ interface GlobalBoosterCreditGrantManifest {
 function parseAdminPlayerSave(raw: unknown): Record<string, any> {
   if (raw == null) return createInitialState() as unknown as Record<string, any>;
   if (typeof raw !== 'string') throw new Error('The target player save could not be read safely.');
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('The target player save could not be read safely.');
+
+  const unwrap = (value: unknown, depth = 0): Record<string, any> | null => {
+    if (depth > 6 || value == null) return null;
+
+    if (typeof value === 'string') {
+      try {
+        return unwrap(JSON.parse(value), depth + 1);
+      } catch {
+        return null;
+      }
     }
-    return parsed as Record<string, any>;
-  } catch {
-    throw new Error('The target player save could not be read safely.');
-  }
+    if (typeof value !== 'object' || Array.isArray(value)) return null;
+
+    const record = value as Record<string, unknown>;
+    const looksLikePlayerState =
+      'coins' in record &&
+      'shards' in record &&
+      'totalRolls' in record;
+
+    if (looksLikePlayerState) {
+      const validCoreState =
+        typeof record.coins === 'number' &&
+        Number.isFinite(record.coins) &&
+        record.coins >= 0 &&
+        Number.isSafeInteger(record.shards) &&
+        Number(record.shards) >= 0 &&
+        Number.isSafeInteger(record.totalRolls) &&
+        Number(record.totalRolls) >= 0 &&
+        (
+          record.stateRevision == null ||
+          (Number.isSafeInteger(record.stateRevision) && Number(record.stateRevision) >= 0)
+        );
+      return validCoreState ? record as Record<string, any> : null;
+    }
+
+    for (const key of ['value', 'state', 'player', 'data', 'payload', 'result']) {
+      if (!(key in record)) continue;
+      const nested = unwrap(record[key], depth + 1);
+      if (nested) return nested;
+    }
+    return null;
+  };
+
+  const state = unwrap(raw);
+  if (!state) throw new Error('The target player save could not be read safely.');
+  return state;
 }
 
 function parseGlobalBoosterCreditGrantManifest(
@@ -524,6 +561,14 @@ async function grantGlobalBoosterCreditsToUser(
       } catch (error) {
         await txn.unwatch();
         throw error;
+      }
+
+      if (raw == null) {
+        // A missing save follows loadRaw()'s fresh-state path. The watched
+        // generation key is authoritative after a wipe; do not strand admin
+        // grants on an otherwise valid account whose save has not been recreated.
+        state.saveGeneration = generation;
+        state.stateRevision = 0;
       }
 
       const storedGeneration = Math.max(0, Number(state.saveGeneration ?? generation) || 0);
