@@ -844,7 +844,8 @@ test('player activity watch transaction preserves playtime updates and fences an
 test('live presence survives optimistic and authoritative state replacement, and auth reset clears revision guards', () => {
   const client = source('src/client/main.tsx');
   assert.match(client, /const onlinePlayersRef = useRef<number \| undefined>\(undefined\)/);
-  assert.match(client, /const mergedState = onlinePlayersRef\.current == null/);
+  assert.match(client, /const mergedState = \{/);
+  assert.match(client, /\.\.\.\(onlinePlayersRef\.current == null \? \{\} : \{ onlinePlayers: onlinePlayersRef\.current \}\)/);
   assert.match(client, /onlinePlayersRef\.current = safeOnlinePlayers/);
   assert.match(client, /stateRef\.current = \{ \.\.\.stateRef\.current, onlinePlayers: safeOnlinePlayers \}/);
   const authIndex = client.indexOf("if (e?.message === 'REDDIT_LOGIN_REQUIRED')");
@@ -949,11 +950,15 @@ test('Frenzy start saves the post receipt atomically with its owner reward and c
   assert.ok(start >= 0 && end > start);
   const body = game.slice(start, end);
   const createIndex = body.indexOf('await reddit.submitCustomPost');
-  const receiptIndex = body.indexOf('const frenzyPostValue = JSON.stringify');
-  const saveIndex = body.indexOf('await save(s, {', receiptIndex);
-  assert.ok(createIndex >= 0 && receiptIndex > createIndex && saveIndex > receiptIndex);
-  assert.match(body.slice(saveIndex, saveIndex + 500), /key: FRENZY_POST_PREFIX \+ postId/);
-  assert.match(body.slice(saveIndex, saveIndex + 500), /expectedValue: null/);
+  const valueIndex = body.indexOf('const frenzyPostValue = JSON.stringify');
+  const receiptIndex = body.indexOf('const frenzyReceiptWrite: SaveExtraWrite = {', valueIndex);
+  const saveIndex = body.indexOf('await save(s, frenzyReceiptWrite);', receiptIndex);
+  assert.ok(createIndex >= 0 && valueIndex > createIndex && receiptIndex > valueIndex && saveIndex > receiptIndex);
+  assert.match(body.slice(receiptIndex, saveIndex), /key: frenzyPostKey/);
+  assert.match(body.slice(receiptIndex, saveIndex), /expectedValue: null/);
+  assert.match(body.slice(receiptIndex, saveIndex), /nextValue: frenzyPostValue/);
+  assert.match(body.slice(receiptIndex, saveIndex), /conflictMessage:/);
+  assert.match(body, /s\.lastFrenzyAt = createdAt/);
   assert.doesNotMatch(body.slice(createIndex, saveIndex), /await redis\.set\(FRENZY_POST_PREFIX/);
 });
 
@@ -961,10 +966,10 @@ test('Frenzy start saves the post receipt atomically with its owner reward and c
 test('optional Auto-Community Claim failure does not abort unrelated mutations', () => {
   const game = source('src/server/game.ts');
   const automationStart = game.indexOf('async function processAutomation');
-  const automationEnd = game.indexOf('function flairTextColorForBackground', automationStart);
+  const automationEnd = game.indexOf('\nfunction ', automationStart);
   assert.ok(automationStart >= 0 && automationEnd > automationStart);
   const automation = game.slice(automationStart, automationEnd);
-  const blockStart = automation.indexOf('if (s.automations?.autoCommunityClaim)');
+  const blockStart = automation.indexOf('if (!options.skipAutoCommunityClaim && s.automations?.autoCommunityClaim === true)');
   const blockEnd = automation.indexOf('if (!options.skipAutoOfflineClaim', blockStart);
   assert.ok(blockStart >= 0 && blockEnd > blockStart);
   const block = automation.slice(blockStart, blockEnd);
@@ -973,6 +978,7 @@ test('optional Auto-Community Claim failure does not abort unrelated mutations',
   assert.match(block, /catch \(error\)/);
   assert.match(block, /continuing without its reward/);
 });
+
 
 test('manual Daily Streak, Quest and Community claims bypass their duplicate auto-claim', () => {
   const game = source('src/server/game.ts');
@@ -1018,23 +1024,24 @@ test('manual offline claim serializes with reminder workers and suppresses claim
   assert.match(settle, /withPlayerMutationLockFor\(\`offline-notification:\$\{userId\}\`/);
 });
 
-test('manual offline claim bypasses only its duplicate Auto Offline Claim automation', () => {
+test('manual offline claim bypasses duplicate Auto Offline Claim and its notification side effect', () => {
   const game = source('src/server/game.ts');
   const start = game.indexOf('export async function claimOffline');
   const end = game.indexOf('export async function buyUpgrade', start);
   assert.ok(start >= 0 && end > start);
   const manual = game.slice(start, end);
-  assert.match(manual, /settleOffline\(await loadRaw\(\), \{ skipAutoOfflineClaim: true \}\)/);
+  assert.match(manual, /settleOffline\(await loadRaw\(\), \{\s*skipAutoOfflineClaim: true,\s*skipOfflineNotifications: true,\s*\}\)/);
   const settleStart = game.indexOf('export async function settleOffline');
   const settleEnd = game.indexOf('export async function getState', settleStart);
   assert.ok(settleStart >= 0 && settleEnd > settleStart);
   const settle = game.slice(settleStart, settleEnd);
   assert.match(settle, /processAutomation\(s, options\)/);
   const automationStart = game.indexOf('async function processAutomation');
-  const automationEnd = game.indexOf('function flairTextColorForBackground', automationStart);
+  const automationEnd = game.indexOf('\nfunction ', automationStart);
   assert.ok(automationStart >= 0 && automationEnd > automationStart);
   assert.match(game.slice(automationStart, automationEnd), /!options\.skipAutoOfflineClaim && s\.automations\?\.autoOfflineClaim/);
 });
+
 
 test('manual offline claim compare-clears only reminder values observed before the saved claim', () => {
   const game = source('src/server/game.ts');
@@ -1391,18 +1398,20 @@ test('refreshAll discards a late /api/me response after state has advanced', () 
     'a stale /api/me response must be rejected before applying its PlayerState');
 });
 
-test('share route treats leaderboard projection as best-effort after the durable share action', () => {
+test('share route commits the share cooldown before posting and treats quest projection as best-effort', () => {
   const app = source('src/server/app.ts');
   const start = app.indexOf("app.post('/api/share'");
   const end = app.indexOf('\n  return app;', start);
   assert.ok(start >= 0 && end > start, 'share route must exist');
   const route = app.slice(start, end);
-  assert.match(route, /await recordShareAction\(s\)/);
-  assert.doesNotMatch(
-    route,
-    /await recordLeaderboard\(s\)/,
-    'the route must not turn a successful post/state save into an apparent failure if a leaderboard projection fails',
-  );
+  const cooldownIndex = route.indexOf('await reserveShareCooldown(s)');
+  const postIndex = route.indexOf('await reddit.submitCustomPost');
+  const questIndex = route.indexOf('await recordShareQuestProgress(s)');
+  assert.ok(cooldownIndex >= 0 && postIndex > cooldownIndex);
+  assert.ok(questIndex > postIndex, 'quest projection follows the durable post');
+  assert.match(route.slice(questIndex - 100, questIndex + 450), /try \{[\s\S]*?catch \(progressError\)/);
+  assert.doesNotMatch(route, /await recordLeaderboard\(s\)/);
+  assert.doesNotMatch(route, /await recordShareAction\(s\)/);
 });
 
 
@@ -1687,7 +1696,7 @@ test('Guild expiry persistence rejects malformed watched snapshots instead of fi
 test('Frenzy preflights lifetime roll-counter capacity before rewards and shared side effects', () => {
   const game = source('src/server/game.ts');
   const start = game.indexOf('export async function claimOrbFrenzy');
-  const end = game.indexOf('export async function getOrbFrenzyInfo', start);
+  const end = game.indexOf('\nexport async function ', start + 1);
   assert.ok(start >= 0 && end > start, 'claimOrbFrenzy function must exist');
   const frenzy = game.slice(start, end);
 
@@ -1793,7 +1802,7 @@ test('offline vault state is validated and bounded before auto-claim can process
   const parser = game.slice(parserStart, parserEnd);
   assert.match(
     parser,
-    /offlineRolls:\s*Math\.min\(\s*MAX_OFFLINE_ROLLS,\s*finiteNonNegativeInteger\(record\.offlineRolls, 0\)\s*\)/,
+    /offlineRolls:\s*Math\.min\(\s*MAX_OFFLINE_ROLLS,\s*finiteNonNegativeInteger\(record\.offlineRolls, 0\),?\s*\)/,
   );
   assert.match(parser, /function parsePlayerStateValue\(value: unknown/);
 
