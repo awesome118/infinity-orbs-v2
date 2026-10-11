@@ -732,6 +732,15 @@ test('admin Global Booster credit grants unwrap and validate player saves before
   const creditWriteIndex = grant.indexOf('state.globalBoosterCredits = after');
   const saveIndex = grant.indexOf('await txn.set(playerKey, JSON.stringify(state))');
   const receiptIndex = grant.indexOf('await txn.set(receiptKey, receipt)');
+  const absentSaveBranch = grant.indexOf('if (raw == null) {');
+  const absentSaveGenerationWrite = grant.indexOf('state.saveGeneration = generation', absentSaveBranch);
+  const absentSaveRevisionWrite = grant.indexOf('state.stateRevision = 0', absentSaveGenerationWrite);
+  const generationMismatchGuard = grant.indexOf('if (storedGeneration !== generation)');
+  assert.ok(absentSaveBranch > parseIndex);
+  assert.ok(absentSaveGenerationWrite > absentSaveBranch);
+  assert.ok(absentSaveRevisionWrite > absentSaveGenerationWrite);
+  assert.ok(generationMismatchGuard > absentSaveRevisionWrite,
+    'an absent save must adopt the watched generation before generation mismatch validation');
   assert.ok(parseIndex >= 0 && balanceReadIndex > parseIndex);
   assert.ok(creditWriteIndex > parseIndex && saveIndex > parseIndex && receiptIndex > parseIndex);
   assert.ok(saveIndex > creditWriteIndex && receiptIndex > saveIndex,
