@@ -16,7 +16,7 @@
     "type-check": "tsc --noEmit -p tsconfig.client.json && tsc --noEmit -p tsconfig.server.json",
     "preflight:guard": "node scripts/predeploy-check.mjs",
     "preflight": "npm run preflight:guard && npm run type-check && npm test && npm run build",
-    "deploy": "npm run preflight && devvit upload",
+    "deploy": "npm run preflight && devvit upload --version $(node -p 'require(\"./package.json\").version')",
     "launch": "npm run deploy && devvit publish",
     "test": "tsx --test tests/*.test.ts"
   },
