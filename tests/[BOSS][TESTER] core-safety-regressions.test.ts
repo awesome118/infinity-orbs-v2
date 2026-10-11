@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { masterySkillCost } from '../src/shared/game.js';
+import { createInitialState, masterySkillCost, spendShards } from '../src/shared/game.js';
 
 const source = (path: string): string =>
   readFileSync(resolve(process.cwd(), path), 'utf8');
@@ -273,4 +273,51 @@ test('purchase reconciliation filters to a requested order ID and only grants ex
   assert.match(route, /const requestedOrderId = String\(req\.body\?\.orderId \?\? ''\)\.trim\(\)/);
   assert.match(route, /if \(requestedOrderId && orderId !== requestedOrderId\) continue/);
   assert.match(route, /if \(status !== 'PAID'\) continue/);
+});
+
+
+test('Shards spending consumes free balance before per-order purchased lots', () => {
+  const state = createInitialState(Date.UTC(2026, 9, 10));
+  state.shards = 50;
+  state.purchasedShards = 30;
+  state.purchasedShardLots = { 'order-a': 30 };
+
+  assert.equal(spendShards(state, 20), 20);
+  assert.equal(state.shards, 30);
+  assert.equal(state.purchasedShards, 30);
+  assert.equal(state.purchasedShardLots?.['order-a'], 30);
+
+  assert.equal(spendShards(state, 20), 20);
+  assert.equal(state.shards, 10);
+  assert.equal(state.purchasedShards, 10);
+  assert.equal(state.purchasedShardLots?.['order-a'], 10);
+});
+
+test('purchase grants and refunds track remaining currency by order', () => {
+  const game = source('src/server/game.ts');
+  const grantStart = game.indexOf('export async function grantPurchasedPack');
+  const refundStart = game.indexOf('export async function refundPurchasedPack');
+  const refundEnd = game.indexOf('\\nexport async function loadRaw', refundStart);
+  assert.ok(grantStart >= 0 && refundStart > grantStart && refundEnd > refundStart);
+  const grant = game.slice(grantStart, refundStart);
+  const refund = game.slice(refundStart, refundEnd);
+  assert.match(grant, /state\.purchasedShardLots\[orderId\][\s\S]*?pack\.shards/);
+  assert.match(grant, /state\.globalBoosterCreditLots\[orderId\][\s\S]*?pack\.globalBoosterCredits/);
+  assert.match(refund, /const orderShardLot = normalizeSafeInteger\(state\.purchasedShardLots\[orderId\], 0\)/);
+  assert.match(refund, /const orderCreditLot = normalizeSafeInteger\(state\.globalBoosterCreditLots\[orderId\], 0\)/);
+  assert.match(refund, /const generationKey = saveGenerationKeyFor\(userId\)/);
+  assert.match(refund, /stateGeneration !== generation/);
+});
+
+test('Global Booster activation decrements purchased credit provenance and restores it on failed commit', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('async function claimWorldBoosterActivation');
+  const end = game.indexOf('\\nexport async function activateGlobalBooster', start);
+  assert.ok(start >= 0 && end > start);
+  const activation = game.slice(start, end);
+  assert.match(activation, /const previousGlobalBoosterCreditLots/);
+  assert.match(activation, /const lots = normalizeEntitlementLots\(\s*s\.globalBoosterCreditLots/);
+  assert.match(activation, /for \(const orderId of Object\.keys\(lots\)\)/);
+  assert.match(activation, /s\.globalBoosterCreditLots = previousGlobalBoosterCreditLots/);
+  assert.match(activation, /s\.purchasedShardLots = previousPurchasedShardLots/);
 });
