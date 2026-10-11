@@ -169,7 +169,48 @@ function paymentOrderId(order: PaymentOrder): string {
   return paymentString(order.id);
 }
 
-async function resolvePaymentBuyerId(order: PaymentOrder, orderId: string): Promise<string> {
+async function verifyPaymentOrder(
+  orderId: string,
+  candidateUserId: string,
+  allowedStatuses: string[] = ['PAID'],
+): Promise<{ sku: string; status: string } | null> {
+  const id = String(orderId ?? '').trim();
+  const buyer = String(candidateUserId ?? '').trim();
+  if (!id || !buyer) return null;
+
+  try {
+    const rawOrders = await payments.getOrders({ limit: 50, buyer });
+    const orders = Array.isArray(rawOrders)
+      ? rawOrders
+      : rawOrders && typeof rawOrders === 'object' && Array.isArray((rawOrders as { orders?: unknown }).orders)
+        ? (rawOrders as { orders: unknown[] }).orders
+        : [];
+    for (const rawOrder of orders) {
+      if (!rawOrder || typeof rawOrder !== 'object') continue;
+      const candidate = rawOrder as PaymentOrder;
+      if (paymentOrderId(candidate) !== id) continue;
+      const sku = paymentProductSku(candidate);
+      const status = paymentOrderStatus(candidate);
+      // Fail closed when provider status is absent as well as when it is not
+      // an explicitly permitted state. Never grant from an envelope-only SKU.
+      if (!sku || !allowedStatuses.includes(status)) return null;
+      return { sku, status };
+    }
+  } catch (error) {
+    await appendPaymentDebugLog('buyer:provider-order-check-failed', {
+      orderId: id,
+      candidateUserId: buyer,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return null;
+}
+
+async function resolvePaymentBuyerId(
+  order: PaymentOrder,
+  orderId: string,
+  allowedStatuses: string[] = ['PAID'],
+): Promise<{ userId: string; sku: string } | null> {
   const directCandidates = [
     paymentString(order.userId),
     paymentString(order.buyerUserId),
@@ -177,43 +218,27 @@ async function resolvePaymentBuyerId(order: PaymentOrder, orderId: string): Prom
     paymentBuyerFromObject(order.user),
     paymentString(context.userId),
   ].filter(Boolean);
-
   const uniqueCandidates = [...new Set(directCandidates)];
-  const readability: Array<{ userId: string; readable: boolean }> = [];
 
   for (const candidate of uniqueCandidates) {
-    const readable = await hasReadablePlayerSave(candidate);
-    readability.push({ userId: candidate, readable });
-    if (readable) {
-      await appendPaymentDebugLog('buyer:resolved-existing-save', {
+    const verified = await verifyPaymentOrder(orderId, candidate, allowedStatuses);
+    if (verified) {
+      await appendPaymentDebugLog('buyer:provider-verified', {
         orderId,
-        candidates: readability,
         selectedUserId: candidate,
+        sku: verified.sku,
         contextUserId: paymentString(context.userId) || null,
       });
-      return candidate;
+      return { userId: candidate, sku: verified.sku };
     }
   }
 
-  const contextUserId = paymentString(context.userId);
-  if (contextUserId) {
-    await appendPaymentDebugLog('buyer:resolved-context', {
-      orderId,
-      candidates: readability,
-      selectedUserId: contextUserId,
-      contextUserId,
-    });
-    return contextUserId;
-  }
-
-  const fallback = uniqueCandidates[0] ?? '';
-  await appendPaymentDebugLog('buyer:resolved-order-fallback', {
+  await appendPaymentDebugLog('buyer:provider-verification-failed', {
     orderId,
-    candidates: readability,
-    selectedUserId: fallback || null,
-    contextUserId: null,
+    candidates: uniqueCandidates,
+    contextUserId: paymentString(context.userId) || null,
   });
-  return fallback;
+  return null;
 }
 
 export function createApp() {
@@ -496,9 +521,11 @@ export function createApp() {
 
       const order = normalizePaymentOrder(req.body);
       const orderId = paymentOrderId(order);
-      const productSku = paymentProductSku(order);
+      const envelopeSku = paymentProductSku(order);
       const status = paymentOrderStatus(order);
-      const buyerUserId = await resolvePaymentBuyerId(order, orderId);
+      const verifiedPayment = await resolvePaymentBuyerId(order, orderId, ['PAID']);
+      const buyerUserId = verifiedPayment?.userId ?? '';
+      const productSku = verifiedPayment?.sku ?? '';
 
       console.error('[Payments] Fulfill received:', JSON.stringify({
         id: orderId || null,
@@ -521,10 +548,16 @@ export function createApp() {
         normalizedOrder: order,
       });
 
+      if (!orderId) {
+        return res.json({
+          success: false,
+          reason: 'Purchase order is missing its order ID.',
+        });
+      }
       if (!buyerUserId) {
         return res.json({
           success: false,
-          reason: 'Unable to identify the purchasing Reddit account.',
+          reason: 'Payment order could not be verified against its purchasing Reddit account.',
         });
       }
       if (status && status !== 'PAID') {
@@ -536,13 +569,9 @@ export function createApp() {
       if (!productSku) {
         return res.json({
           success: false,
-          reason: 'Infinity Orbs purchases must contain one product.',
-        });
-      }
-      if (!orderId) {
-        return res.json({
-          success: false,
-          reason: 'Purchase order is missing its order ID.',
+          reason: envelopeSku
+            ? 'Payment order product could not be verified against the provider record.'
+            : 'Infinity Orbs purchases must contain one product.',
         });
       }
 
@@ -576,13 +605,14 @@ export function createApp() {
     try {
       const order = normalizePaymentOrder(req.body);
       const orderId = paymentOrderId(order);
-      const productSku = paymentProductSku(order);
-      const buyerUserId = await resolvePaymentBuyerId(order, orderId);
+      const verifiedPayment = await resolvePaymentBuyerId(order, orderId, ['REFUNDED']);
+      const buyerUserId = verifiedPayment?.userId ?? '';
+      const productSku = verifiedPayment?.sku ?? '';
 
       if (!buyerUserId || !orderId) {
         return res.json({
           success: false,
-          reason: 'Refund order is missing an identity.',
+          reason: 'Refund order could not be verified against its purchasing Reddit account.',
         });
       }
       if (!productSku) {
@@ -602,10 +632,11 @@ export function createApp() {
       });
     }
   });
-  app.post('/api/payments/reconcile', async (_req, res) => {
+  app.post('/api/payments/reconcile', async (req, res) => {
     try {
       const userId = String(context.userId ?? '').trim();
       if (!userId) return res.status(401).json({ error: 'REDDIT_LOGIN_REQUIRED' });
+      const requestedOrderId = String(req.body?.orderId ?? '').trim();
 
       const rawOrders = await payments.getOrders({ limit: 50, buyer: userId });
       const orders = Array.isArray(rawOrders)
@@ -619,8 +650,9 @@ export function createApp() {
         if (!rawOrder || typeof rawOrder !== 'object') continue;
         const order = rawOrder as PaymentOrder;
         const orderId = paymentOrderId(order);
+        if (requestedOrderId && orderId !== requestedOrderId) continue;
         const status = paymentOrderStatus(order);
-        if (status && status !== 'PAID') continue;
+        if (status !== 'PAID') continue;
         if (!orderId) continue;
         const sku = paymentProductSku(order);
         if (!sku) continue;

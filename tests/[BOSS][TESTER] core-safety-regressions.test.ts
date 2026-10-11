@@ -244,3 +244,33 @@ test('Celestial Auto-Buyer preserves its 50-Coin reserve when enabled', () => {
   assert.match(helper, /cost <= spendableCoins/);
   assert.match(helper, /s\.coins - lowestCost >= reserve/);
 });
+
+
+test('payment fulfillment and refund verify buyer, status, and SKU against provider order history', () => {
+  const app = source('src/server/app.ts');
+  const verifyStart = app.indexOf('async function verifyPaymentOrder');
+  const resolveStart = app.indexOf('async function resolvePaymentBuyerId');
+  const createAppStart = app.indexOf('export function createApp()');
+  assert.ok(verifyStart >= 0 && resolveStart > verifyStart && createAppStart > resolveStart);
+  const verifier = app.slice(verifyStart, resolveStart);
+  const resolver = app.slice(resolveStart, createAppStart);
+  assert.match(verifier, /payments\.getOrders\(\{ limit: 50, buyer \}\)/);
+  assert.match(verifier, /paymentOrderId\(candidate\) !== id/);
+  assert.match(verifier, /!allowedStatuses\.includes\(status\)/);
+  assert.match(verifier, /paymentProductSku\(candidate\)/);
+  assert.match(resolver, /verifyPaymentOrder\(orderId, candidate, allowedStatuses\)/);
+  assert.doesNotMatch(resolver, /hasReadablePlayerSave/);
+  assert.match(app, /resolvePaymentBuyerId\(order, orderId, \['PAID'\]\)/);
+  assert.match(app, /resolvePaymentBuyerId\(order, orderId, \['REFUNDED'\]\)/);
+});
+
+test('purchase reconciliation filters to a requested order ID and only grants explicitly paid orders', () => {
+  const app = source('src/server/app.ts');
+  const start = app.indexOf("app.post('/api/payments/reconcile'");
+  const end = app.indexOf("\n  app.get('/api/products'", start);
+  assert.ok(start >= 0 && end > start, 'reconciliation route must exist');
+  const route = app.slice(start, end);
+  assert.match(route, /const requestedOrderId = String\(req\.body\?\.orderId \?\? ''\)\.trim\(\)/);
+  assert.match(route, /if \(requestedOrderId && orderId !== requestedOrderId\) continue/);
+  assert.match(route, /if \(status !== 'PAID'\) continue/);
+});
