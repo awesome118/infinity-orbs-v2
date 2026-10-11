@@ -2197,9 +2197,15 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             const volleyClaim = await request<any>('/api/dev/frenzy/claim', { postId: volleyStart.postId });
             const volleyCount = Number(volleyClaim.state?.totalRolls ?? 0) - volleyBeforeClaim;
 
-            const baseCount = frenzyOrbCountForRarity(100);
-            const expectedNormal = baseCount * 2;
-            const expectedVolley = Math.floor(baseCount * 1.20);
+            // A forced starting rarity can still be raised by a crit. Count from
+            // each created Frenzy's actual recorded rarity, not the requested seed.
+            const normalRarity = Number(normalStart.rarity ?? normalStart.orb?.rarity ?? 0);
+            const volleyRarity = Number(volleyStart.rarity ?? volleyStart.orb?.rarity ?? 0);
+            if (!(normalRarity >= 100) || !(volleyRarity >= 100)) {
+              throw new Error('Frenzy start returned an invalid rarity: normal=' + normalRarity + ', volley=' + volleyRarity + '.');
+            }
+            const expectedNormal = frenzyOrbCountForRarity(normalRarity) * 2;
+            const expectedVolley = Math.floor(frenzyOrbCountForRarity(volleyRarity) * 1.20);
             const normalVisible = Array.isArray(normalClaim.batch) ? normalClaim.batch.length : 0;
             const volleyVisible = Array.isArray(volleyClaim.batch) ? volleyClaim.batch.length : 0;
             if (normalCount !== expectedNormal || volleyCount !== expectedVolley) {
@@ -3163,8 +3169,16 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           await request<any>('/api/dev/frenzy/reset', {});
           await request<any>('/api/dev/state', { coins: 100_000, shards: 50, lastFrenzyDate: '', lastFrenzyClaimDate: '' });
           const result = await request<any>('/api/dev/frenzy/start', { rarity: 250 });
-          if (!result.postId || !result.url || Number(result.orb?.rarity) !== 250) {
-            throw new Error('Admin Frenzy did not create the expected post/result.');
+          const orbRarity = Number(result.orb?.rarity ?? 0);
+          const returnedRarity = Number(result.rarity ?? 0);
+          // Critical hits may legitimately multiply the forced starting rarity.
+          if (!result.postId || !result.url || orbRarity < 250 || returnedRarity !== orbRarity) {
+            throw new Error(
+              'Admin Frenzy did not create the expected post/result: postId=' + Boolean(result.postId) +
+              ', url=' + Boolean(result.url) +
+              ', orbRarity=' + orbRarity +
+              ', returnedRarity=' + returnedRarity + '.'
+            );
           }
           return result;
         },
