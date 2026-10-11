@@ -4031,10 +4031,55 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
   if (!options.skipOfflineNotifications && userId && subredditName && s.offlineRolls >= cap) {
     try {
       await withPlayerMutationLockFor(`offline-notification:${userId}`, async () => {
-        await sendOfflineFullNotification(userId, subredditName);
+        const sent = await sendOfflineFullNotification(userId, subredditName);
+        const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
+        const notificationMarker = await readOfflineNotificationMarkerAndRepairLegacyKey(notificationKey);
         const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
         const currentJob = await redis.get(jobKey);
-        if (currentJob != null) await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+        const clearCurrentJob = async () => {
+          if (currentJob != null) await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+        };
+
+        if (sent || notificationMarker === '1') {
+          await clearCurrentJob();
+          return;
+        }
+
+        if (notificationMarker != null && !isRetryableOfflineFullNotificationMarker(notificationMarker)) {
+          // Unknown marker formats fail closed. Do not delete a job whose retry
+          // could still be needed to reconcile this marker.
+          return;
+        }
+
+        if (notificationMarker == null && !(await notifications.isOptedIn(userId))) {
+          await clearCurrentJob();
+          return;
+        }
+
+        if (isRetryableOfflineFullNotificationMarker(notificationMarker)) {
+          // Keep any existing job: when it runs, the worker will move it beyond
+          // the active reservation lease. If no job exists, restore one now.
+          if (currentJob === '') await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+          if (!currentJob) {
+            await scheduleOfflineFullNotification(
+              userId,
+              subredditName,
+              offlineNotificationPendingRetryAt(notificationMarker),
+              true,
+            );
+          }
+          return;
+        }
+
+        // No marker but still opted in means the receipt outcome could not be
+        // confirmed after the provider call. Wait out the full ambiguity lease
+        // rather than immediately risking a duplicate notification.
+        if (currentJob != null) await clearCurrentJob();
+        await scheduleOfflineFullNotification(
+          userId,
+          subredditName,
+          Date.now() + OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000,
+        );
       });
     } catch (error) {
       console.error('Failed to send offline-orbs-full notification:', error);
