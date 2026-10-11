@@ -59,7 +59,14 @@ test('current roll handler does not mutate the wallet with a client prediction',
   const end = main.indexOf('// Auto roll watcher', start);
   assert.ok(end > start, 'roll handler boundary must exist');
   const handler = main.slice(start, end);
-  assert.match(handler, /getJson<RollResponse>\('\s*\/api\/roll'/);
+  const requestIndex = handler.indexOf("getJson<RollResponse>('/api/roll'");
+  const applyIndex = handler.indexOf('applyPlayerState(res.state)', requestIndex);
+  assert.ok(requestIndex >= 0 && applyIndex > requestIndex, 'authoritative state is applied after the roll response');
+  assert.doesNotMatch(
+    handler.slice(requestIndex, applyIndex),
+    /setBatchSummary\s*\(|setLastOrb\s*\(|setLastBatch\s*\(/,
+    'roll result UI must not apply predicted rewards before the server response',
+  );
   assert.match(handler, /applyPlayerState\(res\.state\)/);
 });
 
