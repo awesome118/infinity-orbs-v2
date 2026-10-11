@@ -220,6 +220,11 @@ test('community event rejects infinite and non-terminating progression values', 
   const prepare = social.slice(prepStart, prepEnd);
   assert.match(prepare, /nextCommunityMilestoneProgression\(ev\.goal, ev\.tier/);
   assert.match(prepare, /ev\.currentProgress = Math\.min\(Number\.MAX_SAFE_INTEGER - 1, ev\.currentProgress \+ amount\)/);
+  assert.ok(
+    prepare.indexOf('nextCommunityMilestoneProgression(ev.goal') <
+      prepare.indexOf('ev.currentProgress = Math.min'),
+    'World Event next-goal feasibility is checked before mutating prepared progress',
+  );
   assert.doesNotMatch(prepare, /ev\.goal = Number\.MAX_SAFE_INTEGER/);
 
   const configStart = social.indexOf('export async function setCommunityEventConfig');
@@ -228,6 +233,11 @@ test('community event rejects infinite and non-terminating progression values', 
   const config = social.slice(configStart, configEnd);
   assert.match(config, /nextCommunityMilestoneProgression\(ev\.goal, ev\.tier/);
   assert.match(config, /catch \(error\) \{\s*await txn\.unwatch\(\);\s*throw error;\s*\}/);
+  assert.ok(
+    config.indexOf("nextCommunityMilestoneProgression(ev.goal") <
+      config.indexOf("while (ev.currentProgress >= ev.goal)"),
+    'admin configuration validates progression before entering the milestone loop',
+  );
   assert.doesNotMatch(config, /ev\.goal = Number\.MAX_SAFE_INTEGER/);
 });
 
@@ -320,6 +330,11 @@ test('Daily Streak community progression rejects invalid loop state', () => {
   assert.match(prepare, /Number\.isSafeInteger\(contribution\)/);
   assert.match(prepare, /validateDailyStreakCommunityEvent\(event\)/);
   assert.match(prepare, /nextCommunityMilestoneProgression\(event\.goal, event\.tier \|\| 1/);
+  assert.ok(
+    prepare.indexOf("nextCommunityMilestoneProgression(event.goal") <
+      prepare.indexOf("event.currentProgress += contribution"),
+    'Daily Streak validates a future goal before mutating prepared progress',
+  );
   assert.doesNotMatch(prepare, /event\.goal = Number\.MAX_SAFE_INTEGER/);
 });
 
