@@ -271,7 +271,7 @@ test('invalid Shard spend amounts are rejected before touching wallet state', ()
   assert.equal(state.purchasedShards, 3);
 });
 
-test('Shard reward paths do not overflow the persisted balance's safe integer range', () => {
+test("Shard reward paths do not overflow the persisted balance's safe integer range", () => {
   const state = createInitialState(NOW);
   state.shards = Number.MAX_SAFE_INTEGER - 2;
   state.lifetimeShards = Number.MAX_SAFE_INTEGER - 1;
