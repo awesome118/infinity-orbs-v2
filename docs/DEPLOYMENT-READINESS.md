@@ -31,7 +31,7 @@ npx devvit whoami
 
 ## 2. Upload and install (separate from publishing)
 
-The CLI deployment path is deliberately explicit. **Do not run it until preflight passes and an authorized release decision has been made.** `npm run deploy` performs preflight and then uploads the app version to Devvit; it does not by itself submit the app for Reddit review.
+The local CLI deployment path uploads the app version and should install the candidate to the development subreddit only. **Do not run it until preflight passes and an authorized development-playtest decision has been made.** `npm run deploy` performs preflight and then uploads the app version to Devvit; it does not by itself submit the app for Reddit review.
 
 ```sh
 npm run preflight
@@ -42,20 +42,17 @@ EXPECTED_VERSION="$(node -p "require('./package.json').version")"
 UPLOADED_VERSION="$(npx devvit view infinity-orbs version)"
 test "$UPLOADED_VERSION" = "$EXPECTED_VERSION"
 
-npx devvit install r/infinityorbs "infinity-orbs@$EXPECTED_VERSION"
-npx devvit list installs r/infinityorbs
-
 npx devvit install r/infinity_orbs_dev "infinity-orbs@$EXPECTED_VERSION"
 npx devvit list installs r/infinity_orbs_dev
 ```
 
-Record the exact source commit, package version, uploaded version, and the version reported by `npx devvit list installs` for **both** subreddits. Stop if a command reports a different version or partial failure; do not blindly retry an ambiguous install.
+Record the exact source commit, package version, uploaded version, and the installed version reported for `r/infinity_orbs_dev`. Stop if a command reports a different version or partial failure; do not blindly retry an ambiguous install. Do not install to `r/infinityorbs` before Reddit approval.
 
 The GitHub Actions workflow **Deploy Devvit** uploads and installs the candidate to `r/infinity_orbs_dev` only. It is manual, refuses non-`main` refs, requests the intended version, and requires `confirm_install=true`. It requires the `DEVVIT_TOKEN` secret to contain the complete JSON blob from `~/.devvit/token`. Production is intentionally excluded before Reddit approval.
 
 ## 3. Submit for Reddit review only when separately authorized
 
-Publishing for review is not the same as uploading a version or installing it on the two subreddits. Use the explicit **Submit Infinity Orbs for Reddit Review** manual workflow only when review submission is approved. It refuses non-`main` refs. Enter the exact `package.json` version and set `confirm_publish=true`. The workflow checks version equality, runs preflight, verifies Devvit authentication, and submits the requested version for review. It does not install to any subreddit.
+Publishing for review is not the same as uploading a version or installing it to a subreddit. Use the explicit **Submit Infinity Orbs for Reddit Review** manual workflow only when review submission is approved. It refuses non-`main` refs. Enter the exact `package.json` version and set `confirm_publish=true`. The workflow checks version equality, runs preflight, verifies Devvit authentication, and submits the requested version for review. It does not install to any subreddit.
 
 Required GitHub Actions secrets for this workflow:
 - `DEVVIT_TOKEN`: complete Devvit token JSON.
