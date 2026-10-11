@@ -2272,17 +2272,41 @@ export async function claimAchievement(_s: PlayerState, id: string) {
       throw new Error('Achievement reward already claimed.');
     }
 
+    if (
+      typeof state.coins !== 'number' || !Number.isFinite(state.coins) || state.coins < 0 ||
+      (state.lifetimeCoins != null && (
+        typeof state.lifetimeCoins !== 'number' ||
+        !Number.isFinite(state.lifetimeCoins) ||
+        state.lifetimeCoins < 0
+      ))
+    ) {
+      await txn.unwatch();
+      throw new Error('Player Coin balance is invalid; no achievement reward was applied.');
+    }
+    if (!Number.isSafeInteger(achievement.rewardCoins) || achievement.rewardCoins < 0) {
+      await txn.unwatch();
+      throw new Error('Achievement Coin reward is invalid.');
+    }
+
+    const currentCoins = Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(state.coins)));
+    const requestedGain = Math.min(Number.MAX_SAFE_INTEGER, achievement.rewardCoins);
+    const rewardCoins = Math.min(requestedGain, Number.MAX_SAFE_INTEGER - currentCoins);
+    const lifetimeCoins = Math.min(
+      Number.MAX_SAFE_INTEGER,
+      Math.max(0, Math.floor(state.lifetimeCoins ?? currentCoins)),
+    );
+
     state.claimedAchievements.push(id);
     state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
-    state.coins += achievement.rewardCoins;
-    state.lifetimeCoins = (state.lifetimeCoins ?? 0) + achievement.rewardCoins;
+    state.coins = currentCoins + rewardCoins;
+    state.lifetimeCoins = Math.min(Number.MAX_SAFE_INTEGER, lifetimeCoins + rewardCoins);
     const rewardShards = grantFreeShards(state, achievement.rewardShards ?? 0);
 
     await txn.multi();
     await txn.set(playerKey, JSON.stringify(state));
     const committed = await txn.exec();
     if (committed !== null) {
-      return { state, rewardCoins: achievement.rewardCoins, rewardShards };
+      return { state, rewardCoins, rewardShards };
     }
   }
 
