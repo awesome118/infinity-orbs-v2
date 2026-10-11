@@ -3864,13 +3864,61 @@ export async function processOfflineFullNotification(
     return;
   }
 
+  const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
   try {
-    await sendOfflineFullNotification(userId, subredditName);
-    await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
+    const sent = await sendOfflineFullNotification(userId, subredditName);
+    const cleared = await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
+    if (!sent && cleared) {
+      const notificationMarker = await redis.get(notificationKey);
+      if (notificationMarker === '') {
+        // An older clear path may have left an empty-valued key that still blocks SET NX.
+        await scheduleOfflineFullNotification(userId, subredditName, Date.now() + OFFLINE_FULL_RETRY_MS);
+      } else if (isRetryableOfflineFullNotificationMarker(notificationMarker)) {
+        await scheduleOfflineFullNotification(
+          userId,
+          subredditName,
+          offlineNotificationPendingRetryAt(notificationMarker),
+          true,
+        );
+      }
+    }
   } catch (error) {
     console.error('Failed to send scheduled offline-orbs-full notification:', error);
+    let notificationMarker: string | null = null;
+    let markerReadFailed = false;
+    try {
+      notificationMarker = await redis.get(notificationKey);
+    } catch (markerReadError) {
+      // A failed verification read is unknown, not proof the reservation is absent.
+      markerReadFailed = true;
+      console.error('[Offline Notification] Could not inspect the attempt marker before retry scheduling.', markerReadError);
+    }
+
+    const retryableMarker = isRetryableOfflineFullNotificationMarker(notificationMarker);
+    if (
+      notificationMarker === '1' ||
+      (notificationMarker != null && notificationMarker !== '' && !retryableMarker)
+    ) {
+      // Unknown marker formats fail closed just like a durable receipt.
+      await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
+      return;
+    }
+
+    const allowReservationRetry = markerReadFailed || retryableMarker;
+    const retryAt = markerReadFailed
+      ? Date.now() + OFFLINE_FULL_RETRY_MS
+      : retryableMarker
+        ? offlineNotificationPendingRetryAt(notificationMarker)
+        : Date.now() + OFFLINE_FULL_RETRY_MS;
     const cleared = await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
-    if (cleared) await scheduleOfflineFullNotification(userId, subredditName, now + OFFLINE_FULL_RETRY_MS);
+    if (cleared) {
+      await scheduleOfflineFullNotification(
+        userId,
+        subredditName,
+        retryAt,
+        allowReservationRetry,
+      );
+    }
   }
   });
 }
