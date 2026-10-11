@@ -1065,9 +1065,16 @@ function isFrenzyTestAdmin(username?: string): boolean {
 async function readFrenzyHandoff(userId: string): Promise<{ postId: string; expiresAt: number } | null> {
   const raw = await redis.get(frenzyHandoffKey(userId));
   const data = parseStoredJson<{ postId?: string; expiresAt?: number }>(raw);
-  const postId = String(data?.postId ?? '').trim();
-  const expiresAt = Number(data?.expiresAt ?? 0);
-  if (!postId || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+  const postId = typeof data?.postId === 'string' ? data.postId.trim() : '';
+  const expiresAt = data?.expiresAt;
+  // This record authorizes the post-to-game claim handoff. Do not coerce strings,
+  // fractions, or unsafe integers into a valid future timestamp.
+  if (
+    !postId ||
+    typeof expiresAt !== 'number' ||
+    !Number.isSafeInteger(expiresAt) ||
+    expiresAt <= Date.now()
+  ) {
     if (raw != null) await redis.del(frenzyHandoffKey(userId));
     return null;
   }

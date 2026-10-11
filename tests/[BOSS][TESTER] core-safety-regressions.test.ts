@@ -208,3 +208,23 @@ test('all long-form dialogs remain scrollable on short viewports', () => {
   assert.match(rarity, /max-h-\[calc\(100dvh-2rem\)\] overflow-y-auto overscroll-contain/);
   assert.match(changelog, /max-h-\[calc\(100dvh-2rem\)\] overflow-y-auto overscroll-contain/);
 });
+
+
+test('global toast uses a persistent live region for announcements', () => {
+  const main = source('src/client/main.tsx');
+  assert.match(main, /className="sr-only"[\s\S]*?role=\{toast\?\.type === 'warn' \? 'alert' : 'status'\}/);
+  assert.match(main, /aria-live=\{toast\?\.type === 'warn' \? 'assertive' : 'polite'\}/);
+  assert.match(main, /aria-atomic="true"[\s\S]*?\{toast\?\.msg \?\? ''\}/);
+  assert.doesNotMatch(main, /\{toast && \([\s\S]*?role=\{toast\.type === 'warn'/);
+});
+
+test('Frenzy handoff rejects malformed persisted expiry types', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('async function readFrenzyHandoff');
+  const end = game.indexOf('\\nexport async function armOrbFrenzyClaim', start);
+  assert.ok(start >= 0 && end > start, 'handoff reader must exist');
+  const reader = game.slice(start, end);
+  assert.match(reader, /typeof expiresAt !== 'number'/);
+  assert.match(reader, /Number\.isSafeInteger\(expiresAt\)/);
+  assert.doesNotMatch(reader, /Number\(data\?\.expiresAt/);
+});
