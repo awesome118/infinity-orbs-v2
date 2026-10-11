@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -8,10 +8,41 @@ import { join, resolve } from 'node:path';
 const helperPath = resolve(process.cwd(), 'scripts/predeploy-check.mjs');
 const currentNodeMajor = Number(process.versions.node.split('.')[0]);
 
+function validDevvitConfig(name = 'infinity-orbs') {
+  return {
+    name,
+    post: {
+      dir: 'dist/client',
+      entrypoints: {
+        default: { inline: true, entry: 'splash.html' },
+        game: { entry: 'game.html' },
+        frenzy: { entry: 'frenzy.html', height: 'tall' },
+      },
+    },
+    server: { dir: 'dist/server', entry: 'index.cjs' },
+    menu: {
+      items: [{
+        label: 'Create a new post',
+        location: 'subreddit',
+        forUserType: 'moderator',
+        endpoint: '/internal/menu/post-create',
+      }],
+    },
+    triggers: { onAppInstall: '/internal/on-app-install' },
+    permissions: { redis: true, payments: false },
+    scheduler: {
+      tasks: {
+        'offline-orbs-full': { endpoint: '/internal/scheduler/offline-orbs-full' },
+      },
+    },
+  };
+}
+
 function createFixture(options: {
   packageVersion?: string;
   lockVersion?: string;
   devvitName?: string;
+  devvitConfig?: Record<string, any>;
   sourceText?: string;
   createSourceDir?: boolean;
 } = {}) {
@@ -34,9 +65,9 @@ function createFixture(options: {
       '': { name: 'infinity-orbs', version: lockVersion },
     },
   }));
-  writeFileSync(join(root, 'devvit.json'), JSON.stringify({
-    name: options.devvitName ?? 'infinity-orbs',
-  }));
+  writeFileSync(join(root, 'devvit.json'), JSON.stringify(
+    options.devvitConfig ?? validDevvitConfig(options.devvitName ?? 'infinity-orbs'),
+  ));
 
   if (options.createSourceDir !== false) {
     const sourceDir = join(root, 'src');
@@ -114,6 +145,78 @@ test('deployment preflight rejects a Devvit app name that differs from package.j
     fixture.cleanup();
   }
 });
+
+const invalidManifestCases: Array<{
+  label: string;
+  mutate: (manifest: any) => void;
+  expected: RegExp;
+}> = [
+  {
+    label: 'client output directory',
+    mutate: manifest => { manifest.post.dir = 'dist/other'; },
+    expected: /post\\.dir must be/,
+  },
+  {
+    label: 'default splash entrypoint',
+    mutate: manifest => { delete manifest.post.entrypoints.default; },
+    expected: /post\\.entrypoints\\.default\\.entry must be/,
+  },
+  {
+    label: 'game entrypoint',
+    mutate: manifest => { manifest.post.entrypoints.game.entry = 'missing.html'; },
+    expected: /post\\.entrypoints\\.game\\.entry must be/,
+  },
+  {
+    label: 'Frenzy entrypoint and tall layout',
+    mutate: manifest => { manifest.post.entrypoints.frenzy.height = 'inline'; },
+    expected: /post\\.entrypoints\\.frenzy\\.height must be/,
+  },
+  {
+    label: 'server output entry',
+    mutate: manifest => { manifest.server.entry = 'missing.cjs'; },
+    expected: /server\\.entry must be/,
+  },
+  {
+    label: 'Redis permission',
+    mutate: manifest => { manifest.permissions.redis = false; },
+    expected: /permissions\\.redis must be/,
+  },
+  {
+    label: 'payments disabled',
+    mutate: manifest => { manifest.permissions.payments = true; },
+    expected: /permissions\\.payments must be/,
+  },
+  {
+    label: 'app install trigger',
+    mutate: manifest => { manifest.triggers.onAppInstall = '/wrong'; },
+    expected: /triggers\\.onAppInstall must be/,
+  },
+  {
+    label: 'offline notification scheduler endpoint',
+    mutate: manifest => { delete manifest.scheduler.tasks['offline-orbs-full']; },
+    expected: /scheduler\\.tasks\\.offline-orbs-full\\.endpoint must be/,
+  },
+  {
+    label: 'moderator post creation action',
+    mutate: manifest => { manifest.menu.items = []; },
+    expected: /menu.items must include the moderator Create a new post action/,
+  },
+];
+
+for (const scenario of invalidManifestCases) {
+  test(`deployment preflight rejects an invalid Devvit manifest contract: ${scenario.label}`, () => {
+    const manifest = validDevvitConfig();
+    scenario.mutate(manifest);
+    const fixture = createFixture({ devvitConfig: manifest });
+    try {
+      const result = fixture.run();
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, scenario.expected);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+}
 
 
 test('deployment workflow is manual, main-only, and installs only to the development subreddit', () => {
