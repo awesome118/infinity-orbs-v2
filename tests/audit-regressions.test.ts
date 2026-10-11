@@ -98,7 +98,8 @@ test('Frenzy claim reserves claimant, owner, and post locks in a deterministic o
   assert.match(claim, /return withPlayerMutationLocksFor\(lockIds/);
   assert.match(claim, /if \(data\.consumedAt != null\)/);
   assert.match(claim, /expectedValue: raw,[\s\S]*?nextValue: consumedPostValue/);
-  assert.match(claim, /if \(await redis\.get\(FRENZY_POST_PREFIX \+ postId\) !== consumedPostValue\)/);
+  assert.match(claim, /const consumedPostValue = JSON\.stringify\(\{ \.\.\.data, consumedAt: now \}\)/);
+  assert.match(claim, /await save\(s, \[[\s\S]*?key: FRENZY_POST_PREFIX \+ postId,[\s\S]*?expectedValue: raw,[\s\S]*?nextValue: consumedPostValue/);
 });
 
 test('missing-key initialization cannot overwrite a concurrent first write', () => {
@@ -108,7 +109,8 @@ test('missing-key initialization cannot overwrite a concurrent first write', () 
   assert.match(game, /redis\.set\(keyName, fallback, \{ nx: true \}\)/);
   assert.match(social, /redis\.set\(keyName, fallback, \{ nx: true \}\)/);
   assert.match(mock, /options\?\.nx && readStore\(key\) !== undefined/);
-  assert.match(mock, /options\?\.expiration instanceof Date/);
+  assert.match(mock, /writeStore\(key, value, options\?\.expiration\)/);
+  assert.match(mock, /expiration instanceof Date && Number\.isFinite\(expiration\.getTime\(\)\)/);
 });
 
 test('game ban mutations use WATCH/EXEC so concurrent admins cannot erase each other', () => {
@@ -164,7 +166,7 @@ test('player mutation lock renews its lease and releases only its own token', ()
   const releaseEnd = lock.indexOf('async function runLocked', releaseStart);
   assert.ok(releaseStart >= 0 && releaseEnd > releaseStart);
   const release = lock.slice(releaseStart, releaseEnd);
-  assert.match(release, /redis\.watch\(lockKey\)/);
+  assert.match(release, /client\.watch\(lockKey\)/);
   assert.match(release, /await txn\.del\(lockKey\)/);
   assert.doesNotMatch(release, /await redis\.del\(lockKey\)/);
 });
@@ -307,8 +309,13 @@ test('wiped saves cannot return mutation success and offline reminder keys survi
   const claimEnd = game.indexOf('export async function buyUpgrade', claimStart);
   assert.ok(claimStart >= 0 && claimEnd > claimStart);
   const claim = game.slice(claimStart, claimEnd);
-  assert.ok(claim.indexOf('await save(s)') < claim.indexOf('OFFLINE_FULL_NOTIFICATION_PREFIX'));
-  assert.ok(claim.indexOf('await save(s)') < claim.indexOf('OFFLINE_FULL_JOB_PREFIX'));
+  const saveIndex = claim.indexOf('await save(s);');
+  const notificationClearIndex = claim.indexOf('clearOfflineReminderKeyIfUnchanged(notificationKey, previousNotification)');
+  const jobClearIndex = claim.indexOf('clearOfflineReminderKeyIfUnchanged(jobKey, previousJob)');
+  assert.ok(saveIndex >= 0 && notificationClearIndex > saveIndex,
+    'notification reminder is cleared only after the player save commits');
+  assert.ok(saveIndex >= 0 && jobClearIndex > saveIndex,
+    'scheduled-job reminder is cleared only after the player save commits');
 });
 
 
@@ -519,7 +526,12 @@ test('rolling Shard grants fail closed on malformed daily counters and requests'
   assert.match(grant, /: FREE_SHARD_DAILY_CAP/);
   assert.match(grant, /Math\.max\(0, FREE_SHARD_DAILY_CAP - earnedToday\)/);
   assert.match(grant, /s\.freeShardsEarnedToday = earnedToday \+ granted/);
-  assert.match(grant, /Number\.isSafeInteger\(lifetimeShards\)/);
+  const shardHelperStart = shared.indexOf('function addShardsWithinSafeIntegerLimit');
+  const shardHelperEnd = shared.indexOf('\nexport function grantFreeShards', shardHelperStart);
+  assert.ok(shardHelperStart >= 0 && shardHelperEnd > shardHelperStart);
+  const shardHelper = shared.slice(shardHelperStart, shardHelperEnd);
+  assert.match(shardHelper, /Number\.isSafeInteger\(rawLifetimeShards\)/);
+  assert.match(shardHelper, /Math\.min\(Number\.MAX_SAFE_INTEGER, lifetimeShards \+ granted\)/);
 });
 
 test('roll rewards commit atomically with Guild and community progress', () => {
