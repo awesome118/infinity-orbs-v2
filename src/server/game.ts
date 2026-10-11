@@ -12,6 +12,7 @@ import {
   type PrestigeUpgradeId,
   type Orb,
   AUTO_UNLOCK_COST,
+  AUTO_BUYER_COIN_RESERVE,
   SHARD_SYNTHESIS_COST,
   PRESTIGE_UPGRADES,
   cooldownMs,
@@ -2317,7 +2318,8 @@ async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim
   }
 
   if (s.automations?.autoUpgrade === true) {
-    autoBuyCheapest(s);
+    const reserveCoins = s.prestigeUpgrades?.autoBuyer ? AUTO_BUYER_COIN_RESERVE : 0;
+    autoBuyCheapest(s, reserveCoins);
   }
 }
 
@@ -4047,7 +4049,9 @@ export async function buyUpgrade(id: UpgradeId): Promise<PlayerState> {
   });
 }
 
-export function autoBuyCheapest(s: PlayerState): boolean {
+export function autoBuyCheapest(s: PlayerState, reserveCoins = 0): boolean {
+  const reserve = Math.max(0, Math.floor(Number.isFinite(reserveCoins) ? reserveCoins : 0));
+  const spendableCoins = Math.max(0, s.coins - reserve);
   const upgradeIds: UpgradeId[] = [
     'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
     'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus'
@@ -4059,13 +4063,13 @@ export function autoBuyCheapest(s: PlayerState): boolean {
     if (id === 'auto') continue;
     const lvl = s.upgrades[id] ?? 0;
     const cost = upgradeCost(id, lvl);
-    if (cost <= s.coins && cost < lowestCost) {
+    if (cost <= spendableCoins && cost < lowestCost) {
       lowestCost = cost;
       bestId = id;
     }
   }
 
-  if (bestId && Number.isFinite(lowestCost) && s.coins >= lowestCost) {
+  if (bestId && Number.isFinite(lowestCost) && s.coins - lowestCost >= reserve) {
     s.coins -= lowestCost;
     s.upgrades[bestId] = (s.upgrades[bestId] ?? 0) + 1;
     return true;
