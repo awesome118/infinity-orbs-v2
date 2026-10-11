@@ -1846,6 +1846,8 @@ export interface ChatReportRecord {
   text: string;
   reportedAt: number;
   readAt?: number;
+  /** Pending means the durable admin record exists, but the Modmail outcome/status update may be ambiguous. */
+  status?: 'pending' | 'sent';
 }
 
 export async function listChatReports(): Promise<{ reports: ChatReportRecord[]; unreadCount: number }> {
@@ -1925,25 +1927,41 @@ async function submitChatReport(
     ...String(message.text ?? '').split(/\r?\n/).map(line => `> ${line}`),
   ].join('\n');
 
+  // Persist the report for the admin panel before the external side effect.
+  // If Modmail succeeds but its follow-up Redis write fails, the pending record
+  // remains visible and the durable hash entry prevents a duplicate report.
+  const report: ChatReportRecord = {
+    reportId: reportKey,
+    scope,
+    messageId: message.id,
+    author,
+    authorUserId: String(message.userId ?? 'unknown'),
+    reporter,
+    reporterUserId: reporterId,
+    text: String(message.text ?? ''),
+    reportedAt: Date.now(),
+    status: 'pending',
+  };
+  await redis.hSet(CHAT_REPORTS_KEY, {
+    [reportKey]: JSON.stringify(report),
+  });
+
   await reddit.modMail.createModInboxConversation({
     subredditId,
     subject: `Chat report • ${scope} • u/${author}`.slice(0, 100),
     bodyMarkdown,
   });
 
-  await redis.hSet(CHAT_REPORTS_KEY, {
-    [reportKey]: JSON.stringify({
-      reportedAt: Date.now(),
-      reporterId,
-      reporter,
-      messageId: message.id,
-      author,
-      scope,
-      authorUserId: String(message.userId ?? 'unknown'),
-      text: String(message.text ?? ''),
-      readAt: undefined,
-    }),
-  });
+  // The admin record is already durable. Treat a failed status projection as
+  // recoverable rather than telling the reporter to retry an external action
+  // that may already have succeeded.
+  try {
+    await redis.hSet(CHAT_REPORTS_KEY, {
+      [reportKey]: JSON.stringify({ ...report, status: 'sent' }),
+    });
+  } catch (error) {
+    console.error('[Chat Report] Modmail may have been sent; pending report was preserved.', error);
+  }
 
   return { success: true };
 }
