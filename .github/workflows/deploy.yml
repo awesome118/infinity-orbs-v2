@@ -1,12 +1,23 @@
 name: Deploy Devvit
 
-# Deliberately manual: pushes should not repeatedly trigger a costly deployment
-# attempt. Run this workflow only when explicitly requested in GitHub Actions.
+# Deliberately manual: pushes should not repeatedly trigger costly deployment attempts.
+# This workflow uploads and installs to BOTH the production and development subreddits.
 on:
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Must exactly match package.json version (for example 1.2.2)."
+        required: true
+        type: string
+      confirm_install:
+        description: "Explicitly authorize upload and installation to both subreddits."
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   deploy:
+    if: ${{ inputs.confirm_install }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -24,22 +35,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type-check
-        run: npm run type-check
-
-      - name: Mechanics tests
-        run: npm test
-
-      - name: Guard against invalid Devvit transaction reads
+      - name: Verify requested version
+        env:
+          REQUESTED_VERSION: ${{ inputs.release_version }}
         run: |
           set -euo pipefail
-          if grep -R -nE '\b(txn|tx)\.get\(' src; then
-            echo "Invalid Devvit transaction read detected. Use redis.get() after WATCH; TxClient.get() is a transaction builder."
+          VERSION="$(node -p "require('./package.json').version")"
+          test "$VERSION" = "$REQUESTED_VERSION" || {
+            echo "Version mismatch: package.json is $VERSION but requested $REQUESTED_VERSION."
             exit 1
-          fi
+          }
+          echo "Preparing infinity-orbs@$VERSION"
 
-      - name: Build
-        run: npm run build
+      - name: Deployment preflight
+        run: npm run preflight
 
       - name: Validate Devvit CI token
         env:
@@ -47,8 +56,8 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$DEVVIT_AUTH_TOKEN" || {
-            echo "DEVVIT_TOKEN GitHub secret is missing.";
-            exit 1;
+            echo "DEVVIT_TOKEN GitHub secret is missing."
+            exit 1
           }
           case "$DEVVIT_AUTH_TOKEN" in
             \{*) ;;
@@ -65,22 +74,33 @@ jobs:
         timeout-minutes: 10
         run: timeout --signal=TERM --kill-after=30s 9m npx devvit upload
 
-      - name: Install current build to r/infinityorbs
+      - name: Verify uploaded version
+        id: uploaded-version
         env:
-          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          REQUESTED_VERSION: ${{ inputs.release_version }}
         run: |
           set -euo pipefail
           VERSION="$(npx devvit view infinity-orbs version)"
-          echo "Installing production build infinity-orbs@${VERSION} to r/infinityorbs"
-          npx devvit install r/infinityorbs "infinity-orbs@${VERSION}"
+          test "$VERSION" = "$REQUESTED_VERSION" || {
+            echo "Uploaded Devvit version $VERSION does not match requested $REQUESTED_VERSION."
+            exit 1
+          }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install release to r/infinityorbs
+        env:
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          VERSION: ${{ steps.uploaded-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          npx devvit install r/infinityorbs "infinity-orbs@$VERSION"
           npx devvit list installs r/infinityorbs
 
-      - name: Install current build to r/infinity_orbs_dev
+      - name: Install playtest to r/infinity_orbs_dev
         env:
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          VERSION: ${{ steps.uploaded-version.outputs.version }}
         run: |
           set -euo pipefail
-          VERSION="$(npx devvit view infinity-orbs version)"
-          echo "Installing playtest build infinity-orbs@${VERSION} to r/infinity_orbs_dev"
-          npx devvit install r/infinity_orbs_dev "infinity-orbs@${VERSION}"
+          npx devvit install r/infinity_orbs_dev "infinity-orbs@$VERSION"
           npx devvit list installs r/infinity_orbs_dev
