@@ -3513,18 +3513,23 @@ export async function applyRolls(
 
 async function commitOfflineNotificationMarkerIfUnchanged(
   keyName: string,
-  pendingToken: string,
+  ownedToken: string,
 ): Promise<boolean> {
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const txn = await redis.watch(keyName);
-    const current = await redis.get(keyName);
-    if (current == null || String(current) !== pendingToken) {
-      await txn.unwatch();
-      return false;
+    try {
+      const current = await redis.get(keyName);
+      if (current == null || String(current) !== ownedToken) {
+        await txn.unwatch();
+        return false;
+      }
+      await txn.multi();
+      await txn.set(keyName, '1');
+      if (await txn.exec() !== null) return true;
+    } catch (error) {
+      await txn.unwatch().catch(() => undefined);
+      throw error;
     }
-    await txn.multi();
-    await txn.set(keyName, '1');
-    if (await txn.exec() !== null) return true;
   }
   return false;
 }
@@ -3706,7 +3711,17 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
 
   // Compare-and-set prevents a concurrent offline-roll claim from clearing the
   // sending marker and then having this request resurrect a stale receipt.
-  await commitOfflineNotificationMarkerIfUnchanged(notificationKey, sendingToken);
+  const receiptCommitted = await commitOfflineNotificationMarkerIfUnchanged(notificationKey, sendingToken);
+  if (!receiptCommitted) {
+    // The provider call succeeded, but we could not confirm the durable receipt.
+    // Do not report a confirmed send; the worker will preserve/recheck the
+    // sending lease and retry only after its ambiguity window has elapsed.
+    const currentMarker = await redis.get(notificationKey);
+    if (currentMarker !== '1') {
+      console.error('[Offline Notification] Provider accepted the attempt but the sent receipt could not be confirmed.');
+      return false;
+    }
+  }
   return true;
 }
 
