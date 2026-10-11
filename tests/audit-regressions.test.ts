@@ -707,6 +707,37 @@ test('Global Booster mutations reject malformed nested state instead of freezing
   assert.match(parser, /Number\(state\.lastTickAt\) > now \+ 60_000/);
 });
 
+test('admin Global Booster credit grants unwrap and validate player saves before receipt commits', () => {
+  const debug = source('src/server/debug.ts');
+  const parserStart = debug.indexOf('function parseAdminPlayerSave(raw: unknown)');
+  const parserEnd = debug.indexOf('function parseGlobalBoosterCreditGrantManifest', parserStart);
+  assert.ok(parserStart >= 0 && parserEnd > parserStart);
+  const parser = debug.slice(parserStart, parserEnd);
+
+  assert.match(parser, /if \(depth > 6 \|\| value == null\) return null/);
+  assert.match(parser, /return unwrap\(JSON\.parse\(value\), depth \+ 1\)/);
+  assert.match(parser, /'coins' in record &&\s*'shards' in record &&\s*'totalRolls' in record/);
+  assert.match(parser, /typeof record\.coins === 'number'[\s\S]*?Number\.isFinite\(record\.coins\)[\s\S]*?Number\.isSafeInteger\(record\.shards\)[\s\S]*?Number\.isSafeInteger\(record\.totalRolls\)/);
+  assert.match(parser, /record\.stateRevision == null[\s\S]*?Number\.isSafeInteger\(record\.stateRevision\)/);
+  assert.match(parser, /for \(const key of \['value', 'state', 'player', 'data', 'payload', 'result'\]\)/);
+  assert.match(parser, /const nested = unwrap\(record\[key\], depth \+ 1\)/);
+  assert.doesNotMatch(parser, /return parsed as Record<string, any>/);
+
+  const grantStart = debug.indexOf('async function grantGlobalBoosterCreditsToUser');
+  const grantEnd = debug.indexOf('async function appendGlobalBoosterCreditGrantLog', grantStart);
+  assert.ok(grantStart >= 0 && grantEnd > grantStart);
+  const grant = debug.slice(grantStart, grantEnd);
+  const parseIndex = grant.indexOf('state = parseAdminPlayerSave(raw)');
+  const balanceReadIndex = grant.indexOf('const rawCredits = state.globalBoosterCredits ?? 0');
+  const creditWriteIndex = grant.indexOf('state.globalBoosterCredits = after');
+  const saveIndex = grant.indexOf('await txn.set(playerKey, JSON.stringify(state))');
+  const receiptIndex = grant.indexOf('await txn.set(receiptKey, receipt)');
+  assert.ok(parseIndex >= 0 && balanceReadIndex > parseIndex);
+  assert.ok(creditWriteIndex > parseIndex && saveIndex > parseIndex && receiptIndex > parseIndex);
+  assert.ok(saveIndex > creditWriteIndex && receiptIndex > saveIndex,
+    'validated player state must be written with the idempotency receipt in the same transaction');
+});
+
 test('leaderboard projection refuses stale player-state revisions', () => {
   const social = source('src/server/social.ts');
   const start = social.indexOf('export async function recordLeaderboard');
