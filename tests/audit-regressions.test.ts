@@ -1542,7 +1542,7 @@ test('offline vault state is validated and bounded before auto-claim can process
   assert.match(settle, /offlineRollCap\(s\)/);
 
   const applyStart = game.indexOf('export async function applyRolls(');
-  const applyEnd = game.indexOf('\nfunction effectiveRollCritChance(', applyStart);
+  const applyEnd = game.indexOf('\nasync function sendOfflineFullNotification(', applyStart);
   assert.ok(applyStart >= 0 && applyEnd > applyStart);
   const apply = game.slice(applyStart, applyEnd);
   const maxCountIndex = apply.indexOf('const maxSupportedRollCount = offlineRollCap(s) * rollsPerActivation(s) + 2');
