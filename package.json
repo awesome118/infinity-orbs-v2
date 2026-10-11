@@ -14,7 +14,9 @@
     "dev:reddit": "devvit playtest",
     "login": "devvit login",
     "type-check": "tsc --noEmit -p tsconfig.client.json && tsc --noEmit -p tsconfig.server.json",
-    "deploy": "npm run type-check && npm run build && devvit upload",
+    "preflight:guard": "node scripts/predeploy-check.mjs",
+    "preflight": "npm run preflight:guard && npm run type-check && npm test && npm run build",
+    "deploy": "npm run preflight && devvit upload",
     "launch": "npm run deploy && devvit publish",
     "test": "tsx --test tests/*.test.ts"
   },
