@@ -315,10 +315,47 @@ export function spendShards(s: PlayerState, requested: number): number {
   if (!Number.isFinite(requested)) throw new Error('Invalid Shards amount.');
   const amount = Math.max(0, Math.floor(requested));
   if (!Number.isSafeInteger(amount)) throw new Error('Invalid Shards amount.');
-  if ((s.shards ?? 0) < amount) throw new Error('Not enough Shards.');
-  s.shards -= amount;
-  const paidPortion = Math.min(amount, s.purchasedShards ?? 0);
-  if (paidPortion > 0) s.purchasedShards = (s.purchasedShards ?? 0) - paidPortion;
+  const shardBalance = Number.isSafeInteger(s.shards) && s.shards >= 0 ? s.shards : 0;
+  if (shardBalance < amount) throw new Error('Not enough Shards.');
+  if (amount <= 0) return 0;
+
+  const purchasedBalance = Math.min(
+    Number.isSafeInteger(s.purchasedShards) && (s.purchasedShards ?? 0) >= 0
+      ? (s.purchasedShards ?? 0)
+      : 0,
+    shardBalance,
+  );
+  const freeBalance = Math.max(0, shardBalance - purchasedBalance);
+  const purchasedToSpend = Math.max(0, amount - Math.min(amount, freeBalance));
+  s.shards = shardBalance - amount;
+  if (purchasedToSpend <= 0) return amount;
+
+  const lots: Record<string, number> = { ...(s.purchasedShardLots ?? {}) };
+  const lotTotal = Object.values(lots).reduce(
+    (sum, raw) => sum + (Number.isSafeInteger(raw) && raw >= 0 ? raw : 0),
+    0,
+  );
+  // Preserve provenance for legacy balances that predate per-order lot tracking.
+  if (purchasedBalance > lotTotal) {
+    lots.legacy = Math.max(0, Number(lots.legacy ?? 0) || 0) + (purchasedBalance - lotTotal);
+  }
+
+  let remainingPaid = purchasedToSpend;
+  for (const orderId of Object.keys(lots)) {
+    if (remainingPaid <= 0) break;
+    const rawLot = lots[orderId];
+    const lot = Number.isSafeInteger(rawLot) && rawLot >= 0 ? rawLot : 0;
+    const used = Math.min(lot, remainingPaid);
+    if (used > 0) {
+      lots[orderId] = lot - used;
+      remainingPaid -= used;
+      if (lots[orderId] <= 0) delete lots[orderId];
+    }
+  }
+
+  const spentPaid = purchasedToSpend - remainingPaid;
+  s.purchasedShards = Math.max(0, purchasedBalance - spentPaid);
+  s.purchasedShardLots = lots;
   return amount;
 }
 export function isPremiumBoosterActive(s: PlayerState, id: PremiumBoosterId, now = Date.now()): boolean {
@@ -946,7 +983,11 @@ export interface PlayerState {
   freeShardsEarnedToday?: number;
   lastFreeShardReset?: string;
   purchasedShards?: number;
+  /** Remaining purchased Shards by payment order. Legacy saves migrate into the "legacy" lot. */
+  purchasedShardLots?: Record<string, number>;
   globalBoosterCredits?: number;
+  /** Remaining purchased Global Booster credits by payment order; non-purchased grants have no lot. */
+  globalBoosterCreditLots?: Record<string, number>;
   globalBoosters?: GlobalBoosterSnapshot;
   guildCombo?: GuildComboState;
 
@@ -1644,7 +1685,9 @@ export function createInitialState(now = Date.now()): PlayerState {
     freeShardsEarnedToday: 0,
     lastFreeShardReset: today,
     purchasedShards: 0,
+    purchasedShardLots: {},
     globalBoosterCredits: 0,
+    globalBoosterCreditLots: {},
     globalBoosters: createInitialGlobalBoosters(now),
     guildCombo: createInitialGuildCombo(now),
 

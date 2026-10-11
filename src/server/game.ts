@@ -1735,10 +1735,31 @@ function parsePaymentPlayerState(raw: unknown): PlayerState {
       const prestigeUpgrades = record.prestigeUpgrades && typeof record.prestigeUpgrades === 'object' && !Array.isArray(record.prestigeUpgrades)
         ? record.prestigeUpgrades as Record<string, unknown>
         : {};
+      const normalizedWalletShards = normalizeSafeInteger(record.shards, base.shards);
+      const normalizedPurchasedShards = Math.min(
+        normalizeSafeInteger(record.purchasedShards, base.purchasedShards ?? 0),
+        normalizedWalletShards,
+      );
+      const normalizedGlobalBoosterCredits = normalizeSafeInteger(
+        record.globalBoosterCredits,
+        base.globalBoosterCredits ?? 0,
+      );
 
       return {
         ...base,
         ...record,
+        shards: normalizedWalletShards,
+        purchasedShards: normalizedPurchasedShards,
+        purchasedShardLots: normalizeEntitlementLots(
+          record.purchasedShardLots,
+          normalizedPurchasedShards,
+          true,
+        ),
+        globalBoosterCredits: normalizedGlobalBoosterCredits,
+        globalBoosterCreditLots: normalizeEntitlementLots(
+          record.globalBoosterCreditLots,
+          normalizedGlobalBoosterCredits,
+        ),
         upgrades: { ...base.upgrades, ...upgrades },
         prestigeUpgrades: { ...base.prestigeUpgrades, ...prestigeUpgrades },
         collection: (record.collection && typeof record.collection === 'object' && !Array.isArray(record.collection))
@@ -1899,6 +1920,28 @@ return withPlayerMutationLockFor(userId, async () => {
       return false;
     }
 
+    const existingPurchasedShards = Math.min(
+      normalizeSafeInteger(state.purchasedShards, 0),
+      normalizeSafeInteger(state.shards, 0),
+    );
+    state.purchasedShards = existingPurchasedShards;
+    state.purchasedShardLots = normalizeEntitlementLots(
+      state.purchasedShardLots,
+      existingPurchasedShards,
+      true,
+    );
+    state.purchasedShardLots[orderId] =
+      normalizeSafeInteger(state.purchasedShardLots[orderId], 0) + pack.shards;
+
+    const existingCredits = normalizeSafeInteger(state.globalBoosterCredits, 0);
+    state.globalBoosterCredits = existingCredits;
+    state.globalBoosterCreditLots = normalizeEntitlementLots(
+      state.globalBoosterCreditLots,
+      existingCredits,
+    );
+    state.globalBoosterCreditLots[orderId] =
+      normalizeSafeInteger(state.globalBoosterCreditLots[orderId], 0) + pack.globalBoosterCredits;
+
     state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
     state.shards = (state.shards ?? 0) + pack.shards;
     state.purchasedShards = (state.purchasedShards ?? 0) + pack.shards;
@@ -1949,59 +1992,115 @@ return withPlayerMutationLockFor(userId, async () => {
 }
 
 export async function refundPurchasedPack(userId: string, sku: string, orderId: string): Promise<void> {
-return withPlayerMutationLockFor(userId, async () => {
-  const pack = paymentGoodsForSku(sku);
-  const pkey = playerKeyFor(userId);
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const txn = await redis.watch(pkey);
-    const raw = await redis.get(pkey);
-    if (raw == null) {
-      await txn.unwatch();
-      return;
-    }
-    const state = parsePaymentPlayerState(raw);
-    state.paymentReceipts = state.paymentReceipts ?? {};
-    const receipt = state.paymentReceipts[orderId];
-    if (!receipt) {
-      await txn.unwatch();
-      return;
-    }
-    const isFulfilled =
-      receipt === 'fulfilled' ||
-      (typeof receipt === 'object' && receipt.status === 'fulfilled');
-    if (!isFulfilled) {
-      await txn.unwatch();
-      return;
+  return withPlayerMutationLockFor(userId, async () => {
+    const pack = paymentGoodsForSku(sku);
+    const pkey = playerKeyFor(userId);
+    const generationKey = saveGenerationKeyFor(userId);
+    await ensureRedisStringKey(generationKey, '0');
+
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const txn = await redis.watch(pkey, generationKey);
+      const generationRaw = await redis.get(generationKey);
+      const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
+      const raw = await redis.get(pkey);
+      if (raw == null) {
+        await txn.unwatch();
+        return;
+      }
+      const state = parsePaymentPlayerState(raw);
+      const stateGeneration = Math.max(0, Math.floor(Number(state.saveGeneration ?? 0)) || 0);
+      if (stateGeneration !== generation) {
+        await txn.unwatch();
+        throw new Error('The payment arrived for an invalidated player save. Please reconcile the purchase again.');
+      }
+
+      state.paymentReceipts = state.paymentReceipts ?? {};
+      const receipt = state.paymentReceipts[orderId];
+      if (!receipt) {
+        await txn.unwatch();
+        return;
+      }
+      const isFulfilled =
+        receipt === 'fulfilled' ||
+        (typeof receipt === 'object' && receipt.status === 'fulfilled');
+      if (!isFulfilled) {
+        await txn.unwatch();
+        return;
+      }
+
+      const grantedShards = typeof receipt === 'string'
+        ? pack.shards
+        : normalizeSafeInteger(receipt.shards, pack.shards);
+      state.purchasedShardLots = normalizeEntitlementLots(
+        state.purchasedShardLots,
+        state.purchasedShards,
+        true,
+      );
+      const orderShardLot = normalizeSafeInteger(state.purchasedShardLots[orderId], 0);
+      const legacyShardPool = typeof receipt === 'string'
+        ? normalizeSafeInteger(state.purchasedShardLots.legacy, 0)
+        : 0;
+      const shardLotKey = orderShardLot > 0 ? orderId : 'legacy';
+      const refundableShards = Math.min(
+        grantedShards,
+        orderShardLot > 0 ? orderShardLot : legacyShardPool,
+        normalizeSafeInteger(state.purchasedShards, 0),
+        normalizeSafeInteger(state.shards, 0),
+      );
+      if (refundableShards > 0) {
+        state.shards = Math.max(0, (state.shards ?? 0) - refundableShards);
+        state.purchasedShards = Math.max(0, (state.purchasedShards ?? 0) - refundableShards);
+        state.purchasedShardLots[shardLotKey] =
+          Math.max(0, normalizeSafeInteger(state.purchasedShardLots[shardLotKey], 0) - refundableShards);
+        if (state.purchasedShardLots[shardLotKey] <= 0) delete state.purchasedShardLots[shardLotKey];
+      }
+
+      const grantedCredits = typeof receipt === 'string'
+        ? pack.globalBoosterCredits
+        : normalizeSafeInteger(receipt.globalBoosterCredits, pack.globalBoosterCredits);
+      state.globalBoosterCreditLots = normalizeEntitlementLots(
+        state.globalBoosterCreditLots,
+        state.globalBoosterCredits,
+      );
+      const orderCreditLot = normalizeSafeInteger(state.globalBoosterCreditLots[orderId], 0);
+      const legacyCreditPool = typeof receipt === 'string'
+        ? normalizeSafeInteger(state.globalBoosterCreditLots.legacy, 0)
+        : 0;
+      const creditLotKey = orderCreditLot > 0 ? orderId : 'legacy';
+      const refundableCredits = Math.min(
+        grantedCredits,
+        orderCreditLot > 0 ? orderCreditLot : legacyCreditPool,
+        normalizeSafeInteger(state.globalBoosterCredits, 0),
+      );
+      if (refundableCredits > 0) {
+        state.globalBoosterCredits = Math.max(0, (state.globalBoosterCredits ?? 0) - refundableCredits);
+        state.globalBoosterCreditLots[creditLotKey] =
+          Math.max(0, normalizeSafeInteger(state.globalBoosterCreditLots[creditLotKey], 0) - refundableCredits);
+        if (state.globalBoosterCreditLots[creditLotKey] <= 0) delete state.globalBoosterCreditLots[creditLotKey];
+      }
+
+      const currentRevision = normalizeSafeInteger(state.stateRevision, 0);
+      if (currentRevision >= Number.MAX_SAFE_INTEGER) {
+        await txn.unwatch();
+        throw new Error('Player state revision is exhausted; no refund was applied.');
+      }
+      state.saveGeneration = generation;
+      state.stateRevision = currentRevision + 1;
+      state.paymentReceipts[orderId] = {
+        status: 'refunded',
+        shards: grantedShards,
+        globalBoosterCredits: grantedCredits,
+      };
+
+      await txn.multi();
+      await txn.set(pkey, JSON.stringify(state));
+      const committed = await txn.exec();
+      if (committed !== null) return;
     }
 
-    // New receipts store the exact entitlement granted by this order. Old
-    // status-only receipts migrate using the verified SKU payload.
-    const grantedShards = typeof receipt === 'string' ? pack.shards : receipt.shards;
-    const refundableShards = Math.min(state.purchasedShards ?? 0, grantedShards);
-    state.shards = Math.max(0, (state.shards ?? 0) - refundableShards);
-    state.purchasedShards = Math.max(0, (state.purchasedShards ?? 0) - refundableShards);
-
-    const grantedCredits = typeof receipt === 'string'
-      ? pack.globalBoosterCredits
-      : Math.max(0, Number(receipt.globalBoosterCredits ?? 0) || 0);
-    const refundableCredits = Math.min(state.globalBoosterCredits ?? 0, grantedCredits);
-    state.globalBoosterCredits = Math.max(0, (state.globalBoosterCredits ?? 0) - refundableCredits);
-
-    state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
-    state.paymentReceipts[orderId] = {
-      status: 'refunded',
-      shards: grantedShards,
-      globalBoosterCredits: grantedCredits,
-    };
-    await txn.multi();
-    await txn.set(pkey, JSON.stringify(state));
-    const committed = await txn.exec();
-    if (committed !== null) return;
-  }
-  throw new Error('Could not safely process the refund.');
+    throw new Error('Could not safely process the refund.');
   });
 }
-
 export async function loadRaw(): Promise<PlayerState> {
   const userId = currentUserId();
   const playerKey = key();
@@ -2063,6 +2162,23 @@ export async function loadRaw(): Promise<PlayerState> {
 
   const base = createInitialState();
   const cleanParsed = { ...(parsed as PlayerState & Record<string, unknown>) };
+  const normalizedPurchasedShards = Math.min(
+    normalizeSafeInteger(parsed.purchasedShards, base.purchasedShards ?? 0),
+    normalizeSafeInteger(parsed.shards, base.shards),
+  );
+  const normalizedGlobalBoosterCredits = normalizeSafeInteger(
+    parsed.globalBoosterCredits,
+    base.globalBoosterCredits ?? 0,
+  );
+  const normalizedPurchasedShardLots = normalizeEntitlementLots(
+    parsed.purchasedShardLots,
+    normalizedPurchasedShards,
+    true,
+  );
+  const normalizedGlobalBoosterCreditLots = normalizeEntitlementLots(
+    parsed.globalBoosterCreditLots,
+    normalizedGlobalBoosterCredits,
+  );
   const normalizedManualRolls = Math.min(
     10,
     finiteNonNegativeInteger(
@@ -2108,7 +2224,10 @@ export async function loadRaw(): Promise<PlayerState> {
       parsed.singularityTitheSingleRolls,
       base.singularityTitheSingleRolls ?? 0,
     ),
-    globalBoosterCredits: normalizeSafeInteger(parsed.globalBoosterCredits, base.globalBoosterCredits ?? 0),
+    purchasedShards: normalizedPurchasedShards,
+    purchasedShardLots: normalizedPurchasedShardLots,
+    globalBoosterCredits: normalizedGlobalBoosterCredits,
+    globalBoosterCreditLots: normalizedGlobalBoosterCreditLots,
     activeBoosters: normalizeActiveBoosters(parsed.activeBoosters),
     automations: normalizeAutomations(parsed.automations),
     turboRollUntil: normalizeSafeInteger(parsed.turboRollUntil, base.turboRollUntil),
@@ -2810,6 +2929,35 @@ function normalizeCooldownTimestamp(value: unknown, fallback = 0): number {
   }
   // A present but malformed cooldown marker fails closed for one full cooldown.
   return Date.now();
+}
+
+function normalizeEntitlementLots(
+  value: unknown,
+  totalValue: unknown,
+  fillLegacyRemainder = false,
+): Record<string, number> {
+  const total = normalizeSafeInteger(totalValue, 0);
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+    return total > 0 ? { legacy: total } : {};
+  }
+
+  const source = value as Record<string, unknown>;
+  const normalized: Record<string, number> = {};
+  let remaining = total;
+  for (const [lotId, rawAmount] of Object.entries(source)) {
+    if (!lotId || lotId.length > 512 || typeof rawAmount !== 'number' ||
+        !Number.isSafeInteger(rawAmount) || rawAmount < 0) {
+      continue;
+    }
+    const amount = Math.min(rawAmount, remaining);
+    if (amount > 0) normalized[lotId] = amount;
+    remaining -= amount;
+    if (remaining <= 0) break;
+  }
+  if (fillLegacyRemainder && remaining > 0) {
+    normalized.legacy = Math.min(Number.MAX_SAFE_INTEGER, (normalized.legacy ?? 0) + remaining);
+  }
+  return normalized;
 }
 function addCoins(s: PlayerState, amount: number): number {
   if (!Number.isFinite(s.coins) || s.coins < 0) {
@@ -4478,6 +4626,13 @@ async function claimWorldBoosterActivation(
 }> {
   const cost = GLOBAL_BOOSTERS[id].costShards;
   const userId = currentUserId();
+  const previousShards = s.shards;
+  const previousPurchasedShards = s.purchasedShards;
+  const previousPurchasedShardLots = s.purchasedShardLots ? { ...s.purchasedShardLots } : undefined;
+  const previousGlobalBoosterCredits = s.globalBoosterCredits;
+  const previousGlobalBoosterCreditLots = s.globalBoosterCreditLots
+    ? { ...s.globalBoosterCreditLots }
+    : undefined;
 
   await appendGlobalBoosterDebugLog('player:activation-start', {
     userId,
@@ -4498,6 +4653,24 @@ async function claimWorldBoosterActivation(
     if ((creditBalance as number) <= 0) {
       throw new Error('No free Global Booster activations remain.');
     }
+    const lots = normalizeEntitlementLots(
+      s.globalBoosterCreditLots,
+      creditBalance,
+    );
+    let remaining = 1;
+    for (const orderId of Object.keys(lots)) {
+      if (remaining <= 0) break;
+      const lot = normalizeSafeInteger(lots[orderId], 0);
+      const used = Math.min(lot, remaining);
+      if (used > 0) {
+        lots[orderId] = lot - used;
+        remaining -= used;
+        if (lots[orderId] <= 0) delete lots[orderId];
+      }
+    }
+    s.globalBoosterCreditLots = lots;
+    // Any untracked remainder is a non-purchased credit (for example an admin
+    // grant); consuming it does not alter a purchase's refundable lot.
     s.globalBoosterCredits = (creditBalance as number) - 1;
   } else {
     if ((s.shards ?? 0) < cost) throw new Error('Not enough Shards for this Global Booster.');
@@ -4529,10 +4702,14 @@ async function claimWorldBoosterActivation(
       conflictMessage: 'Global Booster changed before your activation committed. Please retry.',
     });
   } catch (error) {
-    // Nothing should have committed if the atomic save failed. This rollback is
-    // in-memory only; the previous persisted player save remains authoritative.
-    if (useCredit) s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) + 1;
-    else s.shards = (s.shards ?? 0) + cost;
+    // Nothing should have committed if the atomic save failed. Restore all
+    // currency provenance as well as the visible balances; the persisted save
+    // remains authoritative until the atomic transaction succeeds.
+    s.shards = previousShards;
+    s.purchasedShards = previousPurchasedShards;
+    s.purchasedShardLots = previousPurchasedShardLots;
+    s.globalBoosterCredits = previousGlobalBoosterCredits;
+    s.globalBoosterCreditLots = previousGlobalBoosterCreditLots;
     await appendGlobalBoosterDebugLog('player:activation-failed-before-commit', {
       userId,
       id,
