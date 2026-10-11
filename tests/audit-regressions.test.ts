@@ -1579,3 +1579,41 @@ test('offline vault state is validated and bounded before auto-claim can process
   assert.ok(maxCountIndex >= 0 && sharedReadsIndex > maxCountIndex);
   assert.match(apply, /rollCount > maxSupportedRollCount/);
 });
+
+
+test('bulk Global Booster retries reuse the durable recipient manifest and operation ID', () => {
+  const debug = source('src/server/debug.ts');
+  const client = source('src/client/components/DevDebugModal.tsx');
+  assert.match(debug, /const GLOBAL_BOOSTER_CREDIT_BATCH_PREFIX = 'io:admin-global-booster-credit-batch:'/);
+
+  const manifestStart = debug.indexOf('async function getOrCreateGlobalBoosterCreditGrantManifest');
+  const manifestEnd = debug.indexOf('\nasync function ', manifestStart + 1);
+  assert.ok(manifestStart >= 0 && manifestEnd > manifestStart, 'manifest helper must exist');
+  const manifest = debug.slice(manifestStart, manifestEnd);
+  const readExisting = manifest.indexOf('const existing = await redis.get(manifestKey)');
+  const registryRead = manifest.indexOf('const players = await listRegisteredPlayerIds()');
+  assert.ok(readExisting >= 0 && registryRead > readExisting, 'existing manifest must be checked before resolving recipients');
+  assert.match(manifest, /return parseGlobalBoosterCreditGrantManifest\(existing, operationId, scope, amount\)/);
+  assert.match(manifest, /scope === 'online'[\s\S]*?players\.filter\(player => player\.active\)/);
+  assert.match(manifest, /userIds: selectedPlayers\.map/);
+  assert.match(manifest, /await redis\.watch\(manifestKey\)/);
+  assert.match(manifest, /await txn\.set\(manifestKey, JSON\.stringify\(manifest\)\)/);
+  assert.match(manifest, /await txn\.exec\(\) !== null/);
+
+  const routeStart = debug.indexOf("debugRouter.post('/global-booster-credits/grant'");
+  const routeEnd = debug.indexOf("debugRouter.get('/follow-reward'", routeStart);
+  assert.ok(routeStart >= 0 && routeEnd > routeStart, 'bulk grant route must exist');
+  const route = debug.slice(routeStart, routeEnd);
+  assert.match(route, /getOrCreateGlobalBoosterCreditGrantManifest\(\s*operationId,\s*scope,\s*amount/);
+  assert.match(route, /const targetPlayers = manifest\.userIds/);
+  assert.doesNotMatch(route, /const players = await listRegisteredPlayerIds\(\)/, 'retry must not resolve a fresh recipient list');
+
+  const uiStart = client.indexOf('const grantFreeGlobalBoosters = async');
+  const uiEnd = client.indexOf('const loadGlobalBoosterActivationLog', uiStart);
+  assert.ok(uiStart >= 0 && uiEnd > uiStart, 'admin grant handler must exist');
+  const ui = client.slice(uiStart, uiEnd);
+  assert.match(ui, /globalBoosterGrantOperationRef\.current = operation/);
+  assert.match(ui, /operationId: operation\.operationId/);
+  assert.match(ui, /Completed grants will not be duplicated/);
+  assert.match(ui, /sessionStorage\.setItem\(GLOBAL_BOOSTER_GRANT_PENDING_STORAGE_KEY/);
+});
