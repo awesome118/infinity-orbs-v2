@@ -1401,7 +1401,7 @@ function assertSafeProgressionNumbers(label: string, goal: unknown, progress: un
   const maxProgress = Number.MAX_SAFE_INTEGER - 1;
   if (
     !Number.isSafeInteger(goal) || Number(goal) < 1 ||
-    Number(goal) > Number.MAX_SAFE_INTEGER - 1 ||
+    Number(goal) > Number.MAX_SAFE_INTEGER ||
     !Number.isSafeInteger(progress) || Number(progress) < 0 ||
     Number(progress) > maxProgress ||
     !Number.isSafeInteger(tier) || Number(tier) < 1 ||
