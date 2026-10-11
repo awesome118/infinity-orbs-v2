@@ -1497,3 +1497,25 @@ test('Frenzy uses the same critical chance and conditional coin/Shard modifiers 
   assert.match(frenzy, /grantRollShards\(s, rarityShards \+ procShards \+ transmutationShardProcs\)/);
   assert.match(frenzy, /s\.highestDryStreak = Math\.max\(s\.highestDryStreak \?\? 0, s\.rollsSinceBest\)/);
 });
+
+
+test('feature gate map covers all intended gated API routes and avoids gating online presence', () => {
+  const app = source('src/server/app.ts');
+  const start = app.indexOf('const featureForPath = (path: string): FeatureId | null =>');
+  const end = app.indexOf('\n  };', start) + 5;
+  assert.ok(start >= 0 && end > start, 'featureForPath mapping must exist');
+  const map = app.slice(start, end);
+
+  assert.match(map, /path === '\/streak\/claim'\) return 'quests'/);
+  assert.match(map, /path === '\/global-boosters\/activate'/);
+  assert.match(map, /path === '\/cosmetics\/buy'\) return 'prestige'/);
+  assert.match(map, /path === '\/turbo\/activate'\) return 'upgrades'/);
+  assert.match(map, /path === '\/leaderboards'/);
+  assert.match(map, /path === '\/community\/reward\/claim'\s*\)\s*return 'boosters'/);
+  assert.ok(
+    map.indexOf("path === '/community/reward/claim'") <
+      map.indexOf("path.startsWith('/community/')"),
+    'specific Community Reward claim must be mapped before the broad Social prefix',
+  );
+  assert.doesNotMatch(map, /path === '\/online'/);
+});
