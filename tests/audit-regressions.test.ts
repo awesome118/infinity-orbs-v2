@@ -1366,3 +1366,20 @@ test('applyRolls preflights lifetime roll-counter capacity before shared reads a
   assert.match(guard, /!Number\.isSafeInteger\(rollCount\)/);
   assert.match(guard, /rollCount > Number\.MAX_SAFE_INTEGER - s\.totalRolls/);
 });
+
+
+test('achievement claim cannot exceed bounded Coin accounting', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('export async function claimAchievement');
+  const end = social.indexOf('\nexport function shareText', start);
+  assert.ok(start >= 0 && end > start, 'claimAchievement function must exist');
+  const claim = social.slice(start, end);
+
+  assert.match(claim, /typeof state\.coins !== 'number'/);
+  assert.match(claim, /!Number\.isFinite\(state\.coins\)/);
+  assert.match(claim, /Number\.MAX_SAFE_INTEGER - currentCoins/);
+  assert.match(claim, /state\.coins = currentCoins \+ rewardCoins/);
+  assert.match(claim, /state\.lifetimeCoins = Math\.min\(Number\.MAX_SAFE_INTEGER, lifetimeCoins \+ rewardCoins\)/);
+  assert.match(claim, /return \{ state, rewardCoins, rewardShards \}/);
+  assert.doesNotMatch(claim, /state\.coins\s*\+=\s*achievement\.rewardCoins/);
+});
