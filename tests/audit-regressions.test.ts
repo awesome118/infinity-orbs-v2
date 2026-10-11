@@ -211,6 +211,26 @@ test('community event rejects infinite and non-terminating progression values', 
   assert.ok(helperStart >= 0 && helperEnd > helperStart, 'shared progression guard must exist');
   const helper = social.slice(helperStart, helperEnd);
   assert.match(helper, /Number\.isSafeInteger\(nextGoal\)/);
+
+  // The persisted-event validator deliberately caps goals at MAX_SAFE_INTEGER - 1.
+  // This fixture reaches MAX_SAFE_INTEGER exactly when multiplied by the tier factor,
+  // exposing the one-step mismatch between generation and subsequent parsing.
+  const schemaStart = social.indexOf('function assertValidCommunityEvent(');
+  const schemaEnd = social.indexOf('\nfunction parseCommunityEventForMutation', schemaStart);
+  assert.ok(schemaStart >= 0 && schemaEnd > schemaStart, 'persisted-event schema guard must exist');
+  const schema = social.slice(schemaStart, schemaEnd);
+  assert.match(schema, /event\.goal > Number\.MAX_SAFE_INTEGER - 1/);
+
+  const boundaryGoal = 4_094_181_479_427_723;
+  const boundaryNextGoal = Math.round(boundaryGoal * 2.2);
+  assert.equal(boundaryNextGoal, Number.MAX_SAFE_INTEGER, 'reproducer must hit the rejected ceiling');
+  assert.ok(boundaryNextGoal > Number.MAX_SAFE_INTEGER - 1);
+
+  assert.match(
+    helper,
+    /nextGoal\s*(?:>=\s*Number\.MAX_SAFE_INTEGER|>\s*Number\.MAX_SAFE_INTEGER\s*-\s*1)/,
+    'generated next goals must obey the exact ceiling accepted by persisted-event validation',
+  );
   assert.match(helper, /nextGoal <= goal/);
   assert.match(helper, /tier >= Number\.MAX_SAFE_INTEGER/);
 
