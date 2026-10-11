@@ -75,13 +75,13 @@ jobs:
               ;;
           esac
 
-      - name: Upload to Devvit
+      - name: Upload exact requested version to Devvit
         env:
           CI: true
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          REQUESTED_VERSION: ${{ inputs.release_version }}
         timeout-minutes: 10
-        run: timeout --signal=TERM --kill-after=30s 9m npx devvit upload
-
+        run: timeout --signal=TERM --kill-after=30s 9m npx devvit upload --version "$REQUESTED_VERSION"
       - name: Verify uploaded version
         id: uploaded-version
         env:
