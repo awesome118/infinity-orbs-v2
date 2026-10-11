@@ -228,3 +228,19 @@ test('Frenzy handoff rejects malformed persisted expiry types', () => {
   assert.match(reader, /Number\.isSafeInteger\(expiresAt\)/);
   assert.doesNotMatch(reader, /Number\(data\?\.expiresAt/);
 });
+
+
+test('Celestial Auto-Buyer preserves its 50-Coin reserve when enabled', () => {
+  const game = source('src/server/game.ts');
+  const shared = source('src/shared/game.ts');
+  assert.match(shared, /export const AUTO_BUYER_COIN_RESERVE = 50/);
+  assert.match(shared, /keeping a 50-Coin reserve/);
+  assert.match(game, /const reserveCoins = s\.prestigeUpgrades\?\.autoBuyer \? AUTO_BUYER_COIN_RESERVE : 0/);
+  const start = game.indexOf('export function autoBuyCheapest');
+  const end = game.indexOf('\n}', start);
+  assert.ok(start >= 0 && end > start, 'Auto-Buyer helper must exist');
+  const helper = game.slice(start, end);
+  assert.match(helper, /const spendableCoins = Math\.max\(0, s\.coins - reserve\)/);
+  assert.match(helper, /cost <= spendableCoins/);
+  assert.match(helper, /s\.coins - lowestCost >= reserve/);
+});
