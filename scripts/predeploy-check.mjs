@@ -43,6 +43,51 @@ if (pkg && devvit && devvit.name !== pkg.name) {
   reportFailure(`Devvit app name (${String(devvit.name)}) does not match package name (${pkg.name}).`);
 }
 
+// Treat the Devvit manifest as a release contract, not just valid JSON.
+// The build may not fail when an entrypoint/trigger/scheduler/permission is
+// accidentally removed, so fail before any upload if a required value drifts.
+function requireManifestValue(label, actual, expected) {
+  if (actual !== expected) {
+    reportFailure(`devvit.json ${label} must be ${JSON.stringify(expected)}; found ${JSON.stringify(actual)}.`);
+  }
+}
+
+if (devvit) {
+  requireManifestValue("post.dir", devvit.post?.dir, "dist/client");
+  const entrypoints = devvit.post?.entrypoints;
+  if (!entrypoints || typeof entrypoints !== "object" || Array.isArray(entrypoints)) {
+    reportFailure("devvit.json post.entrypoints must define default, game, and frenzy entrypoints.");
+  } else {
+    requireManifestValue("post.entrypoints.default.entry", entrypoints.default?.entry, "splash.html");
+    requireManifestValue("post.entrypoints.default.inline", entrypoints.default?.inline, true);
+    requireManifestValue("post.entrypoints.game.entry", entrypoints.game?.entry, "game.html");
+    requireManifestValue("post.entrypoints.frenzy.entry", entrypoints.frenzy?.entry, "frenzy.html");
+    requireManifestValue("post.entrypoints.frenzy.height", entrypoints.frenzy?.height, "tall");
+  }
+
+  requireManifestValue("server.dir", devvit.server?.dir, "dist/server");
+  requireManifestValue("server.entry", devvit.server?.entry, "index.cjs");
+  requireManifestValue("permissions.redis", devvit.permissions?.redis, true);
+  requireManifestValue("permissions.payments", devvit.permissions?.payments, false);
+  requireManifestValue("triggers.onAppInstall", devvit.triggers?.onAppInstall, "/internal/on-app-install");
+  requireManifestValue(
+    "scheduler.tasks.offline-orbs-full.endpoint",
+    devvit.scheduler?.tasks?.["offline-orbs-full"]?.endpoint,
+    "/internal/scheduler/offline-orbs-full",
+  );
+
+  const menuItems = Array.isArray(devvit.menu?.items) ? devvit.menu.items : [];
+  const createPostItem = menuItems.find(item =>
+    item && typeof item === "object" && item.endpoint === "/internal/menu/post-create"
+  );
+  if (!createPostItem) {
+    reportFailure("devvit.json menu.items must include the moderator Create a new post action at /internal/menu/post-create.");
+  } else {
+    requireManifestValue("menu.items[/internal/menu/post-create].location", createPostItem.location, "subreddit");
+    requireManifestValue("menu.items[/internal/menu/post-create].forUserType", createPostItem.forUserType, "moderator");
+  }
+}
+
 const sourceRoot = resolve("src");
 const sourceExtensions = new Set([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"]);
 const forbidden = /\b(?:txn|tx)\.get\(/;
