@@ -5032,6 +5032,9 @@ export async function startOrbFrenzy(options: {
       expiration: new Date(expiresAt + FRENZY_POST_RECEIPT_RETENTION_MS),
       conflictMessage: 'Frenzy post ID is already registered; no player state was saved.',
     };
+    // Set only after a successful read proves the atomic receipt is absent. This
+    // gates compensating deletion if every safe save attempt fails.
+    let confirmedUncommittedPost = false;
     try {
       await save(s, frenzyReceiptWrite);
     } catch (saveError) {
@@ -5064,6 +5067,10 @@ export async function startOrbFrenzy(options: {
             console.error('[Rarity Flair] Background update failed after Frenzy save reconciliation:', error);
           });
         } else {
+          // A successful read confirms no atomic player-state/post receipt commit.
+          // If the safe retry also fails, this post has no valid game record and
+          // must be compensated instead of remaining as an unclaimable public post.
+          confirmedUncommittedPost = true;
           // Retry the identical mutation only if the player's generation and
           // revision have not moved. Never rebase rewards or roll state onto a
           // newer save, and never retry after a wipe.
@@ -5086,8 +5093,34 @@ export async function startOrbFrenzy(options: {
             throw saveError;
           }
           await save(s, frenzyReceiptWrite);
+          confirmedUncommittedPost = false;
         }
       } catch (recoveryError) {
+        if (confirmedUncommittedPost) {
+          try {
+            // Recheck receipt immediately before compensation: a retry may have
+            // committed despite throwing, in which case deleting the public post
+            // would break a valid game transaction.
+            const finalReceipt = await redis.get(frenzyPostKey);
+            if (finalReceipt == null) {
+              const postDeleter = post as unknown as { delete?: () => Promise<void> };
+              if (typeof postDeleter.delete !== 'function') {
+                throw new Error('Reddit post object does not expose delete(); manual cleanup may be required.');
+              }
+              await postDeleter.delete();
+              console.error('[Frenzy Start] Deleted a public post whose player state/receipt could not be committed.', {
+                postId,
+                userId: currentUserId(),
+              });
+            }
+          } catch (cleanupError) {
+            console.error('[Frenzy Start] Could not delete uncommitted public post; manual cleanup may be required.', {
+              postId,
+              userId: currentUserId(),
+              cleanupError,
+            });
+          }
+        }
         if (recoveryError !== saveError) {
           console.error('[Frenzy Start] Could not reconcile post/save outcome:', recoveryError);
         }
