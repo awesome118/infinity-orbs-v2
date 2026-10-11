@@ -1639,7 +1639,7 @@ function normalizeLevelRecord<T extends object>(
   defaults: T,
   limits: Record<string, number>,
 ): T {
-  const normalized: Record<string, unknown> = { ...defaults };
+  const normalized: Record<string, unknown> = Object.fromEntries(Object.entries(defaults));
   if (isRecordObject(value)) {
     for (const key of Object.keys(normalized)) {
       const candidate = value[key];
@@ -5918,7 +5918,7 @@ export async function claimOrbFrenzy(options: {
   // Handoff cleanup is temporary metadata (60-second TTL), not part of claim
   // settlement. Its failure must not turn a committed claim into an API error.
   if (handoff && handoff.postId === postId) {
-    await redis.del(frenzyHandoffKey(claimantId)).catch(error => {
+    await redis.del(frenzyHandoffKey(claimantId)).catch((error: unknown) => {
       console.error('[Frenzy Claim] Handoff cleanup failed after durable claim:', error);
     });
   }
