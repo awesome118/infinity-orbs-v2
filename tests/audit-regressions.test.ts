@@ -205,19 +205,30 @@ test('community event rejects infinite and non-terminating progression values', 
   assert.match(social, /Number\.isFinite\(config\.buffMultiplier\)/);
   assert.match(social, /Number\.isSafeInteger\(amount\)/);
   assert.match(social, /assertSafeProgressionNumbers\('Community event'/);
-  const addStart = social.indexOf('export async function addCommunityRolls');
-  const addEnd = social.indexOf('export async function setCommunityEventConfig', addStart);
-  assert.ok(addStart >= 0 && addEnd > addStart);
-  const add = social.slice(addStart, addEnd);
-  assert.match(add, /await txn\.unwatch\(\)/);
-  assert.match(add, /Number\.MAX_SAFE_INTEGER/);
+
+  const helperStart = social.indexOf('function nextCommunityMilestoneProgression(');
+  const helperEnd = social.indexOf('\nexport async function prepareCommunityRolls', helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart, 'shared progression guard must exist');
+  const helper = social.slice(helperStart, helperEnd);
+  assert.match(helper, /Number\.isSafeInteger\(nextGoal\)/);
+  assert.match(helper, /nextGoal <= goal/);
+  assert.match(helper, /tier >= Number\.MAX_SAFE_INTEGER/);
 
   const prepStart = social.indexOf('export async function prepareCommunityRolls');
   const prepEnd = social.indexOf('export async function addCommunityRolls', prepStart);
   assert.ok(prepStart >= 0 && prepEnd > prepStart);
   const prepare = social.slice(prepStart, prepEnd);
+  assert.match(prepare, /nextCommunityMilestoneProgression\(ev\.goal, ev\.tier/);
   assert.match(prepare, /ev\.currentProgress = Math\.min\(Number\.MAX_SAFE_INTEGER - 1, ev\.currentProgress \+ amount\)/);
-  assert.doesNotMatch(prepare, /ev\.currentProgress \+= amount/);
+  assert.doesNotMatch(prepare, /ev\.goal = Number\.MAX_SAFE_INTEGER/);
+
+  const configStart = social.indexOf('export async function setCommunityEventConfig');
+  const configEnd = social.indexOf('const GLOBAL_CHAT_KEY', configStart);
+  assert.ok(configStart >= 0 && configEnd > configStart);
+  const config = social.slice(configStart, configEnd);
+  assert.match(config, /nextCommunityMilestoneProgression\(ev\.goal, ev\.tier/);
+  assert.match(config, /catch \(error\) \{\s*await txn\.unwatch\(\);\s*throw error;\s*\}/);
+  assert.doesNotMatch(config, /ev\.goal = Number\.MAX_SAFE_INTEGER/);
 });
 
 test('chat side effects use per-user atomic cooldowns and real newlines', () => {
@@ -302,14 +313,14 @@ test('Daily Streak community progression rejects invalid loop state', () => {
   assert.match(social, /function validateDailyStreakCommunityEvent/);
   assert.match(social, /Daily Streak community data is corrupted/);
   assert.match(social, /Daily Streak contribution must be a finite safe integer/);
-  const start = social.indexOf('export async function addDailyStreakCommunityProgress');
-  const end = social.indexOf('function unlocked', start);
+  const start = social.indexOf('export async function prepareDailyStreakCommunityProgress');
+  const end = social.indexOf('export async function addDailyStreakCommunityProgress', start);
   assert.ok(start >= 0 && end > start);
-  const add = social.slice(start, end);
-  assert.match(add, /Number\.isSafeInteger\(contribution\)/);
-  assert.match(add, /validateDailyStreakCommunityEvent\(event\)/);
-  assert.match(add, /Number\.MAX_SAFE_INTEGER/);
-  assert.doesNotMatch(add, /parseStoredJson<DailyStreakCommunityEvent>\(raw\) \?\? createInitialDailyStreakCommunity/);
+  const prepare = social.slice(start, end);
+  assert.match(prepare, /Number\.isSafeInteger\(contribution\)/);
+  assert.match(prepare, /validateDailyStreakCommunityEvent\(event\)/);
+  assert.match(prepare, /nextCommunityMilestoneProgression\(event\.goal, event\.tier/);
+  assert.doesNotMatch(prepare, /event\.goal = Number\.MAX_SAFE_INTEGER/);
 });
 
 
