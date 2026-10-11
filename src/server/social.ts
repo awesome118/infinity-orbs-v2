@@ -221,7 +221,7 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
   }
 }
 
-function parseGuildList(raw: unknown): Guild[] {
+function parseGuildListRaw(raw: unknown): Guild[] {
   if (raw == null) return [];
   const parsed = parseStoredJson<unknown>(raw);
   if (!Array.isArray(parsed)) {
@@ -250,7 +250,11 @@ function parseGuildList(raw: unknown): Guild[] {
     }
     validateGuildNestedState(item as Record<string, unknown>);
   }
-  return normalizeGuilds(parsed as Guild[]);
+  return parsed as Guild[];
+}
+
+function parseGuildList(raw: unknown): Guild[] {
+  return normalizeGuilds(parseGuildListRaw(raw));
 }
 
 function parseLeaderboardList(raw: unknown): LeaderboardEntry[] {
@@ -535,10 +539,15 @@ async function loadGuilds(): Promise<Guild[]> {
     for (let attempt = 0; attempt < 4; attempt++) {
       const txn = await redis.watch(GUILDS_KEY);
       const latestRaw = await redis.get(GUILDS_KEY);
-      const latestParsed = parseStoredJson<unknown>(latestRaw);
-      const latestRawGuilds = Array.isArray(latestParsed)
-        ? latestParsed.filter(item => item && typeof item === 'object') as Guild[]
-        : [];
+      let latestRawGuilds: Guild[];
+      try {
+        // Validate the watched snapshot with the same parser as ordinary Guild
+        // reads. Filtering malformed rows here could silently delete Guild data.
+        latestRawGuilds = parseGuildListRaw(latestRaw);
+      } catch (error) {
+        await txn.unwatch();
+        throw error;
+      }
       const latest = normalizeGuilds(latestRawGuilds);
       const latestExpired = latestRawGuilds.some(g => {
         const tier = Math.max(0, Math.floor(Number(g.combo?.tier ?? 0) || 0));
