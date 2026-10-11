@@ -2118,6 +2118,16 @@ export function App() {
         </div>
       )}
 
+      {/* Persistent live region announces transient toast messages to assistive technology. */}
+      <div
+        className="sr-only"
+        role={toast?.type === 'warn' ? 'alert' : 'status'}
+        aria-live={toast?.type === 'warn' ? 'assertive' : 'polite'}
+        aria-atomic="true"
+      >
+        {toast?.msg ?? ''}
+      </div>
+
       {/* Ephemeral Toast Banner */}
       {toast && (
         <div className="fixed bottom-5 right-5 z-50 animate-in slide-in-from-bottom-5 duration-300">
