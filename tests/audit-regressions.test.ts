@@ -1529,7 +1529,8 @@ test('offline vault state is validated and bounded before auto-claim can process
   assert.ok(parserStart >= 0 && parserEnd > parserStart);
   const parser = game.slice(parserStart, parserEnd);
   assert.match(parser, /Number\.isSafeInteger\(record\.offlineRolls\)/);
-  assert.match(parser, /Number\(record\.offlineRolls\) <= MAX_OFFLINE_ROLLS/);
+  assert.match(parser, /Number\(record\.offlineRolls\) >= 0/);
+  assert.doesNotMatch(parser, /offlineRolls\) <= MAX_OFFLINE_ROLLS/);
 
   const settleStart = game.indexOf('export async function settleOffline(');
   const settleEnd = game.indexOf('\nexport interface CollectionPageItem', settleStart);
