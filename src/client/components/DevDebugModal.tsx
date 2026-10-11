@@ -1656,6 +1656,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             rollsSinceBest: 0,
             lastRollAt: 0,
             lastSeenAt: Date.now(),
+            // Reset the rolling Shard budget for independent mechanic cases.
+            lastFreeShardReset: '2020-01-01',
             onlinePlayers: 1,
             turboRollUntil: 0,
             autoRollEnabled: false,
