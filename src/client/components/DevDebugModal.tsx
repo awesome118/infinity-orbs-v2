@@ -1264,8 +1264,10 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       let lastError: Error | null = null;
       for (let attempt = 0; attempt < 4; attempt += 1) {
         try {
-          const ticket = await request<{ ticketId: string; nextIndex: number }>('/api/roll-ticket');
+          // Resetting cooldown deliberately clears the old prediction ticket.
+          // Acquire the fresh ticket only after this state mutation commits.
           await request('/api/dev/reset-cooldown', {});
+          const ticket = await request<{ ticketId: string; nextIndex: number }>('/api/roll-ticket');
           return await request<RollResponse>('/api/roll', {
             auto,
             ticketId: ticket.ticketId,
@@ -1642,7 +1644,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             coins: 100_000,
             shards: 50,
             cosmicDust: 0,
-            xp: 0,
+            // Feature-gated tests need a level high enough for Turbo and Collection APIs.
+            xp: 100_000,
             totalRolls: 0,
             totalCrits: 0,
             highestRarity: 0,
@@ -1754,16 +1757,31 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           async () => {
             await setMechanicState({ sonarPing: 1 });
             sound.setSonarMode(false);
-            const rollNav = Array.from(document.querySelectorAll('button.nav-tab'))
-              .find(el => el.textContent?.trim() === 'Roll') as HTMLButtonElement | undefined;
-            if (!rollNav) throw new Error('Roll navigation control was not found.');
-            rollNav.click();
-            await new Promise(resolve => setTimeout(resolve, 50));
+            sound.setSonarThreshold(100);
             await onRefresh();
-            await new Promise(resolve => setTimeout(resolve, 150));
-            const button = Array.from(document.querySelectorAll('button'))
-              .find(el => (el as HTMLButtonElement).title === 'Silent Mode: Mutes standard rolls and alerts with a crystal chime on rare drops') as HTMLButtonElement | undefined;
-            if (!button) throw new Error('Sonar control did not unlock after prestige state was applied.');
+
+            // Force a RollSection remount so its local Sonar toggle state follows
+            // the sound singleton reset even when the test began on the Roll tab.
+            const navButtons = () => Array.from(document.querySelectorAll('button.nav-tab'));
+            const socialNav = navButtons().find(el => el.textContent?.includes('Guilds & Social')) as HTMLButtonElement | undefined;
+            const rollNav = navButtons().find(el => el.textContent?.trim() === 'Roll') as HTMLButtonElement | undefined;
+            if (!rollNav) throw new Error('Roll navigation control was not found.');
+            if (socialNav) {
+              socialNav.click();
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            rollNav.click();
+            await onRefresh();
+
+            const deadline = Date.now() + 2_000;
+            let button: HTMLButtonElement | undefined;
+            while (Date.now() < deadline) {
+              button = Array.from(document.querySelectorAll('button'))
+                .find(el => (el as HTMLButtonElement).title === 'Silent Mode: Mutes standard rolls and alerts with a crystal chime on rare drops') as HTMLButtonElement | undefined;
+              if (button) break;
+              await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            if (!button) throw new Error('Sonar control did not unlock after prestige state was applied (prestige=' + JSON.stringify((await request<any>('/api/me')).prestigeUpgrades?.sonarPing) + ').');
             button.click();
             await new Promise(resolve => setTimeout(resolve, 100));
             if (!sound.sonarMode || !button.textContent?.includes('SILENT')) throw new Error('Sonar control did not enable Silent Mode.');
@@ -1775,11 +1793,18 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         await step(
           'Mechanic · Sonar Ping Rare Trigger',
           async () => {
+            sound.setSonarThreshold(100);
+            sound.setSonarMode(true);
             const forced = await request<any>('/api/dev/force-roll', { rarity: 100, randomValue: 0.999999 });
             onForceRollResult?.(forced);
-            await new Promise(resolve => setTimeout(resolve, 75));
-            const pulse = document.querySelector('[class*="border-cyan-400/90"]');
-            if (!pulse) throw new Error('Rare roll did not trigger the Sonar Ping visual pulse.');
+            const deadline = Date.now() + 1_000;
+            let pulse: Element | null = null;
+            while (Date.now() < deadline) {
+              pulse = document.querySelector('[class*="border-cyan-400/90"]');
+              if (pulse) break;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            if (!pulse) throw new Error('Rare roll did not trigger Sonar pulse (mode=' + sound.sonarMode + ', threshold=' + sound.sonarThreshold + ', rarity=' + String(forced.orb?.rarity) + ').');
             sound.setSonarMode(false);
             return forced;
           },
@@ -2395,6 +2420,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'API · Duplicate chat report rejected',
         async () => {
+          // The previous report consumes both the chat and report cooldowns.
+          // Wait them out so this test reaches duplicate-report handling itself.
+          await new Promise(resolve => setTimeout(resolve, 5_200));
           const message = await request<any>('/api/chat', { text: '[ADMIN TEST] duplicate-report check' });
           await request('/api/chat/report', { messageId: message.id });
           let rejected = false;
@@ -2579,17 +2607,24 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Collection state sanitizes zero and negative counts",
         async () => {
-          const result = await request<any>('/api/dev/state', { collection: { '2': 3, '3': 0, '4': -5, '5': 2 } });
-          const collection = recordValue(result.state?.collection);
-          if (Number(collection['2']) !== 3 || Number(collection['5']) !== 2) {
-            throw new Error('Valid collection counts were not preserved.');
+          // Player-state API responses intentionally strip the full collection payload;
+          // verify the persisted result through the paginated collection endpoint.
+          await request<any>('/api/dev/state', {
+            xp: 100_000,
+            collection: { '2': 3, '3': 0, '4': -5, '5': 2 },
+          });
+          const result = await request<any>('/api/collection?offset=0&limit=100&tier=all&sort=rarity_desc');
+          const items = Array.isArray(result.items) ? result.items as Array<{ rarity: number; count: number }> : [];
+          const count = (rarity: number) => Number(items.find(item => Number(item.rarity) === rarity)?.count ?? 0);
+          if (count(2) !== 3 || count(5) !== 2) {
+            throw new Error('Valid collection counts were not preserved by persisted collection endpoint (2=' + count(2) + ', 5=' + count(5) + ').');
           }
-          if (Number(collection['3'] ?? 0) !== 0 || Number(collection['4'] ?? 0) !== 0) {
-            throw new Error('Zero/negative collection counts were retained: 3=' + collection['3'] + ', 4=' + collection['4'] + '.');
+          if (count(3) !== 0 || count(4) !== 0) {
+            throw new Error('Zero/negative collection counts were retained (3=' + count(3) + ', 4=' + count(4) + ').');
           }
-          return collection;
+          return { two: count(2), five: count(5) };
         },
-        value => 'kept=' + Object.keys(value).join(','),
+        value => 'kept 2=' + value.two + ', 5=' + value.five + ' · zero/negative entries omitted',
       );
 
       await step(
@@ -2655,7 +2690,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Force-roll persists collection entry",
         async () => {
-          await request<any>('/api/dev/state', { collection: {}, highestRarity: 0, collectionValue: 0 });
+          await request<any>('/api/dev/state', { xp: 100_000, collection: {}, highestRarity: 0, collectionValue: 0 });
           await request<any>('/api/dev/force-roll', { rarity: 777, randomValue: 0.999999 });
           const collection = await request<any>('/api/collection?offset=0&limit=100&tier=all&sort=rarity_desc');
           const item = Array.isArray(collection.items)
