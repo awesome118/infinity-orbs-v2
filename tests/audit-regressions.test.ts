@@ -665,7 +665,7 @@ test('player saves watch and validate active distributed lease tokens before EXE
   const game = source('src/server/game.ts');
   const lock = source('src/server/player-lock.ts');
   assert.match(lock, /const activeMutationTokens = new Map<string, string>/);
-  assert.match(lock, /export function getActivePlayerMutationLock/);
+  assert.match(lock, /export const getActivePlayerMutationLock = defaultLockRuntime\\.getActivePlayerMutationLock/);
   const start = game.indexOf('export async function save(');
   const end = game.indexOf('function serverRandom', start);
   assert.ok(start >= 0 && end > start);
