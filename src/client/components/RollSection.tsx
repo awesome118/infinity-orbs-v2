@@ -89,6 +89,17 @@ export const RollSection: React.FC<RollSectionProps> = ({
 }) => {
   const [showBatchDetails, setShowBatchDetails] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [reducedMotion, setReducedMotion] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updatePreference = (event: MediaQueryListEvent) => setReducedMotion(event.matches);
+    setReducedMotion(media.matches);
+    media.addEventListener('change', updatePreference);
+    return () => media.removeEventListener('change', updatePreference);
+  }, []);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 250);
@@ -135,6 +146,10 @@ export const RollSection: React.FC<RollSectionProps> = ({
     if (!batchSummary || previousBatchSummaryRef.current === batchSummary) return;
     previousBatchSummaryRef.current = batchSummary;
 
+    if (reducedMotion) {
+      setRewardBurstActive(false);
+      return;
+    }
     const shouldAnimate =
       !autoRoll ||
       Boolean(lastOrb?.isCrit) ||
@@ -146,7 +161,11 @@ export const RollSection: React.FC<RollSectionProps> = ({
     setRewardBurstActive(true);
     const timer = window.setTimeout(() => setRewardBurstActive(false), 1100);
     return () => window.clearTimeout(timer);
-  }, [batchSummary, autoRoll, lastOrb]);
+  }, [batchSummary, autoRoll, lastOrb, reducedMotion]);
+
+  useEffect(() => {
+    if (reducedMotion) setRewardBurstActive(false);
+  }, [reducedMotion]);
 
   // The main Roll button always uses the manual-roll cooldown; Auto Roll timing is tracked by the server response.
   const cd = cooldownMs(state, false);
@@ -163,37 +182,40 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const tiersReached = visibleTiers.filter(tier => (state.highestRarity || 0) >= tier.minRarity).length;
   const nextTier = visibleTiers.find(tier => (state.highestRarity || 0) < tier.minRarity);
 
-  // Smooth or instant reveal on new roll
+  // Smooth or instant reveal on new roll, respecting the live OS motion preference.
   useEffect(() => {
     if (!lastOrb) return;
-    if (prevOrbRef.current === lastOrb) return;
+    if (prevOrbRef.current === lastOrb) {
+      if (reducedMotion) {
+        setIsRevealing(false);
+        setIsShaking(false);
+        setSonarPinging(false);
+      }
+      return;
+    }
     prevOrbRef.current = lastOrb;
 
     let revealTimer: number | null = null;
-    if (!hasInstantUpgrade || !instantRevealActive) {
+    let shakeTimer: number | null = null;
+    if (!reducedMotion && (!hasInstantUpgrade || !instantRevealActive)) {
       setIsRevealing(true);
-      revealTimer = window.setTimeout(() => {
-        setIsRevealing(false);
-      }, 400);
+      revealTimer = window.setTimeout(() => setIsRevealing(false), 400);
     } else {
       setIsRevealing(false);
     }
 
-    // Screen shake on rare drop
-    if (lastOrb.rarity >= 1000) {
+    if (lastOrb.rarity >= 1000 && !reducedMotion) {
       setIsShaking(true);
-      const shakeTimer = window.setTimeout(() => setIsShaking(false), 450);
-      // Keep the timer local to this effect cleanup below.
-      void shakeTimer;
+      shakeTimer = window.setTimeout(() => setIsShaking(false), 450);
+    } else {
+      setIsShaking(false);
     }
 
-    // Audio & celebratory fanfare (throttled to avoid stutter at high speeds)
     const nowTs = Date.now();
     const isSilentSonar = hasSonarUpgrade && sound.sonarMode;
     let sonarTimer: number | null = null;
 
     if (isSilentSonar) {
-      // In Celestial Sonar Silent Mode: only ping on rare orbs!
       if (lastOrb.rarity >= sound.sonarThreshold) {
         sound.playSonarPing(lastOrb.rarity);
         setSonarPinging(true);
@@ -203,21 +225,25 @@ export const RollSection: React.FC<RollSectionProps> = ({
       if (lastOrb.rarity >= 100_000 && nowTs - lastFanfareTimeRef.current > 1200) {
         lastFanfareTimeRef.current = nowTs;
         sound.playMythicFanfare();
-        confetti({
-          particleCount: 120,
-          spread: 80,
-          origin: { y: 0.6 },
-          colors: ['#a855f7', '#ec4899', '#38bdf8', '#fbbf24'],
-        });
+        if (!reducedMotion) {
+          confetti({
+            particleCount: 120,
+            spread: 80,
+            origin: { y: 0.6 },
+            colors: ['#a855f7', '#ec4899', '#38bdf8', '#fbbf24'],
+          });
+        }
       } else if (lastOrb.rarity >= 1_000 && nowTs - lastFanfareTimeRef.current > 800) {
         lastFanfareTimeRef.current = nowTs;
         sound.playEpicFanfare();
-        confetti({
-          particleCount: 50,
-          spread: 50,
-          origin: { y: 0.6 },
-          colors: ['#fb923c', '#4ade80', '#38bdf8'],
-        });
+        if (!reducedMotion) {
+          confetti({
+            particleCount: 50,
+            spread: 50,
+            origin: { y: 0.6 },
+            colors: ['#fb923c', '#4ade80', '#38bdf8'],
+          });
+        }
       } else {
         sound.playRollNormal();
       }
@@ -225,9 +251,10 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
     return () => {
       if (revealTimer !== null) window.clearTimeout(revealTimer);
+      if (shakeTimer !== null) window.clearTimeout(shakeTimer);
       if (sonarTimer !== null) window.clearTimeout(sonarTimer);
     };
-  }, [lastOrb, hasSonarUpgrade, instantRevealActive, hasInstantUpgrade]);
+  }, [lastOrb, hasSonarUpgrade, instantRevealActive, hasInstantUpgrade, reducedMotion]);
 
   const displayOrb = lastOrb;
   const orbInfo = displayOrb ? getOrbInfo(displayOrb.rarity) : null;
