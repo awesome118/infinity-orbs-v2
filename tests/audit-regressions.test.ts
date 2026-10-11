@@ -1340,10 +1340,11 @@ test('bulk Global Booster grants resume by idempotency receipt and report partia
   assert.match(modal, /globalBoosterGrantOperationRef\.current = null/);
 });
 
+
 test('applyRolls preflights lifetime roll-counter capacity before shared reads and per-orb mutation', () => {
   const game = source('src/server/game.ts');
   const start = game.indexOf('export async function applyRolls(');
-  const end = game.indexOf('\\nexport async function ', start + 1);
+  const end = game.indexOf('\nexport async function ', start + 1);
   assert.ok(start >= 0 && end > start, 'applyRolls function must exist');
   const applyRolls = game.slice(start, end);
 
@@ -1358,10 +1359,10 @@ test('applyRolls preflights lifetime roll-counter capacity before shared reads a
   assert.ok(incrementIndex > loopIndex, 'lifetime counter increments only inside the guarded loop');
 
   const guardStart = applyRolls.lastIndexOf('if (', errorIndex);
-  const guardEnd = applyRolls.indexOf('\\n  }', errorIndex);
+  const guardEnd = applyRolls.indexOf('\n  }', errorIndex);
   assert.ok(guardStart >= 0 && guardEnd > guardStart, 'counter guard block must be complete');
   const guard = applyRolls.slice(guardStart, guardEnd);
-  assert.match(guard, /!Number\\.isSafeInteger\\(s\\.totalRolls\\)/);
-  assert.match(guard, /!Number\\.isSafeInteger\\(rollCount\\)/);
-  assert.match(guard, /rollCount > Number\\.MAX_SAFE_INTEGER - s\\.totalRolls/);
+  assert.match(guard, /!Number\.isSafeInteger\(s\.totalRolls\)/);
+  assert.match(guard, /!Number\.isSafeInteger\(rollCount\)/);
+  assert.match(guard, /rollCount > Number\.MAX_SAFE_INTEGER - s\.totalRolls/);
 });
