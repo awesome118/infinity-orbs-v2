@@ -231,11 +231,335 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
   }
 }
 
+
+function isGuildPlaytestRecoveryEnabled(): boolean {
+  const subreddit = String(context.subredditName ?? '')
+    .trim()
+    .replace(/^r\//i, '')
+    .toLowerCase();
+  return subreddit === 'infinity_orbs_dev';
+}
+
+function isSafeGuildInteger(value: unknown, minimum = 0): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= minimum;
+}
+
+function inspectGuildRecordForDiagnostics(item: unknown, index: number, now = Date.now()): string[] {
+  const issues: string[] = [];
+  if (!isRecordValue(item)) {
+    return ['Guild record #' + (index + 1) + ': expected an object, got ' + (item === null ? 'null' : typeof item) + '.'];
+  }
+
+  const id = typeof item.id === 'string' && item.id.trim() ? item.id.trim() : 'record #' + (index + 1);
+  const report = (field: string, message: string) => issues.push('Guild ' + id + ': ' + field + ' ' + message);
+  if (typeof item.id !== 'string' || !item.id.trim()) report('guild.id', 'must be a non-empty string.');
+  if (typeof item.name !== 'string' || !item.name.trim()) report('guild.name', 'must be a non-empty string.');
+  if (typeof item.tag !== 'string' || !item.tag.trim()) report('guild.tag', 'must be a non-empty string.');
+  if (!isSafeGuildInteger(item.level, 1)) report('guild.level', 'must be a safe integer >= 1 (found ' + String(item.level) + ').');
+  if (typeof item.xp !== 'number' || !Number.isFinite(item.xp) || item.xp < 0) {
+    report('guild.xp', 'must be finite and >= 0 (found ' + String(item.xp) + ').');
+  } else if (!Number.isSafeInteger(item.xp)) {
+    report('guild.xp', 'is fractional or above the safe-integer limit and will be capped/floored in playtest recovery (found ' + String(item.xp) + ').');
+  }
+  if (!isSafeGuildInteger(item.tokens, 0)) report('guild.tokens', 'must be a safe integer >= 0 (found ' + String(item.tokens) + ').');
+  if (item.createdAt != null && !isSafeGuildInteger(item.createdAt, 0)) report('guild.createdAt', 'must be a safe non-negative integer.');
+  if (!Array.isArray(item.members)) {
+    report('guild.members', 'must be an array.');
+  } else {
+    item.members.forEach((member: unknown, memberIndex: number) => {
+      const base = 'guild.members[' + memberIndex + ']';
+      if (!isRecordValue(member)) {
+        report(base, 'must be an object.');
+        return;
+      }
+      if (typeof member.username !== 'string' || !member.username.trim()) report(base + '.username', 'must be a non-empty string.');
+      if (!['owner', 'officer', 'member'].includes(String(member.role))) report(base + '.role', 'must be owner, officer, or member (found ' + String(member.role) + ').');
+      if (!isSafeGuildInteger(member.contribution, 0)) report(base + '.contribution', 'must be a safe non-negative integer.');
+      if (member.userId != null && typeof member.userId !== 'string') report(base + '.userId', 'must be a string when present.');
+      if (member.trusted != null && typeof member.trusted !== 'boolean') report(base + '.trusted', 'must be a boolean when present.');
+      if (member.joinedAt != null && !isSafeGuildInteger(member.joinedAt, 0)) report(base + '.joinedAt', 'must be a safe non-negative integer when present.');
+      if (member.lastLoginAt != null && !isSafeGuildInteger(member.lastLoginAt, 0)) report(base + '.lastLoginAt', 'must be a safe non-negative integer when present.');
+    });
+  }
+
+  if (item.challenge != null) {
+    const challenge = item.challenge;
+    if (!isRecordValue(challenge)) {
+      report('guild.challenge', 'must be an object when present.');
+    } else {
+      if (!['rolls', 'value', 'rare'].includes(String(challenge.type))) report('guild.challenge.type', 'must be rolls, value, or rare.');
+      if (!isSafeGuildInteger(challenge.target, 1)) report('guild.challenge.target', 'must be a safe integer >= 1.');
+      if (!isSafeGuildInteger(challenge.progress, 0)) report('guild.challenge.progress', 'must be a safe non-negative integer.');
+      if (!isSafeGuildInteger(challenge.reward, 1)) report('guild.challenge.reward', 'must be a safe integer >= 1.');
+      if (typeof challenge.label !== 'string' || !challenge.label.trim()) report('guild.challenge.label', 'must be a non-empty string.');
+    }
+  }
+
+  if (item.perks != null) {
+    const perkCaps: Record<string, number> = {
+      luckRank: 10, speedRank: 10, vaultRank: 10, shardRank: 10,
+      critRank: 10, coinRank: 10, memberCapacityRank: 40,
+      tokenYieldRank: 20, taskBountyRank: 20, comboRank: 10, guildXpRank: 20,
+    };
+    if (!isRecordValue(item.perks)) {
+      report('guild.perks', 'must be an object when present.');
+    } else {
+      for (const [field, cap] of Object.entries(perkCaps)) {
+        const value = item.perks[field];
+        if (value != null && (!isSafeGuildInteger(value, 0) || Number(value) > cap)) {
+          report('guild.perks.' + field, 'must be a safe integer between 0 and ' + cap + '.');
+        }
+      }
+    }
+  }
+
+  if (item.combo != null) {
+    if (!isRecordValue(item.combo)) {
+      report('guild.combo', 'must be an object when present.');
+    } else {
+      for (const field of ['tier', 'activationProgress', 'endsAt', 'lastTickAt']) {
+        const value = item.combo[field];
+        if (value != null && !isSafeGuildInteger(value, 0)) report('guild.combo.' + field, 'must be a safe non-negative integer.');
+      }
+      if (item.combo.tier != null && Number(item.combo.tier) > 10) report('guild.combo.tier', 'cannot exceed 10.');
+      if (item.combo.activationProgress != null && Number(item.combo.activationProgress) > 3) report('guild.combo.activationProgress', 'cannot exceed 3.');
+    }
+  }
+
+  if (item.tasks != null) {
+    if (!Array.isArray(item.tasks)) {
+      report('guild.tasks', 'must be an array when present.');
+    } else if (item.tasks.length >= 3) {
+      item.tasks.slice(0, 3).forEach((task: unknown, taskIndex: number) => {
+        const base = 'guild.tasks[' + taskIndex + ']';
+        if (!isRecordValue(task)) {
+          report(base, 'must be an object.');
+          return;
+        }
+        if (task.id != null && typeof task.id !== 'string') report(base + '.id', 'must be a string when present.');
+        if (task.label != null && typeof task.label !== 'string') report(base + '.label', 'must be a string when present.');
+        for (const field of ['tier', 'target', 'progress', 'reward', 'guildXpReward']) {
+          const value = task[field];
+          if (value == null) continue;
+          const minimum = field === 'progress' ? 0 : 1;
+          if (!isSafeGuildInteger(value, minimum)) report(base + '.' + field, 'must be a safe integer >= ' + minimum + '.');
+        }
+      });
+    }
+  }
+
+  if (item.chat != null) {
+    if (!Array.isArray(item.chat)) {
+      report('guild.chat', 'must be an array when present.');
+    } else {
+      item.chat.forEach((message: unknown, messageIndex: number) => {
+        const base = 'guild.chat[' + messageIndex + ']';
+        if (!isRecordValue(message)) {
+          report(base, 'must be an object.');
+          return;
+        }
+        if (typeof message.id !== 'string' || !message.id.trim()) report(base + '.id', 'must be a non-empty string.');
+        if (typeof message.username !== 'string' || !message.username.trim()) report(base + '.username', 'must be a non-empty string.');
+        if (typeof message.text !== 'string' || !message.text.trim()) report(base + '.text', 'must be a non-empty string.');
+        if (!isSafeGuildInteger(message.timestamp, 0)) report(base + '.timestamp', 'must be a safe non-negative integer.');
+        if (message.userId != null && typeof message.userId !== 'string') report(base + '.userId', 'must be a string when present.');
+        if (message.isSystem != null && typeof message.isSystem !== 'boolean') report(base + '.isSystem', 'must be a boolean when present.');
+      });
+    }
+  }
+
+  if (item.boss != null && item.bossWeek === weekKey(now)) {
+    const boss = item.boss;
+    if (!isRecordValue(boss)) {
+      report('guild.boss', 'must be an object for the current week.');
+    } else {
+      if (typeof boss.id !== 'string' || !boss.id.trim()) report('guild.boss.id', 'must be a non-empty string.');
+      if (typeof boss.name !== 'string' || !boss.name.trim()) report('guild.boss.name', 'must be a non-empty string.');
+      if (!isSafeGuildInteger(boss.tier, 1) || Number(boss.tier) > 10) report('guild.boss.tier', 'must be a safe integer from 1 to 10.');
+      if (typeof boss.maxHp !== 'number' || !Number.isFinite(boss.maxHp) || boss.maxHp <= 0) report('guild.boss.maxHp', 'must be finite and > 0.');
+      if (typeof boss.currentHp !== 'number' || !Number.isFinite(boss.currentHp) || boss.currentHp < 0 || Number(boss.currentHp) > Number(boss.maxHp)) report('guild.boss.currentHp', 'must be finite and between 0 and maxHp.');
+      if (typeof boss.defeated !== 'boolean') report('guild.boss.defeated', 'must be a boolean.');
+      if (!isRecordValue(boss.contributors)) {
+        report('guild.boss.contributors', 'must be an object.');
+      } else {
+        for (const [contributor, value] of Object.entries(boss.contributors)) {
+          if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) report('guild.boss.contributors.' + contributor, 'must be finite and non-negative.');
+        }
+      }
+    }
+  }
+  return issues;
+}
+
+function recoverGuildRecordForPlaytest(guild: Record<string, any>, index: number): Guild {
+  const clampInt = (value: unknown, minimum: number, maximum: number, fallback: number): number => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+    return Math.min(maximum, Math.max(minimum, Math.floor(value)));
+  };
+  const nonEmptyString = (value: unknown, fallback: string): string =>
+    typeof value === 'string' && value.trim() ? value.trim() : fallback;
+
+  guild.id = nonEmptyString(guild.id, 'recovered-guild-' + (index + 1));
+  guild.name = nonEmptyString(guild.name, 'Recovered Guild ' + (index + 1));
+  guild.tag = nonEmptyString(guild.tag, 'REC' + (index + 1));
+  guild.level = clampInt(guild.level, 1, 1_000_000, 1);
+  guild.xp = clampInt(guild.xp, 0, Number.MAX_SAFE_INTEGER, 0);
+  guild.tokens = clampInt(guild.tokens, 0, Number.MAX_SAFE_INTEGER, 0);
+  if (!isSafeGuildInteger(guild.createdAt, 0)) guild.createdAt = Date.now();
+
+  const roles = ['owner', 'officer', 'member'];
+  const rawMembers = Array.isArray(guild.members) ? guild.members : [];
+  guild.members = rawMembers.filter(isRecordValue).map((member: Record<string, any>, memberIndex: number) => {
+    const role = roles.includes(String(member.role)) ? String(member.role) : 'member';
+    return {
+      ...member,
+      username: nonEmptyString(member.username, 'recovered-member-' + (memberIndex + 1)),
+      role,
+      contribution: clampInt(member.contribution, 0, Number.MAX_SAFE_INTEGER, 0),
+      userId: typeof member.userId === 'string' ? member.userId : undefined,
+      trusted: typeof member.trusted === 'boolean' ? member.trusted : role === 'owner',
+      joinedAt: isSafeGuildInteger(member.joinedAt, 0) ? member.joinedAt : undefined,
+      lastLoginAt: isSafeGuildInteger(member.lastLoginAt, 0) ? member.lastLoginAt : undefined,
+    };
+  });
+
+  const challenge = guild.challenge;
+  if (!isRecordValue(challenge) || !['rolls', 'value', 'rare'].includes(String(challenge.type))) {
+    delete guild.challenge;
+  } else {
+    const target = clampInt(challenge.target, 1, Number.MAX_SAFE_INTEGER, 1);
+    guild.challenge = {
+      type: challenge.type,
+      target,
+      progress: Math.min(target, clampInt(challenge.progress, 0, Number.MAX_SAFE_INTEGER, 0)),
+      reward: clampInt(challenge.reward, 1, Number.MAX_SAFE_INTEGER, 1),
+      label: nonEmptyString(challenge.label, 'Recovered Guild challenge'),
+    };
+  }
+
+  const perkCaps: Record<string, number> = {
+    luckRank: 10, speedRank: 10, vaultRank: 10, shardRank: 10,
+    critRank: 10, coinRank: 10, memberCapacityRank: 40,
+    tokenYieldRank: 20, taskBountyRank: 20, comboRank: 10, guildXpRank: 20,
+  };
+  if (!isRecordValue(guild.perks)) {
+    delete guild.perks;
+  } else {
+    for (const [field, cap] of Object.entries(perkCaps)) {
+      if (guild.perks[field] != null) guild.perks[field] = clampInt(guild.perks[field], 0, cap, 0);
+    }
+  }
+
+  if (!isRecordValue(guild.combo)) {
+    delete guild.combo;
+  } else {
+    guild.combo.tier = clampInt(guild.combo.tier, 0, 10, 0);
+    guild.combo.activationProgress = clampInt(guild.combo.activationProgress, 0, 3, 0);
+    guild.combo.endsAt = clampInt(guild.combo.endsAt, 0, Number.MAX_SAFE_INTEGER, 0);
+    guild.combo.lastTickAt = clampInt(guild.combo.lastTickAt, 0, Number.MAX_SAFE_INTEGER, 0);
+  }
+
+  if (!Array.isArray(guild.tasks)) {
+    guild.tasks = [];
+  } else {
+    guild.tasks = guild.tasks.filter(isRecordValue).map((task: Record<string, any>, taskIndex: number) => {
+      const fallbackType = generatedFallbackTaskType(taskIndex);
+      const type = ['rolls', 'value', 'rare'].includes(String(task.type)) ? task.type : fallbackType;
+      const target = clampInt(task.target, 1, Number.MAX_SAFE_INTEGER, 1);
+      return {
+        ...task,
+        id: nonEmptyString(task.id, 'recovered-task-' + (taskIndex + 1)),
+        type,
+        tier: clampInt(task.tier, 1, 1_000_000, 1),
+        target,
+        progress: Math.min(target, clampInt(task.progress, 0, Number.MAX_SAFE_INTEGER, 0)),
+        reward: clampInt(task.reward, 1, Number.MAX_SAFE_INTEGER, 1),
+        guildXpReward: clampInt(task.guildXpReward, 1, Number.MAX_SAFE_INTEGER, 1),
+        label: nonEmptyString(task.label, 'Recovered task ' + (taskIndex + 1)),
+      };
+    });
+  }
+
+  if (Array.isArray(guild.chat)) {
+    guild.chat = guild.chat.filter((message: unknown) =>
+      isRecordValue(message) &&
+      typeof message.id === 'string' && !!message.id.trim() &&
+      typeof message.username === 'string' && !!message.username.trim() &&
+      typeof message.text === 'string' && !!message.text.trim() &&
+      isSafeGuildInteger(message.timestamp, 0) &&
+      (message.userId == null || typeof message.userId === 'string') &&
+      (message.isSystem == null || typeof message.isSystem === 'boolean'),
+    );
+  } else {
+    delete guild.chat;
+  }
+
+  const boss = guild.boss;
+  if (!isRecordValue(boss) ||
+      typeof boss.id !== 'string' || !boss.id.trim() ||
+      typeof boss.name !== 'string' || !boss.name.trim() ||
+      !isSafeGuildInteger(boss.tier, 1) || Number(boss.tier) > 10 ||
+      typeof boss.maxHp !== 'number' || !Number.isFinite(boss.maxHp) || boss.maxHp <= 0 ||
+      typeof boss.currentHp !== 'number' || !Number.isFinite(boss.currentHp) ||
+      boss.currentHp < 0 || boss.currentHp > boss.maxHp ||
+      typeof boss.defeated !== 'boolean' ||
+      !isRecordValue(boss.contributors) ||
+      !Object.values(boss.contributors).every(value => typeof value === 'number' && Number.isFinite(value) && value >= 0)) {
+    delete guild.boss;
+    delete guild.bossWeek;
+  }
+  return guild as unknown as Guild;
+}
+
+export async function getGuildStateDiagnostics(): Promise<{
+  subreddit: string | null;
+  guildCount: number;
+  issueCount: number;
+  issues: string[];
+  generatedAt: number;
+  report: string;
+}> {
+  const raw = await redis.get(GUILDS_KEY);
+  const parsed = parseStoredJson<unknown>(raw);
+  const issues: string[] = [];
+  let guildCount = 0;
+  if (raw == null) {
+    // Missing collection is a valid first-run state.
+  } else if (!Array.isArray(parsed)) {
+    issues.push('Redis key ' + GUILDS_KEY + ': expected a JSON array of Guilds; found ' + (typeof parsed === 'string' ? 'unparseable JSON' : typeof parsed) + '.');
+  } else {
+    guildCount = parsed.length;
+    parsed.forEach((item, index) => issues.push(...inspectGuildRecordForDiagnostics(item, index)));
+  }
+
+  const header = [
+    'Infinity Orbs playtest Guild diagnostics',
+    'Subreddit: r/' + String(context.subredditName ?? 'unknown').replace(/^r\//i, ''),
+    'Guild records inspected: ' + guildCount,
+    'Issues found: ' + issues.length,
+    'Generated: ' + new Date().toISOString(),
+    '',
+  ];
+  const report = issues.length > 0
+    ? [...header, ...issues.map((issue, index) => (index + 1) + '. ' + issue)].join('\n')
+    : [...header, 'No malformed Guild fields were found in the stored Guild collection.'].join('\n');
+  return { subreddit: context.subredditName ?? null, guildCount, issueCount: issues.length, issues, generatedAt: Date.now(), report };
+}
+
 function parseGuildListRaw(raw: unknown): Guild[] {
   if (raw == null) return [];
   const parsed = parseStoredJson<unknown>(raw);
   if (!Array.isArray(parsed)) {
+    if (isGuildPlaytestRecoveryEnabled()) return [];
     throw new Error('Guild data is corrupted; refusing to replace it.');
+  }
+  if (isGuildPlaytestRecoveryEnabled()) {
+    // Playtest only: collect original validation failures in /api/dev/guild-diagnostics,
+    // then recover an in-memory shape so other independent failures can surface.
+    // Production remains strictly fail-closed.
+    return parsed
+      .filter(isRecordValue)
+      .map((item, index) => recoverGuildRecordForPlaytest(item, index));
   }
   for (const item of parsed) {
     if (
