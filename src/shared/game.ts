@@ -102,8 +102,17 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
 };
 
 export function masterySkillCost(id: MasterySkillId, currentLevel: number): number {
-  const mult = MASTERY_SKILLS[id]?.costMultiplier ?? 1;
-  return Math.max(1, Math.round(mult * (1 + currentLevel * 1.5)));
+  if (typeof id !== 'string' || !Object.prototype.hasOwnProperty.call(MASTERY_SKILLS, id)) {
+    throw new Error('Unknown mastery skill.');
+  }
+  if (!Number.isSafeInteger(currentLevel) || currentLevel < 0) {
+    throw new Error('Mastery skill level is invalid.');
+  }
+  const cost = Math.round(MASTERY_SKILLS[id].costMultiplier * (1 + currentLevel * 1.5));
+  if (!Number.isSafeInteger(cost) || cost < 1) {
+    throw new Error('Mastery skill cost is invalid.');
+  }
+  return cost;
 }
 
 export type PremiumBoosterId =
