@@ -1559,7 +1559,10 @@ function nextCommunityMilestoneProgression(
   tier: number,
   label: string,
 ): { goal: number; tier: number } {
-  if (!Number.isSafeInteger(goal) || goal < 1 || !Number.isSafeInteger(tier) || tier < 1 || tier >= Number.MAX_SAFE_INTEGER) {
+  // The next tier must remain <= MAX_SAFE_INTEGER - 1, the supported
+  // progression ceiling. Returning MAX_SAFE_INTEGER here would persist an
+  // event that the subsequent validation/read path cannot safely accept.
+  if (!Number.isSafeInteger(goal) || goal < 1 || !Number.isSafeInteger(tier) || tier < 1 || tier >= Number.MAX_SAFE_INTEGER - 1) {
     throw new Error(`${label} milestone cannot advance safely; no progress was saved.`);
   }
   const nextGoal = Math.round(goal * 2.2);
@@ -1673,8 +1676,14 @@ export async function setCommunityEventConfig(config: {
       try {
         parsedEvent = parseCommunityEventForMutation(raw);
       } catch (error) {
-        await txn.unwatch();
-        throw error;
+        if (!config.reset) {
+          await txn.unwatch();
+          throw error;
+        }
+        // An explicit authenticated admin reset is the repair path for a
+        // malformed event. Keep WATCH active so the replacement only commits
+        // if the corrupt snapshot has not changed since it was read.
+        console.error('[Community Event] Admin reset replacing malformed event data.', error);
       }
     }
     const ev: WorldEvent = parsedEvent ?? { ...COMMUNITY_WORLD_EVENT };

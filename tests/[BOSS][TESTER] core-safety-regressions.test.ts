@@ -585,3 +585,34 @@ test('admin chat report panel distinguishes pending Modmail from confirmed sends
   assert.match(admin, /Modmail outcome uncertain · check Modmail/);
   assert.match(admin, /report\.status === 'sent'/);
 });
+
+
+test('World Event admin reset can replace malformed persisted data', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('export async function setCommunityEventConfig(');
+  const end = social.indexOf('\nconst GLOBAL_CHAT_KEY', start);
+  assert.ok(start >= 0 && end > start, 'admin World Event mutation must exist');
+  const config = social.slice(start, end);
+  const readBlockStart = config.indexOf('parsedEvent = parseCommunityEventForMutation(raw)');
+  const readBlockEnd = config.indexOf('const ev: WorldEvent', readBlockStart);
+  assert.ok(readBlockStart >= 0 && readBlockEnd > readBlockStart);
+  const readBlock = config.slice(readBlockStart, readBlockEnd);
+  assert.match(readBlock, /if \(!config\.reset\) \{\s*await txn\.unwatch\(\);\s*throw error;/);
+  assert.match(readBlock, /Admin reset replacing malformed event data/);
+  assert.match(config, /if \(config\.reset\) \{[\s\S]*?ev\.currentProgress = 0;[\s\S]*?ev\.tier = 1;/);
+  assert.match(config, /const txn = await redis\.watch\(COMMUNITY_EVENT_KEY\)/);
+});
+
+
+test('World Event progression rejects a next tier at the unsupported safe-integer ceiling', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('function nextCommunityMilestoneProgression(');
+  const end = social.indexOf('\nexport async function prepareCommunityRolls', start);
+  assert.ok(start >= 0 && end > start);
+  const progression = social.slice(start, end);
+  assert.match(progression, /tier >= Number\.MAX_SAFE_INTEGER - 1/);
+  const configStart = social.indexOf('export async function setCommunityEventConfig(');
+  const configEnd = social.indexOf('\nconst GLOBAL_CHAT_KEY', configStart);
+  const config = social.slice(configStart, configEnd);
+  assert.match(config, /nextCommunityMilestoneProgression\(ev\.goal, ev\.tier \|\| 1, 'Community event'\)/);
+});
