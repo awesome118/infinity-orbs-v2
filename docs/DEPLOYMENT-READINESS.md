@@ -36,9 +36,9 @@ The local CLI deployment path uploads the app version and should install the can
 ```sh
 npm run preflight
 npx devvit whoami
-npx devvit upload
-
 EXPECTED_VERSION="$(node -p "require('./package.json').version")"
+npx devvit upload --version "$EXPECTED_VERSION"
+
 UPLOADED_VERSION="$(npx devvit view infinity-orbs version)"
 test "$UPLOADED_VERSION" = "$EXPECTED_VERSION"
 
