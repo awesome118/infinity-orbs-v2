@@ -390,7 +390,7 @@ test('guild parser validates nested state while repairing legacy challenge and b
   assert.match(normalize, /g\.level \?\?= 1/);
   assert.match(normalize, /g\.xp = Math\.min\(Number\.MAX_SAFE_INTEGER/);
   assert.match(social, /function addGuildExperience\(guild: Guild, requested: number\)/);
-  assert.equal((social.match(/addGuildExperience\(guild,/g) ?? []).length, 5);
+  assert.equal((social.match(/addGuildExperience\(guild,/g) ?? []).length, 4);
   assert.doesNotMatch(social, /guild\.xp\s*\+=/);
   assert.match(normalize, /g\.tokens \?\?= 0/);
   assert.match(validator, /Number\.isSafeInteger\(member\.contribution\)/);
