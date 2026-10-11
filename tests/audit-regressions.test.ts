@@ -211,6 +211,26 @@ test('community event rejects infinite and non-terminating progression values', 
   assert.ok(helperStart >= 0 && helperEnd > helperStart, 'shared progression guard must exist');
   const helper = social.slice(helperStart, helperEnd);
   assert.match(helper, /Number\.isSafeInteger\(nextGoal\)/);
+
+  // The persisted-event validator deliberately caps goals at MAX_SAFE_INTEGER - 1.
+  // This fixture reaches MAX_SAFE_INTEGER exactly when multiplied by the tier factor,
+  // exposing the one-step mismatch between generation and subsequent parsing.
+  const schemaStart = social.indexOf('function assertValidCommunityEvent(');
+  const schemaEnd = social.indexOf('\nfunction parseCommunityEventForMutation', schemaStart);
+  assert.ok(schemaStart >= 0 && schemaEnd > schemaStart, 'persisted-event schema guard must exist');
+  const schema = social.slice(schemaStart, schemaEnd);
+  assert.match(schema, /event\.goal > Number\.MAX_SAFE_INTEGER - 1/);
+
+  const boundaryGoal = 4_094_181_479_427_723;
+  const boundaryNextGoal = Math.round(boundaryGoal * 2.2);
+  assert.equal(boundaryNextGoal, Number.MAX_SAFE_INTEGER, 'reproducer must hit the rejected ceiling');
+  assert.ok(boundaryNextGoal > Number.MAX_SAFE_INTEGER - 1);
+
+  assert.match(
+    helper,
+    /nextGoal\s*(?:>=\s*Number\.MAX_SAFE_INTEGER|>\s*Number\.MAX_SAFE_INTEGER\s*-\s*1)/,
+    'generated next goals must obey the exact ceiling accepted by persisted-event validation',
+  );
   assert.match(helper, /nextGoal <= goal/);
   assert.match(helper, /tier >= Number\.MAX_SAFE_INTEGER/);
 
@@ -240,6 +260,7 @@ test('community event rejects infinite and non-terminating progression values', 
   );
   assert.doesNotMatch(config, /ev\.goal = Number\.MAX_SAFE_INTEGER/);
 });
+
 
 test('chat side effects use per-user atomic cooldowns and real newlines', () => {
   const social = source('src/server/social.ts');
@@ -707,6 +728,46 @@ test('Global Booster mutations reject malformed nested state instead of freezing
   assert.match(parser, /Number\(state\.lastTickAt\) > now \+ 60_000/);
 });
 
+test('admin Global Booster credit grants unwrap and validate player saves before receipt commits', () => {
+  const debug = source('src/server/debug.ts');
+  const parserStart = debug.indexOf('function parseAdminPlayerSave(raw: unknown)');
+  const parserEnd = debug.indexOf('function parseGlobalBoosterCreditGrantManifest', parserStart);
+  assert.ok(parserStart >= 0 && parserEnd > parserStart);
+  const parser = debug.slice(parserStart, parserEnd);
+
+  assert.match(parser, /if \(depth > 6 \|\| value == null\) return null/);
+  assert.match(parser, /return unwrap\(JSON\.parse\(value\), depth \+ 1\)/);
+  assert.match(parser, /'coins' in record &&\s*'shards' in record &&\s*'totalRolls' in record/);
+  assert.match(parser, /typeof record\.coins === 'number'[\s\S]*?Number\.isFinite\(record\.coins\)[\s\S]*?Number\.isSafeInteger\(record\.shards\)[\s\S]*?Number\.isSafeInteger\(record\.totalRolls\)/);
+  assert.match(parser, /record\.stateRevision == null[\s\S]*?Number\.isSafeInteger\(record\.stateRevision\)/);
+  assert.match(parser, /for \(const key of \['value', 'state', 'player', 'data', 'payload', 'result'\]\)/);
+  assert.match(parser, /const nested = unwrap\(record\[key\], depth \+ 1\)/);
+  assert.doesNotMatch(parser, /return parsed as Record<string, any>/);
+
+  const grantStart = debug.indexOf('async function grantGlobalBoosterCreditsToUser');
+  const grantEnd = debug.indexOf('async function appendGlobalBoosterCreditGrantLog', grantStart);
+  assert.ok(grantStart >= 0 && grantEnd > grantStart);
+  const grant = debug.slice(grantStart, grantEnd);
+  const parseIndex = grant.indexOf('state = parseAdminPlayerSave(raw)');
+  const balanceReadIndex = grant.indexOf('const rawCredits = state.globalBoosterCredits ?? 0');
+  const creditWriteIndex = grant.indexOf('state.globalBoosterCredits = after');
+  const saveIndex = grant.indexOf('await txn.set(playerKey, JSON.stringify(state))');
+  const receiptIndex = grant.indexOf('await txn.set(receiptKey, receipt)');
+  const absentSaveBranch = grant.indexOf('if (raw == null) {');
+  const absentSaveGenerationWrite = grant.indexOf('state.saveGeneration = generation', absentSaveBranch);
+  const absentSaveRevisionWrite = grant.indexOf('state.stateRevision = 0', absentSaveGenerationWrite);
+  const generationMismatchGuard = grant.indexOf('if (storedGeneration !== generation)');
+  assert.ok(absentSaveBranch > parseIndex);
+  assert.ok(absentSaveGenerationWrite > absentSaveBranch);
+  assert.ok(absentSaveRevisionWrite > absentSaveGenerationWrite);
+  assert.ok(generationMismatchGuard > absentSaveRevisionWrite,
+    'an absent save must adopt the watched generation before generation mismatch validation');
+  assert.ok(parseIndex >= 0 && balanceReadIndex > parseIndex);
+  assert.ok(creditWriteIndex > parseIndex && saveIndex > parseIndex && receiptIndex > parseIndex);
+  assert.ok(saveIndex > creditWriteIndex && receiptIndex > saveIndex,
+    'validated player state must be written with the idempotency receipt in the same transaction');
+});
+
 test('leaderboard projection refuses stale player-state revisions', () => {
   const social = source('src/server/social.ts');
   const start = social.indexOf('export async function recordLeaderboard');
@@ -803,15 +864,19 @@ test('offline notification reservation recovers ambiguous Redis SET only after c
   assert.ok(start >= 0 && end > start);
   const sender = game.slice(start, end);
 
-  const setIndex = sender.indexOf('await redis.set(notificationKey, pendingToken, {');
+  const setIndex = sender.indexOf('await redis.set(notificationKey, reservedToken, {');
   const readIndex = sender.indexOf('storedReservation = await redis.get(notificationKey)');
+  const sendingIndex = sender.indexOf('claimOfflineFullNotificationSendingIfUnchanged(');
   const enqueueIndex = sender.indexOf('await notifications.enqueue(');
-  assert.ok(setIndex >= 0 && readIndex > setIndex && enqueueIndex > readIndex);
-  assert.match(sender, /let reservationWriteFailed = false/);
-  assert.match(sender, /catch \(error\) \{\s*\/\/ Redis can commit SET NX but lose its acknowledgement\.[\s\S]*?reservationWriteFailed = true;\s*reservationWriteError = error;/);
-  assert.match(sender, /if \(storedReservation !== pendingToken\)/);
-  assert.match(sender, /if \(reservationWriteFailed && storedReservation == null\) throw reservationWriteError/);
-  assert.match(sender, /if \(reservationWriteFailed\) \{\s*console\.warn\(/);
+  assert.ok(setIndex >= 0 && readIndex > setIndex && sendingIndex > readIndex && enqueueIndex > sendingIndex);
+  assert.ok(sender.includes('let reservationWriteFailed = false'));
+  assert.ok(sender.includes('catch (error) {'));
+  assert.ok(sender.includes('reservationWriteFailed = true;'));
+  assert.ok(sender.includes('reservationWriteError = error;'));
+  assert.ok(sender.includes('if (storedReservation !== reservedToken)'));
+  assert.ok(sender.includes('if (reservationWriteFailed && storedReservation == null) throw reservationWriteError'));
+  assert.ok(sender.includes('if (reservationWriteFailed) {'));
+  assert.ok(sender.includes('console.warn('));
 });
 
 test('offline notification worker validates the persisted PlayerState before calculating cap', () => {
@@ -1092,6 +1157,98 @@ test('Global Chat mutations fail closed rather than overwriting malformed histor
   assert.doesNotMatch(reader, /String\(message\.text \?\? ''\)/);
 });
 
+test('offline notification reservations distinguish reclaimable preparation from ambiguous sending', () => {
+  const game = source('src/server/game.ts');
+  assert.match(game, /OFFLINE_FULL_RESERVATION_TTL_MS = 60_000/);
+
+  const parserStart = game.indexOf('function parseOfflineFullNotificationAttemptMarker');
+  const parserEnd = game.indexOf('async function deleteOfflineFullNotificationMarkerIfUnchanged', parserStart);
+  assert.ok(parserStart >= 0 && parserEnd > parserStart);
+  const parser = game.slice(parserStart, parserEnd);
+  assert.match(parser, /reserved-v2\|sending-v2/);
+  assert.match(parser, /phase: match\[1\] === 'reserved-v2' \? 'reserved' : 'sending'/);
+
+  const deleteStart = game.indexOf('async function deleteOfflineFullNotificationMarkerIfUnchanged');
+  const deleteEnd = game.indexOf('async function claimOfflineFullNotificationSendingIfUnchanged', deleteStart);
+  assert.ok(deleteStart >= 0 && deleteEnd > deleteStart);
+  const deleteMarker = game.slice(deleteStart, deleteEnd);
+  const watchIndex = deleteMarker.indexOf('await redis.watch(keyName)');
+  const readIndex = deleteMarker.indexOf('current = await redis.get(keyName)');
+  const multiIndex = deleteMarker.indexOf('await txn.multi()');
+  const deleteIndex = deleteMarker.indexOf('await txn.del(keyName)');
+  const execIndex = deleteMarker.indexOf('await txn.exec()');
+  assert.ok(watchIndex >= 0 && readIndex > watchIndex && multiIndex > readIndex);
+  assert.ok(deleteIndex > multiIndex && execIndex > deleteIndex);
+
+  const clearStart = game.indexOf('async function clearOfflineReminderKeyIfUnchanged');
+  const clearEnd = game.indexOf('\nfunction currentUserId', clearStart);
+  assert.ok(clearStart >= 0 && clearEnd > clearStart);
+  const clear = game.slice(clearStart, clearEnd);
+  assert.match(clear, /await txn\.del\(keyName\)/);
+  assert.doesNotMatch(clear, /txn\.set\(keyName,\s*''\)/);
+  assert.match(clear, /isNotificationMarker/);
+  assert.match(clear, /phase\?\.phase === 'sending'/);
+  assert.match(clear, /legacyPendingLeaseExpired/);
+  assert.match(clear, /marker !== '1'/);
+
+  const senderStart = game.indexOf('async function sendOfflineFullNotification');
+  const senderEnd = game.indexOf('function parseOfflineFullJobMarker', senderStart);
+  assert.ok(senderStart >= 0 && senderEnd > senderStart);
+  const sender = game.slice(senderStart, senderEnd);
+  const reserveIndex = sender.indexOf('await redis.set(notificationKey, reservedToken');
+  const verifyIndex = sender.indexOf('storedReservation = await redis.get(notificationKey)');
+  const sendingTransitionIndex = sender.indexOf('claimOfflineFullNotificationSendingIfUnchanged(');
+  const enqueueIndex = sender.indexOf('await notifications.enqueue(');
+  assert.ok(reserveIndex >= 0 && verifyIndex > reserveIndex);
+  assert.ok(sendingTransitionIndex > verifyIndex, 'sending phase must be claimed only after our reservation is verified');
+  assert.ok(enqueueIndex > sendingTransitionIndex, 'provider I/O must happen only after the CAS sending transition');
+  assert.match(sender, /if \(reservationWriteFailed && storedReservation == null\) throw reservationWriteError/);
+  assert.match(sender, /Offline notification reservation is still being prepared; retry later/);
+  assert.match(sender, /OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS/);
+  assert.match(sender, /commitOfflineNotificationMarkerIfUnchanged\(notificationKey, sendingToken\)/);
+  assert.match(sender, /const receiptCommitted = await commitOfflineNotificationMarkerIfUnchanged\(notificationKey, sendingToken\)/);
+  assert.ok(sender.includes('if (!receiptCommitted)'));
+  assert.match(sender, /Provider accepted the attempt but the sent receipt could not be confirmed/);
+
+  assert.match(sender, /staleSendingMarker/);
+  assert.match(sender, /staleLegacyPendingMarker/);
+
+  const retryAtStart = game.indexOf('function offlineNotificationPendingRetryAt');
+  const retryAtEnd = game.indexOf('function isRetryableOfflineFullNotificationMarker', retryAtStart);
+  assert.ok(retryAtStart >= 0 && retryAtEnd > retryAtStart);
+  const retryAt = game.slice(retryAtStart, retryAtEnd);
+  assert.match(retryAt, /parsed\?\.phase === 'reserved'/);
+  assert.match(retryAt, /parsed\?\.phase === 'sending'/);
+  assert.match(retryAt, /OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS \+ 60_000/);
+  assert.match(retryAt, /offlineLegacyPendingMarkerStartedAt\(marker, now\)/);
+
+  const schedulerStart = game.indexOf('async function scheduleOfflineFullNotification');
+  const schedulerEnd = game.indexOf('export async function processOfflineFullNotification', schedulerStart);
+  assert.ok(schedulerStart >= 0 && schedulerEnd > schedulerStart);
+  const scheduler = game.slice(schedulerStart, schedulerEnd);
+  assert.match(scheduler, /allowReservationRetry = false/);
+  assert.match(scheduler, /if \(notificationMarker === ''\)/);
+  assert.match(scheduler, /offlineNotificationPendingRetryAt\(notificationMarker\)/);
+
+  const workerStart = game.indexOf('export async function processOfflineFullNotification');
+  const workerEnd = game.indexOf('export async function settleOffline', workerStart);
+  assert.ok(workerStart >= 0 && workerEnd > workerStart);
+  const worker = game.slice(workerStart, workerEnd);
+  assert.match(worker, /if \(!sent && cleared\)[\s\S]*?offlineNotificationPendingRetryAt\(notificationMarker\)[\s\S]*?true/);
+  assert.match(worker, /markerReadFailed \|\| retryableMarker/);
+  assert.match(worker, /scheduleOfflineFullNotification\([\s\S]*?retryAt,[\s\S]*?allowReservationRetry/);
+
+  const settleStart = game.indexOf('export async function settleOffline');
+  const settleEnd = game.indexOf('export interface CollectionPageItem', settleStart);
+  assert.ok(settleStart >= 0 && settleEnd > settleStart);
+  const settle = game.slice(settleStart, settleEnd);
+  assert.ok(settle.includes('const sent = await sendOfflineFullNotification(userId, subredditName)'));
+  assert.ok(settle.includes("if (sent || notificationMarker === '1')"));
+  assert.ok(settle.includes('offlineNotificationPendingRetryAt(notificationMarker)'));
+  assert.ok(settle.includes('Wait out the full ambiguity lease'));
+  assert.ok(settle.includes('Could not restore a retry after direct-send failure'));
+});
+
 test('persisted PlayerState parser rejects malformed wallet and roll-counter core fields', () => {
   const game = source('src/server/game.ts');
   const start = game.indexOf('function parsePlayerStateValue');
@@ -1105,6 +1262,41 @@ test('persisted PlayerState parser rejects malformed wallet and roll-counter cor
   assert.match(parser, /Number\(record\.shards\) >= 0/);
   assert.match(parser, /Number\.isSafeInteger\(record\.totalRolls\)/);
   assert.match(parser, /if \(!validCoreState\) return null/);
+});
+
+test('payment fulfillment validates canonical saves and guards revision exhaustion before entitlement writes', () => {
+  const game = source('src/server/game.ts');
+  const parserStart = game.indexOf('function parsePaymentPlayerState');
+  const parserEnd = game.indexOf('export async function hasReadablePlayerSave', parserStart);
+  assert.ok(parserStart >= 0 && parserEnd > parserStart);
+  const parser = game.slice(parserStart, parserEnd);
+
+  const requiredCore = parser.indexOf("'coins' in record &&");
+  const canonicalValidation = parser.indexOf('const validatedState = parsePlayerStateValue(record)');
+  const invalidSaveGuard = parser.indexOf("throw new Error('Saved player data could not be read; the purchase was not applied.')");
+  const walletNormalization = parser.indexOf('const normalizedWalletShards =');
+  assert.ok(requiredCore >= 0 && canonicalValidation > requiredCore);
+  assert.ok(invalidSaveGuard > canonicalValidation);
+  assert.ok(walletNormalization > invalidSaveGuard);
+  assert.match(parser, /'coins' in record &&\s*'shards' in record &&\s*'totalRolls' in record/);
+  assert.match(parser, /\.\.\.validatedState,/);
+  assert.doesNotMatch(parser, /'coins' in record \|\|[\s\S]*?'paymentReceipts' in record/);
+
+  const grantStart = game.indexOf('export async function grantPurchasedPack');
+  const grantEnd = game.indexOf('export async function refundPurchasedPack', grantStart);
+  assert.ok(grantStart >= 0 && grantEnd > grantStart);
+  const grant = game.slice(grantStart, grantEnd);
+  const revisionRead = grant.indexOf('const currentRevision = normalizeSafeInteger(state.stateRevision, 0)');
+  const revisionGuard = grant.indexOf('if (currentRevision >= Number.MAX_SAFE_INTEGER)', revisionRead);
+  const shardLotWrite = grant.indexOf('state.purchasedShardLots[orderId] =');
+  const boosterLotWrite = grant.indexOf('state.globalBoosterCreditLots[orderId] =');
+  const revisionWrite = grant.indexOf('state.stateRevision = currentRevision + 1');
+  const receiptWrite = grant.indexOf('state.paymentReceipts[orderId] = receipt');
+  assert.ok(revisionRead >= 0 && revisionGuard > revisionRead);
+  assert.ok(shardLotWrite > revisionGuard, 'guard must precede purchased-Shard lot mutation');
+  assert.ok(boosterLotWrite > revisionGuard, 'guard must precede Booster-credit lot mutation');
+  assert.ok(revisionWrite > revisionGuard, 'only the checked revision may be incremented');
+  assert.ok(receiptWrite > revisionGuard, 'guard must precede fulfilled receipt mutation');
 });
 
 test('every loaded PlayerState has a valid revision, including new and legacy saves', () => {
@@ -1162,14 +1354,41 @@ test('client ignores a conflicting Shards balance at an unchanged server revisio
   const end = main.indexOf('// Mutations are optimistic', start);
   assert.ok(start >= 0 && end > start, 'authoritative player-state applier must exist');
   const applier = main.slice(start, end);
-  assert.match(applier, /nextServerRevision === appliedServerRevisionRef\.current/);
-  assert.match(applier, /nextState\.shards/);
-  assert.match(applier, /currentState\.shards/);
-  assert.match(
-    applier,
-    /nextServerRevision === appliedServerRevisionRef\.current[\s\S]*?return;/,
-    'same-revision wallet conflicts must be ignored before state is replaced',
+
+  // Match the whole guard by meaning, not exact indentation or brace layout.
+  const walletGuardMatch = /if \(\s*nextServerRevision === appliedServerRevisionRef\.current &&[\s\S]*?\(nextState\.shards \?\? 0\) !== \(currentState\.shards \?\? 0\)[\s\S]*?\)\s*\{\s*return;\s*\}/.exec(applier);
+  assert.ok(walletGuardMatch, 'same-revision Shard conflict guard must discard a conflicting snapshot');
+  const walletGuard = walletGuardMatch[0];
+  assert.match(walletGuard, /nextServerRevision === appliedServerRevisionRef\.current/);
+  assert.match(walletGuard, /nextState\.shards/);
+  assert.match(walletGuard, /currentState\.shards/);
+  assert.match(walletGuard, /return;/, 'a same-revision Shard conflict must be discarded');
+
+  const stateWrite = applier.indexOf('stateRef.current = mergedState');
+  assert.ok(stateWrite > walletGuardMatch.index,
+    'the accepted state write must remain after the conflict guard');
+});
+
+
+test('refreshAll discards a late /api/me response after state has advanced', () => {
+  const main = source('src/client/main.tsx');
+  const start = main.indexOf('const refreshAll = useCallback');
+  const end = main.indexOf('\n  }, []);', start);
+  assert.ok(start >= 0 && end > start, 'refreshAll must exist');
+  const refresh = main.slice(start, end);
+
+  const revisionSnapshot = refresh.indexOf('const revisionAtStart = stateRevisionRef.current');
+  const request = refresh.indexOf("const me = await getJsonWithTimeout<PlayerState>('/api/me')");
+  const staleResponseGuard = refresh.indexOf(
+    'if (revisionAtStart !== stateRevisionRef.current) return;',
   );
+  const applyResponse = refresh.indexOf('applyPlayerState(me)');
+
+  assert.ok(revisionSnapshot >= 0 && request > revisionSnapshot);
+  assert.ok(staleResponseGuard > request,
+    'state revision must be rechecked after /api/me returns');
+  assert.ok(applyResponse > staleResponseGuard,
+    'a stale /api/me response must be rejected before applying its PlayerState');
 });
 
 test('share route treats leaderboard projection as best-effort after the durable share action', () => {
