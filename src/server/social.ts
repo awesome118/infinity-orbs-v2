@@ -87,6 +87,14 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
   for (const [field, minimum] of [['level', 1], ['xp', 0], ['tokens', 0]] as const) {
     const value = guild[field];
     if (value == null) continue; // Legacy saves can omit core economy defaults.
+    // XP is a cumulative counter: old versions could exceed MAX_SAFE_INTEGER or
+    // leave a fractional remainder. It is safely floored/capped during normalization.
+    if (field === 'xp') {
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+        throw invalid('guild.xp');
+      }
+      continue;
+    }
     if (!Number.isSafeInteger(value) || Number(value) < minimum) throw invalid(`guild.${field}`);
   }
   if (guild.createdAt != null &&
@@ -288,7 +296,7 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
     // parser rejects invalid present values, while normalization safely fills
     // omitted values before reward/tax arithmetic uses them.
     g.level ??= 1;
-    g.xp ??= 0;
+    g.xp = Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(Number(g.xp ?? 0) || 0)));
     g.tokens ??= 0;
     if (!g.perks) {
       g.perks = {
@@ -399,6 +407,18 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
     (g as any).challengeWeek = currentWeek;
   }
   return guilds;
+}
+
+function addGuildExperience(guild: Guild, requested: number): void {
+  // Guild XP is cumulative and can receive millions of reward writes over time.
+  // Keep it an exact safe integer forever, including when legacy data is near the limit.
+  const currentXp = Math.min(
+    Number.MAX_SAFE_INTEGER,
+    Math.max(0, Math.floor(Number(guild.xp) || 0)),
+  );
+  const earnedXp = Number.isFinite(requested) ? Math.max(0, Math.floor(requested)) : 0;
+  guild.xp = Math.min(Number.MAX_SAFE_INTEGER, currentXp + earnedXp);
+  guild.level = 1 + Math.floor(guild.xp / 500);
 }
 
 function generatedFallbackTaskType(index: number): GuildTask['type'] {
@@ -958,8 +978,7 @@ export async function applyGuildTax(coinsEarned: number): Promise<{ taxedCoins: 
 
     const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * 0.10;
     const xpEarned = Math.max(1, Math.floor((taxedCoins / 100) * xpMultiplier));
-    guild.xp += xpEarned;
-    guild.level = 1 + Math.floor(guild.xp / 500);
+    addGuildExperience(guild, xpEarned);
     return { taxedCoins, tokensEarned: 0, xpEarned };
   });
 }
@@ -1163,8 +1182,7 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
       ) * 0.05;
 
       member.contribution += value;
-      guild.xp += Math.max(1, Math.floor(Math.max(1, Math.floor(value / 250)) * xpMultiplier));
-      guild.level = 1 + Math.floor(guild.xp / 500);
+      addGuildExperience(guild, Math.max(1, Math.floor(Math.max(1, Math.floor(value / 250)) * xpMultiplier)));
 
       if (!Array.isArray(guild.tasks) || guild.tasks.length < 3) {
         guild.tasks = createInitialGuildTasks(guild.level);
@@ -1190,8 +1208,7 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
         const xpReward = Math.max(1, Math.floor(task.guildXpReward * xpMultiplier));
 
         guild.tokens = (guild.tokens ?? 0) + reward;
-        guild.xp += xpReward;
-        guild.level = 1 + Math.floor(guild.xp / 500);
+        addGuildExperience(guild, xpReward);
         guild.taskCompletions = (guild.taskCompletions ?? 0) + 1;
         guild.combo = activateGuildComboStack(
           guild.combo,
@@ -1237,8 +1254,7 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
         if (guild.boss.currentHp <= 0) {
           guild.boss.defeated = true;
           const guildXpReward = Math.max(0, Math.floor(guild.boss.rewardGuildXp ?? 0));
-          guild.xp += guildXpReward;
-          guild.level = 1 + Math.floor(guild.xp / 500);
+          addGuildExperience(guild, guildXpReward);
           if (!guild.chat) guild.chat = [];
           guild.chat.push({
             id: `msg-${Date.now()}-boss`,
