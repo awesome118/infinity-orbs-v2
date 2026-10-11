@@ -114,3 +114,34 @@ test('deployment preflight rejects a Devvit app name that differs from package.j
     fixture.cleanup();
   }
 });
+
+
+test('deployment workflow is manual, main-only, and installs only to the development subreddit', () => {
+  const workflow = readFileSync(resolve(process.cwd(), '.github/workflows/deploy.yml'), 'utf8');
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /confirm_install:[\s\S]*?default:\s*false/);
+  assert.match(workflow, /test "\$GITHUB_REF" = "refs\/heads\/main"/);
+  assert.match(workflow, /^\s*npx devvit install r\/infinity_orbs_dev\b/m);
+  assert.doesNotMatch(workflow, /^\s*npx devvit install r\/infinityorbs\b/m);
+  assert.doesNotMatch(workflow, /^\s*npx devvit publish\b/m);
+});
+
+test('review submission workflow never installs to a subreddit', () => {
+  const workflow = readFileSync(resolve(process.cwd(), '.github/workflows/release.yml'), 'utf8');
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /confirm_publish:[\s\S]*?default:\s*false/);
+  assert.match(workflow, /test "\$GITHUB_REF" = "refs\/heads\/main"/);
+  assert.match(workflow, /^\s*npx devvit publish --version\b/m);
+  assert.doesNotMatch(workflow, /^\s*npx devvit install\b/m);
+});
+
+test('production workflow requires explicit post-approval confirmation and only installs production', () => {
+  const workflow = readFileSync(resolve(process.cwd(), '.github/workflows/install-production.yml'), 'utf8');
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /confirm_approved:[\s\S]*?default:\s*false/);
+  assert.match(workflow, /test "\$GITHUB_REF" = "refs\/heads\/main"/);
+  assert.match(workflow, /already-approved Devvit version/i);
+  assert.match(workflow, /^\s*npx devvit install r\/infinityorbs\b/m);
+  assert.doesNotMatch(workflow, /^\s*npx devvit install r\/infinity_orbs_dev\b/m);
+  assert.doesNotMatch(workflow, /^\s*npx devvit (upload|publish)\b/m);
+});
