@@ -577,3 +577,11 @@ test('offline notification reserves an attempt before enqueue and compare-and-se
   assert.match(game, /async function commitOfflineNotificationMarkerIfUnchanged/);
   assert.match(game, /await txn\.set\(keyName, '1'\)/);
 });
+
+
+test('admin chat report panel distinguishes pending Modmail from confirmed sends', () => {
+  const admin = source('src/client/components/DevDebugModal.tsx');
+  assert.match(admin, /status\?: 'pending' \| 'sent'/);
+  assert.match(admin, /Modmail outcome uncertain · check Modmail/);
+  assert.match(admin, /report\.status === 'sent'/);
+});

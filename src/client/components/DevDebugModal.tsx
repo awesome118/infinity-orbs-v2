@@ -443,6 +443,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     text: string;
     reportedAt: number;
     readAt?: number;
+    status?: 'pending' | 'sent';
   };
   const [chatReports, setChatReports] = useState<ChatReport[]>([]);
   const [chatReportsUnread, setChatReportsUnread] = useState(0);
@@ -3300,6 +3301,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                   <p className="mt-1 text-xs text-slate-300 whitespace-pre-wrap break-words">{report.text}</p>
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                     <span className="text-[9px] text-slate-500">Reported by u/{report.reporter} · message {report.messageId}</span>
+                    <span
+                      className={report.status === 'pending' ? 'text-[9px] text-amber-300' : 'text-[9px] text-slate-500'}
+                      title={report.status === 'pending' ? 'Modmail may or may not have been created; check subreddit Modmail before retrying.' : undefined}
+                    >
+                      {report.status === 'pending'
+                        ? 'Modmail outcome uncertain · check Modmail'
+                        : report.status === 'sent' ? 'Modmail sent' : 'Legacy report'}
+                    </span>
                     <button
                       onClick={() => void markChatReportRead(report.reportId)}
                       className={buttonBase + ' bg-rose-600/20 hover:bg-rose-600/30 border-rose-500/40 text-rose-100 px-2.5 py-1.5'}
