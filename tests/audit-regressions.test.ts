@@ -158,8 +158,8 @@ test('roll tickets disclose no RNG seed and client never predicts authoritative 
 
 test('player mutation lock renews its lease and releases only its own token', () => {
   const lock = source('src/server/player-lock.ts');
-  assert.match(lock, /renewOwnedLock\(lockKey, token\)/);
-  assert.match(lock, /PLAYER_MUTATION_LOCK_TTL_MS \/ 3/);
+  assert.match(lock, /renewOwnedLock\(client, lockKey, token\)/);
+  assert.match(lock, /Math\.max\(1_000, Math\.floor\(leaseTtlMs \/ 3\)\)/);
   const releaseStart = lock.indexOf('async function releaseOwnedLock');
   const releaseEnd = lock.indexOf('async function runLocked', releaseStart);
   assert.ok(releaseStart >= 0 && releaseEnd > releaseStart);
