@@ -67,6 +67,8 @@ import {
   resetFreeShardBudgetIfNeeded,
   weekKey,
   isPremiumBoosterActive,
+  normalizeActiveBoosters,
+  normalizeAutomations,
   MASTERY_SKILLS,
   masterySkillCost,
   getLevelBenefits,
@@ -2092,6 +2094,13 @@ export async function loadRaw(): Promise<PlayerState> {
     ...cleanParsed,
     coins: finiteNonNegativeInteger(parsed.coins),
     lifetimeCoins: finiteNonNegativeInteger(parsed.lifetimeCoins ?? parsed.coins),
+    globalBoosterCredits: normalizeSafeInteger(parsed.globalBoosterCredits, base.globalBoosterCredits ?? 0),
+    activeBoosters: normalizeActiveBoosters(parsed.activeBoosters),
+    automations: normalizeAutomations(parsed.automations),
+    turboRollUntil: normalizeSafeInteger(parsed.turboRollUntil, base.turboRollUntil),
+    lastFrenzyAt: normalizeCooldownTimestamp(parsed.lastFrenzyAt, base.lastFrenzyAt ?? 0),
+    lastFrenzyClaimAt: normalizeCooldownTimestamp(parsed.lastFrenzyClaimAt, base.lastFrenzyClaimAt ?? 0),
+    lastShareAt: normalizeCooldownTimestamp(parsed.lastShareAt, base.lastShareAt ?? 0),
     level: parsedLevel,
     xp: finiteNonNegativeInteger(parsedXp, base.xp),
     levelXpFloor,
@@ -2223,7 +2232,7 @@ async function claimCommunityRewardFromState(s: PlayerState): Promise<{ rewardCo
 }
 
 async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim?: boolean; skipOfflineNotifications?: boolean; skipAutoStreakClaim?: boolean; skipAutoQuestClaim?: boolean; skipAutoCommunityClaim?: boolean } = {}): Promise<void> {
-  if (!options.skipAutoStreakClaim && s.automations?.autoStreakClaim) {
+  if (!options.skipAutoStreakClaim && s.automations?.autoStreakClaim === true) {
     const today = new Date().toISOString().slice(0, 10);
     if (s.streak.lastClaimDate !== today) {
       try {
@@ -2237,7 +2246,7 @@ async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim
     }
   }
 
-  if (!options.skipAutoQuestClaim && s.automations?.autoQuestClaim) {
+  if (!options.skipAutoQuestClaim && s.automations?.autoQuestClaim === true) {
     const quests = [...s.dailyQuests, ...s.weeklyQuests]
       .filter(q => q.unlocked !== false && !q.claimed && q.progress >= q.target)
       .slice(0, 25);
@@ -2246,7 +2255,7 @@ async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim
     }
   }
 
-  if (!options.skipAutoCommunityClaim && s.automations?.autoCommunityClaim) {
+  if (!options.skipAutoCommunityClaim && s.automations?.autoCommunityClaim === true) {
     try {
       // Community rewards are optional automation. Corrupt or expired shared
       // event data must not prevent a manual roll, upgrade, or other mutation.
@@ -2257,7 +2266,7 @@ async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim
     }
   }
 
-  if (!options.skipAutoOfflineClaim && s.automations?.autoOfflineClaim && s.offlineRolls > 0) {
+  if (!options.skipAutoOfflineClaim && s.automations?.autoOfflineClaim === true && s.offlineRolls > 0) {
     const batches = s.offlineRolls;
     s.offlineRolls = 0;
     await applyRolls(s, batches, undefined, 'offline');
@@ -2291,7 +2300,7 @@ async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim
     });
   }
 
-  if (s.automations?.autoUpgrade) {
+  if (s.automations?.autoUpgrade === true) {
     autoBuyCheapest(s);
   }
 }
@@ -2768,6 +2777,21 @@ function finiteNonNegativeInteger(value: unknown, fallback = 0): number {
   return Number.isFinite(n)
     ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(n)))
     : fallback;
+}
+
+function normalizeSafeInteger(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : fallback;
+}
+
+function normalizeCooldownTimestamp(value: unknown, fallback = 0): number {
+  if (value == null) return fallback;
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
+    return value;
+  }
+  // A present but malformed cooldown marker fails closed for one full cooldown.
+  return Date.now();
 }
 function addCoins(s: PlayerState, amount: number): number {
   if (!Number.isFinite(s.coins) || s.coins < 0) {
@@ -4431,10 +4455,14 @@ async function claimWorldBoosterActivation(
   });
 
   if (useCredit) {
-    if ((s.globalBoosterCredits ?? 0) <= 0) {
+    const creditBalance = s.globalBoosterCredits;
+    if (!Number.isSafeInteger(creditBalance) || (creditBalance as number) < 0) {
+      throw new Error('Saved Global Booster credit balance is invalid; no activation was used.');
+    }
+    if ((creditBalance as number) <= 0) {
       throw new Error('No free Global Booster activations remain.');
     }
-    s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) - 1;
+    s.globalBoosterCredits = (creditBalance as number) - 1;
   } else {
     if ((s.shards ?? 0) < cost) throw new Error('Not enough Shards for this Global Booster.');
     spendShards(s, cost);
@@ -5177,7 +5205,13 @@ export async function recordSocialVisit(s: PlayerState) {
 
 export async function recordShareAction(s: PlayerState) {
   const now = Date.now();
-  if (s.lastShareAt && now - s.lastShareAt < 30_000) {
+  if (
+    s.lastShareAt != null &&
+    (!Number.isSafeInteger(s.lastShareAt) || s.lastShareAt < 0)
+  ) {
+    throw new Error('Saved share cooldown timestamp is invalid; refresh before sharing again.');
+  }
+  if (s.lastShareAt != null && now - s.lastShareAt < 30_000) {
     throw new Error('Please wait before sharing another orb.');
   }
   s.lastShareAt = now;

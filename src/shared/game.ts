@@ -135,6 +135,20 @@ export const PREMIUM_BOOSTERS: Record<PremiumBoosterId, PremiumBoosterInfo> = {
   ascension: { name: 'Ascension', desc: 'Multiplies roll XP by 10× while active.', costShards: 75, durationMs: 30 * 60 * 1000 },
 };
 
+export function normalizeActiveBoosters(value: unknown): Partial<Record<PremiumBoosterId, number>> {
+  const source = value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const normalized: Partial<Record<PremiumBoosterId, number>> = {};
+  for (const id of Object.keys(PREMIUM_BOOSTERS) as PremiumBoosterId[]) {
+    const expiry = source[id];
+    if (typeof expiry === 'number' && Number.isSafeInteger(expiry) && expiry >= 0) {
+      normalized[id] = expiry;
+    }
+  }
+  return normalized;
+}
+
 export const AUTOMATIONS: Record<AutomationId, { name: string; desc: string; costShards: number }> = {
   autoQuestClaim: { name: 'Auto-Complete Quests', desc: 'Automatically claims completed daily and weekly quest rewards.', costShards: 750 },
   autoStreakClaim: { name: 'Auto-Claim Streak', desc: 'Automatically claims the daily streak reward when it becomes available.', costShards: 500 },
@@ -142,6 +156,15 @@ export const AUTOMATIONS: Record<AutomationId, { name: string; desc: string; cos
   autoOfflineClaim: { name: 'Auto-Claim Offline Rolls', desc: 'Automatically claims accumulated offline rolls when you return to the game.', costShards: 750 },
   autoUpgrade: { name: 'Auto-Complete Upgrades', desc: 'Automatically purchases one affordable standard upgrade whenever the game processes your state.', costShards: 1_500 },
 };
+
+export function normalizeAutomations(value: unknown): Partial<Record<AutomationId, boolean>> {
+  const source = value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  return Object.fromEntries(
+    (Object.keys(AUTOMATIONS) as AutomationId[]).map(id => [id, source[id] === true]),
+  ) as Partial<Record<AutomationId, boolean>>;
+}
 
 export const FREE_SHARD_DAILY_CAP = 50;
 
@@ -290,11 +313,15 @@ export function spendShards(s: PlayerState, requested: number): number {
   return amount;
 }
 export function isPremiumBoosterActive(s: PlayerState, id: PremiumBoosterId, now = Date.now()): boolean {
-  return (s.activeBoosters?.[id] ?? 0) > now;
+  const expiry = s.activeBoosters?.[id];
+  return typeof expiry === 'number' && Number.isSafeInteger(expiry) && expiry > now;
 }
 
 export function premiumBoosterRemainingMs(s: PlayerState, id: PremiumBoosterId, now = Date.now()): number {
-  return Math.max(0, (s.activeBoosters?.[id] ?? 0) - now);
+  const expiry = s.activeBoosters?.[id];
+  return typeof expiry === 'number' && Number.isSafeInteger(expiry) && expiry > now
+    ? expiry - now
+    : 0;
 }
 
 export function onlinePlayerLuckMultiplier(onlinePlayers: number): number {
@@ -376,15 +403,25 @@ export function grantFrenzyOwnerShards(
 }
 
 export function frenzyCooldownRemaining(lastFrenzyAt?: number, now = Date.now()): number {
-  const last = Number(lastFrenzyAt ?? 0);
-  if (!Number.isFinite(last) || last <= 0) return 0;
-  return Math.max(0, last + FRENZY_POST_COOLDOWN_MS - now);
+  if (lastFrenzyAt == null) return 0;
+  if (
+    typeof lastFrenzyAt !== 'number' ||
+    !Number.isSafeInteger(lastFrenzyAt) ||
+    lastFrenzyAt < 0
+  ) return FRENZY_POST_COOLDOWN_MS;
+  if (lastFrenzyAt === 0) return 0;
+  return Math.max(0, lastFrenzyAt + FRENZY_POST_COOLDOWN_MS - now);
 }
 
 export function frenzyClaimCooldownRemaining(lastFrenzyClaimAt?: number, now = Date.now()): number {
-  const last = Number(lastFrenzyClaimAt ?? 0);
-  if (!Number.isFinite(last) || last <= 0) return 0;
-  return Math.max(0, last + FRENZY_CLAIM_COOLDOWN_MS - now);
+  if (lastFrenzyClaimAt == null) return 0;
+  if (
+    typeof lastFrenzyClaimAt !== 'number' ||
+    !Number.isSafeInteger(lastFrenzyClaimAt) ||
+    lastFrenzyClaimAt < 0
+  ) return FRENZY_CLAIM_COOLDOWN_MS;
+  if (lastFrenzyClaimAt === 0) return 0;
+  return Math.max(0, lastFrenzyClaimAt + FRENZY_CLAIM_COOLDOWN_MS - now);
 }
 
 export function frenzyPostExpiresAt(createdAt: number): number {
@@ -1927,7 +1964,11 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
     const overclockFactor = 1 - (s.prestigeUpgrades.autoOverclock * 0.05);
     cd = Math.max(700, Math.round(cd * overclockFactor));
   }
-  if (s.turboRollUntil && Date.now() < s.turboRollUntil) {
+  if (
+    typeof s.turboRollUntil === 'number' &&
+    Number.isSafeInteger(s.turboRollUntil) &&
+    s.turboRollUntil > Date.now()
+  ) {
     const turboReduction = (s.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 0.65 : 0.75;
     cd = Math.max(600, Math.round(cd * turboReduction));
   }

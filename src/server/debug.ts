@@ -228,8 +228,12 @@ debugRouter.post('/global-booster-credits/grant', async (req, res) => {
     }
 
     if (scope === 'online' || scope === 'all') {
-      const players = await listRegisteredPlayerIds();
-      const targetPlayers = scope === 'online' ? players.filter(player => player.active) : players;
+      const manifest = await getOrCreateGlobalBoosterCreditGrantManifest(
+        operationId,
+        scope,
+        amount,
+      );
+      const targetPlayers = manifest.userIds;
       const results: Array<{ userId: string; username: string; before: number; after: number; alreadyApplied?: boolean }> = [];
       const failures: Array<{ userId: string; username: string; error: string }> = [];
 
@@ -339,6 +343,17 @@ function targetUsername(value: unknown): string {
 }
 
 const GLOBAL_BOOSTER_CREDIT_MAX = Number.MAX_SAFE_INTEGER;
+const GLOBAL_BOOSTER_CREDIT_BATCH_PREFIX = 'io:admin-global-booster-credit-batch:';
+
+type GlobalBoosterCreditGrantScope = 'online' | 'all';
+interface GlobalBoosterCreditGrantManifest {
+  version: 1;
+  operationId: string;
+  scope: GlobalBoosterCreditGrantScope;
+  amount: number;
+  createdAt: number;
+  userIds: Array<{ userId: string; username: string }>;
+}
 
 function parseAdminPlayerSave(raw: unknown): Record<string, any> {
   if (raw == null) return createInitialState() as unknown as Record<string, any>;
@@ -352,6 +367,99 @@ function parseAdminPlayerSave(raw: unknown): Record<string, any> {
   } catch {
     throw new Error('The target player save could not be read safely.');
   }
+}
+
+function parseGlobalBoosterCreditGrantManifest(
+  raw: unknown,
+  operationId: string,
+  scope: GlobalBoosterCreditGrantScope,
+  amount: number,
+): GlobalBoosterCreditGrantManifest {
+  let value: unknown = raw;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      throw new Error('The saved Global Booster batch manifest is corrupted; refusing to change recipients.');
+    }
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('The saved Global Booster batch manifest is invalid; refusing to change recipients.');
+  }
+  const record = value as Record<string, unknown>;
+  const rows = record.userIds;
+  if (
+    record.version !== 1 ||
+    record.operationId !== operationId ||
+    record.scope !== scope ||
+    record.amount !== amount ||
+    !Number.isSafeInteger(record.createdAt) ||
+    !Array.isArray(rows) ||
+    !rows.every(row =>
+      row !== null &&
+      typeof row === 'object' &&
+      !Array.isArray(row) &&
+      typeof (row as Record<string, unknown>).userId === 'string' &&
+      String((row as Record<string, unknown>).userId).trim().length > 0 &&
+      typeof (row as Record<string, unknown>).username === 'string' &&
+      String((row as Record<string, unknown>).username).trim().length > 0
+    )
+  ) {
+    throw new Error('The saved Global Booster batch manifest does not match this operation; refusing to change recipients.');
+  }
+  return {
+    version: 1,
+    operationId,
+    scope,
+    amount,
+    createdAt: record.createdAt as number,
+    userIds: (rows as Array<{ userId: string; username: string }>).map(row => ({
+      userId: row.userId.trim(),
+      username: normalizeUsername(row.username),
+    })),
+  };
+}
+
+async function getOrCreateGlobalBoosterCreditGrantManifest(
+  operationId: string,
+  scope: GlobalBoosterCreditGrantScope,
+  amount: number,
+): Promise<GlobalBoosterCreditGrantManifest> {
+  const manifestKey = GLOBAL_BOOSTER_CREDIT_BATCH_PREFIX + encodeURIComponent(operationId);
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const existing = await redis.get(manifestKey);
+    if (existing != null) {
+      return parseGlobalBoosterCreditGrantManifest(existing, operationId, scope, amount);
+    }
+
+    const txn = await redis.watch(manifestKey);
+    const watched = await redis.get(manifestKey);
+    if (watched != null) {
+      await txn.unwatch();
+      return parseGlobalBoosterCreditGrantManifest(watched, operationId, scope, amount);
+    }
+
+    const players = await listRegisteredPlayerIds();
+    const selectedPlayers = scope === 'online'
+      ? players.filter(player => player.active)
+      : players;
+    const manifest: GlobalBoosterCreditGrantManifest = {
+      version: 1,
+      operationId,
+      scope,
+      amount,
+      createdAt: Date.now(),
+      userIds: selectedPlayers.map(player => ({
+        userId: String(player.userId ?? '').trim(),
+        username: normalizeUsername(player.username),
+      })).filter(player => player.userId.length > 0 && player.username.length > 0),
+    };
+
+    await txn.multi();
+    await txn.set(manifestKey, JSON.stringify(manifest));
+    if (await txn.exec() !== null) return manifest;
+  }
+  throw new Error('Could not persist the Global Booster batch recipient manifest. Retry the same operation ID.');
 }
 
 async function grantGlobalBoosterCreditsToUser(
