@@ -4091,25 +4091,25 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
 
         if (notificationMarker === '1') {
           if (currentJob != null) await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
-          return;
+        } else if (
+          !(notificationMarker != null && !isRetryableOfflineFullNotificationMarker(notificationMarker)) &&
+          !(currentJob && currentJob !== '')
+        ) {
+          if (currentJob === '') await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+          const markerIsRetryable = isRetryableOfflineFullNotificationMarker(notificationMarker);
+          const retryAt = markerIsRetryable
+            ? offlineNotificationPendingRetryAt(notificationMarker)
+            : Date.now() + OFFLINE_FULL_RETRY_MS;
+          await scheduleOfflineFullNotification(
+            userId,
+            subredditName,
+            retryAt,
+            markerIsRetryable,
+          );
+        } else {
+          // Unknown markers fail closed. Existing jobs are preserved so their
+          // worker can perform the same marker-aware recovery when it runs.
         }
-        if (notificationMarker != null && !isRetryableOfflineFullNotificationMarker(notificationMarker)) {
-          // Unknown marker formats fail closed to avoid creating duplicate sends.
-          return;
-        }
-        if (currentJob && currentJob !== '') return;
-        if (currentJob === '') await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
-
-        const markerIsRetryable = isRetryableOfflineFullNotificationMarker(notificationMarker);
-        const retryAt = markerIsRetryable
-          ? offlineNotificationPendingRetryAt(notificationMarker)
-          : Date.now() + OFFLINE_FULL_RETRY_MS;
-        await scheduleOfflineFullNotification(
-          userId,
-          subredditName,
-          retryAt,
-          markerIsRetryable,
-        );
       } catch (recoveryError) {
         console.error('[Offline Notification] Could not restore a retry after direct-send failure:', recoveryError);
       }
