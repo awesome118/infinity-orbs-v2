@@ -394,7 +394,7 @@ test('playtest Guild recovery collects all stored errors and exposes a copyable 
 test('guild parser validates nested state while repairing legacy challenge and boss projections', () => {
   const social = source('src/server/social.ts');
   const start = social.indexOf('function validateGuildNestedState');
-  const end = social.indexOf('function parseGuildList', start);
+  const end = social.indexOf('\nfunction inspectGuildRecordForDiagnostics', start);
   assert.ok(start >= 0 && end > start, 'nested Guild validator must exist before normalization');
   const validator = social.slice(start, end);
   assert.match(validator, /const invalid = \(field = 'unknown nested field'\)/);
