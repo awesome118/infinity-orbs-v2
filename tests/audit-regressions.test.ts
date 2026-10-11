@@ -1519,3 +1519,34 @@ test('feature gate map covers all intended gated API routes and avoids gating on
   );
   assert.doesNotMatch(map, /path === '\/online'/);
 });
+
+
+test('offline vault state is validated and bounded before auto-claim can process it', () => {
+  const game = source('src/server/game.ts');
+
+  const parserStart = game.indexOf('function parsePlayerStateValue(');
+  const parserEnd = game.indexOf('\nfunction parsePaymentPlayerState(', parserStart);
+  assert.ok(parserStart >= 0 && parserEnd > parserStart);
+  const parser = game.slice(parserStart, parserEnd);
+  assert.match(parser, /Number\.isSafeInteger\(record\.offlineRolls\)/);
+  assert.match(parser, /Number\(record\.offlineRolls\) <= MAX_OFFLINE_ROLLS/);
+
+  const settleStart = game.indexOf('export async function settleOffline(');
+  const settleEnd = game.indexOf('\nexport interface CollectionPageItem', settleStart);
+  assert.ok(settleStart >= 0 && settleEnd > settleStart);
+  const settle = game.slice(settleStart, settleEnd);
+  const capIndex = settle.indexOf('s.offlineRolls = Math.min(offlineCap, savedOfflineRolls)');
+  const elapsedIndex = settle.indexOf('if (diff >= tickMs)');
+  const automationIndex = settle.indexOf('await processAutomation(s, options)');
+  assert.ok(capIndex >= 0 && elapsedIndex > capIndex && automationIndex > capIndex);
+  assert.match(settle, /offlineRollCap\(s\)/);
+
+  const applyStart = game.indexOf('export async function applyRolls(');
+  const applyEnd = game.indexOf('\nfunction effectiveRollCritChance(', applyStart);
+  assert.ok(applyStart >= 0 && applyEnd > applyStart);
+  const apply = game.slice(applyStart, applyEnd);
+  const maxCountIndex = apply.indexOf('const maxSupportedRollCount = offlineRollCap(s) * rollsPerActivation(s) + 2');
+  const sharedReadsIndex = apply.indexOf('const [freshGlobalBoosters, worldEvent, fakeCcuBonus] = await Promise.all([');
+  assert.ok(maxCountIndex >= 0 && sharedReadsIndex > maxCountIndex);
+  assert.match(apply, /rollCount > maxSupportedRollCount/);
+});
