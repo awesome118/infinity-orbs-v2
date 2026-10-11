@@ -183,6 +183,9 @@ export function App() {
   const [state, setState] = useState<PlayerState | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
   const [startupError, setStartupError] = useState<string | null>(null);
+  const [guildDiagnosticReport, setGuildDiagnosticReport] = useState('');
+  const [guildDiagnosticIssueCount, setGuildDiagnosticIssueCount] = useState(0);
+  const [guildDiagnosticCopyStatus, setGuildDiagnosticCopyStatus] = useState('');
   const [splashEntered, setSplashEntered] = useState(false);
   const [lastOrb, setLastOrb] = useState<Orb | null>(null);
   const [lastBatch, setLastBatch] = useState<Orb[]>([]);
@@ -605,6 +608,23 @@ export function App() {
     if (!stateRef.current) return;
     void ensureRollTicket().catch(() => null);
   }, [state?.stateRevision, ensureRollTicket]);
+
+  // This endpoint exists only for shadow_fen in the isolated playtest subreddit.
+  // Fetch diagnostics before the normal startup request so corrupt Guild data is
+  // captured before playtest recovery allows mutations to progress.
+  useEffect(() => {
+    let cancelled = false;
+    void getJson<{ issueCount: number; report: string }>('/api/dev/guild-diagnostics')
+      .then(result => {
+        if (cancelled || !result || typeof result.report !== 'string') return;
+        setGuildDiagnosticIssueCount(Number(result.issueCount) || 0);
+        setGuildDiagnosticReport(result.report);
+      })
+      .catch(() => {
+        // Production and non-admin clients intentionally receive no diagnostics.
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   // Initial load. Timer updates stay local to the screens that display them.
   useEffect(() => {
@@ -1953,6 +1973,63 @@ export function App() {
     return res;
   };
 
+  const guildDiagnosticsPanel = guildDiagnosticReport ? (
+    <section className="fixed bottom-3 right-3 z-[100] w-[min(94vw,760px)] max-h-[72vh] overflow-hidden rounded-2xl border border-amber-400/50 bg-slate-950/95 shadow-2xl">
+      <details open>
+        <summary className="cursor-pointer select-none border-b border-amber-400/20 px-4 py-3 text-sm font-black text-amber-200">
+          Playtest Guild diagnostics: {guildDiagnosticIssueCount} issue{guildDiagnosticIssueCount === 1 ? '' : 's'}
+        </summary>
+        <div className="p-3">
+          <p className="mb-2 text-xs text-slate-400">
+            Development-only recovery is enabled on r/infinity_orbs_dev. This report lists stored Guild fields before in-memory recovery.
+          </p>
+          <textarea
+            aria-label="All playtest Guild errors"
+            readOnly
+            value={guildDiagnosticReport}
+            rows={Math.min(16, Math.max(7, guildDiagnosticReport.split('\n').length))}
+            onFocus={event => event.currentTarget.select()}
+            className="w-full resize-y rounded-lg border border-slate-700 bg-black/70 p-3 font-mono text-xs leading-relaxed text-slate-200 outline-none focus:border-amber-400"
+          />
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (!navigator.clipboard?.writeText) {
+                  setGuildDiagnosticCopyStatus('Click the text box, select all, and copy it manually.');
+                  return;
+                }
+                void navigator.clipboard.writeText(guildDiagnosticReport)
+                  .then(() => setGuildDiagnosticCopyStatus('Copied all Guild diagnostics.'))
+                  .catch(() => setGuildDiagnosticCopyStatus('Copy was blocked. Click the text box, select all, and copy it manually.'));
+              }}
+              className="rounded-lg bg-amber-300 px-3 py-2 text-xs font-black text-slate-950 hover:bg-amber-200"
+            >
+              Copy all errors
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setGuildDiagnosticCopyStatus('Refreshing…');
+                void getJson<{ issueCount: number; report: string }>('/api/dev/guild-diagnostics')
+                  .then(result => {
+                    setGuildDiagnosticIssueCount(Number(result.issueCount) || 0);
+                    setGuildDiagnosticReport(result.report);
+                    setGuildDiagnosticCopyStatus('Diagnostics refreshed.');
+                  })
+                  .catch(error => setGuildDiagnosticCopyStatus('Refresh failed: ' + String(error?.message ?? error)));
+              }}
+              className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-slate-800"
+            >
+              Refresh errors
+            </button>
+            <span aria-live="polite" className="text-xs text-slate-400">{guildDiagnosticCopyStatus}</span>
+          </div>
+        </div>
+      </details>
+    </section>
+  ) : null;
+
   if (authRequired) {
     return (
       <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
@@ -1992,6 +2069,7 @@ export function App() {
               Retry
             </button>
           </div>
+          {guildDiagnosticsPanel}
         </main>
       );
     }
@@ -2603,6 +2681,7 @@ export function App() {
           }}
         />
       )}
+      {guildDiagnosticsPanel}
     </div>
   );
 }
