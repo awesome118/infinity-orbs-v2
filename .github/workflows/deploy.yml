@@ -1,7 +1,7 @@
 name: Deploy Devvit
 
 # Deliberately manual: pushes should not repeatedly trigger costly deployment attempts.
-# This workflow uploads and installs to BOTH the production and development subreddits.
+# This workflow uploads and installs to the development subreddit only. Production install is a separate post-approval workflow.
 on:
   workflow_dispatch:
     inputs:
@@ -10,7 +10,7 @@ on:
         required: true
         type: string
       confirm_install:
-        description: "Explicitly authorize upload and installation to both subreddits."
+        description: "Explicitly authorize upload to Devvit and installation to r/infinity_orbs_dev only."
         required: true
         type: boolean
         default: false
@@ -95,16 +95,7 @@ jobs:
           }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Install release to r/infinityorbs
-        env:
-          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
-          VERSION: ${{ steps.uploaded-version.outputs.version }}
-        run: |
-          set -euo pipefail
-          npx devvit install r/infinityorbs "infinity-orbs@$VERSION"
-          npx devvit list installs r/infinityorbs
-
-      - name: Install playtest to r/infinity_orbs_dev
+      - name: Install candidate to development subreddit only (r/infinity_orbs_dev)
         env:
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
           VERSION: ${{ steps.uploaded-version.outputs.version }}
