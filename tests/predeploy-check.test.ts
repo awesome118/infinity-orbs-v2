@@ -154,47 +154,47 @@ const invalidManifestCases: Array<{
   {
     label: 'client output directory',
     mutate: manifest => { manifest.post.dir = 'dist/other'; },
-    expected: /post\\.dir must be/,
+    expected: /post\.dir must be/,
   },
   {
     label: 'default splash entrypoint',
     mutate: manifest => { delete manifest.post.entrypoints.default; },
-    expected: /post\\.entrypoints\\.default\\.entry must be/,
+    expected: /post\.entrypoints\.default\.entry must be/,
   },
   {
     label: 'game entrypoint',
     mutate: manifest => { manifest.post.entrypoints.game.entry = 'missing.html'; },
-    expected: /post\\.entrypoints\\.game\\.entry must be/,
+    expected: /post\.entrypoints\.game\.entry must be/,
   },
   {
     label: 'Frenzy entrypoint and tall layout',
     mutate: manifest => { manifest.post.entrypoints.frenzy.height = 'inline'; },
-    expected: /post\\.entrypoints\\.frenzy\\.height must be/,
+    expected: /post\.entrypoints\.frenzy\.height must be/,
   },
   {
     label: 'server output entry',
     mutate: manifest => { manifest.server.entry = 'missing.cjs'; },
-    expected: /server\\.entry must be/,
+    expected: /server\.entry must be/,
   },
   {
     label: 'Redis permission',
     mutate: manifest => { manifest.permissions.redis = false; },
-    expected: /permissions\\.redis must be/,
+    expected: /permissions\.redis must be/,
   },
   {
     label: 'payments disabled',
     mutate: manifest => { manifest.permissions.payments = true; },
-    expected: /permissions\\.payments must be/,
+    expected: /permissions\.payments must be/,
   },
   {
     label: 'app install trigger',
     mutate: manifest => { manifest.triggers.onAppInstall = '/wrong'; },
-    expected: /triggers\\.onAppInstall must be/,
+    expected: /triggers\.onAppInstall must be/,
   },
   {
     label: 'offline notification scheduler endpoint',
     mutate: manifest => { delete manifest.scheduler.tasks['offline-orbs-full']; },
-    expected: /scheduler\\.tasks\\.offline-orbs-full\\.endpoint must be/,
+    expected: /scheduler\.tasks\.offline-orbs-full\.endpoint must be/,
   },
   {
     label: 'moderator post creation action',
