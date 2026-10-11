@@ -232,11 +232,16 @@ test('deployment workflow is manual, main-only, and installs only to the develop
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /confirm_install:[\s\S]*?default:\s*false/);
   assert.match(workflow, /test "\$GITHUB_REF" = "refs\/heads\/main"/);
-  assert.match(workflow, /^\s*npx devvit upload --version "\$REQUESTED_VERSION"$/m);
+  assert.match(
+    workflow,
+    /run:\s*timeout --signal=TERM --kill-after=30s 9m npx devvit upload --version "\$REQUESTED_VERSION"/,
+    'the exact version-pinned upload must be bounded by a timeout',
+  );
   assert.match(workflow, /^\s*npx devvit install r\/infinity_orbs_dev\b/m);
   assert.doesNotMatch(workflow, /^\s*npx devvit install r\/infinityorbs\b/m);
   assert.doesNotMatch(workflow, /^\s*npx devvit publish\b/m);
 });
+
 
 test('review submission workflow never installs to a subreddit', () => {
   const workflow = readFileSync(resolve(process.cwd(), '.github/workflows/release.yml'), 'utf8');
