@@ -799,16 +799,20 @@ export function App() {
       });
       setReadyAt(Date.now() + res.rollsRemainingUntilNext);
 
-      // This is the actual Frenzy volley returned by the server. Show each
-      // resolved Orb in sequence so the claim visibly rolls through the volley.
-      for (const revealedOrb of revealBatch) {
+      // The authoritative rewards are identical either way. Skip per-orb
+      // JavaScript delays when the user has requested reduced motion.
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduceMotion) {
+        setLastOrb(res.orb);
+      } else {
+        for (const revealedOrb of revealBatch) {
+          if (!componentMountedRef.current) return;
+          setLastOrb(revealedOrb);
+          await new Promise(resolve => window.setTimeout(resolve, 240));
+        }
         if (!componentMountedRef.current) return;
-        setLastOrb(revealedOrb);
-        await new Promise(resolve => window.setTimeout(resolve, 240));
+        setLastOrb(res.orb);
       }
-
-      if (!componentMountedRef.current) return;
-      setLastOrb(res.orb);
       sound.playMythicFanfare();
       showToast(
         `⚡ Orb Frenzy claimed! ${formatNumber(res.frenzyCount ?? 0)} Orbs rolled.`,
