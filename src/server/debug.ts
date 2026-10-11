@@ -104,6 +104,13 @@ export function isDebugUser(): boolean {
 
 export const debugRouter = Router();
 
+// Never trust the client to decide whether the admin console is available.
+// Every admin endpoint is protected server-side.
+debugRouter.use((_req, res, next) => {
+  if (!isDebugUser()) return res.status(404).json({ error: 'Not found.' });
+  next();
+});
+
 debugRouter.get('/guild-diagnostics', async (_req, res) => {
   const subreddit = String(context.subredditName ?? '')
     .trim()
@@ -117,13 +124,6 @@ debugRouter.get('/guild-diagnostics', async (_req, res) => {
   } catch (error: any) {
     res.status(500).json({ error: error?.message || 'Could not inspect Guild state.' });
   }
-});
-
-// Never trust the client to decide whether the admin console is available.
-// Every admin endpoint is protected server-side.
-debugRouter.use((_req, res, next) => {
-  if (!isDebugUser()) return res.status(404).json({ error: 'Not found.' });
-  next();
 });
 
 debugRouter.get('/payment-logs', async (req, res) => {
