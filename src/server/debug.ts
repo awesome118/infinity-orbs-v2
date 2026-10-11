@@ -735,6 +735,7 @@ async function resetPlayerGenerationAndSave(
 async function wipeUser(username: string, clearBanAfterWipe = true): Promise<{ username: string; userId: string; generation: number }> {
   const name = targetUsername(username);
   const userId = await resolveUserId(name);
+  const playerSaveKey = `player:${userId}`;
 
   return withPlayerMutationLockFor(userId, async () => {
   const { generation } = await resetPlayerGenerationAndSave(userId, name);
@@ -748,7 +749,7 @@ async function wipeUser(username: string, clearBanAfterWipe = true): Promise<{ u
   // false here because it commits the new ban before the reset begins.
   if (clearBanAfterWipe) await unbanGameUser(userId);
 
-  const persisted = await redis.get(playerKey);
+  const persisted = await redis.get(playerSaveKey);
   if (persisted == null) {
     throw new Error(`Wipe failed: player save for u/${name} was not persisted.`);
   }
@@ -1540,7 +1541,7 @@ debugRouter.post('/state', async (req, res) => {
       s.lastRollAt = body.lastRollAt === null ? null : nonNegativeInteger(body.lastRollAt);
     }
     if ('lastSeenAt' in body) s.lastSeenAt = nonNegativeInteger(body.lastSeenAt);
-    if ('lastShareAt' in body) s.lastShareAt = body.lastShareAt === null ? null : nonNegativeInteger(body.lastShareAt);
+    if ('lastShareAt' in body) s.lastShareAt = body.lastShareAt === null ? undefined : nonNegativeInteger(body.lastShareAt);
     if ('autoRollEnabled' in body) s.autoRollEnabled = Boolean(body.autoRollEnabled);
     for (const field of ['lastFrenzyDate', 'lastFrenzyClaimDate', 'lastDailyReset', 'lastWeeklyReset', 'lastFreeShardReset']) {
       if (typeof body[field] === 'string') (s as any)[field] = body[field];
@@ -2030,7 +2031,7 @@ debugRouter.post('/reset-all', async (_req, res) => {
         userId,
         context.username ?? `reddit-user-${userId.slice(-8)}`,
       );
-      await redis.del(`io:roll-ticket:${userId}`).catch(error => {
+      await redis.del(`io:roll-ticket:${userId}`).catch((error: unknown) => {
         console.error('[Reset All] Roll-ticket cleanup failed after the player reset committed:', error);
       });
       await removeLeaderboardEntry(fresh.username ?? context.username ?? '').catch(error => {
