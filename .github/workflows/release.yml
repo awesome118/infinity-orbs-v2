@@ -1,4 +1,4 @@
-name: Release Infinity Orbs
+name: Submit Infinity Orbs for Reddit Review
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       confirm_publish:
-        description: "Explicitly authorize submission for Reddit review and installation to both subreddits."
+        description: "Explicitly authorize submission of this version for Reddit review only. This workflow does not install to any subreddit."
         required: true
         type: boolean
         default: false
@@ -84,18 +84,3 @@ jobs:
           test "$VERSION" = "$REQUESTED_VERSION"
           npx devvit publish --version "$VERSION"
 
-      - name: Install release to r/infinityorbs
-        env:
-          VERSION: ${{ inputs.release_version }}
-        run: |
-          set -euo pipefail
-          npx devvit install r/infinityorbs "infinity-orbs@$VERSION"
-          npx devvit list installs r/infinityorbs
-
-      - name: Install release to r/infinity_orbs_dev
-        env:
-          VERSION: ${{ inputs.release_version }}
-        run: |
-          set -euo pipefail
-          npx devvit install r/infinity_orbs_dev "infinity-orbs@$VERSION"
-          npx devvit list installs r/infinity_orbs_dev
