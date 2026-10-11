@@ -380,7 +380,7 @@ test('comprehensive admin tests reset cooldown before acquiring roll tickets and
   assert.match(modal.slice(mechanicStart, mechanicEnd), /xp: 100_000/);
   assert.match(modal, /await new Promise\(resolve => setTimeout\(resolve, 5_200\)\)/);
   assert.match(modal, /collection endpoint/);
-  assert.match(modal, /sonarThreshold\(100\)/);
+  assert.match(modal, /setSonarThreshold\(100\)/);
 });
 
 test('playtest Guild recovery collects all stored errors and exposes a copyable admin report', () => {
