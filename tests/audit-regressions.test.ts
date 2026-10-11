@@ -1163,19 +1163,17 @@ test('client ignores a conflicting Shards balance at an unchanged server revisio
   assert.ok(start >= 0 && end > start, 'authoritative player-state applier must exist');
   const applier = main.slice(start, end);
 
-  const walletGuardStart = applier.indexOf(
-    'if (\n        nextServerRevision === appliedServerRevisionRef.current &&',
-  );
-  const walletGuardEnd = applier.indexOf('\n      }\n    }', walletGuardStart);
-  assert.ok(walletGuardStart >= 0 && walletGuardEnd > walletGuardStart,
-    'same-revision Shard conflict guard must exist as its own branch');
-  const walletGuard = applier.slice(walletGuardStart, walletGuardEnd);
+  // Match the whole guard by meaning, not exact indentation or brace layout.
+  const walletGuardMatch = /if \(\s*nextServerRevision === appliedServerRevisionRef\.current &&[\s\S]*?\(nextState\.shards \?\? 0\) !== \(currentState\.shards \?\? 0\)[\s\S]*?\)\s*\{\s*return;\s*\}/.exec(applier);
+  assert.ok(walletGuardMatch, 'same-revision Shard conflict guard must discard a conflicting snapshot');
+  const walletGuard = walletGuardMatch[0];
   assert.match(walletGuard, /nextServerRevision === appliedServerRevisionRef\.current/);
   assert.match(walletGuard, /nextState\.shards/);
   assert.match(walletGuard, /currentState\.shards/);
   assert.match(walletGuard, /return;/, 'a same-revision Shard conflict must be discarded');
+
   const stateWrite = applier.indexOf('stateRef.current = mergedState');
-  assert.ok(stateWrite > walletGuardEnd,
+  assert.ok(stateWrite > walletGuardMatch.index,
     'the accepted state write must remain after the conflict guard');
 });
 
