@@ -3573,6 +3573,18 @@ async function deleteOfflineFullNotificationMarkerIfUnchanged(
   return false;
 }
 
+async function readOfflineNotificationMarkerAndRepairLegacyKey(
+  notificationKey: string,
+): Promise<string | null> {
+  const marker = await redis.get(notificationKey);
+  if (marker !== '') return marker;
+
+  // Older versions wrote an empty marker instead of deleting the key. Remove
+  // that tombstone under compare-and-delete so it cannot block a later SET NX.
+  await deleteOfflineFullNotificationMarkerIfUnchanged(notificationKey, '');
+  return await redis.get(notificationKey);
+}
+
 async function claimOfflineFullNotificationSendingIfUnchanged(
   keyName: string,
   reservedToken: string,
