@@ -46,7 +46,6 @@ import {
   getPlayerGuildPerks,
   getPlayerGuildCombo,
   getCommunityEvent,
-  getGuildStateDiagnostics,
 } from './social.js';
 import {
   cooldownMs,
@@ -109,21 +108,6 @@ export const debugRouter = Router();
 debugRouter.use((_req, res, next) => {
   if (!isDebugUser()) return res.status(404).json({ error: 'Not found.' });
   next();
-});
-
-debugRouter.get('/guild-diagnostics', async (_req, res) => {
-  const subreddit = String(context.subredditName ?? '')
-    .trim()
-    .replace(/^r\//i, '')
-    .toLowerCase();
-  // Raw Guild diagnostics and recovery reporting are restricted to shadow_fen
-  // by debugRouter.use above and to the isolated development subreddit here.
-  if (subreddit !== 'infinity_orbs_dev') return res.status(404).json({ error: 'Not found.' });
-  try {
-    res.json(await getGuildStateDiagnostics());
-  } catch (error: any) {
-    res.status(500).json({ error: error?.message || 'Could not inspect Guild state.' });
-  }
 });
 
 debugRouter.get('/payment-logs', async (req, res) => {
