@@ -121,3 +121,90 @@ test('Global Booster activation rejects inherited object keys at the service bou
   assert.ok(start >= 0 && end > start);
   assert.match(server.slice(start, end), /hasOwnProperty\.call\(GLOBAL_BOOSTERS, id\)/);
 });
+
+
+
+test('roll celebrations respect the live reduced-motion preference', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  assert.match(roll, /window\.matchMedia\('\(prefers-reduced-motion: reduce\)'\)/);
+  assert.match(roll, /media\.addEventListener\('change', updatePreference\)/);
+  assert.match(roll, /lastOrb\.rarity >= 1000 && !reducedMotion/);
+  assert.match(roll, /if \(!reducedMotion\)\s*\{\s*confetti\(/);
+  assert.match(roll, /\[lastOrb, hasSonarUpgrade, instantRevealActive, hasInstantUpgrade, reducedMotion\]/);
+});
+
+test('Frenzy count-up cancels when reduced motion is enabled mid-animation', () => {
+  const frenzy = source('src/client/frenzy.tsx');
+  assert.match(frenzy, /reducedMotion\.addEventListener\('change', handleMotionPreference\)/);
+  assert.match(frenzy, /if \(event\.matches\)\s*\{\s*window\.cancelAnimationFrame\(frame\);\s*setDisplay\(rarity\)/);
+  assert.match(frenzy, /reducedMotion\.removeEventListener\('change', handleMotionPreference\)/);
+});
+
+test('Frenzy expansion is requested in the trusted click turn and failed expansion falls back once', () => {
+  const frenzy = source('src/client/frenzy.tsx');
+  const start = frenzy.indexOf('const claim = async (event: React.MouseEvent');
+  const end = frenzy.indexOf('\n  if (error && !info)', start);
+  assert.ok(start >= 0 && end > start, 'Frenzy claim handler must exist');
+  const handler = frenzy.slice(start, end);
+  const expansionCall = handler.indexOf("requestExpandedMode(event.nativeEvent, 'game')");
+  const armFetch = handler.indexOf("fetch('/api/frenzy/arm'");
+  assert.ok(expansionCall >= 0 && armFetch > expansionCall, 'expanded mode must be requested before the first network await');
+  assert.match(handler, /Promise\.allSettled\(\[expansionPromise, armPromise\]\)/);
+  assert.match(handler, /Some previews cannot expand\. Finish the claim on this screen instead/);
+  assert.equal((handler.match(/fetch\('\/api\/frenzy\/claim'/g) ?? []).length, 1);
+});
+
+test('main-game Frenzy reveal skips per-orb delays for reduced-motion users', () => {
+  const main = source('src/client/main.tsx');
+  const start = main.indexOf('const reduceMotion = window.matchMedia');
+  const end = main.indexOf('sound.playMythicFanfare()', start);
+  assert.ok(start >= 0 && end > start, 'main-game Frenzy reveal must check motion preference');
+  const reveal = main.slice(start, end);
+  assert.match(reveal, /if \(reduceMotion\)\s*\{\s*setLastOrb\(res\.orb\)/);
+  assert.match(reveal, /else\s*\{[\s\S]*?setTimeout\(resolve, 240\)/);
+});
+
+test('feedback modal exposes dialog semantics and a keyboard close path', () => {
+  const modal = source('src/client/components/FeedbackModal.tsx');
+  assert.match(modal, /role="dialog"/);
+  assert.match(modal, /aria-modal="true"/);
+  assert.match(modal, /aria-labelledby="feedback-modal-title"/);
+  assert.match(modal, /event\.key === 'Escape' && !busy/);
+  assert.match(modal, /window\.removeEventListener\('keydown', handleKeyDown\)/);
+  assert.match(modal, /aria-label=\{type === 'bug' \? 'Describe the bug' : 'Describe your suggestion'\}/);
+});
+
+test('switching to reduced motion clears an in-flight same-Orb reveal state', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  assert.match(roll, /if \(prevOrbRef\.current === lastOrb\)\s*\{[\s\S]*?if \(reducedMotion\)\s*\{\s*setIsRevealing\(false\);\s*setIsShaking\(false\);\s*setSonarPinging\(false\)/);
+});
+
+test('new Orb reveal cancels the previous screen-shake timer', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  assert.match(roll, /let shakeTimer: number \| null = null/);
+  assert.match(roll, /shakeTimer = window\.setTimeout\(\(\) => setIsShaking\(false\), 450\)/);
+  assert.match(roll, /if \(shakeTimer !== null\) window\.clearTimeout\(shakeTimer\)/);
+});
+
+test('shared-Orb public preview rejects rarity above the supported game ceiling', () => {
+  const shared = source('src/shared/game.ts');
+  const splash = source('src/client/splash.tsx');
+  assert.match(shared, /export const MAX_ORB_RARITY = 1_000_000_000_000_000_000/);
+  assert.match(splash, /Number\.isInteger\(data\.rarity\)[\s\S]*?Number\(data\.rarity\) <= MAX_ORB_RARITY/);
+  assert.doesNotMatch(splash, /Number\.isSafeInteger\(data\.rarity\)/);
+});
+
+test('all long-form dialogs remain scrollable on short viewports', () => {
+  const feedback = source('src/client/components/FeedbackModal.tsx');
+  const main = source('src/client/main.tsx');
+  const share = source('src/client/components/RedditShareModal.tsx');
+  const best = source('src/client/components/NewBestModal.tsx');
+  const rarity = source('src/client/components/RarityTableModal.tsx');
+  const changelog = source('src/client/components/ChangelogModal.tsx');
+  assert.match(feedback, /max-h-\[calc\(100dvh-2rem\)\] overflow-y-auto overscroll-contain/);
+  assert.ok(main.includes('max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain rounded-3xl border border-fuchsia-500/30'));
+  assert.match(share, /max-h-\[calc\(100dvh-2rem\)\] overflow-y-auto overscroll-contain/);
+  assert.equal((best.match(/max-h-\[calc\(100dvh-2rem\)\] overflow-y-auto overscroll-contain/g) ?? []).length, 2);
+  assert.match(rarity, /max-h-\[calc\(100dvh-2rem\)\] overflow-y-auto overscroll-contain/);
+  assert.match(changelog, /max-h-\[calc\(100dvh-2rem\)\] overflow-y-auto overscroll-contain/);
+});
