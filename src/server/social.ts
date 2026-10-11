@@ -1505,6 +1505,21 @@ export async function getCommunityEvent(): Promise<WorldEvent> {
   throw new Error('Community event changed while refreshing. Please retry.');
 }
 
+function nextCommunityMilestoneProgression(
+  goal: number,
+  tier: number,
+  label: string,
+): { goal: number; tier: number } {
+  if (!Number.isSafeInteger(goal) || goal < 1 || !Number.isSafeInteger(tier) || tier < 1 || tier >= Number.MAX_SAFE_INTEGER) {
+    throw new Error(`${label} milestone cannot advance safely; no progress was saved.`);
+  }
+  const nextGoal = Math.round(goal * 2.2);
+  if (!Number.isSafeInteger(nextGoal) || nextGoal <= goal) {
+    throw new Error(`${label} goal exceeds the safe progression range; no progress was saved.`);
+  }
+  return { goal: nextGoal, tier: tier + 1 };
+}
+
 export async function prepareCommunityRolls(
   rolls: number,
   pendingWrite?: { expectedValue: string | null; nextValue: string },
@@ -1561,12 +1576,10 @@ export async function prepareCommunityRolls(
   ev.currentProgress = Math.min(Number.MAX_SAFE_INTEGER - 1, ev.currentProgress + amount);
   assertSafeProgressionNumbers('Community event', ev.goal, ev.currentProgress, ev.tier);
   while (ev.currentProgress >= ev.goal) {
+    const next = nextCommunityMilestoneProgression(ev.goal, ev.tier || 1, 'Community event');
     ev.completedTier = Math.max(ev.completedTier ?? 0, ev.tier || 1);
-    ev.tier = (ev.tier || 1) + 1;
-    const nextGoal = Math.round(ev.goal * 2.2);
-    ev.goal = Number.isSafeInteger(nextGoal) && nextGoal > ev.goal
-      ? nextGoal
-      : Number.MAX_SAFE_INTEGER;
+    ev.goal = next.goal;
+    ev.tier = next.tier;
     ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
     ev.buffDescription = `+${Math.round((ev.buffMultiplier - 1) * 100)}% Global Luck Active`;
   }
@@ -1673,15 +1686,18 @@ export async function setCommunityEventConfig(config: {
     await txn.unwatch();
     throw error;
   }
-  while (ev.currentProgress >= ev.goal) {
-    ev.completedTier = Math.max(ev.completedTier ?? 0, ev.tier || 1);
-    ev.tier = (ev.tier || 1) + 1;
-    const nextGoal = Math.round(ev.goal * 2.2);
-    ev.goal = Number.isSafeInteger(nextGoal) && nextGoal > ev.goal
-      ? nextGoal
-      : Number.MAX_SAFE_INTEGER;
-    ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
-    ev.buffDescription = `+${Math.round((ev.buffMultiplier - 1) * 100)}% Global Luck Active`;
+  try {
+    while (ev.currentProgress >= ev.goal) {
+      const next = nextCommunityMilestoneProgression(ev.goal, ev.tier || 1, 'Community event');
+      ev.completedTier = Math.max(ev.completedTier ?? 0, ev.tier || 1);
+      ev.goal = next.goal;
+      ev.tier = next.tier;
+      ev.buffMultiplier = Number((1.10 + Math.min(10, ev.tier) * 0.05).toFixed(2));
+      ev.buffDescription = `+${Math.round((ev.buffMultiplier - 1) * 100)}% Global Luck Active`;
+    }
+  } catch (error) {
+    await txn.unwatch();
+    throw error;
   }
     await txn.multi();
     await txn.set(COMMUNITY_EVENT_KEY, JSON.stringify(ev));
@@ -2179,15 +2195,14 @@ export async function prepareDailyStreakCommunityProgress(amount: number): Promi
   event.currentProgress += contribution;
   validateDailyStreakCommunityEvent(event);
   while (event.currentProgress >= event.goal) {
+    const next = nextCommunityMilestoneProgression(event.goal, event.tier, 'Daily Streak community');
     event.completedTier = Math.max(event.completedTier ?? 0, event.tier);
-    event.tier += 1;
-    const nextGoal = Math.round(event.goal * 2.2);
-    event.goal = Number.isSafeInteger(nextGoal) && nextGoal > event.goal
-      ? nextGoal
-      : Number.MAX_SAFE_INTEGER;
+    event.goal = next.goal;
+    event.tier = next.tier;
     event.luckMultiplier = Number((1 + event.tier * 0.50).toFixed(2));
     event.speedMultiplier = Math.max(0.50, Number((1 - event.tier * 0.01).toFixed(2)));
   }
+  validateDailyStreakCommunityEvent(event);
 
   return {
     event,
