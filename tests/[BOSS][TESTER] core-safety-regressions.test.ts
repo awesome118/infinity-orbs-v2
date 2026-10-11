@@ -402,7 +402,7 @@ test('feedback Modmail submits require an atomic per-user cooldown reservation',
 });
 
 
-test('chat reports reserve the message/reporter idempotency key before Modmail', () => {
+test('chat reports are durable before Modmail and preserve ambiguous sends for admin review', () => {
   const social = source('src/server/social.ts');
   const start = social.indexOf('async function submitChatReport(');
   const end = social.indexOf('export async function getGlobalChat()', start);
@@ -411,10 +411,15 @@ test('chat reports reserve the message/reporter idempotency key before Modmail',
   const receiptCheck = report.indexOf('redis.hGet(CHAT_REPORTS_KEY, reportKey)');
   const reserve = report.indexOf('redis.set(reservationKey, reservationToken');
   const verify = report.indexOf('redis.get(reservationKey) !== reservationToken');
+  const firstReceipt = report.indexOf('redis.hSet(CHAT_REPORTS_KEY');
   const modmail = report.indexOf('reddit.modMail.createModInboxConversation');
-  const receipt = report.indexOf('redis.hSet(CHAT_REPORTS_KEY');
+  const statusReceipt = report.indexOf('redis.hSet(CHAT_REPORTS_KEY', firstReceipt + 1);
   assert.ok(receiptCheck >= 0 && reserve > receiptCheck && verify > reserve);
-  assert.ok(modmail > verify && receipt > modmail, 'reserve before external create; receipt after success');
+  assert.ok(firstReceipt > verify && firstReceipt < modmail, 'write pending report before the external create');
+  assert.ok(statusReceipt > modmail, 'mark sent only after Modmail succeeds');
+  assert.ok(report.includes(`status: 'pending'`));
+  assert.ok(report.includes(`status: 'sent'`));
+  assert.ok(report.includes('pending report was preserved'));
   assert.ok(report.includes('nx: true'));
   assert.ok(report.includes('24 * 60 * 60_000'));
   assert.ok(report.includes('already submitted or is still being processed'));
@@ -527,4 +532,43 @@ test('payment fulfillment rejects safe-integer overflow before writing paid enti
 
   assert.ok(grant.includes('state.lifetimeShards = lifetimeShards > Number.MAX_SAFE_INTEGER - pack.shards'));
 
+});
+
+
+test('malformed player activity registry entries are not overwritten with fresh defaults', () => {
+  const game = source('src/server/game.ts');
+  assert.match(game, /function parsePlayerRegistryEntryForMutation\(raw: unknown, now: number\)/);
+  const parserStart = game.indexOf('function parsePlayerRegistryEntryForMutation');
+  const parserEnd = game.indexOf('\nasync function touchPlayerActivity', parserStart);
+  assert.ok(parserStart >= 0 && parserEnd > parserStart);
+  const parser = game.slice(parserStart, parserEnd);
+  assert.match(parser, /parseStoredJson<unknown>\(raw\)/);
+  assert.match(parser, /validTimestamp\(record\.firstSeenAt\)/);
+  assert.match(parser, /validTimestamp\(record\.lastSeenAt\)/);
+  assert.match(parser, /record\.playtimeMs < 0/);
+  assert.match(parser, /refusing to overwrite it/);
+  const touchStart = game.indexOf('async function touchPlayerActivity');
+  const touchEnd = game.indexOf('\nasync function ', touchStart + 10);
+  assert.ok(touchStart >= 0 && touchEnd > touchStart);
+  const touch = game.slice(touchStart, touchEnd);
+  assert.match(touch, /parsePlayerRegistryEntryForMutation\(existingRaw, activityNow\)/);
+  assert.match(touch, /await txn\.unwatch\(\);\s*throw error;/);
+  assert.doesNotMatch(touch, /finiteNonNegativeInteger\(existing\?\.playtimeMs, 0\)/);
+});
+
+
+test('offline notification reserves an attempt before enqueue and compare-and-sets the receipt', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('async function sendOfflineFullNotification(');
+  const end = game.indexOf('\nfunction parseOfflineFullJobMarker', start);
+  assert.ok(start >= 0 && end > start);
+  const sender = game.slice(start, end);
+  const reservation = sender.indexOf('redis.set(notificationKey, pendingToken');
+  const enqueue = sender.indexOf('notifications.enqueue');
+  const finalize = sender.indexOf('commitOfflineNotificationMarkerIfUnchanged(notificationKey, pendingToken)');
+  assert.ok(reservation >= 0 && enqueue > reservation && finalize > enqueue);
+  assert.match(sender, /nx: true/);
+  assert.match(sender, /7 \* 24 \* 60 \* 60_000/);
+  assert.match(game, /async function commitOfflineNotificationMarkerIfUnchanged/);
+  assert.match(game, /await txn\.set\(keyName, '1'\)/);
 });
