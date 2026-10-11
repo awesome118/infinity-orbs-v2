@@ -1107,6 +1107,41 @@ test('persisted PlayerState parser rejects malformed wallet and roll-counter cor
   assert.match(parser, /if \(!validCoreState\) return null/);
 });
 
+test('payment fulfillment validates canonical saves and guards revision exhaustion before entitlement writes', () => {
+  const game = source('src/server/game.ts');
+  const parserStart = game.indexOf('function parsePaymentPlayerState');
+  const parserEnd = game.indexOf('export async function hasReadablePlayerSave', parserStart);
+  assert.ok(parserStart >= 0 && parserEnd > parserStart);
+  const parser = game.slice(parserStart, parserEnd);
+
+  const requiredCore = parser.indexOf("'coins' in record &&");
+  const canonicalValidation = parser.indexOf('const validatedState = parsePlayerStateValue(record)');
+  const invalidSaveGuard = parser.indexOf("throw new Error('Saved player data could not be read; the purchase was not applied.')");
+  const walletNormalization = parser.indexOf('const normalizedWalletShards =');
+  assert.ok(requiredCore >= 0 && canonicalValidation > requiredCore);
+  assert.ok(invalidSaveGuard > canonicalValidation);
+  assert.ok(walletNormalization > invalidSaveGuard);
+  assert.match(parser, /'coins' in record &&\s*'shards' in record &&\s*'totalRolls' in record/);
+  assert.match(parser, /\.\.\.validatedState,/);
+  assert.doesNotMatch(parser, /'coins' in record \|\|[\s\S]*?'paymentReceipts' in record/);
+
+  const grantStart = game.indexOf('export async function grantPurchasedPack');
+  const grantEnd = game.indexOf('export async function refundPurchasedPack', grantStart);
+  assert.ok(grantStart >= 0 && grantEnd > grantStart);
+  const grant = game.slice(grantStart, grantEnd);
+  const revisionRead = grant.indexOf('const currentRevision = normalizeSafeInteger(state.stateRevision, 0)');
+  const revisionGuard = grant.indexOf('if (currentRevision >= Number.MAX_SAFE_INTEGER)', revisionRead);
+  const shardLotWrite = grant.indexOf('state.purchasedShardLots[orderId] =');
+  const boosterLotWrite = grant.indexOf('state.globalBoosterCreditLots[orderId] =');
+  const revisionWrite = grant.indexOf('state.stateRevision = currentRevision + 1');
+  const receiptWrite = grant.indexOf('state.paymentReceipts[orderId] = receipt');
+  assert.ok(revisionRead >= 0 && revisionGuard > revisionRead);
+  assert.ok(shardLotWrite > revisionGuard, 'guard must precede purchased-Shard lot mutation');
+  assert.ok(boosterLotWrite > revisionGuard, 'guard must precede Booster-credit lot mutation');
+  assert.ok(revisionWrite > revisionGuard, 'only the checked revision may be incremented');
+  assert.ok(receiptWrite > revisionGuard, 'guard must precede fulfilled receipt mutation');
+});
+
 test('every loaded PlayerState has a valid revision, including new and legacy saves', () => {
   const game = source('src/server/game.ts');
   const parserStart = game.indexOf('function parsePlayerStateValue');

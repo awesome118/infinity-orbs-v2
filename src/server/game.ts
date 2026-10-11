@@ -1750,17 +1750,18 @@ function parsePaymentPlayerState(raw: unknown): PlayerState {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) break;
 
     const record = parsed as Record<string, unknown>;
+    // A wrapper can contain incidental familiar keys alongside a nested save.
+    // Only validate a record as a PlayerState when all required core fields exist.
     const looksLikePlayerState =
-      'coins' in record ||
-      'shards' in record ||
-      'totalRolls' in record ||
-      'username' in record ||
-      'saveGeneration' in record ||
-      'upgrades' in record ||
-      'collection' in record ||
-      'paymentReceipts' in record;
+      'coins' in record &&
+      'shards' in record &&
+      'totalRolls' in record;
 
     if (looksLikePlayerState) {
+      const validatedState = parsePlayerStateValue(record);
+      if (!validatedState) {
+        throw new Error('Saved player data could not be read; the purchase was not applied.');
+      }
       const base = createInitialState();
       const upgrades = record.upgrades && typeof record.upgrades === 'object' && !Array.isArray(record.upgrades)
         ? record.upgrades as Record<string, unknown>
@@ -1780,7 +1781,7 @@ function parsePaymentPlayerState(raw: unknown): PlayerState {
 
       return {
         ...base,
-        ...record,
+        ...validatedState,
         shards: normalizedWalletShards,
         purchasedShards: normalizedPurchasedShards,
         purchasedShardLots: normalizeEntitlementLots(
@@ -1964,6 +1965,13 @@ return withPlayerMutationLockFor(userId, async () => {
       throw new Error('Global Booster credit balance has reached its supported storage limit; use credits before reconciling this purchase.');
     }
 
+    // Refuse before touching entitlement lots or the receipt: revisions must never wrap.
+    const currentRevision = normalizeSafeInteger(state.stateRevision, 0);
+    if (currentRevision >= Number.MAX_SAFE_INTEGER) {
+      await txn.unwatch();
+      throw new Error('Player state revision is exhausted; no purchase was applied.');
+    }
+
     const existingPurchasedShards = Math.min(
       normalizeSafeInteger(state.purchasedShards, 0),
       currentShardBalance,
@@ -1988,7 +1996,7 @@ return withPlayerMutationLockFor(userId, async () => {
     state.globalBoosterCreditLots[orderId] =
       normalizeSafeInteger(state.globalBoosterCreditLots[orderId], 0) + pack.globalBoosterCredits;
 
-    state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
+    state.stateRevision = currentRevision + 1;
     state.shards = currentShardBalance + pack.shards;
     state.purchasedShards = existingPurchasedShards + pack.shards;
     // Lifetime Shards are telemetry, not a spendable balance. Saturate the
