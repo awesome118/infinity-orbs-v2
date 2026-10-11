@@ -138,6 +138,7 @@ async function clearOfflineReminderKeyIfUnchanged(
 ): Promise<boolean> {
   if (expectedValue == null) return false;
   const expected = String(expectedValue);
+  const isNotificationMarker = keyName.startsWith(OFFLINE_FULL_NOTIFICATION_PREFIX);
 
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const txn = await redis.watch(keyName);
@@ -147,10 +148,37 @@ async function clearOfflineReminderKeyIfUnchanged(
       return false;
     }
 
+    if (isNotificationMarker) {
+      const marker = String(current);
+      const now = Date.now();
+      const phase = parseOfflineFullNotificationAttemptMarker(marker);
+      const legacyPendingStartedAt = offlineLegacyPendingMarkerStartedAt(marker, now);
+      const sendingLeaseExpired =
+        phase?.phase === 'sending' &&
+        now - phase.startedAt >= OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000;
+      const legacyPendingLeaseExpired =
+        legacyPendingStartedAt !== null &&
+        now - legacyPendingStartedAt >= OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000;
+
+      // A claim can cancel a pre-send reservation: the sender must still win
+      // the exact-token CAS before calling the provider. Do not remove a sending
+      // or legacy pending marker during its ambiguity lease, or a later call
+      // could duplicate a notification that was already accepted externally.
+      if (
+        marker !== '' &&
+        marker !== '1' &&
+        phase?.phase !== 'reserved' &&
+        !sendingLeaseExpired &&
+        !legacyPendingLeaseExpired
+      ) {
+        await txn.unwatch();
+        return false;
+      }
+    }
+
     await txn.multi();
-    // Empty string is treated as absent by the existing truthiness checks,
-    // while WATCH/MULTI makes the compare-and-clear safe against a newer job.
-    await txn.set(keyName, '');
+    // Delete the key. An empty-valued Redis key still blocks SET NX.
+    await txn.del(keyName);
     if (await txn.exec() !== null) return true;
   }
   return false;
@@ -193,6 +221,8 @@ const GLOBAL_BOOSTER_ANNOUNCEMENT_KEY = 'io:global-booster-announcement';
 const OFFLINE_FULL_NOTIFICATION_PREFIX = 'io:offline-full-notified:';
 const OFFLINE_FULL_JOB_PREFIX = 'io:offline-full-job:';
 const OFFLINE_FULL_RETRY_MS = 5 * 60_000;
+const OFFLINE_FULL_RESERVATION_TTL_MS = 60_000;
+const OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS = 7 * 24 * 60 * 60_000;
 const PLAYER_FLAIR_KEY_PREFIX = 'io:player-flair:';
 const ROLL_TICKET_KEY_PREFIX = 'io:roll-ticket:';
 const ROLL_TICKET_COUNT = 30;
@@ -1750,17 +1780,18 @@ function parsePaymentPlayerState(raw: unknown): PlayerState {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) break;
 
     const record = parsed as Record<string, unknown>;
+    // A wrapper can contain incidental familiar keys alongside a nested save.
+    // Only validate a record as a PlayerState when all required core fields exist.
     const looksLikePlayerState =
-      'coins' in record ||
-      'shards' in record ||
-      'totalRolls' in record ||
-      'username' in record ||
-      'saveGeneration' in record ||
-      'upgrades' in record ||
-      'collection' in record ||
-      'paymentReceipts' in record;
+      'coins' in record &&
+      'shards' in record &&
+      'totalRolls' in record;
 
     if (looksLikePlayerState) {
+      const validatedState = parsePlayerStateValue(record);
+      if (!validatedState) {
+        throw new Error('Saved player data could not be read; the purchase was not applied.');
+      }
       const base = createInitialState();
       const upgrades = record.upgrades && typeof record.upgrades === 'object' && !Array.isArray(record.upgrades)
         ? record.upgrades as Record<string, unknown>
@@ -1780,7 +1811,7 @@ function parsePaymentPlayerState(raw: unknown): PlayerState {
 
       return {
         ...base,
-        ...record,
+        ...validatedState,
         shards: normalizedWalletShards,
         purchasedShards: normalizedPurchasedShards,
         purchasedShardLots: normalizeEntitlementLots(
@@ -1964,6 +1995,13 @@ return withPlayerMutationLockFor(userId, async () => {
       throw new Error('Global Booster credit balance has reached its supported storage limit; use credits before reconciling this purchase.');
     }
 
+    // Refuse before touching entitlement lots or the receipt: revisions must never wrap.
+    const currentRevision = normalizeSafeInteger(state.stateRevision, 0);
+    if (currentRevision >= Number.MAX_SAFE_INTEGER) {
+      await txn.unwatch();
+      throw new Error('Player state revision is exhausted; no purchase was applied.');
+    }
+
     const existingPurchasedShards = Math.min(
       normalizeSafeInteger(state.purchasedShards, 0),
       currentShardBalance,
@@ -1988,7 +2026,7 @@ return withPlayerMutationLockFor(userId, async () => {
     state.globalBoosterCreditLots[orderId] =
       normalizeSafeInteger(state.globalBoosterCreditLots[orderId], 0) + pack.globalBoosterCredits;
 
-    state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
+    state.stateRevision = currentRevision + 1;
     state.shards = currentShardBalance + pack.shards;
     state.purchasedShards = existingPurchasedShards + pack.shards;
     // Lifetime Shards are telemetry, not a spendable balance. Saturate the
@@ -3483,45 +3521,166 @@ export async function applyRolls(
 
 async function commitOfflineNotificationMarkerIfUnchanged(
   keyName: string,
-  pendingToken: string,
+  ownedToken: string,
 ): Promise<boolean> {
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const txn = await redis.watch(keyName);
-    const current = await redis.get(keyName);
-    if (current == null || String(current) !== pendingToken) {
+    try {
+      const current = await redis.get(keyName);
+      if (current == null || String(current) !== ownedToken) {
+        await txn.unwatch();
+        return false;
+      }
+      await txn.multi();
+      await txn.set(keyName, '1');
+      if (await txn.exec() !== null) return true;
+    } catch (error) {
+      await txn.unwatch().catch(() => undefined);
+      throw error;
+    }
+  }
+  return false;
+}
+
+function parseOfflineFullNotificationAttemptMarker(
+  raw: unknown,
+): { phase: 'reserved' | 'sending'; startedAt: number } | null {
+  if (typeof raw !== 'string') return null;
+  const match = raw.match(/^(reserved-v2|sending-v2):([0-9a-z]+):([a-z0-9-]+)$/);
+  if (!match) return null;
+  const startedAt = Number.parseInt(match[2], 36);
+  if (!Number.isSafeInteger(startedAt) || startedAt < 0) return null;
+  return {
+    phase: match[1] === 'reserved-v2' ? 'reserved' : 'sending',
+    startedAt,
+  };
+}
+
+async function deleteOfflineFullNotificationMarkerIfUnchanged(
+  keyName: string,
+  expectedValue: string,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const txn = await redis.watch(keyName);
+    let current: string | null;
+    try {
+      current = await redis.get(keyName);
+    } catch (error) {
+      await txn.unwatch().catch(() => undefined);
+      throw error;
+    }
+    if (current == null || String(current) !== expectedValue) {
       await txn.unwatch();
       return false;
     }
+
     await txn.multi();
-    await txn.set(keyName, '1');
+    await txn.del(keyName);
     if (await txn.exec() !== null) return true;
+  }
+  return false;
+}
+
+async function readOfflineNotificationMarkerAndRepairLegacyKey(
+  notificationKey: string,
+): Promise<string | null> {
+  const marker = await redis.get(notificationKey);
+  if (marker !== '') return marker;
+
+  // Older versions wrote an empty marker instead of deleting the key. Remove
+  // that tombstone under compare-and-delete so it cannot block a later SET NX.
+  await deleteOfflineFullNotificationMarkerIfUnchanged(notificationKey, '');
+  return await redis.get(notificationKey);
+}
+
+async function claimOfflineFullNotificationSendingIfUnchanged(
+  keyName: string,
+  reservedToken: string,
+  sendingToken: string,
+  expiresAt: number,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const txn = await redis.watch(keyName);
+    try {
+      const current = await redis.get(keyName);
+      if (current == null || String(current) !== reservedToken) {
+        await txn.unwatch();
+        return false;
+      }
+      await txn.multi();
+      await txn.set(keyName, sendingToken, { expiration: new Date(expiresAt) });
+      if (await txn.exec() !== null) return true;
+    } catch (error) {
+      await txn.unwatch().catch(() => undefined);
+      throw error;
+    }
   }
   return false;
 }
 
 async function sendOfflineFullNotification(userId: string, subredditName: string): Promise<boolean> {
   const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
-  if (await redis.get(notificationKey)) return false;
+
+  // Only a v2 "reserved" marker proves the provider has not been called yet.
+  // It can be reclaimed after its short lease. Legacy pending markers and v2
+  // "sending" markers are ambiguous, so fail closed to avoid duplicate alerts.
+  let reservationAvailable = false;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const existing = await redis.get(notificationKey);
+    if (existing == null) {
+      reservationAvailable = true;
+      break;
+    }
+
+    const parsed = parseOfflineFullNotificationAttemptMarker(existing);
+    const now = Date.now();
+    const legacyPendingStartedAt = offlineLegacyPendingMarkerStartedAt(existing, now);
+    const staleReservedMarker =
+      parsed?.phase === 'reserved' &&
+      now - parsed.startedAt >= OFFLINE_FULL_RESERVATION_TTL_MS;
+    const staleSendingMarker =
+      parsed?.phase === 'sending' &&
+      now - parsed.startedAt >= OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000;
+    const staleLegacyPendingMarker =
+      legacyPendingStartedAt !== null &&
+      now - legacyPendingStartedAt >= OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000;
+    if (existing === '' || staleReservedMarker || staleSendingMarker || staleLegacyPendingMarker) {
+      // Empty values are legacy tombstones. A reserved-v2 marker is safe to reclaim
+      // because provider I/O is gated by the CAS transition to sending-v2. Sending
+      // and legacy pending markers are kept through the seven-day ambiguity window,
+      // then reclaimed under the explicit retry-after-lease policy.
+      await deleteOfflineFullNotificationMarkerIfUnchanged(notificationKey, existing);
+      continue;
+    }
+    if (parsed?.phase === 'reserved') {
+      // Keep the scheduler retry path alive while the other request is still
+      // preparing. Returning false would clear the only job without a retry.
+      throw new Error('Offline notification reservation is still being prepared; retry later.');
+    }
+    return false;
+  }
+  if (!reservationAvailable) {
+    throw new Error('Offline notification reservation is changing repeatedly; retry later.');
+  }
 
   if (!(await notifications.isOptedIn(userId))) return false;
 
-  // Reserve the single attempt before calling the external notification service.
-  // If enqueue succeeds but the receipt write fails (or the process dies in that
-  // gap), retries must not enqueue a duplicate notification. The pending token
-  // expires after a week if an interrupted request never reaches its final write.
+  // Reserve briefly before the external call. If SET or its verification GET
+  // has an ambiguous failure, no provider call occurs, and a later job can
+  // reclaim this reserved-v2 marker after the lease expires.
   const attemptNow = Date.now();
-  const pendingToken = `pending:${attemptNow.toString(36)}:${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+  const nonce = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  const reservationStamp = attemptNow.toString(36);
+  const reservedToken = `reserved-v2:${reservationStamp}:${nonce}`;
+  const sendingToken = `sending-v2:${reservationStamp}:${nonce}`;
   let reservationWriteFailed = false;
   let reservationWriteError: unknown;
   try {
-    await redis.set(notificationKey, pendingToken, {
+    await redis.set(notificationKey, reservedToken, {
       nx: true,
-      expiration: new Date(attemptNow + 7 * 24 * 60 * 60_000),
+      expiration: new Date(attemptNow + OFFLINE_FULL_RESERVATION_TTL_MS),
     });
   } catch (error) {
-    // Redis can commit SET NX but lose its acknowledgement. Verify our unique
-    // token before deciding whether to enqueue, rather than stranding a
-    // reservation for seven days even though no provider call was attempted.
     reservationWriteFailed = true;
     reservationWriteError = error;
   }
@@ -3536,14 +3695,29 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
     }
     throw readError;
   }
-  if (storedReservation !== pendingToken) {
-    // No confirmed reservation means we must not send. If SET failed and the
-    // key is absent, propagate the original failure so the caller can retry.
+  if (storedReservation !== reservedToken) {
     if (reservationWriteFailed && storedReservation == null) throw reservationWriteError;
+    const competingReservation = parseOfflineFullNotificationAttemptMarker(storedReservation);
+    if (storedReservation === '' || competingReservation?.phase === 'reserved') {
+      throw new Error('Another offline notification reservation is being prepared; retry later.');
+    }
     return false;
   }
   if (reservationWriteFailed) {
-    console.warn('[Offline Notification] Reservation token was confirmed after an ambiguous Redis SET failure; continuing.', reservationWriteError);
+    console.warn('[Offline Notification] Reserved token was confirmed after an ambiguous Redis SET failure; continuing.', reservationWriteError);
+  }
+
+  // Move from "reserved" to "sending" atomically before provider I/O. Recovery
+  // may reclaim only reserved-v2; sending-v2 remains held if enqueue or its
+  // receipt write has an ambiguous outcome, preserving at-most-once delivery.
+  const sendingClaimed = await claimOfflineFullNotificationSendingIfUnchanged(
+    notificationKey,
+    reservedToken,
+    sendingToken,
+    attemptNow + OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS,
+  );
+  if (!sendingClaimed) {
+    throw new Error('Offline notification reservation changed before sending; retry later.');
   }
 
   await notifications.enqueue({
@@ -3556,10 +3730,49 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
   });
 
   // Compare-and-set prevents a concurrent offline-roll claim from clearing the
-  // pending marker and then having this request resurrect a stale receipt.
-  // If Redis fails here, the pending reservation remains and blocks duplicates.
-  await commitOfflineNotificationMarkerIfUnchanged(notificationKey, pendingToken);
+  // sending marker and then having this request resurrect a stale receipt.
+  const receiptCommitted = await commitOfflineNotificationMarkerIfUnchanged(notificationKey, sendingToken);
+  if (!receiptCommitted) {
+    // The provider call succeeded, but we could not confirm the durable receipt.
+    // Do not report a confirmed send; the worker will preserve/recheck the
+    // sending lease and retry only after its ambiguity window has elapsed.
+    const currentMarker = await redis.get(notificationKey);
+    if (currentMarker !== '1') {
+      console.error('[Offline Notification] Provider accepted the attempt but the sent receipt could not be confirmed.');
+      return false;
+    }
+  }
   return true;
+}
+
+function offlineLegacyPendingMarkerStartedAt(marker: unknown, now = Date.now()): number | null {
+  const pendingMatch = typeof marker === 'string'
+    ? /^pending:([0-9a-z]+):/.exec(marker)
+    : null;
+  const parsedAt = pendingMatch ? Number.parseInt(pendingMatch[1], 36) : NaN;
+  return Number.isSafeInteger(parsedAt) && parsedAt > 0 && parsedAt <= now + 60_000
+    ? parsedAt
+    : null;
+}
+
+function offlineNotificationPendingRetryAt(marker: unknown, now = Date.now()): number {
+  const parsed = parseOfflineFullNotificationAttemptMarker(marker);
+  if (parsed?.phase === 'reserved') {
+    return Math.max(now + 1_000, parsed.startedAt + OFFLINE_FULL_RESERVATION_TTL_MS + 1_000);
+  }
+  if (parsed?.phase === 'sending') {
+    return Math.max(now + 1_000, parsed.startedAt + OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000);
+  }
+
+  // Older versions used pending:<time>:<nonce> with a seven-day expiry. Keep
+  // those ambiguous attempts fail-closed, then retry once their lease elapses.
+  const pendingAt = offlineLegacyPendingMarkerStartedAt(marker, now) ?? now;
+  return Math.max(now + 1_000, pendingAt + OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000);
+}
+
+function isRetryableOfflineFullNotificationMarker(marker: unknown): marker is string {
+  return parseOfflineFullNotificationAttemptMarker(marker) !== null ||
+    (typeof marker === 'string' && /^pending:[0-9a-z]+:.+$/.test(marker));
 }
 
 function parseOfflineFullJobMarker(
@@ -3605,15 +3818,33 @@ async function scheduleOfflineFullNotification(
   userId: string,
   subredditName: string,
   runAt: number,
+  allowReservationRetry = false,
 ): Promise<void> {
   if (!subredditName || !userId) return;
-  if (await redis.get(OFFLINE_FULL_NOTIFICATION_PREFIX + userId)) return;
+  const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
+  let notificationMarker = await redis.get(notificationKey);
+  if (notificationMarker === '') {
+    // Recover empty-string tombstones written by older compare-and-clear code.
+    await deleteOfflineFullNotificationMarkerIfUnchanged(notificationKey, '');
+    notificationMarker = await redis.get(notificationKey);
+  }
+  if (notificationMarker === '1') return;
+  let effectiveRunAt = Number(runAt);
+  if (notificationMarker != null) {
+    if (!allowReservationRetry || !isRetryableOfflineFullNotificationMarker(notificationMarker)) return;
+    // If a competing request advanced reserved -> sending after the caller chose
+    // its retry time, honor the longer sending lease rather than polling it early.
+    effectiveRunAt = Math.max(
+      Number.isFinite(effectiveRunAt) ? effectiveRunAt : Date.now() + OFFLINE_FULL_RETRY_MS,
+      offlineNotificationPendingRetryAt(notificationMarker),
+    );
+  }
   if (!(await notifications.isOptedIn(userId))) return;
 
   const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
   const now = Date.now();
   const maxDateMs = 8_640_000_000_000_000;
-  const requestedRunAt = Number(runAt);
+  const requestedRunAt = effectiveRunAt;
   const safeRunAt = Math.min(
     maxDateMs - 1,
     Math.max(now + 1_000, Number.isFinite(requestedRunAt) ? requestedRunAt : now + 1_000),
@@ -3710,13 +3941,61 @@ export async function processOfflineFullNotification(
     return;
   }
 
+  const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
   try {
-    await sendOfflineFullNotification(userId, subredditName);
-    await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
+    const sent = await sendOfflineFullNotification(userId, subredditName);
+    const cleared = await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
+    if (!sent && cleared) {
+      const notificationMarker = await redis.get(notificationKey);
+      if (notificationMarker === '') {
+        // An older clear path may have left an empty-valued key that still blocks SET NX.
+        await scheduleOfflineFullNotification(userId, subredditName, Date.now() + OFFLINE_FULL_RETRY_MS);
+      } else if (isRetryableOfflineFullNotificationMarker(notificationMarker)) {
+        await scheduleOfflineFullNotification(
+          userId,
+          subredditName,
+          offlineNotificationPendingRetryAt(notificationMarker),
+          true,
+        );
+      }
+    }
   } catch (error) {
     console.error('Failed to send scheduled offline-orbs-full notification:', error);
+    let notificationMarker: string | null = null;
+    let markerReadFailed = false;
+    try {
+      notificationMarker = await redis.get(notificationKey);
+    } catch (markerReadError) {
+      // A failed verification read is unknown, not proof the reservation is absent.
+      markerReadFailed = true;
+      console.error('[Offline Notification] Could not inspect the attempt marker before retry scheduling.', markerReadError);
+    }
+
+    const retryableMarker = isRetryableOfflineFullNotificationMarker(notificationMarker);
+    if (
+      notificationMarker === '1' ||
+      (notificationMarker != null && notificationMarker !== '' && !retryableMarker)
+    ) {
+      // Unknown marker formats fail closed just like a durable receipt.
+      await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
+      return;
+    }
+
+    const allowReservationRetry = markerReadFailed || retryableMarker;
+    const retryAt = markerReadFailed
+      ? Date.now() + OFFLINE_FULL_RETRY_MS
+      : retryableMarker
+        ? offlineNotificationPendingRetryAt(notificationMarker)
+        : Date.now() + OFFLINE_FULL_RETRY_MS;
     const cleared = await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
-    if (cleared) await scheduleOfflineFullNotification(userId, subredditName, now + OFFLINE_FULL_RETRY_MS);
+    if (cleared) {
+      await scheduleOfflineFullNotification(
+        userId,
+        subredditName,
+        retryAt,
+        allowReservationRetry,
+      );
+    }
   }
   });
 }
@@ -3772,13 +4051,88 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
   if (!options.skipOfflineNotifications && userId && subredditName && s.offlineRolls >= cap) {
     try {
       await withPlayerMutationLockFor(`offline-notification:${userId}`, async () => {
-        await sendOfflineFullNotification(userId, subredditName);
+        const sent = await sendOfflineFullNotification(userId, subredditName);
+        const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
+        const notificationMarker = await readOfflineNotificationMarkerAndRepairLegacyKey(notificationKey);
         const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
         const currentJob = await redis.get(jobKey);
-        if (currentJob != null) await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+        const clearCurrentJob = async () => {
+          if (currentJob != null) await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+        };
+
+        if (sent || notificationMarker === '1') {
+          await clearCurrentJob();
+          return;
+        }
+
+        if (notificationMarker != null && !isRetryableOfflineFullNotificationMarker(notificationMarker)) {
+          // Unknown marker formats fail closed. Do not delete a job whose retry
+          // could still be needed to reconcile this marker.
+          return;
+        }
+
+        if (notificationMarker == null && !(await notifications.isOptedIn(userId))) {
+          await clearCurrentJob();
+          return;
+        }
+
+        if (isRetryableOfflineFullNotificationMarker(notificationMarker)) {
+          // Keep any existing job: when it runs, the worker will move it beyond
+          // the active reservation lease. If no job exists, restore one now.
+          if (currentJob === '') await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+          if (!currentJob) {
+            await scheduleOfflineFullNotification(
+              userId,
+              subredditName,
+              offlineNotificationPendingRetryAt(notificationMarker),
+              true,
+            );
+          }
+          return;
+        }
+
+        // No marker but still opted in means the receipt outcome could not be
+        // confirmed after the provider call. Wait out the full ambiguity lease
+        // rather than immediately risking a duplicate notification.
+        if (currentJob != null) await clearCurrentJob();
+        await scheduleOfflineFullNotification(
+          userId,
+          subredditName,
+          Date.now() + OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000,
+        );
       });
     } catch (error) {
       console.error('Failed to send offline-orbs-full notification:', error);
+      try {
+        const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
+        const notificationMarker = await readOfflineNotificationMarkerAndRepairLegacyKey(notificationKey);
+        const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
+        const currentJob = await redis.get(jobKey);
+
+        if (notificationMarker === '1') {
+          if (currentJob != null) await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+        } else if (
+          !(notificationMarker != null && !isRetryableOfflineFullNotificationMarker(notificationMarker)) &&
+          !(currentJob && currentJob !== '')
+        ) {
+          if (currentJob === '') await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+          const markerIsRetryable = isRetryableOfflineFullNotificationMarker(notificationMarker);
+          const retryAt = markerIsRetryable
+            ? offlineNotificationPendingRetryAt(notificationMarker)
+            : Date.now() + OFFLINE_FULL_RETRY_MS;
+          await scheduleOfflineFullNotification(
+            userId,
+            subredditName,
+            retryAt,
+            markerIsRetryable,
+          );
+        } else {
+          // Unknown markers fail closed. Existing jobs are preserved so their
+          // worker can perform the same marker-aware recovery when it runs.
+        }
+      } catch (recoveryError) {
+        console.error('[Offline Notification] Could not restore a retry after direct-send failure:', recoveryError);
+      }
     }
   } else if (!options.skipOfflineNotifications && userId && subredditName) {
     try {
