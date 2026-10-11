@@ -2220,7 +2220,11 @@ export async function recordLeaderboard(s: PlayerState) {
     const txn = await redis.watch(leaderboardKey);
     const raw = await redis.get(leaderboardKey);
     const board: LeaderboardEntry[] = parseLeaderboardList(raw);
-    const existing = board.find(e => (next.userId && e.userId === next.userId) || e.username === name);
+    const existing = board.find(existing =>
+      next.userId
+        ? existing.userId === next.userId || (!existing.userId && existing.username === name)
+        : existing.username === name,
+    );
     if (existing) {
       const existingRevision = Number(existing.stateRevision);
       // WATCH protects list writes, not source freshness. An earlier async
