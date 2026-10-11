@@ -28,7 +28,6 @@ import {
   COSMETICS_LIST,
   rollContinuum,
   coinsForRarity,
-  MAX_OFFLINE_ROLLS,
   OFFLINE_TICK_MS,
   calculateCosmicDust,
   effectiveOfflineTickMs,
@@ -1668,8 +1667,7 @@ function parsePlayerStateValue(value: unknown, depth = 0): PlayerState | null {
         !('offlineRolls' in record) ||
         (
           Number.isSafeInteger(record.offlineRolls) &&
-          Number(record.offlineRolls) >= 0 &&
-          Number(record.offlineRolls) <= MAX_OFFLINE_ROLLS
+          Number(record.offlineRolls) >= 0
         )
       ) &&
       (
