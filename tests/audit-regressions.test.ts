@@ -1398,3 +1398,24 @@ test('removed Achievements API is not remounted in the integration candidate', (
   assert.doesNotMatch(app, /app\.post\(['"]\/api\/achievements\/claim['"]/);
   assert.doesNotMatch(app, /'\/achievements'\]\.includes\(req\.path\)/);
 });
+
+
+test('Guild expiry persistence rejects malformed watched snapshots instead of filtering rows', () => {
+  const social = source('src/server/social.ts');
+  const parserStart = social.indexOf('function parseGuildListRaw(');
+  const parserEnd = social.indexOf('function parseLeaderboardList(', parserStart);
+  assert.ok(parserStart >= 0 && parserEnd > parserStart, 'raw Guild validator must exist');
+  const parser = social.slice(parserStart, parserEnd);
+  assert.match(parser, /if \(raw == null\) return \[\]/);
+  assert.match(parser, /if \(!Array\.isArray\(parsed\)\)/);
+  assert.match(parser, /validateGuildNestedState\(item as Record<string, unknown>\)/);
+  assert.match(parser, /return parsed as Guild\[\]/);
+
+  const loadStart = social.indexOf('async function loadGuilds()');
+  const loadEnd = social.indexOf('export interface GuildChatSpyGuild', loadStart);
+  assert.ok(loadStart >= 0 && loadEnd > loadStart, 'loadGuilds must exist');
+  const load = social.slice(loadStart, loadEnd);
+  assert.match(load, /latestRawGuilds = parseGuildListRaw\(latestRaw\)/);
+  assert.match(load, /await txn\.unwatch\(\);\s*throw error/);
+  assert.doesNotMatch(load, /latestParsed\]\.filter\(item => item && typeof item === 'object'\)/);
+});
