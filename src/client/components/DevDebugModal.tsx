@@ -1644,8 +1644,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             coins: 100_000,
             shards: 50,
             cosmicDust: 0,
-            // Feature-gated tests need a level high enough for Turbo and Collection APIs.
-            xp: 100_000,
+            // Level 4 unlocks Turbo and Collection without milestone bonus orbs/shards.
+            xp: 600,
             totalRolls: 0,
             totalCrits: 0,
             highestRarity: 0,
@@ -2677,7 +2677,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Force-roll increments processed roll count",
         async () => {
-          await request<any>('/api/dev/state', { totalRolls: 100, currentRunRolls: 0 });
+          await request<any>('/api/dev/state', { totalRolls: 100, currentRunRolls: 0, xp: 600 });
           const result = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
           if (Number(result.state?.totalRolls) !== 101 || Number(result.state?.currentRunRolls) !== 1) {
             throw new Error('Force-roll counters were not incremented.');
@@ -2690,7 +2690,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Force-roll persists collection entry",
         async () => {
-          await request<any>('/api/dev/state', { xp: 100_000, collection: {}, highestRarity: 0, collectionValue: 0 });
+          await request<any>('/api/dev/state', { xp: 600, collection: {}, highestRarity: 0, collectionValue: 0 });
           await request<any>('/api/dev/force-roll', { rarity: 777, randomValue: 0.999999 });
           const collection = await request<any>('/api/collection?offset=0&limit=100&tier=all&sort=rarity_desc');
           const item = Array.isArray(collection.items)
@@ -2727,7 +2727,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         "API · Offline claim consumes seeded rolls",
         async () => {
           await request<any>('/api/dev/offline-set', { amount: 3 });
-          await request<any>('/api/dev/state', { lastSeenAt: Date.now() });
+          await request<any>('/api/dev/state', { lastSeenAt: Date.now(), xp: 600 });
           const result = await request<any>('/api/offline/claim', {});
           if (Number(result.rollsProcessed) !== 3) throw new Error('Offline claim processed ' + result.rollsProcessed + ', expected 3.');
           if (Number(result.state?.offlineRolls) !== 0) throw new Error('Offline rolls were not consumed.');
