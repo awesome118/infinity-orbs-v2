@@ -21,7 +21,7 @@ npm ci
 npm run preflight
 ```
 
-The preflight is intended to stop before upload if the Node version is too old, package/lockfile/app names or versions disagree, a forbidden Devvit transaction-read pattern is found, TypeScript checking fails, tests fail, or the Vite/Devvit build fails. A static guard is not a substitute for the actual type-check, test, and build commands passing.
+The preflight runs the static guard before type-checking, tests, and build. The guard rejects a Node version below 24; package/lockfile/app name or version drift; forbidden Devvit transaction reads; a wrong or missing client output directory, splash/game/Frenzy entrypoint, server output entry, moderator post-creation menu route, install trigger, or offline-notification scheduler endpoint; Redis disabled; or payments enabled. These checks are intended to catch manifest drift before upload. They do not prove that a real Reddit playtest succeeds, and a static guard is not a substitute for the actual type-check, test, and build commands passing.
 
 Then verify authentication if a CLI upload/install is expressly authorized:
 
