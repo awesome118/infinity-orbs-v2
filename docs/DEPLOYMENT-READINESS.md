@@ -51,11 +51,11 @@ npx devvit list installs r/infinity_orbs_dev
 
 Record the exact source commit, package version, uploaded version, and the version reported by `npx devvit list installs` for **both** subreddits. Stop if a command reports a different version or partial failure; do not blindly retry an ambiguous install.
 
-The GitHub Actions workflow **Deploy Devvit** has the same two-subreddit side effects. It is manual, refuses non-`main` refs, requests the intended version, and requires `confirm_install=true`. It also requires the `DEVVIT_TOKEN` secret to contain the complete JSON blob from `~/.devvit/token`. Do not dispatch that workflow unless both subreddit installations are intended.
+The GitHub Actions workflow **Deploy Devvit** uploads and installs the candidate to `r/infinity_orbs_dev` only. It is manual, refuses non-`main` refs, requests the intended version, and requires `confirm_install=true`. It requires the `DEVVIT_TOKEN` secret to contain the complete JSON blob from `~/.devvit/token`. Production is intentionally excluded before Reddit approval.
 
 ## 3. Submit for Reddit review only when separately authorized
 
-Publishing for review is not the same as uploading a version or installing it on the two subreddits. Use the explicit `Release Infinity Orbs` manual workflow only when review submission is approved. It also refuses non-`main` refs. Enter the exact `package.json` version and set `confirm_publish=true`. The workflow checks version equality, runs preflight, verifies Devvit authentication, submits the requested version, and installs it to both subreddits.
+Publishing for review is not the same as uploading a version or installing it on the two subreddits. Use the explicit **Submit Infinity Orbs for Reddit Review** manual workflow only when review submission is approved. It refuses non-`main` refs. Enter the exact `package.json` version and set `confirm_publish=true`. The workflow checks version equality, runs preflight, verifies Devvit authentication, and submits the requested version for review. It does not install to any subreddit.
 
 Required GitHub Actions secrets for this workflow:
 - `DEVVIT_TOKEN`: complete Devvit token JSON.
@@ -63,7 +63,13 @@ Required GitHub Actions secrets for this workflow:
 
 The CLI shortcut `npm run launch` runs `npm run deploy` and then `devvit publish`. Treat it as a release/publish action, not as a harmless build check.
 
-## 4. Minimum checks in a Reddit playtest
+## 4. Production install after approval (separate authorization)
+
+The separate **Install Approved Version to Production** workflow is only for installing a version that has already received Reddit approval. It never uploads or publishes. Before dispatching it, verify approval in the Devvit/Reddit review UI, enter the exact approved version and set `confirm_approved=true`. It checks out `main`, requires the explicit confirmation, and installs only to `r/infinityorbs`. It does not touch the development subreddit.
+
+Do not use the production workflow as a test mechanism, and do not treat a successful `devvit publish` submission as approval.
+
+## 5. Minimum checks in a Reddit playtest
 
 Complete these against the candidate version in the development subreddit before treating a source build as release-ready:
 
@@ -78,11 +84,12 @@ Complete these against the candidate version in the development subreddit before
 - [ ] Admin/debug actions reject non-admin users server-side; report action reaches the intended admin flow.
 - [ ] Desktop and narrow/mobile layouts have no blocking overflow, blank entrypoints, or stuck overlays.
 - [ ] Payments remain disabled (`devvit.json` has `payments: false`); no payment path is enabled as part of deployment prep.
-- [ ] `r/infinityorbs` and `r/infinity_orbs_dev` both report the intended installed version after any authorized installation.
+- [ ] The development subreddit reports the candidate version after its authorized install. Production remains unchanged until Reddit approval and a separate authorization.
+- [ ] After approval, `r/infinityorbs` reports the exact approved version following its separate authorized install.
 
 For each failure, record a reproducible sequence, current version/commit, expected versus actual behavior, and logs with tokens/player-private data removed.
 
-## 5. Release gate
+## 6. Release gate
 
 Do not call the release ready until all of the following are true:
 
@@ -90,6 +97,6 @@ Do not call the release ready until all of the following are true:
 2. The P1 current-main release risks have been resolved or explicitly assessed as non-blocking with evidence, especially the World Event goal ceiling and offline-notification lifecycle.
 3. A Reddit Devvit playtest passes the relevant smoke checks above.
 4. Version/name/lockfile/manifest consistency is confirmed and the uploaded version is checked against the intended package version.
-5. The person authorizing release explicitly chooses whether to upload/install both subreddit copies and whether to submit for Reddit review. Those are separate actions.
+5. The person authorizing release explicitly approves each separate action: dev-subreddit candidate install, Reddit review submission, and (only after approval) production install. These are intentionally separate workflows.
 
 Never publish or install merely because a checklist was added or a draft PR exists.
