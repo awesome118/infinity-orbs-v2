@@ -319,7 +319,7 @@ test('Daily Streak community progression rejects invalid loop state', () => {
   const prepare = social.slice(start, end);
   assert.match(prepare, /Number\.isSafeInteger\(contribution\)/);
   assert.match(prepare, /validateDailyStreakCommunityEvent\(event\)/);
-  assert.match(prepare, /nextCommunityMilestoneProgression\(event\.goal, event\.tier/);
+  assert.match(prepare, /nextCommunityMilestoneProgression\(event\.goal, event\.tier \|\| 1/);
   assert.doesNotMatch(prepare, /event\.goal = Number\.MAX_SAFE_INTEGER/);
 });
 
