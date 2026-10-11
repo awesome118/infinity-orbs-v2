@@ -1383,3 +1383,18 @@ test('achievement claim cannot exceed bounded Coin accounting', () => {
   assert.match(claim, /return \{ state, rewardCoins, rewardShards \}/);
   assert.doesNotMatch(claim, /state\.coins\s*\+=\s*achievement\.rewardCoins/);
 });
+
+
+test('removed Achievements API is not remounted in the integration candidate', () => {
+  const app = source('src/server/app.ts');
+  const socialImportStart = app.indexOf("import {\n  createGuild,");
+  const socialImportEnd = app.indexOf("} from './social.js';", socialImportStart);
+  assert.ok(socialImportStart >= 0 && socialImportEnd > socialImportStart);
+  const socialImports = app.slice(socialImportStart, socialImportEnd);
+
+  assert.doesNotMatch(socialImports, /\bachievements\b/);
+  assert.doesNotMatch(socialImports, /\bclaimAchievement\b/);
+  assert.doesNotMatch(app, /app\.get\(['"]\/api\/achievements['"]/);
+  assert.doesNotMatch(app, /app\.post\(['"]\/api\/achievements\/claim['"]/);
+  assert.doesNotMatch(app, /'\/achievements'\]\.includes\(req\.path\)/);
+});
