@@ -552,9 +552,10 @@ test('malformed player activity registry entries are not overwritten with fresh 
   assert.match(parser, /record\.playtimeMs < 0/);
   assert.match(parser, /refusing to overwrite it/);
   const touchStart = game.indexOf('async function touchPlayerActivity');
-  const touchEnd = game.indexOf('\nasync function ', touchStart + 10);
+  const touchEnd = game.indexOf('\nexport async function ', touchStart + 10);
   assert.ok(touchStart >= 0 && touchEnd > touchStart);
   const touch = game.slice(touchStart, touchEnd);
+  assert.match(touch, /if \(existingRaw != null\)/, 'empty-string corruption must not be mistaken for a missing entry');
   assert.match(touch, /parsePlayerRegistryEntryForMutation\(existingRaw, activityNow\)/);
   assert.match(touch, /await txn\.unwatch\(\);\s*throw error;/);
   assert.doesNotMatch(touch, /finiteNonNegativeInteger\(existing\?\.playtimeMs, 0\)/);

@@ -1434,7 +1434,7 @@ async function touchPlayerActivity(userId: string, username: string, now = Date.
       let firstSeenAt = activityNow;
       let lastLoginAt = activityNow;
       let playtimeMs = 0;
-      if (existingRaw) {
+      if (existingRaw != null) {
         let existing: Partial<PlayerRegistryEntry>;
         try {
           existing = parsePlayerRegistryEntryForMutation(existingRaw, activityNow);
