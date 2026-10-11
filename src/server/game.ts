@@ -28,6 +28,7 @@ import {
   COSMETICS_LIST,
   rollContinuum,
   coinsForRarity,
+  MAX_OFFLINE_ROLLS,
   OFFLINE_TICK_MS,
   calculateCosmicDust,
   effectiveOfflineTickMs,
@@ -1664,6 +1665,14 @@ function parsePlayerStateValue(value: unknown, depth = 0): PlayerState | null {
       Number.isSafeInteger(record.totalRolls) &&
       Number(record.totalRolls) >= 0 &&
       (
+        !('offlineRolls' in record) ||
+        (
+          Number.isSafeInteger(record.offlineRolls) &&
+          Number(record.offlineRolls) >= 0 &&
+          Number(record.offlineRolls) <= MAX_OFFLINE_ROLLS
+        )
+      ) &&
+      (
         record.stateRevision == null ||
         (Number.isSafeInteger(record.stateRevision) && Number(record.stateRevision) >= 0)
       );
@@ -2876,6 +2885,10 @@ export async function applyRolls(
   ) {
     throw new Error('Roll counter would exceed the safe integer range; no rolls were processed.');
   }
+  const maxSupportedRollCount = offlineRollCap(s) * rollsPerActivation(s) + 2;
+  if (!Number.isSafeInteger(maxSupportedRollCount) || rollCount > maxSupportedRollCount) {
+    throw new Error('Roll batch exceeds the supported processing cap; no rolls were processed.');
+  }
 
   // These reads are independent. Keep them parallel so a roll does not spend
   // several sequential Redis round trips before it can even start rolling.
@@ -3381,6 +3394,19 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
   resetFreeShardBudgetIfNeeded(s, now);
   s.onlinePlayers = await touchOnlinePresence();
   s.globalBoosters = await getGlobalBoosters();
+
+  // Old saves may outlive a lower current vault cap after prestige/upgrades change.
+  // Normalize before looking at lastSeenAt, so a recent/future timestamp cannot
+  // skip the cap and feed an oversized persisted batch into Auto-Claim.
+  const offlineCap = offlineRollCap(s);
+  const savedOfflineRolls = finiteNonNegativeInteger(s.offlineRolls ?? 0, 0);
+  if (savedOfflineRolls > offlineCap) {
+    console.warn('[Offline Rolls] Clamping saved vault to the current cap.', {
+      savedOfflineRolls,
+      offlineCap,
+    });
+  }
+  s.offlineRolls = Math.min(offlineCap, savedOfflineRolls);
 
   const tickMs = effectiveOfflineTickMs(s);
   const diff = now - (s.lastSeenAt || now);
