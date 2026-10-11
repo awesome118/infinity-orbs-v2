@@ -53,11 +53,12 @@ test('automation flags accept strict true only, not truthy strings or numbers', 
 
 test('Premium Booster timers reject string, fractional, negative, and unsafe expiries', () => {
   assert.deepEqual(normalizeActiveBoosters({
-    fortune: '9999999999999',
+    fortune: 123456,
+    hyperdrive: '9999999999999',
     ascension: 1e308,
     prosperity: -1,
     barrage: 1.5,
-  }), {});
+  }), { fortune: 123456 });
 
   const now = Date.UTC(2026, 9, 10, 12, 0, 0);
   const state = createInitialState(now);
