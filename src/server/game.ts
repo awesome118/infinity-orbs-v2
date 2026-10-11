@@ -4083,6 +4083,36 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
       });
     } catch (error) {
       console.error('Failed to send offline-orbs-full notification:', error);
+      try {
+        const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
+        const notificationMarker = await readOfflineNotificationMarkerAndRepairLegacyKey(notificationKey);
+        const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
+        const currentJob = await redis.get(jobKey);
+
+        if (notificationMarker === '1') {
+          if (currentJob != null) await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+          return;
+        }
+        if (notificationMarker != null && !isRetryableOfflineFullNotificationMarker(notificationMarker)) {
+          // Unknown marker formats fail closed to avoid creating duplicate sends.
+          return;
+        }
+        if (currentJob && currentJob !== '') return;
+        if (currentJob === '') await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+
+        const markerIsRetryable = isRetryableOfflineFullNotificationMarker(notificationMarker);
+        const retryAt = markerIsRetryable
+          ? offlineNotificationPendingRetryAt(notificationMarker)
+          : Date.now() + OFFLINE_FULL_RETRY_MS;
+        await scheduleOfflineFullNotification(
+          userId,
+          subredditName,
+          retryAt,
+          markerIsRetryable,
+        );
+      } catch (recoveryError) {
+        console.error('[Offline Notification] Could not restore a retry after direct-send failure:', recoveryError);
+      }
     }
   } else if (!options.skipOfflineNotifications && userId && subredditName) {
     try {
