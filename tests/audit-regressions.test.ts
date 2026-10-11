@@ -367,6 +367,22 @@ test('Daily Streak community progression rejects invalid loop state', () => {
 });
 
 
+test('comprehensive admin tests reset cooldown before acquiring roll tickets and seed gated feature levels', () => {
+  const modal = source('src/client/components/DevDebugModal.tsx');
+  const ticketStart = modal.indexOf("await request('/api/dev/reset-cooldown', {});", modal.indexOf('const rollOnce ='));
+  const ticketCreate = modal.indexOf("const ticket = await request<{ ticketId: string; nextIndex: number }>('/api/roll-ticket')", ticketStart);
+  const rollPost = modal.indexOf("return await request<RollResponse>('/api/roll'", ticketCreate);
+  assert.ok(ticketStart >= 0 && ticketCreate > ticketStart && rollPost > ticketCreate,
+    'reset-cooldown clears the old ticket, so the fresh ticket must be acquired after cooldown reset');
+  const mechanicStart = modal.indexOf('const setMechanicState = async');
+  const mechanicEnd = modal.indexOf('const readMechanics', mechanicStart);
+  assert.ok(mechanicStart >= 0 && mechanicEnd > mechanicStart);
+  assert.match(modal.slice(mechanicStart, mechanicEnd), /xp: 100_000/);
+  assert.match(modal, /await new Promise\(resolve => setTimeout\(resolve, 5_200\)\)/);
+  assert.match(modal, /collection endpoint/);
+  assert.match(modal, /sonarThreshold\(100\)/);
+});
+
 test('playtest Guild recovery collects all stored errors and exposes a copyable admin report', () => {
   const social = source('src/server/social.ts');
   const debug = source('src/server/debug.ts');
