@@ -367,6 +367,30 @@ test('Daily Streak community progression rejects invalid loop state', () => {
 });
 
 
+test('playtest Guild recovery collects all stored errors and exposes a copyable admin report', () => {
+  const social = source('src/server/social.ts');
+  const debug = source('src/server/debug.ts');
+  const client = source('src/client/main.tsx');
+
+  assert.match(social, /function isGuildPlaytestRecoveryEnabled/);
+  assert.match(social, /return subreddit === 'infinity_orbs_dev'/);
+  assert.match(social, /function inspectGuildRecordForDiagnostics/);
+  assert.match(social, /export async function getGuildStateDiagnostics/);
+  assert.match(social, /parsed\.forEach\(\(item, index\) => issues\.push\(\.\.\.inspectGuildRecordForDiagnostics\(item, index\)\)\)/);
+  assert.match(social, /recoverGuildRecordForPlaytest/);
+
+  const authGate = debug.indexOf("debugRouter.use((_req, res, next) =>");
+  const diagnosticsRoute = debug.indexOf("debugRouter.get('/guild-diagnostics'");
+  assert.ok(authGate >= 0 && diagnosticsRoute > authGate, 'diagnostic route must run after server-side admin middleware');
+  assert.match(debug, /subreddit !== 'infinity_orbs_dev'/);
+  assert.match(debug, /getGuildStateDiagnostics\(\)/);
+
+  assert.match(client, /\/api\/dev\/guild-diagnostics/);
+  assert.match(client, /Playtest Guild diagnostics/);
+  assert.match(client, /aria-label="All playtest Guild errors"/);
+  assert.match(client, /Copy all errors/);
+});
+
 test('guild parser validates nested state while repairing legacy challenge and boss projections', () => {
   const social = source('src/server/social.ts');
   const start = social.indexOf('function validateGuildNestedState');
