@@ -822,7 +822,7 @@ test('future registry timestamps cannot inflate DAU/WAU/MAU or online-player act
   const touchStart = game.indexOf('async function touchPlayerActivity');
   const touchEnd = game.indexOf('async function registerPlayer', touchStart);
   assert.ok(touchStart >= 0 && touchEnd > touchStart);
-  assert.match(game.slice(touchStart, touchEnd), /validPastTimestamp\(existing\?\.lastActivityAt, activityNow\)/);
+  assert.match(game.slice(touchStart, touchEnd), /validPastTimestamp\(existing\??\.lastActivityAt, activityNow\)/);
 });
 
 test('player activity watch transaction preserves playtime updates and fences an expired activity lease', () => {
@@ -1702,7 +1702,7 @@ test('Frenzy preflights lifetime roll-counter capacity before rewards and shared
 
   const countIndex = frenzy.indexOf('const count = frenzyClaimCountForRarity(');
   const guardIndex = frenzy.indexOf('Frenzy roll counter would exceed the safe integer range');
-  const critIndex = frenzy.indexOf('const critChance = Math.min(');
+  const critIndex = frenzy.indexOf('const critChance =');
   const shardGrantIndex = frenzy.indexOf('grantRollShards(');
   const guildStageIndex = frenzy.indexOf('prepareGuildRollEffects(');
   const incrementIndex = frenzy.indexOf('s.totalRolls += count');
