@@ -321,6 +321,7 @@ export function App() {
   const appliedServerRevisionRef = useRef(-1);
   const stateRef = useRef<PlayerState | null>(null);
   const onlinePlayersRef = useRef<number | undefined>(undefined);
+  const latestGlobalBoostersRef = useRef<GlobalBoosterSnapshot | null>(null);
   const rollTicketRef = useRef<{
     ticketId: string;
 
@@ -385,9 +386,19 @@ export function App() {
     ) {
       onlinePlayersRef.current = Number(nextState.onlinePlayers);
     }
-    const mergedState = onlinePlayersRef.current == null
-      ? nextState
-      : { ...nextState, onlinePlayers: onlinePlayersRef.current };
+    // Global Boosters are shared state with their own polling timeline. Keep the
+    // freshest accepted snapshot across delayed /api/me and mutation responses,
+    // just as we preserve the live online-player overlay.
+    const currentGlobalBoosters =
+      latestGlobalBoostersRef.current ?? currentState?.globalBoosters ?? nextState.globalBoosters ?? null;
+    if (latestGlobalBoostersRef.current == null && currentGlobalBoosters != null) {
+      latestGlobalBoostersRef.current = currentGlobalBoosters;
+    }
+    const mergedState = {
+      ...nextState,
+      ...(onlinePlayersRef.current == null ? {} : { onlinePlayers: onlinePlayersRef.current }),
+      ...(currentGlobalBoosters == null ? {} : { globalBoosters: currentGlobalBoosters }),
+    };
     stateRef.current = mergedState;
     stateRevisionRef.current += 1;
     setState(mergedState);
@@ -683,6 +694,10 @@ export function App() {
       void getJson<GlobalBoosterSnapshot>('/api/global-boosters')
         .then(snapshot => {
           if (snapshot) {
+            latestGlobalBoostersRef.current = snapshot;
+            if (stateRef.current) {
+              stateRef.current = { ...stateRef.current, globalBoosters: snapshot };
+            }
             setState(prev => prev ? { ...prev, globalBoosters: snapshot } : prev);
           }
         })
