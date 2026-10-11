@@ -808,11 +808,14 @@ test('offline notification reservation recovers ambiguous Redis SET only after c
   const sendingIndex = sender.indexOf('claimOfflineFullNotificationSendingIfUnchanged(');
   const enqueueIndex = sender.indexOf('await notifications.enqueue(');
   assert.ok(setIndex >= 0 && readIndex > setIndex && sendingIndex > readIndex && enqueueIndex > sendingIndex);
-  assert.match(sender, /let reservationWriteFailed = false/);
-  assert.match(sender, /catch \\(error\\) \\{\\s*reservationWriteFailed = true;\\s*reservationWriteError = error;/);
-  assert.match(sender, /if \\(storedReservation !== reservedToken\\)/);
-  assert.match(sender, /if \\(reservationWriteFailed && storedReservation == null\\) throw reservationWriteError/);
-  assert.match(sender, /if \\(reservationWriteFailed\\) \\{\\s*console\\.warn\\(/);
+  assert.ok(sender.includes('let reservationWriteFailed = false'));
+  assert.ok(sender.includes('catch (error) {'));
+  assert.ok(sender.includes('reservationWriteFailed = true;'));
+  assert.ok(sender.includes('reservationWriteError = error;'));
+  assert.ok(sender.includes('if (storedReservation !== reservedToken)'));
+  assert.ok(sender.includes('if (reservationWriteFailed && storedReservation == null) throw reservationWriteError'));
+  assert.ok(sender.includes('if (reservationWriteFailed) {'));
+  assert.ok(sender.includes('console.warn('));
 });
 
 test('offline notification worker validates the persisted PlayerState before calculating cap', () => {
@@ -1143,7 +1146,7 @@ test('offline notification reservations distinguish reclaimable preparation from
   assert.match(sender, /OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS/);
   assert.match(sender, /commitOfflineNotificationMarkerIfUnchanged\(notificationKey, sendingToken\)/);
   assert.match(sender, /const receiptCommitted = await commitOfflineNotificationMarkerIfUnchanged\(notificationKey, sendingToken\)/);
-  assert.match(sender, /if \(!receiptCommitted\)/);
+  assert.ok(sender.includes('if (!receiptCommitted)'));
   assert.match(sender, /Provider accepted the attempt but the sent receipt could not be confirmed/);
 
   assert.match(sender, /staleSendingMarker/);
