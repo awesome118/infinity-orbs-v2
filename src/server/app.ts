@@ -50,8 +50,6 @@ import {
   recordPlayerHeartbeat,
 } from './game.js';
 import {
-  achievements,
-  claimAchievement,
   createGuild,
   guildInfo,
   joinGuild,
@@ -74,7 +72,7 @@ import {
 import { context, reddit, redis } from './devvit-mock.js';
 import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
-import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, type FeatureId } from '../shared/game.js';
+import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, type FeatureId, type MasterySkillId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
 
 const payments = (devvitServer as typeof devvitServer & {
@@ -359,7 +357,7 @@ export function createApp() {
     const mutatesState = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
     const readsAndPersistsPlayerState =
       req.method === 'GET' &&
-      ['/me', '/leaderboard', '/guilds', '/achievements'].includes(req.path);
+      ['/me', '/leaderboard', '/guilds'].includes(req.path);
     const requiresPlayerSerialization = mutatesState || readsAndPersistsPlayerState;
     if (!requiresPlayerSerialization) return next();
 
@@ -400,14 +398,21 @@ export function createApp() {
   // Major systems unlock gradually so new players learn the core loop before
   // the advanced economy, social systems, and prestige layers appear.
   const featureForPath = (path: string): FeatureId | null => {
-    if (path === '/upgrade' || path === '/upgrade/all') return 'upgrades';
+    if (path === '/upgrade' || path === '/upgrade/all' || path === '/turbo/activate') return 'upgrades';
     if (path === '/products' || path === '/payments/reconcile') return 'shop';
     if (path === '/collection') return 'collection';
-    if (path === '/quests/claim') return 'quests';
-    if (path === '/boosters/activate' || path === '/automation/buy') return 'boosters';
-    if (path === '/leaderboard' || path === '/guilds' || path.startsWith('/guilds/') ||
-        path === '/social/visit' || path === '/online' || path === '/world-event' ||
-        path.startsWith('/community/')) return 'social';
+    if (path === '/quests/claim' || path === '/streak/claim') return 'quests';
+    if (
+      path === '/boosters/activate' ||
+      path === '/global-boosters/activate' ||
+      path === '/automation/buy' ||
+      path === '/community/reward/claim'
+    ) return 'boosters';
+    if (path === '/cosmetics/buy') return 'prestige';
+    if (path === '/leaderboard' || path === '/leaderboards' ||
+        path === '/guilds' || path.startsWith('/guilds/') ||
+        path === '/social/visit' || path === '/world-event' ||
+        (path.startsWith('/community/') && path !== '/community/reward/claim')) return 'social';
     if (path.startsWith('/altar/')) return 'altar';
     if (path.startsWith('/mastery/')) return 'mastery';
     if (path === '/prestige' || path.startsWith('/prestige/')) return 'prestige';
@@ -463,6 +468,9 @@ export function createApp() {
       }
     } catch (e) {
       console.error('Game ban check failed:', e);
+      return res.status(503).json({
+        error: 'Could not verify game ban status. Please retry.',
+      });
     }
     next();
   });
@@ -674,10 +682,11 @@ export function createApp() {
       const data = req.body?.data ?? {};
       const userId = String(data.userId ?? '').trim();
       const subredditName = String(data.subredditName ?? '').trim();
+      const jobToken = String(data.jobToken ?? '').trim();
       if (!userId || !subredditName) {
         return res.status(400).json({ status: 'error', message: 'Missing offline notification job data.' });
       }
-      await processOfflineFullNotification(userId, subredditName);
+      await processOfflineFullNotification(userId, subredditName, jobToken || undefined);
       return res.status(200).json({ status: 'ok' });
     } catch (e) {
       console.error('Offline-orbs-full scheduler failed:', e);
@@ -887,11 +896,6 @@ export function createApp() {
   // the trusted Devvit username is exactly "shadow_fen".
   app.use('/api/dev', debugRouter);
 
-  app.get('/api/achievements', async (_req, res) => {
-    try { res.json(await achievements(await getMe())); }
-    catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch achievements.' }); }
-  });
-
   const badRequest = (res: express.Response, e: unknown, fallback: string) => {
     res.status(400).json({ error: e instanceof Error ? e.message : fallback });
   };
@@ -994,8 +998,14 @@ export function createApp() {
 
   app.post('/api/mastery/upgrade', async (req, res) => {
     try {
-      const { skillId } = req.body || {};
-      const state = await upgradeMasterySkill(skillId);
+      const skillId = req.body?.skillId;
+      if (
+        typeof skillId !== 'string' ||
+        !Object.prototype.hasOwnProperty.call(MASTERY_SKILLS, skillId)
+      ) {
+        return res.status(400).json({ error: 'Unknown mastery skill.' });
+      }
+      const state = await upgradeMasterySkill(skillId as MasterySkillId);
       res.json({ state });
     } catch (e) {
       badRequest(res, e, 'Mastery upgrade failed.');
@@ -1089,13 +1099,6 @@ export function createApp() {
 
   app.post('/api/turbo/activate', async (_req, res) => {
     try { res.json({ state: await activateTurbo() }); } catch (e) { badRequest(res, e, 'Failed to activate Turbo Roll.'); }
-  });
-
-  app.post('/api/achievements/claim', async (req, res) => {
-    try {
-      const s = await getMe();
-      res.json(await claimAchievement(s, req.body?.id ?? ''));
-    } catch (e) { badRequest(res, e, 'Could not claim achievement.'); }
   });
 
   app.post('/api/guilds/create', async (req, res) => {
@@ -1196,9 +1199,6 @@ export function createApp() {
         postId = post.id;
       }
       await recordShareAction(s);
-      // The share itself makes the player eligible immediately, without
-      // requiring another roll before appearing on the leaderboard.
-      await recordLeaderboard(s);
       res.json({ success: true, id: postId, text });
       });
     } catch (e) { badRequest(res, e, 'Could not create Reddit post.'); }

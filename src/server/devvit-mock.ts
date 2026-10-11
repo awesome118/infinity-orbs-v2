@@ -2,6 +2,16 @@
 // In production, src/server/index.ts swaps these live bindings for Devvit's real services.
 
 const store = new Map<string, string>();
+const expirations = new Map<string, number>();
+
+function readStore(key: string): string | undefined {
+  const expiresAt = expirations.get(key);
+  if (expiresAt !== undefined && expiresAt <= Date.now()) {
+    store.delete(key);
+    expirations.delete(key);
+  }
+  return store.get(key);
+}
 
 const initialGuilds = [
   {
@@ -43,15 +53,15 @@ store.set('io:guilds', JSON.stringify(initialGuilds));
 store.set('io:leaderboard', JSON.stringify(initialLeaderboard));
 
 const localRedis = {
-  get: async (key: string): Promise<string | null> => store.get(key) ?? null,
+  get: async (key: string): Promise<string | null> => readStore(key) ?? null,
   hGet: async (key: string, field: string): Promise<string | undefined> => {
-    const raw = store.get(key);
+    const raw = readStore(key);
     if (!raw) return undefined;
     const values = JSON.parse(raw) as Record<string, string>;
     return values[field];
   },
   hSet: async (key: string, fieldValues: Record<string, string>): Promise<number> => {
-    const raw = store.get(key);
+    const raw = readStore(key);
     const values = raw ? JSON.parse(raw) as Record<string, string> : {};
     let added = 0;
     for (const [field, value] of Object.entries(fieldValues)) {
@@ -62,39 +72,75 @@ const localRedis = {
     return added;
   },
   hGetAll: async (key: string): Promise<Record<string, string>> => {
-    const raw = store.get(key);
+    const raw = readStore(key);
     return raw ? JSON.parse(raw) as Record<string, string> : {};
   },
-  mGet: async (keys: string[]): Promise<Array<string | null>> => keys.map(key => store.get(key) ?? null),
-  set: async (key: string, value: string): Promise<string> => {
+  mGet: async (keys: string[]): Promise<Array<string | null>> => keys.map(key => readStore(key) ?? null),
+  set: async (
+    key: string,
+    value: string,
+    options?: { nx?: boolean; expiration?: Date },
+  ): Promise<string> => {
+    if (options?.nx && readStore(key) !== undefined) {
+      return null as unknown as string;
+    }
     store.set(key, value);
+    if (options?.expiration instanceof Date) {
+      expirations.set(key, options.expiration.getTime());
+    } else {
+      expirations.delete(key);
+    }
     return 'OK';
   },
-  del: async (key: string): Promise<boolean> => store.delete(key),
+  del: async (key: string): Promise<boolean> => {
+    expirations.delete(key);
+    return store.delete(key);
+  },
   watch: async (...keys: string[]) => {
-    const snapshot = new Map(keys.map(key => [key, store.get(key)]));
-    const staged: Array<[string, string]> = [];
+    const snapshot = new Map(keys.map(key => [key, readStore(key)]));
+    const staged: Array<
+      | { kind: 'set'; key: string; value: string; expiration?: Date }
+      | { kind: 'del'; key: string }
+      | { kind: 'hset'; key: string; fields: Record<string, string> }
+    > = [];
     return {
       // TxClient is intentionally modeled without a read method. In Devvit,
       // reads after WATCH must go through redis.get(), while this object queues
       // writes for MULTI/EXEC. Keeping the mock honest prevents SDK misuse from
       // passing local tests while failing in production.
       multi: async () => undefined,
-      set: async (key: string, value: string) => {
-        staged.push([key, value]);
+      set: async (key: string, value: string, options?: { expiration?: Date }) => {
+        staged.push({ kind: 'set', key, value, expiration: options?.expiration });
+        return 'QUEUED';
+      },
+      hSet: async (key: string, fields: Record<string, string>) => {
+        staged.push({ kind: 'hset', key, fields: { ...fields } });
         return 'QUEUED';
       },
       del: async (key: string) => {
-        staged.push([key, '']);
+        staged.push({ kind: 'del', key });
         return 'QUEUED';
       },
       exec: async () => {
         for (const key of keys) {
-          if ((store.get(key) ?? null) !== (snapshot.get(key) ?? null)) return null;
+          if ((readStore(key) ?? null) !== (snapshot.get(key) ?? null)) return null;
         }
-        for (const [key, value] of staged) {
-          if (value === '' && key !== undefined) store.delete(key);
-          else store.set(key, value);
+        for (const write of staged) {
+          if (write.kind === 'del') {
+            store.delete(write.key);
+            expirations.delete(write.key);
+          } else if (write.kind === 'set') {
+            store.set(write.key, write.value);
+            // Redis SET clears an existing TTL unless one is provided.
+            if (write.expiration instanceof Date) expirations.set(write.key, write.expiration.getTime());
+            else expirations.delete(write.key);
+          } else {
+            const raw = readStore(write.key);
+            const values = raw ? JSON.parse(raw) as Record<string, string> : {};
+            Object.assign(values, write.fields);
+            store.set(write.key, JSON.stringify(values));
+            expirations.delete(write.key);
+          }
         }
         return [];
       },
@@ -102,12 +148,12 @@ const localRedis = {
     };
   },
   incr: async (key: string): Promise<number> => {
-    const value = Number.parseInt(store.get(key) ?? '0', 10) + 1;
+    const value = Number.parseInt(readStore(key) ?? '0', 10) + 1;
     store.set(key, String(value));
     return value;
   },
   zAdd: async (key: string, ...entries: Array<{ member: string; score: number }>): Promise<number> => {
-    const raw = store.get(key);
+    const raw = readStore(key);
     const values: Record<string, number> = raw ? JSON.parse(raw) : {};
     let added = 0;
     for (const entry of entries) {
@@ -118,7 +164,7 @@ const localRedis = {
     return added;
   },
   zRemRangeByScore: async (key: string, min: number, max: number): Promise<number> => {
-    const raw = store.get(key);
+    const raw = readStore(key);
     if (!raw) return 0;
     const values: Record<string, number> = JSON.parse(raw);
     let removed = 0;
@@ -132,7 +178,7 @@ const localRedis = {
     return removed;
   },
   zCard: async (key: string): Promise<number> => {
-    const raw = store.get(key);
+    const raw = readStore(key);
     return raw ? Object.keys(JSON.parse(raw)).length : 0;
   },
 };

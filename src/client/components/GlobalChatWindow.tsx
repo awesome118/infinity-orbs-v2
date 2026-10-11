@@ -22,6 +22,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
   const [sending, setSending] = useState(false);
   const [reportingId, setReportingId] = useState<string | null>(null);
   const [reportedIds, setReportedIds] = useState<Set<string>>(() => new Set());
+  const [actionError, setActionError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const refreshRequestRef = useRef(0);
 
@@ -42,7 +43,9 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
       // overlapping GETs out of order, which otherwise lets stale history
       // briefly replace a newer snapshot.
       if (requestId !== refreshRequestRef.current) return;
-      setMessages(prev => mergeMessages(prev, next));
+      // This endpoint returns the authoritative, moderation-filtered history.
+      // Merging instead of replacing kept muted/purged messages visible forever.
+      setMessages(next.slice(-100));
     } catch {
       // Chat is auxiliary UI and should never block gameplay.
     }
@@ -62,6 +65,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
   const reportMessage = async (message: GlobalChatMessage) => {
     if (reportingId) return;
     setReportingId(message.id);
+    setActionError(null);
     try {
       const response = await fetch('/api/chat/report', {
         method: 'POST',
@@ -76,6 +80,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
         return next;
       });
     } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not report message.');
       console.error('Global chat report error:', error);
     } finally {
       setReportingId(null);
@@ -88,6 +93,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
     if (!text || sending) return;
 
     setSending(true);
+    setActionError(null);
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -105,6 +111,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
       // newer local messages if a concurrent poll is still in flight.
       void refreshChat();
     } catch (error: any) {
+      setActionError(error instanceof Error ? error.message : 'Could not send message.');
       console.error('Global chat error:', error);
     } finally {
       setSending(false);
@@ -149,6 +156,12 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
           <Minimize2 className="w-3.5 h-3.5" />
         </button>
       </header>
+
+      {actionError && (
+        <div role="alert" className="border-b border-rose-500/20 bg-rose-950/40 px-3 py-2 text-xs text-rose-200">
+          {actionError}
+        </div>
+      )}
 
       <div className="h-72 overflow-y-auto px-3 py-3 space-y-2">
         {messages.length === 0 ? (

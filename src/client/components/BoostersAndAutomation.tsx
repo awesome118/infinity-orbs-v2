@@ -157,7 +157,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
               <Users className="w-4 h-4 text-fuchsia-300" />
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Each booster runs independently. Re-activating the same booster adds 30 minutes.
+              Each booster runs independently. Every activation adds 2 hours to its timer.
               Higher tiers also make its timer drain faster: every tier adds 10% to the timer drain rate.
               Tier 1 = ×1.10 drain, Tier 10 = ×2.00 drain.
             </p>
@@ -181,8 +181,8 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
               ? '×' + globalBoosterLuckMultiplier(displayed, now).toFixed(2) + ' Luck'
               : id === 'speed'
                 ? Math.round((1 - globalBoosterSpeedMultiplier(displayed, now)) * 100) + '% faster cooldown'
-                : '+' + Math.round(globalBoosterCritChanceBonus(displayed, now) * 100) + '% Crit, +' +
-                  globalBoosterCritLuckBonus(displayed, now).toFixed(1) + '× crit multiplier';
+                : '+' + Math.round(globalBoosterCritChanceBonus(displayed, now) * 100) + '% Crit Chance, +' +
+                  globalBoosterCritLuckBonus(displayed, now).toFixed(1) + '× Crit Luck';
 
             return (
               <div key={id} className="rounded-2xl border border-slate-800 bg-slate-950/65 p-3">
@@ -252,7 +252,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                     disabled={activatingGlobalBooster !== null || !canAffordGlobal}
                     className="flex-1 px-2.5 py-2 rounded-xl text-[10px] font-black bg-slate-800 hover:bg-slate-700 text-white disabled:text-slate-500 disabled:cursor-not-allowed"
                   >
-                    {`+30m • ${formatNumber(globalCost)} 💎`}
+                    {`+2h • ${formatNumber(globalCost)} 💎`}
                   </button>
                   <button
                     onClick={() => void handleGlobalActivation(id, true)}

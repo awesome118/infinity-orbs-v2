@@ -1,5 +1,3 @@
-import { useEffect, useState, type CSSProperties } from 'react';
-
 type SplashScreenProps = {
   ready: boolean;
   hasProgress: boolean;
@@ -8,165 +6,71 @@ type SplashScreenProps = {
   onEnter: () => void;
 };
 
-const MESSAGES = [
-  'Calibrating probability',
-  'Syncing the Codex',
-  'Waking the vault',
-  'Aligning the orbits',
-];
-
-export function SplashScreen({ ready, hasProgress, highestRarity = 2, totalRolls = 0, onEnter }: SplashScreenProps) {
-  const [messageIndex, setMessageIndex] = useState(0);
-  const [leaving, setLeaving] = useState(false);
-
-  useEffect(() => {
-    if (ready) return;
-    const timer = window.setInterval(() => {
-      setMessageIndex(index => (index + 1) % MESSAGES.length);
-    }, 1600);
-    return () => window.clearInterval(timer);
-  }, [ready]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.key === 'Enter' || event.key === ' ') && ready) {
-        event.preventDefault();
-        begin();
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  });
-
-  const begin = () => {
-    if (!ready || leaving) return;
-    setLeaving(true);
-    window.setTimeout(onEnter, 520);
-  };
-
-  const progress = ready ? 100 : 67 + Math.min(28, messageIndex * 7);
-
+export function SplashScreen({
+  ready,
+  hasProgress,
+  highestRarity = 2,
+  totalRolls = 0,
+  onEnter,
+}: SplashScreenProps) {
   return (
-    <div className={`infinity-splash ${leaving ? 'is-leaving' : ''}`}>
-      <div className="splash-stars" aria-hidden="true">
-        {Array.from({ length: 34 }, (_, i) => (
-          <i key={i} style={{
-            '--i': i,
-            '--x': `${(i * 37) % 101}%`,
-            '--y': `${(i * 61) % 101}%`,
-            '--d': `${2.5 + ((i * 17) % 40) / 10}s`,
-            '--s': `${0.8 + ((i * 11) % 13) / 10}`,
-          } as CSSProperties} />
-        ))}
-      </div>
-
-      <div className="splash-nebula splash-nebula-a" aria-hidden="true" />
-      <div className="splash-nebula splash-nebula-b" aria-hidden="true" />
-      <div className="splash-grid" aria-hidden="true" />
-
-      <div className="splash-content">
-        <div className="splash-brand" aria-label="Infinity Orbs">
-          <div className="splash-mark" aria-hidden="true">
-            <span className="splash-orb splash-orb-left" />
-            <span className="splash-orb splash-orb-right" />
-            <span className="splash-mark-core" />
-            <span className="splash-ring splash-ring-outer" />
-            <span className="splash-ring splash-ring-inner" />
-            <svg className="splash-infinity-svg" viewBox="0 0 200 120" aria-hidden="true">
-              <defs>
-                <linearGradient id="splashInfinityGradient" x1="20" y1="20" x2="180" y2="100" gradientUnits="userSpaceOnUse">
-                  <stop offset="0" stopColor="#ad79ff" />
-                  <stop offset="0.48" stopColor="#f2ecff" />
-                  <stop offset="1" stopColor="#63ddff" />
-                </linearGradient>
-              </defs>
-              <path
-                d="M10 60C30 14 70 14 100 60C130 106 170 106 190 60C170 14 130 14 100 60C70 106 30 106 10 60Z"
-                fill="none"
-                stroke="url(#splashInfinityGradient)"
-                strokeWidth="5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
-
-          <div className="splash-wordmark">
-            <span>INFINITY</span>
-            <strong>ORBS</strong>
-          </div>
+    <main
+      className="fixed inset-0 z-[100] flex min-h-screen items-center justify-center overflow-y-auto bg-slate-950 px-5 py-8 text-slate-100"
+      style={{
+        background:
+          'radial-gradient(ellipse at 50% 34%, rgba(28, 61, 76, 0.42), transparent 55%), #080d12',
+      }}
+      aria-label="Infinity Orbs start screen"
+    >
+      <section className="w-full max-w-md text-center">
+        <div
+          className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl border border-cyan-200/20 bg-slate-900/90 text-5xl font-light text-cyan-200 shadow-xl shadow-cyan-950/30"
+          aria-hidden="true"
+        >
+          ∞
         </div>
 
-        <p className="splash-kicker">A SOCIAL RNG GAME</p>
-        <p className="splash-tagline">
-          Roll. Discover. Build luck. Chase the impossible.
+        <h1 className="text-4xl font-black tracking-tight text-white sm:text-5xl">
+          infinity orbs
+        </h1>
+        <p className="mt-3 text-xs font-bold uppercase tracking-[0.24em] text-cyan-200/80">
+          roll, collect, go further
         </p>
 
-        <div className="splash-showcase" aria-hidden="true">
-          <div className="splash-showcase-line" />
-          <div className="splash-pill">
-            <span className="splash-pill-dot dot-purple" />
-            ROLL
-          </div>
-          <div className="splash-pill">
-            <span className="splash-pill-dot dot-cyan" />
-            UPGRADE
-          </div>
-          <div className="splash-pill">
-            <span className="splash-pill-dot dot-gold" />
-            PRESTIGE
-          </div>
-          <div className="splash-showcase-line" />
-        </div>
-
-        <div className="splash-cta-wrap">
-          <button
-            className={`splash-cta ${ready ? 'ready' : 'loading'}`}
-            type="button"
-            onClick={begin}
-            disabled={!ready || leaving}
-            aria-label={ready ? 'Play Infinity Orbs' : 'Loading Infinity Orbs'}
-          >
-            <span className="splash-cta-sheen" aria-hidden="true" />
-            <span className="splash-cta-label">{ready ? (hasProgress ? 'CONTINUE' : 'PLAY') : 'LOADING'}</span>
-            {ready && <span className="splash-cta-arrow" aria-hidden="true">→</span>}
-          </button>
-          <div className="splash-cta-hint">
-            {ready ? (hasProgress ? 'RESUME YOUR RUN' : 'PRESS ENTER OR CLICK TO BEGIN') : MESSAGES[messageIndex].toUpperCase()}
-          </div>
-        </div>
-
-        <div className="splash-status" aria-live="polite">
-          <div className="splash-status-row">
-            <span>{ready ? 'READY' : MESSAGES[messageIndex].toUpperCase()}</span>
-            <span>{ready ? '100%' : `${progress}%`}</span>
-          </div>
-          <div className="splash-progress">
-            <span style={{ width: `${progress}%` }} />
-          </div>
-        </div>
-
         {ready && hasProgress && (
-          <div className="splash-record" aria-label={`Best orb 1 in ${highestRarity.toLocaleString()}, ${totalRolls.toLocaleString()} rolls`}>
-            <div>
-              <span>BEST DROP</span>
-              <strong>1 / {highestRarity.toLocaleString()}</strong>
+          <div className="mx-auto mt-8 grid max-w-xs grid-cols-2 divide-x divide-slate-700 rounded-2xl border border-slate-800 bg-slate-900/75 px-4 py-3">
+            <div className="px-2">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                Best orb
+              </div>
+              <div className="mt-1 text-sm font-black text-white">
+                1 / {highestRarity.toLocaleString()}
+              </div>
             </div>
-            <i aria-hidden="true" />
-            <div>
-              <span>ROLLS</span>
-              <strong>{totalRolls.toLocaleString()}</strong>
+            <div className="px-2">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                Rolls
+              </div>
+              <div className="mt-1 text-sm font-black text-white">
+                {totalRolls.toLocaleString()}
+              </div>
             </div>
           </div>
         )}
 
-      </div>
+        <button
+          type="button"
+          onClick={onEnter}
+          disabled={!ready}
+          className="mt-9 min-h-12 w-full rounded-xl border border-cyan-200/25 bg-cyan-500 px-6 py-3 text-sm font-black uppercase tracking-[0.14em] text-slate-950 transition-colors hover:bg-cyan-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-200 disabled:cursor-wait disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-400"
+        >
+          {ready ? (hasProgress ? 'Continue' : 'Play') : 'Loading'}
+        </button>
 
-      <div className="splash-corner splash-corner-tl" aria-hidden="true" />
-      <div className="splash-corner splash-corner-tr" aria-hidden="true" />
-      <div className="splash-corner splash-corner-bl" aria-hidden="true" />
-      <div className="splash-corner splash-corner-br" aria-hidden="true" />
-    </div>
+        <p className="mt-4 min-h-5 text-xs text-slate-500" aria-live="polite">
+          {ready ? 'Your next discovery is one roll away.' : 'Preparing your save…'}
+        </p>
+      </section>
+    </main>
   );
 }

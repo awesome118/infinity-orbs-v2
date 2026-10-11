@@ -202,19 +202,26 @@ debugRouter.post('/global-booster', async (req, res) => {
 });
 
 debugRouter.post('/global-booster-credits/grant', async (req, res) => {
+  const operationId = String(req.body?.operationId ?? '').trim();
   try {
+    if (!/^[a-zA-Z0-9_-]{8,128}$/.test(operationId)) {
+      return res.status(400).json({ error: 'A valid grant operation ID is required.' });
+    }
     const scope = String(req.body?.scope ?? 'user');
     const amount = Math.max(1, Math.min(1_000_000, Math.floor(Number(req.body?.amount) || 1)));
 
     if (scope === 'user') {
       const username = targetUsername(req.body?.username);
       const userId = await resolveUserId(username);
-      const result = await grantGlobalBoosterCreditsToUser(userId, username, amount);
-      await appendGlobalBoosterCreditGrantLog(scope, amount, [result]);
+      const result = await grantGlobalBoosterCreditsToUser(userId, username, amount, operationId);
+      await appendGlobalBoosterCreditGrantLog(scope, amount, operationId, [result]).catch(error => {
+        console.error('[Admin Global Boosters] Grant succeeded but audit logging failed:', error);
+      });
       return res.json({
         ok: true,
         scope,
         amount,
+        operationId,
         affectedUsers: 1,
         results: [result],
       });
@@ -222,26 +229,43 @@ debugRouter.post('/global-booster-credits/grant', async (req, res) => {
 
     if (scope === 'online' || scope === 'all') {
       const players = await listRegisteredPlayerIds();
-      const targets = scope === 'online' ? players.filter(player => player.active) : players;
-      const results: Array<{ userId: string; username: string; before: number; after: number }> = [];
+      const targetPlayers = scope === 'online' ? players.filter(player => player.active) : players;
+      const results: Array<{ userId: string; username: string; before: number; after: number; alreadyApplied?: boolean }> = [];
+      const failures: Array<{ userId: string; username: string; error: string }> = [];
 
-      for (const player of targets) {
-        results.push(await grantGlobalBoosterCreditsToUser(player.userId, player.username, amount));
+      for (const player of targetPlayers) {
+        try {
+          results.push(await grantGlobalBoosterCreditsToUser(player.userId, player.username, amount, operationId));
+        } catch (error) {
+          failures.push({
+            userId: player.userId,
+            username: player.username,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
 
-      await appendGlobalBoosterCreditGrantLog(scope, amount, results);
-      return res.json({
-        ok: true,
+      await appendGlobalBoosterCreditGrantLog(scope, amount, operationId, results, failures).catch(error => {
+        console.error('[Admin Global Boosters] Batch completed but audit logging failed:', error);
+      });
+      const response = {
+        ok: failures.length === 0,
+        partial: failures.length > 0,
         scope,
         amount,
+        operationId,
         affectedUsers: results.length,
+        attemptedUsers: targetPlayers.length,
         results,
-      });
+        failures,
+      };
+      if (failures.length > 0) return res.status(207).json(response);
+      return res.json(response);
     }
 
     return res.status(400).json({ error: 'Invalid Global Booster grant scope.' });
   } catch (e: any) {
-    res.status(400).json({ error: e?.message || 'Failed to grant free Global Booster credits.' });
+    res.status(400).json({ error: e?.message || 'Failed to grant free Global Booster credits.', operationId: operationId || null });
   }
 });
 
@@ -334,45 +358,122 @@ async function grantGlobalBoosterCreditsToUser(
   userId: string,
   username: string,
   amount: number,
-): Promise<{ userId: string; username: string; before: number; after: number }> {
+  operationId: string,
+): Promise<{ userId: string; username: string; before: number; after: number; alreadyApplied?: boolean }> {
   const id = String(userId ?? '').trim();
   if (!id) throw new Error('The target player ID is missing.');
   const safeUsername = targetUsername(username);
   const safeAmount = Math.max(1, Math.min(GLOBAL_BOOSTER_CREDIT_MAX, Math.floor(Number(amount) || 1)));
+  const playerKey = 'player:' + id;
+  const generationKey = 'player-generation:' + id;
+  // Keep idempotency receipts outside the player save so a wipe cannot erase
+  // the proof that this admin operation has already granted the recipient.
+  const receiptKey = 'io:admin-global-booster-credit-grant:' +
+    encodeURIComponent(operationId) + ':' + encodeURIComponent(id);
 
   return withPlayerMutationLockFor(id, async () => {
-    const playerKey = 'player:' + id;
-    const generationKey = 'player-generation:' + id;
-    const generation = Math.max(0, Number.parseInt(String(await redis.get(generationKey) ?? '0'), 10) || 0);
-    const state = parseAdminPlayerSave(await redis.get(playerKey));
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const txn = await redis.watch(playerKey, generationKey, receiptKey);
+      const generationRaw = await redis.get(generationKey);
+      const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
+      const raw = await redis.get(playerKey);
+      const rawReceipt = await redis.get(receiptKey);
 
-    const storedGeneration = Math.max(0, Number(state.saveGeneration ?? generation) || 0);
-    if (storedGeneration !== generation) {
-      throw new Error('The target player save changed generation. Refresh the admin console and try again.');
+      if (rawReceipt != null) {
+        let previousReceipt: any;
+        try {
+          previousReceipt = typeof rawReceipt === 'string' ? JSON.parse(rawReceipt) : rawReceipt;
+        } catch {
+          await txn.unwatch();
+          throw new Error('The grant idempotency receipt is corrupted; refusing a possibly duplicate grant.');
+        }
+        if (
+          !previousReceipt ||
+          typeof previousReceipt !== 'object' ||
+          !Number.isSafeInteger(previousReceipt.amount) ||
+          !Number.isSafeInteger(previousReceipt.before) ||
+          !Number.isSafeInteger(previousReceipt.after)
+        ) {
+          await txn.unwatch();
+          throw new Error('The grant idempotency receipt is malformed; refusing a possibly duplicate grant.');
+        }
+        await txn.unwatch();
+        if (previousReceipt.amount !== safeAmount) {
+          throw new Error('This grant operation ID was already used with a different amount.');
+        }
+        return {
+          userId: id,
+          username: safeUsername,
+          before: previousReceipt.before,
+          after: previousReceipt.after,
+          alreadyApplied: true,
+        };
+      }
+
+      let state: Record<string, any>;
+      try {
+        state = parseAdminPlayerSave(raw);
+      } catch (error) {
+        await txn.unwatch();
+        throw error;
+      }
+
+      const storedGeneration = Math.max(0, Number(state.saveGeneration ?? generation) || 0);
+      if (storedGeneration !== generation) {
+        await txn.unwatch();
+        throw new Error('The target player save changed generation. Refresh the admin console and try again.');
+      }
+
+      const rawCredits = state.globalBoosterCredits ?? 0;
+      if (!Number.isSafeInteger(rawCredits) || Number(rawCredits) < 0 || Number(rawCredits) > GLOBAL_BOOSTER_CREDIT_MAX) {
+        await txn.unwatch();
+        throw new Error('The target player Global Booster credit balance is invalid; no grant was applied.');
+      }
+      const before = Number(rawCredits);
+      const after = before + safeAmount;
+      if (!Number.isSafeInteger(after) || after > GLOBAL_BOOSTER_CREDIT_MAX) {
+        await txn.unwatch();
+        throw new Error('The target player does not have enough credit capacity for the full requested grant.');
+      }
+      state.globalBoosterCredits = after;
+      state.username = safeUsername;
+      state.saveGeneration = generation;
+      const currentRevision = Number(state.stateRevision ?? 0);
+      if (!Number.isSafeInteger(currentRevision) || currentRevision < 0 || currentRevision >= Number.MAX_SAFE_INTEGER) {
+        await txn.unwatch();
+        throw new Error('The target player save revision is invalid; no grant was applied.');
+      }
+      state.stateRevision = currentRevision + 1;
+
+      const receipt = JSON.stringify({ amount: safeAmount, before, after, createdAt: Date.now() });
+      await txn.multi();
+      await txn.set(playerKey, JSON.stringify(state));
+      await txn.set(receiptKey, receipt);
+      if (await txn.exec() !== null) {
+        return { userId: id, username: safeUsername, before, after };
+      }
     }
 
-    const before = Math.max(0, Number(state.globalBoosterCredits ?? 0) || 0);
-    const after = Math.min(GLOBAL_BOOSTER_CREDIT_MAX, before + safeAmount);
-    state.globalBoosterCredits = after;
-    state.username = safeUsername;
-    state.saveGeneration = generation;
-    state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0) || 0)) + 1;
-
-    await redis.set(playerKey, JSON.stringify(state));
-    return { userId: id, username: safeUsername, before, after };
+    throw new Error('The target player save changed too frequently. Retry the same grant operation.');
   });
 }
 
 async function appendGlobalBoosterCreditGrantLog(
   scope: string,
   amount: number,
-  results: Array<{ userId: string; username: string; before: number; after: number }>,
+  operationId: string,
+  results: Array<{ userId: string; username: string; before: number; after: number; alreadyApplied?: boolean }>,
+  failures: Array<{ userId: string; username: string; error: string }> = [],
 ): Promise<void> {
   await appendGlobalBoosterDebugLog('admin:grant-credits', {
     scope,
     amount,
+    operationId,
     affectedUsers: results.length,
+    replayedUsers: results.filter(result => result.alreadyApplied).length,
+    failedUsers: failures.length,
     usernames: results.slice(0, 25).map(result => result.username),
+    failures: failures.slice(0, 25),
   });
 }
 
@@ -387,21 +488,45 @@ async function listRegisteredPlayerIds(): Promise<Array<{ userId: string; userna
 
 
 async function removeLeaderboardEntry(username: string): Promise<void> {
-  const raw = await redis.get('io:leaderboard');
-  if (!raw) return;
-  const board = (() => {
-    if (typeof raw !== 'string') return Array.isArray(raw) ? raw as unknown as Array<{ username?: string }> : [];
-    try {
-      return JSON.parse(raw) as Array<{ username?: string }>;
-    } catch {
-      return [];
-    }
-  })();
+  const leaderboardKey = 'io:leaderboard';
   const normalized = normalizeUsername(username);
-  await redis.set(
-    'io:leaderboard',
-    JSON.stringify(board.filter(entry => normalizeUsername(entry.username) !== normalized)),
-  );
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const txn = await redis.watch(leaderboardKey);
+    const raw = await redis.get(leaderboardKey);
+    if (raw == null) {
+      await txn.unwatch();
+      return;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    } catch {
+      await txn.unwatch();
+      throw new Error('Leaderboard data is corrupted; refusing to replace it during account cleanup.');
+    }
+    if (
+      !Array.isArray(parsed) ||
+      !parsed.every(entry => entry && typeof entry === 'object' && !Array.isArray(entry) && typeof entry.username === 'string')
+    ) {
+      await txn.unwatch();
+      throw new Error('Leaderboard data is malformed; refusing to replace it during account cleanup.');
+    }
+
+    const board = parsed as Array<{ username: string }>;
+    const next = board.filter(entry => normalizeUsername(entry.username) !== normalized);
+    if (next.length === board.length) {
+      await txn.unwatch();
+      return;
+    }
+
+    await txn.multi();
+    await txn.set(leaderboardKey, JSON.stringify(next));
+    if (await txn.exec() !== null) return;
+  }
+
+  throw new Error('Leaderboard changed too frequently during account cleanup. Please retry.');
 }
 
 async function resolveUserId(username: string): Promise<string> {
@@ -414,34 +539,61 @@ async function resolveUserId(username: string): Promise<string> {
   return id;
 }
 
-async function wipeUser(username: string): Promise<{ username: string; userId: string; generation: number }> {
+async function resetPlayerGenerationAndSave(
+  userId: string,
+  username: string,
+): Promise<{ state: ReturnType<typeof createInitialState>; generation: number }> {
+  const generationKey = `player-generation:${userId}`;
+  const playerKey = `player:${userId}`;
+
+  // The generation bump and fresh save are one transaction. If either write
+  // fails, neither becomes visible; stale saves WATCH both keys and therefore
+  // cannot slip in between the two halves of a reset.
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const txn = await redis.watch(generationKey, playerKey);
+    const rawGeneration = await redis.get(generationKey);
+    const parsedGeneration = Number.parseInt(String(rawGeneration ?? '0'), 10);
+    const currentGeneration =
+      Number.isSafeInteger(parsedGeneration) && parsedGeneration >= 0
+        ? parsedGeneration
+        : 0;
+
+    if (currentGeneration >= Number.MAX_SAFE_INTEGER) {
+      await txn.unwatch();
+      throw new Error('Player save generation is exhausted and cannot be reset safely.');
+    }
+
+    const generation = currentGeneration + 1;
+    const fresh = createInitialState();
+    fresh.username = username;
+    fresh.saveGeneration = generation;
+    fresh.stateRevision = 0;
+
+    await txn.multi();
+    await txn.set(generationKey, String(generation));
+    await txn.set(playerKey, JSON.stringify(fresh));
+    const committed = await txn.exec();
+    if (committed !== null) return { state: fresh, generation };
+  }
+
+  throw new Error('Player data changed repeatedly while resetting. Please retry.');
+}
+
+async function wipeUser(username: string, clearBanAfterWipe = true): Promise<{ username: string; userId: string; generation: number }> {
   const name = targetUsername(username);
   const userId = await resolveUserId(name);
 
   return withPlayerMutationLockFor(userId, async () => {
-  const generationKey = `player-generation:${userId}`;
-  const playerKey = `player:${userId}`;
-
-  const currentRaw = await redis.get(generationKey);
-  const currentGeneration = Math.max(0, Number.parseInt(String(currentRaw ?? '0'), 10) || 0);
-  const generation = currentGeneration + 1;
-
-  // Invalidate the old generation first, then replace the save with a fresh
-  // starting state instead of merely deleting it. This makes a wipe observable
-  // immediately even when the target player is actively online. Any in-flight
-  // request carrying the old generation still fails the generation check and
-  // cannot write the old state back over the reset.
-  const fresh = createInitialState();
-  fresh.username = name;
-  fresh.saveGeneration = generation;
-
-  await redis.set(generationKey, String(generation));
-  await redis.set(playerKey, JSON.stringify(fresh));
-  await removeLeaderboardEntry(name);
+  const { generation } = await resetPlayerGenerationAndSave(userId, name);
+  // Leaderboards are projections. A damaged projection must not make an already
+  // durable account reset appear to fail or prevent the unban step from running.
+  await removeLeaderboardEntry(name).catch(error => {
+    console.error('[Wipe] Leaderboard cleanup failed after the player reset committed:', error);
+  });
   // A plain wipe is a full account reset. Remove any existing game ban so the
-  // wiped player can immediately start a fresh save. The dedicated wipe-and-ban
-  // endpoint applies a new ban after this function returns.
-  await unbanGameUser(userId);
+  // wiped player can immediately start a fresh save. The wipe-and-ban route passes
+  // false here because it commits the new ban before the reset begins.
+  if (clearBanAfterWipe) await unbanGameUser(userId);
 
   const persisted = await redis.get(playerKey);
   if (persisted == null) {
@@ -1684,14 +1836,17 @@ debugRouter.post('/moderation/wipe-and-unban', async (req, res) => {
 });
 
 debugRouter.post('/moderation/wipe-and-ban', async (req, res) => {
+  let banApplied = false;
   try {
     const username = targetUsername(req.body?.username);
     const userId = await resolveUserId(username);
-    const result = await wipeUser(username);
     const durationValue = req.body?.durationDays;
     const durationDays = durationValue === '' || durationValue == null
       ? undefined
       : Math.max(1, finiteInteger(durationValue));
+
+    // Ban first, then wipe without unbanning. If reset fails, the safer partial
+    // outcome is a still-banned account, never a wiped account briefly unlocked.
     const ban = await banGameUser({
       userId,
       username,
@@ -1699,9 +1854,14 @@ debugRouter.post('/moderation/wipe-and-ban', async (req, res) => {
       reason: String(req.body?.reason ?? 'Game moderation action').slice(0, 300),
       bannedBy: context.username ?? 'shadow_fen',
     });
+    banApplied = true;
+    const result = await wipeUser(username, false);
     res.json({ ok: true, action: 'wipe-and-ban', ...result, ban });
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || 'Failed to wipe and ban game account.' });
+    res.status(500).json({
+      error: e?.message || 'Failed to wipe and ban game account.',
+      banApplied,
+    });
   }
 });
 
@@ -1713,33 +1873,16 @@ debugRouter.post('/reset-all', async (_req, res) => {
       const userId = String(context.userId ?? '').trim();
       if (!userId) throw new Error('REDDIT_LOGIN_REQUIRED');
 
-      const generationKey = `player-generation:${userId}`;
-      const playerKey = `player:${userId}`;
-      const currentRaw = await redis.get(generationKey);
-      const currentGeneration = Math.max(
-        0,
-        Number.parseInt(String(currentRaw ?? '0'), 10) || 0,
+      const { state: fresh } = await resetPlayerGenerationAndSave(
+        userId,
+        context.username ?? `reddit-user-${userId.slice(-8)}`,
       );
-      const generation = currentGeneration + 1;
-
-      // Reset All is an account reset, not a normal save. Never pass a pristine
-      // revision-0 state to save(), because that can only conflict with an
-      // existing progressed account and can leave a stale request fighting the
-      // reset. Bump the generation first so every older request becomes stale.
-      const fresh = createInitialState();
-      fresh.username = context.username ?? fresh.username;
-      fresh.saveGeneration = generation;
-      fresh.stateRevision = 0;
-
-      await redis.set(generationKey, String(generation));
-      await redis.set(playerKey, JSON.stringify(fresh));
-      await redis.del(`io:roll-ticket:${userId}`);
-      await removeLeaderboardEntry(fresh.username ?? context.username ?? '');
-
-      const persisted = await redis.get(playerKey);
-      if (persisted == null) {
-        throw new Error('Reset failed: player save was not persisted.');
-      }
+      await redis.del(`io:roll-ticket:${userId}`).catch(error => {
+        console.error('[Reset All] Roll-ticket cleanup failed after the player reset committed:', error);
+      });
+      await removeLeaderboardEntry(fresh.username ?? context.username ?? '').catch(error => {
+        console.error('[Reset All] Leaderboard cleanup failed after the player reset committed:', error);
+      });
 
       res.json({ ok: true, state: fresh });
     });

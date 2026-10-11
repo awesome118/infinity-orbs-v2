@@ -202,30 +202,73 @@ export function resetFreeShardBudgetIfNeeded(s: PlayerState, now = Date.now()): 
   }
 }
 
-export function grantFreeShards(s: PlayerState, requested: number, _now = Date.now()): number {
-  const amount = Math.max(0, Math.floor(requested));
-  if (amount > 0) {
-    s.shards = (s.shards ?? 0) + amount;
-    s.lifetimeShards = (s.lifetimeShards ?? 0) + amount;
+function addShardsWithinSafeIntegerLimit(s: PlayerState, requested: number): number {
+  const amount = Number.isFinite(requested)
+    ? Math.max(0, Math.floor(requested))
+    : 0;
+  const currentShards = s.shards ?? 0;
+  // The persisted-state parser already rejects invalid balances. Keep shared
+  // helpers defensive too, without silently resetting a bad balance to zero.
+  if (
+    typeof currentShards !== 'number' ||
+    !Number.isSafeInteger(currentShards) ||
+    currentShards < 0
+  ) {
+    return 0;
   }
-  return amount;
+
+  const rawLifetimeShards = s.lifetimeShards;
+  const lifetimeShards =
+    typeof rawLifetimeShards === 'number' &&
+    Number.isSafeInteger(rawLifetimeShards) &&
+    rawLifetimeShards >= 0
+      ? rawLifetimeShards
+      : 0;
+  s.lifetimeShards = lifetimeShards;
+
+  // Lifetime totals are statistics, not spendable currency. Saturate the
+  // statistic independently so a maxed lifetime counter never blocks new
+  // Shards that still fit safely in the player's spendable balance.
+  const safeRoom = Math.max(0, Number.MAX_SAFE_INTEGER - currentShards);
+  const granted = Math.min(amount, safeRoom);
+  s.shards = currentShards + granted;
+  s.lifetimeShards = Math.min(Number.MAX_SAFE_INTEGER, lifetimeShards + granted);
+  return granted;
+}
+
+export function grantFreeShards(s: PlayerState, requested: number, _now = Date.now()): number {
+  // Free rewards intentionally bypass the rolling daily cap, not numeric safety.
+  return addShardsWithinSafeIntegerLimit(s, requested);
 }
 
 export function grantRollShards(s: PlayerState, requested: number, now = Date.now()): number {
   resetFreeShardBudgetIfNeeded(s, now);
-  const amount = Math.max(0, Math.floor(requested));
-  const available = Math.max(0, FREE_SHARD_DAILY_CAP - (s.freeShardsEarnedToday ?? 0));
-  const granted = Math.min(amount, available);
-  if (granted > 0) {
-    s.shards = (s.shards ?? 0) + granted;
-    s.lifetimeShards = (s.lifetimeShards ?? 0) + granted;
-    s.freeShardsEarnedToday = (s.freeShardsEarnedToday ?? 0) + granted;
-  }
+  const amount = Number.isFinite(requested)
+    ? Math.max(0, Math.floor(requested))
+    : 0;
+
+  // Treat a genuinely missing legacy counter as a fresh day's zero, but never
+  // let a malformed counter (e.g. a persisted string/NaN) bypass the daily cap.
+  const rawEarnedToday = s.freeShardsEarnedToday;
+  const earnedToday = rawEarnedToday == null
+    ? 0
+    : typeof rawEarnedToday === 'number' &&
+        Number.isSafeInteger(rawEarnedToday) &&
+        rawEarnedToday >= 0
+      ? Math.min(FREE_SHARD_DAILY_CAP, rawEarnedToday)
+      : FREE_SHARD_DAILY_CAP;
+  s.freeShardsEarnedToday = earnedToday;
+
+  const available = Math.max(0, FREE_SHARD_DAILY_CAP - earnedToday);
+  const granted = addShardsWithinSafeIntegerLimit(s, Math.min(amount, available));
+  s.freeShardsEarnedToday = earnedToday + granted;
   return granted;
 }
 
 export function spendShards(s: PlayerState, requested: number): number {
+  if (!Number.isFinite(requested)) throw new Error('Invalid Shards amount.');
   const amount = Math.max(0, Math.floor(requested));
+  if (!Number.isSafeInteger(amount)) throw new Error('Invalid Shards amount.');
   if ((s.shards ?? 0) < amount) throw new Error('Not enough Shards.');
   s.shards -= amount;
   const paidPortion = Math.min(amount, s.purchasedShards ?? 0);
@@ -314,11 +357,8 @@ export function grantFrenzyOwnerShards(
   s: PlayerState,
   requested = FRENZY_OWNER_SHARD_REWARD,
 ): number {
-  const amount = Math.max(0, Math.floor(Number(requested) || 0));
-  if (amount <= 0) return 0;
-  s.shards = (s.shards ?? 0) + amount;
-  s.lifetimeShards = (s.lifetimeShards ?? 0) + amount;
-  return amount;
+  // Frenzy owner rewards bypass the daily cap but share the wallet's numeric bounds.
+  return addShardsWithinSafeIntegerLimit(s, Number(requested));
 }
 
 export function frenzyCooldownRemaining(lastFrenzyAt?: number, now = Date.now()): number {
@@ -456,7 +496,7 @@ export function guildComboCritLuckBonus(state: GuildComboState | null | undefine
   return current.tier > 0 && current.endsAt > now ? 0.05 * current.tier : 0;
 }
 
-export const GLOBAL_BOOSTER_DURATION_MS = 30 * 60 * 1000;
+export const GLOBAL_BOOSTER_DURATION_MS = 2 * 60 * 60 * 1000;
 export const GLOBAL_BOOSTER_BAR_DURATION_MS = 2 * 60 * 60 * 1000;
 export const GLOBAL_BOOSTER_ACTIVATIONS_PER_TIER = 4;
 export const GLOBAL_BOOSTER_TIMER_ACCELERATION_PER_TIER = 0.10;
@@ -477,8 +517,8 @@ export const GLOBAL_BOOSTERS: Record<GlobalBoosterId, {
     costShards: 25,
   },
   crit: {
-    name: 'Global Crit',
-    desc: 'Improves Crit Chance and Crit Multiplier for everyone.',
+    name: 'Global Crit Luck',
+    desc: 'Improves Crit Chance and Crit Luck for everyone.',
     costShards: 25,
   },
 };
@@ -1121,13 +1161,15 @@ export function luckRarityExponent(_luck: number): number {
   return 1;
 }
 
+export const MAX_ORB_RARITY = 1_000_000_000_000_000_000;
+
 export function rollContinuum(luck: number, random: () => number = Math.random): number {
   const sample = Number(random());
   const u = Number.isFinite(sample)
     ? Math.min(1 - Number.EPSILON, Math.max(Number.MIN_VALUE, sample))
     : 0.5;
   const rarity = Math.floor((1 / u) * luckRarityFactor(luck));
-  return Math.min(1_000_000_000_000_000_000, Math.max(2, rarity));
+  return Math.min(MAX_ORB_RARITY, Math.max(2, rarity));
 }
 
 export interface ContinuumTierMilestone {
@@ -2142,9 +2184,10 @@ export function predictRollActivation(
   let shardsGained = 0;
   let xpGained = 0;
   let uniqueGained = 0;
+  const lifetimeRollsBeforeBatch = s.totalRolls;
 
   for (let i = 0; i < rollCount; i++) {
-    const isGuaranteedThirdBall = s.totalRolls + i === 2;
+    const isGuaranteedThirdBall = lifetimeRollsBeforeBatch + i === 2;
     const isCrit = !isGuaranteedThirdBall && rng() < critChance;
     let effectiveCm = cm;
 
@@ -2162,7 +2205,7 @@ export function predictRollActivation(
       ? beginnerRarity
       : Math.max(minimumRarity, rollContinuum(effectiveLuck, rng));
     const rarity = isCrit
-      ? Math.min(1_000_000_000_000_000, Math.round(rolledRarity * effectiveCm))
+      ? Math.min(MAX_ORB_RARITY, Math.round(rolledRarity * effectiveCm))
       : rolledRarity;
 
     const finalVal = Math.round(rarity * valueMul);

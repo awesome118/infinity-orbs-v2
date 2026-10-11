@@ -1,11 +1,12 @@
 import { redis, context, reddit } from './devvit-mock.js';
-import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
+import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
 import {
   createInitialState,
   type PlayerState,
+  type QuestItem,
   type RollResponse,
   type UpgradeId,
   type PrestigeUpgradeId,
@@ -27,6 +28,7 @@ import {
   COSMETICS_LIST,
   rollContinuum,
   coinsForRarity,
+  MAX_OFFLINE_ROLLS,
   OFFLINE_TICK_MS,
   calculateCosmicDust,
   effectiveOfflineTickMs,
@@ -72,26 +74,105 @@ import {
   codexDevotionLuckPercent,
   altarCoinDevotionChancePercent,
   altarCoinFloor,
-  createSeededRandom,
-  rollTicketSeed,
+  MAX_ORB_RARITY,
 } from '../shared/game.js';
 import {
-  contribute,
   recordLeaderboard,
-  applyGuildTax,
   getPlayerGuildPerks,
   getPlayerGuildCombo,
-  addCommunityRolls,
+  prepareGuildRollEffects,
+  prepareCommunityRolls,
   getCommunityEvent,
   getDailyStreakCommunity,
-  addDailyStreakCommunityProgress,
+  prepareDailyStreakCommunityProgress,
 } from './social.js';
 
+
+interface SaveExtraWrite {
+  key: string;
+  expectedValue: string | null;
+  nextValue: string;
+  conflictMessage?: string;
+  // Optional projections must never prevent the primary player mutation from saving.
+  optional?: boolean;
+}
+
+type SavePostCommitAction = () => Promise<void>;
+
+const pendingSaveExtraWrites = new WeakMap<PlayerState, SaveExtraWrite[]>();
+const pendingSavePostCommitActions = new WeakMap<PlayerState, SavePostCommitAction[]>();
+
+function getPendingSaveExtraWrite(s: PlayerState, keyName: string): SaveExtraWrite | undefined {
+  return pendingSaveExtraWrites.get(s)?.find(item => item.key === keyName);
+}
+
+function stageSaveExtraWrite(s: PlayerState, write: SaveExtraWrite): void {
+  const existing = pendingSaveExtraWrites.get(s) ?? [];
+  const index = existing.findIndex(item => item.key === write.key);
+  if (index < 0) {
+    pendingSaveExtraWrites.set(s, [...existing, write]);
+    return;
+  }
+  const previous = existing[index];
+  if (previous.expectedValue !== write.expectedValue) {
+    throw new Error(`Conflicting staged versions for ${write.key}.`);
+  }
+  const merged = [...existing];
+  merged[index] = { ...write, expectedValue: previous.expectedValue };
+  pendingSaveExtraWrites.set(s, merged);
+}
+
+function stageSavePostCommitAction(s: PlayerState, action: SavePostCommitAction): void {
+  const existing = pendingSavePostCommitActions.get(s) ?? [];
+  pendingSavePostCommitActions.set(s, [...existing, action]);
+}
+
+async function clearOfflineReminderKeyIfUnchanged(
+  keyName: string,
+  expectedValue: unknown,
+): Promise<boolean> {
+  if (expectedValue == null) return false;
+  const expected = String(expectedValue);
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const txn = await redis.watch(keyName);
+    const current = await redis.get(keyName);
+    if (current == null || String(current) !== expected) {
+      await txn.unwatch();
+      return false;
+    }
+
+    await txn.multi();
+    // Empty string is treated as absent by the existing truthiness checks,
+    // while WATCH/MULTI makes the compare-and-clear safe against a newer job.
+    await txn.set(keyName, '');
+    if (await txn.exec() !== null) return true;
+  }
+  return false;
+}
 
 function currentUserId(): string {
   const userId = String(context.userId ?? '').trim();
   if (!userId) throw new Error('REDDIT_LOGIN_REQUIRED');
   return userId;
+}
+
+// Multi-player mutations acquire every player/post lock in the same sorted
+// order. This avoids reciprocal Frenzy claims deadlocking while ensuring an
+// owner reward and claimant save cannot race each other's state revisions.
+async function withPlayerMutationLocksFor<T>(
+  userIds: string[],
+  fn: () => Promise<T>,
+): Promise<T> {
+  const orderedIds = Array.from(
+    new Set(userIds.map(id => String(id ?? '').trim()).filter(Boolean)),
+  ).sort();
+
+  const acquire = (index: number): Promise<T> => {
+    if (index >= orderedIds.length) return fn();
+    return withPlayerMutationLockFor(orderedIds[index], () => acquire(index + 1));
+  };
+  return acquire(0);
 }
 
 const key = () => `player:${currentUserId()}`;
@@ -663,54 +744,117 @@ function parseStoredJson<T>(raw: unknown): T | null {
 async function ensureRedisStringKey(keyName: string, fallback: string): Promise<void> {
   const existing = await redis.get(keyName);
   if (existing == null) {
-    await redis.set(keyName, fallback);
+    // Another request may initialize this key after our GET. NX prevents this
+    // fallback write from overwriting a real value created in that interval.
+    await redis.set(keyName, fallback, { nx: true });
   }
+}
+
+function parseGameBanRegistry(raw: unknown): Record<string, GameBanRecord> {
+  if (raw == null) return Object.create(null) as Record<string, GameBanRecord>;
+  const parsed = parseStoredJson<unknown>(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Game ban list could not be read safely. No changes were applied.');
+  }
+
+  const bans = Object.create(null) as Record<string, GameBanRecord>;
+  for (const [keyName, value] of Object.entries(parsed)) {
+    if (
+      !keyName ||
+      !value || typeof value !== 'object' || Array.isArray(value) ||
+      typeof (value as any).userId !== 'string' ||
+      (value as any).userId.trim() !== keyName ||
+      typeof (value as any).username !== 'string' ||
+      !(value as any).username.trim() ||
+      !Number.isSafeInteger((value as any).bannedAt) ||
+      Number((value as any).bannedAt) < 0 ||
+      !(
+        (value as any).bannedUntil === null ||
+        (
+          Number.isSafeInteger((value as any).bannedUntil) &&
+          Number((value as any).bannedUntil) > Number((value as any).bannedAt)
+        )
+      ) ||
+      typeof (value as any).reason !== 'string' ||
+      typeof (value as any).bannedBy !== 'string'
+    ) {
+      throw new Error('Game ban list contains a malformed record. No changes were applied.');
+    }
+    bans[keyName] = value as GameBanRecord;
+  }
+  return bans;
 }
 
 async function readGameBans(): Promise<Record<string, GameBanRecord>> {
-  const raw = await redis.get(GAME_BANS_KEY);
-  if (!raw) return {};
-  try {
-    return parseStoredJson<Record<string, GameBanRecord>>(raw) ?? {};
-  } catch {
-    return {};
-  }
+  return parseGameBanRegistry(await redis.get(GAME_BANS_KEY));
 }
 
-async function writeGameBans(bans: Record<string, GameBanRecord>): Promise<void> {
-  await redis.set(GAME_BANS_KEY, JSON.stringify(bans));
+async function mutateGameBans<T>(
+  update: (bans: Record<string, GameBanRecord>) => { changed: boolean; result: T },
+): Promise<T> {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const txn = await redis.watch(GAME_BANS_KEY);
+    const raw = await redis.get(GAME_BANS_KEY);
+    let bans: Record<string, GameBanRecord>;
+    try {
+      // Only a truly absent key is an empty registry. A present empty string,
+      // malformed JSON, or malformed row must fail closed instead of clearing
+      // bans or letting the request proceed as if every user were unbanned.
+      bans = parseGameBanRegistry(raw);
+    } catch (error) {
+      await txn.unwatch();
+      throw error;
+    }
+
+    const outcome = update(bans);
+    if (!outcome.changed) {
+      await txn.unwatch();
+      return outcome.result;
+    }
+
+    await txn.multi();
+    await txn.set(GAME_BANS_KEY, JSON.stringify(bans));
+    const committed = await txn.exec();
+    if (committed !== null) return outcome.result;
+  }
+
+  throw new Error('Game ban list changed too frequently. Please retry.');
 }
 
 export async function getGameBanStatus(userId = context.userId ?? ''): Promise<GameBanStatus | null> {
   if (!userId) return null;
-  const bans = await readGameBans();
-  const ban = bans[userId];
-  if (!ban) return null;
-  if (ban.bannedUntil !== null && ban.bannedUntil <= Date.now()) {
-    delete bans[userId];
-    await writeGameBans(bans);
-    return null;
-  }
-  return { ...ban, active: true };
+  const now = Date.now();
+  return mutateGameBans(bans => {
+    const ban = bans[userId];
+    if (!ban) return { changed: false, result: null };
+    if (ban.bannedUntil !== null && ban.bannedUntil <= now) {
+      delete bans[userId];
+      return { changed: true, result: null };
+    }
+    return { changed: false, result: { ...ban, active: true } };
+  });
 }
 
 export async function listGameBans(): Promise<GameBanRecord[]> {
-  const bans = await readGameBans();
   const now = Date.now();
-  let changed = false;
-  const active: GameBanRecord[] = [];
+  return mutateGameBans(bans => {
+    let changed = false;
+    const active: GameBanRecord[] = [];
 
-  for (const [userId, ban] of Object.entries(bans)) {
-    if (ban.bannedUntil !== null && ban.bannedUntil <= now) {
-      delete bans[userId];
-      changed = true;
-      continue;
+    for (const [userId, ban] of Object.entries(bans)) {
+      if (ban.bannedUntil !== null && ban.bannedUntil <= now) {
+        delete bans[userId];
+        changed = true;
+        continue;
+      }
+      active.push(ban);
     }
-    active.push(ban);
-  }
 
-  if (changed) await writeGameBans(bans);
-  return active.sort((a, b) => b.bannedAt - a.bannedAt);
+    return {
+      changed,
+      result: active.sort((a, b) => b.bannedAt - a.bannedAt),
+    };
+  });
 }
 
 export async function banGameUser(options: {
@@ -720,41 +864,89 @@ export async function banGameUser(options: {
   reason?: string;
   bannedBy?: string;
 }): Promise<GameBanStatus> {
-  const durationDays =
-    options.durationDays == null
-      ? null
-      : Math.max(1, Math.floor(Number(options.durationDays)));
+  const userId = String(options.userId ?? '').trim();
+  const username = String(options.username ?? '').trim().replace(/^u\//i, '');
+  if (!userId || !username) {
+    throw new Error('A valid game user ID and Reddit username are required.');
+  }
+
+  let durationDays: number | null = null;
+  if (options.durationDays != null) {
+    const requestedDays = Number(options.durationDays);
+    const maximumDateMs = 8_640_000_000_000_000;
+    const now = Date.now();
+    const maximumDays = Math.floor((maximumDateMs - now) / 86_400_000);
+    if (
+      !Number.isSafeInteger(requestedDays) ||
+      requestedDays < 1 ||
+      requestedDays > maximumDays
+    ) {
+      throw new Error('Ban duration must be a positive, safely representable number of days.');
+    }
+    durationDays = requestedDays;
+  }
+
+  const bannedAt = Date.now();
+  const bannedUntil = durationDays === null ? null : bannedAt + durationDays * 86_400_000;
+  if (
+    bannedUntil !== null &&
+    (!Number.isSafeInteger(bannedUntil) || bannedUntil <= bannedAt || bannedUntil > 8_640_000_000_000_000)
+  ) {
+    throw new Error('Ban expiry is outside the supported date range.');
+  }
   const ban: GameBanRecord = {
-    userId: options.userId,
-    username: options.username,
-    bannedAt: Date.now(),
-    bannedUntil: durationDays === null ? null : Date.now() + durationDays * 86_400_000,
+    userId,
+    username,
+    bannedAt,
+    bannedUntil,
     reason: String(options.reason ?? 'Game moderation action').slice(0, 300),
     bannedBy: String(options.bannedBy ?? context.username ?? 'Admin').slice(0, 100),
   };
-  const bans = await readGameBans();
-  bans[options.userId] = ban;
-  await writeGameBans(bans);
-  return { ...ban, active: true };
+  return mutateGameBans(bans => {
+    bans[userId] = ban;
+    return { changed: true, result: { ...ban, active: true } };
+  });
 }
 
 export async function unbanGameUser(userId: string): Promise<boolean> {
-  const bans = await readGameBans();
-  if (!bans[userId]) return false;
-  delete bans[userId];
-  await writeGameBans(bans);
-  return true;
+  return mutateGameBans(bans => {
+    if (!bans[userId]) return { changed: false, result: false };
+    delete bans[userId];
+    return { changed: true, result: true };
+  });
 }
 const ONLINE_WINDOW_MS = 30_000;
+
+async function updateCcuPeak(keyName: string, ccu: number): Promise<void> {
+  const candidate = Math.max(0, Math.floor(Number(ccu) || 0));
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const txn = await redis.watch(keyName);
+    const current = Math.max(
+      0,
+      Number.parseInt(String(await redis.get(keyName) ?? '0'), 10) || 0,
+    );
+    if (candidate <= current) {
+      await txn.unwatch();
+      return;
+    }
+
+    await txn.multi();
+    await txn.set(keyName, String(candidate));
+    const committed = await txn.exec();
+    if (committed !== null) return;
+  }
+
+  throw new Error('CCU peak changed too frequently to update safely.');
+}
 
 async function recordCcuPeak(ccu: number, now: number): Promise<void> {
   const hour = Math.floor(now / 3_600_000);
   const hourKey = CCU_HOURLY_PREFIX + String(hour);
-  const allTime = Math.max(0, Number.parseInt(String(await redis.get(CCU_ALL_TIME_KEY) ?? '0'), 10) || 0);
-  const hourly = Math.max(0, Number.parseInt(String(await redis.get(hourKey) ?? '0'), 10) || 0);
 
-  if (ccu > hourly) await redis.set(hourKey, String(ccu));
-  if (ccu > allTime) await redis.set(CCU_ALL_TIME_KEY, String(ccu));
+  // WATCH keeps these values monotonic. Plain GET-then-SET let an older,
+  // lower concurrent sample overwrite a peak that had just been recorded.
+  await updateCcuPeak(hourKey, ccu);
+  await updateCcuPeak(CCU_ALL_TIME_KEY, ccu);
 }
 
 async function touchOnlinePresence(): Promise<number> {
@@ -922,42 +1114,65 @@ export async function getOrbFrenzyHandoff(): Promise<{ armed: boolean; postId?: 
   return handoff ? { armed: true, postId: handoff.postId } : { armed: false };
 }
 
-async function grantFrenzyOwnerReward(
+async function prepareFrenzyOwnerRewardWrites(
   ownerId: string,
   amount = FRENZY_OWNER_SHARD_REWARD,
-): Promise<number> {
+): Promise<{ granted: number; writes: SaveExtraWrite[] }> {
   const safeOwnerId = String(ownerId ?? '').trim();
-  if (!safeOwnerId || safeOwnerId === 'unknown') return 0;
-
-  const ownerKey = playerKeyFor(safeOwnerId);
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const txn = await redis.watch(ownerKey);
-    const raw = await redis.get(ownerKey);
-    if (raw == null) {
-      await txn.unwatch();
-      throw new Error('Frenzy owner save was not found.');
-    }
-
-    const ownerState = parsePlayerStateValue(raw);
-    if (!ownerState) {
-      await txn.unwatch();
-      throw new Error('Frenzy owner save could not be read safely.');
-    }
-
-    const granted = grantFrenzyOwnerShards(ownerState, amount);
-    const currentRevision = Math.max(
-      0,
-      Math.floor(Number(ownerState.stateRevision ?? 0)) || 0,
-    );
-    const nextState = { ...ownerState, stateRevision: currentRevision + 1 };
-
-    await txn.multi();
-    await txn.set(ownerKey, JSON.stringify(nextState));
-    const committed = await txn.exec();
-    if (committed !== null) return granted;
+  if (!safeOwnerId || safeOwnerId === 'unknown') {
+    throw new Error('Frenzy owner identity is missing; the claim was not consumed.');
   }
 
-  throw new Error('Could not safely grant the Frenzy owner reward.');
+  const ownerKey = playerKeyFor(safeOwnerId);
+  const ownerGenerationKey = saveGenerationKeyFor(safeOwnerId);
+  const [raw, generationRaw] = await Promise.all([
+    redis.get(ownerKey),
+    redis.get(ownerGenerationKey),
+  ]);
+  if (raw == null) throw new Error('Frenzy owner save was not found.');
+  const ownerState = parsePlayerStateValue(raw);
+  if (!ownerState) throw new Error('Frenzy owner save could not be read safely.');
+
+  const generationText = generationRaw == null ? '0' : String(generationRaw);
+  const generation = Number.parseInt(generationText, 10);
+  if (!Number.isSafeInteger(generation) || generation < 0) {
+    throw new Error('Frenzy owner save generation could not be read safely.');
+  }
+  const ownerGeneration = Math.max(0, Math.floor(Number(ownerState.saveGeneration ?? 0)) || 0);
+  if (ownerGeneration !== generation) {
+    throw new Error('Frenzy owner save changed generation; the claim was not consumed.');
+  }
+
+  const granted = grantFrenzyOwnerShards(ownerState, amount);
+  const currentRevision = Math.max(0, Math.floor(Number(ownerState.stateRevision ?? 0)) || 0);
+  if (currentRevision >= Number.MAX_SAFE_INTEGER) {
+    throw new Error('Frenzy owner save revision is exhausted; the claim was not consumed.');
+  }
+  const nextState = {
+    ...ownerState,
+    saveGeneration: generation,
+    stateRevision: currentRevision + 1,
+  };
+
+  // These side writes join the claimant save transaction. The post, claimant
+  // reward, owner Shards, and both generation guards either all commit or none do.
+  return {
+    granted,
+    writes: [
+      {
+        key: ownerGenerationKey,
+        expectedValue: generationRaw == null ? null : String(generationRaw),
+        nextValue: generationText,
+        conflictMessage: 'Frenzy owner save generation changed. Please retry.',
+      },
+      {
+        key: ownerKey,
+        expectedValue: String(raw),
+        nextValue: JSON.stringify(nextState),
+        conflictMessage: 'Frenzy owner save changed. Please retry.',
+      },
+    ],
+  };
 }
 
 
@@ -983,15 +1198,37 @@ function parseGlobalBoosterSnapshot(
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
     const record = parsed as Record<string, unknown>;
 
+    const isValidBoosterState = (value: unknown, id: GlobalBoosterId): value is GlobalBoosterSnapshot[GlobalBoosterId] => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+      const state = value as Record<string, unknown>;
+      if (
+        !Number.isSafeInteger(state.tier) || Number(state.tier) < 0 ||
+        (id === 'speed' && Number(state.tier) > 10) ||
+        !Number.isSafeInteger(state.activationProgress) ||
+        Number(state.activationProgress) < 0 ||
+        Number(state.activationProgress) >= 4 ||
+        !Number.isSafeInteger(state.endsAt) || Number(state.endsAt) < 0
+      ) return false;
+
+      if (state.lastTickAt != null) {
+        if (
+          !Number.isSafeInteger(state.lastTickAt) ||
+          Number(state.lastTickAt) < 0 ||
+          Number(state.lastTickAt) > now + 60_000
+        ) return false;
+      }
+      return true;
+    };
+
     if (
-      record.luck && typeof record.luck === 'object' &&
-      record.speed && typeof record.speed === 'object' &&
-      record.crit && typeof record.crit === 'object'
+      isValidBoosterState(record.luck, 'luck') &&
+      isValidBoosterState(record.speed, 'speed') &&
+      isValidBoosterState(record.crit, 'crit')
     ) {
       return {
-        luck: decayGlobalBoosterState(record.luck as GlobalBoosterSnapshot['luck'], now),
-        speed: decayGlobalBoosterState(record.speed as GlobalBoosterSnapshot['speed'], now),
-        crit: decayGlobalBoosterState(record.crit as GlobalBoosterSnapshot['crit'], now),
+        luck: decayGlobalBoosterState(record.luck, now),
+        speed: decayGlobalBoosterState(record.speed, now),
+        crit: decayGlobalBoosterState(record.crit, now),
       };
     }
 
@@ -1028,95 +1265,106 @@ export async function getGlobalBoosters(): Promise<GlobalBoosterSnapshot> {
   return snapshot;
 }
 
-async function updateGlobalBooster(id: GlobalBoosterId): Promise<GlobalBoosterSnapshot> {
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const now = Date.now();
-    const txn = await redis.watch(GLOBAL_BOOSTERS_KEY);
-    const raw = await redis.get(GLOBAL_BOOSTERS_KEY);
-
-    await appendGlobalBoosterDebugLog('activate:redis-read', {
-      id,
-      attempt,
-      key: GLOBAL_BOOSTERS_KEY,
-      rawType: typeof raw,
-      rawIsNull: raw == null,
-      rawValue: summarizeGlobalBoosterRaw(raw),
-    });
-
-    const current = parseGlobalBoosterSnapshot(raw, now) ?? createInitialGlobalBoosters(now);
-    const before = current[id];
-    const after = activateGlobalBoosterStack(before, now, id === 'speed' ? 10 : Number.MAX_SAFE_INTEGER);
-    current[id] = after;
-
-    await appendGlobalBoosterDebugLog('activate:state-computed', {
-      id,
-      attempt,
-      before,
-      after,
-    });
-
-    await txn.multi();
-    await txn.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(current));
-    const committed = await txn.exec();
-
-    if (committed !== null) {
-      const verifiedRaw = await redis.get(GLOBAL_BOOSTERS_KEY);
-      const verified = parseGlobalBoosterSnapshot(verifiedRaw, Date.now()) ?? current;
-      await appendGlobalBoosterDebugLog('activate:global-write-success', {
-        id,
-        attempt,
-        committed: true,
-        verifiedRawType: typeof verifiedRaw,
-        verifiedRaw: summarizeGlobalBoosterRaw(verifiedRaw),
-        verifiedSnapshot: verified,
-      });
-      return verified;
-    }
-
-    await appendGlobalBoosterDebugLog('activate:global-write-conflict', { id, attempt });
+async function prepareGlobalBoosterActivation(id: GlobalBoosterId): Promise<{
+  snapshot: GlobalBoosterSnapshot;
+  expectedValue: string | null;
+  nextValue: string;
+}> {
+  const now = Date.now();
+  const raw = await redis.get(GLOBAL_BOOSTERS_KEY);
+  const current = raw == null
+    ? createInitialGlobalBoosters(now)
+    : parseGlobalBoosterSnapshot(raw, now);
+  if (!current) {
+    throw new Error('Global Booster data is corrupted; refusing to overwrite it.');
   }
 
-  await appendGlobalBoosterDebugLog('activate:global-write-exhausted', { id });
-  throw new Error('The Global Booster was activated by another player. Please try again.');
-}
+  const before = current[id];
+  const after = activateGlobalBoosterStack(
+    before,
+    now,
+    id === 'speed' ? 10 : Number.MAX_SAFE_INTEGER,
+  );
+  const snapshot: GlobalBoosterSnapshot = { ...current, [id]: after };
+  await appendGlobalBoosterDebugLog('activate:state-computed', {
+    id,
+    before,
+    after,
+    note: 'Pending atomic player/global save; no global write has occurred yet.',
+  });
 
+  return {
+    snapshot,
+    expectedValue: raw == null ? null : String(raw),
+    nextValue: JSON.stringify(snapshot),
+  };
+}
 export async function setGlobalBoosterDebugState(
   id: GlobalBoosterId,
   tier: number,
   minutes: number,
 ): Promise<{ tier: number; activationProgress: number; endsAt: number }> {
-  if (!GLOBAL_BOOSTERS[id]) throw new Error('Unknown Global Booster.');
+  if (!Object.prototype.hasOwnProperty.call(GLOBAL_BOOSTERS, id)) {
+    throw new Error('Unknown Global Booster.');
+  }
+  if (!Number.isSafeInteger(tier) || tier < 0 || tier > 1_000_000) {
+    throw new Error('Global Booster tier must be a finite integer between 0 and 1000000.');
+  }
+  if (!Number.isSafeInteger(minutes) || minutes < 1 || minutes > 10_080) {
+    throw new Error('Global Booster duration must be between 1 minute and 7 days.');
+  }
 
-  const now = Date.now();
-  const safeTier = Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(Number(tier) || 0)));
-  const safeMinutes = Math.max(1, Math.floor(Number(minutes) || 30));
-  const snapshot = await getGlobalBoosters();
-  const previous = snapshot[id];
-  const cappedTier = id === 'speed' ? Math.min(10, safeTier) : safeTier;
-  const next = {
-    tier: cappedTier,
-    activationProgress: 0,
-    endsAt: cappedTier === 0 ? 0 : now + safeMinutes * 60_000,
-  };
-  snapshot[id] = next;
-  await redis.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(snapshot));
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const now = Date.now();
+    const txn = await redis.watch(GLOBAL_BOOSTERS_KEY);
+    const raw = await redis.get(GLOBAL_BOOSTERS_KEY);
+    const snapshot = raw == null
+      ? createInitialGlobalBoosters(now)
+      : parseGlobalBoosterSnapshot(raw, now);
+    if (!snapshot) {
+      await txn.unwatch();
+      throw new Error('Global Booster data is corrupted; refusing to overwrite it.');
+    }
 
-  await appendGlobalBoosterDebugLog('admin:set', {
-    id,
-    previous,
-    next,
-    minutes: safeMinutes,
-    key: GLOBAL_BOOSTERS_KEY,
-  });
+    const previous = snapshot[id];
+    const cappedTier = id === 'speed' ? Math.min(10, tier) : tier;
+    const next = {
+      tier: cappedTier,
+      activationProgress: 0,
+      endsAt: cappedTier === 0 ? 0 : now + minutes * 60_000,
+    };
+    snapshot[id] = next;
 
-  return next;
+    await txn.multi();
+    await txn.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(snapshot));
+    const committed = await txn.exec();
+    if (committed !== null) {
+      await appendGlobalBoosterDebugLog('admin:set', {
+        id,
+        previous,
+        next,
+        minutes,
+        key: GLOBAL_BOOSTERS_KEY,
+      });
+      return next;
+    }
+  }
+
+  throw new Error('Global Boosters changed while applying the admin update. Please retry.');
 }
-
 function playerKeyFor(userId: string): string {
   return `player:${userId}`;
 }
 
 const PLAYTIME_ACTIVE_GAP_MS = 5 * 60_000;
+
+function validPastTimestamp(value: unknown, now: number): number {
+  const timestamp = Number(value);
+  // Registry timestamps originate on the server. Future/malformed values are
+  // not evidence of activity and must never pin a user as active indefinitely.
+  if (!Number.isSafeInteger(timestamp) || timestamp < 0 || timestamp > now) return 0;
+  return timestamp;
+}
 
 interface PlayerRegistryEntry {
   username: string;
@@ -1128,42 +1376,65 @@ interface PlayerRegistryEntry {
 }
 
 async function touchPlayerActivity(userId: string, username: string, now = Date.now()): Promise<number> {
-  let firstSeenAt = now;
-  let lastLoginAt = now;
-  let playtimeMs = 0;
+  const lockIdentity = `activity:${userId}`;
+  return withPlayerMutationLockFor(lockIdentity, async () => {
+    const activityNow = Math.max(now, Date.now());
+    const activeLock = getActivePlayerMutationLock(lockIdentity);
+    if (!activeLock) throw new Error('PLAYER_MUTATION_LEASE_LOST');
 
-  const existingRaw = await redis.hGet(PLAYER_REGISTRY_KEY, userId);
-  if (existingRaw) {
-    const existing = parseStoredJson<Partial<PlayerRegistryEntry>>(existingRaw);
-    firstSeenAt = Math.max(0, Number(existing?.firstSeenAt ?? now) || now);
+    // WATCH the whole hash because every user's registry entry shares one Redis
+    // key. A write from another activity callback invalidates our snapshot and
+    // forces a recompute instead of losing a newer playtime total.
+    for (let attempt = 0; attempt < 16; attempt += 1) {
+      const txn = await redis.watch(PLAYER_REGISTRY_KEY, activeLock.key);
+      if (await redis.get(activeLock.key) !== activeLock.token) {
+        await txn.unwatch();
+        throw new Error('PLAYER_MUTATION_LEASE_LOST');
+      }
 
-    const previousActivityAt = Math.max(
-      0,
-      Number(existing?.lastActivityAt ?? existing?.lastSeenAt ?? 0) || 0,
-    );
-    const previousPlaytimeMs = Math.max(0, Number(existing?.playtimeMs ?? 0) || 0);
-    const activityDelta = previousActivityAt > 0
-      ? Math.min(PLAYTIME_ACTIVE_GAP_MS, Math.max(0, now - previousActivityAt))
-      : 0;
+      const existingRaw = await redis.hGet(PLAYER_REGISTRY_KEY, userId);
+      let firstSeenAt = activityNow;
+      let lastLoginAt = activityNow;
+      let playtimeMs = 0;
+      if (existingRaw) {
+        const existing = parseStoredJson<Partial<PlayerRegistryEntry>>(existingRaw);
+        firstSeenAt = validPastTimestamp(existing?.firstSeenAt, activityNow) || activityNow;
+        const previousActivityAt = Math.max(
+          validPastTimestamp(existing?.lastActivityAt, activityNow),
+          validPastTimestamp(existing?.lastSeenAt, activityNow),
+        );
+        const previousPlaytimeMs = Math.min(
+          Number.MAX_SAFE_INTEGER,
+          finiteNonNegativeInteger(existing?.playtimeMs, 0),
+        );
+        const activityDelta = previousActivityAt > 0
+          ? Math.min(PLAYTIME_ACTIVE_GAP_MS, Math.max(0, activityNow - previousActivityAt))
+          : 0;
+        playtimeMs = Math.min(Number.MAX_SAFE_INTEGER, previousPlaytimeMs + activityDelta);
+        const existingLastLoginAt = validPastTimestamp(existing?.lastLoginAt, activityNow);
+        if (
+          previousActivityAt > 0 &&
+          activityNow - previousActivityAt <= PLAYTIME_ACTIVE_GAP_MS &&
+          existingLastLoginAt > 0
+        ) {
+          lastLoginAt = existingLastLoginAt;
+        }
+      }
 
-    playtimeMs = previousPlaytimeMs + activityDelta;
-    if (now - previousActivityAt <= PLAYTIME_ACTIVE_GAP_MS && Number(existing?.lastLoginAt ?? 0) > 0) {
-      lastLoginAt = Number(existing?.lastLoginAt);
+      const next = JSON.stringify({
+        username: String(username).trim().slice(0, 100),
+        firstSeenAt,
+        lastSeenAt: activityNow,
+        lastLoginAt,
+        lastActivityAt: activityNow,
+        playtimeMs,
+      } satisfies PlayerRegistryEntry);
+      await txn.multi();
+      await txn.hSet(PLAYER_REGISTRY_KEY, { [userId]: next });
+      if (await txn.exec() !== null) return playtimeMs;
     }
-  }
-
-  await redis.hSet(PLAYER_REGISTRY_KEY, {
-    [userId]: JSON.stringify({
-      username: String(username).trim().slice(0, 100),
-      firstSeenAt,
-      lastSeenAt: now,
-      lastLoginAt,
-      lastActivityAt: now,
-      playtimeMs,
-    } satisfies PlayerRegistryEntry),
+    throw new Error('Player activity changed repeatedly while recording playtime. Please retry.');
   });
-
-  return playtimeMs;
 }
 
 async function registerPlayer(userId: string, username: string): Promise<void> {
@@ -1203,13 +1474,13 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
     const registry = parseStoredJson<Partial<PlayerRegistryEntry>>(records[userId]) ?? {};
     const save = saves[index] ? parseStoredJson<Partial<PlayerState>>(saves[index]) : null;
     const lastSeenAt = Math.max(
-      Number(registry.lastSeenAt ?? 0) || 0,
-      Number(save?.lastSeenAt ?? 0) || 0,
+      validPastTimestamp(registry.lastSeenAt, now),
+      validPastTimestamp(save?.lastSeenAt, now),
     );
     return {
       userId,
       username: String(registry.username ?? save?.username ?? ('user-' + userId.slice(-8))).trim().slice(0, 100),
-      firstSeenAt: Math.max(0, Number(registry.firstSeenAt ?? 0) || 0),
+      firstSeenAt: validPastTimestamp(registry.firstSeenAt, now),
       lastSeenAt,
       active: lastSeenAt >= now - 30_000,
       level: Math.max(1, Number(save?.level ?? 1) || 1),
@@ -1243,8 +1514,8 @@ export async function getPlayerActivityStats(now = Date.now()): Promise<{
   for (const raw of Object.values(records)) {
     const entry = parseStoredJson<Partial<PlayerRegistryEntry>>(raw) ?? {};
     const lastSeenAt = Math.max(
-      Number(entry.lastSeenAt ?? 0) || 0,
-      Number(entry.lastActivityAt ?? 0) || 0,
+      validPastTimestamp(entry.lastSeenAt, now),
+      validPastTimestamp(entry.lastActivityAt, now),
     );
     if (lastSeenAt >= cutoff24h) dailyActiveUsers += 1;
     if (lastSeenAt >= cutoff7d) weeklyActiveUsers += 1;
@@ -1260,6 +1531,114 @@ function paymentGoodsForSku(sku: string) {
   return pack;
 }
 
+function isRecordObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isStringList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(item => typeof item === 'string');
+}
+
+function isValidCollection(value: unknown): value is Record<string, number> {
+  if (!isRecordObject(value)) return false;
+  return Object.entries(value).every(([rarity, count]) => {
+    const numericRarity = Number(rarity);
+    return Number.isFinite(numericRarity) &&
+      Number.isInteger(numericRarity) && numericRarity >= 2 &&
+      Number.isSafeInteger(count) && Number(count) >= 0;
+  });
+}
+
+function normalizePlayerStreak(
+  value: unknown,
+  fallback: PlayerState['streak'],
+): PlayerState['streak'] {
+  const candidate = isRecordObject(value) ? { ...fallback, ...value } : fallback;
+  return (
+    Number.isSafeInteger(candidate.count) && Number(candidate.count) >= 0 &&
+    typeof candidate.lastClaimDate === 'string' &&
+    Number.isSafeInteger(candidate.longestStreak) && Number(candidate.longestStreak) >= 0
+  ) ? candidate as PlayerState['streak'] : fallback;
+}
+
+function normalizeLevelRecord<T extends object>(
+  value: unknown,
+  defaults: T,
+  limits: Record<string, number>,
+): T {
+  const normalized: Record<string, unknown> = { ...defaults };
+  if (isRecordObject(value)) {
+    for (const key of Object.keys(normalized)) {
+      const candidate = value[key];
+      if (
+        typeof candidate === 'number' &&
+        Number.isSafeInteger(candidate) &&
+        candidate >= 0
+      ) {
+        const limit = Number.isSafeInteger(limits[key]) && limits[key] >= 0
+          ? limits[key]
+          : 100;
+        normalized[key] = Math.min(candidate, limit);
+      }
+    }
+  }
+  return normalized as T;
+}
+
+function buildStandardUpgradeLimits(): Record<string, number> {
+  const defaults = createInitialState().upgrades;
+  const limits: Record<string, number> = {};
+  for (const id of Object.keys(defaults) as UpgradeId[]) {
+    if (id === 'auto') {
+      limits[id] = 1;
+      continue;
+    }
+    let level = 0;
+    while (level < 256) {
+      const cost = upgradeCost(id, level);
+      if (!Number.isFinite(cost) || cost > Number.MAX_SAFE_INTEGER) break;
+      level += 1;
+    }
+    limits[id] = level;
+  }
+  return limits;
+}
+
+const STANDARD_UPGRADE_LEVEL_LIMITS = buildStandardUpgradeLimits();
+const PRESTIGE_UPGRADE_LEVEL_LIMITS = Object.fromEntries(
+  Object.entries(PRESTIGE_UPGRADES).map(([id, info]) => [id, info.maxLevel]),
+) as Record<PrestigeUpgradeId, number>;
+const MASTERY_SKILL_LEVEL_LIMITS = Object.fromEntries(
+  Object.entries(MASTERY_SKILLS).map(([id, info]) => [id, info.maxLevel]),
+) as Record<MasterySkillId, number>;
+
+function isValidQuestList(value: unknown): value is QuestItem[] {
+  if (!Array.isArray(value) || value.length === 0) return false;
+  return value.every(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    const quest = item as Record<string, unknown>;
+    const optionalRewardIsValid = (field: string) =>
+      quest[field] === undefined ||
+      quest[field] === null ||
+      (typeof quest[field] === 'number' &&
+        Number.isSafeInteger(quest[field]) &&
+        Number(quest[field]) >= 0);
+    return (
+      typeof quest.id === 'string' && quest.id.length > 0 &&
+      typeof quest.title === 'string' &&
+      typeof quest.desc === 'string' &&
+      Number.isSafeInteger(quest.target) && Number(quest.target) > 0 &&
+      Number.isSafeInteger(quest.progress) && Number(quest.progress) >= 0 &&
+      Number.isSafeInteger(quest.rewardCoins) && Number(quest.rewardCoins) >= 0 &&
+      typeof quest.claimed === 'boolean' &&
+      (quest.unlocked === undefined || typeof quest.unlocked === 'boolean') &&
+      optionalRewardIsValid('rewardShards') &&
+      optionalRewardIsValid('rewardTokens') &&
+      optionalRewardIsValid('rewardXp')
+    );
+  });
+}
+
 function parsePlayerStateValue(value: unknown, depth = 0): PlayerState | null {
   if (depth > 6 || value == null) return null;
 
@@ -1273,8 +1652,31 @@ function parsePlayerStateValue(value: unknown, depth = 0): PlayerState | null {
 
   const record = value as Record<string, unknown>;
   // A real PlayerState has these required top-level fields. Do not mistake a
-  // Redis/proxy wrapper such as { value: '...' } for the save itself.
+  // Redis/proxy wrapper such as { value: '...' } for the save itself. Presence
+  // alone is not enough: coercion of a malformed wallet can turn arithmetic into
+  // NaN, which JSON.stringify silently persists as null.
   if ('coins' in record && 'shards' in record && 'totalRolls' in record) {
+    const validCoreState =
+      typeof record.coins === 'number' &&
+      Number.isFinite(record.coins) &&
+      record.coins >= 0 &&
+      Number.isSafeInteger(record.shards) &&
+      Number(record.shards) >= 0 &&
+      Number.isSafeInteger(record.totalRolls) &&
+      Number(record.totalRolls) >= 0 &&
+      (
+        !('offlineRolls' in record) ||
+        (
+          Number.isSafeInteger(record.offlineRolls) &&
+          Number(record.offlineRolls) >= 0 &&
+          Number(record.offlineRolls) <= MAX_OFFLINE_ROLLS
+        )
+      ) &&
+      (
+        record.stateRevision == null ||
+        (Number.isSafeInteger(record.stateRevision) && Number(record.stateRevision) >= 0)
+      );
+    if (!validCoreState) return null;
     return record as unknown as PlayerState;
   }
 
@@ -1602,14 +2004,23 @@ export async function loadRaw(): Promise<PlayerState> {
     getPlayerGuildPerks(username, userId),
     getPlayerGuildCombo(username, userId),
     getGlobalBoosters(),
-    getDailyStreakCommunity(),
+    getDailyStreakCommunity().catch(error => {
+      // A corrupt shared event should not brick ordinary gameplay. This is a
+      // display-only fallback; reward/progress mutations still read and validate
+      // the durable event and will fail closed until it is repaired.
+      console.error('[Daily Streak] Shared event read failed; using display-only defaults.', error);
+      return createInitialState().dailyStreakCommunity!;
+    }),
   ]);
 
 
-  if (!raw) {
+  if (raw == null) {
     const s = createInitialState();
     s.username = username;
     s.saveGeneration = generation;
+    // Even an unsaved/brand-new account must participate in the same
+    // monotonic client/server revision contract as a persisted account.
+    s.stateRevision = 0;
     s.guildPerks = perks;
     s.guildCombo = guildCombo;
     s.globalBoosters = globalBoosters;
@@ -1630,6 +2041,7 @@ export async function loadRaw(): Promise<PlayerState> {
     const fresh = createInitialState();
     fresh.username = username;
     fresh.saveGeneration = generation;
+    fresh.stateRevision = 0;
     fresh.guildPerks = perks;
     fresh.guildCombo = guildCombo;
     fresh.globalBoosters = globalBoosters;
@@ -1640,22 +2052,30 @@ export async function loadRaw(): Promise<PlayerState> {
 
   const base = createInitialState();
   const cleanParsed = { ...(parsed as PlayerState & Record<string, unknown>) };
-  const normalizedManualRolls = Math.max(
-    0,
-    Math.min(
-      10,
-      Number(
-        parsed.manualRolls ??
-        Math.min(Number(parsed.totalRolls ?? 0), 10),
-      ) || 0,
+  const normalizedManualRolls = Math.min(
+    10,
+    finiteNonNegativeInteger(
+      parsed.manualRolls ?? Math.min(Number(parsed.totalRolls ?? 0), 10),
+      0,
     ),
   );
-  const normalizedUpgrades = {
-    ...base.upgrades,
-    ...(parsed.upgrades ?? {}),
-    // Auto Roll is free and unlocks automatically at 3 manual roll activations.
-    auto: normalizedManualRolls >= 3 ? 1 : 0,
-  };
+  const normalizedUpgrades = normalizeLevelRecord(
+    parsed.upgrades,
+    base.upgrades,
+    STANDARD_UPGRADE_LEVEL_LIMITS,
+  );
+  // Auto Roll is free and unlocks automatically at 3 manual roll activations.
+  normalizedUpgrades.auto = normalizedManualRolls >= 3 ? 1 : 0;
+  const normalizedPrestigeUpgrades = normalizeLevelRecord(
+    parsed.prestigeUpgrades,
+    base.prestigeUpgrades,
+    PRESTIGE_UPGRADE_LEVEL_LIMITS,
+  );
+  const normalizedMasterySkills = normalizeLevelRecord(
+    parsed.masterySkills,
+    base.masterySkills!,
+    MASTERY_SKILL_LEVEL_LIMITS,
+  );
 
   const parsedLevel = Math.max(1, Math.min(1000, Math.floor(Number(parsed.level ?? 1) || 1)));
   const parsedXp = Math.max(0, Number(parsed.xp ?? 0) || 0);
@@ -1670,29 +2090,49 @@ export async function loadRaw(): Promise<PlayerState> {
   return {
     ...base,
     ...cleanParsed,
+    coins: finiteNonNegativeInteger(parsed.coins),
+    lifetimeCoins: finiteNonNegativeInteger(parsed.lifetimeCoins ?? parsed.coins),
     level: parsedLevel,
-    xp: parsedXp,
+    xp: finiteNonNegativeInteger(parsedXp, base.xp),
     levelXpFloor,
     upgrades: normalizedUpgrades,
     manualRolls: normalizedManualRolls,
+    cosmicDust: finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust),
+    masteryPoints: finiteNonNegativeInteger(parsed.masteryPoints, base.masteryPoints ?? 0),
+    totalCrits: finiteNonNegativeInteger(parsed.totalCrits, base.totalCrits),
+    lifetimeShards: finiteNonNegativeInteger(parsed.lifetimeShards, base.lifetimeShards),
+    rollsSinceBest: finiteNonNegativeInteger(parsed.rollsSinceBest, base.rollsSinceBest),
+    highestDryStreak: finiteNonNegativeInteger(parsed.highestDryStreak, base.highestDryStreak ?? 0),
+    freeRolls: finiteNonNegativeInteger(parsed.freeRolls, base.freeRolls ?? 0),
+    currentRunRolls: finiteNonNegativeInteger(parsed.currentRunRolls, base.currentRunRolls ?? 0),
+    prestigeCount: finiteNonNegativeInteger(parsed.prestigeCount, base.prestigeCount),
+    collectionValue: finiteNonNegativeNumber(parsed.collectionValue, base.collectionValue),
+    lifetimeCollectionValue: finiteNonNegativeNumber(parsed.lifetimeCollectionValue, base.lifetimeCollectionValue),
+    highestRarity: finiteNonNegativeNumber(parsed.highestRarity, base.highestRarity),
     saveGeneration: generation,
+    // Legacy saves predate stateRevision. Normalize them to revision zero so
+    // delayed reads cannot bypass the client's stale-snapshot rejection.
+    stateRevision: Math.max(0, Math.floor(Number(parsed.stateRevision ?? 0)) || 0),
     username,
-    prestigeUpgrades: { ...base.prestigeUpgrades, ...(parsed.prestigeUpgrades ?? {}) },
-    collection: parsed.collection ?? {},
-    claimedAchievements: parsed.claimedAchievements ?? [],
-    streak: { ...base.streak, ...(parsed.streak ?? {}) },
-    dailyQuests: parsed.dailyQuests?.length ? parsed.dailyQuests : base.dailyQuests,
-    weeklyQuests: parsed.weeklyQuests?.length ? parsed.weeklyQuests : base.weeklyQuests,
-    unlockedCosmetics: parsed.unlockedCosmetics?.length ? parsed.unlockedCosmetics : base.unlockedCosmetics,
+    prestigeUpgrades: normalizedPrestigeUpgrades,
+    // Malformed nested save shapes are optional progress data, not a reason to poison gameplay math.
+    collection: isValidCollection(parsed.collection) ? parsed.collection : base.collection,
+    claimedAchievements: isStringList(parsed.claimedAchievements) ? parsed.claimedAchievements : base.claimedAchievements,
+    streak: normalizePlayerStreak(parsed.streak, base.streak),
+    // Corrupt quest entries must not make every later roll throw while advancing progress.
+    dailyQuests: isValidQuestList(parsed.dailyQuests) ? parsed.dailyQuests : base.dailyQuests,
+    weeklyQuests: isValidQuestList(parsed.weeklyQuests) ? parsed.weeklyQuests : base.weeklyQuests,
+    unlockedCosmetics: isStringList(parsed.unlockedCosmetics) && parsed.unlockedCosmetics.length
+      ? parsed.unlockedCosmetics
+      : base.unlockedCosmetics,
     sacrifices: {
-      coinsSacrificed: parsed.sacrifices?.coinsSacrificed ?? base.sacrifices!.coinsSacrificed,
-      shardsSacrificed: parsed.sacrifices?.shardsSacrificed ?? base.sacrifices!.shardsSacrificed,
-      altarLevel: parsed.sacrifices?.altarLevel ?? base.sacrifices!.altarLevel,
-      luckSurgeUntil: parsed.sacrifices?.luckSurgeUntil ?? base.sacrifices!.luckSurgeUntil,
-      altarPity: parsed.sacrifices?.altarPity ?? base.sacrifices!.altarPity ?? 0,
+      coinsSacrificed: finiteNonNegativeInteger(parsed.sacrifices?.coinsSacrificed, base.sacrifices!.coinsSacrificed),
+      shardsSacrificed: finiteNonNegativeInteger(parsed.sacrifices?.shardsSacrificed, base.sacrifices!.shardsSacrificed),
+      altarLevel: finiteNonNegativeInteger(parsed.sacrifices?.altarLevel, base.sacrifices!.altarLevel),
+      luckSurgeUntil: finiteNonNegativeInteger(parsed.sacrifices?.luckSurgeUntil, base.sacrifices!.luckSurgeUntil),
+      altarPity: finiteNonNegativeInteger(parsed.sacrifices?.altarPity, base.sacrifices!.altarPity ?? 0),
     },
-    masterySkills: { ...base.masterySkills!, ...(parsed.masterySkills ?? {}) } as Record<MasterySkillId, number>,
-    masteryPoints: parsed.masteryPoints ?? base.masteryPoints ?? 1,
+    masterySkills: normalizedMasterySkills,
     guildPerks: perks,
     guildCombo,
     globalBoosters,
@@ -1723,20 +2163,41 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
   if (s.streak.lastClaimDate === today) throw new Error('Already claimed daily reward for today.');
 
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  if (s.streak.lastClaimDate === yesterday) s.streak.count++;
-  else if (!s.streak.lastClaimDate) s.streak.count = 1;
-  else s.streak.count = 1;
+  const previousCount = s.streak.count;
+  const previousLongest = s.streak.longestStreak;
+  if (
+    !Number.isSafeInteger(previousCount) || previousCount < 0 ||
+    !Number.isSafeInteger(previousLongest) || previousLongest < 0
+  ) {
+    throw new Error('Saved Daily Streak data is invalid; no reward was granted.');
+  }
+  const nextStreakCount = s.streak.lastClaimDate === yesterday ? previousCount + 1 : 1;
+  if (!Number.isSafeInteger(nextStreakCount)) {
+    throw new Error('Daily Streak count reached its supported limit; no reward was granted.');
+  }
 
-  s.streak.longestStreak = Math.max(s.streak.longestStreak, s.streak.count);
-  s.streak.lastClaimDate = today;
+  // Prepare/validate the shared event before touching player rewards. If this
+  // separate shared record is corrupt or out of range, the attempt must leave
+  // the local streak, Shards, Coins and free rolls untouched.
+  const communityUpdate = await prepareDailyStreakCommunityProgress(nextStreakCount);
+  stageSaveExtraWrite(s, {
+    key: communityUpdate.key,
+    expectedValue: communityUpdate.expectedValue,
+    nextValue: communityUpdate.nextValue,
+    conflictMessage: 'Daily Streak community progress changed while claiming. Please retry.',
+  });
 
-  const day = ((s.streak.count - 1) % 7) + 1;
+  const day = ((nextStreakCount - 1) % 7) + 1;
   const rewardCoins = day * 100;
   const rewardShards = grantFreeShards(s, day === 7 ? 5 : day === 3 ? 1 : 0);
   const rewardFreeRolls = day * 5;
+
+  s.streak.count = nextStreakCount;
+  s.streak.longestStreak = Math.max(previousLongest, nextStreakCount);
+  s.streak.lastClaimDate = today;
   s.freeRolls = (s.freeRolls ?? 0) + rewardFreeRolls;
   addCoins(s, rewardCoins);
-  s.dailyStreakCommunity = await addDailyStreakCommunityProgress(s.streak.count);
+  s.dailyStreakCommunity = communityUpdate.event;
   return { rewardCoins, rewardShards, rewardFreeRolls, day, community: s.dailyStreakCommunity };
 }
 
@@ -1761,15 +2222,22 @@ async function claimCommunityRewardFromState(s: PlayerState): Promise<{ rewardCo
   return { rewardCoins, rewardXp, nextClaimAt: 0, tier };
 }
 
-async function processAutomation(s: PlayerState): Promise<void> {
-  if (s.automations?.autoStreakClaim) {
+async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim?: boolean; skipOfflineNotifications?: boolean; skipAutoStreakClaim?: boolean; skipAutoQuestClaim?: boolean; skipAutoCommunityClaim?: boolean } = {}): Promise<void> {
+  if (!options.skipAutoStreakClaim && s.automations?.autoStreakClaim) {
     const today = new Date().toISOString().slice(0, 10);
     if (s.streak.lastClaimDate !== today) {
-      await claimDailyStreakFromState(s);
+      try {
+        await claimDailyStreakFromState(s);
+      } catch (error) {
+        // Auto-claim is optional automation. A bad shared streak event or
+        // failed prepare must not prevent unrelated rolls/upgrades, and the
+        // claim prepares before changing the local player state.
+        console.error('[Automation] Auto-Streak claim failed; continuing without its reward.', error);
+      }
     }
   }
 
-  if (s.automations?.autoQuestClaim) {
+  if (!options.skipAutoQuestClaim && s.automations?.autoQuestClaim) {
     const quests = [...s.dailyQuests, ...s.weeklyQuests]
       .filter(q => q.unlocked !== false && !q.claimed && q.progress >= q.target)
       .slice(0, 25);
@@ -1778,17 +2246,49 @@ async function processAutomation(s: PlayerState): Promise<void> {
     }
   }
 
-  if (s.automations?.autoCommunityClaim) {
-    await claimCommunityRewardFromState(s);
+  if (!options.skipAutoCommunityClaim && s.automations?.autoCommunityClaim) {
+    try {
+      // Community rewards are optional automation. Corrupt or expired shared
+      // event data must not prevent a manual roll, upgrade, or other mutation.
+      // The claim reads/validates the event before changing the player state.
+      await claimCommunityRewardFromState(s);
+    } catch (error) {
+      console.error('[Automation] Auto-Community claim failed; continuing without its reward.', error);
+    }
   }
 
-  if (s.automations?.autoOfflineClaim && s.offlineRolls > 0) {
+  if (!options.skipAutoOfflineClaim && s.automations?.autoOfflineClaim && s.offlineRolls > 0) {
     const batches = s.offlineRolls;
     s.offlineRolls = 0;
     await applyRolls(s, batches, undefined, 'offline');
     s.lastRollAt = Date.now();
-    await redis.del(OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId());
-    await redis.del(OFFLINE_FULL_JOB_PREFIX + currentUserId());
+
+    // Do not clear reminders before the player reward save commits. If save()
+    // fails, the old marker/job must remain so the next request can recover.
+    // Clearing is compare-and-set after commit, then we re-arm the next reminder.
+    const userId = currentUserId();
+    const subredditName = String(context.subredditName ?? '').trim();
+    const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
+    const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
+    const [notificationValue, jobValue] = await Promise.all([
+      redis.get(notificationKey),
+      redis.get(jobKey),
+    ]);
+    stageSavePostCommitAction(s, async () => {
+      await Promise.all([
+        clearOfflineReminderKeyIfUnchanged(notificationKey, notificationValue),
+        clearOfflineReminderKeyIfUnchanged(jobKey, jobValue),
+      ]);
+      if (subredditName) {
+        const cap = offlineRollCap(s);
+        const tickMs = effectiveOfflineTickMs(s);
+        await scheduleOfflineFullNotification(
+          userId,
+          subredditName,
+          Date.now() + Math.max(1_000, (cap - s.offlineRolls) * tickMs),
+        );
+      }
+    });
   }
 
   if (s.automations?.autoUpgrade) {
@@ -1814,37 +2314,61 @@ function flairTextColorForBackground(backgroundColor: string): 'dark' | 'light' 
 }
 
 async function syncRarityFlair(s: PlayerState): Promise<void> {
-  const username = String(context.username ?? s.username ?? '').trim();
+  const userId = currentUserId();
   const subredditName = String(context.subredditName ?? '').trim();
-  if (!username || !subredditName) return;
+  if (!userId || !subredditName) return;
 
-  const highestRarity = Math.max(2, Math.floor(Number(s.highestRarity ?? 2) || 2));
-  const orbInfo = getOrbInfo(highestRarity);
-  const flairText = orbInfo.tier;
-  const backgroundColor = orbInfo.color;
-  const textColor = flairTextColorForBackground(backgroundColor);
-  const flairKey = PLAYER_FLAIR_KEY_PREFIX + currentUserId();
-  const flairState = JSON.stringify({
-    text: flairText,
-    backgroundColor,
-    textColor,
-  });
+  // Saves schedule this as best-effort post-commit work. Serialize the external
+  // flair side effect separately from the player lock, then base every write on
+  // the newest durable state rather than whichever save happened to finish last.
+  await withPlayerMutationLockFor('flair:' + userId, async () => {
+    const flairKey = PLAYER_FLAIR_KEY_PREFIX + userId;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const raw = await redis.get(playerKeyFor(userId));
+      const latest = raw == null ? null : parsePlayerStateValue(raw);
+      const source = latest ?? s;
+      const username = String(context.username ?? source.username ?? '').trim();
+      if (!username) return;
 
-  try {
-    const current = await redis.get(flairKey);
-    if (String(current ?? '') === flairState) return;
+      const highestRarity = Math.max(2, Math.floor(Number(source.highestRarity ?? 2) || 2));
+      const orbInfo = getOrbInfo(highestRarity);
+      const flairText = orbInfo.tier;
+      const backgroundColor = orbInfo.color;
+      const textColor = flairTextColorForBackground(backgroundColor);
+      const flairState = JSON.stringify({ text: flairText, backgroundColor, textColor });
+      const current = await redis.get(flairKey);
+      if (String(current ?? '') === flairState) return;
 
-    await reddit.setUserFlair({
-      subredditName,
-      username,
-      text: flairText,
-      backgroundColor,
-      textColor,
-    });
-    await redis.set(flairKey, flairState);
-  } catch (error) {
+      await reddit.setUserFlair({
+        subredditName,
+        username,
+        text: flairText,
+        backgroundColor,
+        textColor,
+      });
+
+      // A newer save may have committed while Reddit was processing the update.
+      // Re-read before caching; if it changed, retry under the same flair lock.
+      const afterRaw = await redis.get(playerKeyFor(userId));
+      const after = afterRaw == null ? null : parsePlayerStateValue(afterRaw);
+      const afterRarity = Math.max(2, Math.floor(Number(after?.highestRarity ?? source.highestRarity ?? 2) || 2));
+      const afterOrb = getOrbInfo(afterRarity);
+      const afterState = JSON.stringify({
+        text: afterOrb.tier,
+        backgroundColor: afterOrb.color,
+        textColor: flairTextColorForBackground(afterOrb.color),
+      });
+      if (afterState === flairState) {
+        await redis.set(flairKey, flairState);
+        return;
+      }
+    }
+
+    // Do not cache a stale result. A later committed save will retry the sync.
+    console.error('[Rarity Flair] Player rarity kept changing during flair sync; leaving cache untouched.');
+  }).catch(error => {
     console.error('[Rarity Flair] Failed to update user flair:', error);
-  }
+  });
 }
 
 export async function getGlobalBoosterAnnouncement(): Promise<{
@@ -1878,7 +2402,6 @@ export async function getGlobalBoosterAnnouncement(): Promise<{
 
 interface RollTicket {
   id: string;
-  seed: number;
   nextIndex: number;
   expiresAt: number;
 }
@@ -1895,7 +2418,6 @@ function randomUint32(): number {
 
 export async function getRollTicket(): Promise<{
   ticketId: string;
-  seed: number;
   nextIndex: number;
   rollsRemaining: number;
   expiresAt: number;
@@ -1910,16 +2432,18 @@ export async function getRollTicket(): Promise<{
 
     if (
       current &&
-      current.id &&
-      Number.isFinite(current.seed) &&
+      typeof current.id === 'string' &&
+      current.id.length > 0 &&
+      current.id.length <= 128 &&
+      Number.isSafeInteger(current.nextIndex) &&
       current.nextIndex >= 0 &&
       current.nextIndex < ROLL_TICKET_COUNT &&
+      Number.isSafeInteger(current.expiresAt) &&
       current.expiresAt > now
     ) {
       await txn.unwatch();
       return {
         ticketId: current.id,
-        seed: current.seed,
         nextIndex: current.nextIndex,
         rollsRemaining: ROLL_TICKET_COUNT - current.nextIndex,
         expiresAt: current.expiresAt,
@@ -1928,7 +2452,6 @@ export async function getRollTicket(): Promise<{
 
     const ticket: RollTicket = {
       id: `rt-${now.toString(36)}-${randomUint32().toString(36)}`,
-      seed: randomUint32(),
       nextIndex: 0,
       expiresAt: now + ROLL_TICKET_TTL_MS,
     };
@@ -1939,7 +2462,6 @@ export async function getRollTicket(): Promise<{
     if (committed !== null) {
       return {
         ticketId: ticket.id,
-        seed: ticket.seed,
         nextIndex: 0,
         rollsRemaining: ROLL_TICKET_COUNT,
         expiresAt: ticket.expiresAt,
@@ -1958,6 +2480,13 @@ async function loadRollTicketForUse(
   const ticket = parseStoredJson<RollTicket>(raw);
 
   if (!raw || !ticket) throw new Error('Roll prediction ticket is unavailable. Refresh the game.');
+  if (
+    typeof ticket.id !== 'string' || !ticket.id ||
+    !Number.isSafeInteger(ticket.nextIndex) ||
+    !Number.isSafeInteger(ticket.expiresAt)
+  ) {
+    throw new Error('Roll prediction ticket data is corrupted. Refresh the game.');
+  }
   if (ticket.id !== ticketId) throw new Error('Roll prediction ticket is stale. Refresh the game.');
   if (ticket.expiresAt <= Date.now()) throw new Error('Roll prediction ticket expired. Refresh the game.');
   if (ticketIndex !== ticket.nextIndex) throw new Error('Roll prediction ticket is out of order. Refresh the game.');
@@ -1970,9 +2499,32 @@ async function loadRollTicketForUse(
 
 export async function save(
   s: PlayerState,
-  extraWrite?: { key: string; expectedValue: string | null; nextValue: string },
+  extraWrite?: SaveExtraWrite | SaveExtraWrite[],
 ) {
   const userId = currentUserId();
+  if (
+    !Number.isFinite(s.coins) || s.coins < 0 ||
+    (s.lifetimeCoins != null && (!Number.isFinite(s.lifetimeCoins) || s.lifetimeCoins < 0))
+  ) {
+    throw new Error('Player Coin balance is invalid; no changes were saved.');
+  }
+  s.coins = finiteNonNegativeInteger(s.coins);
+  s.lifetimeCoins = finiteNonNegativeInteger(s.lifetimeCoins ?? s.coins);
+  const explicitWrites = extraWrite
+    ? Array.isArray(extraWrite) ? extraWrite : [extraWrite]
+    : [];
+  const extraWrites = [
+    ...(pendingSaveExtraWrites.get(s) ?? []),
+    ...explicitWrites,
+  ];
+  const writeKeys = extraWrites.map(write => write.key);
+  if (
+    new Set(writeKeys).size !== writeKeys.length ||
+    writeKeys.includes(key()) ||
+    writeKeys.includes(saveGenerationKeyFor(userId))
+  ) {
+    throw new Error('Invalid or duplicate extra writes in player save.');
+  }
   s.codexChain = highestCodexChain(s.collection);
   s.codexDevotionLuckPercent = codexDevotionLuckPercent(
     s.masterySkills?.celestialSurge ?? 0,
@@ -1992,18 +2544,66 @@ export async function save(
   );
 
   for (let attempt = 0; attempt < 6; attempt++) {
-    const watchedKeys = extraWrite ? [playerKey, generationKey, extraWrite.key] : [playerKey, generationKey];
+    // A lease is not a fence by itself: if a callback outlives its TTL, a
+    // newer runtime can acquire the lock while the old callback is still live.
+    // Watch every currently-held participant lock alongside the player and
+    // side-write keys so a stale lease cannot commit after ownership changes.
+    const mutationUserIds = new Set<string>([userId]);
+    for (const write of extraWrites) {
+      if (write.key.startsWith('player:')) {
+        const sideUserId = write.key.slice('player:'.length).trim();
+        if (sideUserId) mutationUserIds.add(sideUserId);
+      }
+    }
+    const activeLocks = [...mutationUserIds]
+      .map(id => getActivePlayerMutationLock(id))
+      .filter((item): item is { key: string; token: string } => item !== null);
+    const watchedKeys = [...new Set([
+      playerKey,
+      generationKey,
+      ...extraWrites.map(write => write.key),
+      ...activeLocks.map(item => item.key),
+    ])];
     const txn = await redis.watch(...watchedKeys);
     // Devvit's TxClient is a command builder after WATCH/MULTI. Reads must use
     // the Redis client itself, while WATCH keeps these keys protected until EXEC.
+    for (const activeLock of activeLocks) {
+      const actualToken = await redis.get(activeLock.key);
+      if (actualToken !== activeLock.token) {
+        await txn.unwatch();
+        throw new Error('PLAYER_MUTATION_LEASE_LOST');
+      }
+    }
     const latestRaw = await redis.get(playerKey);
     const generationRaw = await redis.get(generationKey);
-    const extraRaw = extraWrite ? await redis.get(extraWrite.key) : null;
+    const extraRaws = await Promise.all(extraWrites.map(write => redis.get(write.key)));
 
-    if (extraWrite && extraRaw !== extraWrite.expectedValue) {
-      await txn.unwatch();
-      throw new Error('Roll prediction ticket changed. Refresh the game.');
+    let optionalProjectionConflict = false;
+    for (let index = 0; index < extraWrites.length; index += 1) {
+      const write = extraWrites[index];
+      const actual = extraRaws[index] == null ? null : String(extraRaws[index]);
+      if (actual !== write.expectedValue) {
+        await txn.unwatch();
+        if (write.optional) {
+          // A watched optional projection can change between prepare and save.
+          // Drop only that projection and retry the primary player write without
+          // it; never overwrite the newer shared record or reject a valid roll.
+          extraWrites.splice(index, 1);
+          const pending = pendingSaveExtraWrites.get(s);
+          if (pending) {
+            const remaining = pending.filter(item => item.key !== write.key);
+            if (remaining.length) pendingSaveExtraWrites.set(s, remaining);
+            else pendingSaveExtraWrites.delete(s);
+          }
+          console.error('[Player Save] Optional side projection changed before commit; saving player state without it.', write.key);
+          optionalProjectionConflict = true;
+          break;
+        }
+        throw new Error(write.conflictMessage ?? 'Shared state changed before the player save. Please retry.');
+      }
     }
+    if (optionalProjectionConflict) continue;
+
     const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
     const stateGeneration = Math.max(0, Math.floor(Number(s.saveGeneration ?? 0)));
 
@@ -2016,10 +2616,9 @@ export async function save(
         incomingState: compactSaveState(s),
         caller: saveCaller(),
       }, userId);
-      // This request started before an admin wipe. Discard its stale mutation
-      // and adopt the fresh state already written by the wipe. Never let an
-      // old request resurrect pre-wipe data, and never strand the player with
-      // an avoidable invalidation error.
+      // This request began before an admin wipe. Adopt the post-wipe state
+      // for any caller that catches the error, but do not report a successful
+      // mutation whose rewards/receipt/ticket were never committed.
       const currentRaw = await redis.get(playerKey);
       const current = parseStoredJson<PlayerState>(currentRaw);
       const currentGeneration = current
@@ -2031,8 +2630,10 @@ export async function save(
       fresh.username = fresh.username ?? context.username ?? undefined;
       fresh.saveGeneration = generation;
       Object.assign(s, fresh);
+      pendingSaveExtraWrites.delete(s);
+      pendingSavePostCommitActions.delete(s);
       await txn.unwatch();
-      return;
+      throw new Error('PLAYER_STATE_INVALIDATED_BY_WIPE');
     }
 
     const latest = latestRaw == null ? null : parsePlayerStateValue(latestRaw);
@@ -2094,10 +2695,27 @@ export async function save(
     const nextState = { ...s, saveGeneration: generation, stateRevision: expectedRevision + 1 };
     await txn.multi();
     await txn.set(playerKey, JSON.stringify(nextState));
-    if (extraWrite) await txn.set(extraWrite.key, extraWrite.nextValue);
+    for (const write of extraWrites) {
+      await txn.set(write.key, write.nextValue);
+    }
     const committed = await txn.exec();
     if (committed !== null) {
+      pendingSaveExtraWrites.delete(s);
       Object.assign(s, nextState);
+
+      // Run deferred external side effects only after the durable player state
+      // has committed. Failures are logged and do not turn a successful reward
+      // grant into an apparent failed mutation that a client may retry.
+      const postCommitActions = pendingSavePostCommitActions.get(s) ?? [];
+      pendingSavePostCommitActions.delete(s);
+      for (const action of postCommitActions) {
+        try {
+          await action();
+        } catch (error) {
+          console.error('[Player Save] Post-commit side effect failed:', error);
+        }
+      }
+
       // Flair is cosmetic and must never hold the gameplay request hostage.
       void syncRarityFlair(s).catch(error => {
         console.error('[Rarity Flair] Background update failed:', error);
@@ -2131,15 +2749,33 @@ function serverRandom(): number {
   return Math.max(Number.MIN_VALUE, value);
 }
 
+function finiteNonNegativeNumber(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
 function finiteNonNegativeInteger(value: unknown, fallback = 0): number {
   const n = Number(value);
-  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : fallback;
+  return Number.isFinite(n)
+    ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(n)))
+    : fallback;
 }
 function addCoins(s: PlayerState, amount: number): number {
-  const gain = finiteNonNegativeInteger(amount);
-  if (gain <= 0) return 0;
-  s.coins += gain;
-  s.lifetimeCoins = (s.lifetimeCoins ?? 0) + gain;
+  if (!Number.isFinite(s.coins) || s.coins < 0) {
+    throw new Error('Saved Coin balance is invalid; no reward was applied.');
+  }
+  if (
+    s.lifetimeCoins != null &&
+    (!Number.isFinite(s.lifetimeCoins) || s.lifetimeCoins < 0)
+  ) {
+    throw new Error('Saved lifetime Coin total is invalid; no reward was applied.');
+  }
+  const currentCoins = finiteNonNegativeInteger(s.coins);
+  const requestedGain = finiteNonNegativeInteger(amount);
+  const gain = Math.min(requestedGain, Number.MAX_SAFE_INTEGER - currentCoins);
+  s.coins = currentCoins + gain;
+  const lifetimeCoins = finiteNonNegativeInteger(s.lifetimeCoins ?? currentCoins);
+  s.lifetimeCoins = Math.min(Number.MAX_SAFE_INTEGER, lifetimeCoins + gain);
   return gain;
 }
 
@@ -2183,6 +2819,20 @@ function checkPeriodicResets(s: PlayerState, now: number) {
   }
 }
 
+function effectiveRollCritChance(
+  s: PlayerState,
+  globalBoosters: GlobalBoosterSnapshot | null | undefined = s.globalBoosters,
+): number {
+  return Math.min(
+    0.40,
+    (s.upgrades.critChance ?? 0) * 0.03 +
+    (s.masterySkills?.critMastery ?? 0) * 0.03 +
+    (s.guildPerks?.critRank ?? 0) * 0.015 +
+    globalBoosterCritChanceBonus(globalBoosters?.crit) +
+    guildComboCritChanceBonus(s.guildCombo),
+  );
+}
+
 export async function applyRolls(
   s: PlayerState,
   activationCount = 1,
@@ -2213,6 +2863,9 @@ export async function applyRolls(
     highestRarity: s.highestRarity,
   };
   const requestedRollCount = rollCount;
+  // Freeze the lifetime counter for this batch. s.totalRolls increments inside
+  // the loop, so using its live value plus i double-counts the current batch.
+  const lifetimeRollsBeforeBatch = s.totalRolls;
   const rng = randomOverride ?? serverRandom;
 
   // Astral Magnetism proc: chance for multi-rolls to pull 2 bonus orbs
@@ -2221,17 +2874,39 @@ export async function applyRolls(
     rollCount += 2;
   }
 
+  // The player-state parser rejects unsafe lifetime roll counters. Refuse an
+  // invalid or overflowing batch before shared reads or per-orb mutations.
+  if (
+    !Number.isSafeInteger(s.totalRolls) ||
+    s.totalRolls < 0 ||
+    !Number.isSafeInteger(rollCount) ||
+    rollCount < 0 ||
+    rollCount > Number.MAX_SAFE_INTEGER - s.totalRolls
+  ) {
+    throw new Error('Roll counter would exceed the safe integer range; no rolls were processed.');
+  }
+  const maxSupportedRollCount = offlineRollCap(s) * rollsPerActivation(s) + 2;
+  if (!Number.isSafeInteger(maxSupportedRollCount) || rollCount > maxSupportedRollCount) {
+    throw new Error('Roll batch exceeds the supported processing cap; no rolls were processed.');
+  }
 
   // These reads are independent. Keep them parallel so a roll does not spend
   // several sequential Redis round trips before it can even start rolling.
   const [freshGlobalBoosters, worldEvent, fakeCcuBonus] = await Promise.all([
     getGlobalBoosters(),
-    getCommunityEvent(),
+    getCommunityEvent().catch(error => {
+      // The shared World Event is a bonus/progress feature, not a prerequisite
+      // for ordinary roll rewards. Keep corrupted/unavailable event data intact,
+      // but don't brick a player's roll because an admin-maintained side record
+      // could not be read.
+      console.error('[Community Event] Read failed; rolling without the event bonus.', error);
+      return null;
+    }),
     getFakeCcuBonus(),
   ]);
   s.globalBoosters = freshGlobalBoosters;
   const globalBoosters = s.globalBoosters;
-  const communityLuck = worldEvent.buffMultiplier ?? 1.15;
+  const communityLuck = worldEvent?.buffMultiplier ?? 1;
 
   // Fake CCU is an admin testing offset applied only to this player's luck calculation.
   // The underlying CCU metric and historical peaks always remain based on real players.
@@ -2252,19 +2927,13 @@ export async function applyRolls(
     (s.upgrades.valueBonus ?? 0) * 0.10 +
     (s.prestigeUpgrades?.cosmicValuation ?? 0) * 0.05;
 
-  const critChance =
-    (s.upgrades.critChance ?? 0) * 0.03 +
-    (s.masterySkills?.critMastery ?? 0) * 0.03 +
-    (s.guildPerks?.critRank ?? 0) * 0.015 +
-    globalBoosterCritChanceBonus(globalBoosters.crit) +
-    guildComboCritChanceBonus(s.guildCombo);
-  const effectiveCritChance = Math.min(0.40, critChance);
+  const effectiveCritChance = effectiveRollCritChance(s, globalBoosters);
 
   for (let i = 0; i < rollCount; i++) {
     // New-player hype: the third Orb this account ever rolls is guaranteed
     // to land in the 1/101 through 1/120 range. It cannot crit upward, so the
     // guarantee is the exact advertised range.
-    const isGuaranteedThirdBall = forcedRarity == null && s.totalRolls + i === 2;
+    const isGuaranteedThirdBall = forcedRarity == null && lifetimeRollsBeforeBatch + i === 2;
 
     const isCrit = !isGuaranteedThirdBall && rng() < effectiveCritChance;
     let effectiveCm = cm;
@@ -2287,7 +2956,7 @@ export async function applyRolls(
         ? forcedRarity
         : Math.max(minimumRarity, rollContinuum(effectiveLuck, rng));
     const baseRarity = Math.max(minimumRarity, rolledRarity);
-    const rarity = isCrit ? Math.min(1_000_000_000_000_000, Math.round(baseRarity * effectiveCm)) : baseRarity;
+    const rarity = isCrit ? Math.min(MAX_ORB_RARITY, Math.round(baseRarity * effectiveCm)) : baseRarity;
     const finalVal = Math.round(rarity * valueMul);
 
     totalVal += finalVal;
@@ -2402,9 +3071,17 @@ export async function applyRolls(
     coinsGained = Math.round(coinsGained * (1 + (s.prestigeUpgrades.offlineOverdrive * 0.50)));
   }
 
-  const guildTax = await applyGuildTax(coinsGained);
-  coinsGained = Math.max(0, coinsGained - guildTax.taxedCoins);
-  s.coins += coinsGained;
+  const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
+  const guildEffects = await prepareGuildRollEffects(
+    coinsGained,
+    totalVal,
+    rollCount,
+    bestRarity,
+    pendingGuildWrite,
+  );
+  if (guildEffects.extraWrite) stageSaveExtraWrite(s, guildEffects.extraWrite);
+  coinsGained = Math.max(0, coinsGained - guildEffects.taxedCoins);
+  coinsGained = addCoins(s, coinsGained);
   shardsGained = grantRollShards(s, shardsGained);
 
   // Ascension increases XP by 10× while preserving the existing level logic.
@@ -2415,7 +3092,7 @@ export async function applyRolls(
   // Rich EXP Level Progression. Normal roll activations deliberately advance
   // at most one level at a time, while applyXp/quest rewards can catch up safely.
   applyLevelProgress(s, 1);
-  s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
+  // Coin earnings and their lifetime statistic are capped independently at the safe-integer ceiling.
 
   // Singularity Tithe pays +1 Cosmic Dust per 200 processed rolls per level.
   // Every processed orb counts, including multi-roll, auto-roll, offline, and Frenzy rolls.
@@ -2447,8 +3124,22 @@ export async function applyRolls(
   advanceQuestProgress(s, 'value', totalVal);
   advanceQuestProgress(s, 'unique', uniqueGained);
 
-  await contribute(totalVal, rollCount, bestRarity);
-  await addCommunityRolls(rollCount);
+  const pendingCommunityWrite = getPendingSaveExtraWrite(s, 'io:community_event');
+  try {
+    const communityUpdate = await prepareCommunityRolls(rollCount, pendingCommunityWrite);
+    stageSaveExtraWrite(s, {
+      key: communityUpdate.key,
+      expectedValue: communityUpdate.expectedValue,
+      nextValue: communityUpdate.nextValue,
+      conflictMessage: 'Community event changed before the roll saved. Please retry.',
+      optional: true,
+    });
+  } catch (error) {
+    // The World Event projection is best-effort. A corrupt shared event must
+    // never cause the primary player roll rewards to be discarded. Do not stage
+    // a replacement or clear the raw event: repair remains explicit/admin-only.
+    console.error('[Community Event] Progress not recorded for this roll; preserving shared data.', error);
+  }
 
   const bestInfo = getOrbInfo(bestRarity);
   const bestOrb: Orb = {
@@ -2538,6 +3229,45 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
   return true;
 }
 
+function parseOfflineFullJobMarker(
+  raw: unknown,
+): { token: string; legacy: boolean } | null {
+  if (typeof raw !== 'string' || !raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      parsed && typeof parsed === 'object' && !Array.isArray(parsed) &&
+      typeof parsed.token === 'string' && parsed.token.length > 0
+    ) {
+      return { token: parsed.token, legacy: false };
+    }
+  } catch {
+    // Older jobs stored only the scheduler's job ID. Keep a constrained
+    // compatibility path for them; all newly created jobs carry a token.
+  }
+  return { token: raw, legacy: true };
+}
+
+async function replaceOfflineFullJobMarkerIfUnchanged(
+  keyName: string,
+  expectedValue: string,
+  nextValue: string,
+  expiresAt: number,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const txn = await redis.watch(keyName);
+    const current = await redis.get(keyName);
+    if (current == null || String(current) !== expectedValue) {
+      await txn.unwatch();
+      return false;
+    }
+    await txn.multi();
+    await txn.set(keyName, nextValue, { expiration: new Date(expiresAt) });
+    if (await txn.exec() !== null) return true;
+  }
+  return false;
+}
+
 async function scheduleOfflineFullNotification(
   userId: string,
   subredditName: string,
@@ -2548,35 +3278,87 @@ async function scheduleOfflineFullNotification(
   if (!(await notifications.isOptedIn(userId))) return;
 
   const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
-  if (await redis.get(jobKey)) return;
+  const now = Date.now();
+  const maxDateMs = 8_640_000_000_000_000;
+  const requestedRunAt = Number(runAt);
+  const safeRunAt = Math.min(
+    maxDateMs - 1,
+    Math.max(now + 1_000, Number.isFinite(requestedRunAt) ? requestedRunAt : now + 1_000),
+  );
+  const expiresAt = Math.max(now + 60_000, Math.min(maxDateMs - 1, safeRunAt + OFFLINE_FULL_RETRY_MS * 2));
+  const randomToken = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  const token = `offline-job-${now.toString(36)}-${randomToken}`;
+  const reservation = JSON.stringify({ token, jobId: null, runAt: safeRunAt });
 
-  const safeRunAt = Math.max(Date.now() + 1_000, runAt);
-  const jobId = await context.scheduler.runJob({
-    name: 'offline-orbs-full',
-    data: { userId, subredditName },
-    runAt: new Date(safeRunAt),
-  });
-  await redis.set(jobKey, jobId);
+  // Reserve before making the scheduler call. Two overlapping requests can no
+  // longer each create a live scheduler job for the same player.
+  let reserved = false;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const txn = await redis.watch(jobKey);
+    const existing = await redis.get(jobKey);
+    if (existing) {
+      await txn.unwatch();
+      return;
+    }
+    await txn.multi();
+    await txn.set(jobKey, reservation, { expiration: new Date(expiresAt) });
+    if (await txn.exec() !== null) {
+      reserved = true;
+      break;
+    }
+  }
+  if (!reserved) throw new Error('Offline reminder scheduling changed repeatedly. Please retry.');
+
+  try {
+    const jobId = await context.scheduler.runJob({
+      name: 'offline-orbs-full',
+      data: { userId, subredditName, jobToken: token },
+      runAt: new Date(safeRunAt),
+    });
+    const scheduled = JSON.stringify({ token, jobId: String(jobId), runAt: safeRunAt });
+    // If this reservation was superseded while runJob was in flight, do not
+    // overwrite the newer marker. The orphaned job will no-op on token mismatch.
+    await replaceOfflineFullJobMarkerIfUnchanged(jobKey, reservation, scheduled, expiresAt);
+  } catch (error) {
+    await clearOfflineReminderKeyIfUnchanged(jobKey, reservation).catch(() => false);
+    throw error;
+  }
 }
 
 export async function processOfflineFullNotification(
   userId: string,
   subredditName: string,
+  jobToken?: string,
 ): Promise<void> {
+  return withPlayerMutationLockFor(`offline-notification:${userId}`, async () => {
   const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
-  if (!(await redis.get(jobKey))) return;
+  const jobRaw = await redis.get(jobKey);
+  const marker = parseOfflineFullJobMarker(jobRaw);
+  if (!marker) return;
+
+  // Token-bearing jobs must still own the exact current reservation. A delayed
+  // worker from an older schedule cannot consume or delete a newer reminder.
+  if (jobToken) {
+    if (marker.legacy || marker.token !== jobToken) return;
+  } else if (!marker.legacy) {
+    // A pre-deployment job does not know the new token, so it must not handle
+    // a reservation created by this version.
+    return;
+  }
+  const expectedJobValue = String(jobRaw);
 
   const raw = await redis.get('player:' + userId);
   if (!raw) {
-    await redis.del(jobKey);
+    await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
     return;
   }
 
-  let s: PlayerState;
-  try {
-    s = JSON.parse(String(raw)) as PlayerState;
-  } catch {
-    await redis.del(jobKey);
+  // Use the same strict parser as player mutations. Parsing JSON alone would
+  // accept structurally invalid saves and could send a full-roll alert from
+  // malformed counters or timestamps. Preserve the job so repair/retry remains possible.
+  const s = parsePlayerStateValue(raw);
+  if (!s) {
+    console.error('[Offline Notification] Player save is malformed; preserving the job marker.');
     return;
   }
 
@@ -2590,27 +3372,41 @@ export async function processOfflineFullNotification(
 
   if (currentOfflineRolls < cap) {
     const fullAt = now + Math.max(1_000, (cap - currentOfflineRolls) * tickMs);
-    await redis.del(jobKey);
-    await scheduleOfflineFullNotification(userId, subredditName, fullAt);
+    const cleared = await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
+    if (cleared) await scheduleOfflineFullNotification(userId, subredditName, fullAt);
     return;
   }
 
   try {
     await sendOfflineFullNotification(userId, subredditName);
-    await redis.del(jobKey);
+    await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
   } catch (error) {
     console.error('Failed to send scheduled offline-orbs-full notification:', error);
-    await redis.del(jobKey);
-    await scheduleOfflineFullNotification(userId, subredditName, now + OFFLINE_FULL_RETRY_MS);
+    const cleared = await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
+    if (cleared) await scheduleOfflineFullNotification(userId, subredditName, now + OFFLINE_FULL_RETRY_MS);
   }
+  });
 }
 
-export async function settleOffline(s: PlayerState): Promise<PlayerState> {
+export async function settleOffline(s: PlayerState, options: { skipAutoOfflineClaim?: boolean; skipOfflineNotifications?: boolean; skipAutoStreakClaim?: boolean; skipAutoQuestClaim?: boolean; skipAutoCommunityClaim?: boolean } = {}): Promise<PlayerState> {
   const now = Date.now();
   checkPeriodicResets(s, now);
   resetFreeShardBudgetIfNeeded(s, now);
   s.onlinePlayers = await touchOnlinePresence();
   s.globalBoosters = await getGlobalBoosters();
+
+  // Old saves may outlive a lower current vault cap after prestige/upgrades change.
+  // Normalize before looking at lastSeenAt, so a recent/future timestamp cannot
+  // skip the cap and feed an oversized persisted batch into Auto-Claim.
+  const offlineCap = offlineRollCap(s);
+  const savedOfflineRolls = finiteNonNegativeInteger(s.offlineRolls ?? 0, 0);
+  if (savedOfflineRolls > offlineCap) {
+    console.warn('[Offline Rolls] Clamping saved vault to the current cap.', {
+      savedOfflineRolls,
+      offlineCap,
+    });
+  }
+  s.offlineRolls = Math.min(offlineCap, savedOfflineRolls);
 
   const tickMs = effectiveOfflineTickMs(s);
   const diff = now - (s.lastSeenAt || now);
@@ -2635,19 +3431,23 @@ export async function settleOffline(s: PlayerState): Promise<PlayerState> {
   s.lastSeenAt = now;
 
   // Process automation after newly earned offline rolls have been added.
-  await processAutomation(s);
+  await processAutomation(s, options);
 
   const cap = offlineRollCap(s);
   const userId = String(context.userId ?? '').trim();
   const subredditName = String(context.subredditName ?? '').trim();
-  if (userId && subredditName && s.offlineRolls >= cap) {
+  if (!options.skipOfflineNotifications && userId && subredditName && s.offlineRolls >= cap) {
     try {
-      await sendOfflineFullNotification(userId, subredditName);
-      await redis.del(OFFLINE_FULL_JOB_PREFIX + userId);
+      await withPlayerMutationLockFor(`offline-notification:${userId}`, async () => {
+        await sendOfflineFullNotification(userId, subredditName);
+        const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
+        const currentJob = await redis.get(jobKey);
+        if (currentJob != null) await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+      });
     } catch (error) {
       console.error('Failed to send offline-orbs-full notification:', error);
     }
-  } else if (userId && subredditName) {
+  } else if (!options.skipOfflineNotifications && userId && subredditName) {
     try {
       await scheduleOfflineFullNotification(
         userId,
@@ -2822,11 +3622,10 @@ export async function roll(
       s.freeRolls = Math.max(0, (s.freeRolls ?? 0) - 1);
     }
 
-    const deterministicRng = ticketUse
-      ? createSeededRandom(rollTicketSeed(ticketUse.ticket.seed, ticketUse.index))
-      : undefined;
+    // Roll outcomes are server-authoritative. Tickets only prevent duplicate or
+    // out-of-order submissions; no predictable client-shared PRNG stream is used.
     const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } =
-      await applyRolls(s, 1, undefined, 'online', undefined, deterministicRng);
+      await applyRolls(s, 1, undefined, 'online');
 
     if (!isAuto) {
       s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + 1);
@@ -3004,10 +3803,36 @@ export async function claimFollowReward(): Promise<{
     // the current user to the subreddit where the game is installed.
     await reddit.subscribeToCurrentSubreddit();
 
-    const alreadyRecorded = Boolean(await redis.get(subscribedKey));
-    if (!alreadyRecorded) {
-      await redis.set(subscribedKey, String(Date.now()));
-      await redis.incr(FOLLOW_ACTION_COUNT_KEY);
+    // The per-user marker and global aggregate are one idempotent update.
+    // Separate SET then INCR could leave a permanent undercount if the second
+    // command failed after the marker had already made retries skip the count.
+    let actionCountRecorded = false;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const txn = await redis.watch(subscribedKey, FOLLOW_ACTION_COUNT_KEY);
+      const existingMarker = await redis.get(subscribedKey);
+      if (existingMarker) {
+        await txn.unwatch();
+        actionCountRecorded = true;
+        break;
+      }
+
+      const rawCount = await redis.get(FOLLOW_ACTION_COUNT_KEY);
+      const currentCount = rawCount == null ? 0 : Number(rawCount);
+      if (!Number.isSafeInteger(currentCount) || currentCount < 0 || currentCount >= Number.MAX_SAFE_INTEGER) {
+        await txn.unwatch();
+        throw new Error('Follow-action counter is corrupted or exhausted; the count was not changed.');
+      }
+
+      await txn.multi();
+      await txn.set(subscribedKey, String(Date.now()));
+      await txn.set(FOLLOW_ACTION_COUNT_KEY, String(currentCount + 1));
+      if (await txn.exec() !== null) {
+        actionCountRecorded = true;
+        break;
+      }
+    }
+    if (!actionCountRecorded) {
+      throw new Error('Follow-action count changed repeatedly. Please retry.');
     }
 
     const s = await settleOffline(await loadRaw());
@@ -3020,9 +3845,30 @@ export async function claimFollowReward(): Promise<{
     s.lastRollAt = Date.now();
     s.lastSeenAt = Date.now();
 
-    await save(s);
-    await redis.set(rewardKey, String(Date.now()));
-    await recordLeaderboard(s);
+    // Commit the 200-roll reward and its idempotency marker in the same
+    // WATCH/MULTI/EXEC transaction. A marker write failure must never allow a
+    // retry to grant the reward a second time.
+    const rewardMarker = String(
+      globalThis.crypto?.randomUUID?.() ??
+      `claimed-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    await save(s, {
+      key: rewardKey,
+      expectedValue: null,
+      nextValue: rewardMarker,
+      conflictMessage: 'FOLLOW_REWARD_ALREADY_CLAIMED',
+    });
+    // save() deliberately discards mutations invalidated by an admin wipe.
+    // Ensure that path did not report success without committing the marker.
+    if (await redis.get(rewardKey) !== rewardMarker) {
+      throw new Error('FOLLOW_REWARD_SAVE_INVALIDATED');
+    }
+    // The reward and its idempotency marker are already committed. The
+    // leaderboard is only a projection; its failure must not make the API
+    // report a failed claim that cannot be retried by the user.
+    void recordLeaderboard(s).catch(error => {
+      console.error('[Follow Reward] Leaderboard projection failed after reward commit:', error);
+    });
     void appendPlayerSpyLog('follow-reward-claim', {
       rollsGranted: FOLLOW_REWARD_ROLLS,
       bestRarity: result.bestOrb.rarity,
@@ -3044,18 +3890,43 @@ export async function claimFollowReward(): Promise<{
 
 export async function claimOffline(): Promise<RollResponse> {
   return withPlayerMutationLock(async () => {
-  const s = await settleOffline(await loadRaw());
+  const notificationLock = `offline-notification:${currentUserId()}`;
+  // Serialize the manual claim against scheduled/request-triggered notification
+  // workers. Otherwise a worker can enqueue a stale "rolls are full" alert
+  // after this claim has saved and cleared the reminder.
+  return withPlayerMutationLockFor(notificationLock, async () => {
+  // The manual button owns this claim path. Do not let Auto Offline Claim
+  // consume the rolls before this handler can build and save the response, and
+  // don't send or schedule a full-roll notification for rolls being claimed now.
+  const s = await settleOffline(await loadRaw(), {
+    skipAutoOfflineClaim: true,
+    skipOfflineNotifications: true,
+  });
   if (s.offlineRolls <= 0) throw new Error('No offline rolls waiting.');
   const batches = s.offlineRolls;
   s.offlineRolls = 0;
-  await redis.del(OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId());
-  await redis.del(OFFLINE_FULL_JOB_PREFIX + currentUserId());
   const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } = await applyRolls(s, batches, undefined, 'offline');
   const now = Date.now();
   s.lastRollAt = now;
   s.lastSeenAt = now;
+  const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + currentUserId();
+  const jobKey = OFFLINE_FULL_JOB_PREFIX + currentUserId();
+  const [previousNotification, previousJob] = await Promise.all([
+    redis.get(notificationKey),
+    redis.get(jobKey),
+  ]);
   await save(s);
-  await recordLeaderboard(s);
+  // Clear only the reminder state observed before this claim. A newer reminder
+  // installed by a post-commit automation action must not be deleted.
+  await Promise.all([
+    clearOfflineReminderKeyIfUnchanged(notificationKey, previousNotification),
+    clearOfflineReminderKeyIfUnchanged(jobKey, previousJob),
+  ]).catch(error => {
+    console.error('[Offline Claim] Reminder cleanup failed after save:', error);
+  });
+  await recordLeaderboard(s).catch(error => {
+    console.error('[Leaderboard] Offline-claim projection failed after save:', error);
+  });
 
   return {
     orb: bestOrb,
@@ -3071,7 +3942,9 @@ export async function claimOffline(): Promise<RollResponse> {
     dramaticReveal: bestOrb.rarity >= 100,
   };
 
-  });}
+  });
+  });
+}
 
 export async function buyUpgrade(id: UpgradeId): Promise<PlayerState> {
   return withPlayerMutationLock(async () => {
@@ -3182,7 +4055,7 @@ export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent
 
 export async function claimDailyStreak(): Promise<{ state: PlayerState; rewardCoins: number; rewardShards: number; rewardFreeRolls: number; day: number; community: import('../shared/game.js').DailyStreakCommunityEvent }> {
   return withPlayerMutationLock(async () => {
-  const s = await settleOffline(await loadRaw());
+  const s = await settleOffline(await loadRaw(), { skipAutoStreakClaim: true });
   const result = await claimDailyStreakFromState(s);
   await save(s);
   await appendPlayerSpyLog('daily-streak-claim', {
@@ -3197,7 +4070,7 @@ export async function claimDailyStreak(): Promise<{ state: PlayerState; rewardCo
 
 export async function claimQuest(type: 'daily' | 'weekly', id: string): Promise<{ state: PlayerState; rewardCoins: number; rewardShards: number; rewardTokens: number }> {
   return withPlayerMutationLock(async () => {
-  const s = await settleOffline(await loadRaw());
+  const s = await settleOffline(await loadRaw(), { skipAutoQuestClaim: true });
   const list = type === 'daily' ? s.dailyQuests : s.weeklyQuests;
   const quest = list.find(q => q.id === id);
   if (!quest) throw new Error('Quest not found.');
@@ -3276,15 +4149,36 @@ export async function buyPrestigeUpgrade(id: PrestigeUpgradeId): Promise<PlayerS
     s.prestigeUpgrades = createInitialState().prestigeUpgrades;
   }
   const current = s.prestigeUpgrades[id] ?? 0;
+  if (
+    typeof current !== 'number' ||
+    !Number.isSafeInteger(current) ||
+    current < 0 ||
+    current > info.maxLevel
+  ) {
+    throw new Error('Saved prestige upgrade level is invalid; no purchase was made.');
+  }
   if (current >= info.maxLevel) {
     throw new Error(`Upgrade ${info.name} is already at max level (${info.maxLevel}).`);
   }
+
+  const cosmicDust = s.cosmicDust;
+  if (
+    typeof cosmicDust !== 'number' ||
+    !Number.isSafeInteger(cosmicDust) ||
+    cosmicDust < 0
+  ) {
+    throw new Error('Saved Cosmic Dust balance is invalid; no purchase was made.');
+  }
+
   const cost = prestigeUpgradeCost(id, current);
-  if (s.cosmicDust < cost) {
+  if (!Number.isSafeInteger(cost) || cost < 0) {
+    throw new Error('Prestige upgrade cost is invalid; no purchase was made.');
+  }
+  if (cosmicDust < cost) {
     throw new Error(`Need ${cost} Cosmic Dust.`);
   }
 
-  s.cosmicDust -= cost;
+  s.cosmicDust = cosmicDust - cost;
   s.prestigeUpgrades[id] = current + 1;
   await save(s);
   await appendPlayerSpyLog('prestige-upgrade-purchase', {
@@ -3398,8 +4292,13 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
 export async function upgradeMasterySkill(skillId: MasterySkillId): Promise<PlayerState> {
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
+  if (
+    typeof skillId !== 'string' ||
+    !Object.prototype.hasOwnProperty.call(MASTERY_SKILLS, skillId)
+  ) {
+    throw new Error('Unknown mastery skill.');
+  }
   const skill = MASTERY_SKILLS[skillId];
-  if (!skill) throw new Error('Unknown mastery skill.');
 
   if (!s.masterySkills) {
     s.masterySkills = {
@@ -3524,49 +4423,67 @@ async function claimWorldBoosterActivation(
 
   if (useCredit) {
     if ((s.globalBoosterCredits ?? 0) <= 0) {
-      await appendGlobalBoosterDebugLog('player:activation-rejected-no-credit', {
-        userId,
-        id,
-        credits: s.globalBoosterCredits ?? 0,
-      });
       throw new Error('No free Global Booster activations remain.');
     }
     s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) - 1;
   } else {
-    if ((s.shards ?? 0) < cost) {
-      await appendGlobalBoosterDebugLog('player:activation-rejected-no-shards', {
-        userId,
-        id,
-        shards: s.shards,
-        required: cost,
-      });
-    }
+    if ((s.shards ?? 0) < cost) throw new Error('Not enough Shards for this Global Booster.');
     spendShards(s, cost);
   }
 
-  await appendGlobalBoosterDebugLog('player:currency-deducted', {
-    userId,
-    id,
-    useCredit,
-    shardsAfter: s.shards,
-    creditsAfter: s.globalBoosterCredits ?? 0,
-  });
-
+  let snapshot: GlobalBoosterSnapshot;
   try {
-    const snapshot = await updateGlobalBooster(id);
+    const prepared = await prepareGlobalBoosterActivation(id);
+    snapshot = prepared.snapshot;
     s.globalBoosters = snapshot;
 
-    await appendGlobalBoosterDebugLog('player:before-save', {
+    await appendGlobalBoosterDebugLog('player:before-atomic-save', {
       userId,
       id,
       useCredit,
-      snapshot,
       shards: s.shards,
       credits: s.globalBoosterCredits ?? 0,
+      snapshot,
     });
 
-    await save(s);
+    // Player currency and the shared Booster stack commit together under one
+    // WATCH/MULTI/EXEC. A failed player save can no longer leave a free Booster,
+    // and a conflicting Booster write cannot charge the player.
+    await save(s, {
+      key: GLOBAL_BOOSTERS_KEY,
+      expectedValue: prepared.expectedValue,
+      nextValue: prepared.nextValue,
+      conflictMessage: 'Global Booster changed before your activation committed. Please retry.',
+    });
+  } catch (error) {
+    // Nothing should have committed if the atomic save failed. This rollback is
+    // in-memory only; the previous persisted player save remains authoritative.
+    if (useCredit) s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) + 1;
+    else s.shards = (s.shards ?? 0) + cost;
+    await appendGlobalBoosterDebugLog('player:activation-failed-before-commit', {
+      userId,
+      id,
+      useCredit,
+      errorName: error instanceof Error ? error.name : null,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    }).catch(logError => {
+      console.error('[Global Booster] Failure log failed:', logError);
+    });
+    throw error;
+  }
 
+  // From this point onward the player charge and the Booster activation are
+  // durable. Logging/announcement failures must not turn a committed action
+  // into an apparent failure that can be retried for a second activation.
+  const activatedAt = Date.now();
+  const activatedBy = String(context.username ?? s.username ?? 'Redditor').trim() || 'Redditor';
+  const announcement = {
+    id,
+    name: GLOBAL_BOOSTERS[id].name,
+    username: activatedBy,
+    activatedAt,
+  };
+  try {
     await appendGlobalBoosterDebugLog('player:activation-success', {
       userId,
       id,
@@ -3575,10 +4492,6 @@ async function claimWorldBoosterActivation(
       shardsAfter: s.shards,
       creditsAfter: s.globalBoosterCredits ?? 0,
     });
-
-    const activatedAt = Date.now();
-    const activatedBy = String(context.username ?? s.username ?? 'Redditor').trim() || 'Redditor';
-
     await appendGlobalBoosterActivationLog({
       timestamp: activatedAt,
       userId,
@@ -3589,43 +4502,13 @@ async function claimWorldBoosterActivation(
       tier: Number(snapshot[id].tier ?? 0),
       endsAt: Number(snapshot[id].endsAt ?? 0),
     });
-
-    await redis.set(GLOBAL_BOOSTER_ANNOUNCEMENT_KEY, JSON.stringify({
-      id,
-      name: GLOBAL_BOOSTERS[id].name,
-      username: activatedBy,
-      activatedAt,
-    }));
-
-    return {
-      state: s,
-      snapshot,
-      usedCredit: useCredit,
-      announcement: {
-        id,
-        name: GLOBAL_BOOSTERS[id].name,
-        username: activatedBy,
-        activatedAt,
-      },
-    };
+    await redis.set(GLOBAL_BOOSTER_ANNOUNCEMENT_KEY, JSON.stringify(announcement));
   } catch (error) {
-    if (useCredit) s.globalBoosterCredits = (s.globalBoosterCredits ?? 0) + 1;
-    else s.shards = (s.shards ?? 0) + cost;
-
-    await appendGlobalBoosterDebugLog('player:activation-failed', {
-      userId,
-      id,
-      useCredit,
-      errorName: error instanceof Error ? error.name : null,
-      errorMessage: error instanceof Error ? error.message : String(error),
-      refundedShards: useCredit ? 0 : cost,
-      refundedCredit: useCredit,
-    });
-
-    throw error;
+    console.error('[Global Booster] Activation committed, but announcement/audit projection failed:', error);
   }
-}
 
+  return { state: s, snapshot, usedCredit: useCredit, announcement };
+}
 export async function activateGlobalBooster(
   id: GlobalBoosterId,
   useCredit = false,
@@ -3715,7 +4598,7 @@ export async function buyAutomation(id: AutomationId): Promise<PlayerState> {
 
 export async function claimCommunityReward(): Promise<{ state: PlayerState; rewardCoins: number; rewardXp: number; nextClaimAt: number; tier: number }> {
   return withPlayerMutationLock(async () => {
-  const s = await settleOffline(await loadRaw());
+  const s = await settleOffline(await loadRaw(), { skipAutoCommunityClaim: true });
   const result = await claimCommunityRewardFromState(s);
   if (result.rewardCoins <= 0) throw new Error('No new Community Reward is available.');
   await save(s);
@@ -3774,7 +4657,7 @@ export async function startOrbFrenzy(options: {
     if (!postId) throw new Error('Could not create the Frenzy post.');
 
     const adminTest = options.adminTest === true || isFrenzyTestAdmin(s.username) || isFrenzyTestAdmin(ownerUsername);
-    await redis.set(FRENZY_POST_PREFIX + postId, JSON.stringify({
+    const frenzyPostValue = JSON.stringify({
       ownerId: currentUserId(),
       ownerUsername,
       rarity,
@@ -3784,7 +4667,7 @@ export async function startOrbFrenzy(options: {
       createdAt,
       expiresAt,
       consumedAt: null,
-    }));
+    });
 
     s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + 1);
     if (s.manualRolls >= 3) s.upgrades.auto = 1;
@@ -3792,7 +4675,14 @@ export async function startOrbFrenzy(options: {
     s.lastFrenzyAt = createdAt;
     s.lastRollAt = Date.now();
     s.lastSeenAt = Date.now();
-    await save(s);
+    // Do not publish a claimable post record unless the owner's roll rewards,
+    // cooldown, Guild/community effects and post receipt all commit together.
+    await save(s, {
+      key: FRENZY_POST_PREFIX + postId,
+      expectedValue: null,
+      nextValue: frenzyPostValue,
+      conflictMessage: 'Frenzy post ID is already registered; no player state was saved.',
+    });
     await appendPlayerSpyLog('frenzy-start', {
       rarity,
       postId,
@@ -3826,6 +4716,7 @@ export async function getOrbFrenzyInfo(): Promise<{
   createdAt: number;
   expiresAt: number;
   expired: boolean;
+  consumed: boolean;
   claimedToday: boolean;
   claimCooldownRemainingMs: number;
   claimCooldownEndsAt: number;
@@ -3849,6 +4740,7 @@ export async function getOrbFrenzyInfo(): Promise<{
     expiresAt?: number;
     adminTest?: boolean;
     inGame?: boolean;
+    consumedAt?: number | null;
   }>(raw);
   if (!data) throw new Error('Orb Frenzy data is corrupted.');
 
@@ -3871,11 +4763,12 @@ export async function getOrbFrenzyInfo(): Promise<{
     createdAt: data.createdAt,
     expiresAt,
     expired,
+    consumed: data.consumedAt != null,
     claimedToday,
     claimCooldownRemainingMs,
     claimCooldownEndsAt,
     isOwner,
-    canClaim: !expired && (claimCooldownRemainingMs <= 0 || selfClaimTest) && (!isOwner || selfClaimTest),
+    canClaim: !expired && data.consumedAt == null && (claimCooldownRemainingMs <= 0 || selfClaimTest) && (!isOwner || selfClaimTest),
     selfClaimTest,
     postId,
     inGame: data.inGame === true,
@@ -3886,14 +4779,32 @@ export async function claimOrbFrenzy(options: {
   allowAdminTestOwner?: boolean;
   postId?: string;
 } = {}): Promise<RollResponse> {
-  return withPlayerMutationLock(async () => {
-  const handoff = options.postId ? null : await readFrenzyHandoff(currentUserId());
-  const postId = options.postId ?? handoff?.postId ?? context.postId;
   if (options.postId && options.allowAdminTestOwner !== true) {
     throw new Error('Explicit Frenzy post targeting is admin-only.');
   }
+
+  const claimantId = currentUserId();
+  const handoff = options.postId ? null : await readFrenzyHandoff(claimantId);
+  const postId = options.postId ?? handoff?.postId ?? context.postId;
   if (!postId) throw new Error('This is not an Orb Frenzy post.');
-  const raw = await redis.get(FRENZY_POST_PREFIX + postId);
+
+  const postKey = FRENZY_POST_PREFIX + postId;
+  const initialRaw = await redis.get(postKey);
+  if (!initialRaw) throw new Error('Orb Frenzy post data was not found.');
+  const initialData = parseStoredJson<{ ownerId?: string }>(initialRaw);
+  const lockedOwnerId = String(initialData?.ownerId ?? '').trim();
+  if (!lockedOwnerId) throw new Error('Orb Frenzy data is corrupted.');
+
+  // One stable lock order covers claimant state, owner state, and this post.
+  // The post lock prevents duplicate side effects before the atomic save guard;
+  // the owner lock prevents a reward writer from invalidating an in-flight owner save.
+  const postLockId = `__frenzy-post__:${postId}`;
+  const lockIds = lockedOwnerId === claimantId
+    ? [claimantId, postLockId]
+    : [claimantId, lockedOwnerId, postLockId];
+
+  return withPlayerMutationLocksFor(lockIds, async () => {
+  const raw = await redis.get(postKey);
   if (!raw) throw new Error('Orb Frenzy post data was not found.');
 
   const data = parseStoredJson<{
@@ -3903,13 +4814,20 @@ export async function claimOrbFrenzy(options: {
     subredditName: string;
     adminTest?: boolean;
     inGame?: boolean;
-    consumedAt?: number;
+    consumedAt?: number | null;
     createdAt?: number;
     expiresAt?: number;
   }>(raw);
   if (!data) throw new Error('Orb Frenzy data is corrupted.');
+  if (String(data.ownerId ?? '').trim() !== lockedOwnerId) {
+    throw new Error('Frenzy ownership changed. Please reopen the post.');
+  }
+  if (handoff && handoff.expiresAt <= Date.now()) {
+    throw new Error('This Frenzy handoff expired. Please reopen the post.');
+  }
+  if (data.consumedAt != null) throw new Error('This Orb Frenzy has already been claimed.');
 
-  const isOwner = data.ownerId === currentUserId();
+  const isOwner = data.ownerId === claimantId;
 
   const now = Date.now();
   const createdAt = Number(data.createdAt ?? 0);
@@ -3936,13 +4854,20 @@ export async function claimOrbFrenzy(options: {
     s.prestigeUpgrades?.frenzyVolley ?? 0,
   );
 
-  const critChance = Math.min(
-    1,
-    (s.upgrades.critChance ?? 0) * 0.03 +
-    (s.masterySkills?.critMastery ?? 0) * 0.03 +
-    (s.guildPerks?.critRank ?? 0) * 0.015 +
-    globalBoosterCritChanceBonus(s.globalBoosters?.crit),
-  );
+  // This path writes totalRolls directly instead of going through applyRolls().
+  // Reject an overflowing batch before reward mutation, shared Guild/community
+  // staging, Shard grants, or marking the Frenzy post consumed.
+  if (
+    !Number.isSafeInteger(s.totalRolls) ||
+    s.totalRolls < 0 ||
+    !Number.isSafeInteger(count) ||
+    count < 0 ||
+    count > Number.MAX_SAFE_INTEGER - s.totalRolls
+  ) {
+    throw new Error('Frenzy roll counter would exceed the safe integer range; claim was not processed.');
+  }
+
+  const critChance = effectiveRollCritChance(s, s.globalBoosters);
   const critCount = sampleBinomial(count, critChance);
 
   const supernovaLevel = s.prestigeUpgrades?.supernova ?? 0;
@@ -3951,8 +4876,8 @@ export async function claimOrbFrenzy(options: {
     : 0;
 
   const normalCritCount = Math.max(0, critCount - supernovaCount);
-  const normalCritRarity = Math.min(1_000_000_000_000_000, Math.round(data.rarity * critMultiplier(s)));
-  const supernovaRarity = Math.min(1_000_000_000_000_000, Math.round(data.rarity * 5));
+  const normalCritRarity = Math.min(MAX_ORB_RARITY, Math.round(data.rarity * critMultiplier(s)));
+  const supernovaRarity = Math.min(MAX_ORB_RARITY, Math.round(data.rarity * 5));
 
   const groups = [
     { count: count - critCount, rarity: data.rarity },
@@ -3999,6 +4924,20 @@ export async function claimOrbFrenzy(options: {
     (isPremiumBoosterActive(s, 'prosperity') ? 10 : 1),
   );
 
+  const lowRarityCoins = groups
+    .filter(group => group.rarity < 100)
+    .reduce(
+      (sum, group) => sum + group.count * Math.max(1, Math.round(coinsForRarity(group.rarity))),
+      0,
+    );
+  if ((s.prestigeUpgrades?.autoFilter ?? 0) > 0 && lowRarityCoins > 0) {
+    coinsGained += Math.round(lowRarityCoins * 0.25);
+  }
+  const transmutationLevel = s.prestigeUpgrades?.transmutation ?? 0;
+  if (transmutationLevel > 0 && lowRarityCoins > 0) {
+    coinsGained += Math.round(lowRarityCoins * (transmutationLevel * 0.15));
+  }
+
   const xpForRarity = (rarity: number) =>
     Math.round(
       Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) *
@@ -4020,6 +4959,9 @@ export async function claimOrbFrenzy(options: {
     levelBenefits.shardChance,
   );
   const procShards = sampleBinomial(count, shardChance);
+  const transmutationShardProcs = transmutationLevel > 0
+    ? sampleBinomial(count, Math.min(1, 0.01 * transmutationLevel))
+    : 0;
   const rarityShards = groups.reduce((sum, group) => {
     if (group.rarity >= 1_000_000) return sum + group.count * 10;
     if (group.rarity >= 100_000) return sum + group.count * 5;
@@ -4027,22 +4969,31 @@ export async function claimOrbFrenzy(options: {
     if (group.rarity >= 1_000) return sum + group.count;
     return sum;
   }, 0);
-  const shardsGained = grantRollShards(s, rarityShards + procShards);
+  const shardsGained = grantRollShards(s, rarityShards + procShards + transmutationShardProcs);
 
   const previousHighest = s.highestRarity;
+  const bestRarity = topRarity;
   s.totalRolls += count;
   s.currentRunRolls = (s.currentRunRolls ?? 0) + count;
   s.collectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.collectionValue ?? 0) + finalValue);
   s.lifetimeCollectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.lifetimeCollectionValue ?? 0) + finalValue);
   s.totalCrits = (s.totalCrits ?? 0) + critCount;
-  const guildTax = await applyGuildTax(coinsGained);
-  coinsGained = Math.max(0, coinsGained - guildTax.taxedCoins);
-  s.coins += coinsGained;
-  s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
+
+  // Stage Guild taxes/contribution in the same save as this claim. A failed
+  // player save must not leave a consumed Guild tax, task credit, or roll count.
+  const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
+  const guildEffects = await prepareGuildRollEffects(
+    coinsGained,
+    finalValue,
+    count,
+    bestRarity,
+    pendingGuildWrite,
+  );
+  if (guildEffects.extraWrite) stageSaveExtraWrite(s, guildEffects.extraWrite);
+  coinsGained = Math.max(0, coinsGained - guildEffects.taxedCoins);
+  coinsGained = addCoins(s, coinsGained);
   s.lastFrenzyClaimDate = new Date(now).toISOString().slice(0, 10);
   s.lastFrenzyClaimAt = now;
-
-  const bestRarity = topRarity;
   const newRarityKeys = groups.filter(
     group => (s.collection[String(group.rarity)] ?? 0) <= 0,
   );
@@ -4053,7 +5004,12 @@ export async function claimOrbFrenzy(options: {
     s.collection[keyForRarity] = (s.collection[keyForRarity] ?? 0) + group.count;
   }
   s.highestRarity = Math.max(s.highestRarity, bestRarity);
-  s.rollsSinceBest = bestRarity > previousHighest ? 0 : (s.rollsSinceBest ?? 0) + count;
+  if (bestRarity > previousHighest) {
+    s.rollsSinceBest = 0;
+  } else {
+    s.rollsSinceBest = (s.rollsSinceBest ?? 0) + count;
+    s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest);
+  }
 
   s.xp += xpGained;
   applyLevelProgress(s, 1);
@@ -4071,28 +5027,56 @@ export async function claimOrbFrenzy(options: {
   advanceQuestProgress(s, 'rare', bestRarity);
   advanceQuestProgress(s, 'value', finalValue);
   advanceQuestProgress(s, 'unique', uniqueGained);
-  await contribute(finalValue, count, bestRarity);
-  await addCommunityRolls(count);
+
+  const pendingCommunityWrite = getPendingSaveExtraWrite(s, 'io:community_event');
+  try {
+    const communityUpdate = await prepareCommunityRolls(count, pendingCommunityWrite);
+    stageSaveExtraWrite(s, {
+      key: communityUpdate.key,
+      expectedValue: communityUpdate.expectedValue,
+      nextValue: communityUpdate.nextValue,
+      conflictMessage: 'Community event changed before the Frenzy claim saved. Please retry.',
+      optional: true,
+    });
+  } catch (error) {
+    // World Event progress is an optional projection, not a prerequisite for a
+    // valid Frenzy reward. Preserve corrupt shared data and still commit the
+    // claimant's reward, Guild effects, consumed post and owner reward atomically.
+    console.error('[Community Event] Frenzy progress not recorded; preserving shared data.', error);
+  }
 
   let ownerRewardShards = 0;
+  let ownerRewardWrites: SaveExtraWrite[] = [];
   if (isOwner) {
     ownerRewardShards = grantFrenzyOwnerShards(s, FRENZY_OWNER_SHARD_REWARD);
+  } else {
+    const ownerReward = await prepareFrenzyOwnerRewardWrites(
+      data.ownerId,
+      FRENZY_OWNER_SHARD_REWARD,
+    );
+    ownerRewardShards = ownerReward.granted;
+    ownerRewardWrites = ownerReward.writes;
   }
 
-  await save(s);
+  // Consume the post atomically with both the claimant save and the owner's
+  // reward. Different players have different locks, so the watched keys also
+  // protect the transaction if one of those distributed leases expires.
+  const consumedPostValue = JSON.stringify({ ...data, consumedAt: now });
+  await save(s, [
+    {
+      key: FRENZY_POST_PREFIX + postId,
+      expectedValue: raw,
+      nextValue: consumedPostValue,
+      conflictMessage: 'This Orb Frenzy has already been claimed.',
+    },
+    ...ownerRewardWrites,
+  ]);
+  // save() rejects generation invalidation and returns only after the
+  // claimant, consumed-post receipt, and owner reward writes commit atomically.
+  // Do not perform a fallible post-commit GET: a read error here would report
+  // failure after the claim is already consumed and every reward is durable.
   if (handoff && handoff.postId === postId) {
-    await redis.del(frenzyHandoffKey(currentUserId()));
-  }
-
-  if (!isOwner) {
-    try {
-      ownerRewardShards = await grantFrenzyOwnerReward(
-        data.ownerId,
-        FRENZY_OWNER_SHARD_REWARD,
-      );
-    } catch (error) {
-      console.error('[Orb Frenzy] Failed to grant owner Shards:', error);
-    }
+    await redis.del(frenzyHandoffKey(claimantId));
   }
 
   const rolledAt = Date.now();
@@ -4138,7 +5122,8 @@ export async function claimOrbFrenzy(options: {
     frenzyCount: count,
   };
 
-  });}
+  });
+}
 
 
 function sampleBinomial(n: number, p: number): number {

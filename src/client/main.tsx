@@ -60,8 +60,7 @@ import {
   AUTOMATIONS,
   COSMETICS_LIST,
   FEATURE_UNLOCK_LEVELS,
-  predictRollActivation,
-  rollTicketSeed,
+
 } from '../shared/game.js';
 import { sound } from './sound.js';
 import { Header } from './components/Header.js';
@@ -81,6 +80,7 @@ import { GlobalChatWindow } from './components/GlobalChatWindow.js';
 import { DevDebugModal } from './components/DevDebugModal.js';
 import { FeedbackModal } from './components/FeedbackModal.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
+import { SplashScreen } from './components/SplashScreen.js';
 import { APP_VERSION } from '../shared/version.js';
 import './styles.css';
 
@@ -183,6 +183,7 @@ export function App() {
   const [state, setState] = useState<PlayerState | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
   const [startupError, setStartupError] = useState<string | null>(null);
+  const [splashEntered, setSplashEntered] = useState(false);
   const [lastOrb, setLastOrb] = useState<Orb | null>(null);
   const [lastBatch, setLastBatch] = useState<Orb[]>([]);
   const [batchSummary, setBatchSummary] = useState<{
@@ -309,24 +310,28 @@ export function App() {
   const frenzyClaimActiveRef = useRef(false);
   const componentMountedRef = useRef(true);
   const stateRevisionRef = useRef(0);
+  const authSessionEpochRef = useRef(0);
 
   useEffect(() => {
     return () => {
       componentMountedRef.current = false;
     };
   }, []);
+  const appliedServerGenerationRef = useRef(-1);
   const appliedServerRevisionRef = useRef(-1);
   const stateRef = useRef<PlayerState | null>(null);
+  const onlinePlayersRef = useRef<number | undefined>(undefined);
+  const latestGlobalBoostersRef = useRef<GlobalBoosterSnapshot | null>(null);
   const rollTicketRef = useRef<{
     ticketId: string;
-    seed: number;
+
     nextIndex: number;
     rollsRemaining: number;
     expiresAt: number;
   } | null>(null);
   const rollTicketRequestRef = useRef<Promise<{
     ticketId: string;
-    seed: number;
+
     nextIndex: number;
     rollsRemaining: number;
     expiresAt: number;
@@ -340,14 +345,63 @@ export function App() {
 
   const applyPlayerState = useCallback((nextState: PlayerState) => {
     const nextServerRevision = Number(nextState.stateRevision);
-    if (Number.isFinite(nextServerRevision)) {
+    const nextServerGeneration = Number(nextState.saveGeneration);
+    const currentState = stateRef.current;
+
+    // Revisions restart when a save generation is replaced. Compare generation
+    // first, then revision within that generation, so a reset/wipe is accepted
+    // while delayed reads from the previous save are still rejected.
+    if (
+      !Number.isSafeInteger(nextServerGeneration) || nextServerGeneration < 0 ||
+      !Number.isSafeInteger(nextServerRevision) || nextServerRevision < 0
+    ) {
+      return;
+    }
+    if (nextServerGeneration < appliedServerGenerationRef.current) return;
+
+    const isNewServerGeneration =
+      nextServerGeneration > appliedServerGenerationRef.current;
+    if (!isNewServerGeneration) {
       if (nextServerRevision < appliedServerRevisionRef.current) return;
-      appliedServerRevisionRef.current = nextServerRevision;
+
+      // A same-generation snapshot must not change balances without advancing
+      // the durable revision. That was allowing a delayed initial /api/me read
+      // to roll the resource bar back to zero after the first saved roll.
+      if (
+        nextServerRevision === appliedServerRevisionRef.current &&
+        currentState &&
+        (nextState.shards ?? 0) !== (currentState.shards ?? 0)
+      ) {
+        return;
+      }
     }
 
-    stateRef.current = nextState;
+    appliedServerGenerationRef.current = nextServerGeneration;
+    appliedServerRevisionRef.current = nextServerRevision;
+
+    if (
+      onlinePlayersRef.current == null &&
+      Number.isSafeInteger(nextState.onlinePlayers) &&
+      Number(nextState.onlinePlayers) >= 0
+    ) {
+      onlinePlayersRef.current = Number(nextState.onlinePlayers);
+    }
+    // Global Boosters are shared state with their own polling timeline. Keep the
+    // freshest accepted snapshot across delayed /api/me and mutation responses,
+    // just as we preserve the live online-player overlay.
+    const currentGlobalBoosters =
+      latestGlobalBoostersRef.current ?? currentState?.globalBoosters ?? nextState.globalBoosters ?? null;
+    if (latestGlobalBoostersRef.current == null && currentGlobalBoosters != null) {
+      latestGlobalBoostersRef.current = currentGlobalBoosters;
+    }
+    const mergedState = {
+      ...nextState,
+      ...(onlinePlayersRef.current == null ? {} : { onlinePlayers: onlinePlayersRef.current }),
+      ...(currentGlobalBoosters == null ? {} : { globalBoosters: currentGlobalBoosters }),
+    };
+    stateRef.current = mergedState;
     stateRevisionRef.current += 1;
-    setState(nextState);
+    setState(mergedState);
   }, []);
   // Mutations are optimistic on the client: update the visible state immediately,
   // then let the server verify/save it. Rejections restore the exact prior state.
@@ -366,7 +420,11 @@ export function App() {
         // optimistic action or an already-applied server response.
         if (stateRevisionRef.current !== optimisticRevision) return;
         stateRevisionRef.current += 1;
-        setState(previousState);
+        const restoredState = onlinePlayersRef.current == null
+          ? previousState
+          : { ...previousState, onlinePlayers: onlinePlayersRef.current };
+        stateRef.current = restoredState;
+        setState(restoredState);
       };
     },
     [state],
@@ -379,24 +437,30 @@ export function App() {
   }, []);
 
   const ensureRollTicket = useCallback(async () => {
+    const requestSessionEpoch = authSessionEpochRef.current;
     const current = rollTicketRef.current;
     if (current && current.nextIndex < 30 && current.expiresAt > Date.now()) {
       return current;
     }
 
     if (!rollTicketRequestRef.current) {
-      rollTicketRequestRef.current = getJson<{
+      const pending = getJson<{
         ticketId: string;
-        seed: number;
         nextIndex: number;
         rollsRemaining: number;
         expiresAt: number;
-      }>('/api/roll-ticket').finally(() => {
-        rollTicketRequestRef.current = null;
+      }>('/api/roll-ticket');
+      const tracked = pending.finally(() => {
+        // An older session's request must not clear a newer session's in-flight ticket.
+        if (rollTicketRequestRef.current === tracked) rollTicketRequestRef.current = null;
       });
+      rollTicketRequestRef.current = tracked;
     }
 
     const ticket = await rollTicketRequestRef.current;
+    if (requestSessionEpoch !== authSessionEpochRef.current) {
+      throw new Error('REDDIT_LOGIN_REQUIRED');
+    }
     rollTicketRef.current = ticket;
     return ticket;
   }, []);
@@ -518,6 +582,14 @@ export function App() {
     } catch (e: any) {
       if (e?.message === 'REDDIT_LOGIN_REQUIRED') {
         setAuthRequired(true);
+        stateRef.current = null;
+        onlinePlayersRef.current = undefined;
+        appliedServerGenerationRef.current = -1;
+        appliedServerRevisionRef.current = -1;
+        stateRevisionRef.current += 1;
+        authSessionEpochRef.current += 1;
+        rollTicketRef.current = null;
+        rollTicketRequestRef.current = null;
         setState(null);
         setIsAdmin(false);
         setStartupError(null);
@@ -622,6 +694,10 @@ export function App() {
       void getJson<GlobalBoosterSnapshot>('/api/global-boosters')
         .then(snapshot => {
           if (snapshot) {
+            latestGlobalBoostersRef.current = snapshot;
+            if (stateRef.current) {
+              stateRef.current = { ...stateRef.current, globalBoosters: snapshot };
+            }
             setState(prev => prev ? { ...prev, globalBoosters: snapshot } : prev);
           }
         })
@@ -639,7 +715,14 @@ export function App() {
     const presenceInterval = setInterval(() => {
       void getJson<{ onlinePlayers: number }>('/api/online')
         .then(({ onlinePlayers }) => {
-          setState(prev => prev ? { ...prev, onlinePlayers } : prev);
+          const safeOnlinePlayers = Number.isSafeInteger(onlinePlayers)
+            ? Math.max(0, onlinePlayers)
+            : 0;
+          onlinePlayersRef.current = safeOnlinePlayers;
+          if (stateRef.current) {
+            stateRef.current = { ...stateRef.current, onlinePlayers: safeOnlinePlayers };
+          }
+          setState(prev => prev ? { ...prev, onlinePlayers: safeOnlinePlayers } : prev);
         })
         .catch(() => null);
     }, 10_000);
@@ -647,9 +730,15 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!state || frenzyRunTriggered || frenzyClaimActiveRef.current) return;
+    if (!state || !splashEntered || frenzyRunTriggered || frenzyClaimActiveRef.current) return;
 
     const resolveFrenzy = async () => {
+      let readyToClaim = false;
+      let lastPreflightError: unknown = null;
+
+      // Retry only the read-only handoff/info checks. Retrying the claim POST
+      // after a network error is unsafe because the server may have committed
+      // the reward even when the response did not reach this webview.
       for (let attempt = 0; attempt < 12; attempt++) {
         try {
           const handoff = await getJson<{ armed: boolean }>('/api/frenzy/handoff');
@@ -670,54 +759,61 @@ export function App() {
           // Only a Frenzy claim explicitly armed from the public Frenzy post
           // may auto-claim here. Simply opening the game must never consume a Frenzy.
           if (!info.inGame || !info.canClaim) return;
-
-          frenzyClaimActiveRef.current = true;
-          setFrenzyRunTriggered(true);
-          setBusy(true);
-          setIsRolling(true);
-
-          const res = await enqueueMutation(() =>
-            getJson<RollResponse>('/api/frenzy/claim', { method: 'POST' }),
-          );
-
-          if (!componentMountedRef.current) return;
-
-          const revealBatch = res.batch?.length ? res.batch : [res.orb];
-
-          // Apply the authoritative state without cancelling the visual reveal.
-          // The old effect was keyed to state, so this update tore down its own
-          // reveal loop before the first Orb could be shown.
-          applyPlayerState(res.state);
-          setLastBatch(revealBatch);
-          setBatchSummary({
-            totalVal: res.totalRollValue,
-            coins: res.coinsGained,
-            shards: res.shardsGained,
-            xp: res.xpGained,
-            frenzyCount: res.frenzyCount ?? 0,
-          });
-          setReadyAt(Date.now() + res.rollsRemainingUntilNext);
-
-          // This is the actual Frenzy volley returned by the server. Show each
-          // resolved Orb in sequence so the claim visibly rolls through the volley.
-          for (const revealedOrb of revealBatch) {
-            if (!componentMountedRef.current) return;
-            setLastOrb(revealedOrb);
-            await new Promise(resolve => window.setTimeout(resolve, 240));
-          }
-
-          if (!componentMountedRef.current) return;
-          setLastOrb(res.orb);
-          sound.playMythicFanfare();
-          showToast(
-            `⚡ Orb Frenzy claimed! ${formatNumber(res.frenzyCount ?? 0)} Orbs rolled.`,
-            'success',
-          );
-          return;
-        } catch {
-          await new Promise(resolve => setTimeout(resolve, 150));
+          readyToClaim = true;
+          break;
+        } catch (error) {
+          lastPreflightError = error;
+          if (attempt < 11) await new Promise(resolve => window.setTimeout(resolve, 150));
         }
       }
+
+      if (!readyToClaim) {
+        if (lastPreflightError) throw lastPreflightError;
+        return;
+      }
+
+      frenzyClaimActiveRef.current = true;
+      setFrenzyRunTriggered(true);
+      setBusy(true);
+      setIsRolling(true);
+
+      // Claim exactly once per attempt. A retry requires a fresh user action
+      // because a failed HTTP response cannot prove the server did not commit.
+      const res = await enqueueMutation(() =>
+        getJson<RollResponse>('/api/frenzy/claim', { method: 'POST' }),
+      );
+
+      if (!componentMountedRef.current) return;
+
+      const revealBatch = res.batch?.length ? res.batch : [res.orb];
+
+      // Apply the authoritative state without cancelling the visual reveal.
+      applyPlayerState(res.state);
+      setLastBatch(revealBatch);
+      setBatchSummary({
+        totalVal: res.totalRollValue,
+        coins: res.coinsGained,
+        shards: res.shardsGained,
+        xp: res.xpGained,
+        frenzyCount: res.frenzyCount ?? 0,
+      });
+      setReadyAt(Date.now() + res.rollsRemainingUntilNext);
+
+      // This is the actual Frenzy volley returned by the server. Show each
+      // resolved Orb in sequence so the claim visibly rolls through the volley.
+      for (const revealedOrb of revealBatch) {
+        if (!componentMountedRef.current) return;
+        setLastOrb(revealedOrb);
+        await new Promise(resolve => window.setTimeout(resolve, 240));
+      }
+
+      if (!componentMountedRef.current) return;
+      setLastOrb(res.orb);
+      sound.playMythicFanfare();
+      showToast(
+        `⚡ Orb Frenzy claimed! ${formatNumber(res.frenzyCount ?? 0)} Orbs rolled.`,
+        'success',
+      );
     };
 
     void resolveFrenzy()
@@ -728,7 +824,7 @@ export function App() {
         setIsRolling(false);
         setBusy(false);
       });
-  }, [state, frenzyRunTriggered, applyPlayerState, enqueueMutation]);
+  }, [state, splashEntered, frenzyRunTriggered, applyPlayerState, enqueueMutation]);
 
   useEffect(() => {
     const startedAt = Date.now();
@@ -794,154 +890,103 @@ export function App() {
 
     rollActionLockRef.current = true;
     let frenzySubmissionInFlight = false;
+    setIsRolling(true);
 
-    void (async () => {
-      try {
-        if (!isAutoRoll && frenzyArmed) {
-          frenzySubmissionInFlight = true;
-          // Consume the armed state immediately so a failed request cannot
-          // leave the UI stuck in a dead "RELEASE FRENZY" state.
-          setFrenzyArmed(false);
-          setIsRolling(true);
-          const res = await enqueueMutation(() => getJson<{
-            state: PlayerState;
-            postId: string;
-            url: string;
-            rarity: number;
-            orb: Orb;
-            batch: Orb[];
-            totalValueGained: number;
-            totalRollValue: number;
-            coinsGained: number;
-            shardsGained: number;
-            xpGained: number;
-            rollsRemainingUntilNext: number;
-            rollsProcessed: number;
-            dramaticReveal: boolean;
-          }>('/api/frenzy/start', { method: 'POST' }));
-
-          applyPlayerState(res.state);
-          setFrenzyArmed(false);
-          setLastOrb(res.orb);
-          setLastBatch(res.batch ?? [res.orb]);
-          setBatchSummary({
-            totalVal: res.totalRollValue,
-            coins: res.coinsGained,
-            shards: res.shardsGained,
-            xp: res.xpGained,
-            frenzyCount: undefined,
-          });
-          setReadyAt(Date.now() + res.rollsRemainingUntilNext);
-          sound.playEpicFanfare();
-          showToast(
-            `🔥 Frenzy submitted! Your ${formatRarity(res.rarity)} roll is now posted.`,
-            'success',
-          );
-          setIsRolling(false);
-          return;
-        }
-
-        const ticket = await ensureRollTicket();
-        const ticketIndex = ticket.nextIndex;
-        const prediction = predictRollActivation(
-          currentState,
-          rollTicketSeed(ticket.seed, ticketIndex),
-          isAutoRoll,
-          worldEvent?.buffMultiplier ?? 1.15,
-        );
-
-        rollTicketRef.current = {
-          ...ticket,
-          nextIndex: ticketIndex + 1,
-          rollsRemaining: Math.max(0, 30 - (ticketIndex + 1)),
-        };
-
-        sound.playRollNormal();
-
-        // The complete reward/state simulation happens locally first. The server
-        // later recomputes it from the same ticketed RNG stream and replaces this
-        // prediction with authoritative state when the mutation queue catches up.
-        stateRef.current = prediction.state;
-        stateRevisionRef.current += 1;
-        setState(prediction.state);
-        setLastOrb(prediction.orb);
-        setLastBatch(prediction.batch);
-        setBatchSummary({
-          totalVal: prediction.totalValueGained,
-          coins: prediction.coinsGained,
-          shards: prediction.shardsGained,
-          xp: prediction.xpGained,
-        });
-        setReadyAt(Date.now() + cooldownMs(prediction.state, isAutoRoll));
-        setWorldEvent(prev =>
-          prev
-            ? { ...prev, currentProgress: prev.currentProgress + prediction.rollsProcessed }
-            : prev,
-        );
-        setIsRolling(false);
-
-        pendingMutationCountRef.current += 1;
-        void enqueueMutation(async () => {
-          try {
-            const res = await getJson<RollResponse>('/api/roll', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                auto: isAutoRoll,
-                ticketId: ticket.ticketId,
-                ticketIndex,
-              }),
-            });
-
-            pendingMutationCountRef.current -= 1;
-            if (pendingMutationCountRef.current === 0) {
-              applyPlayerState(res.state);
-              setLastOrb(res.orb);
-              setLastBatch(res.batch ?? [res.orb]);
-              setBatchSummary({
-                totalVal: res.totalRollValue,
-                coins: res.coinsGained,
-                shards: res.shardsGained,
-                xp: res.xpGained,
-              });
-              setReadyAt(Date.now() + res.rollsRemainingUntilNext);
-              mutationResyncNeededRef.current = false;
-            }
-
-            maybePromptForNotifications(currentState.totalRolls, res.state.totalRolls);
-          } catch (error: any) {
-            pendingMutationCountRef.current -= 1;
-            mutationResyncNeededRef.current = true;
-            rollTicketRef.current = null;
-
-            if (pendingMutationCountRef.current === 0) {
-              await refreshAll().catch(() => null);
-              mutationResyncNeededRef.current = false;
-            }
-
-            showToast(error?.message || 'Roll verification failed. State refreshed.', 'warn');
-          }
-        });
-      } catch (error: any) {
-        rollTicketRef.current = null;
+    try {
+      if (!isAutoRoll && frenzyArmed) {
+        frenzySubmissionInFlight = true;
+        // Consume the armed state immediately so a failed request cannot
+        // leave the UI stuck in a dead "RELEASE FRENZY" state.
         setFrenzyArmed(false);
-        if (frenzySubmissionInFlight) {
-          // Re-read authoritative state before allowing another Frenzy attempt.
-          await refreshAll().catch(() => null);
-        }
-        showToast(error?.message || 'Could not prepare the next roll.', 'warn');
-        setIsRolling(false);
-      } finally {
-        rollActionLockRef.current = false;
+        const res = await enqueueMutation(() => getJson<{
+          state: PlayerState;
+          postId: string;
+          url: string;
+          rarity: number;
+          orb: Orb;
+          batch: Orb[];
+          totalValueGained: number;
+          totalRollValue: number;
+          coinsGained: number;
+          shardsGained: number;
+          xpGained: number;
+          rollsRemainingUntilNext: number;
+          rollsProcessed: number;
+          dramaticReveal: boolean;
+        }>('/api/frenzy/start', { method: 'POST' }));
+
+        applyPlayerState(res.state);
+        setFrenzyArmed(false);
+        setLastOrb(res.orb);
+        setLastBatch(res.batch ?? [res.orb]);
+        setBatchSummary({
+          totalVal: res.totalRollValue,
+          coins: res.coinsGained,
+          shards: res.shardsGained,
+          xp: res.xpGained,
+          frenzyCount: undefined,
+        });
+        setReadyAt(Date.now() + res.rollsRemainingUntilNext);
+        sound.playEpicFanfare();
+        showToast(
+          `🔥 Frenzy submitted! Your ${formatRarity(res.rarity)} roll is now posted.`,
+          'success',
+        );
+        return;
       }
-    })();
+
+      // The UI may animate while the request is pending, but it must not know
+      // the outcome before the server commits it. Otherwise players can inspect
+      // future rewards and selectively submit only favorable rolls.
+      const ticket = await ensureRollTicket();
+      const ticketIndex = ticket.nextIndex;
+      rollTicketRef.current = {
+        ...ticket,
+        nextIndex: ticketIndex + 1,
+        rollsRemaining: Math.max(0, 30 - (ticketIndex + 1)),
+      };
+      sound.playRollNormal();
+
+      const res = await enqueueMutation(() => getJson<RollResponse>('/api/roll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auto: isAutoRoll,
+          ticketId: ticket.ticketId,
+          ticketIndex,
+        }),
+      }));
+
+      applyPlayerState(res.state);
+      setLastOrb(res.orb);
+      setLastBatch(res.batch ?? [res.orb]);
+      setBatchSummary({
+        totalVal: res.totalRollValue,
+        coins: res.coinsGained,
+        shards: res.shardsGained,
+        xp: res.xpGained,
+      });
+      setReadyAt(Date.now() + res.rollsRemainingUntilNext);
+      mutationResyncNeededRef.current = false;
+      maybePromptForNotifications(currentState.totalRolls, res.state.totalRolls);
+    } catch (error: any) {
+      rollTicketRef.current = null;
+      setFrenzyArmed(false);
+      mutationResyncNeededRef.current = true;
+      // A request might have committed before its response was lost. Read back
+      // authoritative state before the next roll attempt, for either path.
+      await refreshAll().catch(() => null);
+      mutationResyncNeededRef.current = false;
+      showToast(error?.message || 'Roll failed. State refreshed.', 'warn');
+    } finally {
+      setIsRolling(false);
+      rollActionLockRef.current = false;
+    }
   }, [
     applyPlayerState,
     enqueueMutation,
     ensureRollTicket,
-    enqueueMutation,
     refreshAll,
-    worldEvent?.buffMultiplier,
     frenzyArmed,
   ]);
 
@@ -1572,7 +1617,7 @@ export function App() {
         masteryPoints: (current.masteryPoints ?? 0) + 3,
         collectionValue: 0,
         coins: keptCoins,
-        shards: keptShards,
+        shards: current.shards ?? 0,
         upgrades: createInitialState().upgrades,
         offlineRolls: 0,
         rollsSinceBest: 0,
@@ -1926,31 +1971,33 @@ export function App() {
   }
 
   if (!state) {
+    if (startupError) {
+      return (
+        <main className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 p-6">
+          <div className="w-full max-w-lg rounded-3xl border border-slate-800 bg-slate-900 p-8 text-center shadow-2xl">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-rose-500/30 bg-rose-500/10">
+              <Shield className="w-7 h-7 text-rose-400" />
+            </div>
+            <h1 className="mt-5 text-xl font-black text-white">Unable to connect</h1>
+            <p className="mt-2 text-sm text-slate-400">{startupError}</p>
+            <button
+              type="button"
+              onClick={() => { setStartupError(null); void refreshAll(); }}
+              className="mt-6 rounded-xl bg-purple-600 px-5 py-3 text-sm font-black text-white hover:bg-purple-500"
+            >
+              Retry
+            </button>
+          </div>
+        </main>
+      );
+    }
+
     return (
-      <main className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 p-6">
-        <div className="w-full max-w-lg rounded-3xl border border-slate-800 bg-slate-900 p-8 text-center shadow-2xl">
-          {startupError ? (
-            <>
-              <div className="mx-auto w-14 h-14 rounded-full bg-rose-500/10 border border-rose-500/30 flex items-center justify-center">
-                <Shield className="w-7 h-7 text-rose-400" />
-              </div>
-              <h1 className="mt-5 text-xl font-black text-white">Unable to connect</h1>
-              <p className="mt-2 text-sm text-slate-400">{startupError}</p>
-              <button
-                onClick={() => { setStartupError(null); void refreshAll(); }}
-                className="mt-6 px-5 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-sm"
-              >
-                Retry
-              </button>
-            </>
-          ) : (
-            <>
-              <RefreshCw className="mx-auto w-8 h-8 animate-spin text-purple-500" />
-              <p className="mt-3 text-sm font-semibold">Connecting to Infinity Orbs...</p>
-            </>
-          )}
-        </div>
-      </main>
+      <SplashScreen
+        ready={false}
+        hasProgress={false}
+        onEnter={() => undefined}
+      />
     );
   }
 
@@ -2022,6 +2069,18 @@ export function App() {
     state.weeklyQuests.some(q => !q.claimed && q.progress >= q.target);
   const prestigeReady = calculateCosmicDust(state) > 0;
 
+  if (!splashEntered) {
+    return (
+      <SplashScreen
+        ready={true}
+        hasProgress={(state.totalRolls ?? 0) > 0}
+        highestRarity={state.highestRarity ?? 2}
+        totalRolls={state.totalRolls ?? 0}
+        onEnter={() => setSplashEntered(true)}
+      />
+    );
+  }
+
   return (
     <div className="app-shell io-ui min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white">
       {/* Sticky Top Header */}
@@ -2049,7 +2108,7 @@ export function App() {
         <div className="fixed top-[68px] left-1/2 -translate-x-1/2 z-50 pointer-events-none px-4 w-full flex justify-center animate-in slide-in-from-top-3 fade-in duration-200">
           <div className="max-w-xl rounded-2xl border border-fuchsia-400/40 bg-slate-950/95 px-4 py-3 shadow-2xl shadow-fuchsia-950/30 backdrop-blur-md text-center">
             <div className="text-sm font-black text-fuchsia-200">
-              u/{boosterAnnouncement.username} activated {boosterAnnouncement.name} booster for 30 minutes!
+              u/{boosterAnnouncement.username} activated {boosterAnnouncement.name} booster for 2 hours!
             </div>
           </div>
         </div>

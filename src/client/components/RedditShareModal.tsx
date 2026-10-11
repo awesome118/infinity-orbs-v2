@@ -19,18 +19,29 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
 }) => {
   const [busy, setBusy] = useState(false);
   const [successPostId, setSuccessPostId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const info = getOrbInfo(rarity);
 
   const handleShare = async () => {
+    if (busy) return;
     setBusy(true);
+    setErrorMessage(null);
     sound.playClick();
     try {
       const res = await onShare(rarity);
       if (res.success) {
         sound.playEpicFanfare();
         setSuccessPostId(res.id ?? 'post-shared');
+      } else {
+        setErrorMessage('Reddit did not confirm that the post was created. Please try again.');
       }
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : 'Could not create the Reddit post. Please try again.',
+      );
     } finally {
       setBusy(false);
     }
@@ -57,6 +68,15 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
         <p className="io-modal-intro">
           Turn this discovery into a playable community post with the same presentation as the game.
         </p>
+
+        {errorMessage && (
+          <p
+            role="alert"
+            className="mb-4 rounded-xl border border-rose-500/30 bg-rose-950/40 px-4 py-3 text-sm text-rose-200"
+          >
+            {errorMessage}
+          </p>
+        )}
 
         <div className="io-share-preview">
           <div className="io-share-preview-head">

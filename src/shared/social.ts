@@ -119,6 +119,8 @@ export interface LeaderboardEntry {
   /** Timestamp of the player's first/most recent qualifying share. Required for leaderboard eligibility. */
   sharedAt?: number;
   userId?: string;
+  /** Revision of the authoritative PlayerState used to build this legacy projection. */
+  stateRevision?: number;
   highestDryStreak?: number;
   playtimeMs?: number;
 }
