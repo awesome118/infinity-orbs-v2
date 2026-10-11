@@ -803,15 +803,16 @@ test('offline notification reservation recovers ambiguous Redis SET only after c
   assert.ok(start >= 0 && end > start);
   const sender = game.slice(start, end);
 
-  const setIndex = sender.indexOf('await redis.set(notificationKey, pendingToken, {');
+  const setIndex = sender.indexOf('await redis.set(notificationKey, reservedToken, {');
   const readIndex = sender.indexOf('storedReservation = await redis.get(notificationKey)');
+  const sendingIndex = sender.indexOf('claimOfflineFullNotificationSendingIfUnchanged(');
   const enqueueIndex = sender.indexOf('await notifications.enqueue(');
-  assert.ok(setIndex >= 0 && readIndex > setIndex && enqueueIndex > readIndex);
+  assert.ok(setIndex >= 0 && readIndex > setIndex && sendingIndex > readIndex && enqueueIndex > sendingIndex);
   assert.match(sender, /let reservationWriteFailed = false/);
-  assert.match(sender, /catch \(error\) \{\s*\/\/ Redis can commit SET NX but lose its acknowledgement\.[\s\S]*?reservationWriteFailed = true;\s*reservationWriteError = error;/);
-  assert.match(sender, /if \(storedReservation !== pendingToken\)/);
-  assert.match(sender, /if \(reservationWriteFailed && storedReservation == null\) throw reservationWriteError/);
-  assert.match(sender, /if \(reservationWriteFailed\) \{\s*console\.warn\(/);
+  assert.match(sender, /catch \\(error\\) \\{\\s*reservationWriteFailed = true;\\s*reservationWriteError = error;/);
+  assert.match(sender, /if \\(storedReservation !== reservedToken\\)/);
+  assert.match(sender, /if \\(reservationWriteFailed && storedReservation == null\\) throw reservationWriteError/);
+  assert.match(sender, /if \\(reservationWriteFailed\\) \\{\\s*console\\.warn\\(/);
 });
 
 test('offline notification worker validates the persisted PlayerState before calculating cap', () => {
