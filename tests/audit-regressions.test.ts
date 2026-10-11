@@ -403,6 +403,20 @@ test('comprehensive admin tests reset cooldown before acquiring roll tickets and
   assert.match(modal, /activeBoosters: \{ fortune: 0, hyperdrive: 0, barrage: 0, prosperity: 0, ascension: 0 \}/);
   assert.match(modal, /\{ xp: 600, level: 4, levelXpFloor: 533, collection: \{\}/);
   assert.match(modal, /setSonarThreshold\(100\)/);
+
+  const frenzyVolleyStart = modal.indexOf("'Mechanic · Frenzy Volley'");
+  const frenzyVolleyEnd = modal.indexOf("'Mechanic · Astral Reserve'", frenzyVolleyStart);
+  assert.ok(frenzyVolleyStart >= 0 && frenzyVolleyEnd > frenzyVolleyStart);
+  const frenzyVolley = modal.slice(frenzyVolleyStart, frenzyVolleyEnd);
+  assert.ok(frenzyVolley.includes('frenzyOrbCountForRarity(normalRarity) * 2'));
+  assert.ok(frenzyVolley.includes('frenzyOrbCountForRarity(volleyRarity) * 1.20'));
+
+  const adminFrenzyStart = modal.indexOf('"API · Frenzy admin start creates a dedicated post record"');
+  const adminFrenzyEnd = modal.indexOf('"API · Frenzy admin claim returns the authoritative volley and owner reward"', adminFrenzyStart);
+  assert.ok(adminFrenzyStart >= 0 && adminFrenzyEnd > adminFrenzyStart);
+  const adminFrenzy = modal.slice(adminFrenzyStart, adminFrenzyEnd);
+  assert.ok(adminFrenzy.includes('orbRarity < 250'));
+  assert.ok(adminFrenzy.includes('returnedRarity !== orbRarity'));
 });
 
 test('Guild diagnostics UI and endpoint are removed while playtest-only recovery remains', () => {
