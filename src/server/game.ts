@@ -3672,6 +3672,32 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
   return true;
 }
 
+function offlineNotificationPendingRetryAt(marker: unknown, now = Date.now()): number {
+  const parsed = parseOfflineFullNotificationAttemptMarker(marker);
+  if (parsed?.phase === 'reserved') {
+    return Math.max(now + 1_000, parsed.startedAt + OFFLINE_FULL_RESERVATION_TTL_MS + 1_000);
+  }
+  if (parsed?.phase === 'sending') {
+    return Math.max(now + 1_000, parsed.startedAt + OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000);
+  }
+
+  // Older versions used pending:<time>:<nonce> with a seven-day expiry. Keep
+  // those ambiguous attempts fail-closed, then retry once their lease elapses.
+  const pendingMatch = typeof marker === 'string'
+    ? /^pending:([0-9a-z]+):/.exec(marker)
+    : null;
+  const parsedAt = pendingMatch ? Number.parseInt(pendingMatch[1], 36) : NaN;
+  const pendingAt = Number.isSafeInteger(parsedAt) && parsedAt > 0 && parsedAt <= now + 60_000
+    ? parsedAt
+    : now;
+  return Math.max(now + 1_000, pendingAt + OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000);
+}
+
+function isRetryableOfflineFullNotificationMarker(marker: unknown): marker is string {
+  return parseOfflineFullNotificationAttemptMarker(marker) !== null ||
+    (typeof marker === 'string' && /^pending:[0-9a-z]+:.+$/.test(marker));
+}
+
 function parseOfflineFullJobMarker(
   raw: unknown,
 ): { token: string; legacy: boolean } | null {
@@ -3715,15 +3741,33 @@ async function scheduleOfflineFullNotification(
   userId: string,
   subredditName: string,
   runAt: number,
+  allowReservationRetry = false,
 ): Promise<void> {
   if (!subredditName || !userId) return;
-  if (await redis.get(OFFLINE_FULL_NOTIFICATION_PREFIX + userId)) return;
+  const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
+  let notificationMarker = await redis.get(notificationKey);
+  if (notificationMarker === '') {
+    // Recover empty-string tombstones written by older compare-and-clear code.
+    await deleteOfflineFullNotificationMarkerIfUnchanged(notificationKey, '');
+    notificationMarker = await redis.get(notificationKey);
+  }
+  if (notificationMarker === '1') return;
+  let effectiveRunAt = Number(runAt);
+  if (notificationMarker != null) {
+    if (!allowReservationRetry || !isRetryableOfflineFullNotificationMarker(notificationMarker)) return;
+    // If a competing request advanced reserved -> sending after the caller chose
+    // its retry time, honor the longer sending lease rather than polling it early.
+    effectiveRunAt = Math.max(
+      Number.isFinite(effectiveRunAt) ? effectiveRunAt : Date.now() + OFFLINE_FULL_RETRY_MS,
+      offlineNotificationPendingRetryAt(notificationMarker),
+    );
+  }
   if (!(await notifications.isOptedIn(userId))) return;
 
   const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
   const now = Date.now();
   const maxDateMs = 8_640_000_000_000_000;
-  const requestedRunAt = Number(runAt);
+  const requestedRunAt = effectiveRunAt;
   const safeRunAt = Math.min(
     maxDateMs - 1,
     Math.max(now + 1_000, Number.isFinite(requestedRunAt) ? requestedRunAt : now + 1_000),
