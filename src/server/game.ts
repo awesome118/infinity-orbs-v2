@@ -3580,12 +3580,22 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
     }
 
     const parsed = parseOfflineFullNotificationAttemptMarker(existing);
+    const now = Date.now();
+    const legacyPendingStartedAt = offlineLegacyPendingMarkerStartedAt(existing, now);
     const staleReservedMarker =
       parsed?.phase === 'reserved' &&
-      Date.now() - parsed.startedAt >= OFFLINE_FULL_RESERVATION_TTL_MS;
-    if (existing === '' || staleReservedMarker) {
-      // Empty values are legacy tombstones; stale reserved-v2 tokens are safe
-      // to delete because the sending phase is CAS-claimed before provider I/O.
+      now - parsed.startedAt >= OFFLINE_FULL_RESERVATION_TTL_MS;
+    const staleSendingMarker =
+      parsed?.phase === 'sending' &&
+      now - parsed.startedAt >= OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000;
+    const staleLegacyPendingMarker =
+      legacyPendingStartedAt !== null &&
+      now - legacyPendingStartedAt >= OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000;
+    if (existing === '' || staleReservedMarker || staleSendingMarker || staleLegacyPendingMarker) {
+      // Empty values are legacy tombstones. A reserved-v2 marker is safe to reclaim
+      // because provider I/O is gated by the CAS transition to sending-v2. Sending
+      // and legacy pending markers are kept through the seven-day ambiguity window,
+      // then reclaimed under the explicit retry-after-lease policy.
       await deleteOfflineFullNotificationMarkerIfUnchanged(notificationKey, existing);
       continue;
     }
@@ -3672,6 +3682,16 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
   return true;
 }
 
+function offlineLegacyPendingMarkerStartedAt(marker: unknown, now = Date.now()): number | null {
+  const pendingMatch = typeof marker === 'string'
+    ? /^pending:([0-9a-z]+):/.exec(marker)
+    : null;
+  const parsedAt = pendingMatch ? Number.parseInt(pendingMatch[1], 36) : NaN;
+  return Number.isSafeInteger(parsedAt) && parsedAt > 0 && parsedAt <= now + 60_000
+    ? parsedAt
+    : null;
+}
+
 function offlineNotificationPendingRetryAt(marker: unknown, now = Date.now()): number {
   const parsed = parseOfflineFullNotificationAttemptMarker(marker);
   if (parsed?.phase === 'reserved') {
@@ -3683,13 +3703,7 @@ function offlineNotificationPendingRetryAt(marker: unknown, now = Date.now()): n
 
   // Older versions used pending:<time>:<nonce> with a seven-day expiry. Keep
   // those ambiguous attempts fail-closed, then retry once their lease elapses.
-  const pendingMatch = typeof marker === 'string'
-    ? /^pending:([0-9a-z]+):/.exec(marker)
-    : null;
-  const parsedAt = pendingMatch ? Number.parseInt(pendingMatch[1], 36) : NaN;
-  const pendingAt = Number.isSafeInteger(parsedAt) && parsedAt > 0 && parsedAt <= now + 60_000
-    ? parsedAt
-    : now;
+  const pendingAt = offlineLegacyPendingMarkerStartedAt(marker, now) ?? now;
   return Math.max(now + 1_000, pendingAt + OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000);
 }
 
