@@ -4820,6 +4820,19 @@ export async function claimOrbFrenzy(options: {
     s.prestigeUpgrades?.frenzyVolley ?? 0,
   );
 
+  // This path writes totalRolls directly instead of going through applyRolls().
+  // Reject an overflowing batch before reward mutation, shared Guild/community
+  // staging, Shard grants, or marking the Frenzy post consumed.
+  if (
+    !Number.isSafeInteger(s.totalRolls) ||
+    s.totalRolls < 0 ||
+    !Number.isSafeInteger(count) ||
+    count < 0 ||
+    count > Number.MAX_SAFE_INTEGER - s.totalRolls
+  ) {
+    throw new Error('Frenzy roll counter would exceed the safe integer range; claim was not processed.');
+  }
+
   const critChance = Math.min(
     1,
     (s.upgrades.critChance ?? 0) * 0.03 +
