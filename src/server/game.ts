@@ -3355,8 +3355,8 @@ export async function applyRolls(
 
   // Celestial Auto-Buyer Prestige Upgrade: auto-buy cheapest affordable upgrade
   const autoBuyerLevel = s.prestigeUpgrades?.autoBuyer ?? 0;
-  if (autoBuyerLevel > 0 && s.coins > 50) {
-    autoBuyCheapest(s);
+  if (autoBuyerLevel > 0 && s.coins > AUTO_BUYER_COIN_RESERVE) {
+    autoBuyCheapest(s, AUTO_BUYER_COIN_RESERVE);
   }
 
   advanceQuestProgress(s, 'roll', rollCount);
