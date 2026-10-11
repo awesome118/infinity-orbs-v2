@@ -369,6 +369,7 @@ test('Daily Streak community progression rejects invalid loop state', () => {
 
 test('comprehensive admin tests reset cooldown before acquiring roll tickets and seed gated feature levels', () => {
   const modal = source('src/client/components/DevDebugModal.tsx');
+  const debug = source('src/server/debug.ts');
   const ticketStart = modal.indexOf("await request('/api/dev/reset-cooldown', {});", modal.indexOf('const rollOnce ='));
   const ticketCreate = modal.indexOf("const ticket = await request<{ ticketId: string; nextIndex: number }>('/api/roll-ticket')", ticketStart);
   const rollPost = modal.indexOf("return await request<RollResponse>('/api/roll'", ticketCreate);
@@ -380,6 +381,7 @@ test('comprehensive admin tests reset cooldown before acquiring roll tickets and
   assert.match(modal.slice(mechanicStart, mechanicEnd), /xp: 600/);
   assert.match(modal.slice(mechanicStart, mechanicEnd), /level: 4,\s*levelXpFloor: 533/);
   assert.match(modal.slice(mechanicStart, mechanicEnd), /freeShardsEarnedToday: 0/);
+  assert.match(debug, /'globalBoosterCredits', 'freeShardsEarnedToday'/);
   assert.match(modal, /shardSynthesis: 1 \}, \{ shards: 10, xp: 32_000, level: 20, levelXpFloor: 0 \}/);
   assert.match(modal, /totalRolls: 100, currentRunRolls: 0, xp: 600, level: 4, levelXpFloor: 533/);
   assert.match(modal, /lastSeenAt: Date\.now\(\), xp: 600, level: 4, levelXpFloor: 533/);
