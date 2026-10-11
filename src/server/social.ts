@@ -78,7 +78,8 @@ function isRecordValue(value: unknown): value is Record<string, unknown> {
 }
 
 function validateGuildNestedState(guild: Record<string, unknown>): void {
-  const invalid = () => new Error('Guild data contains malformed nested state; refusing to replace it.');
+  const invalid = (field = 'unknown nested field') =>
+    new Error(`Guild data contains malformed nested state; refusing to replace it. Guild ${String(guild.id ?? 'unknown')} field: ${field}.`);
 
   // Numeric fields are used directly in reward, level and tax arithmetic.
   // Finite fractional values or numbers above the exact-integer range are not
@@ -86,15 +87,15 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
   for (const [field, minimum] of [['level', 1], ['xp', 0], ['tokens', 0]] as const) {
     const value = guild[field];
     if (value == null) continue; // Legacy saves can omit core economy defaults.
-    if (!Number.isSafeInteger(value) || Number(value) < minimum) throw invalid();
+    if (!Number.isSafeInteger(value) || Number(value) < minimum) throw invalid(`guild.${field}`);
   }
   if (guild.createdAt != null &&
       (!Number.isSafeInteger(guild.createdAt) || Number(guild.createdAt) < 0)) {
-    throw invalid();
+    throw invalid('guild.createdAt');
   }
 
   const members = guild.members;
-  if (!Array.isArray(members)) throw invalid();
+  if (!Array.isArray(members)) throw invalid('guild.members (expected array)');
   for (const member of members) {
     if (
       !isRecordValue(member) ||
@@ -106,7 +107,7 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
       (member.joinedAt != null && (!Number.isSafeInteger(member.joinedAt) || Number(member.joinedAt) < 0)) ||
       (member.lastLoginAt != null && (!Number.isSafeInteger(member.lastLoginAt) || Number(member.lastLoginAt) < 0))
     ) {
-      throw invalid();
+      throw invalid('guild.members[] (invalid member fields)');
     }
   }
 
@@ -120,12 +121,12 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
       !Number.isSafeInteger(challenge.reward) || Number(challenge.reward) < 1 ||
       typeof challenge.label !== 'string' || !challenge.label.trim()
     ) {
-      throw invalid();
+      throw invalid('guild.challenge (type/target/progress/reward/label)');
     }
   }
 
   if (guild.perks != null) {
-    if (!isRecordValue(guild.perks)) throw invalid();
+    if (!isRecordValue(guild.perks)) throw invalid('guild.perks (expected object)');
     const perkCaps: Record<string, number> = {
       luckRank: 10,
       speedRank: 10,
@@ -143,45 +144,45 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
       const value = guild.perks[rank];
       if (value == null) continue; // Legacy saves may omit newer optional ranks.
       if (!Number.isSafeInteger(value) || Number(value) < 0 || Number(value) > cap) {
-        throw invalid();
+        throw invalid(`guild.perks.${rank}`);
       }
     }
   }
 
   if (guild.combo != null) {
-    if (!isRecordValue(guild.combo)) throw invalid();
+    if (!isRecordValue(guild.combo)) throw invalid('guild.combo (expected object)');
     for (const field of ['tier', 'activationProgress', 'endsAt', 'lastTickAt']) {
       const value = guild.combo[field];
       if (value == null) continue; // Missing legacy timer fields decay to defaults.
-      if (!Number.isSafeInteger(value) || Number(value) < 0) throw invalid();
+      if (!Number.isSafeInteger(value) || Number(value) < 0) throw invalid(`guild.combo.${field}`);
     }
     if (
       (guild.combo.tier != null && Number(guild.combo.tier) > 10) ||
       (guild.combo.activationProgress != null && Number(guild.combo.activationProgress) > 3)
     ) {
-      throw invalid();
+      throw invalid('guild.combo tier/activationProgress');
     }
   }
 
   if (guild.tasks != null) {
-    if (!Array.isArray(guild.tasks)) throw invalid();
+    if (!Array.isArray(guild.tasks)) throw invalid('guild.tasks (expected array)');
     if (guild.tasks.length >= 3) {
       for (const task of guild.tasks.slice(0, 3)) {
-        if (!isRecordValue(task)) throw invalid();
-        if (task.id != null && typeof task.id !== 'string') throw invalid();
-        if (task.label != null && typeof task.label !== 'string') throw invalid();
+        if (!isRecordValue(task)) throw invalid('guild.tasks[] (expected object)');
+        if (task.id != null && typeof task.id !== 'string') throw invalid('guild.tasks[].id');
+        if (task.label != null && typeof task.label !== 'string') throw invalid('guild.tasks[].label');
         for (const field of ['tier', 'target', 'progress', 'reward', 'guildXpReward']) {
           const value = task[field];
           if (value == null) continue;
           const minimum = field === 'progress' ? 0 : 1;
-          if (!Number.isSafeInteger(value) || Number(value) < minimum) throw invalid();
+          if (!Number.isSafeInteger(value) || Number(value) < minimum) throw invalid(`guild.tasks[].${field}`);
         }
       }
     }
   }
 
   if (guild.chat != null) {
-    if (!Array.isArray(guild.chat)) throw invalid();
+    if (!Array.isArray(guild.chat)) throw invalid('guild.chat (expected array)');
     for (const message of guild.chat) {
       if (
         !isRecordValue(message) ||
@@ -192,7 +193,7 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
         (message.userId != null && typeof message.userId !== 'string') ||
         (message.isSystem != null && typeof message.isSystem !== 'boolean')
       ) {
-        throw invalid();
+        throw invalid('guild.chat[] (invalid message fields)');
       }
     }
   }
@@ -200,7 +201,7 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
   // A current-week boss is actively mutated during rolls. Its fields must be
   // numeric and bounded before normalizeGuilds()/boss damage math can touch it.
   if (guild.boss != null && guild.bossWeek === weekKey()) {
-    if (!isRecordValue(guild.boss)) throw invalid();
+    if (!isRecordValue(guild.boss)) throw invalid('guild.boss (expected object)');
     const boss = guild.boss;
     if (
       typeof boss.id !== 'string' || !boss.id ||
@@ -217,7 +218,7 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
         typeof value === 'number' && Number.isFinite(value) && value >= 0
       )
     ) {
-      throw invalid();
+      throw invalid('guild.boss (id/name/tier/health/defeated/contributors)');
     }
   }
 }
