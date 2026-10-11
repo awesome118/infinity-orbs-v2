@@ -381,12 +381,17 @@ test('guild parser validates nested state while repairing legacy challenge and b
   assert.match(validator, /perkCaps/);
   assert.match(validator, /guildXpRank: 20/);
   assert.match(validator, /if \(value == null\) continue; \/\/ Legacy saves can omit core economy defaults/);
+  assert.match(validator, /if \(field === 'xp'\)/);
+  assert.match(validator, /throw invalid\('guild\.xp'\)/);
   const normalizeStart = social.indexOf('function normalizeGuilds');
   const normalizeEnd = social.indexOf('function generatedFallbackTaskType', normalizeStart);
   assert.ok(normalizeStart >= 0 && normalizeEnd > normalizeStart);
   const normalize = social.slice(normalizeStart, normalizeEnd);
   assert.match(normalize, /g\.level \?\?= 1/);
-  assert.match(normalize, /g\.xp \?\?= 0/);
+  assert.match(normalize, /g\.xp = Math\.min\(Number\.MAX_SAFE_INTEGER/);
+  assert.match(social, /function addGuildExperience\(guild: Guild, requested: number\)/);
+  assert.equal((social.match(/addGuildExperience\(guild,/g) ?? []).length, 5);
+  assert.doesNotMatch(social, /guild\.xp\s*\+=/);
   assert.match(normalize, /g\.tokens \?\?= 0/);
   assert.match(validator, /Number\.isSafeInteger\(member\.contribution\)/);
   assert.match(validator, /guild\.challenge != null/);
