@@ -122,6 +122,7 @@ export interface LeaderboardEntry {
   /** Revision of the authoritative PlayerState used to build this legacy projection. */
   stateRevision?: number;
   highestDryStreak?: number;
+  currentDryStreak?: number;
   playtimeMs?: number;
 }
 
@@ -129,6 +130,7 @@ export type LeaderboardId =
   | 'collectionValue'
   | 'mostRolls'
   | 'highestDryStreak'
+  | 'currentDryStreak'
   | 'bestOrb'
   | 'mostPlaytime';
 
@@ -140,6 +142,8 @@ export interface GlobalChatMessage {
   text: string;
   timestamp: number;
   userId?: string;
+  /** Derived by the server from authenticated Reddit identity; never client-supplied. */
+  isAdmin?: boolean;
 }
 
 export interface Achievement {
