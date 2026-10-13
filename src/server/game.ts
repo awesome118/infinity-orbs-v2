@@ -920,7 +920,7 @@ export async function unbanGameUser(userId: string): Promise<boolean> {
     return { changed: true, result: true };
   });
 }
-const ONLINE_WINDOW_MS = 30_000;
+const ONLINE_WINDOW_MS = 3 * 60_000;
 
 async function updateCcuPeak(keyName: string, ccu: number): Promise<void> {
   const candidate = Math.max(0, Math.floor(Number(ccu) || 0));
@@ -1525,7 +1525,7 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
       username: String(registry.username ?? save?.username ?? ('user-' + userId.slice(-8))).trim().slice(0, 100),
       firstSeenAt: validPastTimestamp(registry.firstSeenAt, now),
       lastSeenAt,
-      active: lastSeenAt >= now - 30_000,
+      active: lastSeenAt >= now - ONLINE_WINDOW_MS,
       level: Math.max(1, Number(save?.level ?? 1) || 1),
       xp: Math.max(0, Number(save?.xp ?? 0) || 0),
       playtimeMs: Math.max(0, Number(registry.playtimeMs ?? 0) || 0),
