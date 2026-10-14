@@ -117,9 +117,13 @@ test('Unbroken Momentum tracks uninterrupted sessions and grants capped Speed', 
   assert.equal(UNBROKEN_MOMENTUM_SESSION_GAP_MS, 5 * 60_000);
   assert.equal(unbrokenMomentumSpeedBonus(0), 0);
   assert.equal(unbrokenMomentumSpeedBonus(5 * 60_000 - 1), 0);
-  assert.equal(unbrokenMomentumSpeedBonus(5 * 60_000), 0.01);
-  assert.equal(unbrokenMomentumSpeedBonus(30 * 60_000), 0.06);
-  assert.equal(unbrokenMomentumSpeedBonus(180 * 60_000), 0.30);
+  const expectedFiveMinuteBonus = 0.20 * Math.log1p((5 / 60) / 20) / Math.log1p(48 / 20);
+  assert.ok(Math.abs(unbrokenMomentumSpeedBonus(5 * 60_000) - expectedFiveMinuteBonus) < 1e-12);
+  const expectedThirtyMinuteBonus = 0.20 * Math.log1p(0.5 / 20) / Math.log1p(48 / 20);
+  assert.ok(Math.abs(unbrokenMomentumSpeedBonus(30 * 60_000) - expectedThirtyMinuteBonus) < 1e-12);
+  assert.equal(unbrokenMomentumSpeedBonus(48 * 60 * 60_000), 0.20);
+  assert.ok(Math.abs(unbrokenMomentumSpeedBonus(72 * 60 * 60_000) - 0.25) < 0.001);
+  assert.equal(unbrokenMomentumSpeedBonus(120 * 60 * 60_000), 0.30);
 
   const state = createInitialState(NOW);
   recordRollingSessionActivity(state, NOW);
@@ -137,7 +141,8 @@ test('Unbroken Momentum tracks uninterrupted sessions and grants capped Speed', 
   const baseCooldown = cooldownMs(createInitialState(NOW));
   const momentumState = createInitialState(NOW);
   momentumState.longestRollingSessionMs = 30 * 60_000;
-  assert.equal(cooldownMs(momentumState), Math.max(300, Math.round(baseCooldown / 1.06)));
+  const momentumBonus = unbrokenMomentumSpeedBonus(momentumState.longestRollingSessionMs);
+  assert.equal(cooldownMs(momentumState), Math.max(300, Math.round(baseCooldown / (1 + momentumBonus))));
 });
 
 test('Altar rank compounds at 1.05× per level and the coin floor grows by 1.5×', () => {
