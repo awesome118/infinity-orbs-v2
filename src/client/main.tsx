@@ -962,7 +962,6 @@ export function App() {
           auto: isAutoRoll,
           ticketId: ticket.ticketId,
           ticketIndex,
-          freeRollCount: isAutoRoll ? 1 : Math.max(1, currentState.freeRolls ?? 0),
         }),
       }));
 
