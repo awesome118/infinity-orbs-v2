@@ -118,6 +118,8 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
         return <Sparkles className="w-4 h-4 text-purple-400" />;
       case 'cosmicInheritance':
         return <Archive className="w-4 h-4 text-amber-400" />;
+      case 'cosmicReserve':
+        return <Sparkles className="w-4 h-4 text-violet-300" />;
       case 'autoBuyer':
         return <Zap className="w-4 h-4 text-cyan-400" />;
       case 'supernova':
