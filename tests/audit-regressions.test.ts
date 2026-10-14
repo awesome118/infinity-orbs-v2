@@ -154,7 +154,8 @@ test('roll tickets disclose no RNG seed and client never predicts authoritative 
   assert.ok(rollStart >= 0 && rollEnd > rollStart);
   const roll = game.slice(rollStart, rollEnd);
   assert.doesNotMatch(roll, /createSeededRandom|rollTicketSeed/);
-  assert.match(roll, /await applyRolls\(s, 1, undefined, 'online'\)/);
+  assert.match(roll, /const activations = freeRollsToUse > 0 \? freeRollsToUse : 1/);
+  assert.match(roll, /await applyRolls\(s, activations, undefined, 'online'\)/);
   assert.match(game, /const rng = randomOverride \?\? serverRandom/);
 });
 
