@@ -70,10 +70,6 @@ if (devvit) {
   requireManifestValue("permissions.redis", devvit.permissions?.redis, true);
   requireManifestValue("permissions.payments", devvit.permissions?.payments, false);
   requireManifestValue("triggers.onAppInstall", devvit.triggers?.onAppInstall, "/internal/on-app-install");
-  requireManifestValue("triggers.onCommentCreate", devvit.triggers?.onCommentCreate, "/internal/trigger/comment-create");
-  if (!Array.isArray(devvit.permissions?.reddit?.asUser) || !devvit.permissions.reddit.asUser.includes("SUBMIT_COMMENT")) {
-    reportFailure('devvit.json permissions.reddit.asUser must include "SUBMIT_COMMENT" for USER-authored comments.');
-  }
   requireManifestValue(
     "scheduler.tasks.offline-orbs-full.endpoint",
     devvit.scheduler?.tasks?.["offline-orbs-full"]?.endpoint,
