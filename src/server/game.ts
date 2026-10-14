@@ -4304,7 +4304,6 @@ export async function roll(
   isAuto = false,
   ticketId?: string,
   ticketIndex?: number,
-  requestedFreeRollCount = 1,
 ): Promise<RollResponse> {
   return withPlayerMutationLock(async () => {
     let ticketUse:
@@ -4345,12 +4344,9 @@ export async function roll(
     // A manual click consumes every available Free Roll in one authoritative
     // batch. Clamp malformed/unsafe request counts, never trust the client to
     // grant rolls, and leave cooldown rules unchanged for ordinary activations.
-    const requested = Number.isSafeInteger(requestedFreeRollCount) && requestedFreeRollCount > 0
-      ? requestedFreeRollCount
-      : 1;
-    const freeRollsToUse = usingFreeRoll
-      ? Math.min(availableFreeRolls, requested)
-      : 0;
+    // The server decides how many rolls are available and consumes them all.
+    // No client-provided count can shorten or increase the authoritative balance.
+    const freeRollsToUse = usingFreeRoll ? availableFreeRolls : 0;
     if (freeRollsToUse > 0) s.freeRolls = availableFreeRolls - freeRollsToUse;
     const activations = freeRollsToUse > 0 ? freeRollsToUse : 1;
 
