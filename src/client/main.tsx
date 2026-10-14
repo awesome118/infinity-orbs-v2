@@ -340,6 +340,10 @@ export function App() {
   const mutationQueueRef = useRef<Promise<void>>(Promise.resolve());
   const pendingMutationCountRef = useRef(0);
   const mutationResyncNeededRef = useRef(false);
+  const upgradeBatchQueueRef = useRef<UpgradeId[]>([]);
+  const upgradeBatchTimerRef = useRef<number | null>(null);
+  const upgradeBatchInFlightRef = useRef(false);
+  const flushUpgradeBatchRef = useRef<(() => Promise<void>) | null>(null);
   const lastBoosterAnnouncementAtRef = useRef(0);
   const boosterAnnouncementTimerRef = useRef<number | null>(null);
 
@@ -958,6 +962,7 @@ export function App() {
           auto: isAutoRoll,
           ticketId: ticket.ticketId,
           ticketIndex,
+          freeRollCount: isAutoRoll ? 1 : Math.max(1, currentState.freeRolls ?? 0),
         }),
       }));
 
@@ -1005,7 +1010,72 @@ export function App() {
     return () => clearInterval(interval);
   }, [autoRoll, state, readyAt, isRolling, handleRoll]);
 
-  // Buy Standard Upgrade
+  // Standard upgrades are applied optimistically, queued for a short burst
+  // window, and validated together by one authoritative server mutation.
+  const flushUpgradeBatch = async () => {
+    if (upgradeBatchInFlightRef.current || upgradeBatchQueueRef.current.length === 0) return;
+    if (upgradeBatchTimerRef.current !== null) {
+      window.clearTimeout(upgradeBatchTimerRef.current);
+      upgradeBatchTimerRef.current = null;
+    }
+
+    const ids = upgradeBatchQueueRef.current.splice(0, 100);
+    if (ids.length === 0) return;
+    upgradeBatchInFlightRef.current = true;
+    pendingMutationCountRef.current += 1;
+
+    try {
+      await enqueueMutation(async () => {
+        try {
+          const res = await getJson<{
+            state: PlayerState;
+            purchased: Array<{ id: UpgradeId; cost: number; level: number }>;
+            totalSpent: number;
+            stoppedReason?: string;
+          }>('/api/upgrade/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids }),
+          });
+
+          pendingMutationCountRef.current = Math.max(0, pendingMutationCountRef.current - 1);
+          if (upgradeBatchQueueRef.current.length === 0) {
+            applyPlayerState(res.state);
+            mutationResyncNeededRef.current = false;
+            if (res.purchased.length > 0) {
+              showToast(`Upgraded ${res.purchased.length} level${res.purchased.length === 1 ? '' : 's'} · ${formatNumber(res.totalSpent)} Coins spent.`, 'success');
+            }
+            if (res.stoppedReason && res.purchased.length < ids.length) {
+              showToast(res.stoppedReason, res.purchased.length > 0 ? 'info' : 'warn');
+            }
+          }
+        } catch (error: any) {
+          pendingMutationCountRef.current = Math.max(0, pendingMutationCountRef.current - 1);
+          mutationResyncNeededRef.current = true;
+          // The optimistic queue depends on the prior batch. If the server
+          // rejects that batch, discard dependent predictions and read back truth.
+          upgradeBatchQueueRef.current = [];
+          if (upgradeBatchTimerRef.current !== null) {
+            window.clearTimeout(upgradeBatchTimerRef.current);
+            upgradeBatchTimerRef.current = null;
+          }
+          await refreshAll().catch(() => null);
+          mutationResyncNeededRef.current = false;
+          showToast(error?.message || 'Upgrade verification failed. State refreshed.', 'warn');
+        }
+      });
+    } finally {
+      upgradeBatchInFlightRef.current = false;
+      if (upgradeBatchQueueRef.current.length > 0 && upgradeBatchTimerRef.current === null) {
+        upgradeBatchTimerRef.current = window.setTimeout(() => {
+          upgradeBatchTimerRef.current = null;
+          void flushUpgradeBatchRef.current?.();
+        }, 25);
+      }
+    }
+  };
+  flushUpgradeBatchRef.current = flushUpgradeBatch;
+
   const handleBuyUpgrade = async (id: UpgradeId) => {
     const currentState = stateRef.current;
     if (!currentState) return;
@@ -1013,7 +1083,7 @@ export function App() {
     const level = currentState.upgrades[id] ?? 0;
     const cost = upgradeCost(id, level);
     const canBuy = id === 'auto'
-      ? (currentState.manualRolls ?? 0) >= 3
+      ? (currentState.manualRolls ?? 0) >= 3 && level === 0
       : Number.isFinite(cost) && currentState.coins >= cost;
 
     if (!canBuy) {
@@ -1028,51 +1098,30 @@ export function App() {
       return;
     }
 
+    // Instant local response: update the visible level/wallet before the server
+    // round trip. Purchases still succeed only if the batch endpoint validates
+    // affordability and level limits against the actual saved state.
     const nextState: PlayerState = id === 'auto'
-      ? {
-          ...currentState,
-          upgrades: { ...currentState.upgrades, auto: 1 },
-        }
+      ? { ...currentState, upgrades: { ...currentState.upgrades, auto: 1 } }
       : {
           ...currentState,
           coins: currentState.coins - cost,
           upgrades: { ...currentState.upgrades, [id]: level + 1 },
         };
-
-    // Upgrade instantly on the client. The queued server command is the
-    // authority and will either confirm it or trigger a state resync.
     stateRef.current = nextState;
     stateRevisionRef.current += 1;
     setState(nextState);
     sound.playChime(659.25, 'sine', 0.2);
 
-    pendingMutationCountRef.current += 1;
-    void enqueueMutation(async () => {
-      try {
-        const res = await getJson<{ state: PlayerState }>('/api/upgrade', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id }),
-        });
-
-        pendingMutationCountRef.current -= 1;
-        if (pendingMutationCountRef.current === 0) {
-          applyPlayerState(res.state);
-          mutationResyncNeededRef.current = false;
-          showToast(`Upgraded ${id.toUpperCase()} successfully!`, 'success');
-        }
-      } catch (error: any) {
-        pendingMutationCountRef.current -= 1;
-        mutationResyncNeededRef.current = true;
-        if (pendingMutationCountRef.current === 0) {
-          await refreshAll().catch(() => null);
-          mutationResyncNeededRef.current = false;
-        }
-        showToast(error?.message || 'Upgrade verification failed. State refreshed.', 'warn');
-      }
-    });
+    upgradeBatchQueueRef.current.push(id);
+    if (!upgradeBatchInFlightRef.current) {
+      if (upgradeBatchTimerRef.current !== null) window.clearTimeout(upgradeBatchTimerRef.current);
+      upgradeBatchTimerRef.current = window.setTimeout(() => {
+        upgradeBatchTimerRef.current = null;
+        void flushUpgradeBatchRef.current?.();
+      }, 55);
+    }
   };
-
   // Upgrade All Standard Upgrades
   const handleBuyAllUpgrades = async () => {
     const currentState = stateRef.current;
