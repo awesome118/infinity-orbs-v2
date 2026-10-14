@@ -1985,6 +1985,10 @@ export const SHARD_SYNTHESIS_COST = 10;
 // Its permanent Speed reward scales logarithmically: 48 hours = 20%,
 // 72 hours ≈ 25%, and the bonus never exceeds 30%.
 export const UNBROKEN_MOMENTUM_SESSION_GAP_MS = 5 * 60_000;
+/** @deprecated Retained for compatibility; the logarithmic curve no longer uses fixed steps. */
+export const UNBROKEN_MOMENTUM_STEP_MS = 5 * 60_000;
+/** @deprecated Retained for compatibility; the logarithmic curve no longer uses a per-step bonus. */
+export const UNBROKEN_MOMENTUM_PER_STEP = 0.01;
 export const UNBROKEN_MOMENTUM_MAX_BONUS = 0.30;
 
 export function unbrokenMomentumSpeedBonus(longestSessionMs: number | null | undefined): number {
