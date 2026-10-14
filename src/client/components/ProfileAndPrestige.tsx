@@ -39,7 +39,6 @@ import {
   SHARD_SYNTHESIS_COST,
   getLevelBenefits,
   formatNumber,
-  aftershockCriticalLuckBonus,
   unbrokenMomentumSpeedBonus,
 } from '../../shared/game.js';
 import { sound } from '../sound.js';
@@ -64,8 +63,6 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
   const [confirmingPrestige, setConfirmingPrestige] = useState(false);
   const [filterCategory, setFilterCategory] = useState<'all' | 'qol' | 'core' | 'alchemy'>('all');
   const fmt = (n: number) => formatNumber(n);
-  const aftershockRecord = Math.max(0, state.aftershockRecord ?? 0);
-  const aftershockCritLuckBonusValue = aftershockCriticalLuckBonus(aftershockRecord);
   const longestSessionMs = Math.max(0, state.longestRollingSessionMs ?? 0);
   const momentumSpeedPercent = unbrokenMomentumSpeedBonus(longestSessionMs) * 100;
   const longestSessionSeconds = Math.floor(longestSessionMs / 1000);
@@ -106,6 +103,8 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
         return <Clover className="w-4 h-4 text-fuchsia-400" />;
       case 'permSpeed':
         return <Clock className="w-4 h-4 text-cyan-400" />;
+      case 'unbrokenMomentum':
+        return <Zap className="w-4 h-4 text-sky-300" />;
       case 'vaultCap':
         return <Archive className="w-4 h-4 text-amber-400" />;
       case 'dustBounty':
@@ -356,29 +355,6 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
             <span className="text-[10px] text-slate-500">Points & donations</span>
           </div>
 
-          <div className="bg-slate-950/60 border border-amber-500/20 rounded-2xl p-3.5">
-            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">
-              Aftershock Record
-            </span>
-            <span className="text-sm font-black text-amber-300 block">
-              {fmt(aftershockRecord)} rolls
-            </span>
-            <span className="text-[10px] text-slate-500">
-              +{aftershockCritLuckBonusValue.toFixed(3)}× permanent Critical Luck
-            </span>
-          </div>
-
-          <div className="bg-slate-950/60 border border-cyan-500/20 rounded-2xl p-3.5">
-            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">
-              Unbroken Momentum
-            </span>
-            <span className="text-sm font-black text-cyan-300 block">
-              {longestSessionLabel}
-            </span>
-            <span className="text-[10px] text-slate-500">
-              +{momentumSpeedPercent.toFixed(0)}% permanent Speed
-            </span>
-          </div>
         </div>
       </div>
 
@@ -588,6 +564,21 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mt-2 leading-relaxed">{info.desc}</p>
+                  {id === 'unbrokenMomentum' && (
+                    <div className="mt-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2.5 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[10px] uppercase tracking-wide font-black text-cyan-300">Longest rolling session</span>
+                        <span className="text-sm font-black font-mono text-white">{longestSessionLabel}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[10px] text-slate-500">{currentLevel > 0 ? 'Active Speed bonus' : 'Speed bonus after purchase'}</span>
+                        <span className="text-base font-black text-cyan-200">+{momentumSpeedPercent.toFixed(1)}%</span>
+                      </div>
+                      <div className="text-[10px] leading-relaxed text-slate-500">
+                        48h: +20% · 72h: about +25% · cap: +30%. Only completed five-minute blocks count.
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <button
