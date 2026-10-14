@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.2.20';
-export const DEVVIT_VERSION = '1.2.20';
+export const APP_VERSION = '1.2.21';
+export const DEVVIT_VERSION = '1.2.21';
