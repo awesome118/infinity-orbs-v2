@@ -50,7 +50,8 @@ test('Frenzy client retries read-only preflight but does not retry the claim POS
 
 test('global chat refresh replaces history with the server moderation-filtered snapshot', () => {
   const chat = source('src/client/components/GlobalChatWindow.tsx');
-  assert.match(chat, /setMessages\(next\.slice\(-100\)\)/);
+  assert.match(chat, /const visible = next\.slice\(-100\)/);
+  assert.match(chat, /setMessages\(visible\)/);
   assert.doesNotMatch(chat, /setMessages\(prev => mergeMessages\(prev, next\)\)/);
 });
 
