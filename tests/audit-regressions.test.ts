@@ -295,7 +295,7 @@ test('chat side effects use per-user atomic cooldowns and real newlines', () => 
   assert.match(social, /nx:\s*true/);
   assert.match(social, /expiration:\s*new Date/);
   assert.match(social, /enforceChatCooldown\('global', 2_000\)/);
-  assert.match(social, /enforceChatCooldown\('guild', 2_000\)/);
+  assert.match(social, /Guild Log is read-only/);
   assert.match(social, /enforceChatCooldown\('report', 5_000\)/);
   assert.ok(social.includes(".split(/\\r?\\n/)"));
   assert.ok(social.includes("].join('\\n');"));
@@ -1433,9 +1433,12 @@ test('chat posting and moderation share a per-user lock and unmute purges histor
   const unmute = social.slice(unmuteStart, social.indexOf('async function hideGuildLastLogins', unmuteStart));
   const guildPost = social.slice(guildPostStart, globalPostStart);
   const globalPost = social.slice(globalPostStart, nextFunctionAfterGlobal);
-  for (const body of [mute, unmute, guildPost, globalPost]) {
+  for (const body of [mute, unmute]) {
     assert.match(body, /withPlayerMutationLockFor\('guild-chat-user:' \+/);
   }
+  assert.match(guildPost, /Guild Log is read-only/);
+  assert.match(globalPost, /withPlayerMutationLockFor\('global-chat-user:' \+/);
+  assert.match(globalPost, /runAs: 'USER'/);
   assert.ok(unmute.indexOf('await purgeChatMessagesForUser') < unmute.indexOf("await redis.hSet(GUILD_CHAT_MUTES_KEY, { [targetId]: '' })"));
   assert.match(unmute, /Mute record is corrupted; refusing to unmute/);
 });
@@ -1469,7 +1472,7 @@ test('Global Chat mutations fail closed rather than overwriting malformed histor
   assert.match(parser, /typeof message\.id === 'string'/);
   assert.match(parser, /typeof message\.username === 'string'/);
   assert.match(parser, /typeof message\.text === 'string'/);
-  assert.match(parser, /message\.text\.length <= 200/);
+  assert.match(parser, /message\.text\.length <= 10_000/);
   assert.match(parser, /Number\.isSafeInteger\(message\.timestamp\)/);
   assert.match(parser, /message\.userId == null \|\| typeof message\.userId === 'string'/);
 
