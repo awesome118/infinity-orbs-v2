@@ -2336,3 +2336,25 @@ test('Global Chat badge counts unread arrivals and displays the server-verified 
   assert.match(social, /isAdmin: isAdminUsername\(username\(\)\)/);
   assert.match(social, /currentDryStreak: Math\.max\(0, Number\(save\.rollsSinceBest/);
 });
+
+test('Aftershock and Unbroken Momentum are unlocked through their purchase menus and documented', () => {
+  const shared = source('src/shared/game.ts');
+  assert.match(shared, /aftershock: \{[\s\S]*?name: 'Aftershock'[\s\S]*?maxLevel: 1/);
+  assert.match(shared, /unbrokenMomentum: \{[\s\S]*?name: 'Unbroken Momentum'[\s\S]*?maxLevel: 1/);
+
+  const mastery = source('src/client/components/MasterySection.tsx');
+  assert.match(mastery, /Best Aftershock record/);
+  assert.match(mastery, /aftershockCriticalLuckBonus/);
+  assert.match(mastery, /After next level/);
+
+  const prestige = source('src/client/components/ProfileAndPrestige.tsx');
+  assert.match(prestige, /id === 'unbrokenMomentum'/);
+  assert.match(prestige, /Speed bonus after purchase/);
+  assert.doesNotMatch(prestige, /Aftershock Record|Unbroken Momentum\s*<\/span>/);
+
+  const changelog = source('src/client/components/ChangelogModal.tsx');
+  assert.match(changelog, /Mastery Engine has been removed for balancing purposes/);
+  assert.match(changelog, /Chain Patcher/);
+  assert.match(changelog, /Bug Fixes & Improvements/);
+});
+
