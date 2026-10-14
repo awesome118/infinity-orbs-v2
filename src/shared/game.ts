@@ -2336,8 +2336,8 @@ export function predictRollActivation(
     s.collection[String(rarity)] = (s.collection[String(rarity)] ?? 0) + 1;
     s.totalRolls++;
     s.currentRunRolls = (s.currentRunRolls ?? 0) + 1;
-    s.collectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.collectionValue ?? 0) + finalVal);
-    s.lifetimeCollectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.lifetimeCollectionValue ?? 0) + finalVal);
+    s.collectionValue = addCollectionValue(s.collectionValue, finalVal);
+    s.lifetimeCollectionValue = addCollectionValue(s.lifetimeCollectionValue, finalVal);
     if (rarity > s.highestRarity) {
       s.highestRarity = rarity;
       s.rollsSinceBest = 0;
@@ -2477,6 +2477,22 @@ export function upgradeCost(id: UpgradeId, level: number): number {
   };
   const { base, mult } = configs[id];
   return Math.floor(base * Math.pow(mult, level));
+}
+
+/**
+ * Add collection value without allowing JS Number precision loss to corrupt the
+ * player's persisted current-run or lifetime total. Values are monotonic until
+ * the current-run total is reset by Prestige; at the safe-integer ceiling they
+ * saturate instead of drifting into imprecise or non-finite state.
+ */
+export function addCollectionValue(current: unknown, increment: unknown): number {
+  const bounded = (value: unknown): number => {
+    if (typeof value !== 'number' || Number.isNaN(value) || value < 0) return 0;
+    if (value === Number.POSITIVE_INFINITY) return Number.MAX_SAFE_INTEGER;
+    if (!Number.isFinite(value)) return 0;
+    return Math.min(Number.MAX_SAFE_INTEGER, Math.floor(value));
+  };
+  return Math.min(Number.MAX_SAFE_INTEGER, bounded(current) + bounded(increment));
 }
 
 // Prestige formula: floor(sqrt(Collection Value / 1,000,000))
