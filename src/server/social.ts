@@ -287,11 +287,21 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
 
 
 function isGuildPlaytestRecoveryEnabled(): boolean {
-  const subreddit = String(context.subredditName ?? '')
-    .trim()
-    .replace(/^r\//i, '')
-    .toLowerCase();
-  return subreddit === 'infinity_orbs_dev';
+  // Devvit normally exposes subredditName directly. Some execution surfaces
+  // wrap the community context, so inspect supported aliases as well. Recovery
+  // remains an exact allow-list match for the development subreddit only.
+  const candidates = [
+    context.subredditName,
+    context.subreddit?.name,
+    context.subredditDisplayName,
+    context.communityName,
+  ];
+  return candidates.some(value =>
+    String(value ?? '')
+      .trim()
+      .replace(/^r\//i, '')
+      .toLowerCase() === 'infinity_orbs_dev',
+  );
 }
 
 function isSafeGuildInteger(value: unknown, minimum = 0): value is number {
@@ -2179,12 +2189,15 @@ async function submitChatReport(
 ): Promise<{ success: true }> {
   const reporterId = user();
   if (!reporterId || reporterId === 'unknown') throw new Error('Your Reddit identity is unavailable.');
-  await enforceChatCooldown('report', 5_000);
 
+  // Idempotency takes precedence over the per-user report rate limit. A repeat
+  // of a durable report must report "already reported", not an unrelated
+  // cooldown error; this lets callers distinguish dedupe from rate limiting.
   const reportKey = `${scope === 'Global Chat' ? 'global' : 'guild'}:${message.id}:${reporterId}`;
   if (await redis.hGet(CHAT_REPORTS_KEY, reportKey)) {
     throw new Error('You already reported this message.');
   }
+  await enforceChatCooldown('report', 5_000);
 
   const author = String(message.username ?? 'Redditor').trim().replace(/^u\//i, '') || 'Redditor';
   const reporter = String(username()).trim().replace(/^u\//i, '') || 'Redditor';
