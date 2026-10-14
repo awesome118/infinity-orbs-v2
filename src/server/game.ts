@@ -76,6 +76,9 @@ import {
   masterySkillCost,
   getLevelBenefits,
   highestCodexChain,
+  nextCodexChainRarity,
+  chainPatcherShardCost,
+  CHAIN_PATCHER_COOLDOWN_MS,
   codexDevotionLuckPercent,
   altarCoinDevotionChancePercent,
   altarCoinFloor,
@@ -3278,6 +3281,7 @@ export async function applyRolls(
   source: 'online' | 'offline' = 'online',
   rollCountOverride?: number,
   randomOverride?: () => number,
+  exactRarity = false,
 ): Promise<{ bestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number; rollCount: number }> {
   let bestRarity = 0;
   let bestIsCrit = false;
@@ -3385,7 +3389,10 @@ export async function applyRolls(
     // guarantee is the exact advertised range.
     const isGuaranteedThirdBall = forcedRarity == null && lifetimeRollsBeforeBatch + i === 2;
 
-    const isCrit = !isGuaranteedThirdBall && rng() < effectiveCritChance;
+    // Chain Patcher guarantees the exact requested rarity, not a critical multiplier.
+    const isCrit = !isGuaranteedThirdBall &&
+      !(exactRarity && forcedRarity != null && i === 0) &&
+      rng() < effectiveCritChance;
     let effectiveCm = cm;
     if (isCrit) {
       s.totalCrits = (s.totalCrits ?? 0) + 1;
@@ -3405,7 +3412,9 @@ export async function applyRolls(
       : (forcedRarity && i === 0)
         ? forcedRarity
         : Math.max(minimumRarity, rollContinuum(effectiveLuck, rng));
-    const baseRarity = Math.max(minimumRarity, rolledRarity);
+    const baseRarity = exactRarity && forcedRarity != null && i === 0
+      ? forcedRarity
+      : Math.max(minimumRarity, rolledRarity);
     const rarity = isCrit ? Math.min(MAX_ORB_RARITY, Math.round(baseRarity * effectiveCm)) : baseRarity;
     const finalVal = Math.round(rarity * valueMul);
 
@@ -4388,6 +4397,49 @@ export async function getState(): Promise<PlayerState> {
   return s;
 }
 
+/**
+ * Buy one Chain Patcher charge. The target and Shard cost are recomputed from
+ * the server-owned Codex while holding the same player mutation lock as rolls.
+ * The pending charge is cleared only after a successful, exact one-orb roll.
+ */
+export async function buyChainPatcher(): Promise<{
+  state: PlayerState;
+  targetRarity: number;
+  shardsSpent: number;
+  cooldownUntil: number;
+}> {
+  return withPlayerMutationLock(async () => {
+    const s = await settleOffline(await loadRaw());
+    const now = Date.now();
+    const cooldownUntil = Math.max(0, Math.floor(Number(s.chainPatcherCooldownUntil ?? 0) || 0));
+    if (cooldownUntil > now) {
+      const remaining = cooldownUntil - now;
+      throw new Error('Chain Patcher is on cooldown for ' + Math.ceil(remaining / 3_600_000) + ' more hour(s).');
+    }
+    const pending = Math.floor(Number(s.chainPatcherNextRarity ?? 0) || 0);
+    if (pending >= 2 && pending <= MAX_ORB_RARITY) {
+      throw new Error('Your Chain Patcher is already charged. Roll once to use it before buying another.');
+    }
+
+    const targetRarity = nextCodexChainRarity(s.collection);
+    if (targetRarity == null) {
+      throw new Error('Your Codex chain cannot be extended further.');
+    }
+    const shardsSpent = chainPatcherShardCost(targetRarity);
+    if (!Number.isSafeInteger(shardsSpent)) {
+      throw new Error('That Chain Patcher target costs more Shards than the game can safely store.');
+    }
+    spendShards(s, shardsSpent);
+    s.chainPatcherNextRarity = targetRarity;
+    s.chainPatcherCooldownUntil = now + CHAIN_PATCHER_COOLDOWN_MS;
+    // Make the guaranteed single manual roll deliberate rather than letting an
+    // already-running auto loop consume the charge before the player sees it.
+    s.autoRollEnabled = false;
+    await save(s);
+    return { state: s, targetRarity, shardsSpent, cooldownUntil: s.chainPatcherCooldownUntil };
+  });
+}
+
 export async function getMe(): Promise<PlayerState> {
   const ban = await getGameBanStatus();
   const s = ban ? await loadRaw() : await getState();
@@ -4460,8 +4512,20 @@ export async function roll(
     }
 
     const now = Date.now();
+    const rawPatcherRarity = Number(s.chainPatcherNextRarity ?? 0);
+    if (
+      !Number.isSafeInteger(rawPatcherRarity) ||
+      rawPatcherRarity < 0 ||
+      rawPatcherRarity > MAX_ORB_RARITY ||
+      (rawPatcherRarity > 0 && rawPatcherRarity < 2)
+    ) {
+      throw new Error('Chain Patcher save data is invalid; no roll was processed.');
+    }
+    const usingChainPatcher = rawPatcherRarity >= 2;
     const availableFreeRolls = Math.max(0, Math.floor(Number(s.freeRolls ?? 0) || 0));
-    const usingFreeRoll = !isAuto && availableFreeRolls > 0;
+    // A charged Chain Patcher must resolve as one deliberate, exact orb. It
+    // does not consume or batch any accumulated Free Rolls.
+    const usingFreeRoll = !usingChainPatcher && !isAuto && availableFreeRolls > 0;
     const cd = cooldownMs(s, isAuto);
     if (!usingFreeRoll && s.lastRollAt !== null && now - s.lastRollAt < cd) {
       throw new Error(`Cooldown: ${((cd - now + s.lastRollAt) / 1000).toFixed(1)}s`);
@@ -4474,12 +4538,23 @@ export async function roll(
     // No client-provided count can shorten or increase the authoritative balance.
     const freeRollsToUse = usingFreeRoll ? availableFreeRolls : 0;
     if (freeRollsToUse > 0) s.freeRolls = availableFreeRolls - freeRollsToUse;
-    const activations = freeRollsToUse > 0 ? freeRollsToUse : 1;
+    const activations = usingChainPatcher ? 1 : freeRollsToUse > 0 ? freeRollsToUse : 1;
 
-    // Roll outcomes are server-authoritative. Tickets only prevent duplicate or
-    // out-of-order submissions; no predictable client-shared PRNG stream is used.
+    // Roll outcomes are server-authoritative. A charged Chain Patcher overrides
+    // Multi Roll, Free Rolls, luck-floor, crits, and the beginner-ball guarantee
+    // so the next accepted roll is exactly one orb of the purchased rarity.
     const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } =
-      await applyRolls(s, activations, undefined, 'online');
+      await applyRolls(
+        s,
+        activations,
+        usingChainPatcher ? rawPatcherRarity : undefined,
+        'online',
+        usingChainPatcher ? 1 : undefined,
+        undefined,
+        usingChainPatcher,
+      );
+
+    if (usingChainPatcher) s.chainPatcherNextRarity = 0;
 
     if (!isAuto) {
       s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + activations);
