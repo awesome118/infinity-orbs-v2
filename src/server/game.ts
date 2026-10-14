@@ -1107,6 +1107,7 @@ const FRENZY_POST_PREFIX = 'io:frenzy:post:';
 const FRENZY_POST_RECEIPT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const FRENZY_HANDOFF_PREFIX = 'io:frenzy:handoff:';
 const FRENZY_HANDOFF_TTL_MS = 60_000;
+const FRENZY_THANK_YOU_PREFIX = 'io:frenzy:thank-you:';
 
 function frenzyHandoffKey(userId: string): string {
   return FRENZY_HANDOFF_PREFIX + userId;
