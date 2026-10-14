@@ -2303,8 +2303,18 @@ async function resolveGlobalGamePostId(): Promise<string> {
   return registered;
 }
 
-export async function getGlobalChatStatus(fromMainLauncher = false): Promise<{ enabled: boolean; reason?: string }> {
+export async function getGlobalChatStatus(
+  fromMainLauncher = false,
+  fromFrenzyPost = false,
+): Promise<{ enabled: boolean; reason?: string }> {
   const saved = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
+
+  if (fromFrenzyPost) {
+    return {
+      enabled: false,
+      reason: "Global Chat is disabled because you're not in the main Game launcher.",
+    };
+  }
 
   // The main launcher entry point marks its own handshake. This also recovers
   // when a development environment reuses a post ID that has stale Frenzy
