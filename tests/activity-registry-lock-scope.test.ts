@@ -90,6 +90,31 @@ test('activity updates watch a per-user lease, not the global registry hash', as
       'optional projection must use its own isolated transaction',
     );
     assert.equal(await originalRedis.get(optionalKey), 'committed');
+
+    // A shared Guild snapshot conflict should not fail or discard the player's save.
+    context.userId = `activity-scope-guild-conflict-${suffix}`;
+    context.username = 'GuildConflictRecovery';
+    const conflictedState = createInitialState();
+    conflictedState.username = context.username;
+    const guildKey = `io:test-guild-conflict:${suffix}`;
+    await originalRedis.set(guildKey, 'newer-guild-snapshot');
+
+    await save(conflictedState, {
+      key: guildKey,
+      expectedValue: 'older-guild-snapshot',
+      nextValue: 'stale-guild-snapshot',
+      conflictMessage: 'Guild data changed before saving.',
+      onConflict: () => {
+        conflictedState.coins += 17;
+        conflictedState.lifetimeCoins = (conflictedState.lifetimeCoins ?? 0) + 17;
+      },
+    });
+
+    const savedAfterGuildConflict = JSON.parse(
+      String(await originalRedis.get(`player:${context.userId}`)),
+    ) as { coins?: number };
+    assert.equal(savedAfterGuildConflict.coins, 17, 'conflict handler should preserve the refunded tax in player state');
+    assert.equal(await originalRedis.get(guildKey), 'newer-guild-snapshot', 'conflicted Guild data must never be overwritten');
   } finally {
     configureDevvitRuntime({
       redis: originalRedis,

@@ -686,6 +686,7 @@ async function applyGuildMigration(
   migrate: (guilds: Guild[]) => void,
 ): Promise<void> {
   await ensureRedisStringKey(GUILDS_KEY, '[]');
+  return withGuildDataMutationLock(async () => {
   for (let attempt = 0; attempt < 8; attempt++) {
     const txn = await redis.watch(GUILDS_KEY, markerKey);
     const marker = await redis.get(markerKey);
@@ -715,6 +716,7 @@ async function applyGuildMigration(
     if (committed !== null) return;
   }
   throw new Error('Guild migration changed while applying an update. Please retry.');
+  });
 }
 
 async function ensureGuildMigrations(): Promise<void> {

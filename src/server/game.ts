@@ -1006,7 +1006,7 @@ async function recordCcuPeak(ccu: number, now: number): Promise<void> {
 async function readOnlinePresenceCount(now = Date.now()): Promise<number> {
   // Polling only prunes stale IDs. It doesn't keep every polling tab marked online.
   await redis.zRemRangeByScore(ONLINE_PLAYERS_KEY, 0, now - ONLINE_WINDOW_MS);
-  const ccu = Math.max(1, await redis.zCard(ONLINE_PLAYERS_KEY));
+  const ccu = Math.max(0, await redis.zCard(ONLINE_PLAYERS_KEY));
   void recordCcuPeak(ccu, now).catch(error => {
     console.error('Failed to record CCU peak:', error);
   });
@@ -1579,6 +1579,8 @@ export interface PlayerListEntry {
   highestRarity: number;
   coins: number;
   shards: number;
+  clientVersion: string | null;
+  isLatestVersion: boolean;
 }
 
 export async function listPlayers(): Promise<PlayerListEntry[]> {
