@@ -221,7 +221,7 @@ test('roll tickets disclose no RNG seed and client never predicts authoritative 
   const roll = game.slice(rollStart, rollEnd);
   assert.doesNotMatch(roll, /createSeededRandom|rollTicketSeed/);
   assert.match(roll, /const activations = usingChainPatcher \? 1 : freeRollsToUse > 0 \? freeRollsToUse : 1/);
-  assert.match(roll, /await applyRolls\(s, activations, undefined, 'online'\)/);
+  assert.match(roll, /await applyRolls\(\s*s,\s*activations,\s*usingChainPatcher \? rawPatcherRarity : undefined,\s*'online',\s*usingChainPatcher \? 1 : undefined/);
   assert.match(game, /const rng = randomOverride \?\? serverRandom/);
 });
 
