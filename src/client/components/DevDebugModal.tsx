@@ -1819,7 +1819,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             const resetButton = Array.from(document.querySelectorAll('button'))
               .find(el => (el as HTMLButtonElement).title === 'Silent Mode: Mutes standard rolls and alerts with a crystal chime on rare drops') as HTMLButtonElement | undefined;
             if (sound.sonarMode || !resetButton?.textContent?.includes('OFF')) throw new Error('Sonar control did not return to OFF after the toggle check.');
-            return { text: activeButton.textContent.trim() + ' → ' + resetButton.textContent.trim() };
+            return { text: 'SILENT → OFF' };
           },
           result => 'Client control unlocked · ' + result.text,
         );
