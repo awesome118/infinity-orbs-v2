@@ -1556,6 +1556,8 @@ test('Aftershock and Unbroken Momentum are persisted, purchase-gated, and shown 
   assert.match(shared, /aftershockCriticalLuckBonus\(s\.aftershockRecord\)/);
   assert.match(shared, /s\.masterySkills\?\.aftershock/);
   assert.match(shared, /s\.prestigeUpgrades\?\.unbrokenMomentum/);
+  assert.equal((shared.match(/aftershockCriticalLuckBonus\(s\.aftershockRecord\)/g) ?? []).length, 1,
+    'Aftershock modifies the critical multiplier only, not critical chance');
   assert.match(game, /critMultiplier\(s\)/);
   assert.match(game, /s\.aftershockRecord = Math\.max\(/);
   assert.match(game, /recordRollingSessionActivity\(s, now\)/);
