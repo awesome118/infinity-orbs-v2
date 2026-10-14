@@ -1995,7 +1995,9 @@ export function unbrokenMomentumSpeedBonus(longestSessionMs: number | null | und
   const safeDuration = Number.isFinite(Number(longestSessionMs))
     ? Math.max(0, Math.floor(Number(longestSessionMs)))
     : 0;
-  const hours = safeDuration / 3_600_000;
+  // Only completed five-minute blocks count toward the recorded session bonus.
+  const completedDurationMs = Math.floor(safeDuration / UNBROKEN_MOMENTUM_STEP_MS) * UNBROKEN_MOMENTUM_STEP_MS;
+  const hours = completedDurationMs / 3_600_000;
   if (hours <= 0) return 0;
 
   // Normalize the logarithmic curve so the requested 48h and 72h landmarks
