@@ -971,6 +971,10 @@ export interface PlayerState {
   collectionCount?: number;
   codexChain?: number;
   codexDevotionLuckPercent?: number;
+  /** If positive, the next accepted roll is exactly one orb of this rarity. */
+  chainPatcherNextRarity?: number;
+  /** Absolute timestamp when the next Chain Patcher purchase is allowed. */
+  chainPatcherCooldownUntil?: number;
   lastRollAt: number | null;
   lastSeenAt: number;
   offlineRolls: number;
@@ -1635,6 +1639,8 @@ export function createInitialState(now = Date.now()): PlayerState {
     collectionValue: 0,
     lifetimeCollectionValue: 0,
     collection: {},
+    chainPatcherNextRarity: 0,
+    chainPatcherCooldownUntil: 0,
     lastRollAt: null,
     lastSeenAt: now,
     offlineRolls: 0,
@@ -2139,6 +2145,45 @@ export function bestCodexChain(collection: Record<string, number> | null | undef
 
 export function highestCodexChain(collection: Record<string, number> | null | undefined): number {
   return bestCodexChain(collection).length;
+}
+
+/** One guaranteed Chain Patcher orb can be purchased every 24 hours. */
+export const CHAIN_PATCHER_COOLDOWN_MS = 24 * 60 * 60 * 1_000;
+
+/**
+ * Return the cheapest rarity that directly extends the player's longest
+ * consecutive Codex chain by one entry. With an empty Codex, start at 1/2.
+ * If the best chain touches both ends of the supported rarity range, there
+ * is no valid extension.
+ */
+export function nextCodexChainRarity(
+  collection: Record<string, number> | null | undefined,
+): number | null {
+  const chain = bestCodexChain(collection);
+  if (chain.length <= 0) {
+    return (collection?.['2'] ?? 0) > 0 ? null : 2;
+  }
+
+  const candidates: number[] = [];
+  const owned = (rarity: number) => Number(collection?.[String(rarity)] ?? 0) > 0;
+  if (chain.start > 2 && !owned(chain.start - 1)) candidates.push(chain.start - 1);
+  if (chain.end < MAX_ORB_RARITY && !owned(chain.end + 1)) candidates.push(chain.end + 1);
+  return candidates.length ? Math.min(...candidates) : null;
+}
+
+/**
+ * Shard cost scales in 100-rarity bands: floor(target / 100) + 1.
+ * This makes a guaranteed 1/900 orb cost exactly 10 Shards.
+ */
+export function chainPatcherShardCost(targetRarity: number): number {
+  if (
+    !Number.isSafeInteger(targetRarity) ||
+    targetRarity < 2 ||
+    targetRarity > MAX_ORB_RARITY
+  ) {
+    throw new Error('Chain Patcher target rarity is invalid.');
+  }
+  return Math.min(Number.MAX_SAFE_INTEGER, Math.floor(targetRarity / 100) + 1);
 }
 
 export function codexDevotionLuckPercent(skillLevel: number, chain: number): number {
