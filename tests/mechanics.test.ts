@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   createInitialState,
   addCollectionValue,
+  calculatePrestigeDust,
   effectiveOfflineTickMs,
   upgradeCost,
   createInitialGlobalBoosters,
@@ -76,6 +77,17 @@ test('collection value accumulation saturates instead of losing precision or bec
   assert.equal(addCollectionValue(-1, 25), 25);
   assert.equal(addCollectionValue(Number.NaN, 25), 25);
   assert.equal(addCollectionValue(25, Number.NaN), 25);
+});
+
+test('Prestige Dust has a million-value minimum step and logarithmic diminishing returns', () => {
+  assert.equal(calculatePrestigeDust(999_999), 0);
+  assert.equal(calculatePrestigeDust(1_000_000), 1);
+  assert.equal(calculatePrestigeDust(1_999_999), 1);
+  assert.equal(calculatePrestigeDust(2_000_000), 2);
+  assert.equal(calculatePrestigeDust(3_000_000), 3);
+  assert.equal(calculatePrestigeDust(4_000_000), 3);
+  assert.equal(calculatePrestigeDust(4_050_000), 4);
+  assert.equal(calculatePrestigeDust(300_000_000), 58);
 });
 
 test('Cosmic Reserve multiplies Luck from unspent Cosmic Dust only', () => {
