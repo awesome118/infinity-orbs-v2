@@ -33,6 +33,7 @@ import {
   getFakeCcuBonus,
   getOnlinePlayers,
   getPlayerActivityStats,
+  getRollTicket,
 } from './game.js';
 import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import { context, redis, reddit } from './devvit-mock.js';
@@ -1732,17 +1733,21 @@ debugRouter.post('/preset', async (req, res) => {
 
 debugRouter.post('/reset-cooldown', async (_req, res) => {
   try {
-      await withPlayerMutationLock(async () => {
-    const s = await loadRaw();
-    s.lastRollAt = 0;
-    // Comprehensive admin tests use reset-cooldown as a hard boundary between
-    // independent rolls. Clear the prediction ticket too so an old UI request
-    // cannot consume the next test's ticket index.
-    const userId = String(context.userId ?? '').trim();
-    if (userId) await redis.del('io:roll-ticket:' + userId);
-    await save(s);
-    res.json({ ok: true, state: s });
-        });} catch (e: any) {
+    await withPlayerMutationLock(async () => {
+      const s = await loadRaw();
+      s.lastRollAt = 0;
+      // Persist the cleared cooldown before invalidating the old ticket. The
+      // returned ticket is issued only after that reset commits, so the admin
+      // runner can use one response rather than racing two HTTP requests.
+      await save(s);
+
+      const userId = String(context.userId ?? '').trim();
+      if (userId) await redis.del('io:roll-ticket:' + userId);
+
+      const ticket = await getRollTicket();
+      res.json({ ok: true, state: s, ...ticket });
+    });
+  } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
