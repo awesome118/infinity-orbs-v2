@@ -1405,6 +1405,7 @@ export async function setGlobalBoosterDebugState(
     await txn.multi();
     await txn.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(snapshot));
     const committed = await txn.exec();
+    transactionClosed = true;
     if (committed !== null) {
       await appendGlobalBoosterDebugLog('admin:set', {
         id,
@@ -1486,6 +1487,8 @@ async function touchPlayerActivity(
     // one field atomically, so unrelated players must not invalidate this write.
     for (let attempt = 0; attempt < 16; attempt += 1) {
       const txn = await redis.watch(activeLock.key);
+      let transactionClosed = false;
+      try {
       if (await redis.get(activeLock.key) !== activeLock.token) {
         await txn.unwatch();
         throw new Error('PLAYER_MUTATION_LEASE_LOST');
@@ -1543,7 +1546,14 @@ async function touchPlayerActivity(
       } satisfies PlayerRegistryEntry);
       await txn.multi();
       await txn.hSet(PLAYER_REGISTRY_KEY, { [userId]: next });
-      if (await txn.exec() !== null) return playtimeMs;
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) return playtimeMs;
+      } finally {
+        if (!transactionClosed) {
+          await txn.unwatch().catch(() => undefined);
+        }
+      }
     }
     throw new Error('Player activity changed repeatedly while recording playtime. Please retry.');
   });
@@ -2734,6 +2744,8 @@ export async function getRollTicket(): Promise<{
 
   for (let attempt = 0; attempt < 4; attempt++) {
     const txn = await redis.watch(ticketKey);
+    let transactionClosed = false;
+    try {
     const raw = await redis.get(ticketKey);
     const current = parseStoredJson<RollTicket>(raw);
 
@@ -2749,6 +2761,7 @@ export async function getRollTicket(): Promise<{
       current.expiresAt > now
     ) {
       await txn.unwatch();
+      transactionClosed = true;
       return {
         ticketId: current.id,
         nextIndex: current.nextIndex,
@@ -2766,6 +2779,7 @@ export async function getRollTicket(): Promise<{
     await txn.multi();
     await txn.set(ticketKey, JSON.stringify(ticket));
     const committed = await txn.exec();
+    transactionClosed = true;
     if (committed !== null) {
       return {
         ticketId: ticket.id,
@@ -2773,6 +2787,11 @@ export async function getRollTicket(): Promise<{
         rollsRemaining: ROLL_TICKET_COUNT,
         expiresAt: ticket.expiresAt,
       };
+    }
+    } finally {
+      if (!transactionClosed) {
+        await txn.unwatch().catch(() => undefined);
+      }
     }
   }
 
@@ -2921,6 +2940,8 @@ export async function save(
       ...activeLocks.map(item => item.key),
     ])];
     const txn = await redis.watch(...watchedKeys);
+    let transactionClosed = false;
+    try {
     // Devvit's TxClient is a command builder after WATCH/MULTI. Reads must use
     // the Redis client itself, while WATCH keeps these keys protected until EXEC.
     for (const activeLock of activeLocks) {
@@ -3097,6 +3118,13 @@ export async function save(
       incomingState: compactSaveState(s),
       caller: saveCaller(),
     }, userId);
+    } finally {
+      // WATCH must be released even when a Redis read, validation, queued write,
+      // or EXEC throws. This is deliberately best-effort after explicit UNWATCH.
+      if (!transactionClosed) {
+        await txn.unwatch().catch(() => undefined);
+      }
+    }
   }
 
   throw new Error('Could not safely save player data. Please retry.');
