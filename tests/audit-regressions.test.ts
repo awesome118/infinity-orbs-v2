@@ -1217,6 +1217,24 @@ test('collection value rollover is prevented consistently in every roll path', (
   assert.match(simulation, /s\.lifetimeCollectionValue = addCollectionValue\(s\.lifetimeCollectionValue, finalVal\)/);
 });
 
+test('corrupt optional Guild roll projections do not cancel normal or Frenzy player payouts', () => {
+  const game = source('src/server/game.ts');
+  const normalStart = game.indexOf('export async function applyRolls(');
+  const normalEnd = game.indexOf('\nexport async function ', normalStart + 40);
+  assert.ok(normalStart >= 0 && normalEnd > normalStart);
+  const normal = game.slice(normalStart, normalEnd);
+  assert.match(normal, /let guildEffects: Awaited<ReturnType<typeof prepareGuildRollEffects>>/);
+  assert.match(normal, /Could not prepare roll effects; skipping Guild tax\/contribution/);
+  assert.match(normal, /guildEffects = \{ taxedCoins: 0 \}/);
+
+  const frenzyStart = game.indexOf('export async function claimOrbFrenzy');
+  const frenzyEnd = game.indexOf('\nexport async function ', frenzyStart + 40);
+  assert.ok(frenzyStart >= 0 && frenzyEnd > frenzyStart);
+  const frenzy = game.slice(frenzyStart, frenzyEnd);
+  assert.match(frenzy, /Could not prepare Frenzy effects; skipping Guild tax\/contribution/);
+  assert.match(frenzy, /guildEffects = \{ taxedCoins: 0 \}/);
+});
+
 test('rarity flair sync serializes side effects and rechecks saved rarity before caching', () => {
   const game = source('src/server/game.ts');
   const start = game.indexOf('async function syncRarityFlair');
