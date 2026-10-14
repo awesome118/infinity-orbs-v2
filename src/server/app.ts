@@ -7,6 +7,7 @@ import {
   buyUpgrade,
   buyUpgradeBatch,
   buyAllUpgrades,
+  buyChainPatcher,
   claimOffline,
   subscribeToSubredditFromPrompt,
   claimFollowReward,
@@ -1132,6 +1133,12 @@ export function createApp() {
     try {
       res.json(await buyAllUpgrades());
     } catch (e) { badRequest(res, e, 'Upgrade all failed.'); }
+  });
+
+  app.post('/api/chain-patcher/buy', async (_req, res) => {
+    try {
+      res.json(await buyChainPatcher());
+    } catch (e) { badRequest(res, e, 'Chain Patcher purchase failed.'); }
   });
 
   app.post('/api/streak/claim', async (_req, res) => {
