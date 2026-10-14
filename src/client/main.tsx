@@ -2502,7 +2502,6 @@ export function App() {
             state={state}
             onBuyUpgrade={handleBuyUpgrade}
             onBuyAllUpgrades={handleBuyAllUpgrades}
-            onBuyChainPatcher={handleBuyChainPatcher}
             onActivateTurbo={handleActivateTurbo}
             busy={false}
           />
@@ -2546,6 +2545,7 @@ export function App() {
           <CollectionSection
             state={state}
             onOpenShareModal={r => setShareRarity(r)}
+            onBuyChainPatcher={handleBuyChainPatcher}
           />
         )}
 
