@@ -2690,7 +2690,7 @@ export function prestigeUpgradeCost(id: PrestigeUpgradeId, level: number): numbe
     temporalCompression: 4,
     shardResonator: 4,
     cosmicValuation: 5,
-    cosmicReserve: 5,
+    cosmicReserve: 8,
   };
   const base = bases[id] ?? 2;
   return Math.round(base * Math.pow(1.5, level));
