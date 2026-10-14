@@ -50,7 +50,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   const [recentUpgradeId, setRecentUpgradeId] = useState<UpgradeId | null>(null);
   const [upgradingAll, setUpgradingAll] = useState(false);
   const fmt = (n: number) => formatNumber(n);
-  const standardUpgradeMaxLevels: Partial<Record<UpgradeId, number>> = { speed: 20 };
+  const standardUpgradeMaxLevels: Partial<Record<UpgradeId, number>> = { speed: 20, offlineRate: 8 };
 
   const handleUpgradeClick = async (u: (typeof upgradesData)[0]) => {
     sound.playLevelUpFanfare();
@@ -426,7 +426,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
                     onClick={() => {
                       void handleUpgradeClick(u);
                     }}
-                    disabled={!canAfford || busy}
+                    disabled={!canAfford}
                     className={`w-full font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all ${
                       canAfford
                         ? 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 shadow-lg shadow-amber-900/20 active:scale-95 cursor-pointer'
