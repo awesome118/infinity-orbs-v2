@@ -2489,6 +2489,10 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           if (chatStatus.enabled !== true) {
             throw new Error(chatStatus.reason || 'Main launcher did not register Global Chat.');
           }
+          const frenzyChatStatus = await request<any>('/api/chat/status?launcher=frenzy');
+          if (frenzyChatStatus.enabled !== false || !String(frenzyChatStatus.reason ?? '').includes('main Game launcher')) {
+            throw new Error('Global Chat must remain visible but disabled outside the main launcher.');
+          }
           const message = await request<any>('/api/chat', { text: '[ADMIN TEST] chat-report notification check' });
           await request('/api/chat/report', { messageId: message.id });
           const reports = await request<any>('/api/dev/chat-reports');
