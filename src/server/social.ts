@@ -2260,6 +2260,27 @@ function parseGlobalChatList(raw: unknown): GlobalChatMessage[] {
   return parsed as GlobalChatMessage[];
 }
 
+
+async function resolveGlobalGamePostId(): Promise<string> {
+  const saved = String(await redis.get(GLOBAL_GAME_POST_KEY) ?? '').trim();
+  if (saved) return saved;
+
+  const currentPostId = String(context.postId ?? '').trim();
+  if (!currentPostId) {
+    throw new Error('The main Game post is not registered yet. Open Global Chat from the Infinity Orbs launcher.');
+  }
+  // Never choose a Frenzy post as the Global Chat destination.
+  if (await redis.get('io:frenzy:post:' + currentPostId) != null) {
+    throw new Error('Global Chat posts only on the main Game launcher, not on a Frenzy post.');
+  }
+
+  await redis.set(GLOBAL_GAME_POST_KEY, currentPostId, { nx: true });
+  const registered = String(await redis.get(GLOBAL_GAME_POST_KEY) ?? '').trim();
+  if (!registered) throw new Error('Could not register the Game post. Please retry.');
+  return registered;
+}
+
+
 async function purgeChatMessagesForUser(userId: string, targetUsername: string): Promise<void> {
   const cleanUsername = String(targetUsername).trim().replace(/^u\//i, '').toLowerCase();
 
