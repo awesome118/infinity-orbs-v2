@@ -431,6 +431,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [guildChatSpyLoading, setGuildChatSpyLoading] = useState(false);
   const [guildChatSpyLoaded, setGuildChatSpyLoaded] = useState(false);
   const [guildChatMuteUser, setGuildChatMuteUser] = useState('');
+  const [guildAuthorityGuildId, setGuildAuthorityGuildId] = useState('');
 
   type ChatReport = {
     reportId: string;
@@ -4618,6 +4619,73 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             className="w-full min-h-72 max-h-[32rem] rounded-xl border border-slate-800 bg-black/40 p-3 text-[10px] leading-4 font-mono text-slate-300 resize-y"
             onFocus={e => e.currentTarget.select()}
           />
+        </section>
+
+        <section className={panelBase + ' border border-violet-500/30'}>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-violet-300">
+            <Users className="w-4 h-4" /> Admin Guild Authority
+          </div>
+          <p className="text-[10px] text-slate-500">
+            Override normal Guild membership permissions for u/shadow_fen. This moves the admin account into the selected Guild and demotes any previous owner to Officer if ownership is transferred.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+            <select
+              value={guildAuthorityGuildId}
+              onChange={e => setGuildAuthorityGuildId(e.target.value)}
+              className="min-w-0 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+              title="Select the Guild whose authority should be changed for u/shadow_fen."
+            >
+              <option value="">Select a Guild…</option>
+              {guildChatSpy.map(guild => (
+                <option key={guild.id} value={guild.id}>[{guild.tag}] {guild.name}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={loading || !guildAuthorityGuildId}
+              onClick={() => void loadGuildChatSpy()}
+              className={buttonBase + ' bg-violet-500/10 hover:bg-violet-500/20 border-violet-500/30 text-violet-200 px-3 py-2'}
+            >
+              <RefreshCw className="inline w-3.5 h-3.5 mr-1" /> Load Guilds
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={loading || !guildAuthorityGuildId}
+              onClick={() => void (async () => {
+                const result = await sendAdminAction('/api/dev/guild-authority', {
+                  guildId: guildAuthorityGuildId,
+                  authority: 'owner',
+                }, false, 'u/shadow_fen is now the Guild owner.');
+                if (result) {
+                  await Promise.all([loadGuildChatSpy(true), onRefresh()]);
+                }
+              })()}
+              className={buttonBase + ' bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-200 px-3 py-2'}
+            >
+              <Crown className="inline w-3.5 h-3.5 mr-1" /> Make u/shadow_fen Owner
+            </button>
+            <button
+              type="button"
+              disabled={loading || !guildAuthorityGuildId}
+              onClick={() => void (async () => {
+                const result = await sendAdminAction('/api/dev/guild-authority', {
+                  guildId: guildAuthorityGuildId,
+                  authority: 'trusted',
+                }, false, 'u/shadow_fen is now a trusted Guild member.');
+                if (result) {
+                  await Promise.all([loadGuildChatSpy(true), onRefresh()]);
+                }
+              })()}
+              className={buttonBase + ' bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-200 px-3 py-2'}
+            >
+              <UserCheck className="inline w-3.5 h-3.5 mr-1" /> Make Trusted Member
+            </button>
+          </div>
+          {guildChatSpy.length === 0 && (
+            <p className="text-[10px] text-slate-600">Load Guilds to populate the selector. This control is only available in the authenticated admin console.</p>
+          )}
         </section>
 
         <section className={panelBase + ' border border-amber-500/30'}>
