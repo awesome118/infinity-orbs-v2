@@ -6,7 +6,6 @@ import {
   Globe,
   MessageSquare,
   Plus,
-  Send,
   LogOut,
   Sparkles,
   Flame,
@@ -54,7 +53,6 @@ interface GuildsAndSocialProps {
   onCreateGuild: (name: string, tag: string) => Promise<boolean>;
   onJoinGuild: (id: string) => Promise<void>;
   onLeaveGuild: () => Promise<void>;
-  onSendMessage: (text: string) => Promise<GuildMessage>;
   onBuyGuildPerk?: (perk: GuildPerkId) => Promise<void>;
   onToggleGuildTrust?: (username: string, trusted: boolean) => Promise<void>;
   onKickGuildMember?: (username: string) => Promise<void>;
@@ -100,7 +98,6 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   onCreateGuild,
   onJoinGuild,
   onLeaveGuild,
-  onSendMessage,
   onBuyGuildPerk,
   onToggleGuildTrust,
   onKickGuildMember,
@@ -114,13 +111,20 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const [now, setNow] = useState(Date.now());
   const [createName, setCreateName] = useState('');
   const [createTag, setCreateTag] = useState('');
-  const [chatInput, setChatInput] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [chatMessages, setChatMessages] = useState<GuildMessage[]>([]);
   const [reportingId, setReportingId] = useState<string | null>(null);
   const [reportedIds, setReportedIds] = useState<Set<string>>(() => new Set());
   const [activeLeaderboard, setActiveLeaderboard] = useState<LeaderboardId>('collectionValue');
-  const leaderboardBoards: LeaderboardBoards = leaderboards ?? { collectionValue: leaderboard, mostRolls: leaderboard, highestDryStreak: leaderboard, currentDryStreak: leaderboard, bestOrb: leaderboard, mostPlaytime: leaderboard };
+  const leaderboardBoards: LeaderboardBoards = leaderboards ?? {
+    collectionValue: leaderboard,
+    mostRolls: leaderboard,
+    highestDryStreak: leaderboard,
+    currentDryStreak: leaderboard,
+    bestOrb: leaderboard,
+    mostPlaytime: leaderboard,
+    chainLength: leaderboard,
+  };
   const leaderboardMeta: Array<{ id: LeaderboardId; label: string }> = [
     { id: 'collectionValue', label: 'Collection Value' },
     { id: 'mostRolls', label: 'Most Rolls' },
@@ -128,6 +132,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     { id: 'currentDryStreak', label: 'Current Dry Streak' },
     { id: 'bestOrb', label: 'Best Orb' },
     { id: 'mostPlaytime', label: 'Most Playtime' },
+    { id: 'chainLength', label: 'Chain Length' },
   ];
   const displayedLeaderboard = leaderboardBoards[activeLeaderboard];
   const leaderboardMetric = (entry: LeaderboardEntry): string => {
@@ -142,6 +147,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
         const hours = Math.floor(minutes / 60);
         return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
       }
+      case 'chainLength': return `${fmt(entry.chainLength ?? 0)} Rarities`;
     }
   };
 
@@ -197,21 +203,6 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     } finally {
       setReportingId(null);
     }
-  };
-
-  const handleSendChat = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim() || busy) return;
-    sound.playClick();
-    const text = chatInput.trim();
-    setChatInput('');
-    const sent = await onSendMessage(text);
-    setChatMessages(prev => {
-      const merged = new Map<string, GuildMessage>();
-      for (const msg of prev) merged.set(msg.id, msg);
-      merged.set(sent.id, sent);
-      return Array.from(merged.values()).sort((a, b) => a.timestamp - b.timestamp).slice(-100);
-    });
   };
 
   const handleCreateGuild = async (e: React.FormEvent) => {
@@ -869,22 +860,22 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                   </div>
                 </div>
 
-                {/* Guild Chat / Feed */}
+                {/* Guild Log / Activity Feed */}
                 <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between space-y-3 h-80">
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                         <MessageSquare className="w-4 h-4 text-cyan-400" />
-                        <span>Guild Chat Feed</span>
+                        <span>Guild Log</span>
                       </h3>
-                      <p className="mt-0.5 text-[9px] text-slate-600">Messages can be reported to subreddit moderators.</p>
+                      <p className="mt-0.5 text-[9px] text-slate-600">Automated guild activity only. Player chat is disabled.</p>
                     </div>
                   </div>
 
                   {/* Message History */}
                   <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
                     {chatMessages.length > 0 ? (
-                      chatMessages.map(msg => (
+                      chatMessages.filter(msg => msg.isSystem).map(msg => (
                         <div
                           key={msg.id}
                           className={`text-xs p-2 rounded-xl ${
@@ -895,8 +886,15 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                         >
                           {!msg.isSystem && (
                             <>
-                              <span className="font-bold text-cyan-400 block text-[10px] mb-0.5">
-                                {msg.username}
+                              <span className="inline-flex items-center gap-1.5 font-bold block text-[10px] mb-0.5">
+                                <span className={msg.username.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen'
+                                  ? 'font-black text-red-400'
+                                  : 'text-cyan-400'}>
+                                  {msg.username}
+                                </span>
+                                {msg.username.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen' && (
+                                  <span className="rounded border border-red-500/40 bg-red-500/10 px-1 py-0.5 text-[8px] font-black tracking-wider text-red-300">ADMIN</span>
+                                )}
                               </span>
                               <div className="flex items-start justify-between gap-2">
                                 <span className="min-w-0 break-words">{msg.text}</span>
@@ -923,29 +921,12 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                       ))
                     ) : (
                       <div className="text-center text-slate-500 text-xs py-8">
-                        No messages yet. Send a message to your guild members.
+                        Guild actions and milestones will appear here. Player chat is disabled.
                       </div>
                     )}
                   </div>
 
-                  {/* Send Chat Form */}
-                  <form onSubmit={handleSendChat} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={chatInput}
-                      onChange={e => setChatInput(e.target.value)}
-                      placeholder="Say something to guild..."
-                      maxLength={150}
-                      className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-purple-500"
-                    />
-                    <button
-                      type="submit"
-                      disabled={!chatInput.trim() || busy}
-                      className="p-2 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 text-white rounded-xl transition-all cursor-pointer"
-                    >
-                      <Send className="w-4 h-4" />
-                    </button>
-                  </form>
+
                 </div>
               </div>
             </div>

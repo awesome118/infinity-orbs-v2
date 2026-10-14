@@ -1,0 +1,141 @@
+#!/usr/bin/env node
+import { readFileSync, readdirSync } from "node:fs";
+import { extname, join, resolve } from "node:path";
+
+const failures = [];
+const reportFailure = (message) => failures.push(message);
+
+function readJson(file) {
+  try {
+    return JSON.parse(readFileSync(resolve(file), "utf8"));
+  } catch (error) {
+    reportFailure(`Could not read valid JSON from ${file}: ${error.message}`);
+    return null;
+  }
+}
+
+const nodeMajor = Number(process.versions.node.split(".")[0]);
+if (!Number.isInteger(nodeMajor) || nodeMajor < 24) {
+  reportFailure(`Node.js 24 or newer is required; found ${process.versions.node}.`);
+}
+
+const pkg = readJson("package.json");
+const lock = readJson("package-lock.json");
+const devvit = readJson("devvit.json");
+
+if (pkg) {
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(pkg.version ?? "")) {
+    reportFailure(`package.json version is not a valid release-style version: ${String(pkg.version)}`);
+  }
+  if (!/^>=\s*24(?:\.|$)/.test(pkg.engines?.node ?? "")) {
+    reportFailure("package.json must declare Node.js >=24 in engines.node.");
+  }
+}
+if (pkg && lock) {
+  if (pkg.name !== lock.name || pkg.name !== lock.packages?.[""]?.name) {
+    reportFailure("package.json and package-lock.json package names do not match.");
+  }
+  if (pkg.version !== lock.version || pkg.version !== lock.packages?.[""]?.version) {
+    reportFailure("package.json and package-lock.json versions do not match; run npm install with the intended version.");
+  }
+}
+if (pkg && devvit && devvit.name !== pkg.name) {
+  reportFailure(`Devvit app name (${String(devvit.name)}) does not match package name (${pkg.name}).`);
+}
+
+// Treat the Devvit manifest as a release contract, not just valid JSON.
+// The build may not fail when an entrypoint/trigger/scheduler/permission is
+// accidentally removed, so fail before any upload if a required value drifts.
+function requireManifestValue(label, actual, expected) {
+  if (actual !== expected) {
+    reportFailure(`devvit.json ${label} must be ${JSON.stringify(expected)}; found ${JSON.stringify(actual)}.`);
+  }
+}
+
+if (devvit) {
+  requireManifestValue("post.dir", devvit.post?.dir, "dist/client");
+  const entrypoints = devvit.post?.entrypoints;
+  if (!entrypoints || typeof entrypoints !== "object" || Array.isArray(entrypoints)) {
+    reportFailure("devvit.json post.entrypoints must define default, game, and frenzy entrypoints.");
+  } else {
+    requireManifestValue("post.entrypoints.default.entry", entrypoints.default?.entry, "splash.html");
+    requireManifestValue("post.entrypoints.default.inline", entrypoints.default?.inline, true);
+    requireManifestValue("post.entrypoints.game.entry", entrypoints.game?.entry, "game.html");
+    requireManifestValue("post.entrypoints.frenzy.entry", entrypoints.frenzy?.entry, "frenzy.html");
+    requireManifestValue("post.entrypoints.frenzy.height", entrypoints.frenzy?.height, "tall");
+  }
+
+  requireManifestValue("server.dir", devvit.server?.dir, "dist/server");
+  requireManifestValue("server.entry", devvit.server?.entry, "index.cjs");
+  requireManifestValue("permissions.redis", devvit.permissions?.redis, true);
+  requireManifestValue("permissions.payments", devvit.permissions?.payments, false);
+  requireManifestValue("triggers.onAppInstall", devvit.triggers?.onAppInstall, "/internal/on-app-install");
+  requireManifestValue("triggers.onCommentCreate", devvit.triggers?.onCommentCreate, "/internal/trigger/comment-create");
+  if (!Array.isArray(devvit.permissions?.reddit?.asUser) || !devvit.permissions.reddit.asUser.includes("SUBMIT_COMMENT")) {
+    reportFailure('devvit.json permissions.reddit.asUser must include "SUBMIT_COMMENT" for user-authored comments.');
+  }
+  requireManifestValue(
+    "scheduler.tasks.offline-orbs-full.endpoint",
+    devvit.scheduler?.tasks?.["offline-orbs-full"]?.endpoint,
+    "/internal/scheduler/offline-orbs-full",
+  );
+
+  const menuItems = Array.isArray(devvit.menu?.items) ? devvit.menu.items : [];
+  const createPostItem = menuItems.find(item =>
+    item && typeof item === "object" && item.endpoint === "/internal/menu/post-create"
+  );
+  if (!createPostItem) {
+    reportFailure("devvit.json menu.items must include the moderator Create a new post action at /internal/menu/post-create.");
+  } else {
+    requireManifestValue("menu.items[/internal/menu/post-create].location", createPostItem.location, "subreddit");
+    requireManifestValue("menu.items[/internal/menu/post-create].forUserType", createPostItem.forUserType, "moderator");
+  }
+}
+
+const sourceRoot = resolve("src");
+const sourceExtensions = new Set([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"]);
+const forbidden = /\b(?:txn|tx)\.get\(/;
+let sourceFilesScanned = 0;
+
+function scanDirectory(dir) {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch (error) {
+    reportFailure(`Could not scan required source directory ${dir}: ${error.message}`);
+    return;
+  }
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      scanDirectory(fullPath);
+    } else if (entry.isFile() && sourceExtensions.has(extname(entry.name))) {
+      sourceFilesScanned += 1;
+      let lines;
+      try {
+        lines = readFileSync(fullPath, "utf8").split(/\r?\n/);
+      } catch (error) {
+        reportFailure(`Could not read source file ${fullPath}: ${error.message}`);
+        continue;
+      }
+      lines.forEach((line, index) => {
+        if (forbidden.test(line)) {
+          reportFailure(`${fullPath}:${index + 1}: forbidden transaction read pattern; use redis.get() after WATCH.`);
+        }
+      });
+    }
+  }
+}
+
+scanDirectory(sourceRoot);
+if (sourceFilesScanned === 0) {
+  reportFailure("No supported source files were scanned under src/.");
+}
+
+if (failures.length) {
+  console.error("Deployment preflight guard failed:");
+  for (const failure of failures) console.error(` - ${failure}`);
+  process.exitCode = 1;
+} else {
+  console.log(`Deployment preflight guard passed: Node ${process.versions.node}; manifests/version aligned; scanned ${sourceFilesScanned} source files; no forbidden transaction-read pattern.`);
+}

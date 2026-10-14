@@ -33,6 +33,7 @@ import {
   getFakeCcuBonus,
   getOnlinePlayers,
   getPlayerActivityStats,
+  getRollTicket,
 } from './game.js';
 import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import { context, redis, reddit } from './devvit-mock.js';
@@ -43,6 +44,7 @@ import {
   unmuteGuildChatUser,
   listChatReports,
   markChatReportRead,
+  adminSetGuildAuthority,
   getPlayerGuildPerks,
   getPlayerGuildCombo,
   getCommunityEvent,
@@ -358,15 +360,52 @@ interface GlobalBoosterCreditGrantManifest {
 function parseAdminPlayerSave(raw: unknown): Record<string, any> {
   if (raw == null) return createInitialState() as unknown as Record<string, any>;
   if (typeof raw !== 'string') throw new Error('The target player save could not be read safely.');
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('The target player save could not be read safely.');
+
+  const unwrap = (value: unknown, depth = 0): Record<string, any> | null => {
+    if (depth > 6 || value == null) return null;
+
+    if (typeof value === 'string') {
+      try {
+        return unwrap(JSON.parse(value), depth + 1);
+      } catch {
+        return null;
+      }
     }
-    return parsed as Record<string, any>;
-  } catch {
-    throw new Error('The target player save could not be read safely.');
-  }
+    if (typeof value !== 'object' || Array.isArray(value)) return null;
+
+    const record = value as Record<string, unknown>;
+    const looksLikePlayerState =
+      'coins' in record &&
+      'shards' in record &&
+      'totalRolls' in record;
+
+    if (looksLikePlayerState) {
+      const validCoreState =
+        typeof record.coins === 'number' &&
+        Number.isFinite(record.coins) &&
+        record.coins >= 0 &&
+        Number.isSafeInteger(record.shards) &&
+        Number(record.shards) >= 0 &&
+        Number.isSafeInteger(record.totalRolls) &&
+        Number(record.totalRolls) >= 0 &&
+        (
+          record.stateRevision == null ||
+          (Number.isSafeInteger(record.stateRevision) && Number(record.stateRevision) >= 0)
+        );
+      return validCoreState ? record as Record<string, any> : null;
+    }
+
+    for (const key of ['value', 'state', 'player', 'data', 'payload', 'result']) {
+      if (!(key in record)) continue;
+      const nested = unwrap(record[key], depth + 1);
+      if (nested) return nested;
+    }
+    return null;
+  };
+
+  const state = unwrap(raw);
+  if (!state) throw new Error('The target player save could not be read safely.');
+  return state;
 }
 
 function parseGlobalBoosterCreditGrantManifest(
@@ -524,6 +563,14 @@ async function grantGlobalBoosterCreditsToUser(
       } catch (error) {
         await txn.unwatch();
         throw error;
+      }
+
+      if (raw == null) {
+        // A missing save follows loadRaw()'s fresh-state path. The watched
+        // generation key is authoritative after a wipe; do not strand admin
+        // grants on an otherwise valid account whose save has not been recreated.
+        state.saveGeneration = generation;
+        state.stateRevision = 0;
       }
 
       const storedGeneration = Math.max(0, Number(state.saveGeneration ?? generation) || 0);
@@ -690,6 +737,7 @@ async function resetPlayerGenerationAndSave(
 async function wipeUser(username: string, clearBanAfterWipe = true): Promise<{ username: string; userId: string; generation: number }> {
   const name = targetUsername(username);
   const userId = await resolveUserId(name);
+  const playerSaveKey = `player:${userId}`;
 
   return withPlayerMutationLockFor(userId, async () => {
   const { generation } = await resetPlayerGenerationAndSave(userId, name);
@@ -703,7 +751,7 @@ async function wipeUser(username: string, clearBanAfterWipe = true): Promise<{ u
   // false here because it commits the new ban before the reset begins.
   if (clearBanAfterWipe) await unbanGameUser(userId);
 
-  const persisted = await redis.get(playerKey);
+  const persisted = await redis.get(playerSaveKey);
   if (persisted == null) {
     throw new Error(`Wipe failed: player save for u/${name} was not persisted.`);
   }
@@ -826,6 +874,20 @@ debugRouter.post('/chat-reports/read', async (req, res) => {
     res.json(await markChatReportRead(String(req.body?.reportId ?? '')));
   } catch (e: any) {
     res.status(400).json({ error: e?.message || 'Failed to mark chat report as read.' });
+  }
+});
+
+debugRouter.post('/guild-authority', async (req, res) => {
+  try {
+    const guildId = String(req.body?.guildId ?? '').trim();
+    const authority = req.body?.authority;
+    if (authority !== 'owner' && authority !== 'trusted') {
+      return res.status(400).json({ error: 'Authority must be owner or trusted.' });
+    }
+    const result = await adminSetGuildAuthority(guildId, authority);
+    res.json({ ok: true, ...result });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to change admin Guild authority.' });
   }
 });
 
@@ -990,8 +1052,11 @@ function buildStatSpyStats(
   const fortunePct = fortuneActive ? 300 : 0;
   const globalLuckPct = Math.max(0, globalLuck - 1) * 100;
   const astralReservePct = Number(prestige.astralReserve ?? 0) * 2;
+  const cosmicReserveLevel = Math.max(0, Math.min(5, Math.floor(Number(prestige.cosmicReserve ?? 0) || 0)));
+  const unspentCosmicDust = Math.max(0, Math.floor(Number(s.cosmicDust ?? 0) || 0));
+  const cosmicReserveMultiplier = 1 + unspentCosmicDust * cosmicReserveLevel * 0.01;
 
-  // luckMultiplier() applies permanent Luck and the Altar as multiplicative layers.
+  // luckMultiplier() applies permanent Luck, the Altar, and Cosmic Reserve as multiplicative layers.
   const additiveBaseLuck =
     1 +
     (Number(upgrades.luck ?? 0) * 0.05) +
@@ -1008,7 +1073,7 @@ function buildStatSpyStats(
 
   const permanentLuckFactor = Math.pow(1.05, Math.max(0, Number(prestige.permLuck ?? 0)));
   const finalLuck = Math.round(
-    ((additiveBaseLuck * permanentLuckFactor * altar.totalAltarMultiplier) + communityLuckBonus) * 100,
+    ((additiveBaseLuck * permanentLuckFactor * altar.totalAltarMultiplier * cosmicReserveMultiplier) + communityLuckBonus) * 100,
   ) / 100;
 
   const luckSources: StatSpySource[] = [
@@ -1025,6 +1090,7 @@ function buildStatSpyStats(
     statSource('Global Luck', globalLuckPct, 'pct', 'add', { level: Number(s.globalBoosters?.luck?.tier ?? 0), active: globalLuck > 1, detail: '+10% per active global tier' }),
     statSource('Guild Combo Luck', Math.max(0, comboLuck - 1) * 100, 'pct', 'add', { level: Number(s.guildCombo?.tier ?? 0), active: comboLuck > 1, detail: '+5% per active combo tier' }),
     statSource('Astral Reserve', astralReservePct, 'pct', 'add', { level: Number(prestige.astralReserve ?? 0), detail: '+2% per level' }),
+    statSource('Cosmic Reserve', cosmicReserveMultiplier, 'mult', 'multiply', { level: cosmicReserveLevel, active: cosmicReserveLevel > 0 && unspentCosmicDust > 0, detail: '×(1 + ' + unspentCosmicDust.toLocaleString() + ' unspent Dust × ' + cosmicReserveLevel + '%). Spent Dust removes its bonus.' }),
     statSource('Permanent Luck layer', permanentLuckFactor, 'mult', 'multiply', { level: Number(prestige.permLuck ?? 0), detail: '×1.05 per prestige level' }),
     statSource('Altar layer', altar.totalAltarMultiplier, 'mult', 'multiply', { detail: 'Coin sacrifice × Shard infusion × Luck Surge' }),
     statSource('Community Luck', communityLuckBonus * 100, 'pct', 'add', { detail: 'Current community event bonus, applied to roll Luck after normal Luck calculation' }),
@@ -1482,9 +1548,11 @@ debugRouter.post('/state', async (req, res) => {
       'lifetimeCollectionValue', 'offlineRolls', 'prestigeCount', 'rollsSinceBest',
       'turboRollUntil', 'onlinePlayers', 'purchasedShards',
       'currentRunRolls', 'questsCompleted', 'guildContribution', 'masteryPoints',
-      'singularityTitheSingleRolls',
+      'singularityTitheSingleRolls', 'aftershockRecord', 'rollingSessionStartedAt',
+      'rollingSessionLastRollAt', 'longestRollingSessionMs',
       'communityRewardClaimedAt', 'communityRewardClaimedTier',
-      'level', 'levelXpFloor', 'globalBoosterCredits',
+      'chainPatcherNextRarity', 'chainPatcherCooldownUntil',
+      'level', 'levelXpFloor', 'globalBoosterCredits', 'freeShardsEarnedToday',
     ];
 
     for (const field of numericFields) {
@@ -1495,7 +1563,7 @@ debugRouter.post('/state', async (req, res) => {
       s.lastRollAt = body.lastRollAt === null ? null : nonNegativeInteger(body.lastRollAt);
     }
     if ('lastSeenAt' in body) s.lastSeenAt = nonNegativeInteger(body.lastSeenAt);
-    if ('lastShareAt' in body) s.lastShareAt = body.lastShareAt === null ? null : nonNegativeInteger(body.lastShareAt);
+    if ('lastShareAt' in body) s.lastShareAt = body.lastShareAt === null ? undefined : nonNegativeInteger(body.lastShareAt);
     if ('autoRollEnabled' in body) s.autoRollEnabled = Boolean(body.autoRollEnabled);
     for (const field of ['lastFrenzyDate', 'lastFrenzyClaimDate', 'lastDailyReset', 'lastWeeklyReset', 'lastFreeShardReset']) {
       if (typeof body[field] === 'string') (s as any)[field] = body[field];
@@ -1686,17 +1754,21 @@ debugRouter.post('/preset', async (req, res) => {
 
 debugRouter.post('/reset-cooldown', async (_req, res) => {
   try {
-      await withPlayerMutationLock(async () => {
-    const s = await loadRaw();
-    s.lastRollAt = 0;
-    // Comprehensive admin tests use reset-cooldown as a hard boundary between
-    // independent rolls. Clear the prediction ticket too so an old UI request
-    // cannot consume the next test's ticket index.
-    const userId = String(context.userId ?? '').trim();
-    if (userId) await redis.del('io:roll-ticket:' + userId);
-    await save(s);
-    res.json({ ok: true, state: s });
-        });} catch (e: any) {
+    await withPlayerMutationLock(async () => {
+      const s = await loadRaw();
+      s.lastRollAt = 0;
+      // Persist the cleared cooldown before invalidating the old ticket. The
+      // returned ticket is issued only after that reset commits, so the admin
+      // runner can use one response rather than racing two HTTP requests.
+      await save(s);
+
+      const userId = String(context.userId ?? '').trim();
+      if (userId) await redis.del('io:roll-ticket:' + userId);
+
+      const ticket = await getRollTicket();
+      res.json({ ok: true, state: s, ...ticket });
+    });
+  } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
@@ -1985,7 +2057,7 @@ debugRouter.post('/reset-all', async (_req, res) => {
         userId,
         context.username ?? `reddit-user-${userId.slice(-8)}`,
       );
-      await redis.del(`io:roll-ticket:${userId}`).catch(error => {
+      await redis.del(`io:roll-ticket:${userId}`).catch((error: unknown) => {
         console.error('[Reset All] Roll-ticket cleanup failed after the player reset committed:', error);
       });
       await removeLeaderboardEntry(fresh.username ?? context.username ?? '').catch(error => {

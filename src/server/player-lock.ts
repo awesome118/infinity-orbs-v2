@@ -76,17 +76,28 @@ export function createPlayerMutationLockRuntime(
     token: string,
   ): Promise<boolean> {
     const txn = await client.watch(lockKey);
-    const owner = await client.get(lockKey);
-    if (owner !== token) {
-      await txn.unwatch();
-      return false;
-    }
+    let transactionClosed = false;
+    try {
+      const owner = await client.get(lockKey);
+      if (owner !== token) {
+        await txn.unwatch();
+        transactionClosed = true;
+        return false;
+      }
 
-    await txn.multi();
-    await txn.set(lockKey, token, {
-      expiration: new Date(Date.now() + leaseTtlMs),
-    });
-    return (await txn.exec()) !== null;
+      await txn.multi();
+      await txn.set(lockKey, token, {
+        expiration: new Date(Date.now() + leaseTtlMs),
+      });
+      const committed = await txn.exec();
+      transactionClosed = true;
+      return committed !== null;
+    } finally {
+      // WATCH state must not be left open if a read or queued write throws.
+      if (!transactionClosed) {
+        await txn.unwatch().catch(() => undefined);
+      }
+    }
   }
 
   async function releaseOwnedLock(
@@ -97,16 +108,26 @@ export function createPlayerMutationLockRuntime(
     try {
       for (let attempt = 0; attempt < 3; attempt++) {
         const txn = await client.watch(lockKey);
-        const owner = await client.get(lockKey);
-        if (owner !== token) {
-          await txn.unwatch();
-          return;
-        }
+        let transactionClosed = false;
+        try {
+          const owner = await client.get(lockKey);
+          if (owner !== token) {
+            await txn.unwatch();
+            transactionClosed = true;
+            return;
+          }
 
-        await txn.multi();
-        await txn.del(lockKey);
-        const committed = await txn.exec();
-        if (committed !== null) return;
+          await txn.multi();
+          await txn.del(lockKey);
+          const committed = await txn.exec();
+          transactionClosed = true;
+          if (committed !== null) return;
+        } finally {
+          // Cleanup is safe even if GET/MULTI/DEL/EXEC fails partway through.
+          if (!transactionClosed) {
+            await txn.unwatch().catch(() => undefined);
+          }
+        }
       }
       // Never fall back to an unguarded DEL. If ownership changes repeatedly,
       // the correct behavior is to leave cleanup to the lease expiry.

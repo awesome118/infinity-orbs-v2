@@ -5,8 +5,9 @@ import {
   getRollTicket,
   roll,
   buyUpgrade,
-  buyUpgradesBatch,
+  buyUpgradeBatch,
   buyAllUpgrades,
+  buyChainPatcher,
   claimOffline,
   subscribeToSubredditFromPrompt,
   claimFollowReward,
@@ -26,6 +27,7 @@ import {
   getGlobalBoosters,
   activateGlobalBooster,
   claimOrbFrenzy,
+  postFrenzyThankYouComment,
   getOrbFrenzyInfo,
   getOrbFrenzyHandoff,
   armOrbFrenzyClaim,
@@ -66,14 +68,16 @@ import {
   shareText,
   getCommunityEvent,
   getGlobalChat,
+  getGlobalChatStatus,
   postGlobalChatMessage,
+  recordGlobalChatComment,
   reportGlobalChatMessage,
   reportGuildChatMessage,
 } from './social.js';
 import { context, reddit, redis } from './devvit-mock.js';
 import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
-import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, type FeatureId, type MasterySkillId } from '../shared/game.js';
+import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
 
 const payments = (devvitServer as typeof devvitServer & {
@@ -331,28 +335,37 @@ export function createApp() {
     while (Date.now() < deadline) {
       const now = Date.now();
       const txn = await redis.watch(lockKey);
-      // TxClient.get() queues a transaction command. Read the watched value
-      // through Redis itself so we inspect the actual current lock contents.
-      const raw = await redis.get(lockKey);
-      const existing = parseMutationLock(raw);
+      let transactionClosed = false;
+      try {
+        // TxClient.get() queues a transaction command. Read the watched value
+        // through Redis itself so we inspect the actual current lock contents.
+        const raw = await redis.get(lockKey);
+        const existing = parseMutationLock(raw);
 
-      if (existing && existing.expiresAt > now) {
-        await txn.unwatch();
-        await new Promise(resolve => setTimeout(resolve, 100));
-        continue;
-      }
+        if (existing && existing.expiresAt > now) {
+          await txn.unwatch();
+          transactionClosed = true;
+          await new Promise(resolve => setTimeout(resolve, 100));
+          continue;
+        }
 
-      const value = JSON.stringify({
-        owner,
-        expiresAt: now + MUTATION_LOCK_TTL_MS,
-      });
+        const value = JSON.stringify({
+          owner,
+          expiresAt: now + MUTATION_LOCK_TTL_MS,
+        });
 
-      await txn.multi();
-      await txn.set(lockKey, value);
-      const committed = await txn.exec();
+        await txn.multi();
+        await txn.set(lockKey, value);
+        const committed = await txn.exec();
+        transactionClosed = true;
 
-      if (committed !== null) {
-        return { lockKey, owner };
+        if (committed !== null) {
+          return { lockKey, owner };
+        }
+      } finally {
+        if (!transactionClosed) {
+          await txn.unwatch().catch(() => undefined);
+        }
       }
     }
 
@@ -360,22 +373,30 @@ export function createApp() {
   };
 
   const releaseMutationLock = async (lockKey: string, owner: string): Promise<void> => {
+    let txn: Awaited<ReturnType<typeof redis.watch>> | null = null;
+    let transactionClosed = false;
     try {
-      const txn = await redis.watch(lockKey);
+      txn = await redis.watch(lockKey);
       // TxClient.get() queues a transaction command. Read the watched value
       // through Redis itself before deciding whether the lock is ours.
       const raw = await redis.get(lockKey);
       const existing = parseMutationLock(raw);
       if (!existing || existing.owner !== owner) {
         await txn.unwatch();
+        transactionClosed = true;
         return;
       }
 
       await txn.multi();
       await txn.del(lockKey);
       await txn.exec();
+      transactionClosed = true;
     } catch (error) {
       console.error('[Mutation Lock] Failed to release lock:', error);
+    } finally {
+      if (txn && !transactionClosed) {
+        await txn.unwatch().catch(() => undefined);
+      }
     }
   };
 
@@ -424,7 +445,7 @@ export function createApp() {
   // Major systems unlock gradually so new players learn the core loop before
   // the advanced economy, social systems, and prestige layers appear.
   const featureForPath = (path: string): FeatureId | null => {
-    if (path === '/upgrade' || path === '/upgrade/all' || path === '/turbo/activate') return 'upgrades';
+    if (path === '/upgrade' || path === '/upgrade/all' || path === '/upgrade/batch' || path === '/turbo/activate') return 'upgrades';
     if (path === '/products' || path === '/payments/reconcile') return 'shop';
     if (path === '/collection') return 'collection';
     if (path === '/quests/claim' || path === '/streak/claim') return 'quests';
@@ -464,7 +485,11 @@ export function createApp() {
         });
       }
     } catch (e) {
+      reportRedisTransactionFailure(e);
       console.error('Feature gate check failed:', e);
+      if (transientContentionError(e)) {
+        return res.status(503).json({ error: 'The game is busy verifying access. Please retry.' });
+      }
       return res.status(500).json({ error: 'Could not verify feature access.' });
     }
 
@@ -735,6 +760,9 @@ export function createApp() {
         title: 'Infinity Orbs',
         entry: 'default',
       });
+      await redis.set('io:global-game-post-id', post.id, { nx: true }).catch((error: unknown) => {
+        console.error('[Global Chat] Could not register the new Game post:', error);
+      });
       res.json({ navigateTo: `https://reddit.com/r/${subredditName}/comments/${post.id}` });
     } catch (e) {
       console.error('Failed to create Infinity Orbs post:', e);
@@ -749,6 +777,9 @@ export function createApp() {
       const post = await reddit.submitCustomPost({
         title: 'Infinity Orbs',
         entry: 'default',
+      });
+      await redis.set('io:global-game-post-id', post.id, { nx: true }).catch((error: unknown) => {
+        console.error('[Global Chat] Could not register the new Game post:', error);
       });
       res.json({ status: 'success', message: `Created Infinity Orbs post ${post.id} in r/${subredditName}.` });
     } catch (e) {
@@ -799,7 +830,13 @@ export function createApp() {
 
   app.get('/api/me', async (_req, res) => {
     try { res.json(await getMe()); }
-    catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch player state.' }); }
+    catch (e: any) {
+      reportRedisTransactionFailure(e);
+      console.error('[API /api/me] Failed:', e);
+      res.status(transientContentionError(e) ? 503 : 500).json({
+        error: transientContentionError(e) ? 'Player data is busy updating. Please retry.' : e?.message || 'Failed to fetch player state.',
+      });
+    }
   });
 
   app.get('/api/collection', async (req, res) => {
@@ -814,20 +851,38 @@ export function createApp() {
       const tier = String(req.query.tier ?? 'all');
       res.json(await getCollectionPage({ offset, limit, tier, sort }));
     } catch (e: any) {
-      res.status(500).json({ error: e?.message || 'Failed to fetch Codex entries.' });
+      reportRedisTransactionFailure(e);
+      res.status(transientContentionError(e) ? 503 : 500).json({
+        error: transientContentionError(e) ? 'The Codex is busy updating. Please retry.' : e?.message || 'Failed to fetch Codex entries.',
+      });
     }
   });
 
   app.get('/api/leaderboard', async (_req, res) => {
     try {
       res.json(await leaderboard());
-    } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch leaderboard.' }); }
+    } catch (e: any) {
+      reportRedisTransactionFailure(e);
+      res.status(transientContentionError(e) ? 503 : 500).json({
+        error: transientContentionError(e) ? 'Leaderboard is busy updating. Please retry.' : e?.message || 'Failed to fetch leaderboard.',
+      });
+    }
   });
 
   app.get('/api/leaderboards', async (_req, res) => {
     try {
       res.json(await leaderboards());
-    } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch leaderboards.' }); }
+    } catch (e: any) {
+      reportRedisTransactionFailure(e);
+      res.status(transientContentionError(e) ? 503 : 500).json({
+        error: transientContentionError(e) ? 'Leaderboards are busy updating. Please retry.' : e?.message || 'Failed to fetch leaderboards.',
+      });
+    }
+  });
+
+  app.get('/api/chat/status', async (_req, res) => {
+    try { res.json(await getGlobalChatStatus()); }
+    catch (e) { badRequest(res, e, 'Could not determine Global Chat availability.'); }
   });
 
   app.get('/api/chat', async (_req, res) => {
@@ -845,10 +900,56 @@ export function createApp() {
     catch (e) { badRequest(res, e, 'Could not report chat message.'); }
   });
 
+  // onCommentCreate keeps ordinary Reddit comments on the Game launcher in sync
+  // with the Global Chat window. It does not create any comments itself.
+  app.post('/internal/trigger/comment-create', async (req, res) => {
+    try {
+      const event = req.body ?? {};
+      const comment = event.comment ?? {};
+      const author = event.author ?? {};
+      const post = event.post ?? {};
+      const rawPostId = String(post.id ?? comment.postId ?? '').trim();
+      const commentId = String(comment.id ?? '').trim();
+      const text = String(comment.body ?? comment.text ?? '').trim();
+      const authorName = String(author.name ?? author.username ?? '').trim().replace(/^u\//i, '');
+      const authorId = String(author.id ?? '').trim();
+      const rawCreatedAt = comment.createdAt ?? comment.created;
+      const parsedCreatedAt = typeof rawCreatedAt === 'number'
+        ? (rawCreatedAt > 0 && rawCreatedAt < 1_000_000_000_000 ? rawCreatedAt * 1000 : rawCreatedAt)
+        : typeof rawCreatedAt === 'string' ? Date.parse(rawCreatedAt) : NaN;
+      const timestamp = Number.isSafeInteger(parsedCreatedAt) && parsedCreatedAt >= 0
+        ? parsedCreatedAt
+        : Date.now();
+
+      if (rawPostId && commentId && text && authorName) {
+        await recordGlobalChatComment({
+          postId: rawPostId,
+          commentId,
+          text,
+          username: authorName,
+          userId: authorId || undefined,
+          timestamp,
+        });
+      }
+      return res.json({ status: 'ok' });
+    } catch (error) {
+      console.error('[Global Chat] Comment trigger failed:', error);
+      return res.status(500).json({ status: 'error' });
+    }
+  });
+
   app.get('/api/guilds', async (_req, res) => {
     try {
       res.json(await guildInfo());
-    } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch guilds.' }); }
+    } catch (e: any) {
+      reportRedisTransactionFailure(e);
+      console.error('[API /api/guilds] Failed:', e);
+      res.status(transientContentionError(e) ? 503 : 500).json({
+        error: transientContentionError(e)
+          ? 'Guild data is being updated. Please retry.'
+          : e?.message || 'Failed to fetch guilds.',
+      });
+    }
   });
 
   // Reddit's user-action API performs the actual subscription. Reward claiming is
@@ -859,11 +960,20 @@ export function createApp() {
     } catch (e: any) { badRequest(res, e, 'Could not claim the 200-roll reward.'); }
   });
 
-  app.post('/api/activity/heartbeat', async (_req, res) => {
+  app.post('/api/activity/heartbeat', async (req, res) => {
     try {
-      res.json(await recordPlayerHeartbeat());
+      res.json(await recordPlayerHeartbeat(req.body?.version));
     } catch (e: any) {
-      res.status(500).json({ error: e?.message || 'Could not record player activity.' });
+      reportRedisTransactionFailure(e);
+      console.error('[API /api/activity/heartbeat] Failed:', {
+        timestamp: new Date().toISOString(),
+        userId: String(context.userId ?? ''),
+        message: e?.message ?? String(e),
+        stack: e instanceof Error ? e.stack : undefined,
+      });
+      res.status(transientContentionError(e) ? 503 : 500).json({
+        error: transientContentionError(e) ? 'Presence is busy updating. Please retry.' : e?.message || 'Could not record player activity.',
+      });
     }
   });
 
@@ -882,7 +992,13 @@ export function createApp() {
     try {
       res.json({ onlinePlayers: await getOnlinePlayers() });
     } catch (e: any) {
-      res.status(500).json({ error: e?.message || 'Failed to fetch online players.' });
+      reportRedisTransactionFailure(e);
+      console.error('[API /api/online] Failed:', e);
+      res.status(transientContentionError(e) ? 503 : 500).json({
+        error: transientContentionError(e)
+          ? 'Presence is updating. Please retry.'
+          : e?.message || 'Failed to fetch online players.',
+      });
     }
   });
 
@@ -929,23 +1045,50 @@ export function createApp() {
   // the trusted Devvit username is exactly "shadow_fen".
   app.use('/api/dev', debugRouter);
 
+  const transientContentionError = (error: unknown): boolean => {
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    return /max(?:imum)? concurrency|concurrency limit|redis.*transaction|transaction.*failed|PLAYER_MUTATION_LEASE_LOST|another game action is still finishing|guild.*changed|shared state changed|data changed before the roll saved|player state changed while saving|player activity changed repeatedly|could not safely save player data|could not create a roll prediction ticket|community event changed while|community progress changed while|daily streak community goal changed while/i.test(message);
+  };
+
+  const reportRedisTransactionFailure = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    if (!transientContentionError(error)) return;
+    // Preserve the underlying stack and operation context; the client-facing
+    // toast alone is not enough to diagnose intermittent platform failures.
+    console.error('[Redis/Concurrency Failure]', {
+      timestamp: new Date().toISOString(),
+      userId: String(context.userId ?? ''),
+      message,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+  };
+
   const badRequest = (res: express.Response, e: unknown, fallback: string) => {
-    res.status(400).json({ error: e instanceof Error ? e.message : fallback });
+    reportRedisTransactionFailure(e);
+    if (transientContentionError(e)) {
+      return res.status(503).json({ error: 'The game is busy finishing another action. Please retry.' });
+    }
+    return res.status(400).json({ error: e instanceof Error ? e.message : fallback });
   };
 
   app.get('/api/roll-ticket', async (_req, res) => {
     try { res.json(await getRollTicket()); }
-    catch (e) { res.status(500).json({ error: e instanceof Error ? e.message : 'Could not create roll prediction ticket.' }); }
+    catch (e) {
+      reportRedisTransactionFailure(e);
+      res.status(transientContentionError(e) ? 503 : 500).json({
+        error: transientContentionError(e) ? 'The game is busy preparing your next roll. Please retry.' : e instanceof Error ? e.message : 'Could not create roll prediction ticket.',
+      });
+    }
   });
 
   app.post('/api/roll', async (req, res) => {
     try {
-      res.json(await roll(
-        req.body?.auto === true,
-        typeof req.body?.ticketId === 'string' ? req.body.ticketId : undefined,
-        Number.isSafeInteger(req.body?.ticketIndex) ? req.body.ticketIndex : undefined,
-        req.body?.useAllFreeRolls === true,
-      ));
+      const ticketId = typeof req.body?.ticketId === 'string' ? req.body.ticketId : '';
+      const ticketIndex = req.body?.ticketIndex;
+      if (!ticketId || !Number.isSafeInteger(ticketIndex)) {
+        return res.status(400).json({ error: 'Roll request is missing its ticket. Refresh the game and try again.' });
+      }
+      res.json(await roll(req.body?.auto === true, ticketId, ticketIndex, req.body?.useAllFreeRolls === true));
     } catch (e) { badRequest(res, e, 'Roll failed.'); }
   });
 
@@ -974,20 +1117,28 @@ export function createApp() {
   app.post('/api/upgrade/batch', async (req, res) => {
     try {
       const ids = req.body?.ids;
-      const validUpgradeIds = [
+      const validUpgradeIds: UpgradeId[] = [
         'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
         'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus',
       ];
-      if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100 || ids.some(id => !validUpgradeIds.includes(id))) {
-        return res.status(400).json({ error: 'Invalid upgrade batch.' });
+      if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100 ||
+          !ids.every(id => typeof id === 'string' && validUpgradeIds.includes(id as UpgradeId))) {
+        return res.status(400).json({ error: 'Batch must contain 1 to 100 valid upgrade IDs.' });
       }
-      res.json(await buyUpgradesBatch(ids));
+      res.json(await buyUpgradeBatch(ids as UpgradeId[]));
     } catch (e) { badRequest(res, e, 'Upgrade batch failed.'); }
   });
+
   app.post('/api/upgrade/all', async (_req, res) => {
     try {
       res.json(await buyAllUpgrades());
     } catch (e) { badRequest(res, e, 'Upgrade all failed.'); }
+  });
+
+  app.post('/api/chain-patcher/buy', async (_req, res) => {
+    try {
+      res.json(await buyChainPatcher());
+    } catch (e) { badRequest(res, e, 'Chain Patcher purchase failed.'); }
   });
 
   app.post('/api/streak/claim', async (_req, res) => {
@@ -1015,7 +1166,7 @@ export function createApp() {
         'transmutation', 'shardSynthesis', 'astralBarrage', 'cosmicInheritance',
         'autoBuyer', 'supernova', 'altarResonator', 'offlineOverdrive', 'singularityTithe',
         'luckyFloor', 'astralArsenal', 'deepVault', 'masteryEngine', 'steadyHands', 'offlineFortune',
-        'frenzyVolley', 'astralReserve', 'temporalCompression', 'shardResonator', 'cosmicValuation'
+        'frenzyVolley', 'astralReserve', 'temporalCompression', 'shardResonator', 'cosmicValuation', 'cosmicReserve'
       ];
       if (!validIds.includes(id)) return res.status(400).json({ error: 'Invalid prestige upgrade.' });
       res.json({ state: await buyPrestigeUpgrade(id) });
@@ -1110,6 +1261,14 @@ export function createApp() {
   app.post('/api/frenzy/claim', async (_req, res) => {
     try { res.json(await claimOrbFrenzy()); }
     catch (e) { badRequest(res, e, 'Could not claim Orb Frenzy.'); }
+  });
+
+  app.post('/api/frenzy/thank-you', async (req, res) => {
+    try {
+      res.json(await postFrenzyThankYouComment(req.body?.text ?? '', req.body?.postId ?? ''));
+    } catch (error) {
+      badRequest(res, error, 'Could not post the thank-you comment.');
+    }
   });
 
   app.post('/api/feedback', async (req, res) => {
@@ -1282,6 +1441,32 @@ export function createApp() {
       res.json({ success: true, id: postId, text });
       });
     } catch (e) { badRequest(res, e, 'Could not create Reddit post.'); }
+  });
+
+  // Normalize errors raised by middleware (for example, lock acquisition
+  // or Redis infrastructure failures) instead of leaking Express's default
+  // HTML 500 response to a JSON client.
+  app.use((
+    error: unknown,
+    req: express.Request,
+    res: express.Response,
+    _next: express.NextFunction,
+  ) => {
+    if (res.headersSent) return;
+    const message = error instanceof Error ? error.message : String(error ?? 'Unknown server error');
+    const busy = transientContentionError(error);
+    console.error('[Unhandled API Error]', {
+      timestamp: new Date().toISOString(),
+      method: req.method,
+      path: req.path,
+      userId: String(context.userId ?? ''),
+      message,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    if (busy) {
+      return res.status(503).json({ error: 'The game is busy finishing another action. Please retry.' });
+    }
+    return res.status(500).json({ error: 'The server hit an unexpected error. Please retry.' });
   });
 
   return app;

@@ -3,6 +3,19 @@ import assert from 'node:assert/strict';
 
 import {
   createInitialState,
+  addCollectionValue,
+  calculatePrestigeDust,
+  aftershockCriticalLuckBonus,
+  unbrokenMomentumSpeedBonus,
+  recordRollingSessionActivity,
+  UNBROKEN_MOMENTUM_SESSION_GAP_MS,
+  ALTAR_COIN_FLOOR_GROWTH,
+  altarCoinFloor,
+  calculateAltarMultipliers,
+  cooldownMs,
+  critMultiplier,
+  effectiveOfflineTickMs,
+  upgradeCost,
   createInitialGlobalBoosters,
   activateGlobalBoosterStack,
   decayGlobalBoosterState,
@@ -25,12 +38,13 @@ import {
   FREE_SHARD_DAILY_CAP,
   onlinePlayerLuckMultiplier,
   luckMultiplier,
-  effectiveOfflineTickMs,
-  upgradeCost,
   frenzyClaimCountForRarity,
   frenzyOrbCountForRarity,
   FRENZY_LOG_BASE,
   bestCodexChain,
+  nextCodexChainRarity,
+  chainPatcherShardCost,
+  CHAIN_PATCHER_COOLDOWN_MS,
   applyLevelProgress,
   xpRequiredForLevel,
   SINGULARITY_TITHE_ROLLS_PER_DUST,
@@ -42,6 +56,140 @@ import {
 } from '../src/shared/social.js';
 
 const NOW = 1_800_000_000_000;
+
+test('Chain Patcher chooses the lowest adjacent rarity and prices 1/900 at 10 Shards', () => {
+  const collection: Record<string, number> = {};
+  for (let rarity = 2; rarity <= 899; rarity += 1) collection[String(rarity)] = 1;
+
+  assert.equal(bestCodexChain(collection).length, 898);
+  assert.equal(nextCodexChainRarity(collection), 900);
+  assert.equal(chainPatcherShardCost(900), 10);
+  assert.equal(chainPatcherShardCost(999), 10);
+  assert.equal(chainPatcherShardCost(1_000), 11);
+  assert.equal(nextCodexChainRarity({}), 2);
+  assert.equal(chainPatcherShardCost(2), 1);
+  assert.equal(CHAIN_PATCHER_COOLDOWN_MS, 24 * 60 * 60 * 1_000);
+});
+
+test('Chain Patcher extends the cheapest edge of the longest Codex chain', () => {
+  const collection: Record<string, number> = {};
+  for (let rarity = 900; rarity <= 905; rarity += 1) collection[String(rarity)] = 1;
+  assert.equal(bestCodexChain(collection).length, 6);
+  assert.equal(nextCodexChainRarity(collection), 899);
+});
+
+test('collection value accumulation saturates instead of losing precision or becoming non-finite', () => {
+  const max = Number.MAX_SAFE_INTEGER;
+  assert.equal(addCollectionValue(max - 2, 10), max);
+  assert.equal(addCollectionValue(max + 10, 1), max);
+  assert.equal(addCollectionValue(100, Number.POSITIVE_INFINITY), max);
+  assert.equal(addCollectionValue(-1, 25), 25);
+  assert.equal(addCollectionValue(Number.NaN, 25), 25);
+  assert.equal(addCollectionValue(25, Number.NaN), 25);
+});
+
+test('Prestige Dust has a million-value minimum step and logarithmic diminishing returns', () => {
+  assert.equal(calculatePrestigeDust(999_999), 0);
+  assert.equal(calculatePrestigeDust(1_000_000), 1);
+  assert.equal(calculatePrestigeDust(1_999_999), 1);
+  assert.equal(calculatePrestigeDust(2_000_000), 2);
+  assert.equal(calculatePrestigeDust(3_000_000), 3);
+  assert.equal(calculatePrestigeDust(4_000_000), 3);
+  assert.equal(calculatePrestigeDust(4_050_000), 4);
+  assert.equal(calculatePrestigeDust(300_000_000), 58);
+});
+
+test('Aftershock turns the best record-breaking dry interval into permanent Critical Luck', () => {
+  assert.equal(aftershockCriticalLuckBonus(0), 0);
+  assert.equal(aftershockCriticalLuckBonus(9), 0);
+  assert.equal(aftershockCriticalLuckBonus(10), 0.005);
+  assert.equal(aftershockCriticalLuckBonus(80_000), 0.02);
+  assert.equal(aftershockCriticalLuckBonus(1_000_000), 0.03);
+  assert.equal(aftershockCriticalLuckBonus(Number.MAX_SAFE_INTEGER), 0.075);
+
+  const state = createInitialState(NOW);
+  const baseCriticalLuck = critMultiplier(state);
+  state.aftershockRecord = 80_000;
+  assert.equal(critMultiplier(state), baseCriticalLuck + 0.02);
+});
+
+test('Unbroken Momentum tracks uninterrupted sessions and grants capped Speed', () => {
+  assert.equal(UNBROKEN_MOMENTUM_SESSION_GAP_MS, 5 * 60_000);
+  assert.equal(unbrokenMomentumSpeedBonus(0), 0);
+  assert.equal(unbrokenMomentumSpeedBonus(5 * 60_000 - 1), 0);
+  assert.equal(unbrokenMomentumSpeedBonus(5 * 60_000), 0.01);
+  assert.equal(unbrokenMomentumSpeedBonus(30 * 60_000), 0.06);
+  assert.equal(unbrokenMomentumSpeedBonus(180 * 60_000), 0.30);
+
+  const state = createInitialState(NOW);
+  recordRollingSessionActivity(state, NOW);
+  recordRollingSessionActivity(state, NOW + 4 * 60_000);
+  assert.equal(state.longestRollingSessionMs, 4 * 60_000);
+
+  // A gap greater than five minutes starts a fresh session but never erases the record.
+  recordRollingSessionActivity(state, NOW + 10 * 60_000);
+  assert.equal(state.rollingSessionStartedAt, NOW + 10 * 60_000);
+  assert.equal(state.longestRollingSessionMs, 4 * 60_000);
+  recordRollingSessionActivity(state, NOW + 14 * 60_000);
+  recordRollingSessionActivity(state, NOW + 16 * 60_000);
+  assert.equal(state.longestRollingSessionMs, 6 * 60_000);
+
+  const baseCooldown = cooldownMs(createInitialState(NOW));
+  const momentumState = createInitialState(NOW);
+  momentumState.longestRollingSessionMs = 30 * 60_000;
+  assert.equal(cooldownMs(momentumState), Math.max(300, Math.round(baseCooldown / 1.06)));
+});
+
+test('Altar rank compounds at 1.05× per level and the coin floor grows by 1.5×', () => {
+  assert.equal(ALTAR_COIN_FLOOR_GROWTH, 1.5);
+  assert.equal(altarCoinFloor(0), 10_000);
+  assert.equal(altarCoinFloor(1), 15_000);
+  assert.equal(altarCoinFloor(2), 22_500);
+
+  const state = createInitialState(NOW);
+  state.sacrifices!.altarLevel = 1;
+  assert.equal(calculateAltarMultipliers(state).coinMultiplier, 1.05);
+  state.sacrifices!.altarLevel = 2;
+  assert.ok(Math.abs(calculateAltarMultipliers(state).coinMultiplier - 1.1025) < 1e-10);
+  assert.ok(Math.abs(calculateAltarMultipliers(state).totalAltarMultiplier - 1.1025) < 1e-10);
+});
+
+test('Cosmic Reserve multiplies Luck from unspent Cosmic Dust only', () => {
+  const state = createInitialState(NOW);
+  const withoutReserve = luckMultiplier(state);
+  state.cosmicDust = 100;
+  state.prestigeUpgrades.cosmicReserve = 5;
+  const withSixX = luckMultiplier(state);
+  assert.ok(Math.abs(withSixX - withoutReserve * 6) <= 0.03,
+    '100 unspent Dust at level 5 should produce a 6x Luck multiplier');
+
+  state.cosmicDust = 50;
+  const withThreePointFiveX = luckMultiplier(state);
+  assert.ok(Math.abs(withThreePointFiveX - withoutReserve * 3.5) <= 0.03,
+    '50 unspent Dust at level 5 should produce a 3.5x Luck multiplier');
+  state.cosmicDust = 0;
+  assert.equal(luckMultiplier(state), withoutReserve);
+  state.cosmicDust = 100;
+  state.prestigeUpgrades.cosmicReserve = 0;
+  assert.equal(luckMultiplier(state), withoutReserve);
+});
+
+test('Offline Generation Speed reaches its 60% reduction cap at level 8', () => {
+  const state = createInitialState(NOW);
+  const baseInterval = effectiveOfflineTickMs(state);
+  state.upgrades.offlineRate = 7;
+  const levelSeven = effectiveOfflineTickMs(state);
+  state.upgrades.offlineRate = 8;
+  const levelEight = effectiveOfflineTickMs(state);
+  state.upgrades.offlineRate = 12;
+  const aboveCap = effectiveOfflineTickMs(state);
+
+  assert.equal(levelSeven, Math.max(10_000, Math.round(baseInterval * 0.44)));
+  assert.equal(levelEight, Math.max(10_000, Math.round(baseInterval * 0.40)));
+  assert.equal(aboveCap, levelEight);
+  assert.ok(Number.isFinite(upgradeCost('offlineRate', 7)));
+  assert.equal(upgradeCost('offlineRate', 8), Infinity);
+});
 
 test('Level progression awards one Mastery Point per level gained', () => {
   const state = createInitialState();
@@ -298,7 +446,7 @@ test('invalid Shard spend amounts are rejected before touching wallet state', ()
   assert.equal(state.purchasedShards, 3);
 });
 
-test('Shard reward paths do not overflow the persisted balance's safe integer range', () => {
+test("Shard reward paths do not overflow the persisted balance's safe integer range", () => {
   const state = createInitialState(NOW);
   state.shards = Number.MAX_SAFE_INTEGER - 2;
   state.lifetimeShards = Number.MAX_SAFE_INTEGER - 1;

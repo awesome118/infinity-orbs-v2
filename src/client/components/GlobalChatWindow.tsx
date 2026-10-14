@@ -17,9 +17,13 @@ async function loadChat(): Promise<GlobalChatMessage[]> {
 
 const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username = '' }) => {
   const [open, setOpen] = useState(false);
-  const openRef = useRef(false);
+  // A Frenzy embed can route comments to the canonical Game launcher only
+  // after that launcher has registered its post ID. Hide chat if it cannot.
+  const [chatAvailable, setChatAvailable] = useState<boolean | null>(null);
   const [messages, setMessages] = useState<GlobalChatMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const hasPersistedSeenStateRef = useRef(false);
+  const seenMessageIdsRef = useRef<Set<string>>(new Set());
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [reportingId, setReportingId] = useState<string | null>(null);
@@ -27,9 +31,35 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
   const [actionError, setActionError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const refreshRequestRef = useRef(0);
-  openRef.current = open;
-  const hasInitializedMessagesRef = useRef(false);
-  const seenMessageIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem('io-global-chat-seen-v1');
+      if (stored !== null) {
+        const ids = JSON.parse(stored);
+        if (Array.isArray(ids)) {
+          seenMessageIdsRef.current = new Set(ids.filter((id): id is string => typeof id === 'string').slice(-100));
+          hasPersistedSeenStateRef.current = true;
+        }
+      }
+    } catch {
+      // Chat unread tracking is best-effort in restricted embedded webviews.
+    }
+  }, []);
+
+  const markMessagesSeen = (list: GlobalChatMessage[]) => {
+    const ids = new Set(seenMessageIdsRef.current);
+    for (const message of list.slice(-100)) ids.add(message.id);
+    const bounded = new Set(Array.from(ids).slice(-100));
+    seenMessageIdsRef.current = bounded;
+    hasPersistedSeenStateRef.current = true;
+    setUnreadCount(0);
+    try {
+      window.localStorage.setItem('io-global-chat-seen-v1', JSON.stringify(Array.from(bounded)));
+    } catch {
+      // The current session still tracks seen messages if localStorage is disabled.
+    }
+  };
 
   const mergeMessages = (current: GlobalChatMessage[], incoming: GlobalChatMessage[]) => {
     const merged = new Map<string, GlobalChatMessage>();
@@ -48,30 +78,60 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
       // overlapping GETs out of order, which otherwise lets stale history
       // briefly replace a newer snapshot.
       if (requestId !== refreshRequestRef.current) return;
-      // Count only newly arrived messages while the chat is closed. The first
-      // history load establishes a baseline and must not mark old history unread.
-      const newestMessages = next.slice(-100);
-      if (!hasInitializedMessagesRef.current) {
-        hasInitializedMessagesRef.current = true;
-        seenMessageIdsRef.current = new Set(newestMessages.map(message => message.id));
+      const visible = next.slice(-100);
+      setMessages(visible);
+      if (open) {
+        // Every message visible in an open chat is immediately marked seen.
+        markMessagesSeen(visible);
+      } else if (!hasPersistedSeenStateRef.current) {
+        // On first use we have no previous read marker. Establish a baseline
+        // instead of incorrectly showing the whole historical chat as unread.
+        markMessagesSeen(visible);
       } else {
-        const unseen = newestMessages.filter(message => !seenMessageIdsRef.current.has(message.id));
-        if (!openRef.current && unseen.length > 0) {
-          setUnreadCount(count => count + unseen.filter(message => message.username !== username).length);
-        }
-        for (const message of newestMessages) seenMessageIdsRef.current.add(message.id);
+        const unread = visible.filter(message => !seenMessageIdsRef.current.has(message.id));
+        setUnreadCount(unread.length);
       }
-      setMessages(newestMessages);
     } catch {
       // Chat is auxiliary UI and should never block gameplay.
     }
   };
 
   useEffect(() => {
+    let cancelled = false;
+
+    const checkAvailability = async () => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const response = await fetch('/api/chat/status?ts=' + Date.now(), {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache' },
+          });
+          const payload = await response.json().catch(() => ({})) as { enabled?: unknown };
+          if (!response.ok) throw new Error('Could not determine Global Chat availability.');
+          if (!cancelled) setChatAvailable(payload.enabled === true);
+          return;
+        } catch {
+          if (attempt === 2) {
+            if (!cancelled) setChatAvailable(false);
+            return;
+          }
+          await new Promise(resolve => setTimeout(resolve, 150 * (attempt + 1)));
+        }
+      }
+    };
+
+    void checkAvailability();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (chatAvailable !== true) return;
     void refreshChat();
     const interval = window.setInterval(() => void refreshChat(), open ? 3000 : 10000);
     return () => window.clearInterval(interval);
-  }, [open]);
+  }, [open, chatAvailable]);
 
   useEffect(() => {
     if (!open) return;
@@ -122,7 +182,6 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
       }
       const sentMessage = payload as GlobalChatMessage;
       setInput('');
-      seenMessageIdsRef.current.add(sentMessage.id);
       setMessages(prev => mergeMessages(prev, [sentMessage]));
       // Pull the authoritative history after posting. The merge keeps any
       // newer local messages if a concurrent poll is still in flight.
@@ -135,14 +194,16 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
     }
   };
 
+  // Do not show a non-working chat control on a Frenzy post while no
+  // canonical Game launcher has been registered. Sending is also guarded server-side.
+  if (chatAvailable !== true) return null;
+
   if (!open) {
     return (
       <button
         type="button"
         onClick={() => {
-          for (const message of messages) seenMessageIdsRef.current.add(message.id);
-          setUnreadCount(0);
-          openRef.current = true;
+          markMessagesSeen(messages);
           setOpen(true);
         }}
         className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-2xl border border-indigo-500/30 bg-slate-900/95 px-4 py-3 text-xs font-black text-white shadow-2xl backdrop-blur-md hover:bg-slate-800 transition-all"
@@ -151,7 +212,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
         <MessageCircle className="w-4 h-4 text-indigo-300" />
         <span>Global Chat</span>
         {unreadCount > 0 && (
-          <span className="rounded-full bg-indigo-500/20 px-1.5 py-0.5 text-[9px] text-indigo-200">
+          <span aria-label={unreadCount + ' unread messages'} className="rounded-full bg-indigo-500/20 px-1.5 py-0.5 text-[9px] text-indigo-200">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
@@ -166,15 +227,12 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
           <MessageCircle className="w-4 h-4 text-indigo-300" />
           <div>
             <h3 className="text-sm font-black text-white">Global Chat</h3>
-            <p className="text-[9px] text-slate-500">Everyone in the game can see these messages. Messages can be reported to subreddit moderators.</p>
+            <p className="text-[9px] text-slate-500">Messages are public Reddit comments on the main Game post. When you send one, Reddit submits it as you. Comments made directly on that post also appear here.</p>
           </div>
         </div>
         <button
           type="button"
-          onClick={() => {
-            openRef.current = false;
-            setOpen(false);
-          }}
+          onClick={() => setOpen(false)}
           className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-800 hover:text-white"
           title="Minimize chat"
         >
@@ -200,10 +258,16 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
           messages.map(message => (
             <div key={message.id} className="rounded-xl border border-slate-800/80 bg-slate-900/70 px-3 py-2">
               <div className="flex items-center justify-between gap-2">
-                <span className={message.isAdmin === true ? 'text-xs font-black text-rose-400' : message.username === username ? 'text-xs font-black text-indigo-300' : 'text-xs font-bold text-slate-200'}>
-                  {message.username}
-                  {message.isAdmin === true && (
-                    <span className="ml-1.5 rounded bg-rose-500/15 px-1.5 py-0.5 align-middle text-[8px] font-black uppercase tracking-wide text-rose-300">ADMIN</span>
+                <span className="inline-flex items-center gap-1.5 min-w-0">
+                  <span className={(message.isAdmin === true || message.username.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen')
+                    ? 'text-xs font-black text-red-400'
+                    : message.username === username
+                    ? 'text-xs font-black text-indigo-300'
+                    : 'text-xs font-bold text-slate-200'}>
+                    {message.username}
+                  </span>
+                  {(message.isAdmin === true || message.username.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen') && (
+                    <span className="rounded border border-red-500/40 bg-red-500/10 px-1 py-0.5 text-[8px] font-black tracking-wider text-red-300">ADMIN</span>
                   )}
                 </span>
                 <span className="text-[9px] text-slate-600">
@@ -240,7 +304,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
             value={input}
             onChange={e => setInput(e.target.value)}
             maxLength={200}
-            placeholder="Message everyone..."
+            placeholder="Write a public Reddit comment..."
             disabled={sending}
             className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-xs text-white placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
           />
@@ -248,7 +312,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
             type="submit"
             disabled={sending || !input.trim()}
             className="rounded-xl bg-indigo-600 px-3 py-2.5 text-white transition-all hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600"
-            title="Send message"
+            title="Post public comment"
           >
             {sending ? <X className="w-4 h-4 animate-pulse" /> : <Send className="w-4 h-4" />}
           </button>

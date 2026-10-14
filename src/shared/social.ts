@@ -124,6 +124,7 @@ export interface LeaderboardEntry {
   highestDryStreak?: number;
   currentDryStreak?: number;
   playtimeMs?: number;
+  chainLength?: number;
 }
 
 export type LeaderboardId =
@@ -132,7 +133,8 @@ export type LeaderboardId =
   | 'highestDryStreak'
   | 'currentDryStreak'
   | 'bestOrb'
-  | 'mostPlaytime';
+  | 'mostPlaytime'
+  | 'chainLength';
 
 export type LeaderboardBoards = Record<LeaderboardId, LeaderboardEntry[]>;
 
@@ -142,8 +144,6 @@ export interface GlobalChatMessage {
   text: string;
   timestamp: number;
   userId?: string;
-  /** Derived by the server from authenticated Reddit identity; never client-supplied. */
-  isAdmin?: boolean;
 }
 
 export interface Achievement {
