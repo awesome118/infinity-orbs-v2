@@ -2547,6 +2547,9 @@ async function submitChatReport(
 }
 
 export async function getGlobalChat(): Promise<GlobalChatMessage[]> {
+  // First use on an existing launcher self-registers its post ID. Frenzy posts
+  // are explicitly rejected by resolveGlobalGamePostId().
+  await resolveGlobalGamePostId().catch(() => null);
   const raw = await redis.get(GLOBAL_CHAT_KEY);
   const parsed = parseGlobalChatList(raw);
 
