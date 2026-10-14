@@ -266,7 +266,7 @@ function FrenzyPost() {
                 ? 'This Frenzy has already been claimed.'
                 : info.expired
                   ? 'This Frenzy has expired.'
-                  : 'Click below to claim it. You can only claim one every 23 hours.'}
+                  : 'Click below to claim it. You can only claim one every 23 hours. If you claim it, please consider upvoting this post to thank its owner.'}
             </p>
           </div>
 
