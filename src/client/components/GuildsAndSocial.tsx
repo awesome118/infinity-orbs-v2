@@ -116,7 +116,15 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const [reportingId, setReportingId] = useState<string | null>(null);
   const [reportedIds, setReportedIds] = useState<Set<string>>(() => new Set());
   const [activeLeaderboard, setActiveLeaderboard] = useState<LeaderboardId>('collectionValue');
-  const leaderboardBoards: LeaderboardBoards = leaderboards ?? { collectionValue: leaderboard, mostRolls: leaderboard, highestDryStreak: leaderboard, currentDryStreak: leaderboard, bestOrb: leaderboard, mostPlaytime: leaderboard };
+  const leaderboardBoards: LeaderboardBoards = leaderboards ?? {
+    collectionValue: leaderboard,
+    mostRolls: leaderboard,
+    highestDryStreak: leaderboard,
+    currentDryStreak: leaderboard,
+    bestOrb: leaderboard,
+    mostPlaytime: leaderboard,
+    chainLength: leaderboard,
+  };
   const leaderboardMeta: Array<{ id: LeaderboardId; label: string }> = [
     { id: 'collectionValue', label: 'Collection Value' },
     { id: 'mostRolls', label: 'Most Rolls' },
@@ -124,6 +132,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     { id: 'currentDryStreak', label: 'Current Dry Streak' },
     { id: 'bestOrb', label: 'Best Orb' },
     { id: 'mostPlaytime', label: 'Most Playtime' },
+    { id: 'chainLength', label: 'Chain Length' },
   ];
   const displayedLeaderboard = leaderboardBoards[activeLeaderboard];
   const leaderboardMetric = (entry: LeaderboardEntry): string => {
@@ -138,6 +147,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
         const hours = Math.floor(minutes / 60);
         return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
       }
+      case 'chainLength': return `${fmt(entry.chainLength ?? 0)} Rarities`;
     }
   };
 
