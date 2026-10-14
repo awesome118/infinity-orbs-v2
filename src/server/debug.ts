@@ -1052,8 +1052,11 @@ function buildStatSpyStats(
   const fortunePct = fortuneActive ? 300 : 0;
   const globalLuckPct = Math.max(0, globalLuck - 1) * 100;
   const astralReservePct = Number(prestige.astralReserve ?? 0) * 2;
+  const cosmicReserveLevel = Math.max(0, Math.min(5, Math.floor(Number(prestige.cosmicReserve ?? 0) || 0)));
+  const unspentCosmicDust = Math.max(0, Math.floor(Number(s.cosmicDust ?? 0) || 0));
+  const cosmicReserveMultiplier = 1 + unspentCosmicDust * cosmicReserveLevel * 0.01;
 
-  // luckMultiplier() applies permanent Luck and the Altar as multiplicative layers.
+  // luckMultiplier() applies permanent Luck, the Altar, and Cosmic Reserve as multiplicative layers.
   const additiveBaseLuck =
     1 +
     (Number(upgrades.luck ?? 0) * 0.05) +
@@ -1070,7 +1073,7 @@ function buildStatSpyStats(
 
   const permanentLuckFactor = Math.pow(1.05, Math.max(0, Number(prestige.permLuck ?? 0)));
   const finalLuck = Math.round(
-    ((additiveBaseLuck * permanentLuckFactor * altar.totalAltarMultiplier) + communityLuckBonus) * 100,
+    ((additiveBaseLuck * permanentLuckFactor * altar.totalAltarMultiplier * cosmicReserveMultiplier) + communityLuckBonus) * 100,
   ) / 100;
 
   const luckSources: StatSpySource[] = [
@@ -1087,6 +1090,7 @@ function buildStatSpyStats(
     statSource('Global Luck', globalLuckPct, 'pct', 'add', { level: Number(s.globalBoosters?.luck?.tier ?? 0), active: globalLuck > 1, detail: '+10% per active global tier' }),
     statSource('Guild Combo Luck', Math.max(0, comboLuck - 1) * 100, 'pct', 'add', { level: Number(s.guildCombo?.tier ?? 0), active: comboLuck > 1, detail: '+5% per active combo tier' }),
     statSource('Astral Reserve', astralReservePct, 'pct', 'add', { level: Number(prestige.astralReserve ?? 0), detail: '+2% per level' }),
+    statSource('Cosmic Reserve', cosmicReserveMultiplier, 'mult', 'multiply', { level: cosmicReserveLevel, active: cosmicReserveLevel > 0 && unspentCosmicDust > 0, detail: '×(1 + ' + unspentCosmicDust.toLocaleString() + ' unspent Dust × ' + cosmicReserveLevel + '%). Spent Dust removes its bonus.' }),
     statSource('Permanent Luck layer', permanentLuckFactor, 'mult', 'multiply', { level: Number(prestige.permLuck ?? 0), detail: '×1.05 per prestige level' }),
     statSource('Altar layer', altar.totalAltarMultiplier, 'mult', 'multiply', { detail: 'Coin sacrifice × Shard infusion × Luck Surge' }),
     statSource('Community Luck', communityLuckBonus * 100, 'pct', 'add', { detail: 'Current community event bonus, applied to roll Luck after normal Luck calculation' }),
