@@ -886,6 +886,36 @@ export function createApp() {
     catch (e) { badRequest(res, e, 'Could not report chat message.'); }
   });
 
+  // onCommentCreate keeps ordinary Reddit comments on the Game launcher in sync
+  // with the Global Chat window. It does not create any comments itself.
+  app.post('/internal/trigger/comment-create', async (req, res) => {
+    try {
+      const event = req.body ?? {};
+      const comment = event.comment ?? {};
+      const author = event.author ?? {};
+      const postId = String(comment.postId ?? '').trim();
+      const commentId = String(comment.id ?? '').trim();
+      const text = String(comment.body ?? '').trim();
+      const authorName = String(author.name ?? author.username ?? '').trim().replace(/^u\//i, '');
+      const authorId = String(author.id ?? '').trim();
+
+      if (postId && commentId && text && authorName) {
+        await recordGlobalChatComment({
+          postId,
+          commentId,
+          text,
+          username: authorName,
+          userId: authorId || undefined,
+          timestamp: Date.now(),
+        });
+      }
+      return res.json({ status: 'ok' });
+    } catch (error) {
+      console.error('[Global Chat] Comment trigger failed:', error);
+      return res.status(500).json({ status: 'error' });
+    }
+  });
+
   app.get('/api/guilds', async (_req, res) => {
     try {
       res.json(await guildInfo());
