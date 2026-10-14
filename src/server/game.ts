@@ -1451,11 +1451,11 @@ async function touchPlayerActivity(userId: string, username: string, now = Date.
     const activeLock = getActivePlayerMutationLock(lockIdentity);
     if (!activeLock) throw new Error('PLAYER_MUTATION_LEASE_LOST');
 
-    // WATCH the whole hash because every user's registry entry shares one Redis
-    // key. A write from another activity callback invalidates our snapshot and
-    // forces a recompute instead of losing a newer playtime total.
+    // This lease serializes activity updates for this user across runtimes.
+    // Watch only the per-user lease, not the shared registry hash: HSET changes
+    // one field atomically, so unrelated players must not invalidate this write.
     for (let attempt = 0; attempt < 16; attempt += 1) {
-      const txn = await redis.watch(PLAYER_REGISTRY_KEY, activeLock.key);
+      const txn = await redis.watch(activeLock.key);
       if (await redis.get(activeLock.key) !== activeLock.token) {
         await txn.unwatch();
         throw new Error('PLAYER_MUTATION_LEASE_LOST');

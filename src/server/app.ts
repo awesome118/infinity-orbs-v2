@@ -929,22 +929,42 @@ export function createApp() {
   // the trusted Devvit username is exactly "shadow_fen".
   app.use('/api/dev', debugRouter);
 
+  const reportRedisTransactionFailure = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    if (!/(?:redis.*transaction|transaction.*failed|max(?:imum)? concurrency|concurrency limit)/i.test(message)) {
+      return;
+    }
+    // Preserve the underlying stack and operation context; the client-facing
+    // toast alone is not enough to diagnose intermittent platform failures.
+    console.error('[Redis Transaction Failure]', {
+      timestamp: new Date().toISOString(),
+      userId: String(context.userId ?? ''),
+      message,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+  };
+
   const badRequest = (res: express.Response, e: unknown, fallback: string) => {
+    reportRedisTransactionFailure(e);
     res.status(400).json({ error: e instanceof Error ? e.message : fallback });
   };
 
   app.get('/api/roll-ticket', async (_req, res) => {
     try { res.json(await getRollTicket()); }
-    catch (e) { res.status(500).json({ error: e instanceof Error ? e.message : 'Could not create roll prediction ticket.' }); }
+    catch (e) {
+      reportRedisTransactionFailure(e);
+      res.status(500).json({ error: e instanceof Error ? e.message : 'Could not create roll prediction ticket.' });
+    }
   });
 
   app.post('/api/roll', async (req, res) => {
     try {
-      res.json(await roll(
-        req.body?.auto === true,
-        typeof req.body?.ticketId === 'string' ? req.body.ticketId : undefined,
-        Number.isSafeInteger(req.body?.ticketIndex) ? req.body.ticketIndex : undefined,
-      ));
+      const ticketId = typeof req.body?.ticketId === 'string' ? req.body.ticketId : '';
+      const ticketIndex = req.body?.ticketIndex;
+      if (!ticketId || !Number.isSafeInteger(ticketIndex)) {
+        return res.status(400).json({ error: 'Roll request is missing its ticket. Refresh the game and try again.' });
+      }
+      res.json(await roll(req.body?.auto === true, ticketId, ticketIndex));
     } catch (e) { badRequest(res, e, 'Roll failed.'); }
   });
 
