@@ -817,8 +817,11 @@ export function createApp() {
   app.get('/api/me', async (_req, res) => {
     try { res.json(await getMe()); }
     catch (e: any) {
+      reportRedisTransactionFailure(e);
       console.error('[API /api/me] Failed:', e);
-      res.status(500).json({ error: e?.message || 'Failed to fetch player state.' });
+      res.status(transientContentionError(e) ? 503 : 500).json({
+        error: transientContentionError(e) ? 'Player data is busy updating. Please retry.' : e?.message || 'Failed to fetch player state.',
+      });
     }
   });
 
@@ -834,20 +837,33 @@ export function createApp() {
       const tier = String(req.query.tier ?? 'all');
       res.json(await getCollectionPage({ offset, limit, tier, sort }));
     } catch (e: any) {
-      res.status(500).json({ error: e?.message || 'Failed to fetch Codex entries.' });
+      reportRedisTransactionFailure(e);
+      res.status(transientContentionError(e) ? 503 : 500).json({
+        error: transientContentionError(e) ? 'The Codex is busy updating. Please retry.' : e?.message || 'Failed to fetch Codex entries.',
+      });
     }
   });
 
   app.get('/api/leaderboard', async (_req, res) => {
     try {
       res.json(await leaderboard());
-    } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch leaderboard.' }); }
+    } catch (e: any) {
+      reportRedisTransactionFailure(e);
+      res.status(transientContentionError(e) ? 503 : 500).json({
+        error: transientContentionError(e) ? 'Leaderboard is busy updating. Please retry.' : e?.message || 'Failed to fetch leaderboard.',
+      });
+    }
   });
 
   app.get('/api/leaderboards', async (_req, res) => {
     try {
       res.json(await leaderboards());
-    } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch leaderboards.' }); }
+    } catch (e: any) {
+      reportRedisTransactionFailure(e);
+      res.status(transientContentionError(e) ? 503 : 500).json({
+        error: transientContentionError(e) ? 'Leaderboards are busy updating. Please retry.' : e?.message || 'Failed to fetch leaderboards.',
+      });
+    }
   });
 
   app.get('/api/chat', async (_req, res) => {
@@ -891,13 +907,16 @@ export function createApp() {
     try {
       res.json(await recordPlayerHeartbeat(req.body?.version));
     } catch (e: any) {
+      reportRedisTransactionFailure(e);
       console.error('[API /api/activity/heartbeat] Failed:', {
         timestamp: new Date().toISOString(),
         userId: String(context.userId ?? ''),
         message: e?.message ?? String(e),
         stack: e instanceof Error ? e.stack : undefined,
       });
-      res.status(500).json({ error: e?.message || 'Could not record player activity.' });
+      res.status(transientContentionError(e) ? 503 : 500).json({
+        error: transientContentionError(e) ? 'Presence is busy updating. Please retry.' : e?.message || 'Could not record player activity.',
+      });
     }
   });
 
@@ -999,7 +1018,9 @@ export function createApp() {
     try { res.json(await getRollTicket()); }
     catch (e) {
       reportRedisTransactionFailure(e);
-      res.status(500).json({ error: e instanceof Error ? e.message : 'Could not create roll prediction ticket.' });
+      res.status(transientContentionError(e) ? 503 : 500).json({
+        error: transientContentionError(e) ? 'The game is busy preparing your next roll. Please retry.' : e instanceof Error ? e.message : 'Could not create roll prediction ticket.',
+      });
     }
   });
 
