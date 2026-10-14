@@ -885,7 +885,10 @@ export function createApp() {
       // The GlobalChatWindow is mounted by the main launcher entry point.
       // Explicitly mark that handshake so stale test/Frenzy metadata cannot
       // prevent the main Game post from registering itself.
-      res.json(await getGlobalChatStatus(req.query.launcher === 'main'));
+      res.json(await getGlobalChatStatus(
+        req.query.launcher === 'main',
+        req.query.launcher === 'frenzy',
+      ));
     } catch (e) { badRequest(res, e, 'Could not determine Global Chat availability.'); }
   });
 
