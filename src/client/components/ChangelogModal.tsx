@@ -24,7 +24,7 @@ const entries: Array<{
   },
   {
     title: 'Chain Patcher',
-    description: 'Chain Patcher is now located in the Codex. It targets the cheapest missing rarity adjacent to your longest consecutive chain, guarantees exactly one orb of that rarity on your next accepted roll, and has a 24-hour purchase cooldown.',
+    description: 'Chain Patcher is now located in the Codex. Its pre-purchase preview correctly shows the next rarity and Shard cost using your full server-side Codex. It targets the cheapest missing rarity adjacent to your longest consecutive chain, guarantees exactly one orb of that rarity on your next accepted roll, and has a 24-hour purchase cooldown.',
   },
   {
     title: 'Bug Fixes & Improvements',
