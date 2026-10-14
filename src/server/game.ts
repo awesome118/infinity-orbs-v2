@@ -5367,6 +5367,7 @@ export async function upgradeMasterySkill(skillId: MasterySkillId): Promise<Play
       prosperity: 0,
       shardAttunement: 0,
       critMastery: 0,
+      aftershock: 0,
       chronoFlow: 0,
       infiniteVault: 0,
       cosmicAttunement: 0,
