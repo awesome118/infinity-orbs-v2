@@ -567,10 +567,14 @@ test('optional Guild projections cannot brick the player state or feature access
   const end = game.indexOf('function serverRandom()', start);
   assert.ok(start >= 0 && end > start, 'loadRaw boundaries must exist');
   const loader = game.slice(start, end);
-  assert.match(loader, /getPlayerGuildPerks\(username, userId\)\.catch\(error =>/);
-  assert.match(loader, /getPlayerGuildCombo\(username, userId\)\.catch\(error =>/);
+  // Perks and Combo now share one Guild-context read so a single failure
+  // falls back atomically to zeroed modifiers and an inactive Combo.
+  assert.match(loader, /const \[guildContext, globalBoosters, dailyStreakCommunity\] = await Promise\.all\(/);
+  assert.match(loader, /getPlayerGuildContext\(username, userId\)\.catch\(error =>/);
   assert.match(loader, /using zeroed modifiers until Guild data is repaired/);
-  assert.match(loader, /using an inactive combo until Guild data is repaired/);
+  assert.match(loader, /combo: createInitialState\(\)\.guildCombo!/);
+  assert.match(loader, /const \{ perks, combo: guildCombo, guildId \} = guildContext;/);
+  assert.doesNotMatch(loader, /getPlayerGuildPerks\(username, userId\)|getPlayerGuildCombo\(username, userId\)/);
 });
 
 test('chat report duplicate detection precedes the report cooldown check', () => {
@@ -780,7 +784,7 @@ test('roll rewards commit atomically with Guild and community progress', () => {
   assert.ok(rollStart >= 0 && rollEnd > rollStart);
   const roll = game.slice(rollStart, rollEnd);
   assert.match(roll, /prepareGuildRollEffects\(/);
-  assert.match(roll, /stageSaveExtraWrite\(s, guildEffects\.extraWrite\)/);
+  assert.match(roll, /if \(guildEffects\.extraWrite\) \{\s*stageSaveExtraWrite\(s, \{\s*\.\.\.guildEffects\.extraWrite,\s*onConflict:/);
   assert.match(roll, /prepareCommunityRolls\(rollCount, pendingCommunityWrite\)/);
   assert.match(roll, /getCommunityEvent\(\)\.catch\(error =>/);
   assert.match(roll, /Read failed; rolling without the event bonus/);
@@ -1082,10 +1086,14 @@ test('player activity watch transaction preserves playtime updates and fences an
   const end = game.indexOf('async function registerPlayer', start);
   assert.ok(start >= 0 && end > start);
   const activity = game.slice(start, end);
-  assert.match(activity, /redis\.watch\(PLAYER_REGISTRY_KEY, activeLock\.key\)/);
+  // HSET updates a single user field atomically, so the shared registry hash
+  // must not be WATCHed: unrelated player activity must not cause conflicts.
+  assert.match(activity, /const txn = await redis\.watch\(activeLock\.key\)/);
+  assert.match(activity, /if \(await redis\.get\(activeLock\.key\) !== activeLock\.token\)/);
+  assert.doesNotMatch(activity, /redis\.watch\(PLAYER_REGISTRY_KEY/);
   assert.match(activity, /PLAYER_MUTATION_LEASE_LOST/);
   assert.match(activity, /txn\.hSet\(PLAYER_REGISTRY_KEY/);
-  assert.match(activity, /if \(await txn\.exec\(\) !== null\) return playtimeMs/);
+  assert.match(activity, /const committed = await txn\.exec\(\);\s*transactionClosed = true;\s*if \(committed !== null\) return playtimeMs/);
   assert.match(mock, /kind: 'hset'/);
   assert.match(mock, /Object\.assign\(values, write\.fields\)/);
 });
