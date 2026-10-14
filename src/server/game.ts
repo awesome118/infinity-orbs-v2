@@ -2757,6 +2757,37 @@ async function loadRollTicketForUse(
   return { ticket, raw };
 }
 
+async function commitOptionalSaveProjection(write: SaveExtraWrite): Promise<void> {
+  const txn = await redis.watch(write.key);
+  let transactionClosed = false;
+  try {
+    const current = await redis.get(write.key);
+    const actual = current == null ? null : String(current);
+    if (actual !== write.expectedValue) {
+      await txn.unwatch();
+      transactionClosed = true;
+      console.error('[Player Save] Optional projection changed; skipped without affecting player state.', write.key);
+      return;
+    }
+
+    await txn.multi();
+    if (write.expiration) {
+      await txn.set(write.key, write.nextValue, { expiration: write.expiration });
+    } else {
+      await txn.set(write.key, write.nextValue);
+    }
+    const committed = await txn.exec();
+    transactionClosed = true;
+    if (committed === null) {
+      console.error('[Player Save] Optional projection conflicted at commit; skipped without affecting player state.', write.key);
+    }
+  } finally {
+    if (!transactionClosed) {
+      await txn.unwatch().catch(() => undefined);
+    }
+  }
+}
+
 export async function save(
   s: PlayerState,
   extraWrite?: SaveExtraWrite | SaveExtraWrite[],
@@ -2782,11 +2813,16 @@ export async function save(
   const explicitWrites = extraWrite
     ? Array.isArray(extraWrite) ? extraWrite : [extraWrite]
     : [];
-  const extraWrites = [
+  const allExtraWrites = [
     ...(pendingSaveExtraWrites.get(s) ?? []),
     ...explicitWrites,
   ];
-  const writeKeys = extraWrites.map(write => write.key);
+  // Optional side projections (for example shared World Event progress) are
+  // best-effort. Keeping them out of the player transaction prevents unrelated
+  // players from invalidating a critical balance/progression save.
+  const extraWrites = allExtraWrites.filter(write => !write.optional);
+  const optionalWrites = allExtraWrites.filter(write => write.optional);
+  const writeKeys = allExtraWrites.map(write => write.key);
   if (
     new Set(writeKeys).size !== writeKeys.length ||
     writeKeys.includes(key()) ||
@@ -2851,31 +2887,14 @@ export async function save(
     const generationRaw = await redis.get(generationKey);
     const extraRaws = await Promise.all(extraWrites.map(write => redis.get(write.key)));
 
-    let optionalProjectionConflict = false;
     for (let index = 0; index < extraWrites.length; index += 1) {
       const write = extraWrites[index];
       const actual = extraRaws[index] == null ? null : String(extraRaws[index]);
       if (actual !== write.expectedValue) {
         await txn.unwatch();
-        if (write.optional) {
-          // A watched optional projection can change between prepare and save.
-          // Drop only that projection and retry the primary player write without
-          // it; never overwrite the newer shared record or reject a valid roll.
-          extraWrites.splice(index, 1);
-          const pending = pendingSaveExtraWrites.get(s);
-          if (pending) {
-            const remaining = pending.filter(item => item.key !== write.key);
-            if (remaining.length) pendingSaveExtraWrites.set(s, remaining);
-            else pendingSaveExtraWrites.delete(s);
-          }
-          console.error('[Player Save] Optional side projection changed before commit; saving player state without it.', write.key);
-          optionalProjectionConflict = true;
-          break;
-        }
         throw new Error(write.conflictMessage ?? 'Shared state changed before the player save. Please retry.');
       }
     }
-    if (optionalProjectionConflict) continue;
 
     const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
     const stateGeneration = Math.max(0, Math.floor(Number(s.saveGeneration ?? 0)));
@@ -2979,6 +2998,15 @@ export async function save(
     if (committed !== null) {
       pendingSaveExtraWrites.delete(s);
       Object.assign(s, nextState);
+
+      // Optional projections are deliberately outside the authoritative player
+      // transaction. They can lag briefly or be skipped on conflicts, but they
+      // can never invalidate a committed balance/progression update.
+      for (const write of optionalWrites) {
+        void commitOptionalSaveProjection(write).catch(error => {
+          console.error('[Player Save] Optional post-commit projection failed:', write.key, error);
+        });
+      }
 
       // Run deferred external side effects only after the durable player state
       // has committed. Failures are logged and do not turn a successful reward

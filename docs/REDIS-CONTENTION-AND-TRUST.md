@@ -4,6 +4,8 @@
 
 Player activity updates share the `io:player-registry` hash. Redis hash-field writes are atomic, and activity updates are already serialized per user through a distributed lease. Watching the entire registry caused independent users' updates to invalidate each other's transactions. Activity writes now watch only that user's lease while updating only that user's hash field.
 
+The player save routine also excludes optional shared projections (notably World Event progress and no-tax Guild projections) from the authoritative save transaction. After the player save commits, each optional projection is attempted in a separate transaction. A projection conflict or failure is logged and skipped instead of forcing the player's whole save to retry. Required writes, including the player save and ticket advancement, remain atomic.
+
 The mutation-lock runtime also guarantees `unwatch()` if lock renewal or release exits with an exception before `exec()`. Roll and ticket-related infrastructure errors are logged with a stack trace and the current user ID so intermittent incidents can be diagnosed instead of only appearing as a transient UI message.
 
 ## What may move to the client
