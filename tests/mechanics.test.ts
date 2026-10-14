@@ -13,6 +13,7 @@ import {
   altarCoinFloor,
   calculateAltarMultipliers,
   cooldownMs,
+  critMultiplier,
   effectiveOfflineTickMs,
   upgradeCost,
   createInitialGlobalBoosters,
@@ -37,8 +38,6 @@ import {
   FREE_SHARD_DAILY_CAP,
   onlinePlayerLuckMultiplier,
   luckMultiplier,
-  effectiveOfflineTickMs,
-  upgradeCost,
   frenzyClaimCountForRarity,
   frenzyOrbCountForRarity,
   FRENZY_LOG_BASE,
@@ -107,6 +106,11 @@ test('Aftershock turns the best record-breaking dry interval into permanent Crit
   assert.equal(aftershockCriticalLuckBonus(80_000), 0.02);
   assert.equal(aftershockCriticalLuckBonus(1_000_000), 0.03);
   assert.equal(aftershockCriticalLuckBonus(Number.MAX_SAFE_INTEGER), 0.075);
+
+  const state = createInitialState(NOW);
+  const baseCriticalLuck = critMultiplier(state);
+  state.aftershockRecord = 80_000;
+  assert.equal(critMultiplier(state), baseCriticalLuck + 0.02);
 });
 
 test('Unbroken Momentum tracks uninterrupted sessions and grants capped Speed', () => {
