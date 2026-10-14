@@ -2613,23 +2613,36 @@ export async function postGlobalChatMessage(text: string): Promise<GlobalChatMes
       text: messageText,
       runAs: 'USER',
     });
-    const commentId = String(comment?.id ?? '').trim();
-    if (!commentId) {
+    const returnedCommentId = String(comment?.id ?? '').trim();
+    if (!returnedCommentId) {
       throw new Error('Reddit did not return a comment ID. Check the Game post before retrying.');
     }
-
-    const recorded = await recordGlobalChatComment({
-      postId,
-      commentId,
+    const commentId = /^t1_/i.test(returnedCommentId) ? returnedCommentId : 't1_' + returnedCommentId;
+    const timestamp = Date.now();
+    const message: GlobalChatMessage = {
+      id: commentId,
+      username: username().replace(/^u\\//i, '') || 'Redditor',
       text: messageText,
-      username: username(),
+      timestamp,
       userId: user(),
-      timestamp: Date.now(),
-    });
-    if (!recorded) {
-      throw new Error('Your comment was submitted, but Global Chat could not sync it. Refresh the game before retrying.');
+    };
+
+    // Reddit has already accepted the comment. Do not report the whole action as
+    // failed just because the auxiliary chat projection races or temporarily
+    // fails; the onCommentCreate trigger will retry the idempotent projection.
+    try {
+      return await recordGlobalChatComment({
+        postId,
+        commentId,
+        text: messageText,
+        username: username(),
+        userId: user(),
+        timestamp,
+      }) ?? message;
+    } catch (projectionError) {
+      console.error('[Global Chat] Comment posted but immediate chat projection failed; trigger will reconcile it:', projectionError);
+      return message;
     }
-    return recorded;
   });
 }
 
