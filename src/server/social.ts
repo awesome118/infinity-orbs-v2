@@ -598,7 +598,9 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
     // permanently stuck with the old difficulty.
     const comboEndsAt = Math.max(0, Math.floor(Number(g.combo?.endsAt ?? 0) || 0));
     const comboTier = Math.max(0, Math.floor(Number(g.combo?.tier ?? 0) || 0));
-    const comboExpired = comboTier > 0 && comboEndsAt > 0 && comboEndsAt <= now;
+    const hasEscalatedTasks = g.tasks.some(task => Number(task.tier ?? 1) > 1);
+    const comboExpired = comboEndsAt > 0 && comboEndsAt <= now &&
+      (comboTier > 0 || hasEscalatedTasks);
     if (comboExpired) {
       g.tasks = createInitialGuildTasks(g.level || 1);
     }
