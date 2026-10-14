@@ -886,6 +886,12 @@ async function loadGuilds(): Promise<Guild[]> {
         const committed = await txn.exec();
         transactionClosed = true;
         if (committed !== null) return latest;
+      } catch (error) {
+        // Malformed watched snapshots and other read failures must be surfaced;
+        // always release WATCH, then rethrow instead of silently continuing.
+        transactionClosed = true;
+        await txn.unwatch();
+        throw error;
       } finally {
         if (!transactionClosed) {
           await txn.unwatch().catch(() => undefined);
