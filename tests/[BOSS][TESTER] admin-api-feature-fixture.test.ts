@@ -53,18 +53,19 @@ test('feature-level fixture is verified through the same /api/me read path used 
 });
 
 
-test('admin roll helper clears cooldown before getting a fresh ticket and retries stale-ticket failures', () => {
+test('admin roll helper consumes the ticket returned by the cooldown-reset endpoint', () => {
   const runner = readFileSync(resolve(process.cwd(), 'src/client/components/DevDebugModal.tsx'), 'utf8');
   const start = runner.indexOf('const rollOnce = async');
   const end = runner.indexOf('const rollDetail', start);
   assert.ok(start >= 0 && end > start, 'admin roll helper boundaries must exist');
   const helper = runner.slice(start, end);
 
-  const resetIndex = helper.indexOf("request('/api/dev/reset-cooldown'");
-  const ticketIndex = helper.indexOf("request<{ ticketId: string; nextIndex: number }>('/api/roll-ticket')");
+  const resetIndex = helper.indexOf("('/api/dev/reset-cooldown', {})");
   const rollIndex = helper.indexOf("request<RollResponse>('/api/roll'");
-  assert.ok(resetIndex >= 0 && ticketIndex > resetIndex && rollIndex > ticketIndex,
-    'cooldown reset must commit before the fresh ticket is acquired and used');
+  assert.ok(resetIndex >= 0 && rollIndex > resetIndex,
+    'roll submission must use the reset endpoint that returns a fresh ticket');
+  assert.match(helper, /ticketId: ticket\.ticketId/);
+  assert.match(helper, /ticketIndex: ticket\.nextIndex/);
   assert.match(helper, /message\.includes\('Roll prediction ticket is'\)/);
   assert.match(helper, /message\.includes\('Could not create a roll prediction ticket'\)/);
 });
