@@ -452,7 +452,7 @@ test('expired Guild Combos persist a Tier 1 task reset, including decayed legacy
   assert.ok(normalizeStart >= 0 && normalizeEnd > normalizeStart);
   const normalize = social.slice(normalizeStart, normalizeEnd);
   assert.match(normalize, /hasEscalatedTasks/);
-  assert.match(normalize, /const comboExpired = comboEndsAt > 0 && comboEndsAt <= now/);
+  assert.match(normalize, /const comboExpired = hasEscalatedTasks && \(comboTier === 0 \|\| \(comboEndsAt > 0 && comboEndsAt <= now\)\)/);
   assert.match(normalize, /if \(comboExpired\) \{\s*g\.tasks = createInitialGuildTasks\(g\.level \|\| 1\)/);
 
   const loadStart = social.indexOf('async function loadGuilds()');
