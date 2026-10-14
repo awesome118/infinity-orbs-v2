@@ -756,10 +756,11 @@ export function createApp() {
       if (!subredditName) return res.status(400).json({ showToast: 'No subreddit context available.' });
       const post = await reddit.submitCustomPost({
         title: 'Infinity Orbs',
-        flairText: 'Game',
         entry: 'default',
       });
-      await redis.set('io:global-game-post-id', post.id, { nx: true });
+      await redis.set('io:global-game-post-id', post.id, { nx: true }).catch((error: unknown) => {
+        console.error('[Global Chat] Could not register the new Game post:', error);
+      });
       res.json({ navigateTo: `https://reddit.com/r/${subredditName}/comments/${post.id}` });
     } catch (e) {
       console.error('Failed to create Infinity Orbs post:', e);
@@ -773,7 +774,6 @@ export function createApp() {
       if (!subredditName) return res.status(400).json({ status: 'error', message: 'No subreddit context available.' });
       const post = await reddit.submitCustomPost({
         title: 'Infinity Orbs',
-        flairText: 'Game',
         entry: 'default',
       });
       await redis.set('io:global-game-post-id', post.id, { nx: true });
