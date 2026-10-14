@@ -517,6 +517,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
                 : 'RELEASE FRENZY'
               : remain > 0 && freeRolls <= 0
               ? 'WAIT ' + (remain / 1000).toFixed(1) + 's'
+              : freeRolls > 0
+              ? 'USE ALL ' + freeRolls + ' FREE ROLL' + (freeRolls === 1 ? '' : 'S')
               : 'ROLL ' + (multi > 1 ? '×' + multi : '')}
           </span>
         </button>
