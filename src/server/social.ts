@@ -2214,6 +2214,12 @@ export async function setCommunityEventConfig(config: {
 
 const GLOBAL_CHAT_KEY = key('global-chat:v1');
 const GLOBAL_GAME_POST_KEY = key('global-game-post-id');
+
+function normalizeRedditPostId(value: unknown): string {
+  const id = String(value ?? '').trim();
+  if (!id) return '';
+  return /^t3_/i.test(id) ? id : 't3_' + id;
+}
 const GLOBAL_CHAT_MAX_MESSAGES = 100;
 const CHAT_REPORTS_KEY = key('chat-reports:v1');
 const CHAT_REPORT_RESERVATION_PREFIX = key('chat-report-reservation:v1:');
@@ -2262,24 +2268,27 @@ function parseGlobalChatList(raw: unknown): GlobalChatMessage[] {
 
 
 async function resolveGlobalGamePostId(): Promise<string> {
-  const saved = String(await redis.get(GLOBAL_GAME_POST_KEY) ?? '').trim();
+  const saved = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
   if (saved) return saved;
 
-  const currentPostId = String(context.postId ?? '').trim();
+  const currentRawId = String(context.postId ?? '').trim();
+  const currentPostId = normalizeRedditPostId(currentRawId);
   if (!currentPostId) {
     throw new Error('The main Game post is not registered yet. Open Global Chat from the Infinity Orbs launcher.');
   }
   // Never choose a Frenzy post as the Global Chat destination.
-  if (await redis.get('io:frenzy:post:' + currentPostId) != null) {
+  if (
+    await redis.get('io:frenzy:post:' + currentRawId) != null ||
+    await redis.get('io:frenzy:post:' + currentPostId) != null
+  ) {
     throw new Error('Global Chat posts only on the main Game launcher, not on a Frenzy post.');
   }
 
   await redis.set(GLOBAL_GAME_POST_KEY, currentPostId, { nx: true });
-  const registered = String(await redis.get(GLOBAL_GAME_POST_KEY) ?? '').trim();
+  const registered = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
   if (!registered) throw new Error('Could not register the Game post. Please retry.');
   return registered;
 }
-
 
 
 export async function recordGlobalChatComment(input: {
@@ -2290,8 +2299,8 @@ export async function recordGlobalChatComment(input: {
   userId?: string;
   timestamp?: number;
 }): Promise<GlobalChatMessage | null> {
-  const targetPostId = String(input.postId ?? '').trim();
-  const registeredPostId = String(await redis.get(GLOBAL_GAME_POST_KEY) ?? '').trim();
+  const targetPostId = normalizeRedditPostId(input.postId);
+  const registeredPostId = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
   if (!targetPostId || !registeredPostId || targetPostId !== registeredPostId) return null;
 
   const rawId = String(input.commentId ?? '').trim();
