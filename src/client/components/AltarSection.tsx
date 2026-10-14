@@ -136,7 +136,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
                 Altar Luck
               </div>
               <div className="text-2xl font-black text-white font-mono">
-                {totalAltarMultiplier}×
+                {totalAltarMultiplier.toFixed(2)}×
               </div>
               <div className="text-[10px] text-emerald-400 font-medium">
                 Multiplied with other luck
@@ -155,7 +155,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left bg-slate-950/70 p-4 rounded-xl border border-slate-800/80">
           <div className="flex-1">
             <span className="text-[11px] text-slate-400 block">Coin Devotion</span>
-            <span className="text-lg font-black text-amber-400 font-mono">{coinMultiplier}×</span>
+            <span className="text-lg font-black text-amber-400 font-mono">{coinMultiplier.toFixed(2)}×</span>
             <span className="text-[10px] text-slate-500 block">From Lvl {altarLevel} & sacrifices</span>
           </div>
 
@@ -163,7 +163,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
 
           <div className="flex-1">
             <span className="text-[11px] text-slate-400 block">Shard infusion</span>
-            <span className="text-lg font-black text-cyan-400 font-mono">{shardMultiplier}×</span>
+            <span className="text-lg font-black text-cyan-400 font-mono">{shardMultiplier.toFixed(2)}×</span>
             <span className="text-[10px] text-slate-500 block">{sacrifices.shardsSacrificed} Shards offered</span>
           </div>
 
@@ -172,7 +172,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
           <div className="flex-1">
             <span className="text-[11px] text-slate-400 block">Luck Surge</span>
             <span className={`text-lg font-black font-mono ${isSurgeActive ? 'text-rose-400 animate-pulse' : 'text-slate-500'}`}>
-              {surgeMultiplier}×
+              {surgeMultiplier.toFixed(2)}×
             </span>
             <span className="text-[10px] text-slate-500 block">
               {isSurgeActive ? `${surgeMins}m ${surgeSecs}s left` : 'Inactive'}
@@ -183,7 +183,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
 
           <div className="flex-1 bg-orange-500/10 border border-orange-500/30 rounded-xl p-2.5">
             <span className="text-[11px] text-orange-300 font-bold block">Total Altar Luck</span>
-            <span className="text-xl font-black text-white font-mono">{totalAltarMultiplier}×</span>
+            <span className="text-xl font-black text-white font-mono">{totalAltarMultiplier.toFixed(2)}×</span>
           </div>
         </div>
       </div>
@@ -197,7 +197,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
             <span className="font-mono text-amber-400 font-bold">Lvl {altarLevel}</span>
           </div>
           <div className="text-2xl font-black text-white font-mono">
-            {coinMultiplier}× <span className="text-xs font-normal text-amber-400">Coin Luck</span>
+            {coinMultiplier.toFixed(2)}× <span className="text-xs font-normal text-amber-400">Coin Luck</span>
           </div>
           <div className="rounded-xl bg-amber-500/5 border border-amber-500/15 px-3 py-2">
             <div className="flex items-center justify-between">
@@ -228,7 +228,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
             <span>Permanent Shard Infusion</span>
           </div>
           <div className="text-2xl font-black text-white font-mono">
-            {shardMultiplier}× <span className="text-xs font-normal text-cyan-400">Shard Multiplier</span>
+            {shardMultiplier.toFixed(2)}× <span className="text-xs font-normal text-cyan-400">Shard Multiplier</span>
           </div>
           <p className="text-[11px] text-slate-400">
             {sacrifices.shardsSacrificed} Shards permanently infused (+3% multiplicative luck per shard).
