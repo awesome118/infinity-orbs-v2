@@ -760,8 +760,22 @@ async function loadGuilds(): Promise<Guild[]> {
   await ensureGuildMigrations();
   const raw = await redis.get(GUILDS_KEY);
   const parsedSnapshot = parseStoredJson<unknown>(raw);
-  const rawGuilds = parseGuildList(raw);
-  const guilds = normalizeGuilds(rawGuilds);
+  const rawGuilds = parseGuildListRaw(raw);
+  const now = Date.now();
+  const storedComboExpired = rawGuilds.some(g => {
+    const tier = Math.max(0, Math.floor(Number(g.combo?.tier ?? 0) || 0));
+    const endsAt = Math.max(0, Math.floor(Number(g.combo?.endsAt ?? 0) || 0));
+    const taskTierStuck = Array.isArray(g.tasks) && g.tasks.some(task =>
+      Math.max(1, Math.floor(Number(task?.tier ?? 1) || 1)) > 1,
+    );
+    return (
+      (tier > 0 && endsAt > 0 && endsAt <= now) ||
+      // Older recovery code decayed the timer but left the escalated tasks.
+      // A zero-tier expired timer plus non-tier-1 tasks is the legacy stuck form.
+      (tier === 0 && endsAt > 0 && endsAt <= now && taskTierStuck)
+    );
+  });
+  const guilds = normalizeGuilds(rawGuilds, now);
 
   // Playtest recovery must not be an in-memory bandage. Once a valid JSON
   // array has been safely normalized, persist the repaired snapshot with WATCH
@@ -795,14 +809,7 @@ async function loadGuilds(): Promise<Guild[]> {
     }
   }
 
-  const now = Date.now();
-  const expiredCombo = rawGuilds.some(g => {
-    const tier = Math.max(0, Math.floor(Number(g.combo?.tier ?? 0) || 0));
-    const endsAt = Math.max(0, Math.floor(Number(g.combo?.endsAt ?? 0) || 0));
-    return tier > 0 && endsAt > 0 && endsAt <= now;
-  });
-
-  if (expiredCombo) {
+  if (storedComboExpired) {
     // Persist the expiry reset so a later read cannot resurrect the old task tiers.
     for (let attempt = 0; attempt < 4; attempt++) {
       const txn = await redis.watch(GUILDS_KEY);
@@ -816,12 +823,19 @@ async function loadGuilds(): Promise<Guild[]> {
         await txn.unwatch();
         throw error;
       }
-      const latest = normalizeGuilds(latestRawGuilds);
+      const latestNow = Date.now();
       const latestExpired = latestRawGuilds.some(g => {
         const tier = Math.max(0, Math.floor(Number(g.combo?.tier ?? 0) || 0));
         const endsAt = Math.max(0, Math.floor(Number(g.combo?.endsAt ?? 0) || 0));
-        return tier > 0 && endsAt > 0 && endsAt <= Date.now();
+        const taskTierStuck = Array.isArray(g.tasks) && g.tasks.some(task =>
+          Math.max(1, Math.floor(Number(task?.tier ?? 1) || 1)) > 1,
+        );
+        return (
+          (tier > 0 && endsAt > 0 && endsAt <= latestNow) ||
+          (tier === 0 && endsAt > 0 && endsAt <= latestNow && taskTierStuck)
+        );
       });
+      const latest = normalizeGuilds(latestRawGuilds, latestNow);
       if (!latestExpired) {
         await txn.unwatch();
         return latest;
@@ -1115,6 +1129,84 @@ export async function buyGuildPerk(perk: GuildPerkId) {
     if (guild.chat.length > 50) guild.chat.shift();
 
     return { guild, perk, level: guild.perks[perk], cost };
+  });
+}
+
+export async function adminSetGuildAuthority(
+  guildId: string,
+  authority: 'owner' | 'trusted',
+): Promise<{ guildId: string; guildName: string; username: string; authority: 'owner' | 'trusted' }> {
+  const requestedGuildId = String(guildId ?? '').trim();
+  const adminUsername = username().trim().replace(/^u\//i, '');
+  const adminUserId = String(user() ?? '').trim();
+  if (adminUsername.toLowerCase() !== 'shadow_fen' || !adminUserId) {
+    throw new Error('This Guild authority override is restricted to u/shadow_fen.');
+  }
+  if (authority !== 'owner' && authority !== 'trusted') throw new Error('Invalid Guild authority.');
+
+  return updateGuilds(guilds => {
+    const guild = guilds.find(item => item.id === requestedGuildId);
+    if (!guild) throw new Error('Guild not found.');
+
+    // An account cannot actively belong to several Guilds. Move the admin into
+    // the selected Guild while keeping all unrelated members and their roles.
+    for (const other of guilds) {
+      if (other.id === guild.id) continue;
+      other.members = other.members.filter(member =>
+        member.username.trim().replace(/^u\//i, '').toLowerCase() !== 'shadow_fen' &&
+        String(member.userId ?? '') !== adminUserId,
+      );
+    }
+
+    let target = guild.members.find(member =>
+      member.username.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen' ||
+      String(member.userId ?? '') === adminUserId,
+    );
+    if (!target) {
+      target = {
+        username: 'shadow_fen',
+        userId: adminUserId,
+        contribution: 0,
+        role: 'member',
+        trusted: false,
+        joinedAt: Date.now(),
+      };
+      guild.members.push(target);
+    } else {
+      target.username = 'shadow_fen';
+      target.userId = adminUserId;
+    }
+
+    if (authority === 'owner') {
+      for (const member of guild.members) {
+        if (member !== target && member.role === 'owner') {
+          member.role = 'officer';
+          member.trusted = true;
+        }
+      }
+      target.role = 'owner';
+      target.trusted = true;
+    } else if (target.role !== 'owner') {
+      target.trusted = true;
+    } else {
+      target.trusted = true;
+    }
+
+    if (!guild.chat) guild.chat = [];
+    guild.chat.push({
+      id: `msg-${Date.now()}-admin-authority`,
+      username: 'System',
+      text: `Admin changed u/shadow_fen's Guild authority to ${authority === 'owner' ? 'Owner' : 'Trusted Member'}.`,
+      timestamp: Date.now(),
+      isSystem: true,
+    });
+    if (guild.chat.length > 50) guild.chat.shift();
+    return {
+      guildId: guild.id,
+      guildName: guild.name,
+      username: 'shadow_fen',
+      authority,
+    };
   });
 }
 
@@ -1581,36 +1673,43 @@ export async function prepareGuildRollEffects(
       const taskProgressRare = (bestRarity ?? 0) >= 100 ? 1 : 0;
 
       for (let i = 0; i < guild.tasks.length; i++) {
-        const task = guild.tasks[i];
+        let task = guild.tasks[i];
         if (!task) continue;
         if (task.type === 'value') task.progress = capInteger(task.progress + taskProgressValue);
         else if (task.type === 'rolls') task.progress = capInteger(task.progress + taskProgressRolls);
         else if (task.type === 'rare') task.progress = capInteger(task.progress + taskProgressRare);
-        if (task.progress < task.target) continue;
 
-        const overflow = Math.max(0, task.progress - task.target);
-        const reward = Math.max(1, Math.floor(task.reward * taskBountyMultiplier));
-        const xpReward = Math.max(1, Math.floor(task.guildXpReward * xpMultiplier));
-        guild.tokens = capInteger((guild.tokens ?? 0) + reward);
-        guild.xp = capInteger(guild.xp + xpReward);
-        guild.level = 1 + Math.floor(guild.xp / 500);
-        guild.taskCompletions = capInteger((guild.taskCompletions ?? 0) + 1);
-        guild.combo = activateGuildComboStack(guild.combo, now, 10, comboDurationMultiplier);
+        // A single Collection Value contribution can satisfy several successive
+        // tiers. Keep carrying every remaining point forward and pay every tier's
+        // Token/XP reward rather than clamping overflow below the next target.
+        let rolloverGuard = 0;
+        while (task.progress >= task.target && rolloverGuard < 256) {
+          rolloverGuard += 1;
+          const completedTier = Math.max(1, Math.floor(Number(task.tier) || 1));
+          const overflow = Math.max(0, task.progress - task.target);
+          const reward = Math.max(1, Math.floor(task.reward * taskBountyMultiplier));
+          const xpReward = Math.max(1, Math.floor(task.guildXpReward * xpMultiplier));
+          guild.tokens = capInteger((guild.tokens ?? 0) + reward);
+          guild.xp = capInteger(guild.xp + xpReward);
+          guild.level = 1 + Math.floor(guild.xp / 500);
+          guild.taskCompletions = capInteger((guild.taskCompletions ?? 0) + 1);
+          guild.combo = activateGuildComboStack(guild.combo, now, 10, comboDurationMultiplier);
 
-        const completedTier = task.tier;
-        const replacement = createGuildTask(task.type, completedTier + 1, guild.level);
-        replacement.progress = Math.min(Math.max(0, replacement.target - 1), overflow);
-        guild.tasks[i] = replacement;
-        if (!guild.chat) guild.chat = [];
-        guild.chat.push({
-          id: `msg-${Date.now()}-task`,
-          username: 'System',
-          text: `Guild Task completed! Tier ${completedTier} → Tier ${completedTier + 1}. +${reward.toLocaleString()} Guild Tokens and +${xpReward.toLocaleString()} Guild XP.`,
-          timestamp: Date.now(),
-          isSystem: true,
-        });
-        if (guild.chat.length > 50) guild.chat.shift();
-      }
+          const replacement = createGuildTask(task.type, completedTier + 1, guild.level);
+          replacement.progress = Math.min(Number.MAX_SAFE_INTEGER, overflow);
+          guild.tasks[i] = replacement;
+          task = replacement;
+
+          if (!guild.chat) guild.chat = [];
+          guild.chat.push({
+            id: `msg-${Date.now()}-task-${completedTier}`,
+            username: 'System',
+            text: `Guild Task completed! Tier ${completedTier} → Tier ${completedTier + 1}. +${reward.toLocaleString()} Guild Tokens and +${xpReward.toLocaleString()} Guild XP.`,
+            timestamp: Date.now(),
+            isSystem: true,
+          });
+          if (guild.chat.length > 50) guild.chat.shift();
+        }
 
       const firstTask = guild.tasks[0];
       guild.challenge = {
@@ -2430,6 +2529,7 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
         0,
         Number(save.highestDryStreak ?? legacy?.highestDryStreak ?? save.rollsSinceBest ?? 0) || 0,
       ),
+      currentDryStreak: Math.max(0, Number(save.rollsSinceBest ?? 0) || 0),
       playtimeMs,
       title: legacy?.title,
       guildTag: legacy?.guildTag,
@@ -2440,6 +2540,7 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
     collectionValue: sortLeaderboard(eligible, entry => entry.value),
     mostRolls: sortLeaderboard(eligible, entry => entry.totalRolls),
     highestDryStreak: sortLeaderboard(eligible, entry => entry.highestDryStreak ?? 0),
+    currentDryStreak: sortLeaderboard(eligible, entry => entry.currentDryStreak ?? 0),
     bestOrb: sortLeaderboard(eligible, entry => entry.highestRarity),
     mostPlaytime: sortLeaderboard(eligible, entry => entry.playtimeMs ?? 0),
   };
