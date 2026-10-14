@@ -1594,7 +1594,7 @@ export interface PlayerListEntry {
   level: number;
   xp: number;
   playtimeMs: number;
-  /** Live duration of the current online rolling session; zero after a 5-minute gap. */
+  /** Live duration of the current online session; zero when the player is inactive. */
   currentSessionMs: number;
   totalRolls: number;
   highestRarity: number;
@@ -1619,13 +1619,10 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
       validPastTimestamp(registry.lastSeenAt, now),
       validPastTimestamp(save?.lastSeenAt, now),
     );
-    const sessionStartedAt = validPastTimestamp(save?.rollingSessionStartedAt, now);
-    const sessionLastRollAt = validPastTimestamp(save?.rollingSessionLastRollAt, now);
+    const onlineSessionStartedAt = validPastTimestamp(registry.lastLoginAt, now);
     const currentSessionMs =
-      sessionStartedAt > 0 &&
-      sessionLastRollAt >= now - PLAYTIME_ACTIVE_GAP_MS &&
-      sessionLastRollAt >= sessionStartedAt
-        ? Math.max(0, now - sessionStartedAt)
+      lastSeenAt >= now - PLAYER_ACTIVE_WINDOW_MS && onlineSessionStartedAt > 0
+        ? Math.max(0, now - onlineSessionStartedAt)
         : 0;
     return {
       userId,
