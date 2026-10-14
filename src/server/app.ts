@@ -67,6 +67,7 @@ import {
   getCommunityEvent,
   getGlobalChat,
   postGlobalChatMessage,
+  recordGlobalChatComment,
   reportGlobalChatMessage,
   reportGuildChatMessage,
 } from './social.js';
