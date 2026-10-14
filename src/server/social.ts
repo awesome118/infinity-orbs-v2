@@ -42,6 +42,15 @@ const GUILD_CHAT_MUTES_KEY = key('guild-chat-mutes:v1');
 const GUILD_TOKEN_RESET_KEY = key('guild-token-reset:v1');
 const GUILD_UPGRADE_RESET_KEY = key('guild-upgrade-reset:v1');
 
+// All writes to the serialized Guild document coordinate through one lock.
+// Guild progress is currently stored as a shared JSON document, so concurrent
+// read-modify-write operations must not replace one another's snapshots.
+const GUILD_DATA_LOCK_ID = 'shared-guild-data';
+
+export function withGuildDataMutationLock<T>(fn: () => Promise<T>): Promise<T> {
+  return withPlayerMutationLockFor(GUILD_DATA_LOCK_ID, fn);
+}
+
 function parseStoredJson<T>(raw: unknown): T | null {
   if (raw == null) return null;
 
@@ -732,29 +741,32 @@ async function ensureGuildMigrations(): Promise<void> {
 }
 
 async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Promise<T> {
+  // Finish one-time migrations before taking the ordinary mutation lease.
   await ensureGuildMigrations();
-  // The transaction client queues the pre-MULTI GET for EXEC. If the key does not
-  // exist, Valkey returns nil for that command and the adapter cannot transform
-  // the transaction result. Initialize the collection once so the watched GET
-  // always has a concrete string reply.
-  await ensureRedisStringKey(GUILDS_KEY, '[]');
+  return withGuildDataMutationLock(async () => {
+    // The transaction client queues the pre-MULTI GET for EXEC. If the key does not
+    // exist, Valkey returns nil for that command and the adapter cannot transform
+    // the transaction result. Initialize the collection once so the watched GET
+    // always has a concrete string reply.
+    await ensureRedisStringKey(GUILDS_KEY, '[]');
 
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const txn = await redis.watch(GUILDS_KEY);
-    const raw = await redis.get(GUILDS_KEY);
-    const guilds: Guild[] = parseGuildList(raw);
-    try {
-      const result = await mutator(guilds);
-      await txn.multi();
-      await txn.set(GUILDS_KEY, JSON.stringify(guilds));
-      const committed = await txn.exec();
-      if (committed !== null) return result;
-    } catch (error) {
-      await txn.unwatch();
-      throw error;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const txn = await redis.watch(GUILDS_KEY);
+      const raw = await redis.get(GUILDS_KEY);
+      const guilds: Guild[] = parseGuildList(raw);
+      try {
+        const result = await mutator(guilds);
+        await txn.multi();
+        await txn.set(GUILDS_KEY, JSON.stringify(guilds));
+        const committed = await txn.exec();
+        if (committed !== null) return result;
+      } catch (error) {
+        await txn.unwatch().catch(() => undefined);
+        throw error;
+      }
     }
-  }
-  throw new Error('Guild data changed while processing the request. Please retry.');
+    throw new Error('Guild data changed while processing the request. Please retry.');
+  });
 }
 
 
@@ -793,17 +805,19 @@ async function loadGuilds(): Promise<Guild[]> {
     const recoveredRaw = JSON.stringify(guilds);
     if (recoveredRaw !== raw) {
       try {
-        const txn = await redis.watch(GUILDS_KEY);
-        const latestRaw = await redis.get(GUILDS_KEY);
-        if (latestRaw !== raw) {
-          await txn.unwatch();
-        } else {
-          await txn.multi();
-          await txn.set(GUILDS_KEY, recoveredRaw);
-          // A conflicting write is not overwritten. The next read can recover
-          // the newer snapshot; recovery persistence must not block this read.
-          await txn.exec();
-        }
+        await withGuildDataMutationLock(async () => {
+          const txn = await redis.watch(GUILDS_KEY);
+          const latestRaw = await redis.get(GUILDS_KEY);
+          if (latestRaw !== raw) {
+            await txn.unwatch();
+          } else {
+            await txn.multi();
+            await txn.set(GUILDS_KEY, recoveredRaw);
+            // A conflicting write is not overwritten. The next read can recover
+            // the newer snapshot; recovery persistence must not block this read.
+            await txn.exec();
+          }
+        });
       } catch (error) {
         console.error('[Guild Recovery] Could not persist the dev-only repaired snapshot:', error);
         // Return the normalized in-memory snapshot even if best-effort repair
@@ -814,7 +828,8 @@ async function loadGuilds(): Promise<Guild[]> {
 
   if (storedComboExpired) {
     // Persist the expiry reset so a later read cannot resurrect the old task tiers.
-    for (let attempt = 0; attempt < 4; attempt++) {
+    return withGuildDataMutationLock(async () => {
+    for (let attempt = 0; attempt < 8; attempt++) {
       const txn = await redis.watch(GUILDS_KEY);
       const latestRaw = await redis.get(GUILDS_KEY);
       let latestRawGuilds: Guild[];
@@ -852,6 +867,7 @@ async function loadGuilds(): Promise<Guild[]> {
       if (committed !== null) return latest;
     }
     throw new Error('Guild data changed while processing combo expiry. Please retry.');
+    });
   }
 
   return guilds;
@@ -1048,6 +1064,36 @@ export async function guildInfo() {
   return {
     guilds: visibleGuilds,
     mine: visibleMine,
+  };
+}
+
+export async function getPlayerGuildContext(
+  uname: string,
+  uid?: string,
+): Promise<{
+  guildId: string | null;
+  perks: NonNullable<Guild['perks']>;
+  combo: GuildComboState;
+}> {
+  const guilds = await loadGuilds();
+  const mine = guilds.find(g => g.members.some(m => (uid && m.userId === uid) || m.username === uname));
+  const perks = mine?.perks ?? {
+    luckRank: 0,
+    speedRank: 0,
+    vaultRank: 0,
+    shardRank: 0,
+    critRank: 0,
+    coinRank: 0,
+    memberCapacityRank: 0,
+    tokenYieldRank: 0,
+    taskBountyRank: 0,
+    comboRank: 0,
+    guildXpRank: 0,
+  };
+  return {
+    guildId: mine?.id ?? null,
+    perks,
+    combo: decayGuildComboState(mine?.combo),
   };
 }
 
@@ -1638,7 +1684,7 @@ export async function prepareGuildRollEffects(
   taxedCoins: number;
   extraWrite?: { key: string; expectedValue: string | null; nextValue: string; conflictMessage?: string; optional?: boolean };
 }> {
-  await ensureGuildMigrations();
+  // Callers load authoritative player/guild context before processing a roll.
   await ensureRedisStringKey(GUILDS_KEY, '[]');
 
   const persistedRaw = await redis.get(GUILDS_KEY);
