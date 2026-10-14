@@ -32,6 +32,9 @@ import {
   frenzyOrbCountForRarity,
   FRENZY_LOG_BASE,
   bestCodexChain,
+  nextCodexChainRarity,
+  chainPatcherShardCost,
+  CHAIN_PATCHER_COOLDOWN_MS,
   applyLevelProgress,
   xpRequiredForLevel,
   SINGULARITY_TITHE_ROLLS_PER_DUST,
@@ -43,6 +46,27 @@ import {
 } from '../src/shared/social.js';
 
 const NOW = 1_800_000_000_000;
+
+test('Chain Patcher chooses the lowest adjacent rarity and prices 1/900 at 10 Shards', () => {
+  const collection: Record<string, number> = {};
+  for (let rarity = 2; rarity <= 899; rarity += 1) collection[String(rarity)] = 1;
+
+  assert.equal(bestCodexChain(collection).length, 898);
+  assert.equal(nextCodexChainRarity(collection), 900);
+  assert.equal(chainPatcherShardCost(900), 10);
+  assert.equal(chainPatcherShardCost(999), 10);
+  assert.equal(chainPatcherShardCost(1_000), 11);
+  assert.equal(nextCodexChainRarity({}), 2);
+  assert.equal(chainPatcherShardCost(2), 1);
+  assert.equal(CHAIN_PATCHER_COOLDOWN_MS, 24 * 60 * 60 * 1_000);
+});
+
+test('Chain Patcher extends the cheapest edge of the longest Codex chain', () => {
+  const collection: Record<string, number> = {};
+  for (let rarity = 900; rarity <= 905; rarity += 1) collection[String(rarity)] = 1;
+  assert.equal(bestCodexChain(collection).length, 6);
+  assert.equal(nextCodexChainRarity(collection), 899);
+});
 
 test('collection value accumulation saturates instead of losing precision or becoming non-finite', () => {
   const max = Number.MAX_SAFE_INTEGER;
