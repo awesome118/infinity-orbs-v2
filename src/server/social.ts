@@ -1529,8 +1529,11 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
       const taskProgressRare = (bestRarity ?? 0) >= 100 ? 1 : 0;
 
       for (let i = 0; i < guild.tasks.length; i++) {
-        const task = guild.tasks[i];
+        let task = guild.tasks[i];
         if (!task) continue;
+        if (task.type === 'value') task.progress = capSafeGuildCounter(task.progress + taskProgressValue);
+        else if (task.type === 'rolls') task.progress = capSafeGuildCounter(task.progress + taskProgressRolls);
+        else if (task.type === 'rare') task.progress = capSafeGuildCounter(task.progress + taskProgressRare);
 
         // Roll the same contribution across successive task tiers. The old
         // one-pass logic clamped overflow below the next target, which made very
