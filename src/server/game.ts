@@ -76,7 +76,6 @@ import {
   masterySkillCost,
   getLevelBenefits,
   highestCodexChain,
-  aftershockCriticalLuckBonus,
   recordRollingSessionActivity,
   nextCodexChainRarity,
   chainPatcherShardCost,
@@ -3276,8 +3275,7 @@ function effectiveRollCritChance(
     (s.masterySkills?.critMastery ?? 0) * 0.03 +
     (s.guildPerks?.critRank ?? 0) * 0.015 +
     globalBoosterCritChanceBonus(globalBoosters?.crit) +
-    guildComboCritChanceBonus(s.guildCombo) +
-    aftershockCriticalLuckBonus(s.aftershockRecord),
+    guildComboCritChanceBonus(s.guildCombo),
   );
 }
 
