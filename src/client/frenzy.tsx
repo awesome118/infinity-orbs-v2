@@ -162,11 +162,35 @@ function FrenzyPost() {
       const res = await fetch('/api/frenzy/claim', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not claim Frenzy.');
+      setThankYouMessage(`I claimed your 1/${formatRarity(info.rarity)} Orb Frenzy. Thanks, u/${info.ownerUsername}!`);
+      setThankYouStatus(null);
+      setShowThankYouPrompt(true);
       await load();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not claim Frenzy.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const submitThankYouComment = async () => {
+    if (!info?.postId || !thankYouMessage.trim() || postingThankYou) return;
+    setPostingThankYou(true);
+    setThankYouStatus(null);
+    try {
+      const response = await fetch('/api/frenzy/thank-you', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postId: info.postId, text: thankYouMessage.trim() }),
+      });
+      const payload = await response.json().catch(() => ({})) as { error?: string; success?: boolean };
+      if (!response.ok) throw new Error(payload.error || 'Could not post the thank-you comment.');
+      setShowThankYouPrompt(false);
+      setThankYouStatus('Thank-you comment posted as you. Please consider upvoting this Frenzy post, too.');
+    } catch (submitError) {
+      setThankYouStatus(submitError instanceof Error ? submitError.message : 'Could not post the thank-you comment.');
+    } finally {
+      setPostingThankYou(false);
     }
   };
 
