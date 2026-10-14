@@ -124,6 +124,7 @@ test('Unbroken Momentum tracks uninterrupted sessions and grants capped Speed', 
   recordRollingSessionActivity(state, NOW + 10 * 60_000);
   assert.equal(state.rollingSessionStartedAt, NOW + 10 * 60_000);
   assert.equal(state.longestRollingSessionMs, 4 * 60_000);
+  recordRollingSessionActivity(state, NOW + 14 * 60_000);
   recordRollingSessionActivity(state, NOW + 16 * 60_000);
   assert.equal(state.longestRollingSessionMs, 6 * 60_000);
 
