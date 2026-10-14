@@ -4642,7 +4642,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </select>
             <button
               type="button"
-              disabled={loading || !guildAuthorityGuildId}
+              disabled={loading || guildChatSpyLoading}
               onClick={() => void loadGuildChatSpy()}
               className={buttonBase + ' bg-violet-500/10 hover:bg-violet-500/20 border-violet-500/30 text-violet-200 px-3 py-2'}
             >
