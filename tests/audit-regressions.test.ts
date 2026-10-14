@@ -164,7 +164,7 @@ test('Frenzy claim reserves claimant, owner, and post locks in a deterministic o
   assert.match(claim, /return withPlayerMutationLocksFor\(lockIds/);
   assert.match(claim, /if \(data\.consumedAt != null\)/);
   assert.match(claim, /expectedValue: raw,[\s\S]*?nextValue: consumedPostValue/);
-  assert.match(claim, /const consumedPostValue = JSON\.stringify\(\{ \.\.\.data, consumedAt: now \}\)/);
+  assert.match(claim, /const consumedPostValue = JSON\.stringify\(\{ \.\.\.data, consumedAt: now, consumedBy: claimantId \}\)/);
   assert.match(claim, /await save\(s, \[[\s\S]*?key: FRENZY_POST_PREFIX \+ postId,[\s\S]*?expectedValue: raw,[\s\S]*?nextValue: consumedPostValue/);
 });
 
@@ -220,7 +220,7 @@ test('roll tickets disclose no RNG seed and client never predicts authoritative 
   assert.ok(rollStart >= 0 && rollEnd > rollStart);
   const roll = game.slice(rollStart, rollEnd);
   assert.doesNotMatch(roll, /createSeededRandom|rollTicketSeed/);
-  assert.match(roll, /const activations = freeRollsToUse > 0 \? freeRollsToUse : 1/);
+  assert.match(roll, /const activations = usingChainPatcher \? 1 : freeRollsToUse > 0 \? freeRollsToUse : 1/);
   assert.match(roll, /await applyRolls\(s, activations, undefined, 'online'\)/);
   assert.match(game, /const rng = randomOverride \?\? serverRandom/);
 });
@@ -565,7 +565,7 @@ test('one manual action consumes all available Free Rolls and offline rate stops
   const modal = source('src/client/components/RollSection.tsx');
   const upgrades = source('src/client/components/UpgradesSection.tsx');
   assert.match(game, /const freeRollsToUse = usingFreeRoll \? availableFreeRolls : 0/);
-  assert.match(game, /await applyRolls\(s, activations, undefined, 'online'\)/);
+  assert.match(game, /await applyRolls\(\s*s,\s*activations,\s*usingChainPatcher \? rawPatcherRarity : undefined,\s*'online',\s*usingChainPatcher \? 1 : undefined/);
   assert.match(modal, /USE ALL ' \+ freeRolls \+ ' FREE ROLL/);
   assert.match(shared, /Math\.min\(0\.60, Math\.min\(8, Math\.max\(0, s\.upgrades\.offlineRate/);
   assert.match(shared, /id === 'offlineRate' && level >= 8\) return Infinity/);
@@ -1530,11 +1530,32 @@ test('Global Chat mutations fail closed rather than overwriting malformed histor
   assert.match(social.slice(postStart, postEnd), /recordGlobalChatComment\(/);
 
   const readStart = social.indexOf('export async function getGlobalChat');
-  const readEnd = social.indexOf('export async function postGlobalChatMessage', readStart);
+  const readEnd = social.indexOf('\nexport async function ', readStart + 1);
   assert.ok(readStart >= 0 && readEnd > readStart);
   const reader = social.slice(readStart, readEnd);
   assert.match(reader, /const parsed = parseGlobalChatList\(raw\)/);
   assert.doesNotMatch(reader, /String\(message\.text \?\? ''\)/);
+});
+
+test('Aftershock and Unbroken Momentum are persisted, applied server-side, and displayed', () => {
+  const shared = source('src/shared/game.ts');
+  const game = source('src/server/game.ts');
+  const profile = source('src/client/components/ProfileAndPrestige.tsx');
+
+  assert.match(shared, /export function aftershockCriticalLuckBonus/);
+  assert.match(shared, /export function unbrokenMomentumSpeedBonus/);
+  assert.match(shared, /export function recordRollingSessionActivity/);
+  assert.match(shared, /Math\.pow\(1\.05, Math\.max\(0, sacrifices\.altarLevel\)\)/);
+  assert.match(shared, /ALTAR_COIN_FLOOR_GROWTH = 1\.5/);
+  assert.doesNotMatch(shared, /masteryEngine/);
+
+  assert.match(game, /aftershockCriticalLuckBonus\(s\.aftershockRecord\)/);
+  assert.match(game, /s\.aftershockRecord = Math\.max\(/);
+  assert.match(game, /recordRollingSessionActivity\(s, now\)/);
+  assert.doesNotMatch(game, /masteryEngineLevel|prestigeUpgrades\?\.masteryEngine/);
+  assert.match(profile, /Aftershock Record/);
+  assert.match(profile, /Unbroken Momentum/);
+  assert.doesNotMatch(profile, /case 'masteryEngine'/);
 });
 
 test('offline notification reservations distinguish reclaimable preparation from ambiguous sending', () => {
