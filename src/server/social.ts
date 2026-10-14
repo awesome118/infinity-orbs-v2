@@ -1532,43 +1532,44 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
         const task = guild.tasks[i];
         if (!task) continue;
 
-        if (task.type === 'value') task.progress = capSafeGuildCounter(task.progress + taskProgressValue);
-        else if (task.type === 'rolls') task.progress = capSafeGuildCounter(task.progress + taskProgressRolls);
-        else if (task.type === 'rare') task.progress = capSafeGuildCounter(task.progress + taskProgressRare);
+        // Roll the same contribution across successive task tiers. The old
+        // one-pass logic clamped overflow below the next target, which made very
+        // large tasks appear stuck and forfeited rewards for skipped tiers.
+        let rolloverGuard = 0;
+        while (task.progress >= task.target && rolloverGuard < 256) {
+          rolloverGuard += 1;
+          const completedTier = Math.max(1, Math.floor(Number(task.tier) || 1));
+          const overflow = Math.max(0, task.progress - task.target);
+          const reward = Math.max(1, Math.floor(task.reward * taskBountyMultiplier));
+          const xpReward = Math.max(1, Math.floor(task.guildXpReward * xpMultiplier));
 
-        if (task.progress < task.target) continue;
+          guild.tokens = capSafeGuildCounter((guild.tokens ?? 0) + reward);
+          addGuildExperience(guild, xpReward);
+          guild.taskCompletions = capSafeGuildCounter((guild.taskCompletions ?? 0) + 1);
+          guild.combo = activateGuildComboStack(
+            guild.combo,
+            now,
+            10,
+            comboDurationMultiplier,
+          );
 
-        const overflow = Math.max(0, task.progress - task.target);
-        const reward = Math.max(1, Math.floor(task.reward * taskBountyMultiplier));
-        const xpReward = Math.max(1, Math.floor(task.guildXpReward * xpMultiplier));
+          const replacement = createGuildTask(task.type, completedTier + 1, guild.level);
+          // Keep the full contribution overflow. If it still clears the new
+          // target, the next loop completes that tier and awards its rewards too.
+          replacement.progress = Math.min(Number.MAX_SAFE_INTEGER, overflow);
+          guild.tasks[i] = replacement;
+          task = replacement;
 
-        guild.tokens = capSafeGuildCounter((guild.tokens ?? 0) + reward);
-        addGuildExperience(guild, xpReward);
-        guild.taskCompletions = capSafeGuildCounter((guild.taskCompletions ?? 0) + 1);
-        guild.combo = activateGuildComboStack(
-          guild.combo,
-          now,
-          10,
-          comboDurationMultiplier,
-        );
-
-        const completedTier = task.tier;
-        const replacement = createGuildTask(task.type, completedTier + 1, guild.level);
-        replacement.progress = Math.min(
-          Math.max(0, replacement.target - 1),
-          overflow,
-        );
-        guild.tasks[i] = replacement;
-
-        if (!guild.chat) guild.chat = [];
-        guild.chat.push({
-          id: `msg-${Date.now()}-task`,
-          username: 'System',
-          text: `Guild Task completed! Tier ${completedTier} → Tier ${completedTier + 1}. +${reward.toLocaleString()} Guild Tokens and +${xpReward.toLocaleString()} Guild XP.`,
-          timestamp: Date.now(),
-          isSystem: true,
-        });
-        if (guild.chat.length > 50) guild.chat.shift();
+          if (!guild.chat) guild.chat = [];
+          guild.chat.push({
+            id: `msg-${Date.now()}-task-${completedTier}`,
+            username: 'System',
+            text: `Guild Task completed! Tier ${completedTier} → Tier ${completedTier + 1}. +${reward.toLocaleString()} Guild Tokens and +${xpReward.toLocaleString()} Guild XP.`,
+            timestamp: Date.now(),
+            isSystem: true,
+          });
+          if (guild.chat.length > 50) guild.chat.shift();
+        }
       }
 
       const firstTask = guild.tasks[0];
