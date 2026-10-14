@@ -2584,44 +2584,38 @@ export async function reportGlobalChatMessage(messageId: string): Promise<{ succ
 }
 
 export async function postGlobalChatMessage(text: string): Promise<GlobalChatMessage> {
-  return withPlayerMutationLockFor('guild-chat-user:' + user(), async () => {
+  return withPlayerMutationLockFor('global-chat-user:' + user(), async () => {
     const messageText = String(text ?? '').trim();
     if (!messageText) throw new Error('Message cannot be empty.');
-    if (await isGuildChatMuted()) {
-      throw new Error('You are muted from Chat.');
-    }
+    if (await isGuildChatMuted()) throw new Error('You are muted from Global Chat.');
     if (messageText.length > 200) throw new Error('Messages must be 200 characters or fewer.');
     await enforceChatCooldown('global', 2_000);
 
-    const timestamp = Date.now();
-    const message: GlobalChatMessage = {
-      id: `global-chat-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
-      username: username().replace(/^u\//i, '') || 'Redditor',
+    const postId = await resolveGlobalGamePostId();
+    // Sending is a deliberate button action in the player's chat UI. Reddit
+    // must attribute the public comment to that player, never to the app.
+    const comment = await reddit.submitComment({
+      id: postId,
       text: messageText,
-      timestamp,
-      userId: user(),
-    };
-
-    // Initialize the key before WATCH so the first write follows the same
-    // concrete-string path as later transactions in Redis/Valkey adapters.
-    await ensureRedisStringKey(GLOBAL_CHAT_KEY, '[]');
-
-    for (let attempt = 0; attempt < 6; attempt++) {
-      const txn = await redis.watch(GLOBAL_CHAT_KEY);
-      // Read the watched value with Redis; TxClient.get() is a transaction builder.
-      const raw = await redis.get(GLOBAL_CHAT_KEY);
-      const messages = parseGlobalChatList(raw);
-
-      messages.push(message);
-      messages.sort((a, b) => a.timestamp - b.timestamp);
-
-      await txn.multi();
-      await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(messages.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
-      const committed = await txn.exec();
-      if (committed !== null) return message;
+      runAs: 'USER',
+    });
+    const commentId = String(comment?.id ?? '').trim();
+    if (!commentId) {
+      throw new Error('Reddit did not return a comment ID. Check the Game post before retrying.');
     }
 
-    throw new Error('Chat changed while sending your message. Please retry.');
+    const recorded = await recordGlobalChatComment({
+      postId,
+      commentId,
+      text: messageText,
+      username: username(),
+      userId: user(),
+      timestamp: Date.now(),
+    });
+    if (!recorded) {
+      throw new Error('Your comment was submitted, but Global Chat could not sync it. Refresh the game before retrying.');
+    }
+    return recorded;
   });
 }
 
