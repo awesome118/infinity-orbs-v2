@@ -17,6 +17,7 @@ export type MasterySkillId =
   | 'prosperity'
   | 'shardAttunement'
   | 'critMastery'
+  | 'aftershock'
   | 'chronoFlow'
   | 'infiniteVault'
   | 'cosmicAttunement'
@@ -56,6 +57,12 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
     desc: '+3% critical chance and +0.3x crit multiplier per level.',
     maxLevel: 25,
     costMultiplier: 2,
+  },
+  aftershock: {
+    name: 'Aftershock',
+    desc: 'Unlocks permanent Critical Luck from your best dry interval between successive all-time rarity records. Each 10× record tier grants +0.005×, up to +0.075×.',
+    maxLevel: 1,
+    costMultiplier: 4,
   },
   chronoFlow: {
     name: 'Chrono Flow',
@@ -846,6 +853,7 @@ export const ORB_FRENZY_DAILY_KEY_OFFSET = 0;
 export type PrestigeUpgradeId =
   | 'permLuck'
   | 'permSpeed'
+  | 'unbrokenMomentum'
   | 'vaultCap'
   | 'dustBounty'
   | 'sonarPing'
@@ -1379,6 +1387,13 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
     maxLevel: 5,
     costPerLevel: 3,
   },
+  unbrokenMomentum: {
+    name: 'Unbroken Momentum',
+    desc: 'Unlocks permanent Speed from your longest uninterrupted online rolling session. The logarithmic bonus reaches +20% at 48 hours, about +25% at 72 hours, and caps at +30%. Only completed five-minute blocks count.',
+    category: 'core',
+    maxLevel: 1,
+    costPerLevel: 8,
+  },
   vaultCap: {
     name: 'Vault Expansion',
     desc: '+250 offline roll capacity per level.',
@@ -1663,6 +1678,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     prestigeUpgrades: {
       permLuck: 0,
       permSpeed: 0,
+      unbrokenMomentum: 0,
       vaultCap: 0,
       dustBounty: 0,
       sonarPing: 0,
@@ -1743,6 +1759,7 @@ export function createInitialState(now = Date.now()): PlayerState {
       prosperity: 0,
       shardAttunement: 0,
       critMastery: 0,
+      aftershock: 0,
       chronoFlow: 0,
       infiniteVault: 0,
       cosmicAttunement: 0,
@@ -2074,7 +2091,7 @@ export function critMultiplier(s: PlayerState): number {
   return 2.0 +
     (s.upgrades.critPower ?? 0) * 0.25 +
     masteryCritPower +
-    aftershockCriticalLuckBonus(s.aftershockRecord) +
+    ((s.masterySkills?.aftershock ?? 0) > 0 ? aftershockCriticalLuckBonus(s.aftershockRecord) : 0) +
     globalBoosterCritLuckBonus(s.globalBoosters?.crit) +
     guildComboCritLuckBonus(s.guildCombo);
 }
@@ -2140,7 +2157,9 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
 
   // Unbroken Momentum increases actual roll frequency by dividing cooldown
   // by the best-session Speed multiplier; the common 300ms floor still applies.
-  const momentumSpeedMultiplier = 1 + unbrokenMomentumSpeedBonus(s.longestRollingSessionMs);
+  const momentumSpeedMultiplier = 1 + ((s.prestigeUpgrades?.unbrokenMomentum ?? 0) > 0
+    ? unbrokenMomentumSpeedBonus(s.longestRollingSessionMs)
+    : 0);
   return Math.max(300, Math.round(cd / momentumSpeedMultiplier));
 }
 
@@ -2671,6 +2690,7 @@ export function prestigeUpgradeCost(id: PrestigeUpgradeId, level: number): numbe
   const bases: Record<PrestigeUpgradeId, number> = {
     permLuck: 2,
     permSpeed: 3,
+    unbrokenMomentum: 8,
     vaultCap: 1,
     dustBounty: 5,
     sonarPing: 2,
