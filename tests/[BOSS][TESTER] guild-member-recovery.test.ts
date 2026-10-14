@@ -47,3 +47,22 @@ test('legacy Guild contribution writer cannot create unsafe member counters', ()
   assert.doesNotMatch(body, /member\.contribution \+= value/);
   assert.match(body, /guild\.boss\.contributors\[username\(\)\] = capSafeGuildCounter/);
 });
+
+
+test('dev-only Guild recovery persists repaired snapshots without overwriting concurrent changes', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('async function loadGuilds(): Promise<Guild[]>');
+  const end = social.indexOf('\nexport interface GuildChatSpyGuild', start);
+  assert.ok(start >= 0 && end > start, 'Guild loader boundaries must exist');
+  const loader = social.slice(start, end);
+
+  assert.match(loader, /parsedSnapshot = parseStoredJson<unknown>\(raw\)/);
+  assert.match(loader, /isGuildPlaytestRecoveryEnabled\(\)/);
+  assert.match(loader, /Array\.isArray\(parsedSnapshot\)/);
+  assert.match(loader, /const txn = await redis\.watch\(GUILDS_KEY\)/);
+  assert.match(loader, /if \(latestRaw !== raw\)/);
+  assert.match(loader, /await txn\.set\(GUILDS_KEY, recoveredRaw\)/);
+  assert.match(loader, /Guild Recovery.*Could not persist the dev-only repaired snapshot/);
+  assert.ok(loader.indexOf('isGuildPlaytestRecoveryEnabled()') < loader.indexOf('await txn.set(GUILDS_KEY, recoveredRaw)'),
+    'only the development subreddit can persist recovered Guild data');
+});
