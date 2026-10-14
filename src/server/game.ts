@@ -3506,9 +3506,9 @@ export async function applyRolls(
   if (guildEffects.extraWrite) {
     stageSaveExtraWrite(s, {
       ...guildEffects.extraWrite,
-      ...(guildEffects.taxedCoins > 0
-        ? { onConflict: () => { addCoins(s, guildEffects.taxedCoins); } }
-        : {}),
+      onConflict: () => {
+        if (guildEffects.taxedCoins > 0) addCoins(s, guildEffects.taxedCoins);
+      },
     });
   }
   coinsGained = Math.max(0, coinsGained - guildEffects.taxedCoins);
@@ -6055,9 +6055,9 @@ export async function claimOrbFrenzy(options: {
   if (guildEffects.extraWrite) {
     stageSaveExtraWrite(s, {
       ...guildEffects.extraWrite,
-      ...(guildEffects.taxedCoins > 0
-        ? { onConflict: () => { addCoins(s, guildEffects.taxedCoins); } }
-        : {}),
+      onConflict: () => {
+        if (guildEffects.taxedCoins > 0) addCoins(s, guildEffects.taxedCoins);
+      },
     });
   }
   coinsGained = Math.max(0, coinsGained - guildEffects.taxedCoins);
