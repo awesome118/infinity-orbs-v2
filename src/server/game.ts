@@ -2200,8 +2200,32 @@ export async function loadRaw(): Promise<PlayerState> {
   const username = context.username ?? `reddit-user-${userId.slice(-8)}`;
   await registerPlayer(userId, username);
   const [perks, guildCombo, globalBoosters, dailyStreakCommunity] = await Promise.all([
-    getPlayerGuildPerks(username, userId),
-    getPlayerGuildCombo(username, userId),
+    getPlayerGuildPerks(username, userId).catch(error => {
+      // Guild perks are optional modifiers, not part of the player's save
+      // authority. A corrupt shared Guild record must not make /api/me, rolls,
+      // or the feature gate unavailable for every player. Fall back to zero
+      // perks while the Guild repair path handles the shared record separately.
+      console.error('[Guild] Perk read failed; using zeroed modifiers until Guild data is repaired.', error);
+      return {
+        luckRank: 0,
+        speedRank: 0,
+        vaultRank: 0,
+        shardRank: 0,
+        critRank: 0,
+        coinRank: 0,
+        memberCapacityRank: 0,
+        tokenYieldRank: 0,
+        taskBountyRank: 0,
+        comboRank: 0,
+        guildXpRank: 0,
+      };
+    }),
+    getPlayerGuildCombo(username, userId).catch(error => {
+      // Apply the same isolation to optional Guild Combo bonuses. Never make
+      // ordinary player mutations depend on a healthy shared Guild document.
+      console.error('[Guild] Combo read failed; using an inactive combo until Guild data is repaired.', error);
+      return createInitialState().guildCombo!;
+    }),
     getGlobalBoosters(),
     getDailyStreakCommunity().catch(error => {
       // A corrupt shared event should not brick ordinary gameplay. This is a
