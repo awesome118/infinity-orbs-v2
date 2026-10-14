@@ -4304,6 +4304,7 @@ export async function roll(
   isAuto = false,
   ticketId?: string,
   ticketIndex?: number,
+  requestedFreeRollCount = 1,
 ): Promise<RollResponse> {
   return withPlayerMutationLock(async () => {
     let ticketUse:
@@ -4334,22 +4335,32 @@ export async function roll(
     }
 
     const now = Date.now();
-    const usingFreeRoll = !isAuto && (s.freeRolls ?? 0) > 0;
+    const availableFreeRolls = Math.max(0, Math.floor(Number(s.freeRolls ?? 0) || 0));
+    const usingFreeRoll = !isAuto && availableFreeRolls > 0;
     const cd = cooldownMs(s, isAuto);
     if (!usingFreeRoll && s.lastRollAt !== null && now - s.lastRollAt < cd) {
       throw new Error(`Cooldown: ${((cd - now + s.lastRollAt) / 1000).toFixed(1)}s`);
     }
-    if (usingFreeRoll) {
-      s.freeRolls = Math.max(0, (s.freeRolls ?? 0) - 1);
-    }
+
+    // A manual click consumes every available Free Roll in one authoritative
+    // batch. Clamp malformed/unsafe request counts, never trust the client to
+    // grant rolls, and leave cooldown rules unchanged for ordinary activations.
+    const requested = Number.isSafeInteger(requestedFreeRollCount) && requestedFreeRollCount > 0
+      ? requestedFreeRollCount
+      : 1;
+    const freeRollsToUse = usingFreeRoll
+      ? Math.min(availableFreeRolls, requested)
+      : 0;
+    if (freeRollsToUse > 0) s.freeRolls = availableFreeRolls - freeRollsToUse;
+    const activations = freeRollsToUse > 0 ? freeRollsToUse : 1;
 
     // Roll outcomes are server-authoritative. Tickets only prevent duplicate or
     // out-of-order submissions; no predictable client-shared PRNG stream is used.
     const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } =
-      await applyRolls(s, 1, undefined, 'online');
+      await applyRolls(s, activations, undefined, 'online');
 
     if (!isAuto) {
-      s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + 1);
+      s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + activations);
       if (s.manualRolls >= 3) s.upgrades.auto = 1;
     }
 
@@ -4704,6 +4715,76 @@ export async function buyUpgrade(id: UpgradeId): Promise<PlayerState> {
     snapshot: playerSpySnapshot(s),
   });
   return s;
+  });
+}
+
+export async function buyUpgradeBatch(ids: UpgradeId[]): Promise<{
+  state: PlayerState;
+  purchased: Array<{ id: UpgradeId; cost: number; level: number }>;
+  totalSpent: number;
+  stoppedReason?: string;
+}> {
+  return withPlayerMutationLock(async () => {
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100) {
+      throw new Error('Upgrade batch must contain 1 to 100 purchases.');
+    }
+    const validIds: UpgradeId[] = [
+      'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
+      'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus',
+    ];
+    if (!ids.every(id => validIds.includes(id))) throw new Error('Upgrade batch contains an unknown upgrade.');
+
+    const s = await settleOffline(await loadRaw());
+    const purchased: Array<{ id: UpgradeId; cost: number; level: number }> = [];
+    let totalSpent = 0;
+    let stoppedReason: string | undefined;
+
+    for (const id of ids) {
+      const level = s.upgrades[id] ?? 0;
+      if (id === 'auto') {
+        if ((s.manualRolls ?? 0) < 3) {
+          stoppedReason = `Auto Roll unlocks after 3 manual rolls (${s.manualRolls ?? 0}/3).`;
+          break;
+        }
+        if (level > 0) {
+          stoppedReason = 'Auto Roll is already unlocked.';
+          break;
+        }
+        s.upgrades.auto = 1;
+        purchased.push({ id, cost: 0, level: 1 });
+        continue;
+      }
+
+      const cost = upgradeCost(id, level);
+      if (!Number.isFinite(cost)) {
+        stoppedReason = `${id === 'speed' ? 'Roll Speed' : id === 'offlineRate' ? 'Offline Generation Speed' : 'This upgrade'} is already at its maximum level.`;
+        break;
+      }
+      if (s.coins < cost) {
+        stoppedReason = `Need ${cost.toLocaleString()} Coins for ${id}.`;
+        break;
+      }
+
+      s.coins -= cost;
+      s.upgrades[id] = level + 1;
+      totalSpent += cost;
+      purchased.push({ id, cost, level: level + 1 });
+    }
+
+    if (purchased.length > 0) {
+      await save(s);
+      for (const entry of purchased) {
+        void appendPlayerSpyLog('upgrade-purchase', {
+          upgrade: entry.id,
+          levelAfter: entry.level,
+          cost: entry.cost,
+          batchSize: purchased.length,
+          snapshot: playerSpySnapshot(s),
+        }).catch(error => console.error('[Player Spy] Upgrade batch log failed:', error));
+      }
+    }
+
+    return { state: s, purchased, totalSpent, ...(stoppedReason ? { stoppedReason } : {}) };
   });
 }
 
