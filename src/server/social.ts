@@ -2317,7 +2317,7 @@ export async function recordGlobalChatComment(input: {
     let closed = false;
     try {
       const raw = await redis.get(GLOBAL_CHAT_KEY);
-      const messages = parseGlobalChatList(raw);
+      const messages = parseGlobalChatList(raw).filter(item => /^t1_[a-z0-9]+$/i.test(String(item.id ?? '').trim()));
       const previous = messages.find(item => item.id === id);
       if (previous) {
         await txn.unwatch();
