@@ -55,6 +55,29 @@ test('global chat refresh replaces history with the server moderation-filtered s
   assert.doesNotMatch(chat, /setMessages\(prev => mergeMessages\(prev, next\)\)/);
 });
 
+test('Global Chat comments are submitted as USER and Reddit comment triggers are enabled', () => {
+  const manifest = JSON.parse(source('devvit.json'));
+  assert.ok(manifest.permissions?.reddit?.asUser?.includes('SUBMIT_COMMENT'));
+  assert.equal(manifest.triggers?.onCommentCreate, '/internal/trigger/comment-create');
+
+  const app = source('src/server/app.ts');
+  assert.match(app, /\/internal\/trigger\/comment-create/);
+  assert.match(app, /recordGlobalChatComment/);
+
+  const social = source('src/server/social.ts');
+  const senderStart = social.indexOf('export async function postGlobalChatMessage');
+  const senderEnd = social.indexOf('function sortLeaderboard', senderStart);
+  assert.ok(senderStart >= 0 && senderEnd > senderStart);
+  assert.match(social.slice(senderStart, senderEnd), /runAs: 'USER'/);
+  assert.match(social, /resolveGlobalGamePostId/);
+
+  const game = source('src/server/game.ts');
+  assert.match(game, /postFrenzyThankYouComment/);
+  assert.match(game, /runAs: 'USER'/);
+  assert.match(game, /consumedBy: claimantId/);
+  assert.match(game, /consider upvoting the post/);
+});
+
 test('the static splash is imported and shown before the main game shell', () => {
   const main = source('src/client/main.tsx');
   const splash = source('src/client/components/SplashScreen.tsx');
