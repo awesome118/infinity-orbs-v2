@@ -1541,6 +1541,7 @@ test('Aftershock and Unbroken Momentum are persisted, applied server-side, and d
   const shared = source('src/shared/game.ts');
   const game = source('src/server/game.ts');
   const profile = source('src/client/components/ProfileAndPrestige.tsx');
+  const debugModal = source('src/client/components/DevDebugModal.tsx');
 
   assert.match(shared, /export function aftershockCriticalLuckBonus/);
   assert.match(shared, /export function unbrokenMomentumSpeedBonus/);
@@ -1557,6 +1558,9 @@ test('Aftershock and Unbroken Momentum are persisted, applied server-side, and d
   assert.match(profile, /Aftershock Record/);
   assert.match(profile, /Unbroken Momentum/);
   assert.doesNotMatch(profile, /case 'masteryEngine'/);
+  assert.match(debugModal, /Mechanic · Aftershock/);
+  assert.match(debugModal, /Mechanic · Unbroken Momentum/);
+  assert.doesNotMatch(debugModal, /Mechanic · Mastery Engine|prestigeOverrides: \{ masteryEngine/);
 });
 
 test('offline notification reservations distinguish reclaimable preparation from ambiguous sending', () => {
