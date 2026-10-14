@@ -2482,6 +2482,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'API · Chat report creates admin notification',
         async () => {
+          // This comprehensive suite runs in the main Game launcher. Explicitly
+          // perform its registration handshake so report tests never depend on
+          // the floating widget's startup timing.
+          const chatStatus = await request<any>('/api/chat/status?launcher=main');
+          if (chatStatus.enabled !== true) {
+            throw new Error(chatStatus.reason || 'Main launcher did not register Global Chat.');
+          }
           const message = await request<any>('/api/chat', { text: '[ADMIN TEST] chat-report notification check' });
           await request('/api/chat/report', { messageId: message.id });
           const reports = await request<any>('/api/dev/chat-reports');
