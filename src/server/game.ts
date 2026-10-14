@@ -76,6 +76,8 @@ import {
   masterySkillCost,
   getLevelBenefits,
   highestCodexChain,
+  aftershockCriticalLuckBonus,
+  recordRollingSessionActivity,
   nextCodexChainRarity,
   chainPatcherShardCost,
   CHAIN_PATCHER_COOLDOWN_MS,
@@ -2416,6 +2418,10 @@ export async function loadRaw(): Promise<PlayerState> {
     totalCrits: finiteNonNegativeInteger(parsed.totalCrits, base.totalCrits),
     lifetimeShards: finiteNonNegativeInteger(parsed.lifetimeShards, base.lifetimeShards),
     rollsSinceBest: finiteNonNegativeInteger(parsed.rollsSinceBest, base.rollsSinceBest),
+    aftershockRecord: finiteNonNegativeInteger(parsed.aftershockRecord, base.aftershockRecord ?? 0),
+    rollingSessionStartedAt: finiteNonNegativeInteger(parsed.rollingSessionStartedAt, base.rollingSessionStartedAt ?? 0),
+    rollingSessionLastRollAt: finiteNonNegativeInteger(parsed.rollingSessionLastRollAt, base.rollingSessionLastRollAt ?? 0),
+    longestRollingSessionMs: finiteNonNegativeInteger(parsed.longestRollingSessionMs, base.longestRollingSessionMs ?? 0),
     highestDryStreak: finiteNonNegativeInteger(parsed.highestDryStreak, base.highestDryStreak ?? 0),
     freeRolls: finiteNonNegativeInteger(parsed.freeRolls, base.freeRolls ?? 0),
     currentRunRolls: finiteNonNegativeInteger(parsed.currentRunRolls, base.currentRunRolls ?? 0),
@@ -3270,7 +3276,8 @@ function effectiveRollCritChance(
     (s.masterySkills?.critMastery ?? 0) * 0.03 +
     (s.guildPerks?.critRank ?? 0) * 0.015 +
     globalBoosterCritChanceBonus(globalBoosters?.crit) +
-    guildComboCritChanceBonus(s.guildCombo),
+    guildComboCritChanceBonus(s.guildCombo) +
+    aftershockCriticalLuckBonus(s.aftershockRecord),
   );
 }
 
@@ -3430,6 +3437,15 @@ export async function applyRolls(
     s.collection[String(rarity)] = (s.collection[String(rarity)] ?? 0) + 1;
 
     if (rarity > s.highestRarity) {
+      // The rolls since the previous record become an Aftershock candidate
+      // only when a strictly rarer all-time orb finally appears.
+      if (s.highestRarity > 0) {
+        const previousDryRolls = Math.max(0, Math.floor(Number(s.rollsSinceBest ?? 0) || 0));
+        s.aftershockRecord = Math.max(
+          Math.max(0, Math.floor(Number(s.aftershockRecord ?? 0) || 0)),
+          previousDryRolls,
+        );
+      }
       s.highestRarity = rarity;
       s.rollsSinceBest = 0;
     } else {
@@ -3567,6 +3583,11 @@ export async function applyRolls(
   // Rich EXP Level Progression. Normal roll activations deliberately advance
   // at most one level at a time, while applyXp/quest rewards can catch up safely.
   applyLevelProgress(s, 1);
+
+  // Count only successfully processed online roll batches as an active session;
+  // offline-vault rolls don't fabricate a continuous play session.
+  if (source === 'online' && rollCount > 0) recordRollingSessionActivity(s, now);
+
   // Coin earnings and their lifetime statistic are capped independently at the safe-integer ceiling.
 
   // Singularity Tithe pays +1 Cosmic Dust per 200 processed rolls per level.
@@ -3577,15 +3598,6 @@ export async function applyRolls(
     s.singularityTitheSingleRolls = before + rollCount;
     const dustEarned = singularityTitheDustForRolls(before, rollCount, titheLevel);
     if (dustEarned > 0) s.cosmicDust = (s.cosmicDust ?? 0) + dustEarned;
-  }
-
-  // Mastery Engine: permanent Mastery Point income from sustained rolling.
-  const masteryEngineLevel = s.prestigeUpgrades?.masteryEngine ?? 0;
-  if (masteryEngineLevel > 0) {
-    const interval = Math.max(1, Math.floor(100 / masteryEngineLevel));
-    const before = Math.floor((s.totalRolls - rollCount) / interval);
-    const after = Math.floor(s.totalRolls / interval);
-    if (after > before) s.masteryPoints = (s.masteryPoints ?? 0) + (after - before);
   }
 
   // Celestial Auto-Buyer Prestige Upgrade: auto-buy cheapest affordable upgrade
@@ -6193,6 +6205,13 @@ export async function claimOrbFrenzy(options: {
   }
   s.highestRarity = Math.max(s.highestRarity, bestRarity);
   if (bestRarity > previousHighest) {
+    const previousDryRolls = Math.max(0, Math.floor(Number(s.rollsSinceBest ?? 0) || 0));
+    if (previousHighest > 0) {
+      s.aftershockRecord = Math.max(
+        Math.max(0, Math.floor(Number(s.aftershockRecord ?? 0) || 0)),
+        previousDryRolls,
+      );
+    }
     s.rollsSinceBest = 0;
   } else {
     s.rollsSinceBest = (s.rollsSinceBest ?? 0) + count;
