@@ -107,8 +107,10 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
     const checkAvailability = async () => {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          const mainLauncherQuery = launcherContext === 'main' ? '&launcher=main' : '';
-          const response = await fetch('/api/chat/status?ts=' + Date.now() + mainLauncherQuery, {
+          const launcherQuery = launcherContext === 'main'
+            ? '&launcher=main'
+            : '&launcher=frenzy';
+          const response = await fetch('/api/chat/status?ts=' + Date.now() + launcherQuery, {
             cache: 'no-store',
             headers: { 'Cache-Control': 'no-cache' },
           });
