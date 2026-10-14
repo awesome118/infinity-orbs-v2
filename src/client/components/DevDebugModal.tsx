@@ -1294,7 +1294,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             message.includes('Roll prediction ticket is') ||
             message.includes('Could not create a roll prediction ticket') ||
             message.includes('Player state changed while saving') ||
-            message.includes('Could not safely save player data');
+            message.includes('Could not safely save player data') ||
+            message.includes('Guild data changed before the roll saved');
           if (!retryable || attempt === 3) throw lastError;
           await new Promise(resolve => setTimeout(resolve, 150 * (attempt + 1)));
         }
@@ -1787,13 +1788,16 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             // the sound singleton reset even when the test began on the Roll tab.
             const navButtons = () => Array.from(document.querySelectorAll('button.nav-tab'));
             const socialNav = navButtons().find(el => el.textContent?.includes('Guilds & Social')) as HTMLButtonElement | undefined;
+            if (!socialNav) throw new Error('Guilds & Social navigation control was not found.');
+            socialNav.click();
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // React may replace nav nodes during the tab transition. Always find
+            // the current Roll button after switching, never click a stale node.
             const rollNav = navButtons().find(el => el.textContent?.trim() === 'Roll') as HTMLButtonElement | undefined;
-            if (!rollNav) throw new Error('Roll navigation control was not found.');
-            if (socialNav) {
-              socialNav.click();
-              await new Promise(resolve => setTimeout(resolve, 100));
-            }
+            if (!rollNav) throw new Error('Roll navigation control was not found after the tab transition.');
             rollNav.click();
+            await new Promise(resolve => setTimeout(resolve, 100));
             await onRefresh();
 
             const deadline = Date.now() + 2_000;
@@ -1807,8 +1811,15 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             if (!button) throw new Error('Sonar control did not unlock after prestige state was applied (prestige=' + JSON.stringify((await request<any>('/api/me')).prestigeUpgrades?.sonarPing) + ').');
             button.click();
             await new Promise(resolve => setTimeout(resolve, 100));
-            if (!sound.sonarMode || !button.textContent?.includes('SILENT')) throw new Error('Sonar control did not enable Silent Mode.');
-            return { text: button.textContent.trim() };
+            let activeButton = Array.from(document.querySelectorAll('button'))
+              .find(el => (el as HTMLButtonElement).title === 'Silent Mode: Mutes standard rolls and alerts with a crystal chime on rare drops') as HTMLButtonElement | undefined;
+            if (!sound.sonarMode || !activeButton?.textContent?.includes('SILENT')) throw new Error('Sonar control did not enable Silent Mode.');
+            activeButton.click();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const resetButton = Array.from(document.querySelectorAll('button'))
+              .find(el => (el as HTMLButtonElement).title === 'Silent Mode: Mutes standard rolls and alerts with a crystal chime on rare drops') as HTMLButtonElement | undefined;
+            if (sound.sonarMode || !resetButton?.textContent?.includes('OFF')) throw new Error('Sonar control did not return to OFF after the toggle check.');
+            return { text: activeButton.textContent.trim() + ' → ' + resetButton.textContent.trim() };
           },
           result => 'Client control unlocked · ' + result.text,
         );
@@ -1840,17 +1851,41 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             await setMechanicState({ instantReveal: 1 });
             try { localStorage.setItem('orbs_instant_reveal', 'false'); } catch {}
             await onRefresh();
+
+            // Reset local React state as well as localStorage. The component
+            // only reads this preference on mount, so a storage write alone
+            // does not reset a control already mounted in the Roll tab.
+            const navButtons = () => Array.from(document.querySelectorAll('button.nav-tab'));
+            const socialNav = navButtons().find(el => el.textContent?.includes('Guilds & Social')) as HTMLButtonElement | undefined;
+            if (!socialNav) throw new Error('Guilds & Social navigation control was not found.');
+            socialNav.click();
             await new Promise(resolve => setTimeout(resolve, 100));
-            const button = Array.from(document.querySelectorAll('button'))
+            const rollNav = navButtons().find(el => el.textContent?.trim() === 'Roll') as HTMLButtonElement | undefined;
+            if (!rollNav) throw new Error('Roll navigation control was not found after the tab transition.');
+            rollNav.click();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            await onRefresh();
+
+            const findInstantButton = () => Array.from(document.querySelectorAll('button'))
               .find(el => (el as HTMLButtonElement).title === 'Skip roll animations for instant reveals') as HTMLButtonElement | undefined;
+            let button = findInstantButton();
             if (!button) throw new Error('Instant Reveal control did not unlock after prestige state was applied.');
+            if (button.textContent?.includes('INSTANT')) {
+              button.click();
+              await new Promise(resolve => setTimeout(resolve, 100));
+              button = findInstantButton();
+            }
+            if (!button?.textContent?.includes('OFF')) throw new Error('Instant Reveal control did not reset to OFF before the toggle check.');
             button.click();
-            await new Promise(resolve => setTimeout(resolve, 25));
-            const updatedButton = Array.from(document.querySelectorAll('button'))
-              .find(el => (el as HTMLButtonElement).title === 'Skip roll animations for instant reveals') as HTMLButtonElement | undefined;
+            await new Promise(resolve => setTimeout(resolve, 100));
+            let updatedButton = findInstantButton();
             if (!updatedButton?.textContent?.includes('INSTANT')) throw new Error('Instant Reveal control did not toggle to INSTANT.');
+            updatedButton.click();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            updatedButton = findInstantButton();
+            if (!updatedButton?.textContent?.includes('OFF')) throw new Error('Instant Reveal control did not return to OFF after the toggle check.');
             try { localStorage.setItem('orbs_instant_reveal', 'false'); } catch {}
-            return { text: button.textContent.trim() };
+            return { text: 'OFF → INSTANT → OFF' };
           },
           result => 'Client control unlocked · ' + result.text,
         );
