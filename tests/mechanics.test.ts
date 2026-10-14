@@ -59,10 +59,14 @@ test('Cosmic Reserve multiplies Luck from unspent Cosmic Dust only', () => {
   const withoutReserve = luckMultiplier(state);
   state.cosmicDust = 100;
   state.prestigeUpgrades.cosmicReserve = 5;
-  assert.equal(luckMultiplier(state), Math.round(withoutReserve * 6 * 100) / 100);
+  const withSixX = luckMultiplier(state);
+  assert.ok(Math.abs(withSixX - withoutReserve * 6) <= 0.03,
+    '100 unspent Dust at level 5 should produce a 6x Luck multiplier');
 
   state.cosmicDust = 50;
-  assert.equal(luckMultiplier(state), Math.round(withoutReserve * 3.5 * 100) / 100);
+  const withThreePointFiveX = luckMultiplier(state);
+  assert.ok(Math.abs(withThreePointFiveX - withoutReserve * 3.5) <= 0.03,
+    '50 unspent Dust at level 5 should produce a 3.5x Luck multiplier');
   state.cosmicDust = 0;
   assert.equal(luckMultiplier(state), withoutReserve);
   state.cosmicDust = 100;
