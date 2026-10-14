@@ -17,6 +17,9 @@ async function loadChat(): Promise<GlobalChatMessage[]> {
 
 const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username = '' }) => {
   const [open, setOpen] = useState(false);
+  // A Frenzy embed can route comments to the canonical Game launcher only
+  // after that launcher has registered its post ID. Hide chat if it cannot.
+  const [chatAvailable, setChatAvailable] = useState<boolean | null>(null);
   const [messages, setMessages] = useState<GlobalChatMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const hasPersistedSeenStateRef = useRef(false);
@@ -94,10 +97,41 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
   };
 
   useEffect(() => {
+    let cancelled = false;
+
+    const checkAvailability = async () => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const response = await fetch('/api/chat/status?ts=' + Date.now(), {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache' },
+          });
+          const payload = await response.json().catch(() => ({})) as { enabled?: unknown };
+          if (!response.ok) throw new Error('Could not determine Global Chat availability.');
+          if (!cancelled) setChatAvailable(payload.enabled === true);
+          return;
+        } catch {
+          if (attempt === 2) {
+            if (!cancelled) setChatAvailable(false);
+            return;
+          }
+          await new Promise(resolve => setTimeout(resolve, 150 * (attempt + 1)));
+        }
+      }
+    };
+
+    void checkAvailability();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (chatAvailable !== true) return;
     void refreshChat();
     const interval = window.setInterval(() => void refreshChat(), open ? 3000 : 10000);
     return () => window.clearInterval(interval);
-  }, [open]);
+  }, [open, chatAvailable]);
 
   useEffect(() => {
     if (!open) return;
@@ -159,6 +193,10 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
       setSending(false);
     }
   };
+
+  // Do not show a non-working chat control on a Frenzy post while no
+  // canonical Game launcher has been registered. Sending is also guarded server-side.
+  if (chatAvailable !== true) return null;
 
   if (!open) {
     return (
