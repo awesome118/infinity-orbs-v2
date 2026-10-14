@@ -49,7 +49,6 @@ import {
   xpRequiredForLevel,
   SINGULARITY_TITHE_ROLLS_PER_DUST,
   singularityTitheDustForRolls,
-  unbrokenMomentumSpeedBonus,
 } from '../src/shared/game.js';
 import {
   createGuildTask,
