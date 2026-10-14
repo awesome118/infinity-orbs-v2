@@ -3686,9 +3686,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         </div>
         </details>
 
-        <details open className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
+        <details className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-slate-300">
-            <span>Controls & Simulation</span><span className="text-[10px] text-slate-600">Collapse</span>
+            <span>Controls & Simulation</span><span className="text-[10px] text-slate-600">Expand</span>
           </summary>
           <div className="mt-3 space-y-3">
 
@@ -4476,7 +4476,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
 
               <div className="space-y-2">
                 {statSpy.stats.map(stat => (
-                  <details key={stat.id} open className="rounded-xl border border-slate-800 bg-slate-900/55 overflow-hidden">
+                  <details key={stat.id} className="rounded-xl border border-slate-800 bg-slate-900/55 overflow-hidden">
                     <summary className="cursor-pointer list-none px-3 py-2.5 flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-[11px] font-bold text-slate-200">{stat.label}</div>
