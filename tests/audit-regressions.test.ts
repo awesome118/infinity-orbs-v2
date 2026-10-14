@@ -431,6 +431,116 @@ test('comprehensive admin tests atomically reset cooldown, issue a roll ticket, 
   assert.ok(adminFrenzy.includes('returnedRarity !== orbRarity'));
 });
 
+test('Guild Collection Value tasks can roll over multiple tiers and pay every reward', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('export async function prepareGuildRollEffects(');
+  const end = social.indexOf('// Community World Event System', start);
+  assert.ok(start >= 0 && end > start, 'Guild roll effect boundaries must exist');
+  const effects = social.slice(start, end);
+  assert.match(effects, /if \(task\.type === 'value'\) task\.progress = capInteger\(task\.progress \+ taskProgressValue\)/);
+  assert.match(effects, /while \(task\.progress >= task\.target && rolloverGuard < 256\)/);
+  assert.match(effects, /replacement\.progress = Math\.min\(Number\.MAX_SAFE_INTEGER, overflow\)/);
+  assert.match(effects, /guild\.tokens = capInteger\(\(guild\.tokens \?\? 0\) \+ reward\)/);
+  assert.match(effects, /guild\.xp = capInteger\(guild\.xp \+ xpReward\)/);
+  assert.match(effects, /Guild Task completed! Tier/);
+});
+
+test('expired Guild Combos persist a Tier 1 task reset, including decayed legacy timers', () => {
+  const social = source('src/server/social.ts');
+  const normalizeStart = social.indexOf('function normalizeGuilds(');
+  const normalizeEnd = social.indexOf('function addGuildExperience', normalizeStart);
+  assert.ok(normalizeStart >= 0 && normalizeEnd > normalizeStart);
+  const normalize = social.slice(normalizeStart, normalizeEnd);
+  assert.match(normalize, /hasEscalatedTasks/);
+  assert.match(normalize, /const comboExpired = comboEndsAt > 0 && comboEndsAt <= now/);
+  assert.match(normalize, /if \(comboExpired\) \{\s*g\.tasks = createInitialGuildTasks\(g\.level \|\| 1\)/);
+
+  const loadStart = social.indexOf('async function loadGuilds()');
+  const loadEnd = social.indexOf('export interface GuildChatSpyGuild', loadStart);
+  assert.ok(loadStart >= 0 && loadEnd > loadStart);
+  const loader = social.slice(loadStart, loadEnd);
+  assert.match(loader, /const storedComboExpired = rawGuilds\.some/);
+  assert.match(loader, /const latestExpired = latestRawGuilds\.some/);
+  assert.match(loader, /await txn\.set\(GUILDS_KEY, JSON\.stringify\(latest\)\)/);
+});
+
+test('Admin Guild authority override is authenticated, server-side, and reachable from the console', () => {
+  const social = source('src/server/social.ts');
+  const debug = source('src/server/debug.ts');
+  const modal = source('src/client/components/DevDebugModal.tsx');
+  assert.match(social, /export async function adminSetGuildAuthority/);
+  assert.match(social, /adminUsername\.toLowerCase\(\) !== 'shadow_fen'/);
+  assert.match(social, /authority === 'owner'/);
+  assert.match(social, /target\.trusted = true/);
+  assert.match(debug, /debugRouter\.post\('\/guild-authority'/);
+  assert.match(modal, /Admin Guild Authority/);
+  assert.match(modal, /Make u\/shadow_fen Owner/);
+  assert.match(modal, /Make Trusted Member/);
+});
+
+test('rapid standard upgrades are batched and validated by the server', () => {
+  const modal = source('src/client/main.tsx');
+  const game = source('src/server/game.ts');
+  const app = source('src/server/app.ts');
+  assert.match(modal, /upgradeBatchQueueRef = useRef<UpgradeId\[\]>\(\[\]\)/);
+  assert.match(modal, /setTimeout\(\(\) => \{[\s\S]*?flushUpgradeBatchRef\.current/);
+  assert.match(modal, /getJson<\{[\s\S]*?\}>\('\/api\/upgrade\/batch'/);
+  assert.match(game, /export async function buyUpgradeBatch\(ids: UpgradeId\[\]\)/);
+  assert.match(game, /const cost = upgradeCost\(id, level\)/);
+  assert.match(game, /await save\(s\)/);
+  assert.match(app, /app\.post\('\/api\/upgrade\/batch'/);
+  assert.match(app, /path === '\/upgrade\/batch'/);
+});
+
+test('one manual action consumes all available Free Rolls and offline rate stops at level 8', () => {
+  const game = source('src/server/game.ts');
+  const shared = source('src/shared/game.ts');
+  const modal = source('src/client/components/RollSection.tsx');
+  const upgrades = source('src/client/components/UpgradesSection.tsx');
+  assert.match(game, /requestedFreeRollCount = 1/);
+  assert.match(game, /Math\.min\(availableFreeRolls, requested\)/);
+  assert.match(game, /await applyRolls\(s, activations, undefined, 'online'\)/);
+  assert.match(modal, /USE ALL ' \+ freeRolls \+ ' FREE ROLL/);
+  assert.match(shared, /Math\.min\(0\.60, Math\.min\(8, Math\.max\(0, s\.upgrades\.offlineRate/);
+  assert.match(shared, /id === 'offlineRate' && level >= 8\) return Infinity/);
+  assert.match(upgrades, /offlineRate: 8/);
+});
+
+test('Global Chat unread tracking clears on open and identifies u/shadow_fen as ADMIN', () => {
+  const chat = source('src/client/components/GlobalChatWindow.tsx');
+  assert.match(chat, /const \[unreadCount, setUnreadCount\] = useState\(0\)/);
+  assert.match(chat, /seenMessageIdsRef/);
+  assert.match(chat, /markMessagesSeen\(messages\)/);
+  assert.match(chat, /setUnreadCount\(0\)/);
+  assert.match(chat, /unreadCount > 99 \? '99\+' : unreadCount/);
+  assert.match(chat, /=== 'shadow_fen'/);
+  assert.match(chat, />ADMIN<\/span>/);
+});
+
+test('Current Dry Streak and Cosmic Reserve are included in the gameplay UI and calculations', () => {
+  const social = source('src/server/social.ts');
+  const socialTypes = source('src/shared/social.ts');
+  const shared = source('src/shared/game.ts');
+  const app = source('src/server/app.ts');
+  const leaderboardUi = source('src/client/components/GuildsAndSocial.tsx');
+  const profile = source('src/client/components/ProfileAndPrestige.tsx');
+  assert.match(social, /currentDryStreak: Math\.max\(0, Number\(save\.rollsSinceBest/);
+  assert.match(social, /currentDryStreak: sortLeaderboard\(eligible, entry => entry\.currentDryStreak/);
+  assert.match(socialTypes, /currentDryStreak\?: number/);
+  assert.match(leaderboardUi, /label: 'Current Dry Streak'/);
+  assert.match(shared, /cosmicReserveMultiplier = 1 \+ unspentCosmicDust \* cosmicReserveLevel \* 0\.01/);
+  assert.match(shared, /name: 'Cosmic Reserve'/);
+  assert.match(shared, /cosmicReserve: 8/);
+  assert.match(app, /'cosmicReserve'/);
+  assert.match(profile, /case 'cosmicReserve'/);
+});
+
+test('Admin Console starts with expandable panels collapsed', () => {
+  const modal = source('src/client/components/DevDebugModal.tsx');
+  assert.doesNotMatch(modal, /<details\s+open(?:\s|>)/);
+  assert.doesNotMatch(modal, /<details key=\{stat\.id\} open/);
+});
+
 test('Guild diagnostics UI and endpoint are removed while playtest-only recovery remains', () => {
   const social = source('src/server/social.ts');
   const debug = source('src/server/debug.ts');
