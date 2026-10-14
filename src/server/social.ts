@@ -1558,33 +1558,8 @@ export async function reportGuildChatMessage(messageId: string): Promise<{ succe
   return submitChatReport('Guild Chat', message);
 }
 
-export async function postGuildMessage(text: string) {
-  return withPlayerMutationLockFor('guild-chat-user:' + user(), async () => {
-    const clean = text.trim().slice(0, 200);
-    if (!clean) throw new Error('Message cannot be empty.');
-
-    if (await isGuildChatMuted()) {
-      throw new Error('You are muted from Guild Chat.');
-    }
-    await enforceChatCooldown('guild', 2_000);
-
-    return updateGuilds(guilds => {
-      const guild = currentGuild(guilds);
-      if (!guild) throw new Error('You are not in a guild.');
-      if (!guild.chat) guild.chat = [];
-
-      const msg: GuildMessage = {
-        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        username: username(),
-        userId: user(),
-        text: clean,
-        timestamp: Date.now(),
-      };
-      guild.chat.push(msg);
-      if (guild.chat.length > 50) guild.chat.shift();
-      return msg;
-    });
-  });
+export async function postGuildMessage(_text: string): Promise<never> {
+  throw new Error('Guild Log is read-only. Player chat is disabled.');
 }
 
 export async function contribute(value: number, rollCount = 1, bestRarity?: number) {
