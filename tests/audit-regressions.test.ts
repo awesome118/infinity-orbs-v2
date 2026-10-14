@@ -1540,9 +1540,10 @@ test('Global Chat mutations fail closed rather than overwriting malformed histor
   assert.doesNotMatch(reader, /String\(message\.text \?\? ''\)/);
 });
 
-test('Aftershock and Unbroken Momentum are persisted, applied server-side, and displayed', () => {
+test('Aftershock and Unbroken Momentum are persisted, purchase-gated, and shown in their upgrade menus', () => {
   const shared = source('src/shared/game.ts');
   const game = source('src/server/game.ts');
+  const mastery = source('src/client/components/MasterySection.tsx');
   const profile = source('src/client/components/ProfileAndPrestige.tsx');
 
   assert.match(shared, /export function aftershockCriticalLuckBonus/);
@@ -1553,12 +1554,15 @@ test('Aftershock and Unbroken Momentum are persisted, applied server-side, and d
   assert.doesNotMatch(shared, /masteryEngine/);
 
   assert.match(shared, /aftershockCriticalLuckBonus\(s\.aftershockRecord\)/);
+  assert.match(shared, /s\.masterySkills\?\.aftershock/);
+  assert.match(shared, /s\.prestigeUpgrades\?\.unbrokenMomentum/);
   assert.match(game, /critMultiplier\(s\)/);
   assert.match(game, /s\.aftershockRecord = Math\.max\(/);
   assert.match(game, /recordRollingSessionActivity\(s, now\)/);
   assert.doesNotMatch(game, /masteryEngineLevel|prestigeUpgrades\?\.masteryEngine/);
-  assert.match(profile, /Aftershock Record/);
-  assert.match(profile, /Unbroken Momentum/);
+  assert.match(mastery, /Best Aftershock record/);
+  assert.match(profile, /id === 'unbrokenMomentum'/);
+  assert.doesNotMatch(profile, /Aftershock Record/);
   assert.doesNotMatch(profile, /case 'masteryEngine'/);
 });
 
