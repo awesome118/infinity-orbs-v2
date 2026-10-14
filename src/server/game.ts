@@ -21,6 +21,7 @@ import {
   upgradeCost,
   prestigeUpgradeCost,
   calculatePrestigeDust,
+  addCollectionValue,
   offlineRollCap,
   getOrbInfo,
   formatRarity,
@@ -3295,8 +3296,8 @@ export async function applyRolls(
     rarities.push(rarity);
     s.totalRolls++;
     s.currentRunRolls = (s.currentRunRolls ?? 0) + 1;
-    s.collectionValue = (s.collectionValue ?? 0) + finalVal;
-    s.lifetimeCollectionValue = (s.lifetimeCollectionValue ?? 0) + finalVal;
+    s.collectionValue = addCollectionValue(s.collectionValue, finalVal);
+    s.lifetimeCollectionValue = addCollectionValue(s.lifetimeCollectionValue, finalVal);
 
     const isNew = !s.collection[String(rarity)];
     if (isNew) uniqueGained++;
@@ -5840,8 +5841,8 @@ export async function claimOrbFrenzy(options: {
   const bestRarity = topRarity;
   s.totalRolls += count;
   s.currentRunRolls = (s.currentRunRolls ?? 0) + count;
-  s.collectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.collectionValue ?? 0) + finalValue);
-  s.lifetimeCollectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.lifetimeCollectionValue ?? 0) + finalValue);
+  s.collectionValue = addCollectionValue(s.collectionValue, finalValue);
+  s.lifetimeCollectionValue = addCollectionValue(s.lifetimeCollectionValue, finalValue);
   s.totalCrits = (s.totalCrits ?? 0) + critCount;
 
   // Stage Guild taxes/contribution in the same save as this claim. A failed
