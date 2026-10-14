@@ -92,6 +92,10 @@ function FrenzyPost() {
   const [loadingInfo, setLoadingInfo] = useState(false);
   const loadInFlightRef = useRef(false);
   const [openedGame, setOpenedGame] = useState(false);
+  const [showThankYouPrompt, setShowThankYouPrompt] = useState(false);
+  const [thankYouMessage, setThankYouMessage] = useState('');
+  const [postingThankYou, setPostingThankYou] = useState(false);
+  const [thankYouStatus, setThankYouStatus] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   const load = async () => {
