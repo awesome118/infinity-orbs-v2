@@ -36,7 +36,6 @@ import type {
   LeaderboardBoards,
   WorldEvent,
   GuildPerkId,
-  GuildMessage,
 } from '../shared/social.js';
 import {
   formatRarity,
@@ -1922,25 +1921,6 @@ export function App() {
   };
 
 
-  const handleSendGuildChat = async (text: string): Promise<GuildMessage> => {
-    if (busy) throw new Error('Another action is already in progress.');
-    setBusy(true);
-    try {
-      const res = await getJson<{ message: GuildMessage }>('/api/guilds/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-      });
-      void refreshAll();
-      return res.message;
-    } catch (e: any) {
-      showToast(e.message || 'Could not send message', 'warn');
-      throw e;
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const handleSendFeedback = async (type: 'bug' | 'suggestion', message: string) => {
     await getJson<{ success: boolean }>('/api/feedback', {
       method: 'POST',
@@ -2530,7 +2510,6 @@ export function App() {
             onCreateGuild={handleCreateGuild}
             onJoinGuild={handleJoinGuild}
             onLeaveGuild={handleLeaveGuild}
-            onSendMessage={handleSendGuildChat}
             onBuyGuildPerk={handleBuyGuildPerk}
             onToggleGuildTrust={handleToggleGuildTrust}
             onKickGuildMember={handleKickGuildMember}
