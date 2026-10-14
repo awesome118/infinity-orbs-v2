@@ -252,7 +252,7 @@ const localReddit = {
       runAs: options.runAs ?? 'APP',
       text: options.text,
     });
-    return { id: `t1_local-comment-${Date.now()}` };
+    return { id: `t1_localcomment${Date.now()}` };
   },
   subscribeToCurrentSubreddit: async () => {
     console.log('[Reddit Mock] Subscribed current user to current subreddit.');
