@@ -6247,6 +6247,9 @@ export async function claimOrbFrenzy(options: {
   s.xp += xpGained;
   applyLevelProgress(s, 1);
 
+  // Claiming a Frenzy is active online rolling activity for Unbroken Momentum.
+  if (count > 0) recordRollingSessionActivity(s, now);
+
   // Frenzy claim rolls are real processed rolls and therefore count toward Tithe.
   const titheLevel = s.prestigeUpgrades?.singularityTithe ?? 0;
   if (titheLevel > 0 && count > 0) {
