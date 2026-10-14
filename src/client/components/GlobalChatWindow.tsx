@@ -18,6 +18,9 @@ async function loadChat(): Promise<GlobalChatMessage[]> {
 const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username = '' }) => {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<GlobalChatMessage[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const hasPersistedSeenStateRef = useRef(false);
+  const seenMessageIdsRef = useRef<Set<string>>(new Set());
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [reportingId, setReportingId] = useState<string | null>(null);
@@ -25,6 +28,35 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
   const [actionError, setActionError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const refreshRequestRef = useRef(0);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem('io-global-chat-seen-v1');
+      if (stored !== null) {
+        const ids = JSON.parse(stored);
+        if (Array.isArray(ids)) {
+          seenMessageIdsRef.current = new Set(ids.filter((id): id is string => typeof id === 'string').slice(-100));
+          hasPersistedSeenStateRef.current = true;
+        }
+      }
+    } catch {
+      // Chat unread tracking is best-effort in restricted embedded webviews.
+    }
+  }, []);
+
+  const markMessagesSeen = (list: GlobalChatMessage[]) => {
+    const ids = new Set(seenMessageIdsRef.current);
+    for (const message of list.slice(-100)) ids.add(message.id);
+    const bounded = new Set(Array.from(ids).slice(-100));
+    seenMessageIdsRef.current = bounded;
+    hasPersistedSeenStateRef.current = true;
+    setUnreadCount(0);
+    try {
+      window.localStorage.setItem('io-global-chat-seen-v1', JSON.stringify(Array.from(bounded)));
+    } catch {
+      // The current session still tracks seen messages if localStorage is disabled.
+    }
+  };
 
   const mergeMessages = (current: GlobalChatMessage[], incoming: GlobalChatMessage[]) => {
     const merged = new Map<string, GlobalChatMessage>();
@@ -43,9 +75,19 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
       // overlapping GETs out of order, which otherwise lets stale history
       // briefly replace a newer snapshot.
       if (requestId !== refreshRequestRef.current) return;
-      // This endpoint returns the authoritative, moderation-filtered history.
-      // Merging instead of replacing kept muted/purged messages visible forever.
-      setMessages(next.slice(-100));
+      const visible = next.slice(-100);
+      setMessages(visible);
+      if (open) {
+        // Every message visible in an open chat is immediately marked seen.
+        markMessagesSeen(visible);
+      } else if (!hasPersistedSeenStateRef.current) {
+        // On first use we have no previous read marker. Establish a baseline
+        // instead of incorrectly showing the whole historical chat as unread.
+        markMessagesSeen(visible);
+      } else {
+        const unread = visible.filter(message => !seenMessageIdsRef.current.has(message.id));
+        setUnreadCount(unread.length);
+      }
     } catch {
       // Chat is auxiliary UI and should never block gameplay.
     }
@@ -122,15 +164,18 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
     return (
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          markMessagesSeen(messages);
+          setOpen(true);
+        }}
         className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-2xl border border-indigo-500/30 bg-slate-900/95 px-4 py-3 text-xs font-black text-white shadow-2xl backdrop-blur-md hover:bg-slate-800 transition-all"
         title="Open global chat"
       >
         <MessageCircle className="w-4 h-4 text-indigo-300" />
         <span>Global Chat</span>
-        {messages.length > 0 && (
-          <span className="rounded-full bg-indigo-500/20 px-1.5 py-0.5 text-[9px] text-indigo-200">
-            {messages.length}
+        {unreadCount > 0 && (
+          <span aria-label={unreadCount + ' unread messages'} className="rounded-full bg-indigo-500/20 px-1.5 py-0.5 text-[9px] text-indigo-200">
+            {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
       </button>
@@ -175,8 +220,17 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
           messages.map(message => (
             <div key={message.id} className="rounded-xl border border-slate-800/80 bg-slate-900/70 px-3 py-2">
               <div className="flex items-center justify-between gap-2">
-                <span className={message.username === username ? 'text-xs font-black text-indigo-300' : 'text-xs font-bold text-slate-200'}>
-                  {message.username}
+                <span className="inline-flex items-center gap-1.5 min-w-0">
+                  <span className={message.username.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen'
+                    ? 'text-xs font-black text-red-400'
+                    : message.username === username
+                    ? 'text-xs font-black text-indigo-300'
+                    : 'text-xs font-bold text-slate-200'}>
+                    {message.username}
+                  </span>
+                  {message.username.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen' && (
+                    <span className="rounded border border-red-500/40 bg-red-500/10 px-1 py-0.5 text-[8px] font-black tracking-wider text-red-300">ADMIN</span>
+                  )}
                 </span>
                 <span className="text-[9px] text-slate-600">
                   {new Date(message.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
