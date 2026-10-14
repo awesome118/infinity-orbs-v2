@@ -481,7 +481,11 @@ export function createApp() {
         });
       }
     } catch (e) {
+      reportRedisTransactionFailure(e);
       console.error('Feature gate check failed:', e);
+      if (transientContentionError(e)) {
+        return res.status(503).json({ error: 'The game is busy verifying access. Please retry.' });
+      }
       return res.status(500).json({ error: 'Could not verify feature access.' });
     }
 
@@ -990,7 +994,7 @@ export function createApp() {
 
   const transientContentionError = (error: unknown): boolean => {
     const message = error instanceof Error ? error.message : String(error ?? '');
-    return /max(?:imum)? concurrency|concurrency limit|redis.*transaction|transaction.*failed|PLAYER_MUTATION_LEASE_LOST|another game action is still finishing|guild data changed|data changed before the roll saved|player state changed while saving/i.test(message);
+    return /max(?:imum)? concurrency|concurrency limit|redis.*transaction|transaction.*failed|PLAYER_MUTATION_LEASE_LOST|another game action is still finishing|guild.*changed|shared state changed|data changed before the roll saved|player state changed while saving|player activity changed repeatedly|could not safely save player data|could not create a roll prediction ticket|community event changed while|community progress changed while|daily streak community goal changed while/i.test(message);
   };
 
   const reportRedisTransactionFailure = (error: unknown) => {
