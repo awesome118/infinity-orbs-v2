@@ -73,11 +73,13 @@ test('Global Chat comments are submitted as USER and Reddit comment triggers are
   assert.match(social.slice(senderStart, senderEnd), /runAs: 'USER'/);
   assert.match(social, /resolveGlobalGamePostId/);
   assert.match(social, /export async function getGlobalChatStatus/);
-  assert.match(social, /Global Chat is disabled on this Frenzy post until you open the main Game launcher once/);
+  assert.match(social, /Global Chat is disabled because you're not in the main Game launcher/);
 
   const chat = source('src/client/components/GlobalChatWindow.tsx');
   assert.match(chat, /\/api\/chat\/status/);
-  assert.match(chat, /if \(chatAvailable !== true\) return null/);
+  assert.match(chat, /Keep Global Chat discoverable in every context/);
+  assert.match(chat, /chatAvailable !== true && \(/);
+  assert.match(chat, /disabled=\{chatAvailable !== true \|\| sending \|\| !input\.trim\(\)\}/);
 
   const game = source('src/server/game.ts');
   assert.match(game, /postFrenzyThankYouComment/);
@@ -106,10 +108,11 @@ test('Chain Patcher is server-authoritative, arms exactly one guaranteed rarity,
   assert.match(app, /app\.post\('\/api\/chain-patcher\/buy'/);
   assert.match(app, /buyChainPatcher/);
 
-  const ui = source('src/client/components/UpgradesSection.tsx');
+  const ui = source('src/client/components/CollectionSection.tsx');
   assert.match(ui, /Chain Patcher/);
   assert.match(ui, /1\/900 costs 10/);
   assert.match(ui, /24 hours between purchases/);
+  assert.doesNotMatch(source('src/client/components/UpgradesSection.tsx'), /Chain Patcher/);
 
   const social = source('src/server/social.ts');
   assert.match(social, /chainLength: highestCodexChain\(save\.collection\)/);
