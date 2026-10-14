@@ -2626,6 +2626,64 @@ export function App() {
         />
       )}
 
+      {frenzyThanksPrompt && (
+        <div className="fixed inset-0 z-[80] io-modal-backdrop flex items-center justify-center p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="frenzy-thanks-title" className="io-modal-card w-full max-w-md bg-slate-950/95">
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-fuchsia-300">
+              <Flame className="w-4 h-4" />
+              Frenzy thank-you
+            </div>
+            <h2 id="frenzy-thanks-title" className="mt-2 text-2xl font-black text-white">Thank the Frenzy poster</h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-300">
+              You claimed u/{frenzyThanksPrompt.ownerUsername}'s Frenzy. You can leave an optional public comment below.
+              It will be posted as your Reddit account, not the app.
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">
+              Please also consider upvoting the Frenzy post to thank its owner. Commenting is optional and gives no gameplay reward.
+            </p>
+            <label className="mt-4 block text-xs font-bold text-slate-300" htmlFor="frenzy-thanks-message">Public comment</label>
+            <textarea
+              id="frenzy-thanks-message"
+              value={frenzyThanksPrompt.message}
+              onChange={event => setFrenzyThanksPrompt(current => current ? { ...current, message: event.target.value } : current)}
+              maxLength={500}
+              rows={4}
+              disabled={postingFrenzyThanks}
+              className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-900 p-3 text-sm text-white placeholder:text-slate-500 focus:border-fuchsia-500 focus:outline-none"
+            />
+            <div className="mt-1 text-right text-[10px] text-slate-600">{frenzyThanksPrompt.message.length}/500</div>
+            <div className="mt-3 text-xs">
+              <a
+                href={`https://www.reddit.com/comments/${frenzyThanksPrompt.postId.replace(/^t3_/, '')}/`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-bold text-fuchsia-300 underline hover:text-fuchsia-200"
+              >
+                Open the Frenzy post to upvote
+              </a>
+            </div>
+            <div className="io-modal-actions mt-4">
+              <button
+                type="button"
+                onClick={() => void handlePostFrenzyThanks()}
+                disabled={postingFrenzyThanks || !frenzyThanksPrompt.message.trim()}
+                className="io-public-button io-public-button-primary disabled:opacity-50"
+              >
+                {postingFrenzyThanks ? 'Posting comment…' : `Post comment as u/${state.username ?? 'Redditor'}`}
+              </button>
+              <button
+                type="button"
+                onClick={() => setFrenzyThanksPrompt(null)}
+                disabled={postingFrenzyThanks}
+                className="io-public-button io-public-button-secondary"
+              >
+                Not now
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {/* Global Chat */}
       <GlobalChatWindow username={state.username ?? ''} />
 
