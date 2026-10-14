@@ -107,8 +107,20 @@ test('Chain Patcher is server-authoritative, arms exactly one guaranteed rarity,
   const app = source('src/server/app.ts');
   assert.match(app, /app\.post\('\/api\/chain-patcher\/buy'/);
   assert.match(app, /buyChainPatcher/);
+  assert.match(app, /nextCodexChainRarity/);
+  const stripStart = app.indexOf('const stripPlayerCollection =');
+  const stripEnd = app.indexOf('\\n  };', stripStart);
+  assert.ok(stripStart >= 0 && stripEnd > stripStart, 'collection stripper must exist');
+  const stripper = app.slice(stripStart, stripEnd);
+  assert.match(stripper, /copy\.chainPatcherSuggestedRarity = pendingPatcherRarity >= 2[\\s\\S]*?nextCodexChainRarity\(sourceCollection\)/);
+  assert.ok(
+    stripper.indexOf('copy.chainPatcherSuggestedRarity') < stripper.indexOf('copy.collection = {}'),
+    'Chain Patcher preview must be computed before the server-only Codex is stripped',
+  );
 
   const ui = source('src/client/components/CollectionSection.tsx');
+  assert.match(ui, /state\.chainPatcherSuggestedRarity !== undefined/);
+  assert.match(ui, /state\.codexChain \?\? bestCodexChain\(state\.collection\)\.length/);
   assert.match(ui, /Chain Patcher/);
   assert.match(ui, /1\/900 costs 10/);
   assert.match(ui, /24 hours between purchases/);
