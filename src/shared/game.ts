@@ -867,7 +867,6 @@ export type PrestigeUpgradeId =
   | 'luckyFloor'
   | 'astralArsenal'
   | 'deepVault'
-  | 'masteryEngine'
   | 'steadyHands'
   | 'offlineFortune'
   | 'frenzyVolley'
@@ -989,6 +988,14 @@ export interface PlayerState {
   lastDailyReset: string;
   lastWeeklyReset: string;
   rollsSinceBest: number;
+  /** Best number of rolls between successive all-time rarity records. Persists through Prestige. */
+  aftershockRecord?: number;
+  /** Beginning of the current uninterrupted online rolling session. */
+  rollingSessionStartedAt?: number;
+  /** Timestamp of the most recent roll counted toward the current session. */
+  rollingSessionLastRollAt?: number;
+  /** Longest uninterrupted online rolling session, in milliseconds. */
+  longestRollingSessionMs?: number;
   highestDryStreak?: number;
   freeRolls?: number;
   activeCosmetic: string;
@@ -1530,13 +1537,6 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
     costPerLevel: 2,
     qol: true,
   },
-  masteryEngine: {
-    name: 'Mastery Engine',
-    desc: 'Gain +1 Mastery Point every 100 rolls per level.',
-    category: 'core',
-    maxLevel: 5,
-    costPerLevel: 4,
-  },
   steadyHands: {
     name: 'Steady Hands',
     desc: '-100ms cooldown floor per level.',
@@ -1684,7 +1684,6 @@ export function createInitialState(now = Date.now()): PlayerState {
       luckyFloor: 0,
       astralArsenal: 0,
       deepVault: 0,
-      masteryEngine: 0,
       steadyHands: 0,
       offlineFortune: 0,
       frenzyVolley: 0,
@@ -1701,6 +1700,10 @@ export function createInitialState(now = Date.now()): PlayerState {
     lastDailyReset: today,
     lastWeeklyReset: today,
     rollsSinceBest: 0,
+    aftershockRecord: 0,
+    rollingSessionStartedAt: 0,
+    rollingSessionLastRollAt: 0,
+    longestRollingSessionMs: 0,
     highestDryStreak: 0,
     freeRolls: 0,
     activeCosmetic: 'default',
@@ -1946,11 +1949,15 @@ export function calculateAltarMultipliers(s: PlayerState): {
   const altarEffectMultiplier = getLevelBenefits(Math.max(1, s.level || 1)).altarEffectMultiplier;
 
   // Match the displayed Altar bonuses: +1% per altar level and +2% per infused shard.
-  const coinBonus = sacrifices.altarLevel * 0.01 * altarEffectMultiplier * resonatorBonus;
+  // Altar rank compounds as ×1.05 per level. The Level 20 milestone and
+  // Altar Resonator still strengthen the bonus above 1×; shard infusion remains
+  // its own multiplicative layer.
+  const rawCoinLevelMultiplier = Math.pow(1.05, Math.max(0, sacrifices.altarLevel));
+  const coinBonus = (rawCoinLevelMultiplier - 1) * altarEffectMultiplier * resonatorBonus;
   const shardBonus = (sacrifices.shardsSacrificed || 0) * 0.02 * altarEffectMultiplier * resonatorBonus;
 
-  const coinMultiplier = Math.round((1 + coinBonus) * 100) / 100;
-  const shardMultiplier = Math.round((1 + shardBonus) * 100) / 100;
+  const coinMultiplier = 1 + coinBonus;
+  const shardMultiplier = 1 + shardBonus;
   const isSurgeActive = Boolean(sacrifices.luckSurgeUntil && Date.now() < sacrifices.luckSurgeUntil);
   const surgeMultiplier = isSurgeActive ? 1.25 : 1.0;
 
@@ -1974,6 +1981,62 @@ export const MAX_OFFLINE_ROLLS = 1_000;
 export const OFFLINE_TICK_MS = 60_000; // 1 offline roll every 60 seconds
 
 export const SHARD_SYNTHESIS_COST = 10;
+
+// Unbroken Momentum treats a gap longer than five minutes as the end of a
+// rolling session. Every completed five minutes in the personal-best session
+// grants +1% Speed, capped at +30%.
+export const UNBROKEN_MOMENTUM_SESSION_GAP_MS = 5 * 60_000;
+export const UNBROKEN_MOMENTUM_STEP_MS = 5 * 60_000;
+export const UNBROKEN_MOMENTUM_PER_STEP = 0.01;
+export const UNBROKEN_MOMENTUM_MAX_BONUS = 0.30;
+
+export function unbrokenMomentumSpeedBonus(longestSessionMs: number | null | undefined): number {
+  const safeDuration = Number.isFinite(Number(longestSessionMs))
+    ? Math.max(0, Math.floor(Number(longestSessionMs)))
+    : 0;
+  const completedSteps = Math.floor(safeDuration / UNBROKEN_MOMENTUM_STEP_MS);
+  return Math.min(UNBROKEN_MOMENTUM_MAX_BONUS, completedSteps * UNBROKEN_MOMENTUM_PER_STEP);
+}
+
+/**
+ * Aftershock permanently improves Critical Luck (critical chance) based on
+ * the best dry interval between all-time rarity records. Each order of
+ * magnitude in the personal record adds +0.5 percentage points, capped at 8%.
+ * The record remains on the save through Prestige.
+ */
+export function aftershockCriticalLuckBonus(recordRolls: number | null | undefined): number {
+  const safeRecord = Number.isFinite(Number(recordRolls))
+    ? Math.max(0, Math.floor(Number(recordRolls)))
+    : 0;
+  if (safeRecord < 10) return 0;
+  const decades = Math.floor(Math.log10(safeRecord));
+  return Math.min(0.08, decades * 0.005);
+}
+
+/** Record one successfully processed online roll batch in the rolling session. */
+export function recordRollingSessionActivity(s: PlayerState, now = Date.now()): void {
+  if (!Number.isSafeInteger(now) || now < 0) return;
+
+  const startedAt = Number(s.rollingSessionStartedAt);
+  const lastRollAt = Number(s.rollingSessionLastRollAt);
+  const continuing =
+    Number.isSafeInteger(startedAt) && startedAt > 0 &&
+    Number.isSafeInteger(lastRollAt) && lastRollAt > 0 &&
+    now >= lastRollAt &&
+    now - lastRollAt <= UNBROKEN_MOMENTUM_SESSION_GAP_MS &&
+    startedAt <= lastRollAt;
+
+  const sessionStartedAt = continuing ? startedAt : now;
+  const sessionDuration = Math.max(0, now - sessionStartedAt);
+  const previousBest = Number.isFinite(Number(s.longestRollingSessionMs))
+    ? Math.max(0, Math.floor(Number(s.longestRollingSessionMs)))
+    : 0;
+
+  s.rollingSessionStartedAt = sessionStartedAt;
+  s.rollingSessionLastRollAt = now;
+  s.longestRollingSessionMs = Math.max(previousBest, sessionDuration);
+}
+
 export const SINGULARITY_TITHE_ROLLS_PER_DUST = 200;
 export function singularityTitheDustForRolls(
   previousRolls: number,
@@ -2065,7 +2128,11 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
   if (s.dailyStreakCommunity?.speedMultiplier) {
     cd = Math.max(300, Math.round(cd * s.dailyStreakCommunity.speedMultiplier));
   }
-  return Math.round(cd);
+
+  // Unbroken Momentum increases actual roll frequency by dividing cooldown
+  // by the best-session Speed multiplier; the common 300ms floor still applies.
+  const momentumSpeedMultiplier = 1 + unbrokenMomentumSpeedBonus(s.longestRollingSessionMs);
+  return Math.max(300, Math.round(cd / momentumSpeedMultiplier));
 }
 
 // Multi roll upgrade is strictly LINEAR (+1 ball per level), plus multiple sources of +1 ball!
@@ -2201,7 +2268,7 @@ export function codexDevotionLuckPercent(skillLevel: number, chain: number): num
 }
 
 export const MIN_ALTAR_COIN_OFFER = 10_000;
-export const ALTAR_COIN_FLOOR_GROWTH = 2;
+export const ALTAR_COIN_FLOOR_GROWTH = 1.5;
 export const ALTAR_BASE_CHANCE_DECAY = 0.85;
 
 export function altarCoinFloor(altarLevel: number): number {
@@ -2224,7 +2291,7 @@ export function altarCoinDevotionChancePercent(
   if (safeCoins < floor) return 0;
 
   // Every breakthrough makes the next one harder: the minimum offering
-  // doubles, while the underlying odds fall by 15% per level. Larger
+  // grows by 1.5×, while the underlying odds fall by 15% per level. Larger
   // offerings can compensate somewhat, but never bypass the new floor.
   const amountRatio = safeCoins / floor;
   const levelChanceMultiplier = Math.pow(ALTAR_BASE_CHANCE_DECAY, safeLevel);
@@ -2357,7 +2424,8 @@ export function predictRollActivation(
     (s.masterySkills?.critMastery ?? 0) * 0.03 +
     (s.guildPerks?.critRank ?? 0) * 0.015 +
     globalBoosterCritChanceBonus(s.globalBoosters?.crit) +
-    guildComboCritChanceBonus(s.guildCombo),
+    guildComboCritChanceBonus(s.guildCombo) +
+    aftershockCriticalLuckBonus(s.aftershockRecord),
   );
 
   const rarities: number[] = [];
@@ -2615,7 +2683,6 @@ export function prestigeUpgradeCost(id: PrestigeUpgradeId, level: number): numbe
     luckyFloor: 3,
     astralArsenal: 5,
     deepVault: 2,
-    masteryEngine: 4,
     steadyHands: 3,
     offlineFortune: 3,
     frenzyVolley: 25,
