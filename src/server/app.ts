@@ -869,8 +869,13 @@ export function createApp() {
     try {
       res.json(await guildInfo());
     } catch (e: any) {
+      reportRedisTransactionFailure(e);
       console.error('[API /api/guilds] Failed:', e);
-      res.status(500).json({ error: e?.message || 'Failed to fetch guilds.' });
+      res.status(transientContentionError(e) ? 503 : 500).json({
+        error: transientContentionError(e)
+          ? 'Guild data is being updated. Please retry.'
+          : e?.message || 'Failed to fetch guilds.',
+      });
     }
   });
 
@@ -911,8 +916,13 @@ export function createApp() {
     try {
       res.json({ onlinePlayers: await getOnlinePlayers() });
     } catch (e: any) {
+      reportRedisTransactionFailure(e);
       console.error('[API /api/online] Failed:', e);
-      res.status(500).json({ error: e?.message || 'Failed to fetch online players.' });
+      res.status(transientContentionError(e) ? 503 : 500).json({
+        error: transientContentionError(e)
+          ? 'Presence is updating. Please retry.'
+          : e?.message || 'Failed to fetch online players.',
+      });
     }
   });
 
@@ -959,14 +969,17 @@ export function createApp() {
   // the trusted Devvit username is exactly "shadow_fen".
   app.use('/api/dev', debugRouter);
 
+  const transientContentionError = (error: unknown): boolean => {
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    return /max(?:imum)? concurrency|concurrency limit|redis.*transaction|transaction.*failed|PLAYER_MUTATION_LEASE_LOST|another game action is still finishing|guild data changed|data changed before the roll saved|player state changed while saving/i.test(message);
+  };
+
   const reportRedisTransactionFailure = (error: unknown) => {
     const message = error instanceof Error ? error.message : String(error ?? '');
-    if (!/(?:redis.*transaction|transaction.*failed|max(?:imum)? concurrency|concurrency limit)/i.test(message)) {
-      return;
-    }
+    if (!transientContentionError(error)) return;
     // Preserve the underlying stack and operation context; the client-facing
     // toast alone is not enough to diagnose intermittent platform failures.
-    console.error('[Redis Transaction Failure]', {
+    console.error('[Redis/Concurrency Failure]', {
       timestamp: new Date().toISOString(),
       userId: String(context.userId ?? ''),
       message,
@@ -976,7 +989,10 @@ export function createApp() {
 
   const badRequest = (res: express.Response, e: unknown, fallback: string) => {
     reportRedisTransactionFailure(e);
-    res.status(400).json({ error: e instanceof Error ? e.message : fallback });
+    if (transientContentionError(e)) {
+      return res.status(503).json({ error: 'The game is busy finishing another action. Please retry.' });
+    }
+    return res.status(400).json({ error: e instanceof Error ? e.message : fallback });
   };
 
   app.get('/api/roll-ticket', async (_req, res) => {
@@ -1346,7 +1362,7 @@ export function createApp() {
   ) => {
     if (res.headersSent) return;
     const message = error instanceof Error ? error.message : String(error ?? 'Unknown server error');
-    const busy = /max(?:imum)? concurrency|concurrency limit|transaction.*failed|redis.*transaction|another game action is still finishing/i.test(message);
+    const busy = transientContentionError(error);
     console.error('[Unhandled API Error]', {
       timestamp: new Date().toISOString(),
       method: req.method,
