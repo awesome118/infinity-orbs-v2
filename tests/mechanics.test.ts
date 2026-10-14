@@ -72,6 +72,7 @@ test('Cosmic Reserve multiplies Luck from unspent Cosmic Dust only', () => {
 
 test('Offline Generation Speed reaches its 60% reduction cap at level 8', () => {
   const state = createInitialState(NOW);
+  const baseInterval = effectiveOfflineTickMs(state);
   state.upgrades.offlineRate = 7;
   const levelSeven = effectiveOfflineTickMs(state);
   state.upgrades.offlineRate = 8;
@@ -79,7 +80,8 @@ test('Offline Generation Speed reaches its 60% reduction cap at level 8', () => 
   state.upgrades.offlineRate = 12;
   const aboveCap = effectiveOfflineTickMs(state);
 
-  assert.equal(levelEight, levelSeven - Math.round(levelSeven / 0.44 * 0.04));
+  assert.equal(levelSeven, Math.max(10_000, Math.round(baseInterval * 0.44)));
+  assert.equal(levelEight, Math.max(10_000, Math.round(baseInterval * 0.40)));
   assert.equal(aboveCap, levelEight);
   assert.ok(Number.isFinite(upgradeCost('offlineRate', 7)));
   assert.equal(upgradeCost('offlineRate', 8), Infinity);
