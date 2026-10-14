@@ -4510,6 +4510,12 @@ export async function roll(
     if (isAuto && (s.upgrades.auto ?? 0) <= 0) {
       throw new Error('Auto Roll is not unlocked yet.');
     }
+    // Reject already-queued auto ticks after a purchase or player opt-out turns
+    // Auto Roll off. In particular, this keeps an in-flight tick from consuming
+    // a newly purchased Chain Patcher before the player can trigger it manually.
+    if (isAuto && s.autoRollEnabled !== true) {
+      throw new Error('Auto Roll is disabled.');
+    }
 
     const now = Date.now();
     const rawPatcherRarity = Number(s.chainPatcherNextRarity ?? 0);
