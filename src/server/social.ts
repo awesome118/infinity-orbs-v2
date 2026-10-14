@@ -1732,6 +1732,7 @@ export async function prepareGuildRollEffects(
           });
           if (guild.chat.length > 50) guild.chat.shift();
         }
+      }
 
       const firstTask = guild.tasks[0];
       guild.challenge = {
