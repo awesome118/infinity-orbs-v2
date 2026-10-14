@@ -49,6 +49,7 @@ import {
   xpRequiredForLevel,
   SINGULARITY_TITHE_ROLLS_PER_DUST,
   singularityTitheDustForRolls,
+  unbrokenMomentumSpeedBonus,
 } from '../src/shared/game.js';
 import {
   createGuildTask,
@@ -574,4 +575,16 @@ test('Global Booster segment history is bounded and sanitized when reading store
     endsAt: 0,
     segmentTiers: [1, 2, 3, 4],
   }, NOW).segmentTiers?.length, 0);
+});
+
+
+test('Unbroken Momentum uses the requested logarithmic Speed curve', () => {
+  const hour = 60 * 60 * 1000;
+  assert.equal(unbrokenMomentumSpeedBonus(0), 0);
+  assert.ok(Math.abs(unbrokenMomentumSpeedBonus(48 * hour) - 0.20) < 1e-10,
+    '48 hours should grant exactly 20% permanent Speed');
+  assert.ok(Math.abs(unbrokenMomentumSpeedBonus(72 * hour) - 0.25) < 0.001,
+    '72 hours should grant approximately 25% permanent Speed');
+  assert.equal(unbrokenMomentumSpeedBonus(1000 * hour), 0.30,
+    'long sessions should respect the 30% cap');
 });
