@@ -2558,10 +2558,26 @@ export function addCollectionValue(current: unknown, increment: unknown): number
   return Math.min(Number.MAX_SAFE_INTEGER, bounded(current) + bounded(increment));
 }
 
-// Prestige formula: floor(sqrt(Collection Value / 1,000,000))
+/**
+ * Prestige Dust has diminishing returns after the first two million-value steps.
+ * The first Dust costs 1,000,000 Collection Value; the second costs another
+ * 1,000,000. Each later Dust requires 5% more Collection Value than the prior
+ * step, so the marginal requirement never drops below 1,000,000 and gains scale
+ * logarithmically instead of granting one Dust per million forever.
+ *
+ * Examples: 1m => 1 Dust, 2m => 2 Dust, 3m => 3 Dust, 4m => 3 Dust,
+ * 4.05m => 4 Dust, 300m => 58 Dust.
+ */
 export function calculatePrestigeDust(collectionValue: number): number {
-  if (!collectionValue || collectionValue < 1_000_000) return 0;
-  return Math.floor(Math.sqrt(collectionValue / 1_000_000));
+  if (!Number.isFinite(collectionValue) || collectionValue < 1_000_000) return 0;
+
+  const valueInMillions = collectionValue / 1_000_000;
+  if (valueInMillions < 2) return 1;
+
+  const additionalDust = Math.floor(
+    Math.log1p(0.05 * (valueInMillions - 2)) / Math.log1p(0.05) + 1e-10,
+  );
+  return 2 + Math.max(0, additionalDust);
 }
 
 export function calculateCosmicDust(s: PlayerState): number {
