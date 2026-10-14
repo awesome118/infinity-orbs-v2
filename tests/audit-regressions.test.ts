@@ -63,6 +63,8 @@ test('Global Chat comments are submitted as USER and Reddit comment triggers are
   const app = source('src/server/app.ts');
   assert.match(app, /\/internal\/trigger\/comment-create/);
   assert.match(app, /recordGlobalChatComment/);
+  assert.match(app, /app\.get\('\/api\/chat\/status'/);
+  assert.match(app, /getGlobalChatStatus/);
 
   const social = source('src/server/social.ts');
   const senderStart = social.indexOf('export async function postGlobalChatMessage');
@@ -70,6 +72,12 @@ test('Global Chat comments are submitted as USER and Reddit comment triggers are
   assert.ok(senderStart >= 0 && senderEnd > senderStart);
   assert.match(social.slice(senderStart, senderEnd), /runAs: 'USER'/);
   assert.match(social, /resolveGlobalGamePostId/);
+  assert.match(social, /export async function getGlobalChatStatus/);
+  assert.match(social, /Global Chat is disabled on this Frenzy post until you open the main Game launcher once/);
+
+  const chat = source('src/client/components/GlobalChatWindow.tsx');
+  assert.match(chat, /\/api\/chat\/status/);
+  assert.match(chat, /if \(chatAvailable !== true\) return null/);
 
   const game = source('src/server/game.ts');
   assert.match(game, /postFrenzyThankYouComment/);
