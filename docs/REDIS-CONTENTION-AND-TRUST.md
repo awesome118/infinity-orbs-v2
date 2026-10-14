@@ -23,3 +23,12 @@ This ticket is an ordering/replay guard, not a prediction mechanism and not proo
 ## Remaining limitation
 
 This patch reduces one clear global contention hotspot and improves error diagnostics. It does not measure live concurrent transaction usage and cannot prove every `redis: transaction failed` message has the same cause. New transaction metrics or a captured server stack trace may be needed if failures continue.
+
+
+## Presence and client version reporting (1.2.17)
+
+The client reports its compiled version with the 15-second visible-tab heartbeat. The registry stores only a short, validated version string. The admin player list marks a row green only when the last heartbeat version exactly matches the server's APP_VERSION. Missing/older client reports display as unknown or a non-green version badge.
+
+Presence uses a 60-second sorted-set lease and the player list's Active badge uses a 90-second activity window, tolerating delayed/missed heartbeats. `/api/online` only prunes stale presence and reads the count; it does not refresh the caller's presence just because the page polls. A current heartbeat or gameplay action refreshes presence.
+
+Guild document mutations are serialized with a shared mutation lock. Guild-member rolls hold the same lock from offline settlement through player save, while unrelated non-Guild rolls do not take it. If a required Guild write still loses its snapshot before commit, the save fallback refunds any withheld Guild tax and skips only that Guild projection rather than failing the player roll or discarding Coins. This can skip one contribution/task-progress update during a rare conflict, but never silently destroys a player's tax amount.

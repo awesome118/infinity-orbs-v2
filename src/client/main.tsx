@@ -259,10 +259,14 @@ export function App() {
     if (!state) return;
     const heartbeat = () => {
       if (document.visibilityState === 'hidden') return;
-      void getJson('/api/activity/heartbeat', { method: 'POST' }).catch(() => null);
+      void getJson('/api/activity/heartbeat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: APP_VERSION }),
+      }).catch(() => null);
     };
     heartbeat();
-    const interval = window.setInterval(heartbeat, 30_000);
+    const interval = window.setInterval(heartbeat, 15_000);
     return () => window.clearInterval(interval);
   }, [Boolean(state)]);
 

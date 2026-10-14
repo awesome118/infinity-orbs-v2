@@ -7,8 +7,9 @@ import {
   context as originalContext,
   reddit as originalReddit,
 } from '../src/server/devvit-mock.js';
-import { recordPlayerHeartbeat, save } from '../src/server/game.js';
+import { recordPlayerHeartbeat, save, listPlayers } from '../src/server/game.js';
 import { createInitialState } from '../src/shared/game.js';
+import { APP_VERSION } from '../src/shared/version.js';
 
 test('activity updates watch a per-user lease, not the global registry hash', async () => {
   const watchedKeys: string[][] = [];
@@ -29,12 +30,12 @@ test('activity updates watch a per-user lease, not the global registry hash', as
   configureDevvitRuntime({ redis: tracedRedis, context, reddit: originalReddit });
   try {
     const firstUserId = context.userId;
-    const first = recordPlayerHeartbeat();
+    const first = recordPlayerHeartbeat(APP_VERSION);
 
     context.userId = `activity-scope-b-${suffix}`;
     context.username = 'ActivityScopeB';
     const secondUserId = context.userId;
-    const second = recordPlayerHeartbeat();
+    const second = recordPlayerHeartbeat('0.0.0-test');
 
     await Promise.all([first, second]);
 
@@ -55,6 +56,12 @@ test('activity updates watch a per-user lease, not the global registry hash', as
     const registry = await originalRedis.hGetAll('io:player-registry');
     assert.ok(registry[firstUserId], 'first player activity should remain recorded');
     assert.ok(registry[secondUserId], 'second player activity should remain recorded');
+    assert.equal(JSON.parse(registry[firstUserId]).clientVersion, APP_VERSION);
+    assert.equal(JSON.parse(registry[secondUserId]).clientVersion, '0.0.0-test');
+
+    const playerRows = await listPlayers();
+    assert.equal(playerRows.find(player => player.userId === firstUserId)?.isLatestVersion, true);
+    assert.equal(playerRows.find(player => player.userId === secondUserId)?.isLatestVersion, false);
 
     // Optional shared progress must not join the primary player save's WATCH set.
     context.userId = `activity-scope-save-${suffix}`;

@@ -799,7 +799,10 @@ export function createApp() {
 
   app.get('/api/me', async (_req, res) => {
     try { res.json(await getMe()); }
-    catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch player state.' }); }
+    catch (e: any) {
+      console.error('[API /api/me] Failed:', e);
+      res.status(500).json({ error: e?.message || 'Failed to fetch player state.' });
+    }
   });
 
   app.get('/api/collection', async (req, res) => {
@@ -848,7 +851,10 @@ export function createApp() {
   app.get('/api/guilds', async (_req, res) => {
     try {
       res.json(await guildInfo());
-    } catch (e: any) { res.status(500).json({ error: e?.message || 'Failed to fetch guilds.' }); }
+    } catch (e: any) {
+      console.error('[API /api/guilds] Failed:', e);
+      res.status(500).json({ error: e?.message || 'Failed to fetch guilds.' });
+    }
   });
 
   // Reddit's user-action API performs the actual subscription. Reward claiming is
@@ -859,10 +865,16 @@ export function createApp() {
     } catch (e: any) { badRequest(res, e, 'Could not claim the 200-roll reward.'); }
   });
 
-  app.post('/api/activity/heartbeat', async (_req, res) => {
+  app.post('/api/activity/heartbeat', async (req, res) => {
     try {
-      res.json(await recordPlayerHeartbeat());
+      res.json(await recordPlayerHeartbeat(req.body?.version));
     } catch (e: any) {
+      console.error('[API /api/activity/heartbeat] Failed:', {
+        timestamp: new Date().toISOString(),
+        userId: String(context.userId ?? ''),
+        message: e?.message ?? String(e),
+        stack: e instanceof Error ? e.stack : undefined,
+      });
       res.status(500).json({ error: e?.message || 'Could not record player activity.' });
     }
   });
@@ -882,6 +894,7 @@ export function createApp() {
     try {
       res.json({ onlinePlayers: await getOnlinePlayers() });
     } catch (e: any) {
+      console.error('[API /api/online] Failed:', e);
       res.status(500).json({ error: e?.message || 'Failed to fetch online players.' });
     }
   });

@@ -3,6 +3,7 @@ import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutation
 import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
+import { APP_VERSION } from '../shared/version.js';
 import {
   createInitialState,
   type PlayerState,
@@ -82,8 +83,8 @@ import {
 } from '../shared/game.js';
 import {
   recordLeaderboard,
-  getPlayerGuildPerks,
-  getPlayerGuildCombo,
+  getPlayerGuildContext,
+  withGuildDataMutationLock,
   prepareGuildRollEffects,
   prepareCommunityRolls,
   getCommunityEvent,
@@ -101,10 +102,13 @@ interface SaveExtraWrite {
   expiration?: Date;
   // Optional projections must never prevent the primary player mutation from saving.
   optional?: boolean;
+  /** For a Guild write conflict, refund withheld tax and skip only the Guild projection. */
+  onConflict?: () => void | Promise<void>;
 }
 
 type SavePostCommitAction = () => Promise<void>;
 
+const playerGuildScopes = new WeakMap<PlayerState, string | null>();
 const pendingSaveExtraWrites = new WeakMap<PlayerState, SaveExtraWrite[]>();
 const pendingSavePostCommitActions = new WeakMap<PlayerState, SavePostCommitAction[]>();
 
@@ -124,7 +128,20 @@ function stageSaveExtraWrite(s: PlayerState, write: SaveExtraWrite): void {
     throw new Error(`Conflicting staged versions for ${write.key}.`);
   }
   const merged = [...existing];
-  merged[index] = { ...write, expectedValue: previous.expectedValue };
+  const previousConflictHandler = previous.onConflict;
+  const nextConflictHandler = write.onConflict;
+  merged[index] = {
+    ...write,
+    expectedValue: previous.expectedValue,
+    ...(previousConflictHandler || nextConflictHandler
+      ? {
+          onConflict: async () => {
+            await previousConflictHandler?.();
+            await nextConflictHandler?.();
+          },
+        }
+      : {}),
+  };
   pendingSaveExtraWrites.set(s, merged);
 }
 
@@ -951,7 +968,8 @@ export async function unbanGameUser(userId: string): Promise<boolean> {
     return { changed: true, result: true };
   });
 }
-const ONLINE_WINDOW_MS = 30_000;
+const ONLINE_WINDOW_MS = 60_000;
+const PLAYER_ACTIVE_WINDOW_MS = 90_000;
 
 async function updateCcuPeak(keyName: string, ccu: number): Promise<void> {
   const candidate = Math.max(0, Math.floor(Number(ccu) || 0));
@@ -985,11 +1003,8 @@ async function recordCcuPeak(ccu: number, now: number): Promise<void> {
   await updateCcuPeak(CCU_ALL_TIME_KEY, ccu);
 }
 
-async function touchOnlinePresence(): Promise<number> {
-  const userId = context.userId;
-  if (!userId) return 1;
-  const now = Date.now();
-  await redis.zAdd(ONLINE_PLAYERS_KEY, { member: userId, score: now });
+async function readOnlinePresenceCount(now = Date.now()): Promise<number> {
+  // Polling only prunes stale IDs. It doesn't keep every polling tab marked online.
   await redis.zRemRangeByScore(ONLINE_PLAYERS_KEY, 0, now - ONLINE_WINDOW_MS);
   const ccu = Math.max(1, await redis.zCard(ONLINE_PLAYERS_KEY));
   void recordCcuPeak(ccu, now).catch(error => {
@@ -998,8 +1013,16 @@ async function touchOnlinePresence(): Promise<number> {
   return ccu;
 }
 
+async function touchOnlinePresence(): Promise<number> {
+  const userId = String(context.userId ?? '').trim();
+  if (!userId) return readOnlinePresenceCount();
+  const now = Date.now();
+  await redis.zAdd(ONLINE_PLAYERS_KEY, { member: userId, score: now });
+  return readOnlinePresenceCount(now);
+}
+
 export async function getOnlinePlayers(): Promise<number> {
-  return touchOnlinePresence();
+  return readOnlinePresenceCount();
 }
 
 export async function sendPushNotificationTest(): Promise<void> {
@@ -1417,6 +1440,7 @@ interface PlayerRegistryEntry {
   lastLoginAt?: number;
   lastActivityAt?: number;
   playtimeMs?: number;
+  clientVersion?: string;
 }
 
 function parsePlayerRegistryEntryForMutation(raw: unknown, now: number): Partial<PlayerRegistryEntry> {
@@ -1444,7 +1468,12 @@ function parsePlayerRegistryEntryForMutation(raw: unknown, now: number): Partial
   return record as Partial<PlayerRegistryEntry>;
 }
 
-async function touchPlayerActivity(userId: string, username: string, now = Date.now()): Promise<number> {
+async function touchPlayerActivity(
+  userId: string,
+  username: string,
+  now = Date.now(),
+  reportedClientVersion?: string,
+): Promise<number> {
   const lockIdentity = `activity:${userId}`;
   return withPlayerMutationLockFor(lockIdentity, async () => {
     const activityNow = Math.max(now, Date.now());
@@ -1462,11 +1491,11 @@ async function touchPlayerActivity(userId: string, username: string, now = Date.
       }
 
       const existingRaw = await redis.hGet(PLAYER_REGISTRY_KEY, userId);
+      let existing: Partial<PlayerRegistryEntry> | null = null;
       let firstSeenAt = activityNow;
       let lastLoginAt = activityNow;
       let playtimeMs = 0;
       if (existingRaw != null) {
-        let existing: Partial<PlayerRegistryEntry>;
         try {
           existing = parsePlayerRegistryEntryForMutation(existingRaw, activityNow);
         } catch (error) {
@@ -1495,6 +1524,9 @@ async function touchPlayerActivity(userId: string, username: string, now = Date.
         }
       }
 
+      const clientVersion =
+        reportedClientVersion ??
+        (typeof existing?.clientVersion === 'string' ? existing.clientVersion.slice(0, 32) : undefined);
       const next = JSON.stringify({
         username: String(username).trim().slice(0, 100),
         firstSeenAt,
@@ -1502,6 +1534,7 @@ async function touchPlayerActivity(userId: string, username: string, now = Date.
         lastLoginAt,
         lastActivityAt: activityNow,
         playtimeMs,
+        ...(clientVersion ? { clientVersion } : {}),
       } satisfies PlayerRegistryEntry);
       await txn.multi();
       await txn.hSet(PLAYER_REGISTRY_KEY, { [userId]: next });
@@ -1515,10 +1548,22 @@ async function registerPlayer(userId: string, username: string): Promise<void> {
   await touchPlayerActivity(userId, username);
 }
 
-export async function recordPlayerHeartbeat(): Promise<{ playtimeMs: number }> {
+export async function recordPlayerHeartbeat(reportedVersion?: unknown): Promise<{
+  playtimeMs: number;
+  onlinePlayers: number;
+  clientVersion: string;
+  isLatestVersion: boolean;
+}> {
   const userId = currentUserId();
   const username = String(context.username ?? `reddit-user-${userId.slice(-8)}`);
-  return { playtimeMs: await touchPlayerActivity(userId, username) };
+  // A cached client that doesn't send a version must not retain an old "latest" badge.
+  const clientVersion = typeof reportedVersion === 'string' &&
+    /^[0-9A-Za-z.+-]{1,32}$/.test(reportedVersion)
+    ? reportedVersion
+    : 'unknown';
+  const playtimeMs = await touchPlayerActivity(userId, username, Date.now(), clientVersion);
+  const onlinePlayers = await touchOnlinePresence();
+  return { playtimeMs, onlinePlayers, clientVersion, isLatestVersion: clientVersion === APP_VERSION };
 }
 
 export interface PlayerListEntry {
@@ -1556,7 +1601,7 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
       username: String(registry.username ?? save?.username ?? ('user-' + userId.slice(-8))).trim().slice(0, 100),
       firstSeenAt: validPastTimestamp(registry.firstSeenAt, now),
       lastSeenAt,
-      active: lastSeenAt >= now - 30_000,
+      active: lastSeenAt >= now - PLAYER_ACTIVE_WINDOW_MS,
       level: Math.max(1, Number(save?.level ?? 1) || 1),
       xp: Math.max(0, Number(save?.xp ?? 0) || 0),
       playtimeMs: Math.max(0, Number(registry.playtimeMs ?? 0) || 0),
@@ -1564,6 +1609,12 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
       highestRarity: Math.max(0, Number(save?.highestRarity ?? 0) || 0),
       coins: Math.max(0, Number(save?.coins ?? 0) || 0),
       shards: Math.max(0, Number(save?.shards ?? 0) || 0),
+      clientVersion: typeof registry.clientVersion === 'string' &&
+        /^[0-9A-Za-z.+-]{1,32}$/.test(registry.clientVersion)
+        ? registry.clientVersion
+        : null,
+      isLatestVersion: typeof registry.clientVersion === 'string' &&
+        registry.clientVersion === APP_VERSION,
     } satisfies PlayerListEntry;
   });
   players.sort((a, b) => Number(b.active) - Number(a.active) || b.lastSeenAt - a.lastSeenAt || a.username.localeCompare(b.username));
@@ -2200,42 +2251,26 @@ export async function loadRaw(): Promise<PlayerState> {
   const raw = await redis.get(playerKey);
   const username = context.username ?? `reddit-user-${userId.slice(-8)}`;
   await registerPlayer(userId, username);
-  const [perks, guildCombo, globalBoosters, dailyStreakCommunity] = await Promise.all([
-    getPlayerGuildPerks(username, userId).catch(error => {
-      // Guild perks are optional modifiers, not part of the player's save
-      // authority. A corrupt shared Guild record must not make /api/me, rolls,
-      // or the feature gate unavailable for every player. Fall back to zero
-      // perks while the Guild repair path handles the shared record separately.
-      console.error('[Guild] Perk read failed; using zeroed modifiers until Guild data is repaired.', error);
+  const [guildContext, globalBoosters, dailyStreakCommunity] = await Promise.all([
+    getPlayerGuildContext(username, userId).catch(error => {
+      console.error('[Guild] Context read failed; using zeroed modifiers until Guild data is repaired.', error);
       return {
-        luckRank: 0,
-        speedRank: 0,
-        vaultRank: 0,
-        shardRank: 0,
-        critRank: 0,
-        coinRank: 0,
-        memberCapacityRank: 0,
-        tokenYieldRank: 0,
-        taskBountyRank: 0,
-        comboRank: 0,
-        guildXpRank: 0,
+        guildId: null,
+        perks: {
+          luckRank: 0, speedRank: 0, vaultRank: 0, shardRank: 0, critRank: 0,
+          coinRank: 0, memberCapacityRank: 0, tokenYieldRank: 0, taskBountyRank: 0,
+          comboRank: 0, guildXpRank: 0,
+        },
+        combo: createInitialState().guildCombo!,
       };
-    }),
-    getPlayerGuildCombo(username, userId).catch(error => {
-      // Apply the same isolation to optional Guild Combo bonuses. Never make
-      // ordinary player mutations depend on a healthy shared Guild document.
-      console.error('[Guild] Combo read failed; using an inactive combo until Guild data is repaired.', error);
-      return createInitialState().guildCombo!;
     }),
     getGlobalBoosters(),
     getDailyStreakCommunity().catch(error => {
-      // A corrupt shared event should not brick ordinary gameplay. This is a
-      // display-only fallback; reward/progress mutations still read and validate
-      // the durable event and will fail closed until it is repaired.
       console.error('[Daily Streak] Shared event read failed; using display-only defaults.', error);
       return createInitialState().dailyStreakCommunity!;
     }),
   ]);
+  const { perks, combo: guildCombo, guildId } = guildContext;
 
 
   if (raw == null) {
@@ -2249,6 +2284,7 @@ export async function loadRaw(): Promise<PlayerState> {
     s.guildCombo = guildCombo;
     s.globalBoosters = globalBoosters;
     s.dailyStreakCommunity = dailyStreakCommunity;
+    playerGuildScopes.set(s, guildId);
 
     return s;
   }
@@ -2270,6 +2306,7 @@ export async function loadRaw(): Promise<PlayerState> {
     fresh.guildCombo = guildCombo;
     fresh.globalBoosters = globalBoosters;
     fresh.dailyStreakCommunity = dailyStreakCommunity;
+    playerGuildScopes.set(fresh, guildId);
 
     return fresh;
   }
@@ -2328,7 +2365,7 @@ export async function loadRaw(): Promise<PlayerState> {
       ? parsedXp
       : totalXpRequiredBeforeLevel(parsedLevel);
 
-  return {
+  const restored: PlayerState = {
     ...base,
     ...cleanParsed,
     coins: finiteNonNegativeInteger(parsed.coins),
@@ -2394,6 +2431,8 @@ export async function loadRaw(): Promise<PlayerState> {
     globalBoosters,
     dailyStreakCommunity,
   };
+  playerGuildScopes.set(restored, guildId);
+  return restored;
 }
 
 function applyXp(s: PlayerState, amount: number): void {
@@ -2887,14 +2926,27 @@ export async function save(
     const generationRaw = await redis.get(generationKey);
     const extraRaws = await Promise.all(extraWrites.map(write => redis.get(write.key)));
 
+    let droppedConflictingProjection = false;
     for (let index = 0; index < extraWrites.length; index += 1) {
       const write = extraWrites[index];
       const actual = extraRaws[index] == null ? null : String(extraRaws[index]);
       if (actual !== write.expectedValue) {
         await txn.unwatch();
+        if (write.onConflict) {
+          await write.onConflict();
+          extraWrites.splice(index, 1);
+          const pending = pendingSaveExtraWrites.get(s) ?? [];
+          const remaining = pending.filter(item => item.key !== write.key);
+          if (remaining.length) pendingSaveExtraWrites.set(s, remaining);
+          else pendingSaveExtraWrites.delete(s);
+          console.warn('[Guild] Shared data changed during a roll; refunded withheld Coins and skipped only the Guild projection.');
+          droppedConflictingProjection = true;
+          break;
+        }
         throw new Error(write.conflictMessage ?? 'Shared state changed before the player save. Please retry.');
       }
     }
+    if (droppedConflictingProjection) continue;
 
     const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
     const stateGeneration = Math.max(0, Math.floor(Number(s.saveGeneration ?? 0)));
@@ -3449,7 +3501,14 @@ export async function applyRolls(
     console.error('[Guild] Could not prepare roll effects; skipping Guild tax/contribution for this batch.', error);
     guildEffects = { taxedCoins: 0 };
   }
-  if (guildEffects.extraWrite) stageSaveExtraWrite(s, guildEffects.extraWrite);
+  if (guildEffects.extraWrite) {
+    stageSaveExtraWrite(s, {
+      ...guildEffects.extraWrite,
+      ...(guildEffects.taxedCoins > 0
+        ? { onConflict: () => { addCoins(s, guildEffects.taxedCoins); } }
+        : {}),
+    });
+  }
   coinsGained = Math.max(0, coinsGained - guildEffects.taxedCoins);
   coinsGained = addCoins(s, coinsGained);
   shardsGained = grantRollShards(s, shardsGained);
@@ -4356,7 +4415,9 @@ export async function roll(
       };
     }
 
-    const s = await settleOffline(await loadRaw());
+    const loadedState = await loadRaw();
+    const performRoll = async () => {
+      const s = await settleOffline(loadedState);
     if (isAuto && (s.upgrades.auto ?? 0) <= 0) {
       throw new Error('Auto Roll is not unlocked yet.');
     }
@@ -4429,6 +4490,10 @@ export async function roll(
       rollsProcessed: rollCount,
       dramaticReveal: bestOrb.rarity >= 100,
     };
+      };
+      return playerGuildScopes.get(loadedState)
+        ? withGuildDataMutationLock(performRoll)
+        : performRoll();
   });
 }
 export async function subscribeToSubredditForReward(): Promise<{
@@ -5485,7 +5550,9 @@ export async function startOrbFrenzy(options: {
   adminTest?: boolean;
 } = {}): Promise<RollResponse & { postId: string; url: string; rarity: number }> {
   return withPlayerMutationLock(async () => {
-    const s = await settleOffline(await loadRaw());
+    const loadedState = await loadRaw();
+    const performFrenzyStart = async () => {
+      const s = await settleOffline(loadedState);
     const now = Date.now();
     const postCooldown = frenzyCooldownRemaining(s.lastFrenzyAt, now);
     const today = new Date(now).toISOString().slice(0, 10);
@@ -5673,6 +5740,10 @@ export async function startOrbFrenzy(options: {
       rollsProcessed: result.rollCount,
       dramaticReveal: rarity >= 100,
     };
+      };
+      return playerGuildScopes.get(loadedState)
+        ? withGuildDataMutationLock(performFrenzyStart)
+        : performFrenzyStart();
   });
 }
 
@@ -5798,7 +5869,9 @@ export async function claimOrbFrenzy(options: {
   const now = Date.now();
   const createdAt = Number(data.createdAt ?? 0);
   if (isFrenzyPostExpired(createdAt, now)) throw new Error('This Frenzy has expired.');
-  const s = await settleOffline(await loadRaw());
+  const loadedState = await loadRaw();
+  const performClaim = async () => {
+  const s = await settleOffline(loadedState);
   const claimCooldown = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
   const ownerSelfClaimAllowed =
     isOwner &&
@@ -5977,7 +6050,14 @@ export async function claimOrbFrenzy(options: {
     console.error('[Guild] Could not prepare Frenzy effects; skipping Guild tax/contribution for this claim.', error);
     guildEffects = { taxedCoins: 0 };
   }
-  if (guildEffects.extraWrite) stageSaveExtraWrite(s, guildEffects.extraWrite);
+  if (guildEffects.extraWrite) {
+    stageSaveExtraWrite(s, {
+      ...guildEffects.extraWrite,
+      ...(guildEffects.taxedCoins > 0
+        ? { onConflict: () => { addCoins(s, guildEffects.taxedCoins); } }
+        : {}),
+    });
+  }
   coinsGained = Math.max(0, coinsGained - guildEffects.taxedCoins);
   coinsGained = addCoins(s, coinsGained);
   s.lastFrenzyClaimDate = new Date(now).toISOString().slice(0, 10);
@@ -6113,6 +6193,10 @@ export async function claimOrbFrenzy(options: {
     frenzyCount: count,
   };
 
+  };
+  return playerGuildScopes.get(loadedState)
+    ? withGuildDataMutationLock(performClaim)
+    : performClaim();
   });
 }
 

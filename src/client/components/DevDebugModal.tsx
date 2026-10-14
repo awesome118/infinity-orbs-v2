@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { PRESTIGE_UPGRADES, CONTINUUM_TIERS, getOrbInfo, visibleContinuumTiers, formatRarity, formatNumber, frenzyOrbCountForRarity } from '../../shared/game.js';
 import type { RollResponse } from '../../shared/game.js';
+import { APP_VERSION } from '../../shared/version.js';
 import { sound } from '../sound.js';
 
 function formatPlaytime(ms: number): string {
@@ -521,6 +522,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     coins: number;
     shards: number;
     playtimeMs: number;
+    clientVersion: string | null;
+    isLatestVersion: boolean;
   }>>([]);
   const [playerActivity, setPlayerActivity] = useState({
     dailyActiveUsers: 0,
@@ -4418,7 +4421,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               <RefreshCw className="inline w-3.5 h-3.5 mr-1" /> Refresh Player List
             </button>
           </div>
-          <p className="text-[10px] text-slate-500">Active means the account contacted the game within the last 30 seconds. Active players stay at the top.</p>
+          <p className="text-[10px] text-slate-500">Active means the account contacted the game within the last 90 seconds. Version badges compare the latest heartbeat with v{APP_VERSION}.</p>
           <div className="grid grid-cols-3 gap-2 mt-3">
             {[
               ['DAU', playerActivity.dailyActiveUsers, 'Last 24 hours'],
@@ -4440,6 +4443,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-mono text-slate-200 truncate">u/{player.username}</span>
                       {player.active && <span className="text-[9px] font-black uppercase text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-1.5 py-0.5">Active</span>}
+                      {player.isLatestVersion
+                        ? <span className="text-[9px] font-black text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-1.5 py-0.5">v{player.clientVersion} · Latest</span>
+                        : <span className="text-[9px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-full px-1.5 py-0.5">v{player.clientVersion ?? 'unknown'}</span>}
                     </div>
                     <div className="text-[10px] text-slate-500 mt-0.5">Level {player.level} · {formatNumber(player.totalRolls)} rolls · Playtime {formatPlaytime(player.playtimeMs)} · Best 1/{formatRarity(Math.max(1, player.highestRarity))}</div>
                   </div>
