@@ -1771,8 +1771,10 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             const before = await readMechanics();
             await setMechanicState({ dustBounty: 1 }, { collectionValue: 100_000_000 });
             const after = await readMechanics();
-            if (Number(before.prestigeDust) !== 10 || Number(after.prestigeDust) !== 11) {
-              throw new Error('Expected Dust 10 → 11, got ' + before.prestigeDust + ' → ' + after.prestigeDust + '.');
+            const baseDust = Math.max(0, Math.floor(Number(before.prestigeDust) || 0));
+            const expectedWithBounty = Math.floor(baseDust * 1.15);
+            if (baseDust <= 0 || Number(after.prestigeDust) !== expectedWithBounty) {
+              throw new Error('Cosmic Dust Bounty expected ' + baseDust + ' → ' + expectedWithBounty + ', got ' + before.prestigeDust + ' → ' + after.prestigeDust + '.');
             }
             return { before, after };
           },
