@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import {
   createInitialState,
   addCollectionValue,
+  effectiveOfflineTickMs,
+  upgradeCost,
   createInitialGlobalBoosters,
   activateGlobalBoosterStack,
   decayGlobalBoosterState,
@@ -50,6 +52,37 @@ test('collection value accumulation saturates instead of losing precision or bec
   assert.equal(addCollectionValue(-1, 25), 25);
   assert.equal(addCollectionValue(Number.NaN, 25), 25);
   assert.equal(addCollectionValue(25, Number.NaN), 25);
+});
+
+test('Cosmic Reserve multiplies Luck from unspent Cosmic Dust only', () => {
+  const state = createInitialState(NOW);
+  const withoutReserve = luckMultiplier(state);
+  state.cosmicDust = 100;
+  state.prestigeUpgrades.cosmicReserve = 5;
+  assert.equal(luckMultiplier(state), Math.round(withoutReserve * 6 * 100) / 100);
+
+  state.cosmicDust = 50;
+  assert.equal(luckMultiplier(state), Math.round(withoutReserve * 3.5 * 100) / 100);
+  state.cosmicDust = 0;
+  assert.equal(luckMultiplier(state), withoutReserve);
+  state.cosmicDust = 100;
+  state.prestigeUpgrades.cosmicReserve = 0;
+  assert.equal(luckMultiplier(state), withoutReserve);
+});
+
+test('Offline Generation Speed reaches its 60% reduction cap at level 8', () => {
+  const state = createInitialState(NOW);
+  state.upgrades.offlineRate = 7;
+  const levelSeven = effectiveOfflineTickMs(state);
+  state.upgrades.offlineRate = 8;
+  const levelEight = effectiveOfflineTickMs(state);
+  state.upgrades.offlineRate = 12;
+  const aboveCap = effectiveOfflineTickMs(state);
+
+  assert.equal(levelEight, levelSeven - Math.round(levelSeven / 0.44 * 0.04));
+  assert.equal(aboveCap, levelEight);
+  assert.ok(Number.isFinite(upgradeCost('offlineRate', 7)));
+  assert.equal(upgradeCost('offlineRate', 8), Infinity);
 });
 
 test('Level progression awards one Mastery Point per level gained', () => {
