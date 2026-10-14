@@ -2166,8 +2166,12 @@ export function nextCodexChainRarity(
 
   const candidates: number[] = [];
   const owned = (rarity: number) => Number(collection?.[String(rarity)] ?? 0) > 0;
-  if (chain.start > 2 && !owned(chain.start - 1)) candidates.push(chain.start - 1);
-  if (chain.end < MAX_ORB_RARITY && !owned(chain.end + 1)) candidates.push(chain.end + 1);
+  const lower = chain.start - 1;
+  const higher = chain.end + 1;
+  // Integer-by-integer chain extension is only meaningful while rarities remain
+  // exactly representable by JavaScript numbers.
+  if (chain.start > 2 && Number.isSafeInteger(lower) && !owned(lower)) candidates.push(lower);
+  if (chain.end < MAX_ORB_RARITY && Number.isSafeInteger(higher) && !owned(higher)) candidates.push(higher);
   return candidates.length ? Math.min(...candidates) : null;
 }
 
