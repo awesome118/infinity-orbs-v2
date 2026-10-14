@@ -6167,7 +6167,7 @@ export async function claimOrbFrenzy(options: {
   // Consume the post atomically with both the claimant save and the owner's
   // reward. Different players have different locks, so the watched keys also
   // protect the transaction if one of those distributed leases expires.
-  const consumedPostValue = JSON.stringify({ ...data, consumedAt: now });
+  const consumedPostValue = JSON.stringify({ ...data, consumedAt: now, consumedBy: claimantId });
   await save(s, [
     {
       key: FRENZY_POST_PREFIX + postId,
