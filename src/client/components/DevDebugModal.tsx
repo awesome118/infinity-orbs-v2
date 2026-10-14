@@ -1674,6 +1674,10 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             offlineRolls: 0,
             currentRunRolls: 0,
             rollsSinceBest: 0,
+            aftershockRecord: 0,
+            rollingSessionStartedAt: 0,
+            rollingSessionLastRollAt: 0,
+            longestRollingSessionMs: 0,
             lastRollAt: 0,
             lastSeenAt: Date.now(),
             // Reset the rolling Shard budget for independent mechanic cases.
@@ -2200,16 +2204,32 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         );
 
         await step(
-          'Mechanic · Mastery Engine',
+          'Mechanic · Aftershock',
           async () => {
-            await setMechanicState({ masteryEngine: 1 }, { totalRolls: 99, masteryPoints: 0 });
-            const result = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
-            if (Number(result.state?.totalRolls) !== 100 || Number(result.state?.masteryPoints) !== 1) {
-              throw new Error('Mastery Engine expected 99 → 100 rolls and +1 point, got rolls=' + result.state?.totalRolls + ', points=' + result.state?.masteryPoints + '.');
+            await setMechanicState({}, { aftershockRecord: 80_000 });
+            const result = await readMechanics();
+            const multiplier = Number(result.critMultiplier);
+            if (Math.abs(multiplier - 2.02) > 1e-8) {
+              throw new Error('Aftershock expected a 2.02× critical multiplier for an 80,000-roll record, got ' + multiplier + '.');
             }
             return result;
           },
-          result => 'Rolls ' + shortNumber(result.state?.totalRolls, 0) + ' · Mastery Points=' + shortNumber(result.state?.masteryPoints, 0),
+          result => '80,000-roll record · critical multiplier=' + shortNumber(result.critMultiplier, 3) + '×',
+        );
+
+        await step(
+          'Mechanic · Unbroken Momentum',
+          async () => {
+            await setMechanicState();
+            const before = await readMechanics();
+            await setMechanicState({}, { longestRollingSessionMs: 30 * 60_000 });
+            const after = await readMechanics();
+            if (!(Number(after.cooldownMs) < Number(before.cooldownMs))) {
+              throw new Error('A 30-minute Momentum record should reduce cooldown: ' + before.cooldownMs + ' → ' + after.cooldownMs + '.');
+            }
+            return { before, after };
+          },
+          result => 'Cooldown ' + shortNumber(result.before.cooldownMs, 0) + 'ms → ' + shortNumber(result.after.cooldownMs, 0) + 'ms at +6% Speed',
         );
 
         await step(
