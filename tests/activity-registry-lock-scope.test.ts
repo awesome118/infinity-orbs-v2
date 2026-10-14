@@ -73,6 +73,47 @@ test('activity updates watch a per-user lease, not the global registry hash', as
       'old version reports must not stay green indefinitely',
     );
 
+    // Simulate a Redis read failing immediately after WATCH. The transaction
+    // must still be unwatched so transient errors do not leave resources open.
+    let unwatchCount = 0;
+    const failingRedis = {
+      ...originalRedis,
+      watch: async (...keys: string[]) => {
+        const transaction = await originalRedis.watch(...keys);
+        return new Proxy(transaction, {
+          get(target, property) {
+            if (property === 'unwatch') {
+              return async () => {
+                unwatchCount += 1;
+                return target.unwatch();
+              };
+            }
+            const value = Reflect.get(target, property, target);
+            return typeof value === 'function' ? value.bind(target) : value;
+          },
+        });
+      },
+      hGet: async () => {
+        throw new Error('simulated Redis registry read failure');
+      },
+    };
+    const failingContext = {
+      ...context,
+      userId: `activity-scope-failing-read-${suffix}`,
+      username: 'FailingRead',
+    };
+    configureDevvitRuntime({
+      redis: failingRedis as typeof originalRedis,
+      context: failingContext,
+      reddit: originalReddit,
+    });
+    await assert.rejects(
+      recordPlayerHeartbeat(APP_VERSION),
+      /simulated Redis registry read failure/,
+    );
+    assert.ok(unwatchCount > 0, 'failed activity reads must close their WATCH transaction');
+    configureDevvitRuntime({ redis: tracedRedis, context, reddit: originalReddit });
+
     // Optional shared progress must not join the primary player save's WATCH set.
     context.userId = `activity-scope-save-${suffix}`;
     context.username = 'OptionalProjectionSave';
