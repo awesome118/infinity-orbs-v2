@@ -3582,6 +3582,19 @@ export async function applyRolls(
   // at most one level at a time, while applyXp/quest rewards can catch up safely.
   applyLevelProgress(s, 1);
 
+  // Mastery Engine grants one Mastery Point at each roll-count milestone.
+  // Use the actual processed batch size so multi-roll/auto/offline batches do
+  // not miss a threshold or grant the same threshold more than once.
+  const masteryEngineLevel = Math.max(0, Math.min(5, Math.floor(Number(s.prestigeUpgrades?.masteryEngine ?? 0) || 0)));
+  if (masteryEngineLevel > 0 && rollCount > 0) {
+    const interval = Math.max(1, Math.floor(100 / masteryEngineLevel));
+    const rollsBeforeBatch = Math.max(0, s.totalRolls - rollCount);
+    const pointsEarned = Math.max(0, Math.floor(s.totalRolls / interval) - Math.floor(rollsBeforeBatch / interval));
+    if (pointsEarned > 0) {
+      s.masteryPoints = Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(Number(s.masteryPoints ?? 0) || 0)) + pointsEarned);
+    }
+  }
+
   // Count only successfully processed online roll batches as an active session;
   // offline-vault rolls don't fabricate a continuous play session.
   if (source === 'online' && rollCount > 0) recordRollingSessionActivity(s, now);
