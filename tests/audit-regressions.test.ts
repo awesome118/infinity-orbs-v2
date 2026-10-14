@@ -1189,6 +1189,34 @@ test('manual offline claim compare-clears only reminder values observed before t
   assert.doesNotMatch(claim, /redis\.del\(OFFLINE_FULL_(?:NOTIFICATION|JOB)_PREFIX/);
 });
 
+test('collection value rollover is prevented consistently in every roll path', () => {
+  const shared = source('src/shared/game.ts');
+  const server = source('src/server/game.ts');
+  assert.match(shared, /export function addCollectionValue\(current: unknown, increment: unknown\): number/);
+  assert.match(shared, /Number\.MAX_SAFE_INTEGER, bounded\(current\) \+ bounded\(increment\)/);
+
+  const normalStart = server.indexOf('export async function applyRolls(');
+  const normalEnd = server.indexOf('\nexport async function ', normalStart + 40);
+  assert.ok(normalStart >= 0 && normalEnd > normalStart);
+  const normal = server.slice(normalStart, normalEnd);
+  assert.match(normal, /s\.collectionValue = addCollectionValue\(s\.collectionValue, finalVal\)/);
+  assert.match(normal, /s\.lifetimeCollectionValue = addCollectionValue\(s\.lifetimeCollectionValue, finalVal\)/);
+
+  const frenzyStart = server.indexOf('export async function claimOrbFrenzy');
+  const frenzyEnd = server.indexOf('\nexport async function ', frenzyStart + 40);
+  assert.ok(frenzyStart >= 0 && frenzyEnd > frenzyStart);
+  const frenzy = server.slice(frenzyStart, frenzyEnd);
+  assert.match(frenzy, /s\.collectionValue = addCollectionValue\(s\.collectionValue, finalValue\)/);
+  assert.match(frenzy, /s\.lifetimeCollectionValue = addCollectionValue\(s\.lifetimeCollectionValue, finalValue\)/);
+
+  const simulationStart = shared.indexOf('export function simulateRolls');
+  const simulationEnd = shared.indexOf('\nexport function ', simulationStart + 40);
+  assert.ok(simulationStart >= 0 && simulationEnd > simulationStart);
+  const simulation = shared.slice(simulationStart, simulationEnd);
+  assert.match(simulation, /s\.collectionValue = addCollectionValue\(s\.collectionValue, finalVal\)/);
+  assert.match(simulation, /s\.lifetimeCollectionValue = addCollectionValue\(s\.lifetimeCollectionValue, finalVal\)/);
+});
+
 test('rarity flair sync serializes side effects and rechecks saved rarity before caching', () => {
   const game = source('src/server/game.ts');
   const start = game.indexOf('async function syncRarityFlair');
