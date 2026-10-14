@@ -109,10 +109,10 @@ test('Chain Patcher is server-authoritative, arms exactly one guaranteed rarity,
   assert.match(app, /buyChainPatcher/);
   assert.match(app, /nextCodexChainRarity/);
   const stripStart = app.indexOf('const stripPlayerCollection =');
-  const stripEnd = app.indexOf('\\n  };', stripStart);
+  const stripEnd = app.indexOf('\n  };', stripStart);
   assert.ok(stripStart >= 0 && stripEnd > stripStart, 'collection stripper must exist');
   const stripper = app.slice(stripStart, stripEnd);
-  assert.match(stripper, /copy\.chainPatcherSuggestedRarity = pendingPatcherRarity >= 2[\\s\\S]*?nextCodexChainRarity\(sourceCollection\)/);
+  assert.match(stripper, /copy\.chainPatcherSuggestedRarity = pendingPatcherRarity >= 2[\s\S]*?nextCodexChainRarity\(sourceCollection\)/);
   assert.ok(
     stripper.indexOf('copy.chainPatcherSuggestedRarity') < stripper.indexOf('copy.collection = {}'),
     'Chain Patcher preview must be computed before the server-only Codex is stripped',
