@@ -3405,13 +3405,22 @@ export async function applyRolls(
   }
 
   const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
-  const guildEffects = await prepareGuildRollEffects(
-    coinsGained,
-    totalVal,
-    rollCount,
-    bestRarity,
-    pendingGuildWrite,
-  );
+  let guildEffects: Awaited<ReturnType<typeof prepareGuildRollEffects>>;
+  try {
+    guildEffects = await prepareGuildRollEffects(
+      coinsGained,
+      totalVal,
+      rollCount,
+      bestRarity,
+      pendingGuildWrite,
+    );
+  } catch (error) {
+    // Guild taxes and contribution are optional projections, not a dependency
+    // for paying out a valid roll. Preserve corrupt shared Guild data, skip its
+    // effects for this batch, and allow the player's durable roll to complete.
+    console.error('[Guild] Could not prepare roll effects; skipping Guild tax/contribution for this batch.', error);
+    guildEffects = { taxedCoins: 0 };
+  }
   if (guildEffects.extraWrite) stageSaveExtraWrite(s, guildEffects.extraWrite);
   coinsGained = Math.max(0, coinsGained - guildEffects.taxedCoins);
   coinsGained = addCoins(s, coinsGained);
@@ -5848,13 +5857,21 @@ export async function claimOrbFrenzy(options: {
   // Stage Guild taxes/contribution in the same save as this claim. A failed
   // player save must not leave a consumed Guild tax, task credit, or roll count.
   const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
-  const guildEffects = await prepareGuildRollEffects(
-    coinsGained,
-    finalValue,
-    count,
-    bestRarity,
-    pendingGuildWrite,
-  );
+  let guildEffects: Awaited<ReturnType<typeof prepareGuildRollEffects>>;
+  try {
+    guildEffects = await prepareGuildRollEffects(
+      coinsGained,
+      finalValue,
+      count,
+      bestRarity,
+      pendingGuildWrite,
+    );
+  } catch (error) {
+    // A broken optional Guild projection must not void a valid Orb Frenzy claim.
+    // Keep the stored Guild untouched and omit its effects for this claim.
+    console.error('[Guild] Could not prepare Frenzy effects; skipping Guild tax/contribution for this claim.', error);
+    guildEffects = { taxedCoins: 0 };
+  }
   if (guildEffects.extraWrite) stageSaveExtraWrite(s, guildEffects.extraWrite);
   coinsGained = Math.max(0, coinsGained - guildEffects.taxedCoins);
   coinsGained = addCoins(s, coinsGained);
