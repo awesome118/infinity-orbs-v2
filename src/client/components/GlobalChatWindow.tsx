@@ -259,14 +259,14 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
             <div key={message.id} className="rounded-xl border border-slate-800/80 bg-slate-900/70 px-3 py-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-1.5 min-w-0">
-                  <span className={(message.isAdmin === true || message.username.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen')
+                  <span className={(message.isAdmin === true)
                     ? 'text-xs font-black text-red-400'
                     : message.username === username
                     ? 'text-xs font-black text-indigo-300'
                     : 'text-xs font-bold text-slate-200'}>
                     {message.username}
                   </span>
-                  {(message.isAdmin === true || message.username.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen') && (
+                  {(message.isAdmin === true) && (
                     <span className="rounded border border-red-500/40 bg-red-500/10 px-1 py-0.5 text-[8px] font-black tracking-wider text-red-300">ADMIN</span>
                   )}
                 </span>
