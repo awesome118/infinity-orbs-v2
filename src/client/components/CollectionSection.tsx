@@ -68,12 +68,14 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
     [state.highestRarity],
   );
   const codexChain = Math.max(0, state.codexChain ?? 0);
-  const currentChainLength = bestCodexChain(state.collection).length;
+  const currentChainLength = Math.max(0, Math.floor(Number(state.codexChain ?? bestCodexChain(state.collection).length) || 0));
   const storedPatcherRarity = Math.floor(Number(state.chainPatcherNextRarity ?? 0) || 0);
   const patcherCharged = storedPatcherRarity >= 2;
   const patcherTarget = patcherCharged
     ? storedPatcherRarity
-    : nextCodexChainRarity(state.collection);
+    : state.chainPatcherSuggestedRarity !== undefined
+      ? state.chainPatcherSuggestedRarity
+      : nextCodexChainRarity(state.collection);
   const patcherCost = patcherTarget == null || patcherCharged
     ? 0
     : chainPatcherShardCost(patcherTarget);
