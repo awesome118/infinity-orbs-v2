@@ -331,28 +331,37 @@ export function createApp() {
     while (Date.now() < deadline) {
       const now = Date.now();
       const txn = await redis.watch(lockKey);
-      // TxClient.get() queues a transaction command. Read the watched value
-      // through Redis itself so we inspect the actual current lock contents.
-      const raw = await redis.get(lockKey);
-      const existing = parseMutationLock(raw);
+      let transactionClosed = false;
+      try {
+        // TxClient.get() queues a transaction command. Read the watched value
+        // through Redis itself so we inspect the actual current lock contents.
+        const raw = await redis.get(lockKey);
+        const existing = parseMutationLock(raw);
 
-      if (existing && existing.expiresAt > now) {
-        await txn.unwatch();
-        await new Promise(resolve => setTimeout(resolve, 100));
-        continue;
-      }
+        if (existing && existing.expiresAt > now) {
+          await txn.unwatch();
+          transactionClosed = true;
+          await new Promise(resolve => setTimeout(resolve, 100));
+          continue;
+        }
 
-      const value = JSON.stringify({
-        owner,
-        expiresAt: now + MUTATION_LOCK_TTL_MS,
-      });
+        const value = JSON.stringify({
+          owner,
+          expiresAt: now + MUTATION_LOCK_TTL_MS,
+        });
 
-      await txn.multi();
-      await txn.set(lockKey, value);
-      const committed = await txn.exec();
+        await txn.multi();
+        await txn.set(lockKey, value);
+        const committed = await txn.exec();
+        transactionClosed = true;
 
-      if (committed !== null) {
-        return { lockKey, owner };
+        if (committed !== null) {
+          return { lockKey, owner };
+        }
+      } finally {
+        if (!transactionClosed) {
+          await txn.unwatch().catch(() => undefined);
+        }
       }
     }
 
@@ -360,22 +369,30 @@ export function createApp() {
   };
 
   const releaseMutationLock = async (lockKey: string, owner: string): Promise<void> => {
+    let txn: Awaited<ReturnType<typeof redis.watch>> | null = null;
+    let transactionClosed = false;
     try {
-      const txn = await redis.watch(lockKey);
+      txn = await redis.watch(lockKey);
       // TxClient.get() queues a transaction command. Read the watched value
       // through Redis itself before deciding whether the lock is ours.
       const raw = await redis.get(lockKey);
       const existing = parseMutationLock(raw);
       if (!existing || existing.owner !== owner) {
         await txn.unwatch();
+        transactionClosed = true;
         return;
       }
 
       await txn.multi();
       await txn.del(lockKey);
       await txn.exec();
+      transactionClosed = true;
     } catch (error) {
       console.error('[Mutation Lock] Failed to release lock:', error);
+    } finally {
+      if (txn && !transactionClosed) {
+        await txn.unwatch().catch(() => undefined);
+      }
     }
   };
 
@@ -1316,6 +1333,32 @@ export function createApp() {
       res.json({ success: true, id: postId, text });
       });
     } catch (e) { badRequest(res, e, 'Could not create Reddit post.'); }
+  });
+
+  // Normalize errors raised by middleware (for example, lock acquisition
+  // or Redis infrastructure failures) instead of leaking Express's default
+  // HTML 500 response to a JSON client.
+  app.use((
+    error: unknown,
+    req: express.Request,
+    res: express.Response,
+    _next: express.NextFunction,
+  ) => {
+    if (res.headersSent) return;
+    const message = error instanceof Error ? error.message : String(error ?? 'Unknown server error');
+    const busy = /max(?:imum)? concurrency|concurrency limit|transaction.*failed|redis.*transaction|another game action is still finishing/i.test(message);
+    console.error('[Unhandled API Error]', {
+      timestamp: new Date().toISOString(),
+      method: req.method,
+      path: req.path,
+      userId: String(context.userId ?? ''),
+      message,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    if (busy) {
+      return res.status(503).json({ error: 'The game is busy finishing another action. Please retry.' });
+    }
+    return res.status(500).json({ error: 'The server hit an unexpected error. Please retry.' });
   });
 
   return app;
