@@ -1191,29 +1191,34 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       let lastError: Error | null = null;
 
       for (let attempt = 0; attempt < 3; attempt += 1) {
+        let response: Response;
         try {
-          const response = await fetch(url, {
+          response = await fetch(url, {
             method: body === undefined ? 'GET' : 'POST',
             headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
             body: body === undefined ? undefined : JSON.stringify(body),
           });
-          const data = await response.json().catch(() => ({}));
-
-          if (response.ok) return data as T;
-
-          const message = typeof data?.error === 'string'
-            ? data.error
-            : response.status + ' ' + response.statusText;
-          lastError = new Error(message);
-
-          // Devvit can briefly return a 5xx while a Redis-backed mutation is settling.
-          // Retry only those transient server failures; keep genuine 4xx test failures immediate.
-          if (response.status < 500 || attempt === 2) throw lastError;
         } catch (error) {
+          // Network failures can be transient, but an HTTP 4xx must never be
+          // swallowed by this catch: tests rely on expected authorization,
+          // unlock, cooldown, and duplicate-report rejections happening once.
           lastError = error instanceof Error ? error : new Error(String(error));
           if (attempt === 2) throw lastError;
+          await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
+          continue;
         }
 
+        const data = await response.json().catch(() => ({}));
+        if (response.ok) return data as T;
+
+        const message = typeof data?.error === 'string'
+          ? data.error
+          : response.status + ' ' + response.statusText;
+        lastError = new Error(message);
+
+        // Retrying a 4xx can consume cooldowns/rate limits and mutate later test
+        // expectations. Retry only transient 5xx responses.
+        if (response.status < 500 || attempt === 2) throw lastError;
         await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
       }
 
@@ -1640,7 +1645,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           prestigeOverrides: Record<string, number> = {},
           extra: Record<string, unknown> = {},
         ) => {
-          return request('/api/dev/state', {
+          const result = await request<any>('/api/dev/state', {
             coins: 100_000,
             shards: 50,
             cosmicDust: 0,
@@ -1676,6 +1681,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             },
             ...extra,
           });
+          const state = recordValue(result.state);
+          if (Number(state.level) < 2 || Number(state.xp) < 1) {
+            throw new Error('Mechanic fixture failed to persist an unlocked player state (level=' + state.level + ', xp=' + state.xp + ').');
+          }
+          return result;
         };
 
         const readMechanics = async (): Promise<any> => {
@@ -2560,9 +2570,16 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             level: 32,
             lastRollAt: 0,
           });
-          const state = recordValue(result.state);
-          if (Number(state.level) < 20) {
-            throw new Error('Level-gated API fixture must reach Level 20 for prestige/social endpoints; got Level ' + state.level + '.');
+          const written = recordValue(result.state);
+          if (Number(written.level) < 20) {
+            throw new Error('Level-gated API fixture write returned Level ' + written.level + ' instead of Level 20+.');
+          }
+          // Verify through the normal player-read path used by the feature gate,
+          // not just the admin mutation response. This catches saves that look
+          // correct in the admin response but were not available to game routes.
+          const state = recordValue(await request<any>('/api/me'));
+          if (Number(state.level) < 20 || Number(state.xp) < 100_000) {
+            throw new Error('Feature gate could not read the seeded state (level=' + state.level + ', xp=' + state.xp + ').');
           }
           return state;
         },
