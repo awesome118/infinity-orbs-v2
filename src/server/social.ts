@@ -2588,8 +2588,9 @@ async function submitChatReport(
 }
 
 export async function getGlobalChat(): Promise<GlobalChatMessage[]> {
-  // First use on an existing launcher self-registers its post ID. Frenzy posts
-  // are explicitly rejected by resolveGlobalGamePostId().
+  // First use on the main launcher self-registers its post ID. From a Frenzy
+  // context, the sender can still use the registered destination; it refuses
+  // to mistake an unregistered Frenzy post for the main Game launcher.
   await resolveGlobalGamePostId().catch(() => null);
   const raw = await redis.get(GLOBAL_CHAT_KEY);
   const parsed = parseGlobalChatList(raw);
