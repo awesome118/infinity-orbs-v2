@@ -20,6 +20,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
   // A Frenzy embed can route comments to the canonical Game launcher only
   // after that launcher has registered its post ID. Hide chat if it cannot.
   const [chatAvailable, setChatAvailable] = useState<boolean | null>(null);
+  const [chatUnavailableReason, setChatUnavailableReason] = useState('');
   const [messages, setMessages] = useState<GlobalChatMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const hasPersistedSeenStateRef = useRef(false);
@@ -102,17 +103,28 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
     const checkAvailability = async () => {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          const response = await fetch('/api/chat/status?ts=' + Date.now(), {
+          const response = await fetch('/api/chat/status?launcher=main&ts=' + Date.now(), {
             cache: 'no-store',
             headers: { 'Cache-Control': 'no-cache' },
           });
-          const payload = await response.json().catch(() => ({})) as { enabled?: unknown };
+          const payload = await response.json().catch(() => ({})) as { enabled?: unknown; reason?: unknown };
           if (!response.ok) throw new Error('Could not determine Global Chat availability.');
-          if (!cancelled) setChatAvailable(payload.enabled === true);
+          const enabled = payload.enabled === true;
+          if (!cancelled) {
+            setChatAvailable(enabled);
+            setChatUnavailableReason(enabled
+              ? ''
+              : typeof payload.reason === 'string' && payload.reason.trim()
+                ? payload.reason
+                : "Global Chat is disabled because you're not in the main Game launcher.");
+          }
           return;
         } catch {
           if (attempt === 2) {
-            if (!cancelled) setChatAvailable(false);
+            if (!cancelled) {
+              setChatAvailable(false);
+              setChatUnavailableReason("Global Chat is disabled because you're not in the main Game launcher.");
+            }
             return;
           }
           await new Promise(resolve => setTimeout(resolve, 150 * (attempt + 1)));
@@ -127,7 +139,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
   }, []);
 
   useEffect(() => {
-    if (chatAvailable !== true) return;
+    // History remains readable even when posting is disabled in this context.
     void refreshChat();
     const interval = window.setInterval(() => void refreshChat(), open ? 3000 : 10000);
     return () => window.clearInterval(interval);
@@ -166,7 +178,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const text = input.trim();
-    if (!text || sending) return;
+    if (!text || sending || chatAvailable !== true) return;
 
     setSending(true);
     setActionError(null);
@@ -194,10 +206,8 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
     }
   };
 
-  // Do not show a non-working chat control on a Frenzy post while no
-  // canonical Game launcher has been registered. Sending is also guarded server-side.
-  if (chatAvailable !== true) return null;
-
+  // Keep Global Chat discoverable in every context. If the canonical main
+  // launcher is not available, the open panel explains why posting is disabled.
   if (!open) {
     return (
       <button
@@ -207,10 +217,13 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
           setOpen(true);
         }}
         className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-2xl border border-indigo-500/30 bg-slate-900/95 px-4 py-3 text-xs font-black text-white shadow-2xl backdrop-blur-md hover:bg-slate-800 transition-all"
-        title="Open global chat"
+        title={chatAvailable === true ? 'Open global chat' : 'Global Chat is disabled outside the main Game launcher'}
       >
         <MessageCircle className="w-4 h-4 text-indigo-300" />
         <span>Global Chat</span>
+        {chatAvailable === false && (
+          <span className="rounded-full border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-[9px] font-bold text-slate-400">Disabled</span>
+        )}
         {unreadCount > 0 && (
           <span aria-label={unreadCount + ' unread messages'} className="rounded-full bg-indigo-500/20 px-1.5 py-0.5 text-[9px] text-indigo-200">
             {unreadCount > 99 ? '99+' : unreadCount}
@@ -243,6 +256,13 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
       {actionError && (
         <div role="alert" className="border-b border-rose-500/20 bg-rose-950/40 px-3 py-2 text-xs text-rose-200">
           {actionError}
+        </div>
+      )}
+
+      {chatAvailable !== true && (
+        <div role="status" className="border-b border-amber-500/20 bg-amber-950/30 px-3 py-2.5 text-[11px] leading-relaxed text-amber-200">
+          {chatAvailable === null ? 'Checking Global Chat availability…' : chatUnavailableReason || "Global Chat is disabled because you're not in the main Game launcher."}
+          <div className="mt-1 text-[10px] text-amber-200/60">Messages remain visible; open the main Infinity Orbs Game launcher to post.</div>
         </div>
       )}
 
@@ -304,13 +324,13 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
             value={input}
             onChange={e => setInput(e.target.value)}
             maxLength={200}
-            placeholder="Write a public Reddit comment..."
-            disabled={sending}
+            placeholder={chatAvailable === true ? 'Write a public Reddit comment...' : 'Open the main Game launcher to chat'}
+            disabled={sending || chatAvailable !== true}
             className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-xs text-white placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
           />
           <button
             type="submit"
-            disabled={sending || !input.trim()}
+            disabled={chatAvailable !== true || sending || !input.trim()}
             className="rounded-xl bg-indigo-600 px-3 py-2.5 text-white transition-all hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600"
             title="Post public comment"
           >
