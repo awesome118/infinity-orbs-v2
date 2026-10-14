@@ -944,6 +944,7 @@ export function createApp() {
         req.body?.auto === true,
         typeof req.body?.ticketId === 'string' ? req.body.ticketId : undefined,
         Number.isSafeInteger(req.body?.ticketIndex) ? req.body.ticketIndex : undefined,
+        Number.isSafeInteger(req.body?.freeRollCount) ? req.body.freeRollCount : 1,
       ));
     } catch (e) { badRequest(res, e, 'Roll failed.'); }
   });
