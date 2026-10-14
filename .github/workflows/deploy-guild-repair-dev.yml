@@ -1,12 +1,12 @@
 name: Deploy Guild Repair to Development
 
-# Manual, development-only deployment of the updated 1.2.11 release candidate.
+# Manual, development-only deployment of the updated 1.2.13 release candidate.
 # Production (r/infinityorbs) is intentionally never installed by this workflow.
 on:
   workflow_dispatch:
     inputs:
       confirm_install:
-        description: "Authorize upload of infinity-orbs@1.2.11 and installation to r/infinity_orbs_dev only."
+        description: "Authorize upload of infinity-orbs@1.2.13 and installation to r/infinity_orbs_dev only."
         required: true
         type: boolean
         default: false
@@ -37,7 +37,7 @@ jobs:
       - name: Check out the validated release candidate
         uses: actions/checkout@v4
         with:
-          ref: release/1.2.11-candidate-20261013
+          ref: release/1.2.13-candidate-20261013
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -52,8 +52,8 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./package.json').version")"
-          test "$VERSION" = "1.2.11" || {
-            echo "Refusing deployment: expected infinity-orbs@1.2.11, found infinity-orbs@$VERSION"
+          test "$VERSION" = "1.2.13" || {
+            echo "Refusing deployment: expected infinity-orbs@1.2.13, found infinity-orbs@$VERSION"
             exit 1
           }
           node -e "const p=require('./package.json'),l=require('./package-lock.json'); if (p.version !== l.version || p.version !== l.packages?.['']?.version) process.exit(2)"
@@ -84,14 +84,14 @@ jobs:
           CI: true
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
         timeout-minutes: 10
-        run: timeout --signal=TERM --kill-after=30s 9m npx devvit upload --version 1.2.11
+        run: timeout --signal=TERM --kill-after=30s 9m npx devvit upload --version 1.2.13
 
       - name: Verify uploaded version
         run: |
           set -euo pipefail
           VERSION="$(npx devvit view infinity-orbs version)"
-          test "$VERSION" = "1.2.11" || {
-            echo "Uploaded version mismatch: expected 1.2.11, found $VERSION"
+          test "$VERSION" = "1.2.13" || {
+            echo "Uploaded version mismatch: expected 1.2.13, found $VERSION"
             exit 1
           }
 
@@ -100,7 +100,7 @@ jobs:
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
         run: |
           set -euo pipefail
-          npx devvit install r/infinity_orbs_dev "infinity-orbs@1.2.11"
+          npx devvit install r/infinity_orbs_dev "infinity-orbs@1.2.13"
           npx devvit list installs r/infinity_orbs_dev
 
       - name: Confirm production was not changed by this workflow
