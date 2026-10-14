@@ -44,6 +44,7 @@ import {
   unmuteGuildChatUser,
   listChatReports,
   markChatReportRead,
+  adminSetGuildAuthority,
   getPlayerGuildPerks,
   getPlayerGuildCombo,
   getCommunityEvent,
@@ -873,6 +874,20 @@ debugRouter.post('/chat-reports/read', async (req, res) => {
     res.json(await markChatReportRead(String(req.body?.reportId ?? '')));
   } catch (e: any) {
     res.status(400).json({ error: e?.message || 'Failed to mark chat report as read.' });
+  }
+});
+
+debugRouter.post('/guild-authority', async (req, res) => {
+  try {
+    const guildId = String(req.body?.guildId ?? '').trim();
+    const authority = req.body?.authority;
+    if (authority !== 'owner' && authority !== 'trusted') {
+      return res.status(400).json({ error: 'Authority must be owner or trusted.' });
+    }
+    const result = await adminSetGuildAuthority(guildId, authority);
+    res.json({ ok: true, ...result });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to change admin Guild authority.' });
   }
 });
 
