@@ -980,6 +980,8 @@ export interface PlayerState {
   codexDevotionLuckPercent?: number;
   /** If positive, the next accepted roll is exactly one orb of this rarity. */
   chainPatcherNextRarity?: number;
+  /** Server-calculated Codex target shown before purchase; null means no extension exists. */
+  chainPatcherSuggestedRarity?: number | null;
   /** Absolute timestamp when the next Chain Patcher purchase is allowed. */
   chainPatcherCooldownUntil?: number;
   lastRollAt: number | null;
