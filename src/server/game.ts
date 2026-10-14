@@ -2827,7 +2827,7 @@ export async function save(
     new Set(writeKeys).size !== writeKeys.length ||
     writeKeys.includes(key()) ||
     writeKeys.includes(saveGenerationKeyFor(userId)) ||
-    extraWrites.some(write =>
+    allExtraWrites.some(write =>
       write.expiration !== undefined &&
       (!(write.expiration instanceof Date) || !Number.isFinite(write.expiration.getTime()) || write.expiration.getTime() <= Date.now())
     )
