@@ -2621,7 +2621,7 @@ export async function postGlobalChatMessage(text: string): Promise<GlobalChatMes
     const timestamp = Date.now();
     const message: GlobalChatMessage = {
       id: commentId,
-      username: username().replace(/^u\\//i, '') || 'Redditor',
+      username: username().replace(/^u\//i, '') || 'Redditor',
       text: messageText,
       timestamp,
       userId: user(),
