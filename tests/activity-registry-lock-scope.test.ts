@@ -154,6 +154,8 @@ test('activity updates watch a per-user lease, not the global registry hash', as
     context.username = 'GuildConflictRecovery';
     const conflictedState = createInitialState();
     conflictedState.username = context.username;
+    const initialCoins = conflictedState.coins;
+    const initialLifetimeCoins = conflictedState.lifetimeCoins ?? initialCoins;
     const guildKey = `io:test-guild-conflict:${suffix}`;
     await baseRedis.set(guildKey, 'newer-guild-snapshot');
 
@@ -171,7 +173,19 @@ test('activity updates watch a per-user lease, not the global registry hash', as
     const savedAfterGuildConflict = JSON.parse(
       String(await baseRedis.get(`player:${context.userId}`)),
     ) as { coins?: number };
-    assert.equal(savedAfterGuildConflict.coins, 17, 'conflict handler should preserve the refunded tax in player state');
+    assert.equal(
+      savedAfterGuildConflict.coins,
+      initialCoins + 17,
+      'conflict handler should preserve the refunded tax in player state',
+    );
+    const savedLifetimeCoins = JSON.parse(
+      String(await baseRedis.get(`player:${context.userId}`)),
+    ) as { lifetimeCoins?: number };
+    assert.equal(
+      savedLifetimeCoins.lifetimeCoins,
+      initialLifetimeCoins + 17,
+      'refunded Coins should also be retained in lifetime accounting',
+    );
     assert.equal(await baseRedis.get(guildKey), 'newer-guild-snapshot', 'conflicted Guild data must never be overwritten');
   } finally {
     configureDevvitRuntime({
