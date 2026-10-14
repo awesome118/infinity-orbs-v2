@@ -1717,9 +1717,11 @@ test('optional World Event conflicts cannot block primary player rewards', () =>
   const saveEnd = game.indexOf('function serverRandom', saveStart);
   assert.ok(saveStart >= 0 && saveEnd > saveStart);
   const save = game.slice(saveStart, saveEnd);
-  assert.match(save, /if \(write\.optional\)/);
+  assert.match(save, /const extraWrites = allExtraWrites\.filter\(write => !write\.optional\)/);
+  assert.match(save, /const optionalWrites = allExtraWrites\.filter\(write => write\.optional\)/);
   assert.match(save, /extraWrites\.splice\(index, 1\)/);
-  assert.match(save, /if \(optionalProjectionConflict\) continue;/);
+  assert.match(save, /if \(droppedConflictingProjection\) continue;/);
+  assert.match(save, /void commitOptionalSaveProjection\(write\)\.catch\(error => \{/);
   assert.match(save, /pendingSaveExtraWrites\.set\(s, remaining\)/);
 
   const rollStart = game.indexOf('export async function applyRolls');
