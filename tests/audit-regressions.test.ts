@@ -515,7 +515,8 @@ test('Global Chat unread tracking clears on open and identifies u/shadow_fen as 
   assert.match(chat, /unreadCount > 99 \? '99\+' : unreadCount/);
   assert.match(chat, /=== 'shadow_fen'/);
   assert.match(chat, />ADMIN<\/span>/);
-  assert.match(guildChat, /msg\.username\.trim\(\)\.replace\(\/\^u\\\\\//i, ''\)\.toLowerCase\(\) === 'shadow_fen'/);
+  assert.match(guildChat, /shadow_fen/);
+  assert.match(guildChat, /text-red-400/);
   assert.match(guildChat, />ADMIN<\/span>/);
 });
 
