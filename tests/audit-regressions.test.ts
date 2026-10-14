@@ -86,6 +86,39 @@ test('Global Chat comments are submitted as USER and Reddit comment triggers are
   assert.match(game, /consider upvoting the post/);
 });
 
+test('Chain Patcher is server-authoritative, arms exactly one guaranteed rarity, and has a cooldown', () => {
+  const shared = source('src/shared/game.ts');
+  assert.match(shared, /CHAIN_PATCHER_COOLDOWN_MS = 24 \* 60 \* 60 \* 1_000/);
+  assert.match(shared, /nextCodexChainRarity/);
+  assert.match(shared, /Math\.floor\(targetRarity \/ 100\) \+ 1/);
+
+  const game = source('src/server/game.ts');
+  assert.match(game, /export async function buyChainPatcher/);
+  assert.match(game, /spendShards\(s, shardsSpent\)/);
+  assert.match(game, /s\.chainPatcherCooldownUntil = now \+ CHAIN_PATCHER_COOLDOWN_MS/);
+  assert.match(game, /s\.autoRollEnabled = false/);
+  assert.match(game, /usingChainPatcher \? 1 : freeRollsToUse > 0 \? freeRollsToUse : 1/);
+  assert.match(game, /usingChainPatcher,/);
+  assert.match(game, /if \(usingChainPatcher\) s\.chainPatcherNextRarity = 0/);
+
+  const app = source('src/server/app.ts');
+  assert.match(app, /app\.post\('\/api\/chain-patcher\/buy'/);
+  assert.match(app, /buyChainPatcher/);
+
+  const ui = source('src/client/components/UpgradesSection.tsx');
+  assert.match(ui, /Chain Patcher/);
+  assert.match(ui, /1\/900 costs 10/);
+  assert.match(ui, /24 hours between purchases/);
+
+  const social = source('src/server/social.ts');
+  assert.match(social, /chainLength: highestCodexChain\(save\.collection\)/);
+  assert.match(social, /chainLength: sortLeaderboard\(eligible, entry => entry\.chainLength \?\? 0\)/);
+
+  const leaderboardUi = source('src/client/components/GuildsAndSocial.tsx');
+  assert.match(leaderboardUi, /label: 'Chain Length'/);
+  assert.match(leaderboardUi, /case 'chainLength'/);
+});
+
 test('the static splash is imported and shown before the main game shell', () => {
   const main = source('src/client/main.tsx');
   const splash = source('src/client/components/SplashScreen.tsx');
