@@ -5,6 +5,7 @@ import {
   getRollTicket,
   roll,
   buyUpgrade,
+  buyUpgradeBatch,
   buyAllUpgrades,
   claimOffline,
   subscribeToSubredditFromPrompt,
@@ -967,6 +968,21 @@ export function createApp() {
       if (!validUpgradeIds.includes(id ?? '')) return res.status(400).json({ error: 'Unknown upgrade.' });
       res.json({ state: await buyUpgrade(id) });
     } catch (e) { badRequest(res, e, 'Upgrade failed.'); }
+  });
+
+  app.post('/api/upgrade/batch', async (req, res) => {
+    try {
+      const ids = req.body?.ids;
+      const validUpgradeIds: UpgradeId[] = [
+        'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
+        'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus',
+      ];
+      if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100 ||
+          !ids.every(id => typeof id === 'string' && validUpgradeIds.includes(id as UpgradeId))) {
+        return res.status(400).json({ error: 'Batch must contain 1 to 100 valid upgrade IDs.' });
+      }
+      res.json(await buyUpgradeBatch(ids as UpgradeId[]));
+    } catch (e) { badRequest(res, e, 'Upgrade batch failed.'); }
   });
 
   app.post('/api/upgrade/all', async (_req, res) => {
