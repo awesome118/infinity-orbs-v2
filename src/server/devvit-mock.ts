@@ -245,6 +245,14 @@ const localReddit = {
     console.log('[Reddit Mock] Custom post submitted:', options.title);
     return { id: `reddit-post-${Date.now()}` };
   },
+  submitComment: async (options: { id: string; text: string; runAs?: string }) => {
+    console.log('[Reddit Mock] Comment submitted:', {
+      postId: options.id,
+      runAs: options.runAs ?? 'APP',
+      text: options.text,
+    });
+    return { id: `t1_local-comment-${Date.now()}` };
+  },
   subscribeToCurrentSubreddit: async () => {
     console.log('[Reddit Mock] Subscribed current user to current subreddit.');
   },
