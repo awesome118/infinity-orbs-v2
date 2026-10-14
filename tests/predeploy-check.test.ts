@@ -194,12 +194,12 @@ const invalidManifestCases: Array<{
   {
     label: 'comment-create trigger',
     mutate: manifest => { manifest.triggers.onCommentCreate = '/wrong'; },
-    expected: /triggers\\.onCommentCreate must be/,
+    expected: /triggers\.onCommentCreate must be/,
   },
   {
     label: 'USER comment permission',
     mutate: manifest => { manifest.permissions.reddit.asUser = ['SUBMIT_POST']; },
-    expected: /permissions\\.reddit\\.asUser must include "SUBMIT_COMMENT"/,
+    expected: /permissions\.reddit\.asUser must include "SUBMIT_COMMENT"/,
   },
   {
     label: 'offline notification scheduler endpoint',
