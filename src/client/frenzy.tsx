@@ -363,6 +363,14 @@ function FrenzyPost() {
             <p className="mt-2 text-xs leading-relaxed text-slate-500">
               Please consider upvoting the Frenzy post, too. Commenting is optional and gives no gameplay reward.
             </p>
+            <a
+              href={`https://www.reddit.com/comments/${info.postId.replace(/^t3_/, '')}/`}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-block text-xs font-bold text-fuchsia-300 underline hover:text-fuchsia-200"
+            >
+              Open the Frenzy post to upvote
+            </a>
             <label className="mt-4 block text-xs font-bold text-slate-300" htmlFor="frenzy-thanks-fallback-message">Public comment</label>
             <textarea
               id="frenzy-thanks-fallback-message"
