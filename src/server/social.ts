@@ -2249,7 +2249,7 @@ function parseGlobalChatList(raw: unknown): GlobalChatMessage[] {
       typeof message.id === 'string' && message.id.trim().length > 0 &&
       typeof message.username === 'string' && message.username.trim().length > 0 &&
       typeof message.text === 'string' && message.text.trim().length > 0 &&
-      message.text.length <= 200 &&
+      message.text.length <= 10_000 &&
       Number.isSafeInteger(message.timestamp) && Number(message.timestamp) >= 0 &&
       (message.userId == null || typeof message.userId === 'string')
     );
