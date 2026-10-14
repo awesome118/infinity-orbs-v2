@@ -65,7 +65,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
   const [filterCategory, setFilterCategory] = useState<'all' | 'qol' | 'core' | 'alchemy'>('all');
   const fmt = (n: number) => formatNumber(n);
   const aftershockRecord = Math.max(0, state.aftershockRecord ?? 0);
-  const aftershockCritLuckPercent = aftershockCriticalLuckBonus(aftershockRecord) * 100;
+  const aftershockCritLuckBonusValue = aftershockCriticalLuckBonus(aftershockRecord);
   const longestSessionMs = Math.max(0, state.longestRollingSessionMs ?? 0);
   const momentumSpeedPercent = unbrokenMomentumSpeedBonus(longestSessionMs) * 100;
   const longestSessionSeconds = Math.floor(longestSessionMs / 1000);
@@ -364,7 +364,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
               {fmt(aftershockRecord)} rolls
             </span>
             <span className="text-[10px] text-slate-500">
-              +{aftershockCritLuckPercent.toFixed(1)}% permanent Critical Luck
+              +{aftershockCritLuckBonusValue.toFixed(3)}× permanent Critical Luck
             </span>
           </div>
 
