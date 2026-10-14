@@ -6240,6 +6240,80 @@ export async function claimOrbFrenzy(options: {
 }
 
 
+export async function postFrenzyThankYouComment(
+  text: string,
+  requestedPostId: string,
+): Promise<{ success: true; commentId: string; alreadyDone?: boolean }> {
+  const claimantId = currentUserId();
+  if (!claimantId || claimantId === 'unknown') throw new Error('Your Reddit identity is unavailable.');
+  const postId = String(requestedPostId ?? '').trim();
+  if (!postId) throw new Error('The claimed Frenzy post ID is missing.');
+
+  const messageText = String(text ?? '').trim();
+  if (!messageText) throw new Error('Write a thank-you comment first.');
+  if (messageText.length > 500) throw new Error('Thank-you comments must be 500 characters or fewer.');
+
+  const postRaw = await redis.get(FRENZY_POST_PREFIX + postId);
+  const postData = parseStoredJson<{
+    ownerId?: string;
+    ownerUsername?: string;
+    rarity?: number;
+    createdAt?: number;
+    consumedAt?: number | null;
+    consumedBy?: string;
+  }>(postRaw);
+  if (
+    !postData ||
+    postData.consumedAt == null ||
+    postData.consumedBy !== claimantId ||
+    !postData.ownerUsername
+  ) {
+    throw new Error('You can only leave a thank-you comment after you claim this Frenzy.');
+  }
+
+  const receiptKey = FRENZY_THANK_YOU_PREFIX + encodeURIComponent(postId) + ':' + encodeURIComponent(claimantId);
+  const expiresAt = frenzyPostExpiresAt(Number(postData.createdAt ?? 0)) + FRENZY_POST_RECEIPT_RETENTION_MS;
+  const expiration = new Date(expiresAt);
+  if (!Number.isFinite(expiration.getTime()) || expiration.getTime() <= Date.now()) {
+    throw new Error('The thank-you comment window has expired.');
+  }
+
+  const existingRaw = await redis.get(receiptKey);
+  if (existingRaw) {
+    const existing = parseStoredJson<{ status?: string; commentId?: string }>(existingRaw);
+    if (existing?.status === 'posted' && existing.commentId) {
+      return { success: true, commentId: existing.commentId, alreadyDone: true };
+    }
+    throw new Error('A thank-you comment was already attempted. Check the Frenzy post before trying again.');
+  }
+
+  const reservation = 'pending-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  await redis.set(receiptKey, reservation, { nx: true, expiration });
+  if (await redis.get(receiptKey) !== reservation) {
+    throw new Error('A thank-you comment was already attempted. Check the Frenzy post before trying again.');
+  }
+
+  // This runs only after a separate, explicit click in the UI. It is never
+  // merged with claiming the Frenzy, and Reddit attributes it to the player.
+  const comment = await reddit.submitComment({
+    id: postId,
+    text: messageText,
+    runAs: 'USER',
+  });
+  const commentId = String(comment?.id ?? '').trim();
+  if (!commentId) {
+    throw new Error('Reddit did not return a comment ID. Check the Frenzy post before retrying.');
+  }
+
+  await redis.set(receiptKey, JSON.stringify({
+    status: 'posted',
+    commentId,
+    postedAt: Date.now(),
+  }), { expiration });
+  return { success: true, commentId };
+}
+
+
 function sampleBinomial(n: number, p: number): number {
   if (n <= 0 || p <= 0) return 0;
   if (p >= 1) return n;
