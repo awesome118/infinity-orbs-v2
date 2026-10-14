@@ -2267,6 +2267,18 @@ function parseGlobalChatList(raw: unknown): GlobalChatMessage[] {
 }
 
 
+async function isCurrentFrenzyPostContext(): Promise<boolean> {
+  const currentRawId = String(context.postId ?? '').trim();
+  const currentPostId = normalizeRedditPostId(currentRawId);
+  if (!currentPostId) return false;
+
+  const candidates = [...new Set([currentRawId, currentPostId].filter(Boolean))];
+  for (const candidate of candidates) {
+    if (await redis.get('io:frenzy:post:' + candidate) != null) return true;
+  }
+  return false;
+}
+
 async function resolveGlobalGamePostId(): Promise<string> {
   const saved = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
   if (saved) return saved;
@@ -2276,18 +2288,38 @@ async function resolveGlobalGamePostId(): Promise<string> {
   if (!currentPostId) {
     throw new Error('The main Game post is not registered yet. Open Global Chat from the Infinity Orbs launcher.');
   }
-  // Never choose a Frenzy post as the Global Chat destination.
-  if (
-    await redis.get('io:frenzy:post:' + currentRawId) != null ||
-    await redis.get('io:frenzy:post:' + currentPostId) != null
-  ) {
-    throw new Error('Global Chat posts only on the main Game launcher, not on a Frenzy post.');
+  // Never register a Frenzy post as the Global Chat destination.
+  if (await isCurrentFrenzyPostContext()) {
+    throw new Error('Global Chat is unavailable on this Frenzy post until the main Game launcher has registered itself.');
   }
 
   await redis.set(GLOBAL_GAME_POST_KEY, currentPostId, { nx: true });
   const registered = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
   if (!registered) throw new Error('Could not register the Game post. Please retry.');
   return registered;
+}
+
+export async function getGlobalChatStatus(): Promise<{ enabled: boolean; reason?: string }> {
+  const saved = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
+  if (await isCurrentFrenzyPostContext()) {
+    // If the canonical launcher is registered, posting from a Frenzy embed is
+    // safe: postGlobalChatMessage always targets this saved Game-post ID.
+    if (saved) return { enabled: true };
+    return {
+      enabled: false,
+      reason: 'Global Chat is disabled on this Frenzy post until you open the main Game launcher once.',
+    };
+  }
+
+  try {
+    await resolveGlobalGamePostId();
+    return { enabled: true };
+  } catch (error) {
+    return {
+      enabled: false,
+      reason: error instanceof Error ? error.message : 'Global Chat is unavailable here.',
+    };
+  }
 }
 
 
@@ -2603,9 +2635,9 @@ export async function postGlobalChatMessage(text: string): Promise<GlobalChatMes
     if (!messageText) throw new Error('Message cannot be empty.');
     if (await isGuildChatMuted()) throw new Error('You are muted from Global Chat.');
     if (messageText.length > 200) throw new Error('Messages must be 200 characters or fewer.');
-    await enforceChatCooldown('global', 2_000);
-
+    // Resolve the canonical destination before consuming the user's chat cooldown.
     const postId = await resolveGlobalGamePostId();
+    await enforceChatCooldown('global', 2_000);
     // Sending is a deliberate button action in the player's chat UI. Reddit
     // must attribute the public comment to that player, never to the app.
     const comment = await reddit.submitComment({
