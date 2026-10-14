@@ -2715,7 +2715,7 @@ export function App() {
       )}
 
       {/* Global Chat */}
-      <GlobalChatWindow username={state.username ?? ''} />
+      <GlobalChatWindow username={state.username ?? ''} launcherContext="main" />
 
       {/* Changelog */}
       {showChangelogModal && (
