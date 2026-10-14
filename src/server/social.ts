@@ -749,8 +749,42 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
 async function loadGuilds(): Promise<Guild[]> {
   await ensureGuildMigrations();
   const raw = await redis.get(GUILDS_KEY);
+  const parsedSnapshot = parseStoredJson<unknown>(raw);
   const rawGuilds = parseGuildList(raw);
   const guilds = normalizeGuilds(rawGuilds);
+
+  // Playtest recovery must not be an in-memory bandage. Once a valid JSON
+  // array has been safely normalized, persist the repaired snapshot with WATCH
+  // so later reads and mutations see the same clean Guild state. This is
+  // deliberately scoped to r/infinity_orbs_dev; production Guild data remains
+  // strict and is never silently rewritten by this recovery path.
+  if (
+    isGuildPlaytestRecoveryEnabled() &&
+    typeof raw === 'string' &&
+    Array.isArray(parsedSnapshot)
+  ) {
+    const recoveredRaw = JSON.stringify(guilds);
+    if (recoveredRaw !== raw) {
+      try {
+        const txn = await redis.watch(GUILDS_KEY);
+        const latestRaw = await redis.get(GUILDS_KEY);
+        if (latestRaw !== raw) {
+          await txn.unwatch();
+        } else {
+          await txn.multi();
+          await txn.set(GUILDS_KEY, recoveredRaw);
+          // A conflicting write is not overwritten. The next read can recover
+          // the newer snapshot; recovery persistence must not block this read.
+          await txn.exec();
+        }
+      } catch (error) {
+        console.error('[Guild Recovery] Could not persist the dev-only repaired snapshot:', error);
+        // Return the normalized in-memory snapshot even if best-effort repair
+        // persistence fails; strict production parsing is unaffected.
+      }
+    }
+  }
+
   const now = Date.now();
   const expiredCombo = rawGuilds.some(g => {
     const tier = Math.max(0, Math.floor(Number(g.combo?.tier ?? 0) || 0));
