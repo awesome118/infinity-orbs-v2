@@ -253,22 +253,21 @@ test('daily Frenzy popup closes when it arms the next manual roll', () => {
 
 test('Frenzy reveal survives the authoritative state update', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
-  assert.match(source, /frenzyClaimActiveRef/);
-  assert.match(source, /componentMountedRef/);
-  assert.match(source, /for \(const revealedOrb of revealBatch\)/);
-  assert.match(source, /setLastOrb\(revealedOrb\)/);
-  assert.match(
-    source,
-    /applyPlayerState\(res\.state\);[\s\S]*?for \(const revealedOrb of revealBatch\)[\s\S]*?setLastOrb\(revealedOrb\)/,
-  );
-  const frenzyEffectStart = source.indexOf('  useEffect(() => {\n    if (!state || frenzyRunTriggered || frenzyClaimActiveRef.current) return;');
-  const frenzyEffectEnd = source.indexOf('  useEffect(() => {\n    const startedAt = Date.now();', frenzyEffectStart);
-  assert.ok(frenzyEffectStart >= 0);
-  assert.ok(frenzyEffectEnd > frenzyEffectStart);
-  const frenzyEffect = source.slice(frenzyEffectStart, frenzyEffectEnd);
-  assert.doesNotMatch(frenzyEffect, /let cancelled = false/);
-  assert.doesNotMatch(frenzyEffect, /cancelled = true/);
+  const claimStart = source.indexOf('const resolveFrenzy = async () => {');
+  const claimEnd = source.indexOf('\n    void resolveFrenzy()', claimStart);
+  assert.ok(claimStart >= 0 && claimEnd > claimStart, 'the in-game Frenzy claim handler must exist');
+  const claim = source.slice(claimStart, claimEnd);
+  assert.match(claim, /frenzyClaimActiveRef\.current = true/);
+  assert.match(claim, /if \(!componentMountedRef\.current\) return/);
+  assert.match(claim, /applyPlayerState\(res\.state\)/);
+  const applyIndex = claim.indexOf('applyPlayerState(res.state)');
+  const revealIndex = claim.indexOf('for (const revealedOrb of revealBatch)');
+  const revealWriteIndex = claim.indexOf('setLastOrb(revealedOrb)');
+  assert.ok(applyIndex >= 0 && revealIndex > applyIndex && revealWriteIndex > revealIndex,
+    'authoritative state must be applied before the independent visual reveal sequence');
+  assert.doesNotMatch(claim, /let cancelled = false|cancelled = true/);
 });
+
 
 test('Admin console exposes a Force Frenzy Popup control', () => {
   const admin = readFileSync(resolve(process.cwd(), 'src/client/components/DevDebugModal.tsx'), 'utf8');

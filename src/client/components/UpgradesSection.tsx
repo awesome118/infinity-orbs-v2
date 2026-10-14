@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Zap,
@@ -29,6 +29,10 @@ import {
   effectiveOfflineTickMs,
   critMultiplier,
   formatNumber,
+  formatRarity,
+  bestCodexChain,
+  nextCodexChainRarity,
+  chainPatcherShardCost,
 } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
@@ -36,6 +40,7 @@ interface UpgradesSectionProps {
   state: PlayerState;
   onBuyUpgrade: (id: UpgradeId) => Promise<void>;
   onBuyAllUpgrades: () => Promise<void>;
+  onBuyChainPatcher: () => Promise<void>;
   onActivateTurbo: () => Promise<void>;
   busy: boolean;
 }
@@ -44,9 +49,12 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   state,
   onBuyUpgrade,
   onBuyAllUpgrades,
+  onBuyChainPatcher,
   onActivateTurbo,
   busy,
 }) => {
+  const [chainPatcherNow, setChainPatcherNow] = useState(Date.now());
+  const [chainPatcherBuying, setChainPatcherBuying] = useState(false);
   const [recentUpgradeId, setRecentUpgradeId] = useState<UpgradeId | null>(null);
   const [upgradingAll, setUpgradingAll] = useState(false);
   const fmt = (n: number) => formatNumber(n);
@@ -85,6 +93,42 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       setUpgradingAll(false);
     }
   };
+
+  const handleBuyChainPatcherClick = async () => {
+    if (chainPatcherBuying) return;
+    setChainPatcherBuying(true);
+    try {
+      await onBuyChainPatcher();
+    } finally {
+      setChainPatcherBuying(false);
+    }
+  };
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setChainPatcherNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const currentChainLength = bestCodexChain(state.collection).length;
+  const storedPatcherRarity = Math.floor(Number(state.chainPatcherNextRarity ?? 0) || 0);
+  const patcherCharged = storedPatcherRarity >= 2;
+  const patcherTarget = patcherCharged
+    ? storedPatcherRarity
+    : nextCodexChainRarity(state.collection);
+  const patcherCost = patcherTarget == null || patcherCharged
+    ? 0
+    : chainPatcherShardCost(patcherTarget);
+  const patcherCooldownRemaining = Math.max(
+    0,
+    Math.floor(Number(state.chainPatcherCooldownUntil ?? 0) || 0) - chainPatcherNow,
+  );
+  const patcherCooldownText = (() => {
+    const totalSeconds = Math.ceil(patcherCooldownRemaining / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return `${hours}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
+  })();
 
   const currentCd = cooldownMs(state);
   const nextCd = cooldownMs({ ...state, upgrades: { ...state.upgrades, speed: (state.upgrades.speed ?? 0) + 1 } });
@@ -242,7 +286,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       level: state.upgrades.offlineRate ?? 0,
       currentVal: `1 roll / ${currentOfflineSec}s`,
       nextVal: `1 roll / ${nextOfflineSec}s`,
-      desc: 'Offline rolls accumulate faster.',
+      desc: 'Each level makes offline rolls 8% faster, up to a 60% interval reduction at Level 8. This upgrade is capped at Level 8.',
       cost: upgradeCost('offlineRate', state.upgrades.offlineRate ?? 0),
     },
     {
@@ -341,6 +385,90 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
         </div>
       </div>
 
+      {/* Chain Patcher: shard-priced exact-rarity next-roll guarantee */}
+      <section className="rounded-3xl border border-cyan-500/30 bg-gradient-to-br from-cyan-950/35 via-slate-900/90 to-slate-950 p-5 sm:p-6 shadow-xl shadow-cyan-950/20 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="rounded-2xl border border-cyan-400/30 bg-cyan-400/10 p-3 text-cyan-200">
+              <Gem className="h-6 w-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-white">Chain Patcher</h3>
+              <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-400">
+                Spend Shards to guarantee the next missing rarity that extends your longest consecutive Codex chain.
+                The following roll is locked to exactly one orb of that rarity. Auto Roll pauses so it cannot consume the guarantee unexpectedly.
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-right">
+            <div className="text-[9px] font-black uppercase tracking-widest text-cyan-200/70">Longest Chain</div>
+            <div className="text-lg font-black text-cyan-100">{fmt(currentChainLength)} <span className="text-xs font-bold text-cyan-300/70">rarities</span></div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+            <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Target Rarity</div>
+            <div className="mt-1 text-lg font-black text-white">
+              {patcherTarget == null ? 'Chain complete' : `1/${formatRarity(patcherTarget)}`}
+            </div>
+            <div className="mt-1 text-[10px] text-slate-500">
+              {patcherCharged ? 'Guarantee already purchased' : 'Lowest-cost adjacent extension'}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+            <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Shard Cost</div>
+            <div className="mt-1 flex items-center gap-1.5 text-lg font-black text-cyan-200">
+              <Gem className="h-4 w-4" />
+              {patcherCharged ? 'Paid' : patcherTarget == null ? '—' : fmt(patcherCost)}
+            </div>
+            <div className="mt-1 text-[10px] text-slate-500">⌊rarity / 100⌋ + 1 · 1/900 costs 10</div>
+          </div>
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+            <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Purchase Cooldown</div>
+            <div className="mt-1 text-lg font-black text-white">
+              {patcherCooldownRemaining > 0 ? patcherCooldownText : 'Ready'}
+            </div>
+            <div className="mt-1 text-[10px] text-slate-500">24 hours between purchases</div>
+          </div>
+        </div>
+
+        {patcherCharged && (
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-xs font-bold text-emerald-200" role="status">
+            Charged: your next accepted roll will give exactly one 1/{formatRarity(patcherTarget ?? storedPatcherRarity)} orb. Click Roll to use it.
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => {
+            sound.playClick();
+            void handleBuyChainPatcherClick();
+          }}
+          disabled={
+            busy ||
+            chainPatcherBuying ||
+            patcherCharged ||
+            patcherCooldownRemaining > 0 ||
+            patcherTarget == null ||
+            state.shards < patcherCost
+          }
+          className="w-full rounded-xl border border-cyan-400/30 bg-cyan-500/15 px-4 py-3 text-xs font-black text-cyan-100 transition-colors hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900 disabled:text-slate-500"
+        >
+          {chainPatcherBuying
+            ? 'Purchasing Chain Patcher…'
+            : patcherCharged
+            ? 'Chain Patcher Charged · Roll to Use'
+            : patcherCooldownRemaining > 0
+              ? `Cooldown · ${patcherCooldownText}`
+              : patcherTarget == null
+                ? 'No Adjacent Rarity Can Extend This Chain'
+                : state.shards < patcherCost
+                  ? `Need ${fmt(patcherCost)} Shards`
+                  : `Buy Chain Patcher · ${fmt(patcherCost)} Shards`}
+        </button>
+      </section>
+
       {/* Upgrades Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {upgradesData.map(u => {
@@ -426,7 +554,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
                     onClick={() => {
                       void handleUpgradeClick(u);
                     }}
-                    disabled={!canAfford || busy}
+                    disabled={!canAfford}
                     className={`w-full font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all ${
                       canAfford
                         ? 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 shadow-lg shadow-amber-900/20 active:scale-95 cursor-pointer'

@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   X, Wrench, Coins, Gem, Sparkles, Zap, RotateCcw, Play, Shield, Megaphone,
-  Users, BellRing,
+  Users, BellRing, Crown, UserCheck,
   Ban, UserX, CheckCircle2, RefreshCw, Flame,
   Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy, ClipboardCheck, Gift,
 } from 'lucide-react';
 import { PRESTIGE_UPGRADES, CONTINUUM_TIERS, getOrbInfo, visibleContinuumTiers, formatRarity, formatNumber, frenzyOrbCountForRarity } from '../../shared/game.js';
 import type { RollResponse } from '../../shared/game.js';
+import { APP_VERSION } from '../../shared/version.js';
 import { sound } from '../sound.js';
 
 function formatPlaytime(ms: number): string {
@@ -431,6 +432,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [guildChatSpyLoading, setGuildChatSpyLoading] = useState(false);
   const [guildChatSpyLoaded, setGuildChatSpyLoaded] = useState(false);
   const [guildChatMuteUser, setGuildChatMuteUser] = useState('');
+  const [guildAuthorityGuildId, setGuildAuthorityGuildId] = useState('');
 
   type ChatReport = {
     reportId: string;
@@ -520,6 +522,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     coins: number;
     shards: number;
     playtimeMs: number;
+    clientVersion: string | null;
+    isLatestVersion: boolean;
   }>>([]);
   const [playerActivity, setPlayerActivity] = useState({
     dailyActiveUsers: 0,
@@ -1191,29 +1195,34 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       let lastError: Error | null = null;
 
       for (let attempt = 0; attempt < 3; attempt += 1) {
+        let response: Response;
         try {
-          const response = await fetch(url, {
+          response = await fetch(url, {
             method: body === undefined ? 'GET' : 'POST',
             headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
             body: body === undefined ? undefined : JSON.stringify(body),
           });
-          const data = await response.json().catch(() => ({}));
-
-          if (response.ok) return data as T;
-
-          const message = typeof data?.error === 'string'
-            ? data.error
-            : response.status + ' ' + response.statusText;
-          lastError = new Error(message);
-
-          // Devvit can briefly return a 5xx while a Redis-backed mutation is settling.
-          // Retry only those transient server failures; keep genuine 4xx test failures immediate.
-          if (response.status < 500 || attempt === 2) throw lastError;
         } catch (error) {
+          // Network failures can be transient, but an HTTP 4xx must never be
+          // swallowed by this catch: tests rely on expected authorization,
+          // unlock, cooldown, and duplicate-report rejections happening once.
           lastError = error instanceof Error ? error : new Error(String(error));
           if (attempt === 2) throw lastError;
+          await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
+          continue;
         }
 
+        const data = await response.json().catch(() => ({}));
+        if (response.ok) return data as T;
+
+        const message = typeof data?.error === 'string'
+          ? data.error
+          : response.status + ' ' + response.statusText;
+        lastError = new Error(message);
+
+        // Retrying a 4xx can consume cooldowns/rate limits and mutate later test
+        // expectations. Retry only transient 5xx responses.
+        if (response.status < 500 || attempt === 2) throw lastError;
         await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
       }
 
@@ -1264,8 +1273,17 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       let lastError: Error | null = null;
       for (let attempt = 0; attempt < 4; attempt += 1) {
         try {
-          const ticket = await request<{ ticketId: string; nextIndex: number }>('/api/roll-ticket');
-          await request('/api/dev/reset-cooldown', {});
+          // Resetting cooldown deliberately clears the old prediction ticket.
+          // Acquire the fresh ticket only after this state mutation commits.
+          // The reset endpoint now commits the cooldown reset and returns
+          // the fresh ticket together. Do not split these into separate HTTP
+          // requests: an intervening UI roll/reset could invalidate the ticket.
+          const ticket = await request<{
+            ticketId: string;
+            nextIndex: number;
+            rollsRemaining: number;
+            expiresAt: number;
+          }>('/api/dev/reset-cooldown', {});
           return await request<RollResponse>('/api/roll', {
             auto,
             ticketId: ticket.ticketId,
@@ -1279,7 +1297,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             message.includes('Roll prediction ticket is') ||
             message.includes('Could not create a roll prediction ticket') ||
             message.includes('Player state changed while saving') ||
-            message.includes('Could not safely save player data');
+            message.includes('Could not safely save player data') ||
+            message.includes('Guild data changed before the roll saved');
           if (!retryable || attempt === 3) throw lastError;
           await new Promise(resolve => setTimeout(resolve, 150 * (attempt + 1)));
         }
@@ -1638,11 +1657,15 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           prestigeOverrides: Record<string, number> = {},
           extra: Record<string, unknown> = {},
         ) => {
-          return request('/api/dev/state', {
+          const result = await request<any>('/api/dev/state', {
             coins: 100_000,
             shards: 50,
             cosmicDust: 0,
-            xp: 0,
+            // Pin Level 4 and its XP floor so account history cannot add milestone orbs.
+            level: 4,
+            levelXpFloor: 533,
+            xp: 600,
+            freeShardsEarnedToday: 0,
             totalRolls: 0,
             totalCrits: 0,
             highestRarity: 0,
@@ -1653,6 +1676,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             rollsSinceBest: 0,
             lastRollAt: 0,
             lastSeenAt: Date.now(),
+            // Reset the rolling Shard budget for independent mechanic cases.
+            lastFreeShardReset: '2020-01-01',
             onlinePlayers: 1,
             turboRollUntil: 0,
             autoRollEnabled: false,
@@ -1668,6 +1693,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             },
             ...extra,
           });
+          const state = recordValue(result.state);
+          if (Number(state.level) < 2 || Number(state.xp) < 1) {
+            throw new Error('Mechanic fixture failed to persist an unlocked player state (level=' + state.level + ', xp=' + state.xp + ').');
+          }
+          return result;
         };
 
         const readMechanics = async (): Promise<any> => {
@@ -1754,20 +1784,45 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           async () => {
             await setMechanicState({ sonarPing: 1 });
             sound.setSonarMode(false);
-            const rollNav = Array.from(document.querySelectorAll('button.nav-tab'))
-              .find(el => el.textContent?.trim() === 'Roll') as HTMLButtonElement | undefined;
-            if (!rollNav) throw new Error('Roll navigation control was not found.');
-            rollNav.click();
-            await new Promise(resolve => setTimeout(resolve, 50));
+            sound.setSonarThreshold(100);
             await onRefresh();
-            await new Promise(resolve => setTimeout(resolve, 150));
-            const button = Array.from(document.querySelectorAll('button'))
-              .find(el => (el as HTMLButtonElement).title === 'Silent Mode: Mutes standard rolls and alerts with a crystal chime on rare drops') as HTMLButtonElement | undefined;
-            if (!button) throw new Error('Sonar control did not unlock after prestige state was applied.');
+
+            // Force a RollSection remount so its local Sonar toggle state follows
+            // the sound singleton reset even when the test began on the Roll tab.
+            const navButtons = () => Array.from(document.querySelectorAll('button.nav-tab'));
+            const socialNav = navButtons().find(el => el.textContent?.includes('Guilds & Social')) as HTMLButtonElement | undefined;
+            if (!socialNav) throw new Error('Guilds & Social navigation control was not found.');
+            socialNav.click();
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // React may replace nav nodes during the tab transition. Always find
+            // the current Roll button after switching, never click a stale node.
+            const rollNav = navButtons().find(el => el.textContent?.trim() === 'Roll') as HTMLButtonElement | undefined;
+            if (!rollNav) throw new Error('Roll navigation control was not found after the tab transition.');
+            rollNav.click();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            await onRefresh();
+
+            const deadline = Date.now() + 2_000;
+            let button: HTMLButtonElement | undefined;
+            while (Date.now() < deadline) {
+              button = Array.from(document.querySelectorAll('button'))
+                .find(el => (el as HTMLButtonElement).title === 'Silent Mode: Mutes standard rolls and alerts with a crystal chime on rare drops') as HTMLButtonElement | undefined;
+              if (button) break;
+              await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            if (!button) throw new Error('Sonar control did not unlock after prestige state was applied (prestige=' + JSON.stringify((await request<any>('/api/me')).prestigeUpgrades?.sonarPing) + ').');
             button.click();
             await new Promise(resolve => setTimeout(resolve, 100));
-            if (!sound.sonarMode || !button.textContent?.includes('SILENT')) throw new Error('Sonar control did not enable Silent Mode.');
-            return { text: button.textContent.trim() };
+            let activeButton = Array.from(document.querySelectorAll('button'))
+              .find(el => (el as HTMLButtonElement).title === 'Silent Mode: Mutes standard rolls and alerts with a crystal chime on rare drops') as HTMLButtonElement | undefined;
+            if (!sound.sonarMode || !activeButton?.textContent?.includes('SILENT')) throw new Error('Sonar control did not enable Silent Mode.');
+            activeButton.click();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const resetButton = Array.from(document.querySelectorAll('button'))
+              .find(el => (el as HTMLButtonElement).title === 'Silent Mode: Mutes standard rolls and alerts with a crystal chime on rare drops') as HTMLButtonElement | undefined;
+            if (sound.sonarMode || !resetButton?.textContent?.includes('OFF')) throw new Error('Sonar control did not return to OFF after the toggle check.');
+            return { text: 'SILENT → OFF' };
           },
           result => 'Client control unlocked · ' + result.text,
         );
@@ -1775,11 +1830,18 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         await step(
           'Mechanic · Sonar Ping Rare Trigger',
           async () => {
+            sound.setSonarThreshold(100);
+            sound.setSonarMode(true);
             const forced = await request<any>('/api/dev/force-roll', { rarity: 100, randomValue: 0.999999 });
             onForceRollResult?.(forced);
-            await new Promise(resolve => setTimeout(resolve, 75));
-            const pulse = document.querySelector('[class*="border-cyan-400/90"]');
-            if (!pulse) throw new Error('Rare roll did not trigger the Sonar Ping visual pulse.');
+            const deadline = Date.now() + 1_000;
+            let pulse: Element | null = null;
+            while (Date.now() < deadline) {
+              pulse = document.querySelector('[class*="border-cyan-400/90"]');
+              if (pulse) break;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            if (!pulse) throw new Error('Rare roll did not trigger Sonar pulse (mode=' + sound.sonarMode + ', threshold=' + sound.sonarThreshold + ', rarity=' + String(forced.orb?.rarity) + ').');
             sound.setSonarMode(false);
             return forced;
           },
@@ -1792,17 +1854,41 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             await setMechanicState({ instantReveal: 1 });
             try { localStorage.setItem('orbs_instant_reveal', 'false'); } catch {}
             await onRefresh();
+
+            // Reset local React state as well as localStorage. The component
+            // only reads this preference on mount, so a storage write alone
+            // does not reset a control already mounted in the Roll tab.
+            const navButtons = () => Array.from(document.querySelectorAll('button.nav-tab'));
+            const socialNav = navButtons().find(el => el.textContent?.includes('Guilds & Social')) as HTMLButtonElement | undefined;
+            if (!socialNav) throw new Error('Guilds & Social navigation control was not found.');
+            socialNav.click();
             await new Promise(resolve => setTimeout(resolve, 100));
-            const button = Array.from(document.querySelectorAll('button'))
+            const rollNav = navButtons().find(el => el.textContent?.trim() === 'Roll') as HTMLButtonElement | undefined;
+            if (!rollNav) throw new Error('Roll navigation control was not found after the tab transition.');
+            rollNav.click();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            await onRefresh();
+
+            const findInstantButton = () => Array.from(document.querySelectorAll('button'))
               .find(el => (el as HTMLButtonElement).title === 'Skip roll animations for instant reveals') as HTMLButtonElement | undefined;
+            let button = findInstantButton();
             if (!button) throw new Error('Instant Reveal control did not unlock after prestige state was applied.');
+            if (button.textContent?.includes('INSTANT')) {
+              button.click();
+              await new Promise(resolve => setTimeout(resolve, 100));
+              button = findInstantButton();
+            }
+            if (!button?.textContent?.includes('OFF')) throw new Error('Instant Reveal control did not reset to OFF before the toggle check.');
             button.click();
-            await new Promise(resolve => setTimeout(resolve, 25));
-            const updatedButton = Array.from(document.querySelectorAll('button'))
-              .find(el => (el as HTMLButtonElement).title === 'Skip roll animations for instant reveals') as HTMLButtonElement | undefined;
+            await new Promise(resolve => setTimeout(resolve, 100));
+            let updatedButton = findInstantButton();
             if (!updatedButton?.textContent?.includes('INSTANT')) throw new Error('Instant Reveal control did not toggle to INSTANT.');
+            updatedButton.click();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            updatedButton = findInstantButton();
+            if (!updatedButton?.textContent?.includes('OFF')) throw new Error('Instant Reveal control did not return to OFF after the toggle check.');
             try { localStorage.setItem('orbs_instant_reveal', 'false'); } catch {}
-            return { text: button.textContent.trim() };
+            return { text: 'OFF → INSTANT → OFF' };
           },
           result => 'Client control unlocked · ' + result.text,
         );
@@ -1901,8 +1987,16 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           'Mechanic · Turbo Duration',
           async () => {
             await setMechanicState({ chronoOverdrive: 0 }, { shards: 10 });
+            const beforeNormal = recordValue(await request<any>('/api/me'));
+            if (Number(beforeNormal.level) < 2) {
+              throw new Error('Turbo test fixture was not unlocked before activation (level=' + beforeNormal.level + ', xp=' + beforeNormal.xp + ').');
+            }
             const normal = await request<any>('/api/turbo/activate', {});
             await setMechanicState({ chronoOverdrive: 1 }, { shards: 10 });
+            const beforeUpgraded = recordValue(await request<any>('/api/me'));
+            if (Number(beforeUpgraded.level) < 2) {
+              throw new Error('Upgraded Turbo fixture was not unlocked before activation (level=' + beforeUpgraded.level + ', xp=' + beforeUpgraded.xp + ').');
+            }
             const upgraded = await request<any>('/api/turbo/activate', {});
             const remainingNormal = Number(normal.state?.turboRollUntil) - Date.now();
             const remainingUpgraded = Number(upgraded.state?.turboRollUntil) - Date.now();
@@ -1932,7 +2026,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         await step(
           'Mechanic · Dust Synthesis',
           async () => {
-            await setMechanicState({ shardSynthesis: 1 }, { shards: 10, xp: 32_000 });
+            await setMechanicState({ shardSynthesis: 1 }, { shards: 10, xp: 32_000, level: 20, levelXpFloor: 0 });
             const before = await request<any>('/api/me');
             if (Number(before.level) < 20) {
               throw new Error('Could not seed Level 20 for synthesis; got Level ' + before.level + '.');
@@ -2167,9 +2261,15 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             const volleyClaim = await request<any>('/api/dev/frenzy/claim', { postId: volleyStart.postId });
             const volleyCount = Number(volleyClaim.state?.totalRolls ?? 0) - volleyBeforeClaim;
 
-            const baseCount = frenzyOrbCountForRarity(100);
-            const expectedNormal = baseCount * 2;
-            const expectedVolley = Math.floor(baseCount * 1.20);
+            // A forced starting rarity can still be raised by a crit. Count from
+            // each created Frenzy's actual recorded rarity, not the requested seed.
+            const normalRarity = Number(normalStart.rarity ?? normalStart.orb?.rarity ?? 0);
+            const volleyRarity = Number(volleyStart.rarity ?? volleyStart.orb?.rarity ?? 0);
+            if (!(normalRarity >= 100) || !(volleyRarity >= 100)) {
+              throw new Error('Frenzy start returned an invalid rarity: normal=' + normalRarity + ', volley=' + volleyRarity + '.');
+            }
+            const expectedNormal = frenzyOrbCountForRarity(normalRarity) * 2;
+            const expectedVolley = Math.floor(frenzyOrbCountForRarity(volleyRarity) * 1.20);
             const normalVisible = Array.isArray(normalClaim.batch) ? normalClaim.batch.length : 0;
             const volleyVisible = Array.isArray(volleyClaim.batch) ? volleyClaim.batch.length : 0;
             if (normalCount !== expectedNormal || volleyCount !== expectedVolley) {
@@ -2395,15 +2495,21 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'API · Duplicate chat report rejected',
         async () => {
+          // The previous report consumes both the chat and report cooldowns.
+          // Wait them out so this test reaches duplicate-report handling itself.
+          await new Promise(resolve => setTimeout(resolve, 5_200));
           const message = await request<any>('/api/chat', { text: '[ADMIN TEST] duplicate-report check' });
           await request('/api/chat/report', { messageId: message.id });
-          let rejected = false;
+          let duplicateError = '';
           try {
             await request('/api/chat/report', { messageId: message.id });
           } catch (error) {
-            rejected = true;
+            duplicateError = error instanceof Error ? error.message : String(error);
           }
-          if (!rejected) throw new Error('Duplicate chat report was accepted.');
+          if (!duplicateError) throw new Error('Duplicate chat report was accepted.');
+          if (!/already reported|already submitted/i.test(duplicateError)) {
+            throw new Error('Duplicate report check failed for the wrong reason: ' + duplicateError);
+          }
           const reports = await request<any>('/api/dev/chat-reports');
           const matches = Array.isArray(reports.reports)
             ? reports.reports.filter((report: any) => report.messageId === message.id)
@@ -2512,6 +2618,32 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       );
 
       await step(
+        'API · Seed level-gated feature fixture',
+        async () => {
+          const result = await request<any>('/api/dev/state', {
+            coins: 100_000,
+            shards: 100,
+            xp: 100_000,
+            level: 32,
+            lastRollAt: 0,
+          });
+          const written = recordValue(result.state);
+          if (Number(written.level) < 20) {
+            throw new Error('Level-gated API fixture write returned Level ' + written.level + ' instead of Level 20+.');
+          }
+          // Verify through the normal player-read path used by the feature gate,
+          // not just the admin mutation response. This catches saves that look
+          // correct in the admin response but were not available to game routes.
+          const state = recordValue(await request<any>('/api/me'));
+          if (Number(state.level) < 20 || Number(state.xp) < 100_000) {
+            throw new Error('Feature gate could not read the seeded state (level=' + state.level + ', xp=' + state.xp + ').');
+          }
+          return state;
+        },
+        state => 'coins=' + state.coins + ' · shards=' + state.shards + ' · xp=' + state.xp + ' · level=' + state.level,
+      );
+
+      await step(
         "API · Nested upgrade state mutation",
         async () => {
           const result = await request<any>('/api/dev/state', { coins: 1_000, upgrades: { luck: 7 } });
@@ -2579,17 +2711,24 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Collection state sanitizes zero and negative counts",
         async () => {
-          const result = await request<any>('/api/dev/state', { collection: { '2': 3, '3': 0, '4': -5, '5': 2 } });
-          const collection = recordValue(result.state?.collection);
-          if (Number(collection['2']) !== 3 || Number(collection['5']) !== 2) {
-            throw new Error('Valid collection counts were not preserved.');
+          // Player-state API responses intentionally strip the full collection payload;
+          // verify the persisted result through the paginated collection endpoint.
+          await request<any>('/api/dev/state', {
+            xp: 100_000,
+            collection: { '2': 3, '3': 0, '4': -5, '5': 2 },
+          });
+          const result = await request<any>('/api/collection?offset=0&limit=100&tier=all&sort=rarity_desc');
+          const items = Array.isArray(result.items) ? result.items as Array<{ rarity: number; count: number }> : [];
+          const count = (rarity: number) => Number(items.find(item => Number(item.rarity) === rarity)?.count ?? 0);
+          if (count(2) !== 3 || count(5) !== 2) {
+            throw new Error('Valid collection counts were not preserved by persisted collection endpoint (2=' + count(2) + ', 5=' + count(5) + ').');
           }
-          if (Number(collection['3'] ?? 0) !== 0 || Number(collection['4'] ?? 0) !== 0) {
-            throw new Error('Zero/negative collection counts were retained: 3=' + collection['3'] + ', 4=' + collection['4'] + '.');
+          if (count(3) !== 0 || count(4) !== 0) {
+            throw new Error('Zero/negative collection counts were retained (3=' + count(3) + ', 4=' + count(4) + ').');
           }
-          return collection;
+          return { two: count(2), five: count(5) };
         },
-        value => 'kept=' + Object.keys(value).join(','),
+        value => 'kept 2=' + value.two + ', 5=' + value.five + ' · zero/negative entries omitted',
       );
 
       await step(
@@ -2642,7 +2781,17 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Force-roll increments processed roll count",
         async () => {
-          await request<any>('/api/dev/state', { totalRolls: 100, currentRunRolls: 0 });
+          await request<any>('/api/dev/state', {
+            totalRolls: 100,
+            currentRunRolls: 0,
+            xp: 600,
+            level: 4,
+            levelXpFloor: 533,
+            upgrades: { multi: 0, clusterRoll: 0 },
+            prestigeUpgrades: { astralBarrage: 0, astralArsenal: 0 },
+            masterySkills: { celestialVolley: 0 },
+            activeBoosters: { fortune: 0, hyperdrive: 0, barrage: 0, prosperity: 0, ascension: 0 },
+          });
           const result = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
           if (Number(result.state?.totalRolls) !== 101 || Number(result.state?.currentRunRolls) !== 1) {
             throw new Error('Force-roll counters were not incremented.');
@@ -2655,7 +2804,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Force-roll persists collection entry",
         async () => {
-          await request<any>('/api/dev/state', { collection: {}, highestRarity: 0, collectionValue: 0 });
+          await request<any>('/api/dev/state', { xp: 600, level: 4, levelXpFloor: 533, collection: {}, highestRarity: 0, collectionValue: 0 });
           await request<any>('/api/dev/force-roll', { rarity: 777, randomValue: 0.999999 });
           const collection = await request<any>('/api/collection?offset=0&limit=100&tier=all&sort=rarity_desc');
           const item = Array.isArray(collection.items)
@@ -2692,7 +2841,16 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         "API · Offline claim consumes seeded rolls",
         async () => {
           await request<any>('/api/dev/offline-set', { amount: 3 });
-          await request<any>('/api/dev/state', { lastSeenAt: Date.now() });
+          await request<any>('/api/dev/state', {
+            lastSeenAt: Date.now(),
+            xp: 600,
+            level: 4,
+            levelXpFloor: 533,
+            upgrades: { multi: 0, clusterRoll: 0 },
+            prestigeUpgrades: { astralBarrage: 0, astralArsenal: 0 },
+            masterySkills: { celestialVolley: 0 },
+            activeBoosters: { fortune: 0, hyperdrive: 0, barrage: 0, prosperity: 0, ascension: 0 },
+          });
           const result = await request<any>('/api/offline/claim', {});
           if (Number(result.rollsProcessed) !== 3) throw new Error('Offline claim processed ' + result.rollsProcessed + ', expected 3.');
           if (Number(result.state?.offlineRolls) !== 0) throw new Error('Offline rolls were not consumed.');
@@ -3104,8 +3262,16 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           await request<any>('/api/dev/frenzy/reset', {});
           await request<any>('/api/dev/state', { coins: 100_000, shards: 50, lastFrenzyDate: '', lastFrenzyClaimDate: '' });
           const result = await request<any>('/api/dev/frenzy/start', { rarity: 250 });
-          if (!result.postId || !result.url || Number(result.orb?.rarity) !== 250) {
-            throw new Error('Admin Frenzy did not create the expected post/result.');
+          const orbRarity = Number(result.orb?.rarity ?? 0);
+          const returnedRarity = Number(result.rarity ?? 0);
+          // Critical hits may legitimately multiply the forced starting rarity.
+          if (!result.postId || !result.url || orbRarity < 250 || returnedRarity !== orbRarity) {
+            throw new Error(
+              'Admin Frenzy did not create the expected post/result: postId=' + Boolean(result.postId) +
+              ', url=' + Boolean(result.url) +
+              ', orbRarity=' + orbRarity +
+              ', returnedRarity=' + returnedRarity + '.'
+            );
           }
           return result;
         },
@@ -3559,9 +3725,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         </div>
         </details>
 
-        <details open className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
+        <details className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-slate-300">
-            <span>Controls & Simulation</span><span className="text-[10px] text-slate-600">Collapse</span>
+            <span>Controls & Simulation</span><span className="text-[10px] text-slate-600">Expand</span>
           </summary>
           <div className="mt-3 space-y-3">
 
@@ -4255,7 +4421,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               <RefreshCw className="inline w-3.5 h-3.5 mr-1" /> Refresh Player List
             </button>
           </div>
-          <p className="text-[10px] text-slate-500">Active means the account contacted the game within the last 30 seconds. Active players stay at the top.</p>
+          <p className="text-[10px] text-slate-500">Active means the account contacted the game within the last 90 seconds. Version badges compare the latest heartbeat with v{APP_VERSION}.</p>
           <div className="grid grid-cols-3 gap-2 mt-3">
             {[
               ['DAU', playerActivity.dailyActiveUsers, 'Last 24 hours'],
@@ -4277,6 +4443,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-mono text-slate-200 truncate">u/{player.username}</span>
                       {player.active && <span className="text-[9px] font-black uppercase text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-1.5 py-0.5">Active</span>}
+                      {player.isLatestVersion
+                        ? <span className="text-[9px] font-black text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-1.5 py-0.5">v{player.clientVersion} · Latest</span>
+                        : <span className="text-[9px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-full px-1.5 py-0.5">v{player.clientVersion ?? 'unknown'}</span>}
                     </div>
                     <div className="text-[10px] text-slate-500 mt-0.5">Level {player.level} · {formatNumber(player.totalRolls)} rolls · Playtime {formatPlaytime(player.playtimeMs)} · Best 1/{formatRarity(Math.max(1, player.highestRarity))}</div>
                   </div>
@@ -4349,7 +4518,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
 
               <div className="space-y-2">
                 {statSpy.stats.map(stat => (
-                  <details key={stat.id} open className="rounded-xl border border-slate-800 bg-slate-900/55 overflow-hidden">
+                  <details key={stat.id} className="rounded-xl border border-slate-800 bg-slate-900/55 overflow-hidden">
                     <summary className="cursor-pointer list-none px-3 py-2.5 flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-[11px] font-bold text-slate-200">{stat.label}</div>
@@ -4491,6 +4660,73 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             className="w-full min-h-72 max-h-[32rem] rounded-xl border border-slate-800 bg-black/40 p-3 text-[10px] leading-4 font-mono text-slate-300 resize-y"
             onFocus={e => e.currentTarget.select()}
           />
+        </section>
+
+        <section className={panelBase + ' border border-violet-500/30'}>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-violet-300">
+            <Users className="w-4 h-4" /> Admin Guild Authority
+          </div>
+          <p className="text-[10px] text-slate-500">
+            Override normal Guild membership permissions for u/shadow_fen. This moves the admin account into the selected Guild and demotes any previous owner to Officer if ownership is transferred.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+            <select
+              value={guildAuthorityGuildId}
+              onChange={e => setGuildAuthorityGuildId(e.target.value)}
+              className="min-w-0 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+              title="Select the Guild whose authority should be changed for u/shadow_fen."
+            >
+              <option value="">Select a Guild…</option>
+              {guildChatSpy.map(guild => (
+                <option key={guild.id} value={guild.id}>[{guild.tag}] {guild.name}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={loading || guildChatSpyLoading}
+              onClick={() => void loadGuildChatSpy()}
+              className={buttonBase + ' bg-violet-500/10 hover:bg-violet-500/20 border-violet-500/30 text-violet-200 px-3 py-2'}
+            >
+              <RefreshCw className="inline w-3.5 h-3.5 mr-1" /> Load Guilds
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={loading || !guildAuthorityGuildId}
+              onClick={() => void (async () => {
+                const result = await sendAdminAction('/api/dev/guild-authority', {
+                  guildId: guildAuthorityGuildId,
+                  authority: 'owner',
+                }, false, 'u/shadow_fen is now the Guild owner.');
+                if (result) {
+                  await Promise.all([loadGuildChatSpy(true), onRefresh()]);
+                }
+              })()}
+              className={buttonBase + ' bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-200 px-3 py-2'}
+            >
+              <Crown className="inline w-3.5 h-3.5 mr-1" /> Make u/shadow_fen Owner
+            </button>
+            <button
+              type="button"
+              disabled={loading || !guildAuthorityGuildId}
+              onClick={() => void (async () => {
+                const result = await sendAdminAction('/api/dev/guild-authority', {
+                  guildId: guildAuthorityGuildId,
+                  authority: 'trusted',
+                }, false, 'u/shadow_fen is now a trusted Guild member.');
+                if (result) {
+                  await Promise.all([loadGuildChatSpy(true), onRefresh()]);
+                }
+              })()}
+              className={buttonBase + ' bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-200 px-3 py-2'}
+            >
+              <UserCheck className="inline w-3.5 h-3.5 mr-1" /> Make Trusted Member
+            </button>
+          </div>
+          {guildChatSpy.length === 0 && (
+            <p className="text-[10px] text-slate-600">Load Guilds to populate the selector. This control is only available in the authenticated admin console.</p>
+          )}
         </section>
 
         <section className={panelBase + ' border border-amber-500/30'}>

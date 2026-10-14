@@ -3,6 +3,7 @@ import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutation
 import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
+import { APP_VERSION } from '../shared/version.js';
 import {
   createInitialState,
   type PlayerState,
@@ -21,6 +22,7 @@ import {
   upgradeCost,
   prestigeUpgradeCost,
   calculatePrestigeDust,
+  addCollectionValue,
   offlineRollCap,
   getOrbInfo,
   formatRarity,
@@ -74,6 +76,11 @@ import {
   masterySkillCost,
   getLevelBenefits,
   highestCodexChain,
+  aftershockCriticalLuckBonus,
+  recordRollingSessionActivity,
+  nextCodexChainRarity,
+  chainPatcherShardCost,
+  CHAIN_PATCHER_COOLDOWN_MS,
   codexDevotionLuckPercent,
   altarCoinDevotionChancePercent,
   altarCoinFloor,
@@ -81,8 +88,8 @@ import {
 } from '../shared/game.js';
 import {
   recordLeaderboard,
-  getPlayerGuildPerks,
-  getPlayerGuildCombo,
+  getPlayerGuildContext,
+  withGuildDataMutationLock,
   prepareGuildRollEffects,
   prepareCommunityRolls,
   getCommunityEvent,
@@ -100,10 +107,13 @@ interface SaveExtraWrite {
   expiration?: Date;
   // Optional projections must never prevent the primary player mutation from saving.
   optional?: boolean;
+  /** For a Guild write conflict, refund withheld tax and skip only the Guild projection. */
+  onConflict?: () => void | Promise<void>;
 }
 
 type SavePostCommitAction = () => Promise<void>;
 
+const playerGuildScopes = new WeakMap<PlayerState, string | null>();
 const pendingSaveExtraWrites = new WeakMap<PlayerState, SaveExtraWrite[]>();
 const pendingSavePostCommitActions = new WeakMap<PlayerState, SavePostCommitAction[]>();
 
@@ -123,7 +133,20 @@ function stageSaveExtraWrite(s: PlayerState, write: SaveExtraWrite): void {
     throw new Error(`Conflicting staged versions for ${write.key}.`);
   }
   const merged = [...existing];
-  merged[index] = { ...write, expectedValue: previous.expectedValue };
+  const previousConflictHandler = previous.onConflict;
+  const nextConflictHandler = write.onConflict;
+  merged[index] = {
+    ...write,
+    expectedValue: previous.expectedValue,
+    ...(previousConflictHandler || nextConflictHandler
+      ? {
+          onConflict: async () => {
+            await previousConflictHandler?.();
+            await nextConflictHandler?.();
+          },
+        }
+      : {}),
+  };
   pendingSaveExtraWrites.set(s, merged);
 }
 
@@ -138,6 +161,7 @@ async function clearOfflineReminderKeyIfUnchanged(
 ): Promise<boolean> {
   if (expectedValue == null) return false;
   const expected = String(expectedValue);
+  const isNotificationMarker = keyName.startsWith(OFFLINE_FULL_NOTIFICATION_PREFIX);
 
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const txn = await redis.watch(keyName);
@@ -147,10 +171,37 @@ async function clearOfflineReminderKeyIfUnchanged(
       return false;
     }
 
+    if (isNotificationMarker) {
+      const marker = String(current);
+      const now = Date.now();
+      const phase = parseOfflineFullNotificationAttemptMarker(marker);
+      const legacyPendingStartedAt = offlineLegacyPendingMarkerStartedAt(marker, now);
+      const sendingLeaseExpired =
+        phase?.phase === 'sending' &&
+        now - phase.startedAt >= OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000;
+      const legacyPendingLeaseExpired =
+        legacyPendingStartedAt !== null &&
+        now - legacyPendingStartedAt >= OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000;
+
+      // A claim can cancel a pre-send reservation: the sender must still win
+      // the exact-token CAS before calling the provider. Do not remove a sending
+      // or legacy pending marker during its ambiguity lease, or a later call
+      // could duplicate a notification that was already accepted externally.
+      if (
+        marker !== '' &&
+        marker !== '1' &&
+        phase?.phase !== 'reserved' &&
+        !sendingLeaseExpired &&
+        !legacyPendingLeaseExpired
+      ) {
+        await txn.unwatch();
+        return false;
+      }
+    }
+
     await txn.multi();
-    // Empty string is treated as absent by the existing truthiness checks,
-    // while WATCH/MULTI makes the compare-and-clear safe against a newer job.
-    await txn.set(keyName, '');
+    // Delete the key. An empty-valued Redis key still blocks SET NX.
+    await txn.del(keyName);
     if (await txn.exec() !== null) return true;
   }
   return false;
@@ -193,6 +244,8 @@ const GLOBAL_BOOSTER_ANNOUNCEMENT_KEY = 'io:global-booster-announcement';
 const OFFLINE_FULL_NOTIFICATION_PREFIX = 'io:offline-full-notified:';
 const OFFLINE_FULL_JOB_PREFIX = 'io:offline-full-job:';
 const OFFLINE_FULL_RETRY_MS = 5 * 60_000;
+const OFFLINE_FULL_RESERVATION_TTL_MS = 60_000;
+const OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS = 7 * 24 * 60 * 60_000;
 const PLAYER_FLAIR_KEY_PREFIX = 'io:player-flair:';
 const ROLL_TICKET_KEY_PREFIX = 'io:roll-ticket:';
 const ROLL_TICKET_COUNT = 30;
@@ -921,6 +974,7 @@ export async function unbanGameUser(userId: string): Promise<boolean> {
   });
 }
 const ONLINE_WINDOW_MS = 3 * 60_000;
+const PLAYER_ACTIVE_WINDOW_MS = 90_000;
 
 async function updateCcuPeak(keyName: string, ccu: number): Promise<void> {
   const candidate = Math.max(0, Math.floor(Number(ccu) || 0));
@@ -954,21 +1008,26 @@ async function recordCcuPeak(ccu: number, now: number): Promise<void> {
   await updateCcuPeak(CCU_ALL_TIME_KEY, ccu);
 }
 
-async function touchOnlinePresence(): Promise<number> {
-  const userId = context.userId;
-  if (!userId) return 1;
-  const now = Date.now();
-  await redis.zAdd(ONLINE_PLAYERS_KEY, { member: userId, score: now });
+async function readOnlinePresenceCount(now = Date.now()): Promise<number> {
+  // Polling only prunes stale IDs. It doesn't keep every polling tab marked online.
   await redis.zRemRangeByScore(ONLINE_PLAYERS_KEY, 0, now - ONLINE_WINDOW_MS);
-  const ccu = Math.max(1, await redis.zCard(ONLINE_PLAYERS_KEY));
+  const ccu = Math.max(0, await redis.zCard(ONLINE_PLAYERS_KEY));
   void recordCcuPeak(ccu, now).catch(error => {
     console.error('Failed to record CCU peak:', error);
   });
   return ccu;
 }
 
+async function touchOnlinePresence(): Promise<number> {
+  const userId = String(context.userId ?? '').trim();
+  if (!userId) return readOnlinePresenceCount();
+  const now = Date.now();
+  await redis.zAdd(ONLINE_PLAYERS_KEY, { member: userId, score: now });
+  return readOnlinePresenceCount(now);
+}
+
 export async function getOnlinePlayers(): Promise<number> {
-  return touchOnlinePresence();
+  return readOnlinePresenceCount();
 }
 
 export async function sendPushNotificationTest(): Promise<void> {
@@ -1053,6 +1112,7 @@ const FRENZY_POST_PREFIX = 'io:frenzy:post:';
 const FRENZY_POST_RECEIPT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const FRENZY_HANDOFF_PREFIX = 'io:frenzy:handoff:';
 const FRENZY_HANDOFF_TTL_MS = 60_000;
+const FRENZY_THANK_YOU_PREFIX = 'io:frenzy:thank-you:';
 
 function frenzyHandoffKey(userId: string): string {
   return FRENZY_HANDOFF_PREFIX + userId;
@@ -1386,6 +1446,8 @@ interface PlayerRegistryEntry {
   lastLoginAt?: number;
   lastActivityAt?: number;
   playtimeMs?: number;
+  clientVersion?: string;
+  clientVersionAt?: number;
 }
 
 function parsePlayerRegistryEntryForMutation(raw: unknown, now: number): Partial<PlayerRegistryEntry> {
@@ -1413,29 +1475,36 @@ function parsePlayerRegistryEntryForMutation(raw: unknown, now: number): Partial
   return record as Partial<PlayerRegistryEntry>;
 }
 
-async function touchPlayerActivity(userId: string, username: string, now = Date.now()): Promise<number> {
+async function touchPlayerActivity(
+  userId: string,
+  username: string,
+  now = Date.now(),
+  reportedClientVersion?: string,
+): Promise<number> {
   const lockIdentity = `activity:${userId}`;
   return withPlayerMutationLockFor(lockIdentity, async () => {
     const activityNow = Math.max(now, Date.now());
     const activeLock = getActivePlayerMutationLock(lockIdentity);
     if (!activeLock) throw new Error('PLAYER_MUTATION_LEASE_LOST');
 
-    // WATCH the whole hash because every user's registry entry shares one Redis
-    // key. A write from another activity callback invalidates our snapshot and
-    // forces a recompute instead of losing a newer playtime total.
+    // This lease serializes activity updates for this user across runtimes.
+    // Watch only the per-user lease, not the shared registry hash: HSET changes
+    // one field atomically, so unrelated players must not invalidate this write.
     for (let attempt = 0; attempt < 16; attempt += 1) {
-      const txn = await redis.watch(PLAYER_REGISTRY_KEY, activeLock.key);
+      const txn = await redis.watch(activeLock.key);
+      let transactionClosed = false;
+      try {
       if (await redis.get(activeLock.key) !== activeLock.token) {
         await txn.unwatch();
         throw new Error('PLAYER_MUTATION_LEASE_LOST');
       }
 
       const existingRaw = await redis.hGet(PLAYER_REGISTRY_KEY, userId);
+      let existing: Partial<PlayerRegistryEntry> | null = null;
       let firstSeenAt = activityNow;
       let lastLoginAt = activityNow;
       let playtimeMs = 0;
       if (existingRaw != null) {
-        let existing: Partial<PlayerRegistryEntry>;
         try {
           existing = parsePlayerRegistryEntryForMutation(existingRaw, activityNow);
         } catch (error) {
@@ -1464,6 +1533,12 @@ async function touchPlayerActivity(userId: string, username: string, now = Date.
         }
       }
 
+      const clientVersion =
+        reportedClientVersion ??
+        (typeof existing?.clientVersion === 'string' ? existing.clientVersion.slice(0, 32) : undefined);
+      const clientVersionAt = reportedClientVersion !== undefined
+        ? activityNow
+        : validPastTimestamp(existing?.clientVersionAt, activityNow);
       const next = JSON.stringify({
         username: String(username).trim().slice(0, 100),
         firstSeenAt,
@@ -1471,10 +1546,19 @@ async function touchPlayerActivity(userId: string, username: string, now = Date.
         lastLoginAt,
         lastActivityAt: activityNow,
         playtimeMs,
+        ...(clientVersion ? { clientVersion } : {}),
+        ...(clientVersionAt > 0 ? { clientVersionAt } : {}),
       } satisfies PlayerRegistryEntry);
       await txn.multi();
       await txn.hSet(PLAYER_REGISTRY_KEY, { [userId]: next });
-      if (await txn.exec() !== null) return playtimeMs;
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) return playtimeMs;
+      } finally {
+        if (!transactionClosed) {
+          await txn.unwatch().catch(() => undefined);
+        }
+      }
     }
     throw new Error('Player activity changed repeatedly while recording playtime. Please retry.');
   });
@@ -1484,10 +1568,22 @@ async function registerPlayer(userId: string, username: string): Promise<void> {
   await touchPlayerActivity(userId, username);
 }
 
-export async function recordPlayerHeartbeat(): Promise<{ playtimeMs: number }> {
+export async function recordPlayerHeartbeat(reportedVersion?: unknown): Promise<{
+  playtimeMs: number;
+  onlinePlayers: number;
+  clientVersion: string;
+  isLatestVersion: boolean;
+}> {
   const userId = currentUserId();
   const username = String(context.username ?? `reddit-user-${userId.slice(-8)}`);
-  return { playtimeMs: await touchPlayerActivity(userId, username) };
+  // A cached client that doesn't send a version must not retain an old "latest" badge.
+  const clientVersion = typeof reportedVersion === 'string' &&
+    /^[0-9A-Za-z.+-]{1,32}$/.test(reportedVersion)
+    ? reportedVersion
+    : 'unknown';
+  const playtimeMs = await touchPlayerActivity(userId, username, Date.now(), clientVersion);
+  const onlinePlayers = await touchOnlinePresence();
+  return { playtimeMs, onlinePlayers, clientVersion, isLatestVersion: clientVersion === APP_VERSION };
 }
 
 export interface PlayerListEntry {
@@ -1503,6 +1599,8 @@ export interface PlayerListEntry {
   highestRarity: number;
   coins: number;
   shards: number;
+  clientVersion: string | null;
+  isLatestVersion: boolean;
 }
 
 export async function listPlayers(): Promise<PlayerListEntry[]> {
@@ -1525,7 +1623,7 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
       username: String(registry.username ?? save?.username ?? ('user-' + userId.slice(-8))).trim().slice(0, 100),
       firstSeenAt: validPastTimestamp(registry.firstSeenAt, now),
       lastSeenAt,
-      active: lastSeenAt >= now - ONLINE_WINDOW_MS,
+      active: lastSeenAt >= now - PLAYER_ACTIVE_WINDOW_MS,
       level: Math.max(1, Number(save?.level ?? 1) || 1),
       xp: Math.max(0, Number(save?.xp ?? 0) || 0),
       playtimeMs: Math.max(0, Number(registry.playtimeMs ?? 0) || 0),
@@ -1533,6 +1631,13 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
       highestRarity: Math.max(0, Number(save?.highestRarity ?? 0) || 0),
       coins: Math.max(0, Number(save?.coins ?? 0) || 0),
       shards: Math.max(0, Number(save?.shards ?? 0) || 0),
+      clientVersion: typeof registry.clientVersion === 'string' &&
+        /^[0-9A-Za-z.+-]{1,32}$/.test(registry.clientVersion)
+        ? registry.clientVersion
+        : null,
+      isLatestVersion: typeof registry.clientVersion === 'string' &&
+        registry.clientVersion === APP_VERSION &&
+        validPastTimestamp(registry.clientVersionAt, now) > now - 45_000,
     } satisfies PlayerListEntry;
   });
   players.sort((a, b) => Number(b.active) - Number(a.active) || b.lastSeenAt - a.lastSeenAt || a.username.localeCompare(b.username));
@@ -1609,7 +1714,7 @@ function normalizeLevelRecord<T extends object>(
   defaults: T,
   limits: Record<string, number>,
 ): T {
-  const normalized: Record<string, unknown> = { ...defaults };
+  const normalized: Record<string, unknown> = Object.fromEntries(Object.entries(defaults));
   if (isRecordObject(value)) {
     for (const key of Object.keys(normalized)) {
       const candidate = value[key];
@@ -1750,17 +1855,18 @@ function parsePaymentPlayerState(raw: unknown): PlayerState {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) break;
 
     const record = parsed as Record<string, unknown>;
+    // A wrapper can contain incidental familiar keys alongside a nested save.
+    // Only validate a record as a PlayerState when all required core fields exist.
     const looksLikePlayerState =
-      'coins' in record ||
-      'shards' in record ||
-      'totalRolls' in record ||
-      'username' in record ||
-      'saveGeneration' in record ||
-      'upgrades' in record ||
-      'collection' in record ||
-      'paymentReceipts' in record;
+      'coins' in record &&
+      'shards' in record &&
+      'totalRolls' in record;
 
     if (looksLikePlayerState) {
+      const validatedState = parsePlayerStateValue(record);
+      if (!validatedState) {
+        throw new Error('Saved player data could not be read; the purchase was not applied.');
+      }
       const base = createInitialState();
       const upgrades = record.upgrades && typeof record.upgrades === 'object' && !Array.isArray(record.upgrades)
         ? record.upgrades as Record<string, unknown>
@@ -1780,7 +1886,7 @@ function parsePaymentPlayerState(raw: unknown): PlayerState {
 
       return {
         ...base,
-        ...record,
+        ...validatedState,
         shards: normalizedWalletShards,
         purchasedShards: normalizedPurchasedShards,
         purchasedShardLots: normalizeEntitlementLots(
@@ -1964,6 +2070,13 @@ return withPlayerMutationLockFor(userId, async () => {
       throw new Error('Global Booster credit balance has reached its supported storage limit; use credits before reconciling this purchase.');
     }
 
+    // Refuse before touching entitlement lots or the receipt: revisions must never wrap.
+    const currentRevision = normalizeSafeInteger(state.stateRevision, 0);
+    if (currentRevision >= Number.MAX_SAFE_INTEGER) {
+      await txn.unwatch();
+      throw new Error('Player state revision is exhausted; no purchase was applied.');
+    }
+
     const existingPurchasedShards = Math.min(
       normalizeSafeInteger(state.purchasedShards, 0),
       currentShardBalance,
@@ -1988,7 +2101,7 @@ return withPlayerMutationLockFor(userId, async () => {
     state.globalBoosterCreditLots[orderId] =
       normalizeSafeInteger(state.globalBoosterCreditLots[orderId], 0) + pack.globalBoosterCredits;
 
-    state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
+    state.stateRevision = currentRevision + 1;
     state.shards = currentShardBalance + pack.shards;
     state.purchasedShards = existingPurchasedShards + pack.shards;
     // Lifetime Shards are telemetry, not a spendable balance. Saturate the
@@ -2161,18 +2274,26 @@ export async function loadRaw(): Promise<PlayerState> {
   const raw = await redis.get(playerKey);
   const username = context.username ?? `reddit-user-${userId.slice(-8)}`;
   await registerPlayer(userId, username);
-  const [perks, guildCombo, globalBoosters, dailyStreakCommunity] = await Promise.all([
-    getPlayerGuildPerks(username, userId),
-    getPlayerGuildCombo(username, userId),
+  const [guildContext, globalBoosters, dailyStreakCommunity] = await Promise.all([
+    getPlayerGuildContext(username, userId).catch(error => {
+      console.error('[Guild] Context read failed; using zeroed modifiers until Guild data is repaired.', error);
+      return {
+        guildId: null,
+        perks: {
+          luckRank: 0, speedRank: 0, vaultRank: 0, shardRank: 0, critRank: 0,
+          coinRank: 0, memberCapacityRank: 0, tokenYieldRank: 0, taskBountyRank: 0,
+          comboRank: 0, guildXpRank: 0,
+        },
+        combo: createInitialState().guildCombo!,
+      };
+    }),
     getGlobalBoosters(),
     getDailyStreakCommunity().catch(error => {
-      // A corrupt shared event should not brick ordinary gameplay. This is a
-      // display-only fallback; reward/progress mutations still read and validate
-      // the durable event and will fail closed until it is repaired.
       console.error('[Daily Streak] Shared event read failed; using display-only defaults.', error);
       return createInitialState().dailyStreakCommunity!;
     }),
   ]);
+  const { perks, combo: guildCombo, guildId } = guildContext;
 
 
   if (raw == null) {
@@ -2186,6 +2307,7 @@ export async function loadRaw(): Promise<PlayerState> {
     s.guildCombo = guildCombo;
     s.globalBoosters = globalBoosters;
     s.dailyStreakCommunity = dailyStreakCommunity;
+    playerGuildScopes.set(s, guildId);
 
     return s;
   }
@@ -2207,6 +2329,7 @@ export async function loadRaw(): Promise<PlayerState> {
     fresh.guildCombo = guildCombo;
     fresh.globalBoosters = globalBoosters;
     fresh.dailyStreakCommunity = dailyStreakCommunity;
+    playerGuildScopes.set(fresh, guildId);
 
     return fresh;
   }
@@ -2265,7 +2388,7 @@ export async function loadRaw(): Promise<PlayerState> {
       ? parsedXp
       : totalXpRequiredBeforeLevel(parsedLevel);
 
-  return {
+  const restored: PlayerState = {
     ...base,
     ...cleanParsed,
     coins: finiteNonNegativeInteger(parsed.coins),
@@ -2295,6 +2418,10 @@ export async function loadRaw(): Promise<PlayerState> {
     totalCrits: finiteNonNegativeInteger(parsed.totalCrits, base.totalCrits),
     lifetimeShards: finiteNonNegativeInteger(parsed.lifetimeShards, base.lifetimeShards),
     rollsSinceBest: finiteNonNegativeInteger(parsed.rollsSinceBest, base.rollsSinceBest),
+    aftershockRecord: finiteNonNegativeInteger(parsed.aftershockRecord, base.aftershockRecord ?? 0),
+    rollingSessionStartedAt: finiteNonNegativeInteger(parsed.rollingSessionStartedAt, base.rollingSessionStartedAt ?? 0),
+    rollingSessionLastRollAt: finiteNonNegativeInteger(parsed.rollingSessionLastRollAt, base.rollingSessionLastRollAt ?? 0),
+    longestRollingSessionMs: finiteNonNegativeInteger(parsed.longestRollingSessionMs, base.longestRollingSessionMs ?? 0),
     highestDryStreak: finiteNonNegativeInteger(parsed.highestDryStreak, base.highestDryStreak ?? 0),
     freeRolls: finiteNonNegativeInteger(parsed.freeRolls, base.freeRolls ?? 0),
     currentRunRolls: finiteNonNegativeInteger(parsed.currentRunRolls, base.currentRunRolls ?? 0),
@@ -2331,6 +2458,8 @@ export async function loadRaw(): Promise<PlayerState> {
     globalBoosters,
     dailyStreakCommunity,
   };
+  playerGuildScopes.set(restored, guildId);
+  return restored;
 }
 
 function applyXp(s: PlayerState, amount: number): void {
@@ -2624,6 +2753,8 @@ export async function getRollTicket(): Promise<{
 
   for (let attempt = 0; attempt < 4; attempt++) {
     const txn = await redis.watch(ticketKey);
+    let transactionClosed = false;
+    try {
     const raw = await redis.get(ticketKey);
     const current = parseStoredJson<RollTicket>(raw);
 
@@ -2639,6 +2770,7 @@ export async function getRollTicket(): Promise<{
       current.expiresAt > now
     ) {
       await txn.unwatch();
+      transactionClosed = true;
       return {
         ticketId: current.id,
         nextIndex: current.nextIndex,
@@ -2656,6 +2788,7 @@ export async function getRollTicket(): Promise<{
     await txn.multi();
     await txn.set(ticketKey, JSON.stringify(ticket));
     const committed = await txn.exec();
+    transactionClosed = true;
     if (committed !== null) {
       return {
         ticketId: ticket.id,
@@ -2663,6 +2796,11 @@ export async function getRollTicket(): Promise<{
         rollsRemaining: ROLL_TICKET_COUNT,
         expiresAt: ticket.expiresAt,
       };
+    }
+    } finally {
+      if (!transactionClosed) {
+        await txn.unwatch().catch(() => undefined);
+      }
     }
   }
 
@@ -2694,6 +2832,37 @@ async function loadRollTicketForUse(
   return { ticket, raw };
 }
 
+async function commitOptionalSaveProjection(write: SaveExtraWrite): Promise<void> {
+  const txn = await redis.watch(write.key);
+  let transactionClosed = false;
+  try {
+    const current = await redis.get(write.key);
+    const actual = current == null ? null : String(current);
+    if (actual !== write.expectedValue) {
+      await txn.unwatch();
+      transactionClosed = true;
+      console.error('[Player Save] Optional projection changed; skipped without affecting player state.', write.key);
+      return;
+    }
+
+    await txn.multi();
+    if (write.expiration) {
+      await txn.set(write.key, write.nextValue, { expiration: write.expiration });
+    } else {
+      await txn.set(write.key, write.nextValue);
+    }
+    const committed = await txn.exec();
+    transactionClosed = true;
+    if (committed === null) {
+      console.error('[Player Save] Optional projection conflicted at commit; skipped without affecting player state.', write.key);
+    }
+  } finally {
+    if (!transactionClosed) {
+      await txn.unwatch().catch(() => undefined);
+    }
+  }
+}
+
 export async function save(
   s: PlayerState,
   extraWrite?: SaveExtraWrite | SaveExtraWrite[],
@@ -2719,16 +2888,21 @@ export async function save(
   const explicitWrites = extraWrite
     ? Array.isArray(extraWrite) ? extraWrite : [extraWrite]
     : [];
-  const extraWrites = [
+  const allExtraWrites = [
     ...(pendingSaveExtraWrites.get(s) ?? []),
     ...explicitWrites,
   ];
-  const writeKeys = extraWrites.map(write => write.key);
+  // Optional side projections (for example shared World Event progress) are
+  // best-effort. Keeping them out of the player transaction prevents unrelated
+  // players from invalidating a critical balance/progression save.
+  const extraWrites = allExtraWrites.filter(write => !write.optional);
+  const optionalWrites = allExtraWrites.filter(write => write.optional);
+  const writeKeys = allExtraWrites.map(write => write.key);
   if (
     new Set(writeKeys).size !== writeKeys.length ||
     writeKeys.includes(key()) ||
     writeKeys.includes(saveGenerationKeyFor(userId)) ||
-    extraWrites.some(write =>
+    allExtraWrites.some(write =>
       write.expiration !== undefined &&
       (!(write.expiration instanceof Date) || !Number.isFinite(write.expiration.getTime()) || write.expiration.getTime() <= Date.now())
     )
@@ -2775,6 +2949,8 @@ export async function save(
       ...activeLocks.map(item => item.key),
     ])];
     const txn = await redis.watch(...watchedKeys);
+    let transactionClosed = false;
+    try {
     // Devvit's TxClient is a command builder after WATCH/MULTI. Reads must use
     // the Redis client itself, while WATCH keeps these keys protected until EXEC.
     for (const activeLock of activeLocks) {
@@ -2788,31 +2964,27 @@ export async function save(
     const generationRaw = await redis.get(generationKey);
     const extraRaws = await Promise.all(extraWrites.map(write => redis.get(write.key)));
 
-    let optionalProjectionConflict = false;
+    let droppedConflictingProjection = false;
     for (let index = 0; index < extraWrites.length; index += 1) {
       const write = extraWrites[index];
       const actual = extraRaws[index] == null ? null : String(extraRaws[index]);
       if (actual !== write.expectedValue) {
         await txn.unwatch();
-        if (write.optional) {
-          // A watched optional projection can change between prepare and save.
-          // Drop only that projection and retry the primary player write without
-          // it; never overwrite the newer shared record or reject a valid roll.
+        if (write.onConflict) {
+          await write.onConflict();
           extraWrites.splice(index, 1);
-          const pending = pendingSaveExtraWrites.get(s);
-          if (pending) {
-            const remaining = pending.filter(item => item.key !== write.key);
-            if (remaining.length) pendingSaveExtraWrites.set(s, remaining);
-            else pendingSaveExtraWrites.delete(s);
-          }
-          console.error('[Player Save] Optional side projection changed before commit; saving player state without it.', write.key);
-          optionalProjectionConflict = true;
+          const pending = pendingSaveExtraWrites.get(s) ?? [];
+          const remaining = pending.filter(item => item.key !== write.key);
+          if (remaining.length) pendingSaveExtraWrites.set(s, remaining);
+          else pendingSaveExtraWrites.delete(s);
+          console.warn('[Guild] Shared data changed during a roll; refunded withheld Coins and skipped only the Guild projection.');
+          droppedConflictingProjection = true;
           break;
         }
         throw new Error(write.conflictMessage ?? 'Shared state changed before the player save. Please retry.');
       }
     }
-    if (optionalProjectionConflict) continue;
+    if (droppedConflictingProjection) continue;
 
     const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
     const stateGeneration = Math.max(0, Math.floor(Number(s.saveGeneration ?? 0)));
@@ -2913,9 +3085,19 @@ export async function save(
       }
     }
     const committed = await txn.exec();
+    transactionClosed = true;
     if (committed !== null) {
       pendingSaveExtraWrites.delete(s);
       Object.assign(s, nextState);
+
+      // Optional projections are deliberately outside the authoritative player
+      // transaction. They can lag briefly or be skipped on conflicts, but they
+      // can never invalidate a committed balance/progression update.
+      for (const write of optionalWrites) {
+        void commitOptionalSaveProjection(write).catch(error => {
+          console.error('[Player Save] Optional post-commit projection failed:', write.key, error);
+        });
+      }
 
       // Run deferred external side effects only after the durable player state
       // has committed. Failures are logged and do not turn a successful reward
@@ -2946,6 +3128,13 @@ export async function save(
       incomingState: compactSaveState(s),
       caller: saveCaller(),
     }, userId);
+    } finally {
+      // WATCH must be released even when a Redis read, validation, queued write,
+      // or EXEC throws. This is deliberately best-effort after explicit UNWATCH.
+      if (!transactionClosed) {
+        await txn.unwatch().catch(() => undefined);
+      }
+    }
   }
 
   throw new Error('Could not safely save player data. Please retry.');
@@ -3087,7 +3276,8 @@ function effectiveRollCritChance(
     (s.masterySkills?.critMastery ?? 0) * 0.03 +
     (s.guildPerks?.critRank ?? 0) * 0.015 +
     globalBoosterCritChanceBonus(globalBoosters?.crit) +
-    guildComboCritChanceBonus(s.guildCombo),
+    guildComboCritChanceBonus(s.guildCombo) +
+    aftershockCriticalLuckBonus(s.aftershockRecord),
   );
 }
 
@@ -3098,6 +3288,7 @@ export async function applyRolls(
   source: 'online' | 'offline' = 'online',
   rollCountOverride?: number,
   randomOverride?: () => number,
+  exactRarity = false,
 ): Promise<{ bestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number; rollCount: number }> {
   let bestRarity = 0;
   let bestIsCrit = false;
@@ -3205,7 +3396,10 @@ export async function applyRolls(
     // guarantee is the exact advertised range.
     const isGuaranteedThirdBall = forcedRarity == null && lifetimeRollsBeforeBatch + i === 2;
 
-    const isCrit = !isGuaranteedThirdBall && rng() < effectiveCritChance;
+    // Chain Patcher guarantees the exact requested rarity, not a critical multiplier.
+    const isCrit = !isGuaranteedThirdBall &&
+      !(exactRarity && forcedRarity != null && i === 0) &&
+      rng() < effectiveCritChance;
     let effectiveCm = cm;
     if (isCrit) {
       s.totalCrits = (s.totalCrits ?? 0) + 1;
@@ -3225,7 +3419,9 @@ export async function applyRolls(
       : (forcedRarity && i === 0)
         ? forcedRarity
         : Math.max(minimumRarity, rollContinuum(effectiveLuck, rng));
-    const baseRarity = Math.max(minimumRarity, rolledRarity);
+    const baseRarity = exactRarity && forcedRarity != null && i === 0
+      ? forcedRarity
+      : Math.max(minimumRarity, rolledRarity);
     const rarity = isCrit ? Math.min(MAX_ORB_RARITY, Math.round(baseRarity * effectiveCm)) : baseRarity;
     const finalVal = Math.round(rarity * valueMul);
 
@@ -3233,14 +3429,23 @@ export async function applyRolls(
     rarities.push(rarity);
     s.totalRolls++;
     s.currentRunRolls = (s.currentRunRolls ?? 0) + 1;
-    s.collectionValue = (s.collectionValue ?? 0) + finalVal;
-    s.lifetimeCollectionValue = (s.lifetimeCollectionValue ?? 0) + finalVal;
+    s.collectionValue = addCollectionValue(s.collectionValue, finalVal);
+    s.lifetimeCollectionValue = addCollectionValue(s.lifetimeCollectionValue, finalVal);
 
     const isNew = !s.collection[String(rarity)];
     if (isNew) uniqueGained++;
     s.collection[String(rarity)] = (s.collection[String(rarity)] ?? 0) + 1;
 
     if (rarity > s.highestRarity) {
+      // The rolls since the previous record become an Aftershock candidate
+      // only when a strictly rarer all-time orb finally appears.
+      if (s.highestRarity > 0) {
+        const previousDryRolls = Math.max(0, Math.floor(Number(s.rollsSinceBest ?? 0) || 0));
+        s.aftershockRecord = Math.max(
+          Math.max(0, Math.floor(Number(s.aftershockRecord ?? 0) || 0)),
+          previousDryRolls,
+        );
+      }
       s.highestRarity = rarity;
       s.rollsSinceBest = 0;
     } else {
@@ -3342,14 +3547,30 @@ export async function applyRolls(
   }
 
   const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
-  const guildEffects = await prepareGuildRollEffects(
-    coinsGained,
-    totalVal,
-    rollCount,
-    bestRarity,
-    pendingGuildWrite,
-  );
-  if (guildEffects.extraWrite) stageSaveExtraWrite(s, guildEffects.extraWrite);
+  let guildEffects: Awaited<ReturnType<typeof prepareGuildRollEffects>>;
+  try {
+    guildEffects = await prepareGuildRollEffects(
+      coinsGained,
+      totalVal,
+      rollCount,
+      bestRarity,
+      pendingGuildWrite,
+    );
+  } catch (error) {
+    // Guild taxes and contribution are optional projections, not a dependency
+    // for paying out a valid roll. Preserve corrupt shared Guild data, skip its
+    // effects for this batch, and allow the player's durable roll to complete.
+    console.error('[Guild] Could not prepare roll effects; skipping Guild tax/contribution for this batch.', error);
+    guildEffects = { taxedCoins: 0 };
+  }
+  if (guildEffects.extraWrite) {
+    stageSaveExtraWrite(s, {
+      ...guildEffects.extraWrite,
+      onConflict: () => {
+        if (guildEffects.taxedCoins > 0) addCoins(s, guildEffects.taxedCoins);
+      },
+    });
+  }
   coinsGained = Math.max(0, coinsGained - guildEffects.taxedCoins);
   coinsGained = addCoins(s, coinsGained);
   shardsGained = grantRollShards(s, shardsGained);
@@ -3362,6 +3583,11 @@ export async function applyRolls(
   // Rich EXP Level Progression. Normal roll activations deliberately advance
   // at most one level at a time, while applyXp/quest rewards can catch up safely.
   applyLevelProgress(s, 1);
+
+  // Count only successfully processed online roll batches as an active session;
+  // offline-vault rolls don't fabricate a continuous play session.
+  if (source === 'online' && rollCount > 0) recordRollingSessionActivity(s, now);
+
   // Coin earnings and their lifetime statistic are capped independently at the safe-integer ceiling.
 
   // Singularity Tithe pays +1 Cosmic Dust per 200 processed rolls per level.
@@ -3372,15 +3598,6 @@ export async function applyRolls(
     s.singularityTitheSingleRolls = before + rollCount;
     const dustEarned = singularityTitheDustForRolls(before, rollCount, titheLevel);
     if (dustEarned > 0) s.cosmicDust = (s.cosmicDust ?? 0) + dustEarned;
-  }
-
-  // Mastery Engine: permanent Mastery Point income from sustained rolling.
-  const masteryEngineLevel = s.prestigeUpgrades?.masteryEngine ?? 0;
-  if (masteryEngineLevel > 0) {
-    const interval = Math.max(1, Math.floor(100 / masteryEngineLevel));
-    const before = Math.floor((s.totalRolls - rollCount) / interval);
-    const after = Math.floor(s.totalRolls / interval);
-    if (after > before) s.masteryPoints = (s.masteryPoints ?? 0) + (after - before);
   }
 
   // Celestial Auto-Buyer Prestige Upgrade: auto-buy cheapest affordable upgrade
@@ -3483,45 +3700,166 @@ export async function applyRolls(
 
 async function commitOfflineNotificationMarkerIfUnchanged(
   keyName: string,
-  pendingToken: string,
+  ownedToken: string,
 ): Promise<boolean> {
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const txn = await redis.watch(keyName);
-    const current = await redis.get(keyName);
-    if (current == null || String(current) !== pendingToken) {
+    try {
+      const current = await redis.get(keyName);
+      if (current == null || String(current) !== ownedToken) {
+        await txn.unwatch();
+        return false;
+      }
+      await txn.multi();
+      await txn.set(keyName, '1');
+      if (await txn.exec() !== null) return true;
+    } catch (error) {
+      await txn.unwatch().catch(() => undefined);
+      throw error;
+    }
+  }
+  return false;
+}
+
+function parseOfflineFullNotificationAttemptMarker(
+  raw: unknown,
+): { phase: 'reserved' | 'sending'; startedAt: number } | null {
+  if (typeof raw !== 'string') return null;
+  const match = raw.match(/^(reserved-v2|sending-v2):([0-9a-z]+):([a-z0-9-]+)$/);
+  if (!match) return null;
+  const startedAt = Number.parseInt(match[2], 36);
+  if (!Number.isSafeInteger(startedAt) || startedAt < 0) return null;
+  return {
+    phase: match[1] === 'reserved-v2' ? 'reserved' : 'sending',
+    startedAt,
+  };
+}
+
+async function deleteOfflineFullNotificationMarkerIfUnchanged(
+  keyName: string,
+  expectedValue: string,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const txn = await redis.watch(keyName);
+    let current: string | null;
+    try {
+      current = await redis.get(keyName);
+    } catch (error) {
+      await txn.unwatch().catch(() => undefined);
+      throw error;
+    }
+    if (current == null || String(current) !== expectedValue) {
       await txn.unwatch();
       return false;
     }
+
     await txn.multi();
-    await txn.set(keyName, '1');
+    await txn.del(keyName);
     if (await txn.exec() !== null) return true;
+  }
+  return false;
+}
+
+async function readOfflineNotificationMarkerAndRepairLegacyKey(
+  notificationKey: string,
+): Promise<string | null> {
+  const marker = await redis.get(notificationKey);
+  if (marker !== '') return marker;
+
+  // Older versions wrote an empty marker instead of deleting the key. Remove
+  // that tombstone under compare-and-delete so it cannot block a later SET NX.
+  await deleteOfflineFullNotificationMarkerIfUnchanged(notificationKey, '');
+  return await redis.get(notificationKey);
+}
+
+async function claimOfflineFullNotificationSendingIfUnchanged(
+  keyName: string,
+  reservedToken: string,
+  sendingToken: string,
+  expiresAt: number,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const txn = await redis.watch(keyName);
+    try {
+      const current = await redis.get(keyName);
+      if (current == null || String(current) !== reservedToken) {
+        await txn.unwatch();
+        return false;
+      }
+      await txn.multi();
+      await txn.set(keyName, sendingToken, { expiration: new Date(expiresAt) });
+      if (await txn.exec() !== null) return true;
+    } catch (error) {
+      await txn.unwatch().catch(() => undefined);
+      throw error;
+    }
   }
   return false;
 }
 
 async function sendOfflineFullNotification(userId: string, subredditName: string): Promise<boolean> {
   const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
-  if (await redis.get(notificationKey)) return false;
+
+  // Only a v2 "reserved" marker proves the provider has not been called yet.
+  // It can be reclaimed after its short lease. Legacy pending markers and v2
+  // "sending" markers are ambiguous, so fail closed to avoid duplicate alerts.
+  let reservationAvailable = false;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const existing = await redis.get(notificationKey);
+    if (existing == null) {
+      reservationAvailable = true;
+      break;
+    }
+
+    const parsed = parseOfflineFullNotificationAttemptMarker(existing);
+    const now = Date.now();
+    const legacyPendingStartedAt = offlineLegacyPendingMarkerStartedAt(existing, now);
+    const staleReservedMarker =
+      parsed?.phase === 'reserved' &&
+      now - parsed.startedAt >= OFFLINE_FULL_RESERVATION_TTL_MS;
+    const staleSendingMarker =
+      parsed?.phase === 'sending' &&
+      now - parsed.startedAt >= OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000;
+    const staleLegacyPendingMarker =
+      legacyPendingStartedAt !== null &&
+      now - legacyPendingStartedAt >= OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000;
+    if (existing === '' || staleReservedMarker || staleSendingMarker || staleLegacyPendingMarker) {
+      // Empty values are legacy tombstones. A reserved-v2 marker is safe to reclaim
+      // because provider I/O is gated by the CAS transition to sending-v2. Sending
+      // and legacy pending markers are kept through the seven-day ambiguity window,
+      // then reclaimed under the explicit retry-after-lease policy.
+      await deleteOfflineFullNotificationMarkerIfUnchanged(notificationKey, existing);
+      continue;
+    }
+    if (parsed?.phase === 'reserved') {
+      // Keep the scheduler retry path alive while the other request is still
+      // preparing. Returning false would clear the only job without a retry.
+      throw new Error('Offline notification reservation is still being prepared; retry later.');
+    }
+    return false;
+  }
+  if (!reservationAvailable) {
+    throw new Error('Offline notification reservation is changing repeatedly; retry later.');
+  }
 
   if (!(await notifications.isOptedIn(userId))) return false;
 
-  // Reserve the single attempt before calling the external notification service.
-  // If enqueue succeeds but the receipt write fails (or the process dies in that
-  // gap), retries must not enqueue a duplicate notification. The pending token
-  // expires after a week if an interrupted request never reaches its final write.
+  // Reserve briefly before the external call. If SET or its verification GET
+  // has an ambiguous failure, no provider call occurs, and a later job can
+  // reclaim this reserved-v2 marker after the lease expires.
   const attemptNow = Date.now();
-  const pendingToken = `pending:${attemptNow.toString(36)}:${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+  const nonce = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  const reservationStamp = attemptNow.toString(36);
+  const reservedToken = `reserved-v2:${reservationStamp}:${nonce}`;
+  const sendingToken = `sending-v2:${reservationStamp}:${nonce}`;
   let reservationWriteFailed = false;
   let reservationWriteError: unknown;
   try {
-    await redis.set(notificationKey, pendingToken, {
+    await redis.set(notificationKey, reservedToken, {
       nx: true,
-      expiration: new Date(attemptNow + 7 * 24 * 60 * 60_000),
+      expiration: new Date(attemptNow + OFFLINE_FULL_RESERVATION_TTL_MS),
     });
   } catch (error) {
-    // Redis can commit SET NX but lose its acknowledgement. Verify our unique
-    // token before deciding whether to enqueue, rather than stranding a
-    // reservation for seven days even though no provider call was attempted.
     reservationWriteFailed = true;
     reservationWriteError = error;
   }
@@ -3536,14 +3874,29 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
     }
     throw readError;
   }
-  if (storedReservation !== pendingToken) {
-    // No confirmed reservation means we must not send. If SET failed and the
-    // key is absent, propagate the original failure so the caller can retry.
+  if (storedReservation !== reservedToken) {
     if (reservationWriteFailed && storedReservation == null) throw reservationWriteError;
+    const competingReservation = parseOfflineFullNotificationAttemptMarker(storedReservation);
+    if (storedReservation === '' || competingReservation?.phase === 'reserved') {
+      throw new Error('Another offline notification reservation is being prepared; retry later.');
+    }
     return false;
   }
   if (reservationWriteFailed) {
-    console.warn('[Offline Notification] Reservation token was confirmed after an ambiguous Redis SET failure; continuing.', reservationWriteError);
+    console.warn('[Offline Notification] Reserved token was confirmed after an ambiguous Redis SET failure; continuing.', reservationWriteError);
+  }
+
+  // Move from "reserved" to "sending" atomically before provider I/O. Recovery
+  // may reclaim only reserved-v2; sending-v2 remains held if enqueue or its
+  // receipt write has an ambiguous outcome, preserving at-most-once delivery.
+  const sendingClaimed = await claimOfflineFullNotificationSendingIfUnchanged(
+    notificationKey,
+    reservedToken,
+    sendingToken,
+    attemptNow + OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS,
+  );
+  if (!sendingClaimed) {
+    throw new Error('Offline notification reservation changed before sending; retry later.');
   }
 
   await notifications.enqueue({
@@ -3556,10 +3909,49 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
   });
 
   // Compare-and-set prevents a concurrent offline-roll claim from clearing the
-  // pending marker and then having this request resurrect a stale receipt.
-  // If Redis fails here, the pending reservation remains and blocks duplicates.
-  await commitOfflineNotificationMarkerIfUnchanged(notificationKey, pendingToken);
+  // sending marker and then having this request resurrect a stale receipt.
+  const receiptCommitted = await commitOfflineNotificationMarkerIfUnchanged(notificationKey, sendingToken);
+  if (!receiptCommitted) {
+    // The provider call succeeded, but we could not confirm the durable receipt.
+    // Do not report a confirmed send; the worker will preserve/recheck the
+    // sending lease and retry only after its ambiguity window has elapsed.
+    const currentMarker = await redis.get(notificationKey);
+    if (currentMarker !== '1') {
+      console.error('[Offline Notification] Provider accepted the attempt but the sent receipt could not be confirmed.');
+      return false;
+    }
+  }
   return true;
+}
+
+function offlineLegacyPendingMarkerStartedAt(marker: unknown, now = Date.now()): number | null {
+  const pendingMatch = typeof marker === 'string'
+    ? /^pending:([0-9a-z]+):/.exec(marker)
+    : null;
+  const parsedAt = pendingMatch ? Number.parseInt(pendingMatch[1], 36) : NaN;
+  return Number.isSafeInteger(parsedAt) && parsedAt > 0 && parsedAt <= now + 60_000
+    ? parsedAt
+    : null;
+}
+
+function offlineNotificationPendingRetryAt(marker: unknown, now = Date.now()): number {
+  const parsed = parseOfflineFullNotificationAttemptMarker(marker);
+  if (parsed?.phase === 'reserved') {
+    return Math.max(now + 1_000, parsed.startedAt + OFFLINE_FULL_RESERVATION_TTL_MS + 1_000);
+  }
+  if (parsed?.phase === 'sending') {
+    return Math.max(now + 1_000, parsed.startedAt + OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000);
+  }
+
+  // Older versions used pending:<time>:<nonce> with a seven-day expiry. Keep
+  // those ambiguous attempts fail-closed, then retry once their lease elapses.
+  const pendingAt = offlineLegacyPendingMarkerStartedAt(marker, now) ?? now;
+  return Math.max(now + 1_000, pendingAt + OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000);
+}
+
+function isRetryableOfflineFullNotificationMarker(marker: unknown): marker is string {
+  return parseOfflineFullNotificationAttemptMarker(marker) !== null ||
+    (typeof marker === 'string' && /^pending:[0-9a-z]+:.+$/.test(marker));
 }
 
 function parseOfflineFullJobMarker(
@@ -3605,15 +3997,33 @@ async function scheduleOfflineFullNotification(
   userId: string,
   subredditName: string,
   runAt: number,
+  allowReservationRetry = false,
 ): Promise<void> {
   if (!subredditName || !userId) return;
-  if (await redis.get(OFFLINE_FULL_NOTIFICATION_PREFIX + userId)) return;
+  const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
+  let notificationMarker = await redis.get(notificationKey);
+  if (notificationMarker === '') {
+    // Recover empty-string tombstones written by older compare-and-clear code.
+    await deleteOfflineFullNotificationMarkerIfUnchanged(notificationKey, '');
+    notificationMarker = await redis.get(notificationKey);
+  }
+  if (notificationMarker === '1') return;
+  let effectiveRunAt = Number(runAt);
+  if (notificationMarker != null) {
+    if (!allowReservationRetry || !isRetryableOfflineFullNotificationMarker(notificationMarker)) return;
+    // If a competing request advanced reserved -> sending after the caller chose
+    // its retry time, honor the longer sending lease rather than polling it early.
+    effectiveRunAt = Math.max(
+      Number.isFinite(effectiveRunAt) ? effectiveRunAt : Date.now() + OFFLINE_FULL_RETRY_MS,
+      offlineNotificationPendingRetryAt(notificationMarker),
+    );
+  }
   if (!(await notifications.isOptedIn(userId))) return;
 
   const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
   const now = Date.now();
   const maxDateMs = 8_640_000_000_000_000;
-  const requestedRunAt = Number(runAt);
+  const requestedRunAt = effectiveRunAt;
   const safeRunAt = Math.min(
     maxDateMs - 1,
     Math.max(now + 1_000, Number.isFinite(requestedRunAt) ? requestedRunAt : now + 1_000),
@@ -3710,13 +4120,61 @@ export async function processOfflineFullNotification(
     return;
   }
 
+  const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
   try {
-    await sendOfflineFullNotification(userId, subredditName);
-    await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
+    const sent = await sendOfflineFullNotification(userId, subredditName);
+    const cleared = await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
+    if (!sent && cleared) {
+      const notificationMarker = await redis.get(notificationKey);
+      if (notificationMarker === '') {
+        // An older clear path may have left an empty-valued key that still blocks SET NX.
+        await scheduleOfflineFullNotification(userId, subredditName, Date.now() + OFFLINE_FULL_RETRY_MS);
+      } else if (isRetryableOfflineFullNotificationMarker(notificationMarker)) {
+        await scheduleOfflineFullNotification(
+          userId,
+          subredditName,
+          offlineNotificationPendingRetryAt(notificationMarker),
+          true,
+        );
+      }
+    }
   } catch (error) {
     console.error('Failed to send scheduled offline-orbs-full notification:', error);
+    let notificationMarker: string | null = null;
+    let markerReadFailed = false;
+    try {
+      notificationMarker = await redis.get(notificationKey);
+    } catch (markerReadError) {
+      // A failed verification read is unknown, not proof the reservation is absent.
+      markerReadFailed = true;
+      console.error('[Offline Notification] Could not inspect the attempt marker before retry scheduling.', markerReadError);
+    }
+
+    const retryableMarker = isRetryableOfflineFullNotificationMarker(notificationMarker);
+    if (
+      notificationMarker === '1' ||
+      (notificationMarker != null && notificationMarker !== '' && !retryableMarker)
+    ) {
+      // Unknown marker formats fail closed just like a durable receipt.
+      await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
+      return;
+    }
+
+    const allowReservationRetry = markerReadFailed || retryableMarker;
+    const retryAt = markerReadFailed
+      ? Date.now() + OFFLINE_FULL_RETRY_MS
+      : retryableMarker
+        ? offlineNotificationPendingRetryAt(notificationMarker)
+        : Date.now() + OFFLINE_FULL_RETRY_MS;
     const cleared = await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
-    if (cleared) await scheduleOfflineFullNotification(userId, subredditName, now + OFFLINE_FULL_RETRY_MS);
+    if (cleared) {
+      await scheduleOfflineFullNotification(
+        userId,
+        subredditName,
+        retryAt,
+        allowReservationRetry,
+      );
+    }
   }
   });
 }
@@ -3772,13 +4230,88 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
   if (!options.skipOfflineNotifications && userId && subredditName && s.offlineRolls >= cap) {
     try {
       await withPlayerMutationLockFor(`offline-notification:${userId}`, async () => {
-        await sendOfflineFullNotification(userId, subredditName);
+        const sent = await sendOfflineFullNotification(userId, subredditName);
+        const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
+        const notificationMarker = await readOfflineNotificationMarkerAndRepairLegacyKey(notificationKey);
         const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
         const currentJob = await redis.get(jobKey);
-        if (currentJob != null) await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+        const clearCurrentJob = async () => {
+          if (currentJob != null) await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+        };
+
+        if (sent || notificationMarker === '1') {
+          await clearCurrentJob();
+          return;
+        }
+
+        if (notificationMarker != null && !isRetryableOfflineFullNotificationMarker(notificationMarker)) {
+          // Unknown marker formats fail closed. Do not delete a job whose retry
+          // could still be needed to reconcile this marker.
+          return;
+        }
+
+        if (notificationMarker == null && !(await notifications.isOptedIn(userId))) {
+          await clearCurrentJob();
+          return;
+        }
+
+        if (isRetryableOfflineFullNotificationMarker(notificationMarker)) {
+          // Keep any existing job: when it runs, the worker will move it beyond
+          // the active reservation lease. If no job exists, restore one now.
+          if (currentJob === '') await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+          if (!currentJob) {
+            await scheduleOfflineFullNotification(
+              userId,
+              subredditName,
+              offlineNotificationPendingRetryAt(notificationMarker),
+              true,
+            );
+          }
+          return;
+        }
+
+        // No marker but still opted in means the receipt outcome could not be
+        // confirmed after the provider call. Wait out the full ambiguity lease
+        // rather than immediately risking a duplicate notification.
+        if (currentJob != null) await clearCurrentJob();
+        await scheduleOfflineFullNotification(
+          userId,
+          subredditName,
+          Date.now() + OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS + 60_000,
+        );
       });
     } catch (error) {
       console.error('Failed to send offline-orbs-full notification:', error);
+      try {
+        const notificationKey = OFFLINE_FULL_NOTIFICATION_PREFIX + userId;
+        const notificationMarker = await readOfflineNotificationMarkerAndRepairLegacyKey(notificationKey);
+        const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
+        const currentJob = await redis.get(jobKey);
+
+        if (notificationMarker === '1') {
+          if (currentJob != null) await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+        } else if (
+          !(notificationMarker != null && !isRetryableOfflineFullNotificationMarker(notificationMarker)) &&
+          !(currentJob && currentJob !== '')
+        ) {
+          if (currentJob === '') await clearOfflineReminderKeyIfUnchanged(jobKey, currentJob);
+          const markerIsRetryable = isRetryableOfflineFullNotificationMarker(notificationMarker);
+          const retryAt = markerIsRetryable
+            ? offlineNotificationPendingRetryAt(notificationMarker)
+            : Date.now() + OFFLINE_FULL_RETRY_MS;
+          await scheduleOfflineFullNotification(
+            userId,
+            subredditName,
+            retryAt,
+            markerIsRetryable,
+          );
+        } else {
+          // Unknown markers fail closed. Existing jobs are preserved so their
+          // worker can perform the same marker-aware recovery when it runs.
+        }
+      } catch (recoveryError) {
+        console.error('[Offline Notification] Could not restore a retry after direct-send failure:', recoveryError);
+      }
     }
   } else if (!options.skipOfflineNotifications && userId && subredditName) {
     try {
@@ -3876,6 +4409,49 @@ export async function getState(): Promise<PlayerState> {
   return s;
 }
 
+/**
+ * Buy one Chain Patcher charge. The target and Shard cost are recomputed from
+ * the server-owned Codex while holding the same player mutation lock as rolls.
+ * The pending charge is cleared only after a successful, exact one-orb roll.
+ */
+export async function buyChainPatcher(): Promise<{
+  state: PlayerState;
+  targetRarity: number;
+  shardsSpent: number;
+  cooldownUntil: number;
+}> {
+  return withPlayerMutationLock(async () => {
+    const s = await settleOffline(await loadRaw());
+    const now = Date.now();
+    const cooldownUntil = Math.max(0, Math.floor(Number(s.chainPatcherCooldownUntil ?? 0) || 0));
+    if (cooldownUntil > now) {
+      const remaining = cooldownUntil - now;
+      throw new Error('Chain Patcher is on cooldown for ' + Math.ceil(remaining / 3_600_000) + ' more hour(s).');
+    }
+    const pending = Math.floor(Number(s.chainPatcherNextRarity ?? 0) || 0);
+    if (pending >= 2 && pending <= MAX_ORB_RARITY) {
+      throw new Error('Your Chain Patcher is already charged. Roll once to use it before buying another.');
+    }
+
+    const targetRarity = nextCodexChainRarity(s.collection);
+    if (targetRarity == null) {
+      throw new Error('Your Codex chain cannot be extended further.');
+    }
+    const shardsSpent = chainPatcherShardCost(targetRarity);
+    if (!Number.isSafeInteger(shardsSpent)) {
+      throw new Error('That Chain Patcher target costs more Shards than the game can safely store.');
+    }
+    spendShards(s, shardsSpent);
+    s.chainPatcherNextRarity = targetRarity;
+    s.chainPatcherCooldownUntil = now + CHAIN_PATCHER_COOLDOWN_MS;
+    // Make the guaranteed single manual roll deliberate rather than letting an
+    // already-running auto loop consume the charge before the player sees it.
+    s.autoRollEnabled = false;
+    await save(s);
+    return { state: s, targetRarity, shardsSpent, cooldownUntil: s.chainPatcherCooldownUntil };
+  });
+}
+
 export async function getMe(): Promise<PlayerState> {
   const ban = await getGameBanStatus();
   const s = ban ? await loadRaw() : await getState();
@@ -3941,27 +4517,53 @@ export async function roll(
       };
     }
 
-    const s = await settleOffline(await loadRaw());
+    const loadedState = await loadRaw();
+    const performRoll = async () => {
+      const s = await settleOffline(loadedState);
     if (isAuto && (s.upgrades.auto ?? 0) <= 0) {
       throw new Error('Auto Roll is not unlocked yet.');
     }
+    // Reject already-queued auto ticks after a purchase or player opt-out turns
+    // Auto Roll off. In particular, this keeps an in-flight tick from consuming
+    // a newly purchased Chain Patcher before the player can trigger it manually.
+    if (isAuto && s.autoRollEnabled !== true) {
+      throw new Error('Auto Roll is disabled.');
+    }
 
     const now = Date.now();
-    const usingFreeRoll = !isAuto && (s.freeRolls ?? 0) > 0;
+    const rawPatcherRarity = Number(s.chainPatcherNextRarity ?? 0);
+    if (
+      !Number.isSafeInteger(rawPatcherRarity) ||
+      rawPatcherRarity < 0 ||
+      rawPatcherRarity > MAX_ORB_RARITY ||
+      (rawPatcherRarity > 0 && rawPatcherRarity < 2)
+    ) {
+      throw new Error('Chain Patcher save data is invalid; no roll was processed.');
+    }
+    const usingChainPatcher = rawPatcherRarity >= 2;
+    const availableFreeRolls = Math.max(0, Math.floor(Number(s.freeRolls ?? 0) || 0));
+    // A charged Chain Patcher must resolve as one deliberate, exact orb. It
+    // does not consume or batch any accumulated Free Rolls.
+    const usingFreeRoll = !usingChainPatcher && !isAuto && availableFreeRolls > 0;
     const cd = cooldownMs(s, isAuto);
     if (!usingFreeRoll && s.lastRollAt !== null && now - s.lastRollAt < cd) {
       throw new Error(`Cooldown: ${((cd - now + s.lastRollAt) / 1000).toFixed(1)}s`);
     }
-    const freeRollActivations = usingFreeRoll
-      ? (useAllFreeRolls ? Math.max(0, Math.floor(s.freeRolls ?? 0)) : 1)
-      : 1;
-    if (freeRollActivations > 5000) {
-      throw new Error('You have too many stored Free Rolls for a single batch (maximum 5,000). No rolls were spent.');
-    }
-    if (usingFreeRoll) s.freeRolls = Math.max(0, (s.freeRolls ?? 0) - freeRollActivations);
 
-    // One click can consume every stored Free Roll. Process bounded chunks to
-    // stay within applyRolls' safety limits, but commit the full batch once.
+    // A Chain Patcher charge always takes priority over Free Rolls. Otherwise
+    // only an explicit manual "Roll All" request spends the full saved balance.
+    const freeRollActivations = usingFreeRoll
+      ? (useAllFreeRolls ? availableFreeRolls : 1)
+      : 1;
+    if (usingFreeRoll && freeRollActivations > 5_000) {
+      throw new Error('You have too many stored Free Rolls for one batch (maximum 5,000). No rolls were spent.');
+    }
+    if (usingFreeRoll) s.freeRolls = availableFreeRolls - freeRollActivations;
+    const activations = usingChainPatcher ? 1 : freeRollActivations;
+
+    // Bound each allocation/iteration by actual orb count, not just button
+    // activations. All chunks mutate the same in-memory state and are committed
+    // together, so a failure cannot spend Free Rolls without saving their rolls.
     let bestOrb: Orb | null = null;
     const batch: Orb[] = [];
     let totalVal = 0;
@@ -3969,14 +4571,24 @@ export async function roll(
     let shardsGained = 0;
     let xpGained = 0;
     let rollCount = 0;
-    let remainingActivations = freeRollActivations;
-    const maxActivationsPerChunk = Math.max(1, offlineRollCap(s));
+    let remainingActivations = activations;
+    const ballsPerActivation = Math.max(1, rollsPerActivation(s));
+    const maxActivationsPerChunk = Math.max(
+      1,
+      Math.min(offlineRollCap(s), Math.floor(5_000 / ballsPerActivation)),
+    );
     while (remainingActivations > 0) {
-      const activations = Math.min(remainingActivations, maxActivationsPerChunk);
-      const result = await applyRolls(s, activations, undefined, 'online');
+      const chunkActivations = Math.min(remainingActivations, maxActivationsPerChunk);
+      const result = await applyRolls(
+        s,
+        chunkActivations,
+        usingChainPatcher ? rawPatcherRarity : undefined,
+        'online',
+        usingChainPatcher ? 1 : undefined,
+        undefined,
+        usingChainPatcher,
+      );
       if (!bestOrb || result.bestOrb.rarity > bestOrb.rarity) bestOrb = result.bestOrb;
-      // Preserve recent reveal samples without spreading an unbounded result
-      // array into a function call or returning a huge webview payload.
       batch.push(...result.batch.slice(-200));
       if (batch.length > 200) batch.splice(0, batch.length - 200);
       totalVal = Math.min(Number.MAX_SAFE_INTEGER, totalVal + result.totalVal);
@@ -3984,9 +4596,11 @@ export async function roll(
       shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + result.shardsGained);
       xpGained = Math.min(Number.MAX_SAFE_INTEGER, xpGained + result.xpGained);
       rollCount = Math.min(Number.MAX_SAFE_INTEGER, rollCount + result.rollCount);
-      remainingActivations -= activations;
+      remainingActivations -= chunkActivations;
     }
     if (!bestOrb) throw new Error('No rolls were processed.');
+
+    if (usingChainPatcher) s.chainPatcherNextRarity = 0;
 
     if (!isAuto) {
       s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + freeRollActivations);
@@ -4034,6 +4648,10 @@ export async function roll(
       rollsProcessed: rollCount,
       dramaticReveal: bestOrb.rarity >= 100,
     };
+      };
+      return playerGuildScopes.get(loadedState)
+        ? withGuildDataMutationLock(performRoll)
+        : performRoll();
   });
 }
 export async function subscribeToSubredditForReward(): Promise<{
@@ -4347,47 +4965,73 @@ export async function buyUpgrade(id: UpgradeId): Promise<PlayerState> {
   });
 }
 
-export async function buyUpgradesBatch(ids: UpgradeId[]): Promise<{ state: PlayerState; totalSpent: number; purchasedCount: number }> {
-  if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100) {
-    throw new Error('Upgrade batch must contain between 1 and 100 purchases.');
-  }
+export async function buyUpgradeBatch(ids: UpgradeId[]): Promise<{
+  state: PlayerState;
+  purchased: Array<{ id: UpgradeId; cost: number; level: number }>;
+  totalSpent: number;
+  stoppedReason?: string;
+}> {
   return withPlayerMutationLock(async () => {
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100) {
+      throw new Error('Upgrade batch must contain 1 to 100 purchases.');
+    }
+    const validIds: UpgradeId[] = [
+      'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
+      'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus',
+    ];
+    if (!ids.every(id => validIds.includes(id))) throw new Error('Upgrade batch contains an unknown upgrade.');
+
     const s = await settleOffline(await loadRaw());
+    const purchased: Array<{ id: UpgradeId; cost: number; level: number }> = [];
     let totalSpent = 0;
-    let purchasedCount = 0;
-    const purchased: Array<{ id: UpgradeId; before: number; after: number; cost: number }> = [];
+    let stoppedReason: string | undefined;
 
     for (const id of ids) {
+      const level = s.upgrades[id] ?? 0;
       if (id === 'auto') {
-        if ((s.upgrades.auto ?? 0) > 0) continue;
-        if ((s.manualRolls ?? 0) < 3) break;
+        if ((s.manualRolls ?? 0) < 3) {
+          stoppedReason = `Auto Roll unlocks after 3 manual rolls (${s.manualRolls ?? 0}/3).`;
+          break;
+        }
+        if (level > 0) {
+          stoppedReason = 'Auto Roll is already unlocked.';
+          break;
+        }
         s.upgrades.auto = 1;
-        purchasedCount += 1;
-        purchased.push({ id, before: 0, after: 1, cost: 0 });
+        purchased.push({ id, cost: 0, level: 1 });
         continue;
       }
 
-      const level = s.upgrades[id] ?? 0;
       const cost = upgradeCost(id, level);
-      if (!Number.isFinite(cost)) continue;
-      if (s.coins < cost) break;
+      if (!Number.isFinite(cost)) {
+        stoppedReason = `${id === 'speed' ? 'Roll Speed' : id === 'offlineRate' ? 'Offline Generation Speed' : 'This upgrade'} is already at its maximum level.`;
+        break;
+      }
+      if (s.coins < cost) {
+        stoppedReason = `Need ${cost.toLocaleString()} Coins for ${id}.`;
+        break;
+      }
+
       s.coins -= cost;
       s.upgrades[id] = level + 1;
       totalSpent += cost;
-      purchasedCount += 1;
-      purchased.push({ id, before: level, after: level + 1, cost });
+      purchased.push({ id, cost, level: level + 1 });
     }
 
-    if (purchasedCount > 0) {
+    if (purchased.length > 0) {
       await save(s);
-      await appendPlayerSpyLog('upgrade-purchase-batch', {
-        purchased,
-        totalSpent,
-        purchasedCount,
-        snapshot: playerSpySnapshot(s),
-      });
+      for (const entry of purchased) {
+        void appendPlayerSpyLog('upgrade-purchase', {
+          upgrade: entry.id,
+          levelAfter: entry.level,
+          cost: entry.cost,
+          batchSize: purchased.length,
+          snapshot: playerSpySnapshot(s),
+        }).catch(error => console.error('[Player Spy] Upgrade batch log failed:', error));
+      }
     }
-    return { state: s, totalSpent, purchasedCount };
+
+    return { state: s, purchased, totalSpent, ...(stoppedReason ? { stoppedReason } : {}) };
   });
 }
 
@@ -5064,7 +5708,9 @@ export async function startOrbFrenzy(options: {
   adminTest?: boolean;
 } = {}): Promise<RollResponse & { postId: string; url: string; rarity: number }> {
   return withPlayerMutationLock(async () => {
-    const s = await settleOffline(await loadRaw());
+    const loadedState = await loadRaw();
+    const performFrenzyStart = async () => {
+      const s = await settleOffline(loadedState);
     const now = Date.now();
     const postCooldown = frenzyCooldownRemaining(s.lastFrenzyAt, now);
     const today = new Date(now).toISOString().slice(0, 10);
@@ -5090,7 +5736,8 @@ export async function startOrbFrenzy(options: {
       `u/${ownerUsername} got a 1/${formatRarity(rarity)} Orb in their Frenzy.\n\n` +
       `Click below to claim it! You can only claim one every 23 hours.\n\n` +
       `When someone claims your Frenzy, you receive +${FRENZY_OWNER_SHARD_REWARD} Shards. ` +
-      `This reward bypasses the 50 Shard daily cap.`;
+      `This reward bypasses the 50 Shard daily cap.\n\n` +
+      `If you claim this Frenzy, please consider upvoting the post to thank its owner.`;
     const post = await reddit.submitCustomPost({
       runAs: 'USER',
       subredditName,
@@ -5252,6 +5899,11 @@ export async function startOrbFrenzy(options: {
       rollsProcessed: result.rollCount,
       dramaticReveal: rarity >= 100,
     };
+      };
+      // Creating the Reddit post is an external request that may take time.
+      // Do not hold the shared Guild lock across it; save() will safely skip a
+      // conflicting Guild projection and refund any withheld tax if needed.
+      return performFrenzyStart();
   });
 }
 
@@ -5377,7 +6029,9 @@ export async function claimOrbFrenzy(options: {
   const now = Date.now();
   const createdAt = Number(data.createdAt ?? 0);
   if (isFrenzyPostExpired(createdAt, now)) throw new Error('This Frenzy has expired.');
-  const s = await settleOffline(await loadRaw());
+  const loadedState = await loadRaw();
+  const performClaim = async () => {
+  const s = await settleOffline(loadedState);
   const claimCooldown = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
   const ownerSelfClaimAllowed =
     isOwner &&
@@ -5534,21 +6188,36 @@ export async function claimOrbFrenzy(options: {
   const bestRarity = topRarity;
   s.totalRolls += count;
   s.currentRunRolls = (s.currentRunRolls ?? 0) + count;
-  s.collectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.collectionValue ?? 0) + finalValue);
-  s.lifetimeCollectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.lifetimeCollectionValue ?? 0) + finalValue);
+  s.collectionValue = addCollectionValue(s.collectionValue, finalValue);
+  s.lifetimeCollectionValue = addCollectionValue(s.lifetimeCollectionValue, finalValue);
   s.totalCrits = (s.totalCrits ?? 0) + critCount;
 
   // Stage Guild taxes/contribution in the same save as this claim. A failed
   // player save must not leave a consumed Guild tax, task credit, or roll count.
   const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
-  const guildEffects = await prepareGuildRollEffects(
-    coinsGained,
-    finalValue,
-    count,
-    bestRarity,
-    pendingGuildWrite,
-  );
-  if (guildEffects.extraWrite) stageSaveExtraWrite(s, guildEffects.extraWrite);
+  let guildEffects: Awaited<ReturnType<typeof prepareGuildRollEffects>>;
+  try {
+    guildEffects = await prepareGuildRollEffects(
+      coinsGained,
+      finalValue,
+      count,
+      bestRarity,
+      pendingGuildWrite,
+    );
+  } catch (error) {
+    // A broken optional Guild projection must not void a valid Orb Frenzy claim.
+    // Keep the stored Guild untouched and omit its effects for this claim.
+    console.error('[Guild] Could not prepare Frenzy effects; skipping Guild tax/contribution for this claim.', error);
+    guildEffects = { taxedCoins: 0 };
+  }
+  if (guildEffects.extraWrite) {
+    stageSaveExtraWrite(s, {
+      ...guildEffects.extraWrite,
+      onConflict: () => {
+        if (guildEffects.taxedCoins > 0) addCoins(s, guildEffects.taxedCoins);
+      },
+    });
+  }
   coinsGained = Math.max(0, coinsGained - guildEffects.taxedCoins);
   coinsGained = addCoins(s, coinsGained);
   s.lastFrenzyClaimDate = new Date(now).toISOString().slice(0, 10);
@@ -5564,6 +6233,13 @@ export async function claimOrbFrenzy(options: {
   }
   s.highestRarity = Math.max(s.highestRarity, bestRarity);
   if (bestRarity > previousHighest) {
+    const previousDryRolls = Math.max(0, Math.floor(Number(s.rollsSinceBest ?? 0) || 0));
+    if (previousHighest > 0) {
+      s.aftershockRecord = Math.max(
+        Math.max(0, Math.floor(Number(s.aftershockRecord ?? 0) || 0)),
+        previousDryRolls,
+      );
+    }
     s.rollsSinceBest = 0;
   } else {
     s.rollsSinceBest = (s.rollsSinceBest ?? 0) + count;
@@ -5620,7 +6296,7 @@ export async function claimOrbFrenzy(options: {
   // Consume the post atomically with both the claimant save and the owner's
   // reward. Different players have different locks, so the watched keys also
   // protect the transaction if one of those distributed leases expires.
-  const consumedPostValue = JSON.stringify({ ...data, consumedAt: now });
+  const consumedPostValue = JSON.stringify({ ...data, consumedAt: now, consumedBy: claimantId });
   await save(s, [
     {
       key: FRENZY_POST_PREFIX + postId,
@@ -5636,7 +6312,7 @@ export async function claimOrbFrenzy(options: {
   // Handoff cleanup is temporary metadata (60-second TTL), not part of claim
   // settlement. Its failure must not turn a committed claim into an API error.
   if (handoff && handoff.postId === postId) {
-    await redis.del(frenzyHandoffKey(claimantId)).catch(error => {
+    await redis.del(frenzyHandoffKey(claimantId)).catch((error: unknown) => {
       console.error('[Frenzy Claim] Handoff cleanup failed after durable claim:', error);
     });
   }
@@ -5684,7 +6360,86 @@ export async function claimOrbFrenzy(options: {
     frenzyCount: count,
   };
 
+  };
+  return playerGuildScopes.get(loadedState)
+    ? withGuildDataMutationLock(performClaim)
+    : performClaim();
   });
+}
+
+
+export async function postFrenzyThankYouComment(
+  text: string,
+  requestedPostId: string,
+): Promise<{ success: true; commentId: string; alreadyDone?: boolean }> {
+  const claimantId = currentUserId();
+  if (!claimantId || claimantId === 'unknown') throw new Error('Your Reddit identity is unavailable.');
+  const postId = String(requestedPostId ?? '').trim();
+  if (!postId) throw new Error('The claimed Frenzy post ID is missing.');
+
+  const messageText = String(text ?? '').trim();
+  if (!messageText) throw new Error('Write a thank-you comment first.');
+  if (messageText.length > 500) throw new Error('Thank-you comments must be 500 characters or fewer.');
+
+  const postRaw = await redis.get(FRENZY_POST_PREFIX + postId);
+  const postData = parseStoredJson<{
+    ownerId?: string;
+    ownerUsername?: string;
+    rarity?: number;
+    createdAt?: number;
+    consumedAt?: number | null;
+    consumedBy?: string;
+  }>(postRaw);
+  if (
+    !postData ||
+    postData.consumedAt == null ||
+    postData.consumedBy !== claimantId ||
+    !postData.ownerUsername
+  ) {
+    throw new Error('You can only leave a thank-you comment after you claim this Frenzy.');
+  }
+
+  const receiptKey = FRENZY_THANK_YOU_PREFIX + encodeURIComponent(postId) + ':' + encodeURIComponent(claimantId);
+  const expiresAt = frenzyPostExpiresAt(Number(postData.createdAt ?? 0)) + FRENZY_POST_RECEIPT_RETENTION_MS;
+  const expiration = new Date(expiresAt);
+  if (!Number.isFinite(expiration.getTime()) || expiration.getTime() <= Date.now()) {
+    throw new Error('The thank-you comment window has expired.');
+  }
+
+  const existingRaw = await redis.get(receiptKey);
+  if (existingRaw) {
+    const existing = parseStoredJson<{ status?: string; commentId?: string }>(existingRaw);
+    if (existing?.status === 'posted' && existing.commentId) {
+      return { success: true, commentId: existing.commentId, alreadyDone: true };
+    }
+    throw new Error('A thank-you comment was already attempted. Check the Frenzy post before trying again.');
+  }
+
+  const reservation = 'pending-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  await redis.set(receiptKey, reservation, { nx: true, expiration });
+  if (await redis.get(receiptKey) !== reservation) {
+    throw new Error('A thank-you comment was already attempted. Check the Frenzy post before trying again.');
+  }
+
+  // This runs only after a separate, explicit click in the UI. It is never
+  // merged with claiming the Frenzy, and Reddit attributes it to the player.
+  const redditPostId = /^t3_/i.test(postId) ? postId : 't3_' + postId;
+  const comment = await reddit.submitComment({
+    id: redditPostId,
+    text: messageText,
+    runAs: 'USER',
+  });
+  const commentId = String(comment?.id ?? '').trim();
+  if (!commentId) {
+    throw new Error('Reddit did not return a comment ID. Check the Frenzy post before retrying.');
+  }
+
+  await redis.set(receiptKey, JSON.stringify({
+    status: 'posted',
+    commentId,
+    postedAt: Date.now(),
+  }), { expiration });
+  return { success: true, commentId };
 }
 
 

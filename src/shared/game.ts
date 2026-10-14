@@ -867,7 +867,6 @@ export type PrestigeUpgradeId =
   | 'luckyFloor'
   | 'astralArsenal'
   | 'deepVault'
-  | 'masteryEngine'
   | 'steadyHands'
   | 'offlineFortune'
   | 'frenzyVolley'
@@ -971,6 +970,10 @@ export interface PlayerState {
   collectionCount?: number;
   codexChain?: number;
   codexDevotionLuckPercent?: number;
+  /** If positive, the next accepted roll is exactly one orb of this rarity. */
+  chainPatcherNextRarity?: number;
+  /** Absolute timestamp when the next Chain Patcher purchase is allowed. */
+  chainPatcherCooldownUntil?: number;
   lastRollAt: number | null;
   lastSeenAt: number;
   offlineRolls: number;
@@ -985,6 +988,14 @@ export interface PlayerState {
   lastDailyReset: string;
   lastWeeklyReset: string;
   rollsSinceBest: number;
+  /** Best number of rolls between successive all-time rarity records. Persists through Prestige. */
+  aftershockRecord?: number;
+  /** Beginning of the current uninterrupted online rolling session. */
+  rollingSessionStartedAt?: number;
+  /** Timestamp of the most recent roll counted toward the current session. */
+  rollingSessionLastRollAt?: number;
+  /** Longest uninterrupted online rolling session, in milliseconds. */
+  longestRollingSessionMs?: number;
   highestDryStreak?: number;
   freeRolls?: number;
   activeCosmetic: string;
@@ -1526,13 +1537,6 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
     costPerLevel: 2,
     qol: true,
   },
-  masteryEngine: {
-    name: 'Mastery Engine',
-    desc: 'Gain +1 Mastery Point every 100 rolls per level.',
-    category: 'core',
-    maxLevel: 5,
-    costPerLevel: 4,
-  },
   steadyHands: {
     name: 'Steady Hands',
     desc: '-100ms cooldown floor per level.',
@@ -1635,6 +1639,8 @@ export function createInitialState(now = Date.now()): PlayerState {
     collectionValue: 0,
     lifetimeCollectionValue: 0,
     collection: {},
+    chainPatcherNextRarity: 0,
+    chainPatcherCooldownUntil: 0,
     lastRollAt: null,
     lastSeenAt: now,
     offlineRolls: 0,
@@ -1678,7 +1684,6 @@ export function createInitialState(now = Date.now()): PlayerState {
       luckyFloor: 0,
       astralArsenal: 0,
       deepVault: 0,
-      masteryEngine: 0,
       steadyHands: 0,
       offlineFortune: 0,
       frenzyVolley: 0,
@@ -1695,6 +1700,10 @@ export function createInitialState(now = Date.now()): PlayerState {
     lastDailyReset: today,
     lastWeeklyReset: today,
     rollsSinceBest: 0,
+    aftershockRecord: 0,
+    rollingSessionStartedAt: 0,
+    rollingSessionLastRollAt: 0,
+    longestRollingSessionMs: 0,
     highestDryStreak: 0,
     freeRolls: 0,
     activeCosmetic: 'default',
@@ -1940,11 +1949,15 @@ export function calculateAltarMultipliers(s: PlayerState): {
   const altarEffectMultiplier = getLevelBenefits(Math.max(1, s.level || 1)).altarEffectMultiplier;
 
   // Match the displayed Altar bonuses: +1% per altar level and +2% per infused shard.
-  const coinBonus = sacrifices.altarLevel * 0.01 * altarEffectMultiplier * resonatorBonus;
+  // Altar rank compounds as ×1.05 per level. The Level 20 milestone and
+  // Altar Resonator still strengthen the bonus above 1×; shard infusion remains
+  // its own multiplicative layer.
+  const rawCoinLevelMultiplier = Math.pow(1.05, Math.max(0, sacrifices.altarLevel));
+  const coinBonus = (rawCoinLevelMultiplier - 1) * altarEffectMultiplier * resonatorBonus;
   const shardBonus = (sacrifices.shardsSacrificed || 0) * 0.02 * altarEffectMultiplier * resonatorBonus;
 
-  const coinMultiplier = Math.round((1 + coinBonus) * 100) / 100;
-  const shardMultiplier = Math.round((1 + shardBonus) * 100) / 100;
+  const coinMultiplier = 1 + coinBonus;
+  const shardMultiplier = 1 + shardBonus;
   const isSurgeActive = Boolean(sacrifices.luckSurgeUntil && Date.now() < sacrifices.luckSurgeUntil);
   const surgeMultiplier = isSurgeActive ? 1.25 : 1.0;
 
@@ -1968,6 +1981,62 @@ export const MAX_OFFLINE_ROLLS = 1_000;
 export const OFFLINE_TICK_MS = 60_000; // 1 offline roll every 60 seconds
 
 export const SHARD_SYNTHESIS_COST = 10;
+
+// Unbroken Momentum treats a gap longer than five minutes as the end of a
+// rolling session. Every completed five minutes in the personal-best session
+// grants +1% Speed, capped at +30%.
+export const UNBROKEN_MOMENTUM_SESSION_GAP_MS = 5 * 60_000;
+export const UNBROKEN_MOMENTUM_STEP_MS = 5 * 60_000;
+export const UNBROKEN_MOMENTUM_PER_STEP = 0.01;
+export const UNBROKEN_MOMENTUM_MAX_BONUS = 0.30;
+
+export function unbrokenMomentumSpeedBonus(longestSessionMs: number | null | undefined): number {
+  const safeDuration = Number.isFinite(Number(longestSessionMs))
+    ? Math.max(0, Math.floor(Number(longestSessionMs)))
+    : 0;
+  const completedSteps = Math.floor(safeDuration / UNBROKEN_MOMENTUM_STEP_MS);
+  return Math.min(UNBROKEN_MOMENTUM_MAX_BONUS, completedSteps * UNBROKEN_MOMENTUM_PER_STEP);
+}
+
+/**
+ * Aftershock permanently improves Critical Luck (critical chance) based on
+ * the best dry interval between all-time rarity records. Each order of
+ * magnitude in the personal record adds +0.5 percentage points, capped at 7.5%.
+ * (the maximum safe-integer dry-roll record). The record survives Prestige.
+ */
+export function aftershockCriticalLuckBonus(recordRolls: number | null | undefined): number {
+  const safeRecord = Number.isFinite(Number(recordRolls))
+    ? Math.max(0, Math.floor(Number(recordRolls)))
+    : 0;
+  if (safeRecord < 10) return 0;
+  const decades = Math.floor(Math.log10(safeRecord));
+  return Math.min(0.075, decades * 0.005);
+}
+
+/** Record one successfully processed online roll batch in the rolling session. */
+export function recordRollingSessionActivity(s: PlayerState, now = Date.now()): void {
+  if (!Number.isSafeInteger(now) || now < 0) return;
+
+  const startedAt = Number(s.rollingSessionStartedAt);
+  const lastRollAt = Number(s.rollingSessionLastRollAt);
+  const continuing =
+    Number.isSafeInteger(startedAt) && startedAt > 0 &&
+    Number.isSafeInteger(lastRollAt) && lastRollAt > 0 &&
+    now >= lastRollAt &&
+    now - lastRollAt <= UNBROKEN_MOMENTUM_SESSION_GAP_MS &&
+    startedAt <= lastRollAt;
+
+  const sessionStartedAt = continuing ? startedAt : now;
+  const sessionDuration = Math.max(0, now - sessionStartedAt);
+  const previousBest = Number.isFinite(Number(s.longestRollingSessionMs))
+    ? Math.max(0, Math.floor(Number(s.longestRollingSessionMs)))
+    : 0;
+
+  s.rollingSessionStartedAt = sessionStartedAt;
+  s.rollingSessionLastRollAt = now;
+  s.longestRollingSessionMs = Math.max(previousBest, sessionDuration);
+}
+
 export const SINGULARITY_TITHE_ROLLS_PER_DUST = 200;
 export function singularityTitheDustForRolls(
   previousRolls: number,
@@ -1986,7 +2055,7 @@ export function singularityTitheDustForRolls(
 
 
 export function effectiveOfflineTickMs(s: PlayerState): number {
-  const rateReduction = (s.upgrades.offlineRate ?? 0) * 0.08;
+  const rateReduction = Math.min(0.60, Math.min(8, Math.max(0, s.upgrades.offlineRate ?? 0)) * 0.08);
   const overdriveLevel = Math.max(0, Math.min(3, s.prestigeUpgrades?.offlineOverdrive ?? 0));
   const overdriveMultiplier = Math.pow(1.5, overdriveLevel);
   return Math.max(10_000, Math.round((OFFLINE_TICK_MS / overdriveMultiplier) * (1 - Math.min(0.6, rateReduction))));
@@ -2059,7 +2128,11 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
   if (s.dailyStreakCommunity?.speedMultiplier) {
     cd = Math.max(300, Math.round(cd * s.dailyStreakCommunity.speedMultiplier));
   }
-  return Math.round(cd);
+
+  // Unbroken Momentum increases actual roll frequency by dividing cooldown
+  // by the best-session Speed multiplier; the common 300ms floor still applies.
+  const momentumSpeedMultiplier = 1 + unbrokenMomentumSpeedBonus(s.longestRollingSessionMs);
+  return Math.max(300, Math.round(cd / momentumSpeedMultiplier));
 }
 
 // Multi roll upgrade is strictly LINEAR (+1 ball per level), plus multiple sources of +1 ball!
@@ -2141,6 +2214,49 @@ export function highestCodexChain(collection: Record<string, number> | null | un
   return bestCodexChain(collection).length;
 }
 
+/** One guaranteed Chain Patcher orb can be purchased every 24 hours. */
+export const CHAIN_PATCHER_COOLDOWN_MS = 24 * 60 * 60 * 1_000;
+
+/**
+ * Return the cheapest rarity that directly extends the player's longest
+ * consecutive Codex chain by one entry. With an empty Codex, start at 1/2.
+ * If the best chain touches both ends of the supported rarity range, there
+ * is no valid extension.
+ */
+export function nextCodexChainRarity(
+  collection: Record<string, number> | null | undefined,
+): number | null {
+  const chain = bestCodexChain(collection);
+  if (chain.length <= 0) {
+    return (collection?.['2'] ?? 0) > 0 ? null : 2;
+  }
+
+  const candidates: number[] = [];
+  const owned = (rarity: number) => Number(collection?.[String(rarity)] ?? 0) > 0;
+  const lower = chain.start - 1;
+  const higher = chain.end + 1;
+  // Integer-by-integer chain extension is only meaningful while rarities remain
+  // exactly representable by JavaScript numbers.
+  if (chain.start > 2 && Number.isSafeInteger(lower) && !owned(lower)) candidates.push(lower);
+  if (chain.end < MAX_ORB_RARITY && Number.isSafeInteger(higher) && !owned(higher)) candidates.push(higher);
+  return candidates.length ? Math.min(...candidates) : null;
+}
+
+/**
+ * Shard cost scales in 100-rarity bands: floor(target / 100) + 1.
+ * This makes a guaranteed 1/900 orb cost exactly 10 Shards.
+ */
+export function chainPatcherShardCost(targetRarity: number): number {
+  if (
+    !Number.isSafeInteger(targetRarity) ||
+    targetRarity < 2 ||
+    targetRarity > MAX_ORB_RARITY
+  ) {
+    throw new Error('Chain Patcher target rarity is invalid.');
+  }
+  return Math.min(Number.MAX_SAFE_INTEGER, Math.floor(targetRarity / 100) + 1);
+}
+
 export function codexDevotionLuckPercent(skillLevel: number, chain: number): number {
   const safeLevel = Math.max(0, Math.floor(Number(skillLevel) || 0));
   const safeChain = Math.max(0, Math.floor(Number(chain) || 0));
@@ -2152,7 +2268,7 @@ export function codexDevotionLuckPercent(skillLevel: number, chain: number): num
 }
 
 export const MIN_ALTAR_COIN_OFFER = 10_000;
-export const ALTAR_COIN_FLOOR_GROWTH = 2;
+export const ALTAR_COIN_FLOOR_GROWTH = 1.5;
 export const ALTAR_BASE_CHANCE_DECAY = 0.85;
 
 export function altarCoinFloor(altarLevel: number): number {
@@ -2175,7 +2291,7 @@ export function altarCoinDevotionChancePercent(
   if (safeCoins < floor) return 0;
 
   // Every breakthrough makes the next one harder: the minimum offering
-  // doubles, while the underlying odds fall by 15% per level. Larger
+  // grows by 1.5×, while the underlying odds fall by 15% per level. Larger
   // offerings can compensate somewhat, but never bypass the new floor.
   const amountRatio = safeCoins / floor;
   const levelChanceMultiplier = Math.pow(ALTAR_BASE_CHANCE_DECAY, safeLevel);
@@ -2231,15 +2347,13 @@ export function luckMultiplier(s: PlayerState): number {
   // 8. Multiplicative long-term layers.
   // Permanent Luck is ×1.05 per level, rather than +5% into the additive pool.
   const prestigeMultiplier = Math.pow(1.05, Math.max(0, s.prestigeUpgrades?.permLuck ?? 0));
-  // Cosmic Reserve is an independent multiplicative layer. Each unspent Dust
-  // contributes another 1%-5% to this factor based on the purchased level.
-  const cosmicReserveLevel = Math.max(0, Math.min(5, Math.floor(Number(s.prestigeUpgrades?.cosmicReserve ?? 0) || 0)));
-  const unspentDust = Math.max(0, Math.floor(Number(s.cosmicDust ?? 0) || 0));
-  const cosmicReserveMultiplier = 1 + unspentDust * cosmicReserveLevel * 0.01;
   const { totalAltarMultiplier } = calculateAltarMultipliers(s);
+  const unspentCosmicDust = Math.max(0, Math.floor(Number(s.cosmicDust ?? 0) || 0));
+  const cosmicReserveLevel = Math.max(0, Math.min(5, Math.floor(Number(s.prestigeUpgrades?.cosmicReserve ?? 0) || 0)));
+  const cosmicReserveMultiplier = 1 + unspentCosmicDust * cosmicReserveLevel * 0.01;
 
   const baseLuck = 1 + additiveBonus;
-  return Math.round(baseLuck * prestigeMultiplier * cosmicReserveMultiplier * totalAltarMultiplier * 100) / 100;
+  return Math.round(baseLuck * prestigeMultiplier * totalAltarMultiplier * cosmicReserveMultiplier * 100) / 100;
 }
 
 export function offlineRollCap(s: PlayerState): number {
@@ -2310,7 +2424,8 @@ export function predictRollActivation(
     (s.masterySkills?.critMastery ?? 0) * 0.03 +
     (s.guildPerks?.critRank ?? 0) * 0.015 +
     globalBoosterCritChanceBonus(s.globalBoosters?.crit) +
-    guildComboCritChanceBonus(s.guildCombo),
+    guildComboCritChanceBonus(s.guildCombo) +
+    aftershockCriticalLuckBonus(s.aftershockRecord),
   );
 
   const rarities: number[] = [];
@@ -2350,8 +2465,8 @@ export function predictRollActivation(
     s.collection[String(rarity)] = (s.collection[String(rarity)] ?? 0) + 1;
     s.totalRolls++;
     s.currentRunRolls = (s.currentRunRolls ?? 0) + 1;
-    s.collectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.collectionValue ?? 0) + finalVal);
-    s.lifetimeCollectionValue = Math.min(Number.MAX_SAFE_INTEGER, (s.lifetimeCollectionValue ?? 0) + finalVal);
+    s.collectionValue = addCollectionValue(s.collectionValue, finalVal);
+    s.lifetimeCollectionValue = addCollectionValue(s.lifetimeCollectionValue, finalVal);
     if (rarity > s.highestRarity) {
       s.highestRarity = rarity;
       s.rollsSinceBest = 0;
@@ -2474,10 +2589,9 @@ export function predictRollActivation(
 
 export function upgradeCost(id: UpgradeId, level: number): number {
   if (id === 'auto') return level ? Infinity : 0;
-  // Hard caps are shared so UI, bulk buying, automation, and server verification agree.
+  // Roll Speed has a deliberate cap: 20 levels, totaling at most 3 seconds.
   if (id === 'speed' && level >= 20) return Infinity;
-  // Offline Generation Speed reduces its tick by 8% per level, capped at 60%.
-  // Level 8 reaches the hard cap; further purchases have no gameplay effect.
+  // The effective offline-rate benefit is capped at 60%, reached at level 8.
   if (id === 'offlineRate' && level >= 8) return Infinity;
   const configs: Record<Exclude<UpgradeId, 'auto'>, { base: number; mult: number }> = {
     speed: { base: 45, mult: 1.65 },
@@ -2496,10 +2610,42 @@ export function upgradeCost(id: UpgradeId, level: number): number {
   return Math.floor(base * Math.pow(mult, level));
 }
 
-// Prestige formula: floor(sqrt(Collection Value / 1,000,000))
+/**
+ * Add collection value without allowing JS Number precision loss to corrupt the
+ * player's persisted current-run or lifetime total. Values are monotonic until
+ * the current-run total is reset by Prestige; at the safe-integer ceiling they
+ * saturate instead of drifting into imprecise or non-finite state.
+ */
+export function addCollectionValue(current: unknown, increment: unknown): number {
+  const bounded = (value: unknown): number => {
+    if (typeof value !== 'number' || Number.isNaN(value) || value < 0) return 0;
+    if (value === Number.POSITIVE_INFINITY) return Number.MAX_SAFE_INTEGER;
+    if (!Number.isFinite(value)) return 0;
+    return Math.min(Number.MAX_SAFE_INTEGER, Math.floor(value));
+  };
+  return Math.min(Number.MAX_SAFE_INTEGER, bounded(current) + bounded(increment));
+}
+
+/**
+ * Prestige Dust has diminishing returns after the first two million-value steps.
+ * The first Dust costs 1,000,000 Collection Value; the second costs another
+ * 1,000,000. Each later Dust requires 5% more Collection Value than the prior
+ * step, so the marginal requirement never drops below 1,000,000 and gains scale
+ * logarithmically instead of granting one Dust per million forever.
+ *
+ * Examples: 1m => 1 Dust, 2m => 2 Dust, 3m => 3 Dust, 4m => 3 Dust,
+ * 4.05m => 4 Dust, 300m => 58 Dust.
+ */
 export function calculatePrestigeDust(collectionValue: number): number {
-  if (!collectionValue || collectionValue < 1_000_000) return 0;
-  return Math.floor(Math.sqrt(collectionValue / 1_000_000));
+  if (!Number.isFinite(collectionValue) || collectionValue < 1_000_000) return 0;
+
+  const valueInMillions = collectionValue / 1_000_000;
+  if (valueInMillions < 2) return 1;
+
+  const additionalDust = Math.floor(
+    Math.log1p(0.05 * (valueInMillions - 2)) / Math.log1p(0.05) + 1e-10,
+  );
+  return 2 + Math.max(0, additionalDust);
 }
 
 export function calculateCosmicDust(s: PlayerState): number {
@@ -2537,7 +2683,6 @@ export function prestigeUpgradeCost(id: PrestigeUpgradeId, level: number): numbe
     luckyFloor: 3,
     astralArsenal: 5,
     deepVault: 2,
-    masteryEngine: 4,
     steadyHands: 3,
     offlineFortune: 3,
     frenzyVolley: 25,

@@ -36,7 +36,6 @@ import type {
   LeaderboardBoards,
   WorldEvent,
   GuildPerkId,
-  GuildMessage,
 } from '../shared/social.js';
 import {
   formatRarity,
@@ -259,11 +258,22 @@ export function App() {
     if (!state) return;
     const heartbeat = () => {
       if (document.visibilityState === 'hidden') return;
-      void getJson('/api/activity/heartbeat', { method: 'POST' }).catch(() => null);
+      void getJson('/api/activity/heartbeat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: APP_VERSION }),
+      }).catch(() => null);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') heartbeat();
     };
     heartbeat();
-    const interval = window.setInterval(heartbeat, 30_000);
-    return () => window.clearInterval(interval);
+    const interval = window.setInterval(heartbeat, 15_000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [Boolean(state)]);
 
   // Social & Community state
@@ -306,6 +316,8 @@ export function App() {
   const [frenzyRunTriggered, setFrenzyRunTriggered] = useState(false);
   const [frenzyArmed, setFrenzyArmed] = useState(false);
   const [showFrenzyPrompt, setShowFrenzyPrompt] = useState(false);
+  const [frenzyThanksPrompt, setFrenzyThanksPrompt] = useState<{ rarity: number; ownerUsername: string; postId: string; message: string } | null>(null);
+  const [postingFrenzyThanks, setPostingFrenzyThanks] = useState(false);
   const frenzyPromptShownRef = useRef(false);
   const frenzyClaimActiveRef = useRef(false);
   const componentMountedRef = useRef(true);
@@ -339,10 +351,11 @@ export function App() {
   const rollActionLockRef = useRef(false);
   const mutationQueueRef = useRef<Promise<void>>(Promise.resolve());
   const pendingMutationCountRef = useRef(0);
+  const mutationResyncNeededRef = useRef(false);
   const upgradeBatchQueueRef = useRef<UpgradeId[]>([]);
   const upgradeBatchTimerRef = useRef<number | null>(null);
-  const upgradeBatchRunRef = useRef<Promise<void> | null>(null);
-  const mutationResyncNeededRef = useRef(false);
+  const upgradeBatchInFlightRef = useRef(false);
+  const flushUpgradeBatchRef = useRef<(() => Promise<void>) | null>(null);
   const lastBoosterAnnouncementAtRef = useRef(0);
   const boosterAnnouncementTimerRef = useRef<number | null>(null);
 
@@ -737,6 +750,7 @@ export function App() {
 
     const resolveFrenzy = async () => {
       let readyToClaim = false;
+      let claimedFrenzyInfo: { rarity: number; ownerUsername: string; postId: string } | null = null;
       let lastPreflightError: unknown = null;
 
       // Retry only the read-only handoff/info checks. Retrying the claim POST
@@ -762,6 +776,7 @@ export function App() {
           // Only a Frenzy claim explicitly armed from the public Frenzy post
           // may auto-claim here. Simply opening the game must never consume a Frenzy.
           if (!info.inGame || !info.canClaim) return;
+          claimedFrenzyInfo = { rarity: info.rarity, ownerUsername: info.ownerUsername, postId: info.postId };
           readyToClaim = true;
           break;
         } catch (error) {
@@ -821,6 +836,12 @@ export function App() {
         `⚡ Orb Frenzy claimed! ${formatNumber(res.frenzyCount ?? 0)} Orbs rolled.`,
         'success',
       );
+      if (claimedFrenzyInfo) {
+        setFrenzyThanksPrompt({
+          ...claimedFrenzyInfo,
+          message: `I claimed your 1/${formatRarity(claimedFrenzyInfo.rarity)} Orb Frenzy. Thanks, u/${claimedFrenzyInfo.ownerUsername}!`,
+        });
+      }
     };
 
     void resolveFrenzy()
@@ -961,7 +982,9 @@ export function App() {
           auto: isAutoRoll,
           ticketId: ticket.ticketId,
           ticketIndex,
-          useAllFreeRolls: !isAutoRoll && (currentState.freeRolls ?? 0) > 0,
+          useAllFreeRolls: !isAutoRoll &&
+            Math.max(0, Math.floor(Number(currentState.chainPatcherNextRarity ?? 0) || 0)) < 2 &&
+            (currentState.freeRolls ?? 0) > 0,
         }),
       }));
 
@@ -1009,60 +1032,72 @@ export function App() {
     return () => clearInterval(interval);
   }, [autoRoll, state, readyAt, isRolling, handleRoll]);
 
-  // Rapid upgrade clicks are optimistic immediately, then verified as one server transaction.
-  const flushUpgradeBatch = useCallback(async (): Promise<void> => {
+  // Standard upgrades are applied optimistically, queued for a short burst
+  // window, and validated together by one authoritative server mutation.
+  const flushUpgradeBatch = async () => {
+    if (upgradeBatchInFlightRef.current || upgradeBatchQueueRef.current.length === 0) return;
     if (upgradeBatchTimerRef.current !== null) {
       window.clearTimeout(upgradeBatchTimerRef.current);
       upgradeBatchTimerRef.current = null;
     }
 
-    const existingRun = upgradeBatchRunRef.current;
-    if (existingRun) {
-      await existingRun;
-      if (upgradeBatchQueueRef.current.length > 0) await flushUpgradeBatch();
-      return;
-    }
-    if (upgradeBatchQueueRef.current.length === 0) return;
+    const ids = upgradeBatchQueueRef.current.splice(0, 100);
+    if (ids.length === 0) return;
+    upgradeBatchInFlightRef.current = true;
+    pendingMutationCountRef.current += 1;
 
-    const run = enqueueMutation(async () => {
-      let lastState: PlayerState | null = null;
-      let totalPurchased = 0;
-      let totalSpent = 0;
-      while (upgradeBatchQueueRef.current.length > 0) {
-        const ids = upgradeBatchQueueRef.current.splice(0, 100);
-        const result = await getJson<{ state: PlayerState; purchasedCount: number; totalSpent: number }>('/api/upgrade/batch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids }),
-        });
-        lastState = result.state;
-        totalPurchased += result.purchasedCount;
-        totalSpent += result.totalSpent;
-      }
-      if (lastState) applyPlayerState(lastState);
-      mutationResyncNeededRef.current = false;
-      if (totalPurchased > 0) {
-        showToast(`Bought ${formatNumber(totalPurchased)} upgrade level${totalPurchased === 1 ? '' : 's'} for ${formatNumber(totalSpent)} Coins.`, 'success');
-      }
-    }).catch(async (error: any) => {
-      // A lost response may follow a durable commit. Drop unsent speculative IDs,
-      // then reconcile with the server instead of leaving the UI falsely upgraded.
-      upgradeBatchQueueRef.current.splice(0);
-      mutationResyncNeededRef.current = true;
-      await refreshAll().catch(() => null);
-      mutationResyncNeededRef.current = false;
-      showToast(error?.message || 'Upgrade verification failed. State refreshed.', 'warn');
-    });
-    upgradeBatchRunRef.current = run;
     try {
-      await run;
-    } finally {
-      if (upgradeBatchRunRef.current === run) upgradeBatchRunRef.current = null;
-    }
-    if (upgradeBatchQueueRef.current.length > 0) await flushUpgradeBatch();
-  }, [enqueueMutation, applyPlayerState, refreshAll]);
+      await enqueueMutation(async () => {
+        try {
+          const res = await getJson<{
+            state: PlayerState;
+            purchased: Array<{ id: UpgradeId; cost: number; level: number }>;
+            totalSpent: number;
+            stoppedReason?: string;
+          }>('/api/upgrade/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids }),
+          });
 
-  // Buy Standard Upgrade
+          pendingMutationCountRef.current = Math.max(0, pendingMutationCountRef.current - 1);
+          if (upgradeBatchQueueRef.current.length === 0) {
+            applyPlayerState(res.state);
+            mutationResyncNeededRef.current = false;
+            if (res.purchased.length > 0) {
+              showToast(`Upgraded ${res.purchased.length} level${res.purchased.length === 1 ? '' : 's'} · ${formatNumber(res.totalSpent)} Coins spent.`, 'success');
+            }
+            if (res.stoppedReason && res.purchased.length < ids.length) {
+              showToast(res.stoppedReason, res.purchased.length > 0 ? 'info' : 'warn');
+            }
+          }
+        } catch (error: any) {
+          pendingMutationCountRef.current = Math.max(0, pendingMutationCountRef.current - 1);
+          mutationResyncNeededRef.current = true;
+          // The optimistic queue depends on the prior batch. If the server
+          // rejects that batch, discard dependent predictions and read back truth.
+          upgradeBatchQueueRef.current = [];
+          if (upgradeBatchTimerRef.current !== null) {
+            window.clearTimeout(upgradeBatchTimerRef.current);
+            upgradeBatchTimerRef.current = null;
+          }
+          await refreshAll().catch(() => null);
+          mutationResyncNeededRef.current = false;
+          showToast(error?.message || 'Upgrade verification failed. State refreshed.', 'warn');
+        }
+      });
+    } finally {
+      upgradeBatchInFlightRef.current = false;
+      if (upgradeBatchQueueRef.current.length > 0 && upgradeBatchTimerRef.current === null) {
+        upgradeBatchTimerRef.current = window.setTimeout(() => {
+          upgradeBatchTimerRef.current = null;
+          void flushUpgradeBatchRef.current?.();
+        }, 25);
+      }
+    }
+  };
+  flushUpgradeBatchRef.current = flushUpgradeBatch;
+
   const handleBuyUpgrade = async (id: UpgradeId) => {
     const currentState = stateRef.current;
     if (!currentState) return;
@@ -1070,7 +1105,7 @@ export function App() {
     const level = currentState.upgrades[id] ?? 0;
     const cost = upgradeCost(id, level);
     const canBuy = id === 'auto'
-      ? (currentState.manualRolls ?? 0) >= 3
+      ? (currentState.manualRolls ?? 0) >= 3 && level === 0
       : Number.isFinite(cost) && currentState.coins >= cost;
 
     if (!canBuy) {
@@ -1085,33 +1120,58 @@ export function App() {
       return;
     }
 
+    // Instant local response: update the visible level/wallet before the server
+    // round trip. Purchases still succeed only if the batch endpoint validates
+    // affordability and level limits against the actual saved state.
     const nextState: PlayerState = id === 'auto'
-      ? {
-          ...currentState,
-          upgrades: { ...currentState.upgrades, auto: 1 },
-        }
+      ? { ...currentState, upgrades: { ...currentState.upgrades, auto: 1 } }
       : {
           ...currentState,
           coins: currentState.coins - cost,
           upgrades: { ...currentState.upgrades, [id]: level + 1 },
         };
-
-    // Register the click before React has a chance to render again. This is why
-    // rapid taps don't vanish behind a request-in-progress flag.
     stateRef.current = nextState;
     stateRevisionRef.current += 1;
     setState(nextState);
-    upgradeBatchQueueRef.current.push(id);
     sound.playChime(659.25, 'sine', 0.2);
-    if (upgradeBatchTimerRef.current !== null) window.clearTimeout(upgradeBatchTimerRef.current);
-    upgradeBatchTimerRef.current = window.setTimeout(() => {
-      upgradeBatchTimerRef.current = null;
-      void flushUpgradeBatch();
-    }, 55);
+
+    upgradeBatchQueueRef.current.push(id);
+    if (!upgradeBatchInFlightRef.current) {
+      if (upgradeBatchTimerRef.current !== null) window.clearTimeout(upgradeBatchTimerRef.current);
+      upgradeBatchTimerRef.current = window.setTimeout(() => {
+        upgradeBatchTimerRef.current = null;
+        void flushUpgradeBatchRef.current?.();
+      }, 55);
+    }
   };
+  const handleBuyChainPatcher = async () => {
+    if (!stateRef.current || busy) return;
+    setBusy(true);
+    try {
+      const result = await getJson<{
+        state: PlayerState;
+        targetRarity: number;
+        shardsSpent: number;
+        cooldownUntil: number;
+      }>('/api/chain-patcher/buy', { method: 'POST' });
+      applyPlayerState(result.state);
+      // Purchasing a patch pauses Auto Roll server-side so the player can
+      // deliberately trigger the one-orb guarantee.
+      setAutoRoll(false);
+      sound.playMythicFanfare();
+      showToast(
+        `Chain Patcher charged: your next roll is exactly one 1/${formatRarity(result.targetRarity)} orb. Spent ${formatNumber(result.shardsSpent)} Shards; 24-hour cooldown started.`,
+        'success',
+      );
+    } catch (error: any) {
+      showToast(error?.message || 'Chain Patcher purchase failed.', 'warn');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // Upgrade All Standard Upgrades
   const handleBuyAllUpgrades = async () => {
-    await flushUpgradeBatch();
     const currentState = stateRef.current;
     if (!currentState) return;
 
@@ -1900,24 +1960,6 @@ export function App() {
   };
 
 
-  const handleSendGuildChat = async (text: string): Promise<GuildMessage> => {
-    setBusy(true);
-    try {
-      const res = await getJson<{ message: GuildMessage }>('/api/guilds/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-      });
-      void refreshAll();
-      return res.message;
-    } catch (e: any) {
-      showToast(e.message || 'Could not send message', 'warn');
-      throw e;
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const handleSendFeedback = async (type: 'bug' | 'suggestion', message: string) => {
     await getJson<{ success: boolean }>('/api/feedback', {
       method: 'POST',
@@ -1926,6 +1968,25 @@ export function App() {
     });
     setShowFeedbackModal(false);
     showToast(type === 'bug' ? 'Bug report sent to the moderators.' : 'Suggestion sent to the moderators.', 'success');
+  };
+
+  const handlePostFrenzyThanks = async () => {
+    const prompt = frenzyThanksPrompt;
+    if (!prompt || postingFrenzyThanks || !prompt.message.trim()) return;
+    setPostingFrenzyThanks(true);
+    try {
+      await getJson<{ success: true; commentId: string }>('/api/frenzy/thank-you', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postId: prompt.postId, text: prompt.message.trim() }),
+      });
+      setFrenzyThanksPrompt(null);
+      showToast('Thank-you comment posted as you. Please consider upvoting the Frenzy post, too.', 'success');
+    } catch (error: any) {
+      showToast(error?.message || 'Could not post your thank-you comment.', 'warn');
+    } finally {
+      setPostingFrenzyThanks(false);
+    }
   };
 
   const handleToggleNotifications = async (): Promise<boolean> => {
@@ -2441,6 +2502,7 @@ export function App() {
             state={state}
             onBuyUpgrade={handleBuyUpgrade}
             onBuyAllUpgrades={handleBuyAllUpgrades}
+            onBuyChainPatcher={handleBuyChainPatcher}
             onActivateTurbo={handleActivateTurbo}
             busy={false}
           />
@@ -2507,7 +2569,6 @@ export function App() {
             onCreateGuild={handleCreateGuild}
             onJoinGuild={handleJoinGuild}
             onLeaveGuild={handleLeaveGuild}
-            onSendMessage={handleSendGuildChat}
             onBuyGuildPerk={handleBuyGuildPerk}
             onToggleGuildTrust={handleToggleGuildTrust}
             onKickGuildMember={handleKickGuildMember}
@@ -2593,6 +2654,64 @@ export function App() {
           onClose={() => setShareRarity(null)}
           onShare={handleShareToReddit}
         />
+      )}
+
+      {frenzyThanksPrompt && (
+        <div className="fixed inset-0 z-[80] io-modal-backdrop flex items-center justify-center p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="frenzy-thanks-title" className="io-modal-card w-full max-w-md bg-slate-950/95">
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-fuchsia-300">
+              <Flame className="w-4 h-4" />
+              Frenzy thank-you
+            </div>
+            <h2 id="frenzy-thanks-title" className="mt-2 text-2xl font-black text-white">Thank the Frenzy poster</h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-300">
+              You claimed u/{frenzyThanksPrompt.ownerUsername}'s Frenzy. You can leave an optional public comment below.
+              It will be posted as your Reddit account, not the app.
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">
+              Please also consider upvoting the Frenzy post to thank its owner. Commenting is optional and gives no gameplay reward.
+            </p>
+            <label className="mt-4 block text-xs font-bold text-slate-300" htmlFor="frenzy-thanks-message">Public comment</label>
+            <textarea
+              id="frenzy-thanks-message"
+              value={frenzyThanksPrompt.message}
+              onChange={event => setFrenzyThanksPrompt(current => current ? { ...current, message: event.target.value } : current)}
+              maxLength={500}
+              rows={4}
+              disabled={postingFrenzyThanks}
+              className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-900 p-3 text-sm text-white placeholder:text-slate-500 focus:border-fuchsia-500 focus:outline-none"
+            />
+            <div className="mt-1 text-right text-[10px] text-slate-600">{frenzyThanksPrompt.message.length}/500</div>
+            <div className="mt-3 text-xs">
+              <a
+                href={`https://www.reddit.com/comments/${frenzyThanksPrompt.postId.replace(/^t3_/, '')}/`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-bold text-fuchsia-300 underline hover:text-fuchsia-200"
+              >
+                Open the Frenzy post to upvote
+              </a>
+            </div>
+            <div className="io-modal-actions mt-4">
+              <button
+                type="button"
+                onClick={() => void handlePostFrenzyThanks()}
+                disabled={postingFrenzyThanks || !frenzyThanksPrompt.message.trim()}
+                className="io-public-button io-public-button-primary disabled:opacity-50"
+              >
+                {postingFrenzyThanks ? 'Posting comment…' : `Post comment as u/${state.username ?? 'Redditor'}`}
+              </button>
+              <button
+                type="button"
+                onClick={() => setFrenzyThanksPrompt(null)}
+                disabled={postingFrenzyThanks}
+                className="io-public-button io-public-button-secondary"
+              >
+                Not now
+              </button>
+            </div>
+          </section>
+        </div>
       )}
 
       {/* Global Chat */}

@@ -215,6 +215,7 @@ const localContext = {
   username: 'OrbMaster',
   subredditName: 'infinityorbs',
   subredditId: 't5-local-infinityorbs',
+  postId: 't3_localmaingame',
 };
 
 const localReddit = {
@@ -243,7 +244,15 @@ const localReddit = {
     userGeneratedContent?: { text?: string };
   }) => {
     console.log('[Reddit Mock] Custom post submitted:', options.title);
-    return { id: `reddit-post-${Date.now()}` };
+    return { id: `t3_localpost${Date.now()}` };
+  },
+  submitComment: async (options: { id: string; text: string; runAs?: string }) => {
+    console.log('[Reddit Mock] Comment submitted:', {
+      postId: options.id,
+      runAs: options.runAs ?? 'APP',
+      text: options.text,
+    });
+    return { id: `t1_localcomment${Date.now()}` };
   },
   subscribeToCurrentSubreddit: async () => {
     console.log('[Reddit Mock] Subscribed current user to current subreddit.');
