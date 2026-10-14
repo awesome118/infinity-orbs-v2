@@ -1484,7 +1484,8 @@ test('Global Chat mutations fail closed rather than overwriting malformed histor
 
   const postStart = social.indexOf('export async function postGlobalChatMessage');
   const postEnd = social.indexOf('function sortLeaderboard', postStart);
-  assert.match(social.slice(postStart, postEnd), /const messages = parseGlobalChatList\(raw\)/);
+  assert.match(social.slice(postStart, postEnd), /reddit\.submitComment\([\s\S]*?runAs: 'USER'/);
+  assert.match(social.slice(postStart, postEnd), /recordGlobalChatComment\(/);
 
   const readStart = social.indexOf('export async function getGlobalChat');
   const readEnd = social.indexOf('export async function postGlobalChatMessage', readStart);
