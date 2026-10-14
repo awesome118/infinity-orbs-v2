@@ -2569,6 +2569,8 @@ export async function getGlobalChat(): Promise<GlobalChatMessage[]> {
   }
 
   return parsed
+    // Legacy in-app-only entries were never Reddit comments; don't treat them as current chat.
+    .filter(message => /^t1_[a-z0-9]+$/i.test(String(message.id ?? '').trim()))
     .filter(message => {
       const messageUserId = String(message.userId ?? '').trim();
       const messageUsername = message.username.replace(/^u\//i, '').trim().toLowerCase();
