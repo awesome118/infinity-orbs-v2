@@ -3595,9 +3595,12 @@ export async function applyRolls(
   // not miss a threshold or grant the same threshold more than once.
   const masteryEngineLevel = Math.max(0, Math.min(5, Math.floor(Number(s.prestigeUpgrades?.masteryEngine ?? 0) || 0)));
   if (masteryEngineLevel > 0 && rollCount > 0) {
-    const interval = Math.max(1, Math.floor(100 / masteryEngineLevel));
     const rollsBeforeBatch = Math.max(0, s.totalRolls - rollCount);
-    const pointsEarned = Math.max(0, Math.floor(s.totalRolls / interval) - Math.floor(rollsBeforeBatch / interval));
+    const milestonesCrossed = Math.max(
+      0,
+      Math.floor(s.totalRolls / 100) - Math.floor(rollsBeforeBatch / 100),
+    );
+    const pointsEarned = milestonesCrossed * masteryEngineLevel;
     if (pointsEarned > 0) {
       s.masteryPoints = Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(Number(s.masteryPoints ?? 0) || 0)) + pointsEarned);
     }
