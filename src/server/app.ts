@@ -77,7 +77,7 @@ import {
 import { context, reddit, redis } from './devvit-mock.js';
 import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
-import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
+import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
 
 const payments = (devvitServer as typeof devvitServer & {
@@ -264,8 +264,17 @@ export function createApp() {
       'highestRarity' in value
     ) {
       const copy = { ...value };
+      const sourceCollection = value.collection && typeof value.collection === 'object' && !Array.isArray(value.collection)
+        ? value.collection as Record<string, number>
+        : {};
+      const pendingPatcherRarity = Math.floor(Number(value.chainPatcherNextRarity ?? 0) || 0);
+      // Client state intentionally omits the full Codex, so preserve the correct
+      // pre-purchase target as a tiny server-calculated projection.
+      copy.chainPatcherSuggestedRarity = pendingPatcherRarity >= 2
+        ? pendingPatcherRarity
+        : nextCodexChainRarity(sourceCollection);
       copy.collection = {};
-      copy.collectionCount = Object.keys(value.collection ?? {}).length;
+      copy.collectionCount = Object.keys(sourceCollection).length;
       return copy;
     }
     if (!Array.isArray(value) && value.state && typeof value.state === 'object') {
