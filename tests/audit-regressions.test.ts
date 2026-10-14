@@ -97,6 +97,7 @@ test('Chain Patcher is server-authoritative, arms exactly one guaranteed rarity,
   assert.match(game, /spendShards\(s, shardsSpent\)/);
   assert.match(game, /s\.chainPatcherCooldownUntil = now \+ CHAIN_PATCHER_COOLDOWN_MS/);
   assert.match(game, /s\.autoRollEnabled = false/);
+  assert.match(game, /Auto Roll is disabled/);
   assert.match(game, /usingChainPatcher \? 1 : freeRollsToUse > 0 \? freeRollsToUse : 1/);
   assert.match(game, /usingChainPatcher,/);
   assert.match(game, /if \(usingChainPatcher\) s\.chainPatcherNextRarity = 0/);
