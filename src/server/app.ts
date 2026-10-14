@@ -1240,6 +1240,14 @@ export function createApp() {
     catch (e) { badRequest(res, e, 'Could not claim Orb Frenzy.'); }
   });
 
+  app.post('/api/frenzy/thank-you', async (req, res) => {
+    try {
+      res.json(await postFrenzyThankYouComment(req.body?.text ?? '', req.body?.postId ?? ''));
+    } catch (error) {
+      badRequest(res, error, 'Could not post the thank-you comment.');
+    }
+  });
+
   app.post('/api/feedback', async (req, res) => {
     try {
       const type = req.body?.type === 'suggestion' ? 'suggestion' : 'bug';
