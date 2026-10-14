@@ -124,6 +124,7 @@ export interface LeaderboardEntry {
   highestDryStreak?: number;
   currentDryStreak?: number;
   playtimeMs?: number;
+  chainLength?: number;
 }
 
 export type LeaderboardId =
@@ -132,7 +133,8 @@ export type LeaderboardId =
   | 'highestDryStreak'
   | 'currentDryStreak'
   | 'bestOrb'
-  | 'mostPlaytime';
+  | 'mostPlaytime'
+  | 'chainLength';
 
 export type LeaderboardBoards = Record<LeaderboardId, LeaderboardEntry[]>;
 
