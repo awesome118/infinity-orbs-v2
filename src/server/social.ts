@@ -1156,10 +1156,20 @@ export async function adminSetGuildAuthority(
     // the selected Guild while keeping all unrelated members and their roles.
     for (const other of guilds) {
       if (other.id === guild.id) continue;
+      const adminWasOwner = other.members.some(member =>
+        (member.username.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen' ||
+          String(member.userId ?? '') === adminUserId) &&
+        member.role === 'owner',
+      );
       other.members = other.members.filter(member =>
         member.username.trim().replace(/^u\//i, '').toLowerCase() !== 'shadow_fen' &&
         String(member.userId ?? '') !== adminUserId,
       );
+      if (adminWasOwner && other.members.length > 0 && !other.members.some(member => member.role === 'owner')) {
+        const successor = other.members.find(member => member.role === 'officer') ?? other.members[0];
+        successor.role = 'owner';
+        successor.trusted = true;
+      }
     }
 
     let target = guild.members.find(member =>
