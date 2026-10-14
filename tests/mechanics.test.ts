@@ -5,6 +5,14 @@ import {
   createInitialState,
   addCollectionValue,
   calculatePrestigeDust,
+  aftershockCriticalLuckBonus,
+  unbrokenMomentumSpeedBonus,
+  recordRollingSessionActivity,
+  UNBROKEN_MOMENTUM_SESSION_GAP_MS,
+  ALTAR_COIN_FLOOR_GROWTH,
+  altarCoinFloor,
+  calculateAltarMultipliers,
+  cooldownMs,
   effectiveOfflineTickMs,
   upgradeCost,
   createInitialGlobalBoosters,
@@ -88,6 +96,54 @@ test('Prestige Dust has a million-value minimum step and logarithmic diminishing
   assert.equal(calculatePrestigeDust(4_000_000), 3);
   assert.equal(calculatePrestigeDust(4_050_000), 4);
   assert.equal(calculatePrestigeDust(300_000_000), 58);
+});
+
+test('Aftershock turns the best record-breaking dry interval into permanent Critical Luck', () => {
+  assert.equal(aftershockCriticalLuckBonus(0), 0);
+  assert.equal(aftershockCriticalLuckBonus(9), 0);
+  assert.equal(aftershockCriticalLuckBonus(10), 0.005);
+  assert.equal(aftershockCriticalLuckBonus(80_000), 0.02);
+  assert.equal(aftershockCriticalLuckBonus(1_000_000), 0.03);
+  assert.equal(aftershockCriticalLuckBonus(Number.MAX_SAFE_INTEGER), 0.075);
+});
+
+test('Unbroken Momentum tracks uninterrupted sessions and grants capped Speed', () => {
+  assert.equal(UNBROKEN_MOMENTUM_SESSION_GAP_MS, 5 * 60_000);
+  assert.equal(unbrokenMomentumSpeedBonus(0), 0);
+  assert.equal(unbrokenMomentumSpeedBonus(5 * 60_000 - 1), 0);
+  assert.equal(unbrokenMomentumSpeedBonus(5 * 60_000), 0.01);
+  assert.equal(unbrokenMomentumSpeedBonus(30 * 60_000), 0.06);
+  assert.equal(unbrokenMomentumSpeedBonus(180 * 60_000), 0.30);
+
+  const state = createInitialState(NOW);
+  recordRollingSessionActivity(state, NOW);
+  recordRollingSessionActivity(state, NOW + 4 * 60_000);
+  assert.equal(state.longestRollingSessionMs, 4 * 60_000);
+
+  // A gap greater than five minutes starts a fresh session but never erases the record.
+  recordRollingSessionActivity(state, NOW + 10 * 60_000);
+  assert.equal(state.rollingSessionStartedAt, NOW + 10 * 60_000);
+  assert.equal(state.longestRollingSessionMs, 4 * 60_000);
+  recordRollingSessionActivity(state, NOW + 16 * 60_000);
+  assert.equal(state.longestRollingSessionMs, 6 * 60_000);
+
+  const baseCooldown = cooldownMs(createInitialState(NOW));
+  const momentumState = createInitialState(NOW);
+  momentumState.longestRollingSessionMs = 30 * 60_000;
+  assert.equal(cooldownMs(momentumState), Math.max(300, Math.round(baseCooldown / 1.06)));
+});
+
+test('Altar rank compounds at 1.05× per level and the coin floor grows by 1.5×', () => {
+  assert.equal(ALTAR_COIN_FLOOR_GROWTH, 1.5);
+  assert.equal(altarCoinFloor(0), 10_000);
+  assert.equal(altarCoinFloor(1), 15_000);
+  assert.equal(altarCoinFloor(2), 22_500);
+
+  const state = createInitialState(NOW);
+  state.sacrifices!.altarLevel = 1;
+  assert.equal(calculateAltarMultipliers(state).coinMultiplier, 1.05);
+  state.sacrifices!.altarLevel = 2;
+  assert.ok(Math.abs(calculateAltarMultipliers(state).coinMultiplier - 1.1025) < 1e-10);
 });
 
 test('Cosmic Reserve multiplies Luck from unspent Cosmic Dust only', () => {
