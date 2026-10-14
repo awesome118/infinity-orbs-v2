@@ -522,6 +522,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     coins: number;
     shards: number;
     playtimeMs: number;
+    currentSessionMs: number;
     clientVersion: string | null;
     isLatestVersion: boolean;
   }>>([]);
@@ -4449,7 +4450,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                         ? <span className="text-[9px] font-black text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-1.5 py-0.5">v{player.clientVersion} · Latest</span>
                         : <span className="text-[9px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-full px-1.5 py-0.5">v{player.clientVersion ?? 'unknown'}</span>}
                     </div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">Level {player.level} · {formatNumber(player.totalRolls)} rolls · Playtime {formatPlaytime(player.playtimeMs)} · Best 1/{formatRarity(Math.max(1, player.highestRarity))}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Level {player.level} · {formatNumber(player.totalRolls)} rolls · Session {formatPlaytime(player.currentSessionMs)} · Playtime {formatPlaytime(player.playtimeMs)} · Best 1/{formatRarity(Math.max(1, player.highestRarity))}</div>
                   </div>
                   <div className="shrink-0 text-right">
                     <div className="text-[10px] text-slate-400">{player.active ? 'Online now' : player.lastSeenAt ? new Date(player.lastSeenAt).toLocaleString() : 'No recent activity'}</div>
