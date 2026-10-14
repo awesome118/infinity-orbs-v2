@@ -1593,6 +1593,8 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
         }
       }
 
+      }
+
       const firstTask = guild.tasks[0];
       guild.challenge = {
         type: firstTask.type,
@@ -1732,6 +1734,8 @@ export async function prepareGuildRollEffects(
           });
           if (guild.chat.length > 50) guild.chat.shift();
         }
+
+      }
 
       const firstTask = guild.tasks[0];
       guild.challenge = {
