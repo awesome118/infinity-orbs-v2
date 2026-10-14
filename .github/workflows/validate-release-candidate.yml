@@ -4,7 +4,7 @@ name: Validate Infinity Orbs 1.2.15 candidate
 on:
   push:
     branches:
-      - release/1.2.15-candidate-20261013
+      - release/1.2.14-candidate-20261013
   workflow_dispatch:
 
 permissions:
