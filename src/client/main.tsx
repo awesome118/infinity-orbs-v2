@@ -1579,6 +1579,7 @@ export function App() {
           prosperity: current.masterySkills?.prosperity ?? 0,
           shardAttunement: current.masterySkills?.shardAttunement ?? 0,
           critMastery: current.masterySkills?.critMastery ?? 0,
+          aftershock: current.masterySkills?.aftershock ?? 0,
           chronoFlow: current.masterySkills?.chronoFlow ?? 0,
           infiniteVault: current.masterySkills?.infiniteVault ?? 0,
           cosmicAttunement: current.masterySkills?.cosmicAttunement ?? 0,
