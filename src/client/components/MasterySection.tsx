@@ -13,7 +13,7 @@ import {
   Award,
 } from 'lucide-react';
 import type { PlayerState, MasterySkillId } from '../../shared/game.js';
-import { formatNumber, formatRarity, MASTERY_SKILLS, masterySkillCost, bestCodexChain, codexDevotionLuckPercent } from '../../shared/game.js';
+import { formatNumber, formatRarity, MASTERY_SKILLS, masterySkillCost, bestCodexChain, codexDevotionLuckPercent, aftershockCriticalLuckBonus } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface MasterySectionProps {
@@ -106,7 +106,7 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
     if (activeBranch === 'fortune' && (id === 'continuumLuck' || id === 'pityAccelerant' || id === 'apexFortune')) return true;
     if (activeBranch === 'temporal' && (id === 'chronoFlow')) return true;
     if (activeBranch === 'alchemy' && (id === 'prosperity' || id === 'shardAttunement' || id === 'infiniteVault')) return true;
-    if (activeBranch === 'cosmos' && (id === 'critMastery' || id === 'celestialSurge' || id === 'cosmicAttunement' || id === 'celestialVolley')) return true;
+    if (activeBranch === 'cosmos' && (id === 'critMastery' || id === 'celestialSurge' || id === 'cosmicAttunement' || id === 'celestialVolley' || id === 'aftershock')) return true;
     return false;
   });
 
@@ -191,6 +191,12 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
             const codexLuckPercent = isCodexDevotion
               ? codexDevotionLuckPercent(currentLevel, codexChain.length)
               : 0;
+            const nextCodexLuckPercent = isCodexDevotion
+              ? codexDevotionLuckPercent(Math.min(skill.maxLevel, currentLevel + 1), codexChain.length)
+              : 0;
+            const isAftershock = skillId === 'aftershock';
+            const aftershockRecord = Math.max(0, state.aftershockRecord ?? 0);
+            const aftershockBonus = aftershockCriticalLuckBonus(aftershockRecord);
             const isMax = currentLevel >= skill.maxLevel;
             const cost = masterySkillCost(skillId, currentLevel);
             const canAfford = (state.masteryPoints ?? 0) >= cost && !isMax;
@@ -236,7 +242,7 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
                   </p>
 
                   {isCodexDevotion && (
-                    <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2">
+                    <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2 space-y-2">
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-[10px] uppercase tracking-wide font-black text-cyan-300">
                           Longest Codex Chain
@@ -245,16 +251,46 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
                           {codexChain.length}
                         </span>
                       </div>
-                      <div className="mt-1 flex items-center justify-between gap-3">
+                      <div className="flex items-center justify-between gap-3">
                         <span className="text-[10px] text-slate-500">
                           {codexChain.length > 0
                             ? `1/${formatRarity(codexChain.start)} → 1/${formatRarity(codexChain.end)}`
                             : 'Collect consecutive rarities to build a chain'}
                         </span>
-                        <span className="text-base font-black text-emerald-300">
-                          +{codexLuckPercent}% Luck
+                        <span className="text-[10px] font-bold text-slate-400">+0.3% per chain rarity / level</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-lg bg-slate-950/70 px-2.5 py-2">
+                          <div className="text-[9px] uppercase tracking-wide text-slate-500">Current bonus</div>
+                          <div className="text-sm font-black text-emerald-300">+{codexLuckPercent.toFixed(2)}% Luck</div>
+                        </div>
+                        <div className="rounded-lg bg-slate-950/70 px-2.5 py-2">
+                          <div className="text-[9px] uppercase tracking-wide text-slate-500">{isMax ? 'Maximum bonus' : 'After next level'}</div>
+                          <div className="text-sm font-black text-cyan-200">+{nextCodexLuckPercent.toFixed(2)}% Luck</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {isAftershock && (
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[10px] uppercase tracking-wide font-black text-amber-300">
+                          Best Aftershock record
+                        </span>
+                        <span className="text-sm font-black font-mono text-white">
+                          {fmt(aftershockRecord)} rolls
                         </span>
                       </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[10px] text-slate-500">Critical Luck bonus</span>
+                        <span className="text-base font-black text-amber-200">
+                          {currentLevel > 0 ? 'Active' : 'After purchase'} · +{aftershockBonus.toFixed(3)}×
+                        </span>
+                      </div>
+                      <p className="text-[10px] leading-relaxed text-slate-500">
+                        Your best dry interval between successive all-time rarity records continues tracking. The bonus activates when you buy Aftershock.
+                      </p>
                     </div>
                   )}
 
