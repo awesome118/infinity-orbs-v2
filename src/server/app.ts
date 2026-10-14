@@ -26,6 +26,7 @@ import {
   getGlobalBoosters,
   activateGlobalBooster,
   claimOrbFrenzy,
+  postFrenzyThankYouComment,
   getOrbFrenzyInfo,
   getOrbFrenzyHandoff,
   armOrbFrenzyClaim,
