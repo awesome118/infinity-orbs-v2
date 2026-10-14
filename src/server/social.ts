@@ -1636,7 +1636,7 @@ export async function prepareGuildRollEffects(
   pendingWrite?: { expectedValue: string | null; nextValue: string },
 ): Promise<{
   taxedCoins: number;
-  extraWrite?: { key: string; expectedValue: string | null; nextValue: string; conflictMessage?: string };
+  extraWrite?: { key: string; expectedValue: string | null; nextValue: string; conflictMessage?: string; optional?: boolean };
 }> {
   await ensureGuildMigrations();
   await ensureRedisStringKey(GUILDS_KEY, '[]');
@@ -1775,6 +1775,10 @@ export async function prepareGuildRollEffects(
         : persistedRaw == null ? null : String(persistedRaw),
       nextValue: JSON.stringify(guilds),
       conflictMessage: 'Guild data changed before the roll saved. Please retry.',
+      // Without withheld Guild tax, contribution/task progress is a projection.
+      // If another request updates Guild data first, save() can preserve the
+      // valid player roll and skip only this side write rather than rejecting it.
+      ...(taxedCoins === 0 && !pendingWrite ? { optional: true } : {}),
     },
   };
 }
