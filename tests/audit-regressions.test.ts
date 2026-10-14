@@ -2299,7 +2299,7 @@ test('one Free Roll click submits all stored Free Rolls while rewards remain ser
   assert.match(game, /useAllFreeRolls = false/);
   assert.match(game, /useAllFreeRolls \? availableFreeRolls : 1/);
   assert.match(game, /while \(remainingActivations > 0\)/);
-  assert.match(game, /s\.freeRolls = Math\.max\(0, \(s\.freeRolls \?\? 0\) - freeRollActivations\)/);
+  assert.match(game, /if \(usingFreeRoll\) s\.freeRolls = availableFreeRolls - freeRollActivations/);
   assert.match(app, /req\.body\?\.useAllFreeRolls === true/);
   assert.match(client, /useAllFreeRolls: !isAutoRoll && \(currentState\.freeRolls \?\? 0\) > 0/);
 });
