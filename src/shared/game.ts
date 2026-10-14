@@ -1948,7 +1948,6 @@ export function calculateAltarMultipliers(s: PlayerState): {
   const resonatorBonus = 1 + (s.prestigeUpgrades?.altarResonator ?? 0) * 0.15;
   const altarEffectMultiplier = getLevelBenefits(Math.max(1, s.level || 1)).altarEffectMultiplier;
 
-  // Match the displayed Altar bonuses: +1% per altar level and +2% per infused shard.
   // Altar rank compounds as ×1.05 per level. The Level 20 milestone and
   // Altar Resonator still strengthen the bonus above 1×; shard infusion remains
   // its own multiplicative layer.
@@ -1962,8 +1961,8 @@ export function calculateAltarMultipliers(s: PlayerState): {
   const surgeMultiplier = isSurgeActive ? 1.25 : 1.0;
 
   // Altar components multiply rather than add: coin × shards × active Surge.
-  const totalAltarMultiplier =
-    Math.round(coinMultiplier * shardMultiplier * surgeMultiplier * 100) / 100;
+  // Keep full precision for gameplay math; the UI rounds its presentation only.
+  const totalAltarMultiplier = coinMultiplier * shardMultiplier * surgeMultiplier;
 
   return {
     coinMultiplier,
