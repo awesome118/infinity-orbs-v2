@@ -151,6 +151,7 @@ test('Altar rank compounds at 1.05× per level and the coin floor grows by 1.5×
   assert.equal(calculateAltarMultipliers(state).coinMultiplier, 1.05);
   state.sacrifices!.altarLevel = 2;
   assert.ok(Math.abs(calculateAltarMultipliers(state).coinMultiplier - 1.1025) < 1e-10);
+  assert.ok(Math.abs(calculateAltarMultipliers(state).totalAltarMultiplier - 1.1025) < 1e-10);
 });
 
 test('Cosmic Reserve multiplies Luck from unspent Cosmic Dust only', () => {
