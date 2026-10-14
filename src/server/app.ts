@@ -67,6 +67,7 @@ import {
   shareText,
   getCommunityEvent,
   getGlobalChat,
+  getGlobalChatStatus,
   postGlobalChatMessage,
   recordGlobalChatComment,
   reportGlobalChatMessage,
@@ -876,6 +877,11 @@ export function createApp() {
         error: transientContentionError(e) ? 'Leaderboards are busy updating. Please retry.' : e?.message || 'Failed to fetch leaderboards.',
       });
     }
+  });
+
+  app.get('/api/chat/status', async (_req, res) => {
+    try { res.json(await getGlobalChatStatus()); }
+    catch (e) { badRequest(res, e, 'Could not determine Global Chat availability.'); }
   });
 
   app.get('/api/chat', async (_req, res) => {
