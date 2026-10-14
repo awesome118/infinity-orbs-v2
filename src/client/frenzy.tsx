@@ -342,6 +342,7 @@ function FrenzyPost() {
           )}
 
           {error && <p className="io-public-inline-error">{error}</p>}
+          {thankYouStatus && <p className="io-public-inline-error" role="status">{thankYouStatus}</p>}
 
           <div className="io-public-note">
             <div><Users className="w-3.5 h-3.5" /> Claim cooldown: 23 hours per player.</div>
@@ -349,6 +350,51 @@ function FrenzyPost() {
           </div>
         </section>
       </div>
+
+      {showThankYouPrompt && info && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm">
+          <section role="dialog" aria-modal="true" aria-labelledby="frenzy-thanks-fallback-title" className="w-full max-w-md rounded-3xl border border-fuchsia-500/30 bg-slate-950 p-5 shadow-2xl">
+            <div className="text-xs font-black uppercase tracking-widest text-fuchsia-300">Frenzy thank-you</div>
+            <h2 id="frenzy-thanks-fallback-title" className="mt-2 text-2xl font-black text-white">Thank the Frenzy poster</h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-300">
+              You claimed u/{info.ownerUsername}'s Frenzy. You can leave an optional public comment below.
+              It will be posted as your Reddit account, not the app.
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">
+              Please consider upvoting the Frenzy post, too. Commenting is optional and gives no gameplay reward.
+            </p>
+            <label className="mt-4 block text-xs font-bold text-slate-300" htmlFor="frenzy-thanks-fallback-message">Public comment</label>
+            <textarea
+              id="frenzy-thanks-fallback-message"
+              value={thankYouMessage}
+              onChange={event => setThankYouMessage(event.target.value)}
+              maxLength={500}
+              rows={4}
+              disabled={postingThankYou}
+              className="mt-3 w-full rounded-xl border border-slate-800 bg-slate-900 p-3 text-sm text-white focus:border-fuchsia-500 focus:outline-none"
+            />
+            <div className="mt-1 text-right text-[10px] text-slate-600">{thankYouMessage.length}/500</div>
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => void submitThankYouComment()}
+                disabled={postingThankYou || !thankYouMessage.trim()}
+                className="io-public-button io-public-button-primary disabled:opacity-50"
+              >
+                {postingThankYou ? 'Posting comment…' : 'Post comment as your Reddit user'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowThankYouPrompt(false)}
+                disabled={postingThankYou}
+                className="io-public-button io-public-button-secondary"
+              >
+                Not now
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
