@@ -1550,6 +1550,7 @@ debugRouter.post('/state', async (req, res) => {
       'currentRunRolls', 'questsCompleted', 'guildContribution', 'masteryPoints',
       'singularityTitheSingleRolls',
       'communityRewardClaimedAt', 'communityRewardClaimedTier',
+      'chainPatcherNextRarity', 'chainPatcherCooldownUntil',
       'level', 'levelXpFloor', 'globalBoosterCredits', 'freeShardsEarnedToday',
     ];
 
