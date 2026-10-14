@@ -21,8 +21,8 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   launcherContext = 'main',
 }) => {
   const [open, setOpen] = useState(false);
-  // A Frenzy embed can route comments to the canonical Game launcher only
-  // after that launcher has registered its post ID. Hide chat if it cannot.
+  // Global Chat stays visible in the main and Frenzy entry points. Frenzy can
+  // read history, but posting is disabled until the player opens the main Game launcher.
   const [chatAvailable, setChatAvailable] = useState<boolean | null>(null);
   const [chatUnavailableReason, setChatUnavailableReason] = useState('');
   const [messages, setMessages] = useState<GlobalChatMessage[]>([]);
