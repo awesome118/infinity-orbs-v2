@@ -1209,7 +1209,7 @@ test('collection value rollover is prevented consistently in every roll path', (
   assert.match(frenzy, /s\.collectionValue = addCollectionValue\(s\.collectionValue, finalValue\)/);
   assert.match(frenzy, /s\.lifetimeCollectionValue = addCollectionValue\(s\.lifetimeCollectionValue, finalValue\)/);
 
-  const simulationStart = shared.indexOf('export function simulateRolls');
+  const simulationStart = shared.indexOf('export function predictRollActivation(');
   const simulationEnd = shared.indexOf('\nexport function ', simulationStart + 40);
   assert.ok(simulationStart >= 0 && simulationEnd > simulationStart);
   const simulation = shared.slice(simulationStart, simulationEnd);
