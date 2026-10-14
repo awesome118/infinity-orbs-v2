@@ -424,7 +424,7 @@ export function createApp() {
   // Major systems unlock gradually so new players learn the core loop before
   // the advanced economy, social systems, and prestige layers appear.
   const featureForPath = (path: string): FeatureId | null => {
-    if (path === '/upgrade' || path === '/upgrade/all' || path === '/turbo/activate') return 'upgrades';
+    if (path === '/upgrade' || path === '/upgrade/all' || path === '/upgrade/batch' || path === '/turbo/activate') return 'upgrades';
     if (path === '/products' || path === '/payments/reconcile') return 'shop';
     if (path === '/collection') return 'collection';
     if (path === '/quests/claim' || path === '/streak/claim') return 'quests';
@@ -1017,7 +1017,7 @@ export function createApp() {
         'transmutation', 'shardSynthesis', 'astralBarrage', 'cosmicInheritance',
         'autoBuyer', 'supernova', 'altarResonator', 'offlineOverdrive', 'singularityTithe',
         'luckyFloor', 'astralArsenal', 'deepVault', 'masteryEngine', 'steadyHands', 'offlineFortune',
-        'frenzyVolley', 'astralReserve', 'temporalCompression', 'shardResonator', 'cosmicValuation'
+        'frenzyVolley', 'astralReserve', 'temporalCompression', 'shardResonator', 'cosmicValuation', 'cosmicReserve'
       ];
       if (!validIds.includes(id)) return res.status(400).json({ error: 'Invalid prestige upgrade.' });
       res.json({ state: await buyPrestigeUpgrade(id) });
