@@ -2281,6 +2281,63 @@ async function resolveGlobalGamePostId(): Promise<string> {
 }
 
 
+
+export async function recordGlobalChatComment(input: {
+  postId: string;
+  commentId: string;
+  text: string;
+  username: string;
+  userId?: string;
+  timestamp?: number;
+}): Promise<GlobalChatMessage | null> {
+  const targetPostId = String(input.postId ?? '').trim();
+  const registeredPostId = String(await redis.get(GLOBAL_GAME_POST_KEY) ?? '').trim();
+  if (!targetPostId || !registeredPostId || targetPostId !== registeredPostId) return null;
+
+  const rawId = String(input.commentId ?? '').trim();
+  const bareId = rawId.replace(/^t1_/i, '');
+  if (!/^[a-z0-9]+$/i.test(bareId)) return null;
+  const id = 't1_' + bareId;
+  const text = String(input.text ?? '').trim();
+  if (!text || text.length > 10_000) return null;
+  const userId = String(input.userId ?? '').trim();
+  const message: GlobalChatMessage = {
+    id,
+    username: String(input.username ?? '').trim().replace(/^u\//i, '').slice(0, 80) || 'Redditor',
+    text,
+    timestamp: Number.isSafeInteger(Number(input.timestamp)) && Number(input.timestamp) >= 0
+      ? Number(input.timestamp)
+      : Date.now(),
+    ...(userId ? { userId } : {}),
+  };
+
+  await ensureRedisStringKey(GLOBAL_CHAT_KEY, '[]');
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const txn = await redis.watch(GLOBAL_CHAT_KEY);
+    let closed = false;
+    try {
+      const raw = await redis.get(GLOBAL_CHAT_KEY);
+      const messages = parseGlobalChatList(raw);
+      const previous = messages.find(item => item.id === id);
+      if (previous) {
+        await txn.unwatch();
+        closed = true;
+        return previous;
+      }
+      messages.push(message);
+      messages.sort((a, b) => a.timestamp - b.timestamp);
+      await txn.multi();
+      await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(messages.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
+      const committed = await txn.exec();
+      closed = true;
+      if (committed !== null) return message;
+    } finally {
+      if (!closed) await txn.unwatch().catch(() => undefined);
+    }
+  }
+  throw new Error('Global Chat changed while recording a Reddit comment. Please retry.');
+}
+
 async function purgeChatMessagesForUser(userId: string, targetUsername: string): Promise<void> {
   const cleanUsername = String(targetUsername).trim().replace(/^u\//i, '').toLowerCase();
 
