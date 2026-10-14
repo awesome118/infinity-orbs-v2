@@ -6295,8 +6295,9 @@ export async function postFrenzyThankYouComment(
 
   // This runs only after a separate, explicit click in the UI. It is never
   // merged with claiming the Frenzy, and Reddit attributes it to the player.
+  const redditPostId = /^t3_/i.test(postId) ? postId : 't3_' + postId;
   const comment = await reddit.submitComment({
-    id: postId,
+    id: redditPostId,
     text: messageText,
     runAs: 'USER',
   });
