@@ -6,7 +6,6 @@ import {
   Globe,
   MessageSquare,
   Plus,
-  Send,
   LogOut,
   Sparkles,
   Flame,
@@ -54,7 +53,6 @@ interface GuildsAndSocialProps {
   onCreateGuild: (name: string, tag: string) => Promise<boolean>;
   onJoinGuild: (id: string) => Promise<void>;
   onLeaveGuild: () => Promise<void>;
-  onSendMessage: (text: string) => Promise<GuildMessage>;
   onBuyGuildPerk?: (perk: GuildPerkId) => Promise<void>;
   onToggleGuildTrust?: (username: string, trusted: boolean) => Promise<void>;
   onKickGuildMember?: (username: string) => Promise<void>;
@@ -100,7 +98,6 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   onCreateGuild,
   onJoinGuild,
   onLeaveGuild,
-  onSendMessage,
   onBuyGuildPerk,
   onToggleGuildTrust,
   onKickGuildMember,
@@ -114,7 +111,6 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const [now, setNow] = useState(Date.now());
   const [createName, setCreateName] = useState('');
   const [createTag, setCreateTag] = useState('');
-  const [chatInput, setChatInput] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [chatMessages, setChatMessages] = useState<GuildMessage[]>([]);
   const [reportingId, setReportingId] = useState<string | null>(null);
@@ -197,21 +193,6 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     } finally {
       setReportingId(null);
     }
-  };
-
-  const handleSendChat = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim() || busy) return;
-    sound.playClick();
-    const text = chatInput.trim();
-    setChatInput('');
-    const sent = await onSendMessage(text);
-    setChatMessages(prev => {
-      const merged = new Map<string, GuildMessage>();
-      for (const msg of prev) merged.set(msg.id, msg);
-      merged.set(sent.id, sent);
-      return Array.from(merged.values()).sort((a, b) => a.timestamp - b.timestamp).slice(-100);
-    });
   };
 
   const handleCreateGuild = async (e: React.FormEvent) => {
@@ -869,22 +850,22 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                   </div>
                 </div>
 
-                {/* Guild Chat / Feed */}
+                {/* Guild Log / Activity Feed */}
                 <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between space-y-3 h-80">
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                         <MessageSquare className="w-4 h-4 text-cyan-400" />
-                        <span>Guild Chat Feed</span>
+                        <span>Guild Log</span>
                       </h3>
-                      <p className="mt-0.5 text-[9px] text-slate-600">Messages can be reported to subreddit moderators.</p>
+                      <p className="mt-0.5 text-[9px] text-slate-600">Automated guild activity only. Player chat is disabled.</p>
                     </div>
                   </div>
 
                   {/* Message History */}
                   <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
                     {chatMessages.length > 0 ? (
-                      chatMessages.map(msg => (
+                      chatMessages.filter(msg => msg.isSystem).map(msg => (
                         <div
                           key={msg.id}
                           className={`text-xs p-2 rounded-xl ${
@@ -930,29 +911,12 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                       ))
                     ) : (
                       <div className="text-center text-slate-500 text-xs py-8">
-                        No messages yet. Send a message to your guild members.
+                        Guild actions and milestones will appear here. Player chat is disabled.
                       </div>
                     )}
                   </div>
 
-                  {/* Send Chat Form */}
-                  <form onSubmit={handleSendChat} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={chatInput}
-                      onChange={e => setChatInput(e.target.value)}
-                      placeholder="Say something to guild..."
-                      maxLength={150}
-                      className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-purple-500"
-                    />
-                    <button
-                      type="submit"
-                      disabled={!chatInput.trim() || busy}
-                      className="p-2 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 text-white rounded-xl transition-all cursor-pointer"
-                    >
-                      <Send className="w-4 h-4" />
-                    </button>
-                  </form>
+
                 </div>
               </div>
             </div>
