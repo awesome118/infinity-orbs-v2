@@ -505,7 +505,7 @@ test('Guild Collection Value tasks can roll over multiple tiers and pay every re
   assert.ok(start >= 0 && end > start, 'Guild roll effect boundaries must exist');
   const effects = social.slice(start, end);
   assert.match(effects, /if \(task\.type === 'value'\) task\.progress = capInteger\(task\.progress \+ taskProgressValue\)/);
-  assert.match(effects, /while \(task\.progress >= task\.target && rolloverGuard < 256\)/);
+  assert.match(effects, /while \(task\.progress >= task\.target && completions < 1000\)/);
   assert.match(effects, /replacement\.progress = Math\.min\(Number\.MAX_SAFE_INTEGER, overflow\)/);
   assert.match(effects, /guild\.tokens = capInteger\(\(guild\.tokens \?\? 0\) \+ reward\)/);
   assert.match(effects, /guild\.xp = capInteger\(guild\.xp \+ xpReward\)/);
@@ -2270,7 +2270,8 @@ test('Guild task rollover consumes multi-tier overflow and persists combo-expiry
   assert.match(social, /while \(task\.progress >= task\.target && completions < 1000\)/);
   assert.match(social, /replacement\.progress = Math\.min\(Number\.MAX_SAFE_INTEGER, overflow\)/);
   assert.match(load, /const rawGuilds = parseGuildListRaw\(raw\)/);
-  assert.match(load, /const expiredCombo = rawGuilds\.some\(g => guildComboHasExpired\(g, now\)\)/);
+  assert.match(load, /const storedComboExpired = rawGuilds\.some\(g =>/);
+  assert.match(load, /const latestExpired = latestRawGuilds\.some\(g =>/);
   assert.match(load, /await txn\.set\(GUILDS_KEY, JSON\.stringify\(latest\)\)/);
 });
 
@@ -2284,7 +2285,7 @@ test('rapid upgrades are shown optimistically but purchased in a server-verified
   const batch = game.slice(start, end);
   assert.match(batch, /withPlayerMutationLock/);
   assert.match(batch, /upgradeCost\(id, level\)/);
-  assert.match(batch, /if \(s\.coins < cost\) break/);
+  assert.match(batch, /if \(s\.coins < cost\) \{[\s\S]*?stoppedReason = `Need \$\{cost\.toLocaleString\(\)\} Coins for \$\{id\}\.`;[\s\S]*?break;/);
   assert.match(batch, /await save\(s\)/);
   assert.match(app, /app\.post\('\/api\/upgrade\/batch'/);
   assert.match(client, /upgradeBatchQueueRef\.current\.push\(id\)/);
@@ -2301,7 +2302,9 @@ test('one Free Roll click submits all stored Free Rolls while rewards remain ser
   assert.match(game, /while \(remainingActivations > 0\)/);
   assert.match(game, /if \(usingFreeRoll\) s\.freeRolls = availableFreeRolls - freeRollActivations/);
   assert.match(app, /req\.body\?\.useAllFreeRolls === true/);
-  assert.match(client, /useAllFreeRolls: !isAutoRoll && \(currentState\.freeRolls \?\? 0\) > 0/);
+  assert.match(client, /useAllFreeRolls: !isAutoRoll &&/);
+  assert.match(client, /currentState\.chainPatcherNextRarity \?\? 0/);
+  assert.match(client, /\(currentState\.freeRolls \?\? 0\) > 0/);
 });
 
 test('Cosmic Reserve is a multiplicative per-unspent-Dust Luck layer and Offline Rate stops at level 8', () => {
