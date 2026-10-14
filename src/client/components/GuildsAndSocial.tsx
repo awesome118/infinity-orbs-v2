@@ -895,8 +895,15 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                         >
                           {!msg.isSystem && (
                             <>
-                              <span className="font-bold text-cyan-400 block text-[10px] mb-0.5">
-                                {msg.username}
+                              <span className="inline-flex items-center gap-1.5 font-bold block text-[10px] mb-0.5">
+                                <span className={msg.username.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen'
+                                  ? 'font-black text-red-400'
+                                  : 'text-cyan-400'}>
+                                  {msg.username}
+                                </span>
+                                {msg.username.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen' && (
+                                  <span className="rounded border border-red-500/40 bg-red-500/10 px-1 py-0.5 text-[8px] font-black tracking-wider text-red-300">ADMIN</span>
+                                )}
                               </span>
                               <div className="flex items-start justify-between gap-2">
                                 <span className="min-w-0 break-words">{msg.text}</span>
