@@ -1141,6 +1141,32 @@ export function App() {
       }, 55);
     }
   };
+  const handleBuyChainPatcher = async () => {
+    if (!stateRef.current || busy) return;
+    setBusy(true);
+    try {
+      const result = await getJson<{
+        state: PlayerState;
+        targetRarity: number;
+        shardsSpent: number;
+        cooldownUntil: number;
+      }>('/api/chain-patcher/buy', { method: 'POST' });
+      applyPlayerState(result.state);
+      // Purchasing a patch pauses Auto Roll server-side so the player can
+      // deliberately trigger the one-orb guarantee.
+      setAutoRoll(false);
+      sound.playMythicFanfare();
+      showToast(
+        `Chain Patcher charged: your next roll is exactly one 1/${formatRarity(result.targetRarity)} orb. Spent ${formatNumber(result.shardsSpent)} Shards; 24-hour cooldown started.`,
+        'success',
+      );
+    } catch (error: any) {
+      showToast(error?.message || 'Chain Patcher purchase failed.', 'warn');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // Upgrade All Standard Upgrades
   const handleBuyAllUpgrades = async () => {
     const currentState = stateRef.current;
@@ -2473,6 +2499,7 @@ export function App() {
             state={state}
             onBuyUpgrade={handleBuyUpgrade}
             onBuyAllUpgrades={handleBuyAllUpgrades}
+            onBuyChainPatcher={handleBuyChainPatcher}
             onActivateTurbo={handleActivateTurbo}
             busy={busy}
           />
