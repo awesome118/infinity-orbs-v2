@@ -900,20 +900,28 @@ export function createApp() {
       const event = req.body ?? {};
       const comment = event.comment ?? {};
       const author = event.author ?? {};
-      const postId = String(comment.postId ?? '').trim();
+      const post = event.post ?? {};
+      const rawPostId = String(post.id ?? comment.postId ?? '').trim();
       const commentId = String(comment.id ?? '').trim();
-      const text = String(comment.body ?? '').trim();
+      const text = String(comment.body ?? comment.text ?? '').trim();
       const authorName = String(author.name ?? author.username ?? '').trim().replace(/^u\//i, '');
       const authorId = String(author.id ?? '').trim();
+      const rawCreatedAt = comment.createdAt ?? comment.created;
+      const parsedCreatedAt = typeof rawCreatedAt === 'number'
+        ? (rawCreatedAt > 0 && rawCreatedAt < 1_000_000_000_000 ? rawCreatedAt * 1000 : rawCreatedAt)
+        : typeof rawCreatedAt === 'string' ? Date.parse(rawCreatedAt) : NaN;
+      const timestamp = Number.isSafeInteger(parsedCreatedAt) && parsedCreatedAt >= 0
+        ? parsedCreatedAt
+        : Date.now();
 
-      if (postId && commentId && text && authorName) {
+      if (rawPostId && commentId && text && authorName) {
         await recordGlobalChatComment({
-          postId,
+          postId: rawPostId,
           commentId,
           text,
           username: authorName,
           userId: authorId || undefined,
-          timestamp: Date.now(),
+          timestamp,
         });
       }
       return res.json({ status: 'ok' });
