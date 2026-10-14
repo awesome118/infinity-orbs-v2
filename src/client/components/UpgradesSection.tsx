@@ -242,7 +242,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       level: state.upgrades.offlineRate ?? 0,
       currentVal: `1 roll / ${currentOfflineSec}s`,
       nextVal: `1 roll / ${nextOfflineSec}s`,
-      desc: 'Offline rolls accumulate faster.',
+      desc: 'Each level makes offline rolls 8% faster, up to a 60% interval reduction at Level 8. This upgrade is capped at Level 8.',
       cost: upgradeCost('offlineRate', state.upgrades.offlineRate ?? 0),
     },
     {
