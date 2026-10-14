@@ -30,6 +30,7 @@ import {
   createInitialGuildCombo,
   decayGuildComboState,
   activateGuildComboStack,
+  highestCodexChain,
   type GuildComboState,
 } from '../shared/game.js';
 
@@ -2744,6 +2745,7 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
       ),
       currentDryStreak: Math.max(0, Number(save.rollsSinceBest ?? 0) || 0),
       playtimeMs,
+      chainLength: highestCodexChain(save.collection),
       title: legacy?.title,
       guildTag: legacy?.guildTag,
     });
@@ -2756,6 +2758,7 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
     currentDryStreak: sortLeaderboard(eligible, entry => entry.currentDryStreak ?? 0),
     bestOrb: sortLeaderboard(eligible, entry => entry.highestRarity),
     mostPlaytime: sortLeaderboard(eligible, entry => entry.playtimeMs ?? 0),
+    chainLength: sortLeaderboard(eligible, entry => entry.chainLength ?? 0),
   };
 }
 
@@ -2795,6 +2798,7 @@ export async function recordLeaderboard(s: PlayerState) {
     sharedAt: source.lastShareAt,
     stateRevision: Math.max(0, Math.floor(Number(source.stateRevision ?? 0)) || 0),
     highestDryStreak: Math.max(source.highestDryStreak ?? 0, source.rollsSinceBest ?? 0),
+    chainLength: highestCodexChain(source.collection),
     playtimeMs: Math.max(0, Number(registry?.playtimeMs ?? 0) || 0),
   };
 
