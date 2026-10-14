@@ -2213,6 +2213,7 @@ export async function setCommunityEventConfig(config: {
 }
 
 const GLOBAL_CHAT_KEY = key('global-chat:v1');
+const GLOBAL_GAME_POST_KEY = key('global-game-post-id');
 const GLOBAL_CHAT_MAX_MESSAGES = 100;
 const CHAT_REPORTS_KEY = key('chat-reports:v1');
 const CHAT_REPORT_RESERVATION_PREFIX = key('chat-report-reservation:v1:');
