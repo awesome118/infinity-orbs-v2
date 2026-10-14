@@ -5743,9 +5743,10 @@ export async function startOrbFrenzy(options: {
       dramaticReveal: rarity >= 100,
     };
       };
-      return playerGuildScopes.get(loadedState)
-        ? withGuildDataMutationLock(performFrenzyStart)
-        : performFrenzyStart();
+      // Creating the Reddit post is an external request that may take time.
+      // Do not hold the shared Guild lock across it; save() will safely skip a
+      // conflicting Guild projection and refund any withheld tax if needed.
+      return performFrenzyStart();
   });
 }
 
