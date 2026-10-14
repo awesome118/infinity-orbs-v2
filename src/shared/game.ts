@@ -2452,8 +2452,7 @@ export function predictRollActivation(
     (s.masterySkills?.critMastery ?? 0) * 0.03 +
     (s.guildPerks?.critRank ?? 0) * 0.015 +
     globalBoosterCritChanceBonus(s.globalBoosters?.crit) +
-    guildComboCritChanceBonus(s.guildCombo) +
-    aftershockCriticalLuckBonus(s.aftershockRecord),
+    guildComboCritChanceBonus(s.guildCombo),
   );
 
   const rarities: number[] = [];
