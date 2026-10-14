@@ -1405,7 +1405,6 @@ export async function setGlobalBoosterDebugState(
     await txn.multi();
     await txn.set(GLOBAL_BOOSTERS_KEY, JSON.stringify(snapshot));
     const committed = await txn.exec();
-    transactionClosed = true;
     if (committed !== null) {
       await appendGlobalBoosterDebugLog('admin:set', {
         id,
@@ -3076,6 +3075,7 @@ export async function save(
       }
     }
     const committed = await txn.exec();
+    transactionClosed = true;
     if (committed !== null) {
       pendingSaveExtraWrites.delete(s);
       Object.assign(s, nextState);
