@@ -33,8 +33,7 @@
     ]
   },
   "triggers": {
-    "onAppInstall": "/internal/on-app-install",
-    "onCommentCreate": "/internal/trigger/comment-create"
+    "onAppInstall": "/internal/on-app-install"
   },
   "scripts": {
     "dev": "vite build --watch",
@@ -47,8 +46,7 @@
       "enable": true,
       "scope": "moderator",
       "asUser": [
-        "SUBMIT_POST",
-        "SUBMIT_COMMENT"
+        "SUBMIT_POST"
       ]
     }
   },
