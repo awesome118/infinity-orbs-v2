@@ -580,7 +580,7 @@ test('Global Chat unread tracking clears on open and identifies u/shadow_fen as 
   assert.match(chat, /markMessagesSeen\(messages\)/);
   assert.match(chat, /setUnreadCount\(0\)/);
   assert.match(chat, /unreadCount > 99 \? '99\+' : unreadCount/);
-  assert.match(chat, /=== 'shadow_fen'/);
+  assert.match(chat, /message\.isAdmin === true/);
   assert.match(chat, />ADMIN<\/span>/);
   assert.match(guildChat, /shadow_fen/);
   assert.match(guildChat, /text-red-400/);
@@ -2278,7 +2278,7 @@ test('rapid upgrades are shown optimistically but purchased in a server-verified
   const game = source('src/server/game.ts');
   const app = source('src/server/app.ts');
   const client = source('src/client/main.tsx');
-  const start = game.indexOf('export async function buyUpgradesBatch');
+  const start = game.indexOf('export async function buyUpgradeBatch');
   const end = game.indexOf('\nexport function autoBuyCheapest', start);
   assert.ok(start >= 0 && end > start);
   const batch = game.slice(start, end);
@@ -2297,7 +2297,7 @@ test('one Free Roll click submits all stored Free Rolls while rewards remain ser
   const app = source('src/server/app.ts');
   const client = source('src/client/main.tsx');
   assert.match(game, /useAllFreeRolls = false/);
-  assert.match(game, /useAllFreeRolls \? Math\.max\(0, Math\.floor\(s\.freeRolls \?\? 0\)\) : 1/);
+  assert.match(game, /useAllFreeRolls \? availableFreeRolls : 1/);
   assert.match(game, /while \(remainingActivations > 0\)/);
   assert.match(game, /s\.freeRolls = Math\.max\(0, \(s\.freeRolls \?\? 0\) - freeRollActivations\)/);
   assert.match(app, /req\.body\?\.useAllFreeRolls === true/);
@@ -2309,8 +2309,8 @@ test('Cosmic Reserve is a multiplicative per-unspent-Dust Luck layer and Offline
   const upgradesUi = source('src/client/components/UpgradesSection.tsx');
   const prestigeUi = source('src/client/components/ProfileAndPrestige.tsx');
   assert.match(shared, /cosmicReserve:\s*\{[\s\S]*?maxLevel: 5/);
-  assert.match(shared, /cosmicReserveMultiplier = 1 \+ unspentDust \* cosmicReserveLevel \* 0\.01/);
-  assert.match(shared, /baseLuck \* prestigeMultiplier \* cosmicReserveMultiplier \* totalAltarMultiplier/);
+  assert.match(shared, /cosmicReserveMultiplier = 1 \+ unspentCosmicDust \* cosmicReserveLevel \* 0\.01/);
+  assert.match(shared, /baseLuck \* prestigeMultiplier \* totalAltarMultiplier \* cosmicReserveMultiplier/);
   assert.match(shared, /id === 'offlineRate' && level >= 8\) return Infinity/);
   assert.match(upgradesUi, /offlineRate: 8/);
   assert.match(prestigeUi, /case 'cosmicReserve'/);
@@ -2321,7 +2321,9 @@ test('Global Chat badge counts unread arrivals and displays the server-verified 
   const social = source('src/server/social.ts');
   assert.match(chat, /const \[unreadCount, setUnreadCount\] = useState\(0\)/);
   assert.match(chat, /setUnreadCount\(0\)/);
-  assert.match(chat, /!openRef\.current && unseen\.length > 0/);
+  assert.match(chat, /if \(open\) \{[\s\S]*?markMessagesSeen\(visible\)/);
+  assert.match(chat, /const unread = visible\.filter\(message => !seenMessageIdsRef\.current\.has\(message\.id\)\)/);
+  assert.match(chat, /setUnreadCount\(unread\.length\)/);
   assert.match(chat, /message\.isAdmin === true/);
   assert.match(chat, />ADMIN<\/span>/);
   assert.match(social, /isAdmin: isAdminUsername\(message\.username\)/);
