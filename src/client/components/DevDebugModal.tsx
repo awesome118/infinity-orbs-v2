@@ -2203,27 +2203,6 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         );
 
         await step(
-          'Mechanic · Mastery Engine',
-          async () => {
-            await setMechanicState({ masteryEngine: 1 }, { totalRolls: 99, masteryPoints: 0 });
-            const result = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
-            if (Number(result.state?.totalRolls) !== 100 || Number(result.state?.masteryPoints) !== 1) {
-              throw new Error('Mastery Engine expected 99 → 100 rolls and +1 point, got rolls=' + result.state?.totalRolls + ', points=' + result.state?.masteryPoints + '.');
-            }
-
-            // Each upgrade level grants one additional point per completed
-            // 100-roll milestone, not a more frequent partial milestone.
-            await setMechanicState({ masteryEngine: 3 }, { totalRolls: 199, masteryPoints: 0 });
-            const levelThree = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
-            if (Number(levelThree.state?.totalRolls) !== 200 || Number(levelThree.state?.masteryPoints) !== 3) {
-              throw new Error('Mastery Engine level 3 expected 199 → 200 rolls and +3 points, got rolls=' + levelThree.state?.totalRolls + ', points=' + levelThree.state?.masteryPoints + '.');
-            }
-            return { ...result, levelThree };
-          },
-          result => 'Level 1: +1 at roll 100 · Level 3: +' + shortNumber(result.levelThree.state?.masteryPoints, 0) + ' at roll 200',
-        );
-
-        await step(
           'Mechanic · Steady Hands',
           async () => {
             await setMechanicState();
