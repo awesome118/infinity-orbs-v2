@@ -12,22 +12,29 @@ import { createInitialState } from '../src/shared/game.js';
 import { APP_VERSION } from '../src/shared/version.js';
 
 test('activity updates watch a per-user lease, not the global registry hash', async () => {
+  // Devvit mock exports are live bindings. Capture the baseline before
+  // configureDevvitRuntime swaps those exports, or watch() can delegate back
+  // into this wrapper and recurse until the stack overflows.
+  const baseRedis = originalRedis;
+  const baseWatch = baseRedis.watch.bind(baseRedis);
+  const baseContext = originalContext;
+  const baseReddit = originalReddit;
   const watchedKeys: string[][] = [];
   const tracedRedis = {
-    ...originalRedis,
+    ...baseRedis,
     watch: async (...keys: string[]) => {
       watchedKeys.push(keys);
-      return originalRedis.watch(...keys);
+      return baseWatch(...keys);
     },
   };
   const suffix = Date.now().toString(36);
   const context = {
-    ...originalContext,
+    ...baseContext,
     userId: `activity-scope-a-${suffix}`,
     username: 'ActivityScopeA',
   };
 
-  configureDevvitRuntime({ redis: tracedRedis, context, reddit: originalReddit });
+  configureDevvitRuntime({ redis: tracedRedis, context, reddit: baseReddit });
   try {
     const firstUserId = context.userId;
     const first = recordPlayerHeartbeat(APP_VERSION);
@@ -53,7 +60,7 @@ test('activity updates watch a per-user lease, not the global registry hash', as
       'second activity update should watch its own lease',
     );
 
-    const registry = await originalRedis.hGetAll('io:player-registry');
+    const registry = await baseRedis.hGetAll('io:player-registry');
     assert.ok(registry[firstUserId], 'first player activity should remain recorded');
     assert.ok(registry[secondUserId], 'second player activity should remain recorded');
     assert.equal(JSON.parse(registry[firstUserId]).clientVersion, APP_VERSION);
@@ -65,7 +72,7 @@ test('activity updates watch a per-user lease, not the global registry hash', as
 
     const firstRecord = JSON.parse(registry[firstUserId]) as Record<string, unknown>;
     firstRecord.clientVersionAt = Date.now() - 60_000;
-    await originalRedis.hSet('io:player-registry', { [firstUserId]: JSON.stringify(firstRecord) });
+    await baseRedis.hSet('io:player-registry', { [firstUserId]: JSON.stringify(firstRecord) });
     const staleVersionRows = await listPlayers();
     assert.equal(
       staleVersionRows.find(player => player.userId === firstUserId)?.isLatestVersion,
@@ -77,9 +84,9 @@ test('activity updates watch a per-user lease, not the global registry hash', as
     // must still be unwatched so transient errors do not leave resources open.
     let unwatchCount = 0;
     const failingRedis = {
-      ...originalRedis,
+      ...baseRedis,
       watch: async (...keys: string[]) => {
-        const transaction = await originalRedis.watch(...keys);
+        const transaction = await baseWatch(...keys);
         return new Proxy(transaction, {
           get(target, property) {
             if (property === 'unwatch') {
@@ -105,14 +112,14 @@ test('activity updates watch a per-user lease, not the global registry hash', as
     configureDevvitRuntime({
       redis: failingRedis as typeof originalRedis,
       context: failingContext,
-      reddit: originalReddit,
+      reddit: baseReddit,
     });
     await assert.rejects(
       recordPlayerHeartbeat(APP_VERSION),
       /simulated Redis registry read failure/,
     );
     assert.ok(unwatchCount > 0, 'failed activity reads must close their WATCH transaction');
-    configureDevvitRuntime({ redis: tracedRedis, context, reddit: originalReddit });
+    configureDevvitRuntime({ redis: tracedRedis, context, reddit: baseReddit });
 
     // Optional shared progress must not join the primary player save's WATCH set.
     context.userId = `activity-scope-save-${suffix}`;
@@ -128,7 +135,7 @@ test('activity updates watch a per-user lease, not the global registry hash', as
       optional: true,
     });
 
-    for (let attempt = 0; attempt < 10 && await originalRedis.get(optionalKey) !== 'committed'; attempt += 1) {
+    for (let attempt = 0; attempt < 10 && await baseRedis.get(optionalKey) !== 'committed'; attempt += 1) {
       await new Promise(resolve => setTimeout(resolve, 1));
     }
 
@@ -140,7 +147,7 @@ test('activity updates watch a per-user lease, not the global registry hash', as
       watchedKeys.some(keys => keys.length === 1 && keys[0] === optionalKey),
       'optional projection must use its own isolated transaction',
     );
-    assert.equal(await originalRedis.get(optionalKey), 'committed');
+    assert.equal(await baseRedis.get(optionalKey), 'committed');
 
     // A shared Guild snapshot conflict should not fail or discard the player's save.
     context.userId = `activity-scope-guild-conflict-${suffix}`;
@@ -148,7 +155,7 @@ test('activity updates watch a per-user lease, not the global registry hash', as
     const conflictedState = createInitialState();
     conflictedState.username = context.username;
     const guildKey = `io:test-guild-conflict:${suffix}`;
-    await originalRedis.set(guildKey, 'newer-guild-snapshot');
+    await baseRedis.set(guildKey, 'newer-guild-snapshot');
 
     await save(conflictedState, {
       key: guildKey,
@@ -162,15 +169,15 @@ test('activity updates watch a per-user lease, not the global registry hash', as
     });
 
     const savedAfterGuildConflict = JSON.parse(
-      String(await originalRedis.get(`player:${context.userId}`)),
+      String(await baseRedis.get(`player:${context.userId}`)),
     ) as { coins?: number };
     assert.equal(savedAfterGuildConflict.coins, 17, 'conflict handler should preserve the refunded tax in player state');
-    assert.equal(await originalRedis.get(guildKey), 'newer-guild-snapshot', 'conflicted Guild data must never be overwritten');
+    assert.equal(await baseRedis.get(guildKey), 'newer-guild-snapshot', 'conflicted Guild data must never be overwritten');
   } finally {
     configureDevvitRuntime({
-      redis: originalRedis,
-      context: originalContext,
-      reddit: originalReddit,
+      redis: baseRedis,
+      context: baseContext,
+      reddit: baseReddit,
     });
   }
 });
