@@ -2551,6 +2551,25 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       );
 
       await step(
+        'API · Seed level-gated feature fixture',
+        async () => {
+          const result = await request<any>('/api/dev/state', {
+            coins: 100_000,
+            shards: 100,
+            xp: 100_000,
+            level: 32,
+            lastRollAt: 0,
+          });
+          const state = recordValue(result.state);
+          if (Number(state.level) < 20) {
+            throw new Error('Level-gated API fixture must reach Level 20 for prestige/social endpoints; got Level ' + state.level + '.');
+          }
+          return state;
+        },
+        state => 'coins=' + state.coins + ' · shards=' + state.shards + ' · xp=' + state.xp + ' · level=' + state.level,
+      );
+
+      await step(
         "API · Nested upgrade state mutation",
         async () => {
           const result = await request<any>('/api/dev/state', { coins: 1_000, upgrades: { luck: 7 } });
