@@ -1271,8 +1271,15 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         try {
           // Resetting cooldown deliberately clears the old prediction ticket.
           // Acquire the fresh ticket only after this state mutation commits.
-          await request('/api/dev/reset-cooldown', {});
-          const ticket = await request<{ ticketId: string; nextIndex: number }>('/api/roll-ticket');
+          // The reset endpoint now commits the cooldown reset and returns
+          // the fresh ticket together. Do not split these into separate HTTP
+          // requests: an intervening UI roll/reset could invalidate the ticket.
+          const ticket = await request<{
+            ticketId: string;
+            nextIndex: number;
+            rollsRemaining: number;
+            expiresAt: number;
+          }>('/api/dev/reset-cooldown', {});
           return await request<RollResponse>('/api/roll', {
             auto,
             ticketId: ticket.ticketId,
@@ -1941,8 +1948,16 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           'Mechanic · Turbo Duration',
           async () => {
             await setMechanicState({ chronoOverdrive: 0 }, { shards: 10 });
+            const beforeNormal = recordValue(await request<any>('/api/me'));
+            if (Number(beforeNormal.level) < 2) {
+              throw new Error('Turbo test fixture was not unlocked before activation (level=' + beforeNormal.level + ', xp=' + beforeNormal.xp + ').');
+            }
             const normal = await request<any>('/api/turbo/activate', {});
             await setMechanicState({ chronoOverdrive: 1 }, { shards: 10 });
+            const beforeUpgraded = recordValue(await request<any>('/api/me'));
+            if (Number(beforeUpgraded.level) < 2) {
+              throw new Error('Upgraded Turbo fixture was not unlocked before activation (level=' + beforeUpgraded.level + ', xp=' + beforeUpgraded.xp + ').');
+            }
             const upgraded = await request<any>('/api/turbo/activate', {});
             const remainingNormal = Number(normal.state?.turboRollUntil) - Date.now();
             const remainingUpgraded = Number(upgraded.state?.turboRollUntil) - Date.now();
@@ -2446,13 +2461,16 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           await new Promise(resolve => setTimeout(resolve, 5_200));
           const message = await request<any>('/api/chat', { text: '[ADMIN TEST] duplicate-report check' });
           await request('/api/chat/report', { messageId: message.id });
-          let rejected = false;
+          let duplicateError = '';
           try {
             await request('/api/chat/report', { messageId: message.id });
           } catch (error) {
-            rejected = true;
+            duplicateError = error instanceof Error ? error.message : String(error);
           }
-          if (!rejected) throw new Error('Duplicate chat report was accepted.');
+          if (!duplicateError) throw new Error('Duplicate chat report was accepted.');
+          if (!/already reported|already submitted/i.test(duplicateError)) {
+            throw new Error('Duplicate report check failed for the wrong reason: ' + duplicateError);
+          }
           const reports = await request<any>('/api/dev/chat-reports');
           const matches = Array.isArray(reports.reports)
             ? reports.reports.filter((report: any) => report.messageId === message.id)
