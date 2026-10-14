@@ -7,7 +7,8 @@ import {
   context as originalContext,
   reddit as originalReddit,
 } from '../src/server/devvit-mock.js';
-import { recordPlayerHeartbeat } from '../src/server/game.js';
+import { recordPlayerHeartbeat, save } from '../src/server/game.js';
+import { createInitialState } from '../src/shared/game.js';
 
 test('activity updates watch a per-user lease, not the global registry hash', async () => {
   const watchedKeys: string[][] = [];
@@ -54,6 +55,34 @@ test('activity updates watch a per-user lease, not the global registry hash', as
     const registry = await originalRedis.hGetAll('io:player-registry');
     assert.ok(registry[firstUserId], 'first player activity should remain recorded');
     assert.ok(registry[secondUserId], 'second player activity should remain recorded');
+
+    // Optional shared progress must not join the primary player save's WATCH set.
+    context.userId = `activity-scope-save-${suffix}`;
+    context.username = 'OptionalProjectionSave';
+    const saveUserId = context.userId;
+    const state = createInitialState();
+    state.username = context.username;
+    const optionalKey = `io:test-optional-projection:${suffix}`;
+    await save(state, {
+      key: optionalKey,
+      expectedValue: null,
+      nextValue: 'committed',
+      optional: true,
+    });
+
+    for (let attempt = 0; attempt < 10 && await originalRedis.get(optionalKey) !== 'committed'; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 1));
+    }
+
+    assert.ok(
+      watchedKeys.some(keys => keys.includes(`player:${saveUserId}`) && !keys.includes(optionalKey)),
+      'the main player save must not watch optional shared projections',
+    );
+    assert.ok(
+      watchedKeys.some(keys => keys.length === 1 && keys[0] === optionalKey),
+      'optional projection must use its own isolated transaction',
+    );
+    assert.equal(await originalRedis.get(optionalKey), 'committed');
   } finally {
     configureDevvitRuntime({
       redis: originalRedis,
