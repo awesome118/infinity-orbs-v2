@@ -880,9 +880,13 @@ export function createApp() {
     }
   });
 
-  app.get('/api/chat/status', async (_req, res) => {
-    try { res.json(await getGlobalChatStatus()); }
-    catch (e) { badRequest(res, e, 'Could not determine Global Chat availability.'); }
+  app.get('/api/chat/status', async (req, res) => {
+    try {
+      // The GlobalChatWindow is mounted by the main launcher entry point.
+      // Explicitly mark that handshake so stale test/Frenzy metadata cannot
+      // prevent the main Game post from registering itself.
+      res.json(await getGlobalChatStatus(req.query.launcher === 'main'));
+    } catch (e) { badRequest(res, e, 'Could not determine Global Chat availability.'); }
   });
 
   app.get('/api/chat', async (_req, res) => {
