@@ -1941,6 +1941,25 @@ export function App() {
     showToast(type === 'bug' ? 'Bug report sent to the moderators.' : 'Suggestion sent to the moderators.', 'success');
   };
 
+  const handlePostFrenzyThanks = async () => {
+    const prompt = frenzyThanksPrompt;
+    if (!prompt || postingFrenzyThanks || !prompt.message.trim()) return;
+    setPostingFrenzyThanks(true);
+    try {
+      await getJson<{ success: true; commentId: string }>('/api/frenzy/thank-you', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postId: prompt.postId, text: prompt.message.trim() }),
+      });
+      setFrenzyThanksPrompt(null);
+      showToast('Thank-you comment posted as you. Please consider upvoting the Frenzy post, too.', 'success');
+    } catch (error: any) {
+      showToast(error?.message || 'Could not post your thank-you comment.', 'warn');
+    } finally {
+      setPostingFrenzyThanks(false);
+    }
+  };
+
   const handleToggleNotifications = async (): Promise<boolean> => {
     try {
       const enabled = !notificationsEnabled;
