@@ -507,6 +507,7 @@ test('one manual action consumes all available Free Rolls and offline rate stops
 
 test('Global Chat unread tracking clears on open and identifies u/shadow_fen as ADMIN', () => {
   const chat = source('src/client/components/GlobalChatWindow.tsx');
+  const guildChat = source('src/client/components/GuildsAndSocial.tsx');
   assert.match(chat, /const \[unreadCount, setUnreadCount\] = useState\(0\)/);
   assert.match(chat, /seenMessageIdsRef/);
   assert.match(chat, /markMessagesSeen\(messages\)/);
@@ -514,6 +515,8 @@ test('Global Chat unread tracking clears on open and identifies u/shadow_fen as 
   assert.match(chat, /unreadCount > 99 \? '99\+' : unreadCount/);
   assert.match(chat, /=== 'shadow_fen'/);
   assert.match(chat, />ADMIN<\/span>/);
+  assert.match(guildChat, /msg\.username\.trim\(\)\.replace\(\/\^u\\\\\//i, ''\)\.toLowerCase\(\) === 'shadow_fen'/);
+  assert.match(guildChat, />ADMIN<\/span>/);
 });
 
 test('Current Dry Streak and Cosmic Reserve are included in the gameplay UI and calculations', () => {
