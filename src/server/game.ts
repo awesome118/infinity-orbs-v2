@@ -5614,7 +5614,8 @@ export async function startOrbFrenzy(options: {
       `u/${ownerUsername} got a 1/${formatRarity(rarity)} Orb in their Frenzy.\n\n` +
       `Click below to claim it! You can only claim one every 23 hours.\n\n` +
       `When someone claims your Frenzy, you receive +${FRENZY_OWNER_SHARD_REWARD} Shards. ` +
-      `This reward bypasses the 50 Shard daily cap.`;
+      `This reward bypasses the 50 Shard daily cap.\n\n` +
+      `If you claim this Frenzy, please consider upvoting the post to thank its owner.`;
     const post = await reddit.submitCustomPost({
       runAs: 'USER',
       subredditName,
