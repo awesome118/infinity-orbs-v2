@@ -1529,7 +1529,7 @@ test('Global Chat mutations fail closed rather than overwriting malformed histor
   assert.match(social.slice(postStart, postEnd), /reddit\.submitComment\([\s\S]*?runAs: 'USER'/);
   assert.match(social.slice(postStart, postEnd), /recordGlobalChatComment\(/);
 
-  const readStart = social.indexOf('export async function getGlobalChat');
+  const readStart = social.indexOf('export async function getGlobalChat():');
   const readEnd = social.indexOf('\nexport async function ', readStart + 1);
   assert.ok(readStart >= 0 && readEnd > readStart);
   const reader = social.slice(readStart, readEnd);
@@ -1549,7 +1549,8 @@ test('Aftershock and Unbroken Momentum are persisted, applied server-side, and d
   assert.match(shared, /ALTAR_COIN_FLOOR_GROWTH = 1\.5/);
   assert.doesNotMatch(shared, /masteryEngine/);
 
-  assert.match(game, /aftershockCriticalLuckBonus\(s\.aftershockRecord\)/);
+  assert.match(shared, /aftershockCriticalLuckBonus\(s\.aftershockRecord\)/);
+  assert.match(game, /critMultiplier\(s\)/);
   assert.match(game, /s\.aftershockRecord = Math\.max\(/);
   assert.match(game, /recordRollingSessionActivity\(s, now\)/);
   assert.doesNotMatch(game, /masteryEngineLevel|prestigeUpgrades\?\.masteryEngine/);
