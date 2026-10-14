@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   createInitialState,
+  addCollectionValue,
   createInitialGlobalBoosters,
   activateGlobalBoosterStack,
   decayGlobalBoosterState,
@@ -40,6 +41,16 @@ import {
 } from '../src/shared/social.js';
 
 const NOW = 1_800_000_000_000;
+
+test('collection value accumulation saturates instead of losing precision or becoming non-finite', () => {
+  const max = Number.MAX_SAFE_INTEGER;
+  assert.equal(addCollectionValue(max - 2, 10), max);
+  assert.equal(addCollectionValue(max + 10, 1), max);
+  assert.equal(addCollectionValue(100, Number.POSITIVE_INFINITY), max);
+  assert.equal(addCollectionValue(-1, 25), 25);
+  assert.equal(addCollectionValue(Number.NaN, 25), 25);
+  assert.equal(addCollectionValue(25, Number.NaN), 25);
+});
 
 test('Level progression awards one Mastery Point per level gained', () => {
   const state = createInitialState();
