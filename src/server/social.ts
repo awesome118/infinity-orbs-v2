@@ -599,8 +599,8 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
     const comboEndsAt = Math.max(0, Math.floor(Number(g.combo?.endsAt ?? 0) || 0));
     const comboTier = Math.max(0, Math.floor(Number(g.combo?.tier ?? 0) || 0));
     const hasEscalatedTasks = g.tasks.some(task => Number(task.tier ?? 1) > 1);
-    const comboExpired = comboEndsAt > 0 && comboEndsAt <= now &&
-      (comboTier > 0 || hasEscalatedTasks);
+    const comboExpired = hasEscalatedTasks && (comboTier === 0 || (comboEndsAt > 0 && comboEndsAt <= now)) ||
+      (comboTier > 0 && comboEndsAt > 0 && comboEndsAt <= now);
     if (comboExpired) {
       g.tasks = createInitialGuildTasks(g.level || 1);
     }
@@ -771,10 +771,11 @@ async function loadGuilds(): Promise<Guild[]> {
       Math.max(1, Math.floor(Number(task?.tier ?? 1) || 1)) > 1,
     );
     return (
-      (tier > 0 && endsAt > 0 && endsAt <= now) ||
-      // Older recovery code decayed the timer but left the escalated tasks.
-      // A zero-tier expired timer plus non-tier-1 tasks is the legacy stuck form.
-      (tier === 0 && endsAt > 0 && endsAt <= now && taskTierStuck)
+      (taskTierStuck && tier === 0) ||
+      // Older recovery code may have zeroed the Combo timer without resetting
+      // higher task tiers, so Tier 1 repair must not depend on endsAt surviving.
+      (taskTierStuck && endsAt > 0 && endsAt <= now) ||
+      (tier > 0 && endsAt > 0 && endsAt <= now)
     );
   });
   const guilds = normalizeGuilds(rawGuilds, now);
@@ -833,8 +834,9 @@ async function loadGuilds(): Promise<Guild[]> {
           Math.max(1, Math.floor(Number(task?.tier ?? 1) || 1)) > 1,
         );
         return (
-          (tier > 0 && endsAt > 0 && endsAt <= latestNow) ||
-          (tier === 0 && endsAt > 0 && endsAt <= latestNow && taskTierStuck)
+          (taskTierStuck && tier === 0) ||
+          (taskTierStuck && endsAt > 0 && endsAt <= latestNow) ||
+          (tier > 0 && endsAt > 0 && endsAt <= latestNow)
         );
       });
       const latest = normalizeGuilds(latestRawGuilds, latestNow);
@@ -1533,6 +1535,10 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
       for (let i = 0; i < guild.tasks.length; i++) {
         let task = guild.tasks[i];
         if (!task) continue;
+        if (task.type === 'value') task.progress = capSafeGuildCounter(task.progress + taskProgressValue);
+        else if (task.type === 'rolls') task.progress = capSafeGuildCounter(task.progress + taskProgressRolls);
+        else if (task.type === 'rare') task.progress = capSafeGuildCounter(task.progress + taskProgressRare);
+
         if (task.type === 'value') task.progress = capSafeGuildCounter(task.progress + taskProgressValue);
         else if (task.type === 'rolls') task.progress = capSafeGuildCounter(task.progress + taskProgressRolls);
         else if (task.type === 'rare') task.progress = capSafeGuildCounter(task.progress + taskProgressRare);
