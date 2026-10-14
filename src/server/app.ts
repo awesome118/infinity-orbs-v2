@@ -757,6 +757,7 @@ export function createApp() {
         title: 'Infinity Orbs',
         entry: 'default',
       });
+      await redis.set('io:global-game-post-id', post.id, { nx: true });
       res.json({ navigateTo: `https://reddit.com/r/${subredditName}/comments/${post.id}` });
     } catch (e) {
       console.error('Failed to create Infinity Orbs post:', e);
@@ -772,6 +773,7 @@ export function createApp() {
         title: 'Infinity Orbs',
         entry: 'default',
       });
+      await redis.set('io:global-game-post-id', post.id, { nx: true });
       res.json({ status: 'success', message: `Created Infinity Orbs post ${post.id} in r/${subredditName}.` });
     } catch (e) {
       console.error('Failed to create install post:', e);
