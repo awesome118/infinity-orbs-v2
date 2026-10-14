@@ -189,7 +189,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
           <MessageCircle className="w-4 h-4 text-indigo-300" />
           <div>
             <h3 className="text-sm font-black text-white">Global Chat</h3>
-            <p className="text-[9px] text-slate-500">Everyone in the game can see these messages. Messages can be reported to subreddit moderators.</p>
+            <p className="text-[9px] text-slate-500">Messages are public Reddit comments on the main Game post. When you send one, Reddit submits it as you. Comments made directly on that post also appear here.</p>
           </div>
         </div>
         <button
@@ -266,7 +266,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
             value={input}
             onChange={e => setInput(e.target.value)}
             maxLength={200}
-            placeholder="Message everyone..."
+            placeholder="Write a public Reddit comment..."
             disabled={sending}
             className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-xs text-white placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
           />
@@ -274,7 +274,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
             type="submit"
             disabled={sending || !input.trim()}
             className="rounded-xl bg-indigo-600 px-3 py-2.5 text-white transition-all hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600"
-            title="Send message"
+            title="Post public comment"
           >
             {sending ? <X className="w-4 h-4 animate-pulse" /> : <Send className="w-4 h-4" />}
           </button>
