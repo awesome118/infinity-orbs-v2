@@ -2305,12 +2305,12 @@ async function resolveGlobalGamePostId(): Promise<string> {
 
 export async function getGlobalChatStatus(fromMainLauncher = false): Promise<{ enabled: boolean; reason?: string }> {
   const saved = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
-  if (saved) return { enabled: true };
 
-  // The chat widget exists in the main launcher entry point only. Let that
-  // entry point register its own post before checking a possibly stale
-  // development/Frenzy marker associated with a reused post ID.
+  // The main launcher entry point marks its own handshake. This also recovers
+  // when a development environment reuses a post ID that has stale Frenzy
+  // metadata, without allowing the ordinary Frenzy widget to register itself.
   if (fromMainLauncher) {
+    if (saved) return { enabled: true };
     const currentPostId = normalizeRedditPostId(String(context.postId ?? '').trim());
     if (!currentPostId) {
       return {
@@ -2327,16 +2327,16 @@ export async function getGlobalChatStatus(fromMainLauncher = false): Promise<{ e
     };
   }
 
+  // Frenzy posts may display history, but posting is disabled there even after
+  // the canonical main Game post has registered.
   if (await isCurrentFrenzyPostContext()) {
-    // If the canonical launcher is registered, posting from a Frenzy embed is
-    // safe: postGlobalChatMessage always targets this saved Game-post ID.
-    if (saved) return { enabled: true };
     return {
       enabled: false,
-      reason: 'Global Chat is disabled on this Frenzy post until you open the main Game launcher once.',
+      reason: "Global Chat is disabled because you're not in the main Game launcher.",
     };
   }
 
+  if (saved) return { enabled: true };
   try {
     await resolveGlobalGamePostId();
     return { enabled: true };
