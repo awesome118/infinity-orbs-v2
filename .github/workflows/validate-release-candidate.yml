@@ -1,4 +1,5 @@
 name: Validate Infinity Orbs 1.2.14 candidate
+# Executes source checks, all tests, and the production build before manual deployment.
 
 on:
   push:
