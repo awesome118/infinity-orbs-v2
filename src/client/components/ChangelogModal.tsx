@@ -6,11 +6,31 @@ interface ChangelogModalProps {
   onClose: () => void;
 }
 
-// Release notes are intentionally empty until the release author provides them.
 const entries: Array<{
   title: string;
   description: string;
-}> = [];
+}> = [
+  {
+    title: 'New Skills · Aftershock & Unbroken Momentum',
+    description: 'Aftershock is now a Mastery skill that activates Critical Luck from your best dry interval between successive all-time rarity records. Unbroken Momentum is now a Prestige upgrade that unlocks logarithmic session-based Speed: +20% at 48 hours, about +25% at 72 hours, capped at +30%. Their live bonuses are shown in their purchase menus.',
+  },
+  {
+    title: 'Codex Devotion',
+    description: 'The Mastery upgrade now displays both its current Luck bonus and the bonus after the next level, calculated from your longest consecutive Codex rarity chain.',
+  },
+  {
+    title: 'Balancing',
+    description: 'Mastery Engine has been removed for balancing purposes.',
+  },
+  {
+    title: 'Chain Patcher',
+    description: 'Chain Patcher is now located in the Codex. It targets the cheapest missing rarity adjacent to your longest consecutive chain, guarantees exactly one orb of that rarity on your next accepted roll, and has a 24-hour purchase cooldown.',
+  },
+  {
+    title: 'Bug Fixes & Improvements',
+    description: 'Global Chat remains visible when posting is unavailable and explains why. The player list includes each active player’s current session length. Session-based bonuses now activate only after purchase, and the release includes regression fixes for Codex placement, chat availability, and logarithmic Momentum scaling.',
+  },
+];
 
 export const ChangelogModal: React.FC<ChangelogModalProps> = ({ onClose }) => {
   return (
