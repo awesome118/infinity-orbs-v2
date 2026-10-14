@@ -51,3 +51,20 @@ test('feature-level fixture is verified through the same /api/me read path used 
   assert.match(fixture, /Number\(state\.level\) < 20/);
   assert.match(fixture, /Number\(state\.xp\) < 100_000/);
 });
+
+
+test('admin roll helper clears cooldown before getting a fresh ticket and retries stale-ticket failures', () => {
+  const runner = readFileSync(resolve(process.cwd(), 'src/client/components/DevDebugModal.tsx'), 'utf8');
+  const start = runner.indexOf('const rollOnce = async');
+  const end = runner.indexOf('const rollDetail', start);
+  assert.ok(start >= 0 && end > start, 'admin roll helper boundaries must exist');
+  const helper = runner.slice(start, end);
+
+  const resetIndex = helper.indexOf("request('/api/dev/reset-cooldown'");
+  const ticketIndex = helper.indexOf("request<{ ticketId: string; nextIndex: number }>('/api/roll-ticket')");
+  const rollIndex = helper.indexOf("request<RollResponse>('/api/roll'");
+  assert.ok(resetIndex >= 0 && ticketIndex > resetIndex && rollIndex > ticketIndex,
+    'cooldown reset must commit before the fresh ticket is acquired and used');
+  assert.match(helper, /message\.includes\('Roll prediction ticket is'\)/);
+  assert.match(helper, /message\.includes\('Could not create a roll prediction ticket'\)/);
+});
