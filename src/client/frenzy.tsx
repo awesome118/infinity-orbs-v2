@@ -4,6 +4,7 @@ import { requestExpandedMode } from '@devvit/web/client';
 import { ArrowRight, Flame, Users } from 'lucide-react';
 import './styles.css';
 import { formatRarity, getOrbInfo, FRENZY_POST_LIFETIME_MS } from '../shared/game.js';
+import { GlobalChatWindow } from './components/GlobalChatWindow.js';
 
 interface FrenzyInfo {
   rarity: number;
@@ -403,6 +404,7 @@ function FrenzyPost() {
           </section>
         </div>
       )}
+      <GlobalChatWindow launcherContext="frenzy" />
     </main>
   );
 }
