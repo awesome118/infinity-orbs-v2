@@ -36,6 +36,9 @@ import {
 
 const user = () => context.userId ?? 'unknown';
 const username = () => context.username ?? `reddit-user-${user().slice(-8)}`;
+function isAdminUsername(value: unknown): boolean {
+  return String(value ?? '').trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen';
+}
 const key = (name: string) => `io:${name}`;
 const GUILDS_KEY = key('guilds');
 const PLAYER_REGISTRY_KEY = key('player-registry');
@@ -1610,9 +1613,9 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
         // Roll the same contribution across successive task tiers. The old
         // one-pass logic clamped overflow below the next target, which made very
         // large tasks appear stuck and forfeited rewards for skipped tiers.
-        let rolloverGuard = 0;
-        while (task.progress >= task.target && rolloverGuard < 256) {
-          rolloverGuard += 1;
+        let completions = 0;
+        while (task.progress >= task.target && completions < 1000) {
+          completions += 1;
           const completedTier = Math.max(1, Math.floor(Number(task.tier) || 1));
           const overflow = Math.max(0, task.progress - task.target);
           const reward = Math.max(1, Math.floor(task.reward * taskBountyMultiplier));
@@ -1758,9 +1761,9 @@ export async function prepareGuildRollEffects(
         // A single Collection Value contribution can satisfy several successive
         // tiers. Keep carrying every remaining point forward and pay every tier's
         // Token/XP reward rather than clamping overflow below the next target.
-        let rolloverGuard = 0;
-        while (task.progress >= task.target && rolloverGuard < 256) {
-          rolloverGuard += 1;
+        let completions = 0;
+        while (task.progress >= task.target && completions < 1000) {
+          completions += 1;
           const completedTier = Math.max(1, Math.floor(Number(task.tier) || 1));
           const overflow = Math.max(0, task.progress - task.target);
           const reward = Math.max(1, Math.floor(task.reward * taskBountyMultiplier));
@@ -2351,6 +2354,7 @@ export async function recordGlobalChatComment(input: {
       ? Number(input.timestamp)
       : Date.now(),
     ...(userId ? { userId } : {}),
+    isAdmin: isAdminUsername(input.username),
   };
 
   await ensureRedisStringKey(GLOBAL_CHAT_KEY, '[]');
@@ -2620,7 +2624,13 @@ export async function getGlobalChat(): Promise<GlobalChatMessage[]> {
       return !mutedIds.has(messageUserId) && !mutedNames.has(messageUsername);
     })
     .sort((a, b) => a.timestamp - b.timestamp)
-    .slice(-GLOBAL_CHAT_MAX_MESSAGES);
+    .slice(-GLOBAL_CHAT_MAX_MESSAGES)
+    .map(message => ({
+      ...message,
+      // Never trust a persisted/client-supplied badge: recalculate it from the
+      // authoritative author name each time chat history is returned.
+      isAdmin: isAdminUsername(message.username),
+    }));
 }
 
 export async function reportGlobalChatMessage(messageId: string): Promise<{ success: true }> {
@@ -2659,6 +2669,7 @@ export async function postGlobalChatMessage(text: string): Promise<GlobalChatMes
       text: messageText,
       timestamp,
       userId: user(),
+      isAdmin: isAdminUsername(username()),
     };
 
     // Reddit has already accepted the comment. Do not report the whole action as
