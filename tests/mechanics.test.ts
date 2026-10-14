@@ -110,7 +110,9 @@ test('Aftershock turns the best record-breaking dry interval into permanent Crit
   const state = createInitialState(NOW);
   const baseCriticalLuck = critMultiplier(state);
   state.aftershockRecord = 80_000;
-  assert.equal(critMultiplier(state), baseCriticalLuck + 0.02);
+  assert.equal(critMultiplier(state), baseCriticalLuck, 'Aftershock is inactive until purchased');
+  state.masterySkills!.aftershock = 1;
+  assert.equal(critMultiplier(state), baseCriticalLuck + 0.02, 'purchased Aftershock applies its record bonus');
 });
 
 test('Unbroken Momentum tracks uninterrupted sessions and grants capped Speed', () => {
@@ -139,8 +141,13 @@ test('Unbroken Momentum tracks uninterrupted sessions and grants capped Speed', 
   assert.equal(state.longestRollingSessionMs, 6 * 60_000);
 
   const baseCooldown = cooldownMs(createInitialState(NOW));
+  const lockedMomentumState = createInitialState(NOW);
+  lockedMomentumState.longestRollingSessionMs = 30 * 60_000;
+  assert.equal(cooldownMs(lockedMomentumState), baseCooldown, 'Momentum is inactive until purchased');
+
   const momentumState = createInitialState(NOW);
   momentumState.longestRollingSessionMs = 30 * 60_000;
+  momentumState.prestigeUpgrades.unbrokenMomentum = 1;
   const momentumBonus = unbrokenMomentumSpeedBonus(momentumState.longestRollingSessionMs);
   assert.equal(cooldownMs(momentumState), Math.max(300, Math.round(baseCooldown / (1 + momentumBonus))));
 });
