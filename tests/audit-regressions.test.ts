@@ -2267,8 +2267,8 @@ test('Guild task rollover consumes multi-tier overflow and persists combo-expiry
   const loadEnd = social.indexOf('\n}\n', loadStart);
   assert.ok(loadStart >= 0 && loadEnd > loadStart);
   const load = social.slice(loadStart, loadEnd);
-  assert.match(social, /while \(progress >= task\.target && completions < 1000\)/);
-  assert.match(social, /progress = overflow;/);
+  assert.match(social, /while \(task\.progress >= task\.target && completions < 1000\)/);
+  assert.match(social, /replacement\.progress = Math\.min\(Number\.MAX_SAFE_INTEGER, overflow\)/);
   assert.match(load, /const rawGuilds = parseGuildListRaw\(raw\)/);
   assert.match(load, /const expiredCombo = rawGuilds\.some\(g => guildComboHasExpired\(g, now\)\)/);
   assert.match(load, /await txn\.set\(GUILDS_KEY, JSON\.stringify\(latest\)\)/);
