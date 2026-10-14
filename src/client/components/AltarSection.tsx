@@ -122,7 +122,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
               <span>Devotion Altar</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Offer Coins for a chance to increase the altar level. Larger offerings have better odds; failed attempts increase pity. Shards add permanent luck and extend the temporary Surge.
+              Offer Coins for a chance to increase Altar Rank. Each rank compounds Coin Devotion by 1.05×, while the minimum Coin offering grows by 1.5× per rank. Larger offerings improve the odds; failed attempts increase pity. Shards add permanent luck and extend the temporary Surge.
             </p>
           </div>
 
