@@ -28,8 +28,8 @@ function validDevvitConfig(name = 'infinity-orbs') {
         endpoint: '/internal/menu/post-create',
       }],
     },
-    triggers: { onAppInstall: '/internal/on-app-install' },
-    permissions: { redis: true, payments: false },
+    triggers: { onAppInstall: '/internal/on-app-install', onCommentCreate: '/internal/trigger/comment-create' },
+    permissions: { redis: true, payments: false, reddit: { enable: true, scope: 'moderator', asUser: ['SUBMIT_POST', 'SUBMIT_COMMENT'] } },
     scheduler: {
       tasks: {
         'offline-orbs-full': { endpoint: '/internal/scheduler/offline-orbs-full' },
@@ -190,6 +190,16 @@ const invalidManifestCases: Array<{
     label: 'app install trigger',
     mutate: manifest => { manifest.triggers.onAppInstall = '/wrong'; },
     expected: /triggers\.onAppInstall must be/,
+  },
+  {
+    label: 'comment-create trigger',
+    mutate: manifest => { manifest.triggers.onCommentCreate = '/wrong'; },
+    expected: /triggers\\.onCommentCreate must be/,
+  },
+  {
+    label: 'USER comment permission',
+    mutate: manifest => { manifest.permissions.reddit.asUser = ['SUBMIT_POST']; },
+    expected: /permissions\\.reddit\\.asUser must include "SUBMIT_COMMENT"/,
   },
   {
     label: 'offline notification scheduler endpoint',
