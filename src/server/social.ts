@@ -685,37 +685,50 @@ async function applyGuildMigration(
   markerKey: string,
   migrate: (guilds: Guild[]) => void,
 ): Promise<void> {
+  // Once initialized, ordinary Guild reads should not queue behind the shared
+  // document lock just to re-check the marker. Recheck under the lock below
+  // when initialization is actually needed.
+  const markerBeforeLock = await redis.get(markerKey);
+  if (markerBeforeLock === '1') return;
+  if (markerBeforeLock != null) {
+    throw new Error('Guild migration marker is corrupted; refusing to rerun a destructive migration.');
+  }
+
   await ensureRedisStringKey(GUILDS_KEY, '[]');
   return withGuildDataMutationLock(async () => {
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const txn = await redis.watch(GUILDS_KEY, markerKey);
-    const marker = await redis.get(markerKey);
-    if (marker === '1') {
-      await txn.unwatch();
-      return;
-    }
-    if (marker != null) {
-      await txn.unwatch();
-      throw new Error('Guild migration marker is corrupted; refusing to rerun a destructive migration.');
-    }
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const txn = await redis.watch(GUILDS_KEY, markerKey);
+      let transactionClosed = false;
+      try {
+        const marker = await redis.get(markerKey);
+        if (marker === '1') {
+          await txn.unwatch();
+          transactionClosed = true;
+          return;
+        }
+        if (marker != null) {
+          await txn.unwatch();
+          transactionClosed = true;
+          throw new Error('Guild migration marker is corrupted; refusing to rerun a destructive migration.');
+        }
 
-    const raw = await redis.get(GUILDS_KEY);
-    let guilds: Guild[];
-    try {
-      guilds = parseGuildList(raw);
-    } catch (error) {
-      await txn.unwatch();
-      throw error;
-    }
-    migrate(guilds);
+        const raw = await redis.get(GUILDS_KEY);
+        const guilds = parseGuildList(raw);
+        migrate(guilds);
 
-    await txn.multi();
-    await txn.set(GUILDS_KEY, JSON.stringify(guilds));
-    await txn.set(markerKey, '1');
-    const committed = await txn.exec();
-    if (committed !== null) return;
-  }
-  throw new Error('Guild migration changed while applying an update. Please retry.');
+        await txn.multi();
+        await txn.set(GUILDS_KEY, JSON.stringify(guilds));
+        await txn.set(markerKey, '1');
+        const committed = await txn.exec();
+        transactionClosed = true;
+        if (committed !== null) return;
+      } finally {
+        if (!transactionClosed) {
+          await txn.unwatch().catch(() => undefined);
+        }
+      }
+    }
+    throw new Error('Guild migration changed while applying an update. Please retry.');
   });
 }
 
@@ -746,25 +759,24 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
   // Finish one-time migrations before taking the ordinary mutation lease.
   await ensureGuildMigrations();
   return withGuildDataMutationLock(async () => {
-    // The transaction client queues the pre-MULTI GET for EXEC. If the key does not
-    // exist, Valkey returns nil for that command and the adapter cannot transform
-    // the transaction result. Initialize the collection once so the watched GET
-    // always has a concrete string reply.
     await ensureRedisStringKey(GUILDS_KEY, '[]');
 
     for (let attempt = 0; attempt < 8; attempt++) {
       const txn = await redis.watch(GUILDS_KEY);
-      const raw = await redis.get(GUILDS_KEY);
-      const guilds: Guild[] = parseGuildList(raw);
+      let transactionClosed = false;
       try {
+        const raw = await redis.get(GUILDS_KEY);
+        const guilds: Guild[] = parseGuildList(raw);
         const result = await mutator(guilds);
         await txn.multi();
         await txn.set(GUILDS_KEY, JSON.stringify(guilds));
         const committed = await txn.exec();
+        transactionClosed = true;
         if (committed !== null) return result;
-      } catch (error) {
-        await txn.unwatch().catch(() => undefined);
-        throw error;
+      } finally {
+        if (!transactionClosed) {
+          await txn.unwatch().catch(() => undefined);
+        }
       }
     }
     throw new Error('Guild data changed while processing the request. Please retry.');
@@ -809,15 +821,24 @@ async function loadGuilds(): Promise<Guild[]> {
       try {
         await withGuildDataMutationLock(async () => {
           const txn = await redis.watch(GUILDS_KEY);
-          const latestRaw = await redis.get(GUILDS_KEY);
-          if (latestRaw !== raw) {
-            await txn.unwatch();
-          } else {
-            await txn.multi();
-            await txn.set(GUILDS_KEY, recoveredRaw);
-            // A conflicting write is not overwritten. The next read can recover
-            // the newer snapshot; recovery persistence must not block this read.
-            await txn.exec();
+          let transactionClosed = false;
+          try {
+            const latestRaw = await redis.get(GUILDS_KEY);
+            if (latestRaw !== raw) {
+              await txn.unwatch();
+              transactionClosed = true;
+            } else {
+              await txn.multi();
+              await txn.set(GUILDS_KEY, recoveredRaw);
+              // A conflicting write is not overwritten. The next read can recover
+              // the newer snapshot; recovery persistence must not block this read.
+              await txn.exec();
+              transactionClosed = true;
+            }
+          } finally {
+            if (!transactionClosed) {
+              await txn.unwatch().catch(() => undefined);
+            }
           }
         });
       } catch (error) {
@@ -833,40 +854,43 @@ async function loadGuilds(): Promise<Guild[]> {
     return withGuildDataMutationLock(async () => {
     for (let attempt = 0; attempt < 8; attempt++) {
       const txn = await redis.watch(GUILDS_KEY);
-      const latestRaw = await redis.get(GUILDS_KEY);
-      let latestRawGuilds: Guild[];
+      let transactionClosed = false;
       try {
+        const latestRaw = await redis.get(GUILDS_KEY);
         // Validate the watched snapshot with the same parser as ordinary Guild
         // reads. Filtering malformed rows here could silently delete Guild data.
-        latestRawGuilds = parseGuildListRaw(latestRaw);
-      } catch (error) {
-        await txn.unwatch();
-        throw error;
-      }
-      const latestNow = Date.now();
-      const latestExpired = latestRawGuilds.some(g => {
-        const tier = Math.max(0, Math.floor(Number(g.combo?.tier ?? 0) || 0));
-        const endsAt = Math.max(0, Math.floor(Number(g.combo?.endsAt ?? 0) || 0));
-        const taskTierStuck = Array.isArray(g.tasks) && g.tasks.some(task =>
-          Math.max(1, Math.floor(Number(task?.tier ?? 1) || 1)) > 1,
-        );
-        return (
-          (taskTierStuck && tier === 0) ||
-          (taskTierStuck && endsAt > 0 && endsAt <= latestNow) ||
-          (tier > 0 && endsAt > 0 && endsAt <= latestNow)
-        );
-      });
-      const latest = normalizeGuilds(latestRawGuilds, latestNow);
-      if (!latestExpired) {
-        await txn.unwatch();
-        return latest;
-      }
+        const latestRawGuilds = parseGuildListRaw(latestRaw);
+        const latestNow = Date.now();
+        const latestExpired = latestRawGuilds.some(g => {
+          const tier = Math.max(0, Math.floor(Number(g.combo?.tier ?? 0) || 0));
+          const endsAt = Math.max(0, Math.floor(Number(g.combo?.endsAt ?? 0) || 0));
+          const taskTierStuck = Array.isArray(g.tasks) && g.tasks.some(task =>
+            Math.max(1, Math.floor(Number(task?.tier ?? 1) || 1)) > 1,
+          );
+          return (
+            (taskTierStuck && tier === 0) ||
+            (taskTierStuck && endsAt > 0 && endsAt <= latestNow) ||
+            (tier > 0 && endsAt > 0 && endsAt <= latestNow)
+          );
+        });
+        const latest = normalizeGuilds(latestRawGuilds, latestNow);
+        if (!latestExpired) {
+          await txn.unwatch();
+          transactionClosed = true;
+          return latest;
+        }
 
-      normalizeGuilds(latest, Date.now());
-      await txn.multi();
-      await txn.set(GUILDS_KEY, JSON.stringify(latest));
-      const committed = await txn.exec();
-      if (committed !== null) return latest;
+        normalizeGuilds(latest, Date.now());
+        await txn.multi();
+        await txn.set(GUILDS_KEY, JSON.stringify(latest));
+        const committed = await txn.exec();
+        transactionClosed = true;
+        if (committed !== null) return latest;
+      } finally {
+        if (!transactionClosed) {
+          await txn.unwatch().catch(() => undefined);
+        }
+      }
     }
     throw new Error('Guild data changed while processing combo expiry. Please retry.');
     });
