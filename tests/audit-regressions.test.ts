@@ -367,14 +367,26 @@ test('Daily Streak community progression rejects invalid loop state', () => {
 });
 
 
-test('comprehensive admin tests reset cooldown before acquiring roll tickets and seed gated feature levels', () => {
+test('comprehensive admin tests atomically reset cooldown, issue a roll ticket, and seed gated feature levels', () => {
   const modal = source('src/client/components/DevDebugModal.tsx');
   const debug = source('src/server/debug.ts');
-  const ticketStart = modal.indexOf("await request('/api/dev/reset-cooldown', {});", modal.indexOf('const rollOnce ='));
-  const ticketCreate = modal.indexOf("const ticket = await request<{ ticketId: string; nextIndex: number }>('/api/roll-ticket')", ticketStart);
-  const rollPost = modal.indexOf("return await request<RollResponse>('/api/roll'", ticketCreate);
-  assert.ok(ticketStart >= 0 && ticketCreate > ticketStart && rollPost > ticketCreate,
-    'reset-cooldown clears the old ticket, so the fresh ticket must be acquired after cooldown reset');
+  const rollOnceStart = modal.indexOf('const rollOnce = async');
+  const rollOnceEnd = modal.indexOf('const rollDetail', rollOnceStart);
+  assert.ok(rollOnceStart >= 0 && rollOnceEnd > rollOnceStart);
+  const rollOnce = modal.slice(rollOnceStart, rollOnceEnd);
+  const ticketReset = rollOnce.indexOf("request<{");
+  const resetEndpoint = rollOnce.indexOf("('/api/dev/reset-cooldown', {})");
+  const rollPost = rollOnce.indexOf("request<RollResponse>('/api/roll'");
+  assert.ok(ticketReset >= 0 && resetEndpoint > ticketReset && rollPost > resetEndpoint);
+  assert.match(rollOnce, /ticketId: ticket\.ticketId/);
+  assert.match(rollOnce, /ticketIndex: ticket\.nextIndex/);
+  const resetEndpointStart = debug.indexOf("debugRouter.post('/reset-cooldown'");
+  const resetEndpointEnd = debug.indexOf("debugRouter.post('/unlock-upgrades'", resetEndpointStart);
+  assert.ok(resetEndpointStart >= 0 && resetEndpointEnd > resetEndpointStart);
+  const resetHandler = debug.slice(resetEndpointStart, resetEndpointEnd);
+  assert.ok(resetHandler.indexOf('await save(s)') < resetHandler.indexOf('await redis.del'));
+  assert.ok(resetHandler.indexOf('await redis.del') < resetHandler.indexOf('await getRollTicket()'));
+  assert.match(resetHandler, /res\.json\(\{ ok: true, state: s, \.\.\.ticket \}\)/);
   const mechanicStart = modal.indexOf('const setMechanicState = async');
   const mechanicEnd = modal.indexOf('const readMechanics', mechanicStart);
   assert.ok(mechanicStart >= 0 && mechanicEnd > mechanicStart);
@@ -425,11 +437,41 @@ test('Guild diagnostics UI and endpoint are removed while playtest-only recovery
   const client = source('src/client/main.tsx');
 
   assert.match(social, /function isGuildPlaytestRecoveryEnabled/);
-  assert.match(social, /return subreddit === 'infinity_orbs_dev'/);
+  assert.match(social, /context\.subredditName/);
+  assert.match(social, /context\.subreddit\?\.name/);
+  assert.match(social, /toLowerCase\(\) === 'infinity_orbs_dev'/);
   assert.match(social, /recoverGuildRecordForPlaytest/);
   assert.doesNotMatch(social, /getGuildStateDiagnostics|inspectGuildRecordForDiagnostics|guild-diagnostics/);
   assert.doesNotMatch(debug, /getGuildStateDiagnostics|guild-diagnostics/);
   assert.doesNotMatch(client, /guildDiagnostic|guild-diagnostics|Playtest Guild diagnostics|All playtest Guild errors/);
+});
+
+test('optional Guild projections cannot brick the player state or feature access gate', () => {
+  const game = source('src/server/game.ts');
+  const start = game.indexOf('export async function loadRaw(): Promise<PlayerState>');
+  const end = game.indexOf('function serverRandom()', start);
+  assert.ok(start >= 0 && end > start, 'loadRaw boundaries must exist');
+  const loader = game.slice(start, end);
+  assert.match(loader, /getPlayerGuildPerks\(username, userId\)\.catch\(error =>/);
+  assert.match(loader, /getPlayerGuildCombo\(username, userId\)\.catch\(error =>/);
+  assert.match(loader, /using zeroed modifiers until Guild data is repaired/);
+  assert.match(loader, /using an inactive combo until Guild data is repaired/);
+});
+
+test('chat report duplicate detection precedes the report cooldown check', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('async function submitChatReport(');
+  const end = social.indexOf('export async function getGlobalChat()', start);
+  assert.ok(start >= 0 && end > start, 'submitChatReport boundaries must exist');
+  const reporter = social.slice(start, end);
+  const duplicateCheck = reporter.indexOf('if (await redis.hGet(CHAT_REPORTS_KEY, reportKey))');
+  const cooldownCheck = reporter.indexOf("await enforceChatCooldown('report', 5_000)");
+  assert.ok(duplicateCheck >= 0 && cooldownCheck > duplicateCheck,
+    'duplicate reports should return a duplicate-specific response before rate limiting');
+  const modal = source('src/client/components/DevDebugModal.tsx');
+  assert.match(modal, /already reported\|already submitted/i);
+  assert.match(modal, /beforeNormal = recordValue\(await request<any>\('\/api\/me'\)\)/);
+  assert.match(modal, /beforeUpgraded = recordValue\(await request<any>\('\/api\/me'\)\)/);
 });
 
 test('guild parser validates nested state while repairing legacy challenge and boss projections', () => {
