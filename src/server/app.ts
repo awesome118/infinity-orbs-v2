@@ -755,6 +755,7 @@ export function createApp() {
       if (!subredditName) return res.status(400).json({ showToast: 'No subreddit context available.' });
       const post = await reddit.submitCustomPost({
         title: 'Infinity Orbs',
+        flairText: 'Game',
         entry: 'default',
       });
       await redis.set('io:global-game-post-id', post.id, { nx: true });
@@ -771,6 +772,7 @@ export function createApp() {
       if (!subredditName) return res.status(400).json({ status: 'error', message: 'No subreddit context available.' });
       const post = await reddit.submitCustomPost({
         title: 'Infinity Orbs',
+        flairText: 'Game',
         entry: 'default',
       });
       await redis.set('io:global-game-post-id', post.id, { nx: true });
