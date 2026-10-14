@@ -4,6 +4,7 @@ import type { GlobalChatMessage } from '../../shared/social.js';
 
 interface GlobalChatWindowProps {
   username?: string;
+  launcherContext?: 'main' | 'frenzy';
 }
 
 async function loadChat(): Promise<GlobalChatMessage[]> {
@@ -15,7 +16,10 @@ async function loadChat(): Promise<GlobalChatMessage[]> {
   return await response.json() as GlobalChatMessage[];
 }
 
-const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username = '' }) => {
+const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
+  username = '',
+  launcherContext = 'main',
+}) => {
   const [open, setOpen] = useState(false);
   // A Frenzy embed can route comments to the canonical Game launcher only
   // after that launcher has registered its post ID. Hide chat if it cannot.
@@ -103,7 +107,8 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
     const checkAvailability = async () => {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          const response = await fetch('/api/chat/status?launcher=main&ts=' + Date.now(), {
+          const mainLauncherQuery = launcherContext === 'main' ? '&launcher=main' : '';
+          const response = await fetch('/api/chat/status?ts=' + Date.now() + mainLauncherQuery, {
             cache: 'no-store',
             headers: { 'Cache-Control': 'no-cache' },
           });
@@ -136,7 +141,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [launcherContext]);
 
   useEffect(() => {
     // History remains readable even when posting is disabled in this context.
