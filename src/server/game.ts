@@ -1441,6 +1441,7 @@ interface PlayerRegistryEntry {
   lastActivityAt?: number;
   playtimeMs?: number;
   clientVersion?: string;
+  clientVersionAt?: number;
 }
 
 function parsePlayerRegistryEntryForMutation(raw: unknown, now: number): Partial<PlayerRegistryEntry> {
@@ -1527,6 +1528,9 @@ async function touchPlayerActivity(
       const clientVersion =
         reportedClientVersion ??
         (typeof existing?.clientVersion === 'string' ? existing.clientVersion.slice(0, 32) : undefined);
+      const clientVersionAt = reportedClientVersion !== undefined
+        ? activityNow
+        : validPastTimestamp(existing?.clientVersionAt, activityNow);
       const next = JSON.stringify({
         username: String(username).trim().slice(0, 100),
         firstSeenAt,
@@ -1535,6 +1539,7 @@ async function touchPlayerActivity(
         lastActivityAt: activityNow,
         playtimeMs,
         ...(clientVersion ? { clientVersion } : {}),
+        ...(clientVersionAt > 0 ? { clientVersionAt } : {}),
       } satisfies PlayerRegistryEntry);
       await txn.multi();
       await txn.hSet(PLAYER_REGISTRY_KEY, { [userId]: next });
@@ -1616,7 +1621,8 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
         ? registry.clientVersion
         : null,
       isLatestVersion: typeof registry.clientVersion === 'string' &&
-        registry.clientVersion === APP_VERSION,
+        registry.clientVersion === APP_VERSION &&
+        validPastTimestamp(registry.clientVersionAt, now) > now - 45_000,
     } satisfies PlayerListEntry;
   });
   players.sort((a, b) => Number(b.active) - Number(a.active) || b.lastSeenAt - a.lastSeenAt || a.username.localeCompare(b.username));

@@ -265,9 +265,16 @@ export function App() {
         body: JSON.stringify({ version: APP_VERSION }),
       }).catch(() => null);
     };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') heartbeat();
+    };
     heartbeat();
     const interval = window.setInterval(heartbeat, 15_000);
-    return () => window.clearInterval(interval);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [Boolean(state)]);
 
   // Social & Community state

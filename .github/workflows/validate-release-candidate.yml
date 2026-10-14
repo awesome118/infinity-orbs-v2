@@ -1,8 +1,11 @@
-name: Validate Infinity Orbs 1.2.15 candidate
+name: Validate Infinity Orbs 1.2.17 candidate
 # Executes source checks, all tests, and the production build before manual deployment.
 
 on:
   push:
+    branches:
+      - release/1.2.14-candidate-20261013
+  pull_request:
     branches:
       - release/1.2.14-candidate-20261013
   workflow_dispatch:

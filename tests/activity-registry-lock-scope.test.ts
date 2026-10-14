@@ -63,6 +63,16 @@ test('activity updates watch a per-user lease, not the global registry hash', as
     assert.equal(playerRows.find(player => player.userId === firstUserId)?.isLatestVersion, true);
     assert.equal(playerRows.find(player => player.userId === secondUserId)?.isLatestVersion, false);
 
+    const firstRecord = JSON.parse(registry[firstUserId]) as Record<string, unknown>;
+    firstRecord.clientVersionAt = Date.now() - 60_000;
+    await originalRedis.hSet('io:player-registry', { [firstUserId]: JSON.stringify(firstRecord) });
+    const staleVersionRows = await listPlayers();
+    assert.equal(
+      staleVersionRows.find(player => player.userId === firstUserId)?.isLatestVersion,
+      false,
+      'old version reports must not stay green indefinitely',
+    );
+
     // Optional shared progress must not join the primary player save's WATCH set.
     context.userId = `activity-scope-save-${suffix}`;
     context.username = 'OptionalProjectionSave';
