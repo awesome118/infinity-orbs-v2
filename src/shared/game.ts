@@ -1999,10 +1999,10 @@ export function unbrokenMomentumSpeedBonus(longestSessionMs: number | null | und
 }
 
 /**
- * Aftershock permanently improves Critical Luck (critical chance) based on
- * the best dry interval between all-time rarity records. Each order of
- * magnitude in the personal record adds +0.5 percentage points, capped at 7.5%.
- * (the maximum safe-integer dry-roll record). The record survives Prestige.
+ * Aftershock permanently improves Critical Luck (the rarity multiplier of a
+ * critical hit) based on the best dry interval between all-time rarity records.
+ * Each order of magnitude in the personal record adds +0.005×, reaching +0.075×
+ * at the largest safe-integer roll record. The record survives Prestige.
  */
 export function aftershockCriticalLuckBonus(recordRolls: number | null | undefined): number {
   const safeRecord = Number.isFinite(Number(recordRolls))
@@ -2066,6 +2066,7 @@ export function critMultiplier(s: PlayerState): number {
   return 2.0 +
     (s.upgrades.critPower ?? 0) * 0.25 +
     masteryCritPower +
+    aftershockCriticalLuckBonus(s.aftershockRecord) +
     globalBoosterCritLuckBonus(s.globalBoosters?.crit) +
     guildComboCritLuckBonus(s.guildCombo);
 }
