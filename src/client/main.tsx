@@ -316,6 +316,8 @@ export function App() {
   const [frenzyRunTriggered, setFrenzyRunTriggered] = useState(false);
   const [frenzyArmed, setFrenzyArmed] = useState(false);
   const [showFrenzyPrompt, setShowFrenzyPrompt] = useState(false);
+  const [frenzyThanksPrompt, setFrenzyThanksPrompt] = useState<{ rarity: number; ownerUsername: string; postId: string; message: string } | null>(null);
+  const [postingFrenzyThanks, setPostingFrenzyThanks] = useState(false);
   const frenzyPromptShownRef = useRef(false);
   const frenzyClaimActiveRef = useRef(false);
   const componentMountedRef = useRef(true);
@@ -748,6 +750,7 @@ export function App() {
 
     const resolveFrenzy = async () => {
       let readyToClaim = false;
+      let claimedFrenzyInfo: { rarity: number; ownerUsername: string; postId: string } | null = null;
       let lastPreflightError: unknown = null;
 
       // Retry only the read-only handoff/info checks. Retrying the claim POST
@@ -773,6 +776,7 @@ export function App() {
           // Only a Frenzy claim explicitly armed from the public Frenzy post
           // may auto-claim here. Simply opening the game must never consume a Frenzy.
           if (!info.inGame || !info.canClaim) return;
+          claimedFrenzyInfo = { rarity: info.rarity, ownerUsername: info.ownerUsername, postId: info.postId };
           readyToClaim = true;
           break;
         } catch (error) {
@@ -832,6 +836,12 @@ export function App() {
         `⚡ Orb Frenzy claimed! ${formatNumber(res.frenzyCount ?? 0)} Orbs rolled.`,
         'success',
       );
+      if (claimedFrenzyInfo) {
+        setFrenzyThanksPrompt({
+          ...claimedFrenzyInfo,
+          message: `I claimed your 1/${formatRarity(claimedFrenzyInfo.rarity)} Orb Frenzy. Thanks, u/${claimedFrenzyInfo.ownerUsername}!`,
+        });
+      }
     };
 
     void resolveFrenzy()
