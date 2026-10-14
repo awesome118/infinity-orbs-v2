@@ -497,8 +497,7 @@ test('one manual action consumes all available Free Rolls and offline rate stops
   const shared = source('src/shared/game.ts');
   const modal = source('src/client/components/RollSection.tsx');
   const upgrades = source('src/client/components/UpgradesSection.tsx');
-  assert.match(game, /requestedFreeRollCount = 1/);
-  assert.match(game, /Math\.min\(availableFreeRolls, requested\)/);
+  assert.match(game, /const freeRollsToUse = usingFreeRoll \? availableFreeRolls : 0/);
   assert.match(game, /await applyRolls\(s, activations, undefined, 'online'\)/);
   assert.match(modal, /USE ALL ' \+ freeRolls \+ ' FREE ROLL/);
   assert.match(shared, /Math\.min\(0\.60, Math\.min\(8, Math\.max\(0, s\.upgrades\.offlineRate/);
