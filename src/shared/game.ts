@@ -1981,20 +1981,23 @@ export const OFFLINE_TICK_MS = 60_000; // 1 offline roll every 60 seconds
 
 export const SHARD_SYNTHESIS_COST = 10;
 
-// Unbroken Momentum treats a gap longer than five minutes as the end of a
-// rolling session. Every completed five minutes in the personal-best session
-// grants +1% Speed, capped at +30%.
+// Unbroken Momentum ends a rolling session after a five-minute gap.
+// Its permanent Speed reward scales logarithmically: 48 hours = 20%,
+// 72 hours ≈ 25%, and the bonus never exceeds 30%.
 export const UNBROKEN_MOMENTUM_SESSION_GAP_MS = 5 * 60_000;
-export const UNBROKEN_MOMENTUM_STEP_MS = 5 * 60_000;
-export const UNBROKEN_MOMENTUM_PER_STEP = 0.01;
 export const UNBROKEN_MOMENTUM_MAX_BONUS = 0.30;
 
 export function unbrokenMomentumSpeedBonus(longestSessionMs: number | null | undefined): number {
   const safeDuration = Number.isFinite(Number(longestSessionMs))
     ? Math.max(0, Math.floor(Number(longestSessionMs)))
     : 0;
-  const completedSteps = Math.floor(safeDuration / UNBROKEN_MOMENTUM_STEP_MS);
-  return Math.min(UNBROKEN_MOMENTUM_MAX_BONUS, completedSteps * UNBROKEN_MOMENTUM_PER_STEP);
+  const hours = safeDuration / 3_600_000;
+  if (hours <= 0) return 0;
+
+  // Normalize the logarithmic curve so the requested 48h and 72h landmarks
+  // map to 20% and approximately 25%, respectively.
+  const normalized = Math.log1p(hours / 20) / Math.log1p(48 / 20);
+  return Math.min(UNBROKEN_MOMENTUM_MAX_BONUS, Math.max(0, 0.20 * normalized));
 }
 
 /**
