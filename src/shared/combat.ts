@@ -154,7 +154,7 @@ export function combatStatsFor(state: CombatState): CombatStats {
     damage:Math.max(1,Math.round(flatDamage*(1+damagePct))),
     speed:Math.min(800,speed), maxHealth,
     critChance:Math.min(.75,Math.max(0,critChance)),
-    damageReduction:armor?.trait==='bulwark'?.04:0,
+    damageReduction: armor?.trait === 'bulwark' ? 0.04 : 0,
     coinMultiplier:1+coinBonus,
   };
 }

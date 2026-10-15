@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Coins, DoorOpen, Flame, Heart, Package, Pause, Play, Shield, Sparkles, Swords, Zap } from 'lucide-react';
+import { Check, Coins, Pause, Play, Sparkles, Swords, Zap } from 'lucide-react';
 import type { CombatAction, CombatEnemy, CombatGear, CombatIntent, CombatPage, CombatSkillDefinition, CombatSnapshot, CombatState, CombatStats } from '../../shared/combat.js';
 import { COMBAT_SKILLS, SKILL_RANK_CAP, skillPullCost } from '../../shared/combat.js';
 
@@ -60,7 +60,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     runtime.current.busy=true;setProcessing(true);
     try {
       const result=await request<ApiResponse>('/api/combat/beat','POST',{sequence:current.sequence+1,intent:runtime.current.intent});
-      accept(result);if(result.actions?.length)setActions(old=>[...result.actions!,...old].slice(0,30));setError('');
+      accept(result);if(result.actions?.length)setActions(old=>[...result.actions!,...old].slice(0,30));runtime.current.intent='strike';setIntent('strike');setError('');
     } catch(e) {
       const message=e instanceof Error?e.message:'Combat beat failed.';
       if(message==='stale combat sequence'||message.includes('changed repeatedly'))await load();
