@@ -16,12 +16,12 @@ async function request<T>(url:string,method='GET',body?:unknown):Promise<T> {
 }
 const fmt=(n:number)=>Math.max(0,Math.floor(n||0)).toLocaleString();
 const percent=(n:number)=>(n*100).toFixed(1)+'%';
-const rarityClass=(rarity:string)=>'io-combat-rarity io-rarity-'+rarity.toLowerCase();
+const rarityClass=(rarity:string)=>'io-rarity-'+rarity.toLowerCase();
 const rankOf=(state:CombatState,id:string)=>Math.max(0,Math.min(SKILL_RANK_CAP,Math.floor(Number(state.skillLevels[id as keyof typeof state.skillLevels])||0)));
 const equipped=(state:CombatState,slot:'weapon'|'armor')=>state.inventory.find(item=>item.id===state.equipment[slot]&&item.slot===slot)??null;
 function skillValue(skill:CombatSkillDefinition,rank:number):string {
   const amount=skill.value*rank;
-  return skill.stat==='speedFlat'?'+'+fmt(amount)+' Speed':'+'+(amount*100).toFixed(1)+'% '+(skill.stat==='damagePct'?'damage':skill.stat==='healthPct'?'max HP':skill.stat==='coinBonus'?'Delver Coins':'critical chance');
+  return skill.stat==='speedFlat'?'+'+fmt(amount)+' Speed':skill.stat==='critChance'?'+'+(amount*100).toFixed(1)+' percentage points critical chance':'+'+(amount*100).toFixed(1)+'% '+(skill.stat==='damagePct'?'damage':skill.stat==='healthPct'?'max HP':'Delver Coins');
 }
 function GearCard({item,isEquipped,onEquip,busy}:{item:CombatGear;isEquipped:boolean;onEquip:()=>void;busy:boolean}) {
   const grade=item.quality>=90?'Mythic':item.quality>=70?'Epic':item.quality>=40?'Rare':item.quality>=15?'Uncommon':'Common';
