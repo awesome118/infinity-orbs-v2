@@ -5,7 +5,16 @@ import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_INVENT
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
-function pick<T>(values:T[]):T { return values[Math.floor(Math.random()*values.length)]!; }
+/** Use the platform cryptographic RNG; never fall back to predictable secureRandom(). */
+function secureRandom():number {
+  const cryptoApi=globalThis.crypto;
+  if(!cryptoApi||typeof cryptoApi.getRandomValues!=='function')throw new Error('Secure combat randomness is unavailable.');
+  const words=new Uint32Array(2);
+  cryptoApi.getRandomValues(words);
+  // Uniform 53-bit fraction in [0, 1), built from cryptographically random bits.
+  return (words[0]!*0x20_0000+(words[1]!>>>11))/0x20_0000_0000_0000;
+}
+function pick<T>(values:T[]):T { return values[Math.floor(secureRandom()*values.length)]!; }
 function finiteInt(value:unknown,fallback:number,min:number,max:number):number { const n=Number(value); return Number.isFinite(n)?Math.max(min,Math.min(max,Math.floor(n))):fallback; }
 function traitText(t:CombatTrait):string {
   if(t==='bleed')return '18% chance to add bonus bleed damage.';
@@ -45,7 +54,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.arenaRating=finiteInt(s.arenaRating,1000,100,10000);s.arenaWins=finiteInt(s.arenaWins,0,0,Number.MAX_SAFE_INTEGER);s.arenaLosses=finiteInt(s.arenaLosses,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastChallengeAt=finiteInt(s.arenaLastChallengeAt,0,0,Number.MAX_SAFE_INTEGER);
   s.coreLevel=finiteInt(s.coreLevel,1,1,1_000_000);s.coreHighestRarity=finiteInt(s.coreHighestRarity,2,2,1_000_000_000_000_000_000);
   s.autoTactic=(['balanced','aggressive','defensive','recovery'] as unknown[]).includes(s.autoTactic)?s.autoTactic:'balanced';
-  s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
+  s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
   s.playerActionsResolved=finiteInt(s.playerActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.enemyActionsResolved=finiteInt(s.enemyActionsResolved,0,0,Number.MAX_SAFE_INTEGER);
   s.energy=finiteInt(s.energy,3,0,10);s.maxEnergy=finiteInt(s.maxEnergy,5,1,10);s.guardBeats=finiteInt(s.guardBeats,0,0,10);s.encounterFirstStrikeUsed=s.encounterFirstStrikeUsed===true;
   const inv=Array.isArray(s.inventory)?s.inventory.map(normalizeGear).filter((g):g is CombatGear=>Boolean(g)):[];
@@ -70,15 +79,15 @@ function normalizeState(raw:string|null|undefined):CombatState {
   return s;
 }
 function createGear(depth:number):CombatGear {
-  const slot=Math.random()<.5?'weapon':'armor';
+  const slot=secureRandom()<.5?'weapon':'armor';
   // Fourth-power quality distribution is from Auto-Dungeons; 100% rolls are extremely rare.
-  const quality=Math.round(1_000_000*Math.pow(Math.random(),4))/10_000;
+  const quality=Math.round(1_000_000*Math.pow(secureRandom(),4))/10_000;
   const prefix=slot==='weapon'?['Ashen','Hollow','Cinder','Riftbound','Starforged','Warden’s','Lost','Quiet','Infinity-Touched']:['Delver’s','Warden’s','Old','Cinder','Riftweave','Ironbound','Boneguard','Hollow','Starweave'];
   const nouns=slot==='weapon'?['Cleaver','Brand','Knife','Axe','Fang','Edge','Spear','Greatblade']:['Hood','Plate','Scale','Mantle','Coat','Shell','Vest','Mail'];
   const weaponTraits:CombatTrait[]=['bleed','keen','first-strike'], armorTraits:CombatTrait[]=['bulwark','regeneration','desperation'];
   const trait=slot==='weapon'?pick(weaponTraits):pick(armorTraits);
   const power=Math.max(3,Math.round(Math.min(1_000_000,depth)*(.65+quality/80)));
-  return {id:'gear-'+Date.now().toString(36)+'-'+Math.floor(Math.random()*0x7fffffff).toString(36),name:pick(prefix)+' '+pick(nouns),slot,quality,power,trait,effect:traitText(trait),damageBonus:slot==='weapon'?Math.max(1,Math.round(power*.8)):0,speedBonus:slot==='weapon'?Math.min(400,Math.round(power*.25)):0,maxHealthBonus:slot==='armor'?Math.max(5,Math.round(power*4)):0};
+  return {id:'gear-'+Date.now().toString(36)+'-'+Math.floor(secureRandom()*0x7fffffff).toString(36),name:pick(prefix)+' '+pick(nouns),slot,quality,power,trait,effect:traitText(trait),damageBonus:slot==='weapon'?Math.max(1,Math.round(power*.8)):0,speedBonus:slot==='weapon'?Math.min(400,Math.round(power*.25)):0,maxHealthBonus:slot==='armor'?Math.max(5,Math.round(power*4)):0};
 }
 function enemySnapshot(s:CombatState):CombatEnemy { const e=getEnemyForDungeonDepth(s.dungeonId,s.depth); return {...e,hp:Math.max(0,Math.min(e.maxHp,s.enemyHp||e.maxHp))}; }
 function snapshot(s:CombatState):CombatSnapshot { return {state:s,enemy:enemySnapshot(s),stats:synchronizeCombatStats(s)}; }
@@ -122,6 +131,10 @@ function grantXp(s:CombatState,amount:number,actions:CombatAction[]):void {
 export async function performCombatBeat(sequence:number,intent:CombatCommand):Promise<CombatSnapshot&{actions:CombatAction[];defeated:boolean;died:boolean;item?:CombatGear}> {
   return mutate(s=>{
     if(sequence!==s.sequence+1)throw new Error('stale combat sequence');
+    const now=Date.now();
+    const elapsed=s.lastAcceptedBeatAtMs>0?Math.max(0,now-s.lastAcceptedBeatAtMs):Number.POSITIVE_INFINITY;
+    if(elapsed<1000)throw new Error('COMBAT_BEAT_TOO_SOON:'+Math.max(1,1000-elapsed));
+    s.lastAcceptedBeatAtMs=now;
     const actions:CombatAction[]=[];synchronizeCombatStats(s);s.sequence+=1;s.combatBeats+=1;s.energy=Math.min(s.maxEnergy,s.energy+1);
     let enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);const stats=combatStatsFor(s);
     const resolvedIntent:CombatIntent=intent==='auto'?chooseAutoCombatIntent(s):intent;
@@ -139,8 +152,8 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand):Pr
       if(enemyHp<=0)break;
       let multiplier=heavy&&i===0?1.9:1;
       if(!s.encounterFirstStrikeUsed){if(weapon?.trait==='first-strike')multiplier*=1.5;s.encounterFirstStrikeUsed=true;}
-      const crit=Math.random()<stats.critChance;let damage=Math.max(1,Math.round(stats.damage*(crit?1.75:1)*multiplier));
-      if(weapon?.trait==='bleed'&&Math.random()<.18){const bleed=Math.max(1,Math.round(stats.damage*.3));damage+=bleed;actions.push({actor:'player',kind:'ability',text:'Bleed adds '+bleed+' damage.'});}
+      const crit=secureRandom()<stats.critChance;let damage=Math.max(1,Math.round(stats.damage*(crit?1.75:1)*multiplier));
+      if(weapon?.trait==='bleed'&&secureRandom()<.18){const bleed=Math.max(1,Math.round(stats.damage*.3));damage+=bleed;actions.push({actor:'player',kind:'ability',text:'Bleed adds '+bleed+' damage.'});}
       enemyHp-=damage;actions.push({actor:'player',kind:'attack',damage,text:(crit?'Critical hit for ':'Strike for ')+damage+' damage.'});
       if(enemyHp<=0){
         defeated=true;actions.push({actor:'player',kind:'death',text:'The '+enemy.name+' falls.'});s.totalKills=Math.min(Number.MAX_SAFE_INTEGER,s.totalKills+1);
@@ -153,16 +166,18 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand):Pr
         enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);s.enemyHp=enemy.maxHp;actions.push({actor:'player',kind:'advance',text:'Descending to Depth '+s.depth+'.'});break;
       }
     }
+    let guardWasUsed=false;
     if(!defeated)for(let i=0;i<enemyActions;i++){
       let incoming=enemy.damage,strike='The '+enemy.name+' hits for ';
       if(enemy.boss&&s.combatBeats%4===0){incoming=Math.round(incoming*1.75);strike='The '+enemy.name+' cleaves for ';}
       else if(enemy.id.endsWith('ember-acolyte')&&s.combatBeats%3===0){incoming+=Math.round(s.maxHealth*.035);strike='The Ember Acolyte burns for ';}
-      if(s.guardBeats>0)incoming=Math.round(incoming*.45);
+      if(s.guardBeats>0){incoming=Math.round(incoming*.45);guardWasUsed=true;}
       incoming=Math.max(1,Math.round(incoming*(1-stats.damageReduction)));s.health=Math.max(0,s.health-incoming);
       actions.push({actor:'enemy',kind:'attack',damage:incoming,text:strike+incoming+' damage.'});
       if(s.health<=0){died=true;actions.push({actor:'enemy',kind:'death',text:'Run '+s.runId+' ended at Depth '+s.depth+'. Permanent progress retained.'});s.runId+=1;s.depth=1;s.health=s.maxHealth;s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,3);s.guardBeats=0;s.encounterFirstStrikeUsed=false;s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;actions.push({actor:'player',kind:'advance',text:'A new descent begins automatically at Depth 1.'});break;}
     }
-    if(s.guardBeats>0&&!defeated)s.guardBeats-=1;synchronizeCombatStats(s);
+    if(guardWasUsed)s.guardBeats=0;
+    synchronizeCombatStats(s);
     return {...snapshot(s),actions,defeated,died,...(item?{item}:{})};
   });
 }
@@ -170,7 +185,7 @@ export async function equipCombatItem(itemId:string):Promise<CombatSnapshot>{ret
 export async function rollCombatSkill():Promise<CombatSnapshot&{skillRoll:{id:CombatSkillId;name:string;rarity:string;rank:number;duplicate:boolean;convertedCoins:number};cost:number}> {
   return mutate(s=>{
     const cost=skillPullCost(s.skillRolls);if(s.coins<cost)throw new Error('Not enough Delver Coins.');
-    s.coins-=cost;s.skillRolls+=1;const chance=Math.random();
+    s.coins-=cost;s.skillRolls+=1;const chance=secureRandom();
     const rarity=chance<.55?'Common':chance<.80?'Uncommon':chance<.92?'Rare':chance<.98?'Epic':'Mythic';
     const pool=COMBAT_SKILLS.filter(skill=>skill.rarity===rarity),skill=pick(pool);if(!skill)throw new Error('Skill pool is unavailable.');
     const applied=applyCombatSkillCopy(s,skill.id,cost);
@@ -275,9 +290,9 @@ function resolveArenaDuel(challengerState: CombatState, opponentState: CombatSta
     const isFirst = isChallenger ? challengerFirst : opponentFirst;
     if (isFirst && weapon?.trait === 'first-strike') multiplier *= 1.5;
     if (isChallenger) challengerFirst = false; else opponentFirst = false;
-    const critical = Math.random() < attacker.stats.critChance;
+    const critical = secureRandom() < attacker.stats.critChance;
     let damage = Math.max(1, Math.round(attacker.stats.damage * multiplier * (critical ? 1.75 : 1)));
-    if (weapon?.trait === 'bleed' && Math.random() < .18) damage += Math.max(1, Math.round(attacker.stats.damage * .3));
+    if (weapon?.trait === 'bleed' && secureRandom() < .18) damage += Math.max(1, Math.round(attacker.stats.damage * .3));
     damage = Math.max(1, Math.round(damage * (1 - defender.stats.damageReduction)));
     if (isChallenger) opponentHp = Math.max(0, opponentHp - damage);
     else challengerHp = Math.max(0, challengerHp - damage);
@@ -304,7 +319,11 @@ function resolveArenaDuel(challengerState: CombatState, opponentState: CombatSta
   }
   // Extremely defensive equal builds still resolve deterministically after the
   // round cap; remaining health ratio is the tie-breaker.
-  const winner = challengerHp / challenger.stats.maxHealth >= opponentHp / opponent.stats.maxHealth ? 'challenger' : 'opponent';
+  const challengerHealthRatio=challengerHp/challenger.stats.maxHealth;
+  const opponentHealthRatio=opponentHp/opponent.stats.maxHealth;
+  const winner=challengerHealthRatio===opponentHealthRatio
+    ? (secureRandom()<0.5?'challenger':'opponent')
+    : challengerHealthRatio>opponentHealthRatio?'challenger':'opponent';
   append(winner === 'challenger' ? 'Victory. Arena rating updated.' : 'Defeat. Arena rating updated.');
   return { winner, rounds: Math.min(rounds, 100), log };
 }
