@@ -31,7 +31,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.version=1;s.dungeonId='undercrypt';s.runId=finiteInt(s.runId,1,1,Number.MAX_SAFE_INTEGER);s.depth=finiteInt(s.depth,1,1,50000);
   s.bestDepth=Math.max(s.depth,finiteInt(s.bestDepth,1,1,50000));s.level=finiteInt(s.level,1,1,60);s.xp=finiteInt(s.xp,0,0,Number.MAX_SAFE_INTEGER);
   s.xpToNext=finiteInt(s.xpToNext,100,1,1_000_000_000);s.coins=finiteInt(s.coins,250,0,Number.MAX_SAFE_INTEGER);s.totalKills=finiteInt(s.totalKills,0,0,Number.MAX_SAFE_INTEGER);
-  s.arenaRating=finiteInt(s.arenaRating,1000,100,10000);s.arenaWins=finiteInt(s.arenaWins,0,0,Number.MAX_SAFE_INTEGER);s.arenaLosses=finiteInt(s.arenaLosses,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastChallengeAt=finiteInt(s.arenaLastChallengeAt,0,0,Number.MAX_SAFE_INTEGER);
+  s.arenaRating=finiteInt(s.arenaRating,1000,100,10000);s.arenaWins=finiteInt(s.arenaWins,0,0,Number.MAX_SAFE_INTEGER);s.arenaLosses=finiteInt(s.arenaLosses,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastChallengeAt=finiteInt(s.arenaLastChallengeAt,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastMatchAt=finiteInt(s.arenaLastMatchAt,0,0,Number.MAX_SAFE_INTEGER);
   s.coreLevel=finiteInt(s.coreLevel,1,1,1_000_000);s.coreHighestRarity=finiteInt(s.coreHighestRarity,2,2,1_000_000_000_000_000_000);
   s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
   s.playerActionsResolved=finiteInt(s.playerActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.enemyActionsResolved=finiteInt(s.enemyActionsResolved,0,0,Number.MAX_SAFE_INTEGER);
@@ -170,6 +170,12 @@ const ARENA_PROFILE_KEY = 'infinity-orbs:combat:arena:profiles';
 const ARENA_PROFILE_TTL_MS = 24 * 60 * 60_000;
 const ARENA_CHALLENGE_COOLDOWN_MS = 90_000;
 
+function arenaCooldownRemaining(lastAtValue: unknown, now: number): number {
+  const lastAt = finiteInt(lastAtValue, 0, 0, Number.MAX_SAFE_INTEGER);
+  if (lastAt > now) return ARENA_CHALLENGE_COOLDOWN_MS;
+  return Math.max(0, ARENA_CHALLENGE_COOLDOWN_MS - (now - lastAt));
+}
+
 function combatKeyFor(userId: string): string {
   const id = String(userId ?? '').trim();
   if (!id) throw new Error('REDDIT_LOGIN_REQUIRED');
@@ -203,6 +209,7 @@ function createArenaProfile(userId: string, username: string, state: CombatState
     wins: state.arenaWins,
     losses: state.arenaLosses,
     updatedAt,
+    challengeBlockedUntil: state.arenaLastMatchAt + ARENA_CHALLENGE_COOLDOWN_MS,
     damage: build.stats.damage,
     speed: build.stats.speed,
     maxHealth: build.stats.maxHealth,
@@ -228,6 +235,7 @@ function parseArenaProfile(userId: string, raw: unknown): CombatArenaProfile | n
       wins: finiteInt(p.wins, 0, 0, Number.MAX_SAFE_INTEGER),
       losses: finiteInt(p.losses, 0, 0, Number.MAX_SAFE_INTEGER),
       updatedAt: finiteInt(updatedAt, 0, 0, Number.MAX_SAFE_INTEGER),
+      challengeBlockedUntil: finiteInt(p.challengeBlockedUntil, 0, 0, Number.MAX_SAFE_INTEGER),
       damage: finiteInt(p.damage, 1, 1, 1_000_000_000),
       speed: finiteInt(p.speed, 1, 1, 800),
       maxHealth: finiteInt(p.maxHealth, 1, 1, 1_000_000_000),
@@ -333,7 +341,7 @@ export async function getCombatArenaOpponents(): Promise<{
   return {
     self,
     opponents,
-    cooldownRemainingMs: Math.max(0, ARENA_CHALLENGE_COOLDOWN_MS - (now - state.arenaLastChallengeAt)),
+    cooldownRemainingMs: arenaCooldownRemaining(state.arenaLastChallengeAt, now),
   };
 }
 
@@ -365,10 +373,15 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
       const ownState = normalizeState(ownRaw);
       const opponentState = normalizeState(opponentRaw);
       const now = Date.now();
-      const remaining = ARENA_CHALLENGE_COOLDOWN_MS - (now - ownState.arenaLastChallengeAt);
+      const remaining = arenaCooldownRemaining(ownState.arenaLastChallengeAt, now);
       if (remaining > 0) {
         await txn.unwatch(); closed = true;
         throw new Error('ARENA_COOLDOWN:' + remaining);
+      }
+      const opponentProtection = arenaCooldownRemaining(opponentState.arenaLastMatchAt, now);
+      if (opponentProtection > 0) {
+        await txn.unwatch(); closed = true;
+        throw new Error('ARENA_OPPONENT_COOLDOWN:' + opponentProtection);
       }
 
       const duel = resolveArenaDuel(ownState, opponentState);
@@ -392,6 +405,8 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
         opponentState.arenaWins += 1;
       }
       ownState.arenaLastChallengeAt = now;
+      ownState.arenaLastMatchAt = now;
+      opponentState.arenaLastMatchAt = now;
 
       await txn.multi();
       await txn.set(ownKey, JSON.stringify(ownState));
