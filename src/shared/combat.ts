@@ -1,5 +1,7 @@
 export type CombatPage = 'fight' | 'dungeons' | 'gear' | 'skills' | 'arena';
 export type CombatIntent = 'strike' | 'heavy' | 'guard' | 'mend';
+export type CombatCommand = CombatIntent | 'auto';
+export type CombatTactic = 'balanced' | 'aggressive' | 'defensive' | 'recovery';
 export type CombatRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Mythic';
 export type CombatSkillStat = 'damagePct' | 'speedFlat' | 'healthPct' | 'critChance' | 'coinBonus';
 export type CombatTrait = 'bleed' | 'keen' | 'first-strike' | 'bulwark' | 'regeneration' | 'desperation';
@@ -94,6 +96,7 @@ export interface CombatState {
   arenaLastChallengeAt: number;
   coreLevel: number;
   coreHighestRarity: number;
+  autoTactic: CombatTactic;
 }
 export interface CombatStats {
   damage: number;
@@ -179,7 +182,7 @@ export function createCombatState(): CombatState {
     encounterFirstStrikeUsed:false, inventory:[weapon,armor],
     equipment:{weapon:weapon.id,armor:armor.id}, skillLevels:{},
     arenaRating:1000, arenaWins:0, arenaLosses:0, arenaLastChallengeAt:0,
-    coreLevel:1, coreHighestRarity:2,
+    coreLevel:1, coreHighestRarity:2, autoTactic:'balanced',
   };
   synchronizeCombatStats(state);
   state.enemyHp = getEnemyForDepth(1).maxHp;
@@ -339,4 +342,30 @@ export function coreProgressionCombatBonus(coreLevelValue: unknown, highestRarit
   const levelBonus = Math.min(0.20, Math.floor((level - 1) / 10) * 0.02);
   const rarityBonus = Math.min(0.05, Math.max(0, Math.floor(Math.log10(rarity)) * 0.003));
   return Math.round((levelBonus + rarityBonus) * 10_000) / 10_000;
+}
+
+
+/** Choose an action from persisted health, energy, and tactic settings. */
+export function chooseAutoCombatIntent(state: CombatState): CombatIntent {
+  const maxHealth = Math.max(1, Number(state.maxHealth) || 1);
+  const healthRatio = Math.max(0, Math.min(1, (Number(state.health) || 0) / maxHealth));
+  const energy = Math.max(0, Math.min(10, Math.floor(Number(state.energy) || 0)));
+
+  switch (state.autoTactic) {
+    case 'aggressive':
+      return energy >= 3 ? 'heavy' : 'strike';
+    case 'defensive':
+      if (healthRatio <= 0.70 && energy >= 4) return 'mend';
+      if (healthRatio <= 0.45 && energy >= 2) return 'guard';
+      return 'strike';
+    case 'recovery':
+      if (healthRatio <= 0.85 && energy >= 4) return 'mend';
+      if (healthRatio <= 0.40 && energy >= 2) return 'guard';
+      return energy >= 3 ? 'heavy' : 'strike';
+    case 'balanced':
+    default:
+      if (healthRatio <= 0.35 && energy >= 4) return 'mend';
+      if (healthRatio <= 0.18 && energy >= 2) return 'guard';
+      return energy >= 3 ? 'heavy' : 'strike';
+  }
 }
