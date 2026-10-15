@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, COMBAT_SKILLS, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, skillPullCost, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../src/shared/combat.js';
+import { combatArenaWinnerFromHealth, addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, COMBAT_SKILLS, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, skillPullCost, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../src/shared/combat.js';
 
 test('starter combat build carries the Auto-Dungeons baseline', () => {
   const state=createCombatState();
@@ -192,4 +192,15 @@ test('core-game level and highest-orb rarity improve combat without changing bas
   assert.ok(progressed.damage > baseline.damage);
   assert.ok(progressed.maxHealth > baseline.maxHealth);
   assert.equal(coreProgressionCombatBonus(1_000_000, 1_000_000_000_000_000_000), 0.25);
+});
+
+
+test('Arena HP tie-break compares remaining health ratios and is fair on exact ties', () => {
+  assert.equal(combatArenaWinnerFromHealth(75, 100, 50, 100, 0.99), 'challenger');
+  assert.equal(combatArenaWinnerFromHealth(50, 100, 75, 100, 0.01), 'opponent');
+  // Different maximum HP is compared by percentage remaining, not raw HP.
+  assert.equal(combatArenaWinnerFromHealth(50, 100, 100, 200, 0.01), 'challenger');
+  assert.equal(combatArenaWinnerFromHealth(50, 100, 50, 100, 0.1), 'challenger');
+  assert.equal(combatArenaWinnerFromHealth(50, 100, 50, 100, 0.9), 'opponent');
+  assert.equal(combatArenaWinnerFromHealth(50, 100, 50, 100, Number.NaN), 'opponent');
 });
