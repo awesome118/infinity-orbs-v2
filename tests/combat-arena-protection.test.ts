@@ -100,3 +100,76 @@ test('Arena results protect both participants from being challenged again for 90
     /ARENA_OPPONENT_COOLDOWN:/,
   );
 });
+
+test('Concurrent challengers cannot both bypass the same opponent protection window', async () => {
+  reset();
+  const now = Date.now();
+  const targetProfile = {
+    userId: 'arena-shared-target',
+    username: 'arena-shared-target',
+    level: 1,
+    bestDepth: 1,
+    rating: 1000,
+    wins: 0,
+    losses: 0,
+    updatedAt: now,
+    challengeBlockedUntil: 0,
+    damage: 54,
+    speed: 310,
+    maxHealth: 1040,
+    critChance: 0.12,
+    weaponName: 'Delver Knife',
+    armorName: 'Worn Leathers',
+    skillRanks: 0,
+  };
+  hashes.set(ARENA_PROFILES, { 'arena-shared-target': JSON.stringify(targetProfile) });
+  savePlayer('arena-attacker-a');
+  savePlayer('arena-attacker-b');
+  savePlayer('arena-shared-target');
+
+  useUser('arena-attacker-a');
+  const challengeA = challengeCombatArena('arena-shared-target');
+  useUser('arena-attacker-b');
+  const challengeB = challengeCombatArena('arena-shared-target');
+  const outcomes = await Promise.allSettled([challengeA, challengeB]);
+
+  assert.equal(outcomes.filter(outcome => outcome.status === 'fulfilled').length, 1);
+  const rejected = outcomes.find(outcome => outcome.status === 'rejected');
+  assert.ok(rejected && rejected.status === 'rejected');
+  assert.match(String(rejected.reason), /ARENA_OPPONENT_COOLDOWN:/);
+  const targetAfter = JSON.parse(values.get('infinity-orbs:combat:arena-shared-target') ?? '{}');
+  assert.equal(targetAfter.arenaWins + targetAfter.arenaLosses, 1);
+});
+
+test('Arena opponent protection expires after the cooldown window', async () => {
+  reset();
+  const oldMatchAt = Date.now() - 90_001;
+  const targetState = createCombatState();
+  targetState.arenaLastMatchAt = oldMatchAt;
+  values.set('infinity-orbs:combat:arena-expired-target', JSON.stringify(targetState));
+  const targetProfile = {
+    userId: 'arena-expired-target',
+    username: 'arena-expired-target',
+    level: 1,
+    bestDepth: 1,
+    rating: 1000,
+    wins: 0,
+    losses: 0,
+    updatedAt: Date.now(),
+    challengeBlockedUntil: oldMatchAt + 90_000,
+    damage: 54,
+    speed: 310,
+    maxHealth: 1040,
+    critChance: 0.12,
+    weaponName: 'Delver Knife',
+    armorName: 'Worn Leathers',
+    skillRanks: 0,
+  };
+  hashes.set(ARENA_PROFILES, { 'arena-expired-target': JSON.stringify(targetProfile) });
+  savePlayer('arena-new-attacker');
+
+  useUser('arena-new-attacker');
+  const result = await challengeCombatArena('arena-expired-target');
+  assert.ok(result.arenaResult);
+  assert.equal(result.arenaResult.opponent.userId, 'arena-expired-target');
+});
