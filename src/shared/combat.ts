@@ -226,6 +226,17 @@ export function synchronizeCombatStats(state: CombatState): CombatStats {
   return stats;
 }
 
+/**
+ * Keep Guard armed until an enemy action actually resolves. An enemy killed
+ * before acting does not consume the defensive window, so it carries to the
+ * next room. Each enemy-action beat consumes at most one Guard window.
+ */
+export function tickCombatGuard(guardBeats: number, enemyActions: number, enemyDefeated = false): number {
+  const active = Math.max(0, Math.floor(Number.isFinite(guardBeats) ? guardBeats : 0));
+  const actions = Math.max(0, Math.floor(Number.isFinite(enemyActions) ? enemyActions : 0));
+  return Math.max(0, active - (!enemyDefeated && actions > 0 ? 1 : 0));
+}
+
 export interface CombatSkillCopyResult {
   rank: number;
   duplicate: boolean;
