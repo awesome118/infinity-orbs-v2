@@ -79,7 +79,7 @@ import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
-import { getCombatSnapshot, performCombatBeat, equipCombatItem, rollCombatSkill, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic } from './combat.js';
+import { getCombatSnapshot, performCombatBeat, equipCombatItem, rollCombatSkill, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon } from './combat.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -419,7 +419,8 @@ export function createApp() {
       req.path === '/combat/equip' ||
       req.path === '/combat/skills/roll' ||
       req.path === '/combat/arena/challenge' ||
-      req.path === '/combat/tactics'
+      req.path === '/combat/tactics' ||
+      req.path === '/combat/dungeon'
     ) return next();
 
     const mutatesState = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
@@ -859,6 +860,10 @@ export function createApp() {
     if(!['auto','strike','heavy','guard','mend'].includes(intent))return res.status(400).json({error:'Invalid combat command.'});
     try { res.setHeader('Cache-Control','no-store');res.json(await performCombatBeat(sequence,intent)); }
     catch(e:any){const message=e?.message||'Combat beat failed.';const status=message==='stale combat sequence'?409:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
+  });
+  app.post('/api/combat/dungeon', async (req,res) => {
+    try { res.setHeader('Cache-Control','no-store'); res.json(await setCombatDungeon(req.body?.dungeonId)); }
+    catch(e:any) { const message=e?.message||'Could not switch dungeon.'; res.status(message==='REDDIT_LOGIN_REQUIRED'?401:message==='Invalid combat dungeon.'?400:503).json({error:message}); }
   });
   app.post('/api/combat/tactics', async (req,res) => {
     try { res.setHeader('Cache-Control','no-store'); res.json(await setCombatAutoTactic(req.body?.tactic)); }
