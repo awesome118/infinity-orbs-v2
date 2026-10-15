@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {
   COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, COMBAT_UPGRADES, addCombatGearToInventory,
   combatForgeCost, combatScrapValue, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost,
-  createCombatState, floorQualityRequirement, gearQualityEffectiveness, resolveCombatSkillRarity,
+  createCombatState, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, floorQualityRequirement, gearQualityEffectiveness,
+  normalizeCombatAutoScrapSettings, resolveCombatSkillRarity,
   skillGachaRankRequirement, skillRarityUnlocked, type CombatGear,
 } from '../src/shared/combat.js';
 
@@ -22,6 +23,15 @@ test('gear effectiveness follows the current floor target',()=>{
   assert.equal(gearQualityEffectiveness(gear('excellent',50,'weapon',80),50),1.25);
   assert.equal(gearQualityEffectiveness(gear('starter',0,'weapon',0),0),1);
 });
+test('dungeon-specific inventories do not share carried items or equipment slots',()=>{
+  const state=createCombatState();
+  const cinderBefore=state.inventoryByDungeon['cinder-vault'].map(item=>item.id);
+  addCombatGearToInventory(state,gear('undercrypt-only',20,'weapon',75));
+  assert.ok(state.inventoryByDungeon.undercrypt.some(item=>item.id==='undercrypt-only'));
+  assert.deepEqual(state.inventoryByDungeon['cinder-vault'].map(item=>item.id),cinderBefore);
+  assert.notEqual(state.equipmentByDungeon.undercrypt.weapon,state.equipmentByDungeon['cinder-vault'].weapon);
+});
+
 test('inventory cap is maintained independently for each dungeon and prunes old floors',()=>{
   const state=createCombatState();
   state.inventory=Array.from({length:COMBAT_INVENTORY_CAP},(_,i)=>gear('old-'+i,i,i===1?'armor':'weapon',80));
@@ -36,6 +46,13 @@ test('inventory cap is maintained independently for each dungeon and prunes old 
   assert.equal(state.inventoryByDungeon['cinder-vault'].length,2);
   assert.equal(state.inventoryByDungeon['glass-labyrinth'].length,2);
 });
+test('Auto Scrap settings are configurable and safely bounded',()=>{
+  assert.deepEqual(normalizeCombatAutoScrapSettings(undefined),DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS);
+  assert.deepEqual(normalizeCombatAutoScrapSettings({enabled:true,maxQuality:37.44}),{enabled:true,maxQuality:37.44});
+  assert.deepEqual(normalizeCombatAutoScrapSettings({enabled:true,maxQuality:999}),{enabled:true,maxQuality:100});
+  assert.deepEqual(normalizeCombatAutoScrapSettings({enabled:'yes',maxQuality:-20}),{enabled:false,maxQuality:0});
+});
+
 test('combat upgrade prices increase by rank',()=>{
   const state=createCombatState(),upgrade=COMBAT_UPGRADES[0]!;
   const first=combatUpgradeCost(state,upgrade.id);
