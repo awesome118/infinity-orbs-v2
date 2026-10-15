@@ -79,6 +79,7 @@ import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
+import { getCombatSnapshot, performCombatBeat, equipCombatItem, rollCombatSkill } from './combat.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -835,6 +836,28 @@ export function createApp() {
     const subredditName = String(context.subredditName ?? '').trim().replace(/^r\//i, '').toLowerCase();
     res.setHeader('Cache-Control', 'no-store');
     res.json({ isBeta: subredditName === 'infinity_orbs_dev' });
+  });
+
+  app.get('/api/combat/state', async (_req, res) => {
+    try { res.setHeader('Cache-Control','no-store'); res.json(await getCombatSnapshot()); }
+    catch (e:any) { const message=e?.message||'Could not load combat state.';res.status(message==='REDDIT_LOGIN_REQUIRED'?401:500).json({error:message}); }
+  });
+  app.post('/api/combat/beat', async (req,res) => {
+    const sequence=req.body?.sequence, intent=req.body?.intent;
+    if(!Number.isSafeInteger(sequence)||sequence<1)return res.status(400).json({error:'A valid combat sequence is required.'});
+    if(!['strike','heavy','guard','mend'].includes(intent))return res.status(400).json({error:'Invalid combat command.'});
+    try { res.setHeader('Cache-Control','no-store');res.json(await performCombatBeat(sequence,intent)); }
+    catch(e:any){const message=e?.message||'Combat beat failed.';const status=message==='stale combat sequence'?409:message==='REDDIT_LOGIN_REQUIRED'?401:500;res.status(status).json({error:message});}
+  });
+  app.post('/api/combat/equip', async (req,res) => {
+    const itemId=req.body?.itemId;
+    if(typeof itemId!=='string'||!itemId.trim()||itemId.length>160)return res.status(400).json({error:'A valid gear item is required.'});
+    try{res.setHeader('Cache-Control','no-store');res.json(await equipCombatItem(itemId));}
+    catch(e:any){const message=e?.message||'Could not equip gear.';const status=message==='item not owned'?404:message==='REDDIT_LOGIN_REQUIRED'?401:500;res.status(status).json({error:message});}
+  });
+  app.post('/api/combat/skills/roll', async (_req,res) => {
+    try{res.setHeader('Cache-Control','no-store');res.json(await rollCombatSkill());}
+    catch(e:any){const message=e?.message||'Skill roll failed.';const status=message==='Not enough Delver Coins.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:500;res.status(status).json({error:message});}
   });
 
   app.get('/api/me', async (_req, res) => {

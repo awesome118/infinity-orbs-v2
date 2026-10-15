@@ -12,6 +12,9 @@ import {
   RefreshCw,
   Flame,
   Shield,
+  Swords,
+  DoorOpen,
+  Package,
   Lock,
   Megaphone,
   X,
@@ -63,6 +66,8 @@ import {
 } from '../shared/game.js';
 import { sound } from './sound.js';
 import { Header } from './components/Header.js';
+import { CombatSection } from './components/CombatSection.js';
+import type { CombatPage } from '../shared/combat.js';
 import { RollSection } from './components/RollSection.js';
 import { UpgradesSection } from './components/UpgradesSection.js';
 import { AltarSection } from './components/AltarSection.js';
@@ -92,7 +97,12 @@ type ActiveTab =
   | 'collection'
   | 'quests'
   | 'social'
-  | 'profile';
+  | 'profile'
+  | 'fight'
+  | 'dungeons'
+  | 'gear'
+  | 'skills'
+  | 'arena';
 
 async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
   const method = String(options?.method ?? 'GET').toUpperCase();
@@ -195,6 +205,7 @@ export function App() {
 
   const [readyAt, setReadyAt] = useState<number>(0);
   const [tab, setTab] = useState<ActiveTab>('roll');
+  const combatMode = tab === 'fight' || tab === 'dungeons' || tab === 'gear' || tab === 'skills' || tab === 'arena';
   const [autoRoll, setAutoRoll] = useState<boolean>(false);
   const [isBeta, setIsBeta] = useState(false);
   const [changelogUnread, setChangelogUnread] = useState(() => {
@@ -2319,9 +2330,17 @@ export function App() {
       )}
 
       {/* Main Navigation Bar */}
-      <div className="io-nav app-nav bg-slate-900/55 border-b border-slate-800/80 px-4 py-2 sticky top-[57px] z-20 backdrop-blur-md">
+      <div className={"io-nav app-nav bg-slate-900/55 border-b border-slate-800/80 px-4 py-2 sticky top-[57px] z-20 backdrop-blur-md" + (combatMode ? " io-nav-combat" : "")}>
         <div className="nav-shell max-w-6xl mx-auto flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          <button type="button" onClick={() => { sound.playClick(); changeTab(combatMode ? 'roll' : 'fight'); }}
+            className={"io-combat-mode-switch nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (combatMode ? " is-active" : "")}
+            aria-pressed={combatMode} title={combatMode ? "Return to the core orb-rolling game" : "Enter the combat expansion"}>
+            <Swords className="w-4 h-4" />
+            <span>{combatMode ? "Back to Orbs" : "Combat"}</span>
+            <span className="io-combat-mode-mark">{combatMode ? "ON" : "NEW"}</span>
+          </button>
 
+          {!combatMode && <>
           <button
             onClick={() => {
               sound.playClick();
@@ -2474,11 +2493,23 @@ export function App() {
               <span className="w-2 h-2 rounded-full bg-fuchsia-400" />
             )}
           </button>
+          </>}
+          {combatMode && <>
+            <button onClick={() => changeTab('fight')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (tab === 'fight' ? " is-active" : "")}><Flame className="w-3.5 h-3.5" /><span>Fight</span></button>
+            <button onClick={() => changeTab('dungeons')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'dungeons' ? " is-active" : "")}><DoorOpen className="w-3.5 h-3.5" /><span>Dungeons</span></button>
+            <button onClick={() => changeTab('gear')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'gear' ? " is-active" : "")}><Package className="w-3.5 h-3.5" /><span>Gear</span></button>
+            <button onClick={() => changeTab('skills')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'skills' ? " is-active" : "")}><Sparkles className="w-3.5 h-3.5" /><span>Skills</span></button>
+            <button onClick={() => changeTab('arena')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'arena' ? " is-active" : "")}><Users className="w-3.5 h-3.5" /><span>Arena</span><span className="io-combat-soon">NEXT</span></button>
+          </>}
         </div>
       </div>
 
       {/* Main Container Content */}
       <main className="app-main flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+        {combatMode ? (
+          <CombatSection page={tab as CombatPage} onNavigate={changeTab} />
+        ) : (
+          <>
         {tab === 'roll' && (
           <RollSection
             state={state}
@@ -2589,6 +2620,8 @@ export function App() {
             onBuyCosmetic={handleBuyCosmetic}
             busy={false}
           />
+        )}
+          </>
         )}
       </main>
 
