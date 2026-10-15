@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Sparkles,
   Palette,
@@ -8,7 +8,6 @@ import {
   Clock,
   Archive,
   BarChart3,
-  Gem,
   BellRing,
   FastForward,
   Zap,
@@ -62,6 +61,22 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
 }) => {
   const [confirmingPrestige, setConfirmingPrestige] = useState(false);
   const [filterCategory, setFilterCategory] = useState<'all' | 'qol' | 'core' | 'alchemy'>('all');
+  const [autoScrapEnabled,setAutoScrapEnabled]=useState(state.combatAutoScrap?.enabled===true);
+  const [autoScrapQuality,setAutoScrapQuality]=useState(state.combatAutoScrap?.maxQuality??20);
+  const [autoScrapSaving,setAutoScrapSaving]=useState(false);
+  const [autoScrapError,setAutoScrapError]=useState('');
+  useEffect(()=>{setAutoScrapEnabled(state.combatAutoScrap?.enabled===true);setAutoScrapQuality(state.combatAutoScrap?.maxQuality??20);},[state.combatAutoScrap?.enabled,state.combatAutoScrap?.maxQuality]);
+  const saveAutoScrapSettings=async()=>{
+    setAutoScrapSaving(true);setAutoScrapError('');
+    try{
+      const response=await fetch('/api/combat/auto-scrap',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:autoScrapEnabled,maxQuality:autoScrapQuality})});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(typeof data.error==='string'?data.error:'Could not save Auto Scrap settings.');
+      const saved=data.settings as {enabled?:unknown;maxQuality?:unknown}|undefined;
+      if(saved){setAutoScrapEnabled(saved.enabled===true);setAutoScrapQuality(Number(saved.maxQuality??20));}
+    }catch(error){setAutoScrapError(error instanceof Error?error.message:'Could not save Auto Scrap settings.');}
+    finally{setAutoScrapSaving(false);}
+  };
   const fmt = (n: number) => formatNumber(n);
   const longestSessionMs = Math.max(0, state.longestRollingSessionMs ?? 0);
   const momentumSpeedPercent = unbrokenMomentumSpeedBonus(longestSessionMs) * 100;
@@ -141,8 +156,8 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
         return <Flame className="w-4 h-4 text-orange-400" />;
       case 'offlineOverdrive':
         return <Clock className="w-4 h-4 text-teal-400" />;
-      case 'singularityTithe':
-        return <Gem className="w-4 h-4 text-yellow-400" />;
+      case 'autoScrap':
+        return <Hammer className="w-4 h-4 text-orange-400" />;
       case 'luckyFloor':
         return <Clover className="w-4 h-4 text-emerald-400" />;
       case 'astralArsenal':
@@ -564,6 +579,21 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mt-2 leading-relaxed">{info.desc}</p>
+                  {id === 'autoScrap' && currentLevel > 0 && (
+                    <div className="mt-3 rounded-xl border border-orange-500/25 bg-orange-500/5 px-3 py-3 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div><div className="text-[10px] uppercase font-black tracking-wide text-orange-300">Auto Scrap Rules</div><p className="text-[10px] text-slate-400 mt-1">Automatically convert new gear at or below your cutoff into Scrap. Better drops stay in your dungeon bag.</p></div>
+                        <label className="flex items-center gap-2 text-xs text-slate-200 whitespace-nowrap"><input type="checkbox" checked={autoScrapEnabled} onChange={event=>setAutoScrapEnabled(event.target.checked)} disabled={busy||autoScrapSaving}/><span>{autoScrapEnabled?'Enabled':'Disabled'}</span></label>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] text-slate-400"><label htmlFor="io-auto-scrap-quality">Scrap quality cutoff</label><strong className="text-orange-200">{autoScrapQuality.toFixed(0)}%</strong></div>
+                        <input id="io-auto-scrap-quality" type="range" min="0" max="100" step="1" value={autoScrapQuality} onChange={event=>setAutoScrapQuality(Number(event.target.value))} disabled={busy||autoScrapSaving} className="w-full accent-orange-500"/>
+                        <div className="flex justify-between text-[9px] text-slate-600"><span>0% · almost never scrap</span><span>100% · scrap every drop</span></div>
+                      </div>
+                      {autoScrapError&&<p className="text-[10px] text-rose-300" role="status">{autoScrapError}</p>}
+                      <button type="button" onClick={()=>void saveAutoScrapSettings()} disabled={busy||autoScrapSaving} className="w-full py-2 rounded-xl bg-orange-600/80 hover:bg-orange-500 text-xs font-bold text-white disabled:opacity-50">{autoScrapSaving?'Saving…':'Save Auto Scrap Settings'}</button>
+                    </div>
+                  )}
                   {id === 'unbrokenMomentum' && (
                     <div className="mt-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2.5 space-y-2">
                       <div className="flex items-center justify-between gap-3">
