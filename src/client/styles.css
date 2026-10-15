@@ -1928,3 +1928,21 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-combat-tactic-row select{width:100%;min-width:0;padding:10px 12px;border:1px solid #514453;border-radius:8px;background:#17141b;color:#ded4e0;font-size:11px}
 .io-combat-tactic-row select:disabled{opacity:.6}
 @media(max-width:680px){.io-combat-tactic-row{grid-template-columns:1fr;gap:8px}}
+
+
+/* Multiple server-owned expedition choices */
+.io-combat-dungeon-choices{margin:0 0 15px}
+.io-combat-dungeon-choices-head{margin-bottom:10px}
+.io-combat-dungeon-choices-head p{margin:5px 0 0;color:#b0a7b3;font-size:11px;line-height:1.6}
+.io-combat-dungeon-choice-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.io-combat-dungeon-choice{display:flex;flex-direction:column;align-items:flex-start;padding:14px;border:1px solid #39313f;border-radius:12px;background:#1b171f;min-width:0}
+.io-combat-dungeon-choice.is-selected{border-color:#b2d87f;box-shadow:inset 0 0 0 1px rgba(178,216,127,.2)}
+.io-combat-dungeon-choice.is-cinder{background:linear-gradient(145deg,#251c1a,#1b171f)}
+.io-combat-dungeon-choice.is-glass{background:linear-gradient(145deg,#1b202a,#1b171f)}
+.io-combat-dungeon-choice-icon{display:grid;place-items:center;width:40px;height:40px;margin-bottom:9px;border:1px solid #514453;border-radius:10px;font-size:22px}
+.io-combat-dungeon-choice h3{margin:5px 0;font-size:17px;font-weight:950;color:#eae1ec}
+.io-combat-dungeon-choice p{flex:1;margin:0 0 12px;color:#b0a7b3;font-size:10px;line-height:1.65}
+.io-combat-dungeon-choice-best{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:9px 0;margin-bottom:9px;border-top:1px solid #39313f;color:#958b9b;font:800 8px ui-monospace,monospace}
+.io-combat-dungeon-choice-best strong{font-size:15px;color:#d6e4bf}
+.io-combat-dungeon-choice .io-combat-button{width:100%}
+@media(max-width:850px){.io-combat-dungeon-choice-grid{grid-template-columns:1fr}.io-combat-dungeon-choice{display:grid;grid-template-columns:auto 1fr;column-gap:10px}.io-combat-dungeon-choice-icon{grid-row:span 2;margin:0}.io-combat-dungeon-choice .io-combat-eyebrow,.io-combat-dungeon-choice h3,.io-combat-dungeon-choice p,.io-combat-dungeon-choice-best,.io-combat-dungeon-choice button{grid-column:1/-1}}
