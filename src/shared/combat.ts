@@ -250,7 +250,7 @@ export interface CombatState {
   guardBeats: number;
   enemyHp: number;
   encounterFirstStrikeUsed: boolean;
-  /** Gear belongs to the active descent and resets when a new run begins. */
+  /** Persistent player-owned gear. Inventory and loadout carry across runs and dungeons. */
   inventory: CombatGear[];
   equipment: { weapon: string | null; armor: string | null };
   autoScrapUnlocked: boolean;
@@ -318,18 +318,10 @@ export interface CombatArenaResult {
 export const SKILL_RANK_CAP = Number.MAX_SAFE_INTEGER;
 export const COMBAT_INVENTORY_CAP = 30;
 
-function createCombatRunGear(runId: number): { inventory: CombatGear[]; equipment: CombatState['equipment'] } {
-  const suffix = runId <= 1 ? '' : '-run-' + Math.floor(runId);
-  const weapon: CombatGear = { id:'starter-weapon' + suffix, name:'Delver Knife', slot:'weapon', quality:35, sourceFloor:0, power:8, effect:'Adds +4 damage and +10 Speed. Critical chance +4 percentage points.', trait:'keen', damageBonus:4, speedBonus:10, maxHealthBonus:0 };
-  const armor: CombatGear = { id:'starter-armor' + suffix, name:'Worn Leathers', slot:'armor', quality:28, sourceFloor:0, power:5, effect:'Adds +40 max HP and reduces incoming damage by 4%.', trait:'bulwark', damageBonus:0, speedBonus:0, maxHealthBonus:40 };
+function createCombatStarterGear(): { inventory: CombatGear[]; equipment: CombatState['equipment'] } {
+  const weapon: CombatGear = { id:'starter-weapon', name:'Delver Knife', slot:'weapon', quality:35, sourceFloor:0, power:8, effect:'Adds +4 damage and +10 Speed. Critical chance +4 percentage points.', trait:'keen', damageBonus:4, speedBonus:10, maxHealthBonus:0 };
+  const armor: CombatGear = { id:'starter-armor', name:'Worn Leathers', slot:'armor', quality:28, sourceFloor:0, power:5, effect:'Adds +40 max HP and reduces incoming damage by 4%.', trait:'bulwark', damageBonus:0, speedBonus:0, maxHealthBonus:40 };
   return { inventory:[weapon,armor], equipment:{weapon:weapon.id,armor:armor.id} };
-}
-
-/** Start a new run with fresh starter gear; the previous run's bag is not carried forward. */
-export function resetCombatRunGear(state: CombatState): void {
-  const starter = createCombatRunGear(state.runId);
-  state.inventory = starter.inventory;
-  state.equipment = starter.equipment;
 }
 
 /** As the bag fills, the lowest/oldest source-floor gear is discarded first. */
@@ -383,7 +375,7 @@ export function skillPullCost(skillRolls: number): number {
   return Math.round(SKILL_PULL_BASE_COST * Math.pow(1.09, pulls));
 }
 export function createCombatState(): CombatState {
-  const starter = createCombatRunGear(1);
+  const starter = createCombatStarterGear();
   const state: CombatState = {
     version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
