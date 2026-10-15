@@ -5,7 +5,7 @@ import { COMBAT_INVENTORY_CAP, COMBAT_SKILLS, SKILL_RANK_CAP, addCombatGearToInv
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
 function secureRandom():number {
-  // Match the main game's Web Crypto source so combat rolls cannot rely on secureRandom().
+  // Match the main game's Web Crypto source for all combat randomness.
   const sample = new BigUint64Array(1);
   globalThis.crypto.getRandomValues(sample);
   const denominator = 18_446_744_073_709_551_616;
