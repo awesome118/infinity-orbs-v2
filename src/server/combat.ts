@@ -1,7 +1,7 @@
 import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatEnemy, CombatGear, CombatIntent, CombatSkillId, CombatSnapshot, CombatState, CombatTrait } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, SKILL_RANK_CAP, addCombatGearToInventory, applyCombatSkillCopy, combatStatsFor, createCombatState, getEnemyForDepth, skillPullCost, synchronizeCombatStats } from '../shared/combat.js';
+import { combatArenaWinnerFromHealth, calculateCombatArenaRatingUpdate, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, SKILL_RANK_CAP, addCombatGearToInventory, applyCombatSkillCopy, combatStatsFor, createCombatState, getEnemyForDepth, skillPullCost, synchronizeCombatStats } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -290,7 +290,19 @@ function resolveArenaDuel(challengerState: CombatState, opponentState: CombatSta
   }
   // Extremely defensive equal builds still resolve deterministically after the
   // round cap; remaining health ratio is the tie-breaker.
-  const winner = challengerHp / challenger.stats.maxHealth >= opponentHp / opponent.stats.maxHealth ? 'challenger' : 'opponent';
+  const challengerRatio = challengerHp / challenger.stats.maxHealth;
+  const opponentRatio = opponentHp / opponent.stats.maxHealth;
+  let tieBreakRoll = 0.5;
+  if (challengerRatio === opponentRatio) {
+    const sample = new Uint32Array(1);
+    globalThis.crypto.getRandomValues(sample);
+    tieBreakRoll = sample[0]! / 0x1_0000_0000;
+  }
+  const winner = combatArenaWinnerFromHealth(
+    challengerHp, challenger.stats.maxHealth,
+    opponentHp, opponent.stats.maxHealth,
+    tieBreakRoll,
+  );
   append(winner === 'challenger' ? 'Victory. Arena rating updated.' : 'Defeat. Arena rating updated.');
   return { winner, rounds: Math.min(rounds, 100), log };
 }
