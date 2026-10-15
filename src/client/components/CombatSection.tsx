@@ -113,7 +113,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
 
   const weapon=equipped(state,'weapon'), armor=equipped(state,'armor');
   const ownedSkills=Object.entries(state.skillLevels).filter(([,v])=>Number(v)>0);
-  const nextBoss=(Math.floor(state.depth/10)+1)*10;
+  const nextBoss=(Math.floor((state.depth-1)/10)+1)*10;
   const wardensDefeated=undercryptWardensDefeated(state.bestDepth);
   const orbLuckBonusPct=Math.round((undercryptOrbLuckMultiplier(state.bestDepth)-1)*100);
   const pullCost=skillPullCost(state.skillRolls);

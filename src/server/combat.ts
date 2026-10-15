@@ -93,6 +93,7 @@ export async function getCombatSnapshot():Promise<CombatSnapshot>{
       s.coreLevel=finiteInt(coreProgression.level,s.coreLevel,1,1_000_000);
       s.coreHighestRarity=finiteInt(coreProgression.highestRarity,s.coreHighestRarity,2,1_000_000_000_000_000_000);
     }
+    synchronizeCombatStats(s);
     return s;
   });
   const userId=String(context.userId??'').trim();
