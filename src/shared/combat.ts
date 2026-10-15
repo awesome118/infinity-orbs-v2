@@ -92,6 +92,7 @@ export interface CombatState {
   arenaWins: number;
   arenaLosses: number;
   arenaLastChallengeAt: number;
+  arenaLastMatchAt: number;
   coreLevel: number;
   coreHighestRarity: number;
 }
@@ -125,6 +126,7 @@ export interface CombatArenaProfile {
   wins: number;
   losses: number;
   updatedAt: number;
+  challengeBlockedUntil: number;
   damage: number;
   speed: number;
   maxHealth: number;
@@ -178,7 +180,7 @@ export function createCombatState(): CombatState {
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
     encounterFirstStrikeUsed:false, inventory:[weapon,armor],
     equipment:{weapon:weapon.id,armor:armor.id}, skillLevels:{},
-    arenaRating:1000, arenaWins:0, arenaLosses:0, arenaLastChallengeAt:0,
+    arenaRating:1000, arenaWins:0, arenaLosses:0, arenaLastChallengeAt:0, arenaLastMatchAt:0,
     coreLevel:1, coreHighestRarity:2,
   };
   synchronizeCombatStats(state);
