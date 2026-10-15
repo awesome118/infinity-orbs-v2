@@ -135,7 +135,9 @@ test('Concurrent challengers cannot both bypass the same opponent protection win
 
   assert.equal(outcomes.filter(outcome => outcome.status === 'fulfilled').length, 1);
   const rejected = outcomes.find(outcome => outcome.status === 'rejected');
-  assert.ok(rejected && rejected.status === 'rejected');
+  if (!rejected || rejected.status !== 'rejected') {
+    assert.fail('Expected the competing challenger to be rejected by the target protection window.');
+  }
   assert.match(String(rejected.reason), /ARENA_OPPONENT_COOLDOWN:/);
   const targetAfter = JSON.parse(values.get('infinity-orbs:combat:arena-shared-target') ?? '{}');
   assert.equal(targetAfter.arenaWins + targetAfter.arenaLosses, 1);
