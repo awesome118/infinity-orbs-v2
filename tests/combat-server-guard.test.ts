@@ -44,3 +44,39 @@ test('Guard persists across beats with no enemy action and reduces the next actu
     context.userId = originalUserId;
   }
 });
+
+test('concurrent duplicate beat submissions commit only one state transition', async () => {
+  const originalUserId = context.userId;
+  const userId = 'combat-sequence-race-regression';
+  context.userId = userId;
+  const key = 'infinity-orbs:combat:' + userId;
+
+  try {
+    const state = createCombatState();
+    const enemy = getEnemyForDepth(13);
+    state.depth = 13;
+    state.bestDepth = 13;
+    state.sequence = 0;
+    state.combatBeats = 0;
+    state.playerActionsResolved = 0;
+    state.enemyActionsResolved = 0;
+    state.enemyHp = enemy.maxHp;
+    await redis.set(key, JSON.stringify(state));
+
+    const results = await Promise.allSettled([
+      performCombatBeat(1, 'strike'),
+      performCombatBeat(1, 'strike'),
+    ]);
+    assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+    assert.equal(results.filter(result => result.status === 'rejected').length, 1);
+
+    const persisted = await redis.get(key);
+    assert.ok(persisted);
+    const saved = JSON.parse(persisted) as { sequence: number; combatBeats: number };
+    assert.equal(saved.sequence, 1, 'duplicate requests must not advance sequence twice');
+    assert.equal(saved.combatBeats, 1, 'duplicate requests must not apply the same beat twice');
+  } finally {
+    await redis.del(key);
+    context.userId = originalUserId;
+  }
+});
