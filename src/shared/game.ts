@@ -881,7 +881,8 @@ export type PrestigeUpgradeId =
   | 'temporalCompression'
   | 'shardResonator'
   | 'cosmicValuation'
-  | 'cosmicReserve';
+  | 'cosmicReserve'
+  | 'autoScrap';
 
 export function createSeededRandom(seed: number): () => number {
   let state = (Math.floor(Number(seed)) >>> 0) || 0x6d2b79f5;
@@ -1012,6 +1013,8 @@ export interface PlayerState {
   turboRollUntil: number; // timestamp
   activeBoosters?: Partial<Record<PremiumBoosterId, number>>;
   automations?: Partial<Record<AutomationId, boolean>>;
+  /** User-configurable Auto Scrap cutoff, gated by the Auto Scrap Prestige upgrade. */
+  combatAutoScrap: { enabled: boolean; maxQuality: number };
   onlinePlayers?: number;
   communityRewardClaimedAt?: number;
   freeShardsEarnedToday?: number;
@@ -1437,6 +1440,14 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
     costPerLevel: 3,
     qol: true,
   },
+  autoScrap: {
+    name: 'Auto Scrap',
+    desc: 'Unlocks configurable automatic combat-gear salvaging. Set a quality threshold in this upgrade; drops at or below it become Scrap instead of taking inventory space.',
+    category: 'qol',
+    maxLevel: 1,
+    costPerLevel: 4,
+    qol: true,
+  },
   resonanceMeter: {
     name: 'Dry Streak Luck',
     desc: '+1% Luck per pity stack; stacks begin every 18 rolls and can accelerate with mastery.',
@@ -1697,6 +1708,7 @@ export function createInitialState(now = Date.now()): PlayerState {
       shardResonator: 0,
       cosmicValuation: 0,
       cosmicReserve: 0,
+      autoScrap: 0,
     },
     streak: { count: 1, lastClaimDate: '', longestStreak: 1 },
     dailyStreakCommunity: createInitialDailyStreakCommunity(now),
@@ -1716,6 +1728,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     turboRollUntil: 0,
     activeBoosters: {},
     automations: {},
+    combatAutoScrap: { enabled:false, maxQuality:20 },
     onlinePlayers: 1,
     communityRewardClaimedAt: 0,
     freeShardsEarnedToday: 0,
@@ -2690,6 +2703,7 @@ export function prestigeUpgradeCost(id: PrestigeUpgradeId, level: number): numbe
     shardResonator: 4,
     cosmicValuation: 5,
     cosmicReserve: 8,
+    autoScrap: 4,
   };
   const base = bases[id] ?? 2;
   return Math.round(base * Math.pow(1.5, level));
