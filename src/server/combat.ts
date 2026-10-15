@@ -1,11 +1,17 @@
 import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatEnemy, CombatGear, CombatIntent, CombatSkillId, CombatSnapshot, CombatState, CombatTrait } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, SKILL_RANK_CAP, addCombatGearToInventory, applyCombatSkillCopy, combatStatsFor, createCombatState, getEnemyForDepth, skillPullCost, synchronizeCombatStats } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, SKILL_RANK_CAP, addCombatGearToInventory, applyCombatSkillCopy, combatStatsFor, createCombatState, getEnemyForDepth, skillPullCost, synchronizeCombatStats, tickCombatGuard } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
-function pick<T>(values:T[]):T { return values[Math.floor(Math.random()*values.length)]!; }
+function randomUnit():number {
+  // Combat follows the main game's Web Crypto RNG instead of randomUnit().
+  const sample=new Uint32Array(1);
+  globalThis.crypto.getRandomValues(sample);
+  return sample[0]!/0x1_0000_0000;
+}
+function pick<T>(values:T[]):T { return values[Math.floor(randomUnit()*values.length)]!; }
 function finiteInt(value:unknown,fallback:number,min:number,max:number):number { const n=Number(value); return Number.isFinite(n)?Math.max(min,Math.min(max,Math.floor(n))):fallback; }
 function traitText(t:CombatTrait):string {
   if(t==='bleed')return '18% chance to add bonus bleed damage.';
@@ -58,15 +64,15 @@ function normalizeState(raw:string|null|undefined):CombatState {
   return s;
 }
 function createGear(depth:number):CombatGear {
-  const slot=Math.random()<.5?'weapon':'armor';
+  const slot=randomUnit()<.5?'weapon':'armor';
   // Fourth-power quality distribution is from Auto-Dungeons; 100% rolls are extremely rare.
-  const quality=Math.round(1_000_000*Math.pow(Math.random(),4))/10_000;
+  const quality=Math.round(1_000_000*Math.pow(randomUnit(),4))/10_000;
   const prefix=slot==='weapon'?['Ashen','Hollow','Cinder','Riftbound','Starforged','Warden’s','Lost','Quiet','Infinity-Touched']:['Delver’s','Warden’s','Old','Cinder','Riftweave','Ironbound','Boneguard','Hollow','Starweave'];
   const nouns=slot==='weapon'?['Cleaver','Brand','Knife','Axe','Fang','Edge','Spear','Greatblade']:['Hood','Plate','Scale','Mantle','Coat','Shell','Vest','Mail'];
   const weaponTraits:CombatTrait[]=['bleed','keen','first-strike'], armorTraits:CombatTrait[]=['bulwark','regeneration','desperation'];
   const trait=slot==='weapon'?pick(weaponTraits):pick(armorTraits);
   const power=Math.max(3,Math.round(Math.min(1_000_000,depth)*(.65+quality/80)));
-  return {id:'gear-'+Date.now().toString(36)+'-'+Math.floor(Math.random()*0x7fffffff).toString(36),name:pick(prefix)+' '+pick(nouns),slot,quality,power,trait,effect:traitText(trait),damageBonus:slot==='weapon'?Math.max(1,Math.round(power*.8)):0,speedBonus:slot==='weapon'?Math.min(400,Math.round(power*.25)):0,maxHealthBonus:slot==='armor'?Math.max(5,Math.round(power*4)):0};
+  return {id:'gear-'+Date.now().toString(36)+'-'+Math.floor(randomUnit()*0x7fffffff).toString(36),name:pick(prefix)+' '+pick(nouns),slot,quality,power,trait,effect:traitText(trait),damageBonus:slot==='weapon'?Math.max(1,Math.round(power*.8)):0,speedBonus:slot==='weapon'?Math.min(400,Math.round(power*.25)):0,maxHealthBonus:slot==='armor'?Math.max(5,Math.round(power*4)):0};
 }
 function enemySnapshot(s:CombatState):CombatEnemy { const e=getEnemyForDepth(s.depth); return {...e,hp:Math.max(0,Math.min(e.maxHp,s.enemyHp||e.maxHp))}; }
 function snapshot(s:CombatState):CombatSnapshot { return {state:s,enemy:enemySnapshot(s),stats:synchronizeCombatStats(s)}; }
@@ -126,8 +132,8 @@ export async function performCombatBeat(sequence:number,intent:CombatIntent):Pro
       if(enemyHp<=0)break;
       let multiplier=heavy&&i===0?1.9:1;
       if(!s.encounterFirstStrikeUsed){if(weapon?.trait==='first-strike')multiplier*=1.5;s.encounterFirstStrikeUsed=true;}
-      const crit=Math.random()<stats.critChance;let damage=Math.max(1,Math.round(stats.damage*(crit?1.75:1)*multiplier));
-      if(weapon?.trait==='bleed'&&Math.random()<.18){const bleed=Math.max(1,Math.round(stats.damage*.3));damage+=bleed;actions.push({actor:'player',kind:'ability',text:'Bleed adds '+bleed+' damage.'});}
+      const crit=randomUnit()<stats.critChance;let damage=Math.max(1,Math.round(stats.damage*(crit?1.75:1)*multiplier));
+      if(weapon?.trait==='bleed'&&randomUnit()<.18){const bleed=Math.max(1,Math.round(stats.damage*.3));damage+=bleed;actions.push({actor:'player',kind:'ability',text:'Bleed adds '+bleed+' damage.'});}
       enemyHp-=damage;actions.push({actor:'player',kind:'attack',damage,text:(crit?'Critical hit for ':'Strike for ')+damage+' damage.'});
       if(enemyHp<=0){
         defeated=true;actions.push({actor:'player',kind:'death',text:'The '+enemy.name+' falls.'});s.totalKills=Math.min(Number.MAX_SAFE_INTEGER,s.totalKills+1);
@@ -149,7 +155,7 @@ export async function performCombatBeat(sequence:number,intent:CombatIntent):Pro
       actions.push({actor:'enemy',kind:'attack',damage:incoming,text:strike+incoming+' damage.'});
       if(s.health<=0){died=true;actions.push({actor:'enemy',kind:'death',text:'Run '+s.runId+' ended at Depth '+s.depth+'. Permanent progress retained.'});s.runId+=1;s.depth=1;s.health=s.maxHealth;s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,3);s.guardBeats=0;s.encounterFirstStrikeUsed=false;s.enemyHp=getEnemyForDepth(1).maxHp;actions.push({actor:'player',kind:'advance',text:'A new descent begins automatically at Depth 1.'});break;}
     }
-    if(s.guardBeats>0&&!defeated)s.guardBeats-=1;synchronizeCombatStats(s);
+    s.guardBeats=tickCombatGuard(s.guardBeats,enemyActions,defeated);synchronizeCombatStats(s);
     return {...snapshot(s),actions,defeated,died,...(item?{item}:{})};
   });
 }
@@ -157,7 +163,7 @@ export async function equipCombatItem(itemId:string):Promise<CombatSnapshot>{ret
 export async function rollCombatSkill():Promise<CombatSnapshot&{skillRoll:{id:CombatSkillId;name:string;rarity:string;rank:number;duplicate:boolean;convertedCoins:number};cost:number}> {
   return mutate(s=>{
     const cost=skillPullCost(s.skillRolls);if(s.coins<cost)throw new Error('Not enough Delver Coins.');
-    s.coins-=cost;s.skillRolls+=1;const chance=Math.random();
+    s.coins-=cost;s.skillRolls+=1;const chance=randomUnit();
     const rarity=chance<.55?'Common':chance<.80?'Uncommon':chance<.92?'Rare':chance<.98?'Epic':'Mythic';
     const pool=COMBAT_SKILLS.filter(skill=>skill.rarity===rarity),skill=pick(pool);if(!skill)throw new Error('Skill pool is unavailable.');
     const applied=applyCombatSkillCopy(s,skill.id,cost);
@@ -261,9 +267,9 @@ function resolveArenaDuel(challengerState: CombatState, opponentState: CombatSta
     const isFirst = isChallenger ? challengerFirst : opponentFirst;
     if (isFirst && weapon?.trait === 'first-strike') multiplier *= 1.5;
     if (isChallenger) challengerFirst = false; else opponentFirst = false;
-    const critical = Math.random() < attacker.stats.critChance;
+    const critical = randomUnit() < attacker.stats.critChance;
     let damage = Math.max(1, Math.round(attacker.stats.damage * multiplier * (critical ? 1.75 : 1)));
-    if (weapon?.trait === 'bleed' && Math.random() < .18) damage += Math.max(1, Math.round(attacker.stats.damage * .3));
+    if (weapon?.trait === 'bleed' && randomUnit() < .18) damage += Math.max(1, Math.round(attacker.stats.damage * .3));
     damage = Math.max(1, Math.round(damage * (1 - defender.stats.damageReduction)));
     if (isChallenger) opponentHp = Math.max(0, opponentHp - damage);
     else challengerHp = Math.max(0, challengerHp - damage);
