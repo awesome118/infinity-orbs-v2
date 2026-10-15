@@ -1,7 +1,7 @@
 import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
-import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatDungeonId, CombatEnemy, CombatGear, CombatIntent, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMarkMultiplier, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillPullCost, synchronizeCombatStats } from '../shared/combat.js';
+import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatDungeonId, CombatEnemy, CombatGear, CombatIntent, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatAbilityType, combatMarkMultiplier, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -36,6 +36,9 @@ function normalizeState(raw:string|null|undefined):CombatState {
   if(!raw)return createCombatState();
   let p:Partial<CombatState>;
   try { p=JSON.parse(raw) as Partial<CombatState>; if(!p||typeof p!=='object'||Array.isArray(p))return createCombatState(); } catch { return createCombatState(); }
+  const storedGachaRank=p.skillGachaRank;
+  const savedSkillLevels=(p.skillLevels&&typeof p.skillLevels==='object'?p.skillLevels:{}) as Partial<Record<CombatSkillId,number>>;
+  const legacyUnlockedRank=Math.max(1,...COMBAT_SKILLS.filter(skill=>Number(savedSkillLevels[skill.id])>0).map(skill=>({Common:1,Uncommon:2,Rare:3,Epic:4,Mythic:5}[skill.rarity])));
   const s=Object.assign(createCombatState(),p);
   s.version=1;
   s.dungeonId=(['undercrypt','cinder-vault','glass-labyrinth'] as unknown[]).includes(s.dungeonId)?s.dungeonId:'undercrypt';
@@ -54,7 +57,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.arenaRating=finiteInt(s.arenaRating,1000,100,10000);s.arenaWins=finiteInt(s.arenaWins,0,0,Number.MAX_SAFE_INTEGER);s.arenaLosses=finiteInt(s.arenaLosses,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastChallengeAt=finiteInt(s.arenaLastChallengeAt,0,0,Number.MAX_SAFE_INTEGER);
   s.coreLevel=finiteInt(s.coreLevel,1,1,1_000_000);s.coreHighestRarity=finiteInt(s.coreHighestRarity,2,2,1_000_000_000_000_000_000);
   s.autoTactic=(['balanced','aggressive','defensive','recovery'] as unknown[]).includes(s.autoTactic)?s.autoTactic:'balanced';
-  s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.combatMarks=finiteInt(s.combatMarks,0,0,Number.MAX_SAFE_INTEGER);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,1_000_000_000_000_000_000);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
+  s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillGachaRank=finiteInt(storedGachaRank,legacyUnlockedRank,1,SKILL_GACHA_RANK_MAX);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.combatMarks=finiteInt(s.combatMarks,0,0,Number.MAX_SAFE_INTEGER);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,1_000_000_000_000_000_000);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
   s.playerActionsResolved=finiteInt(s.playerActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.enemyActionsResolved=finiteInt(s.enemyActionsResolved,0,0,Number.MAX_SAFE_INTEGER);
   s.energy=finiteInt(s.energy,3,0,10);s.maxEnergy=finiteInt(s.maxEnergy,5,1,10);s.guardBeats=finiteInt(s.guardBeats,0,0,10);s.encounterFirstStrikeUsed=s.encounterFirstStrikeUsed===true;
   const inv=Array.isArray(s.inventory)?s.inventory.map(g=>normalizeGear(g,Math.max(0,s.depth-1))).filter((g):g is CombatGear=>Boolean(g)):[];
@@ -71,9 +74,17 @@ function normalizeState(raw:string|null|undefined):CombatState {
   }
   const w=s.inventory.find(g=>g.id===s.equipment?.weapon&&g.slot==='weapon'),a=s.inventory.find(g=>g.id===s.equipment?.armor&&g.slot==='armor');
   s.equipment={weapon:w?.id??s.inventory.find(g=>g.slot==='weapon')?.id??null,armor:a?.id??s.inventory.find(g=>g.slot==='armor')?.id??null};
-  const levels:Partial<Record<CombatSkillId,number>>={};
-  for(const skill of COMBAT_SKILLS){const rank=finiteInt(s.skillLevels?.[skill.id],0,0,SKILL_RANK_CAP);if(rank)levels[skill.id]=rank;}
-  s.skillLevels=levels;synchronizeCombatStats(s);
+  const levels:Partial<Record<CombatSkillId,number>>={}, copyProgress:Partial<Record<CombatSkillId,number>>={}, cooldowns:Partial<Record<CombatSkillId,number>>={};
+  for(const skill of COMBAT_SKILLS){
+    const rank=finiteInt(s.skillLevels?.[skill.id],0,0,Number.MAX_SAFE_INTEGER);
+    if(rank){levels[skill.id]=rank;copyProgress[skill.id]=finiteInt(s.skillCopyProgress?.[skill.id],0,0,Math.max(0,combatSkillCopiesForNextRank(rank)-1));}
+    cooldowns[skill.id]=finiteInt(s.abilityCooldowns?.[skill.id],0,0,Number.MAX_SAFE_INTEGER);
+  }
+  s.skillLevels=levels;s.skillCopyProgress=copyProgress;s.abilityCooldowns=cooldowns;
+  const ownedSkillIds=COMBAT_SKILLS.filter(skill=>(levels[skill.id]??0)>0).map(skill=>skill.id);
+  const requestedEquipped=Array.isArray(s.equippedAbilities)?s.equippedAbilities.filter((id):id is CombatSkillId=>typeof id==='string'&&COMBAT_SKILLS.some(skill=>skill.id===id)&&ownedSkillIds.includes(id)):ownedSkillIds.slice(0,COMBAT_ABILITY_SLOTS);
+  s.equippedAbilities=[...new Set(requestedEquipped)].slice(0,COMBAT_ABILITY_SLOTS);
+  synchronizeCombatStats(s);
   const enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);s.enemyHp=finiteInt(s.enemyHp,enemy.maxHp,1,enemy.maxHp);
   return s;
 }
@@ -129,31 +140,70 @@ function grantXp(s:CombatState,amount:number,actions:CombatAction[]):void {
   s.xp+=amount;
   while(s.xp>=s.xpToNext&&s.level<60){s.xp-=s.xpToNext;s.level+=1;s.xpToNext=Math.round(s.xpToNext*1.19);synchronizeCombatStats(s);s.health=Math.min(s.maxHealth,s.health+Math.round(s.maxHealth*.08));actions.push({actor:'player',kind:'level',text:'Delver reached Level '+s.level+'.'});}
 }
-export async function performCombatBeat(sequence:number,intent:CombatCommand):Promise<CombatSnapshot&{actions:CombatAction[];defeated:boolean;died:boolean;item?:CombatGear}> {
+export async function performCombatBeat(sequence:number,intent:CombatCommand,skillIdValue?:unknown):Promise<CombatSnapshot&{actions:CombatAction[];defeated:boolean;died:boolean;item?:CombatGear;abilityCast?:{id:CombatSkillId;rank:number;cooldown:number}}> {
   return mutate(s=>{
     if(sequence!==s.sequence+1)throw new Error('stale combat sequence');
+    const activeSkillId=typeof skillIdValue==='string'&&COMBAT_SKILLS.some(skill=>skill.id===skillIdValue)?skillIdValue as CombatSkillId:null;
+    const activeSkill=intent==='ability'&&activeSkillId?COMBAT_SKILLS.find(skill=>skill.id===activeSkillId):null;
+    if(intent==='ability'&&!activeSkill)throw new Error('Choose a valid equipped ability.');
+    if(activeSkill){
+      if(!s.equippedAbilities.includes(activeSkill.id)||(s.skillLevels[activeSkill.id]??0)<1)throw new Error('Ability is not equipped.');
+      if((s.abilityCooldowns[activeSkill.id]??0)>s.sequence)throw new Error('Ability is on cooldown.');
+      if(s.energy+1< combatSkillEnergyCost(activeSkill.rarity))throw new Error('Not enough energy for this ability.');
+    }
+    const activeSkillRank=activeSkill?Math.max(1,Number(s.skillLevels[activeSkill.id])||1):0;
     const now=Date.now();
     const elapsed=s.lastAcceptedBeatAtMs>0?Math.max(0,now-s.lastAcceptedBeatAtMs):Number.POSITIVE_INFINITY;
     if(elapsed<1000)throw new Error('COMBAT_BEAT_TOO_SOON:'+Math.max(1,1000-elapsed));
     s.lastAcceptedBeatAtMs=now;
     const actions:CombatAction[]=[];synchronizeCombatStats(s);s.sequence+=1;s.combatBeats+=1;s.energy=Math.min(s.maxEnergy,s.energy+1);
     let enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);const stats=combatStatsFor(s);
-    const resolvedIntent:CombatIntent=intent==='auto'?chooseAutoCombatIntent(s):intent;
+    const resolvedIntent:CombatIntent=intent==='auto'?chooseAutoCombatIntent(s):intent==='ability'?'strike':intent;
     const playerActions=Math.min(12,Math.max(0,Math.floor(s.combatBeats*stats.speed/100)-s.playerActionsResolved));
     const enemyActions=Math.min(3,Math.max(0,Math.floor(s.combatBeats*enemy.speed/100)-s.enemyActionsResolved));
     s.playerActionsResolved+=playerActions;s.enemyActionsResolved+=enemyActions;
     let enemyHp=Math.max(1,s.enemyHp||enemy.maxHp),heavy=false,consumed=false,defeated=false,died=false;
     let item:CombatGear|undefined;
+    let activeDamageMultiplier=1,activeGuaranteedCrit=false,activeExtraAttacks=0;
+    let abilityCast:{id:CombatSkillId;rank:number;cooldown:number}|undefined;
+    if(activeSkill){
+      const energyCost=combatSkillEnergyCost(activeSkill.rarity);
+      s.energy=Math.max(0,s.energy-energyCost);
+      const cooldown=combatSkillCooldown(activeSkill.rarity,activeSkillRank);
+      s.abilityCooldowns[activeSkill.id]=s.sequence+cooldown;
+      abilityCast={id:activeSkill.id,rank:activeSkillRank,cooldown};
+      const archetype=combatAbilityType(activeSkill),rankScale=Math.log2(activeSkillRank+1);
+      if(archetype==='strike'){
+        activeDamageMultiplier=1.2+activeSkill.value*2+rankScale*.15;
+        actions.push({actor:'player',kind:'ability',text:activeSkill.name+' empowers the next strike ('+Math.round((activeDamageMultiplier-1)*100)+'% bonus damage).'});
+      } else if(archetype==='flurry'){
+        activeExtraAttacks=1+Math.floor(rankScale);
+        actions.push({actor:'player',kind:'ability',text:activeSkill.name+' releases a '+(activeExtraAttacks+1)+'-hit flurry.'});
+      } else if(archetype==='mend'){
+        const healRatio=Math.min(.9,.10+activeSkill.value+rankScale*.06),before=s.health;
+        s.health=Math.min(s.maxHealth,s.health+Math.max(1,Math.round(s.maxHealth*healRatio)));
+        actions.push({actor:'player',kind:'ability',text:activeSkill.name+' restores '+(s.health-before)+' HP.'});
+      } else if(archetype==='focus'){
+        activeGuaranteedCrit=true;activeDamageMultiplier=1.65+activeSkill.value*2+rankScale*.15;
+        actions.push({actor:'player',kind:'ability',text:activeSkill.name+' guarantees a critical strike.'});
+      } else {
+        const marks=Math.max(1,Math.round((3+rankScale*2)*(1+activeSkill.value*3)));
+        const coins=Math.max(1,marks*10);
+        s.combatMarks=Math.min(Number.MAX_SAFE_INTEGER,s.combatMarks+marks);
+        s.coins=Math.min(Number.MAX_SAFE_INTEGER,s.coins+coins);
+        actions.push({actor:'player',kind:'ability',text:activeSkill.name+' grants '+marks+' Combat Marks and '+coins+' Delver Coins.'});
+      }
+    }
     if(resolvedIntent==='heavy'&&s.energy>=3&&playerActions>0){s.energy-=3;heavy=true;actions.push({actor:'player',kind:'ability',text:'Heavy strike prepared.'});}
     else if(resolvedIntent==='guard'&&s.energy>=2&&playerActions>0){s.energy-=2;s.guardBeats=1;consumed=true;actions.push({actor:'player',kind:'ability',text:'Guard raised. Incoming hits are softened.'});}
     else if(resolvedIntent==='mend'&&s.energy>=4&&playerActions>0&&s.health<s.maxHealth){s.energy-=4;const before=s.health;s.health=Math.min(s.maxHealth,s.health+Math.max(1,Math.round(s.maxHealth*.14)));consumed=true;actions.push({actor:'player',kind:'ability',text:'Mend restored '+(s.health-before)+' HP.'});}
     else if(resolvedIntent!=='strike')actions.push({actor:'player',kind:'ability',text:'Not enough energy or no action ready. Basic attacks continue.'});
-    const attacks=Math.max(0,playerActions-(consumed?1:0)),weapon=s.inventory.find(g=>g.id===s.equipment.weapon);
+    const attacks=Math.min(12,Math.max(0,playerActions-(consumed?1:0))+activeExtraAttacks),weapon=s.inventory.find(g=>g.id===s.equipment.weapon);
     for(let i=0;i<attacks;i++){
       if(enemyHp<=0)break;
-      let multiplier=heavy&&i===0?1.9:1;
+      let multiplier=(heavy&&i===0?1.9:1)*(activeSkill&&i===0?activeDamageMultiplier:1);
       if(!s.encounterFirstStrikeUsed){if(weapon?.trait==='first-strike')multiplier*=1+.5*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1));s.encounterFirstStrikeUsed=true;}
-      const crit=secureRandom()<stats.critChance;let damage=Math.max(1,Math.round(stats.damage*(crit?1.75:1)*multiplier));
+      const crit=(activeSkill&&i===0&&activeGuaranteedCrit)||secureRandom()<stats.critChance;let damage=Math.max(1,Math.round(stats.damage*(crit?1.75:1)*multiplier));
       if(weapon?.trait==='bleed'&&secureRandom()<.18*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1))){const bleed=Math.max(1,Math.round(stats.damage*.3*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1))));damage+=bleed;actions.push({actor:'player',kind:'ability',text:'Bleed adds '+bleed+' damage.'});}
       enemyHp-=damage;actions.push({actor:'player',kind:'attack',damage,text:(crit?'Critical hit for ':'Strike for ')+damage+' damage.'});
       if(enemyHp<=0){
@@ -181,20 +231,48 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand):Pr
     }
     if(guardWasUsed)s.guardBeats=0;
     synchronizeCombatStats(s);
-    return {...snapshot(s),actions,defeated,died,...(item?{item}:{})};
+    return {...snapshot(s),actions,defeated,died,...(item?{item}:{}),...(abilityCast?{abilityCast}:{})};
   });
 }
 export async function equipCombatItem(itemId:string):Promise<CombatSnapshot>{return mutate(s=>{const item=s.inventory.find(g=>g.id===itemId);if(!item)throw new Error('item not owned');s.equipment[item.slot]=item.id;synchronizeCombatStats(s);return snapshot(s);});}
-export async function rollCombatSkill():Promise<CombatSnapshot&{skillRoll:{id:CombatSkillId;name:string;rarity:string;rank:number;duplicate:boolean;convertedCoins:number;pityEpic:number;pityMythic:number};cost:number}> {
+export async function rollCombatSkill():Promise<CombatSnapshot&{skillRoll:{id:CombatSkillId;name:string;rarity:CombatRarity;rank:number;duplicate:boolean;convertedCoins:number;pityEpic:number;pityMythic:number;progress:number;copiesNeeded:number;rankedUp:boolean};cost:number}> {
   return mutate(s=>{
     const cost=skillPullCost(s.skillRolls);if(s.coins<cost)throw new Error('Not enough Delver Coins.');
-    s.coins-=cost;s.skillRolls+=1;const chance=secureRandom();
-    const rarity=resolveCombatSkillRarity(chance,s.skillPityEpic,s.skillPityMythic);
-    s.skillPityEpic=(rarity==='Epic'||rarity==='Mythic')?0:Math.min(9,s.skillPityEpic+1);
-    s.skillPityMythic=rarity==='Mythic'?0:Math.min(39,s.skillPityMythic+1);
-    const pool=COMBAT_SKILLS.filter(skill=>skill.rarity===rarity),skill=pick(pool);if(!skill)throw new Error('Skill pool is unavailable.');
+    s.coins-=cost;s.skillRolls+=1;
+    const rarity=resolveCombatSkillRarity(secureRandom(),s.skillGachaRank,s.skillPityEpic,s.skillPityMythic);
+    s.skillPityEpic=(s.skillGachaRank>=4&&(rarity==='Epic'||rarity==='Mythic'))?0:s.skillGachaRank>=4?Math.min(9,s.skillPityEpic+1):0;
+    s.skillPityMythic=(s.skillGachaRank>=5&&rarity==='Mythic')?0:s.skillGachaRank>=5?Math.min(39,s.skillPityMythic+1):0;
+    const pool=COMBAT_SKILLS.filter(skill=>skill.rarity===rarity&&skillRarityUnlocked(skill.rarity,s.skillGachaRank)),skill=pick(pool);if(!skill)throw new Error('Skill pool is unavailable.');
     const applied=applyCombatSkillCopy(s,skill.id,cost);
-    return {...snapshot(s),skillRoll:{id:skill.id,name:skill.name,rarity,rank:applied.rank,duplicate:applied.duplicate,convertedCoins:applied.coinsRefunded,pityEpic:s.skillPityEpic,pityMythic:s.skillPityMythic},cost};
+    return {...snapshot(s),skillRoll:{id:skill.id,name:skill.name,rarity,rank:applied.rank,duplicate:applied.duplicate,convertedCoins:applied.coinsRefunded,pityEpic:s.skillPityEpic,pityMythic:s.skillPityMythic,progress:applied.progress,copiesNeeded:applied.copiesNeeded,rankedUp:applied.rankedUp},cost};
+  });
+}
+
+export async function equipCombatSkill(skillIdValue:unknown,equipValue:unknown):Promise<CombatSnapshot>{
+  const skillId=typeof skillIdValue==='string'&&COMBAT_SKILLS.some(skill=>skill.id===skillIdValue)?skillIdValue as CombatSkillId:null;
+  if(!skillId)throw new Error('Invalid combat ability.');
+  const shouldEquip=equipValue===true;
+  return mutate(s=>{
+    if((s.skillLevels[skillId]??0)<1)throw new Error('Ability not owned.');
+    const isEquipped=s.equippedAbilities.includes(skillId);
+    if(shouldEquip&&!isEquipped){
+      if(s.equippedAbilities.length>=COMBAT_ABILITY_SLOTS)throw new Error('All active ability slots are full.');
+      s.equippedAbilities=[...s.equippedAbilities,skillId];
+    } else if(!shouldEquip&&isEquipped){s.equippedAbilities=s.equippedAbilities.filter(id=>id!==skillId);}
+    return snapshot(s);
+  });
+}
+
+export async function rankUpCombatSkillGacha():Promise<CombatSnapshot&{gachaRankUp:{rank:number;unlocks:CombatRarity;spentMarks:number}}>{
+  return mutate(s=>{
+    const requirement=skillGachaRankRequirement(s.skillGachaRank);
+    if(!requirement)throw new Error('Skill Gacha is already max rank.');
+    if(s.skillRolls<requirement.requiredPulls)throw new Error('Need '+requirement.requiredPulls+' total skill pulls before ranking up.');
+    if(s.combatMarks<requirement.requiredMarks)throw new Error('Not enough Combat Marks to rank up the Skill Gacha.');
+    s.combatMarks-=requirement.requiredMarks;s.skillGachaRank=requirement.rank;
+    if(s.skillGachaRank<4)s.skillPityEpic=0;
+    if(s.skillGachaRank<5)s.skillPityMythic=0;
+    return {...snapshot(s),gachaRankUp:{rank:s.skillGachaRank,unlocks:requirement.unlocks,spentMarks:requirement.requiredMarks}};
   });
 }
 

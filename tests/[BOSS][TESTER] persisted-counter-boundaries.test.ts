@@ -50,3 +50,40 @@ test('corrupt offline-roll counters are clamped before automation or manual clai
   );
 });
 
+test('Singularity Tithe counters normalize on load and reject unsafe growth before roll rewards', () => {
+  const before = Math.max(0, Math.floor(1e308));
+  const after = before + 200;
+  const milestonesBefore = Math.floor(before / 200);
+  const milestonesAfter = Math.floor(after / 200);
+  assert.equal(after, before);
+  assert.equal(Math.max(0, milestonesAfter - milestonesBefore), 0);
+
+  const game = source('src/server/game.ts');
+  const loader = loadRawBody(game);
+  assert.match(
+    loader,
+    /singularityTitheSingleRolls:\s*finiteNonNegativeInteger\(\s*parsed\.singularityTitheSingleRolls,/,
+    'the stored lifetime counter must be normalized on load',
+  );
+
+  const applyStart = game.indexOf('export async function applyRolls');
+  const applyEnd = game.indexOf('\nexport async function roll(', applyStart);
+  assert.ok(applyStart >= 0 && applyEnd > applyStart, 'applyRolls must exist');
+  assert.match(
+    game.slice(applyStart, applyEnd),
+    /Number\.isSafeInteger\(s\.singularityTitheSingleRolls\)[\s\S]*?Number\.MAX_SAFE_INTEGER/,
+    'normal rolls must reject Tithe counter overflow before applying rewards',
+  );
+
+  const frenzyStart = game.indexOf('export async function claimOrbFrenzy');
+  const frenzyEnd = game.indexOf('\n\nfunction sampleBinomial', frenzyStart);
+  assert.ok(frenzyStart >= 0 && frenzyEnd > frenzyStart, 'claimOrbFrenzy must exist');
+  const claim = game.slice(frenzyStart, frenzyEnd);
+  const titheAt = claim.indexOf('singularityTitheSingleRolls');
+  assert.ok(titheAt >= 0, 'Frenzy claims must account for Tithe progress');
+  assert.match(
+    claim.slice(Math.max(0, titheAt - 600), titheAt + 700),
+    /Number\.isSafeInteger\(s\.singularityTitheSingleRolls\)[\s\S]*?Number\.MAX_SAFE_INTEGER/,
+    'Frenzy must enforce the same supported counter domain as normal rolls',
+  );
+});

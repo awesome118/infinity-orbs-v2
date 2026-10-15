@@ -47,6 +47,8 @@ import {
   CHAIN_PATCHER_COOLDOWN_MS,
   applyLevelProgress,
   xpRequiredForLevel,
+  SINGULARITY_TITHE_ROLLS_PER_DUST,
+  singularityTitheDustForRolls,
 } from '../src/shared/game.js';
 import {
   createGuildTask,
@@ -229,6 +231,13 @@ test('Legacy high-level accounts can progress after the XP curve changed', () =>
   assert.equal(secondPass, 1);
   assert.equal(state.level, 321);
   assert.equal(state.masteryPoints, 1);
+});
+
+test('Singularity Tithe awards dust every 200 processed rolls and counts batches', () => {
+  assert.equal(SINGULARITY_TITHE_ROLLS_PER_DUST, 200);
+  assert.equal(singularityTitheDustForRolls(199, 1, 1), 1);
+  assert.equal(singularityTitheDustForRolls(198, 2, 2), 2);
+  assert.equal(singularityTitheDustForRolls(200, 100, 1), 0);
 });
 
 test('fresh state starts with an inactive Guild Combo', () => {

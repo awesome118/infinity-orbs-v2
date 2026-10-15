@@ -1,6 +1,9 @@
 export type CombatPage = 'fight' | 'dungeons' | 'gear' | 'skills' | 'arena';
 export type CombatIntent = 'strike' | 'heavy' | 'guard' | 'mend';
-export type CombatCommand = CombatIntent | 'auto';
+export type CombatCommand = CombatIntent | 'auto' | 'ability';
+export type CombatAbilityType = 'strike' | 'flurry' | 'mend' | 'focus' | 'bounty';
+export const COMBAT_ABILITY_SLOTS = 3;
+export const SKILL_GACHA_RANK_MAX = 5;
 export type CombatTactic = 'balanced' | 'aggressive' | 'defensive' | 'recovery';
 export type CombatDungeonId = 'undercrypt' | 'cinder-vault' | 'glass-labyrinth';
 export type CombatRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Mythic';
@@ -36,9 +39,66 @@ export interface CombatSkillDefinition {
   id: CombatSkillId;
   name: string;
   rarity: CombatRarity;
+  /** Determines the active ability archetype, not a passive stat bonus. */
   stat: CombatSkillStat;
   value: number;
   effect: string;
+}
+
+export function combatAbilityType(skill: Pick<CombatSkillDefinition, 'stat'>): CombatAbilityType {
+  if (skill.stat === 'damagePct') return 'strike';
+  if (skill.stat === 'speedFlat') return 'flurry';
+  if (skill.stat === 'healthPct') return 'mend';
+  if (skill.stat === 'critChance') return 'focus';
+  return 'bounty';
+}
+
+export function combatSkillRankEffectiveness(rankValue: unknown): number {
+  const rank = Number.isFinite(Number(rankValue)) ? Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(Number(rankValue)))) : 1;
+  return 1 + Math.log2(rank + 1) * 0.25;
+}
+
+/** Copies needed to advance FROM the given rank; grows super-linearly without a hard rank cap. */
+export function combatSkillCopiesForNextRank(rankValue: unknown): number {
+  const rank = Number.isFinite(Number(rankValue)) ? Math.max(1, Math.min(Number.MAX_SAFE_INTEGER - 1, Math.floor(Number(rankValue)))) : 1;
+  return Math.max(2, Math.ceil(Math.pow(rank + 1, 1.25)));
+}
+
+export function combatSkillEnergyCost(rarity: CombatRarity): number {
+  return rarity === 'Common' || rarity === 'Uncommon' ? 2 : rarity === 'Rare' || rarity === 'Epic' ? 3 : 4;
+}
+
+export function combatSkillBaseCooldown(rarity: CombatRarity): number {
+  return rarity === 'Common' ? 4 : rarity === 'Uncommon' ? 5 : rarity === 'Rare' ? 6 : rarity === 'Epic' ? 7 : 8;
+}
+
+export function combatSkillCooldown(rarity: CombatRarity, rankValue: unknown): number {
+  const rank = Number.isFinite(Number(rankValue)) ? Math.max(1, Math.floor(Number(rankValue))) : 1;
+  return Math.max(2, combatSkillBaseCooldown(rarity) - Math.floor(Math.log2(rank + 1) / 2));
+}
+
+export interface SkillGachaRankRequirement {
+  rank: number;
+  requiredPulls: number;
+  requiredMarks: number;
+  unlocks: CombatRarity;
+}
+export const SKILL_GACHA_RANK_REQUIREMENTS: SkillGachaRankRequirement[] = [
+  { rank: 2, requiredPulls: 3, requiredMarks: 25, unlocks: 'Uncommon' },
+  { rank: 3, requiredPulls: 10, requiredMarks: 100, unlocks: 'Rare' },
+  { rank: 4, requiredPulls: 25, requiredMarks: 275, unlocks: 'Epic' },
+  { rank: 5, requiredPulls: 50, requiredMarks: 700, unlocks: 'Mythic' },
+];
+
+export function skillGachaRankRequirement(currentRankValue: unknown): SkillGachaRankRequirement | null {
+  const currentRank = Number.isFinite(Number(currentRankValue)) ? Math.max(1, Math.min(SKILL_GACHA_RANK_MAX, Math.floor(Number(currentRankValue)))) : 1;
+  return SKILL_GACHA_RANK_REQUIREMENTS.find(requirement => requirement.rank === currentRank + 1) ?? null;
+}
+
+export function skillRarityUnlocked(rarity: CombatRarity, gachaRankValue: unknown): boolean {
+  const rank = Number.isFinite(Number(gachaRankValue)) ? Math.max(1, Math.min(SKILL_GACHA_RANK_MAX, Math.floor(Number(gachaRankValue)))) : 1;
+  const rarityRank: Record<CombatRarity, number> = { Common: 1, Uncommon: 2, Rare: 3, Epic: 4, Mythic: 5 };
+  return rarityRank[rarity] <= rank;
 }
 export const COMBAT_SKILLS: CombatSkillDefinition[] = [
   { id:'ember-lung', name:'Ember Lung', rarity:'Common', stat:'damagePct', value:.025, effect:'+2.5% damage per rank' },
@@ -126,11 +186,19 @@ export function combatUpgradeCost(state: Pick<CombatState, 'combatUpgrades'>, id
 }
 
 /** Deterministic rarity helper keeps pity boundaries unit-testable. */
-export function resolveCombatSkillRarity(randomValue: number, pityEpic: number, pityMythic: number): CombatRarity {
+export function resolveCombatSkillRarity(randomValue: number, gachaRankValue: number, pityEpic: number, pityMythic: number): CombatRarity {
   const chance = Number.isFinite(randomValue) ? Math.max(0, Math.min(.999999999, randomValue)) : 0;
+  const rank = Number.isFinite(gachaRankValue) ? Math.max(1, Math.min(SKILL_GACHA_RANK_MAX, Math.floor(gachaRankValue))) : 1;
+  if (rank === 1) return 'Common';
+  if (rank === 2) return chance < .80 ? 'Common' : 'Uncommon';
+  if (rank === 3) return chance < .60 ? 'Common' : chance < .85 ? 'Uncommon' : 'Rare';
+  if (rank === 4) {
+    if (pityEpic >= 9) return 'Epic';
+    return chance < .50 ? 'Common' : chance < .75 ? 'Uncommon' : chance < .92 ? 'Rare' : 'Epic';
+  }
   if (pityMythic >= 39) return 'Mythic';
-  if (pityEpic >= 9) return chance < .8 ? 'Epic' : 'Mythic';
-  return chance < .55 ? 'Common' : chance < .80 ? 'Uncommon' : chance < .92 ? 'Rare' : chance < .98 ? 'Epic' : 'Mythic';
+  if (pityEpic >= 9) return chance < .50 ? 'Epic' : 'Mythic';
+  return chance < .45 ? 'Common' : chance < .70 ? 'Uncommon' : chance < .85 ? 'Rare' : chance < .95 ? 'Epic' : 'Mythic';
 }
 
 export interface CombatState {
@@ -153,9 +221,17 @@ export interface CombatState {
   combatUpgrades: CombatUpgradeLevels;
   totalKills: number;
   skillRolls: number;
+  /** Gacha station rank unlocks increasingly rare skill pools. */
+  skillGachaRank: number;
   /** Pulls since the last Epic-or-better and Mythic skill, respectively. */
   skillPityEpic: number;
   skillPityMythic: number;
+  /** Extra copies banked toward the next infinite rank for each skill. */
+  skillCopyProgress: Partial<Record<CombatSkillId, number>>;
+  /** Three-slot active-ability loadout; ownership alone does not activate a skill. */
+  equippedAbilities: CombatSkillId[];
+  /** Cooldown expiry combat sequence for each equipped/owned ability. */
+  abilityCooldowns: Partial<Record<CombatSkillId, number>>;
   /** Latest orb rolled in Infinity Orbs; it actively attunes combat stats. */
   orbFocusRarity: number;
   orbFocusName: string;
@@ -231,7 +307,8 @@ export interface CombatArenaResult {
   ratingAfter: number;
   opponentRatingAfter: number;
 }
-export const SKILL_RANK_CAP = 5;
+/** Compatibility alias: skills have no gameplay rank cap (bounded only by safe integer storage). */
+export const SKILL_RANK_CAP = Number.MAX_SAFE_INTEGER;
 export const COMBAT_INVENTORY_CAP = 30;
 
 /** As the bag fills, the lowest/oldest source-floor gear is discarded first. */
@@ -268,7 +345,7 @@ export function createCombatState(): CombatState {
   const state: CombatState = {
     version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
-    baseDamage:54, coins:250, combatMarks:0, combatUpgrades:{}, totalKills:0, skillRolls:0, skillPityEpic:0, skillPityMythic:0, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
+    baseDamage:54, coins:250, combatMarks:0, combatUpgrades:{}, totalKills:0, skillRolls:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
     combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
     encounterFirstStrikeUsed:false, inventory:[weapon,armor],
@@ -283,16 +360,8 @@ export function createCombatState(): CombatState {
 export function combatStatsFor(state: CombatState): CombatStats {
   const weapon = state.inventory.find(item => item.id === state.equipment.weapon && item.slot === 'weapon');
   const armor = state.inventory.find(item => item.id === state.equipment.armor && item.slot === 'armor');
+  // Acquired skills are equipped active abilities, not permanent passive-stat stacks.
   let damagePct=0, speedFlat=0, healthPct=0, critChance=.08, coinBonus=0;
-  for (const skill of COMBAT_SKILLS) {
-    const rank = Math.max(0, Math.min(SKILL_RANK_CAP, Math.floor(Number(state.skillLevels[skill.id]) || 0)));
-    if (!rank) continue;
-    if (skill.stat==='damagePct') damagePct += skill.value*rank;
-    else if (skill.stat==='speedFlat') speedFlat += skill.value*rank;
-    else if (skill.stat==='healthPct') healthPct += skill.value*rank;
-    else if (skill.stat==='critChance') critChance += skill.value*rank;
-    else if (skill.stat==='coinBonus') coinBonus += skill.value*rank;
-  }
   for (const upgrade of COMBAT_UPGRADES) {
     const rank = combatUpgradeRank(state, upgrade.id);
     if (!rank) continue;
@@ -346,37 +415,44 @@ export function combatMarkMultiplier(state: Pick<CombatState, 'combatUpgrades'>)
 export interface CombatSkillCopyResult {
   rank: number;
   duplicate: boolean;
+  /** Always false: rank progression is uncapped. Kept for callers migrating from the old 5-rank system. */
   maxRank: boolean;
   coinsRefunded: number;
+  progress: number;
+  copiesNeeded: number;
+  rankedUp: boolean;
 }
 
-/** Applies one server-rolled copy. Every duplicate raises the skill rank until Rank 5. */
+/** First copy unlocks Rank 1; subsequent copies bank toward increasingly expensive infinite ranks. */
 export function applyCombatSkillCopy(
   state: CombatState,
   skillId: CombatSkillId,
-  pullCost: number,
+  _pullCost: number,
 ): CombatSkillCopyResult {
-  const skill = COMBAT_SKILLS.find(candidate => candidate.id === skillId);
-  if (!skill) throw new Error('Unknown combat skill.');
-  const oldRank = Math.max(0, Math.min(
-    SKILL_RANK_CAP,
-    Math.floor(Number(state.skillLevels[skillId]) || 0),
-  ));
+  if (!COMBAT_SKILLS.some(candidate => candidate.id === skillId)) throw new Error('Unknown combat skill.');
+  const oldRank = Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(Number(state.skillLevels[skillId]) || 0)));
   const duplicate = oldRank > 0;
-
-  if (oldRank < SKILL_RANK_CAP) {
-    const rank = oldRank + 1;
+  let rank = oldRank;
+  let progress = Math.max(0, Math.floor(Number(state.skillCopyProgress[skillId]) || 0));
+  let rankedUp = false;
+  if (oldRank === 0) {
+    rank = 1;
     state.skillLevels[skillId] = rank;
-    synchronizeCombatStats(state);
-    return { rank, duplicate, maxRank: rank === SKILL_RANK_CAP, coinsRefunded: 0 };
+    state.skillCopyProgress[skillId] = 0;
+    rankedUp = true;
+  } else {
+    const copiesNeeded = combatSkillCopiesForNextRank(oldRank);
+    progress += 1;
+    if (progress >= copiesNeeded && oldRank < Number.MAX_SAFE_INTEGER) {
+      rank = oldRank + 1;
+      progress = 0;
+      state.skillLevels[skillId] = rank;
+      rankedUp = true;
+    }
+    state.skillCopyProgress[skillId] = progress;
   }
-
-  const safeCost = Number.isFinite(pullCost) ? Math.max(0, Math.floor(pullCost)) : 0;
-  const refundRate = skill.rarity === 'Mythic' ? 0.75 : skill.rarity === 'Epic' ? 0.5 : 0.25;
-  const coinsRefunded = Math.round(safeCost * refundRate);
-  state.coins = Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, state.coins) + coinsRefunded);
   synchronizeCombatStats(state);
-  return { rank: oldRank, duplicate: true, maxRank: true, coinsRefunded };
+  return { rank, duplicate, maxRank: false, coinsRefunded: 0, progress, copiesNeeded: combatSkillCopiesForNextRank(rank), rankedUp };
 }
 
 export function getEnemyForDepth(depthValue: number): CombatEnemy {

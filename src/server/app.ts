@@ -79,7 +79,7 @@ import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
-import { getCombatSnapshot, performCombatBeat, equipCombatItem, rollCombatSkill, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon } from './combat.js';
+import { getCombatSnapshot, performCombatBeat, equipCombatItem, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon } from './combat.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -417,6 +417,8 @@ export function createApp() {
     if (
       req.path === '/combat/equip' ||
       req.path === '/combat/skills/roll' ||
+      req.path === '/combat/skills/equip' ||
+      req.path === '/combat/skills/rank-up' ||
       req.path === '/combat/upgrades/buy' ||
       req.path === '/combat/arena/challenge' ||
       req.path === '/combat/tactics'
@@ -856,8 +858,9 @@ export function createApp() {
   app.post('/api/combat/beat', async (req,res) => {
     const sequence=req.body?.sequence, intent=req.body?.intent;
     if(!Number.isSafeInteger(sequence)||sequence<1)return res.status(400).json({error:'A valid combat sequence is required.'});
-    if(!['auto','strike','heavy','guard','mend'].includes(intent))return res.status(400).json({error:'Invalid combat command.'});
-    try { res.setHeader('Cache-Control','no-store');res.json(await performCombatBeat(sequence,intent)); }
+    if(!['auto','strike','heavy','guard','mend','ability'].includes(intent))return res.status(400).json({error:'Invalid combat command.'});
+    if(intent==='ability'&&(typeof req.body?.skillId!=='string'||req.body.skillId.length>100))return res.status(400).json({error:'A valid active ability is required.'});
+    try { res.setHeader('Cache-Control','no-store');res.json(await performCombatBeat(sequence,intent,req.body?.skillId)); }
     catch(e:any){const message=e?.message||'Combat beat failed.';const status=message==='stale combat sequence'?409:message==='REDDIT_LOGIN_REQUIRED'?401:message.startsWith('COMBAT_BEAT_TOO_SOON:')?429:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
   });
   app.post('/api/combat/dungeon', async (req,res) => {
@@ -878,7 +881,17 @@ export function createApp() {
     try{res.setHeader('Cache-Control','no-store');res.json(await rollCombatSkill());}
     catch(e:any){const message=e?.message||'Skill roll failed.';const status=message==='Not enough Delver Coins.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:500;res.status(status).json({error:message});}
   });
-  app.post('/api/combat/upgrades/buy', async (req,res) => {
+  app.post('/api/combat/skills/equip', async (req,res) => {
+    const skillId=req.body?.skillId;
+    if(typeof skillId!=='string'||!skillId.trim()||skillId.length>100)return res.status(400).json({error:'A valid combat ability is required.'});
+    try{res.setHeader('Cache-Control','no-store');res.json(await equipCombatSkill(skillId,req.body?.equip));}
+    catch(e:any){const message=e?.message||'Could not update ability loadout.';const status=message==='Ability not owned.'||message==='All active ability slots are full.'||message==='Invalid combat ability.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message});}
+  });
+  app.post('/api/combat/skills/rank-up', async (_req,res) => {
+    try{res.setHeader('Cache-Control','no-store');res.json(await rankUpCombatSkillGacha());}
+    catch(e:any){const message=e?.message||'Could not rank up Skill Gacha.';const status=message.startsWith('Need ')||message==='Not enough Combat Marks to rank up the Skill Gacha.'||message==='Skill Gacha is already max rank.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message});}
+  });
+    app.post('/api/combat/upgrades/buy', async (req,res) => {
     try{res.setHeader('Cache-Control','no-store');res.json(await buyCombatUpgrade(req.body?.upgradeId));}
     catch(e:any){const message=e?.message||'Combat upgrade failed.';const status=message==='Not enough Combat Marks.'||message==='Combat upgrade is already max rank.'||message==='Invalid combat upgrade.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message});}
   });
