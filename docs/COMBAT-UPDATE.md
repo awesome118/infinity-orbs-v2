@@ -14,7 +14,7 @@ Combat is a mode inside Infinity Orbs, not a separate app or a replacement for o
 - Skill gacha has 25 passive skills: five per rarity. Duplicate copies rank skills up to Rank 5; every rank has an explicit numeric effect. Excess copies at rank cap convert into a partial Delver Coin refund.
 - Combat state is separate from the main rolling save and uses Redis WATCH/MULTI/EXEC to reject concurrent stale writes. Auto-combat therefore doesn't rewrite Infinity Orbs player state every second.
 - Every cleared Crypt Warden grants +1% effective Luck to core orb rolls, capped at +25% after 25 bosses. The bonus is derived from separate combat progress and does not rewrite the main rolling save.
-- Arena is visibly marked not ready; it does not fabricate PvP opponents or rewards.
+- Arena supports asynchronous player-build challenges: opponents are real recently active players, battles resolve from server-saved gear and skills, and both players receive Elo-style rating / record updates. It never fills the board with fake accounts.
 
 ## Follow-up layers
-This first slice is single-player PvE, with passive combat skills. Active skills and automatic trigger rules, genuine PvP, additional dungeon choices, and the wider coin-upgrade rework remain future slices. Do not claim those are implemented until they exist. Keep all damage, rewards, drops, skill rolls, and gear generation server-owned.
+This slice includes PvE and asynchronous player-build PvP with passive combat skills. Active skills and automatic trigger rules, live simultaneous PvP, additional dungeon choices, and the wider coin-upgrade rework remain future slices. Do not claim those are implemented until they exist. Keep all damage, rewards, drops, skill rolls, and gear generation server-owned.

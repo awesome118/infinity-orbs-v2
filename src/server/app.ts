@@ -79,7 +79,7 @@ import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
-import { getCombatSnapshot, performCombatBeat, equipCombatItem, rollCombatSkill } from './combat.js';
+import { getCombatSnapshot, performCombatBeat, equipCombatItem, rollCombatSkill, getCombatArenaOpponents, challengeCombatArena } from './combat.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -417,7 +417,8 @@ export function createApp() {
     if (
       req.path === '/combat/beat' ||
       req.path === '/combat/equip' ||
-      req.path === '/combat/skills/roll'
+      req.path === '/combat/skills/roll' ||
+      req.path === '/combat/arena/challenge'
     ) return next();
 
     const mutatesState = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
@@ -867,6 +868,20 @@ export function createApp() {
   app.post('/api/combat/skills/roll', async (_req,res) => {
     try{res.setHeader('Cache-Control','no-store');res.json(await rollCombatSkill());}
     catch(e:any){const message=e?.message||'Skill roll failed.';const status=message==='Not enough Delver Coins.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:500;res.status(status).json({error:message});}
+  });
+  app.get('/api/combat/arena/opponents', async (_req,res) => {
+    try { res.setHeader('Cache-Control','no-store'); res.json(await getCombatArenaOpponents()); }
+    catch(e:any) { const message=e?.message||'Could not load Arena opponents.'; res.status(message==='REDDIT_LOGIN_REQUIRED'?401:503).json({error:message}); }
+  });
+  app.post('/api/combat/arena/challenge', async (req,res) => {
+    const opponentId=req.body?.opponentId;
+    if(typeof opponentId!=='string'||!opponentId.trim()||opponentId.length>256) return res.status(400).json({error:'A valid Arena opponent is required.'});
+    try { res.setHeader('Cache-Control','no-store'); res.json(await challengeCombatArena(opponentId)); }
+    catch(e:any) {
+      const message=e?.message||'Arena challenge failed.';
+      const status=message==='REDDIT_LOGIN_REQUIRED'?401:message==='ARENA_SELF_CHALLENGE'?400:message==='ARENA_OPPONENT_UNAVAILABLE'?404:message.startsWith('ARENA_COOLDOWN:')?429:message==='Combat state changed repeatedly. Please retry.'?503:500;
+      res.status(status).json({error:message.startsWith('ARENA_COOLDOWN:')?'Your next Arena challenge is not ready yet.':message});
+    }
   });
 
   app.get('/api/me', async (_req, res) => {

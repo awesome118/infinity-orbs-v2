@@ -9,6 +9,9 @@ test('starter combat build carries the Auto-Dungeons baseline', () => {
   assert.equal(stats.speed,310);
   assert.equal(stats.maxHealth,1040);
   assert.equal(state.inventory.length,2);
+  assert.equal(state.arenaRating,1000);
+  assert.equal(state.arenaWins,0);
+  assert.equal(state.arenaLosses,0);
 });
 test('every combat rarity has exactly five skills', () => {
   for(const rarity of ['Common','Uncommon','Rare','Epic','Mythic']) assert.equal(COMBAT_SKILLS.filter(skill=>skill.rarity===rarity).length,5);

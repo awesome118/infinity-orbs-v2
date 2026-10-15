@@ -88,6 +88,10 @@ export interface CombatState {
   inventory: CombatGear[];
   equipment: { weapon: string | null; armor: string | null };
   skillLevels: CombatSkillLevels;
+  arenaRating: number;
+  arenaWins: number;
+  arenaLosses: number;
+  arenaLastChallengeAt: number;
 }
 export interface CombatStats {
   damage: number;
@@ -109,6 +113,33 @@ export interface CombatAction {
   text: string;
 }
 export interface CombatSnapshot { state: CombatState; enemy: CombatEnemy; stats: CombatStats; }
+export interface CombatArenaProfile {
+  userId: string;
+  username: string;
+  level: number;
+  bestDepth: number;
+  rating: number;
+  wins: number;
+  losses: number;
+  updatedAt: number;
+  damage: number;
+  speed: number;
+  maxHealth: number;
+  critChance: number;
+  weaponName: string;
+  armorName: string;
+  skillRanks: number;
+}
+export interface CombatArenaResult {
+  opponent: CombatArenaProfile;
+  winner: 'you' | 'opponent';
+  rounds: number;
+  log: string[];
+  ratingChange: number;
+  opponentRatingChange: number;
+  ratingAfter: number;
+  opponentRatingAfter: number;
+}
 export const SKILL_RANK_CAP = 5;
 export const COMBAT_INVENTORY_CAP = 30;
 
@@ -144,6 +175,7 @@ export function createCombatState(): CombatState {
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
     encounterFirstStrikeUsed:false, inventory:[weapon,armor],
     equipment:{weapon:weapon.id,armor:armor.id}, skillLevels:{},
+    arenaRating:1000, arenaWins:0, arenaLosses:0, arenaLastChallengeAt:0,
   };
   synchronizeCombatStats(state);
   state.enemyHp = getEnemyForDepth(1).maxHp;

@@ -1885,3 +1885,37 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-combat-dungeon-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
 .io-combat-resonance-note{margin:-7px 0 13px;color:#b4d887;font-size:11px;line-height:1.5}
 @media(max-width:680px){.io-combat-dungeon-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* Asynchronous player-vs-player Arena */
+.io-combat-arena-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:15px}
+.io-combat-arena-head h2{margin:4px 0 6px;font-size:23px;font-weight:950}
+.io-combat-arena-head p{max-width:600px;margin:0;color:#b0a7b3;font-size:12px;line-height:1.65}
+.io-combat-arena-rating{min-width:150px;padding:12px 14px;border:1px solid #61503e;border-radius:11px;background:#211b1d;display:flex;flex-direction:column;gap:5px}
+.io-combat-arena-rating span,.io-combat-arena-rating small{color:#c4ad8e;font:800 8px ui-monospace,monospace}
+.io-combat-arena-rating strong{font-size:27px;font-weight:950;color:#f0d6a7}
+.io-combat-arena-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:20px 0 10px}
+.io-combat-arena-toolbar h3{margin:4px 0 0;font-size:16px;font-weight:900}
+.io-combat-opponent-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.io-combat-opponent-card{padding:14px;border:1px solid #39313f;border-radius:12px;background:#1b171f;min-width:0}
+.io-combat-opponent-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.io-combat-opponent-head h3{margin:4px 0 0;font-size:18px;font-weight:950;overflow-wrap:anywhere}
+.io-combat-opponent-record{color:#b7a8bf;font:800 9px ui-monospace,monospace;white-space:nowrap}
+.io-combat-opponent-stats{display:flex;flex-wrap:wrap;gap:7px;margin:11px 0}
+.io-combat-opponent-stats span{padding:4px 6px;border:1px solid #38303e;border-radius:5px;color:#c3b8c8;font:800 8px ui-monospace,monospace}
+.io-combat-opponent-build{padding:8px 0 10px;border-top:1px solid #342d39}
+.io-combat-opponent-build p{margin:4px 0;color:#a99eaf;font-size:10px;line-height:1.5}
+.io-combat-opponent-build b{color:#e5dce7}
+.io-combat-arena-empty{padding:32px 18px;border:1px dashed #514453;border-radius:12px;text-align:center;color:#a99eaf}
+.io-combat-arena-empty h3{margin:10px 0 5px;color:#e9deeb;font-weight:900}
+.io-combat-arena-empty p{margin:0;font-size:11px;line-height:1.6}
+.io-combat-arena-result{margin:14px 0;padding:14px;border:1px solid #514453;border-radius:12px;background:#211c25}
+.io-combat-arena-result.is-win{border-color:#54714b;background:#1c241c}
+.io-combat-arena-result.is-loss{border-color:#704a4a;background:#261b1e}
+.io-combat-arena-result-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.io-combat-arena-result-head>strong{font-size:19px;font-weight:950;color:#d3e5a1}
+.io-combat-arena-result-head>small{color:#aa9eae;font-size:10px}
+.io-combat-arena-result-log{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 14px;margin-top:9px}
+.io-combat-arena-result-log p{margin:0;color:#bcb2bf;font-size:10px;line-height:1.45}
+.io-combat-arena-footnote{margin:12px 0 0;color:#948a9b;font-size:10px;line-height:1.5}
+@media(max-width:680px){.io-combat-arena-head{flex-direction:column}.io-combat-arena-rating{width:100%}.io-combat-opponent-grid{grid-template-columns:1fr}.io-combat-arena-result-log{grid-template-columns:1fr}}

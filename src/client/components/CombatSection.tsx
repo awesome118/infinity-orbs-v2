@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Coins, Pause, Play, Sparkles, Swords, Zap } from 'lucide-react';
-import type { CombatAction, CombatEnemy, CombatGear, CombatIntent, CombatPage, CombatSkillDefinition, CombatSnapshot, CombatState, CombatStats } from '../../shared/combat.js';
+import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatEnemy, CombatGear, CombatIntent, CombatPage, CombatSkillDefinition, CombatSnapshot, CombatState, CombatStats } from '../../shared/combat.js';
 import { COMBAT_SKILLS, SKILL_RANK_CAP, skillPullCost, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
 
 interface Props { page: CombatPage; onNavigate:(page:CombatPage)=>void; }
 interface ApiResponse extends CombatSnapshot {
   actions?:CombatAction[]; defeated?:boolean; died?:boolean; item?:CombatGear;
   skillRoll?:{id:string;name:string;rarity:string;rank:number;duplicate:boolean;convertedCoins:number}; cost?:number;
+  arenaResult?:CombatArenaResult;
 }
 async function request<T>(url:string,method='GET',body?:unknown):Promise<T> {
   const response=await fetch(url,{method,headers:{'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
@@ -42,6 +43,11 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const [showAllSkills,setShowAllSkills]=useState(true);
   const [lastSkill,setLastSkill]=useState<ApiResponse['skillRoll']|null>(null);
   const [error,setError]=useState('');
+  const [arenaOpponents,setArenaOpponents]=useState<CombatArenaProfile[]>([]);
+  const [arenaSelf,setArenaSelf]=useState<CombatArenaProfile|null>(null);
+  const [arenaLoading,setArenaLoading]=useState(false);
+  const [arenaResult,setArenaResult]=useState<CombatArenaResult|null>(null);
+  const [arenaCooldownMs,setArenaCooldownMs]=useState(0);
   const stateRef=useRef<CombatState|null>(null);
   const runtime=useRef({intent:'strike' as CombatIntent,auto:true,paused:false,busy:false,manual:false});
   runtime.current.intent=intent; runtime.current.auto=auto; runtime.current.paused=paused;
@@ -54,6 +60,28 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     finally{setLoading(false);}
   },[accept]);
   useEffect(()=>{void load();},[load]);
+  const loadArena=useCallback(async()=>{
+    setArenaLoading(true);
+    try{
+      const result=await request<{self:CombatArenaProfile;opponents:CombatArenaProfile[];cooldownRemainingMs:number}>('/api/combat/arena/opponents');
+      setArenaSelf(result.self);setArenaOpponents(result.opponents);setArenaCooldownMs(result.cooldownRemainingMs);setError('');
+    }catch(e){setError(e instanceof Error?e.message:'Could not load Arena opponents.');}
+    finally{setArenaLoading(false);}
+  },[]);
+  useEffect(()=>{if(page==='arena')void loadArena();},[page,loadArena]);
+  const challengeArena=async(opponentId:string)=>{
+    setMutating(true);setArenaResult(null);
+    try{
+      const result=await request<ApiResponse>('/api/combat/arena/challenge','POST',{opponentId});
+      accept(result);if(result.arenaResult)setArenaResult(result.arenaResult);
+      setArenaCooldownMs(90000);setError('');
+      await loadArena();
+    }catch(e){
+      const message=e instanceof Error?e.message:'Arena challenge failed.';
+      setError(message);
+      if(message.includes('not ready yet'))setArenaCooldownMs(90000);
+    }finally{setMutating(false);}
+  };
   const beat=useCallback(async()=>{
     const current=stateRef.current;
     if(!current||runtime.current.busy||(!runtime.current.manual&&(!runtime.current.auto||runtime.current.paused||Boolean(error))))return;
@@ -129,6 +157,18 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       <div className="io-combat-skill-grid">{visibleSkills.map(skill=>{const rank=rankOf(state,skill.id);return <article key={skill.id} className={'io-combat-skill-card '+rarityClass(skill.rarity)}><div className="io-combat-skill-card-head"><span>{skill.rarity.toUpperCase()}</span><b>{rank?'RANK '+rank+'/'+SKILL_RANK_CAP:'NOT OWNED'}</b></div><h3>{skill.name}</h3><p>{skill.effect}</p>{rank>0&&<div className="io-combat-skill-progress"><span style={{width:(rank/SKILL_RANK_CAP*100)+'%'}}/></div>}{rank>0&&<small>Current effect: {skillValue(skill,rank)}</small>}</article>;})}</div>
     </>}
 
-    {page==='arena'&&<div className="io-combat-arena"><div className="io-combat-arena-glyph"><Swords size={34}/></div><span className="io-combat-eyebrow">PVP · NEXT COMBAT SLICE</span><h2>The Arena is not open yet.</h2><p>Gear, speed-action timing, and duplicate-leveling skills are being established first. Matchmaking and player-versus-player results will be server-authoritative when implemented. This screen does not simulate fake opponents or award fake wins.</p><button type="button" className="io-combat-button is-primary" onClick={()=>onNavigate('fight')}>Back to the Undercrypt</button></div>}
+    {page==='arena'&&<>
+      <div className="io-combat-arena-head"><div><span className="io-combat-eyebrow">ASYNC PVP · SERVER-RESOLVED</span><h2>Build vs. build</h2><p>Challenge a real player's saved loadout. Both ratings update after the battle; PvE health and dungeon progress are untouched.</p></div>
+        <div className="io-combat-arena-rating"><span>YOUR ARENA RATING</span><strong>{fmt(arenaSelf?.rating??state.arenaRating)}</strong><small>{fmt(arenaSelf?.wins??state.arenaWins)} W · {fmt(arenaSelf?.losses??state.arenaLosses)} L</small></div></div>
+      {arenaResult&&<section className={'io-combat-arena-result '+(arenaResult.winner==='you'?'is-win':'is-loss')}><div className="io-combat-arena-result-head"><span className="io-combat-eyebrow">{arenaResult.winner==='you'?'VICTORY':'DEFEAT'}</span><strong>{arenaResult.ratingChange>0?'+':''}{arenaResult.ratingChange} Rating</strong><small>vs. {arenaResult.opponent.username} · {fmt(arenaResult.rounds)} rounds</small></div><div className="io-combat-arena-result-log">{arenaResult.log.map((line,index)=><p key={index}>{line}</p>)}</div></section>}
+      <div className="io-combat-arena-toolbar"><div><span className="io-combat-eyebrow">RECENT DELVERS</span><h3>{arenaOpponents.length} opponents available</h3></div><button type="button" className="io-combat-button is-secondary" disabled={arenaLoading} onClick={()=>void loadArena()}>{arenaLoading?'Refreshing…':'Refresh list'}</button></div>
+      {arenaLoading&&!arenaOpponents.length?<div className="io-combat-loading">SCOUTING THE ARENA…</div>:arenaOpponents.length===0?<div className="io-combat-arena-empty"><Swords size={26}/><h3>No opponents have checked in yet.</h3><p>Other players appear after they open Combat. This list never fills itself with fake accounts.</p></div>:<div className="io-combat-opponent-grid">{arenaOpponents.map(opponent=><article className="io-combat-opponent-card" key={opponent.userId}>
+        <div className="io-combat-opponent-head"><div><span className="io-combat-eyebrow">RATING {fmt(opponent.rating)}</span><h3>{opponent.username}</h3></div><span className="io-combat-opponent-record">{fmt(opponent.wins)}W / {fmt(opponent.losses)}L</span></div>
+        <div className="io-combat-opponent-stats"><span>LV {opponent.level}</span><span>BEST DEPTH {fmt(opponent.bestDepth)}</span><span>SKILL RANKS {fmt(opponent.skillRanks)}</span></div>
+        <div className="io-combat-opponent-build"><p><b>{opponent.weaponName}</b> · {fmt(opponent.damage)} DMG</p><p><b>{opponent.armorName}</b> · {fmt(opponent.maxHealth)} HP</p><p>{fmt(opponent.speed)} SPD · {percent(opponent.critChance)} CRIT</p></div>
+        <button type="button" className="io-combat-button is-primary" disabled={mutating||arenaCooldownMs>0} onClick={()=>void challengeArena(opponent.userId)}>{mutating?'Resolving…':arenaCooldownMs>0?'Challenge cooldown':'Challenge player'}</button>
+      </article>)}</div>}
+      <p className="io-combat-arena-footnote">One challenge every 90 seconds. Rating uses an Elo-style update. Results are computed by the server from each player's saved gear and skill ranks.</p>
+    </>}
   </section>;
 };

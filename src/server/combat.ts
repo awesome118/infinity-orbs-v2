@@ -1,5 +1,5 @@
 import { context, redis } from './devvit-mock.js';
-import type { CombatAction, CombatEnemy, CombatGear, CombatIntent, CombatSkillId, CombatSnapshot, CombatState, CombatTrait } from '../shared/combat.js';
+import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatEnemy, CombatGear, CombatIntent, CombatSkillId, CombatSnapshot, CombatState, CombatTrait } from '../shared/combat.js';
 import { COMBAT_INVENTORY_CAP, COMBAT_SKILLS, SKILL_RANK_CAP, addCombatGearToInventory, applyCombatSkillCopy, combatStatsFor, createCombatState, getEnemyForDepth, skillPullCost, synchronizeCombatStats } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
@@ -30,6 +30,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.version=1;s.dungeonId='undercrypt';s.runId=finiteInt(s.runId,1,1,Number.MAX_SAFE_INTEGER);s.depth=finiteInt(s.depth,1,1,50000);
   s.bestDepth=Math.max(s.depth,finiteInt(s.bestDepth,1,1,50000));s.level=finiteInt(s.level,1,1,60);s.xp=finiteInt(s.xp,0,0,Number.MAX_SAFE_INTEGER);
   s.xpToNext=finiteInt(s.xpToNext,100,1,1_000_000_000);s.coins=finiteInt(s.coins,250,0,Number.MAX_SAFE_INTEGER);s.totalKills=finiteInt(s.totalKills,0,0,Number.MAX_SAFE_INTEGER);
+  s.arenaRating=finiteInt(s.arenaRating,1000,100,10000);s.arenaWins=finiteInt(s.arenaWins,0,0,Number.MAX_SAFE_INTEGER);s.arenaLosses=finiteInt(s.arenaLosses,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastChallengeAt=finiteInt(s.arenaLastChallengeAt,0,0,Number.MAX_SAFE_INTEGER);
   s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
   s.playerActionsResolved=finiteInt(s.playerActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.enemyActionsResolved=finiteInt(s.enemyActionsResolved,0,0,Number.MAX_SAFE_INTEGER);
   s.energy=finiteInt(s.energy,3,0,10);s.maxEnergy=finiteInt(s.maxEnergy,5,1,10);s.guardBeats=finiteInt(s.guardBeats,0,0,10);s.encounterFirstStrikeUsed=s.encounterFirstStrikeUsed===true;
@@ -137,4 +138,260 @@ export async function rollCombatSkill():Promise<CombatSnapshot&{skillRoll:{id:Co
     const applied=applyCombatSkillCopy(s,skill.id,cost);
     return {...snapshot(s),skillRoll:{id:skill.id,name:skill.name,rarity,rank:applied.rank,duplicate:applied.duplicate,convertedCoins:applied.coinsRefunded},cost};
   });
+}
+
+
+const ARENA_PROFILE_KEY = 'infinity-orbs:combat:arena:profiles';
+const ARENA_PROFILE_TTL_MS = 24 * 60 * 60_000;
+const ARENA_CHALLENGE_COOLDOWN_MS = 90_000;
+const ARENA_RATING_K = 24;
+
+function combatKeyFor(userId: string): string {
+  const id = String(userId ?? '').trim();
+  if (!id) throw new Error('REDDIT_LOGIN_REQUIRED');
+  return 'infinity-orbs:combat:' + id;
+}
+function arenaName(value: unknown): string {
+  return String(value ?? 'Delver').trim().replace(/^u\//i, '').slice(0, 40) || 'Delver';
+}
+function arenaBuild(rawState: CombatState): { state: CombatState; stats: ReturnType<typeof combatStatsFor> } {
+  const state: CombatState = {
+    ...rawState,
+    inventory: rawState.inventory.map(item => ({ ...item })),
+    equipment: { ...rawState.equipment },
+    skillLevels: { ...rawState.skillLevels },
+  };
+  synchronizeCombatStats(state);
+  state.health = state.maxHealth;
+  const stats = combatStatsFor(state);
+  return { state, stats };
+}
+function createArenaProfile(userId: string, username: string, state: CombatState, updatedAt: number): CombatArenaProfile {
+  const build = arenaBuild(state);
+  const weapon = build.state.inventory.find(item => item.id === build.state.equipment.weapon && item.slot === 'weapon');
+  const armor = build.state.inventory.find(item => item.id === build.state.equipment.armor && item.slot === 'armor');
+  return {
+    userId,
+    username: arenaName(username),
+    level: state.level,
+    bestDepth: state.bestDepth,
+    rating: state.arenaRating,
+    wins: state.arenaWins,
+    losses: state.arenaLosses,
+    updatedAt,
+    damage: build.stats.damage,
+    speed: build.stats.speed,
+    maxHealth: build.stats.maxHealth,
+    critChance: build.stats.critChance,
+    weaponName: weapon?.name ?? 'Unarmed',
+    armorName: armor?.name ?? 'No armor',
+    skillRanks: Object.values(state.skillLevels).reduce((sum, rank) => sum + Math.max(0, Number(rank) || 0), 0),
+  };
+}
+function parseArenaProfile(userId: string, raw: unknown): CombatArenaProfile | null {
+  if (typeof raw !== 'string') return null;
+  try {
+    const p = JSON.parse(raw) as Partial<CombatArenaProfile>;
+    if (!p || p.userId !== userId || typeof p.username !== 'string') return null;
+    const updatedAt = Number(p.updatedAt), rating = Number(p.rating);
+    if (!Number.isFinite(updatedAt) || !Number.isFinite(rating)) return null;
+    return {
+      userId,
+      username: arenaName(p.username),
+      level: finiteInt(p.level, 1, 1, 60),
+      bestDepth: finiteInt(p.bestDepth, 1, 1, 50000),
+      rating: finiteInt(rating, 1000, 100, 10000),
+      wins: finiteInt(p.wins, 0, 0, Number.MAX_SAFE_INTEGER),
+      losses: finiteInt(p.losses, 0, 0, Number.MAX_SAFE_INTEGER),
+      updatedAt: finiteInt(updatedAt, 0, 0, Number.MAX_SAFE_INTEGER),
+      damage: finiteInt(p.damage, 1, 1, 1_000_000_000),
+      speed: finiteInt(p.speed, 1, 1, 800),
+      maxHealth: finiteInt(p.maxHealth, 1, 1, 1_000_000_000),
+      critChance: Math.max(0, Math.min(.75, Number(p.critChance) || 0)),
+      weaponName: String(p.weaponName ?? 'Unarmed').slice(0, 100),
+      armorName: String(p.armorName ?? 'No armor').slice(0, 100),
+      skillRanks: finiteInt(p.skillRanks, 0, 0, 125),
+    };
+  } catch {
+    return null;
+  }
+}
+function resolveArenaDuel(challengerState: CombatState, opponentState: CombatState): {
+  winner: 'challenger' | 'opponent'; rounds: number; log: string[];
+} {
+  const challenger = arenaBuild(challengerState);
+  const opponent = arenaBuild(opponentState);
+  let challengerHp = challenger.stats.maxHealth;
+  let opponentHp = opponent.stats.maxHealth;
+  let challengerFirst = true;
+  let opponentFirst = true;
+  const log: string[] = [];
+  const append = (message: string) => { log.push(message); if (log.length > 10) log.shift(); };
+
+  const attack = (side: 'challenger' | 'opponent') => {
+    const isChallenger = side === 'challenger';
+    const attacker = isChallenger ? challenger : opponent;
+    const defender = isChallenger ? opponent : challenger;
+    const weapon = attacker.state.inventory.find(item => item.id === attacker.state.equipment.weapon);
+    let multiplier = 1;
+    const isFirst = isChallenger ? challengerFirst : opponentFirst;
+    if (isFirst && weapon?.trait === 'first-strike') multiplier *= 1.5;
+    if (isChallenger) challengerFirst = false; else opponentFirst = false;
+    const critical = Math.random() < attacker.stats.critChance;
+    let damage = Math.max(1, Math.round(attacker.stats.damage * multiplier * (critical ? 1.75 : 1)));
+    if (weapon?.trait === 'bleed' && Math.random() < .18) damage += Math.max(1, Math.round(attacker.stats.damage * .3));
+    damage = Math.max(1, Math.round(damage * (1 - defender.stats.damageReduction)));
+    if (isChallenger) opponentHp = Math.max(0, opponentHp - damage);
+    else challengerHp = Math.max(0, challengerHp - damage);
+    const who = isChallenger ? 'You' : opponentState === challengerState ? 'Opponent' : 'Opponent';
+    append(`${who} ${critical ? 'critically hit' : 'hit'} for ${damage.toLocaleString()} damage.`);
+  };
+
+  let rounds = 0;
+  for (rounds = 1; rounds <= 100; rounds += 1) {
+    const first = challenger.stats.speed >= opponent.stats.speed ? 'challenger' : 'opponent';
+    const second = first === 'challenger' ? 'opponent' : 'challenger';
+    for (const side of [first, second] as const) {
+      const isChallenger = side === 'challenger';
+      const actor = isChallenger ? challenger : opponent;
+      const actorHp = () => isChallenger ? challengerHp : opponentHp;
+      const foeHp = () => isChallenger ? opponentHp : challengerHp;
+      const ownArmor = actor.state.inventory.find(item => item.id === actor.state.equipment.armor);
+      const speed = Math.min(800, actor.stats.speed + (ownArmor?.trait === 'desperation' && actorHp() <= actor.stats.maxHealth * .4 ? 20 : 0));
+      const actionCount = Math.min(8, Math.max(1, Math.floor(speed / 100)));
+      for (let action = 0; action < actionCount && foeHp() > 0; action += 1) attack(side);
+      if (challengerHp <= 0 || opponentHp <= 0) break;
+    }
+    if (challengerHp <= 0 || opponentHp <= 0) break;
+  }
+  // Extremely defensive equal builds still resolve deterministically after the
+  // round cap; remaining health ratio is the tie-breaker.
+  const winner = challengerHp / challenger.stats.maxHealth >= opponentHp / opponent.stats.maxHealth ? 'challenger' : 'opponent';
+  append(winner === 'challenger' ? 'Victory. Arena rating updated.' : 'Defeat. Arena rating updated.');
+  return { winner, rounds: Math.min(rounds, 100), log };
+}
+
+/** Register the current server-owned build and return recently active opponents. */
+export async function getCombatArenaOpponents(): Promise<{
+  self: CombatArenaProfile;
+  opponents: CombatArenaProfile[];
+  cooldownRemainingMs: number;
+}> {
+  const userId = String(context.userId ?? '').trim();
+  if (!userId) throw new Error('REDDIT_LOGIN_REQUIRED');
+  // Persist the starter state too, so new players can be challenged after they
+  // have opened Combat, even if they haven't killed the first enemy yet.
+  const state = await mutate(s => s);
+  const now = Date.now();
+  const rawProfiles = await redis.hGetAll(ARENA_PROFILE_KEY);
+  const existing = parseArenaProfile(userId, rawProfiles?.[userId]);
+  const self = createArenaProfile(userId, arenaName(context.username), state, now);
+  await redis.hSet(ARENA_PROFILE_KEY, { [userId]: JSON.stringify(self) });
+  const opponents = Object.entries(rawProfiles ?? {})
+    .map(([id, raw]) => parseArenaProfile(id, raw))
+    .filter((profile): profile is CombatArenaProfile =>
+      Boolean(profile && profile.userId !== userId && profile.updatedAt >= now - ARENA_PROFILE_TTL_MS),
+    )
+    .sort((a, b) => b.rating - a.rating || b.bestDepth - a.bestDepth)
+    .slice(0, 20);
+  return {
+    self: { ...self, rating: existing?.rating ?? self.rating, wins: state.arenaWins, losses: state.arenaLosses },
+    opponents,
+    cooldownRemainingMs: Math.max(0, ARENA_CHALLENGE_COOLDOWN_MS - (now - state.arenaLastChallengeAt)),
+  };
+}
+
+/** Challenge a recently active player's saved build. Both rating changes commit atomically. */
+export async function challengeCombatArena(opponentIdValue: string): Promise<CombatSnapshot & { arenaResult: CombatArenaResult }> {
+  const userId = String(context.userId ?? '').trim();
+  const opponentId = String(opponentIdValue ?? '').trim();
+  if (!userId) throw new Error('REDDIT_LOGIN_REQUIRED');
+  if (!opponentId) throw new Error('ARENA_OPPONENT_UNAVAILABLE');
+  if (userId === opponentId) throw new Error('ARENA_SELF_CHALLENGE');
+
+  const rawProfiles = await redis.hGetAll(ARENA_PROFILE_KEY);
+  const opponentProfile = parseArenaProfile(opponentId, rawProfiles?.[opponentId]);
+  if (!opponentProfile || opponentProfile.updatedAt < Date.now() - ARENA_PROFILE_TTL_MS) {
+    throw new Error('ARENA_OPPONENT_UNAVAILABLE');
+  }
+  const ownKey = combatKeyFor(userId);
+  const opponentKey = combatKeyFor(opponentId);
+
+  for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt += 1) {
+    const txn = await redis.watch(ownKey, opponentKey);
+    let closed = false;
+    try {
+      const [ownRaw, opponentRaw] = await Promise.all([redis.get(ownKey), redis.get(opponentKey)]);
+      if (!opponentRaw) {
+        await txn.unwatch(); closed = true;
+        throw new Error('ARENA_OPPONENT_UNAVAILABLE');
+      }
+      const ownState = normalizeState(ownRaw);
+      const opponentState = normalizeState(opponentRaw);
+      const now = Date.now();
+      const remaining = ARENA_CHALLENGE_COOLDOWN_MS - (now - ownState.arenaLastChallengeAt);
+      if (remaining > 0) {
+        await txn.unwatch(); closed = true;
+        throw new Error('ARENA_COOLDOWN:' + remaining);
+      }
+
+      const duel = resolveArenaDuel(ownState, opponentState);
+      const ownBefore = ownState.arenaRating;
+      const opponentBefore = opponentState.arenaRating;
+      const expectedOwn = 1 / (1 + Math.pow(10, (opponentBefore - ownBefore) / 400));
+      const actualOwn = duel.winner === 'challenger' ? 1 : 0;
+      const rawChange = Math.round(ARENA_RATING_K * (actualOwn - expectedOwn));
+      const ownAfter = Math.max(100, Math.min(10000, ownBefore + rawChange));
+      const opponentAfter = Math.max(100, Math.min(10000, opponentBefore - rawChange));
+      const ownChange = ownAfter - ownBefore;
+      const opponentChange = opponentAfter - opponentBefore;
+
+      ownState.arenaRating = ownAfter;
+      opponentState.arenaRating = opponentAfter;
+      if (duel.winner === 'challenger') {
+        ownState.arenaWins += 1;
+        opponentState.arenaLosses += 1;
+      } else {
+        ownState.arenaLosses += 1;
+        opponentState.arenaWins += 1;
+      }
+      ownState.arenaLastChallengeAt = now;
+
+      await txn.multi();
+      await txn.set(ownKey, JSON.stringify(ownState));
+      await txn.set(opponentKey, JSON.stringify(opponentState));
+      const committed = await txn.exec();
+      closed = true;
+      if (committed === null) continue;
+
+      const freshProfiles = await redis.hGetAll(ARENA_PROFILE_KEY).catch(() => ({}));
+      const ownProfile = createArenaProfile(userId, arenaName(context.username), ownState, now);
+      const nextOpponentProfile = createArenaProfile(
+        opponentId, opponentProfile.username, opponentState, opponentProfile.updatedAt,
+      );
+      await redis.hSet(ARENA_PROFILE_KEY, {
+        [userId]: JSON.stringify(ownProfile),
+        [opponentId]: JSON.stringify(nextOpponentProfile),
+      }).catch(error => console.error('[Combat Arena] Profile refresh failed after result commit.', error));
+
+      const opponentInResult = {
+        ...nextOpponentProfile,
+        username: arenaName(freshProfiles?.[opponentId] ? opponentProfile.username : opponentProfile.username),
+      };
+      const arenaResult: CombatArenaResult = {
+        opponent: opponentInResult,
+        winner: duel.winner === 'challenger' ? 'you' : 'opponent',
+        rounds: duel.rounds,
+        log: duel.log,
+        ratingChange: ownChange,
+        opponentRatingChange: opponentChange,
+        ratingAfter: ownAfter,
+        opponentRatingAfter: opponentAfter,
+      };
+      return { ...snapshot(ownState), arenaResult };
+    } finally {
+      if (!closed) await txn.unwatch().catch(() => undefined);
+    }
+  }
+  throw new Error('Combat state changed repeatedly. Please retry.');
 }
