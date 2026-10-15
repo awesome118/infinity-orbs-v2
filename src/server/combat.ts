@@ -200,6 +200,8 @@ function createArenaProfile(userId: string, username: string, state: CombatState
   const build = arenaBuild(state);
   const weapon = build.state.inventory.find(item => item.id === build.state.equipment.weapon && item.slot === 'weapon');
   const armor = build.state.inventory.find(item => item.id === build.state.equipment.armor && item.slot === 'armor');
+  const cooldownNow = Date.now();
+  const protectionMs = arenaCooldownRemaining(state.arenaLastMatchAt, cooldownNow);
   return {
     userId,
     username: arenaName(username),
@@ -209,7 +211,7 @@ function createArenaProfile(userId: string, username: string, state: CombatState
     wins: state.arenaWins,
     losses: state.arenaLosses,
     updatedAt,
-    challengeBlockedUntil: state.arenaLastMatchAt + ARENA_CHALLENGE_COOLDOWN_MS,
+    challengeBlockedUntil: protectionMs > 0 ? cooldownNow + protectionMs : 0,
     damage: build.stats.damage,
     speed: build.stats.speed,
     maxHealth: build.stats.maxHealth,
