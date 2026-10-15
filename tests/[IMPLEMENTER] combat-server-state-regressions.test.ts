@@ -26,11 +26,23 @@ test('combat beats persist their sequence and reject duplicate/stale requests', 
     const before = await getCombatSnapshot();
     assert.equal(before.state.sequence, 0);
 
-    const first = await performCombatBeat(1, 'strike');
-    assert.equal(first.state.sequence, 1);
+    // Two tabs can race with the same sequence. The Redis WATCH/MULTI/EXEC
+    // compare-and-set must permit only one to commit the beat.
+    const racingBeats = await Promise.allSettled([
+      performCombatBeat(1, 'strike'),
+      performCombatBeat(1, 'strike'),
+    ]);
+    assert.equal(racingBeats.filter(attempt => attempt.status === 'fulfilled').length, 1);
+    assert.equal(racingBeats.filter(attempt => attempt.status === 'rejected').length, 1);
+    const rejectedBeat = racingBeats.find(attempt => attempt.status === 'rejected');
+    assert.ok(rejectedBeat && rejectedBeat.status === 'rejected');
+    assert.match(
+      String(rejectedBeat.reason instanceof Error ? rejectedBeat.reason.message : rejectedBeat.reason),
+      /stale combat sequence/,
+    );
 
     const persisted = await getCombatSnapshot();
-    assert.equal(persisted.state.sequence, 1, 'a beat must be persisted before the response is returned');
+    assert.equal(persisted.state.sequence, 1, 'only one racing request may commit sequence 1');
 
     await assert.rejects(
       () => performCombatBeat(1, 'strike'),
