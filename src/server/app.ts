@@ -79,7 +79,7 @@ import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
-import { getCombatSnapshot, performCombatBeat, equipCombatItem, rollCombatSkill, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon } from './combat.js';
+import { getCombatSnapshot, performCombatBeat, equipCombatItem, rollCombatSkill, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon } from './combat.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -411,16 +411,15 @@ export function createApp() {
   };
 
   app.use('/api', async (req, res, next) => {
-    // Combat has a separate per-player state key and Redis WATCH/MULTI/EXEC
-    // compare-and-set writes. Do not queue its one-second beats behind the
-    // global player-save lock; that lock protects the unrelated orb-save path.
+    // Combat uses a separate Redis key, but dungeon progression and orb rolls
+    // share this per-player FIFO so the two progression systems never overlap.
+    // Gear, gacha, training and Arena writes still use combat-state CAS retries.
     if (
-      req.path === '/combat/beat' ||
       req.path === '/combat/equip' ||
       req.path === '/combat/skills/roll' ||
+      req.path === '/combat/upgrades/buy' ||
       req.path === '/combat/arena/challenge' ||
-      req.path === '/combat/tactics' ||
-      req.path === '/combat/dungeon'
+      req.path === '/combat/tactics'
     ) return next();
 
     const mutatesState = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
@@ -879,7 +878,11 @@ export function createApp() {
     try{res.setHeader('Cache-Control','no-store');res.json(await rollCombatSkill());}
     catch(e:any){const message=e?.message||'Skill roll failed.';const status=message==='Not enough Delver Coins.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:500;res.status(status).json({error:message});}
   });
-  app.get('/api/combat/arena/opponents', async (_req,res) => {
+  app.post('/api/combat/upgrades/buy', async (req,res) => {
+    try{res.setHeader('Cache-Control','no-store');res.json(await buyCombatUpgrade(req.body?.upgradeId));}
+    catch(e:any){const message=e?.message||'Combat upgrade failed.';const status=message==='Not enough Combat Marks.'||message==='Combat upgrade is already max rank.'||message==='Invalid combat upgrade.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message});}
+  });
+    app.get('/api/combat/arena/opponents', async (_req,res) => {
     try { res.setHeader('Cache-Control','no-store'); res.json(await getCombatArenaOpponents()); }
     catch(e:any) { const message=e?.message||'Could not load Arena opponents.'; res.status(message==='REDDIT_LOGIN_REQUIRED'?401:503).json({error:message}); }
   });
@@ -1161,7 +1164,10 @@ export function createApp() {
       if (!ticketId || !Number.isSafeInteger(ticketIndex)) {
         return res.status(400).json({ error: 'Roll request is missing its ticket. Refresh the game and try again.' });
       }
-      res.json(await roll(req.body?.auto === true, ticketId, ticketIndex, req.body?.useAllFreeRolls === true));
+      const result = await roll(req.body?.auto === true, ticketId, ticketIndex, req.body?.useAllFreeRolls === true);
+      const rolledOrb = (result as { orb?: { rarity?: number; name?: string } }).orb;
+      if (rolledOrb) await setCombatOrbFocus(rolledOrb.rarity, rolledOrb.name).catch(error => console.error('[Combat Orb Focus] Could not sync orb roll.', error));
+      res.json(result);
     } catch (e) { badRequest(res, e, 'Roll failed.'); }
   });
 
@@ -1172,7 +1178,12 @@ export function createApp() {
   });
 
   app.post('/api/offline/claim', async (_req, res) => {
-    try { res.json(await claimOffline()); } catch (e) { badRequest(res, e, 'Offline claim failed.'); }
+    try {
+      const result = await claimOffline();
+      const rolledOrb = (result as { orb?: { rarity?: number; name?: string } }).orb;
+      if (rolledOrb) await setCombatOrbFocus(rolledOrb.rarity, rolledOrb.name).catch(error => console.error('[Combat Orb Focus] Could not sync offline orb claim.', error));
+      res.json(result);
+    } catch (e) { badRequest(res, e, 'Offline claim failed.'); }
   });
 
   app.post('/api/upgrade', async (req, res) => {
@@ -1237,7 +1248,7 @@ export function createApp() {
         'permLuck', 'permSpeed', 'vaultCap', 'dustBounty', 'sonarPing', 'instantReveal',
         'autoOverclock', 'autoFilter', 'resonanceMeter', 'stellarMagnet', 'chronoOverdrive',
         'transmutation', 'shardSynthesis', 'astralBarrage', 'cosmicInheritance',
-        'autoBuyer', 'supernova', 'altarResonator', 'offlineOverdrive', 'singularityTithe',
+        'autoBuyer', 'supernova', 'altarResonator', 'offlineOverdrive',
         'luckyFloor', 'astralArsenal', 'deepVault', 'masteryEngine', 'steadyHands', 'offlineFortune',
         'frenzyVolley', 'astralReserve', 'temporalCompression', 'shardResonator', 'cosmicValuation', 'cosmicReserve'
       ];
@@ -1332,8 +1343,12 @@ export function createApp() {
   });
 
   app.post('/api/frenzy/claim', async (_req, res) => {
-    try { res.json(await claimOrbFrenzy()); }
-    catch (e) { badRequest(res, e, 'Could not claim Orb Frenzy.'); }
+    try {
+      const result = await claimOrbFrenzy();
+      const rolledOrb = (result as { orb?: { rarity?: number; name?: string } }).orb;
+      if (rolledOrb) await setCombatOrbFocus(rolledOrb.rarity, rolledOrb.name).catch(error => console.error('[Combat Orb Focus] Could not sync Frenzy orb claim.', error));
+      res.json(result);
+    } catch (e) { badRequest(res, e, 'Could not claim Orb Frenzy.'); }
   });
 
   app.post('/api/frenzy/thank-you', async (req, res) => {

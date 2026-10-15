@@ -1,7 +1,7 @@
 import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatDungeonId, CombatEnemy, CombatGear, CombatIntent, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, SKILL_RANK_CAP, addCombatGearToInventory, applyCombatSkillCopy, combatStatsFor, createCombatState, getEnemyForDungeonDepth, skillPullCost, synchronizeCombatStats } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMarkMultiplier, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillPullCost, synchronizeCombatStats } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -24,13 +24,13 @@ function traitText(t:CombatTrait):string {
   if(t==='regeneration')return 'Recover 2% max HP after elite or boss kills.';
   return 'Gain +20 Speed while below 40% health.';
 }
-function normalizeGear(value:unknown):CombatGear|null {
+function normalizeGear(value:unknown,fallbackFloor=0):CombatGear|null {
   if(!value||typeof value!=='object')return null;
   const x=value as Record<string,unknown>, slot=x.slot==='weapon'?'weapon':x.slot==='armor'?'armor':null;
   const traits:CombatTrait[]=['bleed','keen','first-strike','bulwark','regeneration','desperation'];
   if(!slot||typeof x.id!=='string'||!x.id||typeof x.name!=='string')return null;
   const trait=traits.includes(x.trait as CombatTrait)?x.trait as CombatTrait:(slot==='weapon'?'keen':'bulwark');
-  return {id:x.id.slice(0,160),name:x.name.slice(0,100),slot,quality:Math.max(0,Math.min(100,Number.isFinite(Number(x.quality))?Number(x.quality):0)),power:finiteInt(x.power,1,1,1_000_000),effect:typeof x.effect==='string'?x.effect.slice(0,180):traitText(trait),trait,damageBonus:finiteInt(x.damageBonus,0,0,1_000_000),speedBonus:finiteInt(x.speedBonus,0,0,400),maxHealthBonus:finiteInt(x.maxHealthBonus,0,0,1_000_000)};
+  return {id:x.id.slice(0,160),name:x.name.slice(0,100),slot,quality:Math.max(0,Math.min(100,Number.isFinite(Number(x.quality))?Number(x.quality):0)),sourceFloor:finiteInt(x.sourceFloor,fallbackFloor,0,50000),power:finiteInt(x.power,1,1,1_000_000),effect:typeof x.effect==='string'?x.effect.slice(0,180):traitText(trait),trait,damageBonus:finiteInt(x.damageBonus,0,0,1_000_000),speedBonus:finiteInt(x.speedBonus,0,0,400),maxHealthBonus:finiteInt(x.maxHealthBonus,0,0,1_000_000)};
 }
 function normalizeState(raw:string|null|undefined):CombatState {
   if(!raw)return createCombatState();
@@ -54,10 +54,10 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.arenaRating=finiteInt(s.arenaRating,1000,100,10000);s.arenaWins=finiteInt(s.arenaWins,0,0,Number.MAX_SAFE_INTEGER);s.arenaLosses=finiteInt(s.arenaLosses,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastChallengeAt=finiteInt(s.arenaLastChallengeAt,0,0,Number.MAX_SAFE_INTEGER);
   s.coreLevel=finiteInt(s.coreLevel,1,1,1_000_000);s.coreHighestRarity=finiteInt(s.coreHighestRarity,2,2,1_000_000_000_000_000_000);
   s.autoTactic=(['balanced','aggressive','defensive','recovery'] as unknown[]).includes(s.autoTactic)?s.autoTactic:'balanced';
-  s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
+  s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.combatMarks=finiteInt(s.combatMarks,0,0,Number.MAX_SAFE_INTEGER);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,1_000_000_000_000_000_000);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
   s.playerActionsResolved=finiteInt(s.playerActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.enemyActionsResolved=finiteInt(s.enemyActionsResolved,0,0,Number.MAX_SAFE_INTEGER);
   s.energy=finiteInt(s.energy,3,0,10);s.maxEnergy=finiteInt(s.maxEnergy,5,1,10);s.guardBeats=finiteInt(s.guardBeats,0,0,10);s.encounterFirstStrikeUsed=s.encounterFirstStrikeUsed===true;
-  const inv=Array.isArray(s.inventory)?s.inventory.map(normalizeGear).filter((g):g is CombatGear=>Boolean(g)):[];
+  const inv=Array.isArray(s.inventory)?s.inventory.map(g=>normalizeGear(g,Math.max(0,s.depth-1))).filter((g):g is CombatGear=>Boolean(g)):[];
   s.inventory=inv.length?inv:createCombatState().inventory;
   const preferredWeaponId=typeof s.equipment?.weapon==='string'?s.equipment.weapon:null;
   const preferredArmorId=typeof s.equipment?.armor==='string'?s.equipment.armor:null;
@@ -78,7 +78,9 @@ function normalizeState(raw:string|null|undefined):CombatState {
   const enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);s.enemyHp=finiteInt(s.enemyHp,enemy.maxHp,1,enemy.maxHp);
   return s;
 }
-function createGear(depth:number):CombatGear {
+function createGear(sourceFloor:number):CombatGear {
+  const floor=Math.max(0,Math.min(50000,Math.floor(Number(sourceFloor)||0)));
+  const scale=floor+1;
   const slot=secureRandom()<.5?'weapon':'armor';
   // Fourth-power quality distribution is from Auto-Dungeons; 100% rolls are extremely rare.
   const quality=Math.round(1_000_000*Math.pow(secureRandom(),4))/10_000;
@@ -86,8 +88,8 @@ function createGear(depth:number):CombatGear {
   const nouns=slot==='weapon'?['Cleaver','Brand','Knife','Axe','Fang','Edge','Spear','Greatblade']:['Hood','Plate','Scale','Mantle','Coat','Shell','Vest','Mail'];
   const weaponTraits:CombatTrait[]=['bleed','keen','first-strike'], armorTraits:CombatTrait[]=['bulwark','regeneration','desperation'];
   const trait=slot==='weapon'?pick(weaponTraits):pick(armorTraits);
-  const power=Math.max(3,Math.round(Math.min(1_000_000,depth)*(.65+quality/80)));
-  return {id:'gear-'+Date.now().toString(36)+'-'+Math.floor(secureRandom()*0x7fffffff).toString(36),name:pick(prefix)+' '+pick(nouns),slot,quality,power,trait,effect:traitText(trait),damageBonus:slot==='weapon'?Math.max(1,Math.round(power*.8)):0,speedBonus:slot==='weapon'?Math.min(400,Math.round(power*.25)):0,maxHealthBonus:slot==='armor'?Math.max(5,Math.round(power*4)):0};
+  const power=Math.max(3,Math.round(Math.min(1_000_000,scale)*(.65+quality/80)));
+  return {id:'gear-'+Date.now().toString(36)+'-'+Math.floor(secureRandom()*0x7fffffff).toString(36),name:pick(prefix)+' '+pick(nouns),slot,quality,sourceFloor:floor,power,trait,effect:traitText(trait),damageBonus:slot==='weapon'?Math.max(1,Math.round(power*.8)):0,speedBonus:slot==='weapon'?Math.min(400,Math.round(power*.25)):0,maxHealthBonus:slot==='armor'?Math.max(5,Math.round(power*4)):0};
 }
 function enemySnapshot(s:CombatState):CombatEnemy { const e=getEnemyForDungeonDepth(s.dungeonId,s.depth); return {...e,hp:Math.max(0,Math.min(e.maxHp,s.enemyHp||e.maxHp))}; }
 function snapshot(s:CombatState):CombatSnapshot { return {state:s,enemy:enemySnapshot(s),stats:synchronizeCombatStats(s)}; }
@@ -151,17 +153,19 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand):Pr
     for(let i=0;i<attacks;i++){
       if(enemyHp<=0)break;
       let multiplier=heavy&&i===0?1.9:1;
-      if(!s.encounterFirstStrikeUsed){if(weapon?.trait==='first-strike')multiplier*=1.5;s.encounterFirstStrikeUsed=true;}
+      if(!s.encounterFirstStrikeUsed){if(weapon?.trait==='first-strike')multiplier*=1+.5*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1));s.encounterFirstStrikeUsed=true;}
       const crit=secureRandom()<stats.critChance;let damage=Math.max(1,Math.round(stats.damage*(crit?1.75:1)*multiplier));
-      if(weapon?.trait==='bleed'&&secureRandom()<.18){const bleed=Math.max(1,Math.round(stats.damage*.3));damage+=bleed;actions.push({actor:'player',kind:'ability',text:'Bleed adds '+bleed+' damage.'});}
+      if(weapon?.trait==='bleed'&&secureRandom()<.18*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1))){const bleed=Math.max(1,Math.round(stats.damage*.3*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1))));damage+=bleed;actions.push({actor:'player',kind:'ability',text:'Bleed adds '+bleed+' damage.'});}
       enemyHp-=damage;actions.push({actor:'player',kind:'attack',damage,text:(crit?'Critical hit for ':'Strike for ')+damage+' damage.'});
       if(enemyHp<=0){
         defeated=true;actions.push({actor:'player',kind:'death',text:'The '+enemy.name+' falls.'});s.totalKills=Math.min(Number.MAX_SAFE_INTEGER,s.totalKills+1);
         const coins=Math.max(1,Math.round((12+s.depth*2.4)*stats.coinMultiplier*(s.dungeonId==='cinder-vault'?1.4:1)));s.coins=Math.min(Number.MAX_SAFE_INTEGER,s.coins+coins);actions.push({actor:'player',kind:'loot',text:'Collected '+coins.toLocaleString()+' Delver Coins.'});
+        const baseMarks=Math.max(1,2+Math.floor(Math.max(0,s.depth-1)/2)+(enemy.kind==='elite'?2:enemy.boss?8:0));
+        const marks=Math.max(1,Math.round(baseMarks*combatMarkMultiplier(s)));s.combatMarks=Math.min(Number.MAX_SAFE_INTEGER,s.combatMarks+marks);actions.push({actor:'player',kind:'loot',text:'Earned '+marks.toLocaleString()+' Combat Marks.'});
         grantXp(s,Math.round((18+s.depth*4.2)*(s.dungeonId==='glass-labyrinth'?1.25:1)),actions);
-        if((s.dungeonId==='cinder-vault'?s.depth%2===0:s.depth%3===0)||enemy.kind!=='common'||enemy.boss){item=createGear(s.depth);addCombatGearToInventory(s,item);actions.push({actor:'player',kind:'loot',text:'Gear found: '+item.name+' ('+item.quality.toFixed(2)+'% quality).'});}
+        if((s.dungeonId==='cinder-vault'?s.depth%2===0:s.depth%3===0)||enemy.kind!=='common'||enemy.boss){item=createGear(Math.max(0,s.depth-1));addCombatGearToInventory(s,item);actions.push({actor:'player',kind:'loot',text:'Gear found: '+item.name+' ('+item.quality.toFixed(2)+'% quality).'});}
         const armor=s.inventory.find(g=>g.id===s.equipment.armor);
-        if(armor?.trait==='regeneration'&&enemy.kind!=='common'){s.health=Math.min(s.maxHealth,s.health+Math.round(s.maxHealth*.02));actions.push({actor:'player',kind:'ability',text:'Armor regeneration restored 2% max HP.'});}
+        if(armor?.trait==='regeneration'&&enemy.kind!=='common'){s.health=Math.min(s.maxHealth,s.health+Math.round(s.maxHealth*.02*gearQualityEffectiveness(armor,Math.max(0,s.depth-1))));actions.push({actor:'player',kind:'ability',text:'Armor regeneration restored 2% max HP.'});}
         s.bestDepth=Math.max(s.bestDepth,s.depth);s.depth+=1;s.bestDepth=Math.max(s.bestDepth,s.depth);s.dungeonBestDepths[s.dungeonId]=Math.max(s.dungeonBestDepths[s.dungeonId],s.bestDepth);s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,s.energy+1);s.guardBeats=0;s.encounterFirstStrikeUsed=false;
         enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);s.enemyHp=enemy.maxHp;actions.push({actor:'player',kind:'advance',text:'Descending to Depth '+s.depth+'.'});break;
       }
@@ -182,14 +186,16 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand):Pr
   });
 }
 export async function equipCombatItem(itemId:string):Promise<CombatSnapshot>{return mutate(s=>{const item=s.inventory.find(g=>g.id===itemId);if(!item)throw new Error('item not owned');s.equipment[item.slot]=item.id;synchronizeCombatStats(s);return snapshot(s);});}
-export async function rollCombatSkill():Promise<CombatSnapshot&{skillRoll:{id:CombatSkillId;name:string;rarity:string;rank:number;duplicate:boolean;convertedCoins:number};cost:number}> {
+export async function rollCombatSkill():Promise<CombatSnapshot&{skillRoll:{id:CombatSkillId;name:string;rarity:string;rank:number;duplicate:boolean;convertedCoins:number;pityEpic:number;pityMythic:number};cost:number}> {
   return mutate(s=>{
     const cost=skillPullCost(s.skillRolls);if(s.coins<cost)throw new Error('Not enough Delver Coins.');
     s.coins-=cost;s.skillRolls+=1;const chance=secureRandom();
-    const rarity=chance<.55?'Common':chance<.80?'Uncommon':chance<.92?'Rare':chance<.98?'Epic':'Mythic';
+    const rarity=resolveCombatSkillRarity(chance,s.skillPityEpic,s.skillPityMythic);
+    s.skillPityEpic=(rarity==='Epic'||rarity==='Mythic')?0:Math.min(9,s.skillPityEpic+1);
+    s.skillPityMythic=rarity==='Mythic'?0:Math.min(39,s.skillPityMythic+1);
     const pool=COMBAT_SKILLS.filter(skill=>skill.rarity===rarity),skill=pick(pool);if(!skill)throw new Error('Skill pool is unavailable.');
     const applied=applyCombatSkillCopy(s,skill.id,cost);
-    return {...snapshot(s),skillRoll:{id:skill.id,name:skill.name,rarity,rank:applied.rank,duplicate:applied.duplicate,convertedCoins:applied.coinsRefunded},cost};
+    return {...snapshot(s),skillRoll:{id:skill.id,name:skill.name,rarity,rank:applied.rank,duplicate:applied.duplicate,convertedCoins:applied.coinsRefunded,pityEpic:s.skillPityEpic,pityMythic:s.skillPityMythic},cost};
   });
 }
 
@@ -472,6 +478,34 @@ export async function setCombatAutoTactic(tacticValue: unknown): Promise<CombatS
   });
 }
 
+
+export async function buyCombatUpgrade(upgradeValue: unknown): Promise<CombatSnapshot & { upgradePurchase: { id: string; name: string; rank: number; cost: number } }> {
+  const upgrade = typeof upgradeValue === 'string' ? COMBAT_UPGRADES.find(entry => entry.id === upgradeValue) : undefined;
+  if (!upgrade) throw new Error('Invalid combat upgrade.');
+  return mutate(state => {
+    const rank = combatUpgradeRank(state, upgrade.id);
+    if (rank >= upgrade.maxRank) throw new Error('Combat upgrade is already max rank.');
+    const cost = combatUpgradeCost(state, upgrade.id);
+    if (state.combatMarks < cost) throw new Error('Not enough Combat Marks.');
+    state.combatMarks -= cost;
+    state.combatUpgrades[upgrade.id] = rank + 1;
+    synchronizeCombatStats(state);
+    return { ...snapshot(state), upgradePurchase: { id: upgrade.id, name: upgrade.name, rank: rank + 1, cost } };
+  });
+}
+
+/** Most recent main-game orb roll becomes the character's active combat focus. */
+export async function setCombatOrbFocus(rarityValue: unknown, nameValue: unknown): Promise<CombatSnapshot> {
+  const raw = Number(rarityValue);
+  const rarity = Number.isFinite(raw) ? Math.max(2, Math.min(1_000_000_000_000_000_000, Math.floor(raw))) : 2;
+  const name = String(nameValue ?? 'Common Orb').trim().slice(0, 100) || 'Common Orb';
+  return mutate(state => {
+    state.orbFocusRarity = rarity;
+    state.orbFocusName = name;
+    synchronizeCombatStats(state);
+    return snapshot(state);
+  });
+}
 
 export async function setCombatDungeon(dungeonValue: unknown): Promise<CombatSnapshot> {
   const validDungeons: CombatDungeonId[] = ['undercrypt', 'cinder-vault', 'glass-labyrinth'];

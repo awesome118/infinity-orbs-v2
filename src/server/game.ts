@@ -40,7 +40,6 @@ import {
   calculateLevelFromXp,
   applyLevelProgress,
   totalXpRequiredBeforeLevel,
-  singularityTitheDustForRolls,
   type MasterySkillId,
   type PremiumBoosterId,
   type AutomationId,
@@ -2402,10 +2401,6 @@ export async function loadRaw(): Promise<PlayerState> {
     coins: finiteNonNegativeInteger(parsed.coins),
     lifetimeCoins: finiteNonNegativeInteger(parsed.lifetimeCoins ?? parsed.coins),
     offlineRolls: Math.min(MAX_OFFLINE_ROLLS, finiteNonNegativeInteger(parsed.offlineRolls, base.offlineRolls)),
-    singularityTitheSingleRolls: finiteNonNegativeInteger(
-      parsed.singularityTitheSingleRolls,
-      base.singularityTitheSingleRolls ?? 0,
-    ),
     purchasedShards: normalizedPurchasedShards,
     purchasedShardLots: normalizedPurchasedShardLots,
     globalBoosterCredits: normalizedGlobalBoosterCredits,
@@ -3341,18 +3336,6 @@ export async function applyRolls(
   ) {
     throw new Error('Roll counter would exceed the safe integer range; no rolls were processed.');
   }
-  const titheLevelForBatch = s.prestigeUpgrades?.singularityTithe ?? 0;
-  if (
-    titheLevelForBatch > 0 &&
-    rollCount > 0 &&
-    (
-      !Number.isSafeInteger(s.singularityTitheSingleRolls) ||
-      (s.singularityTitheSingleRolls ?? 0) < 0 ||
-      rollCount > Number.MAX_SAFE_INTEGER - (s.singularityTitheSingleRolls ?? 0)
-    )
-  ) {
-    throw new Error('Singularity Tithe counter would exceed the safe integer range; no rolls were processed.');
-  }
   const maxSupportedRollCount = offlineRollCap(s) * rollsPerActivation(s) + 2;
   if (!Number.isSafeInteger(maxSupportedRollCount) || rollCount > maxSupportedRollCount) {
     throw new Error('Roll batch exceeds the supported processing cap; no rolls were processed.');
@@ -3614,16 +3597,6 @@ export async function applyRolls(
   if (source === 'online' && rollCount > 0) recordRollingSessionActivity(s, now);
 
   // Coin earnings and their lifetime statistic are capped independently at the safe-integer ceiling.
-
-  // Singularity Tithe pays +1 Cosmic Dust per 200 processed rolls per level.
-  // Every processed orb counts, including multi-roll, auto-roll, offline, and Frenzy rolls.
-  const titheLevel = s.prestigeUpgrades?.singularityTithe ?? 0;
-  if (titheLevel > 0 && rollCount > 0) {
-    const before = Math.max(0, Math.floor(s.singularityTitheSingleRolls ?? 0));
-    s.singularityTitheSingleRolls = before + rollCount;
-    const dustEarned = singularityTitheDustForRolls(before, rollCount, titheLevel);
-    if (dustEarned > 0) s.cosmicDust = (s.cosmicDust ?? 0) + dustEarned;
-  }
 
   // Celestial Auto-Buyer Prestige Upgrade: auto-buy cheapest affordable upgrade
   const autoBuyerLevel = s.prestigeUpgrades?.autoBuyer ?? 0;
@@ -6079,20 +6052,6 @@ export async function claimOrbFrenzy(options: {
     s.prestigeUpgrades?.frenzyVolley ?? 0,
   );
 
-  // Validate Tithe's lifetime counter before applying any claim rewards, too.
-  const titheLevelForClaim = s.prestigeUpgrades?.singularityTithe ?? 0;
-  if (
-    titheLevelForClaim > 0 &&
-    count > 0 &&
-    (
-      !Number.isSafeInteger(s.singularityTitheSingleRolls) ||
-      (s.singularityTitheSingleRolls ?? 0) < 0 ||
-      count > Number.MAX_SAFE_INTEGER - (s.singularityTitheSingleRolls ?? 0)
-    )
-  ) {
-    throw new Error('Singularity Tithe counter would exceed the safe integer range; Frenzy claim was not processed.');
-  }
-
   // This path writes totalRolls directly instead of going through applyRolls().
   // Reject an overflowing batch before reward mutation, shared Guild/community
   // staging, Shard grants, or marking the Frenzy post consumed.
@@ -6277,15 +6236,6 @@ export async function claimOrbFrenzy(options: {
 
   // Claiming a Frenzy is active online rolling activity for Unbroken Momentum.
   if (count > 0) recordRollingSessionActivity(s, now);
-
-  // Frenzy claim rolls are real processed rolls and therefore count toward Tithe.
-  const titheLevel = s.prestigeUpgrades?.singularityTithe ?? 0;
-  if (titheLevel > 0 && count > 0) {
-    const beforeTitheRolls = Math.max(0, Math.floor(s.singularityTitheSingleRolls ?? 0));
-    s.singularityTitheSingleRolls = beforeTitheRolls + count;
-    const dustEarned = singularityTitheDustForRolls(beforeTitheRolls, count, titheLevel);
-    if (dustEarned > 0) s.cosmicDust = (s.cosmicDust ?? 0) + dustEarned;
-  }
 
   advanceQuestProgress(s, 'roll', count);
   advanceQuestProgress(s, 'rare', bestRarity);

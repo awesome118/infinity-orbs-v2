@@ -871,7 +871,6 @@ export type PrestigeUpgradeId =
   | 'supernova'
   | 'altarResonator'
   | 'offlineOverdrive'
-  | 'singularityTithe'
   | 'luckyFloor'
   | 'astralArsenal'
   | 'deepVault'
@@ -1025,10 +1024,6 @@ export interface PlayerState {
   globalBoosterCreditLots?: Record<string, number>;
   globalBoosters?: GlobalBoosterSnapshot;
   guildCombo?: GuildComboState;
-
-  // Lifetime roll counter used by Singularity Tithe. It counts processed orbs,
-  // including multi-roll and offline batches, once Tithe is active.
-  singularityTitheSingleRolls?: number;
 
   lastFrenzyDate?: string;
   lastFrenzyAt?: number;
@@ -1525,13 +1520,6 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
     costPerLevel: 3,
     qol: true,
   },
-  singularityTithe: {
-    name: 'Singularity Tithe',
-    desc: 'Passively generate +1 Cosmic Dust every 200 rolls per level.',
-    category: 'alchemy',
-    maxLevel: 3,
-    costPerLevel: 5,
-  },
   luckyFloor: {
     name: 'Lucky Floor',
     desc: '+1 minimum orb rarity per level.',
@@ -1698,7 +1686,6 @@ export function createInitialState(now = Date.now()): PlayerState {
       supernova: 0,
       altarResonator: 0,
       offlineOverdrive: 0,
-      singularityTithe: 0,
       luckyFloor: 0,
       astralArsenal: 0,
       deepVault: 0,
@@ -2063,23 +2050,6 @@ export function recordRollingSessionActivity(s: PlayerState, now = Date.now()): 
   s.rollingSessionLastRollAt = now;
   s.longestRollingSessionMs = Math.max(previousBest, sessionDuration);
 }
-
-export const SINGULARITY_TITHE_ROLLS_PER_DUST = 200;
-export function singularityTitheDustForRolls(
-  previousRolls: number,
-  processedRolls: number,
-  level: number,
-): number {
-  const before = Math.max(0, Math.floor(Number(previousRolls) || 0));
-  const rolls = Math.max(0, Math.floor(Number(processedRolls) || 0));
-  const safeLevel = Math.max(0, Math.floor(Number(level) || 0));
-  if (rolls === 0 || safeLevel === 0) return 0;
-
-  const milestonesBefore = Math.floor(before / SINGULARITY_TITHE_ROLLS_PER_DUST);
-  const milestonesAfter = Math.floor((before + rolls) / SINGULARITY_TITHE_ROLLS_PER_DUST);
-  return Math.max(0, milestonesAfter - milestonesBefore) * safeLevel;
-}
-
 
 export function effectiveOfflineTickMs(s: PlayerState): number {
   const rateReduction = Math.min(0.60, Math.min(8, Math.max(0, s.upgrades.offlineRate ?? 0)) * 0.08);
@@ -2709,7 +2679,6 @@ export function prestigeUpgradeCost(id: PrestigeUpgradeId, level: number): numbe
     supernova: 3,
     altarResonator: 3,
     offlineOverdrive: 3,
-    singularityTithe: 5,
     luckyFloor: 3,
     astralArsenal: 5,
     deepVault: 2,

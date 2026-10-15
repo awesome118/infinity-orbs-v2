@@ -5,6 +5,8 @@ export type CombatTactic = 'balanced' | 'aggressive' | 'defensive' | 'recovery';
 export type CombatDungeonId = 'undercrypt' | 'cinder-vault' | 'glass-labyrinth';
 export type CombatRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Mythic';
 export type CombatSkillStat = 'damagePct' | 'speedFlat' | 'healthPct' | 'critChance' | 'coinBonus';
+export type CombatUpgradeId = 'edge-training' | 'vitality' | 'tempo' | 'precision' | 'scavenger' | 'orb-resonance';
+export type CombatUpgradeStat = 'damagePct' | 'healthPct' | 'speedFlat' | 'critChance' | 'markBonus' | 'orbFocusPct';
 export type CombatTrait = 'bleed' | 'keen' | 'first-strike' | 'bulwark' | 'regeneration' | 'desperation';
 
 export interface CombatGear {
@@ -12,6 +14,8 @@ export interface CombatGear {
   name: string;
   slot: 'weapon' | 'armor';
   quality: number;
+  /** Zero-based floor/depth where this piece dropped; old saves are migrated on read. */
+  sourceFloor: number;
   power: number;
   effect: string;
   trait: CombatTrait;
@@ -24,7 +28,9 @@ export type CombatSkillId =
   | 'razor-current' | 'quicksilver' | 'deep-vitals' | 'execution-script' | 'bone-collector'
   | 'rift-hammer' | 'afterimage' | 'titan-blood' | 'fracture-math' | 'gilded-kill'
   | 'singularity-edge' | 'time-shear' | 'starforged-core' | 'apex-instinct' | 'royal-tithe'
-  | 'infinity-cleaver' | 'chronos-heel' | 'worldheart' | 'annihilator' | 'infinite-bounty';
+  | 'infinity-cleaver' | 'chronos-heel' | 'worldheart' | 'annihilator' | 'infinite-bounty'
+  | 'steady-hand' | 'coin-sense' | 'sunder-mark' | 'lightstep' | 'warden-slayer'
+  | 'crystal-aegis' | 'blackstar-velocity' | 'astral-scavenger' | 'worldbreaker' | 'phoenix-engine';
 
 export interface CombatSkillDefinition {
   id: CombatSkillId;
@@ -60,8 +66,72 @@ export const COMBAT_SKILLS: CombatSkillDefinition[] = [
   { id:'worldheart', name:'Worldheart', rarity:'Mythic', stat:'healthPct', value:.15, effect:'+15% max health per rank' },
   { id:'annihilator', name:'Annihilator', rarity:'Mythic', stat:'critChance', value:.05, effect:'+5 percentage points critical chance per rank' },
   { id:'infinite-bounty', name:'Infinite Bounty', rarity:'Mythic', stat:'coinBonus', value:.25, effect:'+25% Delver Coins per rank' },
+  { id:'steady-hand', name:'Steady Hand', rarity:'Common', stat:'critChance', value:.008, effect:'+0.8 percentage points critical chance per rank' },
+  { id:'coin-sense', name:'Coin Sense', rarity:'Common', stat:'coinBonus', value:.03, effect:'+3% Delver Coins per rank' },
+  { id:'sunder-mark', name:'Sunder Mark', rarity:'Uncommon', stat:'damagePct', value:.035, effect:'+3.5% damage per rank' },
+  { id:'lightstep', name:'Lightstep', rarity:'Uncommon', stat:'speedFlat', value:12, effect:'+12 Speed per rank' },
+  { id:'warden-slayer', name:'Warden Slayer', rarity:'Rare', stat:'damagePct', value:.08, effect:'+8% damage per rank' },
+  { id:'crystal-aegis', name:'Crystal Aegis', rarity:'Rare', stat:'healthPct', value:.065, effect:'+6.5% max health per rank' },
+  { id:'blackstar-velocity', name:'Blackstar Velocity', rarity:'Epic', stat:'speedFlat', value:36, effect:'+36 Speed per rank' },
+  { id:'astral-scavenger', name:'Astral Scavenger', rarity:'Epic', stat:'coinBonus', value:.20, effect:'+20% Delver Coins per rank' },
+  { id:'worldbreaker', name:'Worldbreaker', rarity:'Mythic', stat:'damagePct', value:.16, effect:'+16% damage per rank' },
+  { id:'phoenix-engine', name:'Phoenix Engine', rarity:'Mythic', stat:'healthPct', value:.18, effect:'+18% max health per rank' },
 ];
 export type CombatSkillLevels = Partial<Record<CombatSkillId, number>>;
+
+export interface CombatUpgradeDefinition {
+  id: CombatUpgradeId;
+  name: string;
+  description: string;
+  stat: CombatUpgradeStat;
+  value: number;
+  baseCost: number;
+  costMultiplier: number;
+  maxRank: number;
+}
+export const COMBAT_UPGRADE_RANK_CAP = 10;
+export const COMBAT_UPGRADES: CombatUpgradeDefinition[] = [
+  { id:'edge-training', name:'Edge Training', description:'+4% damage per rank', stat:'damagePct', value:.04, baseCost:18, costMultiplier:1.55, maxRank:10 },
+  { id:'vitality', name:'Delver Vitality', description:'+5% maximum HP per rank', stat:'healthPct', value:.05, baseCost:18, costMultiplier:1.55, maxRank:10 },
+  { id:'tempo', name:'Tempo Drills', description:'+10 Speed per rank', stat:'speedFlat', value:10, baseCost:22, costMultiplier:1.58, maxRank:10 },
+  { id:'precision', name:'Critical Calibration', description:'+1 percentage point critical chance per rank', stat:'critChance', value:.01, baseCost:25, costMultiplier:1.60, maxRank:10 },
+  { id:'scavenger', name:'Battle Scavenger', description:'+8% Combat Marks from kills per rank', stat:'markBonus', value:.08, baseCost:28, costMultiplier:1.62, maxRank:10 },
+  { id:'orb-resonance', name:'Orb Resonance', description:'+1.5% focused-orb combat power per rank', stat:'orbFocusPct', value:.015, baseCost:32, costMultiplier:1.65, maxRank:10 },
+];
+export type CombatUpgradeLevels = Partial<Record<CombatUpgradeId, number>>;
+
+/** Floor 0 asks for no minimum quality; the curve reaches 60% at floor 50. */
+export function floorQualityRequirement(floorValue: unknown): number {
+  const floor = Number.isFinite(Number(floorValue)) ? Math.max(0, Math.min(50_000, Math.floor(Number(floorValue)))) : 0;
+  return Math.round(Math.min(100, floor * 1.2) * 100) / 100;
+}
+
+/** Relative gear contribution compared with the quality expected at the current floor. */
+export function gearQualityEffectiveness(item: Pick<CombatGear, 'quality'> | null | undefined, floorValue: unknown): number {
+  if (!item) return 0;
+  const requirement = floorQualityRequirement(floorValue);
+  if (requirement <= 0) return 1;
+  const quality = Number.isFinite(Number(item.quality)) ? Math.max(0, Math.min(100, Number(item.quality))) : 0;
+  return Math.max(.15, Math.min(1.25, quality / requirement));
+}
+
+export function combatUpgradeRank(state: Pick<CombatState, 'combatUpgrades'>, id: CombatUpgradeId): number {
+  return Math.max(0, Math.min(COMBAT_UPGRADE_RANK_CAP, Math.floor(Number(state.combatUpgrades?.[id]) || 0)));
+}
+
+export function combatUpgradeCost(state: Pick<CombatState, 'combatUpgrades'>, id: CombatUpgradeId): number {
+  const upgrade = COMBAT_UPGRADES.find(entry => entry.id === id);
+  if (!upgrade) throw new Error('Unknown combat upgrade.');
+  return Math.round(upgrade.baseCost * Math.pow(upgrade.costMultiplier, combatUpgradeRank(state, id)));
+}
+
+/** Deterministic rarity helper keeps pity boundaries unit-testable. */
+export function resolveCombatSkillRarity(randomValue: number, pityEpic: number, pityMythic: number): CombatRarity {
+  const chance = Number.isFinite(randomValue) ? Math.max(0, Math.min(.999999999, randomValue)) : 0;
+  if (pityMythic >= 39) return 'Mythic';
+  if (pityEpic >= 9) return chance < .8 ? 'Epic' : 'Mythic';
+  return chance < .55 ? 'Common' : chance < .80 ? 'Uncommon' : chance < .92 ? 'Rare' : chance < .98 ? 'Epic' : 'Mythic';
+}
 
 export interface CombatState {
   version: 1;
@@ -78,8 +148,17 @@ export interface CombatState {
   speed: number;
   baseDamage: number;
   coins: number;
+  /** Separate currency earned from combat, spent only on permanent combat upgrades. */
+  combatMarks: number;
+  combatUpgrades: CombatUpgradeLevels;
   totalKills: number;
   skillRolls: number;
+  /** Pulls since the last Epic-or-better and Mythic skill, respectively. */
+  skillPityEpic: number;
+  skillPityMythic: number;
+  /** Latest orb rolled in Infinity Orbs; it actively attunes combat stats. */
+  orbFocusRarity: number;
+  orbFocusName: string;
   sequence: number;
   /** Timestamp of the last accepted server combat beat; used to enforce cadence. */
   lastAcceptedBeatAtMs: number;
@@ -110,6 +189,8 @@ export interface CombatStats {
   damageReduction: number;
   coinMultiplier: number;
   coreProgressionBonus: number;
+  orbFocusBonus: number;
+  gearQualityRequirement: number;
 }
 export interface CombatEnemy {
   id: string; name: string; kind: 'common' | 'elite' | 'boss';
@@ -153,20 +234,27 @@ export interface CombatArenaResult {
 export const SKILL_RANK_CAP = 5;
 export const COMBAT_INVENTORY_CAP = 30;
 
-/** Add newest loot without ever dropping an equipped item from the bag. */
+/** As the bag fills, the lowest/oldest source-floor gear is discarded first. */
 export function addCombatGearToInventory(state: CombatState, item: CombatGear, maxItems = COMBAT_INVENTORY_CAP): void {
   const cap = Math.max(2, Math.floor(Number.isFinite(maxItems) ? maxItems : COMBAT_INVENTORY_CAP));
   state.inventory = state.inventory.filter(existing => existing.id !== item.id);
   state.inventory.unshift(item);
   while (state.inventory.length > cap) {
-    let removable = -1;
-    for (let index = state.inventory.length - 1; index >= 0; index -= 1) {
-      const candidate = state.inventory[index]!;
-      const equipped = candidate.id === state.equipment.weapon || candidate.id === state.equipment.armor;
-      if (!equipped) { removable = index; break; }
+    let removable = 0;
+    for (let index = 1; index < state.inventory.length; index += 1) {
+      const current = state.inventory[index]!;
+      const worst = state.inventory[removable]!;
+      const currentFloor = Math.max(0, Math.floor(Number(current.sourceFloor) || 0));
+      const worstFloor = Math.max(0, Math.floor(Number(worst.sourceFloor) || 0));
+      if (currentFloor < worstFloor || (currentFloor === worstFloor && current.quality < worst.quality) || (currentFloor === worstFloor && current.quality === worst.quality && index > removable)) removable = index;
     }
-    if (removable < 0) break;
     state.inventory.splice(removable, 1);
+  }
+  for (const slot of ['weapon', 'armor'] as const) {
+    const activeId = state.equipment[slot];
+    if (activeId && state.inventory.some(g => g.id === activeId && g.slot === slot)) continue;
+    const candidates = state.inventory.filter(g => g.slot === slot).sort((a,b) => b.power - a.power || b.quality - a.quality);
+    state.equipment[slot] = candidates[0]?.id ?? null;
   }
 }
 export const SKILL_PULL_BASE_COST = 75;
@@ -175,12 +263,12 @@ export function skillPullCost(skillRolls: number): number {
   return Math.round(SKILL_PULL_BASE_COST * Math.pow(1.09, pulls));
 }
 export function createCombatState(): CombatState {
-  const weapon: CombatGear = { id:'starter-weapon', name:'Delver Knife', slot:'weapon', quality:35, power:8, effect:'Adds +4 damage and +10 Speed. Critical chance +4 percentage points.', trait:'keen', damageBonus:4, speedBonus:10, maxHealthBonus:0 };
-  const armor: CombatGear = { id:'starter-armor', name:'Worn Leathers', slot:'armor', quality:28, power:5, effect:'Adds +40 max HP and reduces incoming damage by 4%.', trait:'bulwark', damageBonus:0, speedBonus:0, maxHealthBonus:40 };
+  const weapon: CombatGear = { id:'starter-weapon', name:'Delver Knife', slot:'weapon', quality:35, sourceFloor:0, power:8, effect:'Adds +4 damage and +10 Speed. Critical chance +4 percentage points.', trait:'keen', damageBonus:4, speedBonus:10, maxHealthBonus:0 };
+  const armor: CombatGear = { id:'starter-armor', name:'Worn Leathers', slot:'armor', quality:28, sourceFloor:0, power:5, effect:'Adds +40 max HP and reduces incoming damage by 4%.', trait:'bulwark', damageBonus:0, speedBonus:0, maxHealthBonus:40 };
   const state: CombatState = {
     version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
-    baseDamage:54, coins:250, totalKills:0, skillRolls:0, sequence:0, lastAcceptedBeatAtMs:0,
+    baseDamage:54, coins:250, combatMarks:0, combatUpgrades:{}, totalKills:0, skillRolls:0, skillPityEpic:0, skillPityMythic:0, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
     combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
     encounterFirstStrikeUsed:false, inventory:[weapon,armor],
@@ -205,23 +293,37 @@ export function combatStatsFor(state: CombatState): CombatStats {
     else if (skill.stat==='critChance') critChance += skill.value*rank;
     else if (skill.stat==='coinBonus') coinBonus += skill.value*rank;
   }
+  for (const upgrade of COMBAT_UPGRADES) {
+    const rank = combatUpgradeRank(state, upgrade.id);
+    if (!rank) continue;
+    if (upgrade.stat === 'damagePct') damagePct += upgrade.value * rank;
+    else if (upgrade.stat === 'healthPct') healthPct += upgrade.value * rank;
+    else if (upgrade.stat === 'speedFlat') speedFlat += upgrade.value * rank;
+    else if (upgrade.stat === 'critChance') critChance += upgrade.value * rank;
+  }
+  const floor = Math.max(0, state.depth - 1);
+  const gearQualityRequirement = floorQualityRequirement(floor);
+  const weaponQuality = gearQualityEffectiveness(weapon, floor);
+  const armorQuality = gearQualityEffectiveness(armor, floor);
+  const orbRarity = Math.max(2, Math.min(1_000_000_000_000_000_000, Math.floor(Number(state.orbFocusRarity) || 2)));
+  const orbFocusBonus = Math.min(.35, Math.max(0, Math.log10(orbRarity) * .025 + combatUpgradeRank(state, 'orb-resonance') * .015));
   const coreProgressionBonus = coreProgressionCombatBonus(state.coreLevel, state.coreHighestRarity);
   const dungeonDamageBonus = state.dungeonId === 'cinder-vault' ? 0.10 : 0;
   const dungeonSpeedBonus = state.dungeonId === 'glass-labyrinth' ? 35 : 0;
   const dungeonCritBonus = state.dungeonId === 'glass-labyrinth' ? 0.05 : 0;
-  const flatDamage = 50 + (Math.max(1,state.level)-1)*4 + (weapon?.damageBonus||0);
-  const flatHealth = 1000 + (Math.max(1,state.level)-1)*30 + (armor?.maxHealthBonus||0);
-  const maxHealth = Math.max(1,Math.round(flatHealth*(1+healthPct)*(1+coreProgressionBonus)));
-  let speed = 300 + (weapon?.speedBonus||0) + speedFlat + dungeonSpeedBonus;
-  if (armor?.trait==='desperation' && state.health>0 && state.health<=maxHealth*.4) speed+=20;
-  if (weapon?.trait==='keen') critChance+=.04;
+  const flatDamage = 50 + (Math.max(1,state.level)-1)*4 + Math.round((weapon?.damageBonus||0)*weaponQuality);
+  const flatHealth = 1000 + (Math.max(1,state.level)-1)*30 + Math.round((armor?.maxHealthBonus||0)*armorQuality);
+  const maxHealth = Math.max(1,Math.round(flatHealth*(1+healthPct)*(1+coreProgressionBonus)*(1+orbFocusBonus*.65)));
+  let speed = 300 + Math.round((weapon?.speedBonus||0)*weaponQuality) + speedFlat + dungeonSpeedBonus;
+  if (armor?.trait==='desperation' && state.health>0 && state.health<=maxHealth*.4) speed+=Math.round(20*armorQuality);
+  if (weapon?.trait==='keen') critChance+=.04*weaponQuality;
   critChance += dungeonCritBonus;
   return {
-    damage:Math.max(1,Math.round(flatDamage*(1+damagePct)*(1+coreProgressionBonus)*(1+dungeonDamageBonus))),
+    damage:Math.max(1,Math.round(flatDamage*(1+damagePct)*(1+coreProgressionBonus)*(1+dungeonDamageBonus)*(1+orbFocusBonus))),
     speed:Math.min(800,speed), maxHealth,
     critChance:Math.min(.75,Math.max(0,critChance)),
-    damageReduction: armor?.trait === 'bulwark' ? 0.04 : 0,
-    coinMultiplier:1+coinBonus, coreProgressionBonus,
+    damageReduction: armor?.trait === 'bulwark' ? 0.04*armorQuality : 0,
+    coinMultiplier:1+coinBonus, coreProgressionBonus, orbFocusBonus, gearQualityRequirement,
   };
 }
 export function synchronizeCombatStats(state: CombatState): CombatStats {
@@ -235,6 +337,10 @@ export function synchronizeCombatStats(state: CombatState): CombatStats {
   state.maxEnergy=Math.max(1,Math.min(10,Math.floor(Number(state.maxEnergy)||5)));
   state.energy=Math.max(0,Math.min(state.maxEnergy,Math.floor(Number(state.energy)||0)));
   return stats;
+}
+
+export function combatMarkMultiplier(state: Pick<CombatState, 'combatUpgrades'>): number {
+  return 1 + combatUpgradeRank(state, 'scavenger') * .08;
 }
 
 export interface CombatSkillCopyResult {
