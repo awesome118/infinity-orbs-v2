@@ -8,7 +8,7 @@ Combat is a mode inside Infinity Orbs, not a separate app or a replacement for o
 - Auto-run is the default; Pause, Auto toggle, manual Next Beat, and Strike / Heavy / Guard / Mend selection are available.
 - Speed controls actions resolved per beat. Presentation timing is not a combat stat.
 - Health persists between encounters. Death restarts the push at Depth 1, while best depth, gear, skill ranks, combat level, and Delver Coins persist.
-- Enemies and rooms rotate. Each tenth depth has a Crypt Warden boss.
+- Three expedition choices: Undercrypt (balanced, Warden clears improve orb Luck), Cinder Vault (tougher enemies, +10% player damage, +40% coins, more gear drops), and Glass Labyrinth (lower enemy HP, faster/harder enemies, +35 Speed, +5 percentage points crit chance, +25% combat XP). Each dungeon stores its own best depth and has its own boss every tenth depth.
 - Gear has weapon and armor slots, randomized names / quality / stat-bearing powers, and active traits: bleed, critical affinity, first strike, damage reduction, elite healing, and low-health Speed.
 - Gear quality uses the Auto-Dungeons-style 0.00–100.00% fourth-power roll; 100% is intentionally extremely rare.
 - Skill gacha has 25 passive skills: five per rarity. Duplicate copies rank skills up to Rank 5; every rank has an explicit numeric effect. Excess copies at rank cap convert into a partial Delver Coin refund.
