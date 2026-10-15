@@ -310,13 +310,26 @@ export async function getCombatArenaOpponents(): Promise<{
   const rawProfiles = await redis.hGetAll(ARENA_PROFILE_KEY);
   const self = createArenaProfile(userId, arenaName(context.username), state, now);
   await redis.hSet(ARENA_PROFILE_KEY, { [userId]: JSON.stringify(self) });
-  const opponents = Object.entries(rawProfiles ?? {})
-    .map(([id, raw]) => parseArenaProfile(id, raw))
-    .filter((profile): profile is CombatArenaProfile =>
-      Boolean(profile && profile.userId !== userId && profile.updatedAt >= now - ARENA_PROFILE_TTL_MS),
-    )
-    .sort((a, b) => b.rating - a.rating || b.bestDepth - a.bestDepth)
-    .slice(0, 20);
+  const opponents: CombatArenaProfile[] = [];
+  const staleProfileIds: string[] = [];
+  for (const [id, raw] of Object.entries(rawProfiles ?? {})) {
+    const profile = parseArenaProfile(id, raw);
+    if (!profile || profile.updatedAt < now - ARENA_PROFILE_TTL_MS) {
+      if (id !== userId) staleProfileIds.push(id);
+      continue;
+    }
+    if (profile.userId !== userId) opponents.push(profile);
+  }
+  // Keep the profile hash bounded over time. Delete a small batch per request
+  // rather than turning one Arena open into thousands of serial Redis writes.
+  await Promise.all(staleProfileIds.slice(0, 100).map(id =>
+    redis.hDel(ARENA_PROFILE_KEY, id).catch(error => {
+      console.error('[Combat Arena] Could not prune stale profile.', error);
+      return 0;
+    }),
+  ));
+  opponents.sort((a, b) => b.rating - a.rating || b.bestDepth - a.bestDepth);
+  opponents.splice(20);
   return {
     self,
     opponents,
