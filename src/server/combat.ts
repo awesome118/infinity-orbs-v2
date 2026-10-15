@@ -1,7 +1,7 @@
 import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatDungeonId, CombatEnemy, CombatGear, CombatIntent, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatAbilityType, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunGear, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatAbilityType, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -65,9 +65,19 @@ function normalizeState(raw:string|null|undefined):CombatState {
     inventoryByDungeon?:Partial<Record<CombatDungeonId,unknown>>;
     equipmentByDungeon?:Partial<Record<CombatDungeonId,{weapon?:unknown;armor?:unknown}>>;
   };
-  const rawRunInventory=Array.isArray(p.inventory)?p.inventory:
-    Array.isArray(persisted.inventoryByDungeon?.[s.dungeonId])?persisted.inventoryByDungeon[s.dungeonId] as unknown[]:defaults.inventory;
-  s.inventory=rawRunInventory.map(g=>normalizeGear(g,Math.max(0,s.depth-1))).filter((g):g is CombatGear=>Boolean(g));
+  // Current inventory is authoritative when present; merge in old dungeon bags so previously collected gear is retained.
+  const rawInventory:unknown[]=[];
+  if(Array.isArray(p.inventory))rawInventory.push(...p.inventory);
+  for(const dungeon of ['undercrypt','cinder-vault','glass-labyrinth'] as const){
+    const legacyBag=persisted.inventoryByDungeon?.[dungeon];
+    if(Array.isArray(legacyBag))rawInventory.push(...legacyBag);
+  }
+  if(rawInventory.length===0)rawInventory.push(...defaults.inventory);
+  const knownGearIds=new Set<string>();
+  s.inventory=rawInventory.map(g=>normalizeGear(g,Math.max(0,s.depth-1))).filter((g):g is CombatGear=>{
+    if(!g||knownGearIds.has(g.id))return false;
+    knownGearIds.add(g.id);return true;
+  });
   while(s.inventory.length>INVENTORY_CAP){
     let removable=0;
     for(let index=1;index<s.inventory.length;index++){
@@ -86,7 +96,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
     const equipped=s.inventory.find(g=>g.id===s.equipment[slot]&&g.slot===slot);
     s.equipment[slot]=equipped?.id??s.inventory.find(g=>g.slot===slot)?.id??null;
   }
-  // Drop legacy dungeon-keyed storage after extracting only the previously active run's bag.
+  // Discard only obsolete storage maps after merging their items into the persistent shared inventory.
   const legacyInventoryMaps=s as CombatState&{inventoryByDungeon?:unknown;equipmentByDungeon?:unknown};
   delete legacyInventoryMaps.inventoryByDungeon;
   delete legacyInventoryMaps.equipmentByDungeon;
@@ -253,7 +263,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
       if(s.guardBeats>0){incoming=Math.round(incoming*.45);guardWasUsed=true;}
       incoming=Math.max(1,Math.round(incoming*(1-stats.damageReduction)));s.health=Math.max(0,s.health-incoming);
       actions.push({actor:'enemy',kind:'attack',damage:incoming,text:strike+incoming+' damage.'});
-      if(s.health<=0){died=true;actions.push({actor:'enemy',kind:'death',text:'Run '+s.runId+' ended at Depth '+s.depth+'. Permanent progress retained.'});s.runId+=1;s.depth=1;resetCombatRunGear(s);s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,3);s.guardBeats=0;s.encounterFirstStrikeUsed=false;s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;synchronizeCombatStats(s);s.health=s.maxHealth;actions.push({actor:'player',kind:'advance',text:'A new descent begins automatically at Depth 1.'});break;}
+      if(s.health<=0){died=true;actions.push({actor:'enemy',kind:'death',text:'Run '+s.runId+' ended at Depth '+s.depth+'. Permanent progress retained.'});s.runId+=1;s.depth=1;s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,3);s.guardBeats=0;s.encounterFirstStrikeUsed=false;s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;synchronizeCombatStats(s);s.health=s.maxHealth;actions.push({actor:'player',kind:'advance',text:'A new descent begins automatically at Depth 1.'});break;}
     }
     if(guardWasUsed)s.guardBeats=0;
     synchronizeCombatStats(s);
@@ -646,7 +656,6 @@ export async function setCombatDungeon(dungeonValue: unknown): Promise<CombatSna
     state.depth = 1;
     state.bestDepth = state.dungeonBestDepths[nextDungeon];
     state.runId += 1;
-    resetCombatRunGear(state);
     state.combatBeats = 0;
     state.playerActionsResolved = 0;
     state.enemyActionsResolved = 0;
