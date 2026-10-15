@@ -81,6 +81,8 @@ export interface CombatState {
   totalKills: number;
   skillRolls: number;
   sequence: number;
+  /** Timestamp of the last accepted server combat beat; used to enforce cadence. */
+  lastAcceptedBeatAtMs: number;
   combatBeats: number;
   playerActionsResolved: number;
   enemyActionsResolved: number;
@@ -178,7 +180,7 @@ export function createCombatState(): CombatState {
   const state: CombatState = {
     version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
-    baseDamage:54, coins:250, totalKills:0, skillRolls:0, sequence:0,
+    baseDamage:54, coins:250, totalKills:0, skillRolls:0, sequence:0, lastAcceptedBeatAtMs:0,
     combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
     encounterFirstStrikeUsed:false, inventory:[weapon,armor],
@@ -329,8 +331,13 @@ export function calculateCombatArenaRatingUpdate(
   const expectedPlayer = 1 / (1 + Math.pow(10, (opponentBefore - playerBefore) / 400));
   const score = playerWon ? 1 : 0;
   const rawChange = Math.round(24 * (score - expectedPlayer));
-  const playerRating = Math.max(100, Math.min(10_000, playerBefore + rawChange));
-  const opponentRating = Math.max(100, Math.min(10_000, opponentBefore - rawChange));
+  // Transfer only rating points the winner can receive and the loser can give.
+  // Independent clamps break zero-sum fairness at the 100/10,000 boundaries.
+  const minimumTransfer = Math.max(100 - playerBefore, opponentBefore - 10_000);
+  const maximumTransfer = Math.min(10_000 - playerBefore, opponentBefore - 100);
+  const transfer = Math.max(minimumTransfer, Math.min(maximumTransfer, rawChange));
+  const playerRating = playerBefore + transfer;
+  const opponentRating = opponentBefore - transfer;
   return {
     playerRating,
     opponentRating,
