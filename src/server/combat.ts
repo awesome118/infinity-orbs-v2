@@ -66,7 +66,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   const levels:Partial<Record<CombatSkillId,number>>={};
   for(const skill of COMBAT_SKILLS){const rank=finiteInt(s.skillLevels?.[skill.id],0,0,SKILL_RANK_CAP);if(rank)levels[skill.id]=rank;}
   s.skillLevels=levels;synchronizeCombatStats(s);
-  const enemy=getEnemyForDepth(s.depth);s.enemyHp=finiteInt(s.enemyHp,enemy.maxHp,1,enemy.maxHp);
+  const enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);s.enemyHp=finiteInt(s.enemyHp,enemy.maxHp,1,enemy.maxHp);
   return s;
 }
 function createGear(depth:number):CombatGear {
@@ -160,7 +160,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand):Pr
       if(s.guardBeats>0)incoming=Math.round(incoming*.45);
       incoming=Math.max(1,Math.round(incoming*(1-stats.damageReduction)));s.health=Math.max(0,s.health-incoming);
       actions.push({actor:'enemy',kind:'attack',damage:incoming,text:strike+incoming+' damage.'});
-      if(s.health<=0){died=true;actions.push({actor:'enemy',kind:'death',text:'Run '+s.runId+' ended at Depth '+s.depth+'. Permanent progress retained.'});s.runId+=1;s.depth=1;s.health=s.maxHealth;s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,3);s.guardBeats=0;s.encounterFirstStrikeUsed=false;s.enemyHp=getEnemyForDepth(1).maxHp;actions.push({actor:'player',kind:'advance',text:'A new descent begins automatically at Depth 1.'});break;}
+      if(s.health<=0){died=true;actions.push({actor:'enemy',kind:'death',text:'Run '+s.runId+' ended at Depth '+s.depth+'. Permanent progress retained.'});s.runId+=1;s.depth=1;s.health=s.maxHealth;s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,3);s.guardBeats=0;s.encounterFirstStrikeUsed=false;s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;actions.push({actor:'player',kind:'advance',text:'A new descent begins automatically at Depth 1.'});break;}
     }
     if(s.guardBeats>0&&!defeated)s.guardBeats-=1;synchronizeCombatStats(s);
     return {...snapshot(s),actions,defeated,died,...(item?{item}:{})};
