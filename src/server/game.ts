@@ -4,6 +4,7 @@ import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
+import { undercryptOrbLuckMultiplier } from '../shared/combat.js';
 import {
   createInitialState,
   type PlayerState,
@@ -3287,6 +3288,19 @@ function effectiveRollCritChance(
   );
 }
 
+function undercryptLuckMultiplierFromRawSave(raw: string | null): number {
+  if (!raw) return 1;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return 1;
+    return undercryptOrbLuckMultiplier((parsed as Record<string, unknown>).bestDepth);
+  } catch {
+    // Combat progression is optional: corrupt or old save data must never block
+    // the primary orb-rolling loop or grant a fabricated bonus.
+    return 1;
+  }
+}
+
 export async function applyRolls(
   s: PlayerState,
   activationCount = 1,
@@ -3359,7 +3373,7 @@ export async function applyRolls(
 
   // These reads are independent. Keep them parallel so a roll does not spend
   // several sequential Redis round trips before it can even start rolling.
-  const [freshGlobalBoosters, worldEvent, fakeCcuBonus] = await Promise.all([
+  const [freshGlobalBoosters, worldEvent, fakeCcuBonus, combatSaveRaw] = await Promise.all([
     getGlobalBoosters(),
     getCommunityEvent().catch(error => {
       // The shared World Event is a bonus/progress feature, not a prerequisite
@@ -3370,6 +3384,10 @@ export async function applyRolls(
       return null;
     }),
     getFakeCcuBonus(),
+    redis.get('infinity-orbs:combat:' + spyUserId).catch(error => {
+      console.error('[Combat progression] Read failed; rolling without the Undercrypt Luck bonus.', error);
+      return null;
+    }),
   ]);
   s.globalBoosters = freshGlobalBoosters;
   const globalBoosters = s.globalBoosters;
@@ -3379,8 +3397,11 @@ export async function applyRolls(
   // The underlying CCU metric and historical peaks always remain based on real players.
   const luckCcu = Math.max(1, Math.floor((s.onlinePlayers ?? 1) + fakeCcuBonus));
   const luckState = luckCcu === (s.onlinePlayers ?? 1) ? s : { ...s, onlinePlayers: luckCcu };
-  // Community Luck is another additive source, kept transient rather than persisted.
-  const baseLuck = luckMultiplier(luckState) + Math.max(0, communityLuck - 1);
+  // Community Luck is additive; completed Undercrypt Wardens multiply the
+  // resulting roll Luck as a permanent progression reward. This reads the
+  // separate combat save and never writes combat state from the roll path.
+  const undercryptLuck = undercryptLuckMultiplierFromRawSave(combatSaveRaw);
+  const baseLuck = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1)) * undercryptLuck;
 
   // Apex Fortune Mastery: chance on multi-roll to double the luck of that activation
   const apexChance = Math.min(0.45, (s.masterySkills?.apexFortune ?? 0) * 0.03);
