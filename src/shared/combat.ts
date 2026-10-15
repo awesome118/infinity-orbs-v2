@@ -250,9 +250,11 @@ export interface CombatState {
   guardBeats: number;
   enemyHp: number;
   encounterFirstStrikeUsed: boolean;
-  /** Persistent player-owned gear. Inventory and loadout carry across runs and dungeons. */
+  /** Persistent player-owned gear; survives deaths and dungeon switches. */
   inventory: CombatGear[];
   equipment: { weapon: string | null; armor: string | null };
+  /** Gear picked up during the current run; only these items count toward the run carrying cap. */
+  runInventoryIds: string[];
   autoScrapUnlocked: boolean;
   autoScrapSettings: CombatAutoScrapSettings;
   skillLevels: CombatSkillLevels;
@@ -324,21 +326,27 @@ function createCombatStarterGear(): { inventory: CombatGear[]; equipment: Combat
   return { inventory:[weapon,armor], equipment:{weapon:weapon.id,armor:armor.id} };
 }
 
-/** As the bag fills, the lowest/oldest source-floor gear is discarded first. */
+/** Each run can carry up to 30 newly acquired pieces; the owned inventory persists between runs. */
 export function addCombatGearToInventory(state: CombatState, item: CombatGear, maxItems = COMBAT_INVENTORY_CAP): void {
-  const cap = Math.max(2, Math.floor(Number.isFinite(maxItems) ? maxItems : COMBAT_INVENTORY_CAP));
+  const cap = Math.max(1, Math.floor(Number.isFinite(maxItems) ? maxItems : COMBAT_INVENTORY_CAP));
   state.inventory = state.inventory.filter(existing => existing.id !== item.id);
   state.inventory.unshift(item);
-  while (state.inventory.length > cap) {
+  const ownedIds = new Set(state.inventory.map(existing => existing.id));
+  state.runInventoryIds = [...new Set((Array.isArray(state.runInventoryIds) ? state.runInventoryIds : []).filter(id => ownedIds.has(id) && id !== item.id))];
+  state.runInventoryIds.unshift(item.id);
+  while (state.runInventoryIds.length > cap) {
     let removable = 0;
-    for (let index = 1; index < state.inventory.length; index += 1) {
-      const current = state.inventory[index]!;
-      const worst = state.inventory[removable]!;
+    for (let index = 1; index < state.runInventoryIds.length; index += 1) {
+      const current = state.inventory.find(existing => existing.id === state.runInventoryIds[index]);
+      const worst = state.inventory.find(existing => existing.id === state.runInventoryIds[removable]);
+      if (!current) { removable = index; continue; }
+      if (!worst) { removable = index; continue; }
       const currentFloor = Math.max(0, Math.floor(Number(current.sourceFloor) || 0));
       const worstFloor = Math.max(0, Math.floor(Number(worst.sourceFloor) || 0));
       if (currentFloor < worstFloor || (currentFloor === worstFloor && current.quality < worst.quality) || (currentFloor === worstFloor && current.quality === worst.quality && index > removable)) removable = index;
     }
-    state.inventory.splice(removable, 1);
+    const [removedId] = state.runInventoryIds.splice(removable, 1);
+    state.inventory = state.inventory.filter(existing => existing.id !== removedId);
   }
   for (const slot of ['weapon', 'armor'] as const) {
     const activeId = state.equipment[slot];
@@ -346,6 +354,11 @@ export function addCombatGearToInventory(state: CombatState, item: CombatGear, m
     const candidates = state.inventory.filter(g => g.slot === slot).sort((a,b) => b.power - a.power || b.quality - a.quality);
     state.equipment[slot] = candidates[0]?.id ?? null;
   }
+}
+
+/** A new run resets only the haul counter; owned gear and the equipped loadout are permanent. */
+export function resetCombatRunCarry(state: Pick<CombatState, 'runInventoryIds'>): void {
+  state.runInventoryIds = [];
 }
 export function combatScrapValue(item: Pick<CombatGear,'power'|'quality'|'sourceFloor'>): number {
   const power = Number.isFinite(Number(item.power)) ? Math.max(1, Math.min(1_000_000, Number(item.power))) : 1;
@@ -383,7 +396,7 @@ export function createCombatState(): CombatState {
     combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
     encounterFirstStrikeUsed:false, inventory:starter.inventory,
-    equipment:starter.equipment,
+    equipment:starter.equipment, runInventoryIds:[],
     autoScrapUnlocked:false,autoScrapSettings:{...DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS},skillLevels:{},
     arenaRating:1000, arenaWins:0, arenaLosses:0, arenaLastChallengeAt:0,
     coreLevel:1, coreHighestRarity:2, autoTactic:'balanced',
