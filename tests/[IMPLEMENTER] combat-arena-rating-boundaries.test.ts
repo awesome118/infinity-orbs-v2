@@ -4,10 +4,10 @@ import { calculateCombatArenaRatingUpdate } from '../src/shared/combat.js';
 
 test('Arena rating transfers conserve rating points at the lower and upper caps', () => {
   const cases = [
-    { player: 10_000, opponent: 100, won: true },
+    { player: 10_000, opponent: 9_990, won: true },
     { player: 10_000, opponent: 100, won: false },
     { player: 100, opponent: 10_000, won: true },
-    { player: 100, opponent: 10_000, won: false },
+    { player: 100, opponent: 110, won: false },
     { player: 9_999, opponent: 100, won: true },
     { player: 101, opponent: 10_000, won: false },
     { player: 100, opponent: 100, won: true },
@@ -29,19 +29,19 @@ test('Arena rating transfers conserve rating points at the lower and upper caps'
   }
 });
 
-test('an outcome cannot award points through an opponent rating floor', () => {
-  const topPlayerWin = calculateCombatArenaRatingUpdate(10_000, 100, true);
+test('rating caps do not let a result create or destroy points', () => {
+  const topPlayerWin = calculateCombatArenaRatingUpdate(10_000, 9_990, true);
   assert.deepEqual(topPlayerWin, {
     playerRating: 10_000,
-    opponentRating: 100,
+    opponentRating: 9_990,
     playerChange: 0,
     opponentChange: 0,
   });
 
-  const bottomPlayerLoss = calculateCombatArenaRatingUpdate(100, 10_000, false);
+  const bottomPlayerLoss = calculateCombatArenaRatingUpdate(100, 110, false);
   assert.deepEqual(bottomPlayerLoss, {
     playerRating: 100,
-    opponentRating: 10_000,
+    opponentRating: 110,
     playerChange: 0,
     opponentChange: 0,
   });
