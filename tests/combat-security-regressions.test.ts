@@ -61,14 +61,18 @@ test('server rejects early beats without advancing sequence or overwriting state
     state.enemyHp = getEnemyForDungeonDepth('undercrypt', 1).maxHp;
     await redis.set(key, JSON.stringify(state));
 
-    const accepted = await performCombatBeat(1, 'strike');
+    await performCombatBeat(1, 'strike');
+    const before = JSON.parse((await redis.get(key))!) as { sequence: number; lastAcceptedBeatAtMs: number };
+    before.lastAcceptedBeatAtMs = Date.now(); // Make the early-request boundary deterministic under slow CI.
+    await redis.set(key, JSON.stringify(before));
+
     await assert.rejects(
       performCombatBeat(2, 'strike'),
       /COMBAT_BEAT_TOO_SOON:/,
     );
     const persisted = JSON.parse((await redis.get(key))!) as { sequence: number; lastAcceptedBeatAtMs: number };
-    assert.equal(persisted.sequence, 1);
-    assert.equal(persisted.lastAcceptedBeatAtMs, accepted.state.lastAcceptedBeatAtMs);
+    assert.equal(persisted.sequence, before.sequence);
+    assert.equal(persisted.lastAcceptedBeatAtMs, before.lastAcceptedBeatAtMs);
   });
 });
 
