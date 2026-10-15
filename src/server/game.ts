@@ -3384,8 +3384,8 @@ export async function applyRolls(
   let combatBestDepth = 1;
   if (typeof combatStateRaw === 'string') {
     try {
-      const parsed = JSON.parse(combatStateRaw) as { bestDepth?: unknown };
-      combatBestDepth = Number(parsed?.bestDepth) || 1;
+      const parsed = JSON.parse(combatStateRaw) as { bestDepth?: unknown; dungeonId?: unknown; dungeonBestDepths?: { undercrypt?: unknown } };
+      combatBestDepth = Number(parsed?.dungeonBestDepths?.undercrypt) || (parsed?.dungeonId === 'undercrypt' ? Number(parsed?.bestDepth) || 1 : 1);
     } catch {
       // Ignore invalid optional combat state and preserve ordinary orb luck.
     }
