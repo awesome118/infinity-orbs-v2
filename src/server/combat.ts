@@ -79,7 +79,11 @@ async function mutate<T>(fn:(s:CombatState)=>T):Promise<T> {
 }
 export async function getCombatSnapshot():Promise<CombatSnapshot>{return snapshot(normalizeState(await redis.get(combatKey())));}
 function grantXp(s:CombatState,amount:number,actions:CombatAction[]):void {
-  s.xp+=amount;
+  // Keep persisted XP within the same safe-integer boundary used by state
+  // normalization. Once Level 60 is reached, further XP cannot unlock levels,
+  // so saturating the counter is preferable to storing imprecise numbers.
+  const xpGain=finiteInt(amount,0,0,Number.MAX_SAFE_INTEGER);
+  s.xp=xpGain>Number.MAX_SAFE_INTEGER-s.xp?Number.MAX_SAFE_INTEGER:s.xp+xpGain;
   while(s.xp>=s.xpToNext&&s.level<60){s.xp-=s.xpToNext;s.level+=1;s.xpToNext=Math.round(s.xpToNext*1.19);synchronizeCombatStats(s);s.health=Math.min(s.maxHealth,s.health+Math.round(s.maxHealth*.08));actions.push({actor:'player',kind:'level',text:'Delver reached Level '+s.level+'.'});}
 }
 export async function performCombatBeat(sequence:number,intent:CombatIntent):Promise<CombatSnapshot&{actions:CombatAction[];defeated:boolean;died:boolean;item?:CombatGear}> {
