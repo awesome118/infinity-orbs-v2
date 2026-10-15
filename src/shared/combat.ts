@@ -343,6 +343,8 @@ export function addCombatGearToInventory(state: CombatState, item: CombatGear, m
     const candidates = state.inventory.filter(g => g.slot === slot).sort((a,b) => b.power - a.power || b.quality - a.quality);
     state.equipment[slot] = candidates[0]?.id ?? null;
   }
+  state.inventoryByDungeon[state.dungeonId] = state.inventory.map(existing => ({ ...existing }));
+  state.equipmentByDungeon[state.dungeonId] = { ...state.equipment };
 }
 export function combatScrapValue(item: Pick<CombatGear,'power'|'quality'|'sourceFloor'>): number {
   const power = Number.isFinite(Number(item.power)) ? Math.max(1, Math.min(1_000_000, Number(item.power))) : 1;
