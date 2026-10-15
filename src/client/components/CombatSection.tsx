@@ -69,6 +69,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     finally{setArenaLoading(false);}
   },[]);
   useEffect(()=>{if(page==='arena')void loadArena();},[page,loadArena]);
+  useEffect(()=>{if(arenaCooldownMs<=0)return;const timer=window.setInterval(()=>setArenaCooldownMs(ms=>Math.max(0,ms-1000)),1000);return()=>window.clearInterval(timer);},[arenaCooldownMs>0]);
   const challengeArena=async(opponentId:string)=>{
     setMutating(true);setArenaResult(null);
     try{
@@ -79,7 +80,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     }catch(e){
       const message=e instanceof Error?e.message:'Arena challenge failed.';
       setError(message);
-      if(message.includes('not ready yet'))setArenaCooldownMs(90000);
+      if(message.includes('not ready yet'))await loadArena();
     }finally{setMutating(false);}
   };
   const beat=useCallback(async()=>{

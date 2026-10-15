@@ -295,3 +295,32 @@ export function undercryptWardensDefeated(bestDepthValue: unknown): number {
 export function undercryptOrbLuckMultiplier(bestDepthValue: unknown): number {
   return 1 + undercryptWardensDefeated(bestDepthValue) * UNDERCRYPT_ORB_LUCK_PER_WARDEN;
 }
+
+
+export interface CombatArenaRatingUpdate {
+  playerRating: number;
+  opponentRating: number;
+  playerChange: number;
+  opponentChange: number;
+}
+
+/** Standard K=24 Elo update, bounded to keep stored ratings valid. */
+export function calculateCombatArenaRatingUpdate(
+  playerRatingValue: number,
+  opponentRatingValue: number,
+  playerWon: boolean,
+): CombatArenaRatingUpdate {
+  const playerBefore = Number.isFinite(playerRatingValue) ? Math.max(100, Math.min(10_000, Math.floor(playerRatingValue))) : 1000;
+  const opponentBefore = Number.isFinite(opponentRatingValue) ? Math.max(100, Math.min(10_000, Math.floor(opponentRatingValue))) : 1000;
+  const expectedPlayer = 1 / (1 + Math.pow(10, (opponentBefore - playerBefore) / 400));
+  const score = playerWon ? 1 : 0;
+  const rawChange = Math.round(24 * (score - expectedPlayer));
+  const playerRating = Math.max(100, Math.min(10_000, playerBefore + rawChange));
+  const opponentRating = Math.max(100, Math.min(10_000, opponentBefore - rawChange));
+  return {
+    playerRating,
+    opponentRating,
+    playerChange: playerRating - playerBefore,
+    opponentChange: opponentRating - opponentBefore,
+  };
+}

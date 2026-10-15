@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addCombatGearToInventory, applyCombatSkillCopy, COMBAT_SKILLS, combatStatsFor, createCombatState, getEnemyForDepth, skillPullCost, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../src/shared/combat.js';
+import { addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, COMBAT_SKILLS, combatStatsFor, createCombatState, getEnemyForDepth, skillPullCost, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../src/shared/combat.js';
 
 test('starter combat build carries the Auto-Dungeons baseline', () => {
   const state=createCombatState();
@@ -165,4 +165,15 @@ test('Crypt Warden clears grant a permanent effective Luck multiplier with a har
   assert.equal(undercryptOrbLuckMultiplier(251), 1.25);
   assert.equal(undercryptOrbLuckMultiplier(50000), 1.25);
   assert.equal(undercryptOrbLuckMultiplier(Number.NaN), 1);
+});
+
+
+test('Arena rating uses bounded Elo-style updates', () => {
+  const win = calculateCombatArenaRatingUpdate(1000, 1000, true);
+  assert.deepEqual(win, { playerRating: 1012, opponentRating: 988, playerChange: 12, opponentChange: -12 });
+  const loss = calculateCombatArenaRatingUpdate(1000, 1000, false);
+  assert.deepEqual(loss, { playerRating: 988, opponentRating: 1012, playerChange: -12, opponentChange: 12 });
+  const bounded = calculateCombatArenaRatingUpdate(10000, 100, true);
+  assert.equal(bounded.playerRating, 10000);
+  assert.equal(bounded.opponentRating, 100);
 });
