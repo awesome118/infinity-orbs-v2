@@ -78,9 +78,14 @@ function normalizeState(raw:string|null|undefined):CombatState {
     if(!g||knownGearIds.has(g.id))return false;
     knownGearIds.add(g.id);return true;
   });
-  // Legacy owned gear is preserved even if it came from several old dungeon-specific bags.
+  // Restore only this run's tracked pickups, validating each ID against the permanent inventory.
   const knownRunIds=new Set<string>();
-  s.runInventoryIds=(Array.isArray(p.runInventoryIds)?p.runInventoryIds:[]).filter((id):id is string=>typeof id==='string'&&s.inventory.some(g=>g.id===id)&&!knownRunIds.has(id)&&Boolean(knownRunIds.add(id))).slice(0,INVENTORY_CAP);
+  s.runInventoryIds=[];
+  for(const value of Array.isArray(p.runInventoryIds)?p.runInventoryIds:[]){
+    if(typeof value!=='string'||knownRunIds.has(value)||!s.inventory.some(g=>g.id===value))continue;
+    knownRunIds.add(value);
+    if(s.runInventoryIds.length<INVENTORY_CAP)s.runInventoryIds.push(value);
+  }
   const savedEquipment=(p.equipment&&typeof p.equipment==='object'&&!Array.isArray(p.equipment)?p.equipment:persisted.equipmentByDungeon?.[s.dungeonId]) as {weapon?:unknown;armor?:unknown}|undefined;
   s.equipment={
     weapon:typeof savedEquipment?.weapon==='string'?savedEquipment.weapon:defaults.equipment.weapon,
@@ -271,7 +276,7 @@ export async function scrapCombatItem(itemIdValue:unknown):Promise<CombatSnapsho
   if(typeof itemIdValue!=='string'||!itemIdValue.trim()||itemIdValue.length>160)throw new Error('A valid gear item is required.');
   return mutate(state=>{
     const item=state.inventory.find(gear=>gear.id===itemIdValue);
-    if(!item)throw new Error('Gear item is not in this dungeon bag.');
+    if(!item)throw new Error('Gear item is not in your inventory.');
     if(state.equipment.weapon===item.id||state.equipment.armor===item.id)throw new Error('Unequip this item before scrapping it.');
     state.inventory=state.inventory.filter(gear=>gear.id!==item.id);
     state.runInventoryIds=state.runInventoryIds.filter(id=>id!==item.id);
