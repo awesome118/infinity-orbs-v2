@@ -245,3 +245,21 @@ export function getEnemyForDepth(depthValue: number): CombatEnemy {
   const damage=Math.min(1e9,Math.max(1,Math.round((20+depth*1.55)*base.damage*(boss?2.2*1.15:1))));
   return {id:boss?'crypt-warden':base.id,name:boss?'Crypt Warden':base.name,kind:boss?'boss':base.kind,hp:maxHp,maxHp,damage,speed:Math.min(450,base.speed+Math.floor(depth/15)*25+(boss?55:0)),room:boss?'Warden Throne':base.room,emoji:boss?'👹':base.emoji,boss};
 }
+
+
+/** Each defeated Crypt Warden grants +1% effective Luck for main-game orb rolls, capped at +25%. */
+export const UNDERCRYPT_ORB_LUCK_PER_WARDEN = 0.01;
+export const UNDERCRYPT_ORB_LUCK_BONUS_CAP = 0.25;
+
+export function undercryptWardensDefeated(bestDepthValue: unknown): number {
+  const rawDepth = Number(bestDepthValue);
+  const bestDepth = Number.isFinite(rawDepth) ? Math.max(1, Math.min(50_000, Math.floor(rawDepth))) : 1;
+  return Math.min(
+    Math.floor(UNDERCRYPT_ORB_LUCK_BONUS_CAP / UNDERCRYPT_ORB_LUCK_PER_WARDEN),
+    Math.floor((bestDepth - 1) / 10),
+  );
+}
+
+export function undercryptOrbLuckMultiplier(bestDepthValue: unknown): number {
+  return 1 + undercryptWardensDefeated(bestDepthValue) * UNDERCRYPT_ORB_LUCK_PER_WARDEN;
+}

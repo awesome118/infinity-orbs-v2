@@ -4,6 +4,7 @@ import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
+import { undercryptOrbLuckMultiplier } from '../shared/combat.js';
 import {
   createInitialState,
   type PlayerState,
@@ -3359,7 +3360,7 @@ export async function applyRolls(
 
   // These reads are independent. Keep them parallel so a roll does not spend
   // several sequential Redis round trips before it can even start rolling.
-  const [freshGlobalBoosters, worldEvent, fakeCcuBonus] = await Promise.all([
+  const [freshGlobalBoosters, worldEvent, fakeCcuBonus, combatStateRaw] = await Promise.all([
     getGlobalBoosters(),
     getCommunityEvent().catch(error => {
       // The shared World Event is a bonus/progress feature, not a prerequisite
@@ -3370,17 +3371,35 @@ export async function applyRolls(
       return null;
     }),
     getFakeCcuBonus(),
+    redis.get('infinity-orbs:combat:' + spyUserId).catch(error => {
+      // Combat progression is an optional cross-mode bonus. A transient failure
+      // to read it must never prevent a normal orb roll.
+      console.error('[Undercrypt Resonance] Read failed; rolling without the bonus.', error);
+      return null;
+    }),
   ]);
   s.globalBoosters = freshGlobalBoosters;
   const globalBoosters = s.globalBoosters;
   const communityLuck = worldEvent?.buffMultiplier ?? 1;
+  let combatBestDepth = 1;
+  if (typeof combatStateRaw === 'string') {
+    try {
+      const parsed = JSON.parse(combatStateRaw) as { bestDepth?: unknown };
+      combatBestDepth = Number(parsed?.bestDepth) || 1;
+    } catch {
+      // Ignore invalid optional combat state and preserve ordinary orb luck.
+    }
+  }
+  const undercryptLuck = undercryptOrbLuckMultiplier(combatBestDepth);
 
   // Fake CCU is an admin testing offset applied only to this player's luck calculation.
   // The underlying CCU metric and historical peaks always remain based on real players.
   const luckCcu = Math.max(1, Math.floor((s.onlinePlayers ?? 1) + fakeCcuBonus));
   const luckState = luckCcu === (s.onlinePlayers ?? 1) ? s : { ...s, onlinePlayers: luckCcu };
   // Community Luck is another additive source, kept transient rather than persisted.
-  const baseLuck = luckMultiplier(luckState) + Math.max(0, communityLuck - 1);
+  // Cleared Crypt Wardens permanently improve main-game orb Luck without
+  // touching the core player save: 1% per boss, capped at a 25% multiplier.
+  const baseLuck = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1)) * undercryptLuck;
 
   // Apex Fortune Mastery: chance on multi-roll to double the luck of that activation
   const apexChance = Math.min(0.45, (s.masterySkills?.apexFortune ?? 0) * 0.03);

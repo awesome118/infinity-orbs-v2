@@ -1879,3 +1879,9 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-combat-gear-card.io-rarity-rare,.io-combat-skill-card.io-rarity-rare,.io-combat-skill-result.io-rarity-rare{border-color:#5882b6}
 .io-combat-gear-card.io-rarity-epic,.io-combat-skill-card.io-rarity-epic,.io-combat-skill-result.io-rarity-epic{border-color:#9d70c7}
 .io-combat-gear-card.io-rarity-mythic,.io-combat-skill-card.io-rarity-mythic,.io-combat-skill-result.io-rarity-mythic{border-color:#dc9d48}
+
+
+/* Undercrypt-to-orb progression reward */
+.io-combat-dungeon-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
+.io-combat-resonance-note{margin:-7px 0 13px;color:#b4d887;font-size:11px;line-height:1.5}
+@media(max-width:680px){.io-combat-dungeon-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}

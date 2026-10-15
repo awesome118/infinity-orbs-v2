@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addCombatGearToInventory, applyCombatSkillCopy, COMBAT_SKILLS, combatStatsFor, createCombatState, getEnemyForDepth, skillPullCost } from '../src/shared/combat.js';
+import { addCombatGearToInventory, applyCombatSkillCopy, COMBAT_SKILLS, combatStatsFor, createCombatState, getEnemyForDepth, skillPullCost, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../src/shared/combat.js';
 
 test('starter combat build carries the Auto-Dungeons baseline', () => {
   const state=createCombatState();
@@ -147,4 +147,19 @@ test('inventory pruning preserves equipped gear while keeping newest loot', () =
   assert.ok(state.inventory.some(item => item.id === equippedWeaponId), 'equipped weapon must remain in inventory');
   assert.ok(state.inventory.some(item => item.id === equippedArmorId), 'equipped armor must remain in inventory');
   assert.ok(!state.inventory.some(item => item.id === 'old-loot-27'), 'oldest unequipped item should be pruned first');
+});
+
+
+test('Crypt Warden clears grant a permanent effective Luck multiplier with a hard cap', () => {
+  assert.equal(undercryptWardensDefeated(1), 0);
+  assert.equal(undercryptWardensDefeated(10), 0, 'reaching the boss depth does not count as a clear');
+  assert.equal(undercryptWardensDefeated(11), 1, 'clearing the Depth 10 boss unlocks one stack');
+  assert.equal(undercryptWardensDefeated(101), 10);
+  assert.equal(undercryptWardensDefeated(251), 25);
+  assert.equal(undercryptWardensDefeated(50000), 25);
+  assert.equal(undercryptOrbLuckMultiplier(1), 1);
+  assert.equal(undercryptOrbLuckMultiplier(11), 1.01);
+  assert.equal(undercryptOrbLuckMultiplier(251), 1.25);
+  assert.equal(undercryptOrbLuckMultiplier(50000), 1.25);
+  assert.equal(undercryptOrbLuckMultiplier(Number.NaN), 1);
 });
