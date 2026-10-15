@@ -4,7 +4,7 @@ import {
   COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, COMBAT_UPGRADES, addCombatGearToInventory,
   combatForgeCost, combatScrapValue, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost,
   createCombatState, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, floorQualityRequirement, gearQualityEffectiveness,
-  normalizeCombatAutoScrapSettings, resolveCombatSkillRarity,
+  normalizeCombatAutoScrapSettings, resetCombatRunGear, resolveCombatSkillRarity,
   skillGachaRankRequirement, skillRarityUnlocked, type CombatGear,
 } from '../src/shared/combat.js';
 
@@ -23,16 +23,22 @@ test('gear effectiveness follows the current floor target',()=>{
   assert.equal(gearQualityEffectiveness(gear('excellent',50,'weapon',80),50),1.25);
   assert.equal(gearQualityEffectiveness(gear('starter',0,'weapon',0),0),1);
 });
-test('dungeon-specific inventories do not share carried items or equipment slots',()=>{
+test('each run has one isolated inventory and resets gear when a new run begins',()=>{
   const state=createCombatState();
-  const cinderBefore=state.inventoryByDungeon['cinder-vault'].map(item=>item.id);
-  addCombatGearToInventory(state,gear('undercrypt-only',20,'weapon',75));
-  assert.ok(state.inventoryByDungeon.undercrypt.some(item=>item.id==='undercrypt-only'));
-  assert.deepEqual(state.inventoryByDungeon['cinder-vault'].map(item=>item.id),cinderBefore);
-  assert.notEqual(state.equipmentByDungeon.undercrypt.weapon,state.equipmentByDungeon['cinder-vault'].weapon);
+  const firstRunWeapon=state.equipment.weapon;
+  addCombatGearToInventory(state,gear('run-one-only',20,'weapon',75));
+  assert.ok(state.inventory.some(item=>item.id==='run-one-only'));
+  assert.ok(state.inventory.some(item=>item.id===firstRunWeapon));
+
+  state.runId+=1;
+  resetCombatRunGear(state);
+  assert.equal(state.inventory.some(item=>item.id==='run-one-only'),false);
+  assert.notEqual(state.equipment.weapon,firstRunWeapon);
+  assert.ok(state.inventory.some(item=>item.id===state.equipment.weapon&&item.slot==='weapon'));
+  assert.ok(state.inventory.some(item=>item.id===state.equipment.armor&&item.slot==='armor'));
 });
 
-test('inventory cap is maintained independently for each dungeon and prunes old floors',()=>{
+test('inventory cap is enforced for the active run and prunes old floors',()=>{
   const state=createCombatState();
   state.inventory=Array.from({length:COMBAT_INVENTORY_CAP},(_,i)=>gear('old-'+i,i,i===1?'armor':'weapon',80));
   state.equipment={weapon:'old-0',armor:'old-1'};
@@ -42,9 +48,6 @@ test('inventory cap is maintained independently for each dungeon and prunes old 
   assert.equal(state.inventory.some(item=>item.id==='floor-50'),true);
   assert.ok(!state.equipment.weapon||state.inventory.some(item=>item.id===state.equipment.weapon));
   assert.ok(!state.equipment.armor||state.inventory.some(item=>item.id===state.equipment.armor));
-  assert.equal(state.inventoryByDungeon.undercrypt.length,COMBAT_INVENTORY_CAP);
-  assert.equal(state.inventoryByDungeon['cinder-vault'].length,2);
-  assert.equal(state.inventoryByDungeon['glass-labyrinth'].length,2);
 });
 test('Auto Scrap settings are configurable and safely bounded',()=>{
   assert.deepEqual(normalizeCombatAutoScrapSettings(undefined),DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS);
