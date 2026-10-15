@@ -1767,6 +1767,12 @@ const MASTERY_SKILL_LEVEL_LIMITS = Object.fromEntries(
   Object.entries(MASTERY_SKILLS).map(([id, info]) => [id, info.maxLevel]),
 ) as Record<MasterySkillId, number>;
 
+function normalizeCombatAutoScrapSettings(value: unknown, fallback: { enabled: boolean; maxQuality: number } = { enabled:false, maxQuality:20 }): { enabled:boolean; maxQuality:number } {
+  if(!value||typeof value!=='object'||Array.isArray(value))return {...fallback};
+  const raw=value as Record<string,unknown>,quality=Number(raw.maxQuality);
+  return {enabled:raw.enabled===true,maxQuality:Number.isFinite(quality)?Math.round(Math.max(0,Math.min(100,quality))*100)/100:fallback.maxQuality};
+}
+
 function isValidQuestList(value: unknown): value is QuestItem[] {
   if (!Array.isArray(value) || value.length === 0) return false;
   return value.every(item => {
@@ -2438,6 +2444,7 @@ export async function loadRaw(): Promise<PlayerState> {
     stateRevision: Math.max(0, Math.floor(Number(parsed.stateRevision ?? 0)) || 0),
     username,
     prestigeUpgrades: normalizedPrestigeUpgrades,
+    combatAutoScrap: normalizeCombatAutoScrapSettings(parsed.combatAutoScrap, base.combatAutoScrap),
     // Malformed nested save shapes are optional progress data, not a reason to poison gameplay math.
     collection: isValidCollection(parsed.collection) ? parsed.collection : base.collection,
     claimedAchievements: isStringList(parsed.claimedAchievements) ? parsed.claimedAchievements : base.claimedAchievements,
@@ -5244,6 +5251,19 @@ export async function buyPrestigeUpgrade(id: PrestigeUpgradeId): Promise<PlayerS
   return s;
 
   });}
+
+export async function updateCombatAutoScrapSettings(enabledValue: unknown, maxQualityValue: unknown): Promise<PlayerState['combatAutoScrap']> {
+  return withPlayerMutationLock(async () => {
+    const s = await settleOffline(await loadRaw());
+    if ((s.prestigeUpgrades?.autoScrap ?? 0) < 1) throw new Error('Auto Scrap Prestige upgrade is required.');
+    const numericQuality = Number(maxQualityValue);
+    if (!Number.isFinite(numericQuality) || numericQuality < 0 || numericQuality > 100) throw new Error('Auto Scrap quality threshold must be between 0 and 100.');
+    const settings = { enabled: enabledValue === true, maxQuality: Math.round(numericQuality * 100) / 100 };
+    s.combatAutoScrap = settings;
+    await save(s);
+    return settings;
+  });
+}
 
 export async function sacrificeToAltar(coins: number, shards: number): Promise<{
   state: PlayerState;
