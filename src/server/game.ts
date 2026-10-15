@@ -3371,7 +3371,7 @@ export async function applyRolls(
       return null;
     }),
     getFakeCcuBonus(),
-    redis.get('infinity-orbs:combat:' + spyUserId).catch(error => {
+    redis.get('infinity-orbs:combat:' + spyUserId).catch((error: unknown) => {
       // Combat progression is an optional cross-mode bonus. A transient failure
       // to read it must never prevent a normal orb roll.
       console.error('[Undercrypt Resonance] Read failed; rolling without the bonus.', error);
