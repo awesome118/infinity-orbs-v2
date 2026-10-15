@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_SKILLS, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, skillPullCost, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../src/shared/combat.js';
+import { addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_SKILLS, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, skillPullCost, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../src/shared/combat.js';
 
 test('starter combat build carries the Auto-Dungeons baseline', () => {
   const state=createCombatState();
@@ -225,4 +225,24 @@ test('auto combat tactics choose safe, valid intents from health and energy', ()
   state.health = state.maxHealth * 0.80;
   state.energy = 4;
   assert.equal(chooseAutoCombatIntent(state), 'mend');
+});
+
+
+test('dungeon choices have separate enemy modifiers and distinct combat builds', () => {
+  const undercrypt = getEnemyForDungeonDepth('undercrypt', 10);
+  const cinder = getEnemyForDungeonDepth('cinder-vault', 10);
+  const glass = getEnemyForDungeonDepth('glass-labyrinth', 10);
+  assert.equal(cinder.name, 'Cinder Sovereign');
+  assert.equal(glass.name, 'Prism Regent');
+  assert.ok(cinder.maxHp > undercrypt.maxHp);
+  assert.ok(cinder.damage > undercrypt.damage);
+  assert.ok(glass.maxHp < undercrypt.maxHp);
+  assert.ok(glass.speed > undercrypt.speed);
+
+  const baseline = createCombatState();
+  const cinderBuild = { ...baseline, dungeonId: 'cinder-vault' as const };
+  const glassBuild = { ...baseline, dungeonId: 'glass-labyrinth' as const };
+  assert.ok(combatStatsFor(cinderBuild).damage > combatStatsFor(baseline).damage);
+  assert.ok(combatStatsFor(glassBuild).speed > combatStatsFor(baseline).speed);
+  assert.ok(combatStatsFor(glassBuild).critChance > combatStatsFor(baseline).critChance);
 });
