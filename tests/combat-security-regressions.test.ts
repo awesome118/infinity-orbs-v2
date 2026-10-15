@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { context, redis } from '../src/server/devvit-mock.js';
 import { getCombatSnapshot, performCombatBeat, rollCombatSkill } from '../src/server/combat.js';
-import { getEnemyForDungeonDepth } from '../src/shared/combat.js';
+import { calculateCombatArenaRatingUpdate, getEnemyForDungeonDepth } from '../src/shared/combat.js';
 
 async function withPlayer<T>(userId: string, run: (key: string) => Promise<T>): Promise<T> {
   const priorUserId = context.userId;
@@ -105,4 +105,20 @@ test('Guard remains active through a slow enemy wind-up and mitigates its next a
     assert.ok((incoming.damage ?? Number.POSITIVE_INFINITY) < getEnemyForDungeonDepth('undercrypt', 4).damage);
     assert.equal(second.state.guardBeats, 0, 'Guard is consumed after mitigating a real enemy attack');
   });
+});
+
+test('Arena Elo updates conserve points at all rating boundaries', () => {
+  const samples = [
+    [100, 100, true], [100, 100, false], [10_000, 10_000, true],
+    [10_000, 10_000, false], [100, 10_000, true], [100, 10_000, false],
+    [10_000, 100, true], [10_000, 100, false], [9999, 100, false],
+    [101, 9999, true], [1000, 1000, true], [1000, 1000, false],
+  ] as const;
+  for (const [player, opponent, won] of samples) {
+    const update = calculateCombatArenaRatingUpdate(player, opponent, won);
+    assert.ok(update.playerRating >= 100 && update.playerRating <= 10_000);
+    assert.ok(update.opponentRating >= 100 && update.opponentRating <= 10_000);
+    assert.equal(update.playerRating + update.opponentRating, player + opponent);
+    assert.equal(update.playerChange + update.opponentChange, 0);
+  }
 });
