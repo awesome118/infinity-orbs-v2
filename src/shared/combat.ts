@@ -320,13 +320,21 @@ export function calculateCombatArenaRatingUpdate(
   const expectedPlayer = 1 / (1 + Math.pow(10, (opponentBefore - playerBefore) / 400));
   const score = playerWon ? 1 : 0;
   const rawChange = Math.round(24 * (score - expectedPlayer));
-  const playerRating = Math.max(100, Math.min(10_000, playerBefore + rawChange));
-  const opponentRating = Math.max(100, Math.min(10_000, opponentBefore - rawChange));
+
+  // Move rating points between the two players as one transfer. Independent
+  // clamps can create/destroy points when either player hits a rating boundary.
+  // Restrict the transfer so both resulting ratings remain within [100, 10_000].
+  const minTransfer = Math.max(100 - playerBefore, opponentBefore - 10_000);
+  const maxTransfer = Math.min(10_000 - playerBefore, opponentBefore - 100);
+  const ratingChange = Math.max(minTransfer, Math.min(maxTransfer, rawChange));
+  const playerRating = playerBefore + ratingChange;
+  const opponentRating = opponentBefore - ratingChange;
+
   return {
     playerRating,
     opponentRating,
-    playerChange: playerRating - playerBefore,
-    opponentChange: opponentRating - opponentBefore,
+    playerChange: ratingChange,
+    opponentChange: -ratingChange,
   };
 }
 
