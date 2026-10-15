@@ -49,7 +49,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const [arenaResult,setArenaResult]=useState<CombatArenaResult|null>(null);
   const [arenaCooldownMs,setArenaCooldownMs]=useState(0);
   const stateRef=useRef<CombatState|null>(null);
-  const runtime=useRef({intent:'strike' as CombatIntent,auto:true,paused:false,busy:false,manual:false,pendingIntent:false});
+  const runtime=useRef({intent:'strike' as CombatIntent,auto:true,paused:false,busy:false,mutating:false,beatPromise:null as Promise<void>|null,manual:false,pendingIntent:false});
   runtime.current.intent=intent; runtime.current.auto=auto; runtime.current.paused=paused;
   const accept=useCallback((result:CombatSnapshot)=>{
     stateRef.current=result.state;setState(result.state);setEnemy(result.enemy);setStats(result.stats);
@@ -71,8 +71,11 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   useEffect(()=>{if(page==='arena')void loadArena();},[page,loadArena]);
   useEffect(()=>{if(arenaCooldownMs<=0)return;const timer=window.setInterval(()=>setArenaCooldownMs(ms=>Math.max(0,ms-1000)),1000);return()=>window.clearInterval(timer);},[arenaCooldownMs>0]);
   const challengeArena=async(opponentId:string)=>{
-    setMutating(true);setArenaResult(null);
+    if(runtime.current.mutating)return;
+    runtime.current.mutating=true;setMutating(true);setArenaResult(null);
     try{
+      const activeBeat=runtime.current.beatPromise;
+      if(activeBeat)await activeBeat;
       const result=await request<ApiResponse>('/api/combat/arena/challenge','POST',{opponentId});
       accept(result);if(result.arenaResult)setArenaResult(result.arenaResult);
       setArenaCooldownMs(90000);setError('');
@@ -81,14 +84,17 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       const message=e instanceof Error?e.message:'Arena challenge failed.';
       setError(message);
       if(message.includes('not ready yet'))await loadArena();
-    }finally{setMutating(false);}
+    }finally{runtime.current.mutating=false;setMutating(false);}
   };
   const beat=useCallback(async()=>{
     const current=stateRef.current;
-    if(!current||runtime.current.busy||(!runtime.current.manual&&(!runtime.current.auto||runtime.current.paused||Boolean(error))))return;
+    if(!current||runtime.current.busy||runtime.current.mutating||(!runtime.current.manual&&(!runtime.current.auto||runtime.current.paused||Boolean(error))))return;
     const queuedIntent=runtime.current.pendingIntent;
     const beatIntent:CombatCommand=queuedIntent?runtime.current.intent:(runtime.current.auto&&!runtime.current.manual?'auto':runtime.current.intent);
     runtime.current.busy=true;setProcessing(true);
+    let releaseBeat!:()=>void;
+    const thisBeat=new Promise<void>(resolve=>{releaseBeat=resolve;});
+    runtime.current.beatPromise=thisBeat;
     try {
       const result=await request<ApiResponse>('/api/combat/beat','POST',{sequence:current.sequence+1,intent:beatIntent});
       accept(result);if(result.actions?.length)setActions(old=>[...result.actions!,...old].slice(0,30));
@@ -96,21 +102,33 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       setError('');
     } catch(e) {
       const message=e instanceof Error?e.message:'Combat beat failed.';
-      if(message==='stale combat sequence'||message.includes('changed repeatedly'))await load();
+      if(message.startsWith('COMBAT_BEAT_TOO_SOON:')) {
+        // The server cadence guard can reject a tick that arrives fractionally early.
+        // Leave auto-run enabled; the next interval will submit a fresh sequence.
+      } else if(message==='stale combat sequence'||message.includes('changed repeatedly'))await load();
       else {setError(message);setAuto(false);}
-    } finally {runtime.current.busy=false;runtime.current.manual=false;setProcessing(false);}
+    } finally {
+      runtime.current.busy=false;runtime.current.manual=false;setProcessing(false);
+      if(runtime.current.beatPromise===thisBeat)runtime.current.beatPromise=null;
+      releaseBeat();
+    }
   },[accept,error,load]);
   useEffect(()=>{
     if(!auto||paused||loading||Boolean(error))return;
     const timer=window.setInterval(()=>void beat(),1000);
     return()=>window.clearInterval(timer);
   },[auto,paused,loading,error,beat]);
-  const manualBeat=()=>{setError('');runtime.current.manual=true;void beat();};
+  const manualBeat=()=>{if(runtime.current.mutating||runtime.current.busy)return;setError('');runtime.current.manual=true;void beat();};
   const mutate=async(url:string,body?:unknown)=>{
-    setMutating(true);
-    try { const result=await request<ApiResponse>(url,'POST',body);accept(result);if(result.skillRoll)setLastSkill(result.skillRoll);if(result.actions?.length)setActions(old=>[...result.actions!,...old].slice(0,30));setError(''); }
+    if(runtime.current.mutating)return;
+    runtime.current.mutating=true;setMutating(true);
+    try {
+      const activeBeat=runtime.current.beatPromise;
+      if(activeBeat)await activeBeat;
+      const result=await request<ApiResponse>(url,'POST',body);accept(result);if(result.skillRoll)setLastSkill(result.skillRoll);if(result.actions?.length)setActions(old=>[...result.actions!,...old].slice(0,30));setError('');
+    }
     catch(e){setError(e instanceof Error?e.message:'Combat action failed.');setAuto(false);}
-    finally{setMutating(false);}
+    finally{runtime.current.mutating=false;setMutating(false);}
   };
   if(loading&&!state)return <section className="io-combat-screen"><div className="io-combat-loading">ENTERING THE UNDERCRYPT…</div></section>;
   if(!state||!enemy||!stats)return <section className="io-combat-screen"><header className="io-combat-page-head"><div><span className="io-combat-eyebrow">COMBAT SYSTEM</span><h1>Could not enter the Undercrypt</h1></div></header><p className="io-combat-error">{error||'Combat data unavailable.'}</p><button type="button" className="io-combat-button" onClick={()=>{setLoading(true);void load();}}>Retry</button></section>;
