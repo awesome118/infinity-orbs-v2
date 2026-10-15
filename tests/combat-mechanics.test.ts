@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, COMBAT_SKILLS, combatStatsFor, createCombatState, getEnemyForDepth, skillPullCost, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../src/shared/combat.js';
+import { addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, COMBAT_SKILLS, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, skillPullCost, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../src/shared/combat.js';
 
 test('starter combat build carries the Auto-Dungeons baseline', () => {
   const state=createCombatState();
@@ -176,4 +176,20 @@ test('Arena rating uses bounded Elo-style updates', () => {
   const bounded = calculateCombatArenaRatingUpdate(10000, 100, true);
   assert.equal(bounded.playerRating, 10000);
   assert.equal(bounded.opponentRating, 100);
+});
+
+
+test('core-game level and highest-orb rarity improve combat without changing baseline builds', () => {
+  const state = createCombatState();
+  const baseline = combatStatsFor(state);
+  assert.equal(coreProgressionCombatBonus(1, 2), 0);
+  assert.equal(baseline.coreProgressionBonus, 0);
+
+  state.coreLevel = 51;
+  state.coreHighestRarity = 1_000_000;
+  const progressed = combatStatsFor(state);
+  assert.equal(coreProgressionCombatBonus(51, 1_000_000), 0.118);
+  assert.ok(progressed.damage > baseline.damage);
+  assert.ok(progressed.maxHealth > baseline.maxHealth);
+  assert.equal(coreProgressionCombatBonus(1_000_000, 1_000_000_000_000_000_000), 0.25);
 });

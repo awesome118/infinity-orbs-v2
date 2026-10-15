@@ -92,6 +92,8 @@ export interface CombatState {
   arenaWins: number;
   arenaLosses: number;
   arenaLastChallengeAt: number;
+  coreLevel: number;
+  coreHighestRarity: number;
 }
 export interface CombatStats {
   damage: number;
@@ -100,6 +102,7 @@ export interface CombatStats {
   critChance: number;
   damageReduction: number;
   coinMultiplier: number;
+  coreProgressionBonus: number;
 }
 export interface CombatEnemy {
   id: string; name: string; kind: 'common' | 'elite' | 'boss';
@@ -176,6 +179,7 @@ export function createCombatState(): CombatState {
     encounterFirstStrikeUsed:false, inventory:[weapon,armor],
     equipment:{weapon:weapon.id,armor:armor.id}, skillLevels:{},
     arenaRating:1000, arenaWins:0, arenaLosses:0, arenaLastChallengeAt:0,
+    coreLevel:1, coreHighestRarity:2,
   };
   synchronizeCombatStats(state);
   state.enemyHp = getEnemyForDepth(1).maxHp;
@@ -194,18 +198,19 @@ export function combatStatsFor(state: CombatState): CombatStats {
     else if (skill.stat==='critChance') critChance += skill.value*rank;
     else if (skill.stat==='coinBonus') coinBonus += skill.value*rank;
   }
+  const coreProgressionBonus = coreProgressionCombatBonus(state.coreLevel, state.coreHighestRarity);
   const flatDamage = 50 + (Math.max(1,state.level)-1)*4 + (weapon?.damageBonus||0);
   const flatHealth = 1000 + (Math.max(1,state.level)-1)*30 + (armor?.maxHealthBonus||0);
-  const maxHealth = Math.max(1,Math.round(flatHealth*(1+healthPct)));
+  const maxHealth = Math.max(1,Math.round(flatHealth*(1+healthPct)*(1+coreProgressionBonus)));
   let speed = 300 + (weapon?.speedBonus||0) + speedFlat;
   if (armor?.trait==='desperation' && state.health>0 && state.health<=maxHealth*.4) speed+=20;
   if (weapon?.trait==='keen') critChance+=.04;
   return {
-    damage:Math.max(1,Math.round(flatDamage*(1+damagePct))),
+    damage:Math.max(1,Math.round(flatDamage*(1+damagePct)*(1+coreProgressionBonus))),
     speed:Math.min(800,speed), maxHealth,
     critChance:Math.min(.75,Math.max(0,critChance)),
     damageReduction: armor?.trait === 'bulwark' ? 0.04 : 0,
-    coinMultiplier:1+coinBonus,
+    coinMultiplier:1+coinBonus, coreProgressionBonus,
   };
 }
 export function synchronizeCombatStats(state: CombatState): CombatStats {
@@ -323,4 +328,15 @@ export function calculateCombatArenaRatingUpdate(
     playerChange: playerRating - playerBefore,
     opponentChange: opponentRating - opponentBefore,
   };
+}
+
+/** Main-game progress boosts combat when the player enters Combat, without mutating the core save. */
+export function coreProgressionCombatBonus(coreLevelValue: unknown, highestRarityValue: unknown): number {
+  const rawLevel = Number(coreLevelValue);
+  const level = Number.isFinite(rawLevel) ? Math.max(1, Math.min(1_000_000, Math.floor(rawLevel))) : 1;
+  const rawRarity = Number(highestRarityValue);
+  const rarity = Number.isFinite(rawRarity) ? Math.max(2, Math.min(1_000_000_000_000_000_000, rawRarity)) : 2;
+  const levelBonus = Math.min(0.20, Math.floor((level - 1) / 10) * 0.02);
+  const rarityBonus = Math.min(0.05, Math.max(0, Math.floor(Math.log10(rarity)) * 0.003));
+  return Math.round((levelBonus + rarityBonus) * 10_000) / 10_000;
 }

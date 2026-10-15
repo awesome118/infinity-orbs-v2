@@ -1,4 +1,5 @@
 import { context, redis } from './devvit-mock.js';
+import { loadRaw } from './game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatEnemy, CombatGear, CombatIntent, CombatSkillId, CombatSnapshot, CombatState, CombatTrait } from '../shared/combat.js';
 import { calculateCombatArenaRatingUpdate, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, SKILL_RANK_CAP, addCombatGearToInventory, applyCombatSkillCopy, combatStatsFor, createCombatState, getEnemyForDepth, skillPullCost, synchronizeCombatStats } from '../shared/combat.js';
 
@@ -31,6 +32,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.bestDepth=Math.max(s.depth,finiteInt(s.bestDepth,1,1,50000));s.level=finiteInt(s.level,1,1,60);s.xp=finiteInt(s.xp,0,0,Number.MAX_SAFE_INTEGER);
   s.xpToNext=finiteInt(s.xpToNext,100,1,1_000_000_000);s.coins=finiteInt(s.coins,250,0,Number.MAX_SAFE_INTEGER);s.totalKills=finiteInt(s.totalKills,0,0,Number.MAX_SAFE_INTEGER);
   s.arenaRating=finiteInt(s.arenaRating,1000,100,10000);s.arenaWins=finiteInt(s.arenaWins,0,0,Number.MAX_SAFE_INTEGER);s.arenaLosses=finiteInt(s.arenaLosses,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastChallengeAt=finiteInt(s.arenaLastChallengeAt,0,0,Number.MAX_SAFE_INTEGER);
+  s.coreLevel=finiteInt(s.coreLevel,1,1,1_000_000);s.coreHighestRarity=finiteInt(s.coreHighestRarity,2,2,1_000_000_000_000_000_000);
   s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
   s.playerActionsResolved=finiteInt(s.playerActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.enemyActionsResolved=finiteInt(s.enemyActionsResolved,0,0,Number.MAX_SAFE_INTEGER);
   s.energy=finiteInt(s.energy,3,0,10);s.maxEnergy=finiteInt(s.maxEnergy,5,1,10);s.guardBeats=finiteInt(s.guardBeats,0,0,10);s.encounterFirstStrikeUsed=s.encounterFirstStrikeUsed===true;
@@ -77,7 +79,29 @@ async function mutate<T>(fn:(s:CombatState)=>T):Promise<T> {
   }
   throw new Error('Combat state changed repeatedly. Please retry.');
 }
-export async function getCombatSnapshot():Promise<CombatSnapshot>{return snapshot(normalizeState(await redis.get(combatKey())));}
+export async function getCombatSnapshot():Promise<CombatSnapshot>{
+  let coreProgression:{level?:unknown;highestRarity?:unknown}|null=null;
+  try {
+    const core=await loadRaw();
+    coreProgression={level:core.level,highestRarity:core.highestRarity};
+  } catch(error) {
+    // Core-game progress is a bonus, not a prerequisite for loading combat.
+    console.error('[Combat] Could not refresh core-game attunement; retaining saved values.',error);
+  }
+  const state=await mutate(s=>{
+    if(coreProgression){
+      s.coreLevel=finiteInt(coreProgression.level,s.coreLevel,1,1_000_000);
+      s.coreHighestRarity=finiteInt(coreProgression.highestRarity,s.coreHighestRarity,2,1_000_000_000_000_000_000);
+    }
+    return s;
+  });
+  const userId=String(context.userId??'').trim();
+  if(userId){
+    const profile=createArenaProfile(userId,arenaName(context.username),state,Date.now());
+    await redis.hSet(ARENA_PROFILE_KEY,{[userId]:JSON.stringify(profile)}).catch(error=>console.error('[Combat Arena] Profile registration failed.',error));
+  }
+  return snapshot(state);
+}
 function grantXp(s:CombatState,amount:number,actions:CombatAction[]):void {
   s.xp+=amount;
   while(s.xp>=s.xpToNext&&s.level<60){s.xp-=s.xpToNext;s.level+=1;s.xpToNext=Math.round(s.xpToNext*1.19);synchronizeCombatStats(s);s.health=Math.min(s.maxHealth,s.health+Math.round(s.maxHealth*.08));actions.push({actor:'player',kind:'level',text:'Delver reached Level '+s.level+'.'});}
