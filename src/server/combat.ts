@@ -1,7 +1,7 @@
 import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatDungeonId, CombatEnemy, CombatGear, CombatIntent, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, SKILL_RANK_CAP, addCombatGearToInventory, applyCombatSkillCopy, combatStatsFor, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, skillPullCost, synchronizeCombatStats } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, SKILL_RANK_CAP, addCombatGearToInventory, applyCombatSkillCopy, combatStatsFor, createCombatState, getEnemyForDungeonDepth, skillPullCost, synchronizeCombatStats } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
