@@ -1,7 +1,7 @@
 import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatDungeonId, CombatEnemy, CombatGear, CombatIntent, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatAbilityType, combatMarkMultiplier, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatAbilityType, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -57,23 +57,42 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.arenaRating=finiteInt(s.arenaRating,1000,100,10000);s.arenaWins=finiteInt(s.arenaWins,0,0,Number.MAX_SAFE_INTEGER);s.arenaLosses=finiteInt(s.arenaLosses,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastChallengeAt=finiteInt(s.arenaLastChallengeAt,0,0,Number.MAX_SAFE_INTEGER);
   s.coreLevel=finiteInt(s.coreLevel,1,1,1_000_000);s.coreHighestRarity=finiteInt(s.coreHighestRarity,2,2,1_000_000_000_000_000_000);
   s.autoTactic=(['balanced','aggressive','defensive','recovery'] as unknown[]).includes(s.autoTactic)?s.autoTactic:'balanced';
-  s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillGachaRank=finiteInt(storedGachaRank,legacyUnlockedRank,1,SKILL_GACHA_RANK_MAX);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.combatMarks=finiteInt(s.combatMarks,0,0,Number.MAX_SAFE_INTEGER);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,1_000_000_000_000_000_000);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
+  s.scrap=finiteInt(s.scrap,0,0,Number.MAX_SAFE_INTEGER);s.autoScrapUnlocked=s.autoScrapUnlocked===true;s.autoScrapSettings=normalizeCombatAutoScrapSettings(s.autoScrapSettings);s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillGachaRank=finiteInt(storedGachaRank,legacyUnlockedRank,1,SKILL_GACHA_RANK_MAX);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.combatMarks=finiteInt(s.combatMarks,0,0,Number.MAX_SAFE_INTEGER);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,1_000_000_000_000_000_000);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
   s.playerActionsResolved=finiteInt(s.playerActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.enemyActionsResolved=finiteInt(s.enemyActionsResolved,0,0,Number.MAX_SAFE_INTEGER);
   s.energy=finiteInt(s.energy,3,0,10);s.maxEnergy=finiteInt(s.maxEnergy,5,1,10);s.guardBeats=finiteInt(s.guardBeats,0,0,10);s.encounterFirstStrikeUsed=s.encounterFirstStrikeUsed===true;
-  const inv=Array.isArray(s.inventory)?s.inventory.map(g=>normalizeGear(g,Math.max(0,s.depth-1))).filter((g):g is CombatGear=>Boolean(g)):[];
-  s.inventory=inv.length?inv:createCombatState().inventory;
-  while(s.inventory.length>INVENTORY_CAP){
-    let removable=0;
-    for(let index=1;index<s.inventory.length;index++){
-      const candidate=s.inventory[index]!, oldest=s.inventory[removable]!;
-      const candidateFloor=Math.max(0,Math.floor(Number(candidate.sourceFloor)||0));
-      const oldestFloor=Math.max(0,Math.floor(Number(oldest.sourceFloor)||0));
-      if(candidateFloor<oldestFloor||(candidateFloor===oldestFloor&&candidate.quality<oldest.quality)||(candidateFloor===oldestFloor&&candidate.quality===oldest.quality&&index>removable))removable=index;
+  const dungeonIds:CombatDungeonId[]=['undercrypt','cinder-vault','glass-labyrinth'];
+  const defaults=createCombatState();
+  const legacyInventory=Array.isArray(s.inventory)?s.inventory.map(g=>normalizeGear(g,Math.max(0,s.depth-1))).filter((g):g is CombatGear=>Boolean(g)):[];
+  const storedInventories=p.inventoryByDungeon&&typeof p.inventoryByDungeon==='object'&&!Array.isArray(p.inventoryByDungeon)?p.inventoryByDungeon as Partial<Record<CombatDungeonId,unknown>>:null;
+  const storedEquipment=p.equipmentByDungeon&&typeof p.equipmentByDungeon==='object'&&!Array.isArray(p.equipmentByDungeon)?p.equipmentByDungeon as Partial<Record<CombatDungeonId,unknown>>:null;
+  const inventories={} as Record<CombatDungeonId,CombatGear[]>;
+  const equipmentByDungeon={} as CombatState['equipmentByDungeon'];
+  for(const dungeon of dungeonIds){
+    const rawItems=storedInventories&&Array.isArray(storedInventories[dungeon])?storedInventories[dungeon] as unknown[]:null;
+    const items=rawItems?rawItems.map(g=>normalizeGear(g,Math.max(0,s.depth-1))).filter((g):g is CombatGear=>Boolean(g)):defaults.inventoryByDungeon[dungeon].map(g=>({...g}));
+    if(!storedInventories&&dungeon===s.dungeonId&&legacyInventory.length)inventories[dungeon]=legacyInventory;
+    else inventories[dungeon]=items;
+    const rawEquipment=storedEquipment?.[dungeon] as {weapon?:unknown;armor?:unknown}|undefined;
+    equipmentByDungeon[dungeon]={
+      weapon:typeof rawEquipment?.weapon==='string'?rawEquipment.weapon:(dungeon===s.dungeonId&&!storedEquipment&&typeof s.equipment?.weapon==='string'?s.equipment.weapon:defaults.equipmentByDungeon[dungeon].weapon),
+      armor:typeof rawEquipment?.armor==='string'?rawEquipment.armor:(dungeon===s.dungeonId&&!storedEquipment&&typeof s.equipment?.armor==='string'?s.equipment.armor:defaults.equipmentByDungeon[dungeon].armor),
+    };
+    while(inventories[dungeon].length>INVENTORY_CAP){
+      let removable=0;
+      for(let index=1;index<inventories[dungeon].length;index++){
+        const candidate=inventories[dungeon][index]!,oldest=inventories[dungeon][removable]!;
+        const cf=Math.max(0,Math.floor(Number(candidate.sourceFloor)||0)),of=Math.max(0,Math.floor(Number(oldest.sourceFloor)||0));
+        if(cf<of||(cf===of&&candidate.quality<oldest.quality)||(cf===of&&candidate.quality===oldest.quality&&index>removable))removable=index;
+      }
+      inventories[dungeon].splice(removable,1);
     }
-    s.inventory.splice(removable,1);
+    const eq=equipmentByDungeon[dungeon],list=inventories[dungeon];
+    const weapon=list.find(g=>g.id===eq.weapon&&g.slot==='weapon'),armor=list.find(g=>g.id===eq.armor&&g.slot==='armor');
+    eq.weapon=weapon?.id??list.find(g=>g.slot==='weapon')?.id??null;
+    eq.armor=armor?.id??list.find(g=>g.slot==='armor')?.id??null;
   }
-  const w=s.inventory.find(g=>g.id===s.equipment?.weapon&&g.slot==='weapon'),a=s.inventory.find(g=>g.id===s.equipment?.armor&&g.slot==='armor');
-  s.equipment={weapon:w?.id??s.inventory.find(g=>g.slot==='weapon')?.id??null,armor:a?.id??s.inventory.find(g=>g.slot==='armor')?.id??null};
+  s.inventoryByDungeon=inventories;s.equipmentByDungeon=equipmentByDungeon;
+  s.inventory=s.inventoryByDungeon[s.dungeonId];s.equipment={...s.equipmentByDungeon[s.dungeonId]};
   const levels:Partial<Record<CombatSkillId,number>>={}, copyProgress:Partial<Record<CombatSkillId,number>>={}, cooldowns:Partial<Record<CombatSkillId,number>>={};
   for(const skill of COMBAT_SKILLS){
     const rank=finiteInt(s.skillLevels?.[skill.id],0,0,Number.MAX_SAFE_INTEGER);
@@ -88,10 +107,10 @@ function normalizeState(raw:string|null|undefined):CombatState {
   const enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);s.enemyHp=finiteInt(s.enemyHp,enemy.maxHp,1,enemy.maxHp);
   return s;
 }
-function createGear(sourceFloor:number):CombatGear {
+function createGear(sourceFloor:number,requestedSlot?:'weapon'|'armor'):CombatGear {
   const floor=Math.max(0,Math.min(50000,Math.floor(Number(sourceFloor)||0)));
   const scale=floor+1;
-  const slot=secureRandom()<.5?'weapon':'armor';
+  const slot=requestedSlot??(secureRandom()<.5?'weapon':'armor');
   // Fourth-power quality distribution is from Auto-Dungeons; 100% rolls are extremely rare.
   const quality=Math.round(1_000_000*Math.pow(secureRandom(),4))/10_000;
   const prefix=slot==='weapon'?['Ashen','Hollow','Cinder','Riftbound','Starforged','Warden’s','Lost','Quiet','Infinity-Touched']:['Delver’s','Warden’s','Old','Cinder','Riftweave','Ironbound','Boneguard','Hollow','Starweave'];
@@ -107,16 +126,16 @@ async function mutate<T>(fn:(s:CombatState)=>T):Promise<T> {
   const key=combatKey();
   for(let i=0;i<MAX_CAS_ATTEMPTS;i++){
     const txn=await redis.watch(key);let closed=false;
-    try { const s=normalizeState(await redis.get(key)),result=fn(s);await txn.multi();await txn.set(key,JSON.stringify(s));const commit=await txn.exec();closed=true;if(commit!==null)return result; }
+    try { const s=normalizeState(await redis.get(key)),result=fn(s);s.inventoryByDungeon[s.dungeonId]=s.inventory.map(item=>({...item}));s.equipmentByDungeon[s.dungeonId]={...s.equipment};await txn.multi();await txn.set(key,JSON.stringify(s));const commit=await txn.exec();closed=true;if(commit!==null)return result; }
     finally { if(!closed)await txn.unwatch().catch(()=>undefined); }
   }
   throw new Error('Combat state changed repeatedly. Please retry.');
 }
 export async function getCombatSnapshot():Promise<CombatSnapshot>{
-  let coreProgression:{level?:unknown;highestRarity?:unknown}|null=null;
+  let coreProgression:{level?:unknown;highestRarity?:unknown;autoScrapLevel?:unknown;autoScrapSettings?:unknown}|null=null;
   try {
     const core=await loadRaw();
-    coreProgression={level:core.level,highestRarity:core.highestRarity};
+    coreProgression={level:core.level,highestRarity:core.highestRarity,autoScrapLevel:core.prestigeUpgrades?.autoScrap,autoScrapSettings:core.combatAutoScrap};
   } catch(error) {
     // Core-game progress is a bonus, not a prerequisite for loading combat.
     console.error('[Combat] Could not refresh core-game attunement; retaining saved values.',error);
@@ -125,6 +144,9 @@ export async function getCombatSnapshot():Promise<CombatSnapshot>{
     if(coreProgression){
       s.coreLevel=finiteInt(coreProgression.level,s.coreLevel,1,1_000_000);
       s.coreHighestRarity=finiteInt(coreProgression.highestRarity,s.coreHighestRarity,2,1_000_000_000_000_000_000);
+      s.autoScrapUnlocked=Number(coreProgression.autoScrapLevel)>0;
+      s.autoScrapSettings=normalizeCombatAutoScrapSettings(coreProgression.autoScrapSettings);
+      if(!s.autoScrapUnlocked)s.autoScrapSettings.enabled=false;
     }
     synchronizeCombatStats(s);
     return s;
@@ -212,7 +234,13 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         const baseMarks=Math.max(1,2+Math.floor(Math.max(0,s.depth-1)/2)+(enemy.kind==='elite'?2:enemy.boss?8:0));
         const marks=Math.max(1,Math.round(baseMarks*combatMarkMultiplier(s)));s.combatMarks=Math.min(Number.MAX_SAFE_INTEGER,s.combatMarks+marks);actions.push({actor:'player',kind:'loot',text:'Earned '+marks.toLocaleString()+' Combat Marks.'});
         grantXp(s,Math.round((18+s.depth*4.2)*(s.dungeonId==='glass-labyrinth'?1.25:1)),actions);
-        if((s.dungeonId==='cinder-vault'?s.depth%2===0:s.depth%3===0)||enemy.kind!=='common'||enemy.boss){item=createGear(Math.max(0,s.depth-1));addCombatGearToInventory(s,item);actions.push({actor:'player',kind:'loot',text:'Gear found: '+item.name+' ('+item.quality.toFixed(2)+'% quality).'});}
+        if((s.dungeonId==='cinder-vault'?s.depth%2===0:s.depth%3===0)||enemy.kind!=='common'||enemy.boss){
+          item=createGear(Math.max(0,s.depth-1));
+          if(s.autoScrapUnlocked&&s.autoScrapSettings.enabled&&item.quality<=s.autoScrapSettings.maxQuality){
+            const gained=combatScrapValue(item);s.scrap=Math.min(Number.MAX_SAFE_INTEGER,s.scrap+gained);
+            actions.push({actor:'player',kind:'loot',text:'Auto-scrapped '+item.name+' ('+item.quality.toFixed(2)+'% quality) for '+gained+' Scrap.'});
+          } else {addCombatGearToInventory(s,item);actions.push({actor:'player',kind:'loot',text:'Gear found: '+item.name+' ('+item.quality.toFixed(2)+'% quality).'});}
+        }
         const armor=s.inventory.find(g=>g.id===s.equipment.armor);
         if(armor?.trait==='regeneration'&&enemy.kind!=='common'){s.health=Math.min(s.maxHealth,s.health+Math.round(s.maxHealth*.02*gearQualityEffectiveness(armor,Math.max(0,s.depth-1))));actions.push({actor:'player',kind:'ability',text:'Armor regeneration restored 2% max HP.'});}
         s.bestDepth=Math.max(s.bestDepth,s.depth);s.depth+=1;s.bestDepth=Math.max(s.bestDepth,s.depth);s.dungeonBestDepths[s.dungeonId]=Math.max(s.dungeonBestDepths[s.dungeonId],s.bestDepth);s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,s.energy+1);s.guardBeats=0;s.encounterFirstStrikeUsed=false;
@@ -592,7 +620,11 @@ export async function setCombatDungeon(dungeonValue: unknown): Promise<CombatSna
   return mutate(state => {
     const nextDungeon = dungeonValue as CombatDungeonId;
     if (state.dungeonId === nextDungeon) return snapshot(state);
+    state.inventoryByDungeon[state.dungeonId]=state.inventory.map(item=>({...item}));
+    state.equipmentByDungeon[state.dungeonId]={...state.equipment};
     state.dungeonId = nextDungeon;
+    state.inventory=state.inventoryByDungeon[nextDungeon].map(item=>({...item}));
+    state.equipment={...state.equipmentByDungeon[nextDungeon]};
     state.depth = 1;
     state.bestDepth = state.dungeonBestDepths[nextDungeon];
     state.runId += 1;

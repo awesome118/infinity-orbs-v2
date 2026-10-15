@@ -6,6 +6,8 @@ export const COMBAT_ABILITY_SLOTS = 3;
 export const SKILL_GACHA_RANK_MAX = 5;
 export type CombatTactic = 'balanced' | 'aggressive' | 'defensive' | 'recovery';
 export type CombatDungeonId = 'undercrypt' | 'cinder-vault' | 'glass-labyrinth';
+export interface CombatAutoScrapSettings { enabled: boolean; maxQuality: number; }
+export const DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS: CombatAutoScrapSettings = { enabled:false, maxQuality:20 };
 export type CombatRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Mythic';
 export type CombatSkillStat = 'damagePct' | 'speedFlat' | 'healthPct' | 'critChance' | 'coinBonus';
 export type CombatUpgradeId = 'edge-training' | 'vitality' | 'tempo' | 'precision' | 'scavenger' | 'orb-resonance';
@@ -216,6 +218,8 @@ export interface CombatState {
   speed: number;
   baseDamage: number;
   coins: number;
+  /** Salvaged material used by the Forge. Shared across the three dungeon-specific gear bags. */
+  scrap: number;
   /** Separate currency earned from combat, spent only on permanent combat upgrades. */
   combatMarks: number;
   combatUpgrades: CombatUpgradeLevels;
@@ -246,8 +250,14 @@ export interface CombatState {
   guardBeats: number;
   enemyHp: number;
   encounterFirstStrikeUsed: boolean;
+  /** Active dungeon's inventory/loadout. Mirrored to its map entry at every server mutation. */
   inventory: CombatGear[];
   equipment: { weapon: string | null; armor: string | null };
+  /** Each dungeon has its own 30-item carrying cap and its own equipped slots. */
+  inventoryByDungeon: Record<CombatDungeonId, CombatGear[]>;
+  equipmentByDungeon: Record<CombatDungeonId, { weapon: string | null; armor: string | null }>;
+  autoScrapUnlocked: boolean;
+  autoScrapSettings: CombatAutoScrapSettings;
   skillLevels: CombatSkillLevels;
   arenaRating: number;
   arenaWins: number;
@@ -334,6 +344,28 @@ export function addCombatGearToInventory(state: CombatState, item: CombatGear, m
     state.equipment[slot] = candidates[0]?.id ?? null;
   }
 }
+export function combatScrapValue(item: Pick<CombatGear,'power'|'quality'|'sourceFloor'>): number {
+  const power = Number.isFinite(Number(item.power)) ? Math.max(1, Math.min(1_000_000, Number(item.power))) : 1;
+  const quality = Number.isFinite(Number(item.quality)) ? Math.max(0, Math.min(100, Number(item.quality))) : 0;
+  const floor = Number.isFinite(Number(item.sourceFloor)) ? Math.max(0, Math.min(50_000, Number(item.sourceFloor))) : 0;
+  return Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.round(4 + power * 0.6 + quality * 0.1 + Math.log10(floor + 1) * 2)));
+}
+
+export function combatForgeCost(floorValue: unknown): number {
+  const floor = Number.isFinite(Number(floorValue)) ? Math.max(0, Math.min(50_000, Math.floor(Number(floorValue)))) : 0;
+  return Math.max(10, Math.min(Number.MAX_SAFE_INTEGER, Math.round(10 + floor * 1.8)));
+}
+
+export function normalizeCombatAutoScrapSettings(value: unknown): CombatAutoScrapSettings {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { ...DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS };
+  const raw = value as Record<string, unknown>;
+  const quality = Number(raw.maxQuality);
+  return {
+    enabled: raw.enabled === true,
+    maxQuality: Number.isFinite(quality) ? Math.round(Math.max(0, Math.min(100, quality)) * 100) / 100 : DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS.maxQuality,
+  };
+}
+
 export const SKILL_PULL_BASE_COST = 75;
 export function skillPullCost(skillRolls: number): number {
   const pulls = Math.max(0, Math.min(40, Math.floor(Number(skillRolls) || 0)));
@@ -345,11 +377,22 @@ export function createCombatState(): CombatState {
   const state: CombatState = {
     version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
-    baseDamage:54, coins:250, combatMarks:0, combatUpgrades:{}, totalKills:0, skillRolls:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
+    baseDamage:54, coins:250, scrap:0, combatMarks:0, combatUpgrades:{}, totalKills:0, skillRolls:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
     combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
     encounterFirstStrikeUsed:false, inventory:[weapon,armor],
-    equipment:{weapon:weapon.id,armor:armor.id}, skillLevels:{},
+    equipment:{weapon:weapon.id,armor:armor.id},
+    inventoryByDungeon:{
+      undercrypt:[weapon,armor],
+      'cinder-vault':[{...weapon,id:'starter-weapon-cinder',name:'Cinder Delver Knife'},{...armor,id:'starter-armor-cinder',name:'Cinder Worn Leathers'}],
+      'glass-labyrinth':[{...weapon,id:'starter-weapon-glass',name:'Glass Delver Knife'},{...armor,id:'starter-armor-glass',name:'Glass Worn Leathers'}],
+    },
+    equipmentByDungeon:{
+      undercrypt:{weapon:weapon.id,armor:armor.id},
+      'cinder-vault':{weapon:'starter-weapon-cinder',armor:'starter-armor-cinder'},
+      'glass-labyrinth':{weapon:'starter-weapon-glass',armor:'starter-armor-glass'},
+    },
+    autoScrapUnlocked:false,autoScrapSettings:{...DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS},skillLevels:{},
     arenaRating:1000, arenaWins:0, arenaLosses:0, arenaLastChallengeAt:0,
     coreLevel:1, coreHighestRarity:2, autoTactic:'balanced',
   };
