@@ -310,6 +310,32 @@ export interface CombatArenaRatingUpdate {
 }
 
 /** Standard K=24 Elo update, bounded to keep stored ratings valid. */
+/**
+ * Compare normalized remaining HP after an Arena duel. Exact ties use a
+ * server-supplied uniform sample rather than always favoring the challenger.
+ */
+export function combatArenaWinnerFromHealth(
+  challengerHealth: number,
+  challengerMaxHealth: number,
+  opponentHealth: number,
+  opponentMaxHealth: number,
+  tieBreakRoll: number,
+): 'challenger' | 'opponent' {
+  const remainingRatio = (health: number, maxHealth: number): number => {
+    const safeMax = Number.isFinite(maxHealth) && maxHealth > 0 ? maxHealth : 1;
+    const safeHealth = Number.isFinite(health) ? health : 0;
+    return Math.max(0, Math.min(1, safeHealth / safeMax));
+  };
+  const challengerRatio = remainingRatio(challengerHealth, challengerMaxHealth);
+  const opponentRatio = remainingRatio(opponentHealth, opponentMaxHealth);
+  if (challengerRatio > opponentRatio) return 'challenger';
+  if (opponentRatio > challengerRatio) return 'opponent';
+  const safeRoll = Number.isFinite(tieBreakRoll)
+    ? Math.max(0, Math.min(0.999999999999, tieBreakRoll))
+    : 0.5;
+  return safeRoll < 0.5 ? 'challenger' : 'opponent';
+}
+
 export function calculateCombatArenaRatingUpdate(
   playerRatingValue: number,
   opponentRatingValue: number,
