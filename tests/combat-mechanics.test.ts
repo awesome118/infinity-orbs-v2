@@ -67,12 +67,43 @@ test('duplicate damage skill copies each increase derived damage', () => {
 test('extra copies at max rank refund coins without secretly increasing rank', () => {
   const state = createCombatState();
   state.skillLevels['infinite-bounty'] = 5;
-  state.coins = 50;
-  const result = applyCombatSkillCopy(state, 'infinite-bounty', 200);
+  const pullCost = 200;
+  state.coins -= pullCost; // The gacha deducts the pull cost before applying the copy.
+  const result = applyCombatSkillCopy(state, 'infinite-bounty', pullCost);
   assert.equal(result.rank, 5);
   assert.equal(result.duplicate, true);
   assert.equal(result.maxRank, true);
   assert.equal(result.coinsRefunded, 150);
   assert.equal(state.coins, 200);
   assert.equal(state.skillLevels['infinite-bounty'], 5);
+});
+
+test('health, critical chance, and coin skills all scale with duplicate rank', () => {
+  const healthState = createCombatState();
+  let previousHealth = combatStatsFor(healthState).maxHealth;
+  for (let rank = 1; rank <= 5; rank += 1) {
+    const result = applyCombatSkillCopy(healthState, 'ironbark', 75);
+    const currentHealth = combatStatsFor(healthState).maxHealth;
+    assert.equal(result.rank, rank);
+    assert.ok(currentHealth > previousHealth, 'health skill rank must raise maximum HP');
+    previousHealth = currentHealth;
+  }
+
+  const critState = createCombatState();
+  let previousCrit = combatStatsFor(critState).critChance;
+  for (let rank = 1; rank <= 5; rank += 1) {
+    applyCombatSkillCopy(critState, 'lucky-fang', 75);
+    const currentCrit = combatStatsFor(critState).critChance;
+    assert.ok(currentCrit > previousCrit, 'critical skill rank must raise critical chance');
+    previousCrit = currentCrit;
+  }
+
+  const coinState = createCombatState();
+  let previousCoins = combatStatsFor(coinState).coinMultiplier;
+  for (let rank = 1; rank <= 5; rank += 1) {
+    applyCombatSkillCopy(coinState, 'penny-hunter', 75);
+    const currentCoins = combatStatsFor(coinState).coinMultiplier;
+    assert.ok(currentCoins > previousCoins, 'coin skill rank must raise Delver Coin rewards');
+    previousCoins = currentCoins;
+  }
 });
