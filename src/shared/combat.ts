@@ -110,6 +110,24 @@ export interface CombatAction {
 }
 export interface CombatSnapshot { state: CombatState; enemy: CombatEnemy; stats: CombatStats; }
 export const SKILL_RANK_CAP = 5;
+export const COMBAT_INVENTORY_CAP = 30;
+
+/** Add newest loot without ever dropping an equipped item from the bag. */
+export function addCombatGearToInventory(state: CombatState, item: CombatGear, maxItems = COMBAT_INVENTORY_CAP): void {
+  const cap = Math.max(2, Math.floor(Number.isFinite(maxItems) ? maxItems : COMBAT_INVENTORY_CAP));
+  state.inventory = state.inventory.filter(existing => existing.id !== item.id);
+  state.inventory.unshift(item);
+  while (state.inventory.length > cap) {
+    let removable = -1;
+    for (let index = state.inventory.length - 1; index >= 0; index -= 1) {
+      const candidate = state.inventory[index]!;
+      const equipped = candidate.id === state.equipment.weapon || candidate.id === state.equipment.armor;
+      if (!equipped) { removable = index; break; }
+    }
+    if (removable < 0) break;
+    state.inventory.splice(removable, 1);
+  }
+}
 export const SKILL_PULL_BASE_COST = 75;
 export function skillPullCost(skillRolls: number): number {
   const pulls = Math.max(0, Math.min(40, Math.floor(Number(skillRolls) || 0)));

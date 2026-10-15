@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyCombatSkillCopy, COMBAT_SKILLS, combatStatsFor, createCombatState, getEnemyForDepth, skillPullCost } from '../src/shared/combat.js';
+import { addCombatGearToInventory, applyCombatSkillCopy, COMBAT_SKILLS, combatStatsFor, createCombatState, getEnemyForDepth, skillPullCost } from '../src/shared/combat.js';
 
 test('starter combat build carries the Auto-Dungeons baseline', () => {
   const state=createCombatState();
@@ -106,4 +106,45 @@ test('health, critical chance, and coin skills all scale with duplicate rank', (
     assert.ok(currentCoins > previousCoins, 'coin skill rank must raise Delver Coin rewards');
     previousCoins = currentCoins;
   }
+});
+
+
+test('inventory pruning preserves equipped gear while keeping newest loot', () => {
+  const state = createCombatState();
+  const equippedWeaponId = state.equipment.weapon;
+  const equippedArmorId = state.equipment.armor;
+  for (let index = 0; index < 28; index += 1) {
+    state.inventory.push({
+      id: 'old-loot-' + index,
+      name: 'Old loot ' + index,
+      slot: index % 2 === 0 ? 'weapon' : 'armor',
+      quality: 10,
+      power: 10,
+      effect: 'Test item',
+      trait: index % 2 === 0 ? 'keen' : 'bulwark',
+      damageBonus: index % 2 === 0 ? 8 : 0,
+      speedBonus: index % 2 === 0 ? 3 : 0,
+      maxHealthBonus: index % 2 === 0 ? 0 : 20,
+    });
+  }
+  const newest = {
+    id: 'newest-loot',
+    name: 'Newest loot',
+    slot: 'weapon' as const,
+    quality: 99.5,
+    power: 50,
+    effect: 'Test item',
+    trait: 'first-strike' as const,
+    damageBonus: 40,
+    speedBonus: 12,
+    maxHealthBonus: 0,
+  };
+
+  addCombatGearToInventory(state, newest);
+
+  assert.equal(state.inventory.length, 30);
+  assert.equal(state.inventory[0]?.id, newest.id);
+  assert.ok(state.inventory.some(item => item.id === equippedWeaponId), 'equipped weapon must remain in inventory');
+  assert.ok(state.inventory.some(item => item.id === equippedArmorId), 'equipped armor must remain in inventory');
+  assert.ok(!state.inventory.some(item => item.id === 'old-loot-27'), 'oldest unequipped item should be pruned first');
 });

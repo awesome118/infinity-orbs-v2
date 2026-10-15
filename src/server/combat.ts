@@ -1,8 +1,8 @@
 import { context, redis } from './devvit-mock.js';
 import type { CombatAction, CombatEnemy, CombatGear, CombatIntent, CombatSkillId, CombatSnapshot, CombatState, CombatTrait } from '../shared/combat.js';
-import { COMBAT_SKILLS, SKILL_RANK_CAP, applyCombatSkillCopy, combatStatsFor, createCombatState, getEnemyForDepth, skillPullCost, synchronizeCombatStats } from '../shared/combat.js';
+import { COMBAT_INVENTORY_CAP, COMBAT_SKILLS, SKILL_RANK_CAP, addCombatGearToInventory, applyCombatSkillCopy, combatStatsFor, createCombatState, getEnemyForDepth, skillPullCost, synchronizeCombatStats } from '../shared/combat.js';
 
-const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=30;
+const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
 function pick<T>(values:T[]):T { return values[Math.floor(Math.random()*values.length)]!; }
 function finiteInt(value:unknown,fallback:number,min:number,max:number):number { const n=Number(value); return Number.isFinite(n)?Math.max(min,Math.min(max,Math.floor(n))):fallback; }
@@ -33,8 +33,19 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
   s.playerActionsResolved=finiteInt(s.playerActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.enemyActionsResolved=finiteInt(s.enemyActionsResolved,0,0,Number.MAX_SAFE_INTEGER);
   s.energy=finiteInt(s.energy,3,0,10);s.maxEnergy=finiteInt(s.maxEnergy,5,1,10);s.guardBeats=finiteInt(s.guardBeats,0,0,10);s.encounterFirstStrikeUsed=s.encounterFirstStrikeUsed===true;
-  const inv=Array.isArray(s.inventory)?s.inventory.map(normalizeGear).filter((g):g is CombatGear=>Boolean(g)).slice(0,INVENTORY_CAP):[];
+  const inv=Array.isArray(s.inventory)?s.inventory.map(normalizeGear).filter((g):g is CombatGear=>Boolean(g)):[];
   s.inventory=inv.length?inv:createCombatState().inventory;
+  const preferredWeaponId=typeof s.equipment?.weapon==='string'?s.equipment.weapon:null;
+  const preferredArmorId=typeof s.equipment?.armor==='string'?s.equipment.armor:null;
+  while(s.inventory.length>INVENTORY_CAP){
+    let removable=-1;
+    for(let index=s.inventory.length-1;index>=0;index--){
+      const gear=s.inventory[index]!;
+      if(gear.id!==preferredWeaponId&&gear.id!==preferredArmorId){removable=index;break;}
+    }
+    if(removable<0)break;
+    s.inventory.splice(removable,1);
+  }
   const w=s.inventory.find(g=>g.id===s.equipment?.weapon&&g.slot==='weapon'),a=s.inventory.find(g=>g.id===s.equipment?.armor&&g.slot==='armor');
   s.equipment={weapon:w?.id??s.inventory.find(g=>g.slot==='weapon')?.id??null,armor:a?.id??s.inventory.find(g=>g.slot==='armor')?.id??null};
   const levels:Partial<Record<CombatSkillId,number>>={};
@@ -96,10 +107,10 @@ export async function performCombatBeat(sequence:number,intent:CombatIntent):Pro
         defeated=true;actions.push({actor:'player',kind:'death',text:'The '+enemy.name+' falls.'});s.totalKills=Math.min(Number.MAX_SAFE_INTEGER,s.totalKills+1);
         const coins=Math.max(1,Math.round((12+s.depth*2.4)*stats.coinMultiplier));s.coins=Math.min(Number.MAX_SAFE_INTEGER,s.coins+coins);actions.push({actor:'player',kind:'loot',text:'Collected '+coins.toLocaleString()+' Delver Coins.'});
         grantXp(s,Math.round(18+s.depth*4.2),actions);
-        if(s.depth%3===0||enemy.kind!=='common'||enemy.boss){item=createGear(s.depth);s.inventory.unshift(item);s.inventory=s.inventory.slice(0,INVENTORY_CAP);actions.push({actor:'player',kind:'loot',text:'Gear found: '+item.name+' ('+item.quality.toFixed(2)+'% quality).'});}
+        if(s.depth%3===0||enemy.kind!=='common'||enemy.boss){item=createGear(s.depth);addCombatGearToInventory(s,item);actions.push({actor:'player',kind:'loot',text:'Gear found: '+item.name+' ('+item.quality.toFixed(2)+'% quality).'});}
         const armor=s.inventory.find(g=>g.id===s.equipment.armor);
         if(armor?.trait==='regeneration'&&enemy.kind!=='common'){s.health=Math.min(s.maxHealth,s.health+Math.round(s.maxHealth*.02));actions.push({actor:'player',kind:'ability',text:'Armor regeneration restored 2% max HP.'});}
-        s.bestDepth=Math.max(s.bestDepth,s.depth);s.depth+=1;s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,s.energy+1);s.guardBeats=0;s.encounterFirstStrikeUsed=false;
+        s.bestDepth=Math.max(s.bestDepth,s.depth);s.depth+=1;s.bestDepth=Math.max(s.bestDepth,s.depth);s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,s.energy+1);s.guardBeats=0;s.encounterFirstStrikeUsed=false;
         enemy=getEnemyForDepth(s.depth);s.enemyHp=enemy.maxHp;actions.push({actor:'player',kind:'advance',text:'Descending to Depth '+s.depth+'.'});break;
       }
     }

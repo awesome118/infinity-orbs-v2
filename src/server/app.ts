@@ -411,6 +411,15 @@ export function createApp() {
   };
 
   app.use('/api', async (req, res, next) => {
+    // Combat has a separate per-player state key and Redis WATCH/MULTI/EXEC
+    // compare-and-set writes. Do not queue its one-second beats behind the
+    // global player-save lock; that lock protects the unrelated orb-save path.
+    if (
+      req.path === '/combat/beat' ||
+      req.path === '/combat/equip' ||
+      req.path === '/combat/skills/roll'
+    ) return next();
+
     const mutatesState = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
     const readsAndPersistsPlayerState =
       req.method === 'GET' &&
@@ -847,7 +856,7 @@ export function createApp() {
     if(!Number.isSafeInteger(sequence)||sequence<1)return res.status(400).json({error:'A valid combat sequence is required.'});
     if(!['strike','heavy','guard','mend'].includes(intent))return res.status(400).json({error:'Invalid combat command.'});
     try { res.setHeader('Cache-Control','no-store');res.json(await performCombatBeat(sequence,intent)); }
-    catch(e:any){const message=e?.message||'Combat beat failed.';const status=message==='stale combat sequence'?409:message==='REDDIT_LOGIN_REQUIRED'?401:500;res.status(status).json({error:message});}
+    catch(e:any){const message=e?.message||'Combat beat failed.';const status=message==='stale combat sequence'?409:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
   });
   app.post('/api/combat/equip', async (req,res) => {
     const itemId=req.body?.itemId;
