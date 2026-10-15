@@ -39,3 +39,17 @@ test('desperation armor adds 20 Speed below or at 40% HP, but not at zero HP or 
   state.equipment.armor = null;
   assert.equal(combatStatsFor(state).speed, 310, 'unequipped Desperation armor must not affect Speed');
 });
+
+test('bulwark armor provides the advertised four percent damage reduction only while equipped', () => {
+  const state = createCombatState();
+  const armor = state.inventory.find(item => item.slot === 'armor');
+  assert.ok(armor, 'starter armor should exist');
+
+  assert.equal(combatStatsFor(state).damageReduction, 0.04);
+  armor.trait = 'regeneration';
+  assert.equal(combatStatsFor(state).damageReduction, 0);
+
+  armor.trait = 'bulwark';
+  state.equipment.armor = null;
+  assert.equal(combatStatsFor(state).damageReduction, 0, 'an unequipped Bulwark item must not mitigate damage');
+});
