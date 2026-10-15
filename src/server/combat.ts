@@ -118,7 +118,7 @@ export async function performCombatBeat(sequence:number,intent:CombatIntent):Pro
     let enemyHp=Math.max(1,s.enemyHp||enemy.maxHp),heavy=false,consumed=false,defeated=false,died=false;
     let item:CombatGear|undefined;
     if(intent==='heavy'&&s.energy>=3&&playerActions>0){s.energy-=3;heavy=true;actions.push({actor:'player',kind:'ability',text:'Heavy strike prepared.'});}
-    else if(intent==='guard'&&s.energy>=2&&playerActions>0){s.energy-=2;s.guardBeats=1;consumed=true;actions.push({actor:'player',kind:'ability',text:'Guard raised. Incoming hits are softened.'});}
+    else if(intent==='guard'&&s.energy>=2&&playerActions>0){s.energy-=2;s.guardBeats=1;consumed=true;actions.push({actor:'player',kind:'ability',text:'Guard raised. The next incoming hit is softened.'});}
     else if(intent==='mend'&&s.energy>=4&&playerActions>0&&s.health<s.maxHealth){s.energy-=4;const before=s.health;s.health=Math.min(s.maxHealth,s.health+Math.max(1,Math.round(s.maxHealth*.14)));consumed=true;actions.push({actor:'player',kind:'ability',text:'Mend restored '+(s.health-before)+' HP.'});}
     else if(intent!=='strike')actions.push({actor:'player',kind:'ability',text:'Not enough energy or no action ready. Basic attacks continue.'});
     const attacks=Math.max(0,playerActions-(consumed?1:0)),weapon=s.inventory.find(g=>g.id===s.equipment.weapon);
@@ -144,12 +144,12 @@ export async function performCombatBeat(sequence:number,intent:CombatIntent):Pro
       let incoming=enemy.damage,strike='The '+enemy.name+' hits for ';
       if(enemy.boss&&s.combatBeats%4===0){incoming=Math.round(incoming*1.75);strike='The Crypt Warden cleaves for ';}
       else if(enemy.id==='ember-acolyte'&&s.combatBeats%3===0){incoming+=Math.round(s.maxHealth*.035);strike='The Ember Acolyte burns for ';}
-      if(s.guardBeats>0)incoming=Math.round(incoming*.45);
+      if(s.guardBeats>0){incoming=Math.round(incoming*.45);s.guardBeats=0;}
       incoming=Math.max(1,Math.round(incoming*(1-stats.damageReduction)));s.health=Math.max(0,s.health-incoming);
       actions.push({actor:'enemy',kind:'attack',damage:incoming,text:strike+incoming+' damage.'});
       if(s.health<=0){died=true;actions.push({actor:'enemy',kind:'death',text:'Run '+s.runId+' ended at Depth '+s.depth+'. Permanent progress retained.'});s.runId+=1;s.depth=1;s.health=s.maxHealth;s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,3);s.guardBeats=0;s.encounterFirstStrikeUsed=false;s.enemyHp=getEnemyForDepth(1).maxHp;actions.push({actor:'player',kind:'advance',text:'A new descent begins automatically at Depth 1.'});break;}
     }
-    if(s.guardBeats>0&&!defeated)s.guardBeats-=1;synchronizeCombatStats(s);
+    synchronizeCombatStats(s);
     return {...snapshot(s),actions,defeated,died,...(item?{item}:{})};
   });
 }
