@@ -4,7 +4,7 @@ import {
   COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, COMBAT_UPGRADES, addCombatGearToInventory,
   combatForgeCost, combatScrapValue, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost,
   createCombatState, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, floorQualityRequirement, gearQualityEffectiveness,
-  normalizeCombatAutoScrapSettings, resolveCombatSkillRarity,
+  normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity,
   skillGachaRankRequirement, skillRarityUnlocked, type CombatGear,
 } from '../src/shared/combat.js';
 
@@ -37,16 +37,27 @@ test('gear inventory and equipped loadout persist when a new run starts',()=>{
   assert.ok(state.inventory.some(item=>item.id===firstRunWeapon));
 });
 
-test('persistent inventory cap is enforced and prunes old floors',()=>{
+test('30-item carrying cap applies to each run while old inventory persists',()=>{
   const state=createCombatState();
-  state.inventory=Array.from({length:COMBAT_INVENTORY_CAP},(_,i)=>gear('old-'+i,i,i===1?'armor':'weapon',80));
-  state.equipment={weapon:'old-0',armor:'old-1'};
-  addCombatGearToInventory(state,gear('floor-50',50,'weapon',80));
-  assert.equal(state.inventory.length,COMBAT_INVENTORY_CAP);
-  assert.equal(state.inventory.some(item=>item.id==='old-0'),false);
-  assert.equal(state.inventory.some(item=>item.id==='floor-50'),true);
-  assert.ok(!state.equipment.weapon||state.inventory.some(item=>item.id===state.equipment.weapon));
-  assert.ok(!state.equipment.armor||state.inventory.some(item=>item.id===state.equipment.armor));
+  const starterIds=state.inventory.map(item=>item.id);
+  for(let i=0;i<COMBAT_INVENTORY_CAP;i++)addCombatGearToInventory(state,gear('run-'+i,i+1,i===1?'armor':'weapon',80));
+  assert.equal(state.runInventoryIds.length,COMBAT_INVENTORY_CAP);
+  assert.equal(state.inventory.length,COMBAT_INVENTORY_CAP+starterIds.length);
+  addCombatGearToInventory(state,gear('run-new-best',50,'weapon',95));
+  assert.equal(state.runInventoryIds.length,COMBAT_INVENTORY_CAP);
+  assert.ok(!state.inventory.some(item=>item.id==='run-0'));
+  assert.ok(state.inventory.some(item=>item.id==='run-new-best'));
+  for(const id of starterIds)assert.ok(state.inventory.some(item=>item.id===id));
+
+  state.equipment.weapon='run-new-best';
+  state.runId+=1;
+  resetCombatRunCarry(state);
+  assert.equal(state.runInventoryIds.length,0);
+  assert.ok(state.inventory.some(item=>item.id==='run-new-best'));
+  assert.equal(state.equipment.weapon,'run-new-best');
+  addCombatGearToInventory(state,gear('next-run-pickup',51,'armor',90));
+  assert.equal(state.runInventoryIds.length,1);
+  assert.ok(state.inventory.some(item=>item.id==='run-new-best'));
 });
 test('Auto Scrap settings are configurable and safely bounded',()=>{
   assert.deepEqual(normalizeCombatAutoScrapSettings(undefined),DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS);
