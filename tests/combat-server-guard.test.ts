@@ -84,3 +84,40 @@ test('concurrent duplicate beat submissions commit only one state transition', a
     context.userId = originalUserId;
   }
 });
+
+
+test('Arena opponent lookup prunes expired and malformed profiles', async () => {
+  const originalUserId = context.userId;
+  const userId = 'combat-arena-prune-regression';
+  const profileKey = 'infinity-orbs:combat:arena:profiles';
+  const expiredId = 'combat-arena-prune-expired-fixture';
+  const malformedId = 'combat-arena-prune-malformed-fixture';
+  context.userId = userId;
+
+  try {
+    await redis.hSet(profileKey, {
+      [expiredId]: JSON.stringify({
+        userId: expiredId,
+        username: 'Expired Delver',
+        updatedAt: 0,
+        rating: 1000,
+      }),
+      [malformedId]: '{invalid-json',
+    });
+
+    const { getCombatArenaOpponents } = await import('../src/server/combat.js');
+    const result = await getCombatArenaOpponents();
+    assert.equal(result.opponents.some(profile => profile.userId === expiredId), false);
+    assert.equal(result.opponents.some(profile => profile.userId === malformedId), false);
+
+    const persisted = await redis.hGetAll(profileKey);
+    assert.equal(persisted[expiredId], undefined, 'expired Arena profiles are deleted');
+    assert.equal(persisted[malformedId], undefined, 'malformed Arena profiles are deleted');
+  } finally {
+    await redis.del('infinity-orbs:combat:' + userId);
+    await redis.hDel(profileKey, userId);
+    await redis.hDel(profileKey, expiredId);
+    await redis.hDel(profileKey, malformedId);
+    context.userId = originalUserId;
+  }
+});
