@@ -2039,7 +2039,7 @@ test('applyRolls preflights lifetime roll-counter capacity before shared reads a
   const applyRolls = game.slice(start, end);
 
   const errorIndex = applyRolls.indexOf('Roll counter would exceed the safe integer range');
-  const sharedReadsIndex = applyRolls.indexOf('const [freshGlobalBoosters, worldEvent, fakeCcuBonus] = await Promise.all([');
+  const sharedReadsIndex = applyRolls.indexOf('const [freshGlobalBoosters, worldEvent, fakeCcuBonus, combatStateRaw] = await Promise.all([');
   const loopIndex = applyRolls.indexOf('for (let i = 0; i < rollCount; i++)');
   const incrementIndex = applyRolls.indexOf('s.totalRolls++');
 
@@ -2239,7 +2239,7 @@ test('offline vault state is validated and bounded before auto-claim can process
   assert.ok(applyStart >= 0 && applyEnd > applyStart);
   const apply = game.slice(applyStart, applyEnd);
   const maxCountIndex = apply.indexOf('const maxSupportedRollCount = offlineRollCap(s) * rollsPerActivation(s) + 2');
-  const sharedReadsIndex = apply.indexOf('const [freshGlobalBoosters, worldEvent, fakeCcuBonus] = await Promise.all([');
+  const sharedReadsIndex = apply.indexOf('const [freshGlobalBoosters, worldEvent, fakeCcuBonus, combatStateRaw] = await Promise.all([');
   assert.ok(maxCountIndex >= 0 && sharedReadsIndex > maxCountIndex);
   assert.match(apply, /rollCount > maxSupportedRollCount/);
 });
