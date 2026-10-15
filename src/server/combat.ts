@@ -120,7 +120,7 @@ export async function getCombatSnapshot():Promise<CombatSnapshot>{
   const userId=String(context.userId??'').trim();
   if(userId){
     const profile=createArenaProfile(userId,arenaName(context.username),state,Date.now());
-    await redis.hSet(ARENA_PROFILE_KEY,{[userId]:JSON.stringify(profile)}).catch(error=>console.error('[Combat Arena] Profile registration failed.',error));
+    await redis.hSet(ARENA_PROFILE_KEY,{[userId]:JSON.stringify(profile)}).catch((error: unknown)=>console.error('[Combat Arena] Profile registration failed.',error));
   }
   return snapshot(state);
 }
@@ -356,7 +356,7 @@ export async function getCombatArenaOpponents(): Promise<{
   // Keep the profile hash bounded over time. Delete a small batch per request
   // rather than turning one Arena open into thousands of serial Redis writes.
   await Promise.all(staleProfileIds.slice(0, 100).map(id =>
-    redis.hDel(ARENA_PROFILE_KEY, id).catch(error => {
+    redis.hDel(ARENA_PROFILE_KEY, id).catch((error: unknown) => {
       console.error('[Combat Arena] Could not prune stale profile.', error);
       return 0;
     }),
@@ -440,7 +440,7 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
       await redis.hSet(ARENA_PROFILE_KEY, {
         [userId]: JSON.stringify(ownProfile),
         [opponentId]: JSON.stringify(nextOpponentProfile),
-      }).catch(error => console.error('[Combat Arena] Profile refresh failed after result commit.', error));
+      }).catch((error: unknown) => console.error('[Combat Arena] Profile refresh failed after result commit.', error));
 
       const arenaResult: CombatArenaResult = {
         opponent: nextOpponentProfile,
