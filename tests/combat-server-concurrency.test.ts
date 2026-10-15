@@ -29,7 +29,9 @@ test('concurrent requests for the same combat sequence apply the beat only once'
     assert.equal(rejected.length, 1, 'the competing request should be rejected as stale');
 
     const failure = rejected[0];
-    assert.ok(failure && failure.status === 'rejected');
+    if (!failure || failure.status !== 'rejected') {
+      assert.fail('the competing combat beat must reject as stale');
+    }
     assert.match(
       String(failure.reason instanceof Error ? failure.reason.message : failure.reason),
       /stale combat sequence/,
