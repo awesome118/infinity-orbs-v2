@@ -262,7 +262,31 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     return {...snapshot(s),actions,defeated,died,...(item?{item}:{}),...(abilityCast?{abilityCast}:{})};
   });
 }
-export async function equipCombatItem(itemId:string):Promise<CombatSnapshot>{return mutate(s=>{const item=s.inventory.find(g=>g.id===itemId);if(!item)throw new Error('item not owned');s.equipment[item.slot]=item.id;synchronizeCombatStats(s);return snapshot(s);});}
+export async function equipCombatItem(itemId:string):Promise<CombatSnapshot>{return mutate(s=>{const item=s.inventory.find(g=>g.id===itemId);if(!item)throw new Error('item not owned');s.equipment[item.slot]=item.id;s.equipmentByDungeon[s.dungeonId]={...s.equipment};synchronizeCombatStats(s);return snapshot(s);});}
+
+export async function scrapCombatItem(itemIdValue:unknown):Promise<CombatSnapshot&{scrapResult:{itemName:string;gained:number;total:number}}>{
+  if(typeof itemIdValue!=='string'||!itemIdValue.trim()||itemIdValue.length>160)throw new Error('A valid gear item is required.');
+  return mutate(state=>{
+    const item=state.inventory.find(gear=>gear.id===itemIdValue);
+    if(!item)throw new Error('Gear item is not in this dungeon bag.');
+    if(state.equipment.weapon===item.id||state.equipment.armor===item.id)throw new Error('Unequip this item before scrapping it.');
+    state.inventory=state.inventory.filter(gear=>gear.id!==item.id);
+    const gained=combatScrapValue(item);state.scrap=Math.min(Number.MAX_SAFE_INTEGER,state.scrap+gained);
+    return {...snapshot(state),scrapResult:{itemName:item.name,gained,total:state.scrap}};
+  });
+}
+
+export async function forgeCombatGear(slotValue:unknown):Promise<CombatSnapshot&{forgeResult:{item:CombatGear;cost:number;remainingScrap:number}}>{
+  if(slotValue!=='weapon'&&slotValue!=='armor')throw new Error('Choose weapon or armor for the Forge.');
+  return mutate(state=>{
+    const floor=Math.max(0,state.depth-1),cost=combatForgeCost(floor);
+    if(state.scrap<cost)throw new Error('Not enough Scrap to forge this item.');
+    state.scrap-=cost;
+    const item=createGear(floor,slotValue);
+    addCombatGearToInventory(state,item);
+    return {...snapshot(state),forgeResult:{item,cost,remainingScrap:state.scrap}};
+  });
+}
 export async function rollCombatSkill():Promise<CombatSnapshot&{skillRoll:{id:CombatSkillId;name:string;rarity:CombatRarity;rank:number;duplicate:boolean;convertedCoins:number;pityEpic:number;pityMythic:number;progress:number;copiesNeeded:number;rankedUp:boolean};cost:number}> {
   return mutate(s=>{
     const cost=skillPullCost(s.skillRolls);if(s.coins<cost)throw new Error('Not enough Delver Coins.');

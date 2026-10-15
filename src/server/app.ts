@@ -16,6 +16,7 @@ import {
   claimQuest,
   prestige,
   buyPrestigeUpgrade,
+  updateCombatAutoScrapSettings,
   synthesizeDust,
   buyCosmetic,
   activateTurbo,
@@ -79,7 +80,7 @@ import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
-import { getCombatSnapshot, performCombatBeat, equipCombatItem, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon } from './combat.js';
+import { getCombatSnapshot, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon } from './combat.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -416,6 +417,9 @@ export function createApp() {
     // Gear, gacha, training and Arena writes still use combat-state CAS retries.
     if (
       req.path === '/combat/equip' ||
+      req.path === '/combat/gear/scrap' ||
+      req.path === '/combat/forge' ||
+      req.path === '/combat/auto-scrap' ||
       req.path === '/combat/skills/roll' ||
       req.path === '/combat/skills/equip' ||
       req.path === '/combat/skills/rank-up' ||
@@ -877,6 +881,21 @@ export function createApp() {
     try{res.setHeader('Cache-Control','no-store');res.json(await equipCombatItem(itemId));}
     catch(e:any){const message=e?.message||'Could not equip gear.';const status=message==='item not owned'?404:message==='REDDIT_LOGIN_REQUIRED'?401:500;res.status(status).json({error:message});}
   });
+  app.post('/api/combat/gear/scrap', async (req,res) => {
+    try { res.setHeader('Cache-Control','no-store');res.json(await scrapCombatItem(req.body?.itemId)); }
+    catch(e:any) { const message=e?.message||'Could not scrap gear.';const status=message==='A valid gear item is required.'||message==='Gear item is not in this dungeon bag.'||message==='Unequip this item before scrapping it.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message}); }
+  });
+  app.post('/api/combat/forge', async (req,res) => {
+    try { res.setHeader('Cache-Control','no-store');res.json(await forgeCombatGear(req.body?.slot)); }
+    catch(e:any) { const message=e?.message||'Forge failed.';const status=message==='Choose weapon or armor for the Forge.'||message==='Not enough Scrap to forge this item.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message}); }
+  });
+  app.post('/api/combat/auto-scrap', async (req,res) => {
+    try {
+      const settings=await updateCombatAutoScrapSettings(req.body?.enabled,req.body?.maxQuality);
+      await getCombatSnapshot();
+      res.setHeader('Cache-Control','no-store');res.json({settings});
+    } catch(e:any) { const message=e?.message||'Could not update Auto Scrap settings.';const status=message==='Auto Scrap Prestige upgrade is required.'||message==='Auto Scrap quality threshold must be between 0 and 100.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message}); }
+  });
   app.post('/api/combat/skills/roll', async (_req,res) => {
     try{res.setHeader('Cache-Control','no-store');res.json(await rollCombatSkill());}
     catch(e:any){const message=e?.message||'Skill roll failed.';const status=message==='Not enough Delver Coins.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:500;res.status(status).json({error:message});}
@@ -1263,7 +1282,7 @@ export function createApp() {
         'transmutation', 'shardSynthesis', 'astralBarrage', 'cosmicInheritance',
         'autoBuyer', 'supernova', 'altarResonator', 'offlineOverdrive',
         'luckyFloor', 'astralArsenal', 'deepVault', 'masteryEngine', 'steadyHands', 'offlineFortune',
-        'frenzyVolley', 'astralReserve', 'temporalCompression', 'shardResonator', 'cosmicValuation', 'cosmicReserve'
+        'frenzyVolley', 'astralReserve', 'temporalCompression', 'shardResonator', 'cosmicValuation', 'cosmicReserve', 'autoScrap'
       ];
       if (!validIds.includes(id)) return res.status(400).json({ error: 'Invalid prestige upgrade.' });
       res.json({ state: await buyPrestigeUpgrade(id) });
