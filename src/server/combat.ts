@@ -1,6 +1,6 @@
 import { context, redis } from './devvit-mock.js';
 import type { CombatAction, CombatEnemy, CombatGear, CombatIntent, CombatSkillId, CombatSnapshot, CombatState, CombatTrait } from '../shared/combat.js';
-import { COMBAT_SKILLS, SKILL_RANK_CAP, combatStatsFor, createCombatState, getEnemyForDepth, skillPullCost, synchronizeCombatStats } from '../shared/combat.js';
+import { COMBAT_SKILLS, SKILL_RANK_CAP, applyCombatSkillCopy, combatStatsFor, createCombatState, getEnemyForDepth, skillPullCost, synchronizeCombatStats } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=30;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -123,10 +123,7 @@ export async function rollCombatSkill():Promise<CombatSnapshot&{skillRoll:{id:Co
     s.coins-=cost;s.skillRolls+=1;const chance=Math.random();
     const rarity=chance<.55?'Common':chance<.80?'Uncommon':chance<.92?'Rare':chance<.98?'Epic':'Mythic';
     const pool=COMBAT_SKILLS.filter(skill=>skill.rarity===rarity),skill=pick(pool);if(!skill)throw new Error('Skill pool is unavailable.');
-    const old=Math.max(0,Math.min(SKILL_RANK_CAP,Math.floor(Number(s.skillLevels[skill.id])||0))),duplicate=old>0;
-    let rank=old,convertedCoins=0;
-    if(old<SKILL_RANK_CAP){rank=old+1;s.skillLevels[skill.id]=rank;}
-    else{convertedCoins=Math.round(cost*(rarity==='Mythic'?.75:rarity==='Epic'?.5:.25));s.coins=Math.min(Number.MAX_SAFE_INTEGER,s.coins+convertedCoins);}
-    synchronizeCombatStats(s);return {...snapshot(s),skillRoll:{id:skill.id,name:skill.name,rarity,rank,duplicate,convertedCoins},cost};
+    const applied=applyCombatSkillCopy(s,skill.id,cost);
+    return {...snapshot(s),skillRoll:{id:skill.id,name:skill.name,rarity,rank:applied.rank,duplicate:applied.duplicate,convertedCoins:applied.coinsRefunded},cost};
   });
 }

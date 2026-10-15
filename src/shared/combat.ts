@@ -170,6 +170,43 @@ export function synchronizeCombatStats(state: CombatState): CombatStats {
   state.energy=Math.max(0,Math.min(state.maxEnergy,Math.floor(Number(state.energy)||0)));
   return stats;
 }
+
+export interface CombatSkillCopyResult {
+  rank: number;
+  duplicate: boolean;
+  maxRank: boolean;
+  coinsRefunded: number;
+}
+
+/** Applies one server-rolled copy. Every duplicate raises the skill rank until Rank 5. */
+export function applyCombatSkillCopy(
+  state: CombatState,
+  skillId: CombatSkillId,
+  pullCost: number,
+): CombatSkillCopyResult {
+  const skill = COMBAT_SKILLS.find(candidate => candidate.id === skillId);
+  if (!skill) throw new Error('Unknown combat skill.');
+  const oldRank = Math.max(0, Math.min(
+    SKILL_RANK_CAP,
+    Math.floor(Number(state.skillLevels[skillId]) || 0),
+  ));
+  const duplicate = oldRank > 0;
+
+  if (oldRank < SKILL_RANK_CAP) {
+    const rank = oldRank + 1;
+    state.skillLevels[skillId] = rank;
+    synchronizeCombatStats(state);
+    return { rank, duplicate, maxRank: rank === SKILL_RANK_CAP, coinsRefunded: 0 };
+  }
+
+  const safeCost = Number.isFinite(pullCost) ? Math.max(0, Math.floor(pullCost)) : 0;
+  const refundRate = skill.rarity === 'Mythic' ? 0.75 : skill.rarity === 'Epic' ? 0.5 : 0.25;
+  const coinsRefunded = Math.round(safeCost * refundRate);
+  state.coins = Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, state.coins) + coinsRefunded);
+  synchronizeCombatStats(state);
+  return { rank: oldRank, duplicate: true, maxRank: true, coinsRefunded };
+}
+
 export function getEnemyForDepth(depthValue: number): CombatEnemy {
   const depth=Math.max(1,Math.min(50000,Math.floor(Number(depthValue)||1)));
   const encounters=[
