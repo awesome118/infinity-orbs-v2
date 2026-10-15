@@ -175,3 +175,41 @@ test('Arena opponent protection expires after the cooldown window', async () => 
   assert.ok(result.arenaResult);
   assert.equal(result.arenaResult.opponent.userId, 'arena-expired-target');
 });
+
+test('Legacy Arena saves migrate their outgoing cooldown into target protection', async () => {
+  reset();
+  const now = Date.now();
+  const legacyTarget = createCombatState();
+  legacyTarget.arenaLastChallengeAt = now - 10_000;
+  delete (legacyTarget as Partial<typeof legacyTarget>).arenaLastMatchAt;
+  values.set('infinity-orbs:combat:legacy-arena-target', JSON.stringify(legacyTarget));
+  hashes.set(ARENA_PROFILES, {
+    'legacy-arena-target': JSON.stringify({
+      userId: 'legacy-arena-target',
+      username: 'legacy-arena-target',
+      level: 1,
+      bestDepth: 1,
+      rating: 1000,
+      wins: 0,
+      losses: 0,
+      updatedAt: now,
+      damage: 54,
+      speed: 310,
+      maxHealth: 1040,
+      critChance: 0.12,
+      weaponName: 'Delver Knife',
+      armorName: 'Worn Leathers',
+      skillRanks: 0,
+    }),
+  });
+  savePlayer('legacy-migration-attacker');
+  useUser('legacy-migration-attacker');
+
+  await assert.rejects(
+    challengeCombatArena('legacy-arena-target'),
+    /ARENA_OPPONENT_COOLDOWN:/,
+  );
+  const refreshedProfiles = hashes.get(ARENA_PROFILES) ?? {};
+  const refreshed = JSON.parse(refreshedProfiles['legacy-arena-target'] ?? '{}');
+  assert.ok(refreshed.challengeBlockedUntil > Date.now());
+});
