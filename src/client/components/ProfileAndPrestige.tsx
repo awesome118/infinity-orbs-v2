@@ -8,6 +8,7 @@ import {
   Clock,
   Archive,
   BarChart3,
+  Gem,
   BellRing,
   FastForward,
   Zap,
