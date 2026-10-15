@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, COMBAT_SKILLS, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, skillPullCost, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../src/shared/combat.js';
+import { addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, COMBAT_SKILLS, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, skillPullCost, tickCombatGuard, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../src/shared/combat.js';
 
 test('starter combat build carries the Auto-Dungeons baseline', () => {
   const state=createCombatState();
@@ -192,4 +192,25 @@ test('core-game level and highest-orb rarity improve combat without changing bas
   assert.ok(progressed.damage > baseline.damage);
   assert.ok(progressed.maxHealth > baseline.maxHealth);
   assert.equal(coreProgressionCombatBonus(1_000_000, 1_000_000_000_000_000_000), 0.25);
+});
+
+
+test('Guard stays armed through ticks where no enemy action resolves', () => {
+  assert.equal(tickCombatGuard(1, 0), 1);
+});
+
+test('Guard is consumed only after the enemy acts and expires once per beat', () => {
+  assert.equal(tickCombatGuard(1, 1), 0);
+  assert.equal(tickCombatGuard(2, 3), 1);
+});
+
+test('Guard carries into the next room when the current enemy dies before acting', () => {
+  assert.equal(tickCombatGuard(1, 2, true), 1);
+});
+
+test('Guard ticking clamps invalid values without accidentally consuming protection', () => {
+  assert.equal(tickCombatGuard(0, 2), 0);
+  assert.equal(tickCombatGuard(-2, 1), 0);
+  assert.equal(tickCombatGuard(Number.NaN, 1), 0);
+  assert.equal(tickCombatGuard(1, Number.NaN), 1);
 });
