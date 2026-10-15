@@ -59,15 +59,14 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.energy=finiteInt(s.energy,3,0,10);s.maxEnergy=finiteInt(s.maxEnergy,5,1,10);s.guardBeats=finiteInt(s.guardBeats,0,0,10);s.encounterFirstStrikeUsed=s.encounterFirstStrikeUsed===true;
   const inv=Array.isArray(s.inventory)?s.inventory.map(g=>normalizeGear(g,Math.max(0,s.depth-1))).filter((g):g is CombatGear=>Boolean(g)):[];
   s.inventory=inv.length?inv:createCombatState().inventory;
-  const preferredWeaponId=typeof s.equipment?.weapon==='string'?s.equipment.weapon:null;
-  const preferredArmorId=typeof s.equipment?.armor==='string'?s.equipment.armor:null;
   while(s.inventory.length>INVENTORY_CAP){
-    let removable=-1;
-    for(let index=s.inventory.length-1;index>=0;index--){
-      const gear=s.inventory[index]!;
-      if(gear.id!==preferredWeaponId&&gear.id!==preferredArmorId){removable=index;break;}
+    let removable=0;
+    for(let index=1;index<s.inventory.length;index++){
+      const candidate=s.inventory[index]!, oldest=s.inventory[removable]!;
+      const candidateFloor=Math.max(0,Math.floor(Number(candidate.sourceFloor)||0));
+      const oldestFloor=Math.max(0,Math.floor(Number(oldest.sourceFloor)||0));
+      if(candidateFloor<oldestFloor||(candidateFloor===oldestFloor&&candidate.quality<oldest.quality)||(candidateFloor===oldestFloor&&candidate.quality===oldest.quality&&index>removable))removable=index;
     }
-    if(removable<0)break;
     s.inventory.splice(removable,1);
   }
   const w=s.inventory.find(g=>g.id===s.equipment?.weapon&&g.slot==='weapon'),a=s.inventory.find(g=>g.id===s.equipment?.armor&&g.slot==='armor');

@@ -306,7 +306,7 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const weaponQuality = gearQualityEffectiveness(weapon, floor);
   const armorQuality = gearQualityEffectiveness(armor, floor);
   const orbRarity = Math.max(2, Math.min(1_000_000_000_000_000_000, Math.floor(Number(state.orbFocusRarity) || 2)));
-  const orbFocusBonus = Math.min(.35, Math.max(0, Math.log10(orbRarity) * .025 + combatUpgradeRank(state, 'orb-resonance') * .015));
+  const orbFocusBonus = Math.min(.35, Math.max(0, (Math.log10(orbRarity) - Math.log10(2)) * .025 + combatUpgradeRank(state, 'orb-resonance') * .015));
   const coreProgressionBonus = coreProgressionCombatBonus(state.coreLevel, state.coreHighestRarity);
   const dungeonDamageBonus = state.dungeonId === 'cinder-vault' ? 0.10 : 0;
   const dungeonSpeedBonus = state.dungeonId === 'glass-labyrinth' ? 35 : 0;
