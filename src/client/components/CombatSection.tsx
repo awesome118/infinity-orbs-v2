@@ -48,6 +48,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const [arenaLoading,setArenaLoading]=useState(false);
   const [arenaResult,setArenaResult]=useState<CombatArenaResult|null>(null);
   const [arenaCooldownMs,setArenaCooldownMs]=useState(0);
+  const [arenaNow,setArenaNow]=useState(()=>Date.now());
   const stateRef=useRef<CombatState|null>(null);
   const runtime=useRef({intent:'strike' as CombatIntent,auto:true,paused:false,busy:false,manual:false});
   runtime.current.intent=intent; runtime.current.auto=auto; runtime.current.paused=paused;
@@ -70,6 +71,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   },[]);
   useEffect(()=>{if(page==='arena')void loadArena();},[page,loadArena]);
   useEffect(()=>{if(arenaCooldownMs<=0)return;const timer=window.setInterval(()=>setArenaCooldownMs(ms=>Math.max(0,ms-1000)),1000);return()=>window.clearInterval(timer);},[arenaCooldownMs>0]);
+  useEffect(()=>{if(page!=='arena')return;const timer=window.setInterval(()=>setArenaNow(Date.now()),1000);return()=>window.clearInterval(timer);},[page]);
   const challengeArena=async(opponentId:string)=>{
     setMutating(true);setArenaResult(null);
     try{
@@ -80,7 +82,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     }catch(e){
       const message=e instanceof Error?e.message:'Arena challenge failed.';
       setError(message);
-      if(message.includes('not ready yet'))await loadArena();
+      if(message.includes('not ready yet')||message.includes('protected from another Arena challenge'))await loadArena();
     }finally{setMutating(false);}
   };
   const beat=useCallback(async()=>{
@@ -167,9 +169,9 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         <div className="io-combat-opponent-head"><div><span className="io-combat-eyebrow">RATING {fmt(opponent.rating)}</span><h3>{opponent.username}</h3></div><span className="io-combat-opponent-record">{fmt(opponent.wins)}W / {fmt(opponent.losses)}L</span></div>
         <div className="io-combat-opponent-stats"><span>LV {opponent.level}</span><span>BEST DEPTH {fmt(opponent.bestDepth)}</span><span>SKILL RANKS {fmt(opponent.skillRanks)}</span></div>
         <div className="io-combat-opponent-build"><p><b>{opponent.weaponName}</b> · {fmt(opponent.damage)} DMG</p><p><b>{opponent.armorName}</b> · {fmt(opponent.maxHealth)} HP</p><p>{fmt(opponent.speed)} SPD · {percent(opponent.critChance)} CRIT</p></div>
-        <button type="button" className="io-combat-button is-primary" disabled={mutating||arenaCooldownMs>0} onClick={()=>void challengeArena(opponent.userId)}>{mutating?'Resolving…':arenaCooldownMs>0?'Challenge cooldown':'Challenge player'}</button>
+        <button type="button" className="io-combat-button is-primary" disabled={mutating||arenaCooldownMs>0||opponent.challengeBlockedUntil>arenaNow} onClick={()=>void challengeArena(opponent.userId)}>{mutating?'Resolving…':arenaCooldownMs>0?'Challenge cooldown':opponent.challengeBlockedUntil>arenaNow?'Recently fought · '+Math.ceil((opponent.challengeBlockedUntil-arenaNow)/1000)+'s':'Challenge player'}</button>
       </article>)}</div>}
-      <p className="io-combat-arena-footnote">One challenge every 90 seconds. Rating uses an Elo-style update. Results are computed by the server from each player's saved gear and skill ranks.</p>
+      <p className="io-combat-arena-footnote">One challenge every 90 seconds. Players are protected from incoming challenges for 90 seconds after any Arena match. Rating and results are computed by the server from each player's saved gear and skill ranks.</p>
     </>}
   </section>;
 };
