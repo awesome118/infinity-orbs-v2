@@ -2,6 +2,7 @@ export type CombatPage = 'fight' | 'dungeons' | 'gear' | 'skills' | 'arena';
 export type CombatIntent = 'strike' | 'heavy' | 'guard' | 'mend';
 export type CombatCommand = CombatIntent | 'auto';
 export type CombatTactic = 'balanced' | 'aggressive' | 'defensive' | 'recovery';
+export type CombatDungeonId = 'undercrypt' | 'cinder-vault' | 'glass-labyrinth';
 export type CombatRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Mythic';
 export type CombatSkillStat = 'damagePct' | 'speedFlat' | 'healthPct' | 'critChance' | 'coinBonus';
 export type CombatTrait = 'bleed' | 'keen' | 'first-strike' | 'bulwark' | 'regeneration' | 'desperation';
@@ -65,7 +66,8 @@ export type CombatSkillLevels = Partial<Record<CombatSkillId, number>>;
 export interface CombatState {
   version: 1;
   runId: number;
-  dungeonId: 'undercrypt';
+  dungeonId: CombatDungeonId;
+  dungeonBestDepths: Record<CombatDungeonId, number>;
   depth: number;
   bestDepth: number;
   level: number;
@@ -174,7 +176,7 @@ export function createCombatState(): CombatState {
   const weapon: CombatGear = { id:'starter-weapon', name:'Delver Knife', slot:'weapon', quality:35, power:8, effect:'Adds +4 damage and +10 Speed. Critical chance +4 percentage points.', trait:'keen', damageBonus:4, speedBonus:10, maxHealthBonus:0 };
   const armor: CombatGear = { id:'starter-armor', name:'Worn Leathers', slot:'armor', quality:28, power:5, effect:'Adds +40 max HP and reduces incoming damage by 4%.', trait:'bulwark', damageBonus:0, speedBonus:0, maxHealthBonus:40 };
   const state: CombatState = {
-    version:1, runId:1, dungeonId:'undercrypt', depth:1, bestDepth:1,
+    version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
     baseDamage:54, coins:250, totalKills:0, skillRolls:0, sequence:0,
     combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0,
@@ -202,14 +204,18 @@ export function combatStatsFor(state: CombatState): CombatStats {
     else if (skill.stat==='coinBonus') coinBonus += skill.value*rank;
   }
   const coreProgressionBonus = coreProgressionCombatBonus(state.coreLevel, state.coreHighestRarity);
+  const dungeonDamageBonus = state.dungeonId === 'cinder-vault' ? 0.10 : 0;
+  const dungeonSpeedBonus = state.dungeonId === 'glass-labyrinth' ? 35 : 0;
+  const dungeonCritBonus = state.dungeonId === 'glass-labyrinth' ? 0.05 : 0;
   const flatDamage = 50 + (Math.max(1,state.level)-1)*4 + (weapon?.damageBonus||0);
   const flatHealth = 1000 + (Math.max(1,state.level)-1)*30 + (armor?.maxHealthBonus||0);
   const maxHealth = Math.max(1,Math.round(flatHealth*(1+healthPct)*(1+coreProgressionBonus)));
-  let speed = 300 + (weapon?.speedBonus||0) + speedFlat;
+  let speed = 300 + (weapon?.speedBonus||0) + speedFlat + dungeonSpeedBonus;
   if (armor?.trait==='desperation' && state.health>0 && state.health<=maxHealth*.4) speed+=20;
   if (weapon?.trait==='keen') critChance+=.04;
+  critChance += dungeonCritBonus;
   return {
-    damage:Math.max(1,Math.round(flatDamage*(1+damagePct)*(1+coreProgressionBonus))),
+    damage:Math.max(1,Math.round(flatDamage*(1+damagePct)*(1+coreProgressionBonus)*(1+dungeonDamageBonus))),
     speed:Math.min(800,speed), maxHealth,
     critChance:Math.min(.75,Math.max(0,critChance)),
     damageReduction: armor?.trait === 'bulwark' ? 0.04 : 0,
@@ -368,4 +374,38 @@ export function chooseAutoCombatIntent(state: CombatState): CombatIntent {
       if (healthRatio <= 0.18 && energy >= 2) return 'guard';
       return energy >= 3 ? 'heavy' : 'strike';
   }
+}
+
+
+export function getEnemyForDungeonDepth(dungeonValue: unknown, depth: number): CombatEnemy {
+  const dungeon: CombatDungeonId =
+    dungeonValue === 'cinder-vault' || dungeonValue === 'glass-labyrinth' ? dungeonValue : 'undercrypt';
+  const base = getEnemyForDepth(depth);
+  if (dungeon === 'undercrypt') return base;
+  if (dungeon === 'cinder-vault') {
+    const maxHp = Math.max(1, Math.round(base.maxHp * 1.35));
+    return {
+      ...base,
+      id: base.boss ? 'cinder-sovereign' : base.id,
+      name: base.boss ? 'Cinder Sovereign' : 'Cinder ' + base.name,
+      hp: maxHp,
+      maxHp,
+      damage: Math.max(1, Math.round(base.damage * 1.25)),
+      speed: Math.min(500, Math.round(base.speed * 1.08)),
+      room: base.boss ? 'The Furnace Crown' : 'Cinder ' + base.room,
+      emoji: base.boss ? '🌋' : base.emoji,
+    };
+  }
+  const maxHp = Math.max(1, Math.round(base.maxHp * 0.78));
+  return {
+    ...base,
+    id: base.boss ? 'prism-regent' : base.id,
+    name: base.boss ? 'Prism Regent' : 'Prism ' + base.name,
+    hp: maxHp,
+    maxHp,
+    damage: Math.max(1, Math.round(base.damage * 1.12)),
+    speed: Math.min(600, Math.round(base.speed * 1.35)),
+    room: base.boss ? 'Hall of Infinite Reflections' : 'Mirror ' + base.room,
+    emoji: base.boss ? '🔮' : base.emoji,
+  };
 }
