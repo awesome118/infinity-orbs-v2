@@ -4,7 +4,7 @@ import {
   COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, COMBAT_UPGRADES, addCombatGearToInventory,
   combatForgeCost, combatScrapValue, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost,
   createCombatState, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, floorQualityRequirement, gearQualityEffectiveness,
-  normalizeCombatAutoScrapSettings, resetCombatRunGear, resolveCombatSkillRarity,
+  normalizeCombatAutoScrapSettings, resolveCombatSkillRarity,
   skillGachaRankRequirement, skillRarityUnlocked, type CombatGear,
 } from '../src/shared/combat.js';
 
@@ -23,22 +23,21 @@ test('gear effectiveness follows the current floor target',()=>{
   assert.equal(gearQualityEffectiveness(gear('excellent',50,'weapon',80),50),1.25);
   assert.equal(gearQualityEffectiveness(gear('starter',0,'weapon',0),0),1);
 });
-test('each run has one isolated inventory and resets gear when a new run begins',()=>{
+test('gear inventory and equipped loadout persist when a new run starts',()=>{
   const state=createCombatState();
   const firstRunWeapon=state.equipment.weapon;
   addCombatGearToInventory(state,gear('run-one-only',20,'weapon',75));
-  assert.ok(state.inventory.some(item=>item.id==='run-one-only'));
-  assert.ok(state.inventory.some(item=>item.id===firstRunWeapon));
+  state.equipment.weapon='run-one-only';
 
+  // Run transitions reset the descent, not the player's owned gear or loadout.
   state.runId+=1;
-  resetCombatRunGear(state);
-  assert.equal(state.inventory.some(item=>item.id==='run-one-only'),false);
-  assert.notEqual(state.equipment.weapon,firstRunWeapon);
-  assert.ok(state.inventory.some(item=>item.id===state.equipment.weapon&&item.slot==='weapon'));
-  assert.ok(state.inventory.some(item=>item.id===state.equipment.armor&&item.slot==='armor'));
+  state.depth=1;
+  assert.ok(state.inventory.some(item=>item.id==='run-one-only'));
+  assert.equal(state.equipment.weapon,'run-one-only');
+  assert.ok(state.inventory.some(item=>item.id===firstRunWeapon));
 });
 
-test('inventory cap is enforced for the active run and prunes old floors',()=>{
+test('persistent inventory cap is enforced and prunes old floors',()=>{
   const state=createCombatState();
   state.inventory=Array.from({length:COMBAT_INVENTORY_CAP},(_,i)=>gear('old-'+i,i,i===1?'armor':'weapon',80));
   state.equipment={weapon:'old-0',armor:'old-1'};
