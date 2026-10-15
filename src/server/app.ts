@@ -879,8 +879,8 @@ export function createApp() {
     try { res.setHeader('Cache-Control','no-store'); res.json(await challengeCombatArena(opponentId)); }
     catch(e:any) {
       const message=e?.message||'Arena challenge failed.';
-      const status=message==='REDDIT_LOGIN_REQUIRED'?401:message==='ARENA_SELF_CHALLENGE'?400:message==='ARENA_OPPONENT_UNAVAILABLE'?404:message.startsWith('ARENA_COOLDOWN:')?429:message==='Combat state changed repeatedly. Please retry.'?503:500;
-      res.status(status).json({error:message.startsWith('ARENA_COOLDOWN:')?'Your next Arena challenge is not ready yet.':message});
+      const status=message==='REDDIT_LOGIN_REQUIRED'?401:message==='ARENA_SELF_CHALLENGE'?400:message==='ARENA_OPPONENT_UNAVAILABLE'?404:message.startsWith('ARENA_COOLDOWN:')||message.startsWith('ARENA_OPPONENT_COOLDOWN:')?429:message==='Combat state changed repeatedly. Please retry.'?503:500;
+      res.status(status).json({error:message.startsWith('ARENA_COOLDOWN:')?'Your next Arena challenge is not ready yet.':message.startsWith('ARENA_OPPONENT_COOLDOWN:')?'That opponent recently fought and is protected from another Arena challenge. Try another opponent.':message});
     }
   });
 
