@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, COMBAT_SKILLS, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, skillPullCost, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../src/shared/combat.js';
+import { addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_SKILLS, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, skillPullCost, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../src/shared/combat.js';
 
 test('starter combat build carries the Auto-Dungeons baseline', () => {
   const state=createCombatState();
@@ -192,4 +192,37 @@ test('core-game level and highest-orb rarity improve combat without changing bas
   assert.ok(progressed.damage > baseline.damage);
   assert.ok(progressed.maxHealth > baseline.maxHealth);
   assert.equal(coreProgressionCombatBonus(1_000_000, 1_000_000_000_000_000_000), 0.25);
+});
+
+
+test('auto combat tactics choose safe, valid intents from health and energy', () => {
+  const state = createCombatState();
+  state.energy = 4;
+  state.health = state.maxHealth * 0.30;
+  state.autoTactic = 'balanced';
+  assert.equal(chooseAutoCombatIntent(state), 'mend');
+
+  state.energy = 2;
+  state.health = state.maxHealth * 0.15;
+  assert.equal(chooseAutoCombatIntent(state), 'guard');
+
+  state.autoTactic = 'aggressive';
+  state.health = state.maxHealth;
+  state.energy = 3;
+  assert.equal(chooseAutoCombatIntent(state), 'heavy');
+  state.energy = 2;
+  assert.equal(chooseAutoCombatIntent(state), 'strike');
+
+  state.autoTactic = 'defensive';
+  state.health = state.maxHealth * 0.60;
+  state.energy = 4;
+  assert.equal(chooseAutoCombatIntent(state), 'mend');
+  state.energy = 2;
+  state.health = state.maxHealth * 0.40;
+  assert.equal(chooseAutoCombatIntent(state), 'guard');
+
+  state.autoTactic = 'recovery';
+  state.health = state.maxHealth * 0.80;
+  state.energy = 4;
+  assert.equal(chooseAutoCombatIntent(state), 'mend');
 });
