@@ -1919,3 +1919,12 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-combat-arena-result-log p{margin:0;color:#bcb2bf;font-size:10px;line-height:1.45}
 .io-combat-arena-footnote{margin:12px 0 0;color:#948a9b;font-size:10px;line-height:1.5}
 @media(max-width:680px){.io-combat-arena-head{flex-direction:column}.io-combat-arena-rating{width:100%}.io-combat-opponent-grid{grid-template-columns:1fr}.io-combat-arena-result-log{grid-template-columns:1fr}}
+
+
+/* Server-resolved automatic combat tactics */
+.io-combat-tactic-row{display:grid;grid-template-columns:minmax(130px,.45fr) minmax(220px,1fr);align-items:center;gap:12px;padding:12px 14px;margin:10px 0;border:1px solid #39313f;border-radius:10px;background:#1b171f}
+.io-combat-tactic-row label{display:flex;flex-direction:column;gap:4px}
+.io-combat-tactic-row label strong{color:#e5dce7;font-size:13px;font-weight:900}
+.io-combat-tactic-row select{width:100%;min-width:0;padding:10px 12px;border:1px solid #514453;border-radius:8px;background:#17141b;color:#ded4e0;font-size:11px}
+.io-combat-tactic-row select:disabled{opacity:.6}
+@media(max-width:680px){.io-combat-tactic-row{grid-template-columns:1fr;gap:8px}}
