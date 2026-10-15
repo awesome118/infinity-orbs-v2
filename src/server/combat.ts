@@ -659,9 +659,9 @@ export async function setCombatDungeon(dungeonValue: unknown): Promise<CombatSna
     state.guardBeats = 0;
     state.encounterFirstStrikeUsed = false;
     state.energy = Math.min(state.maxEnergy, 3);
-    state.health = state.maxHealth;
     state.enemyHp = getEnemyForDungeonDepth(nextDungeon, 1).maxHp;
     synchronizeCombatStats(state);
+    state.health = state.maxHealth;
     return snapshot(state);
   });
 }
