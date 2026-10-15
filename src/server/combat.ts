@@ -86,6 +86,10 @@ function normalizeState(raw:string|null|undefined):CombatState {
     const equipped=s.inventory.find(g=>g.id===s.equipment[slot]&&g.slot===slot);
     s.equipment[slot]=equipped?.id??s.inventory.find(g=>g.slot===slot)?.id??null;
   }
+  // Drop legacy dungeon-keyed storage after extracting only the previously active run's bag.
+  const legacyInventoryMaps=s as CombatState&{inventoryByDungeon?:unknown;equipmentByDungeon?:unknown};
+  delete legacyInventoryMaps.inventoryByDungeon;
+  delete legacyInventoryMaps.equipmentByDungeon;
   const levels:Partial<Record<CombatSkillId,number>>={}, copyProgress:Partial<Record<CombatSkillId,number>>={}, cooldowns:Partial<Record<CombatSkillId,number>>={};
   for(const skill of COMBAT_SKILLS){
     const rank=finiteInt(s.skillLevels?.[skill.id],0,0,Number.MAX_SAFE_INTEGER);
