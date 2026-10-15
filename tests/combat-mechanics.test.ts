@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_SKILLS, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, skillPullCost, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../src/shared/combat.js';
+import { addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_SKILLS, combatAbilityType, combatForgeCost, combatScrapValue, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../src/shared/combat.js';
 
 test('starter combat build carries the Auto-Dungeons baseline', () => {
   const state=createCombatState();
@@ -14,9 +14,10 @@ test('starter combat build carries the Auto-Dungeons baseline', () => {
   assert.equal(state.arenaLosses,0);
   assert.deepEqual(state.dungeonBestDepths, { undercrypt: 1, 'cinder-vault': 1, 'glass-labyrinth': 1 });
 });
-test('every combat rarity has exactly five skills', () => {
-  for(const rarity of ['Common','Uncommon','Rare','Epic','Mythic']) assert.equal(COMBAT_SKILLS.filter(skill=>skill.rarity===rarity).length,5);
-  assert.equal(COMBAT_SKILLS.length,25);
+test('every combat rarity has seven active abilities', () => {
+  for(const rarity of ['Common','Uncommon','Rare','Epic','Mythic']) assert.equal(COMBAT_SKILLS.filter(skill=>skill.rarity===rarity).length,7);
+  assert.equal(COMBAT_SKILLS.length,35);
+  assert.equal(COMBAT_ABILITY_SLOTS,3);
 });
 test('equipped gear changes derived stats', () => {
   const state=createCombatState(), before=combatStatsFor(state);
@@ -37,83 +38,63 @@ test('skill pull pricing does not decrease with repeated pulls', () => {
   for(let pulls=1;pulls<60;pulls++){const current=skillPullCost(pulls);assert.ok(current>=previous);previous=current;}
 });
 
-test('duplicate skill copies increase rank and improve the associated stat', () => {
+test('duplicate copies advance uncapped skill ranks with an increasing copy requirement', () => {
   const state = createCombatState();
-  const speedValues: number[] = [];
-  for (let expectedRank = 1; expectedRank <= 5; expectedRank += 1) {
-    const result = applyCombatSkillCopy(state, 'surefoot', 75);
-    assert.equal(result.rank, expectedRank);
-    assert.equal(result.duplicate, expectedRank > 1);
-    assert.equal(result.maxRank, expectedRank === 5);
-    assert.equal(result.coinsRefunded, 0);
-    speedValues.push(combatStatsFor(state).speed);
+  const baseStats = combatStatsFor(state);
+  const first = applyCombatSkillCopy(state, 'surefoot', 75);
+  assert.equal(first.rank, 1);
+  assert.equal(first.rankedUp, true);
+  assert.equal(first.progress, 0);
+  assert.equal(state.skillLevels.surefoot, 1);
+  const neededForRankTwo = combatSkillCopiesForNextRank(1);
+  assert.equal(neededForRankTwo, 3);
+  for(let copy=0;copy<neededForRankTwo-1;copy++){
+    const result=applyCombatSkillCopy(state,'surefoot',75);
+    assert.equal(result.rank,1);
+    assert.equal(result.rankedUp,false);
   }
-  assert.deepEqual(speedValues, [318, 326, 334, 342, 350]);
-  const capped = applyCombatSkillCopy(state, 'surefoot', 75);
-  assert.equal(capped.rank, 5);
-  assert.equal(capped.duplicate, true);
-  assert.equal(capped.maxRank, true);
-  assert.equal(state.skillLevels.surefoot, 5);
-  assert.equal(combatStatsFor(state).speed, 350);
+  const rankTwo=applyCombatSkillCopy(state,'surefoot',75);
+  assert.equal(rankTwo.rank,2);
+  assert.equal(rankTwo.rankedUp,true);
+  assert.equal(combatSkillCopiesForNextRank(2),4);
+  assert.ok(combatSkillCopiesForNextRank(20)>combatSkillCopiesForNextRank(10));
+  assert.ok(combatSkillRankEffectiveness(20)>combatSkillRankEffectiveness(2));
+  assert.deepEqual(combatStatsFor(state),baseStats,'owned but unequipped abilities must not passively stack stats');
 });
 
-test('duplicate damage skill copies each increase derived damage', () => {
-  const state = createCombatState();
-  const damageValues: number[] = [];
-  for (let expectedRank = 1; expectedRank <= 5; expectedRank += 1) {
-    const result = applyCombatSkillCopy(state, 'ember-lung', 75);
-    assert.equal(result.rank, expectedRank);
-    damageValues.push(combatStatsFor(state).damage);
-  }
-  assert.deepEqual(damageValues, [55, 57, 58, 59, 61]);
+test('skill copies are active ability types rather than passive stat modifiers',()=>{
+  const definition=COMBAT_SKILLS.find(skill=>skill.id==='ember-lung')!;
+  const healing=COMBAT_SKILLS.find(skill=>skill.id==='ironbark')!;
+  const bounty=COMBAT_SKILLS.find(skill=>skill.id==='penny-hunter')!;
+  assert.equal(combatAbilityType(definition),'strike');
+  assert.equal(combatAbilityType(healing),'mend');
+  assert.equal(combatAbilityType(bounty),'bounty');
 });
 
-test('extra copies at max rank refund coins without secretly increasing rank', () => {
-  const state = createCombatState();
-  state.skillLevels['infinite-bounty'] = 5;
-  const pullCost = 200;
-  state.coins -= pullCost; // The gacha deducts the pull cost before applying the copy.
-  const result = applyCombatSkillCopy(state, 'infinite-bounty', pullCost);
-  assert.equal(result.rank, 5);
-  assert.equal(result.duplicate, true);
-  assert.equal(result.maxRank, true);
-  assert.equal(result.coinsRefunded, 150);
-  assert.equal(state.coins, 200);
-  assert.equal(state.skillLevels['infinite-bounty'], 5);
+test('ranked Gacha progressively unlocks each higher rarity and raises minimum investment',()=>{
+  assert.equal(skillRarityUnlocked('Common',1),true);
+  assert.equal(skillRarityUnlocked('Uncommon',1),false);
+  assert.equal(skillRarityUnlocked('Uncommon',2),true);
+  assert.equal(skillRarityUnlocked('Mythic',4),false);
+  assert.equal(skillRarityUnlocked('Mythic',5),true);
+  assert.equal(resolveCombatSkillRarity(.9,1,0,0),'Common');
+  assert.equal(resolveCombatSkillRarity(.99,2,0,0),'Uncommon');
+  assert.equal(resolveCombatSkillRarity(.99,3,0,0),'Rare');
+  assert.equal(resolveCombatSkillRarity(.1,4,9,0),'Epic');
+  assert.equal(resolveCombatSkillRarity(.1,5,0,39),'Mythic');
+  assert.deepEqual(skillGachaRankRequirement(1),{rank:2,requiredPulls:3,requiredMarks:25,unlocks:'Uncommon'});
+  assert.equal(skillGachaRankRequirement(5),null);
 });
 
-test('health, critical chance, and coin skills all scale with duplicate rank', () => {
-  const healthState = createCombatState();
-  let previousHealth = combatStatsFor(healthState).maxHealth;
-  for (let rank = 1; rank <= 5; rank += 1) {
-    const result = applyCombatSkillCopy(healthState, 'ironbark', 75);
-    const currentHealth = combatStatsFor(healthState).maxHealth;
-    assert.equal(result.rank, rank);
-    assert.ok(currentHealth > previousHealth, 'health skill rank must raise maximum HP');
-    previousHealth = currentHealth;
-  }
-
-  const critState = createCombatState();
-  let previousCrit = combatStatsFor(critState).critChance;
-  for (let rank = 1; rank <= 5; rank += 1) {
-    applyCombatSkillCopy(critState, 'lucky-fang', 75);
-    const currentCrit = combatStatsFor(critState).critChance;
-    assert.ok(currentCrit > previousCrit, 'critical skill rank must raise critical chance');
-    previousCrit = currentCrit;
-  }
-
-  const coinState = createCombatState();
-  let previousCoins = combatStatsFor(coinState).coinMultiplier;
-  for (let rank = 1; rank <= 5; rank += 1) {
-    applyCombatSkillCopy(coinState, 'penny-hunter', 75);
-    const currentCoins = combatStatsFor(coinState).coinMultiplier;
-    assert.ok(currentCoins > previousCoins, 'coin skill rank must raise Delver Coin rewards');
-    previousCoins = currentCoins;
-  }
+test('Scrap rewards and Forge costs scale with gear/floor progression',()=>{
+  const low={power:5,quality:20,sourceFloor:0};
+  const high={power:500,quality:90,sourceFloor:100};
+  assert.ok(combatScrapValue(high)>combatScrapValue(low));
+  assert.equal(combatForgeCost(0),10);
+  assert.ok(combatForgeCost(50)>combatForgeCost(0));
 });
 
-
-test('inventory pruning preserves equipped gear while keeping newest loot', () => {
+test('inventory pruning keeps the strongest floor-zero equipped gear when possible and newest loot', () => {
   const state = createCombatState();
   const equippedWeaponId = state.equipment.weapon;
   const equippedArmorId = state.equipment.armor;
@@ -123,6 +104,7 @@ test('inventory pruning preserves equipped gear while keeping newest loot', () =
       name: 'Old loot ' + index,
       slot: index % 2 === 0 ? 'weapon' : 'armor',
       quality: 10,
+      sourceFloor: 0,
       power: 10,
       effect: 'Test item',
       trait: index % 2 === 0 ? 'keen' : 'bulwark',
@@ -136,6 +118,7 @@ test('inventory pruning preserves equipped gear while keeping newest loot', () =
     name: 'Newest loot',
     slot: 'weapon' as const,
     quality: 99.5,
+    sourceFloor: 0,
     power: 50,
     effect: 'Test item',
     trait: 'first-strike' as const,
