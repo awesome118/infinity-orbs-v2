@@ -250,12 +250,9 @@ export interface CombatState {
   guardBeats: number;
   enemyHp: number;
   encounterFirstStrikeUsed: boolean;
-  /** Active dungeon's inventory/loadout. Mirrored to its map entry at every server mutation. */
+  /** Gear belongs to the active descent and resets when a new run begins. */
   inventory: CombatGear[];
   equipment: { weapon: string | null; armor: string | null };
-  /** Each dungeon has its own 30-item carrying cap and its own equipped slots. */
-  inventoryByDungeon: Record<CombatDungeonId, CombatGear[]>;
-  equipmentByDungeon: Record<CombatDungeonId, { weapon: string | null; armor: string | null }>;
   autoScrapUnlocked: boolean;
   autoScrapSettings: CombatAutoScrapSettings;
   skillLevels: CombatSkillLevels;
@@ -321,6 +318,20 @@ export interface CombatArenaResult {
 export const SKILL_RANK_CAP = Number.MAX_SAFE_INTEGER;
 export const COMBAT_INVENTORY_CAP = 30;
 
+function createCombatRunGear(runId: number): { inventory: CombatGear[]; equipment: CombatState['equipment'] } {
+  const suffix = runId <= 1 ? '' : '-run-' + Math.floor(runId);
+  const weapon: CombatGear = { id:'starter-weapon' + suffix, name:'Delver Knife', slot:'weapon', quality:35, sourceFloor:0, power:8, effect:'Adds +4 damage and +10 Speed. Critical chance +4 percentage points.', trait:'keen', damageBonus:4, speedBonus:10, maxHealthBonus:0 };
+  const armor: CombatGear = { id:'starter-armor' + suffix, name:'Worn Leathers', slot:'armor', quality:28, sourceFloor:0, power:5, effect:'Adds +40 max HP and reduces incoming damage by 4%.', trait:'bulwark', damageBonus:0, speedBonus:0, maxHealthBonus:40 };
+  return { inventory:[weapon,armor], equipment:{weapon:weapon.id,armor:armor.id} };
+}
+
+/** Start a new run with fresh starter gear; the previous run's bag is not carried forward. */
+export function resetCombatRunGear(state: CombatState): void {
+  const starter = createCombatRunGear(state.runId);
+  state.inventory = starter.inventory;
+  state.equipment = starter.equipment;
+}
+
 /** As the bag fills, the lowest/oldest source-floor gear is discarded first. */
 export function addCombatGearToInventory(state: CombatState, item: CombatGear, maxItems = COMBAT_INVENTORY_CAP): void {
   const cap = Math.max(2, Math.floor(Number.isFinite(maxItems) ? maxItems : COMBAT_INVENTORY_CAP));
@@ -343,8 +354,6 @@ export function addCombatGearToInventory(state: CombatState, item: CombatGear, m
     const candidates = state.inventory.filter(g => g.slot === slot).sort((a,b) => b.power - a.power || b.quality - a.quality);
     state.equipment[slot] = candidates[0]?.id ?? null;
   }
-  state.inventoryByDungeon[state.dungeonId] = state.inventory.map(existing => ({ ...existing }));
-  state.equipmentByDungeon[state.dungeonId] = { ...state.equipment };
 }
 export function combatScrapValue(item: Pick<CombatGear,'power'|'quality'|'sourceFloor'>): number {
   const power = Number.isFinite(Number(item.power)) ? Math.max(1, Math.min(1_000_000, Number(item.power))) : 1;
@@ -374,26 +383,15 @@ export function skillPullCost(skillRolls: number): number {
   return Math.round(SKILL_PULL_BASE_COST * Math.pow(1.09, pulls));
 }
 export function createCombatState(): CombatState {
-  const weapon: CombatGear = { id:'starter-weapon', name:'Delver Knife', slot:'weapon', quality:35, sourceFloor:0, power:8, effect:'Adds +4 damage and +10 Speed. Critical chance +4 percentage points.', trait:'keen', damageBonus:4, speedBonus:10, maxHealthBonus:0 };
-  const armor: CombatGear = { id:'starter-armor', name:'Worn Leathers', slot:'armor', quality:28, sourceFloor:0, power:5, effect:'Adds +40 max HP and reduces incoming damage by 4%.', trait:'bulwark', damageBonus:0, speedBonus:0, maxHealthBonus:40 };
+  const starter = createCombatRunGear(1);
   const state: CombatState = {
     version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
     baseDamage:54, coins:250, scrap:0, combatMarks:0, combatUpgrades:{}, totalKills:0, skillRolls:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
     combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
-    encounterFirstStrikeUsed:false, inventory:[weapon,armor],
-    equipment:{weapon:weapon.id,armor:armor.id},
-    inventoryByDungeon:{
-      undercrypt:[weapon,armor],
-      'cinder-vault':[{...weapon,id:'starter-weapon-cinder',name:'Cinder Delver Knife'},{...armor,id:'starter-armor-cinder',name:'Cinder Worn Leathers'}],
-      'glass-labyrinth':[{...weapon,id:'starter-weapon-glass',name:'Glass Delver Knife'},{...armor,id:'starter-armor-glass',name:'Glass Worn Leathers'}],
-    },
-    equipmentByDungeon:{
-      undercrypt:{weapon:weapon.id,armor:armor.id},
-      'cinder-vault':{weapon:'starter-weapon-cinder',armor:'starter-armor-cinder'},
-      'glass-labyrinth':{weapon:'starter-weapon-glass',armor:'starter-armor-glass'},
-    },
+    encounterFirstStrikeUsed:false, inventory:starter.inventory,
+    equipment:starter.equipment,
     autoScrapUnlocked:false,autoScrapSettings:{...DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS},skillLevels:{},
     arenaRating:1000, arenaWins:0, arenaLosses:0, arenaLastChallengeAt:0,
     coreLevel:1, coreHighestRarity:2, autoTactic:'balanced',
