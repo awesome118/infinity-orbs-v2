@@ -33,6 +33,10 @@ test('Guard persists across beats with no enemy action and reduces the next actu
     assert.equal(guardedBeat.state.enemyActionsResolved, 0);
     assert.equal(guardedBeat.state.guardBeats, 1, 'Guard must remain active until an enemy attack occurs');
 
+    // Preserve Guard and beat counters but top the enemy back up in the test
+    // fixture so random critical hits cannot end the encounter before beat 2.
+    await redis.set(key, JSON.stringify({ ...guardedBeat.state, enemyHp: enemy.maxHp }));
+
     const nextBeat = await performCombatBeat(2, 'strike');
     const enemyHit = nextBeat.actions.find(action => action.actor === 'enemy' && action.kind === 'attack');
     assert.ok(enemyHit, 'the slower enemy should attack on beat 2');
