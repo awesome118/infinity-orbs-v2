@@ -26,7 +26,7 @@ test('equipped gear changes derived stats', () => {
   weapon.damageBonus+=10; weapon.speedBonus+=25;
   const after=combatStatsFor(state);
   assert.equal(after.damage,before.damage+10);
-  assert.equal(after.speed,before.speed+25);
+  assert.equal(after.speed,before.speed, 'ordinary gear speed affixes no longer apply');
 });
 test('every tenth Undercrypt depth has a boss', () => {
   assert.equal(getEnemyForDepth(9).boss,false);
