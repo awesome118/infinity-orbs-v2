@@ -22,7 +22,7 @@ const percent=(n:number)=>(n*100).toFixed(1)+'%';
 const rarityClass=(rarity:string)=>'io-rarity-'+rarity.toLowerCase();
 const rankOf=(state:CombatState,id:string)=>Math.max(0,Math.min(SKILL_RANK_CAP,Math.floor(Number(state.skillLevels[id as keyof typeof state.skillLevels])||0)));
 const GEAR_SLOTS:{slot:CombatGearSlot;label:string}[]=[
-  {slot:'weapon',label:'Weapon'},{slot:'armor',label:'Chest'},{slot:'helmet',label:'Helmet'},{slot:'gloves',label:'Gloves'},
+  {slot:'weapon',label:'Weapon'},{slot:'helmet',label:'Helmet'},{slot:'armor',label:'Chest'},{slot:'gloves',label:'Gloves'},
   {slot:'boots',label:'Boots'},{slot:'ring',label:'Ring'},{slot:'amulet',label:'Amulet'},
 ];
 const slotLabel=(slot:CombatGearSlot)=>GEAR_SLOTS.find(entry=>entry.slot===slot)?.label??slot;
@@ -204,7 +204,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       </div>
       <div className={'io-combat-orb-panel '+(lastOrb?'has-orb':'')} aria-live="polite">
         <div className="io-combat-orb-art"><span>✦</span></div>
-        <div className="io-combat-orb-copy"><span className="io-combat-eyebrow">{processing?'ROLLING THIS BEAT':'LAST BEAT ORB'} {lastOrb?'· '+lastOrb.tier.toUpperCase():'· AWAITING FIRST ROLL'}</span><h2>{lastOrb?lastOrb.name:'Every beat rolls an orb'}</h2><p>{lastOrb?'Rarity 1 / '+fmt(lastOrb.rarity)+' · Damage multiplier ×'+lastOrb.damageMultiplier.toFixed(2):'Orb rarity directly multiplies every attack resolved this beat.'}</p></div>
+        <div className="io-combat-orb-copy"><span className="io-combat-eyebrow">{processing?(lastOrb?'LATEST RESOLVED ORB · NEXT BEAT IN PROGRESS':'ROLLING FIRST BEAT'):'LATEST BEAT ORB'} {lastOrb?'· '+lastOrb.tier.toUpperCase():'· AWAITING FIRST ROLL'}</span><h2>{lastOrb?lastOrb.name:'Every beat rolls an orb'}</h2><p>{lastOrb?'Rarity 1 / '+fmt(lastOrb.rarity)+' · Damage multiplier ×'+lastOrb.damageMultiplier.toFixed(2):'Orb rarity directly multiplies every attack resolved this beat.'}</p></div>
         <div className="io-combat-orb-damage"><span>ORB BASE DAMAGE</span><strong>{lastOrb?fmt(lastOrb.baseDamage):'—'}</strong><small>{lastOrb?'before critical hits and active abilities':'awaiting first beat'}</small></div>
       </div>
       {(()=>{
@@ -216,7 +216,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         const events=[
           ...Array.from({length:5},(_,i)=>({actor:'player' as const,time:Math.max(state.combatBeats+1,Math.ceil((state.playerActionsResolved+i+1)*100/Math.max(1,stats.speed))),step:i,speed:stats.speed})),
           ...Array.from({length:5},(_,i)=>({actor:'enemy' as const,time:Math.max(state.combatBeats+1,Math.ceil((state.enemyActionsResolved+i+1)*100/Math.max(1,enemy.speed))),step:i,speed:enemy.speed})),
-        ].sort((a,b)=>a.time-b.time||(a.actor==='player'?-1:1)).slice(0,7);
+        ].sort((a,b)=>a.time-b.time||(a.actor===b.actor?a.step-b.step:a.actor==='player'?-1:1)).slice(0,7);
         const nextActor=playerNext<=enemyNext?'player':'enemy';
         return <section className="io-combat-turn-tracker" aria-label="Combat speed and turn order">
           <div className="io-combat-turn-head"><div><span className="io-combat-eyebrow">SPEED & INITIATIVE</span><h2>Turn order</h2></div><strong>Next: {nextActor==='player'?'DELVER':enemy.name.toUpperCase()}</strong></div>
@@ -249,7 +249,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     </>}
 
     {page==='gear'&&<>
-      <div className="io-combat-stat-strip"><div><span>SCRAP</span><strong>{fmt(state.scrap)}</strong></div><div><span>BASE DAMAGE</span><strong>{fmt(stats.damage)}</strong></div><div><span>SPEED</span><strong>{fmt(stats.speed)}</strong></div><div><span>ARMOR</span><strong>{fmt(stats.armor)}</strong></div><div><span>DAMAGE MITIGATION</span><strong>{percent(stats.damageReduction)}</strong></div></div>
+      <div className="io-combat-stat-strip io-combat-gear-stat-strip"><div><span>SCRAP</span><strong>{fmt(state.scrap)}</strong></div><div><span>BASE DAMAGE</span><strong>{fmt(stats.damage)}</strong></div><div><span>SPEED</span><strong>{fmt(stats.speed)}</strong></div><div><span>ARMOR</span><strong>{fmt(stats.armor)}</strong></div><div><span>DAMAGE MITIGATION</span><strong>{percent(stats.damageReduction)}</strong></div></div>
       <div className="io-combat-panel"><div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">ACTIVE BUILD</span><h2>Seven equipment slots</h2></div></div><div className="io-combat-equipped-grid io-combat-equipment-slot-grid">{GEAR_SLOTS.map(({slot,label})=>{const item=equipped(state,slot);return <div className="io-combat-equipped-card" key={slot}><span>{label.toUpperCase()}</span><strong>{item?.name||'Empty slot'}</strong><p>{item?.effect||'No item equipped.'}</p><small>{item?['+'+fmt(item.damageBonus)+' DAMAGE','+'+fmt(item.speedBonus)+' SPEED','+'+fmt(item.maxHealthBonus)+' HP','+'+fmt(item.armorBonus)+' ARMOR','+'+(item.critChanceBonus*100).toFixed(1)+'% CRIT'].join(' · '):'Find gear on your descent or forge it below.'}</small>{item?.majorAbility&&<p className="io-combat-major-inline">✦ {item.majorAbility.name}: {item.majorAbility.description}</p>}</div>;})}</div></div>
       <div className="io-combat-inventory-head"><div><span className="io-combat-eyebrow">YOUR INVENTORY</span><h2>Collected gear</h2></div><span>{state.inventory.length} owned · {state.runInventoryIds.length}/30 picked up this run</span></div>
       <div className="io-combat-gear-grid">{visibleGear.map(item=><GearCard key={item.id} item={item} currentFloor={currentFloor} isEquipped={state.equipment[item.slot]===item.id} busy={mutating} onEquip={()=>void mutate('/api/combat/equip',{itemId:item.id})} onScrap={()=>void mutate('/api/combat/gear/scrap',{itemId:item.id})}/>)}</div>{state.inventory.length>visibleGear.length&&<button type="button" className="io-combat-button is-secondary" style={{marginTop:12}} onClick={()=>setVisibleGearCount(count=>Math.min(state.inventory.length,count+60))}>Show {Math.min(60,state.inventory.length-visibleGear.length)} more items ({visibleGear.length}/{state.inventory.length})</button>}
