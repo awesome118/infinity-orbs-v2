@@ -286,10 +286,11 @@ export interface CombatState {
   maxHealth: number;
   speed: number;
   baseDamage: number;
+  /** Legacy saved field kept for migration compatibility; normalized to zero after wallet consolidation. */
   coins: number;
   /** Salvaged material used by the Forge. Shared across the three dungeon-specific gear bags. */
   scrap: number;
-  /** Separate currency earned from combat, spent only on permanent combat upgrades. */
+  /** Shared combat wallet: kill and ability rewards fund permanent upgrades and Skill Gacha pulls. */
   combatMarks: number;
   combatUpgrades: CombatUpgradeLevels;
   totalKills: number;
