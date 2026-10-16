@@ -515,7 +515,9 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const equippedItems = equipmentSlots.map(([slot,id]) => state.inventory.find(item => item.id === id && item.slot === slot)).filter((item):item is CombatGear=>Boolean(item));
   const qualityOf = (item:CombatGear) => gearQualityEffectiveness(item,floor);
   const effectiveDamageBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.damageBonus*qualityOf(item)),0);
+  // Legacy saved speedBonus remains supported, but newly generated gear only grants turn speed through a Major Ability.
   const effectiveSpeedBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.speedBonus*qualityOf(item)),0);
+  const majorSpeedPercent=equippedItems.reduce((sum,item)=>sum+(item.majorAbility?.id==='chrono-surge'?item.majorAbility.speedPercent*qualityOf(item):0),0);
   const effectiveHealthBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.maxHealthBonus*qualityOf(item)),0);
   const effectiveArmorBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.armorBonus*qualityOf(item)),0);
   const effectiveCritBonus=equippedItems.reduce((sum,item)=>sum+item.critChanceBonus*qualityOf(item),0);
@@ -540,7 +542,7 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const flatDamage = 50 + (Math.max(1,state.level)-1)*4 + effectiveDamageBonus;
   const flatHealth = 1000 + (Math.max(1,state.level)-1)*30 + effectiveHealthBonus;
   const maxHealth = Math.max(1,Math.round(flatHealth*(1+healthPct)*(1+coreProgressionBonus)*(1+orbFocusBonus*.65)));
-  let speed = 300 + effectiveSpeedBonus + speedFlat + dungeonSpeedBonus;
+  let speed = Math.round((300 + effectiveSpeedBonus + speedFlat + dungeonSpeedBonus) * (1 + majorSpeedPercent));
   if (traitEffectiveness('desperation')>0 && state.health>0 && state.health<=maxHealth*.4) speed+=Math.round(20*traitEffectiveness('desperation'));
   if (traitEffectiveness('keen')>0) critChance+=.04*traitEffectiveness('keen');
   critChance += effectiveCritBonus + dungeonCritBonus;
