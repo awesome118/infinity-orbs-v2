@@ -426,6 +426,13 @@ const ARENA_PROFILE_KEY = 'infinity-orbs:combat:arena:profiles';
 const ARENA_PROFILE_TTL_MS = 24 * 60 * 60_000;
 const ARENA_CHALLENGE_COOLDOWN_MS = 90_000;
 
+/** Synthetic opponents are explicitly labelled practice bots and never written to player storage. */
+const ARENA_TEST_BOTS = [
+  { id:'testbot:rookie-sentinel', username:'Practice Bot · Rookie', level:3, bestDepth:5, rating:720, wins:8, losses:17, upgradeRank:0, skillId:'ember-lung' as CombatSkillId },
+  { id:'testbot:ashen-vanguard', username:'Practice Bot · Vanguard', level:16, bestDepth:30, rating:1050, wins:41, losses:34, upgradeRank:3, skillId:'rift-hammer' as CombatSkillId },
+  { id:'testbot:rift-champion', username:'Practice Bot · Champion', level:34, bestDepth:90, rating:1500, wins:126, losses:28, upgradeRank:7, skillId:'singularity-edge' as CombatSkillId },
+] as const;
+
 function combatKeyFor(userId: string): string {
   const id = String(userId ?? '').trim();
   if (!id) throw new Error('REDDIT_LOGIN_REQUIRED');
@@ -474,6 +481,34 @@ function createArenaProfile(userId: string, username: string, state: CombatState
     skillRanks: Object.values(state.skillLevels).reduce((sum, rank) => Math.min(Number.MAX_SAFE_INTEGER, sum + Math.max(0, Number(rank) || 0)), 0),
   };
 }
+function createArenaTestState(bot: typeof ARENA_TEST_BOTS[number]): CombatState {
+  const state=createCombatState();
+  state.level=bot.level;
+  state.bestDepth=bot.bestDepth;
+  state.depth=bot.bestDepth;
+  state.dungeonBestDepths.undercrypt=bot.bestDepth;
+  state.arenaRating=bot.rating;
+  state.combatUpgrades={
+    'edge-training':bot.upgradeRank,
+    vitality:Math.floor(bot.upgradeRank*.65),
+    precision:Math.floor(bot.upgradeRank*.5),
+    scavenger:Math.floor(bot.upgradeRank*.35),
+    'orb-resonance':Math.floor(bot.upgradeRank*.5),
+  };
+  state.skillGachaRank=SKILL_GACHA_RANK_MAX;
+  state.skillLevels[bot.skillId]=Math.max(1,bot.upgradeRank+1);
+  state.equippedAbilities=[bot.skillId];
+  synchronizeCombatStats(state);
+  state.health=state.maxHealth;
+  return state;
+}
+function createArenaTestProfile(bot: typeof ARENA_TEST_BOTS[number], updatedAt: number): CombatArenaProfile {
+  const state=createArenaTestState(bot);
+  state.arenaWins=bot.wins;
+  state.arenaLosses=bot.losses;
+  return createArenaProfile(bot.id,bot.username,state,updatedAt);
+}
+
 function parseArenaProfile(userId: string, raw: unknown): CombatArenaProfile | null {
   if (typeof raw !== 'string') return null;
   try {
@@ -644,10 +679,11 @@ export async function getCombatArenaOpponents(): Promise<{
     }),
   ));
   opponents.sort((a, b) => b.rating - a.rating || b.bestDepth - a.bestDepth);
-  opponents.splice(20);
+  // Keep 4 slots available for live players and always append the synthetic practice roster.
+  const visibleOpponents=[...opponents.slice(0,16),...ARENA_TEST_BOTS.map(bot=>createArenaTestProfile(bot,now))];
   return {
     self,
-    opponents,
+    opponents:visibleOpponents,
     cooldownRemainingMs: Math.max(0, ARENA_CHALLENGE_COOLDOWN_MS - (now - state.arenaLastChallengeAt)),
   };
 }
@@ -659,6 +695,34 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
   if (!userId) throw new Error('REDDIT_LOGIN_REQUIRED');
   if (!opponentId) throw new Error('ARENA_OPPONENT_UNAVAILABLE');
   if (userId === opponentId) throw new Error('ARENA_SELF_CHALLENGE');
+
+  if(opponentId.startsWith('testbot:')){
+    const bot=ARENA_TEST_BOTS.find(entry=>entry.id===opponentId);
+    if(!bot)throw new Error('ARENA_OPPONENT_UNAVAILABLE');
+    return mutate(ownState=>{
+      const now=Date.now();
+      const remaining=ARENA_CHALLENGE_COOLDOWN_MS-(now-ownState.arenaLastChallengeAt);
+      if(remaining>0)throw new Error('ARENA_COOLDOWN:'+remaining);
+      const opponentState=createArenaTestState(bot);
+      const duel=resolveArenaDuel(ownState,opponentState);
+      const ratingUpdate=calculateCombatArenaRatingUpdate(ownState.arenaRating,bot.rating,duel.winner==='challenger');
+      ownState.arenaRating=ratingUpdate.playerRating;
+      if(duel.winner==='challenger')ownState.arenaWins+=1;else ownState.arenaLosses+=1;
+      ownState.arenaLastChallengeAt=now;
+      const opponent=createArenaTestProfile(bot,now);
+      const arenaResult:CombatArenaResult={
+        opponent,
+        winner:duel.winner==='challenger'?'you':'opponent',
+        rounds:duel.rounds,
+        log:[...duel.log,'Practice match: the bot roster is synthetic and its rating does not change.'].slice(-10),
+        ratingChange:ratingUpdate.playerChange,
+        opponentRatingChange:0,
+        ratingAfter:ratingUpdate.playerRating,
+        opponentRatingAfter:bot.rating,
+      };
+      return {...snapshot(ownState),arenaResult};
+    });
+  }
 
   const rawProfiles = await redis.hGetAll(ARENA_PROFILE_KEY);
   const opponentProfile = parseArenaProfile(opponentId, rawProfiles?.[opponentId]);
