@@ -205,7 +205,10 @@ function grantXp(s:CombatState,amount:number,actions:CombatAction[]):void {
   s.xp+=amount;
   while(s.xp>=s.xpToNext&&s.level<60){s.xp-=s.xpToNext;s.level+=1;s.xpToNext=Math.round(s.xpToNext*1.19);synchronizeCombatStats(s);s.health=Math.min(s.maxHealth,s.health+Math.round(s.maxHealth*.08));actions.push({actor:'player',kind:'level',text:'Delver reached Level '+s.level+'.'});}
 }
-export async function performCombatBeat(sequence:number,intent:CombatCommand,skillIdValue?:unknown):Promise<CombatSnapshot&{actions:CombatAction[];defeated:boolean;died:boolean;item?:CombatGear;abilityCast?:{id:CombatSkillId;rank:number;cooldown:number}}> {
+export async function performCombatBeat(sequence:number,intent:CombatCommand,skillIdValue?:unknown):Promise<CombatSnapshot&{actions:CombatAction[];defeated:boolean;died:boolean;item?:CombatGear;orbRoll:CombatOrbRoll;abilityCast?:{id:CombatSkillId;rank:number;cooldown:number}}> {
+  let orbLuck=1;
+  try { orbLuck=luckMultiplier(await loadRaw()); }
+  catch(error) { console.error('[Combat] Could not refresh Luck for the beat orb; using baseline Luck.',error); }
   return mutate(s=>{
     if(sequence!==s.sequence+1)throw new Error('stale combat sequence');
     const activeSkillId=typeof skillIdValue==='string'&&COMBAT_SKILLS.some(skill=>skill.id===skillIdValue)?skillIdValue as CombatSkillId:null;
@@ -222,7 +225,15 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     if(elapsed<1000)throw new Error('COMBAT_BEAT_TOO_SOON:'+Math.max(1,1000-elapsed));
     s.lastAcceptedBeatAtMs=now;
     const actions:CombatAction[]=[];synchronizeCombatStats(s);s.sequence+=1;s.combatBeats+=1;s.energy=combatEnergyAfterRegen(s.energy,s.maxEnergy);
+    if(s.pendingHealAmount>0){
+      const heal=Math.min(s.pendingHealAmount,Math.max(0,s.maxHealth-s.health));s.pendingHealAmount=0;
+      if(heal>0){s.health=Math.min(s.maxHealth,s.health+heal);actions.push({actor:'player',kind:'ability',text:'Second Dawn restored '+heal.toLocaleString()+' HP from its delayed heal.'});}
+    }
     let enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);const stats=combatStatsFor(s);
+    // Each accepted beat receives its own server-side cryptographic orb roll; rarity drives all attacks that beat.
+    const orbRarity=rollContinuum(orbLuck,secureRandom),orbInfo=getOrbInfo(orbRarity),damageMultiplier=combatOrbDamageMultiplier(orbRarity);
+    const orbRoll:CombatOrbRoll={rarity:orbRarity,tier:String(orbInfo.tier),name:orbInfo.name,damageMultiplier,baseDamage:Math.max(1,Math.round(stats.damage*damageMultiplier))};
+    actions.push({actor:'player',kind:'ability',text:'Orb roll: '+orbInfo.name+' · 1 / '+orbRarity.toLocaleString()+' · ×'+damageMultiplier.toFixed(2)+' damage.'});
     const resolvedIntent:CombatIntent=intent==='auto'?chooseAutoCombatIntent(s):intent==='ability'?'strike':intent;
     const playerActions=Math.min(12,Math.max(0,Math.floor(s.combatBeats*stats.speed/100)-s.playerActionsResolved));
     const enemyActions=Math.min(3,Math.max(0,Math.floor(s.combatBeats*enemy.speed/100)-s.enemyActionsResolved));
@@ -270,8 +281,8 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
       if(enemyHp<=0)break;
       let multiplier=(heavy&&i===0?1.9:1)*(activeSkill&&i===0?activeDamageMultiplier:1)*(activeSkill&&combatAbilityType(activeSkill)==='flurry'&&i>=playerActions?activeFlurryMultiplier:1);
       if(!s.encounterFirstStrikeUsed){if(weapon?.trait==='first-strike')multiplier*=1+.5*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1));s.encounterFirstStrikeUsed=true;}
-      const crit=(activeSkill&&i===0&&activeGuaranteedCrit)||secureRandom()<stats.critChance;let damage=Math.max(1,Math.round(stats.damage*(crit?1.75:1)*multiplier));
-      if(weapon?.trait==='bleed'&&secureRandom()<.18*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1))){const bleed=Math.max(1,Math.round(stats.damage*.3*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1))));damage+=bleed;actions.push({actor:'player',kind:'ability',text:'Bleed adds '+bleed+' damage.'});}
+      const crit=(activeSkill&&i===0&&activeGuaranteedCrit)||secureRandom()<stats.critChance;let damage=Math.max(1,Math.round(orbRoll.baseDamage*(crit?1.75:1)*multiplier));
+      if(weapon?.trait==='bleed'&&secureRandom()<.18*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1))){const bleed=Math.max(1,Math.round(orbRoll.baseDamage*.3*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1))));damage+=bleed;actions.push({actor:'player',kind:'ability',text:'Bleed adds '+bleed+' damage.'});}
       enemyHp-=damage;actions.push({actor:'player',kind:'attack',damage,text:(crit?'Critical hit for ':'Strike for ')+damage+' damage.'});
       if(enemyHp<=0){
         defeated=true;actions.push({actor:'player',kind:'death',text:'The '+enemy.name+' falls.'});s.totalKills=Math.min(Number.MAX_SAFE_INTEGER,s.totalKills+1);
@@ -287,8 +298,8 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
             item=undefined;
           } else {addCombatGearToInventory(s,item);actions.push({actor:'player',kind:'loot',text:'Gear found: '+item.name+' ('+item.quality.toFixed(2)+'% quality).'});}
         }
-        const armor=s.inventory.find(g=>g.id===s.equipment.armor);
-        if(armor?.trait==='regeneration'&&enemy.kind!=='common'){s.health=Math.min(s.maxHealth,s.health+Math.round(s.maxHealth*.02*gearQualityEffectiveness(armor,Math.max(0,s.depth-1))));actions.push({actor:'player',kind:'ability',text:'Armor regeneration restored 2% max HP.'});}
+        const regeneration=s.inventory.find(g=>Object.values(s.equipment).includes(g.id)&&g.trait==='regeneration');
+        if(regeneration&&enemy.kind!=='common'){s.health=Math.min(s.maxHealth,s.health+Math.round(s.maxHealth*.02*gearQualityEffectiveness(regeneration,Math.max(0,s.depth-1))));actions.push({actor:'player',kind:'ability',text:'Regeneration restored 2% max HP.'});}
         s.bestDepth=Math.max(s.bestDepth,s.depth);
         s.dungeonBestDepths[s.dungeonId]=Math.max(s.dungeonBestDepths[s.dungeonId],s.bestDepth);
         s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.guardBeats=0;s.encounterFirstStrikeUsed=false;
@@ -311,12 +322,17 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
       if(s.guardBeats>0){incoming=Math.round(incoming*.45);guardWasUsed=true;}
       incoming=Math.max(1,Math.round(incoming*(1-stats.damageReduction)));s.health=Math.max(0,s.health-incoming);
       actions.push({actor:'enemy',kind:'attack',damage:incoming,text:strike+incoming+' damage.'});
-      if(s.health<=0){died=true;actions.push({actor:'enemy',kind:'death',text:'Run '+s.runId+' ended at Depth '+s.depth+'. Permanent progress retained.'});s.runId+=1;s.depth=1;resetCombatRunCarry(s);s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,3);s.guardBeats=0;s.encounterFirstStrikeUsed=false;s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;synchronizeCombatStats(s);s.health=s.maxHealth;actions.push({actor:'player',kind:'advance',text:'A new descent begins automatically at Depth 1.'});break;}
+      const defensiveAbility=s.inventory.find(g=>g.majorAbility?.trigger==='on-damage'&&Object.values(s.equipment).includes(g.id))?.majorAbility;
+      if(defensiveAbility&&s.pendingHealAmount===0){
+        s.pendingHealAmount=Math.max(1,Math.round(s.maxHealth*defensiveAbility.healPercent));
+        actions.push({actor:'player',kind:'ability',text:defensiveAbility.name+' triggered: '+Math.round(defensiveAbility.healPercent*100)+'% Max HP healing queued for your next turn.'});
+      }
+      if(s.health<=0){died=true;s.pendingHealAmount=0;actions.push({actor:'enemy',kind:'death',text:'Run '+s.runId+' ended at Depth '+s.depth+'. Permanent progress retained.'});s.runId+=1;s.depth=1;resetCombatRunCarry(s);s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,3);s.guardBeats=0;s.encounterFirstStrikeUsed=false;s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;synchronizeCombatStats(s);s.health=s.maxHealth;actions.push({actor:'player',kind:'advance',text:'A new descent begins automatically at Depth 1.'});break;}
     }
     // If no enemy action fires, preserve Guard until the next actual incoming strike.
     if(guardWasUsed)s.guardBeats=0;
     synchronizeCombatStats(s);
-    return {...snapshot(s),actions,defeated,died,...(item?{item}:{}),...(abilityCast?{abilityCast}:{})};
+    return {...snapshot(s),actions,defeated,died,orbRoll,...(item?{item}:{}),...(abilityCast?{abilityCast}:{})};
   });
 }
 export async function equipCombatItem(itemId:string):Promise<CombatSnapshot>{return mutate(s=>{const item=s.inventory.find(g=>g.id===itemId);if(!item)throw new Error('item not owned');s.equipment[item.slot]=item.id;synchronizeCombatStats(s);return snapshot(s);});}
@@ -326,7 +342,7 @@ export async function scrapCombatItem(itemIdValue:unknown):Promise<CombatSnapsho
   return mutate(state=>{
     const item=state.inventory.find(gear=>gear.id===itemIdValue);
     if(!item)throw new Error('Gear item is not in your inventory.');
-    if(state.equipment.weapon===item.id||state.equipment.armor===item.id)throw new Error('Unequip this item before scrapping it.');
+    if(Object.values(state.equipment).includes(item.id))throw new Error('Unequip this item before scrapping it.');
     state.inventory=state.inventory.filter(gear=>gear.id!==item.id);
     state.runInventoryIds=state.runInventoryIds.filter(id=>id!==item.id);
     const gained=combatScrapValue(item);state.scrap=Math.min(Number.MAX_SAFE_INTEGER,state.scrap+gained);
@@ -335,7 +351,7 @@ export async function scrapCombatItem(itemIdValue:unknown):Promise<CombatSnapsho
 }
 
 export async function forgeCombatGear(slotValue:unknown):Promise<CombatSnapshot&{forgeResult:{item:CombatGear;cost:number;remainingScrap:number}}>{
-  if(slotValue!=='weapon'&&slotValue!=='armor')throw new Error('Choose weapon or armor for the Forge.');
+  if(!(['weapon','helmet','chest','gloves','boots','ring','amulet'] as unknown[]).includes(slotValue))throw new Error('Choose a valid equipment slot for the Forge.');
   return mutate(state=>{
     const floor=Math.max(0,state.depth-1),cost=combatForgeCost(floor);
     if(state.scrap<cost)throw new Error('Not enough Scrap to forge this item.');
