@@ -14,7 +14,7 @@ interface ApiResponse extends CombatSnapshot {
 async function request<T>(url:string,method='GET',body?:unknown):Promise<T> {
   const response=await fetch(url,{method,headers:{'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
   const data=await response.json().catch(()=>({}));
-  if(!response.ok) throw new Error(typeof data.error==='string'?data.error:'Combat request failed.');
+  if(!response.ok) throw new Error(Number.isFinite(Number(data.retryAfterMs))?'ARENA_COOLDOWN:'+Math.max(0,Number(data.retryAfterMs)):typeof data.error==='string'?data.error:'Combat request failed.');
   return data as T;
 }
 const fmt=(n:number)=>Math.max(0,Math.floor(n||0)).toLocaleString();
@@ -92,7 +92,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     }catch(e){
       const message=e instanceof Error?e.message:'Arena challenge failed.';
       setError(message);
-      if(message.includes('not ready yet'))await loadArena();
+      if(message.startsWith('ARENA_COOLDOWN:')||message==='ARENA_OPPONENT_UNAVAILABLE')await loadArena();
     }finally{runtime.current.mutating=false;setMutating(false);}
   };
   const beat=useCallback(async()=>{

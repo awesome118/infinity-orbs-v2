@@ -375,6 +375,8 @@ function arenaBuild(rawState: CombatState): { state: CombatState; stats: ReturnT
   const state: CombatState = {
     ...rawState,
     dungeonId: 'undercrypt',
+    // PvP quality scaling must not jump when a death resets current depth to 1.
+    depth: Math.max(1, Math.min(COMBAT_MAX_DEPTH, rawState.bestDepth)),
     // Arena stat resolution only needs equipped pieces; cloning the permanent stash on every challenge is wasteful.
     inventory: rawState.inventory.filter(item => (item.id === rawState.equipment.weapon && item.slot === 'weapon') || (item.id === rawState.equipment.armor && item.slot === 'armor')).map(item => ({ ...item })),
     equipment: { ...rawState.equipment },
