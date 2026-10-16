@@ -402,7 +402,7 @@ export const SKILL_RANK_CAP = Number.MAX_SAFE_INTEGER;
 export const COMBAT_INVENTORY_CAP = 30;
 
 function createCombatStarterGear(): { inventory: CombatGear[]; equipment: CombatState['equipment'] } {
-  const weapon: CombatGear = { id:'starter-weapon', name:'Delver Knife', slot:'weapon', quality:35, sourceFloor:0, power:8, effect:'Adds +4 damage and +10 Speed. Critical chance +4 percentage points.', trait:'keen', damageBonus:4, speedBonus:10, maxHealthBonus:0, armorBonus:0, critChanceBonus:0 };
+  const weapon: CombatGear = { id:'starter-weapon', name:'Delver Knife', slot:'weapon', quality:35, sourceFloor:0, power:8, effect:'Adds +4 damage. Critical chance +4 percentage points.', trait:'keen', damageBonus:4, speedBonus:0, maxHealthBonus:0, armorBonus:0, critChanceBonus:0 };
   const armor: CombatGear = { id:'starter-armor', name:'Worn Leathers', slot:'armor', quality:28, sourceFloor:0, power:5, effect:'Adds +40 max HP and reduces incoming damage by 4%.', trait:'bulwark', damageBonus:0, speedBonus:0, maxHealthBonus:40, armorBonus:0, critChanceBonus:0 };
   return { inventory:[weapon,armor], equipment:{weapon:weapon.id,armor:armor.id,helmet:null,gloves:null,boots:null,ring:null,amulet:null} };
 }
@@ -516,7 +516,8 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const qualityOf = (item:CombatGear) => gearQualityEffectiveness(item,floor);
   const effectiveDamageBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.damageBonus*qualityOf(item)),0);
   // Legacy saved speedBonus remains supported, but newly generated gear only grants turn speed through a Major Ability.
-  const effectiveSpeedBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.speedBonus*qualityOf(item)),0);
+  // Ordinary affixes and legacy gear cannot grant turn speed; only Major Abilities do.
+  const effectiveSpeedBonus=0;
   const majorSpeedPercent=equippedItems.reduce((sum,item)=>sum+(item.majorAbility?.id==='chrono-surge'?item.majorAbility.speedPercent*qualityOf(item):0),0);
   const effectiveHealthBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.maxHealthBonus*qualityOf(item)),0);
   const effectiveArmorBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.armorBonus*qualityOf(item)),0);
