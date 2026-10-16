@@ -15,11 +15,14 @@ export type CombatSkillStat = 'damagePct' | 'speedFlat' | 'healthPct' | 'critCha
 export type CombatUpgradeId = 'edge-training' | 'vitality' | 'tempo' | 'precision' | 'scavenger' | 'orb-resonance';
 export type CombatUpgradeStat = 'damagePct' | 'healthPct' | 'speedFlat' | 'critChance' | 'markBonus' | 'orbFocusPct';
 export type CombatTrait = 'bleed' | 'keen' | 'first-strike' | 'bulwark' | 'regeneration' | 'desperation';
+export type CombatGearSlot = 'weapon' | 'helmet' | 'chest' | 'gloves' | 'boots' | 'ring' | 'amulet';
+export interface CombatMajorAbility { id:'second-dawn'; name:string; trigger:'on-damage'; healPercent:number; description:string; }
+export interface CombatOrbRoll { rarity:number; tier:string; name:string; damageMultiplier:number; baseDamage:number; }
 
 export interface CombatGear {
   id: string;
   name: string;
-  slot: 'weapon' | 'armor';
+  slot: CombatGearSlot;
   quality: number;
   /** Zero-based floor/depth where this piece dropped; old saves are migrated on read. */
   sourceFloor: number;
@@ -29,6 +32,9 @@ export interface CombatGear {
   damageBonus: number;
   speedBonus: number;
   maxHealthBonus: number;
+  armorBonus: number;
+  critChanceBonus: number;
+  majorAbility?: CombatMajorAbility;
 }
 export type CombatSkillId =
   | 'ember-lung' | 'surefoot' | 'ironbark' | 'lucky-fang' | 'penny-hunter'
@@ -287,9 +293,11 @@ export interface CombatState {
   guardBeats: number;
   enemyHp: number;
   encounterFirstStrikeUsed: boolean;
+  /** Delayed healing from a defensive gear ability; applied at the start of the next accepted beat. */
+  pendingHealAmount: number;
   /** Persistent player-owned gear; survives deaths and dungeon switches. */
   inventory: CombatGear[];
-  equipment: { weapon: string | null; armor: string | null };
+  equipment: Record<CombatGearSlot, string | null>;
   /** Gear picked up during the current run; only these items count toward the run carrying cap. */
   runInventoryIds: string[];
   autoScrapUnlocked: boolean;
@@ -307,6 +315,7 @@ export interface CombatStats {
   damage: number;
   speed: number;
   maxHealth: number;
+  armor: number;
   critChance: number;
   damageReduction: number;
   coinMultiplier: number;
@@ -354,13 +363,18 @@ export interface CombatArenaResult {
   opponentRatingAfter: number;
 }
 /** Compatibility alias: skills have no gameplay rank cap (bounded only by safe integer storage). */
+/** Damage multiplier for a fresh orb roll; higher rarity increases attack damage logarithmically. */
+export function combatOrbDamageMultiplier(rarity:number):number {
+  const safe=Number.isFinite(Number(rarity))?Math.max(2,Number(rarity)):2;
+  return Math.max(1,Math.min(20,1+Math.log10(safe/2)));
+}
 export const SKILL_RANK_CAP = Number.MAX_SAFE_INTEGER;
 export const COMBAT_INVENTORY_CAP = 30;
 
 function createCombatStarterGear(): { inventory: CombatGear[]; equipment: CombatState['equipment'] } {
-  const weapon: CombatGear = { id:'starter-weapon', name:'Delver Knife', slot:'weapon', quality:35, sourceFloor:0, power:8, effect:'Adds +4 damage and +10 Speed. Critical chance +4 percentage points.', trait:'keen', damageBonus:4, speedBonus:10, maxHealthBonus:0 };
-  const armor: CombatGear = { id:'starter-armor', name:'Worn Leathers', slot:'armor', quality:28, sourceFloor:0, power:5, effect:'Adds +40 max HP and reduces incoming damage by 4%.', trait:'bulwark', damageBonus:0, speedBonus:0, maxHealthBonus:40 };
-  return { inventory:[weapon,armor], equipment:{weapon:weapon.id,armor:armor.id} };
+  const weapon: CombatGear = { id:'starter-weapon', name:'Delver Knife', slot:'weapon', quality:35, sourceFloor:0, power:8, effect:'Adds +4 damage and +10 Speed. Critical chance +4 percentage points.', trait:'keen', damageBonus:4, speedBonus:10, maxHealthBonus:0, armorBonus:0, critChanceBonus:0 };
+  const armor: CombatGear = { id:'starter-armor', name:'Worn Leathers', slot:'chest', quality:28, sourceFloor:0, power:5, effect:'Adds +40 max HP and reduces incoming damage by 4%.', trait:'bulwark', damageBonus:0, speedBonus:0, maxHealthBonus:40, armorBonus:0, critChanceBonus:0 };
+  return { inventory:[weapon,armor], equipment:{weapon:weapon.id,helmet:null,chest:armor.id,gloves:null,boots:null,ring:null,amulet:null} };
 }
 
 /** Each run can carry up to 30 newly acquired pieces; the owned inventory persists between runs. */
@@ -380,7 +394,7 @@ export function addCombatGearToInventory(state: CombatState, item: CombatGear, m
     for (let index = 0; index < state.runInventoryIds.length; index += 1) {
       const id = state.runInventoryIds[index];
       // Equipped pieces are permanent equipment, not disposable haul overflow.
-      if (id === item.id || id === state.equipment.weapon || id === state.equipment.armor) continue;
+      if (id === item.id || Object.values(state.equipment).includes(id)) continue;
       const current = state.inventory.find(existing => existing.id === id);
       if (!current) { removable = index; break; }
       if (removable < 0) { removable = index; continue; }
@@ -398,7 +412,8 @@ export function addCombatGearToInventory(state: CombatState, item: CombatGear, m
     state.inventory = state.inventory.filter(existing => existing.id !== removedId);
   }
 
-  for (const slot of ['weapon', 'armor'] as const) {
+  const equipmentSlots:CombatGearSlot[]=['weapon','helmet','chest','gloves','boots','ring','amulet'];
+  for (const slot of equipmentSlots) {
     const activeId = state.equipment[slot];
     if (activeId && state.inventory.some(g => g.id === activeId && g.slot === slot)) continue;
     const candidates = state.inventory.filter(g => g.slot === slot).sort((a,b) => b.power - a.power || b.quality - a.quality);
@@ -446,7 +461,7 @@ export function createCombatState(): CombatState {
     baseDamage:54, coins:250, scrap:0, combatMarks:0, combatUpgrades:{}, totalKills:0, skillRolls:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
     combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
-    encounterFirstStrikeUsed:false, inventory:starter.inventory,
+    encounterFirstStrikeUsed:false, pendingHealAmount:0, inventory:starter.inventory,
     equipment:starter.equipment, runInventoryIds:[],
     autoScrapUnlocked:false,autoScrapSettings:{...DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS},skillLevels:{},
     arenaRating:1000, arenaWins:0, arenaLosses:0, arenaLastChallengeAt:0,
@@ -457,8 +472,18 @@ export function createCombatState(): CombatState {
   return state;
 }
 export function combatStatsFor(state: CombatState): CombatStats {
-  const weapon = state.inventory.find(item => item.id === state.equipment.weapon && item.slot === 'weapon');
-  const armor = state.inventory.find(item => item.id === state.equipment.armor && item.slot === 'armor');
+  const floor = Math.max(0, state.depth - 1);
+  const equipmentSlots = Object.entries(state.equipment) as [CombatGearSlot,string|null][];
+  const equippedItems = equipmentSlots.map(([slot,id]) => state.inventory.find(item => item.id === id && item.slot === slot)).filter((item):item is CombatGear=>Boolean(item));
+  const weapon = equippedItems.find(item => item.slot === 'weapon');
+  const armor = equippedItems.find(item => item.slot === 'chest');
+  const qualityOf = (item:CombatGear) => gearQualityEffectiveness(item,floor);
+  const effectiveDamageBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.damageBonus*qualityOf(item)),0);
+  const effectiveSpeedBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.speedBonus*qualityOf(item)),0);
+  const effectiveHealthBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.maxHealthBonus*qualityOf(item)),0);
+  const effectiveArmorBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.armorBonus*qualityOf(item)),0);
+  const effectiveCritBonus=equippedItems.reduce((sum,item)=>sum+item.critChanceBonus*qualityOf(item),0);
+  const hasTrait=(trait:CombatTrait)=>equippedItems.some(item=>item.trait===trait&&qualityOf(item)>0);
   // Acquired skills are equipped active abilities, not permanent passive-stat stacks.
   let damagePct=0, speedFlat=0, healthPct=0, critChance=.08, coinBonus=0;
   for (const upgrade of COMBAT_UPGRADES) {
@@ -469,28 +494,26 @@ export function combatStatsFor(state: CombatState): CombatStats {
     else if (upgrade.stat === 'speedFlat') speedFlat += upgrade.value * rank;
     else if (upgrade.stat === 'critChance') critChance += upgrade.value * rank;
   }
-  const floor = Math.max(0, state.depth - 1);
   const gearQualityRequirement = floorQualityRequirement(floor);
-  const weaponQuality = gearQualityEffectiveness(weapon, floor);
-  const armorQuality = gearQualityEffectiveness(armor, floor);
   const orbRarity = Math.max(2, Math.min(1_000_000_000_000_000_000, Math.floor(Number(state.orbFocusRarity) || 2)));
   const orbFocusBonus = Math.min(.35, Math.max(0, (Math.log10(orbRarity) - Math.log10(2)) * .025 + combatUpgradeRank(state, 'orb-resonance') * .015));
   const coreProgressionBonus = coreProgressionCombatBonus(state.coreLevel, state.coreHighestRarity);
   const dungeonDamageBonus = state.dungeonId === 'cinder-vault' ? 0.10 : 0;
   const dungeonSpeedBonus = state.dungeonId === 'glass-labyrinth' ? 35 : 0;
   const dungeonCritBonus = state.dungeonId === 'glass-labyrinth' ? 0.05 : 0;
-  const flatDamage = 50 + (Math.max(1,state.level)-1)*4 + Math.round((weapon?.damageBonus||0)*weaponQuality);
-  const flatHealth = 1000 + (Math.max(1,state.level)-1)*30 + Math.round((armor?.maxHealthBonus||0)*armorQuality);
+  const flatDamage = 50 + (Math.max(1,state.level)-1)*4 + effectiveDamageBonus;
+  const flatHealth = 1000 + (Math.max(1,state.level)-1)*30 + effectiveHealthBonus;
   const maxHealth = Math.max(1,Math.round(flatHealth*(1+healthPct)*(1+coreProgressionBonus)*(1+orbFocusBonus*.65)));
-  let speed = 300 + Math.round((weapon?.speedBonus||0)*weaponQuality) + speedFlat + dungeonSpeedBonus;
-  if (armor?.trait==='desperation' && state.health>0 && state.health<=maxHealth*.4) speed+=Math.round(20*armorQuality);
-  if (weapon?.trait==='keen') critChance+=.04*weaponQuality;
-  critChance += dungeonCritBonus;
+  let speed = 300 + effectiveSpeedBonus + speedFlat + dungeonSpeedBonus;
+  if (hasTrait('desperation') && state.health>0 && state.health<=maxHealth*.4) speed+=20;
+  if (hasTrait('keen')) critChance+=.04;
+  critChance += effectiveCritBonus + dungeonCritBonus;
+  const damageReduction = Math.min(.75, effectiveArmorBonus/250 + (hasTrait('bulwark')?.04:0));
   return {
     damage:Math.max(1,Math.round(flatDamage*(1+damagePct)*(1+coreProgressionBonus)*(1+dungeonDamageBonus)*(1+orbFocusBonus))),
-    speed:Math.min(800,speed), maxHealth,
+    speed:Math.min(800,speed), maxHealth, armor:effectiveArmorBonus,
     critChance:Math.min(.75,Math.max(0,critChance)),
-    damageReduction: armor?.trait === 'bulwark' ? 0.04*armorQuality : 0,
+    damageReduction,
     coinMultiplier:1+coinBonus, coreProgressionBonus, orbFocusBonus, gearQualityRequirement,
   };
 }
