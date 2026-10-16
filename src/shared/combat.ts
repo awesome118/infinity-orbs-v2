@@ -4,6 +4,8 @@ export type CombatCommand = CombatIntent | 'auto' | 'ability';
 export type CombatAbilityType = 'strike' | 'flurry' | 'mend' | 'focus' | 'bounty';
 export const COMBAT_ABILITY_SLOTS = 3;
 export const SKILL_GACHA_RANK_MAX = 5;
+/** Maximum supported PvE depth; reaching it ends the descent instead of farming a capped room. */
+export const COMBAT_MAX_DEPTH = 50_000;
 export type CombatTactic = 'balanced' | 'aggressive' | 'defensive' | 'recovery';
 export type CombatDungeonId = 'undercrypt' | 'cinder-vault' | 'glass-labyrinth';
 export interface CombatAutoScrapSettings { enabled: boolean; maxQuality: number; }
@@ -63,7 +65,24 @@ export function combatSkillRankEffectiveness(rankValue: unknown): number {
 /** Copies needed to advance FROM the given rank; grows super-linearly without a hard rank cap. */
 export function combatSkillCopiesForNextRank(rankValue: unknown): number {
   const rank = Number.isFinite(Number(rankValue)) ? Math.max(1, Math.min(Number.MAX_SAFE_INTEGER - 1, Math.floor(Number(rankValue)))) : 1;
-  return Math.max(2, Math.ceil(Math.pow(rank + 1, 1.25)));
+  const required = Math.ceil(Math.pow(rank + 1, 1.25));
+  return Math.max(2, Math.min(Number.MAX_SAFE_INTEGER, Number.isFinite(required) ? required : Number.MAX_SAFE_INTEGER));
+}
+
+/** Extra flurry attacks scale by skill value (8 means +8% per bonus strike), capped at 2x. */
+export function combatFlurryAttackMultiplier(value: unknown): number {
+  const amount = Number(value);
+  return 1 + (Number.isFinite(amount) ? Math.max(0, Math.min(100, amount)) : 0) / 100;
+}
+
+/** Rank-scaled PvE bounty reward, shared by the resolver and its UI preview. */
+export function combatBountyReward(value: unknown, rankValue: unknown): { marks: number; coins: number } {
+  const rawValue = Number(value);
+  const skillValue = Number.isFinite(rawValue) ? Math.max(0, Math.min(1, rawValue)) : 0;
+  const rawRank = Number(rankValue);
+  const rank = Number.isFinite(rawRank) ? Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(rawRank))) : 1;
+  const marks = Math.max(1, Math.round((3 + Math.log2(rank + 1) * 2) * (1 + skillValue * 3)));
+  return { marks, coins: Math.max(1, marks * 10) };
 }
 
 export function combatSkillEnergyCost(rarity: CombatRarity): number {
@@ -164,7 +183,7 @@ export type CombatUpgradeLevels = Partial<Record<CombatUpgradeId, number>>;
 
 /** Floor 0 asks for no minimum quality; the curve reaches 60% at floor 50. */
 export function floorQualityRequirement(floorValue: unknown): number {
-  const floor = Number.isFinite(Number(floorValue)) ? Math.max(0, Math.min(50_000, Math.floor(Number(floorValue)))) : 0;
+  const floor = Number.isFinite(Number(floorValue)) ? Math.max(0, Math.min(COMBAT_MAX_DEPTH, Math.floor(Number(floorValue)))) : 0;
   return Math.round(Math.min(100, floor * 1.2) * 100) / 100;
 }
 
@@ -328,26 +347,39 @@ function createCombatStarterGear(): { inventory: CombatGear[]; equipment: Combat
 
 /** Each run can carry up to 30 newly acquired pieces; the owned inventory persists between runs. */
 export function addCombatGearToInventory(state: CombatState, item: CombatGear, maxItems = COMBAT_INVENTORY_CAP): void {
-  const cap = Math.max(1, Math.floor(Number.isFinite(maxItems) ? maxItems : COMBAT_INVENTORY_CAP));
-  state.inventory = state.inventory.filter(existing => existing.id !== item.id);
+  // Retried loot grants must not replace an owned item or count it twice.
+  if (state.inventory.some(existing => existing.id === item.id)) return;
+
+  // Keep enough haul capacity for both equipment slots even for custom/test caps.
+  const cap = Math.max(2, Math.floor(Number.isFinite(maxItems) ? maxItems : COMBAT_INVENTORY_CAP));
   state.inventory.unshift(item);
   const ownedIds = new Set(state.inventory.map(existing => existing.id));
-  state.runInventoryIds = [...new Set((Array.isArray(state.runInventoryIds) ? state.runInventoryIds : []).filter(id => ownedIds.has(id) && id !== item.id))];
+  state.runInventoryIds = [...new Set((Array.isArray(state.runInventoryIds) ? state.runInventoryIds : []).filter(id => ownedIds.has(id)))];
   state.runInventoryIds.unshift(item.id);
+
   while (state.runInventoryIds.length > cap) {
-    let removable = 0;
-    for (let index = 1; index < state.runInventoryIds.length; index += 1) {
-      const current = state.inventory.find(existing => existing.id === state.runInventoryIds[index]);
+    let removable = -1;
+    for (let index = 0; index < state.runInventoryIds.length; index += 1) {
+      const id = state.runInventoryIds[index];
+      // Equipped pieces are permanent equipment, not disposable haul overflow.
+      if (id === state.equipment.weapon || id === state.equipment.armor) continue;
+      const current = state.inventory.find(existing => existing.id === id);
+      if (!current) { removable = index; break; }
+      if (removable < 0) { removable = index; continue; }
       const worst = state.inventory.find(existing => existing.id === state.runInventoryIds[removable]);
-      if (!current) { removable = index; continue; }
       if (!worst) { removable = index; continue; }
-      const currentFloor = Math.max(0, Math.floor(Number(current.sourceFloor) || 0));
-      const worstFloor = Math.max(0, Math.floor(Number(worst.sourceFloor) || 0));
-      if (currentFloor < worstFloor || (currentFloor === worstFloor && current.quality < worst.quality) || (currentFloor === worstFloor && current.quality === worst.quality && index > removable)) removable = index;
+      const currentFloor = Number.isFinite(Number(current.sourceFloor)) ? Math.max(0, Math.floor(Number(current.sourceFloor))) : 0;
+      const worstFloor = Number.isFinite(Number(worst.sourceFloor)) ? Math.max(0, Math.floor(Number(worst.sourceFloor))) : 0;
+      const currentQuality = Number.isFinite(Number(current.quality)) ? Math.max(0, Math.min(100, Number(current.quality))) : 0;
+      const worstQuality = Number.isFinite(Number(worst.quality)) ? Math.max(0, Math.min(100, Number(worst.quality))) : 0;
+      if (currentFloor < worstFloor || (currentFloor === worstFloor && currentQuality < worstQuality) || (currentFloor === worstFloor && currentQuality === worstQuality && index > removable)) removable = index;
     }
+    // At most two IDs are protected, so an overflow item remains removable with a cap of two.
+    if (removable < 0) break;
     const [removedId] = state.runInventoryIds.splice(removable, 1);
     state.inventory = state.inventory.filter(existing => existing.id !== removedId);
   }
+
   for (const slot of ['weapon', 'armor'] as const) {
     const activeId = state.equipment[slot];
     if (activeId && state.inventory.some(g => g.id === activeId && g.slot === slot)) continue;
@@ -356,19 +388,19 @@ export function addCombatGearToInventory(state: CombatState, item: CombatGear, m
   }
 }
 
-/** A new run resets only the haul counter; owned gear and the equipped loadout are permanent. */
+/** A new run resets only the haul counter; owned gear and the equipped loadout are permanent. */ owned gear and the equipped loadout are permanent. */
 export function resetCombatRunCarry(state: Pick<CombatState, 'runInventoryIds'>): void {
   state.runInventoryIds = [];
 }
 export function combatScrapValue(item: Pick<CombatGear,'power'|'quality'|'sourceFloor'>): number {
   const power = Number.isFinite(Number(item.power)) ? Math.max(1, Math.min(1_000_000, Number(item.power))) : 1;
   const quality = Number.isFinite(Number(item.quality)) ? Math.max(0, Math.min(100, Number(item.quality))) : 0;
-  const floor = Number.isFinite(Number(item.sourceFloor)) ? Math.max(0, Math.min(50_000, Number(item.sourceFloor))) : 0;
+  const floor = Number.isFinite(Number(item.sourceFloor)) ? Math.max(0, Math.min(COMBAT_MAX_DEPTH, Number(item.sourceFloor))) : 0;
   return Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.round(4 + power * 0.6 + quality * 0.1 + Math.log10(floor + 1) * 2)));
 }
 
 export function combatForgeCost(floorValue: unknown): number {
-  const floor = Number.isFinite(Number(floorValue)) ? Math.max(0, Math.min(50_000, Math.floor(Number(floorValue)))) : 0;
+  const floor = Number.isFinite(Number(floorValue)) ? Math.max(0, Math.min(COMBAT_MAX_DEPTH, Math.floor(Number(floorValue)))) : 0;
   return Math.max(10, Math.min(Number.MAX_SAFE_INTEGER, Math.round(10 + floor * 1.8)));
 }
 
@@ -384,8 +416,11 @@ export function normalizeCombatAutoScrapSettings(value: unknown): CombatAutoScra
 
 export const SKILL_PULL_BASE_COST = 75;
 export function skillPullCost(skillRolls: number): number {
-  const pulls = Math.max(0, Math.min(40, Math.floor(Number(skillRolls) || 0)));
-  return Math.round(SKILL_PULL_BASE_COST * Math.pow(1.09, pulls));
+  const rawPulls = Number(skillRolls);
+  const pulls = Number.isFinite(rawPulls) ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(rawPulls))) : 0;
+  // Prices keep rising beyond pull 40, then saturate only at the safe-integer currency limit.
+  const cost = SKILL_PULL_BASE_COST * Math.pow(1.09, Math.min(pulls, 400));
+  return Math.max(SKILL_PULL_BASE_COST, Math.min(Number.MAX_SAFE_INTEGER, Math.round(cost)));
 }
 export function createCombatState(): CombatState {
   const starter = createCombatStarterGear();
@@ -504,7 +539,7 @@ export function applyCombatSkillCopy(
 }
 
 export function getEnemyForDepth(depthValue: number): CombatEnemy {
-  const depth=Math.max(1,Math.min(50000,Math.floor(Number(depthValue)||1)));
+  const depth=Math.max(1,Math.min(COMBAT_MAX_DEPTH,Math.floor(Number(depthValue)||1)));
   const encounters=[
     {id:'ash-husk',name:'Ash Husk',kind:'common' as const,hp:1,damage:1,speed:100,room:'Stone Gallery',emoji:'💀'},
     {id:'bone-rat',name:'Bone Rat',kind:'common' as const,hp:.72,damage:.72,speed:185,room:'Rat Warrens',emoji:'🐀'},
