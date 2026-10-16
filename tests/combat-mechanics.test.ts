@@ -103,19 +103,19 @@ test('skill copies are active ability types rather than passive stat modifiers',
   assert.equal(combatAbilityType(bounty),'bounty');
 });
 
-test('ranked Gacha progressively unlocks each higher rarity and raises minimum investment',()=>{
+test('ranked Gacha steadily raises rarity odds through Rank 30',()=>{
   assert.equal(skillRarityUnlocked('Common',1),true);
-  assert.equal(skillRarityUnlocked('Uncommon',1),false);
-  assert.equal(skillRarityUnlocked('Uncommon',2),true);
-  assert.equal(skillRarityUnlocked('Mythic',4),false);
-  assert.equal(skillRarityUnlocked('Mythic',5),true);
+  assert.equal(skillRarityUnlocked('Uncommon',1),true);
+  assert.equal(skillRarityUnlocked('Mythic',1),true);
   assert.equal(resolveCombatSkillRarity(.9,1,0,0),'Common');
-  assert.equal(resolveCombatSkillRarity(.99,2,0,0),'Uncommon');
-  assert.equal(resolveCombatSkillRarity(.99,3,0,0),'Rare');
-  assert.equal(resolveCombatSkillRarity(.1,4,9,0),'Epic');
-  assert.equal(resolveCombatSkillRarity(.1,5,0,39),'Mythic');
-  assert.deepEqual(skillGachaRankRequirement(1),{rank:2,requiredPulls:3,requiredMarks:25,unlocks:'Uncommon'});
-  assert.equal(skillGachaRankRequirement(5),null);
+  assert.equal(resolveCombatSkillRarity(.99,2,0,0),'Rare');
+  assert.equal(resolveCombatSkillRarity(.99,3,0,0),'Epic');
+  assert.equal(resolveCombatSkillRarity(.1,10,9,0),'Epic');
+  assert.equal(resolveCombatSkillRarity(.1,20,0,39),'Mythic');
+  assert.equal(resolveCombatSkillRarity(.999,30,0,0),'Mythic');
+  assert.deepEqual(skillGachaRankRequirement(1),{rank:2,requiredPulls:3,requiredMarks:25,unlocks:'Improved higher-rarity odds'});
+  assert.ok(skillGachaRankRequirement(5));
+  assert.equal(skillGachaRankRequirement(30),null);
 });
 
 test('Scrap rewards and Forge costs scale with gear/floor progression',()=>{
