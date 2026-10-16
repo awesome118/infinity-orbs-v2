@@ -2060,3 +2060,6 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-combat-arena-turn.is-foe{border-left:3px solid #63b9ee;background:rgba(16,39,55,.38)}
 .io-combat-arena-turn.is-foe>span{color:#9bdcff}
 @media(prefers-reduced-motion:reduce){.io-combat-sonic-blast span,.io-combat-loot-popup{animation:none!important}.io-combat-beat-track span{transition:none}}
+
+.io-combat-arena-turn.is-result{border-left:3px solid #d8bb72;background:rgba(71,53,21,.22)}
+.io-combat-arena-turn.is-result>span{color:#ffe5a3}
