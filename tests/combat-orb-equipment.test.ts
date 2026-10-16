@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { combatOrbDamageMultiplier, combatStatsFor, createCombatState } from '../src/shared/combat.js';
+import { combatMajorAbilityChance, combatOrbDamageMultiplier, combatStatsFor, createCombatState } from '../src/shared/combat.js';
 
 test('each orb rarity maps monotonically to a bounded base-damage multiplier', () => {
   assert.equal(combatOrbDamageMultiplier(0), 1);
@@ -48,4 +48,15 @@ test('legacy weapon and armor starter equipment remains valid alongside the new 
   assert.equal(state.equipment.boots, null);
   assert.equal(state.equipment.ring, null);
   assert.equal(state.equipment.amulet, null);
+});
+
+test('major ability odds increase with item rarity but are never guaranteed', () => {
+  const common = combatMajorAbilityChance(5);
+  const uncommon = combatMajorAbilityChance(20);
+  const rare = combatMajorAbilityChance(50);
+  const epic = combatMajorAbilityChance(75);
+  const mythic = combatMajorAbilityChance(100);
+  assert.ok(common > 0);
+  assert.ok(common < uncommon && uncommon < rare && rare < epic && epic < mythic);
+  assert.ok(mythic < 1);
 });
