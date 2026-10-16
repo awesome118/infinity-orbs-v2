@@ -508,7 +508,7 @@ export function combatStatsFor(state: CombatState): CombatStats {
   if (hasTrait('desperation') && state.health>0 && state.health<=maxHealth*.4) speed+=20;
   if (hasTrait('keen')) critChance+=.04;
   critChance += effectiveCritBonus + dungeonCritBonus;
-  const damageReduction = Math.min(.75, effectiveArmorBonus/250 + (hasTrait('bulwark')?.04:0));
+  const damageReduction = Math.min(.75, effectiveArmorBonus/250 + (hasTrait('bulwark') ? .04 : 0));
   return {
     damage:Math.max(1,Math.round(flatDamage*(1+damagePct)*(1+coreProgressionBonus)*(1+dungeonDamageBonus)*(1+orbFocusBonus))),
     speed:Math.min(800,speed), maxHealth, armor:effectiveArmorBonus,
