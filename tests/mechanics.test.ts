@@ -297,7 +297,7 @@ test('Guild Combo bonuses match the half-strength design', () => {
     lastTickAt: NOW,
   };
   const tier10 = {
-    tier: GUILD_COMBO_MAX_TIER,
+    tier: 10,
     activationProgress: 0,
     endsAt: NOW + GUILD_COMBO_BASE_DURATION_MS,
     lastTickAt: NOW,
