@@ -40,11 +40,17 @@ function normalizeGear(value:unknown,fallbackFloor=0):CombatGear|null {
   if(!slot||typeof x.id!=='string'||!x.id||typeof x.name!=='string')return null;
   const trait=traits.includes(x.trait as CombatTrait)?x.trait as CombatTrait:(slot==='weapon'?'keen':'bulwark');
   const rawAbility=x.majorAbility&&typeof x.majorAbility==='object'?x.majorAbility as Record<string,unknown>:null;
+  const abilityName=(fallback:string)=>typeof rawAbility?.name==='string'?rawAbility.name.slice(0,60):fallback;
+  const abilityDescription=(fallback:string)=>typeof rawAbility?.description==='string'?rawAbility.description.slice(0,180):fallback;
   const majorAbility:CombatMajorAbility|undefined=rawAbility&&rawAbility.id==='second-dawn'&&rawAbility.trigger==='on-damage'
-    ?{id:'second-dawn',name:typeof rawAbility.name==='string'?rawAbility.name.slice(0,60):'Second Dawn',trigger:'on-damage',healPercent:Math.max(0,Math.min(.75,Number(rawAbility.healPercent)||.15)),description:typeof rawAbility.description==='string'?rawAbility.description.slice(0,180):'After taking damage, heal 15% of Max HP at the start of your next turn.'}
+    ?{id:'second-dawn',name:abilityName('Second Dawn'),trigger:'on-damage',healPercent:Math.max(0,Math.min(.75,Number(rawAbility.healPercent)||.15)),description:abilityDescription('After taking damage, heal 15% of Max HP at the start of your next turn.')}
     :rawAbility&&rawAbility.id==='chrono-surge'&&rawAbility.trigger==='passive'
-      ?{id:'chrono-surge',name:typeof rawAbility.name==='string'?rawAbility.name.slice(0,60):'Chrono Surge',trigger:'passive',speedPercent:Math.max(0,Math.min(.5,Number.isFinite(Number(rawAbility.speedPercent))?Number(rawAbility.speedPercent):.10)),description:typeof rawAbility.description==='string'?rawAbility.description.slice(0,180):'Major Ability: increases your turn speed while this item is equipped.'}
-      :undefined;
+      ?{id:'chrono-surge',name:abilityName('Chrono Surge'),trigger:'passive',speedPercent:Math.max(0,Math.min(.5,Number.isFinite(Number(rawAbility.speedPercent))?Number(rawAbility.speedPercent):.10)),description:abilityDescription('Increases turn speed while equipped.')}
+    :rawAbility&&rawAbility.id==='void-edge'&&rawAbility.trigger==='passive'
+      ?{id:'void-edge',name:abilityName('Void Edge'),trigger:'passive',damagePercent:Math.max(0,Math.min(.75,Number.isFinite(Number(rawAbility.damagePercent))?Number(rawAbility.damagePercent):.12)),description:abilityDescription('Increases outgoing damage while equipped.')}
+    :rawAbility&&rawAbility.id==='aegis-ward'&&rawAbility.trigger==='passive'
+      ?{id:'aegis-ward',name:abilityName('Aegis Ward'),trigger:'passive',damageReduction:Math.max(0,Math.min(.25,Number.isFinite(Number(rawAbility.damageReduction))?Number(rawAbility.damageReduction):.08)),description:abilityDescription('Reduces incoming damage while equipped.')}
+    :undefined;
   return {id:x.id.slice(0,160),name:x.name.slice(0,100),slot,quality:Math.max(0,Math.min(100,Number.isFinite(Number(x.quality))?Number(x.quality):0)),sourceFloor:finiteInt(x.sourceFloor,fallbackFloor,0,COMBAT_MAX_DEPTH-1),power:finiteInt(x.power,1,1,1_000_000),effect:x.id==='starter-weapon'?'Adds +4 damage. Critical chance +4 percentage points.':typeof x.effect==='string'?x.effect.slice(0,180):traitText(trait),trait,damageBonus:finiteInt(x.damageBonus,0,0,1_000_000),speedBonus:0,maxHealthBonus:finiteInt(x.maxHealthBonus,0,0,1_000_000),armorBonus:finiteInt(x.armorBonus,0,0,1_000_000),critChanceBonus:Math.max(0,Math.min(.75,Number.isFinite(Number(x.critChanceBonus))?Number(x.critChanceBonus):0)),...(majorAbility?{majorAbility}:{})};
 }
 function normalizeState(raw:string|null|undefined):CombatState {
@@ -68,11 +74,17 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.dungeonBestDepths[s.dungeonId]=Math.max(s.dungeonBestDepths[s.dungeonId],s.bestDepth);
   s.bestDepth=Math.max(s.depth,s.dungeonBestDepths[s.dungeonId]);
   s.level=finiteInt(s.level,1,1,60);s.xp=finiteInt(s.xp,0,0,Number.MAX_SAFE_INTEGER);
-  s.xpToNext=finiteInt(s.xpToNext,100,1,1_000_000_000);s.coins=finiteInt(s.coins,250,0,Number.MAX_SAFE_INTEGER);s.totalKills=finiteInt(s.totalKills,0,0,Number.MAX_SAFE_INTEGER);
+  s.xpToNext=finiteInt(s.xpToNext,100,1,1_000_000_000);
+  // Migrate legacy Delver Coins and Combat Marks into one saved balance.
+  const legacyCoins=finiteInt(p.coins,0,0,Number.MAX_SAFE_INTEGER);
+  const legacyMarks=finiteInt(p.combatMarks,0,0,Number.MAX_SAFE_INTEGER);
+  s.coins=0;
+  s.combatMarks=Math.min(Number.MAX_SAFE_INTEGER,legacyCoins+legacyMarks);
+  s.totalKills=finiteInt(s.totalKills,0,0,Number.MAX_SAFE_INTEGER);
   s.arenaRating=finiteInt(s.arenaRating,1000,100,10000);s.arenaWins=finiteInt(s.arenaWins,0,0,Number.MAX_SAFE_INTEGER);s.arenaLosses=finiteInt(s.arenaLosses,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastChallengeAt=finiteInt(s.arenaLastChallengeAt,0,0,Number.MAX_SAFE_INTEGER);
   s.coreLevel=finiteInt(s.coreLevel,1,1,1_000_000);s.coreHighestRarity=finiteInt(s.coreHighestRarity,2,2,1_000_000_000_000_000_000);
   s.autoTactic=(['balanced','aggressive','defensive','recovery'] as unknown[]).includes(s.autoTactic)?s.autoTactic:'balanced';
-  s.scrap=finiteInt(s.scrap,0,0,Number.MAX_SAFE_INTEGER);s.autoScrapUnlocked=s.autoScrapUnlocked===true;s.autoScrapSettings=normalizeCombatAutoScrapSettings(s.autoScrapSettings);s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillGachaRank=finiteInt(storedGachaRank,legacyUnlockedRank,1,SKILL_GACHA_RANK_MAX);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.combatMarks=finiteInt(s.combatMarks,0,0,Number.MAX_SAFE_INTEGER);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,1_000_000_000_000_000_000);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
+  s.scrap=finiteInt(s.scrap,0,0,Number.MAX_SAFE_INTEGER);s.autoScrapUnlocked=s.autoScrapUnlocked===true;s.autoScrapSettings=normalizeCombatAutoScrapSettings(s.autoScrapSettings);s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillGachaRank=finiteInt(storedGachaRank,legacyUnlockedRank,1,SKILL_GACHA_RANK_MAX);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,1_000_000_000_000_000_000);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
   s.playerActionsResolved=finiteInt(s.playerActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.enemyActionsResolved=finiteInt(s.enemyActionsResolved,0,0,Number.MAX_SAFE_INTEGER);
   s.energy=finiteInt(s.energy,3,0,10);s.maxEnergy=finiteInt(s.maxEnergy,5,1,10);s.guardBeats=finiteInt(s.guardBeats,0,0,10);s.encounterFirstStrikeUsed=s.encounterFirstStrikeUsed===true;s.pendingHealAmount=finiteInt(s.pendingHealAmount,0,0,1_000_000_000);
   const defaults=createCombatState();
@@ -162,10 +174,15 @@ function createGear(sourceFloor:number,requestedSlot?:CombatGearSlot,requestedQu
   const armorBonus=isProtective?Math.max(1,Math.round(power*(slot==='armor' ? .65 : .55))):secureRandom()<.25?Math.max(1,Math.round(power*.3)):0;
   const critChanceBonus=slot==='ring'||slot==='amulet'?Math.min(.30,.05+quality*.0025):secureRandom()<.28?Math.min(.30,.06+quality*.0028):0;
   const majorAbilityChance=combatMajorAbilityChance(quality);
-  const majorAbility:CombatMajorAbility|undefined=secureRandom()<majorAbilityChance
-    ?(secureRandom()<.35
-      ?{id:'chrono-surge',name:'Chrono Surge',trigger:'passive',speedPercent:Math.round((.10+quality*.0025)*1000)/1000,description:'Major Ability: increases action frequency by '+Math.round((.10+quality*.0025)*100)+'% while equipped.'}
-      :{id:'second-dawn',name:'Second Dawn',trigger:'on-damage',healPercent:.15,description:'After taking damage, heal 15% of Max HP at the start of your next turn.'})
+  const majorAbilityRoll=secureRandom();
+  const majorAbility:CombatMajorAbility|undefined=majorAbilityRoll<majorAbilityChance
+    ?(()=>{
+      const kind=Math.floor(secureRandom()*4);
+      if(kind===0){const speedPercent=Math.round((.10+quality*.0025)*1000)/1000;return {id:'chrono-surge',name:'Chrono Surge',trigger:'passive',speedPercent,description:'Increases turn speed by '+Math.round(speedPercent*100)+'% while equipped.'} as const;}
+      if(kind===1)return {id:'second-dawn',name:'Second Dawn',trigger:'on-damage',healPercent:.15,description:'After taking damage, heal 15% of Max HP at the start of your next turn.'} as const;
+      if(kind===2){const damagePercent=Math.round((.08+quality*.001)*1000)/1000;return {id:'void-edge',name:'Void Edge',trigger:'passive',damagePercent,description:'Increases outgoing damage by '+Math.round(damagePercent*100)+'% while equipped.'} as const;}
+      const damageReduction=Math.round((.05+quality*.0005)*1000)/1000;return {id:'aegis-ward',name:'Aegis Ward',trigger:'passive',damageReduction,description:'Reduces incoming damage by '+Math.round(damageReduction*100)+'% while equipped.'} as const;
+    })()
     :undefined;
   const firstWord=pick(firstWords),secondWord=pick(secondWords.filter(word=>word!==firstWord));
   return {id:'gear-'+Date.now().toString(36)+'-'+Math.floor(secureRandom()*0x7fffffff).toString(36),name:firstWord+' '+secondWord+' '+pick(nouns[slot]),slot,quality,sourceFloor:floor,power,trait,effect:traitText(trait),damageBonus,speedBonus,maxHealthBonus,armorBonus,critChanceBonus,...(majorAbility?{majorAbility}:{})};
@@ -273,9 +290,9 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         actions.push({actor:'player',kind:'ability',text:activeSkill.name+' guarantees a critical strike.'});
       } else {
         const reward=combatBountyReward(activeSkill.value,activeSkillRank);
-        s.combatMarks=Math.min(Number.MAX_SAFE_INTEGER,s.combatMarks+reward.marks);
-        s.coins=Math.min(Number.MAX_SAFE_INTEGER,s.coins+reward.coins);
-        actions.push({actor:'player',kind:'ability',text:activeSkill.name+' grants '+reward.marks+' Combat Marks and '+reward.coins+' Delver Coins.'});
+        const bountyMarks=Math.min(Number.MAX_SAFE_INTEGER-s.combatMarks,reward.marks+reward.coins);
+        s.combatMarks+=bountyMarks;
+        actions.push({actor:'player',kind:'ability',text:activeSkill.name+' grants '+bountyMarks.toLocaleString()+' Combat Marks.'});
       }
     }
     if(resolvedIntent==='heavy'&&s.energy>=3&&playerActions>0){s.energy-=3;heavy=true;actions.push({actor:'player',kind:'ability',text:'Heavy strike prepared.'});}
@@ -293,9 +310,12 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
       enemyHp-=damage;actions.push({actor:'player',kind:'attack',damage,text:(crit?'Critical hit for ':'Strike for ')+damage+' damage.'});
       if(enemyHp<=0){
         defeated=true;actions.push({actor:'player',kind:'death',text:'The '+enemy.name+' falls.'});s.totalKills=Math.min(Number.MAX_SAFE_INTEGER,s.totalKills+1);
-        const coins=Math.max(1,Math.round((12+s.depth*2.4)*stats.coinMultiplier*(s.dungeonId==='cinder-vault'?1.4:1)));s.coins=Math.min(Number.MAX_SAFE_INTEGER,s.coins+coins);actions.push({actor:'player',kind:'loot',text:'Collected '+coins.toLocaleString()+' Delver Coins.'});
+        const coins=Math.max(1,Math.round((12+s.depth*2.4)*stats.coinMultiplier*(s.dungeonId==='cinder-vault'?1.4:1)));
         const baseMarks=Math.max(1,2+Math.floor(Math.max(0,s.depth-1)/2)+(enemy.kind==='elite'?2:enemy.boss?8:0));
-        const marks=Math.max(1,Math.round(baseMarks*combatMarkMultiplier(s)));s.combatMarks=Math.min(Number.MAX_SAFE_INTEGER,s.combatMarks+marks);actions.push({actor:'player',kind:'loot',text:'Earned '+marks.toLocaleString()+' Combat Marks.'});
+        const marks=Math.max(1,Math.round(baseMarks*combatMarkMultiplier(s)));
+        const combinedReward=Math.min(Number.MAX_SAFE_INTEGER-s.combatMarks,coins+marks);
+        s.combatMarks+=combinedReward;
+        actions.push({actor:'player',kind:'loot',text:'Earned '+combinedReward.toLocaleString()+' Combat Marks from the kill.'});
         grantXp(s,Math.round((18+s.depth*4.2)*(s.dungeonId==='glass-labyrinth'?1.25:1)),actions);
         if((s.dungeonId==='cinder-vault'?s.depth%4===0:s.depth%5===0)||enemy.kind!=='common'||enemy.boss){
           item=createGear(Math.max(0,s.depth-1));
@@ -382,8 +402,8 @@ export async function forgeCombatGear(slotValue:unknown,qualityValue?:unknown):P
 }
 export async function rollCombatSkill():Promise<CombatSnapshot&{skillRoll:{id:CombatSkillId;name:string;rarity:CombatRarity;rank:number;duplicate:boolean;convertedCoins:number;pityEpic:number;pityMythic:number;progress:number;copiesNeeded:number;rankedUp:boolean};cost:number}> {
   return mutate(s=>{
-    const cost=skillPullCost(s.skillRolls);if(s.coins<cost)throw new Error('Not enough Delver Coins.');
-    s.coins-=cost;s.skillRolls+=1;
+    const cost=skillPullCost(s.skillRolls);if(s.combatMarks<cost)throw new Error('Not enough Combat Marks.');
+    s.combatMarks-=cost;s.skillRolls+=1;
     const rarity=resolveCombatSkillRarity(secureRandom(),s.skillGachaRank,s.skillPityEpic,s.skillPityMythic);
     s.skillPityEpic=(s.skillGachaRank>=10&&(rarity==='Epic'||rarity==='Mythic'))?0:s.skillGachaRank>=10?Math.min(9,s.skillPityEpic+1):0;
     s.skillPityMythic=(s.skillGachaRank>=20&&rarity==='Mythic')?0:s.skillGachaRank>=20?Math.min(39,s.skillPityMythic+1):0;
