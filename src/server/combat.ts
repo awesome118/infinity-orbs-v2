@@ -1,7 +1,8 @@
 import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
-import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatDungeonId, CombatEnemy, CombatGear, CombatIntent, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats } from '../shared/combat.js';
+import { getOrbInfo, luckMultiplier, rollContinuum } from '../shared/game.js';
+import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -31,11 +32,18 @@ function traitText(t:CombatTrait):string {
 }
 function normalizeGear(value:unknown,fallbackFloor=0):CombatGear|null {
   if(!value||typeof value!=='object')return null;
-  const x=value as Record<string,unknown>, slot=x.slot==='weapon'?'weapon':x.slot==='armor'?'armor':null;
+  const x=value as Record<string,unknown>;
+  const rawSlot=String(x.slot??'');
+  const slot:CombatGearSlot|null=rawSlot==='armor'||rawSlot==='chest'?'chest':
+    (['weapon','helmet','gloves','boots','ring','amulet'] as string[]).includes(rawSlot)?rawSlot as CombatGearSlot:null;
   const traits:CombatTrait[]=['bleed','keen','first-strike','bulwark','regeneration','desperation'];
   if(!slot||typeof x.id!=='string'||!x.id||typeof x.name!=='string')return null;
   const trait=traits.includes(x.trait as CombatTrait)?x.trait as CombatTrait:(slot==='weapon'?'keen':'bulwark');
-  return {id:x.id.slice(0,160),name:x.name.slice(0,100),slot,quality:Math.max(0,Math.min(100,Number.isFinite(Number(x.quality))?Number(x.quality):0)),sourceFloor:finiteInt(x.sourceFloor,fallbackFloor,0,COMBAT_MAX_DEPTH-1),power:finiteInt(x.power,1,1,1_000_000),effect:typeof x.effect==='string'?x.effect.slice(0,180):traitText(trait),trait,damageBonus:finiteInt(x.damageBonus,0,0,1_000_000),speedBonus:finiteInt(x.speedBonus,0,0,400),maxHealthBonus:finiteInt(x.maxHealthBonus,0,0,1_000_000)};
+  const rawAbility=x.majorAbility&&typeof x.majorAbility==='object'?x.majorAbility as Record<string,unknown>:null;
+  const majorAbility:CombatMajorAbility|undefined=rawAbility&&rawAbility.id==='second-dawn'&&rawAbility.trigger==='on-damage'
+    ?{id:'second-dawn',name:typeof rawAbility.name==='string'?rawAbility.name.slice(0,60):'Second Dawn',trigger:'on-damage',healPercent:Math.max(0,Math.min(.75,Number(rawAbility.healPercent)||.15)),description:typeof rawAbility.description==='string'?rawAbility.description.slice(0,180):'After taking damage, heal 15% of Max HP at the start of your next turn.'}
+    :undefined;
+  return {id:x.id.slice(0,160),name:x.name.slice(0,100),slot,quality:Math.max(0,Math.min(100,Number.isFinite(Number(x.quality))?Number(x.quality):0)),sourceFloor:finiteInt(x.sourceFloor,fallbackFloor,0,COMBAT_MAX_DEPTH-1),power:finiteInt(x.power,1,1,1_000_000),effect:typeof x.effect==='string'?x.effect.slice(0,180):traitText(trait),trait,damageBonus:finiteInt(x.damageBonus,0,0,1_000_000),speedBonus:finiteInt(x.speedBonus,0,0,400),maxHealthBonus:finiteInt(x.maxHealthBonus,0,0,1_000_000),armorBonus:finiteInt(x.armorBonus,0,0,1_000_000),critChanceBonus:Math.max(0,Math.min(.75,Number.isFinite(Number(x.critChanceBonus))?Number(x.critChanceBonus):0)),...(majorAbility?{majorAbility}:{})};
 }
 function normalizeState(raw:string|null|undefined):CombatState {
   if(!raw)return createCombatState();
@@ -64,11 +72,11 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.autoTactic=(['balanced','aggressive','defensive','recovery'] as unknown[]).includes(s.autoTactic)?s.autoTactic:'balanced';
   s.scrap=finiteInt(s.scrap,0,0,Number.MAX_SAFE_INTEGER);s.autoScrapUnlocked=s.autoScrapUnlocked===true;s.autoScrapSettings=normalizeCombatAutoScrapSettings(s.autoScrapSettings);s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillGachaRank=finiteInt(storedGachaRank,legacyUnlockedRank,1,SKILL_GACHA_RANK_MAX);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.combatMarks=finiteInt(s.combatMarks,0,0,Number.MAX_SAFE_INTEGER);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,1_000_000_000_000_000_000);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
   s.playerActionsResolved=finiteInt(s.playerActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.enemyActionsResolved=finiteInt(s.enemyActionsResolved,0,0,Number.MAX_SAFE_INTEGER);
-  s.energy=finiteInt(s.energy,3,0,10);s.maxEnergy=finiteInt(s.maxEnergy,5,1,10);s.guardBeats=finiteInt(s.guardBeats,0,0,10);s.encounterFirstStrikeUsed=s.encounterFirstStrikeUsed===true;
+  s.energy=finiteInt(s.energy,3,0,10);s.maxEnergy=finiteInt(s.maxEnergy,5,1,10);s.guardBeats=finiteInt(s.guardBeats,0,0,10);s.encounterFirstStrikeUsed=s.encounterFirstStrikeUsed===true;s.pendingHealAmount=finiteInt(s.pendingHealAmount,0,0,1_000_000_000);
   const defaults=createCombatState();
   const persisted=p as Partial<CombatState>&{
     inventoryByDungeon?:Partial<Record<CombatDungeonId,unknown>>;
-    equipmentByDungeon?:Partial<Record<CombatDungeonId,{weapon?:unknown;armor?:unknown}>>;
+    equipmentByDungeon?:Partial<Record<CombatDungeonId,Record<string,unknown>>>;
   };
   // Current inventory is authoritative when present; merge in old dungeon bags so previously collected gear is retained.
   const rawInventory:unknown[]=[];
@@ -94,15 +102,23 @@ function normalizeState(raw:string|null|undefined):CombatState {
     knownRunIds.add(value);
     if(s.runInventoryIds.length<INVENTORY_CAP)s.runInventoryIds.push(value);
   }
-  const savedEquipment=(p.equipment&&typeof p.equipment==='object'&&!Array.isArray(p.equipment)?p.equipment:persisted.equipmentByDungeon?.[s.dungeonId]) as {weapon?:unknown;armor?:unknown}|undefined;
-  s.equipment={
+  const savedEquipment=(p.equipment&&typeof p.equipment==='object'&&!Array.isArray(p.equipment)?p.equipment:persisted.equipmentByDungeon?.[s.dungeonId]) as Record<string,unknown>|undefined;
+  const desired:Record<CombatGearSlot,string|null>={
     weapon:typeof savedEquipment?.weapon==='string'?savedEquipment.weapon:defaults.equipment.weapon,
-    armor:typeof savedEquipment?.armor==='string'?savedEquipment.armor:defaults.equipment.armor,
+    helmet:typeof savedEquipment?.helmet==='string'?savedEquipment.helmet:null,
+    chest:typeof savedEquipment?.chest==='string'?savedEquipment.chest:typeof savedEquipment?.armor==='string'?savedEquipment.armor:defaults.equipment.chest,
+    gloves:typeof savedEquipment?.gloves==='string'?savedEquipment.gloves:null,
+    boots:typeof savedEquipment?.boots==='string'?savedEquipment.boots:null,
+    ring:typeof savedEquipment?.ring==='string'?savedEquipment.ring:null,
+    amulet:typeof savedEquipment?.amulet==='string'?savedEquipment.amulet:null,
   };
-  for(const slot of ['weapon','armor'] as const){
-    const equipped=s.inventory.find(g=>g.id===s.equipment[slot]&&g.slot===slot);
-    s.equipment[slot]=equipped?.id??s.inventory.find(g=>g.slot===slot)?.id??null;
+  const slots:CombatGearSlot[]=['weapon','helmet','chest','gloves','boots','ring','amulet'];
+  const migratedEquipment={} as Record<CombatGearSlot,string|null>;
+  for(const slot of slots){
+    const selected=s.inventory.find(g=>g.id===desired[slot]&&g.slot===slot);
+    migratedEquipment[slot]=selected?.id??s.inventory.filter(g=>g.slot===slot).sort((a,b)=>b.power-a.power||b.quality-a.quality)[0]?.id??null;
   }
+  s.equipment=migratedEquipment;
   // Discard only obsolete storage maps after merging their items into the persistent shared inventory.
   const legacyInventoryMaps=s as CombatState&{inventoryByDungeon?:unknown;equipmentByDungeon?:unknown};
   delete legacyInventoryMaps.inventoryByDungeon;
