@@ -173,6 +173,8 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   },[accept,error,load]);
   useEffect(()=>{
     if(!auto||paused||loading||Boolean(error))return;
+    // Start the first beat immediately; subsequent beats follow the 30-second cadence.
+    void beat();
     const timer=window.setInterval(()=>void beat(),COMBAT_BEAT_INTERVAL_MS);
     return()=>window.clearInterval(timer);
   },[auto,paused,loading,error,beat]);
