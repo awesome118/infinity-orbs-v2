@@ -108,7 +108,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   },[page,Boolean(state)]);
   useEffect(()=>{
     const update=()=>setBeatCooldownMs(Math.max(0,COMBAT_BEAT_INTERVAL_MS-(Date.now()-(state?.lastAcceptedBeatAtMs??0))));
-    update();const timer=window.setInterval(update,250);return()=>window.clearInterval(timer);
+    update();const timer=window.setInterval(update,1000);return()=>window.clearInterval(timer);
   },[state?.lastAcceptedBeatAtMs]);
   useEffect(()=>{if(state)setAutoScrapQuality(state.autoScrapSettings.maxQuality);},[state?.autoScrapSettings.maxQuality]);
   const loadArena=useCallback(async()=>{
