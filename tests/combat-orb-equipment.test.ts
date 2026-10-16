@@ -112,7 +112,7 @@ test('Void Edge and Aegis Ward Major Abilities affect equipped combat stats', ()
   };
   const defense = {
     id:'test-aegis-ward', name:'Aegis Ward', slot:'amulet' as const, quality:100, sourceFloor:0, power:90,
-    effect:'Reduces incoming damage.', trait:'bulwark' as const, damageBonus:0, speedBonus:0,
+    effect:'Reduces incoming damage.', trait:'bleed' as const, damageBonus:0, speedBonus:0,
     maxHealthBonus:0, armorBonus:0, critChanceBonus:0,
     majorAbility:{id:'aegis-ward' as const,name:'Aegis Ward',trigger:'passive' as const,damageReduction:.08,description:'Reduces incoming damage.'},
   };
