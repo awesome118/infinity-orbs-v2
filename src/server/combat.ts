@@ -164,7 +164,7 @@ function createGear(sourceFloor:number,requestedSlot?:CombatGearSlot,requestedQu
   const majorAbilityChance=combatMajorAbilityChance(quality);
   const majorAbility:CombatMajorAbility|undefined=secureRandom()<majorAbilityChance
     ?(secureRandom()<.35
-      ?{id:'chrono-surge',name:'Chrono Surge',trigger:'passive',speedPercent:Math.round((.04+quality*.0008)*1000)/1000,description:'Major Ability: increases action frequency by '+Math.round((.04+quality*.0008)*100)+'% while equipped.'}
+      ?{id:'chrono-surge',name:'Chrono Surge',trigger:'passive',speedPercent:Math.round((.10+quality*.0025)*1000)/1000,description:'Major Ability: increases action frequency by '+Math.round((.10+quality*.0025)*100)+'% while equipped.'}
       :{id:'second-dawn',name:'Second Dawn',trigger:'on-damage',healPercent:.15,description:'After taking damage, heal 15% of Max HP at the start of your next turn.'})
     :undefined;
   const firstWord=pick(firstWords),secondWord=pick(secondWords.filter(word=>word!==firstWord));
