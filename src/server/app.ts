@@ -1282,7 +1282,7 @@ export function createApp() {
     try {
       const { id } = req.body || {};
       const validIds = [
-        'permLuck', 'permSpeed', 'vaultCap', 'dustBounty', 'sonarPing', 'instantReveal',
+        'permLuck', 'permSpeed', 'vaultCap', 'sonarPing', 'instantReveal',
         'autoOverclock', 'autoFilter', 'resonanceMeter', 'stellarMagnet', 'chronoOverdrive',
         'transmutation', 'shardSynthesis', 'astralBarrage', 'cosmicInheritance',
         'autoBuyer', 'supernova', 'altarResonator', 'offlineOverdrive',
