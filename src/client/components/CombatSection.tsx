@@ -34,7 +34,7 @@ function skillValue(skill:CombatSkillDefinition,rank:number,speed=300):string {
   if(type==='mend')return 'Active mend · heals '+Math.round(Math.min(.9,.10+skill.value+scale*.06)*100)+'% max HP';
   if(type==='focus')return 'Active focus · guaranteed critical strike';
   const reward=combatBountyReward(skill.value,rank);
-  return 'Active bounty · '+fmt(reward.marks+reward.coins)+' Combat Marks in PvE; buffs a strike in Arena';
+  return 'Active bounty · '+fmt(reward)+' Combat Marks in PvE; buffs a strike in Arena';
 }
 function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor}:{item:CombatGear;isEquipped:boolean;onEquip:()=>void;onScrap:()=>void;busy:boolean;currentFloor:number}) {
   const [showTooltip,setShowTooltip]=useState(false);
