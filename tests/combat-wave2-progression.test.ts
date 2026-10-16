@@ -72,18 +72,19 @@ test('combat upgrade prices increase by rank',()=>{
   state.combatUpgrades[upgrade.id]=1;
   assert.ok(combatUpgradeCost(state,upgrade.id)>first);
 });
-test('rolled orb raises combat stats and pity guarantees Epic/Mythic',()=>{
+test('rolled orb raises combat stats and Gacha pity works at its new milestones',()=>{
   const state=createCombatState(),baseline=combatStatsFor(state);
   state.orbFocusRarity=1_000_000;state.orbFocusName='Astral Orb';
   const attuned=combatStatsFor(state);
   assert.ok(attuned.damage>baseline.damage);assert.ok(attuned.maxHealth>baseline.maxHealth);
-  assert.equal(resolveCombatSkillRarity(.1,4,9,0),'Epic');
-  assert.equal(resolveCombatSkillRarity(.99,5,9,0),'Mythic');
-  assert.equal(resolveCombatSkillRarity(.1,5,0,39),'Mythic');
+  assert.equal(resolveCombatSkillRarity(.1,10,9,0),'Epic');
+  assert.equal(resolveCombatSkillRarity(.99,10,9,0),'Mythic');
+  assert.equal(resolveCombatSkillRarity(.1,20,0,39),'Mythic');
   assert.equal(COMBAT_SKILLS.length,35);
-  assert.equal(skillRarityUnlocked('Mythic',4),false);
+  assert.equal(skillRarityUnlocked('Mythic',4),true);
   assert.equal(skillRarityUnlocked('Mythic',5),true);
   assert.equal(skillGachaRankRequirement(1)?.requiredPulls,3);
+  assert.equal(skillGachaRankRequirement(30),null);
   assert.equal(combatSkillCopiesForNextRank(20)>combatSkillCopiesForNextRank(10),true);
   assert.ok(combatScrapValue(gear('high-floor',50,'weapon',80))>combatScrapValue(gear('low-floor',0,'weapon',20)));
   assert.ok(combatForgeCost(50)>combatForgeCost(0));
