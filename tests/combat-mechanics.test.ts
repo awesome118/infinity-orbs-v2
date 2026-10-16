@@ -94,12 +94,12 @@ test('Scrap rewards and Forge costs scale with gear/floor progression',()=>{
   assert.ok(combatForgeCost(50)>combatForgeCost(0));
 });
 
-test('inventory pruning keeps the strongest floor-zero equipped gear when possible and newest loot', () => {
+test('run haul pruning preserves owned equipment and newest loot', () => {
   const state = createCombatState();
   const equippedWeaponId = state.equipment.weapon;
   const equippedArmorId = state.equipment.armor;
-  for (let index = 0; index < 28; index += 1) {
-    state.inventory.push({
+  for (let index = 0; index < 30; index += 1) {
+    addCombatGearToInventory(state, {
       id: 'old-loot-' + index,
       name: 'Old loot ' + index,
       slot: index % 2 === 0 ? 'weapon' : 'armor',
@@ -129,11 +129,12 @@ test('inventory pruning keeps the strongest floor-zero equipped gear when possib
 
   addCombatGearToInventory(state, newest);
 
-  assert.equal(state.inventory.length, 30);
+  assert.equal(state.runInventoryIds.length, 30, 'only the current run haul is capped');
+  assert.equal(state.inventory.length, 32, 'the permanent stash also keeps the two starting items');
   assert.equal(state.inventory[0]?.id, newest.id);
   assert.ok(state.inventory.some(item => item.id === equippedWeaponId), 'equipped weapon must remain in inventory');
   assert.ok(state.inventory.some(item => item.id === equippedArmorId), 'equipped armor must remain in inventory');
-  assert.ok(!state.inventory.some(item => item.id === 'old-loot-27'), 'oldest unequipped item should be pruned first');
+  assert.ok(!state.inventory.some(item => item.id === 'old-loot-0'), 'oldest current-run pickup should be pruned first');
 });
 
 
