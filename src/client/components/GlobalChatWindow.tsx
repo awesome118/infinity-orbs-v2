@@ -35,6 +35,9 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   const [reportedIds, setReportedIds] = useState<Set<string>>(() => new Set());
   const [actionError, setActionError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const chatListRef = useRef<HTMLDivElement | null>(null);
+  const shouldFollowMessagesRef = useRef(true);
+  const jumpToBottomRef = useRef(false);
   const refreshRequestRef = useRef(0);
 
   useEffect(() => {
@@ -153,8 +156,10 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   }, [open, chatAvailable]);
 
   useEffect(() => {
-    if (!open) return;
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!open || !shouldFollowMessagesRef.current) return;
+    const behavior: ScrollBehavior = jumpToBottomRef.current ? 'auto' : 'smooth';
+    jumpToBottomRef.current = false;
+    endRef.current?.scrollIntoView({ behavior, block: 'end' });
   }, [messages, open]);
 
   const reportMessage = async (message: GlobalChatMessage) => {
@@ -201,6 +206,9 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
       }
       const sentMessage = payload as GlobalChatMessage;
       setInput('');
+      // Sending a message is an explicit decision to resume following the conversation.
+      shouldFollowMessagesRef.current = true;
+      jumpToBottomRef.current = true;
       setMessages(prev => mergeMessages(prev, [sentMessage]));
       // Pull the authoritative history after posting. The merge keeps any
       // newer local messages if a concurrent poll is still in flight.
@@ -221,6 +229,8 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
         type="button"
         onClick={() => {
           markMessagesSeen(messages);
+          shouldFollowMessagesRef.current = true;
+          jumpToBottomRef.current = true;
           setOpen(true);
         }}
         className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-2xl border border-indigo-500/30 bg-slate-900/95 px-4 py-3 text-xs font-black text-white shadow-2xl backdrop-blur-md hover:bg-slate-800 transition-all"
@@ -273,7 +283,17 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
         </div>
       )}
 
-      <div className="h-72 overflow-y-auto px-3 py-3 space-y-2">
+      <div
+        ref={chatListRef}
+        onScroll={() => {
+          const element = chatListRef.current;
+          if (!element) return;
+          // Follow new messages only while the reader is already near the bottom.
+          shouldFollowMessagesRef.current =
+            element.scrollHeight - element.scrollTop - element.clientHeight < 48;
+        }}
+        className="h-72 overflow-y-auto px-3 py-3 space-y-2"
+      >
         {messages.length === 0 ? (
           <div className="flex h-full items-center justify-center text-center text-xs text-slate-600">
             <div>
