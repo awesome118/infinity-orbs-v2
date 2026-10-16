@@ -1,5 +1,5 @@
-import React from 'react';
-import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star, Users, MessageSquarePlus, Bell, BellOff, ScrollText } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star, Users, MessageSquarePlus, Bell, BellOff, ScrollText, Swords } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
 import { LEVEL_MILESTONES, getLevelBenefits, getLevelProgress, onlinePlayerLuckMultiplier } from '../../shared/game.js';
 import { sound } from '../sound.js';
@@ -34,6 +34,29 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleNotifications,
 }) => {
   const fmt = (n: number) => n.toLocaleString();
+  const [combatMarks,setCombatMarks]=useState(0);
+  useEffect(()=>{
+    let cancelled=false;
+    const refreshCombatMarks=async()=>{
+      try{
+        const response=await fetch('/api/combat/state',{cache:'no-store'});
+        if(!response.ok)return;
+        const payload=await response.json() as {state?:{combatMarks?:unknown}};
+        const value=Number(payload.state?.combatMarks);
+        if(!cancelled&&Number.isSafeInteger(value)&&value>=0)setCombatMarks(value);
+      }catch{
+        // Combat currency is supplemental HUD information; offline combat must not break the header.
+      }
+    };
+    const onCombatMarksUpdated=(event:Event)=>{
+      const value=Number((event as CustomEvent<{combatMarks?:unknown}>).detail?.combatMarks);
+      if(Number.isSafeInteger(value)&&value>=0)setCombatMarks(value);
+    };
+    void refreshCombatMarks();
+    const timer=window.setInterval(()=>void refreshCombatMarks(),15000);
+    window.addEventListener('io-combat-marks-updated',onCombatMarksUpdated);
+    return()=>{cancelled=true;window.clearInterval(timer);window.removeEventListener('io-combat-marks-updated',onCombatMarksUpdated);};
+  },[]);
   const levelInfo = getLevelProgress(
     Math.max(1, state.level || 1),
     state.xp || 0,
@@ -112,6 +135,14 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center gap-1 text-amber-400" title="Coins (Coins = Orb Rarity)">
               <Coins className="w-3.5 h-3.5" />
               <span>{fmt(state.coins)}</span>
+            </div>
+
+            <div className="w-[1px] h-3.5 bg-slate-800" />
+
+            {/* Combat Marks are the shared Combat currency, fetched from combat state. */}
+            <div className="flex items-center gap-1 text-lime-300" title="Combat Marks are earned in battles and spent on combat upgrades and Skill Gacha.">
+              <Swords className="w-3.5 h-3.5" />
+              <span>{fmt(combatMarks)}</span>
             </div>
 
             <div className="w-[1px] h-3.5 bg-slate-800" />
