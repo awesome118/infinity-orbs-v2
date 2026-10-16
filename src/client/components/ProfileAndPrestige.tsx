@@ -37,6 +37,7 @@ import {
   PRESTIGE_UPGRADES,
   prestigeUpgradeCost,
   SHARD_SYNTHESIS_COST,
+  MAX_COSMIC_DUST,
   getLevelBenefits,
   formatNumber,
   unbrokenMomentumSpeedBonus,
@@ -103,7 +104,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
       : 'Average';
 
   const hasForgeUpgrade = (state.prestigeUpgrades?.shardSynthesis ?? 0) > 0;
-  const canSynthesize = (state.shards ?? 0) >= SHARD_SYNTHESIS_COST;
+  const canSynthesize = (state.shards ?? 0) >= SHARD_SYNTHESIS_COST && state.cosmicDust < MAX_COSMIC_DUST;
 
   const upgradeKeys = Object.keys(PRESTIGE_UPGRADES) as PrestigeUpgradeId[];
   const filteredUpgrades = upgradeKeys.filter(id => {
@@ -123,8 +124,6 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
         return <Zap className="w-4 h-4 text-sky-300" />;
       case 'vaultCap':
         return <Archive className="w-4 h-4 text-amber-400" />;
-      case 'dustBounty':
-        return <Sparkles className="w-4 h-4 text-fuchsia-400" />;
       case 'sonarPing':
         return <BellRing className="w-4 h-4 text-cyan-400 animate-pulse" />;
       case 'instantReveal':
@@ -455,7 +454,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Convert 10 Shards into 1 Cosmic Dust.
+                  Convert 10 Shards into 1 Cosmic Dust. Cosmic Dust is capped at {MAX_COSMIC_DUST}.
                 </p>
               </div>
             </div>
@@ -473,7 +472,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              <span>Forge 1 Dust ({SHARD_SYNTHESIS_COST} Shards)</span>
+              <span>{state.cosmicDust >= MAX_COSMIC_DUST ? 'Cosmic Dust Cap Reached' : `Forge 1 Dust (${SHARD_SYNTHESIS_COST} Shards)`}</span>
             </button>
           </div>
         )}
