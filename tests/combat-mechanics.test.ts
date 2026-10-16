@@ -33,11 +33,11 @@ test('every tenth Undercrypt depth has a boss', () => {
   assert.equal(getEnemyForDepth(10).boss,true);
   assert.equal(getEnemyForDepth(20).name,'Crypt Warden');
 });
-test('skill pull pricing rises and then respects its deliberate soft cap', () => {
-  let previous=skillPullCost(0);
-  for(let pulls=1;pulls<60;pulls++){const current=skillPullCost(pulls);assert.ok(current>=previous);previous=current;}
-  assert.equal(skillPullCost(41),skillPullCost(40));
-  assert.equal(skillPullCost(Number.MAX_SAFE_INTEGER),skillPullCost(40),'outsize pull counts clamp to the designed price ceiling');
+test('skill pull pricing stays fixed regardless of how many skills have been rolled', () => {
+  assert.equal(skillPullCost(0),75);
+  for(const pulls of [1,2,40,41,400,Number.MAX_SAFE_INTEGER]) {
+    assert.equal(skillPullCost(pulls),75);
+  }
 });
 
 test('quality curve stays anchored to run best after current depth resets',()=>{
