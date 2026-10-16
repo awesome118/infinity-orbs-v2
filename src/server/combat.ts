@@ -329,8 +329,8 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
       if(s.guardBeats>0){incoming=Math.round(incoming*.45);guardWasUsed=true;}
       incoming=Math.max(1,Math.round(incoming*(1-stats.damageReduction)));s.health=Math.max(0,s.health-incoming);
       actions.push({actor:'enemy',kind:'attack',damage:incoming,text:strike+incoming+' damage.'});
-      const defensiveAbility=s.inventory.find(g=>g.majorAbility?.trigger==='on-damage'&&Object.values(s.equipment).includes(g.id))?.majorAbility;
-      if(defensiveAbility&&s.pendingHealAmount===0){
+      const defensiveAbility=s.inventory.find(g=>g.majorAbility?.id==='second-dawn'&&g.majorAbility.trigger==='on-damage'&&Object.values(s.equipment).includes(g.id))?.majorAbility;
+      if(defensiveAbility?.id==='second-dawn'&&s.pendingHealAmount===0){
         s.pendingHealAmount=Math.max(1,Math.round(s.maxHealth*defensiveAbility.healPercent));
         actions.push({actor:'player',kind:'ability',text:defensiveAbility.name+' triggered: '+Math.round(defensiveAbility.healPercent*100)+'% Max HP healing queued for your next turn.'});
       }
