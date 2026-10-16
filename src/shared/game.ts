@@ -855,7 +855,6 @@ export type PrestigeUpgradeId =
   | 'permSpeed'
   | 'unbrokenMomentum'
   | 'vaultCap'
-  | 'dustBounty'
   | 'sonarPing'
   | 'instantReveal'
   | 'autoOverclock'
@@ -1399,13 +1398,6 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
     maxLevel: 5,
     costPerLevel: 1,
   },
-  dustBounty: {
-    name: 'Cosmic Dust Bounty',
-    desc: '+15% Cosmic Dust from prestige per level.',
-    category: 'core',
-    maxLevel: 5,
-    costPerLevel: 5,
-  },
   sonarPing: {
     name: 'Silent Alert Mode',
     desc: 'Mute normal rolls. Play audio alert on Rare+ orbs.',
@@ -1679,7 +1671,6 @@ export function createInitialState(now = Date.now()): PlayerState {
       permSpeed: 0,
       unbrokenMomentum: 0,
       vaultCap: 0,
-      dustBounty: 0,
       sonarPing: 0,
       instantReveal: 0,
       autoOverclock: 0,
@@ -2658,14 +2649,15 @@ export function calculatePrestigeDust(collectionValue: number): number {
   return 2 + Math.max(0, additionalDust);
 }
 
+export const MAX_COSMIC_DUST = 50;
+
 export function calculateCosmicDust(s: PlayerState): number {
   const currentVal = s.collectionValue ?? 0;
   if (currentVal < 1_000_000) return 0;
   const base = calculatePrestigeDust(currentVal);
   if (base <= 0) return 0;
-  const bonus = (s.prestigeUpgrades?.dustBounty ?? 0) * 0.15;
   const masteryBonus = (s.masterySkills?.cosmicAttunement ?? 0) * 0.08;
-  return Math.floor(base * (1 + bonus + masteryBonus));
+  return Math.min(MAX_COSMIC_DUST, Math.floor(base * (1 + masteryBonus)));
 }
 
 export function prestigeUpgradeCost(id: PrestigeUpgradeId, level: number): number {
@@ -2674,7 +2666,6 @@ export function prestigeUpgradeCost(id: PrestigeUpgradeId, level: number): numbe
     permSpeed: 3,
     unbrokenMomentum: 8,
     vaultCap: 1,
-    dustBounty: 5,
     sonarPing: 2,
     instantReveal: 2,
     autoOverclock: 2,
