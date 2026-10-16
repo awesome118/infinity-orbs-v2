@@ -1,9 +1,11 @@
-export type CombatPage = 'fight' | 'dungeons' | 'gear' | 'skills' | 'arena';
+export type CombatPage = 'fight' | 'dungeons' | 'gear' | 'forge' | 'skills' | 'arena';
 export type CombatIntent = 'strike' | 'heavy' | 'guard' | 'mend';
 export type CombatCommand = CombatIntent | 'auto' | 'ability';
 export type CombatAbilityType = 'strike' | 'flurry' | 'mend' | 'focus' | 'bounty';
 export const COMBAT_ABILITY_SLOTS = 3;
-export const SKILL_GACHA_RANK_MAX = 5;
+export const SKILL_GACHA_RANK_MAX = 30;
+/** Server and client share the same cadence so Auto Fight never hammers rejected requests. */
+export const COMBAT_BEAT_INTERVAL_MS = 30_000;
 /** Maximum supported PvE depth; reaching it ends the descent instead of farming a capped room. */
 export const COMBAT_MAX_DEPTH = 50_000;
 export type CombatTactic = 'balanced' | 'aggressive' | 'defensive' | 'recovery';
@@ -12,11 +14,13 @@ export interface CombatAutoScrapSettings { enabled: boolean; maxQuality: number;
 export const DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS: CombatAutoScrapSettings = { enabled:false, maxQuality:20 };
 export type CombatRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Mythic';
 export type CombatSkillStat = 'damagePct' | 'speedFlat' | 'healthPct' | 'critChance' | 'coinBonus';
-export type CombatUpgradeId = 'edge-training' | 'vitality' | 'tempo' | 'precision' | 'scavenger' | 'orb-resonance';
+export type CombatUpgradeId = 'edge-training' | 'vitality' | 'precision' | 'scavenger' | 'orb-resonance';
 export type CombatUpgradeStat = 'damagePct' | 'healthPct' | 'speedFlat' | 'critChance' | 'markBonus' | 'orbFocusPct';
 export type CombatTrait = 'bleed' | 'keen' | 'first-strike' | 'bulwark' | 'regeneration' | 'desperation';
 export type CombatGearSlot = 'weapon' | 'armor' | 'helmet' | 'gloves' | 'boots' | 'ring' | 'amulet';
-export interface CombatMajorAbility { id:'second-dawn'; name:string; trigger:'on-damage'; healPercent:number; description:string; }
+export type CombatMajorAbility =
+  | { id:'second-dawn'; name:string; trigger:'on-damage'; healPercent:number; description:string; }
+  | { id:'chrono-surge'; name:string; trigger:'passive'; speedPercent:number; description:string; };
 export interface CombatOrbRoll { rarity:number; tier:string; name:string; damageMultiplier:number; baseDamage:number; }
 
 export interface CombatGear {
@@ -126,24 +130,46 @@ export interface SkillGachaRankRequirement {
   rank: number;
   requiredPulls: number;
   requiredMarks: number;
-  unlocks: CombatRarity;
+  /** Description of how the rarity odds shift at this rank, not a hard rarity unlock. */
+  unlocks: string;
 }
-export const SKILL_GACHA_RANK_REQUIREMENTS: SkillGachaRankRequirement[] = [
-  { rank: 2, requiredPulls: 3, requiredMarks: 25, unlocks: 'Uncommon' },
-  { rank: 3, requiredPulls: 10, requiredMarks: 100, unlocks: 'Rare' },
-  { rank: 4, requiredPulls: 25, requiredMarks: 275, unlocks: 'Epic' },
-  { rank: 5, requiredPulls: 50, requiredMarks: 700, unlocks: 'Mythic' },
-];
+export const SKILL_GACHA_RANK_REQUIREMENTS: SkillGachaRankRequirement[] = Array.from(
+  { length: SKILL_GACHA_RANK_MAX - 1 },
+  (_, index) => {
+    const rank = index + 2;
+    return {
+      rank,
+      requiredPulls: Math.round(3 * Math.pow(rank - 1, 1.55)),
+      requiredMarks: Math.round(25 * Math.pow(rank - 1, 1.45)),
+      unlocks: rank === SKILL_GACHA_RANK_MAX ? 'Mythic 0.50%; each other rarity 24.875%' : 'Improved higher-rarity odds',
+    };
+  },
+);
 
 export function skillGachaRankRequirement(currentRankValue: unknown): SkillGachaRankRequirement | null {
   const currentRank = Number.isFinite(Number(currentRankValue)) ? Math.max(1, Math.min(SKILL_GACHA_RANK_MAX, Math.floor(Number(currentRankValue)))) : 1;
   return SKILL_GACHA_RANK_REQUIREMENTS.find(requirement => requirement.rank === currentRank + 1) ?? null;
 }
 
-export function skillRarityUnlocked(rarity: CombatRarity, gachaRankValue: unknown): boolean {
-  const rank = Number.isFinite(Number(gachaRankValue)) ? Math.max(1, Math.min(SKILL_GACHA_RANK_MAX, Math.floor(Number(gachaRankValue)))) : 1;
-  const rarityRank: Record<CombatRarity, number> = { Common: 1, Uncommon: 2, Rare: 3, Epic: 4, Mythic: 5 };
-  return rarityRank[rarity] <= rank;
+export interface CombatSkillRarityOdds { Common: number; Uncommon: number; Rare: number; Epic: number; Mythic: number; }
+/** Rank 1 is all Common. At Rank 30, Mythic is 0.5% and each other tier is 24.875%. */
+export function combatSkillRarityOdds(gachaRankValue: unknown): CombatSkillRarityOdds {
+  const raw = Number(gachaRankValue);
+  const rank = Number.isFinite(raw) ? Math.max(1, Math.min(SKILL_GACHA_RANK_MAX, Math.floor(raw))) : 1;
+  const progress = (rank - 1) / (SKILL_GACHA_RANK_MAX - 1);
+  const sharedTierOdds = 0.24875 * progress;
+  return {
+    Common: 1 - 0.75125 * progress,
+    Uncommon: sharedTierOdds,
+    Rare: sharedTierOdds,
+    Epic: sharedTierOdds,
+    Mythic: 0.005 * progress,
+  };
+}
+
+export function skillRarityUnlocked(_rarity: CombatRarity, _gachaRankValue: unknown): boolean {
+  // All rarities exist in the pool from Rank 1; rank controls their probabilities.
+  return true;
 }
 export const COMBAT_SKILLS: CombatSkillDefinition[] = [
   { id:'ember-lung', name:'Ember Lung', rarity:'Common', stat:'damagePct', value:.025, effect:'+2.5% damage per rank' },
@@ -198,7 +224,6 @@ export const COMBAT_UPGRADE_RANK_CAP = 10;
 export const COMBAT_UPGRADES: CombatUpgradeDefinition[] = [
   { id:'edge-training', name:'Edge Training', description:'+4% damage per rank', stat:'damagePct', value:.04, baseCost:18, costMultiplier:1.55, maxRank:10 },
   { id:'vitality', name:'Delver Vitality', description:'+5% maximum HP per rank', stat:'healthPct', value:.05, baseCost:18, costMultiplier:1.55, maxRank:10 },
-  { id:'tempo', name:'Tempo Drills', description:'+10 Speed per rank', stat:'speedFlat', value:10, baseCost:22, costMultiplier:1.58, maxRank:10 },
   { id:'precision', name:'Critical Calibration', description:'+1 percentage point critical chance per rank', stat:'critChance', value:.01, baseCost:25, costMultiplier:1.60, maxRank:10 },
   { id:'scavenger', name:'Battle Scavenger', description:'+8% Combat Marks from kills per rank', stat:'markBonus', value:.08, baseCost:28, costMultiplier:1.62, maxRank:10 },
   { id:'orb-resonance', name:'Orb Resonance', description:'+1.5% focused-orb combat power per rank', stat:'orbFocusPct', value:.015, baseCost:32, costMultiplier:1.65, maxRank:10 },
@@ -230,20 +255,19 @@ export function combatUpgradeCost(state: Pick<CombatState, 'combatUpgrades'>, id
   return Math.round(upgrade.baseCost * Math.pow(upgrade.costMultiplier, combatUpgradeRank(state, id)));
 }
 
-/** Deterministic rarity helper keeps pity boundaries unit-testable. */
+/** Deterministic rarity helper keeps weighted odds and pity boundaries testable. */
 export function resolveCombatSkillRarity(randomValue: number, gachaRankValue: number, pityEpic: number, pityMythic: number): CombatRarity {
   const chance = Number.isFinite(randomValue) ? Math.max(0, Math.min(.999999999, randomValue)) : 0;
   const rank = Number.isFinite(gachaRankValue) ? Math.max(1, Math.min(SKILL_GACHA_RANK_MAX, Math.floor(gachaRankValue))) : 1;
-  if (rank === 1) return 'Common';
-  if (rank === 2) return chance < .80 ? 'Common' : 'Uncommon';
-  if (rank === 3) return chance < .60 ? 'Common' : chance < .85 ? 'Uncommon' : 'Rare';
-  if (rank === 4) {
-    if (pityEpic >= 9) return 'Epic';
-    return chance < .50 ? 'Common' : chance < .75 ? 'Uncommon' : chance < .92 ? 'Rare' : 'Epic';
+  if (rank >= 20 && pityMythic >= 39) return 'Mythic';
+  if (rank >= 10 && pityEpic >= 9) return chance < .5 ? 'Epic' : 'Mythic';
+  const odds = combatSkillRarityOdds(rank);
+  let threshold = 0;
+  for (const rarity of ['Common', 'Uncommon', 'Rare', 'Epic', 'Mythic'] as const) {
+    threshold += odds[rarity];
+    if (chance < threshold || rarity === 'Mythic') return rarity;
   }
-  if (pityMythic >= 39) return 'Mythic';
-  if (pityEpic >= 9) return chance < .50 ? 'Epic' : 'Mythic';
-  return chance < .45 ? 'Common' : chance < .70 ? 'Uncommon' : chance < .85 ? 'Rare' : chance < .95 ? 'Epic' : 'Mythic';
+  return 'Common';
 }
 
 export interface CombatState {
@@ -441,6 +465,14 @@ export function combatScrapValue(item: Pick<CombatGear,'power'|'quality'|'source
 export function combatForgeCost(floorValue: unknown): number {
   const floor = Number.isFinite(Number(floorValue)) ? Math.max(0, Math.min(COMBAT_MAX_DEPTH, Math.floor(Number(floorValue)))) : 0;
   return Math.max(10, Math.min(Number.MAX_SAFE_INTEGER, Math.round(10 + floor * 1.8)));
+}
+
+/** Exponential quality pricing; a 100.00% guarantee costs exactly 5,000,000 Scrap. */
+export function combatForgeQualityCost(floorValue: unknown, qualityValue: unknown): number {
+  const raw = Number(qualityValue);
+  const quality = Number.isFinite(raw) ? Math.max(0, Math.min(100, Math.round(raw * 100) / 100)) : 0;
+  const premium = Math.round(5_000_000 * Math.pow(quality / 100, 8));
+  return Math.max(combatForgeCost(floorValue), Math.min(Number.MAX_SAFE_INTEGER, premium));
 }
 
 export function normalizeCombatAutoScrapSettings(value: unknown): CombatAutoScrapSettings {
