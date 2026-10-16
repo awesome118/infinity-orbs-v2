@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { combatMajorAbilityChance, combatOrbDamageMultiplier, combatStatsFor, createCombatState } from '../src/shared/combat.js';
+import { COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, combatMajorAbilityChance, combatOrbDamageMultiplier, combatSkillRarityOdds, combatStatsFor, createCombatState, resolveCombatSkillRarity } from '../src/shared/combat.js';
+import { luckRarityFactor } from '../src/shared/game.js';
 
 test('each orb rarity maps monotonically to a bounded base-damage multiplier', () => {
   assert.equal(combatOrbDamageMultiplier(0), 1);
@@ -59,4 +60,74 @@ test('major ability odds increase with item rarity but are never guaranteed', ()
   assert.ok(common > 0);
   assert.ok(common < uncommon && uncommon < rare && rare < epic && epic < mythic);
   assert.ok(mythic < 1);
+});
+
+
+test('Luck makes average orb rarity improve continuously with diminishing returns', () => {
+  assert.equal(luckRarityFactor(1), 1);
+  assert.ok(luckRarityFactor(10) > luckRarityFactor(1));
+  assert.ok(luckRarityFactor(1_000_000) > luckRarityFactor(10));
+  assert.ok(luckRarityFactor(1e100) <= 25);
+  assert.equal(luckRarityFactor(1e100), 25);
+});
+
+test('combat cadence is 30 seconds and Forge quality has an exponential cost', () => {
+  assert.equal(COMBAT_BEAT_INTERVAL_MS, 30_000);
+  const low = combatForgeQualityCost(0, 20);
+  const medium = combatForgeQualityCost(0, 50);
+  const high = combatForgeQualityCost(0, 80);
+  const nearPerfect = combatForgeQualityCost(0, 99);
+  assert.ok(low < medium && medium < high && high < nearPerfect);
+  assert.equal(combatForgeQualityCost(0, 100), 5_000_000);
+  assert.equal(combatForgeQualityCost(0, 120), 5_000_000);
+});
+
+test('Gacha ranks increase non-Common odds and Rank 30 splits the non-Mythic odds evenly', () => {
+  const rank1 = combatSkillRarityOdds(1);
+  const rank10 = combatSkillRarityOdds(10);
+  const rank30 = combatSkillRarityOdds(30);
+  assert.equal(rank1.Common, 1);
+  assert.equal(rank1.Mythic, 0);
+  assert.ok(rank10.Mythic > rank1.Mythic);
+  assert.equal(rank30.Mythic, 0.005);
+  assert.equal(rank30.Common, 0.24875);
+  assert.equal(rank30.Uncommon, 0.24875);
+  assert.equal(rank30.Rare, 0.24875);
+  assert.equal(rank30.Epic, 0.24875);
+  assert.equal(Object.values(rank30).reduce((sum, chance) => sum + chance, 0), 1);
+  assert.equal(resolveCombatSkillRarity(0.1, 30, 0, 0), 'Common');
+  assert.equal(resolveCombatSkillRarity(0.3, 30, 0, 0), 'Uncommon');
+  assert.equal(resolveCombatSkillRarity(0.5, 30, 0, 0), 'Rare');
+  assert.equal(resolveCombatSkillRarity(0.75, 30, 0, 0), 'Epic');
+  assert.equal(resolveCombatSkillRarity(0.999, 30, 0, 0), 'Mythic');
+});
+
+test('turn speed is provided by an equipped Chrono Surge Major Ability', () => {
+  const state = createCombatState();
+  const before = combatStatsFor(state).speed;
+  const charm = {
+    id: 'test-chrono-surge',
+    name: 'Hourglass of the Last Star',
+    slot: 'amulet' as const,
+    quality: 100,
+    sourceFloor: 0,
+    power: 80,
+    effect: 'Major Ability: faster turns.',
+    trait: 'bulwark' as const,
+    damageBonus: 0,
+    speedBonus: 0,
+    maxHealthBonus: 0,
+    armorBonus: 0,
+    critChanceBonus: 0,
+    majorAbility: {
+      id: 'chrono-surge' as const,
+      name: 'Chrono Surge',
+      trigger: 'passive' as const,
+      speedPercent: 0.2,
+      description: 'Increases turn speed.',
+    },
+  };
+  state.inventory.push(charm);
+  state.equipment.amulet = charm.id;
+  assert.equal(combatStatsFor(state).speed, Math.round(before * 1.2));
 });
