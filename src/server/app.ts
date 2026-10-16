@@ -857,7 +857,7 @@ export function createApp() {
 
   app.get('/api/combat/state', async (_req, res) => {
     try { res.setHeader('Cache-Control','no-store'); res.json(await getCombatSnapshot()); }
-    catch (e:any) { const message=e?.message||'Could not load combat state.';res.status(message==='REDDIT_LOGIN_REQUIRED'?401:500).json({error:message}); }
+    catch (e:any) { const message=e?.message||'Could not load combat state.';res.status(message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500).json({error:message}); }
   });
   app.post('/api/combat/beat', async (req,res) => {
     const sequence=req.body?.sequence, intent=req.body?.intent;
@@ -879,7 +879,7 @@ export function createApp() {
     const itemId=req.body?.itemId;
     if(typeof itemId!=='string'||!itemId.trim()||itemId.length>160)return res.status(400).json({error:'A valid gear item is required.'});
     try{res.setHeader('Cache-Control','no-store');res.json(await equipCombatItem(itemId));}
-    catch(e:any){const message=e?.message||'Could not equip gear.';const status=message==='item not owned'?404:message==='REDDIT_LOGIN_REQUIRED'?401:500;res.status(status).json({error:message});}
+    catch(e:any){const message=e?.message||'Could not equip gear.';const status=message==='item not owned'?404:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
   });
   app.post('/api/combat/gear/scrap', async (req,res) => {
     try { res.setHeader('Cache-Control','no-store');res.json(await scrapCombatItem(req.body?.itemId)); }
@@ -898,7 +898,7 @@ export function createApp() {
   });
   app.post('/api/combat/skills/roll', async (_req,res) => {
     try{res.setHeader('Cache-Control','no-store');res.json(await rollCombatSkill());}
-    catch(e:any){const message=e?.message||'Skill roll failed.';const status=message==='Not enough Delver Coins.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:500;res.status(status).json({error:message});}
+    catch(e:any){const message=e?.message||'Skill roll failed.';const status=message==='Not enough Delver Coins.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
   });
   app.post('/api/combat/skills/equip', async (req,res) => {
     const skillId=req.body?.skillId;

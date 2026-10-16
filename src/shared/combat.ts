@@ -564,7 +564,7 @@ export const UNDERCRYPT_ORB_LUCK_BONUS_CAP = 0.25;
 
 export function undercryptWardensDefeated(bestDepthValue: unknown): number {
   const rawDepth = Number(bestDepthValue);
-  const bestDepth = Number.isFinite(rawDepth) ? Math.max(1, Math.min(50_000, Math.floor(rawDepth))) : 1;
+  const bestDepth = Number.isFinite(rawDepth) ? Math.max(1, Math.min(COMBAT_MAX_DEPTH, Math.floor(rawDepth))) : 1;
   return Math.min(
     Math.floor(UNDERCRYPT_ORB_LUCK_BONUS_CAP / UNDERCRYPT_ORB_LUCK_PER_WARDEN),
     Math.floor((bestDepth - 1) / 10),
