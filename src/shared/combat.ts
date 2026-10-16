@@ -543,7 +543,7 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const flatDamage = 50 + (Math.max(1,state.level)-1)*4 + effectiveDamageBonus;
   const flatHealth = 1000 + (Math.max(1,state.level)-1)*30 + effectiveHealthBonus;
   const maxHealth = Math.max(1,Math.round(flatHealth*(1+healthPct)*(1+coreProgressionBonus)*(1+orbFocusBonus*.65)));
-  let speed = Math.round((300 + effectiveSpeedBonus + speedFlat + dungeonSpeedBonus) * (1 + majorSpeedPercent));
+  let speed = Math.round((310 + effectiveSpeedBonus + speedFlat + dungeonSpeedBonus) * (1 + majorSpeedPercent));
   if (traitEffectiveness('desperation')>0 && state.health>0 && state.health<=maxHealth*.4) speed+=Math.round(20*traitEffectiveness('desperation'));
   if (traitEffectiveness('keen')>0) critChance+=.04*traitEffectiveness('keen');
   critChance += effectiveCritBonus + dungeonCritBonus;
