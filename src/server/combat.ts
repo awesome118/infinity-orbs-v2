@@ -570,7 +570,12 @@ function resolveArenaDuel(challengerState: CombatState, opponentState: CombatSta
   const flurrySkill: Record<'challenger'|'opponent',string|null> = { challenger:null, opponent:null };
   const cooldowns: Record<'challenger'|'opponent',Partial<Record<CombatSkillId,number>>> = { challenger:{}, opponent:{} };
   const log: string[] = [];
-  const append = (message: string) => { log.push(message); if (log.length > 48) log.shift(); };
+  let activeRound = 1;
+  let activeSide: 'challenger'|'opponent' = 'challenger';
+  const append = (message: string) => {
+    log.push(`Round ${activeRound} · ${activeSide==='challenger'?'You':'Opponent'}: ${message}`);
+    if (log.length > 48) log.shift();
+  };
 
   const attack = (side: 'challenger' | 'opponent', abilityMultiplier=1, guaranteedCrit=false, bonusAttackMultiplier=1) => {
     const isChallenger = side === 'challenger';
@@ -595,6 +600,8 @@ function resolveArenaDuel(challengerState: CombatState, opponentState: CombatSta
   };
 
   const takeTurn = (side: 'challenger'|'opponent', round: number) => {
+    activeRound = round;
+    activeSide = side;
     const isChallenger = side==='challenger';
     const actor = isChallenger ? challenger : opponent;
     const actorHp = () => isChallenger ? challengerHp : opponentHp;
