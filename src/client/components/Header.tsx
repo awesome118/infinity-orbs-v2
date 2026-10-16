@@ -39,10 +39,10 @@ export const Header: React.FC<HeaderProps> = ({
     let cancelled=false;
     const refreshCombatMarks=async()=>{
       try{
-        const response=await fetch('/api/combat/state',{cache:'no-store'});
+        const response=await fetch('/api/combat/marks',{cache:'no-store'});
         if(!response.ok)return;
-        const payload=await response.json() as {state?:{combatMarks?:unknown}};
-        const value=Number(payload.state?.combatMarks);
+        const payload=await response.json() as {combatMarks?:unknown};
+        const value=Number(payload.combatMarks);
         if(!cancelled&&Number.isSafeInteger(value)&&value>=0)setCombatMarks(value);
       }catch{
         // Combat currency is supplemental HUD information; offline combat must not break the header.
