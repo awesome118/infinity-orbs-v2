@@ -2019,3 +2019,44 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-combat-opponent-card.is-practice-bot .io-combat-eyebrow{color:#d9b2ff}
 @media(max-width:700px){.io-combat-major-examples{grid-template-columns:1fr}.io-combat-quality-picker{padding:12px}.io-combat-turn-chip{flex-basis:122px;width:122px;min-width:122px;max-width:122px}.io-combat-quality-scale{font-size:8px}}
 @media(prefers-reduced-motion:reduce){.io-combat-turn-track{animation:none}}
+
+
+/* Wave 5 combat UX: offensive/defensive clarity, readable costs, battle effects. */
+.io-combat-stat-offense{color:#ff9f87!important;text-shadow:0 0 8px rgba(255,116,90,.12)}
+.io-combat-stat-defense{color:#8bd8ff!important;text-shadow:0 0 8px rgba(66,176,255,.12)}
+.io-combat-gear-tooltip .io-combat-stat-offense{background:rgba(255,105,80,.12)!important;border:1px solid rgba(255,139,111,.24)}
+.io-combat-gear-tooltip .io-combat-stat-defense{background:rgba(62,167,255,.12)!important;border:1px solid rgba(103,196,255,.24)}
+.io-combat-major-offense{border-color:#e9775e!important;background:linear-gradient(115deg,rgba(255,112,86,.16),rgba(255,112,86,.035) 65%,rgba(20,16,24,.45))!important}
+.io-combat-major-offense strong,.io-combat-major-offense>span{color:#ffc1ad!important}
+.io-combat-major-defense{border-color:#5db7e8!important;background:linear-gradient(115deg,rgba(74,174,244,.16),rgba(74,174,244,.035) 65%,rgba(20,16,24,.45))!important}
+.io-combat-major-defense strong,.io-combat-major-defense>span{color:#bce8ff!important}
+.io-combat-forge-slot small{display:block;background:#17121d;color:#ffe9a6!important;border:1px solid #8b712a;border-radius:5px;padding:4px 7px;font-weight:950;text-shadow:none;box-shadow:inset 0 1px rgba(255,255,255,.04)}
+.io-combat-beat-track{height:8px;margin:0 0 12px;border:1px solid #453850;border-radius:999px;overflow:hidden;background:#0d0a12;box-shadow:inset 0 1px 3px rgba(0,0,0,.65)}
+.io-combat-beat-track span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#9770fa,#58d7ff 58%,#a9f4c4);box-shadow:0 0 10px rgba(103,197,255,.45);transition:width .35s linear}
+.io-combat-stage{position:relative;overflow:hidden}
+.io-combat-sonic-blast{position:absolute;z-index:5;left:0;right:0;top:49%;height:0;pointer-events:none}
+.io-combat-sonic-blast span{position:absolute;top:-30px;width:54px;height:64px;border:2px solid #9bf4ff;border-radius:50%;filter:drop-shadow(0 0 8px rgba(94,224,255,.9));opacity:0;animation:io-sonic-wave-player .9s cubic-bezier(.15,.6,.25,1) both}
+.io-combat-sonic-blast span:nth-child(2){width:76px;height:86px;top:-40px;animation-delay:.06s}
+.io-combat-sonic-blast span:nth-child(3){width:98px;height:108px;top:-50px;animation-delay:.12s}
+.io-combat-sonic-blast.is-player span{left:-110px;border-color:#86f6ff;background:linear-gradient(90deg,transparent,rgba(92,229,255,.12),transparent)}
+.io-combat-sonic-blast.is-enemy span{right:-110px;border-color:#ff9e8c;background:linear-gradient(270deg,transparent,rgba(255,101,85,.13),transparent);animation-name:io-sonic-wave-enemy}
+@keyframes io-sonic-wave-player{0%{transform:translateX(0) scaleX(.55);opacity:0}12%{opacity:.95}100%{transform:translateX(calc(100vw + 240px)) scaleX(1.5);opacity:0}}
+@keyframes io-sonic-wave-enemy{0%{transform:translateX(0) scaleX(.55);opacity:0}12%{opacity:.95}100%{transform:translateX(calc(-100vw - 240px)) scaleX(1.5);opacity:0}}
+.io-combat-loot-popup{position:absolute;z-index:15;top:48px;left:50%;width:min(390px,calc(100% - 24px));transform:translateX(-50%);border:1px solid #d7b45a;border-radius:12px;background:linear-gradient(145deg,rgba(25,20,34,.98),rgba(11,10,17,.98));box-shadow:0 16px 44px rgba(0,0,0,.6),0 0 24px rgba(255,203,100,.16);padding:11px 12px;animation:io-loot-popup-in .24s ease-out both,io-loot-popup-out .3s ease-in 4.7s both;pointer-events:auto}
+.io-combat-loot-popup-head{display:flex;align-items:center;gap:7px;color:#ffe39a;font-size:12px}
+.io-combat-loot-popup-head strong{flex:1;font-weight:950;text-transform:uppercase;letter-spacing:.08em}
+.io-combat-loot-popup-head button{width:24px;height:24px;border:1px solid #5e4b2a;border-radius:6px;color:#ffe9b6;font-size:20px;line-height:1}
+.io-combat-loot-items{display:grid;gap:5px;margin-top:8px;max-height:124px;overflow:auto}
+.io-combat-loot-items>div{display:flex;gap:7px;align-items:flex-start;color:#e6ddea;font-size:10px;line-height:1.4}
+.io-combat-loot-items>div span{color:#ffe39a;flex:none}
+@keyframes io-loot-popup-in{from{opacity:0;transform:translate(-50%,-8px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes io-loot-popup-out{to{opacity:0;transform:translate(-50%,-8px);visibility:hidden}}
+.io-combat-arena-result-log{display:grid;gap:6px}
+.io-combat-arena-turn{display:grid;grid-template-columns:58px minmax(0,1fr);align-items:start;gap:8px;padding:7px 9px;border:1px solid #3d3346;border-radius:7px;background:rgba(29,23,36,.8)}
+.io-combat-arena-turn>span{font:850 8px ui-monospace,monospace;letter-spacing:.06em;color:#bca4d5}
+.io-combat-arena-turn p{margin:0;font-size:10px;line-height:1.45;color:#e8dfee}
+.io-combat-arena-turn.is-player{border-left:3px solid #eaa17f}
+.io-combat-arena-turn.is-player>span{color:#ffb69a}
+.io-combat-arena-turn.is-foe{border-left:3px solid #63b9ee;background:rgba(16,39,55,.38)}
+.io-combat-arena-turn.is-foe>span{color:#9bdcff}
+@media(prefers-reduced-motion:reduce){.io-combat-sonic-blast span,.io-combat-loot-popup{animation:none!important}.io-combat-beat-track span{transition:none}}
