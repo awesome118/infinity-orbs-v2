@@ -332,8 +332,8 @@ test('higher Guild Combo tiers drain faster', () => {
   const d4 = decayGuildComboState(tier4, NOW + elapsed);
 
   assert.ok(d1.endsAt > d4.endsAt);
-  assert.equal(d1.endsAt, tier1.endsAt - Math.round(elapsed * 1 * 0.25));
-  assert.equal(d4.endsAt, tier4.endsAt - Math.round(elapsed * 4 * 0.25));
+  assert.equal(d1.endsAt, tier1.endsAt - Math.round(elapsed * 0.25 * Math.log2(2)));
+  assert.equal(d4.endsAt, tier4.endsAt - Math.round(elapsed * 0.25 * Math.log2(5)));
 });
 
 test('Combo Reserve duration multiplier increases Combo time', () => {
@@ -343,13 +343,17 @@ test('Combo Reserve duration multiplier increases Combo time', () => {
   assert.equal(boosted, Math.round(base * 1.10));
 });
 
-test('Guild Combo tier cannot exceed the configured maximum', () => {
+test('Guild Combo advances beyond tier 10 and remains bounded by the configured maximum', () => {
   let state = createInitialGuildCombo(NOW);
 
   for (let i = 0; i < 100; i += 1) {
     state = activateGuildComboStack(state, NOW, GUILD_COMBO_MAX_TIER);
   }
+  assert.ok(state.tier > 10, 'Guild Combo should not stop at tier 10');
 
+  for (let i = 100; i < GUILD_COMBO_MAX_TIER * GUILD_COMBO_ACTIVATIONS_PER_TIER; i += 1) {
+    state = activateGuildComboStack(state, NOW, GUILD_COMBO_MAX_TIER);
+  }
   assert.equal(state.tier, GUILD_COMBO_MAX_TIER);
 });
 
