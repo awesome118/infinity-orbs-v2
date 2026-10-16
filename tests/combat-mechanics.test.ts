@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatBountyReward, combatFlurryAttackMultiplier, combatForgeCost, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated, type CombatGear } from '../src/shared/combat.js';
+import { addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatFlurryAttackMultiplier, combatForgeCost, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated, type CombatGear } from '../src/shared/combat.js';
 
 test('starter combat build carries the Auto-Dungeons baseline', () => {
   const state=createCombatState();
@@ -53,6 +53,9 @@ test('flurry and bounty outputs scale with ability value and rank',()=>{
   assert.equal(combatFlurryAttackMultiplier(45),1.45);
   assert.equal(combatFlurryAttackMultiplier(-5),1);
   assert.equal(combatFlurryAttackMultiplier(500),2);
+  assert.equal(combatEffectiveFlurryBonusAttacks(11,8),4,'eight base hits leave room for four bonus strikes');
+  assert.equal(combatEffectiveFlurryBonusAttacks(2,3),2);
+  assert.equal(combatEffectiveFlurryBonusAttacks(11,12),0,'a full 12-hit turn has no spare attack slots');
   const modest=combatBountyReward(.05,1),mythic=combatBountyReward(.25,1),ranked=combatBountyReward(.25,8);
   assert.ok(mythic.marks>modest.marks);
   assert.ok(ranked.marks>mythic.marks);

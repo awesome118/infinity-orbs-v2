@@ -75,6 +75,15 @@ export function combatFlurryAttackMultiplier(value: unknown): number {
   return 1 + (Number.isFinite(amount) ? Math.max(0, Math.min(100, amount)) : 0) / 100;
 }
 
+/** Keep flurry bonus strikes within the combat resolver's total-hit budget. */
+export function combatEffectiveFlurryBonusAttacks(bonusValue: unknown, baseAttacksValue: unknown, maxTotalValue = 12): number {
+  const rawBonus = Number(bonusValue), rawBase = Number(baseAttacksValue), rawMax = Number(maxTotalValue);
+  const bonus = Number.isFinite(rawBonus) ? Math.max(0, Math.min(11, Math.floor(rawBonus))) : 0;
+  const baseAttacks = Number.isFinite(rawBase) ? Math.max(1, Math.min(12, Math.floor(rawBase))) : 1;
+  const maxTotal = Number.isFinite(rawMax) ? Math.max(1, Math.min(12, Math.floor(rawMax))) : 12;
+  return Math.max(0, Math.min(bonus, maxTotal - baseAttacks));
+}
+
 /** Rank-scaled PvE bounty reward, shared by the resolver and its UI preview. */
 export function combatBountyReward(value: unknown, rankValue: unknown): { marks: number; coins: number } {
   const rawValue = Number(value);

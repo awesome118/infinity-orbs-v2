@@ -1,7 +1,7 @@
 import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatDungeonId, CombatEnemy, CombatGear, CombatIntent, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatAbilityType, combatBountyReward, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -215,7 +215,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         activeDamageMultiplier=1.2+activeSkill.value*2+rankScale*.15;
         actions.push({actor:'player',kind:'ability',text:activeSkill.name+' empowers the next strike ('+Math.round((activeDamageMultiplier-1)*100)+'% bonus damage).'});
       } else if(archetype==='flurry'){
-        activeExtraAttacks=1+Math.floor(rankScale);
+        activeExtraAttacks=combatEffectiveFlurryBonusAttacks(1+Math.floor(rankScale),playerActions);
         activeFlurryMultiplier=combatFlurryAttackMultiplier(activeSkill.value);
         actions.push({actor:'player',kind:'ability',text:activeSkill.name+' adds '+activeExtraAttacks+' bonus strikes at '+Math.round(activeFlurryMultiplier*100)+'% damage each.'});
       } else if(archetype==='mend'){
@@ -449,6 +449,7 @@ function resolveArenaDuel(challengerState: CombatState, opponentState: CombatSta
   let challengerFirst = true;
   let opponentFirst = true;
   const energy: Record<'challenger'|'opponent',number> = { challenger:3, opponent:3 };
+  const flurrySkill: Record<'challenger'|'opponent',string|null> = { challenger:null, opponent:null };
   const cooldowns: Record<'challenger'|'opponent',Partial<Record<CombatSkillId,number>>> = { challenger:{}, opponent:{} };
   const log: string[] = [];
   const append = (message: string) => { log.push(message); if (log.length > 10) log.shift(); };
@@ -496,9 +497,9 @@ function resolveArenaDuel(challengerState: CombatState, opponentState: CombatSta
         damageMultiplier=1.2+readySkill.value*2+rankScale*.15;
         append(`${isChallenger?'You':'Opponent'} cast ${readySkill.name}.`);
       }else if(archetype==='flurry'){
-        extraAttacks=Math.min(11,1+Math.floor(rankScale));
+        extraAttacks=1+Math.floor(rankScale);
+        flurrySkill[side]=readySkill.name;
         flurryMultiplier=combatFlurryAttackMultiplier(readySkill.value);
-        append(`${isChallenger?'You':'Opponent'} cast ${readySkill.name} for ${extraAttacks} bonus strikes.`);
       }else if(archetype==='mend'){
         const before=actorHp();
         const healed=Math.max(1,Math.round(actor.stats.maxHealth*Math.min(.9,.10+readySkill.value+rankScale*.06)));
@@ -519,7 +520,9 @@ function resolveArenaDuel(challengerState: CombatState, opponentState: CombatSta
     const armorEffectiveness=gearQualityEffectiveness(ownArmor,Math.max(0,actor.state.depth-1));
     const speed=Math.min(800,actor.stats.speed+(ownArmor?.trait==='desperation'&&actorHp()<=actor.stats.maxHealth*.4?Math.round(20*armorEffectiveness):0));
     const actionCount=Math.min(8,Math.max(1,Math.floor(speed/100)));
-    const totalAttacks=Math.min(12,actionCount+extraAttacks);
+    extraAttacks=combatEffectiveFlurryBonusAttacks(extraAttacks,actionCount);
+    if(flurrySkill[side])append(`${isChallenger?'You':'Opponent'} cast ${flurrySkill[side]} for ${extraAttacks} bonus strikes.`);
+    const totalAttacks=actionCount+extraAttacks;
     for(let action=0;action<totalAttacks&&foeHp()>0;action++)attack(side,action===0?damageMultiplier:1,action===0&&guaranteedCrit,action>=actionCount?flurryMultiplier:1);
   };
 
