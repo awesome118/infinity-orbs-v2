@@ -2,7 +2,7 @@ import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import { getOrbInfo, luckMultiplier, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -42,7 +42,9 @@ function normalizeGear(value:unknown,fallbackFloor=0):CombatGear|null {
   const rawAbility=x.majorAbility&&typeof x.majorAbility==='object'?x.majorAbility as Record<string,unknown>:null;
   const majorAbility:CombatMajorAbility|undefined=rawAbility&&rawAbility.id==='second-dawn'&&rawAbility.trigger==='on-damage'
     ?{id:'second-dawn',name:typeof rawAbility.name==='string'?rawAbility.name.slice(0,60):'Second Dawn',trigger:'on-damage',healPercent:Math.max(0,Math.min(.75,Number(rawAbility.healPercent)||.15)),description:typeof rawAbility.description==='string'?rawAbility.description.slice(0,180):'After taking damage, heal 15% of Max HP at the start of your next turn.'}
-    :undefined;
+    :rawAbility&&rawAbility.id==='chrono-surge'&&rawAbility.trigger==='passive'
+      ?{id:'chrono-surge',name:typeof rawAbility.name==='string'?rawAbility.name.slice(0,60):'Chrono Surge',trigger:'passive',speedPercent:Math.max(0,Math.min(.5,Number.isFinite(Number(rawAbility.speedPercent))?Number(rawAbility.speedPercent):.10)),description:typeof rawAbility.description==='string'?rawAbility.description.slice(0,180):'Major Ability: increases your turn speed while this item is equipped.'}
+      :undefined;
   return {id:x.id.slice(0,160),name:x.name.slice(0,100),slot,quality:Math.max(0,Math.min(100,Number.isFinite(Number(x.quality))?Number(x.quality):0)),sourceFloor:finiteInt(x.sourceFloor,fallbackFloor,0,COMBAT_MAX_DEPTH-1),power:finiteInt(x.power,1,1,1_000_000),effect:typeof x.effect==='string'?x.effect.slice(0,180):traitText(trait),trait,damageBonus:finiteInt(x.damageBonus,0,0,1_000_000),speedBonus:finiteInt(x.speedBonus,0,0,400),maxHealthBonus:finiteInt(x.maxHealthBonus,0,0,1_000_000),armorBonus:finiteInt(x.armorBonus,0,0,1_000_000),critChanceBonus:Math.max(0,Math.min(.75,Number.isFinite(Number(x.critChanceBonus))?Number(x.critChanceBonus):0)),...(majorAbility?{majorAbility}:{})};
 }
 function normalizeState(raw:string|null|undefined):CombatState {
@@ -138,13 +140,13 @@ function normalizeState(raw:string|null|undefined):CombatState {
   const enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);s.enemyHp=finiteInt(s.enemyHp,enemy.maxHp,1,enemy.maxHp);
   return s;
 }
-function createGear(sourceFloor:number,requestedSlot?:CombatGearSlot):CombatGear {
+function createGear(sourceFloor:number,requestedSlot?:CombatGearSlot,requestedQuality?:number):CombatGear {
   const floor=Math.max(0,Math.min(COMBAT_MAX_DEPTH-1,Math.floor(Number(sourceFloor)||0)));
   const scale=floor+1;
   const slots:CombatGearSlot[]=['weapon','armor','helmet','gloves','boots','ring','amulet'];
   const slot=requestedSlot??pick(slots);
-  // Fourth-power quality distribution remains; even near-perfect items do not guarantee a major ability.
-  const quality=Math.round(1_000_000*Math.pow(secureRandom(),4))/10_000;
+  // Natural drops remain random; Forge can supply an exact requested quality.
+  const quality=Number.isFinite(Number(requestedQuality))?Math.round(Math.max(0,Math.min(100,Number(requestedQuality)))*100)/100:Math.round(10_000*Math.pow(secureRandom(),4))/100;
   const firstWords=['Ashen','Hollow','Cinder','Riftbound','Starforged','Warden’s','Lost','Quiet','Infinity-Touched','Dread','Veiled','Frostbitten'];
   const secondWords=['Riftbound','Starforged','Moonfallen','Emberwrought','Graveborn','Voidwoven','Dawnbreak','Stormforged','Frostmarked','Kingslayer','Nightglass','Runebound'];
   const nouns:Record<CombatGearSlot,string[]>={weapon:['Cleaver','Brand','Knife','Axe','Fang','Edge','Spear','Greatblade'],helmet:['Helm','Visor','Crown','Circlet','Mask'],armor:['Cuirass','Plate','Mantle','Hauberk','Aegis'],gloves:['Grips','Gauntlets','Handguards','Bindings'],boots:['Greaves','Strideboots','Treads','Sabatons'],ring:['Signet','Band','Loop','Ring'],amulet:['Pendant','Talisman','Medallion','Amulet']};
@@ -154,12 +156,17 @@ function createGear(sourceFloor:number,requestedSlot?:CombatGearSlot):CombatGear
   const isProtective=['helmet','armor','gloves','boots'].includes(slot);
   // Slots have a natural bias, but random affixes create flexible item builds.
   const damageBonus=slot==='weapon'?Math.max(1,Math.round(power*.8)):secureRandom()<.45?Math.max(1,Math.round(power*.7)):0;
-  const speedBonus=slot==='weapon'?Math.min(400,Math.round(power*.25)):slot==='boots'?Math.min(150,Math.max(1,Math.round(power*.18))):secureRandom()<.2?Math.max(1,Math.round(power*.18)):0;
+  // Turn-speed bonuses are granted only through Major Abilities, not ordinary gear affixes.
+  const speedBonus=0;
   const maxHealthBonus=slot==='armor'?Math.max(5,Math.round(power*4)):isProtective?Math.max(0,Math.round(power*1.4)):secureRandom()<.2?Math.max(1,Math.round(power*.9)):0;
   const armorBonus=isProtective?Math.max(1,Math.round(power*(slot==='armor' ? .65 : .55))):secureRandom()<.25?Math.max(1,Math.round(power*.3)):0;
   const critChanceBonus=slot==='ring'||slot==='amulet'?Math.min(.30,.05+quality*.0025):secureRandom()<.28?Math.min(.30,.06+quality*.0028):0;
   const majorAbilityChance=combatMajorAbilityChance(quality);
-  const majorAbility:CombatMajorAbility|undefined=secureRandom()<majorAbilityChance?{id:'second-dawn',name:'Second Dawn',trigger:'on-damage',healPercent:.15,description:'After taking damage, heal 15% of Max HP at the start of your next turn.'}:undefined;
+  const majorAbility:CombatMajorAbility|undefined=secureRandom()<majorAbilityChance
+    ?(secureRandom()<.35
+      ?{id:'chrono-surge',name:'Chrono Surge',trigger:'passive',speedPercent:Math.round((.04+quality*.0008)*1000)/1000,description:'Major Ability: increases action frequency by '+Math.round((.04+quality*.0008)*100)+'% while equipped.'}
+      :{id:'second-dawn',name:'Second Dawn',trigger:'on-damage',healPercent:.15,description:'After taking damage, heal 15% of Max HP at the start of your next turn.'})
+    :undefined;
   const firstWord=pick(firstWords),secondWord=pick(secondWords.filter(word=>word!==firstWord));
   return {id:'gear-'+Date.now().toString(36)+'-'+Math.floor(secureRandom()*0x7fffffff).toString(36),name:firstWord+' '+secondWord+' '+pick(nouns[slot]),slot,quality,sourceFloor:floor,power,trait,effect:traitText(trait),damageBonus,speedBonus,maxHealthBonus,armorBonus,critChanceBonus,...(majorAbility?{majorAbility}:{})};
 }
@@ -222,7 +229,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     const activeSkillRank=activeSkill?Math.max(1,Number(s.skillLevels[activeSkill.id])||1):0;
     const now=Date.now();
     const elapsed=s.lastAcceptedBeatAtMs>0?Math.max(0,now-s.lastAcceptedBeatAtMs):Number.POSITIVE_INFINITY;
-    if(elapsed<1000)throw new Error('COMBAT_BEAT_TOO_SOON:'+Math.max(1,1000-elapsed));
+    if(elapsed<COMBAT_BEAT_INTERVAL_MS)throw new Error('COMBAT_BEAT_TOO_SOON:'+Math.max(1,COMBAT_BEAT_INTERVAL_MS-elapsed));
     s.lastAcceptedBeatAtMs=now;
     const actions:CombatAction[]=[];synchronizeCombatStats(s);s.sequence+=1;s.combatBeats+=1;s.energy=combatEnergyAfterRegen(s.energy,s.maxEnergy);
     if(s.pendingHealAmount>0){
@@ -290,7 +297,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         const baseMarks=Math.max(1,2+Math.floor(Math.max(0,s.depth-1)/2)+(enemy.kind==='elite'?2:enemy.boss?8:0));
         const marks=Math.max(1,Math.round(baseMarks*combatMarkMultiplier(s)));s.combatMarks=Math.min(Number.MAX_SAFE_INTEGER,s.combatMarks+marks);actions.push({actor:'player',kind:'loot',text:'Earned '+marks.toLocaleString()+' Combat Marks.'});
         grantXp(s,Math.round((18+s.depth*4.2)*(s.dungeonId==='glass-labyrinth'?1.25:1)),actions);
-        if((s.dungeonId==='cinder-vault'?s.depth%2===0:s.depth%3===0)||enemy.kind!=='common'||enemy.boss){
+        if((s.dungeonId==='cinder-vault'?s.depth%4===0:s.depth%5===0)||enemy.kind!=='common'||enemy.boss){
           item=createGear(Math.max(0,s.depth-1));
           if(s.autoScrapUnlocked&&s.autoScrapSettings.enabled&&item.quality<=s.autoScrapSettings.maxQuality){
             const gained=combatScrapValue(item);s.scrap=Math.min(Number.MAX_SAFE_INTEGER,s.scrap+gained);
@@ -350,18 +357,25 @@ export async function scrapCombatItem(itemIdValue:unknown):Promise<CombatSnapsho
   });
 }
 
-export async function forgeCombatGear(slotValue:unknown):Promise<CombatSnapshot&{forgeResult:{item:CombatGear;cost:number;remainingScrap:number}}>{
+export async function forgeCombatGear(slotValue:unknown,qualityValue?:unknown):Promise<CombatSnapshot&{forgeResult:{item:CombatGear;cost:number;remainingScrap:number}}>{
   if(typeof slotValue!=='string')throw new Error('Choose a valid equipment slot for the Forge.');
   // The client-facing name "chest" maps to the persisted gear slot "armor".
   const requestedSlot=slotValue==='chest'?'armor':slotValue;
   const isCombatGearSlot=(value:string):value is CombatGearSlot=>
     ['weapon','armor','helmet','gloves','boots','ring','amulet'].includes(value);
   if(!isCombatGearSlot(requestedSlot))throw new Error('Choose a valid equipment slot for the Forge.');
+  let requestedQuality:number|undefined;
+  if(qualityValue!==undefined){
+    const rawQuality=Number(qualityValue);
+    if(!Number.isFinite(rawQuality)||rawQuality<0||rawQuality>100)throw new Error('Choose a valid item quality for the Forge.');
+    requestedQuality=Math.round(rawQuality*100)/100;
+  }
   return mutate(state=>{
-    const floor=Math.max(0,state.depth-1),cost=combatForgeCost(floor);
+    const floor=Math.max(0,state.depth-1);
+    const cost=requestedQuality===undefined?combatForgeCost(floor):combatForgeQualityCost(floor,requestedQuality);
     if(state.scrap<cost)throw new Error('Not enough Scrap to forge this item.');
     state.scrap-=cost;
-    const item=createGear(floor,requestedSlot);
+    const item=createGear(floor,requestedSlot,requestedQuality);
     addCombatGearToInventory(state,item);
     return {...snapshot(state),forgeResult:{item,cost,remainingScrap:state.scrap}};
   });
@@ -371,8 +385,8 @@ export async function rollCombatSkill():Promise<CombatSnapshot&{skillRoll:{id:Co
     const cost=skillPullCost(s.skillRolls);if(s.coins<cost)throw new Error('Not enough Delver Coins.');
     s.coins-=cost;s.skillRolls+=1;
     const rarity=resolveCombatSkillRarity(secureRandom(),s.skillGachaRank,s.skillPityEpic,s.skillPityMythic);
-    s.skillPityEpic=(s.skillGachaRank>=4&&(rarity==='Epic'||rarity==='Mythic'))?0:s.skillGachaRank>=4?Math.min(9,s.skillPityEpic+1):0;
-    s.skillPityMythic=(s.skillGachaRank>=5&&rarity==='Mythic')?0:s.skillGachaRank>=5?Math.min(39,s.skillPityMythic+1):0;
+    s.skillPityEpic=(s.skillGachaRank>=10&&(rarity==='Epic'||rarity==='Mythic'))?0:s.skillGachaRank>=10?Math.min(9,s.skillPityEpic+1):0;
+    s.skillPityMythic=(s.skillGachaRank>=20&&rarity==='Mythic')?0:s.skillGachaRank>=20?Math.min(39,s.skillPityMythic+1):0;
     const pool=COMBAT_SKILLS.filter(skill=>skill.rarity===rarity&&skillRarityUnlocked(skill.rarity,s.skillGachaRank)),skill=pick(pool);if(!skill)throw new Error('Skill pool is unavailable.');
     const applied=applyCombatSkillCopy(s,skill.id,cost);
     return {...snapshot(s),skillRoll:{id:skill.id,name:skill.name,rarity,rank:applied.rank,duplicate:applied.duplicate,convertedCoins:applied.coinsRefunded,pityEpic:s.skillPityEpic,pityMythic:s.skillPityMythic,progress:applied.progress,copiesNeeded:applied.copiesNeeded,rankedUp:applied.rankedUp},cost};
@@ -394,15 +408,15 @@ export async function equipCombatSkill(skillIdValue:unknown,equipValue:unknown):
   });
 }
 
-export async function rankUpCombatSkillGacha():Promise<CombatSnapshot&{gachaRankUp:{rank:number;unlocks:CombatRarity;spentMarks:number}}>{
+export async function rankUpCombatSkillGacha():Promise<CombatSnapshot&{gachaRankUp:{rank:number;unlocks:string;spentMarks:number}}>{
   return mutate(s=>{
     const requirement=skillGachaRankRequirement(s.skillGachaRank);
     if(!requirement)throw new Error('Skill Gacha is already max rank.');
     if(s.skillRolls<requirement.requiredPulls)throw new Error('Need '+requirement.requiredPulls+' total skill pulls before ranking up.');
     if(s.combatMarks<requirement.requiredMarks)throw new Error('Not enough Combat Marks to rank up the Skill Gacha.');
     s.combatMarks-=requirement.requiredMarks;s.skillGachaRank=requirement.rank;
-    if(s.skillGachaRank<4)s.skillPityEpic=0;
-    if(s.skillGachaRank<5)s.skillPityMythic=0;
+    if(s.skillGachaRank<10)s.skillPityEpic=0;
+    if(s.skillGachaRank<20)s.skillPityMythic=0;
     return {...snapshot(s),gachaRankUp:{rank:s.skillGachaRank,unlocks:requirement.unlocks,spentMarks:requirement.requiredMarks}};
   });
 }
