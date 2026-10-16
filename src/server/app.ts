@@ -80,7 +80,7 @@ import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
-import { getCombatSnapshot, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon } from './combat.js';
+import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon } from './combat.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -855,6 +855,10 @@ export function createApp() {
     res.json({ isBeta: subredditName === 'infinity_orbs_dev' });
   });
 
+  app.get('/api/combat/marks', async (_req, res) => {
+    try { res.setHeader('Cache-Control','no-store'); res.json({combatMarks: await getCombatMarksBalance()}); }
+    catch (e:any) { const message=e?.message||'Could not load Combat Marks.';res.status(message==='REDDIT_LOGIN_REQUIRED'?401:503).json({error:message}); }
+  });
   app.get('/api/combat/state', async (_req, res) => {
     try { res.setHeader('Cache-Control','no-store'); res.json(await getCombatSnapshot()); }
     catch (e:any) { const message=e?.message||'Could not load combat state.';res.status(message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500).json({error:message}); }
@@ -898,7 +902,7 @@ export function createApp() {
   });
   app.post('/api/combat/skills/roll', async (_req,res) => {
     try{res.setHeader('Cache-Control','no-store');res.json(await rollCombatSkill());}
-    catch(e:any){const message=e?.message||'Skill roll failed.';const status=message==='Not enough Delver Coins.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
+    catch(e:any){const message=e?.message||'Skill roll failed.';const status=message==='Not enough Combat Marks.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
   });
   app.post('/api/combat/skills/equip', async (req,res) => {
     const skillId=req.body?.skillId;
