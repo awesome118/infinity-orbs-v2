@@ -475,8 +475,6 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const floor = Math.max(0, state.depth - 1);
   const equipmentSlots = Object.entries(state.equipment) as [CombatGearSlot,string|null][];
   const equippedItems = equipmentSlots.map(([slot,id]) => state.inventory.find(item => item.id === id && item.slot === slot)).filter((item):item is CombatGear=>Boolean(item));
-  const weapon = equippedItems.find(item => item.slot === 'weapon');
-  const armor = equippedItems.find(item => item.slot === 'armor');
   const qualityOf = (item:CombatGear) => gearQualityEffectiveness(item,floor);
   const effectiveDamageBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.damageBonus*qualityOf(item)),0);
   const effectiveSpeedBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.speedBonus*qualityOf(item)),0);
