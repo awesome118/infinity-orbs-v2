@@ -348,7 +348,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       </section>
       <section className="io-combat-panel io-combat-major-info">
         <div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">RARE EQUIPMENT TRAITS</span><h2><Sparkles size={18}/> Major Abilities</h2><p>Major Abilities add powerful special effects to equipped gear. Offensive and defensive bonuses use different colors for quick comparison.</p></div></div>
-        <div className="io-combat-major-examples"><article><Timer size={21}/><div><strong>Chrono Surge</strong><p>Passively increases action frequency while the item is equipped.</p></div></article><article><Shield size={21}/><div><strong>Second Dawn</strong><p>After taking damage, heals a portion of Max HP at the start of your next turn.</p></div></article></div>
+        <div className="io-combat-major-examples"><article><Timer size={21}/><div><strong>Chrono Surge</strong><p>Passively increases action frequency while the item is equipped.</p></div></article><article><Sparkles size={21}/><div><strong>Second Dawn</strong><p>After taking damage, heals a portion of Max HP at the start of your next turn.</p></div></article><article className="io-combat-major-offense"><Sword size={21}/><div><strong>Void Edge</strong><p>Increases outgoing damage while the item is equipped.</p></div></article><article className="io-combat-major-defense"><Shield size={21}/><div><strong>Aegis Ward</strong><p>Reduces incoming damage while the item is equipped.</p></div></article></div>
       </section>
     </>}
     {page==='skills'&&<>
