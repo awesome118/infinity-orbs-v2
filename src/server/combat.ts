@@ -138,18 +138,30 @@ function normalizeState(raw:string|null|undefined):CombatState {
   const enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);s.enemyHp=finiteInt(s.enemyHp,enemy.maxHp,1,enemy.maxHp);
   return s;
 }
-function createGear(sourceFloor:number,requestedSlot?:'weapon'|'armor'):CombatGear {
+function createGear(sourceFloor:number,requestedSlot?:CombatGearSlot):CombatGear {
   const floor=Math.max(0,Math.min(COMBAT_MAX_DEPTH-1,Math.floor(Number(sourceFloor)||0)));
   const scale=floor+1;
-  const slot=requestedSlot??(secureRandom()<.5?'weapon':'armor');
-  // Fourth-power quality distribution is from Auto-Dungeons; 100% rolls are extremely rare.
+  const slots:CombatGearSlot[]=['weapon','helmet','chest','gloves','boots','ring','amulet'];
+  const slot=requestedSlot??pick(slots);
+  // Fourth-power quality distribution remains; even near-perfect items do not guarantee a major ability.
   const quality=Math.round(1_000_000*Math.pow(secureRandom(),4))/10_000;
-  const prefix=slot==='weapon'?['Ashen','Hollow','Cinder','Riftbound','Starforged','Warden’s','Lost','Quiet','Infinity-Touched']:['Delver’s','Warden’s','Old','Cinder','Riftweave','Ironbound','Boneguard','Hollow','Starweave'];
-  const nouns=slot==='weapon'?['Cleaver','Brand','Knife','Axe','Fang','Edge','Spear','Greatblade']:['Hood','Plate','Scale','Mantle','Coat','Shell','Vest','Mail'];
+  const firstWords=['Ashen','Hollow','Cinder','Riftbound','Starforged','Warden’s','Lost','Quiet','Infinity-Touched','Dread','Veiled','Frostbitten'];
+  const secondWords=['Riftbound','Starforged','Moonfallen','Emberwrought','Graveborn','Voidwoven','Dawnbreak','Stormforged','Frostmarked','Kingslayer','Nightglass','Runebound'];
+  const nouns:Record<CombatGearSlot,string[]>={weapon:['Cleaver','Brand','Knife','Axe','Fang','Edge','Spear','Greatblade'],helmet:['Helm','Visor','Crown','Circlet','Mask'],chest:['Cuirass','Plate','Mantle','Hauberk','Aegis'],gloves:['Grips','Gauntlets','Handguards','Bindings'],boots:['Greaves','Strideboots','Treads','Sabatons'],ring:['Signet','Band','Loop','Ring'],amulet:['Pendant','Talisman','Medallion','Amulet']};
   const weaponTraits:CombatTrait[]=['bleed','keen','first-strike'], armorTraits:CombatTrait[]=['bulwark','regeneration','desperation'];
   const trait=slot==='weapon'?pick(weaponTraits):pick(armorTraits);
   const power=Math.max(3,Math.round(Math.min(1_000_000,scale)*(.65+quality/80)));
-  return {id:'gear-'+Date.now().toString(36)+'-'+Math.floor(secureRandom()*0x7fffffff).toString(36),name:pick(prefix)+' '+pick(nouns),slot,quality,sourceFloor:floor,power,trait,effect:traitText(trait),damageBonus:slot==='weapon'?Math.max(1,Math.round(power*.8)):0,speedBonus:slot==='weapon'?Math.min(400,Math.round(power*.25)):0,maxHealthBonus:slot==='armor'?Math.max(5,Math.round(power*4)):0};
+  const isProtective=['helmet','chest','gloves','boots'].includes(slot);
+  // Slots have a natural bias, but random affixes create flexible item builds.
+  const damageBonus=slot==='weapon'?Math.max(1,Math.round(power*.8)):secureRandom()<.45?Math.max(1,Math.round(power*.7)):0;
+  const speedBonus=slot==='weapon'?Math.min(400,Math.round(power*.25)):slot==='boots'?Math.min(150,Math.max(1,Math.round(power*.18))):secureRandom()<.2?Math.max(1,Math.round(power*.18)):0;
+  const maxHealthBonus=slot==='chest'?Math.max(5,Math.round(power*4)):isProtective?Math.max(0,Math.round(power*1.4)):secureRandom()<.2?Math.max(1,Math.round(power*.9)):0;
+  const armorBonus=isProtective?Math.max(1,Math.round(power*(slot==='chest' ? .65 : .55))):secureRandom()<.25?Math.max(1,Math.round(power*.3)):0;
+  const critChanceBonus=slot==='ring'||slot==='amulet'?Math.min(.30,.05+quality*.0025):secureRandom()<.28?Math.min(.30,.06+quality*.0028):0;
+  const majorAbilityChance=quality>=90 ? .25 : quality>=70 ? .12 : quality>=40 ? .04 : quality>=15 ? .01 : .0025;
+  const majorAbility:CombatMajorAbility|undefined=secureRandom()<majorAbilityChance?{id:'second-dawn',name:'Second Dawn',trigger:'on-damage',healPercent:.15,description:'After taking damage, heal 15% of Max HP at the start of your next turn.'}:undefined;
+  const firstWord=pick(firstWords),secondWord=pick(secondWords.filter(word=>word!==firstWord));
+  return {id:'gear-'+Date.now().toString(36)+'-'+Math.floor(secureRandom()*0x7fffffff).toString(36),name:firstWord+' '+secondWord+' '+pick(nouns[slot]),slot,quality,sourceFloor:floor,power,trait,effect:traitText(trait),damageBonus,speedBonus,maxHealthBonus,armorBonus,critChanceBonus,...(majorAbility?{majorAbility}:{})};
 }
 function enemySnapshot(s:CombatState):CombatEnemy { const e=getEnemyForDungeonDepth(s.dungeonId,s.depth); const rawHp=Number(s.enemyHp); const hp=Number.isFinite(rawHp)?Math.max(0,Math.min(e.maxHp,rawHp)):e.maxHp; return {...e,hp}; }
 function snapshot(s:CombatState):CombatSnapshot { return {state:s,enemy:enemySnapshot(s),stats:synchronizeCombatStats(s)}; }
