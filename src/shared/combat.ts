@@ -15,7 +15,7 @@ export type CombatSkillStat = 'damagePct' | 'speedFlat' | 'healthPct' | 'critCha
 export type CombatUpgradeId = 'edge-training' | 'vitality' | 'tempo' | 'precision' | 'scavenger' | 'orb-resonance';
 export type CombatUpgradeStat = 'damagePct' | 'healthPct' | 'speedFlat' | 'critChance' | 'markBonus' | 'orbFocusPct';
 export type CombatTrait = 'bleed' | 'keen' | 'first-strike' | 'bulwark' | 'regeneration' | 'desperation';
-export type CombatGearSlot = 'weapon' | 'helmet' | 'chest' | 'gloves' | 'boots' | 'ring' | 'amulet';
+export type CombatGearSlot = 'weapon' | 'armor' | 'helmet' | 'gloves' | 'boots' | 'ring' | 'amulet';
 export interface CombatMajorAbility { id:'second-dawn'; name:string; trigger:'on-damage'; healPercent:number; description:string; }
 export interface CombatOrbRoll { rarity:number; tier:string; name:string; damageMultiplier:number; baseDamage:number; }
 
@@ -373,8 +373,8 @@ export const COMBAT_INVENTORY_CAP = 30;
 
 function createCombatStarterGear(): { inventory: CombatGear[]; equipment: CombatState['equipment'] } {
   const weapon: CombatGear = { id:'starter-weapon', name:'Delver Knife', slot:'weapon', quality:35, sourceFloor:0, power:8, effect:'Adds +4 damage and +10 Speed. Critical chance +4 percentage points.', trait:'keen', damageBonus:4, speedBonus:10, maxHealthBonus:0, armorBonus:0, critChanceBonus:0 };
-  const armor: CombatGear = { id:'starter-armor', name:'Worn Leathers', slot:'chest', quality:28, sourceFloor:0, power:5, effect:'Adds +40 max HP and reduces incoming damage by 4%.', trait:'bulwark', damageBonus:0, speedBonus:0, maxHealthBonus:40, armorBonus:0, critChanceBonus:0 };
-  return { inventory:[weapon,armor], equipment:{weapon:weapon.id,helmet:null,chest:armor.id,gloves:null,boots:null,ring:null,amulet:null} };
+  const armor: CombatGear = { id:'starter-armor', name:'Worn Leathers', slot:'armor', quality:28, sourceFloor:0, power:5, effect:'Adds +40 max HP and reduces incoming damage by 4%.', trait:'bulwark', damageBonus:0, speedBonus:0, maxHealthBonus:40, armorBonus:0, critChanceBonus:0 };
+  return { inventory:[weapon,armor], equipment:{weapon:weapon.id,armor:armor.id,helmet:null,gloves:null,boots:null,ring:null,amulet:null} };
 }
 
 /** Each run can carry up to 30 newly acquired pieces; the owned inventory persists between runs. */
@@ -412,7 +412,7 @@ export function addCombatGearToInventory(state: CombatState, item: CombatGear, m
     state.inventory = state.inventory.filter(existing => existing.id !== removedId);
   }
 
-  const equipmentSlots:CombatGearSlot[]=['weapon','helmet','chest','gloves','boots','ring','amulet'];
+  const equipmentSlots:CombatGearSlot[]=['weapon','armor','helmet','gloves','boots','ring','amulet'];
   for (const slot of equipmentSlots) {
     const activeId = state.equipment[slot];
     if (activeId && state.inventory.some(g => g.id === activeId && g.slot === slot)) continue;
@@ -476,7 +476,7 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const equipmentSlots = Object.entries(state.equipment) as [CombatGearSlot,string|null][];
   const equippedItems = equipmentSlots.map(([slot,id]) => state.inventory.find(item => item.id === id && item.slot === slot)).filter((item):item is CombatGear=>Boolean(item));
   const weapon = equippedItems.find(item => item.slot === 'weapon');
-  const armor = equippedItems.find(item => item.slot === 'chest');
+  const armor = equippedItems.find(item => item.slot === 'armor');
   const qualityOf = (item:CombatGear) => gearQualityEffectiveness(item,floor);
   const effectiveDamageBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.damageBonus*qualityOf(item)),0);
   const effectiveSpeedBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.speedBonus*qualityOf(item)),0);
