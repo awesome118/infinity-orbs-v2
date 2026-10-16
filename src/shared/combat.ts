@@ -96,14 +96,14 @@ export function combatEffectiveFlurryBonusAttacks(bonusValue: unknown, baseAttac
   return Math.max(0, Math.min(bonus, maxTotal - baseAttacks));
 }
 
-/** Rank-scaled PvE bounty reward, shared by the resolver and its UI preview. */
-export function combatBountyReward(value: unknown, rankValue: unknown): { marks: number; coins: number } {
+/** Rank-scaled PvE bounty reward. Old Marks + Delver Coin rewards are merged into one Combat Marks amount. */
+export function combatBountyReward(value: unknown, rankValue: unknown): number {
   const rawValue = Number(value);
   const skillValue = Number.isFinite(rawValue) ? Math.max(0, Math.min(1, rawValue)) : 0;
   const rawRank = Number(rankValue);
   const rank = Number.isFinite(rawRank) ? Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(rawRank))) : 1;
-  const marks = Math.max(1, Math.round((3 + Math.log2(rank + 1) * 2) * (1 + skillValue * 3)));
-  return { marks, coins: Math.max(1, marks * 10) };
+  const baseMarks = Math.max(1, Math.round((3 + Math.log2(rank + 1) * 2) * (1 + skillValue * 3)));
+  return Math.min(Number.MAX_SAFE_INTEGER, baseMarks * 11);
 }
 
 /** Energy actually available after the beat's one-point regeneration, respecting the cap. */
@@ -178,35 +178,35 @@ export const COMBAT_SKILLS: CombatSkillDefinition[] = [
   { id:'surefoot', name:'Surefoot', rarity:'Common', stat:'speedFlat', value:8, effect:'+8 Speed per rank' },
   { id:'ironbark', name:'Ironbark', rarity:'Common', stat:'healthPct', value:.03, effect:'+3% max health per rank' },
   { id:'lucky-fang', name:'Lucky Fang', rarity:'Common', stat:'critChance', value:.01, effect:'+1 percentage point critical chance per rank' },
-  { id:'penny-hunter', name:'Penny Hunter', rarity:'Common', stat:'coinBonus', value:.05, effect:'+5% Delver Coins per rank' },
+  { id:'penny-hunter', name:'Penny Hunter', rarity:'Common', stat:'coinBonus', value:.05, effect:'+5% Combat Marks per rank' },
   { id:'razor-current', name:'Razor Current', rarity:'Uncommon', stat:'damagePct', value:.04, effect:'+4% damage per rank' },
   { id:'quicksilver', name:'Quicksilver', rarity:'Uncommon', stat:'speedFlat', value:14, effect:'+14 Speed per rank' },
   { id:'deep-vitals', name:'Deep Vitals', rarity:'Uncommon', stat:'healthPct', value:.05, effect:'+5% max health per rank' },
   { id:'execution-script', name:'Execution Script', rarity:'Uncommon', stat:'critChance', value:.018, effect:'+1.8 percentage points critical chance per rank' },
-  { id:'bone-collector', name:'Bone Collector', rarity:'Uncommon', stat:'coinBonus', value:.08, effect:'+8% Delver Coins per rank' },
+  { id:'bone-collector', name:'Bone Collector', rarity:'Uncommon', stat:'coinBonus', value:.08, effect:'+8% Combat Marks per rank' },
   { id:'rift-hammer', name:'Rift Hammer', rarity:'Rare', stat:'damagePct', value:.065, effect:'+6.5% damage per rank' },
   { id:'afterimage', name:'Afterimage', rarity:'Rare', stat:'speedFlat', value:22, effect:'+22 Speed per rank' },
   { id:'titan-blood', name:'Titan Blood', rarity:'Rare', stat:'healthPct', value:.075, effect:'+7.5% max health per rank' },
   { id:'fracture-math', name:'Fracture Math', rarity:'Rare', stat:'critChance', value:.025, effect:'+2.5 percentage points critical chance per rank' },
-  { id:'gilded-kill', name:'Gilded Kill', rarity:'Rare', stat:'coinBonus', value:.12, effect:'+12% Delver Coins per rank' },
+  { id:'gilded-kill', name:'Gilded Kill', rarity:'Rare', stat:'coinBonus', value:.12, effect:'+12% Combat Marks per rank' },
   { id:'singularity-edge', name:'Singularity Edge', rarity:'Epic', stat:'damagePct', value:.09, effect:'+9% damage per rank' },
   { id:'time-shear', name:'Time Shear', rarity:'Epic', stat:'speedFlat', value:32, effect:'+32 Speed per rank' },
   { id:'starforged-core', name:'Starforged Core', rarity:'Epic', stat:'healthPct', value:.10, effect:'+10% max health per rank' },
   { id:'apex-instinct', name:'Apex Instinct', rarity:'Epic', stat:'critChance', value:.035, effect:'+3.5 percentage points critical chance per rank' },
-  { id:'royal-tithe', name:'Royal Tithe', rarity:'Epic', stat:'coinBonus', value:.18, effect:'+18% Delver Coins per rank' },
+  { id:'royal-tithe', name:'Royal Tithe', rarity:'Epic', stat:'coinBonus', value:.18, effect:'+18% Combat Marks per rank' },
   { id:'infinity-cleaver', name:'Infinity Cleaver', rarity:'Mythic', stat:'damagePct', value:.13, effect:'+13% damage per rank' },
   { id:'chronos-heel', name:'Chronos Heel', rarity:'Mythic', stat:'speedFlat', value:45, effect:'+45 Speed per rank' },
   { id:'worldheart', name:'Worldheart', rarity:'Mythic', stat:'healthPct', value:.15, effect:'+15% max health per rank' },
   { id:'annihilator', name:'Annihilator', rarity:'Mythic', stat:'critChance', value:.05, effect:'+5 percentage points critical chance per rank' },
-  { id:'infinite-bounty', name:'Infinite Bounty', rarity:'Mythic', stat:'coinBonus', value:.25, effect:'+25% Delver Coins per rank' },
+  { id:'infinite-bounty', name:'Infinite Bounty', rarity:'Mythic', stat:'coinBonus', value:.25, effect:'+25% Combat Marks per rank' },
   { id:'steady-hand', name:'Steady Hand', rarity:'Common', stat:'critChance', value:.008, effect:'+0.8 percentage points critical chance per rank' },
-  { id:'coin-sense', name:'Coin Sense', rarity:'Common', stat:'coinBonus', value:.03, effect:'+3% Delver Coins per rank' },
+  { id:'coin-sense', name:'Coin Sense', rarity:'Common', stat:'coinBonus', value:.03, effect:'+3% Combat Marks per rank' },
   { id:'sunder-mark', name:'Sunder Mark', rarity:'Uncommon', stat:'damagePct', value:.035, effect:'+3.5% damage per rank' },
   { id:'lightstep', name:'Lightstep', rarity:'Uncommon', stat:'speedFlat', value:12, effect:'+12 Speed per rank' },
   { id:'warden-slayer', name:'Warden Slayer', rarity:'Rare', stat:'damagePct', value:.08, effect:'+8% damage per rank' },
   { id:'crystal-aegis', name:'Crystal Aegis', rarity:'Rare', stat:'healthPct', value:.065, effect:'+6.5% max health per rank' },
   { id:'blackstar-velocity', name:'Blackstar Velocity', rarity:'Epic', stat:'speedFlat', value:36, effect:'+36 Speed per rank' },
-  { id:'astral-scavenger', name:'Astral Scavenger', rarity:'Epic', stat:'coinBonus', value:.20, effect:'+20% Delver Coins per rank' },
+  { id:'astral-scavenger', name:'Astral Scavenger', rarity:'Epic', stat:'coinBonus', value:.20, effect:'+20% Combat Marks per rank' },
   { id:'worldbreaker', name:'Worldbreaker', rarity:'Mythic', stat:'damagePct', value:.16, effect:'+16% damage per rank' },
   { id:'phoenix-engine', name:'Phoenix Engine', rarity:'Mythic', stat:'healthPct', value:.18, effect:'+18% max health per rank' },
 ];
