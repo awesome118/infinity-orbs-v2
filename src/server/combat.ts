@@ -198,6 +198,10 @@ async function mutate<T>(fn:(s:CombatState)=>T):Promise<T> {
   }
   throw new Error('Combat state changed repeatedly. Please retry.');
 }
+/** Read the shared Combat Marks wallet for the global HUD without creating/writing combat state. */
+export async function getCombatMarksBalance():Promise<number>{
+  return normalizeState(await redis.get(combatKey())).combatMarks;
+}
 export async function getCombatSnapshot():Promise<CombatSnapshot>{
   let coreProgression:{level?:unknown;highestRarity?:unknown;autoScrapLevel?:unknown;autoScrapSettings?:unknown}|null=null;
   try {
