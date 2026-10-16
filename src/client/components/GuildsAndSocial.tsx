@@ -374,7 +374,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                               </span>
                             </div>
                             <p className="text-[11px] text-slate-400 mt-1">
-                              Complete Guild Tasks to charge it. Guild Combo gives half the strength of Global Boosters, all three at once.
+                              Complete Guild Tasks to charge it. Combo can climb to Tier 100, and all three bonuses scale with tier.
                             </p>
                           </div>
                           <div className="text-center sm:text-right min-w-[150px]">
