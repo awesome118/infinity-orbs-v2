@@ -35,6 +35,7 @@ import {
   MAX_OFFLINE_ROLLS,
   OFFLINE_TICK_MS,
   calculateCosmicDust,
+  MAX_COSMIC_DUST,
   effectiveOfflineTickMs,
   critMultiplier,
   calculateLevelFromXp,
@@ -2422,7 +2423,7 @@ export async function loadRaw(): Promise<PlayerState> {
     levelXpFloor,
     upgrades: normalizedUpgrades,
     manualRolls: normalizedManualRolls,
-    cosmicDust: finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust),
+    cosmicDust: Math.min(MAX_COSMIC_DUST, finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust)),
     masteryPoints: finiteNonNegativeInteger(parsed.masteryPoints, base.masteryPoints ?? 0),
     totalCrits: finiteNonNegativeInteger(parsed.totalCrits, base.totalCrits),
     lifetimeShards: finiteNonNegativeInteger(parsed.lifetimeShards, base.lifetimeShards),
@@ -2469,6 +2470,14 @@ export async function loadRaw(): Promise<PlayerState> {
     dailyStreakCommunity,
   };
   playerGuildScopes.set(restored, guildId);
+  // One-time migration: persist the new hard cap instead of only clamping its read view.
+  if (finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust) > MAX_COSMIC_DUST) {
+    try {
+      await save(restored);
+    } catch (error) {
+      console.error('[Prestige] Cosmic Dust cap migration will retry on next load.', error);
+    }
+  }
   return restored;
 }
 
@@ -5166,7 +5175,7 @@ export async function prestige(): Promise<{ state: PlayerState; cosmicDustEarned
     throw new Error('Requires at least 1,000,000 Collection Value in current run.');
   }
 
-  s.cosmicDust = (s.cosmicDust ?? 0) + dustEarned;
+  s.cosmicDust = Math.min(MAX_COSMIC_DUST, (s.cosmicDust ?? 0) + dustEarned);
   s.prestigeCount = (s.prestigeCount ?? 0) + 1;
   s.masteryPoints = (s.masteryPoints ?? 0) + 3;
 
@@ -5420,12 +5429,15 @@ export async function synthesizeDust(): Promise<{ state: PlayerState; dustEarned
   if ((s.prestigeUpgrades?.shardSynthesis ?? 0) < 1) {
     throw new Error('Astral Forge prestige upgrade is required to synthesize Cosmic Dust.');
   }
+  if ((s.cosmicDust ?? 0) >= MAX_COSMIC_DUST) {
+    throw new Error(`Cosmic Dust is capped at ${MAX_COSMIC_DUST}; no Shards were spent.`);
+  }
   if ((s.shards ?? 0) < SHARD_SYNTHESIS_COST) {
     throw new Error(`Synthesizing requires at least ${SHARD_SYNTHESIS_COST} Shards.`);
   }
 
   spendShards(s, SHARD_SYNTHESIS_COST);
-  s.cosmicDust = (s.cosmicDust ?? 0) + 1;
+  s.cosmicDust = Math.min(MAX_COSMIC_DUST, (s.cosmicDust ?? 0) + 1);
   await save(s);
   await appendPlayerSpyLog('dust-synthesis', {
     shardsSpent: SHARD_SYNTHESIS_COST,
