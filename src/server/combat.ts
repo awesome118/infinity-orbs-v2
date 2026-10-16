@@ -34,7 +34,7 @@ function normalizeGear(value:unknown,fallbackFloor=0):CombatGear|null {
   if(!value||typeof value!=='object')return null;
   const x=value as Record<string,unknown>;
   const rawSlot=String(x.slot??'');
-  const slot:CombatGearSlot|null=rawSlot==='armor'||rawSlot==='chest'?'chest':
+  const slot:CombatGearSlot|null=rawSlot==='armor'||rawSlot==='chest'?'armor':
     (['weapon','helmet','gloves','boots','ring','amulet'] as string[]).includes(rawSlot)?rawSlot as CombatGearSlot:null;
   const traits:CombatTrait[]=['bleed','keen','first-strike','bulwark','regeneration','desperation'];
   if(!slot||typeof x.id!=='string'||!x.id||typeof x.name!=='string')return null;
@@ -106,13 +106,13 @@ function normalizeState(raw:string|null|undefined):CombatState {
   const desired:Record<CombatGearSlot,string|null>={
     weapon:typeof savedEquipment?.weapon==='string'?savedEquipment.weapon:defaults.equipment.weapon,
     helmet:typeof savedEquipment?.helmet==='string'?savedEquipment.helmet:null,
-    chest:typeof savedEquipment?.chest==='string'?savedEquipment.chest:typeof savedEquipment?.armor==='string'?savedEquipment.armor:defaults.equipment.chest,
+    armor:typeof savedEquipment?.armor==='string'?savedEquipment.armor:typeof savedEquipment?.chest==='string'?savedEquipment.chest:defaults.equipment.armor,
     gloves:typeof savedEquipment?.gloves==='string'?savedEquipment.gloves:null,
     boots:typeof savedEquipment?.boots==='string'?savedEquipment.boots:null,
     ring:typeof savedEquipment?.ring==='string'?savedEquipment.ring:null,
     amulet:typeof savedEquipment?.amulet==='string'?savedEquipment.amulet:null,
   };
-  const slots:CombatGearSlot[]=['weapon','helmet','chest','gloves','boots','ring','amulet'];
+  const slots:CombatGearSlot[]=['weapon','armor','helmet','gloves','boots','ring','amulet'];
   const migratedEquipment={} as Record<CombatGearSlot,string|null>;
   for(const slot of slots){
     const selected=s.inventory.find(g=>g.id===desired[slot]&&g.slot===slot);
@@ -141,22 +141,22 @@ function normalizeState(raw:string|null|undefined):CombatState {
 function createGear(sourceFloor:number,requestedSlot?:CombatGearSlot):CombatGear {
   const floor=Math.max(0,Math.min(COMBAT_MAX_DEPTH-1,Math.floor(Number(sourceFloor)||0)));
   const scale=floor+1;
-  const slots:CombatGearSlot[]=['weapon','helmet','chest','gloves','boots','ring','amulet'];
+  const slots:CombatGearSlot[]=['weapon','armor','helmet','gloves','boots','ring','amulet'];
   const slot=requestedSlot??pick(slots);
   // Fourth-power quality distribution remains; even near-perfect items do not guarantee a major ability.
   const quality=Math.round(1_000_000*Math.pow(secureRandom(),4))/10_000;
   const firstWords=['Ashen','Hollow','Cinder','Riftbound','Starforged','Warden’s','Lost','Quiet','Infinity-Touched','Dread','Veiled','Frostbitten'];
   const secondWords=['Riftbound','Starforged','Moonfallen','Emberwrought','Graveborn','Voidwoven','Dawnbreak','Stormforged','Frostmarked','Kingslayer','Nightglass','Runebound'];
-  const nouns:Record<CombatGearSlot,string[]>={weapon:['Cleaver','Brand','Knife','Axe','Fang','Edge','Spear','Greatblade'],helmet:['Helm','Visor','Crown','Circlet','Mask'],chest:['Cuirass','Plate','Mantle','Hauberk','Aegis'],gloves:['Grips','Gauntlets','Handguards','Bindings'],boots:['Greaves','Strideboots','Treads','Sabatons'],ring:['Signet','Band','Loop','Ring'],amulet:['Pendant','Talisman','Medallion','Amulet']};
+  const nouns:Record<CombatGearSlot,string[]>={weapon:['Cleaver','Brand','Knife','Axe','Fang','Edge','Spear','Greatblade'],helmet:['Helm','Visor','Crown','Circlet','Mask'],armor:['Cuirass','Plate','Mantle','Hauberk','Aegis'],gloves:['Grips','Gauntlets','Handguards','Bindings'],boots:['Greaves','Strideboots','Treads','Sabatons'],ring:['Signet','Band','Loop','Ring'],amulet:['Pendant','Talisman','Medallion','Amulet']};
   const weaponTraits:CombatTrait[]=['bleed','keen','first-strike'], armorTraits:CombatTrait[]=['bulwark','regeneration','desperation'];
   const trait=slot==='weapon'?pick(weaponTraits):pick(armorTraits);
   const power=Math.max(3,Math.round(Math.min(1_000_000,scale)*(.65+quality/80)));
-  const isProtective=['helmet','chest','gloves','boots'].includes(slot);
+  const isProtective=['helmet','armor','gloves','boots'].includes(slot);
   // Slots have a natural bias, but random affixes create flexible item builds.
   const damageBonus=slot==='weapon'?Math.max(1,Math.round(power*.8)):secureRandom()<.45?Math.max(1,Math.round(power*.7)):0;
   const speedBonus=slot==='weapon'?Math.min(400,Math.round(power*.25)):slot==='boots'?Math.min(150,Math.max(1,Math.round(power*.18))):secureRandom()<.2?Math.max(1,Math.round(power*.18)):0;
-  const maxHealthBonus=slot==='chest'?Math.max(5,Math.round(power*4)):isProtective?Math.max(0,Math.round(power*1.4)):secureRandom()<.2?Math.max(1,Math.round(power*.9)):0;
-  const armorBonus=isProtective?Math.max(1,Math.round(power*(slot==='chest' ? .65 : .55))):secureRandom()<.25?Math.max(1,Math.round(power*.3)):0;
+  const maxHealthBonus=slot==='armor'?Math.max(5,Math.round(power*4)):isProtective?Math.max(0,Math.round(power*1.4)):secureRandom()<.2?Math.max(1,Math.round(power*.9)):0;
+  const armorBonus=isProtective?Math.max(1,Math.round(power*(slot==='armor' ? .65 : .55))):secureRandom()<.25?Math.max(1,Math.round(power*.3)):0;
   const critChanceBonus=slot==='ring'||slot==='amulet'?Math.min(.30,.05+quality*.0025):secureRandom()<.28?Math.min(.30,.06+quality*.0028):0;
   const majorAbilityChance=quality>=90 ? .25 : quality>=70 ? .12 : quality>=40 ? .04 : quality>=15 ? .01 : .0025;
   const majorAbility:CombatMajorAbility|undefined=secureRandom()<majorAbilityChance?{id:'second-dawn',name:'Second Dawn',trigger:'on-damage',healPercent:.15,description:'After taking damage, heal 15% of Max HP at the start of your next turn.'}:undefined;
@@ -436,7 +436,7 @@ function arenaBuild(rawState: CombatState): { state: CombatState; stats: ReturnT
 function createArenaProfile(userId: string, username: string, state: CombatState, updatedAt: number): CombatArenaProfile {
   const build = arenaBuild(state);
   const weapon = build.state.inventory.find(item => item.id === build.state.equipment.weapon && item.slot === 'weapon');
-  const armor = build.state.inventory.find(item => item.id === build.state.equipment.chest && item.slot === 'chest');
+  const armor = build.state.inventory.find(item => item.id === build.state.equipment.armor && item.slot === 'armor');
   return {
     userId,
     username: arenaName(username),
