@@ -94,6 +94,15 @@ export function combatBountyReward(value: unknown, rankValue: unknown): { marks:
   return { marks, coins: Math.max(1, marks * 10) };
 }
 
+/** Energy actually available after the beat's one-point regeneration, respecting the cap. */
+export function combatEnergyAfterRegen(energyValue: unknown, maxEnergyValue: unknown): number {
+  const rawMax = Number(maxEnergyValue);
+  const maxEnergy = Number.isFinite(rawMax) ? Math.max(1, Math.min(10, Math.floor(rawMax))) : 5;
+  const rawEnergy = Number(energyValue);
+  const energy = Number.isFinite(rawEnergy) ? Math.max(0, Math.min(maxEnergy, Math.floor(rawEnergy))) : 0;
+  return Math.min(maxEnergy, energy + 1);
+}
+
 export function combatSkillEnergyCost(rarity: CombatRarity): number {
   return rarity === 'Common' || rarity === 'Uncommon' ? 2 : rarity === 'Rare' || rarity === 'Epic' ? 3 : 4;
 }

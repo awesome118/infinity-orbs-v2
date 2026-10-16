@@ -903,7 +903,8 @@ export function createApp() {
   app.post('/api/combat/skills/equip', async (req,res) => {
     const skillId=req.body?.skillId;
     if(typeof skillId!=='string'||!skillId.trim()||skillId.length>100)return res.status(400).json({error:'A valid combat ability is required.'});
-    try{res.setHeader('Cache-Control','no-store');res.json(await equipCombatSkill(skillId,req.body?.equip));}
+    if(typeof req.body?.equip!=='boolean')return res.status(400).json({error:'A boolean equip value is required.'});
+    try{res.setHeader('Cache-Control','no-store');res.json(await equipCombatSkill(skillId,req.body.equip));}
     catch(e:any){const message=e?.message||'Could not update ability loadout.';const status=message==='Ability not owned.'||message==='All active ability slots are full.'||message==='Invalid combat ability.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message});}
   });
   app.post('/api/combat/skills/rank-up', async (_req,res) => {
