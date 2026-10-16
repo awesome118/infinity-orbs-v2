@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_SKILLS, combatAbilityType, combatForgeCost, combatScrapValue, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../src/shared/combat.js';
+import { addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatBountyReward, combatFlurryAttackMultiplier, combatForgeCost, combatScrapValue, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated, type CombatGear } from '../src/shared/combat.js';
 
 test('starter combat build carries the Auto-Dungeons baseline', () => {
   const state=createCombatState();
@@ -33,9 +33,23 @@ test('every tenth Undercrypt depth has a boss', () => {
   assert.equal(getEnemyForDepth(10).boss,true);
   assert.equal(getEnemyForDepth(20).name,'Crypt Warden');
 });
-test('skill pull pricing does not decrease with repeated pulls', () => {
+test('skill pull prices rise beyond pull 40 and safely saturate only at the numeric limit', () => {
   let previous=skillPullCost(0);
   for(let pulls=1;pulls<60;pulls++){const current=skillPullCost(pulls);assert.ok(current>=previous);previous=current;}
+  assert.ok(skillPullCost(41)>skillPullCost(40),'price must not plateau at 40 pulls');
+  assert.equal(skillPullCost(Number.MAX_SAFE_INTEGER),Number.MAX_SAFE_INTEGER);
+});
+
+test('flurry and bounty outputs scale with ability value and rank',()=>{
+  assert.equal(combatFlurryAttackMultiplier(8),1.08);
+  assert.equal(combatFlurryAttackMultiplier(45),1.45);
+  assert.equal(combatFlurryAttackMultiplier(-5),1);
+  assert.equal(combatFlurryAttackMultiplier(500),2);
+  const modest=combatBountyReward(.05,1),mythic=combatBountyReward(.25,1),ranked=combatBountyReward(.25,8);
+  assert.ok(mythic.marks>modest.marks);
+  assert.ok(ranked.marks>mythic.marks);
+  assert.equal(mythic.coins,mythic.marks*10);
+  assert.equal(COMBAT_MAX_DEPTH,50_000);
 });
 
 test('duplicate copies advance uncapped skill ranks with an increasing copy requirement', () => {
@@ -92,6 +106,28 @@ test('Scrap rewards and Forge costs scale with gear/floor progression',()=>{
   assert.ok(combatScrapValue(high)>combatScrapValue(low));
   assert.equal(combatForgeCost(0),10);
   assert.ok(combatForgeCost(50)>combatForgeCost(0));
+});
+
+test('run-haul overflow never evicts equipped gear acquired during the current run',()=>{
+  const state=createCombatState();
+  const item:CombatGear={id:'run-equipped-weapon',name:'Run-Worn Blade',slot:'weapon',quality:1,sourceFloor:0,power:1,effect:'test',trait:'keen',damageBonus:1,speedBonus:0,maxHealthBonus:0};
+  addCombatGearToInventory(state,item);
+  state.equipment.weapon=item.id;
+  for(let index=1;index<COMBAT_INVENTORY_CAP;index++)addCombatGearToInventory(state,{...item,id:'run-gear-'+index,name:'Run gear '+index,sourceFloor:index,quality:80});
+  addCombatGearToInventory(state,{...item,id:'new-run-best',name:'New run best',sourceFloor:100,quality:99});
+  assert.equal(state.runInventoryIds.length,COMBAT_INVENTORY_CAP);
+  assert.ok(state.inventory.some(gear=>gear.id===item.id));
+  assert.equal(state.equipment.weapon,item.id);
+});
+
+test('duplicate loot grants are idempotent and do not consume haul slots',()=>{
+  const state=createCombatState();
+  const original=state.inventory[0]!;
+  const inventoryLength=state.inventory.length;
+  addCombatGearToInventory(state,{...original,name:'duplicate copy'});
+  assert.equal(state.inventory.length,inventoryLength);
+  assert.equal(state.inventory[0]?.name,original.name);
+  assert.equal(state.runInventoryIds.length,0);
 });
 
 test('run haul pruning preserves owned equipment and newest loot', () => {

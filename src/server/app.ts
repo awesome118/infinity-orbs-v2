@@ -865,7 +865,7 @@ export function createApp() {
     if(!['auto','strike','heavy','guard','mend','ability'].includes(intent))return res.status(400).json({error:'Invalid combat command.'});
     if(intent==='ability'&&(typeof req.body?.skillId!=='string'||req.body.skillId.length>100))return res.status(400).json({error:'A valid active ability is required.'});
     try { res.setHeader('Cache-Control','no-store');res.json(await performCombatBeat(sequence,intent,req.body?.skillId)); }
-    catch(e:any){const message=e?.message||'Combat beat failed.';const status=message==='stale combat sequence'?409:message==='REDDIT_LOGIN_REQUIRED'?401:message.startsWith('COMBAT_BEAT_TOO_SOON:')?429:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
+    catch(e:any){const message=e?.message||'Combat beat failed.';const status=message==='stale combat sequence'||message==='Ability is on cooldown.'||message==='No player action is ready for this ability.'?409:message==='REDDIT_LOGIN_REQUIRED'?401:message.startsWith('COMBAT_BEAT_TOO_SOON:')?429:message==='Combat state changed repeatedly. Please retry.'?503:['Invalid combat command.','Choose a valid equipped ability.','Ability is not equipped.','Not enough energy for this ability.'].includes(message)?400:500;res.status(status).json({error:message});}
   });
   app.post('/api/combat/dungeon', async (req,res) => {
     try { res.setHeader('Cache-Control','no-store'); res.json(await setCombatDungeon(req.body?.dungeonId)); }
@@ -883,7 +883,7 @@ export function createApp() {
   });
   app.post('/api/combat/gear/scrap', async (req,res) => {
     try { res.setHeader('Cache-Control','no-store');res.json(await scrapCombatItem(req.body?.itemId)); }
-    catch(e:any) { const message=e?.message||'Could not scrap gear.';const status=message==='A valid gear item is required.'||message==='Gear item is not in this dungeon bag.'||message==='Unequip this item before scrapping it.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message}); }
+    catch(e:any) { const message=e?.message||'Could not scrap gear.';const status=message==='A valid gear item is required.'||message==='Gear item is not in your inventory.'||message==='Unequip this item before scrapping it.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message}); }
   });
   app.post('/api/combat/forge', async (req,res) => {
     try { res.setHeader('Cache-Control','no-store');res.json(await forgeCombatGear(req.body?.slot)); }
