@@ -20,7 +20,9 @@ export type CombatTrait = 'bleed' | 'keen' | 'first-strike' | 'bulwark' | 'regen
 export type CombatGearSlot = 'weapon' | 'armor' | 'helmet' | 'gloves' | 'boots' | 'ring' | 'amulet';
 export type CombatMajorAbility =
   | { id:'second-dawn'; name:string; trigger:'on-damage'; healPercent:number; description:string; }
-  | { id:'chrono-surge'; name:string; trigger:'passive'; speedPercent:number; description:string; };
+  | { id:'chrono-surge'; name:string; trigger:'passive'; speedPercent:number; description:string; }
+  | { id:'void-edge'; name:string; trigger:'passive'; damagePercent:number; description:string; }
+  | { id:'aegis-ward'; name:string; trigger:'passive'; damageReduction:number; description:string; };
 export interface CombatOrbRoll { rarity:number; tier:string; name:string; damageMultiplier:number; baseDamage:number; }
 
 export interface CombatGear {
@@ -486,17 +488,15 @@ export function normalizeCombatAutoScrapSettings(value: unknown): CombatAutoScra
 }
 
 export const SKILL_PULL_BASE_COST = 75;
-export function skillPullCost(skillRolls: number): number {
-  // The 40-pull soft cap is deliberate: it keeps prices within attainable coin balances.
-  const pulls = Math.max(0, Math.min(40, Math.floor(Number(skillRolls) || 0)));
-  return Math.round(SKILL_PULL_BASE_COST * Math.pow(1.09, pulls));
+export function skillPullCost(_skillRolls: number): number {
+  return SKILL_PULL_BASE_COST;
 }
 export function createCombatState(): CombatState {
   const starter = createCombatStarterGear();
   const state: CombatState = {
     version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
-    baseDamage:54, coins:250, scrap:0, combatMarks:0, combatUpgrades:{}, totalKills:0, skillRolls:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
+    baseDamage:54, coins:0, scrap:0, combatMarks:250, combatUpgrades:{}, totalKills:0, skillRolls:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
     combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
     encounterFirstStrikeUsed:false, pendingHealAmount:0, inventory:starter.inventory,
@@ -519,6 +519,8 @@ export function combatStatsFor(state: CombatState): CombatStats {
   // Ordinary affixes and legacy gear cannot grant turn speed; only Major Abilities do.
   const effectiveSpeedBonus=0;
   const majorSpeedPercent=equippedItems.reduce((sum,item)=>sum+(item.majorAbility?.id==='chrono-surge'?item.majorAbility.speedPercent*qualityOf(item):0),0);
+  const majorDamagePercent=equippedItems.reduce((sum,item)=>sum+(item.majorAbility?.id==='void-edge'?item.majorAbility.damagePercent*qualityOf(item):0),0);
+  const majorDamageReduction=equippedItems.reduce((sum,item)=>sum+(item.majorAbility?.id==='aegis-ward'?item.majorAbility.damageReduction*qualityOf(item):0),0);
   const effectiveHealthBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.maxHealthBonus*qualityOf(item)),0);
   const effectiveArmorBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.armorBonus*qualityOf(item)),0);
   const effectiveCritBonus=equippedItems.reduce((sum,item)=>sum+item.critChanceBonus*qualityOf(item),0);
@@ -547,9 +549,9 @@ export function combatStatsFor(state: CombatState): CombatStats {
   if (traitEffectiveness('desperation')>0 && state.health>0 && state.health<=maxHealth*.4) speed+=Math.round(20*traitEffectiveness('desperation'));
   if (traitEffectiveness('keen')>0) critChance+=.04*traitEffectiveness('keen');
   critChance += effectiveCritBonus + dungeonCritBonus;
-  const damageReduction = Math.min(.75, effectiveArmorBonus/250 + .04*traitEffectiveness('bulwark'));
+  const damageReduction = Math.min(.80, effectiveArmorBonus/250 + .04*traitEffectiveness('bulwark') + majorDamageReduction);
   return {
-    damage:Math.max(1,Math.round(flatDamage*(1+damagePct)*(1+coreProgressionBonus)*(1+dungeonDamageBonus)*(1+orbFocusBonus))),
+    damage:Math.max(1,Math.round(flatDamage*(1+damagePct)*(1+majorDamagePercent)*(1+coreProgressionBonus)*(1+dungeonDamageBonus)*(1+orbFocusBonus))),
     speed:Math.min(800,speed), maxHealth, armor:effectiveArmorBonus,
     critChance:Math.min(.75,Math.max(0,critChance)),
     damageReduction,
