@@ -573,8 +573,13 @@ function resolveArenaDuel(challengerState: CombatState, opponentState: CombatSta
   let activeRound = 1;
   let activeSide: 'challenger'|'opponent' = 'challenger';
   const append = (message: string) => {
-    log.push(`Round ${activeRound} · ${activeSide==='challenger'?'You':'Opponent'}: ${message}`);
-    if (log.length > 48) log.shift();
+    const prefix = `Round ${activeRound} · ${activeSide==='challenger'?'You':'Opponent'}: `;
+    // Keep a complete compact timeline: combine an actor's skill and all its
+    // strikes into one round entry instead of trimming valid battle turns.
+    const lastIndex = log.length - 1;
+    if (lastIndex >= 0 && log[lastIndex]!.startsWith(prefix)) log[lastIndex] += ' · ' + message;
+    else log.push(prefix + message);
+    if (log.length > 201) log.shift();
   };
 
   const attack = (side: 'challenger' | 'opponent', abilityMultiplier=1, guaranteedCrit=false, bonusAttackMultiplier=1) => {
@@ -668,7 +673,8 @@ function resolveArenaDuel(challengerState: CombatState, opponentState: CombatSta
   const winner=challengerHealthRatio===opponentHealthRatio
     ?(secureRandom()<.5?'challenger':'opponent')
     :challengerHealthRatio>opponentHealthRatio?'challenger':'opponent';
-  append(winner==='challenger'?'Victory. Arena rating updated.':'Defeat. Arena rating updated.');
+  log.push(winner==='challenger'?'Victory. Arena rating updated.':'Defeat. Arena rating updated.');
+  if (log.length > 201) log.shift();
   return {winner,rounds:Math.min(rounds,100),log};
 }
 
