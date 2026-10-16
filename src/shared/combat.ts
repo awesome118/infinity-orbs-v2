@@ -406,7 +406,7 @@ export function addCombatGearToInventory(state: CombatState, item: CombatGear, m
   }
 }
 
-/** A new run resets only the haul counter; owned gear and the equipped loadout are permanent. */ owned gear and the equipped loadout are permanent. */
+/** A new run resets only the haul counter; owned gear and the equipped loadout are permanent. */
 export function resetCombatRunCarry(state: Pick<CombatState, 'runInventoryIds'>): void {
   state.runInventoryIds = [];
 }
