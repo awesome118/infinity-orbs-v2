@@ -43,7 +43,7 @@ test('skill pull pricing rises and then respects its deliberate soft cap', () =>
 test('quality curve stays anchored to run best after current depth resets',()=>{
   const state=createCombatState();
   state.depth=1;
-  state.bestDepth=50;
+  state.bestDepth=51;
   assert.equal(floorQualityRequirement(state.bestDepth-1),60);
   assert.equal(floorQualityRequirement(state.depth-1),0);
 });
