@@ -101,6 +101,29 @@ test('Gacha ranks increase non-Common odds and Rank 30 splits the non-Mythic odd
   assert.equal(resolveCombatSkillRarity(0.999, 30, 0, 0), 'Mythic');
 });
 
+test('Void Edge and Aegis Ward Major Abilities affect equipped combat stats', () => {
+  const state = createCombatState();
+  const baseline = combatStatsFor(state);
+  const offense = {
+    id:'test-void-edge', name:'Void Edge', slot:'ring' as const, quality:100, sourceFloor:0, power:90,
+    effect:'Increases outgoing damage.', trait:'keen' as const, damageBonus:0, speedBonus:0,
+    maxHealthBonus:0, armorBonus:0, critChanceBonus:0,
+    majorAbility:{id:'void-edge' as const,name:'Void Edge',trigger:'passive' as const,damagePercent:.15,description:'Increases outgoing damage.'},
+  };
+  const defense = {
+    id:'test-aegis-ward', name:'Aegis Ward', slot:'amulet' as const, quality:100, sourceFloor:0, power:90,
+    effect:'Reduces incoming damage.', trait:'bulwark' as const, damageBonus:0, speedBonus:0,
+    maxHealthBonus:0, armorBonus:0, critChanceBonus:0,
+    majorAbility:{id:'aegis-ward' as const,name:'Aegis Ward',trigger:'passive' as const,damageReduction:.08,description:'Reduces incoming damage.'},
+  };
+  state.inventory.push(offense,defense);
+  state.equipment.ring=offense.id;
+  state.equipment.amulet=defense.id;
+  const equipped = combatStatsFor(state);
+  assert.ok(equipped.damage > baseline.damage);
+  assert.ok(equipped.damageReduction > baseline.damageReduction);
+});
+
 test('turn speed is provided by an equipped Chrono Surge Major Ability', () => {
   const state = createCombatState();
   const before = combatStatsFor(state).speed;
