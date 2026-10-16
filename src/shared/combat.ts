@@ -362,7 +362,6 @@ export interface CombatArenaResult {
   ratingAfter: number;
   opponentRatingAfter: number;
 }
-/** Compatibility alias: skills have no gameplay rank cap (bounded only by safe integer storage). */
 /** Quality is the item's rarity proxy. Even Mythic items only have a chance to roll a major ability. */
 export function combatMajorAbilityChance(qualityValue:number):number {
   const quality=Number.isFinite(Number(qualityValue))?Math.max(0,Math.min(100,Number(qualityValue))):0;
@@ -374,6 +373,7 @@ export function combatOrbDamageMultiplier(rarity:number):number {
   const safe=Number.isFinite(Number(rarity))?Math.max(2,Number(rarity)):2;
   return Math.max(1,Math.min(20,1+Math.log10(safe/2)));
 }
+/** Skills have no gameplay rank cap; storage is bounded by safe integer capacity. */
 export const SKILL_RANK_CAP = Number.MAX_SAFE_INTEGER;
 export const COMBAT_INVENTORY_CAP = 30;
 
