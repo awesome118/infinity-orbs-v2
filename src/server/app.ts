@@ -886,8 +886,8 @@ export function createApp() {
     catch(e:any) { const message=e?.message||'Could not scrap gear.';const status=message==='A valid gear item is required.'||message==='Gear item is not in your inventory.'||message==='Unequip this item before scrapping it.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message}); }
   });
   app.post('/api/combat/forge', async (req,res) => {
-    try { res.setHeader('Cache-Control','no-store');res.json(await forgeCombatGear(req.body?.slot)); }
-    catch(e:any) { const message=e?.message||'Forge failed.';const status=message==='Choose a valid equipment slot for the Forge.'||message==='Not enough Scrap to forge this item.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message}); }
+    try { res.setHeader('Cache-Control','no-store');res.json(await forgeCombatGear(req.body?.slot,req.body?.quality)); }
+    catch(e:any) { const message=e?.message||'Forge failed.';const status=message==='Choose a valid equipment slot for the Forge.'||message==='Choose a valid item quality for the Forge.'||message==='Not enough Scrap to forge this item.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message}); }
   });
   app.post('/api/combat/auto-scrap', async (req,res) => {
     try {
