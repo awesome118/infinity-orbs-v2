@@ -53,9 +53,8 @@ export const Header: React.FC<HeaderProps> = ({
       if(Number.isSafeInteger(value)&&value>=0)setCombatMarks(value);
     };
     void refreshCombatMarks();
-    const timer=window.setInterval(()=>void refreshCombatMarks(),15000);
     window.addEventListener('io-combat-marks-updated',onCombatMarksUpdated);
-    return()=>{cancelled=true;window.clearInterval(timer);window.removeEventListener('io-combat-marks-updated',onCombatMarksUpdated);};
+    return()=>{cancelled=true;window.removeEventListener('io-combat-marks-updated',onCombatMarksUpdated);};
   },[]);
   const levelInfo = getLevelProgress(
     Math.max(1, state.level || 1),
