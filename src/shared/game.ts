@@ -404,7 +404,7 @@ export interface GuildComboState {
 
 export const GUILD_COMBO_BASE_DURATION_MS = 20 * 60 * 1000;
 export const GUILD_COMBO_ACTIVATIONS_PER_TIER = 4;
-export const GUILD_COMBO_MAX_TIER = 10;
+export const GUILD_COMBO_MAX_TIER = 100;
 export const GUILD_COMBO_DURATION_DECAY_PER_TIER = 0.85;
 export const GUILD_COMBO_TIMER_ACCELERATION_PER_TIER = 0.25;
 
@@ -515,7 +515,9 @@ export function decayGuildComboState(
   const elapsed = Math.max(0, now - previousTickAt);
 
   if (tier > 0 && endsAt > 0 && elapsed > 0) {
-    endsAt -= Math.round(elapsed * tier * GUILD_COMBO_TIMER_ACCELERATION_PER_TIER);
+    // Diminishing timer acceleration keeps high-tier combos demanding without making
+    // tiers above 10 expire almost instantly.
+    endsAt -= Math.round(elapsed * GUILD_COMBO_TIMER_ACCELERATION_PER_TIER * Math.log2(tier + 1));
   }
 
   if (tier <= 0 || endsAt <= now) {
