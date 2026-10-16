@@ -5,6 +5,8 @@ import {
   createInitialState,
   addCollectionValue,
   calculatePrestigeDust,
+  calculateCosmicDust,
+  MAX_COSMIC_DUST,
   aftershockCriticalLuckBonus,
   unbrokenMomentumSpeedBonus,
   recordRollingSessionActivity,
@@ -95,6 +97,17 @@ test('Prestige Dust has a million-value minimum step and logarithmic diminishing
   assert.equal(calculatePrestigeDust(4_000_000), 3);
   assert.equal(calculatePrestigeDust(4_050_000), 4);
   assert.equal(calculatePrestigeDust(300_000_000), 58);
+});
+
+test('Cosmic Dust earnings never exceed the 50-Dust wallet cap', () => {
+  const state=createInitialState();
+  state.collectionValue=300_000_000;
+  assert.equal(MAX_COSMIC_DUST,50);
+  assert.equal(calculateCosmicDust(state),50);
+  state.cosmicDust=49;
+  assert.equal(calculateCosmicDust(state),1,'only remaining capacity can be earned');
+  state.cosmicDust=50;
+  assert.equal(calculateCosmicDust(state),0,'prestige should not consume a run without any Dust reward');
 });
 
 test('Aftershock turns the best record-breaking dry interval into permanent Critical Luck', () => {
