@@ -483,7 +483,7 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const effectiveHealthBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.maxHealthBonus*qualityOf(item)),0);
   const effectiveArmorBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.armorBonus*qualityOf(item)),0);
   const effectiveCritBonus=equippedItems.reduce((sum,item)=>sum+item.critChanceBonus*qualityOf(item),0);
-  const hasTrait=(trait:CombatTrait)=>equippedItems.some(item=>item.trait===trait&&qualityOf(item)>0);
+  const traitEffectiveness=(trait:CombatTrait)=>equippedItems.filter(item=>item.trait===trait).reduce((best,item)=>Math.max(best,qualityOf(item)),0);
   // Acquired skills are equipped active abilities, not permanent passive-stat stacks.
   let damagePct=0, speedFlat=0, healthPct=0, critChance=.08, coinBonus=0;
   for (const upgrade of COMBAT_UPGRADES) {
@@ -505,10 +505,10 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const flatHealth = 1000 + (Math.max(1,state.level)-1)*30 + effectiveHealthBonus;
   const maxHealth = Math.max(1,Math.round(flatHealth*(1+healthPct)*(1+coreProgressionBonus)*(1+orbFocusBonus*.65)));
   let speed = 300 + effectiveSpeedBonus + speedFlat + dungeonSpeedBonus;
-  if (hasTrait('desperation') && state.health>0 && state.health<=maxHealth*.4) speed+=20;
-  if (hasTrait('keen')) critChance+=.04;
+  if (traitEffectiveness('desperation')>0 && state.health>0 && state.health<=maxHealth*.4) speed+=Math.round(20*traitEffectiveness('desperation'));
+  if (traitEffectiveness('keen')>0) critChance+=.04*traitEffectiveness('keen');
   critChance += effectiveCritBonus + dungeonCritBonus;
-  const damageReduction = Math.min(.75, effectiveArmorBonus/250 + (hasTrait('bulwark') ? .04 : 0));
+  const damageReduction = Math.min(.75, effectiveArmorBonus/250 + .04*traitEffectiveness('bulwark'));
   return {
     damage:Math.max(1,Math.round(flatDamage*(1+damagePct)*(1+coreProgressionBonus)*(1+dungeonDamageBonus)*(1+orbFocusBonus))),
     speed:Math.min(800,speed), maxHealth, armor:effectiveArmorBonus,
