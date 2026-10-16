@@ -33,11 +33,11 @@ test('every tenth Undercrypt depth has a boss', () => {
   assert.equal(getEnemyForDepth(10).boss,true);
   assert.equal(getEnemyForDepth(20).name,'Crypt Warden');
 });
-test('skill pull prices rise beyond pull 40 and safely saturate only at the numeric limit', () => {
+test('skill pull pricing rises and then respects its deliberate soft cap', () => {
   let previous=skillPullCost(0);
   for(let pulls=1;pulls<60;pulls++){const current=skillPullCost(pulls);assert.ok(current>=previous);previous=current;}
-  assert.ok(skillPullCost(41)>skillPullCost(40),'price must not plateau at 40 pulls');
-  assert.equal(skillPullCost(Number.MAX_SAFE_INTEGER),Number.MAX_SAFE_INTEGER);
+  assert.equal(skillPullCost(41),skillPullCost(40));
+  assert.equal(skillPullCost(Number.MAX_SAFE_INTEGER),skillPullCost(40),'outsize pull counts clamp to the designed price ceiling');
 });
 
 test('flurry and bounty outputs scale with ability value and rank',()=>{
@@ -118,6 +118,16 @@ test('run-haul overflow never evicts equipped gear acquired during the current r
   assert.equal(state.runInventoryIds.length,COMBAT_INVENTORY_CAP);
   assert.ok(state.inventory.some(gear=>gear.id===item.id));
   assert.equal(state.equipment.weapon,item.id);
+});
+
+test('the newest run pickup survives overflow even when its quality is lower than the old haul',()=>{
+  const state=createCombatState();
+  for(let index=0;index<COMBAT_INVENTORY_CAP;index++)addCombatGearToInventory(state,{id:'old-quality-'+index,name:'Old quality '+index,slot:index%2===0?'weapon':'armor',quality:90,sourceFloor:index+1,power:10,effect:'test',trait:index%2===0?'keen':'bulwark',damageBonus:0,speedBonus:0,maxHealthBonus:0});
+  const newest:CombatGear={id:'fresh-low-quality',name:'Fresh low quality',slot:'weapon',quality:0,sourceFloor:0,power:1,effect:'test',trait:'keen',damageBonus:0,speedBonus:0,maxHealthBonus:0};
+  addCombatGearToInventory(state,newest);
+  assert.equal(state.runInventoryIds.length,COMBAT_INVENTORY_CAP);
+  assert.ok(state.inventory.some(item=>item.id===newest.id));
+  assert.ok(!state.inventory.some(item=>item.id==='old-quality-0'));
 });
 
 test('duplicate loot grants are idempotent and do not consume haul slots',()=>{

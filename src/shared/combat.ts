@@ -350,8 +350,8 @@ export function addCombatGearToInventory(state: CombatState, item: CombatGear, m
   // Retried loot grants must not replace an owned item or count it twice.
   if (state.inventory.some(existing => existing.id === item.id)) return;
 
-  // Keep enough haul capacity for both equipment slots even for custom/test caps.
-  const cap = Math.max(2, Math.floor(Number.isFinite(maxItems) ? maxItems : COMBAT_INVENTORY_CAP));
+  // Keep both equipped pieces and the newest pickup safe even if a custom/test cap is supplied.
+  const cap = Math.max(3, Math.floor(Number.isFinite(maxItems) ? maxItems : COMBAT_INVENTORY_CAP));
   state.inventory.unshift(item);
   const ownedIds = new Set(state.inventory.map(existing => existing.id));
   state.runInventoryIds = [...new Set((Array.isArray(state.runInventoryIds) ? state.runInventoryIds : []).filter(id => ownedIds.has(id)))];
@@ -362,7 +362,7 @@ export function addCombatGearToInventory(state: CombatState, item: CombatGear, m
     for (let index = 0; index < state.runInventoryIds.length; index += 1) {
       const id = state.runInventoryIds[index];
       // Equipped pieces are permanent equipment, not disposable haul overflow.
-      if (id === state.equipment.weapon || id === state.equipment.armor) continue;
+      if (id === item.id || id === state.equipment.weapon || id === state.equipment.armor) continue;
       const current = state.inventory.find(existing => existing.id === id);
       if (!current) { removable = index; break; }
       if (removable < 0) { removable = index; continue; }
@@ -374,7 +374,7 @@ export function addCombatGearToInventory(state: CombatState, item: CombatGear, m
       const worstQuality = Number.isFinite(Number(worst.quality)) ? Math.max(0, Math.min(100, Number(worst.quality))) : 0;
       if (currentFloor < worstFloor || (currentFloor === worstFloor && currentQuality < worstQuality) || (currentFloor === worstFloor && currentQuality === worstQuality && index > removable)) removable = index;
     }
-    // At most two IDs are protected, so an overflow item remains removable with a cap of two.
+    // At most two existing IDs and the newest pickup are protected, so the minimum cap is three.
     if (removable < 0) break;
     const [removedId] = state.runInventoryIds.splice(removable, 1);
     state.inventory = state.inventory.filter(existing => existing.id !== removedId);
@@ -416,11 +416,9 @@ export function normalizeCombatAutoScrapSettings(value: unknown): CombatAutoScra
 
 export const SKILL_PULL_BASE_COST = 75;
 export function skillPullCost(skillRolls: number): number {
-  const rawPulls = Number(skillRolls);
-  const pulls = Number.isFinite(rawPulls) ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(rawPulls))) : 0;
-  // Prices keep rising beyond pull 40, then saturate only at the safe-integer currency limit.
-  const cost = SKILL_PULL_BASE_COST * Math.pow(1.09, Math.min(pulls, 400));
-  return Math.max(SKILL_PULL_BASE_COST, Math.min(Number.MAX_SAFE_INTEGER, Math.round(cost)));
+  // The 40-pull soft cap is deliberate: it keeps prices within attainable coin balances.
+  const pulls = Math.max(0, Math.min(40, Math.floor(Number(skillRolls) || 0)));
+  return Math.round(SKILL_PULL_BASE_COST * Math.pow(1.09, pulls));
 }
 export function createCombatState(): CombatState {
   const starter = createCombatStarterGear();

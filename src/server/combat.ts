@@ -285,8 +285,8 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
       actions.push({actor:'enemy',kind:'attack',damage:incoming,text:strike+incoming+' damage.'});
       if(s.health<=0){died=true;actions.push({actor:'enemy',kind:'death',text:'Run '+s.runId+' ended at Depth '+s.depth+'. Permanent progress retained.'});s.runId+=1;s.depth=1;resetCombatRunCarry(s);s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,3);s.guardBeats=0;s.encounterFirstStrikeUsed=false;s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;synchronizeCombatStats(s);s.health=s.maxHealth;actions.push({actor:'player',kind:'advance',text:'A new descent begins automatically at Depth 1.'});break;}
     }
-    // Guard lasts through this enemy phase only, including phases without a scheduled enemy action.
-    if(guardWasUsed||enemyActions===0)s.guardBeats=0;
+    // If no enemy action fires, preserve Guard until the next actual incoming strike.
+    if(guardWasUsed)s.guardBeats=0;
     synchronizeCombatStats(s);
     return {...snapshot(s),actions,defeated,died,...(item?{item}:{}),...(abilityCast?{abilityCast}:{})};
   });
@@ -375,7 +375,8 @@ function arenaBuild(rawState: CombatState): { state: CombatState; stats: ReturnT
   const state: CombatState = {
     ...rawState,
     dungeonId: 'undercrypt',
-    inventory: rawState.inventory.map(item => ({ ...item })),
+    // Arena stat resolution only needs equipped pieces; cloning the permanent stash on every challenge is wasteful.
+    inventory: rawState.inventory.filter(item => (item.id === rawState.equipment.weapon && item.slot === 'weapon') || (item.id === rawState.equipment.armor && item.slot === 'armor')).map(item => ({ ...item })),
     equipment: { ...rawState.equipment },
     skillLevels: { ...rawState.skillLevels },
     equippedAbilities: [...rawState.equippedAbilities],
@@ -419,7 +420,7 @@ function parseArenaProfile(userId: string, raw: unknown): CombatArenaProfile | n
       userId,
       username: arenaName(p.username),
       level: finiteInt(p.level, 1, 1, 60),
-      bestDepth: finiteInt(p.bestDepth, 1, 1, 50000),
+      bestDepth: finiteInt(p.bestDepth, 1, 1, COMBAT_MAX_DEPTH),
       rating: finiteInt(rating, 1000, 100, 10000),
       wins: finiteInt(p.wins, 0, 0, Number.MAX_SAFE_INTEGER),
       losses: finiteInt(p.losses, 0, 0, Number.MAX_SAFE_INTEGER),
