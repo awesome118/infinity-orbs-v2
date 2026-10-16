@@ -363,6 +363,12 @@ export interface CombatArenaResult {
   opponentRatingAfter: number;
 }
 /** Compatibility alias: skills have no gameplay rank cap (bounded only by safe integer storage). */
+/** Quality is the item's rarity proxy. Even Mythic items only have a chance to roll a major ability. */
+export function combatMajorAbilityChance(qualityValue:number):number {
+  const quality=Number.isFinite(Number(qualityValue))?Math.max(0,Math.min(100,Number(qualityValue))):0;
+  return quality>=90 ? .25 : quality>=70 ? .12 : quality>=40 ? .04 : quality>=15 ? .01 : .0025;
+}
+
 /** Damage multiplier for a fresh orb roll; higher rarity increases attack damage logarithmically. */
 export function combatOrbDamageMultiplier(rarity:number):number {
   const safe=Number.isFinite(Number(rarity))?Math.max(2,Number(rarity)):2;
