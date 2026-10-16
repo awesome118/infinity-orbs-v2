@@ -29,6 +29,7 @@ import {
   weekKey,
   createInitialGuildCombo,
   decayGuildComboState,
+  GUILD_COMBO_MAX_TIER,
   activateGuildComboStack,
   highestCodexChain,
   type GuildComboState,
@@ -232,7 +233,7 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
       if (!Number.isSafeInteger(value) || Number(value) < 0) throw invalid(`guild.combo.${field}`);
     }
     if (
-      (guild.combo.tier != null && Number(guild.combo.tier) > 10) ||
+      (guild.combo.tier != null && Number(guild.combo.tier) > GUILD_COMBO_MAX_TIER) ||
       (guild.combo.activationProgress != null && Number(guild.combo.activationProgress) > 3)
     ) {
       throw invalid('guild.combo tier/activationProgress');
@@ -383,7 +384,7 @@ function recoverGuildRecordForPlaytest(guild: Record<string, any>, index: number
   if (!isRecordValue(guild.combo)) {
     delete guild.combo;
   } else {
-    guild.combo.tier = clampInt(guild.combo.tier, 0, 10, 0);
+    guild.combo.tier = clampInt(guild.combo.tier, 0, GUILD_COMBO_MAX_TIER, 0);
     guild.combo.activationProgress = clampInt(guild.combo.activationProgress, 0, 3, 0);
     guild.combo.endsAt = clampInt(guild.combo.endsAt, 0, Number.MAX_SAFE_INTEGER, 0);
     guild.combo.lastTickAt = clampInt(guild.combo.lastTickAt, 0, Number.MAX_SAFE_INTEGER, 0);
@@ -1627,7 +1628,7 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
           guild.combo = activateGuildComboStack(
             guild.combo,
             now,
-            10,
+            GUILD_COMBO_MAX_TIER,
             comboDurationMultiplier,
           );
 
@@ -1772,7 +1773,7 @@ export async function prepareGuildRollEffects(
           guild.xp = capInteger(guild.xp + xpReward);
           guild.level = 1 + Math.floor(guild.xp / 500);
           guild.taskCompletions = capInteger((guild.taskCompletions ?? 0) + 1);
-          guild.combo = activateGuildComboStack(guild.combo, now, 10, comboDurationMultiplier);
+          guild.combo = activateGuildComboStack(guild.combo, now, GUILD_COMBO_MAX_TIER, comboDurationMultiplier);
 
           const replacement = createGuildTask(task.type, completedTier + 1, guild.level);
           replacement.progress = Math.min(Number.MAX_SAFE_INTEGER, overflow);
