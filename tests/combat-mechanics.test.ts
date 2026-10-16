@@ -64,9 +64,9 @@ test('flurry and bounty outputs scale with ability value and rank',()=>{
   assert.equal(combatEffectiveFlurryBonusAttacks(2,3),2);
   assert.equal(combatEffectiveFlurryBonusAttacks(11,12),0,'a full 12-hit turn has no spare attack slots');
   const modest=combatBountyReward(.05,1),mythic=combatBountyReward(.25,1),ranked=combatBountyReward(.25,8);
-  assert.ok(mythic.marks>modest.marks);
-  assert.ok(ranked.marks>mythic.marks);
-  assert.equal(mythic.coins,mythic.marks*10);
+  assert.ok(mythic>modest);
+  assert.ok(ranked>mythic);
+  assert.equal(mythic,Math.round((3+Math.log2(2)*2)*(1+.25*3))*11);
   assert.equal(COMBAT_MAX_DEPTH,50_000);
 });
 
