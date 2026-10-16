@@ -406,7 +406,7 @@ export function addCombatGearToInventory(state: CombatState, item: CombatGear, m
       const worstQuality = Number.isFinite(Number(worst.quality)) ? Math.max(0, Math.min(100, Number(worst.quality))) : 0;
       if (currentFloor < worstFloor || (currentFloor === worstFloor && currentQuality < worstQuality) || (currentFloor === worstFloor && currentQuality === worstQuality && index > removable)) removable = index;
     }
-    // At most two existing IDs and the newest pickup are protected, so the minimum cap is three.
+    // Every equipped item and the newest pickup are protected from haul overflow.
     if (removable < 0) break;
     const [removedId] = state.runInventoryIds.splice(removable, 1);
     state.inventory = state.inventory.filter(existing => existing.id !== removedId);
