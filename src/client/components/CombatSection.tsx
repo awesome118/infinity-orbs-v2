@@ -47,7 +47,7 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor}:{item:Comb
     item.maxHealthBonus>0?{label:'+'+fmt(item.maxHealthBonus)+' MAX HP',detail:'Increases maximum health',kind:'defense' as const}:null,
     item.armorBonus>0?{label:'+'+fmt(item.armorBonus)+' ARMOR',detail:'Reduces incoming damage',kind:'defense' as const}:null,
     item.critChanceBonus>0?{label:'+'+(item.critChanceBonus*100).toFixed(1)+'% CRIT',detail:'Adds critical-hit chance',kind:'offense' as const}:null,
-  ].filter((entry):entry is {label:string;detail:string;kind:'offense'|'defense'}=>Boolean(entry));
+  ].filter(Boolean) as {label:string;detail:string;kind:'offense'|'defense'}[];
   return <article
     tabIndex={0}
     className={'io-combat-gear-card '+rarityClass(grade)}
