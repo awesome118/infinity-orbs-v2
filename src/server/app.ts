@@ -887,7 +887,7 @@ export function createApp() {
   });
   app.post('/api/combat/forge', async (req,res) => {
     try { res.setHeader('Cache-Control','no-store');res.json(await forgeCombatGear(req.body?.slot)); }
-    catch(e:any) { const message=e?.message||'Forge failed.';const status=message==='Choose weapon or armor for the Forge.'||message==='Not enough Scrap to forge this item.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message}); }
+    catch(e:any) { const message=e?.message||'Forge failed.';const status=message==='Choose a valid equipment slot for the Forge.'||message==='Not enough Scrap to forge this item.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message}); }
   });
   app.post('/api/combat/auto-scrap', async (req,res) => {
     try {
