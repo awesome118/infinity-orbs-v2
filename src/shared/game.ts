@@ -2659,7 +2659,11 @@ export function calculateCosmicDust(s: PlayerState): number {
   const base = calculatePrestigeDust(currentVal);
   if (base <= 0) return 0;
   const masteryBonus = (s.masterySkills?.cosmicAttunement ?? 0) * 0.08;
-  return Math.min(MAX_COSMIC_DUST, Math.floor(base * (1 + masteryBonus)));
+  const existingDust = Math.max(0, Math.min(MAX_COSMIC_DUST,
+    Number.isSafeInteger(s.cosmicDust) ? s.cosmicDust : 0,
+  ));
+  const pending = Math.floor(base * (1 + masteryBonus));
+  return Math.max(0, Math.min(MAX_COSMIC_DUST - existingDust, pending));
 }
 
 export function prestigeUpgradeCost(id: PrestigeUpgradeId, level: number): number {
