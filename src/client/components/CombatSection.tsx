@@ -102,7 +102,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     if(page!=='fight')return;
     const element=turnSequenceRef.current;
     if(!element||typeof ResizeObserver==='undefined')return;
-    const measure=()=>setTimelineCount(Math.max(2,Math.min(18,Math.floor((element.clientWidth+8)/140))));
+    const measure=()=>setTimelineCount(Math.max(1,Math.min(18,Math.floor((element.clientWidth+8)/140))));
     const observer=new ResizeObserver(measure);observer.observe(element);measure();
     return()=>observer.disconnect();
   },[page,Boolean(state)]);
