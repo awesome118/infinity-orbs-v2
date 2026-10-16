@@ -1,7 +1,7 @@
 import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatDungeonId, CombatEnemy, CombatGear, CombatIntent, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatAbilityType, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatAbilityType, combatBountyReward, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -15,7 +15,12 @@ function secureRandom():number {
   return (words[0]!*0x20_0000+(words[1]!>>>11))/0x20_0000_0000_0000;
 }
 function pick<T>(values:T[]):T { return values[Math.floor(secureRandom()*values.length)]!; }
-function finiteInt(value:unknown,fallback:number,min:number,max:number):number { const n=Number(value); return Number.isFinite(n)?Math.max(min,Math.min(max,Math.floor(n))):fallback; }
+function finiteInt(value:unknown,fallback:number,min:number,max:number):number {
+  const bounded=(n:number)=>Math.max(min,Math.min(max,Math.floor(n)));
+  const n=Number(value);
+  if(Number.isFinite(n))return bounded(n);
+  return Number.isFinite(fallback)?bounded(fallback):min;
+}
 function traitText(t:CombatTrait):string {
   if(t==='bleed')return '18% chance to add bonus bleed damage.';
   if(t==='keen')return '+4 percentage points of critical chance.';
@@ -30,7 +35,7 @@ function normalizeGear(value:unknown,fallbackFloor=0):CombatGear|null {
   const traits:CombatTrait[]=['bleed','keen','first-strike','bulwark','regeneration','desperation'];
   if(!slot||typeof x.id!=='string'||!x.id||typeof x.name!=='string')return null;
   const trait=traits.includes(x.trait as CombatTrait)?x.trait as CombatTrait:(slot==='weapon'?'keen':'bulwark');
-  return {id:x.id.slice(0,160),name:x.name.slice(0,100),slot,quality:Math.max(0,Math.min(100,Number.isFinite(Number(x.quality))?Number(x.quality):0)),sourceFloor:finiteInt(x.sourceFloor,fallbackFloor,0,50000),power:finiteInt(x.power,1,1,1_000_000),effect:typeof x.effect==='string'?x.effect.slice(0,180):traitText(trait),trait,damageBonus:finiteInt(x.damageBonus,0,0,1_000_000),speedBonus:finiteInt(x.speedBonus,0,0,400),maxHealthBonus:finiteInt(x.maxHealthBonus,0,0,1_000_000)};
+  return {id:x.id.slice(0,160),name:x.name.slice(0,100),slot,quality:Math.max(0,Math.min(100,Number.isFinite(Number(x.quality))?Number(x.quality):0)),sourceFloor:finiteInt(x.sourceFloor,fallbackFloor,0,COMBAT_MAX_DEPTH-1),power:finiteInt(x.power,1,1,1_000_000),effect:typeof x.effect==='string'?x.effect.slice(0,180):traitText(trait),trait,damageBonus:finiteInt(x.damageBonus,0,0,1_000_000),speedBonus:finiteInt(x.speedBonus,0,0,400),maxHealthBonus:finiteInt(x.maxHealthBonus,0,0,1_000_000)};
 }
 function normalizeState(raw:string|null|undefined):CombatState {
   if(!raw)return createCombatState();
@@ -42,13 +47,13 @@ function normalizeState(raw:string|null|undefined):CombatState {
   const s=Object.assign(createCombatState(),p);
   s.version=1;
   s.dungeonId=(['undercrypt','cinder-vault','glass-labyrinth'] as unknown[]).includes(s.dungeonId)?s.dungeonId:'undercrypt';
-  s.runId=finiteInt(s.runId,1,1,Number.MAX_SAFE_INTEGER);s.depth=finiteInt(s.depth,1,1,50000);
-  s.bestDepth=Math.max(s.depth,finiteInt(s.bestDepth,1,1,50000));
+  s.runId=finiteInt(s.runId,1,1,Number.MAX_SAFE_INTEGER);s.depth=finiteInt(s.depth,1,1,COMBAT_MAX_DEPTH);
+  s.bestDepth=Math.max(s.depth,finiteInt(s.bestDepth,1,1,COMBAT_MAX_DEPTH));
   const savedDungeonBests=(s.dungeonBestDepths&&typeof s.dungeonBestDepths==='object'?s.dungeonBestDepths:{}) as Partial<Record<CombatDungeonId,number>>;
   s.dungeonBestDepths={
-    undercrypt:finiteInt(savedDungeonBests.undercrypt,s.dungeonId==='undercrypt'?s.bestDepth:1,1,50000),
-    'cinder-vault':finiteInt(savedDungeonBests['cinder-vault'],s.dungeonId==='cinder-vault'?s.bestDepth:1,1,50000),
-    'glass-labyrinth':finiteInt(savedDungeonBests['glass-labyrinth'],s.dungeonId==='glass-labyrinth'?s.bestDepth:1,1,50000),
+    undercrypt:finiteInt(savedDungeonBests.undercrypt,s.dungeonId==='undercrypt'?s.bestDepth:1,1,COMBAT_MAX_DEPTH),
+    'cinder-vault':finiteInt(savedDungeonBests['cinder-vault'],s.dungeonId==='cinder-vault'?s.bestDepth:1,1,COMBAT_MAX_DEPTH),
+    'glass-labyrinth':finiteInt(savedDungeonBests['glass-labyrinth'],s.dungeonId==='glass-labyrinth'?s.bestDepth:1,1,COMBAT_MAX_DEPTH),
   };
   s.dungeonBestDepths[s.dungeonId]=Math.max(s.dungeonBestDepths[s.dungeonId],s.bestDepth);
   s.bestDepth=Math.max(s.depth,s.dungeonBestDepths[s.dungeonId]);
@@ -67,22 +72,25 @@ function normalizeState(raw:string|null|undefined):CombatState {
   };
   // Current inventory is authoritative when present; merge in old dungeon bags so previously collected gear is retained.
   const rawInventory:unknown[]=[];
-  if(Array.isArray(p.inventory))rawInventory.push(...p.inventory);
+  if(Array.isArray(p.inventory))for(const item of p.inventory)rawInventory.push(item);
   for(const dungeon of ['undercrypt','cinder-vault','glass-labyrinth'] as const){
     const legacyBag=persisted.inventoryByDungeon?.[dungeon];
-    if(Array.isArray(legacyBag))rawInventory.push(...legacyBag);
+    if(Array.isArray(legacyBag))for(const item of legacyBag)rawInventory.push(item);
   }
-  if(rawInventory.length===0)rawInventory.push(...defaults.inventory);
+  if(rawInventory.length===0)for(const item of defaults.inventory)rawInventory.push(item);
   const knownGearIds=new Set<string>();
   s.inventory=rawInventory.map(g=>normalizeGear(g,Math.max(0,s.depth-1))).filter((g):g is CombatGear=>{
     if(!g||knownGearIds.has(g.id))return false;
     knownGearIds.add(g.id);return true;
   });
+  // A malformed stash must not leave the player with no usable build.
+  if(s.inventory.length===0)s.inventory=defaults.inventory.map(item=>({...item}));
   // Restore only this run's tracked pickups, validating each ID against the permanent inventory.
   const knownRunIds=new Set<string>();
+  const knownInventoryIds=new Set(s.inventory.map(g=>g.id));
   s.runInventoryIds=[];
   for(const value of Array.isArray(p.runInventoryIds)?p.runInventoryIds:[]){
-    if(typeof value!=='string'||knownRunIds.has(value)||!s.inventory.some(g=>g.id===value))continue;
+    if(typeof value!=='string'||knownRunIds.has(value)||!knownInventoryIds.has(value))continue;
     knownRunIds.add(value);
     if(s.runInventoryIds.length<INVENTORY_CAP)s.runInventoryIds.push(value);
   }
@@ -115,7 +123,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   return s;
 }
 function createGear(sourceFloor:number,requestedSlot?:'weapon'|'armor'):CombatGear {
-  const floor=Math.max(0,Math.min(50000,Math.floor(Number(sourceFloor)||0)));
+  const floor=Math.max(0,Math.min(COMBAT_MAX_DEPTH-1,Math.floor(Number(sourceFloor)||0)));
   const scale=floor+1;
   const slot=requestedSlot??(secureRandom()<.5?'weapon':'armor');
   // Fourth-power quality distribution is from Auto-Dungeons; 100% rolls are extremely rare.
@@ -127,7 +135,7 @@ function createGear(sourceFloor:number,requestedSlot?:'weapon'|'armor'):CombatGe
   const power=Math.max(3,Math.round(Math.min(1_000_000,scale)*(.65+quality/80)));
   return {id:'gear-'+Date.now().toString(36)+'-'+Math.floor(secureRandom()*0x7fffffff).toString(36),name:pick(prefix)+' '+pick(nouns),slot,quality,sourceFloor:floor,power,trait,effect:traitText(trait),damageBonus:slot==='weapon'?Math.max(1,Math.round(power*.8)):0,speedBonus:slot==='weapon'?Math.min(400,Math.round(power*.25)):0,maxHealthBonus:slot==='armor'?Math.max(5,Math.round(power*4)):0};
 }
-function enemySnapshot(s:CombatState):CombatEnemy { const e=getEnemyForDungeonDepth(s.dungeonId,s.depth); return {...e,hp:Math.max(0,Math.min(e.maxHp,s.enemyHp||e.maxHp))}; }
+function enemySnapshot(s:CombatState):CombatEnemy { const e=getEnemyForDungeonDepth(s.dungeonId,s.depth); const rawHp=Number(s.enemyHp); const hp=Number.isFinite(rawHp)?Math.max(0,Math.min(e.maxHp,rawHp)):e.maxHp; return {...e,hp}; }
 function snapshot(s:CombatState):CombatSnapshot { return {state:s,enemy:enemySnapshot(s),stats:synchronizeCombatStats(s)}; }
 async function mutate<T>(fn:(s:CombatState)=>T):Promise<T> {
   const key=combatKey();
@@ -194,7 +202,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     s.playerActionsResolved+=playerActions;s.enemyActionsResolved+=enemyActions;
     let enemyHp=Math.max(1,s.enemyHp||enemy.maxHp),heavy=false,consumed=false,defeated=false,died=false;
     let item:CombatGear|undefined;
-    let activeDamageMultiplier=1,activeGuaranteedCrit=false,activeExtraAttacks=0;
+    let activeDamageMultiplier=1,activeGuaranteedCrit=false,activeExtraAttacks=0,activeFlurryMultiplier=1;
     let abilityCast:{id:CombatSkillId;rank:number;cooldown:number}|undefined;
     if(activeSkill){
       const energyCost=combatSkillEnergyCost(activeSkill.rarity);
@@ -208,7 +216,8 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         actions.push({actor:'player',kind:'ability',text:activeSkill.name+' empowers the next strike ('+Math.round((activeDamageMultiplier-1)*100)+'% bonus damage).'});
       } else if(archetype==='flurry'){
         activeExtraAttacks=1+Math.floor(rankScale);
-        actions.push({actor:'player',kind:'ability',text:activeSkill.name+' releases a '+(activeExtraAttacks+1)+'-hit flurry.'});
+        activeFlurryMultiplier=combatFlurryAttackMultiplier(activeSkill.value);
+        actions.push({actor:'player',kind:'ability',text:activeSkill.name+' adds '+activeExtraAttacks+' bonus strikes at '+Math.round(activeFlurryMultiplier*100)+'% damage each.'});
       } else if(archetype==='mend'){
         const healRatio=Math.min(.9,.10+activeSkill.value+rankScale*.06),before=s.health;
         s.health=Math.min(s.maxHealth,s.health+Math.max(1,Math.round(s.maxHealth*healRatio)));
@@ -217,21 +226,21 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         activeGuaranteedCrit=true;activeDamageMultiplier=1.65+activeSkill.value*2+rankScale*.15;
         actions.push({actor:'player',kind:'ability',text:activeSkill.name+' guarantees a critical strike.'});
       } else {
-        const marks=Math.max(1,Math.round((3+rankScale*2)*(1+activeSkill.value*3)));
-        const coins=Math.max(1,marks*10);
-        s.combatMarks=Math.min(Number.MAX_SAFE_INTEGER,s.combatMarks+marks);
-        s.coins=Math.min(Number.MAX_SAFE_INTEGER,s.coins+coins);
-        actions.push({actor:'player',kind:'ability',text:activeSkill.name+' grants '+marks+' Combat Marks and '+coins+' Delver Coins.'});
+        const reward=combatBountyReward(activeSkill.value,activeSkillRank);
+        s.combatMarks=Math.min(Number.MAX_SAFE_INTEGER,s.combatMarks+reward.marks);
+        s.coins=Math.min(Number.MAX_SAFE_INTEGER,s.coins+reward.coins);
+        actions.push({actor:'player',kind:'ability',text:activeSkill.name+' grants '+reward.marks+' Combat Marks and '+reward.coins+' Delver Coins.'});
       }
     }
     if(resolvedIntent==='heavy'&&s.energy>=3&&playerActions>0){s.energy-=3;heavy=true;actions.push({actor:'player',kind:'ability',text:'Heavy strike prepared.'});}
     else if(resolvedIntent==='guard'&&s.energy>=2&&playerActions>0){s.energy-=2;s.guardBeats=1;consumed=true;actions.push({actor:'player',kind:'ability',text:'Guard raised. Incoming hits are softened.'});}
+    else if(resolvedIntent==='mend'&&s.health>=s.maxHealth&&playerActions>0)actions.push({actor:'player',kind:'ability',text:'Already at full health. Basic attacks continue.'});
     else if(resolvedIntent==='mend'&&s.energy>=4&&playerActions>0&&s.health<s.maxHealth){s.energy-=4;const before=s.health;s.health=Math.min(s.maxHealth,s.health+Math.max(1,Math.round(s.maxHealth*.14)));consumed=true;actions.push({actor:'player',kind:'ability',text:'Mend restored '+(s.health-before)+' HP.'});}
     else if(resolvedIntent!=='strike')actions.push({actor:'player',kind:'ability',text:'Not enough energy or no action ready. Basic attacks continue.'});
     const attacks=Math.min(12,Math.max(0,playerActions-(consumed?1:0))+activeExtraAttacks),weapon=s.inventory.find(g=>g.id===s.equipment.weapon);
     for(let i=0;i<attacks;i++){
       if(enemyHp<=0)break;
-      let multiplier=(heavy&&i===0?1.9:1)*(activeSkill&&i===0?activeDamageMultiplier:1);
+      let multiplier=(heavy&&i===0?1.9:1)*(activeSkill&&i===0?activeDamageMultiplier:1)*(activeSkill&&combatAbilityType(activeSkill)==='flurry'&&i>=playerActions?activeFlurryMultiplier:1);
       if(!s.encounterFirstStrikeUsed){if(weapon?.trait==='first-strike')multiplier*=1+.5*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1));s.encounterFirstStrikeUsed=true;}
       const crit=(activeSkill&&i===0&&activeGuaranteedCrit)||secureRandom()<stats.critChance;let damage=Math.max(1,Math.round(stats.damage*(crit?1.75:1)*multiplier));
       if(weapon?.trait==='bleed'&&secureRandom()<.18*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1))){const bleed=Math.max(1,Math.round(stats.damage*.3*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1))));damage+=bleed;actions.push({actor:'player',kind:'ability',text:'Bleed adds '+bleed+' damage.'});}
@@ -247,12 +256,23 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
           if(s.autoScrapUnlocked&&s.autoScrapSettings.enabled&&item.quality<=s.autoScrapSettings.maxQuality){
             const gained=combatScrapValue(item);s.scrap=Math.min(Number.MAX_SAFE_INTEGER,s.scrap+gained);
             actions.push({actor:'player',kind:'loot',text:'Auto-scrapped '+item.name+' ('+item.quality.toFixed(2)+'% quality) for '+gained+' Scrap.'});
+            item=undefined;
           } else {addCombatGearToInventory(s,item);actions.push({actor:'player',kind:'loot',text:'Gear found: '+item.name+' ('+item.quality.toFixed(2)+'% quality).'});}
         }
         const armor=s.inventory.find(g=>g.id===s.equipment.armor);
         if(armor?.trait==='regeneration'&&enemy.kind!=='common'){s.health=Math.min(s.maxHealth,s.health+Math.round(s.maxHealth*.02*gearQualityEffectiveness(armor,Math.max(0,s.depth-1))));actions.push({actor:'player',kind:'ability',text:'Armor regeneration restored 2% max HP.'});}
-        s.bestDepth=Math.max(s.bestDepth,s.depth);s.depth+=1;s.bestDepth=Math.max(s.bestDepth,s.depth);s.dungeonBestDepths[s.dungeonId]=Math.max(s.dungeonBestDepths[s.dungeonId],s.bestDepth);s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,s.energy+1);s.guardBeats=0;s.encounterFirstStrikeUsed=false;
-        enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);s.enemyHp=enemy.maxHp;actions.push({actor:'player',kind:'advance',text:'Descending to Depth '+s.depth+'.'});break;
+        s.bestDepth=Math.max(s.bestDepth,s.depth);
+        s.dungeonBestDepths[s.dungeonId]=Math.max(s.dungeonBestDepths[s.dungeonId],s.bestDepth);
+        s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.guardBeats=0;s.encounterFirstStrikeUsed=false;
+        if(s.depth>=COMBAT_MAX_DEPTH){
+          // Do not step beyond the normalized depth limit and farm a capped room forever.
+          s.runId+=1;s.depth=1;resetCombatRunCarry(s);s.energy=Math.min(s.maxEnergy,3);s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;synchronizeCombatStats(s);s.health=s.maxHealth;
+          actions.push({actor:'player',kind:'advance',text:'Depth limit reached. A new descent begins at Depth 1; all permanent progress remains.'});
+        }else{
+          s.depth+=1;s.bestDepth=Math.max(s.bestDepth,s.depth);s.dungeonBestDepths[s.dungeonId]=Math.max(s.dungeonBestDepths[s.dungeonId],s.bestDepth);s.energy=Math.min(s.maxEnergy,s.energy+1);
+          enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);s.enemyHp=enemy.maxHp;actions.push({actor:'player',kind:'advance',text:'Descending to Depth '+s.depth+'.'});
+        }
+        break;
       }
     }
     let guardWasUsed=false;
@@ -265,7 +285,8 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
       actions.push({actor:'enemy',kind:'attack',damage:incoming,text:strike+incoming+' damage.'});
       if(s.health<=0){died=true;actions.push({actor:'enemy',kind:'death',text:'Run '+s.runId+' ended at Depth '+s.depth+'. Permanent progress retained.'});s.runId+=1;s.depth=1;resetCombatRunCarry(s);s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,3);s.guardBeats=0;s.encounterFirstStrikeUsed=false;s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;synchronizeCombatStats(s);s.health=s.maxHealth;actions.push({actor:'player',kind:'advance',text:'A new descent begins automatically at Depth 1.'});break;}
     }
-    if(guardWasUsed)s.guardBeats=0;
+    // Guard lasts through this enemy phase only, including phases without a scheduled enemy action.
+    if(guardWasUsed||enemyActions===0)s.guardBeats=0;
     synchronizeCombatStats(s);
     return {...snapshot(s),actions,defeated,died,...(item?{item}:{}),...(abilityCast?{abilityCast}:{})};
   });
@@ -357,6 +378,8 @@ function arenaBuild(rawState: CombatState): { state: CombatState; stats: ReturnT
     inventory: rawState.inventory.map(item => ({ ...item })),
     equipment: { ...rawState.equipment },
     skillLevels: { ...rawState.skillLevels },
+    equippedAbilities: [...rawState.equippedAbilities],
+    abilityCooldowns: { ...rawState.abilityCooldowns },
   };
   synchronizeCombatStats(state);
   state.health = state.maxHealth;
@@ -382,7 +405,7 @@ function createArenaProfile(userId: string, username: string, state: CombatState
     critChance: build.stats.critChance,
     weaponName: weapon?.name ?? 'Unarmed',
     armorName: armor?.name ?? 'No armor',
-    skillRanks: Object.values(state.skillLevels).reduce((sum, rank) => sum + Math.max(0, Number(rank) || 0), 0),
+    skillRanks: Object.values(state.skillLevels).reduce((sum, rank) => Math.min(Number.MAX_SAFE_INTEGER, sum + Math.max(0, Number(rank) || 0)), 0),
   };
 }
 function parseArenaProfile(userId: string, raw: unknown): CombatArenaProfile | null {
@@ -407,7 +430,7 @@ function parseArenaProfile(userId: string, raw: unknown): CombatArenaProfile | n
       critChance: Math.max(0, Math.min(.75, Number(p.critChance) || 0)),
       weaponName: String(p.weaponName ?? 'Unarmed').slice(0, 100),
       armorName: String(p.armorName ?? 'No armor').slice(0, 100),
-      skillRanks: finiteInt(p.skillRanks, 0, 0, 125),
+      skillRanks: finiteInt(p.skillRanks, 0, 0, Number.MAX_SAFE_INTEGER),
     };
   } catch {
     return null;
@@ -422,21 +445,26 @@ function resolveArenaDuel(challengerState: CombatState, opponentState: CombatSta
   let opponentHp = opponent.stats.maxHealth;
   let challengerFirst = true;
   let opponentFirst = true;
+  const energy: Record<'challenger'|'opponent',number> = { challenger:3, opponent:3 };
+  const cooldowns: Record<'challenger'|'opponent',Partial<Record<CombatSkillId,number>>> = { challenger:{}, opponent:{} };
   const log: string[] = [];
   const append = (message: string) => { log.push(message); if (log.length > 10) log.shift(); };
 
-  const attack = (side: 'challenger' | 'opponent') => {
+  const attack = (side: 'challenger' | 'opponent', abilityMultiplier=1, guaranteedCrit=false, bonusAttackMultiplier=1) => {
     const isChallenger = side === 'challenger';
     const attacker = isChallenger ? challenger : opponent;
     const defender = isChallenger ? opponent : challenger;
     const weapon = attacker.state.inventory.find(item => item.id === attacker.state.equipment.weapon);
-    let multiplier = 1;
+    const weaponEffectiveness = gearQualityEffectiveness(weapon,Math.max(0,attacker.state.depth-1));
+    let multiplier = abilityMultiplier;
     const isFirst = isChallenger ? challengerFirst : opponentFirst;
-    if (isFirst && weapon?.trait === 'first-strike') multiplier *= 1.5;
+    if (isFirst && weapon?.trait === 'first-strike') multiplier *= 1 + .5*weaponEffectiveness;
     if (isChallenger) challengerFirst = false; else opponentFirst = false;
-    const critical = secureRandom() < attacker.stats.critChance;
-    let damage = Math.max(1, Math.round(attacker.stats.damage * multiplier * (critical ? 1.75 : 1)));
-    if (weapon?.trait === 'bleed' && secureRandom() < .18) damage += Math.max(1, Math.round(attacker.stats.damage * .3));
+    const critical = guaranteedCrit || secureRandom() < attacker.stats.critChance;
+    let damage = Math.max(1, Math.round(attacker.stats.damage * multiplier * bonusAttackMultiplier * (critical ? 1.75 : 1)));
+    if (weapon?.trait === 'bleed' && secureRandom() < .18*weaponEffectiveness) {
+      damage += Math.max(1, Math.round(attacker.stats.damage * .3*weaponEffectiveness));
+    }
     damage = Math.max(1, Math.round(damage * (1 - defender.stats.damageReduction)));
     if (isChallenger) opponentHp = Math.max(0, opponentHp - damage);
     else challengerHp = Math.max(0, challengerHp - damage);
@@ -444,32 +472,73 @@ function resolveArenaDuel(challengerState: CombatState, opponentState: CombatSta
     append(`${who} ${critical ? 'critically hit' : 'hit'} for ${damage.toLocaleString()} damage.`);
   };
 
-  let rounds = 0;
-  for (rounds = 1; rounds <= 100; rounds += 1) {
-    const first = challenger.stats.speed >= opponent.stats.speed ? 'challenger' : 'opponent';
-    const second = first === 'challenger' ? 'opponent' : 'challenger';
-    for (const side of [first, second] as const) {
-      const isChallenger = side === 'challenger';
-      const actor = isChallenger ? challenger : opponent;
-      const actorHp = () => isChallenger ? challengerHp : opponentHp;
-      const foeHp = () => isChallenger ? opponentHp : challengerHp;
-      const ownArmor = actor.state.inventory.find(item => item.id === actor.state.equipment.armor);
-      const speed = Math.min(800, actor.stats.speed + (ownArmor?.trait === 'desperation' && actorHp() <= actor.stats.maxHealth * .4 ? 20 : 0));
-      const actionCount = Math.min(8, Math.max(1, Math.floor(speed / 100)));
-      for (let action = 0; action < actionCount && foeHp() > 0; action += 1) attack(side);
-      if (challengerHp <= 0 || opponentHp <= 0) break;
+  const takeTurn = (side: 'challenger'|'opponent', round: number) => {
+    const isChallenger = side==='challenger';
+    const actor = isChallenger ? challenger : opponent;
+    const actorHp = () => isChallenger ? challengerHp : opponentHp;
+    const foeHp = () => isChallenger ? opponentHp : challengerHp;
+    if(foeHp()<=0||actorHp()<=0)return;
+    energy[side]=Math.min(actor.state.maxEnergy,energy[side]+1);
+    let damageMultiplier=1,guaranteedCrit=false,extraAttacks=0,flurryMultiplier=1;
+    const readySkill=actor.state.equippedAbilities
+      .map(id=>COMBAT_SKILLS.find(skill=>skill.id===id))
+      .find(skill=>skill&&(actor.state.skillLevels[skill.id]??0)>0&&(cooldowns[side][skill.id]??0)<=round&&energy[side]>=combatSkillEnergyCost(skill.rarity));
+    if(readySkill){
+      const rank=Math.max(1,Math.floor(Number(actor.state.skillLevels[readySkill.id])||1));
+      const rankScale=Math.log2(rank+1);
+      energy[side]-=combatSkillEnergyCost(readySkill.rarity);
+      cooldowns[side][readySkill.id]=round+combatSkillCooldown(readySkill.rarity,rank);
+      const archetype=combatAbilityType(readySkill);
+      if(archetype==='strike'){
+        damageMultiplier=1.2+readySkill.value*2+rankScale*.15;
+        append(`${isChallenger?'You':'Opponent'} cast ${readySkill.name}.`);
+      }else if(archetype==='flurry'){
+        extraAttacks=Math.min(11,1+Math.floor(rankScale));
+        flurryMultiplier=combatFlurryAttackMultiplier(readySkill.value);
+        append(`${isChallenger?'You':'Opponent'} cast ${readySkill.name} for ${extraAttacks} bonus strikes.`);
+      }else if(archetype==='mend'){
+        const before=actorHp();
+        const healed=Math.max(1,Math.round(actor.stats.maxHealth*Math.min(.9,.10+readySkill.value+rankScale*.06)));
+        if(isChallenger)challengerHp=Math.min(actor.stats.maxHealth,challengerHp+healed);
+        else opponentHp=Math.min(actor.stats.maxHealth,opponentHp+healed);
+        append(`${isChallenger?'You':'Opponent'} cast ${readySkill.name} and restored ${Math.max(0,actorHp()-before)} HP.`);
+      }else if(archetype==='focus'){
+        guaranteedCrit=true;
+        damageMultiplier=1.65+readySkill.value*2+rankScale*.15;
+        append(`${isChallenger?'You':'Opponent'} cast ${readySkill.name}; the next strike is critical.`);
+      }else{
+        // Bounty currency is a PvE reward; this Arena buff does not mint currency through PvP.
+        damageMultiplier=1+readySkill.value+rankScale*.05;
+        append(`${isChallenger?'You':'Opponent'} cast ${readySkill.name} to empower the next strike.`);
+      }
     }
-    if (challengerHp <= 0 || opponentHp <= 0) break;
+    const ownArmor=actor.state.inventory.find(item=>item.id===actor.state.equipment.armor);
+    const armorEffectiveness=gearQualityEffectiveness(ownArmor,Math.max(0,actor.state.depth-1));
+    const speed=Math.min(800,actor.stats.speed+(ownArmor?.trait==='desperation'&&actorHp()<=actor.stats.maxHealth*.4?Math.round(20*armorEffectiveness):0));
+    const actionCount=Math.min(8,Math.max(1,Math.floor(speed/100)));
+    const totalAttacks=Math.min(12,actionCount+extraAttacks);
+    for(let action=0;action<totalAttacks&&foeHp()>0;action++)attack(side,action===0?damageMultiplier:1,action===0&&guaranteedCrit,action>=actionCount?flurryMultiplier:1);
+  };
+
+  let rounds=0;
+  for(rounds=1;rounds<=100;rounds++){
+    const first=challenger.stats.speed>opponent.stats.speed?'challenger'
+      :challenger.stats.speed<opponent.stats.speed?'opponent'
+      :(secureRandom()<.5?'challenger':'opponent');
+    const second=first==='challenger'?'opponent':'challenger';
+    takeTurn(first,rounds);
+    if(challengerHp<=0||opponentHp<=0)break;
+    takeTurn(second,rounds);
+    if(challengerHp<=0||opponentHp<=0)break;
   }
-  // Extremely defensive equal builds still resolve deterministically after the
-  // round cap; remaining health ratio is the tie-breaker.
+  // Extremely defensive equal builds resolve by remaining health; perfectly equal ties use fair RNG.
   const challengerHealthRatio=challengerHp/challenger.stats.maxHealth;
   const opponentHealthRatio=opponentHp/opponent.stats.maxHealth;
   const winner=challengerHealthRatio===opponentHealthRatio
-    ? (secureRandom()<0.5?'challenger':'opponent')
-    : challengerHealthRatio>opponentHealthRatio?'challenger':'opponent';
-  append(winner === 'challenger' ? 'Victory. Arena rating updated.' : 'Defeat. Arena rating updated.');
-  return { winner, rounds: Math.min(rounds, 100), log };
+    ?(secureRandom()<.5?'challenger':'opponent')
+    :challengerHealthRatio>opponentHealthRatio?'challenger':'opponent';
+  append(winner==='challenger'?'Victory. Arena rating updated.':'Defeat. Arena rating updated.');
+  return {winner,rounds:Math.min(rounds,100),log};
 }
 
 /** Register the current server-owned build and return recently active opponents. */
