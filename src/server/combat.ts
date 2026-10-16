@@ -290,7 +290,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         actions.push({actor:'player',kind:'ability',text:activeSkill.name+' guarantees a critical strike.'});
       } else {
         const reward=combatBountyReward(activeSkill.value,activeSkillRank);
-        const bountyMarks=Math.min(Number.MAX_SAFE_INTEGER-s.combatMarks,reward.marks+reward.coins);
+        const bountyMarks=Math.min(Number.MAX_SAFE_INTEGER-s.combatMarks,reward);
         s.combatMarks+=bountyMarks;
         actions.push({actor:'player',kind:'ability',text:activeSkill.name+' grants '+bountyMarks.toLocaleString()+' Combat Marks.'});
       }
