@@ -351,12 +351,17 @@ export async function scrapCombatItem(itemIdValue:unknown):Promise<CombatSnapsho
 }
 
 export async function forgeCombatGear(slotValue:unknown):Promise<CombatSnapshot&{forgeResult:{item:CombatGear;cost:number;remainingScrap:number}}>{
-  if(!(['weapon','helmet','chest','gloves','boots','ring','amulet'] as unknown[]).includes(slotValue))throw new Error('Choose a valid equipment slot for the Forge.');
+  if(typeof slotValue!=='string')throw new Error('Choose a valid equipment slot for the Forge.');
+  // The client-facing name "chest" maps to the persisted gear slot "armor".
+  const requestedSlot=slotValue==='chest'?'armor':slotValue;
+  const isCombatGearSlot=(value:string):value is CombatGearSlot=>
+    ['weapon','armor','helmet','gloves','boots','ring','amulet'].includes(value);
+  if(!isCombatGearSlot(requestedSlot))throw new Error('Choose a valid equipment slot for the Forge.');
   return mutate(state=>{
     const floor=Math.max(0,state.depth-1),cost=combatForgeCost(floor);
     if(state.scrap<cost)throw new Error('Not enough Scrap to forge this item.');
     state.scrap-=cost;
-    const item=createGear(floor,slotValue);
+    const item=createGear(floor,requestedSlot);
     addCombatGearToInventory(state,item);
     return {...snapshot(state),forgeResult:{item,cost,remainingScrap:state.scrap}};
   });
