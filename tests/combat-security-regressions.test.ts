@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { context, redis } from '../src/server/devvit-mock.js';
 import { getCombatSnapshot, performCombatBeat, rollCombatSkill } from '../src/server/combat.js';
-import { calculateCombatArenaRatingUpdate, getEnemyForDungeonDepth } from '../src/shared/combat.js';
+import { COMBAT_BEAT_INTERVAL_MS, calculateCombatArenaRatingUpdate, getEnemyForDungeonDepth } from '../src/shared/combat.js';
 
 async function withPlayer<T>(userId: string, run: (key: string) => Promise<T>): Promise<T> {
   const priorUserId = context.userId;
@@ -99,7 +99,7 @@ test('Guard remains active through a slow enemy wind-up and mitigates its next a
     assert.equal(first.state.guardBeats, 1, 'Guard must not expire when the enemy has no action ready');
 
     const saved = JSON.parse((await redis.get(key))!) as { lastAcceptedBeatAtMs: number; playerActionsResolved: number };
-    saved.lastAcceptedBeatAtMs = Date.now() - 1000; // Advance only the persisted cooldown clock.
+    saved.lastAcceptedBeatAtMs = Date.now() - COMBAT_BEAT_INTERVAL_MS - 1; // Advance the persisted cooldown clock past the full 30-second cadence.
     saved.playerActionsResolved = 6; // Isolate the enemy action in this beat.
     await redis.set(key, JSON.stringify({ ...first.state, ...saved }));
 
