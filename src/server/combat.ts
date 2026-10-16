@@ -422,7 +422,7 @@ function arenaBuild(rawState: CombatState): { state: CombatState; stats: ReturnT
     // PvP quality scaling must not jump when a death resets current depth to 1.
     depth: Math.max(1, Math.min(COMBAT_MAX_DEPTH, rawState.bestDepth)),
     // Arena stat resolution only needs equipped pieces; cloning the permanent stash on every challenge is wasteful.
-    inventory: rawState.inventory.filter(item => (item.id === rawState.equipment.weapon && item.slot === 'weapon') || (item.id === rawState.equipment.armor && item.slot === 'armor')).map(item => ({ ...item })),
+    inventory: rawState.inventory.filter(item => Object.values(rawState.equipment).includes(item.id)).map(item => ({ ...item })),
     equipment: { ...rawState.equipment },
     skillLevels: { ...rawState.skillLevels },
     equippedAbilities: [...rawState.equippedAbilities],
@@ -436,7 +436,7 @@ function arenaBuild(rawState: CombatState): { state: CombatState; stats: ReturnT
 function createArenaProfile(userId: string, username: string, state: CombatState, updatedAt: number): CombatArenaProfile {
   const build = arenaBuild(state);
   const weapon = build.state.inventory.find(item => item.id === build.state.equipment.weapon && item.slot === 'weapon');
-  const armor = build.state.inventory.find(item => item.id === build.state.equipment.armor && item.slot === 'armor');
+  const armor = build.state.inventory.find(item => item.id === build.state.equipment.chest && item.slot === 'chest');
   return {
     userId,
     username: arenaName(username),
@@ -560,9 +560,9 @@ function resolveArenaDuel(challengerState: CombatState, opponentState: CombatSta
         append(`${isChallenger?'You':'Opponent'} cast ${readySkill.name} to empower the next strike.`);
       }
     }
-    const ownArmor=actor.state.inventory.find(item=>item.id===actor.state.equipment.armor);
-    const armorEffectiveness=gearQualityEffectiveness(ownArmor,Math.max(0,actor.state.depth-1));
-    const speed=Math.min(800,actor.stats.speed+(ownArmor?.trait==='desperation'&&actorHp()<=actor.stats.maxHealth*.4?Math.round(20*armorEffectiveness):0));
+    const desperationGear=actor.state.inventory.find(item=>Object.values(actor.state.equipment).includes(item.id)&&item.trait==='desperation');
+    const desperationEffectiveness=gearQualityEffectiveness(desperationGear,Math.max(0,actor.state.depth-1));
+    const speed=Math.min(800,actor.stats.speed+(desperationGear&&actorHp()<=actor.stats.maxHealth*.4?Math.round(20*desperationEffectiveness):0));
     const actionCount=Math.min(8,Math.max(1,Math.floor(speed/100)));
     extraAttacks=combatEffectiveFlurryBonusAttacks(extraAttacks,actionCount);
     if(flurrySkill[side])append(`${isChallenger?'You':'Opponent'} cast ${flurrySkill[side]} for ${extraAttacks} bonus strikes.`);
