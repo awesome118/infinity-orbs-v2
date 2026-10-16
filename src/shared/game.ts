@@ -1278,16 +1278,14 @@ export function getOrbInfo(rarity: number): RarityTierInfo {
  * instead of multiplying the rolled rarity directly. This keeps high Luck
  * valuable without turning ordinary rolls into giant outliers.
  */
-// Luck is deliberately a gentle tail multiplier. At 1× Luck the distribution
-// remains P(Rarity >= R) ≈ 1/R; higher Luck improves the scale slowly instead of
-// changing the distribution's exponent and making extreme drops commonplace.
+// Luck gently raises the whole orb distribution, so average orb rarity keeps
+// improving as Luck grows instead of hitting the old 5× hard ceiling. The 0.08
+// exponent gives diminishing returns: 10× Luck is only ~1.20× rarity, while
+// 1,000,000× Luck is ~3.02×. The safety ceiling is reached only at extreme values.
 export function luckRarityFactor(luck: number): number {
   const rawLuck = Number(luck);
   const effectiveLuck = Number.isFinite(rawLuck) ? Math.max(1, rawLuck) : 1;
-  // Luck should make rare results meaningfully better without turning the
-  // upper tail into routine drops.  Every full order of magnitude of Luck
-  // adds only 0.75× to the rarity scale, capped at 5×.
-  return Math.min(5, 1 + Math.log10(effectiveLuck) * 0.75);
+  return Math.min(25, Math.pow(effectiveLuck, 0.08));
 }
 
 // Kept for compatibility with older callers. The continuum no longer changes its exponent.
