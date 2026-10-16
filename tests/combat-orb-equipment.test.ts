@@ -90,11 +90,10 @@ test('Gacha ranks increase non-Common odds and Rank 30 splits the non-Mythic odd
   assert.equal(rank1.Mythic, 0);
   assert.ok(rank10.Mythic > rank1.Mythic);
   assert.equal(rank30.Mythic, 0.005);
-  assert.equal(rank30.Common, 0.24875);
-  assert.equal(rank30.Uncommon, 0.24875);
-  assert.equal(rank30.Rare, 0.24875);
-  assert.equal(rank30.Epic, 0.24875);
-  assert.equal(Object.values(rank30).reduce((sum, chance) => sum + chance, 0), 1);
+  for (const rarity of ['Common', 'Uncommon', 'Rare', 'Epic'] as const) {
+    assert.ok(Math.abs(rank30[rarity] - 0.24875) < 1e-12, rarity + ' should have 24.875% base odds');
+  }
+  assert.ok(Math.abs(Object.values(rank30).reduce((sum, chance) => sum + chance, 0) - 1) < 1e-12);
   assert.equal(resolveCombatSkillRarity(0.1, 30, 0, 0), 'Common');
   assert.equal(resolveCombatSkillRarity(0.3, 30, 0, 0), 'Uncommon');
   assert.equal(resolveCombatSkillRarity(0.5, 30, 0, 0), 'Rare');
