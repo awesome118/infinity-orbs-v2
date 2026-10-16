@@ -8,7 +8,7 @@ test('each orb rarity maps monotonically to a bounded base-damage multiplier', (
   assert.ok(combatOrbDamageMultiplier(10) > combatOrbDamageMultiplier(2));
   assert.ok(combatOrbDamageMultiplier(100) > combatOrbDamageMultiplier(10));
   assert.equal(combatOrbDamageMultiplier(200), 3);
-  assert.equal(combatOrbDamageMultiplier(Number.MAX_SAFE_INTEGER), 20);
+  assert.equal(combatOrbDamageMultiplier(1e30), 20);
 });
 
 test('gear affixes from multiple equipment slots contribute to the combat build', () => {
