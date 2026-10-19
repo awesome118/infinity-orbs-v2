@@ -177,10 +177,11 @@ test('Frenzy claim reserves claimant, owner, and post locks in a deterministic o
   assert.match(claim, /const postLockId =/);
   assert.match(claim, /__frenzy-post__/);
   assert.match(claim, /return withPlayerMutationLocksFor\(lockIds/);
-  assert.match(claim, /if \(data\.consumedAt != null\)/);
-  assert.match(claim, /expectedValue: raw,[\s\S]*?nextValue: consumedPostValue/);
-  assert.match(claim, /const consumedPostValue = JSON\.stringify\(\{ \.\.\.data, consumedAt: now, consumedBy: claimantId \}\)/);
-  assert.match(claim, /await save\(s, \[[\s\S]*?key: FRENZY_POST_PREFIX \+ postId,[\s\S]*?expectedValue: raw,[\s\S]*?nextValue: consumedPostValue/);
+  assert.doesNotMatch(claim, /if \(data\.consumedAt != null\)/);
+  assert.match(claim, /const claimReceiptKey = frenzyClaimReceiptKey\(postId, claimantId\)/);
+  assert.match(claim, /key: claimReceiptKey,[\s\S]*?expectedValue: null,[\s\S]*?nextValue: JSON\.stringify\(\{ postId, claimantId, claimedAt: now \}\)/);
+  assert.match(claim, /key: FRENZY_POST_PREFIX \+ postId,[\s\S]*?expectedValue: raw,[\s\S]*?nextValue: raw/);
+  assert.match(claim, /You have already claimed this Orb Frenzy/);
 });
 
 test('missing-key initialization cannot overwrite a concurrent first write', () => {
