@@ -11,6 +11,18 @@ const entries: Array<{
   description: string;
 }> = [
   {
+    title: 'Combat Unlock & Mark Shop',
+    description: 'Combat unlocks at Level 8 with a guided introduction. Coins are shown in the core game, while Combat Marks are shown in Combat. Mark Magnet and Warding Doctrine add new permanent upgrades, and Starfall and Mark Harvest expand possible gear Major Abilities.',
+  },
+  {
+    title: 'Shared Orb Frenzies',
+    description: 'An Orb Frenzy can now be claimed by multiple different players during its lifetime. Per-player receipts prevent duplicate claims, and the existing individual claim cooldown remains in force.',
+  },
+  {
+    title: 'Combat Reset & Readability',
+    description: 'Full player wipes now clear the separate Combat save. Combat echo waves last longer, and item Details tooltips use viewport-aware positioning on narrow screens.',
+  },
+  {
     title: 'Runes · Combat Loot for the Main Game',
     description: 'Monsters can now drop seven Rune rarities. Equip Runes in the new Runes menu to improve Orb Luck, Coins, Shard chance, or XP in the core game. Bosses always drop a Rune; elites have better odds. Earn more Rune slots through Delver levels and depth, and salvage extras for Combat Marks.',
   },
