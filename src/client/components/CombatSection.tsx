@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Coins, Info, Pause, Play, Sparkles, Swords, Zap, Sword, Shield, Crown, Hand, Footprints, CircleDot, Gem, Hammer, Clock3, Timer, type LucideIcon } from 'lucide-react';
+import { RunesSection } from './RunesSection.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatAutoScrapSettings, CombatCommand, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatOrbRoll, CombatPage, CombatSkillDefinition, CombatSkillId, CombatSnapshot, CombatState, CombatStats, CombatTactic } from '../../shared/combat.js';
 import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
 
@@ -53,19 +54,19 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor}:{item:Comb
     className={'io-combat-gear-card '+rarityClass(grade)}
     onPointerMove={event=>{
       if(event.pointerType!=='mouse')return;
-      const x=Math.max(8,Math.min(window.innerWidth-326,event.clientX+16));
-      const y=Math.max(8,Math.min(window.innerHeight-270,event.clientY+16));
+      const x=Math.max(8,Math.min(Math.max(8,window.innerWidth-326),event.clientX+16));
+      const y=Math.max(8,Math.min(Math.max(8,window.innerHeight-230),event.clientY+16));
       setTooltipPoint(previous=>previous&&Math.abs(previous.x-x)<3&&Math.abs(previous.y-y)<3?previous:{x,y});
     }}
-    onPointerLeave={()=>setTooltipPoint(null)}
+    onPointerLeave={()=>{if(!showTooltip)setTooltipPoint(null)}}
   >
-    <div className="io-combat-gear-head"><div className="io-combat-gear-name"><SlotIcon size={24} strokeWidth={1.8} aria-hidden="true"/><div><span className="io-combat-eyebrow">{item.quality.toFixed(2)}% · F{fmt(item.sourceFloor)} · {slotLabel(item.slot).toUpperCase()}</span><h3>{item.name}</h3></div></div><div className="io-combat-gear-actions"><span className="io-combat-power">PWR {fmt(item.power)}</span><button type="button" className="io-combat-inspect-button" onClick={()=>setShowTooltip(value=>!value)} aria-expanded={showTooltip} aria-label={'Inspect '+item.name}><Info size={12}/> Details</button></div></div>
+    <div className="io-combat-gear-head"><div className="io-combat-gear-name"><SlotIcon size={24} strokeWidth={1.8} aria-hidden="true"/><div><span className="io-combat-eyebrow">{item.quality.toFixed(2)}% · F{fmt(item.sourceFloor)} · {slotLabel(item.slot).toUpperCase()}</span><h3>{item.name}</h3></div></div><div className="io-combat-gear-actions"><span className="io-combat-power">PWR {fmt(item.power)}</span><button type="button" className="io-combat-inspect-button" onClick={event=>{const card=event.currentTarget.closest('.io-combat-gear-card');const rect=card?.getBoundingClientRect();if(rect){const x=Math.max(8,Math.min(Math.max(8,window.innerWidth-326),rect.left+Math.min(rect.width-16,24)));const y=Math.max(8,Math.min(Math.max(8,window.innerHeight-230),rect.bottom+12));setTooltipPoint({x,y});}setShowTooltip(value=>!value)}} aria-expanded={showTooltip} aria-label={'Inspect '+item.name}><Info size={12}/> Details</button></div></div>
     <p>{item.effect}</p>
     <div className="io-combat-gear-stats">{bonuses.map(stat=><span className={'io-combat-stat-'+stat.kind} key={stat.label} title={stat.detail}>{stat.label}</span>)}
       <span>DROPPED FLOOR {fmt(item.sourceFloor)}</span><span>EXPECTED {floorQualityRequirement(currentFloor).toFixed(0)}%+</span><span>EFFECTIVE {Math.round(gearQualityEffectiveness(item,currentFloor)*100)}%</span>
     </div>
     {item.majorAbility&&<div className={'io-combat-major-ability '+(item.majorAbility.id==='void-edge'?'io-combat-major-offense':item.majorAbility.id==='aegis-ward'?'io-combat-major-defense':'')}><span>{item.majorAbility.id==='chrono-surge'?<Clock3 size={13} aria-hidden="true"/>:<Sparkles size={13} aria-hidden="true"/>} MAJOR ABILITY</span><strong>{item.majorAbility.name}</strong><p>{item.majorAbility.description}</p></div>}
-    <div className={'io-combat-gear-tooltip '+(showTooltip?'is-open':'')} style={tooltipPoint?{position:'fixed',left:tooltipPoint.x,top:tooltipPoint.y,right:'auto',maxWidth:310}:undefined} role="tooltip">
+    <div className={'io-combat-gear-tooltip '+(showTooltip?'is-open':'')} style={{position:'fixed',left:tooltipPoint?.x??12,top:tooltipPoint?.y??12,right:'auto',maxWidth:310,maxHeight:'calc(100vh - 16px)',overflow:'auto'}} role="tooltip">
       <span className="io-combat-eyebrow">{grade.toUpperCase()} ITEM · {item.quality.toFixed(2)}% QUALITY · FLOOR {fmt(item.sourceFloor)}</span>
       <strong>{item.name}</strong><p>{slotLabel(item.slot)} · Power {fmt(item.power)}</p>
       <div>{bonuses.length?bonuses.map(stat=><span className={'io-combat-stat-'+stat.kind} key={stat.label}>{stat.label}</span>):<span>No direct stat bonuses</span>}</div>
@@ -247,6 +248,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const forgeQualityCost=combatForgeQualityCost(currentFloor,forgeQuality);
   const visibleGear=state.inventory.slice(0,visibleGearCount);
   const visibleSkills=COMBAT_SKILLS.filter(skill=>showAllSkills||rankOf(state,skill.id)>0);
+  if(page==='runes')return <RunesSection/>;
   const hpPct=Math.max(0,Math.min(100,state.health/Math.max(1,state.maxHealth)*100));
   const enemyPct=Math.max(0,Math.min(100,enemy.hp/Math.max(1,enemy.maxHp)*100));
   return <section className="io-combat-screen">
@@ -348,7 +350,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       </section>
       <section className="io-combat-panel io-combat-major-info">
         <div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">RARE EQUIPMENT TRAITS</span><h2><Sparkles size={18}/> Major Abilities</h2><p>Major Abilities add powerful special effects to equipped gear. Offensive and defensive bonuses use different colors for quick comparison.</p></div></div>
-        <div className="io-combat-major-examples"><article><Timer size={21}/><div><strong>Chrono Surge</strong><p>Passively increases action frequency while the item is equipped.</p></div></article><article><Sparkles size={21}/><div><strong>Second Dawn</strong><p>After taking damage, heals a portion of Max HP at the start of your next turn.</p></div></article><article className="io-combat-major-offense"><Sword size={21}/><div><strong>Void Edge</strong><p>Increases outgoing damage while the item is equipped.</p></div></article><article className="io-combat-major-defense"><Shield size={21}/><div><strong>Aegis Ward</strong><p>Reduces incoming damage while the item is equipped.</p></div></article></div>
+        <div className="io-combat-major-examples"><article><Timer size={21}/><div><strong>Chrono Surge</strong><p>Passively increases action frequency while the item is equipped.</p></div></article><article><Sparkles size={21}/><div><strong>Second Dawn</strong><p>After taking damage, heals a portion of Max HP at the start of your next turn.</p></div></article><article className="io-combat-major-offense"><Sword size={21}/><div><strong>Void Edge</strong><p>Increases outgoing damage while the item is equipped.</p></div></article><article className="io-combat-major-defense"><Shield size={21}/><div><strong>Aegis Ward</strong><p>Reduces incoming damage while the item is equipped.</p></div></article><article className="io-combat-major-offense"><Sparkles size={21}/><div><strong>Starfall</strong><p>Adds critical-hit chance while the item is equipped.</p></div></article><article className="io-combat-major-economy"><Coins size={21}/><div><strong>Mark Harvest</strong><p>Increases Combat Marks from kills while the item is equipped.</p></div></article></div>
       </section>
     </>}
     {page==='skills'&&<>
