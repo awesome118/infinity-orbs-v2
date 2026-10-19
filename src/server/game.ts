@@ -6433,12 +6433,9 @@ export async function postFrenzyThankYouComment(
     consumedAt?: number | null;
     consumedBy?: string;
   }>(postRaw);
-  if (
-    !postData ||
-    postData.consumedAt == null ||
-    postData.consumedBy !== claimantId ||
-    !postData.ownerUsername
-  ) {
+  const claimReceipt = await redis.get(frenzyClaimReceiptKey(postId, claimantId));
+  const legacyClaimedByThisUser = postData?.consumedAt != null && postData.consumedBy === claimantId;
+  if (!postData || (claimReceipt == null && !legacyClaimedByThisUser) || !postData.ownerUsername) {
     throw new Error('You can only leave a thank-you comment after you claim this Frenzy.');
   }
 
