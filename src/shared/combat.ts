@@ -13,6 +13,68 @@ export type CombatDungeonId = 'undercrypt' | 'cinder-vault' | 'glass-labyrinth';
 export interface CombatAutoScrapSettings { enabled: boolean; maxQuality: number; }
 export const DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS: CombatAutoScrapSettings = { enabled:false, maxQuality:20 };
 export type CombatRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Mythic';
+
+
+export type CombatRuneRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Legendary' | 'Mythic' | 'Cosmic';
+export type CombatRuneStat = 'luckPct' | 'coinGainPct' | 'shardChancePct' | 'xpGainPct';
+export interface CombatRune {
+  id: string;
+  name: string;
+  rarity: CombatRuneRarity;
+  stat: CombatRuneStat;
+  /** Percent bonus, except shardChancePct which is percentage points of added proc chance. */
+  value: number;
+  sourceDepth: number;
+  sourceDungeon: CombatDungeonId;
+}
+export interface CombatRuneBonuses { luckPct: number; coinGainPct: number; shardChancePct: number; xpGainPct: number; }
+export const COMBAT_RUNE_INVENTORY_CAP = 200;
+const COMBAT_RUNE_RARITY_MULTIPLIER: Record<CombatRuneRarity, number> = {
+  Common: 1, Uncommon: 1.35, Rare: 1.9, Epic: 2.8, Legendary: 4.4, Mythic: 7, Cosmic: 13,
+};
+const COMBAT_RUNE_BASE_VALUE: Record<CombatRuneStat, number> = {
+  luckPct: .6, coinGainPct: 1.5, shardChancePct: .035, xpGainPct: 1.5,
+};
+export function combatRuneSlotsUnlocked(levelValue: unknown, bestDepthValue: unknown): number {
+  const level = Math.max(1, Math.floor(Number(levelValue) || 1));
+  const bestDepth = Math.max(1, Math.floor(Number(bestDepthValue) || 1));
+  return 2 + (level >= 10 ? 1 : 0) + (level >= 25 ? 1 : 0) + (bestDepth >= 50 ? 1 : 0);
+}
+export function combatRuneValueFor(rarity: CombatRuneRarity, stat: CombatRuneStat, depthValue: unknown): number {
+  const depth = Math.max(0, Math.floor(Number(depthValue) || 0));
+  const depthMultiplier = 1 + Math.min(.4, Math.log2(depth + 1) * .025);
+  const decimals = stat === 'shardChancePct' ? 4 : 2;
+  const factor = 10 ** decimals;
+  return Math.round(COMBAT_RUNE_BASE_VALUE[stat] * COMBAT_RUNE_RARITY_MULTIPLIER[rarity] * depthMultiplier * factor) / factor;
+}
+export function combatRuneEffectText(rune: Pick<CombatRune, 'stat' | 'value'>): string {
+  if (rune.stat === 'luckPct') return '+' + rune.value.toFixed(2) + '% Orb Luck';
+  if (rune.stat === 'coinGainPct') return '+' + rune.value.toFixed(2) + '% Coins';
+  if (rune.stat === 'shardChancePct') return '+' + rune.value.toFixed(3) + '% Shard chance';
+  return '+' + rune.value.toFixed(2) + '% XP';
+}
+export function combatRuneBonuses(runesValue: unknown, equippedValue: unknown): CombatRuneBonuses {
+  const bonuses: CombatRuneBonuses = { luckPct: 0, coinGainPct: 0, shardChancePct: 0, xpGainPct: 0 };
+  const equipped = new Set((Array.isArray(equippedValue) ? equippedValue : []).filter((value): value is string => typeof value === 'string'));
+  if (!equipped.size || !Array.isArray(runesValue)) return bonuses;
+  const validStats = new Set<CombatRuneStat>(['luckPct', 'coinGainPct', 'shardChancePct', 'xpGainPct']);
+  for (const raw of runesValue) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const rune = raw as Partial<CombatRune>;
+    if (typeof rune.id !== 'string' || !equipped.has(rune.id) || !rune.stat || !validStats.has(rune.stat)) continue;
+    const value = Number(rune.value);
+    if (!Number.isFinite(value) || value <= 0) continue;
+    bonuses[rune.stat] += Math.min(rune.stat === 'shardChancePct' ? 100 : 300, value);
+  }
+  bonuses.luckPct = Math.min(400, bonuses.luckPct);
+  bonuses.coinGainPct = Math.min(300, bonuses.coinGainPct);
+  bonuses.shardChancePct = Math.min(100, bonuses.shardChancePct);
+  bonuses.xpGainPct = Math.min(300, bonuses.xpGainPct);
+  return bonuses;
+}
+export function combatRuneSalvageValue(rarity: CombatRuneRarity): number {
+  return ({ Common: 50, Uncommon: 100, Rare: 250, Epic: 800, Legendary: 2500, Mythic: 10000, Cosmic: 40000 })[rarity];
+}
 export type CombatSkillStat = 'damagePct' | 'speedFlat' | 'healthPct' | 'critChance' | 'coinBonus';
 export type CombatUpgradeId = 'edge-training' | 'vitality' | 'precision' | 'scavenger' | 'orb-resonance';
 export type CombatUpgradeStat = 'damagePct' | 'healthPct' | 'speedFlat' | 'critChance' | 'markBonus' | 'orbFocusPct';
@@ -292,6 +354,9 @@ export interface CombatState {
   scrap: number;
   /** Shared combat wallet: kill and ability rewards fund permanent upgrades and Skill Gacha pulls. */
   combatMarks: number;
+  /** Persistent monster drops that improve the core orb-rolling game while equipped. */
+  runes: CombatRune[];
+  equippedRunes: string[];
   combatUpgrades: CombatUpgradeLevels;
   totalKills: number;
   skillRolls: number;
@@ -497,7 +562,7 @@ export function createCombatState(): CombatState {
   const state: CombatState = {
     version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
-    baseDamage:54, coins:0, scrap:0, combatMarks:250, combatUpgrades:{}, totalKills:0, skillRolls:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
+    baseDamage:54, coins:0, scrap:0, combatMarks:250, runes:[], equippedRunes:[], combatUpgrades:{}, totalKills:0, skillRolls:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
     combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
     encounterFirstStrikeUsed:false, pendingHealAmount:0, inventory:starter.inventory,

@@ -19,6 +19,7 @@ import {
   Lock,
   Megaphone,
   X,
+  Gem,
 } from 'lucide-react';
 import type {
   PlayerState,
@@ -69,6 +70,7 @@ import {
 import { sound } from './sound.js';
 import { Header } from './components/Header.js';
 import { CombatSection } from './components/CombatSection.js';
+import { RunesSection } from './components/RunesSection.js';
 import type { CombatPage } from '../shared/combat.js';
 import { RollSection } from './components/RollSection.js';
 import { UpgradesSection } from './components/UpgradesSection.js';
@@ -97,6 +99,7 @@ type ActiveTab =
   | 'altar'
   | 'mastery'
   | 'collection'
+  | 'runes'
   | 'quests'
   | 'social'
   | 'profile'
@@ -208,6 +211,13 @@ export function App() {
 
   const [readyAt, setReadyAt] = useState<number>(0);
   const [tab, setTab] = useState<ActiveTab>('roll');
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const [tutorialDismissed, setTutorialDismissed] = useState(() => {
+    try { return window.localStorage.getItem('io-first-roll-tutorial-v1') === 'done'; } catch { return false; }
+  });
+  useEffect(() => {
+    if (!tutorialDismissed && state && state.totalRolls > 0 && tutorialStep === 0) setTutorialStep(1);
+  }, [state?.totalRolls, tutorialDismissed, tutorialStep]);
   const combatMode = tab === 'fight' || tab === 'dungeons' || tab === 'gear' || tab === 'forge' || tab === 'skills' || tab === 'arena';
   const [autoRoll, setAutoRoll] = useState<boolean>(false);
   const [isBeta, setIsBeta] = useState(false);
@@ -504,6 +514,11 @@ export function App() {
       }
     })(),
   );
+
+  const finishTutorial = () => {
+    setTutorialDismissed(true);
+    try { window.localStorage.setItem('io-first-roll-tutorial-v1', 'done'); } catch { /* Embedded webviews may disable storage. */ }
+  };
 
   const featureForTab = (nextTab: ActiveTab): FeatureId | null => {
     if (nextTab === 'upgrades') return 'upgrades';
@@ -2444,6 +2459,14 @@ export function App() {
           </button>
 
           <button
+            onClick={() => { sound.playClick(); changeTab('runes'); }}
+            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${tab === 'runes' ? 'is-active bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}`}
+            title="Equip monster-dropped Runes to improve orb rolling"
+          >
+            <Gem className="w-3.5 h-3.5 text-violet-300" />
+            <span>Runes</span>
+          </button>
+          <button
             onClick={() => {
               sound.playClick();
               changeTab('quests');
@@ -2510,6 +2533,32 @@ export function App() {
 
       {/* Main Container Content */}
       <main className="app-main flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+
+        {!combatMode && state && !tutorialDismissed && (state.totalRolls <= 3 || tutorialStep > 0) && (
+          <section className="io-tutorial-guide" aria-live="polite" aria-label="First steps tutorial">
+            <div className="io-tutorial-topline"><span>FIRST STEPS</span><span>STEP {Math.min(4, tutorialStep + 1)} / 4</span><button type="button" onClick={finishTutorial} aria-label="Skip tutorial">Skip</button></div>
+            {tutorialStep === 0 && <>
+              <h2>Roll your first orb</h2>
+              <p>Every roll can reveal a rarer orb. The orb’s rarity drives its value, while rolls also earn coins, XP, and sometimes Shards. Start with one roll to see the core loop.</p>
+              <button type="button" className="io-tutorial-primary" disabled={isRolling || busy} onClick={() => { void handleRoll(false); }}><Sparkles size={15} /> Roll my first orb</button>
+            </>}
+            {tutorialStep === 1 && <>
+              <h2>Read the result</h2>
+              <p>{lastOrb ? `You found ${lastOrb.name} (1 / ${formatNumber(lastOrb.rarity)}). ` : ''}Rarer orbs are worth more. Your collection records every rarity you find, and coins let you improve future rolls.</p>
+              <button type="button" className="io-tutorial-primary" onClick={() => { setTutorialStep(2); changeTab('upgrades'); }}>Explore Upgrades <Zap size={15} /></button>
+            </>}
+            {tutorialStep === 2 && <>
+              <h2>Make the next roll better</h2>
+              <p>Luck improves your rarity odds; Speed reduces the wait between rolls. Coin and XP upgrades help you reinvest as you play. Buy whichever upgrade fits your next goal.</p>
+              <button type="button" className="io-tutorial-primary" onClick={() => { setTutorialStep(3); changeTab('collection'); }}>Open the Codex <BookOpen size={15} /></button>
+            </>}
+            {tutorialStep >= 3 && <>
+              <h2>Your journey is tracked</h2>
+              <p>The Codex tracks the rarities you’ve discovered. Later, defeat monsters in Combat to earn Runes, then equip them in the Runes menu for bonuses to your normal orb rolls.</p>
+              <button type="button" className="io-tutorial-primary" onClick={() => { finishTutorial(); changeTab('roll'); }}>Finish &amp; keep rolling <Sparkles size={15} /></button>
+            </>}
+          </section>
+        )}
         {combatMode ? (
           <CombatSection page={tab as CombatPage} onNavigate={changeTab} />
         ) : (
@@ -2584,6 +2633,8 @@ export function App() {
             onBuyChainPatcher={handleBuyChainPatcher}
           />
         )}
+
+        {tab === 'runes' && <RunesSection />}
 
         {tab === 'quests' && (
           <QuestsAndStreaks

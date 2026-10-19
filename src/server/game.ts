@@ -4,7 +4,7 @@ import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
-import { undercryptOrbLuckMultiplier } from '../shared/combat.js';
+import { combatRuneBonuses, undercryptOrbLuckMultiplier } from '../shared/combat.js';
 import {
   createInitialState,
   type PlayerState,
@@ -3381,10 +3381,12 @@ export async function applyRolls(
   const globalBoosters = s.globalBoosters;
   const communityLuck = worldEvent?.buffMultiplier ?? 1;
   let combatBestDepth = 1;
+  let runeBonuses = combatRuneBonuses([], []);
   if (typeof combatStateRaw === 'string') {
     try {
-      const parsed = JSON.parse(combatStateRaw) as { bestDepth?: unknown; dungeonId?: unknown; dungeonBestDepths?: { undercrypt?: unknown } };
+      const parsed = JSON.parse(combatStateRaw) as { bestDepth?: unknown; dungeonId?: unknown; dungeonBestDepths?: { undercrypt?: unknown }; runes?: unknown; equippedRunes?: unknown };
       combatBestDepth = Number(parsed?.dungeonBestDepths?.undercrypt) || (parsed?.dungeonId === 'undercrypt' ? Number(parsed?.bestDepth) || 1 : 1);
+      runeBonuses = combatRuneBonuses(parsed?.runes, parsed?.equippedRunes);
     } catch {
       // Ignore invalid optional combat state and preserve ordinary orb luck.
     }
@@ -3398,7 +3400,7 @@ export async function applyRolls(
   // Community Luck is another additive source, kept transient rather than persisted.
   // Cleared Crypt Wardens permanently improve main-game orb Luck without
   // touching the core player save: 1% per boss, capped at a 25% multiplier.
-  const baseLuck = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1)) * undercryptLuck;
+  const baseLuck = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1)) * undercryptLuck * (1 + Math.min(400, runeBonuses.luckPct) / 100);
 
   // Apex Fortune Mastery: chance on multi-roll to double the luck of that activation
   const apexChance = Math.min(0.45, (s.masterySkills?.apexFortune ?? 0) * 0.03);
@@ -3486,7 +3488,8 @@ export async function applyRolls(
 
     const xpBonusMul =
       (1 + (s.upgrades.xpBonus ?? 0) * 0.20) *
-      levelBenefits.xpMultiplier;
+      levelBenefits.xpMultiplier *
+      (1 + Math.min(300, runeBonuses.xpGainPct) / 100);
     const earnedXp = Math.round(Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) * xpBonusMul);
 
     // Shards bonus for rare orbs (1,000+)
@@ -3503,7 +3506,8 @@ export async function applyRolls(
       (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
       (s.guildPerks?.shardRank ?? 0) * 0.0005 +
       (s.prestigeUpgrades?.shardResonator ?? 0) * 0.0025 +
-      levelBenefits.shardChance
+      levelBenefits.shardChance +
+      Math.min(100, runeBonuses.shardChancePct) / 100
     );
     if (rng() < shardProcChance) {
       earnedShards += 1;
@@ -3536,7 +3540,8 @@ export async function applyRolls(
     levelBenefits.coinsMultiplier *
     (1 + (s.upgrades.coinBonus ?? 0) * 0.15) *
     (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
-    (1 + (s.guildPerks?.coinRank ?? 0) * 0.10);
+    (1 + (s.guildPerks?.coinRank ?? 0) * 0.10) *
+    (1 + Math.min(300, runeBonuses.coinGainPct) / 100);
   coinsGained = Math.round(coinsGained * coinBonusMul);
 
   const lowRarityCoins = rarities

@@ -2063,3 +2063,52 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 
 .io-combat-arena-turn.is-result{border-left:3px solid #d8bb72;background:rgba(71,53,21,.22)}
 .io-combat-arena-turn.is-result>span{color:#ffe5a3}
+
+
+/* First-run onboarding: compact, dismissible, and tied to real game actions. */
+.io-tutorial-guide{position:relative;margin:0 auto 1.25rem;max-width:64rem;padding:1rem 1.15rem;border:1px solid rgba(103,232,249,.35);border-radius:1rem;background:linear-gradient(120deg,rgba(8,47,73,.88),rgba(30,27,75,.82));box-shadow:0 12px 36px rgba(8,15,40,.22);color:#e2e8f0}
+.io-tutorial-topline{display:flex;align-items:center;gap:.8rem;color:#67e8f9;font-size:.65rem;font-weight:900;letter-spacing:.14em}
+.io-tutorial-topline span:nth-child(2){color:#94a3b8;margin-left:auto;letter-spacing:.06em}
+.io-tutorial-topline button{font-size:.7rem;font-weight:800;letter-spacing:normal;color:#94a3b8;padding:.2rem .45rem;border-radius:.45rem}
+.io-tutorial-topline button:hover{color:#fff;background:rgba(148,163,184,.12)}
+.io-tutorial-guide h2{margin:.5rem 0 .25rem;color:#fff;font-size:1.1rem;font-weight:950;letter-spacing:-.02em}
+.io-tutorial-guide p{margin:0;max-width:54rem;color:#cbd5e1;font-size:.84rem;line-height:1.6}
+.io-tutorial-primary{display:inline-flex;align-items:center;gap:.45rem;margin-top:.8rem;padding:.55rem .85rem;border-radius:.65rem;background:linear-gradient(100deg,#0891b2,#4f46e5);color:white;font-size:.75rem;font-weight:900;transition:filter .15s ease,transform .15s ease}
+.io-tutorial-primary:hover{filter:brightness(1.12);transform:translateY(-1px)}
+.io-tutorial-primary:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+/* Runes: permanent equipment that connects dungeon loot to core progression. */
+.io-runes-page{display:flex;flex-direction:column;gap:1.1rem;color:#e2e8f0}
+.io-runes-header{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}
+.io-runes-header h1{margin:.2rem 0 0;font-size:clamp(1.5rem,3vw,2.1rem);font-weight:950;letter-spacing:-.04em;color:#fff}
+.io-runes-kicker{font-size:.65rem;font-weight:900;letter-spacing:.16em;color:#c4b5fd}
+.io-runes-intro{max-width:48rem;margin:.35rem 0 0;color:#94a3b8;font-size:.85rem;line-height:1.6}
+.io-runes-panel{padding:1rem;border:1px solid rgba(139,92,246,.22);border-radius:1rem;background:linear-gradient(150deg,rgba(15,23,42,.93),rgba(30,27,75,.45))}
+.io-runes-panel-head{display:flex;justify-content:space-between;align-items:center;gap:.75rem;margin-bottom:.85rem}
+.io-runes-panel-head h2{margin:0;color:#f8fafc;font-size:1rem;font-weight:900}
+.io-runes-muted{color:#94a3b8;font-size:.75rem}
+.io-runes-loadout{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.55rem}
+.io-runes-slot{min-height:6.4rem;padding:.7rem .55rem;border:1px dashed rgba(167,139,250,.35);border-radius:.8rem;background:rgba(2,6,23,.35);display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:.3rem}
+.io-runes-slot.is-filled{border-style:solid;border-color:rgba(167,139,250,.58);background:rgba(91,33,182,.16)}
+.io-runes-slot strong{font-size:.7rem;line-height:1.25;color:#f5f3ff;overflow-wrap:anywhere}
+.io-runes-slot span{font-size:.63rem;color:#a5b4fc}
+.io-runes-stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.55rem;margin-top:.85rem}
+.io-runes-stat{padding:.75rem;border:1px solid rgba(148,163,184,.12);border-radius:.75rem;background:rgba(2,6,23,.28)}
+.io-runes-stat span{display:flex;align-items:center;gap:.35rem;color:#94a3b8;font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em}
+.io-runes-stat strong{display:block;margin-top:.25rem;color:#a5f3fc;font-size:1.05rem;font-weight:950;font-variant-numeric:tabular-nums}
+.io-runes-inventory{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem}
+.io-runes-card{min-width:0;padding:.85rem;border:1px solid rgba(148,163,184,.17);border-radius:.85rem;background:rgba(2,6,23,.42)}
+.io-runes-card.is-equipped{border-color:rgba(167,139,250,.72);box-shadow:inset 0 0 0 1px rgba(167,139,250,.11)}
+.io-runes-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.6rem}
+.io-runes-card h3{margin:.2rem 0 0;color:#f8fafc;font-size:.9rem;font-weight:900;overflow-wrap:anywhere}
+.io-runes-card p{margin:.45rem 0 0;color:#cbd5e1;font-size:.76rem;line-height:1.5}
+.io-runes-card-meta{margin-top:.45rem;color:#64748b;font-size:.64rem;font-weight:800;letter-spacing:.04em}
+.io-runes-card-actions{display:flex;gap:.45rem;margin-top:.75rem}
+.io-runes-button{display:inline-flex;align-items:center;justify-content:center;gap:.35rem;min-height:2rem;padding:.45rem .65rem;border:1px solid rgba(167,139,250,.35);border-radius:.55rem;color:#ede9fe;background:rgba(109,40,217,.16);font-size:.7rem;font-weight:900}
+.io-runes-button:hover{background:rgba(109,40,217,.3)}
+.io-runes-button.is-secondary{color:#94a3b8;border-color:rgba(148,163,184,.16);background:rgba(30,41,59,.35)}
+.io-runes-button:disabled{opacity:.45;cursor:not-allowed}
+.io-runes-empty{padding:1.5rem;border:1px dashed rgba(148,163,184,.22);border-radius:.8rem;color:#94a3b8;text-align:center;font-size:.82rem;line-height:1.6}
+.io-runes-error{padding:.7rem .8rem;border:1px solid rgba(248,113,113,.35);border-radius:.65rem;background:rgba(127,29,29,.18);color:#fecaca;font-size:.78rem}
+.io-runes-loading{padding:1.5rem;text-align:center;color:#94a3b8;font-size:.85rem}
+@media(max-width:600px){.io-runes-loadout{grid-template-columns:repeat(2,minmax(0,1fr))}.io-runes-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.io-runes-inventory{grid-template-columns:1fr}.io-runes-header{align-items:center}.io-runes-panel{padding:.8rem}}
