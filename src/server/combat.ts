@@ -181,7 +181,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.runes=normalizedRunes.slice(-COMBAT_RUNE_INVENTORY_CAP);
   const ownedRuneIds=new Set(s.runes.map(rune=>rune.id));
   const requestedRunes=Array.isArray(p.equippedRunes)?p.equippedRunes.filter((id):id is string=>typeof id==='string'&&ownedRuneIds.has(id)):[];
-  s.equippedRunes=[...new Set(requestedRunes)].slice(0,combatRuneSlotsUnlocked(s.level,s.bestDepth));
+  s.equippedRunes=[...new Set(requestedRunes)].slice(0,combatRuneSlotsUnlocked(s.level,Math.max(s.bestDepth,...Object.values(s.dungeonBestDepths))));
   synchronizeCombatStats(s);
   const enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);s.enemyHp=finiteInt(s.enemyHp,enemy.maxHp,1,enemy.maxHp);
   return s;
@@ -461,7 +461,7 @@ export async function equipCombatRune(runeIdValue:unknown,equipValue:unknown):Pr
     if(!rune)throw new Error('Rune is not in your inventory.');
     const currentlyEquipped=s.equippedRunes.includes(rune.id);
     if(shouldEquip&&!currentlyEquipped){
-      const slots=combatRuneSlotsUnlocked(s.level,s.bestDepth);
+      const slots=combatRuneSlotsUnlocked(s.level,Math.max(s.bestDepth,...Object.values(s.dungeonBestDepths)));
       if(s.equippedRunes.length>=slots)throw new Error('All Rune slots are full. Unequip a Rune or reach the next slot milestone.');
       s.equippedRunes=[...s.equippedRunes,rune.id];
     }else if(!shouldEquip&&currentlyEquipped){s.equippedRunes=s.equippedRunes.filter(id=>id!==rune.id);}

@@ -26,7 +26,8 @@ export const RunesSection:React.FC=()=>{
   },[]);
   useEffect(()=>{void load();},[load]);
   const state=snapshot?.state??null;
-  const slots=state?combatRuneSlotsUnlocked(state.level,state.bestDepth):2;
+  const bestRuneDepth=state?Math.max(state.bestDepth,...Object.values(state.dungeonBestDepths)):1;
+  const slots=state?combatRuneSlotsUnlocked(state.level,bestRuneDepth):2;
   const bonuses=useMemo(()=>combatRuneBonuses(state?.runes??[],state?.equippedRunes??[]),[state?.runes,state?.equippedRunes]);
   const runes=useMemo(()=>[...(state?.runes??[])].sort((a,b)=>(RARITY_ORDER[b.rarity]??0)-(RARITY_ORDER[a.rarity]??0)||b.value-a.value||a.name.localeCompare(b.name)),[state?.runes]);
   const mutate=async(url:string,body:unknown,runeId:string,success:string)=>{
@@ -51,7 +52,7 @@ export const RunesSection:React.FC=()=>{
     {notice&&!error&&<div className="io-runes-muted" role="status">{notice}</div>}
     {loading&&!state?<div className="io-runes-loading">Loading Rune inventory…</div>:state&&<>
       <section className="io-runes-panel">
-        <div className="io-runes-panel-head"><h2>Equipped loadout</h2><span className="io-runes-muted">{equippedRunes.length} / {slots} slots used · Delver Lv. {state.level} · Best depth {state.bestDepth}</span></div>
+        <div className="io-runes-panel-head"><h2>Equipped loadout</h2><span className="io-runes-muted">{equippedRunes.length} / {slots} slots used · Delver Lv. {state.level} · Best depth {bestRuneDepth}</span></div>
         <div className="io-runes-loadout">
           {Array.from({length:slots},(_,index)=>{
             const rune=equippedRunes[index];
