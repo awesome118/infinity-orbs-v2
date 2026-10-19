@@ -2723,7 +2723,7 @@ export function App() {
             <h2 className="mt-2 text-2xl font-black text-white">Post today’s Frenzy</h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-400">
               Charge a public Frenzy from today’s best roll. Your next manual Roll creates the post
-              and lets someone else claim it. Every player can claim one Frenzy a day.
+              and lets other players claim that same Frenzy. Each player can claim it once, subject to their personal claim cooldown.
             </p>
             <div className="io-frenzy-prompt-reward">
               <div className="text-3xl font-black text-fuchsia-200">+{FRENZY_OWNER_SHARD_REWARD} Shards</div>
