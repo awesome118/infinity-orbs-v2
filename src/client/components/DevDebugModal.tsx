@@ -9,6 +9,7 @@ import { PRESTIGE_UPGRADES, CONTINUUM_TIERS, getOrbInfo, visibleContinuumTiers, 
 import type { RollResponse } from '../../shared/game.js';
 import { APP_VERSION } from '../../shared/version.js';
 import { sound } from '../sound.js';
+import { CombatAdminTools } from './CombatAdminTools.js';
 
 function formatPlaytime(ms: number): string {
   const totalMinutes = Math.max(0, Math.floor(Number(ms) / 60_000));
@@ -4873,6 +4874,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
 
                   </div>
         </details>
+
+        <CombatAdminTools />
 
         <details className="rounded-2xl border border-rose-500/40 bg-rose-950/10 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-rose-300">

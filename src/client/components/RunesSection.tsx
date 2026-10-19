@@ -58,7 +58,7 @@ export const RunesSection:React.FC=()=>{
             const rune=equippedRunes[index];
             return <div key={index} className={'io-runes-slot'+(rune?' is-filled':'')}>
               <Star size={15} color={rune?'#c4b5fd':'#475569'}/>
-              {rune?<><strong className={'io-rarity-'+rune.rarity.toLowerCase()}>{rune.name}</strong><span>{combatRuneEffectText(rune)}</span></>:<span>Empty slot {index+1}</span>}
+              {rune?<><strong className={'io-rarity-'+rune.rarity.toLowerCase()}>{rune.name}</strong><span>{combatRuneEffectText(rune)}</span>{rune.majorAbility&&<span className="io-runes-major mt-1 text-xs font-semibold text-violet-200">✦ {rune.majorAbility.name}</span>}</>:<span>Empty slot {index+1}</span>}
             </div>;
           })}
         </div>
@@ -77,6 +77,7 @@ export const RunesSection:React.FC=()=>{
               return <article key={rune.id} className={'io-runes-card'+(isEquipped?' is-equipped':'')}>
                 <div className="io-runes-card-head"><div><div className={'io-runes-kicker io-rarity-'+rune.rarity.toLowerCase()}>{rune.rarity.toUpperCase()} · {STAT_LABEL[rune.stat]}</div><h3>{rune.name}</h3></div><span style={{color:'#c4b5fd'}}>{STAT_ICON[rune.stat]}</span></div>
                 <p>{combatRuneEffectText(rune)}. {rune.stat==='luckPct'?'Improves the rarity odds when rolling orbs.':rune.stat==='coinGainPct'?'Increases Coins earned from rolls.':rune.stat==='shardChancePct'?'Adds a chance to find extra Shards on a roll.':'Increases XP earned from orb rolls.'}</p>
+                {rune.majorAbility&&<div className="io-runes-major-card mt-3 rounded-lg border border-violet-500/30 bg-violet-500/5 p-3"><span className="text-[9px] font-black uppercase tracking-wider text-violet-300">✦ Major Ability</span><strong className="mt-1 block text-sm text-violet-100">{rune.majorAbility.name}</strong><p className="mt-1 text-xs text-slate-300">{rune.majorAbility.description}</p><small className="mt-2 block text-[9px] text-slate-500">Combat effect while equipped · {rune.rarity} scaling</small></div>}
                 <div className="io-runes-card-meta">DROPPED · {rune.sourceDungeon.toUpperCase()} · DEPTH {rune.sourceDepth+1}</div>
                 <div className="io-runes-card-actions">
                   <button type="button" className="io-runes-button" disabled={busyRune===rune.id||(!isEquipped&&!canEquip)} onClick={()=>void mutate('/api/combat/runes/equip',{runeId:rune.id,equip:!isEquipped},rune.id,isEquipped?'Rune unequipped.':'Rune equipped.')}>{busyRune===rune.id?'Saving…':isEquipped?'Unequip':'Equip'}</button>

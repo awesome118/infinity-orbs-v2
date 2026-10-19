@@ -2,7 +2,7 @@ import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import { getOrbInfo, luckMultiplier, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatSkillDefinition, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneBonuses, combatRuneEffectText, combatRuneSalvageValue, combatRuneSlotsUnlocked, combatRuneValueFor } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneBonuses, combatRuneEffectText, combatRuneSalvageValue, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatRuneMajorAbilityMultiplier, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -95,7 +95,9 @@ function normalizeRune(value:unknown):CombatRune|null {
   const rawValue=Number(x.value),cap=stat==='shardChancePct'?100:300;
   const runeValue=Number.isFinite(rawValue)?Math.max(0,Math.min(cap,rawValue)):0;
   if(runeValue<=0)return null;
-  return {id:x.id.trim(),name:typeof x.name==='string'?x.name.slice(0,120):'Unnamed Rune',rarity:rarity as CombatRuneRarity,stat:stat as CombatRuneStat,value:runeValue,sourceDepth,sourceDungeon};
+  const rawAbility=x.majorAbility&&typeof x.majorAbility==='object'&&!Array.isArray(x.majorAbility)?x.majorAbility as Record<string,unknown>:null;
+  const majorAbility=normalizeMajorAbility(rawAbility);
+  return {id:x.id.trim(),name:typeof x.name==='string'?x.name.slice(0,120):'Unnamed Rune',rarity:rarity as CombatRuneRarity,stat:stat as CombatRuneStat,value:runeValue,sourceDepth,sourceDungeon,...(majorAbility?{majorAbility}:{})};
 }
 function equippedMajorAbilityTotal(state:CombatState,abilityId:CombatMajorAbility['id'],property:string):number {
   const floor=Math.max(0,state.depth-1);
@@ -107,6 +109,12 @@ function equippedMajorAbilityTotal(state:CombatState,abilityId:CombatMajorAbilit
     const raw=Number((item.majorAbility as unknown as Record<string,unknown>)[property]);
     if(Number.isFinite(raw)&&raw>0)total+=Math.min(10,raw)*gearQualityEffectiveness(item,floor);
   }
+  const equippedRuneIds=new Set(state.equippedRunes);
+  for(const rune of state.runes){
+    if(!equippedRuneIds.has(rune.id)||rune.majorAbility?.id!==abilityId)continue;
+    const raw=Number((rune.majorAbility as unknown as Record<string,unknown>)[property]);
+    if(Number.isFinite(raw)&&raw>0)total+=Math.min(10,raw)*combatRuneMajorAbilityMultiplier(rune.rarity);
+  }
   return total;
 }
 
@@ -117,8 +125,9 @@ function createCombatRune(sourceDepth:number,sourceDungeon:CombatDungeonId,total
   const value=combatRuneValueFor(rarity,stat,sourceDepth);
   const rarityName:Record<CombatRuneRarity,string>={Common:'Fractured',Uncommon:'Polished',Rare:'Radiant',Epic:'Runed',Legendary:'Ascendant',Mythic:'Mythic',Cosmic:'Cosmic'};
   const statName:Record<CombatRuneStat,string>={luckPct:'Fate',coinGainPct:'Hoard',shardChancePct:'Prism',xpGainPct:'Insight'};
+  const majorAbility=secureRandom()<combatRuneMajorAbilityChance(rarity)?createMajorAbility(combatRuneMajorAbilityQuality(rarity)):undefined;
   const suffix=Math.floor(secureRandom()*1_000_000_000).toString(36);
-  return {id:'rune-'+sourceDungeon+'-'+totalKills+'-'+sequence+'-'+suffix,name:rarityName[rarity]+' '+statName[stat]+' Rune',rarity,stat,value,sourceDepth,sourceDungeon};
+  return {id:'rune-'+sourceDungeon+'-'+totalKills+'-'+sequence+'-'+suffix,name:rarityName[rarity]+' '+statName[stat]+' Rune',rarity,stat,value,sourceDepth,sourceDungeon,...(majorAbility?{majorAbility}:{})};
 }
 function normalizeState(raw:string|null|undefined):CombatState {
   if(!raw)return createCombatState();
@@ -249,7 +258,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   const enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);s.enemyHp=finiteInt(s.enemyHp,enemy.maxHp,1,enemy.maxHp);
   return s;
 }
-function createMajorAbility(qualityValue:number):CombatMajorAbility {
+function createMajorAbility(qualityValue:number,requestedAbilityId?:CombatMajorAbility['id']):CombatMajorAbility {
   const quality=Math.max(0,Math.min(100,Number(qualityValue)||0));
   const v=(base:number,step:number)=>Math.round((base+quality*step)*1000)/1000;
   const f:Record<CombatMajorAbility['id'],()=>CombatMajorAbility>={
@@ -284,7 +293,8 @@ function createMajorAbility(qualityValue:number):CombatMajorAbility {
     'unstable-singularity':()=>({id:'unstable-singularity',name:'Unstable Singularity',trigger:'passive',burstChance:v(.04,.001),burstDamagePercent:v(.3,.007),description:'Hits have a '+Math.round(v(.04,.001)*100)+'% chance to burst for '+Math.round(v(.3,.007)*100)+'% bonus Orb damage.'}),
     'genesis-core':()=>({id:'genesis-core',name:'Genesis Core',trigger:'passive',regenPercent:v(.005,.0002),description:'Regenerates '+Math.round(v(.005,.0002)*1000)/10+'% Max HP each combat beat.'}),
   };
-  return f[pick([...COMBAT_MAJOR_ABILITY_IDS])]();
+  const validRequested=requestedAbilityId&&COMBAT_MAJOR_ABILITY_IDS.includes(requestedAbilityId)?requestedAbilityId:null;
+  return f[validRequested??pick([...COMBAT_MAJOR_ABILITY_IDS])]();
 }
 function createGear(sourceFloor:number,requestedSlot?:CombatGearSlot,requestedQuality?:number):CombatGear {
   const floor=Math.max(0,Math.min(COMBAT_MAX_DEPTH-1,Math.floor(Number(sourceFloor)||0)));
@@ -292,13 +302,13 @@ function createGear(sourceFloor:number,requestedSlot?:CombatGearSlot,requestedQu
   const slots:CombatGearSlot[]=['weapon','armor','helmet','gloves','boots','ring','amulet'];
   const slot=requestedSlot??pick(slots);
   // Natural drops remain random; Forge can supply an exact requested quality.
-  const quality=Number.isFinite(Number(requestedQuality))?Math.round(Math.max(0,Math.min(100,Number(requestedQuality)))*100)/100:Math.round(10_000*Math.pow(secureRandom(),4))/100;
+  const quality=Number.isFinite(Number(requestedQuality))?Math.round(Math.max(0,Math.min(100,Number(requestedQuality)))*100)/100:combatGearQualityFromRoll(secureRandom());
   const firstWords=['Ashen','Hollow','Cinder','Riftbound','Starforged','Warden’s','Lost','Quiet','Infinity-Touched','Dread','Veiled','Frostbitten'];
   const secondWords=['Riftbound','Starforged','Moonfallen','Emberwrought','Graveborn','Voidwoven','Dawnbreak','Stormforged','Frostmarked','Kingslayer','Nightglass','Runebound'];
   const nouns:Record<CombatGearSlot,string[]>={weapon:['Cleaver','Brand','Knife','Axe','Fang','Edge','Spear','Greatblade'],helmet:['Helm','Visor','Crown','Circlet','Mask'],armor:['Cuirass','Plate','Mantle','Hauberk','Aegis'],gloves:['Grips','Gauntlets','Handguards','Bindings'],boots:['Greaves','Strideboots','Treads','Sabatons'],ring:['Signet','Band','Loop','Ring'],amulet:['Pendant','Talisman','Medallion','Amulet']};
   const weaponTraits:CombatTrait[]=['bleed','keen','first-strike'], armorTraits:CombatTrait[]=['bulwark','regeneration','desperation'];
   const trait=slot==='weapon'?pick(weaponTraits):pick(armorTraits);
-  const power=Math.max(3,Math.round(Math.min(1_000_000,scale)*(.65+quality/80)));
+  const power=Math.max(1,Math.round(Math.min(1_000_000,scale)*combatGearStatBudgetMultiplier(quality)));
   const isProtective=['helmet','armor','gloves','boots'].includes(slot);
   // Slots have a natural bias, but random affixes create flexible item builds.
   const damageBonus=slot==='weapon'?Math.max(1,Math.round(power*.8)):secureRandom()<.45?Math.max(1,Math.round(power*.7)):0;
@@ -395,7 +405,7 @@ function chooseGuidedSkillId(s:CombatState,enemy:CombatEnemy):CombatSkillId|null
   return ready[0]?.id??null;
 }
 
-export async function performCombatBeat(sequence:number,intent:CombatCommand,skillIdValue?:unknown):Promise<CombatSnapshot&{actions:CombatAction[];defeated:boolean;died:boolean;item?:CombatGear;orbRoll:CombatOrbRoll;abilityCast?:{id:CombatSkillId;rank:number;cooldown:number}}> {
+export async function performCombatBeat(sequence:number,intent:CombatCommand,skillIdValue?:unknown,adminSkipCooldown=false):Promise<CombatSnapshot&{actions:CombatAction[];defeated:boolean;died:boolean;item?:CombatGear;orbRoll:CombatOrbRoll;abilityCast?:{id:CombatSkillId;rank:number;cooldown:number}}> {
   let orbLuck=1;
   try { orbLuck=luckMultiplier(await loadRaw()); }
   catch(error) { console.error('[Combat] Could not refresh Luck for the beat orb; using baseline Luck.',error); }
@@ -415,7 +425,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     const activeSkillRank=activeSkill?Math.max(1,Number(s.skillLevels[activeSkill.id])||1):0;
     const now=Date.now();
     const elapsed=s.lastAcceptedBeatAtMs>0?Math.max(0,now-s.lastAcceptedBeatAtMs):Number.POSITIVE_INFINITY;
-    if(elapsed<COMBAT_BEAT_INTERVAL_MS)throw new Error('COMBAT_BEAT_TOO_SOON:'+Math.max(1,COMBAT_BEAT_INTERVAL_MS-elapsed));
+    if(!adminSkipCooldown&&elapsed<COMBAT_BEAT_INTERVAL_MS)throw new Error('COMBAT_BEAT_TOO_SOON:'+Math.max(1,COMBAT_BEAT_INTERVAL_MS-elapsed));
     s.lastAcceptedBeatAtMs=now;
     const actions:CombatAction[]=[];synchronizeCombatStats(s);s.sequence+=1;s.combatBeats+=1;s.energy=combatEnergyAfterRegen(s.energy,s.maxEnergy);
     if(s.pendingHealAmount>0){
@@ -621,7 +631,8 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
       if(totalReflection>0&&enemyHp>1){const reflected=Math.min(enemyHp-1,Math.max(0,Math.round((incoming+absorbed)*totalReflection)));if(reflected>0){enemyHp-=reflected;actions.push({actor:'player',kind:'attack',damage:reflected,text:(reflectionPercent>0?'Mirrorplate':'Starforged Core')+' reflects '+reflected.toLocaleString()+' damage.'});}}
       actions.push({actor:'enemy',kind:'attack',damage:incoming,text:incoming>0?strike+incoming+' damage.':strike+' The shield blocks the hit.'});
       if(pulseShieldPercent>0&&incoming+absorbed>0){const before=s.skillRuntime.shield;s.skillRuntime.shield=Math.min(Math.round(s.maxHealth*.75),s.skillRuntime.shield+Math.max(1,Math.round(s.maxHealth*pulseShieldPercent)));if(s.skillRuntime.shield>before)actions.push({actor:'player',kind:'ability',text:'Aegis Pulse builds '+(s.skillRuntime.shield-before).toLocaleString()+' shield.'});}
-      const defensiveAbility=s.inventory.find(g=>g.majorAbility?.id==='second-dawn'&&g.majorAbility.trigger==='on-damage'&&Object.values(s.equipment).includes(g.id))?.majorAbility;
+      const defensiveAbility=s.inventory.find(g=>g.majorAbility?.id==='second-dawn'&&g.majorAbility.trigger==='on-damage'&&Object.values(s.equipment).includes(g.id))?.majorAbility
+        ??s.runes.find(r=>s.equippedRunes.includes(r.id)&&r.majorAbility?.id==='second-dawn'&&r.majorAbility.trigger==='on-damage')?.majorAbility;
       if(defensiveAbility?.id==='second-dawn'&&s.pendingHealAmount===0){
         s.pendingHealAmount=Math.max(1,Math.round(s.maxHealth*defensiveAbility.healPercent));
         actions.push({actor:'player',kind:'ability',text:defensiveAbility.name+' triggered: '+Math.round(defensiveAbility.healPercent*100)+'% Max HP healing queued for your next turn.'});
@@ -1221,5 +1232,99 @@ export async function setCombatDungeon(dungeonValue: unknown): Promise<CombatSna
     synchronizeCombatStats(state);
     state.health = state.maxHealth;
     return snapshot(state);
+  });
+}
+
+
+// Admin Combat Lab fixtures are called only from the server-guarded /api/dev router.
+export async function adminCombatLabAction(value:unknown):Promise<CombatSnapshot&{labMessage:string}>{
+  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid Combat Lab payload.');
+  const payload=value as Record<string,unknown>;
+  const action=String(payload.action??'');
+  return mutate(state=>{
+    let labMessage='';
+    if(action==='grant-resources'){
+      const scrap=finiteInt(payload.scrap,0,0,1_000_000_000_000);
+      const marks=finiteInt(payload.marks,0,0,1_000_000_000_000);
+      state.scrap=Math.min(Number.MAX_SAFE_INTEGER,state.scrap+scrap);
+      state.combatMarks=Math.min(Number.MAX_SAFE_INTEGER,state.combatMarks+marks);
+      labMessage='Granted '+scrap.toLocaleString()+' Scrap and '+marks.toLocaleString()+' Combat Marks.';
+    }else if(action==='set-depth'){
+      const depth=finiteInt(payload.depth,state.depth,1,COMBAT_MAX_DEPTH);
+      state.depth=depth;state.bestDepth=Math.max(state.bestDepth,depth);
+      state.dungeonBestDepths[state.dungeonId]=Math.max(state.dungeonBestDepths[state.dungeonId],depth);
+      state.lastAcceptedBeatAtMs=0;state.enemyHp=getEnemyForDungeonDepth(state.dungeonId,depth).maxHp;
+      synchronizeCombatStats(state);state.health=state.maxHealth;
+      labMessage='Set '+state.dungeonId+' to Depth '+depth.toLocaleString()+', refreshed enemy stats, and healed the test character.';
+    }else if(action==='grant-gear'){
+      const slots:CombatGearSlot[]=['weapon','armor','helmet','gloves','boots','ring','amulet'];
+      const slot=String(payload.slot??'weapon') as CombatGearSlot;
+      if(!slots.includes(slot))throw new Error('Choose a valid gear slot.');
+      const rawQuality=Number(payload.quality);
+      if(!Number.isFinite(rawQuality)||rawQuality<0||rawQuality>100)throw new Error('Gear quality must be between 0 and 100.');
+      const quality=Math.round(rawQuality*100)/100;
+      let item=createGear(Math.max(0,state.depth-1),slot,quality);
+      const abilityId=String(payload.majorAbility??'none');
+      if(abilityId==='none'){const {majorAbility:_discarded,...withoutAbility}=item;item=withoutAbility;}
+      else if((COMBAT_MAJOR_ABILITY_IDS as readonly string[]).includes(abilityId))item={...item,majorAbility:createMajorAbility(quality,abilityId as CombatMajorAbility['id'])};
+      else throw new Error('Choose a valid Major Ability or None.');
+      addCombatGearToInventory(state,item);state.equipment[slot]=item.id;synchronizeCombatStats(state);state.health=state.maxHealth;
+      labMessage='Granted and equipped '+item.name+' ('+item.quality.toFixed(2)+'% quality)'+(item.majorAbility?' with '+item.majorAbility.name:'')+'.';
+    }else if(action==='grant-rune'){
+      const rarities:CombatRuneRarity[]=['Common','Uncommon','Rare','Epic','Legendary','Mythic','Cosmic'];
+      const stats:CombatRuneStat[]=['luckPct','coinGainPct','shardChancePct','xpGainPct'];
+      const rarity=String(payload.rarity??'Cosmic') as CombatRuneRarity;
+      const stat=String(payload.stat??'luckPct') as CombatRuneStat;
+      if(!rarities.includes(rarity)||!stats.includes(stat))throw new Error('Choose a valid Rune rarity and stat.');
+      if(state.runes.length>=COMBAT_RUNE_INVENTORY_CAP)throw new Error('Rune inventory is full; salvage a Rune first.');
+      const abilityId=String(payload.majorAbility??'none');
+      let majorAbility:CombatMajorAbility|undefined;
+      if(abilityId!=='none'){
+        if(!(COMBAT_MAJOR_ABILITY_IDS as readonly string[]).includes(abilityId))throw new Error('Choose a valid Major Ability or None.');
+        majorAbility=createMajorAbility(combatRuneMajorAbilityQuality(rarity),abilityId as CombatMajorAbility['id']);
+      }
+      const sourceDepth=Math.max(0,state.depth-1),id='rune-admin-'+Date.now().toString(36)+'-'+Math.floor(secureRandom()*0x7fffffff).toString(36);
+      const rune:CombatRune={id,name:'TEST '+rarity+' '+stat+' Rune',rarity,stat,value:combatRuneValueFor(rarity,stat,sourceDepth),sourceDepth,sourceDungeon:state.dungeonId,...(majorAbility?{majorAbility}:{})};
+      state.runes.push(rune);
+      const slots=combatRuneSlotsUnlocked(state.level,Math.max(state.bestDepth,...Object.values(state.dungeonBestDepths)));
+      if(state.equippedRunes.length<slots)state.equippedRunes.push(rune.id);else state.equippedRunes[slots-1]=rune.id;
+      labMessage='Granted '+rarity+' '+stat+' Rune'+(majorAbility?' with '+majorAbility.name:'')+' and equipped it.';
+    }else if(action==='heal'){
+      synchronizeCombatStats(state);state.health=state.maxHealth;state.energy=state.maxEnergy;state.lastAcceptedBeatAtMs=0;
+      labMessage='Restored HP and Energy; cleared the beat cooldown.';
+    }else if(action==='clear-cooldown'){
+      state.lastAcceptedBeatAtMs=0;labMessage='Cleared the combat beat cooldown for the next normal beat.';
+    }else if(action==='late-game-preset'){
+      const slots:CombatGearSlot[]=['weapon','helmet','armor','gloves','boots','ring','amulet'];
+      state.depth=COMBAT_MAX_DEPTH;state.bestDepth=COMBAT_MAX_DEPTH;state.dungeonBestDepths[state.dungeonId]=COMBAT_MAX_DEPTH;
+      state.level=60;state.xp=0;state.xpToNext=1_000_000_000;state.scrap=100_000_000;state.combatMarks=100_000_000;
+      state.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,upgrade.maxRank])) as CombatState['combatUpgrades'];
+      state.skillGachaRank=SKILL_GACHA_RANK_MAX;state.skillRolls=100_000;
+      state.skillLevels=Object.fromEntries(COMBAT_SKILLS.map(skill=>[skill.id,100])) as CombatState['skillLevels'];
+      state.skillCopyProgress=Object.fromEntries(COMBAT_SKILLS.map(skill=>[skill.id,0])) as CombatState['skillCopyProgress'];
+      state.equippedAbilities=COMBAT_SKILLS.slice(0,COMBAT_ABILITY_SLOTS).map(skill=>skill.id);state.abilityCooldowns={};
+      state.inventory=[];state.equipment=Object.fromEntries(slots.map(slot=>[slot,null])) as Record<CombatGearSlot,string|null>;
+      state.runInventoryIds=[];state.runes=[];state.equippedRunes=[];
+      slots.forEach((slot,index)=>{
+        const item=createGear(COMBAT_MAX_DEPTH-1,slot,100);
+        const geared={...item,majorAbility:createMajorAbility(100,COMBAT_MAJOR_ABILITY_IDS[index]!)};
+        state.inventory.push(geared);state.equipment[slot]=geared.id;
+      });
+      const rarities:CombatRuneRarity[]=['Cosmic','Mythic','Legendary','Epic','Rare'];
+      const runeStats:CombatRuneStat[]=['luckPct','coinGainPct','shardChancePct','xpGainPct','luckPct'];
+      const runeAbilityIds=COMBAT_MAJOR_ABILITY_IDS.slice(slots.length,slots.length+rarities.length);
+      rarities.forEach((rarity,index)=>{
+        const id='rune-admin-endgame-'+Date.now().toString(36)+'-'+index,sourceDepth=COMBAT_MAX_DEPTH-1,stat=runeStats[index]!;
+        state.runes.push({id,name:'TEST '+rarity+' Major Rune',rarity,stat,value:combatRuneValueFor(rarity,stat,sourceDepth),sourceDepth,sourceDungeon:state.dungeonId,majorAbility:createMajorAbility(combatRuneMajorAbilityQuality(rarity),runeAbilityIds[index]!)});
+        state.equippedRunes.push(id);
+      });
+      state.lastAcceptedBeatAtMs=0;state.enemyHp=getEnemyForDungeonDepth(state.dungeonId,state.depth).maxHp;
+      synchronizeCombatStats(state);state.health=state.maxHealth;state.energy=state.maxEnergy;
+      labMessage='Applied late-game fixture: Depth 50,000, seven 100% Major Ability gear pieces, five ability Runes, max combat upgrades and 100M Scrap + Combat Marks.';
+    }else if(action==='reset-combat'){
+      Object.assign(state,createCombatState());
+      labMessage='Reset only the Combat save. Your main Infinity Orbs save was not changed.';
+    }else throw new Error('Unknown Combat Lab action.');
+    return {...snapshot(state),labMessage};
   });
 }

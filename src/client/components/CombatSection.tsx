@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Coins, Info, Pause, Play, Sparkles, Swords, Zap, Sword, Shield, Crown, Hand, Footprints, CircleDot, Gem, Hammer, Clock3, Timer, type LucideIcon } from 'lucide-react';
 import { RunesSection } from './RunesSection.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatAutoScrapSettings, CombatCommand, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatOrbRoll, CombatPage, CombatSkillDefinition, CombatSkillId, CombatSnapshot, CombatState, CombatStats, CombatTactic } from '../../shared/combat.js';
-import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
+import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatGearRarityForQuality, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
 
 interface Props { page: CombatPage; onNavigate:(page:CombatPage)=>void; }
 interface ApiResponse extends CombatSnapshot {
@@ -37,7 +37,7 @@ function skillValue(skill:CombatSkillDefinition,rank:number,_speed=300):string {
 function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusPercent}:{item:CombatGear;isEquipped:boolean;onEquip:()=>void;onScrap:()=>void;busy:boolean;currentFloor:number;scrapBonusPercent:number}) {
   const [showTooltip,setShowTooltip]=useState(false);
   const [tooltipPoint,setTooltipPoint]=useState<{x:number;y:number}|null>(null);
-  const grade=item.quality>=90?'Mythic':item.quality>=70?'Epic':item.quality>=40?'Rare':item.quality>=15?'Uncommon':'Common';
+  const grade=combatGearRarityForQuality(item.quality);
   const SlotIcon=GEAR_SLOTS.find(entry=>entry.slot===item.slot)?.Icon??Gem;
   const bonuses=[
     item.damageBonus>0?{label:'+'+fmt(item.damageBonus)+' DAMAGE',detail:'Adds to base damage before the beat orb multiplier',kind:'offense' as const}:null,
@@ -60,7 +60,7 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     <div className="io-combat-gear-head"><div className="io-combat-gear-name"><SlotIcon size={24} strokeWidth={1.8} aria-hidden="true"/><div><span className="io-combat-eyebrow">{item.quality.toFixed(2)}% · LVL {fmt(item.sourceFloor+1)} · {slotLabel(item.slot).toUpperCase()}</span><h3>{item.name}</h3></div></div><div className="io-combat-gear-actions"><span className="io-combat-power">PWR {fmt(item.power)}</span><button type="button" className="io-combat-inspect-button" onClick={event=>{const card=event.currentTarget.closest('.io-combat-gear-card');const rect=card?.getBoundingClientRect();if(rect){const x=Math.max(8,Math.min(Math.max(8,window.innerWidth-326),rect.left+Math.min(rect.width-16,24)));const y=Math.max(8,Math.min(Math.max(8,window.innerHeight-376),rect.bottom+12));setTooltipPoint({x,y});}setShowTooltip(value=>!value)}} aria-expanded={showTooltip} aria-label={'Inspect '+item.name}><Info size={12}/> Details</button></div></div>
     <p>{item.effect}</p>
     <div className="io-combat-gear-stats">{bonuses.map(stat=><span className={'io-combat-stat-'+stat.kind} key={stat.label} title={stat.detail}>{stat.label}</span>)}
-      <span>LEVEL {fmt(item.sourceFloor+1)}</span><span>EXPECTED {floorQualityRequirement(currentFloor).toFixed(0)}%+</span><span>EFFECTIVE {Math.round(gearQualityEffectiveness(item,currentFloor)*100)}%</span>
+      <span>LEVEL {fmt(item.sourceFloor+1)}</span><span>EXPECTED {floorQualityRequirement(currentFloor).toFixed(0)}%+</span><span>EFFECTIVE {Math.round(gearQualityEffectiveness(item,currentFloor)*100)}%</span><span>BUDGET ×{combatGearStatBudgetMultiplier(item.quality).toFixed(2)}</span>
     </div>
     {item.majorAbility&&<div className={'io-combat-major-ability '+majorAbilityClass(item.majorAbility.id)}><span>{item.majorAbility.id==='chrono-surge'?<Clock3 size={13} aria-hidden="true"/>:<Sparkles size={13} aria-hidden="true"/>} MAJOR ABILITY</span><strong>{item.majorAbility.name}</strong><p>{item.majorAbility.description}</p></div>}
     <div className={'io-combat-gear-tooltip '+(showTooltip?'is-open':'')} style={{position:'fixed',left:tooltipPoint?.x??12,top:tooltipPoint?.y??12,right:'auto',maxWidth:'min(310px, calc(100vw - 16px))',maxHeight:'min(360px, calc(100vh - 16px))',overflow:'auto'}} role="tooltip">
@@ -186,7 +186,11 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       if(message.startsWith('COMBAT_BEAT_TOO_SOON:')) {
         // Keep the cadence countdown in sync if the server clock wins a race with the client.
         const remaining=Number(message.slice('COMBAT_BEAT_TOO_SOON:'.length));
-        if(Number.isFinite(remaining))setBeatCooldownMs(Math.max(0,remaining));
+        if(Number.isFinite(remaining)){
+          setBeatCooldownMs(Math.max(0,remaining));
+          const current=stateRef.current;
+          if(current)stateRef.current={...current,lastAcceptedBeatAtMs:Math.max(0,Date.now()+Math.max(0,remaining)-COMBAT_BEAT_INTERVAL_MS)};
+        }
       } else if(message==='stale combat sequence'||message.includes('changed repeatedly'))await load();
       else {
         if(queuedIntent&&runtime.current.pendingIntent&&runtime.current.pendingCommandVersion===queuedCommandVersion){runtime.current.pendingIntent=false;runtime.current.pendingAbilityId=null;runtime.current.intent='strike';setIntent('strike');}
@@ -200,10 +204,26 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   },[accept,error,load]);
   useEffect(()=>{
     if(!auto||paused||loading||Boolean(error))return;
-    // Start the first beat immediately; subsequent beats follow the 30-second cadence.
-    void beat();
-    const timer=window.setInterval(()=>void beat(),COMBAT_BEAT_INTERVAL_MS);
-    return()=>window.clearInterval(timer);
+    let timer:number|null=null;
+    let stopped=false;
+    const scheduleNext=(minimumDelay=0)=>{
+      if(stopped)return;
+      const lastAcceptedAt=Number(stateRef.current?.lastAcceptedBeatAtMs)||0;
+      const delay=Math.max(minimumDelay,combatNextBeatDelayMs(Date.now(),lastAcceptedAt));
+      timer=window.setTimeout(async()=>{
+        if(stopped)return;
+        await beat();
+        if(stopped||!runtime.current.auto||runtime.current.paused)return;
+        // A temporary equipment/rune mutation may occupy the client lock when the timer
+        // fires. Keep Auto alive and retry gently after that mutation finishes.
+        scheduleNext(runtime.current.mutating?1000:250);
+      },delay);
+    };
+    scheduleNext();
+    return()=>{
+      stopped=true;
+      if(timer!==null)window.clearTimeout(timer);
+    };
   },[auto,paused,loading,error,beat]);
   const manualBeat=()=>{if(runtime.current.mutating||runtime.current.busy)return;setError('');runtime.current.manual=true;void beat();};
   const activateAbility=(skillId:CombatSkillId)=>{

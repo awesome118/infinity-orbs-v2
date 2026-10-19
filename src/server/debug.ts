@@ -36,6 +36,8 @@ import {
   getRollTicket,
 } from './game.js';
 import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
+import { adminCombatLabAction, getCombatSnapshot, performCombatBeat } from './combat.js';
+import { COMBAT_MAX_DEPTH, combatGearRarityOdds, combatGearStatBudgetMultiplier, combatOrbDamageMultiplier, combatStatsFor, getEnemyForDungeonDepth, type CombatState } from '../shared/combat.js';
 import { context, redis, reddit } from './devvit-mock.js';
 import {
   setCommunityEventConfig,
@@ -110,6 +112,53 @@ export const debugRouter = Router();
 debugRouter.use((_req, res, next) => {
   if (!isDebugUser()) return res.status(404).json({ error: 'Not found.' });
   next();
+});
+
+function combatLabReport(state:CombatState) {
+  const depths=[1,100,1000,10000,COMBAT_MAX_DEPTH];
+  const projections=depths.map(depth=>{
+    const projected={...state,depth,equipment:{...state.equipment}} as CombatState;
+    const stats=combatStatsFor(projected);
+    const enemy=getEnemyForDungeonDepth(state.dungeonId,depth);
+    const maxOrbCritDamage=Math.round(stats.damage*combatOrbDamageMultiplier(1_000_000_000_000_000_000)*1.75);
+    return {depth,damage:stats.damage,speed:stats.speed,maxHealth:stats.maxHealth,maxOrbCritDamage,enemyHp:enemy.maxHp,enemyDamage:enemy.damage,enemySpeed:enemy.speed};
+  });
+  const rarityOdds=combatGearRarityOdds();
+  const statBudgets=Object.fromEntries([0,15,40,70,90,100].map(quality=>[String(quality),combatGearStatBudgetMultiplier(quality)]));
+  const end=projections[projections.length-1]!;
+  const qualityValid=state.inventory.every(item=>Number.isFinite(item.quality)&&item.quality>=0&&item.quality<=100);
+  const equipmentValid=Object.entries(state.equipment).every(([slot,id])=>!id||state.inventory.some(item=>item.id===id&&item.slot===slot));
+  const runeRefsValid=(state.equippedRunes??[]).every(id=>state.runes.some(rune=>rune.id===id));
+  const checks=[
+    {label:'Gear quality is within 0–100',passed:qualityValid,detail:qualityValid?'All saved equipment has valid quality.':'Invalid equipment quality found.'},
+    {label:'Equipped gear references are valid',passed:equipmentValid,detail:equipmentValid?'Every equipped item exists in the expected slot.':'A gear slot points to a missing or mismatched item.'},
+    {label:'Equipped Rune references are valid',passed:runeRefsValid,detail:runeRefsValid?'Every equipped Rune exists in inventory.':'A Rune slot references a missing Rune.'},
+    {label:'High gear grades are genuinely rare',passed:rarityOdds.Common>.85&&rarityOdds.Mythic<.01,detail:'Common '+(rarityOdds.Common*100).toFixed(2)+'% · Mythic '+(rarityOdds.Mythic*100).toFixed(2)+'% theoretical natural-drop odds.'},
+    {label:'High-quality gear owns a larger stat budget',passed:combatGearStatBudgetMultiplier(90)>combatGearStatBudgetMultiplier(15)*5,detail:'90% quality is '+(combatGearStatBudgetMultiplier(90)/combatGearStatBudgetMultiplier(15)).toFixed(1)+'× the budget of 15% quality.'},
+    {label:'Late-game Speed reaches millions',passed:end.speed>=1_000_000,detail:'Depth 50,000 projection: '+Math.round(end.speed).toLocaleString()+' Speed.'},
+    {label:'Late-game HP reaches millions',passed:end.maxHealth>=1_000_000,detail:'Depth 50,000 projection: '+Math.round(end.maxHealth).toLocaleString()+' maximum HP.'},
+    {label:'Late-game high-orb crit damage reaches millions',passed:end.maxOrbCritDamage>=1_000_000,detail:'Depth 50,000 projection: '+Math.round(end.maxOrbCritDamage).toLocaleString()+' critical damage.'},
+    {label:'Rune Major Ability data is valid',passed:state.runes.every(rune=>!rune.majorAbility||(typeof rune.majorAbility.name==='string'&&typeof rune.majorAbility.description==='string')),detail:state.runes.filter(rune=>rune.majorAbility).length+' Runes currently have Major Abilities.'},
+  ];
+  return {generatedAt:Date.now(),rarityOdds,statBudgets,projections,checks};
+}
+debugRouter.get('/combat-lab/state',async(_req,res)=>{
+  try{const current=await getCombatSnapshot();res.json({...current,balance:combatLabReport(current.state)});}
+  catch(error){res.status(500).json({error:error instanceof Error?error.message:'Could not inspect combat state.'});}
+});
+debugRouter.post('/combat-lab/action',async(req,res)=>{
+  try{
+    const action=String(req.body?.action??'');
+    if(action==='force-beat'){
+      const current=await getCombatSnapshot();
+      const result=await performCombatBeat(current.state.sequence+1,'auto',undefined,true);
+      return res.json({...result,labMessage:'Forced one immediate server-resolved beat. Normal gameplay cooldown rules remain enabled.'});
+    }
+    return res.json(await adminCombatLabAction(req.body));
+  }catch(error){
+    const message=error instanceof Error?error.message:'Combat Lab action failed.';
+    return res.status(400).json({error:message});
+  }
 });
 
 debugRouter.get('/payment-logs', async (req, res) => {

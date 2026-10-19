@@ -26,6 +26,8 @@ export interface CombatRune {
   value: number;
   sourceDepth: number;
   sourceDungeon: CombatDungeonId;
+  /** Optional combat ability; older saved Runes remain valid without one. */
+  majorAbility?: CombatMajorAbility;
 }
 export interface CombatRuneBonuses { luckPct: number; coinGainPct: number; shardChancePct: number; xpGainPct: number; }
 export const COMBAT_RUNE_INVENTORY_CAP = 200;
@@ -35,6 +37,24 @@ const COMBAT_RUNE_RARITY_MULTIPLIER: Record<CombatRuneRarity, number> = {
 const COMBAT_RUNE_BASE_VALUE: Record<CombatRuneStat, number> = {
   luckPct: .6, coinGainPct: 1.5, shardChancePct: .035, xpGainPct: 1.5,
 };
+const COMBAT_RUNE_MAJOR_ABILITY_CHANCE: Record<CombatRuneRarity, number> = {
+  Common: .005, Uncommon: .02, Rare: .07, Epic: .18, Legendary: .35, Mythic: .50, Cosmic: .70,
+};
+const COMBAT_RUNE_MAJOR_ABILITY_QUALITY: Record<CombatRuneRarity, number> = {
+  Common: 5, Uncommon: 25, Rare: 40, Epic: 60, Legendary: 75, Mythic: 90, Cosmic: 100,
+};
+const COMBAT_RUNE_MAJOR_ABILITY_MULTIPLIER: Record<CombatRuneRarity, number> = {
+  Common: .5, Uncommon: .7, Rare: .85, Epic: 1, Legendary: 1.2, Mythic: 1.45, Cosmic: 1.8,
+};
+export function combatRuneMajorAbilityChance(rarity: CombatRuneRarity): number {
+  return COMBAT_RUNE_MAJOR_ABILITY_CHANCE[rarity];
+}
+export function combatRuneMajorAbilityQuality(rarity: CombatRuneRarity): number {
+  return COMBAT_RUNE_MAJOR_ABILITY_QUALITY[rarity];
+}
+export function combatRuneMajorAbilityMultiplier(rarity: CombatRuneRarity): number {
+  return COMBAT_RUNE_MAJOR_ABILITY_MULTIPLIER[rarity];
+}
 export function combatRuneSlotsUnlocked(levelValue: unknown, bestDepthValue: unknown): number {
   const level = Math.max(1, Math.floor(Number(levelValue) || 1));
   const bestDepth = Math.max(1, Math.floor(Number(bestDepthValue) || 1));
@@ -162,6 +182,35 @@ export interface CombatGear {
   armorBonus: number;
   critChanceBonus: number;
   majorAbility?: CombatMajorAbility;
+}
+
+/** A steep quality curve makes the high-end gear grades genuinely scarce. */
+export const COMBAT_GEAR_QUALITY_EXPONENT = 16;
+export function combatGearQualityFromRoll(randomValue: unknown): number {
+  const raw = Number(randomValue);
+  const roll = Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 0;
+  return Math.round(10_000 * Math.pow(roll, COMBAT_GEAR_QUALITY_EXPONENT)) / 100;
+}
+export function combatGearRarityForQuality(qualityValue: unknown): CombatRarity {
+  const raw = Number(qualityValue);
+  const quality = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : 0;
+  return quality >= 90 ? 'Mythic' : quality >= 70 ? 'Epic' : quality >= 40 ? 'Rare' : quality >= 15 ? 'Uncommon' : 'Common';
+}
+export function combatGearRarityOdds(): Record<CombatRarity, number> {
+  const cdf = (quality: number) => Math.pow(quality / 100, 1 / COMBAT_GEAR_QUALITY_EXPONENT);
+  return { Common:cdf(15), Uncommon:cdf(40)-cdf(15), Rare:cdf(70)-cdf(40), Epic:cdf(90)-cdf(70), Mythic:1-cdf(90) };
+}
+/** Nonlinear gear budget: perfect quality has five times the depth baseline power. */
+export function combatGearStatBudgetMultiplier(qualityValue: unknown): number {
+  const raw = Number(qualityValue);
+  const quality = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) / 100 : 0;
+  return 0.35 + 4.65 * Math.pow(quality, 2.4);
+}
+export function combatNextBeatDelayMs(nowValue: unknown, lastAcceptedValue: unknown, bufferMs = 150): number {
+  const now = Number(nowValue), lastAccepted = Number(lastAcceptedValue);
+  if (!Number.isFinite(now) || now < 0 || !Number.isFinite(lastAccepted) || lastAccepted <= 0) return 0;
+  const buffer = Number.isFinite(Number(bufferMs)) ? Math.max(0, Number(bufferMs)) : 150;
+  return Math.max(0, lastAccepted + COMBAT_BEAT_INTERVAL_MS - now + buffer);
 }
 export type CombatSkillId =
   | 'ember-lung' | 'surefoot' | 'ironbark' | 'lucky-fang' | 'penny-hunter'
@@ -669,11 +718,21 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const equipmentSlots = Object.entries(state.equipment) as [CombatGearSlot,string|null][];
   const equippedItems = equipmentSlots.map(([slot,id]) => state.inventory.find(item => item.id === id && item.slot === slot)).filter((item):item is CombatGear=>Boolean(item));
   const qualityOf = (item:CombatGear) => gearQualityEffectiveness(item,floor);
-  const abilityTotal=(id:CombatMajorAbility['id'],property:string)=>equippedItems.reduce((sum,item)=>{
-    if(item.majorAbility?.id!==id)return sum;
-    const raw=Number((item.majorAbility as unknown as Record<string,unknown>)[property]);
-    return sum+(Number.isFinite(raw)?Math.max(0,raw)*qualityOf(item):0);
-  },0);
+  const equippedRuneIds = new Set(state.equippedRunes ?? []);
+  const equippedRunes = (state.runes ?? []).filter(rune => equippedRuneIds.has(rune.id));
+  const abilityTotal=(id:CombatMajorAbility['id'],property:string)=>{
+    const gearTotal=equippedItems.reduce((sum,item)=>{
+      if(item.majorAbility?.id!==id)return sum;
+      const raw=Number((item.majorAbility as unknown as Record<string,unknown>)[property]);
+      return sum+(Number.isFinite(raw)?Math.max(0,raw)*qualityOf(item):0);
+    },0);
+    const runeTotal=equippedRunes.reduce((sum,rune)=>{
+      if(rune.majorAbility?.id!==id)return sum;
+      const raw=Number((rune.majorAbility as unknown as Record<string,unknown>)[property]);
+      return sum+(Number.isFinite(raw)?Math.max(0,raw)*combatRuneMajorAbilityMultiplier(rune.rarity):0);
+    },0);
+    return gearTotal+runeTotal;
+  };
   const effectiveDamageBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.damageBonus*qualityOf(item)),0);
   // Turn speed is intentionally restricted to Major Abilities, not ordinary gear affixes.
   const effectiveSpeedBonus=0;
@@ -709,17 +768,18 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const dungeonDamageBonus = state.dungeonId === 'cinder-vault' ? 0.10 : 0;
   const dungeonSpeedBonus = state.dungeonId === 'glass-labyrinth' ? 35 : 0;
   const dungeonCritBonus = state.dungeonId === 'glass-labyrinth' ? 0.05 : 0;
-  const flatDamage = 50 + (Math.max(1,state.level)-1)*4 + effectiveDamageBonus;
-  const flatHealth = 1000 + (Math.max(1,state.level)-1)*30 + effectiveHealthBonus;
+  const flatDamage = 50 + (Math.max(1,state.level)-1)*4 + effectiveDamageBonus + Math.round(floor*10);
+  const flatHealth = 1000 + (Math.max(1,state.level)-1)*30 + effectiveHealthBonus + Math.round(floor*20);
   const maxHealth = Math.max(1,Math.round(flatHealth*(1+healthPct)*(1+coreProgressionBonus)*(1+orbFocusBonus*.65)*(1+majorHealthPercent)));
-  let speed = Math.round((310 + effectiveSpeedBonus + speedFlat + dungeonSpeedBonus) * (1 + majorSpeedPercent));
+  const depthSpeedMultiplier = 1 + Math.pow(floor/100,1.4);
+  let speed = Math.round((310 + effectiveSpeedBonus + speedFlat + dungeonSpeedBonus) * (1 + majorSpeedPercent) * depthSpeedMultiplier);
   if (traitEffectiveness('desperation')>0 && state.health>0 && state.health<=maxHealth*.4) speed+=Math.round(20*traitEffectiveness('desperation'));
   if (traitEffectiveness('keen')>0) critChance+=.04*traitEffectiveness('keen');
   critChance += effectiveCritBonus + majorCritBonus + dungeonCritBonus;
   const damageReduction = Math.max(-.50,Math.min(.80,effectiveArmorBonus/250 + .04*traitEffectiveness('bulwark') + majorDamageReduction + majorLastStand + majorFrostbrandReduction + damageReductionPct - majorGlassCannonTaken));
   return {
     damage:Math.max(1,Math.round(flatDamage*(1+damagePct)*(1+majorDamagePercent)*(1+coreProgressionBonus)*(1+dungeonDamageBonus)*(1+orbFocusBonus))),
-    speed:Math.min(800,speed), maxHealth, armor:effectiveArmorBonus,
+    speed:Math.min(10_000_000,speed), maxHealth, armor:effectiveArmorBonus,
     critChance:Math.min(.75,Math.max(0,critChance)),
     damageReduction,
     coinMultiplier:1+coinBonus, coreProgressionBonus, orbFocusBonus, gearQualityRequirement,
@@ -738,7 +798,7 @@ export function synchronizeCombatStats(state: CombatState): CombatStats {
   return stats;
 }
 
-export function combatMarkMultiplier(state: Pick<CombatState, 'combatUpgrades'> & Partial<Pick<CombatState, 'equipment' | 'inventory' | 'depth'>>): number {
+export function combatMarkMultiplier(state: Pick<CombatState, 'combatUpgrades'> & Partial<Pick<CombatState, 'equipment' | 'inventory' | 'depth' | 'runes' | 'equippedRunes'>>): number {
   const floor = Math.max(0, Math.floor(Number(state.depth ?? 1) - 1));
   const inventory = Array.isArray(state.inventory) ? state.inventory : [];
   const equipment = state.equipment ?? {};
@@ -746,7 +806,12 @@ export function combatMarkMultiplier(state: Pick<CombatState, 'combatUpgrades'> 
     const item = inventory.find(candidate => candidate.id === id && candidate.slot === slot);
     return sum + (item?.majorAbility?.id === 'mark-harvest' ? item.majorAbility.markBonusPercent * gearQualityEffectiveness(item, floor) : 0);
   }, 0);
-  return 1 + combatUpgradeRank(state, 'scavenger') * .08 + combatUpgradeRank(state, 'mark-magnet') * .10 + majorMarkBonus;
+  const equippedRuneIds = new Set(state.equippedRunes ?? []);
+  const runeMarkBonus = (state.runes ?? []).reduce((sum, rune) => {
+    if (!equippedRuneIds.has(rune.id) || rune.majorAbility?.id !== 'mark-harvest') return sum;
+    return sum + rune.majorAbility.markBonusPercent * combatRuneMajorAbilityMultiplier(rune.rarity);
+  }, 0);
+  return 1 + combatUpgradeRank(state, 'scavenger') * .08 + combatUpgradeRank(state, 'mark-magnet') * .10 + majorMarkBonus + runeMarkBonus;
 }
 
 export interface CombatSkillCopyResult {
@@ -805,12 +870,16 @@ export function getEnemyForDepth(depthValue: number): CombatEnemy {
     {id:'bell-knight',name:'Bell Knight',kind:'elite' as const,hp:1.55,damage:.98,speed:90,room:'Bell Nave',emoji:'🛡️'},
     {id:'ash-executioner',name:'Ash Executioner',kind:'elite' as const,hp:1.22,damage:1.3,speed:130,room:'Execution Yard',emoji:'🪓'},
   ];
-  const boss=depth%10===0;
-  const base=encounters[(depth-1)%encounters.length]!;
-  const scaledHp=Math.min(1e12,Math.round(130*Math.pow(1.065,depth-1)*base.hp));
+  const safeDepth=Math.max(1,Math.min(COMBAT_MAX_DEPTH,Math.floor(Number(depth)||1)));
+  const floor=safeDepth-1;
+  const boss=safeDepth%10===0;
+  const base=encounters[(safeDepth-1)%encounters.length]!;
+  // Polynomial HP scaling avoids hitting the old 1e12 cap within the first few hundred rooms.
+  const scaledHp=Math.min(1e15,Math.round(130*Math.pow(1+floor/100,2.2)*base.hp));
   const maxHp=boss?Math.round(scaledHp*1.15*4.6):scaledHp;
-  const damage=Math.min(1e9,Math.max(1,Math.round((20+depth*1.55)*base.damage*(boss?2.2*1.15:1))));
-  return {id:boss?'crypt-warden':base.id,name:boss?'Crypt Warden':base.name,kind:boss?'boss':base.kind,hp:maxHp,maxHp,damage,speed:Math.min(450,base.speed+Math.floor(depth/15)*25+(boss?55:0)),room:boss?'Warden Throne':base.room,emoji:boss?'👹':base.emoji,boss};
+  const damage=Math.min(1e12,Math.max(1,Math.round((20+floor*1.55)*Math.pow(1+floor/100,.35)*base.damage*(boss?2.2*1.15:1))));
+  const speed=Math.min(10_000_000,Math.round((base.speed+Math.floor(floor/15)*25+(boss?55:0))*Math.pow(1+floor/100,.5)));
+  return {id:boss?'crypt-warden':base.id,name:boss?'Crypt Warden':base.name,kind:boss?'boss':base.kind,hp:maxHp,maxHp,damage,speed,room:boss?'Warden Throne':base.room,emoji:boss?'👹':base.emoji,boss};
 }
 
 
