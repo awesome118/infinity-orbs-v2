@@ -297,7 +297,7 @@ export const STRATEGY_GUIDE_RANKS:StrategyGuideRankDefinition[]=[
 /** Manual drop rate falls with Strategy Guide rank; there is no fixed pity override. */
 export function tacticianManualDropChance(rankValue:unknown):number {
   const rank=Number.isFinite(Number(rankValue))?Math.max(0,Math.min(STRATEGY_GUIDE_RANKS.length,Math.floor(Number(rankValue)))):0;
-  return [0.005,0.004,0.003,0.002,0.001,0][rank]??0;
+  return [0.025,0.02,0.015,0.01,0.0075,0.005][rank]??0;
 }
 
 
