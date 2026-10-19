@@ -2,7 +2,7 @@ import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import { getOrbInfo, luckMultiplier, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneRarity, CombatRuneStat } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, combatRuneBonuses, combatRuneEffectText, combatRuneSalvageValue, combatRuneSlotsUnlocked, combatRuneValueFor } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, STRATEGY_GUIDE_RANKS, TACTICIAN_MANUAL_DROP_CHANCE, TACTICIAN_MANUAL_PITY_BOSSES, createCombatSkillRuntime, combatRuneBonuses, combatRuneEffectText, combatRuneSalvageValue, combatRuneSlotsUnlocked, combatRuneValueFor } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -113,6 +113,24 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.autoTactic=(['balanced','aggressive','defensive','recovery'] as unknown[]).includes(s.autoTactic)?s.autoTactic:'balanced';
   s.scrap=finiteInt(s.scrap,0,0,Number.MAX_SAFE_INTEGER);s.autoScrapUnlocked=s.autoScrapUnlocked===true;s.autoScrapSettings=normalizeCombatAutoScrapSettings(s.autoScrapSettings);s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillGachaRank=finiteInt(storedGachaRank,legacyUnlockedRank,1,SKILL_GACHA_RANK_MAX);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,1_000_000_000_000_000_000);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
   s.playerActionsResolved=finiteInt(s.playerActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.enemyActionsResolved=finiteInt(s.enemyActionsResolved,0,0,Number.MAX_SAFE_INTEGER);
+  s.strategyGuideRank=finiteInt(s.strategyGuideRank,0,0,STRATEGY_GUIDE_RANKS.length);
+  s.tacticianManuals=finiteInt(s.tacticianManuals,0,0,Number.MAX_SAFE_INTEGER);
+  s.bossesSinceManual=finiteInt(s.bossesSinceManual,0,0,TACTICIAN_MANUAL_PITY_BOSSES-1);
+  const rawSkillRuntime=(p.skillRuntime&&typeof p.skillRuntime==='object'&&!Array.isArray(p.skillRuntime)?p.skillRuntime:{}) as Partial<CombatSkillRuntime>;
+  const defaultSkillRuntime=createCombatSkillRuntime();
+  s.skillRuntime={
+    burnTicks:finiteInt(rawSkillRuntime.burnTicks,0,0,10),burnDamage:finiteInt(rawSkillRuntime.burnDamage,0,0,Number.MAX_SAFE_INTEGER),
+    armorBreakBeats:finiteInt(rawSkillRuntime.armorBreakBeats,0,0,20),shield:finiteInt(rawSkillRuntime.shield,0,0,Number.MAX_SAFE_INTEGER),
+    delayedDamage:finiteInt(rawSkillRuntime.delayedDamage,0,0,Number.MAX_SAFE_INTEGER),
+    delayedDamageReadyAtSequence:finiteInt(rawSkillRuntime.delayedDamageReadyAtSequence,0,0,Number.MAX_SAFE_INTEGER),
+    lastAttackDamage:finiteInt(rawSkillRuntime.lastAttackDamage,0,0,Number.MAX_SAFE_INTEGER),storedDamage:finiteInt(rawSkillRuntime.storedDamage,0,0,Number.MAX_SAFE_INTEGER),
+    executeMarked:rawSkillRuntime.executeMarked===true,evadeNext:rawSkillRuntime.evadeNext===true,
+    phoenixReady:rawSkillRuntime.phoenixReady===true,phoenixUsed:rawSkillRuntime.phoenixUsed===true,
+    nextKillMarkBonus:finiteInt(rawSkillRuntime.nextKillMarkBonus,0,0,Number.MAX_SAFE_INTEGER),
+    nextKillXpBonus:finiteInt(rawSkillRuntime.nextKillXpBonus,0,0,Number.MAX_SAFE_INTEGER),
+    royalTitheKills:finiteInt(rawSkillRuntime.royalTitheKills,0,0,10),bountyStreak:finiteInt(rawSkillRuntime.bountyStreak,0,0,10),
+    nextRuneDropBonus:Math.max(0,Math.min(.5,Number.isFinite(Number(rawSkillRuntime.nextRuneDropBonus))?Number(rawSkillRuntime.nextRuneDropBonus):defaultSkillRuntime.nextRuneDropBonus)),
+  };
   s.energy=finiteInt(s.energy,3,0,10);s.maxEnergy=finiteInt(s.maxEnergy,5,1,10);s.guardBeats=finiteInt(s.guardBeats,0,0,10);s.encounterFirstStrikeUsed=s.encounterFirstStrikeUsed===true;s.pendingHealAmount=finiteInt(s.pendingHealAmount,0,0,1_000_000_000);
   const defaults=createCombatState();
   const persisted=p as Partial<CombatState>&{
@@ -273,14 +291,52 @@ function grantXp(s:CombatState,amount:number,actions:CombatAction[]):void {
   s.xp+=amount;
   while(s.xp>=s.xpToNext&&s.level<60){s.xp-=s.xpToNext;s.level+=1;s.xpToNext=Math.round(s.xpToNext*1.19);synchronizeCombatStats(s);s.health=Math.min(s.maxHealth,s.health+Math.round(s.maxHealth*.08));actions.push({actor:'player',kind:'level',text:'Delver reached Level '+s.level+'.'});}
 }
+
+function chooseGuidedSkillId(s:CombatState,enemy:CombatEnemy):CombatSkillId|null {
+  if(s.strategyGuideRank<1)return null;
+  const energy=combatEnergyAfterRegen(s.energy,s.maxEnergy);
+  const ready=s.equippedAbilities.map(id=>COMBAT_SKILLS.find(skill=>skill.id===id))
+    .filter((skill):skill is NonNullable<typeof skill>=>Boolean(skill)&&(s.skillLevels[skill.id]??0)>0&&(s.abilityCooldowns[skill.id]??0)<=s.sequence&&energy>=combatSkillEnergyCost(skill.rarity));
+  if(!ready.length)return null;
+  const ids=new Set(ready.map(skill=>skill.id)),healthRatio=s.health/Math.max(1,s.maxHealth),tactic=s.autoTactic;
+  let priority:CombatSkillId[]=[];
+  if((s.strategyGuideRank>=2&&healthRatio<.38)||tactic==='recovery'||(tactic==='defensive'&&healthRatio<.65))priority.push('worldheart','deep-vitals','crystal-aegis','ironbark','titan-blood','phoenix-engine','lightstep');
+  if(enemy.boss||tactic==='aggressive')priority.push('warden-slayer','worldbreaker','infinity-cleaver','annihilator','rift-hammer','fracture-math','execution-script');
+  if(s.strategyGuideRank>=3){
+    if(s.skillRuntime.armorBreakBeats<=0)priority.push('rift-hammer','sunder-mark','razor-current');
+    else priority.push('fracture-math','annihilator','infinity-cleaver');
+  }
+  if(s.strategyGuideRank>=4){
+    const weapon=s.inventory.find(item=>item.id===s.equipment.weapon);
+    if(weapon?.trait==='bleed')priority.push('ember-lung');
+    if(s.skillRuntime.delayedDamage>0)priority.push('afterimage');
+    if(s.skillRuntime.storedDamage>0)priority.push('singularity-edge');
+    if(weapon?.trait==='first-strike')priority.push('surefoot','lucky-fang');
+    priority.push('astral-scavenger','royal-tithe','time-shear','starforged-core');
+  }
+  if(s.strategyGuideRank>=5){
+    if(tactic==='aggressive')priority.push('quicksilver','blackstar-velocity','apex-instinct','steady-hand');
+    else if(tactic==='defensive')priority.push('ironbark','crystal-aegis','starforged-core','worldheart');
+    else priority.push('time-shear','afterimage','apex-instinct','coin-sense','infinite-bounty');
+  }
+  priority.push('ember-lung','razor-current','quicksilver','afterimage','steady-hand','lucky-fang','coin-sense','penny-hunter');
+  for(const id of priority)if(ids.has(id))return id;
+  const rarityOrder:Record<string,number>={Mythic:5,Epic:4,Rare:3,Uncommon:2,Common:1};
+  ready.sort((a,b)=>rarityOrder[b.rarity]-rarityOrder[a.rarity]||a.name.localeCompare(b.name));
+  return ready[0]?.id??null;
+}
+
 export async function performCombatBeat(sequence:number,intent:CombatCommand,skillIdValue?:unknown):Promise<CombatSnapshot&{actions:CombatAction[];defeated:boolean;died:boolean;item?:CombatGear;orbRoll:CombatOrbRoll;abilityCast?:{id:CombatSkillId;rank:number;cooldown:number}}> {
   let orbLuck=1;
   try { orbLuck=luckMultiplier(await loadRaw()); }
   catch(error) { console.error('[Combat] Could not refresh Luck for the beat orb; using baseline Luck.',error); }
   return mutate(s=>{
     if(sequence!==s.sequence+1)throw new Error('stale combat sequence');
-    const activeSkillId=typeof skillIdValue==='string'&&COMBAT_SKILLS.some(skill=>skill.id===skillIdValue)?skillIdValue as CombatSkillId:null;
-    const activeSkill=intent==='ability'&&activeSkillId?COMBAT_SKILLS.find(skill=>skill.id===activeSkillId):null;
+    const manualSkillId=typeof skillIdValue==='string'&&COMBAT_SKILLS.some(skill=>skill.id===skillIdValue)?skillIdValue as CombatSkillId:null;
+    const guideEnemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);
+    const predictedPlayerActions=Math.min(12,Math.max(0,Math.floor((s.combatBeats+1)*Math.max(1,s.speed)/100)-s.playerActionsResolved));
+    const activeSkillId=intent==='ability'?manualSkillId:intent==='auto'&&predictedPlayerActions>0?chooseGuidedSkillId(s,guideEnemy):null;
+    const activeSkill=activeSkillId?COMBAT_SKILLS.find(skill=>skill.id===activeSkillId):null;
     if(intent==='ability'&&!activeSkill)throw new Error('Choose a valid equipped ability.');
     if(activeSkill){
       if(!s.equippedAbilities.includes(activeSkill.id)||(s.skillLevels[activeSkill.id]??0)<1)throw new Error('Ability is not equipped.');
@@ -303,14 +359,19 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     const orbRarity=rollContinuum(orbLuck*(1+Math.min(400,runeLuck)/100),secureRandom),orbInfo=getOrbInfo(orbRarity),damageMultiplier=combatOrbDamageMultiplier(orbRarity);
     const orbRoll:CombatOrbRoll={rarity:orbRarity,tier:String(orbInfo.tier),name:orbInfo.name,damageMultiplier,baseDamage:Math.max(1,Math.round(stats.damage*damageMultiplier))};
     actions.push({actor:'player',kind:'ability',text:'Orb roll: '+orbInfo.name+' · 1 / '+orbRarity.toLocaleString()+' · ×'+damageMultiplier.toFixed(2)+' damage.'});
-    const resolvedIntent:CombatIntent=intent==='auto'?chooseAutoCombatIntent(s):intent==='ability'?'strike':intent;
+    const resolvedIntent:CombatIntent=activeSkill?'strike':intent==='auto'?chooseAutoCombatIntent(s):intent;
     const playerActions=Math.min(12,Math.max(0,Math.floor(s.combatBeats*stats.speed/100)-s.playerActionsResolved));
-    const enemyActions=Math.min(3,Math.max(0,Math.floor(s.combatBeats*enemy.speed/100)-s.enemyActionsResolved));
+    let enemyActions=Math.min(3,Math.max(0,Math.floor(s.combatBeats*enemy.speed/100)-s.enemyActionsResolved));
     if(activeSkill&&playerActions<1)throw new Error('No player action is ready for this ability.');
     s.playerActionsResolved+=playerActions;s.enemyActionsResolved+=enemyActions;
     let enemyHp=Math.max(1,s.enemyHp||enemy.maxHp),heavy=false,consumed=false,defeated=false,died=false;
+    if(s.skillRuntime.burnTicks>0&&s.skillRuntime.burnDamage>0&&enemyHp>1){
+      const burn=Math.min(enemyHp-1,s.skillRuntime.burnDamage);enemyHp-=burn;s.skillRuntime.burnTicks=Math.max(0,s.skillRuntime.burnTicks-1);
+      actions.push({actor:'player',kind:'ability',text:'Burn deals '+burn.toLocaleString()+' damage ('+s.skillRuntime.burnTicks+' ticks left).'});
+    }else if(s.skillRuntime.burnTicks>0)s.skillRuntime.burnTicks=Math.max(0,s.skillRuntime.burnTicks-1);
+
     let item:CombatGear|undefined;
-    let activeDamageMultiplier=1,activeGuaranteedCrit=false,activeExtraAttacks=0,activeFlurryMultiplier=1;
+    let activeDamageMultiplier=1,activeGuaranteedCrit=false,activeExtraAttacks=0,activeFlurryMultiplier=1,activeLifesteal=0,activeThorns=0,activeMarksPerDamage=0,activeCritMarkBonus=0,activeFlatDamageBonus=0;
     let abilityCast:{id:CombatSkillId;rank:number;cooldown:number}|undefined;
     if(activeSkill){
       const energyCost=combatSkillEnergyCost(activeSkill.rarity);
@@ -318,26 +379,46 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
       const cooldown=combatSkillCooldown(activeSkill.rarity,activeSkillRank);
       s.abilityCooldowns[activeSkill.id]=s.sequence+cooldown;
       abilityCast={id:activeSkill.id,rank:activeSkillRank,cooldown};
-      const archetype=combatAbilityType(activeSkill),rankScale=Math.log2(activeSkillRank+1);
-      if(archetype==='strike'){
-        activeDamageMultiplier=1.2+activeSkill.value*2+rankScale*.15;
-        actions.push({actor:'player',kind:'ability',text:activeSkill.name+' empowers the next strike ('+Math.round((activeDamageMultiplier-1)*100)+'% bonus damage).'});
-      } else if(archetype==='flurry'){
-        activeExtraAttacks=combatEffectiveFlurryBonusAttacks(1+Math.floor(rankScale),playerActions);
-        activeFlurryMultiplier=combatFlurryAttackMultiplier(activeSkill.value);
-        actions.push({actor:'player',kind:'ability',text:activeSkill.name+' adds '+activeExtraAttacks+' bonus strikes at '+Math.round(activeFlurryMultiplier*100)+'% damage each.'});
-      } else if(archetype==='mend'){
-        const healRatio=Math.min(.9,.10+activeSkill.value+rankScale*.06),before=s.health;
-        s.health=Math.min(s.maxHealth,s.health+Math.max(1,Math.round(s.maxHealth*healRatio)));
-        actions.push({actor:'player',kind:'ability',text:activeSkill.name+' restores '+(s.health-before)+' HP.'});
-      } else if(archetype==='focus'){
-        activeGuaranteedCrit=true;activeDamageMultiplier=1.65+activeSkill.value*2+rankScale*.15;
-        actions.push({actor:'player',kind:'ability',text:activeSkill.name+' guarantees a critical strike.'});
-      } else {
-        const reward=combatBountyReward(activeSkill.value,activeSkillRank);
-        const bountyMarks=Math.min(Number.MAX_SAFE_INTEGER-s.combatMarks,reward);
-        s.combatMarks+=bountyMarks;
-        actions.push({actor:'player',kind:'ability',text:activeSkill.name+' grants '+bountyMarks.toLocaleString()+' Combat Marks.'});
+      const rankScale=Math.log2(activeSkillRank+1);
+      const heal=(ratio:number)=>{const before=s.health;s.health=Math.min(s.maxHealth,s.health+Math.max(1,Math.round(s.maxHealth*ratio)));return s.health-before;};
+      const addShield=(amount:number,capRatio=.75)=>{s.skillRuntime.shield=Math.min(Math.round(s.maxHealth*capRatio),s.skillRuntime.shield+Math.max(1,Math.round(amount)));};
+      switch(activeSkill.id){
+        case 'ember-lung':s.skillRuntime.burnTicks=Math.max(s.skillRuntime.burnTicks,Math.min(6,3+Math.floor(rankScale/2)));s.skillRuntime.burnDamage=Math.max(s.skillRuntime.burnDamage,Math.round(orbRoll.baseDamage*(.07+Math.min(.12,rankScale*.015))));activeDamageMultiplier=1.1+Math.min(.35,rankScale*.04);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' ignites the target for '+s.skillRuntime.burnTicks+' beats.'});break;
+        case 'surefoot':activeExtraAttacks=combatEffectiveFlurryBonusAttacks(1+Math.floor(rankScale),playerActions);activeFlurryMultiplier=Math.min(.9,.58+Math.min(.25,rankScale*.04));s.skillRuntime.evadeNext=true;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' launches a quick combo and prepares an evasive step.'});break;
+        case 'ironbark':{const before=s.skillRuntime.shield;addShield(s.maxHealth*(.12+Math.min(.18,rankScale*.025)),.5);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' adds '+(s.skillRuntime.shield-before).toLocaleString()+' shield.'});break;}
+        case 'lucky-fang':activeGuaranteedCrit=true;activeDamageMultiplier=1.25+Math.min(.55,rankScale*.06);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' guarantees a critical opening strike.'});break;
+        case 'penny-hunter':s.skillRuntime.nextKillMarkBonus=Math.min(Number.MAX_SAFE_INTEGER,s.skillRuntime.nextKillMarkBonus+combatBountyReward(.12,activeSkillRank));activeDamageMultiplier=1.1;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' places a bounty on this target.'});break;
+        case 'razor-current':s.skillRuntime.armorBreakBeats=Math.max(s.skillRuntime.armorBreakBeats,2+Math.min(3,Math.floor(rankScale)));activeDamageMultiplier=1.35+Math.min(.5,rankScale*.06);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' pierces defenses; the target is exposed.'});break;
+        case 'quicksilver':activeExtraAttacks=combatEffectiveFlurryBonusAttacks(1+Math.floor(rankScale*1.5),playerActions);activeFlurryMultiplier=Math.min(.72,.42+Math.min(.25,rankScale*.035));actions.push({actor:'player',kind:'ability',text:activeSkill.name+' unleashes '+activeExtraAttacks+' rapid bonus hits.'});break;
+        case 'deep-vitals':{const restored=heal(Math.min(.65,.16+rankScale*.035));s.energy=Math.min(s.maxEnergy,s.energy+1);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' restores '+restored.toLocaleString()+' HP and 1 Energy.'});break;}
+        case 'execution-script':s.skillRuntime.executeMarked=true;activeDamageMultiplier=1.15+Math.min(.3,rankScale*.035);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' marks the target for execution below 25% HP.'});break;
+        case 'bone-collector':s.skillRuntime.nextKillXpBonus=Math.min(Number.MAX_SAFE_INTEGER,s.skillRuntime.nextKillXpBonus+Math.round(35+rankScale*18));activeDamageMultiplier=1.1+Math.min(.25,rankScale*.025);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' prepares bonus Delver XP for your next kill.'});break;
+        case 'rift-hammer':s.skillRuntime.armorBreakBeats=Math.max(s.skillRuntime.armorBreakBeats,3+Math.min(4,Math.floor(rankScale)));activeDamageMultiplier=1.5+Math.min(.6,rankScale*.07);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' fractures enemy defenses for several beats.'});break;
+        case 'afterimage':s.skillRuntime.delayedDamage=Math.min(Number.MAX_SAFE_INTEGER,Math.max(s.skillRuntime.delayedDamage,Math.round((s.skillRuntime.lastAttackDamage||orbRoll.baseDamage*.35)*(.45+Math.min(.5,rankScale*.04)))));s.skillRuntime.delayedDamageReadyAtSequence=s.sequence+1;activeDamageMultiplier=1.12;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' records an echo of your previous attack for the next beat.'});break;
+        case 'titan-blood':activeLifesteal=Math.min(.25,.08+rankScale*.02);activeDamageMultiplier=1.18;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' leeches '+Math.round(activeLifesteal*100)+'% of damage dealt as HP.'});break;
+        case 'fracture-math':if(s.skillRuntime.armorBreakBeats>0){activeGuaranteedCrit=true;activeDamageMultiplier=1.65+Math.min(.7,rankScale*.08);}else activeDamageMultiplier=1.25+Math.min(.35,rankScale*.04);actions.push({actor:'player',kind:'ability',text:activeSkill.name+(s.skillRuntime.armorBreakBeats>0?' exploits fractured armor for a guaranteed critical strike.':' primes a precision hit; armor break would amplify it.')});break;
+        case 'gilded-kill':activeCritMarkBonus=Math.min(.5,.12+rankScale*.025);activeDamageMultiplier=1.12;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' converts critical hits into bonus Combat Marks.'});break;
+        case 'singularity-edge':{const stored=s.skillRuntime.storedDamage;activeDamageMultiplier=1.25+Math.min(2.5,stored/Math.max(1,orbRoll.baseDamage));s.skillRuntime.storedDamage=0;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' releases '+Math.round(stored).toLocaleString()+' stored damage.'});break;}
+        case 'time-shear':if(enemyActions>0){enemyActions-=1;s.enemyActionsResolved=Math.max(0,s.enemyActionsResolved-1);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' cancels one enemy action.'});}for(const id of Object.keys(s.abilityCooldowns) as CombatSkillId[])if(id!==activeSkill.id)s.abilityCooldowns[id]=Math.max(s.sequence,Math.max(0,(s.abilityCooldowns[id]??0)-2));activeDamageMultiplier=1.15+Math.min(.25,rankScale*.025);break;
+        case 'starforged-core':{const before=s.skillRuntime.shield;addShield(s.maxHealth*(.08+Math.min(.15,rankScale*.025)),.5);activeThorns=Math.min(.5,.12+rankScale*.025);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' forms a retaliating shield ('+(s.skillRuntime.shield-before).toLocaleString()+').'});break;}
+        case 'apex-instinct':if(orbRarity>=1000){activeGuaranteedCrit=true;activeDamageMultiplier=1.6+Math.min(.8,rankScale*.08);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' resonates with the high-rarity Orb for an empowered critical.'});}else{activeDamageMultiplier=1.18+Math.min(.25,rankScale*.025);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' sharpens the strike; a 1-in-1,000 Orb threshold grants its full power.'});}break;
+        case 'royal-tithe':s.skillRuntime.royalTitheKills=Math.max(s.skillRuntime.royalTitheKills,3+Math.min(3,Math.floor(rankScale/2)));activeDamageMultiplier=1.12;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' empowers Combat Mark rewards from your next kills.'});break;
+        case 'infinity-cleaver':activeDamageMultiplier=1.38+Math.min(.65,rankScale*.06);if(enemyHp<=enemy.maxHp*.30)activeDamageMultiplier+=.75+Math.min(.8,rankScale*.06);actions.push({actor:'player',kind:'ability',text:activeSkill.name+(enemyHp<=enemy.maxHp*.30?' executes a wounded target with a devastating finisher.':' prepares a finisher for enemies below 30% HP.')});break;
+        case 'chronos-heel':for(const id of Object.keys(s.abilityCooldowns) as CombatSkillId[])if(id!==activeSkill.id)s.abilityCooldowns[id]=Math.max(s.sequence,Math.max(0,(s.abilityCooldowns[id]??0)-2));activeDamageMultiplier=1.25+Math.min(.35,rankScale*.035);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' accelerates the recovery of your other abilities.'});break;
+        case 'worldheart':{const restored=heal(Math.min(.6,.24+Math.min(.25,rankScale*.035)));addShield(s.maxHealth*(.08+Math.min(.12,rankScale*.02)),.5);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' restores '+restored.toLocaleString()+' HP and strengthens your shield.'});break;}
+        case 'annihilator':activeDamageMultiplier=1.12+Math.min(1.2,(1-Math.max(0,enemyHp)/Math.max(1,enemy.maxHp))*.9)+Math.min(.25,rankScale*.025);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' grows more destructive as the target weakens.'});break;
+        case 'infinite-bounty':{s.skillRuntime.bountyStreak=Math.min(10,s.skillRuntime.bountyStreak+1);const reward=Math.round(combatBountyReward(activeSkill.value,activeSkillRank)*(1+.12*(s.skillRuntime.bountyStreak-1)));const gained=Math.min(Number.MAX_SAFE_INTEGER-s.combatMarks,reward);s.combatMarks+=gained;activeDamageMultiplier=1.15;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' pays '+gained.toLocaleString()+' Combat Marks; bounty streak '+s.skillRuntime.bountyStreak+'/10.'});break;}
+        case 'steady-hand':activeDamageMultiplier=1.35+Math.min(.35,rankScale*.04);s.energy=Math.min(s.maxEnergy,s.energy+1);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' steadies the strike and restores 1 Energy.'});break;
+        case 'coin-sense':activeMarksPerDamage=Math.min(.25,.05+Math.min(.15,rankScale*.02));activeDamageMultiplier=1.08;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' converts a share of dealt damage into Combat Marks.'});break;
+        case 'sunder-mark':s.skillRuntime.armorBreakBeats=Math.max(s.skillRuntime.armorBreakBeats,4+Math.min(4,Math.floor(rankScale)));activeDamageMultiplier=1.08;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' shreds the target guard for '+s.skillRuntime.armorBreakBeats+' beats.'});break;
+        case 'lightstep':s.skillRuntime.evadeNext=true;s.energy=Math.min(s.maxEnergy,s.energy+1);activeDamageMultiplier=1.12;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' prepares an evade and restores 1 Energy.'});break;
+        case 'warden-slayer':activeDamageMultiplier=enemy.boss?2.1+Math.min(.8,rankScale*.08):1.18+Math.min(.3,rankScale*.025);actions.push({actor:'player',kind:'ability',text:activeSkill.name+(enemy.boss?' strikes with bonus boss-slaying force.':' delivers a focused strike.')});break;
+        case 'crystal-aegis':{const missing=Math.max(0,s.maxHealth-s.health),before=s.skillRuntime.shield;addShield(s.maxHealth*.07+missing*(.20+Math.min(.3,rankScale*.04)),.75);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' converts missing HP into '+(s.skillRuntime.shield-before).toLocaleString()+' shield.'});break;}
+        case 'blackstar-velocity':activeExtraAttacks=combatEffectiveFlurryBonusAttacks(1+Math.floor(rankScale),playerActions);activeFlurryMultiplier=1.05+Math.min(.5,rankScale*.06);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' adds empowered bonus strikes.'});break;
+        case 'astral-scavenger':s.skillRuntime.nextRuneDropBonus=Math.min(.5,s.skillRuntime.nextRuneDropBonus+.12+Math.min(.2,rankScale*.025));activeDamageMultiplier=1.12;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' attunes your next eligible kill to Rune drops.'});break;
+        case 'worldbreaker':activeDamageMultiplier=1.3+Math.min(.45,rankScale*.045);activeFlatDamageBonus=Math.min(Math.round(enemy.maxHp*.20),Math.round(enemy.maxHp*(.07+Math.min(.13,rankScale*.015))));actions.push({actor:'player',kind:'ability',text:activeSkill.name+' adds '+activeFlatDamageBonus.toLocaleString()+' max-HP-based bonus damage.'});break;
+        case 'phoenix-engine':if(!s.skillRuntime.phoenixUsed){s.skillRuntime.phoenixReady=true;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' arms a one-time survival spark for this encounter.'});}else{activeDamageMultiplier=1.5+Math.min(.5,rankScale*.05);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' strikes after its survival spark has been spent.'});}break;
+        default:activeDamageMultiplier=1.2+rankScale*.1;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' empowers the strike.'});
       }
     }
     if(resolvedIntent==='heavy'&&s.energy>=3&&playerActions>0){s.energy-=3;heavy=true;actions.push({actor:'player',kind:'ability',text:'Heavy strike prepared.'});}
@@ -349,20 +430,38 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     for(let i=0;i<attacks;i++){
       if(enemyHp<=0)break;
       let multiplier=(heavy&&i===0?1.9:1)*(activeSkill&&i===0?activeDamageMultiplier:1)*(activeSkill&&combatAbilityType(activeSkill)==='flurry'&&i>=playerActions?activeFlurryMultiplier:1);
+      if(s.skillRuntime.armorBreakBeats>0)multiplier*=1.15;
+      if(s.skillRuntime.executeMarked&&enemyHp<=enemy.maxHp*.25)multiplier*=1.45;
+      if(activeSkill?.id==='infinity-cleaver'&&enemyHp<=enemy.maxHp*.30)multiplier*=1.25;
+      if(activeSkill?.id==='annihilator')multiplier*=1+Math.min(.9,(1-enemyHp/Math.max(1,enemy.maxHp))*.65);
       if(!s.encounterFirstStrikeUsed){if(weapon?.trait==='first-strike')multiplier*=1+.5*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1));s.encounterFirstStrikeUsed=true;}
       const crit=(activeSkill&&i===0&&activeGuaranteedCrit)||secureRandom()<stats.critChance;let damage=Math.max(1,Math.round(orbRoll.baseDamage*(crit?1.75:1)*multiplier));
+      if(i===0&&activeFlatDamageBonus>0){damage+=activeFlatDamageBonus;activeFlatDamageBonus=0;}
+      if(i===0&&s.skillRuntime.delayedDamage>0&&s.skillRuntime.delayedDamageReadyAtSequence<=s.sequence){
+        const echo=Math.min(s.skillRuntime.delayedDamage,Math.max(0,enemyHp-1));damage+=echo;s.skillRuntime.delayedDamage=0;s.skillRuntime.delayedDamageReadyAtSequence=0;
+        if(echo>0)actions.push({actor:'player',kind:'ability',text:'Afterimage replays '+echo.toLocaleString()+' damage.'});
+      }
       if(weapon?.trait==='bleed'&&secureRandom()<.18*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1))){const bleed=Math.max(1,Math.round(orbRoll.baseDamage*.3*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1))));damage+=bleed;actions.push({actor:'player',kind:'ability',text:'Bleed adds '+bleed+' damage.'});}
-      enemyHp-=damage;actions.push({actor:'player',kind:'attack',damage,text:(crit?'Critical hit for ':'Strike for ')+damage+' damage.'});
+      const appliedDamage=Math.min(damage,Math.max(1,enemyHp));enemyHp-=appliedDamage;s.skillRuntime.lastAttackDamage=appliedDamage;
+      if(activeLifesteal>0){const restored=Math.min(s.maxHealth-s.health,Math.max(0,Math.round(appliedDamage*activeLifesteal)));if(restored>0){s.health+=restored;actions.push({actor:'player',kind:'ability',text:'Titan Blood restores '+restored.toLocaleString()+' HP.'});}}
+      if(activeMarksPerDamage>0){const gained=Math.min(Number.MAX_SAFE_INTEGER-s.combatMarks,Math.max(0,Math.round(appliedDamage*activeMarksPerDamage)));if(gained>0){s.combatMarks+=gained;actions.push({actor:'player',kind:'loot',text:'Coin Sense converts damage into '+gained.toLocaleString()+' Combat Marks.'});}}
+      if(crit&&activeCritMarkBonus>0){const gained=Math.min(Number.MAX_SAFE_INTEGER-s.combatMarks,Math.max(0,Math.round(appliedDamage*activeCritMarkBonus)));if(gained>0){s.combatMarks+=gained;actions.push({actor:'player',kind:'loot',text:'Gilded Kill mints '+gained.toLocaleString()+' Combat Marks.'});}}
+      if(activeSkill?.id!=='singularity-edge')s.skillRuntime.storedDamage=Math.min(Math.round(s.maxHealth*2),s.skillRuntime.storedDamage+Math.round(appliedDamage*.04));
+      actions.push({actor:'player',kind:'attack',damage:appliedDamage,text:(crit?'Critical hit for ':'Strike for ')+appliedDamage+' damage.'});
       if(enemyHp<=0){
         defeated=true;actions.push({actor:'player',kind:'death',text:'The '+enemy.name+' falls.'});s.totalKills=Math.min(Number.MAX_SAFE_INTEGER,s.totalKills+1);
         const coins=Math.max(1,Math.round((12+s.depth*2.4)*stats.coinMultiplier*(s.dungeonId==='cinder-vault'?1.4:1)));
         const baseMarks=Math.max(1,2+Math.floor(Math.max(0,s.depth-1)/2)+(enemy.kind==='elite'?2:enemy.boss?8:0));
-        const marks=Math.max(1,Math.round(baseMarks*combatMarkMultiplier(s)));
-        const combinedReward=Math.min(Number.MAX_SAFE_INTEGER-s.combatMarks,coins+marks);
-        s.combatMarks+=combinedReward;
+        let marks=Math.max(1,Math.round(baseMarks*combatMarkMultiplier(s)));
+        if(s.skillRuntime.royalTitheKills>0){marks=Math.min(Number.MAX_SAFE_INTEGER,Math.round(marks*1.35));s.skillRuntime.royalTitheKills-=1;}
+        if(s.skillRuntime.bountyStreak>0)marks=Math.min(Number.MAX_SAFE_INTEGER,Math.round(marks*(1+Math.min(.5,s.skillRuntime.bountyStreak*.04))));
+        const combinedReward=Math.min(Number.MAX_SAFE_INTEGER-s.combatMarks,coins+marks+s.skillRuntime.nextKillMarkBonus);
+        s.skillRuntime.nextKillMarkBonus=0;s.combatMarks+=combinedReward;
         actions.push({actor:'player',kind:'loot',text:'Earned '+combinedReward.toLocaleString()+' Combat Marks from the kill.'});
-        grantXp(s,Math.round((18+s.depth*4.2)*(s.dungeonId==='glass-labyrinth'?1.25:1)),actions);
-        const runeDropChance=enemy.boss?1:enemy.kind==='elite'?Math.min(.5,.24+s.depth*.001):Math.min(.18,.07+s.depth*.0008);
+        let killXp=Math.round((18+s.depth*4.2)*(s.dungeonId==='glass-labyrinth'?1.25:1))+s.skillRuntime.nextKillXpBonus;
+        if(s.skillRuntime.nextKillXpBonus>0)actions.push({actor:'player',kind:'loot',text:'Bone Collector adds '+s.skillRuntime.nextKillXpBonus.toLocaleString()+' bonus Delver XP.'});
+        s.skillRuntime.nextKillXpBonus=0;grantXp(s,killXp,actions);
+        const runeDropChance=enemy.boss?1:Math.min(.95,(enemy.kind==='elite'?Math.min(.5,.24+s.depth*.001):Math.min(.18,.07+s.depth*.0008))+s.skillRuntime.nextRuneDropBonus);
         if(secureRandom()<runeDropChance){
           const rune=createCombatRune(Math.max(0,s.depth-1),s.dungeonId,s.totalKills,s.sequence);
           if(s.runes.length>=COMBAT_RUNE_INVENTORY_CAP){
@@ -374,6 +473,13 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
             s.runes.push(rune);
             actions.push({actor:'player',kind:'loot',text:rune.rarity+' Rune found: '+rune.name+' · '+combatRuneEffectText(rune)+'. Equip it in Runes to boost the main game.'});
           }
+        }
+        s.skillRuntime.nextRuneDropBonus=0;
+        if(enemy.boss){
+          if(s.bossesSinceManual>=TACTICIAN_MANUAL_PITY_BOSSES-1||secureRandom()<TACTICIAN_MANUAL_DROP_CHANCE){
+            s.tacticianManuals=Math.min(Number.MAX_SAFE_INTEGER,s.tacticianManuals+1);s.bossesSinceManual=0;
+            actions.push({actor:'player',kind:'loot',text:"Boss drop: Tactician's Manual! Strategy Guide progression advanced."});
+          }else s.bossesSinceManual=Math.min(TACTICIAN_MANUAL_PITY_BOSSES-1,s.bossesSinceManual+1);
         }
         if((s.dungeonId==='cinder-vault'?s.depth%4===0:s.depth%5===0)||enemy.kind!=='common'||enemy.boss){
           item=createGear(Math.max(0,s.depth-1));
@@ -387,6 +493,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         if(regeneration&&enemy.kind!=='common'){s.health=Math.min(s.maxHealth,s.health+Math.round(s.maxHealth*.02*gearQualityEffectiveness(regeneration,Math.max(0,s.depth-1))));actions.push({actor:'player',kind:'ability',text:'Regeneration restored 2% max HP.'});}
         s.bestDepth=Math.max(s.bestDepth,s.depth);
         s.dungeonBestDepths[s.dungeonId]=Math.max(s.dungeonBestDepths[s.dungeonId],s.bestDepth);
+        s.skillRuntime.burnTicks=0;s.skillRuntime.burnDamage=0;s.skillRuntime.armorBreakBeats=0;s.skillRuntime.shield=0;s.skillRuntime.delayedDamage=0;s.skillRuntime.delayedDamageReadyAtSequence=0;s.skillRuntime.executeMarked=false;s.skillRuntime.evadeNext=false;s.skillRuntime.phoenixReady=false;s.skillRuntime.phoenixUsed=false;s.skillRuntime.storedDamage=0;
         s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.guardBeats=0;s.encounterFirstStrikeUsed=false;
         if(s.depth>=COMBAT_MAX_DEPTH){
           // Do not step beyond the normalized depth limit and farm a capped room forever.
@@ -401,21 +508,28 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     }
     let guardWasUsed=false;
     if(!defeated)for(let i=0;i<enemyActions;i++){
+      if(s.skillRuntime.evadeNext){s.skillRuntime.evadeNext=false;actions.push({actor:'player',kind:'ability',text:'Evasion avoids the incoming hit.'});continue;}
       let incoming=enemy.damage,strike='The '+enemy.name+' hits for ';
       if(enemy.boss&&s.combatBeats%4===0){incoming=Math.round(incoming*1.75);strike='The '+enemy.name+' cleaves for ';}
       else if(enemy.id.endsWith('ember-acolyte')&&s.combatBeats%3===0){incoming+=Math.round(s.maxHealth*.035);strike='The Ember Acolyte burns for ';}
       if(s.guardBeats>0){incoming=Math.round(incoming*.45);guardWasUsed=true;}
-      incoming=Math.max(1,Math.round(incoming*(1-stats.damageReduction)));s.health=Math.max(0,s.health-incoming);
-      actions.push({actor:'enemy',kind:'attack',damage:incoming,text:strike+incoming+' damage.'});
+      incoming=Math.max(1,Math.round(incoming*(1-stats.damageReduction)));
+      const absorbed=Math.min(s.skillRuntime.shield,incoming);
+      if(absorbed>0){s.skillRuntime.shield-=absorbed;incoming-=absorbed;actions.push({actor:'player',kind:'ability',text:'Shield absorbs '+absorbed.toLocaleString()+' damage.'});}
+      if(incoming>0)s.health=Math.max(0,s.health-incoming);
+      if(activeThorns>0&&enemyHp>1){const reflected=Math.min(enemyHp-1,Math.max(0,Math.round((incoming+absorbed)*activeThorns)));if(reflected>0){enemyHp-=reflected;actions.push({actor:'player',kind:'attack',damage:reflected,text:'Starforged Core reflects '+reflected.toLocaleString()+' damage.'});}}
+      actions.push({actor:'enemy',kind:'attack',damage:incoming,text:incoming>0?strike+incoming+' damage.':strike+' The shield blocks the hit.'});
       const defensiveAbility=s.inventory.find(g=>g.majorAbility?.id==='second-dawn'&&g.majorAbility.trigger==='on-damage'&&Object.values(s.equipment).includes(g.id))?.majorAbility;
       if(defensiveAbility?.id==='second-dawn'&&s.pendingHealAmount===0){
         s.pendingHealAmount=Math.max(1,Math.round(s.maxHealth*defensiveAbility.healPercent));
         actions.push({actor:'player',kind:'ability',text:defensiveAbility.name+' triggered: '+Math.round(defensiveAbility.healPercent*100)+'% Max HP healing queued for your next turn.'});
       }
-      if(s.health<=0){died=true;s.pendingHealAmount=0;actions.push({actor:'enemy',kind:'death',text:'Run '+s.runId+' ended at Depth '+s.depth+'. Permanent progress retained.'});s.runId+=1;s.depth=1;resetCombatRunCarry(s);s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,3);s.guardBeats=0;s.encounterFirstStrikeUsed=false;s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;synchronizeCombatStats(s);s.health=s.maxHealth;actions.push({actor:'player',kind:'advance',text:'A new descent begins automatically at Depth 1.'});break;}
+      if(s.health<=0&&s.skillRuntime.phoenixReady&&!s.skillRuntime.phoenixUsed){s.health=1;s.skillRuntime.phoenixReady=false;s.skillRuntime.phoenixUsed=true;actions.push({actor:'player',kind:'ability',text:'Phoenix Engine prevents a lethal blow and leaves you at 1 HP.'});}
+      if(s.health<=0){died=true;s.pendingHealAmount=0;actions.push({actor:'enemy',kind:'death',text:'Run '+s.runId+' ended at Depth '+s.depth+'. Permanent progress retained.'});s.runId+=1;s.depth=1;resetCombatRunCarry(s);s.skillRuntime.burnTicks=0;s.skillRuntime.burnDamage=0;s.skillRuntime.armorBreakBeats=0;s.skillRuntime.shield=0;s.skillRuntime.delayedDamage=0;s.skillRuntime.delayedDamageReadyAtSequence=0;s.skillRuntime.executeMarked=false;s.skillRuntime.evadeNext=false;s.skillRuntime.phoenixReady=false;s.skillRuntime.phoenixUsed=false;s.skillRuntime.bountyStreak=0;s.skillRuntime.storedDamage=0;s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,3);s.guardBeats=0;s.encounterFirstStrikeUsed=false;s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;synchronizeCombatStats(s);s.health=s.maxHealth;actions.push({actor:'player',kind:'advance',text:'A new descent begins automatically at Depth 1.'});break;}
     }
     // If no enemy action fires, preserve Guard until the next actual incoming strike.
     if(guardWasUsed)s.guardBeats=0;
+    if(s.skillRuntime.armorBreakBeats>0)s.skillRuntime.armorBreakBeats=Math.max(0,s.skillRuntime.armorBreakBeats-1);
     synchronizeCombatStats(s);
     return {...snapshot(s),actions,defeated,died,orbRoll,...(item?{item}:{}),...(abilityCast?{abilityCast}:{})};
   });
@@ -456,6 +570,18 @@ export async function forgeCombatGear(slotValue:unknown,qualityValue?:unknown):P
     const item=createGear(floor,requestedSlot,requestedQuality);
     addCombatGearToInventory(state,item);
     return {...snapshot(state),forgeResult:{item,cost,remainingScrap:state.scrap}};
+  });
+}
+
+
+export async function buyCombatStrategyGuideRank():Promise<CombatSnapshot>{
+  return mutate(s=>{
+    const requirement=STRATEGY_GUIDE_RANKS.find(entry=>entry.rank===s.strategyGuideRank+1);
+    if(!requirement)throw new Error('Strategy Guide is already max rank.');
+    if(s.tacticianManuals<requirement.manualCost)throw new Error("Need a Tactician's Manual.");
+    if(s.combatMarks<requirement.markCost)throw new Error('Not enough Combat Marks for Strategy Guide.');
+    s.tacticianManuals-=requirement.manualCost;s.combatMarks-=requirement.markCost;s.strategyGuideRank=requirement.rank;
+    return snapshot(s);
   });
 }
 

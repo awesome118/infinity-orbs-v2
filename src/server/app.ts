@@ -80,7 +80,7 @@ import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
-import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, salvageCombatRune } from './combat.js';
+import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, salvageCombatRune, buyCombatStrategyGuideRank } from './combat.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -423,6 +423,7 @@ export function createApp() {
       req.path === '/combat/skills/roll' ||
       req.path === '/combat/skills/equip' ||
       req.path === '/combat/skills/rank-up' ||
+      req.path === '/combat/strategy-guide/buy' ||
       req.path === '/combat/upgrades/buy' ||
       req.path === '/combat/arena/challenge' ||
       req.path === '/combat/tactics'
@@ -928,7 +929,15 @@ export function createApp() {
     try{res.setHeader('Cache-Control','no-store');res.json(await rankUpCombatSkillGacha());}
     catch(e:any){const message=e?.message||'Could not rank up Skill Gacha.';const status=message.startsWith('Need ')||message==='Not enough Combat Marks to rank up the Skill Gacha.'||message==='Skill Gacha is already max rank.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message});}
   });
-    app.post('/api/combat/upgrades/buy', async (req,res) => {
+    app.post('/api/combat/strategy-guide/buy', async (_req,res) => {
+    try{res.setHeader('Cache-Control','no-store');res.json(await buyCombatStrategyGuideRank());}
+    catch(e:any){
+      const message=e?.message||'Strategy Guide purchase failed.';
+      const status=message==="Need a Tactician's Manual."||message==='Not enough Combat Marks for Strategy Guide.'||message==='Strategy Guide is already max rank.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;
+      res.status(status).json({error:message});
+    }
+  });
+  app.post('/api/combat/upgrades/buy', async (req,res) => {
     try{res.setHeader('Cache-Control','no-store');res.json(await buyCombatUpgrade(req.body?.upgradeId));}
     catch(e:any){const message=e?.message||'Combat upgrade failed.';const status=message==='Not enough Combat Marks.'||message==='Combat upgrade is already max rank.'||message==='Invalid combat upgrade.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message});}
   });
