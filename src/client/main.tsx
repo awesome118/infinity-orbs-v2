@@ -222,10 +222,11 @@ export function App() {
     try { return window.localStorage.getItem('io-combat-tutorial-v1') === 'done'; } catch { return false; }
   });
   useEffect(() => {
-    if (tutorialDismissed && !combatTutorialDismissed && state && state.level >= FEATURE_UNLOCK_LEVELS.combat && combatTutorialStep === 0) {
+    const coreTutorialDone = tutorialDismissed || Number(state?.totalRolls ?? 0) > 3;
+    if (coreTutorialDone && !combatTutorialDismissed && state && state.level >= FEATURE_UNLOCK_LEVELS.combat && combatTutorialStep === 0) {
       setCombatTutorialStep(1);
     }
-  }, [state?.level, tutorialDismissed, combatTutorialDismissed, combatTutorialStep]);
+  }, [state?.level, state?.totalRolls, tutorialDismissed, combatTutorialDismissed, combatTutorialStep]);
   const combatMode = tab === 'fight' || tab === 'dungeons' || tab === 'gear' || tab === 'forge' || tab === 'skills' || tab === 'arena' || tab === 'runes';
   const [autoRoll, setAutoRoll] = useState<boolean>(false);
   const [isBeta, setIsBeta] = useState(false);
