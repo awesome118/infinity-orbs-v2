@@ -126,6 +126,8 @@ test('Frenzy claims expose 23-hour eligibility and expiry', () => {
   assert.match(source, /isFrenzyPostExpired/);
   assert.match(source, /selfClaimTest/);
   assert.match(source, /data\.adminTest === true/);
+  assert.ok(source.includes('const claimReceipt = await redis.get(frenzyClaimReceiptKey(postId, claimantId))'));
+  assert.ok(source.includes('legacyClaimedByThisUser'));
 });
 
 
