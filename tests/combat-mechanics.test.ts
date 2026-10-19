@@ -23,7 +23,7 @@ test('skill catalog descriptions are distinct and Manual drops get rarer with St
   assert.equal(COMBAT_SKILLS.length,35);
   assert.equal(new Set(COMBAT_SKILLS.map(skill=>skill.id)).size,35);
   assert.equal(new Set(COMBAT_SKILLS.map(skill=>skill.effect)).size,35,'every skill communicates a distinct mechanic');
-  assert.deepEqual([0,1,2,3,4,5].map(tacticianManualDropChance),[.25,.20,.15,.10,.05,0]);
+  assert.deepEqual([0,1,2,3,4,5].map(tacticianManualDropChance),[.005,.004,.003,.002,.001,0]);
   assert.ok([0,1,2,3,4].every(rank=>tacticianManualDropChance(rank)>tacticianManualDropChance(rank+1)), 'drop chance decreases every rank');
   assert.deepEqual(STRATEGY_GUIDE_RANKS.map(rank=>rank.rank),[1,2,3,4,5]);
   assert.deepEqual(STRATEGY_GUIDE_RANKS.map(rank=>rank.manualCost),[1,0,0,1,1]);
