@@ -18,3 +18,12 @@ Combat is a mode inside Infinity Orbs, not a separate app or a replacement for o
 
 ## Follow-up layers
 This slice includes PvE and asynchronous player-build PvP with passive combat skills. Active skills and automatic trigger rules, live simultaneous PvP, additional dungeon choices, and the wider coin-upgrade rework remain future slices. Do not claim those are implemented until they exist. Keep all damage, rewards, drops, skill rolls, and gear generation server-owned.
+
+
+## Gear Levels and Major Abilities
+
+Gear cards now display the item's **Level** instead of "Dropped Floor". Existing saved gear still stores the same zero-based `sourceFloor` field internally; the UI presents it as a 1-based level so existing inventories remain compatible.
+
+The Major Ability pool now contains 30 abilities. Alongside Second Dawn, Chrono Surge, Void Edge, Aegis Ward, Starfall, and Mark Harvest, gear can roll Titan's Heart (max HP), Blood Drinker (lifesteal), Executioner's Sigil (finisher damage), Emberwake (bonus burn hits), Mirrorplate (damage reflection), Last Bastion (low-health defense), Critical Mass (critical damage), Orb Conduit (Orb damage), Soul Harvest (kill healing), Salvager's Touch (Scrap gain), Rune Savant (Rune drops), Bossbreaker (boss damage), Echo Fang (bonus strikes), Phase Shift (evasion), Blood Moon (low-health damage), Deep Roots (level scaling), Frostbrand (damage reduction), Aegis Pulse (shield after hits), Glass Cannon (damage traded for vulnerability), Fortune Engine (Combat Marks on critical hits), Unending Ward (kill shields), Full Moon (full-health critical chance), Unstable Singularity (random burst damage), and Genesis Core (per-beat regeneration).
+
+Major Ability effects are calculated from equipped gear and its current quality effectiveness. Existing saved item fields are retained for compatibility.

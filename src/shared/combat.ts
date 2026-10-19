@@ -86,7 +86,64 @@ export type CombatMajorAbility =
   | { id:'void-edge'; name:string; trigger:'passive'; damagePercent:number; description:string; }
   | { id:'aegis-ward'; name:string; trigger:'passive'; damageReduction:number; description:string; }
   | { id:'starfall'; name:string; trigger:'passive'; critChanceBonus:number; description:string; }
-  | { id:'mark-harvest'; name:string; trigger:'passive'; markBonusPercent:number; description:string; };
+  | { id:'mark-harvest'; name:string; trigger:'passive'; markBonusPercent:number; description:string; }
+  | { id:'titan-heart'; name:string; trigger:'passive'; maxHealthPercent:number; description:string; }
+  | { id:'blood-drinker'; name:string; trigger:'passive'; lifestealPercent:number; description:string; }
+  | { id:'executioner'; name:string; trigger:'passive'; executeDamagePercent:number; description:string; }
+  | { id:'emberwake'; name:string; trigger:'passive'; burnChance:number; burnDamagePercent:number; description:string; }
+  | { id:'mirrorplate'; name:string; trigger:'passive'; reflectPercent:number; description:string; }
+  | { id:'last-bastion'; name:string; trigger:'passive'; damageReduction:number; description:string; }
+  | { id:'critical-mass'; name:string; trigger:'passive'; critDamageBonus:number; description:string; }
+  | { id:'orb-conduit'; name:string; trigger:'passive'; orbDamagePercent:number; description:string; }
+  | { id:'soul-harvest'; name:string; trigger:'passive'; healOnKillPercent:number; description:string; }
+  | { id:'salvagers-touch'; name:string; trigger:'passive'; scrapBonusPercent:number; description:string; }
+  | { id:'rune-savant'; name:string; trigger:'passive'; runeDropBonusPercent:number; description:string; }
+  | { id:'bossbreaker'; name:string; trigger:'passive'; bossDamagePercent:number; description:string; }
+  | { id:'echo-fang'; name:string; trigger:'passive'; echoChance:number; echoDamagePercent:number; description:string; }
+  | { id:'phase-shift'; name:string; trigger:'passive'; evadeChance:number; description:string; }
+  | { id:'blood-moon'; name:string; trigger:'passive'; lowHealthDamagePercent:number; description:string; }
+  | { id:'deep-roots'; name:string; trigger:'passive'; damagePerTenLevelsPercent:number; description:string; }
+  | { id:'frostbrand'; name:string; trigger:'passive'; damageReduction:number; description:string; }
+  | { id:'aegis-pulse'; name:string; trigger:'passive'; shieldOnHitPercent:number; description:string; }
+  | { id:'glass-cannon'; name:string; trigger:'passive'; damagePercent:number; damageTakenPercent:number; description:string; }
+  | { id:'fortune-engine'; name:string; trigger:'passive'; critMarkBonusPercent:number; description:string; }
+  | { id:'unending-ward'; name:string; trigger:'passive'; shieldOnKillPercent:number; description:string; }
+  | { id:'full-moon'; name:string; trigger:'passive'; critChanceBonus:number; description:string; }
+  | { id:'unstable-singularity'; name:string; trigger:'passive'; burstChance:number; burstDamagePercent:number; description:string; }
+  | { id:'genesis-core'; name:string; trigger:'passive'; regenPercent:number; description:string; };
+
+export const COMBAT_MAJOR_ABILITY_IDS = [
+  'second-dawn',
+  'chrono-surge',
+  'void-edge',
+  'aegis-ward',
+  'starfall',
+  'mark-harvest',
+  'titan-heart',
+  'blood-drinker',
+  'executioner',
+  'emberwake',
+  'mirrorplate',
+  'last-bastion',
+  'critical-mass',
+  'orb-conduit',
+  'soul-harvest',
+  'salvagers-touch',
+  'rune-savant',
+  'bossbreaker',
+  'echo-fang',
+  'phase-shift',
+  'blood-moon',
+  'deep-roots',
+  'frostbrand',
+  'aegis-pulse',
+  'glass-cannon',
+  'fortune-engine',
+  'unending-ward',
+  'full-moon',
+  'unstable-singularity',
+  'genesis-core'
+] as const;
 export interface CombatOrbRoll { rarity:number; tier:string; name:string; damageMultiplier:number; baseDamage:number; }
 
 export interface CombatGear {
@@ -94,7 +151,7 @@ export interface CombatGear {
   name: string;
   slot: CombatGearSlot;
   quality: number;
-  /** Zero-based floor/depth where this piece dropped; old saves are migrated on read. */
+  /** Internal zero-based depth index where this item dropped; the UI presents it as a 1-based Level. */
   sourceFloor: number;
   power: number;
   effect: string;
@@ -612,17 +669,27 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const equipmentSlots = Object.entries(state.equipment) as [CombatGearSlot,string|null][];
   const equippedItems = equipmentSlots.map(([slot,id]) => state.inventory.find(item => item.id === id && item.slot === slot)).filter((item):item is CombatGear=>Boolean(item));
   const qualityOf = (item:CombatGear) => gearQualityEffectiveness(item,floor);
+  const abilityTotal=(id:CombatMajorAbility['id'],property:string)=>equippedItems.reduce((sum,item)=>{
+    if(item.majorAbility?.id!==id)return sum;
+    const raw=Number((item.majorAbility as unknown as Record<string,unknown>)[property]);
+    return sum+(Number.isFinite(raw)?Math.max(0,raw)*qualityOf(item):0);
+  },0);
   const effectiveDamageBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.damageBonus*qualityOf(item)),0);
-  // Legacy saved speedBonus remains supported, but newly generated gear only grants turn speed through a Major Ability.
-  // Ordinary affixes and legacy gear cannot grant turn speed; only Major Abilities do.
+  // Turn speed is intentionally restricted to Major Abilities, not ordinary gear affixes.
   const effectiveSpeedBonus=0;
-  const majorSpeedPercent=equippedItems.reduce((sum,item)=>sum+(item.majorAbility?.id==='chrono-surge'?item.majorAbility.speedPercent*qualityOf(item):0),0);
-  const majorDamagePercent=equippedItems.reduce((sum,item)=>sum+(item.majorAbility?.id==='void-edge'?item.majorAbility.damagePercent*qualityOf(item):0),0);
-  const majorDamageReduction=equippedItems.reduce((sum,item)=>sum+(item.majorAbility?.id==='aegis-ward'?item.majorAbility.damageReduction*qualityOf(item):0),0);
+  const majorSpeedPercent=abilityTotal('chrono-surge','speedPercent');
+  const majorDamagePercent=Math.min(1.5,abilityTotal('void-edge','damagePercent')+abilityTotal('glass-cannon','damagePercent')+
+    Math.min(.4,abilityTotal('deep-roots','damagePerTenLevelsPercent')*Math.floor(floor/10)));
+  const majorDamageReduction=abilityTotal('aegis-ward','damageReduction');
+  const majorHealthPercent=Math.min(1.5,abilityTotal('titan-heart','maxHealthPercent'));
+  const majorLastStand=state.health>0&&state.health<=Math.max(1,Number(state.maxHealth)||1000)*.35?abilityTotal('last-bastion','damageReduction'):0;
+  const majorFrostbrandReduction=abilityTotal('frostbrand','damageReduction');
+  const majorGlassCannonTaken=abilityTotal('glass-cannon','damageTakenPercent');
   const effectiveHealthBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.maxHealthBonus*qualityOf(item)),0);
   const effectiveArmorBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.armorBonus*qualityOf(item)),0);
   const effectiveCritBonus=equippedItems.reduce((sum,item)=>sum+item.critChanceBonus*qualityOf(item),0);
-  const majorCritBonus=equippedItems.reduce((sum,item)=>sum+(item.majorAbility?.id==='starfall'?item.majorAbility.critChanceBonus*qualityOf(item):0),0);
+  const majorCritBonus=abilityTotal('starfall','critChanceBonus')+
+    (state.health>0&&state.health>=Math.max(1,Number(state.maxHealth)||1000)?abilityTotal('full-moon','critChanceBonus'):0);
   const traitEffectiveness=(trait:CombatTrait)=>equippedItems.filter(item=>item.trait===trait).reduce((best,item)=>Math.max(best,qualityOf(item)),0);
   // Acquired skills are equipped active abilities, not permanent passive-stat stacks.
   let damagePct=0, speedFlat=0, healthPct=0, critChance=.08, coinBonus=0, damageReductionPct=0;
@@ -644,12 +711,12 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const dungeonCritBonus = state.dungeonId === 'glass-labyrinth' ? 0.05 : 0;
   const flatDamage = 50 + (Math.max(1,state.level)-1)*4 + effectiveDamageBonus;
   const flatHealth = 1000 + (Math.max(1,state.level)-1)*30 + effectiveHealthBonus;
-  const maxHealth = Math.max(1,Math.round(flatHealth*(1+healthPct)*(1+coreProgressionBonus)*(1+orbFocusBonus*.65)));
+  const maxHealth = Math.max(1,Math.round(flatHealth*(1+healthPct)*(1+coreProgressionBonus)*(1+orbFocusBonus*.65)*(1+majorHealthPercent)));
   let speed = Math.round((310 + effectiveSpeedBonus + speedFlat + dungeonSpeedBonus) * (1 + majorSpeedPercent));
   if (traitEffectiveness('desperation')>0 && state.health>0 && state.health<=maxHealth*.4) speed+=Math.round(20*traitEffectiveness('desperation'));
   if (traitEffectiveness('keen')>0) critChance+=.04*traitEffectiveness('keen');
   critChance += effectiveCritBonus + majorCritBonus + dungeonCritBonus;
-  const damageReduction = Math.min(.80, effectiveArmorBonus/250 + .04*traitEffectiveness('bulwark') + majorDamageReduction + damageReductionPct);
+  const damageReduction = Math.max(-.50,Math.min(.80,effectiveArmorBonus/250 + .04*traitEffectiveness('bulwark') + majorDamageReduction + majorLastStand + majorFrostbrandReduction + damageReductionPct - majorGlassCannonTaken));
   return {
     damage:Math.max(1,Math.round(flatDamage*(1+damagePct)*(1+majorDamagePercent)*(1+coreProgressionBonus)*(1+dungeonDamageBonus)*(1+orbFocusBonus))),
     speed:Math.min(800,speed), maxHealth, armor:effectiveArmorBonus,

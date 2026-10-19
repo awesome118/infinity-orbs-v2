@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, combatMajorAbilityChance, combatOrbDamageMultiplier, combatSkillRarityOdds, combatStatsFor, createCombatState, resolveCombatSkillRarity } from '../src/shared/combat.js';
+import { COMBAT_BEAT_INTERVAL_MS, COMBAT_MAJOR_ABILITY_IDS, combatForgeQualityCost, combatMajorAbilityChance, combatOrbDamageMultiplier, combatSkillRarityOdds, combatStatsFor, createCombatState, resolveCombatSkillRarity } from '../src/shared/combat.js';
 import { luckRarityFactor } from '../src/shared/game.js';
 
 test('each orb rarity maps monotonically to a bounded base-damage multiplier', () => {
@@ -152,4 +152,47 @@ test('turn speed is provided by an equipped Chrono Surge Major Ability', () => {
   state.inventory.push(charm);
   state.equipment.amulet = charm.id;
   assert.equal(combatStatsFor(state).speed, Math.round(before * 1.2));
+});
+
+
+test('Major Ability pool expands to thirty distinct abilities', () => {
+  assert.equal(COMBAT_MAJOR_ABILITY_IDS.length, 30);
+  assert.equal(new Set(COMBAT_MAJOR_ABILITY_IDS).size, 30);
+  assert.ok(COMBAT_MAJOR_ABILITY_IDS.includes('titan-heart'));
+  assert.ok(COMBAT_MAJOR_ABILITY_IDS.includes('genesis-core'));
+});
+
+test('Titan Heart, Glass Cannon, Frostbrand, and Full Moon apply their equipped effects', () => {
+  const state = createCombatState();
+  const baseline = combatStatsFor(state);
+  const titan = {
+    id:'test-titan-heart', name:"Titan's Heart", slot:'ring' as const, quality:100, sourceFloor:0, power:90,
+    effect:'Increases maximum HP.', trait:'keen' as const, damageBonus:0, speedBonus:0, maxHealthBonus:0, armorBonus:0, critChanceBonus:0,
+    majorAbility:{id:'titan-heart' as const,name:"Titan's Heart",trigger:'passive' as const,maxHealthPercent:.2,description:'Increases maximum HP.'},
+  };
+  const glass = {
+    id:'test-glass-cannon', name:'Glass Cannon', slot:'amulet' as const, quality:100, sourceFloor:0, power:90,
+    effect:'High damage with a defensive tradeoff.', trait:'keen' as const, damageBonus:0, speedBonus:0, maxHealthBonus:0, armorBonus:0, critChanceBonus:0,
+    majorAbility:{id:'glass-cannon' as const,name:'Glass Cannon',trigger:'passive' as const,damagePercent:.3,damageTakenPercent:.15,description:'Deals more damage but takes more damage.'},
+  };
+  const frost = {
+    id:'test-frostbrand', name:'Frostbrand', slot:'helmet' as const, quality:100, sourceFloor:0, power:90,
+    effect:'Reduces incoming damage.', trait:'keen' as const, damageBonus:0, speedBonus:0, maxHealthBonus:0, armorBonus:0, critChanceBonus:0,
+    majorAbility:{id:'frostbrand' as const,name:'Frostbrand',trigger:'passive' as const,damageReduction:.01,description:'Reduces incoming enemy damage.'},
+  };
+  const moon = {
+    id:'test-full-moon', name:'Full Moon', slot:'gloves' as const, quality:100, sourceFloor:0, power:90,
+    effect:'Critical chance while at full HP.', trait:'keen' as const, damageBonus:0, speedBonus:0, maxHealthBonus:0, armorBonus:0, critChanceBonus:0,
+    majorAbility:{id:'full-moon' as const,name:'Full Moon',trigger:'passive' as const,critChanceBonus:.1,description:'Adds critical chance while at full HP.'},
+  };
+  state.inventory.push(titan,glass,frost,moon);
+  state.equipment.ring=titan.id;
+  state.equipment.amulet=glass.id;
+  state.equipment.helmet=frost.id;
+  state.equipment.gloves=moon.id;
+  const equipped=combatStatsFor(state);
+  assert.ok(equipped.maxHealth>baseline.maxHealth,'Titan Heart increases maximum HP');
+  assert.ok(equipped.damage>baseline.damage,'Glass Cannon increases outgoing damage');
+  assert.ok(equipped.damageReduction<baseline.damageReduction,'Glass Cannon drawback outweighs the small Frostbrand reduction');
+  assert.ok(equipped.critChance>baseline.critChance,'Full Moon increases crit chance at full health');
 });

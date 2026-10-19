@@ -30,6 +30,46 @@ function traitText(t:CombatTrait):string {
   if(t==='regeneration')return 'Recover 2% max HP after elite or boss kills.';
   return 'Gain +20 Speed while below 40% health.';
 }
+function normalizeMajorAbility(raw:Record<string,unknown>|null):CombatMajorAbility|undefined {
+  if(!raw)return undefined;
+  const name=(fallback:string)=>typeof raw.name==='string'?raw.name.slice(0,60):fallback;
+  const description=(fallback:string)=>typeof raw.description==='string'?raw.description.slice(0,180):fallback;
+  const value=(key:string,fallback:number,max:number)=>Math.max(0,Math.min(max,Number.isFinite(Number(raw[key]))?Number(raw[key]):fallback));
+  switch(raw.id){
+    case 'second-dawn': return raw.trigger==='on-damage'?{id:'second-dawn',name:name('Second Dawn'),trigger:'on-damage',healPercent:value('healPercent',.15,.75),description:description('Queues a 15% Max HP heal after incoming damage.')}:undefined;
+    case 'chrono-surge': return raw.trigger==='passive'?{id:'chrono-surge',name:name('Chrono Surge'),trigger:'passive',speedPercent:value('speedPercent',.10,.5),description:description('Increases turn speed while equipped.')}:undefined;
+    case 'void-edge': return raw.trigger==='passive'?{id:'void-edge',name:name('Void Edge'),trigger:'passive',damagePercent:value('damagePercent',.12,.75),description:description('Increases outgoing damage while equipped.')}:undefined;
+    case 'aegis-ward': return raw.trigger==='passive'?{id:'aegis-ward',name:name('Aegis Ward'),trigger:'passive',damageReduction:value('damageReduction',.08,.25),description:description('Reduces incoming damage while equipped.')}:undefined;
+    case 'starfall': return raw.trigger==='passive'?{id:'starfall',name:name('Starfall'),trigger:'passive',critChanceBonus:value('critChanceBonus',.05,.12),description:description('Adds critical-hit chance while equipped.')}:undefined;
+    case 'mark-harvest': return raw.trigger==='passive'?{id:'mark-harvest',name:name('Mark Harvest'),trigger:'passive',markBonusPercent:value('markBonusPercent',.15,1),description:description('Increases Combat Marks from kills while equipped.')}:undefined;
+    case 'titan-heart': return raw.trigger==='passive'?{id:'titan-heart',name:name("Titan's Heart"),trigger:'passive',maxHealthPercent:value('maxHealthPercent',.1,.75),description:description('Increases maximum HP.')}:undefined;
+    case 'blood-drinker': return raw.trigger==='passive'?{id:'blood-drinker',name:name('Blood Drinker'),trigger:'passive',lifestealPercent:value('lifestealPercent',.08,.25),description:description('Restores HP from damage dealt.')}:undefined;
+    case 'executioner': return raw.trigger==='passive'?{id:'executioner',name:name("Executioner's Sigil"),trigger:'passive',executeDamagePercent:value('executeDamagePercent',.15,.75),description:description('Deals extra damage to enemies below 30% HP.')}:undefined;
+    case 'emberwake': return raw.trigger==='passive'?{id:'emberwake',name:name('Emberwake'),trigger:'passive',burnChance:value('burnChance',.15,1),burnDamagePercent:value('burnDamagePercent',.2,1),description:description('Hits can ignite enemies for bonus damage.')}:undefined;
+    case 'mirrorplate': return raw.trigger==='passive'?{id:'mirrorplate',name:name('Mirrorplate'),trigger:'passive',reflectPercent:value('reflectPercent',.08,.35),description:description('Reflects part of incoming damage back to attackers.')}:undefined;
+    case 'last-bastion': return raw.trigger==='passive'?{id:'last-bastion',name:name('Last Bastion'),trigger:'passive',damageReduction:value('damageReduction',.08,.25),description:description('Reduces damage further while below 35% HP.')}:undefined;
+    case 'critical-mass': return raw.trigger==='passive'?{id:'critical-mass',name:name('Critical Mass'),trigger:'passive',critDamageBonus:value('critDamageBonus',.15,1.5),description:description('Increases critical-hit damage.')}:undefined;
+    case 'orb-conduit': return raw.trigger==='passive'?{id:'orb-conduit',name:name('Orb Conduit'),trigger:'passive',orbDamagePercent:value('orbDamagePercent',.1,1),description:description('Amplifies damage from each beat Orb.')}:undefined;
+    case 'soul-harvest': return raw.trigger==='passive'?{id:'soul-harvest',name:name('Soul Harvest'),trigger:'passive',healOnKillPercent:value('healOnKillPercent',.08,.5),description:description('Restores a portion of Max HP after a kill.')}:undefined;
+    case 'salvagers-touch': return raw.trigger==='passive'?{id:'salvagers-touch',name:name("Salvager's Touch"),trigger:'passive',scrapBonusPercent:value('scrapBonusPercent',.2,2),description:description('Increases Scrap gained from gear.')}:undefined;
+    case 'rune-savant': return raw.trigger==='passive'?{id:'rune-savant',name:name('Rune Savant'),trigger:'passive',runeDropBonusPercent:value('runeDropBonusPercent',.05,.25),description:description('Improves non-boss Rune drop chance.')}:undefined;
+    case 'bossbreaker': return raw.trigger==='passive'?{id:'bossbreaker',name:name('Bossbreaker'),trigger:'passive',bossDamagePercent:value('bossDamagePercent',.2,1),description:description('Deals more damage to bosses.')}:undefined;
+    case 'echo-fang': return raw.trigger==='passive'?{id:'echo-fang',name:name('Echo Fang'),trigger:'passive',echoChance:value('echoChance',.1,.5),echoDamagePercent:value('echoDamagePercent',.4,2),description:description('Hits can echo for additional Orb damage.')}:undefined;
+    case 'phase-shift': return raw.trigger==='passive'?{id:'phase-shift',name:name('Phase Shift'),trigger:'passive',evadeChance:value('evadeChance',.05,.25),description:description('Has a chance to evade incoming attacks.')}:undefined;
+    case 'blood-moon': return raw.trigger==='passive'?{id:'blood-moon',name:name('Blood Moon'),trigger:'passive',lowHealthDamagePercent:value('lowHealthDamagePercent',.15,1),description:description('Deals bonus damage while below 35% HP.')}:undefined;
+    case 'deep-roots': return raw.trigger==='passive'?{id:'deep-roots',name:name('Deep Roots'),trigger:'passive',damagePerTenLevelsPercent:value('damagePerTenLevelsPercent',.015,.1),description:description('Damage grows every ten dungeon levels.')}:undefined;
+    case 'frostbrand': return raw.trigger==='passive'?{id:'frostbrand',name:name('Frostbrand'),trigger:'passive',damageReduction:value('damageReduction',.06,.2),description:description('Reduces incoming enemy damage.')}:undefined;
+    case 'aegis-pulse': return raw.trigger==='passive'?{id:'aegis-pulse',name:name('Aegis Pulse'),trigger:'passive',shieldOnHitPercent:value('shieldOnHitPercent',.03,.2),description:description('Builds a small shield after enemy attacks.')}:undefined;
+    case 'glass-cannon': return raw.trigger==='passive'?{id:'glass-cannon',name:name('Glass Cannon'),trigger:'passive',damagePercent:value('damagePercent',.3,1),damageTakenPercent:value('damageTakenPercent',.12,.4),description:description('Deals much more damage, but also takes more damage.')}:undefined;
+    case 'fortune-engine': return raw.trigger==='passive'?{id:'fortune-engine',name:name('Fortune Engine'),trigger:'passive',critMarkBonusPercent:value('critMarkBonusPercent',.04,.1),description:description('Critical hits also generate Combat Marks.')}:undefined;
+    case 'unending-ward': return raw.trigger==='passive'?{id:'unending-ward',name:name('Unending Ward'),trigger:'passive',shieldOnKillPercent:value('shieldOnKillPercent',.06,.3),description:description('Builds a shield whenever you defeat an enemy.')}:undefined;
+    case 'full-moon': return raw.trigger==='passive'?{id:'full-moon',name:name('Full Moon'),trigger:'passive',critChanceBonus:value('critChanceBonus',.06,.3),description:description('Adds critical chance while at full HP.')}:undefined;
+    case 'unstable-singularity': return raw.trigger==='passive'?{id:'unstable-singularity',name:name('Unstable Singularity'),trigger:'passive',burstChance:value('burstChance',.08,.3),burstDamagePercent:value('burstDamagePercent',.5,2),description:description('Hits can erupt in a burst of bonus damage.')}:undefined;
+    case 'genesis-core': return raw.trigger==='passive'?{id:'genesis-core',name:name('Genesis Core'),trigger:'passive',regenPercent:value('regenPercent',.01,.05),description:description('Regenerates a little HP on every combat beat.')}:undefined;
+    default:return undefined;
+  }
+}
+
 function normalizeGear(value:unknown,fallbackFloor=0):CombatGear|null {
   if(!value||typeof value!=='object')return null;
   const x=value as Record<string,unknown>;
@@ -40,21 +80,8 @@ function normalizeGear(value:unknown,fallbackFloor=0):CombatGear|null {
   if(!slot||typeof x.id!=='string'||!x.id||typeof x.name!=='string')return null;
   const trait=traits.includes(x.trait as CombatTrait)?x.trait as CombatTrait:(slot==='weapon'?'keen':'bulwark');
   const rawAbility=x.majorAbility&&typeof x.majorAbility==='object'?x.majorAbility as Record<string,unknown>:null;
-  const abilityName=(fallback:string)=>typeof rawAbility?.name==='string'?rawAbility.name.slice(0,60):fallback;
-  const abilityDescription=(fallback:string)=>typeof rawAbility?.description==='string'?rawAbility.description.slice(0,180):fallback;
-  const majorAbility:CombatMajorAbility|undefined=rawAbility&&rawAbility.id==='second-dawn'&&rawAbility.trigger==='on-damage'
-    ?{id:'second-dawn',name:abilityName('Second Dawn'),trigger:'on-damage',healPercent:Math.max(0,Math.min(.75,Number(rawAbility.healPercent)||.15)),description:abilityDescription('After taking damage, heal 15% of Max HP at the start of your next turn.')}
-    :rawAbility&&rawAbility.id==='chrono-surge'&&rawAbility.trigger==='passive'
-      ?{id:'chrono-surge',name:abilityName('Chrono Surge'),trigger:'passive',speedPercent:Math.max(0,Math.min(.5,Number.isFinite(Number(rawAbility.speedPercent))?Number(rawAbility.speedPercent):.10)),description:abilityDescription('Increases turn speed while equipped.')}
-    :rawAbility&&rawAbility.id==='void-edge'&&rawAbility.trigger==='passive'
-      ?{id:'void-edge',name:abilityName('Void Edge'),trigger:'passive',damagePercent:Math.max(0,Math.min(.75,Number.isFinite(Number(rawAbility.damagePercent))?Number(rawAbility.damagePercent):.12)),description:abilityDescription('Increases outgoing damage while equipped.')}
-    :rawAbility&&rawAbility.id==='aegis-ward'&&rawAbility.trigger==='passive'
-      ?{id:'aegis-ward',name:abilityName('Aegis Ward'),trigger:'passive',damageReduction:Math.max(0,Math.min(.25,Number.isFinite(Number(rawAbility.damageReduction))?Number(rawAbility.damageReduction):.08)),description:abilityDescription('Reduces incoming damage while equipped.')}
-    :rawAbility&&rawAbility.id==='starfall'&&rawAbility.trigger==='passive'
-      ?{id:'starfall',name:abilityName('Starfall'),trigger:'passive',critChanceBonus:Math.max(0,Math.min(.12,Number.isFinite(Number(rawAbility.critChanceBonus))?Number(rawAbility.critChanceBonus):.05)),description:abilityDescription('Adds critical-hit chance while equipped.')}
-    :rawAbility&&rawAbility.id==='mark-harvest'&&rawAbility.trigger==='passive'
-      ?{id:'mark-harvest',name:abilityName('Mark Harvest'),trigger:'passive',markBonusPercent:Math.max(0,Math.min(1,Number.isFinite(Number(rawAbility.markBonusPercent))?Number(rawAbility.markBonusPercent):.15)),description:abilityDescription('Increases Combat Marks earned from kills while equipped.')}
-    :undefined;
+  const majorAbility=normalizeMajorAbility(rawAbility);
+
   return {id:x.id.slice(0,160),name:x.name.slice(0,100),slot,quality:Math.max(0,Math.min(100,Number.isFinite(Number(x.quality))?Number(x.quality):0)),sourceFloor:finiteInt(x.sourceFloor,fallbackFloor,0,COMBAT_MAX_DEPTH-1),power:finiteInt(x.power,1,1,1_000_000),effect:x.id==='starter-weapon'?'Adds +4 damage. Critical chance +4 percentage points.':typeof x.effect==='string'?x.effect.slice(0,180):traitText(trait),trait,damageBonus:finiteInt(x.damageBonus,0,0,1_000_000),speedBonus:0,maxHealthBonus:finiteInt(x.maxHealthBonus,0,0,1_000_000),armorBonus:finiteInt(x.armorBonus,0,0,1_000_000),critChanceBonus:Math.max(0,Math.min(.75,Number.isFinite(Number(x.critChanceBonus))?Number(x.critChanceBonus):0)),...(majorAbility?{majorAbility}:{})};
 }
 function normalizeRune(value:unknown):CombatRune|null {
@@ -70,6 +97,19 @@ function normalizeRune(value:unknown):CombatRune|null {
   if(runeValue<=0)return null;
   return {id:x.id.trim(),name:typeof x.name==='string'?x.name.slice(0,120):'Unnamed Rune',rarity:rarity as CombatRuneRarity,stat:stat as CombatRuneStat,value:runeValue,sourceDepth,sourceDungeon};
 }
+function equippedMajorAbilityTotal(state:CombatState,abilityId:CombatMajorAbility['id'],property:string):number {
+  const floor=Math.max(0,state.depth-1);
+  let total=0;
+  for(const [slot,id] of Object.entries(state.equipment) as [CombatGearSlot,string|null][]){
+    if(!id)continue;
+    const item=state.inventory.find(candidate=>candidate.id===id&&candidate.slot===slot);
+    if(item?.majorAbility?.id!==abilityId)continue;
+    const raw=Number((item.majorAbility as unknown as Record<string,unknown>)[property]);
+    if(Number.isFinite(raw)&&raw>0)total+=Math.min(10,raw)*gearQualityEffectiveness(item,floor);
+  }
+  return total;
+}
+
 function createCombatRune(sourceDepth:number,sourceDungeon:CombatDungeonId,totalKills:number,sequence:number):CombatRune {
   const rarityRoll=secureRandom();
   const rarity:CombatRuneRarity=rarityRoll<.0005?'Cosmic':rarityRoll<.0025?'Mythic':rarityRoll<.01?'Legendary':rarityRoll<.035?'Epic':rarityRoll<.12?'Rare':rarityRoll<.35?'Uncommon':'Common';
@@ -209,6 +249,43 @@ function normalizeState(raw:string|null|undefined):CombatState {
   const enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);s.enemyHp=finiteInt(s.enemyHp,enemy.maxHp,1,enemy.maxHp);
   return s;
 }
+function createMajorAbility(qualityValue:number):CombatMajorAbility {
+  const quality=Math.max(0,Math.min(100,Number(qualityValue)||0));
+  const v=(base:number,step:number)=>Math.round((base+quality*step)*1000)/1000;
+  const f:Record<CombatMajorAbility['id'],()=>CombatMajorAbility>={
+    'second-dawn':()=>({id:'second-dawn',name:'Second Dawn',trigger:'on-damage',healPercent:v(.10,.0005),description:'Queues a '+Math.round(v(.10,.0005)*100)+'% Max HP heal after incoming damage.'}),
+    'chrono-surge':()=>({id:'chrono-surge',name:'Chrono Surge',trigger:'passive',speedPercent:v(.10,.0025),description:'Increases turn speed by '+Math.round(v(.10,.0025)*100)+'% while equipped.'}),
+    'void-edge':()=>({id:'void-edge',name:'Void Edge',trigger:'passive',damagePercent:v(.08,.001),description:'Increases outgoing damage by '+Math.round(v(.08,.001)*100)+'% while equipped.'}),
+    'aegis-ward':()=>({id:'aegis-ward',name:'Aegis Ward',trigger:'passive',damageReduction:v(.05,.0005),description:'Reduces incoming damage by '+Math.round(v(.05,.0005)*100)+'% while equipped.'}),
+    'starfall':()=>({id:'starfall',name:'Starfall',trigger:'passive',critChanceBonus:v(.025,.00045),description:'Adds '+Math.round(v(.025,.00045)*1000)/10+' percentage points of critical-hit chance.'}),
+    'mark-harvest':()=>({id:'mark-harvest',name:'Mark Harvest',trigger:'passive',markBonusPercent:v(.08,.001),description:'Increases Combat Marks from kills by '+Math.round(v(.08,.001)*100)+'%.'}),
+    'titan-heart':()=>({id:'titan-heart',name:"Titan's Heart",trigger:'passive',maxHealthPercent:v(.08,.0012),description:'Increases maximum HP by '+Math.round(v(.08,.0012)*100)+'%.'}),
+    'blood-drinker':()=>({id:'blood-drinker',name:'Blood Drinker',trigger:'passive',lifestealPercent:v(.04,.0012),description:'Restores '+Math.round(v(.04,.0012)*100)+'% of damage dealt as HP.'}),
+    'executioner':()=>({id:'executioner',name:"Executioner's Sigil",trigger:'passive',executeDamagePercent:v(.1,.002),description:'Deals '+Math.round(v(.1,.002)*100)+'% bonus damage to enemies below 30% HP.'}),
+    'emberwake':()=>({id:'emberwake',name:'Emberwake',trigger:'passive',burnChance:v(.15,.002),burnDamagePercent:v(.12,.002),description:'Hits have a '+Math.round(v(.15,.002)*100)+'% chance to ignite for '+Math.round(v(.12,.002)*100)+'% bonus Orb damage.'}),
+    'mirrorplate':()=>({id:'mirrorplate',name:'Mirrorplate',trigger:'passive',reflectPercent:v(.04,.0012),description:'Reflects '+Math.round(v(.04,.0012)*100)+'% of incoming damage.'}),
+    'last-bastion':()=>({id:'last-bastion',name:'Last Bastion',trigger:'passive',damageReduction:v(.06,.001),description:'Reduces incoming damage by '+Math.round(v(.06,.001)*100)+'% while below 35% HP.'}),
+    'critical-mass':()=>({id:'critical-mass',name:'Critical Mass',trigger:'passive',critDamageBonus:v(.1,.0025),description:'Critical hits deal '+Math.round(v(.1,.0025)*100)+' percentage points more bonus damage.'}),
+    'orb-conduit':()=>({id:'orb-conduit',name:'Orb Conduit',trigger:'passive',orbDamagePercent:v(.05,.0015),description:'Amplifies each beat Orb by '+Math.round(v(.05,.0015)*100)+'%.'}),
+    'soul-harvest':()=>({id:'soul-harvest',name:'Soul Harvest',trigger:'passive',healOnKillPercent:v(.05,.001),description:'Restores '+Math.round(v(.05,.001)*100)+'% Max HP after every kill.'}),
+    'salvagers-touch':()=>({id:'salvagers-touch',name:"Salvager's Touch",trigger:'passive',scrapBonusPercent:v(.1,.004),description:'Increases Scrap from gear by '+Math.round(v(.1,.004)*100)+'%.'}),
+    'rune-savant':()=>({id:'rune-savant',name:'Rune Savant',trigger:'passive',runeDropBonusPercent:v(.025,.00075),description:'Adds '+Math.round(v(.025,.00075)*100)+' percentage points to non-boss Rune drop chance.'}),
+    'bossbreaker':()=>({id:'bossbreaker',name:'Bossbreaker',trigger:'passive',bossDamagePercent:v(.15,.003),description:'Deals '+Math.round(v(.15,.003)*100)+'% bonus damage to bosses.'}),
+    'echo-fang':()=>({id:'echo-fang',name:'Echo Fang',trigger:'passive',echoChance:v(.05,.0015),echoDamagePercent:v(.3,.003),description:'Hits have a '+Math.round(v(.05,.0015)*100)+'% chance to echo for '+Math.round(v(.3,.003)*100)+'% Orb damage.'}),
+    'phase-shift':()=>({id:'phase-shift',name:'Phase Shift',trigger:'passive',evadeChance:v(.02,.0008),description:'Has a '+Math.round(v(.02,.0008)*100)+'% chance to evade each incoming attack.'}),
+    'blood-moon':()=>({id:'blood-moon',name:'Blood Moon',trigger:'passive',lowHealthDamagePercent:v(.1,.002),description:'Deals '+Math.round(v(.1,.002)*100)+'% bonus damage while below 35% HP.'}),
+    'deep-roots':()=>({id:'deep-roots',name:'Deep Roots',trigger:'passive',damagePerTenLevelsPercent:v(.008,.0002),description:'Damage increases by '+Math.round(v(.008,.0002)*1000)/10+'% per ten dungeon levels.'}),
+    'frostbrand':()=>({id:'frostbrand',name:'Frostbrand',trigger:'passive',damageReduction:v(.03,.001),description:'Reduces incoming enemy damage by '+Math.round(v(.03,.001)*100)+'%.'}),
+    'aegis-pulse':()=>({id:'aegis-pulse',name:'Aegis Pulse',trigger:'passive',shieldOnHitPercent:v(.015,.00075),description:'Adds a shield equal to '+Math.round(v(.015,.00075)*100)+'% Max HP after an enemy attack.'}),
+    'glass-cannon':()=>({id:'glass-cannon',name:'Glass Cannon',trigger:'passive',damagePercent:v(.25,.003),damageTakenPercent:v(.08,.001),description:'Deals '+Math.round(v(.25,.003)*100)+'% more damage but takes '+Math.round(v(.08,.001)*100)+'% more damage.'}),
+    'fortune-engine':()=>({id:'fortune-engine',name:'Fortune Engine',trigger:'passive',critMarkBonusPercent:v(.01,.0005),description:'Critical hits mint Combat Marks equal to '+Math.round(v(.01,.0005)*100)+'% of damage dealt.'}),
+    'unending-ward':()=>({id:'unending-ward',name:'Unending Ward',trigger:'passive',shieldOnKillPercent:v(.04,.001),description:'Defeating an enemy adds a shield equal to '+Math.round(v(.04,.001)*100)+'% Max HP.'}),
+    'full-moon':()=>({id:'full-moon',name:'Full Moon',trigger:'passive',critChanceBonus:v(.04,.001),description:'Adds '+Math.round(v(.04,.001)*100)+' percentage points of critical chance while at full HP.'}),
+    'unstable-singularity':()=>({id:'unstable-singularity',name:'Unstable Singularity',trigger:'passive',burstChance:v(.04,.001),burstDamagePercent:v(.3,.007),description:'Hits have a '+Math.round(v(.04,.001)*100)+'% chance to burst for '+Math.round(v(.3,.007)*100)+'% bonus Orb damage.'}),
+    'genesis-core':()=>({id:'genesis-core',name:'Genesis Core',trigger:'passive',regenPercent:v(.005,.0002),description:'Regenerates '+Math.round(v(.005,.0002)*1000)/10+'% Max HP each combat beat.'}),
+  };
+  return f[pick([...COMBAT_MAJOR_ABILITY_IDS])]();
+}
 function createGear(sourceFloor:number,requestedSlot?:CombatGearSlot,requestedQuality?:number):CombatGear {
   const floor=Math.max(0,Math.min(COMBAT_MAX_DEPTH-1,Math.floor(Number(sourceFloor)||0)));
   const scale=floor+1;
@@ -231,18 +308,8 @@ function createGear(sourceFloor:number,requestedSlot?:CombatGearSlot,requestedQu
   const armorBonus=isProtective?Math.max(1,Math.round(power*(slot==='armor' ? .65 : .55))):secureRandom()<.25?Math.max(1,Math.round(power*.3)):0;
   const critChanceBonus=slot==='ring'||slot==='amulet'?Math.min(.30,.05+quality*.0025):secureRandom()<.28?Math.min(.30,.06+quality*.0028):0;
   const majorAbilityChance=combatMajorAbilityChance(quality);
-  const majorAbilityRoll=secureRandom();
-  const majorAbility:CombatMajorAbility|undefined=majorAbilityRoll<majorAbilityChance
-    ?(()=>{
-      const kind=Math.floor(secureRandom()*6);
-      if(kind===0){const speedPercent=Math.round((.10+quality*.0025)*1000)/1000;return {id:'chrono-surge',name:'Chrono Surge',trigger:'passive',speedPercent,description:'Increases turn speed by '+Math.round(speedPercent*100)+'% while equipped.'} as const;}
-      if(kind===1)return {id:'second-dawn',name:'Second Dawn',trigger:'on-damage',healPercent:.15,description:'After taking damage, heal 15% of Max HP at the start of your next turn.'} as const;
-      if(kind===2){const damagePercent=Math.round((.08+quality*.001)*1000)/1000;return {id:'void-edge',name:'Void Edge',trigger:'passive',damagePercent,description:'Increases outgoing damage by '+Math.round(damagePercent*100)+'% while equipped.'} as const;}
-      if(kind===3){const damageReduction=Math.round((.05+quality*.0005)*1000)/1000;return {id:'aegis-ward',name:'Aegis Ward',trigger:'passive',damageReduction,description:'Reduces incoming damage by '+Math.round(damageReduction*100)+'% while equipped.'} as const;}
-      if(kind===4){const critChanceBonus=Math.round((.025+quality*.00045)*1000)/1000;return {id:'starfall',name:'Starfall',trigger:'passive',critChanceBonus,description:'Adds '+Math.round(critChanceBonus*1000)/10+' percentage points of critical-hit chance while equipped.'} as const;}
-      const markBonusPercent=Math.round((.08+quality*.001)*1000)/1000;return {id:'mark-harvest',name:'Mark Harvest',trigger:'passive',markBonusPercent,description:'Increases Combat Marks from kills by '+Math.round(markBonusPercent*100)+'% while equipped.'} as const;
-    })()
-    :undefined;
+  const majorAbility=secureRandom()<majorAbilityChance?createMajorAbility(quality):undefined;
+
   const firstWord=pick(firstWords),secondWord=pick(secondWords.filter(word=>word!==firstWord));
   return {id:'gear-'+Date.now().toString(36)+'-'+Math.floor(secureRandom()*0x7fffffff).toString(36),name:firstWord+' '+secondWord+' '+pick(nouns[slot]),slot,quality,sourceFloor:floor,power,trait,effect:traitText(trait),damageBonus,speedBonus,maxHealthBonus,armorBonus,critChanceBonus,...(majorAbility?{majorAbility}:{})};
 }
@@ -356,10 +423,29 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
       if(heal>0){s.health=Math.min(s.maxHealth,s.health+heal);actions.push({actor:'player',kind:'ability',text:'Second Dawn restored '+heal.toLocaleString()+' HP from its delayed heal.'});}
     }
     let enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);const stats=combatStatsFor(s);
+     const majorTotal=(id:CombatMajorAbility['id'],property:string)=>equippedMajorAbilityTotal(s,id,property);
+     const passiveLifesteal=Math.min(.35,majorTotal('blood-drinker','lifestealPercent'));
+     const criticalDamageBonus=Math.min(1,majorTotal('critical-mass','critDamageBonus'));
+     const orbConduitBonus=Math.min(.75,majorTotal('orb-conduit','orbDamagePercent'));
+     const passiveMarkOnCrit=Math.min(.10,majorTotal('fortune-engine','critMarkBonusPercent'));
+     const echoChance=Math.min(.5,majorTotal('echo-fang','echoChance'));
+     const echoDamagePercent=Math.min(2,majorTotal('echo-fang','echoDamagePercent'));
+     const emberwakeChance=Math.min(.5,majorTotal('emberwake','burnChance'));
+     const emberwakeDamage=Math.min(1,majorTotal('emberwake','burnDamagePercent'));
+     const singularityChance=Math.min(.3,majorTotal('unstable-singularity','burstChance'));
+     const singularityDamage=Math.min(2,majorTotal('unstable-singularity','burstDamagePercent'));
+     const phaseShiftChance=Math.min(.25,majorTotal('phase-shift','evadeChance'));
+     const reflectionPercent=Math.min(.8,majorTotal('mirrorplate','reflectPercent'));
+     const pulseShieldPercent=Math.min(.2,majorTotal('aegis-pulse','shieldOnHitPercent'));
+     const soulHarvestPercent=Math.min(.5,majorTotal('soul-harvest','healOnKillPercent'));
+     const unendingWardPercent=Math.min(.3,majorTotal('unending-ward','shieldOnKillPercent'));
+     const genesisRegenPercent=Math.min(.05,majorTotal('genesis-core','regenPercent'));
+     if(genesisRegenPercent>0&&s.health>0){const heal=Math.min(s.maxHealth-s.health,Math.max(0,Math.round(s.maxHealth*genesisRegenPercent)));if(heal>0){s.health+=heal;actions.push({actor:'player',kind:'ability',text:'Genesis Core regenerates '+heal.toLocaleString()+' HP.'});}}
+
     // Each accepted beat receives its own server-side cryptographic orb roll; rarity drives all attacks that beat.
     const runeLuck=combatRuneBonuses(s.runes,s.equippedRunes).luckPct;
     const orbRarity=rollContinuum(orbLuck*(1+Math.min(400,runeLuck)/100),secureRandom),orbInfo=getOrbInfo(orbRarity),damageMultiplier=combatOrbDamageMultiplier(orbRarity);
-    const orbRoll:CombatOrbRoll={rarity:orbRarity,tier:String(orbInfo.tier),name:orbInfo.name,damageMultiplier,baseDamage:Math.max(1,Math.round(stats.damage*damageMultiplier))};
+    const orbRoll:CombatOrbRoll={rarity:orbRarity,tier:String(orbInfo.tier),name:orbInfo.name,damageMultiplier,baseDamage:Math.max(1,Math.round(stats.damage*damageMultiplier*(1+orbConduitBonus)))};
     actions.push({actor:'player',kind:'ability',text:'Orb roll: '+orbInfo.name+' · 1 / '+orbRarity.toLocaleString()+' · ×'+damageMultiplier.toFixed(2)+' damage.'});
     const resolvedIntent:CombatIntent=activeSkill?'strike':intent==='auto'?chooseAutoCombatIntent(s):intent==='ability'?'strike':intent;
     const playerActions=Math.min(12,Math.max(0,Math.floor(s.combatBeats*stats.speed/100)-s.playerActionsResolved));
@@ -433,25 +519,35 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
       if(enemyHp<=0)break;
       let multiplier=(heavy&&i===0?1.9:1)*(activeSkill&&i===0?activeDamageMultiplier:1)*(activeSkill&&combatAbilityType(activeSkill)==='flurry'&&i>=playerActions?activeFlurryMultiplier:1);
       if(s.skillRuntime.armorBreakBeats>0)multiplier*=1.15;
+      if(enemy.boss)multiplier*=1+Math.min(1,majorTotal('bossbreaker','bossDamagePercent'));
+      if(enemyHp<=enemy.maxHp*.30)multiplier*=1+Math.min(.75,majorTotal('executioner','executeDamagePercent'));
+      if(s.health>0&&s.health<=s.maxHealth*.35)multiplier*=1+Math.min(1,majorTotal('blood-moon','lowHealthDamagePercent'));
       if(s.skillRuntime.executeMarked&&enemyHp<=enemy.maxHp*.25)multiplier*=1.45;
       if(activeSkill?.id==='infinity-cleaver'&&enemyHp<=enemy.maxHp*.30)multiplier*=1.25;
       if(activeSkill?.id==='annihilator')multiplier*=1+Math.min(.9,(1-enemyHp/Math.max(1,enemy.maxHp))*.65);
       if(!s.encounterFirstStrikeUsed){if(weapon?.trait==='first-strike')multiplier*=1+.5*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1));s.encounterFirstStrikeUsed=true;}
-      const crit=(activeSkill&&i===0&&activeGuaranteedCrit)||secureRandom()<stats.critChance;let damage=Math.max(1,Math.round(orbRoll.baseDamage*(crit?1.75:1)*multiplier));
+      const crit=(activeSkill&&i===0&&activeGuaranteedCrit)||secureRandom()<stats.critChance;let damage=Math.max(1,Math.round(orbRoll.baseDamage*(crit?1.75+criticalDamageBonus:1)*multiplier));
       if(i===0&&activeFlatDamageBonus>0){damage+=activeFlatDamageBonus;activeFlatDamageBonus=0;}
       if(i===0&&s.skillRuntime.delayedDamage>0&&s.skillRuntime.delayedDamageReadyAtSequence<=s.sequence){
         const echo=Math.min(s.skillRuntime.delayedDamage,Math.max(0,enemyHp-1));damage+=echo;s.skillRuntime.delayedDamage=0;s.skillRuntime.delayedDamageReadyAtSequence=0;
         if(echo>0)actions.push({actor:'player',kind:'ability',text:'Afterimage replays '+echo.toLocaleString()+' damage.'});
       }
       if(weapon?.trait==='bleed'&&secureRandom()<.18*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1))){const bleed=Math.max(1,Math.round(orbRoll.baseDamage*.3*gearQualityEffectiveness(weapon,Math.max(0,s.depth-1))));damage+=bleed;actions.push({actor:'player',kind:'ability',text:'Bleed adds '+bleed+' damage.'});}
+      if(emberwakeChance>0&&secureRandom()<emberwakeChance){const burn=Math.max(1,Math.round(orbRoll.baseDamage*emberwakeDamage));damage+=burn;actions.push({actor:'player',kind:'ability',text:'Emberwake ignites the hit for '+burn.toLocaleString()+' bonus damage.'});}
+      if(echoChance>0&&secureRandom()<echoChance){const echo=Math.max(1,Math.round(orbRoll.baseDamage*echoDamagePercent));damage+=echo;actions.push({actor:'player',kind:'ability',text:'Echo Fang repeats the strike for '+echo.toLocaleString()+' bonus damage.'});}
+      if(singularityChance>0&&secureRandom()<singularityChance){const burst=Math.max(1,Math.round(orbRoll.baseDamage*singularityDamage));damage+=burst;actions.push({actor:'player',kind:'ability',text:'Unstable Singularity bursts for '+burst.toLocaleString()+' extra damage.'});}
       const appliedDamage=Math.min(damage,Math.max(1,enemyHp));enemyHp-=appliedDamage;s.skillRuntime.lastAttackDamage=appliedDamage;
-      if(activeLifesteal>0){const restored=Math.min(s.maxHealth-s.health,Math.max(0,Math.round(appliedDamage*activeLifesteal)));if(restored>0){s.health+=restored;actions.push({actor:'player',kind:'ability',text:'Titan Blood restores '+restored.toLocaleString()+' HP.'});}}
+      const totalLifesteal=Math.min(.6,activeLifesteal+passiveLifesteal);
+      if(totalLifesteal>0){const restored=Math.min(s.maxHealth-s.health,Math.max(0,Math.round(appliedDamage*totalLifesteal)));if(restored>0){s.health+=restored;actions.push({actor:'player',kind:'ability',text:(passiveLifesteal>0?'Blood Drinker':'Titan Blood')+' restores '+restored.toLocaleString()+' HP.'});}}
       if(activeMarksPerDamage>0){const gained=Math.min(Number.MAX_SAFE_INTEGER-s.combatMarks,Math.max(0,Math.round(appliedDamage*activeMarksPerDamage)));if(gained>0){s.combatMarks+=gained;actions.push({actor:'player',kind:'loot',text:'Coin Sense converts damage into '+gained.toLocaleString()+' Combat Marks.'});}}
       if(crit&&activeCritMarkBonus>0){const gained=Math.min(Number.MAX_SAFE_INTEGER-s.combatMarks,Math.max(0,Math.round(appliedDamage*activeCritMarkBonus)));if(gained>0){s.combatMarks+=gained;actions.push({actor:'player',kind:'loot',text:'Gilded Kill mints '+gained.toLocaleString()+' Combat Marks.'});}}
+      if(crit&&passiveMarkOnCrit>0){const gained=Math.min(Number.MAX_SAFE_INTEGER-s.combatMarks,Math.max(0,Math.round(appliedDamage*passiveMarkOnCrit)));if(gained>0){s.combatMarks+=gained;actions.push({actor:'player',kind:'loot',text:'Fortune Engine mints '+gained.toLocaleString()+' Combat Marks.'});}}
       if(activeSkill?.id!=='singularity-edge')s.skillRuntime.storedDamage=Math.min(Math.round(s.maxHealth*2),s.skillRuntime.storedDamage+Math.round(appliedDamage*.04));
       actions.push({actor:'player',kind:'attack',damage:appliedDamage,text:(crit?'Critical hit for ':'Strike for ')+appliedDamage+' damage.'});
       if(enemyHp<=0){
         defeated=true;actions.push({actor:'player',kind:'death',text:'The '+enemy.name+' falls.'});s.totalKills=Math.min(Number.MAX_SAFE_INTEGER,s.totalKills+1);
+        if(soulHarvestPercent>0){const healed=Math.min(s.maxHealth-s.health,Math.max(0,Math.round(s.maxHealth*soulHarvestPercent)));if(healed>0){s.health+=healed;actions.push({actor:'player',kind:'ability',text:'Soul Harvest restores '+healed.toLocaleString()+' HP.'});}}
+        if(unendingWardPercent>0){const before=s.skillRuntime.shield;s.skillRuntime.shield=Math.min(Math.round(s.maxHealth*.75),s.skillRuntime.shield+Math.max(1,Math.round(s.maxHealth*unendingWardPercent)));actions.push({actor:'player',kind:'ability',text:'Unending Ward adds '+(s.skillRuntime.shield-before).toLocaleString()+' shield.'});}
         const coins=Math.max(1,Math.round((12+s.depth*2.4)*stats.coinMultiplier*(s.dungeonId==='cinder-vault'?1.4:1)));
         const baseMarks=Math.max(1,2+Math.floor(Math.max(0,s.depth-1)/2)+(enemy.kind==='elite'?2:enemy.boss?8:0));
         let marks=Math.max(1,Math.round(baseMarks*combatMarkMultiplier(s)));
@@ -463,7 +559,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         let killXp=Math.round((18+s.depth*4.2)*(s.dungeonId==='glass-labyrinth'?1.25:1))+s.skillRuntime.nextKillXpBonus;
         if(s.skillRuntime.nextKillXpBonus>0)actions.push({actor:'player',kind:'loot',text:'Bone Collector adds '+s.skillRuntime.nextKillXpBonus.toLocaleString()+' bonus Delver XP.'});
         s.skillRuntime.nextKillXpBonus=0;grantXp(s,killXp,actions);
-        const runeDropChance=enemy.boss?1:Math.min(.95,(enemy.kind==='elite'?Math.min(.5,.24+s.depth*.001):Math.min(.18,.07+s.depth*.0008))+s.skillRuntime.nextRuneDropBonus);
+        const runeDropChance=enemy.boss?1:Math.min(.95,(enemy.kind==='elite'?Math.min(.5,.24+s.depth*.001):Math.min(.18,.07+s.depth*.0008))+s.skillRuntime.nextRuneDropBonus+Math.min(.20,majorTotal('rune-savant','runeDropBonusPercent')));
         if(secureRandom()<runeDropChance){
           const rune=createCombatRune(Math.max(0,s.depth-1),s.dungeonId,s.totalKills,s.sequence);
           if(s.runes.length>=COMBAT_RUNE_INVENTORY_CAP){
@@ -487,7 +583,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         if((s.dungeonId==='cinder-vault'?s.depth%4===0:s.depth%5===0)||enemy.kind!=='common'||enemy.boss){
           item=createGear(Math.max(0,s.depth-1));
           if(s.autoScrapUnlocked&&s.autoScrapSettings.enabled&&item.quality<=s.autoScrapSettings.maxQuality){
-            const gained=combatScrapValue(item);s.scrap=Math.min(Number.MAX_SAFE_INTEGER,s.scrap+gained);
+            const gained=Math.round(combatScrapValue(item)*(1+Math.min(2,equippedMajorAbilityTotal(s,'salvagers-touch','scrapBonusPercent'))));s.scrap=Math.min(Number.MAX_SAFE_INTEGER,s.scrap+gained);
             actions.push({actor:'player',kind:'loot',text:'Auto-scrapped '+item.name+' ('+item.quality.toFixed(2)+'% quality) for '+gained+' Scrap.'});
             item=undefined;
           } else {addCombatGearToInventory(s,item);actions.push({actor:'player',kind:'loot',text:'Gear found: '+item.name+' ('+item.quality.toFixed(2)+'% quality).'});}
@@ -512,6 +608,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     let guardWasUsed=false;
     if(!defeated)for(let i=0;i<enemyActions;i++){
       if(s.skillRuntime.evadeNext){s.skillRuntime.evadeNext=false;actions.push({actor:'player',kind:'ability',text:'Evasion avoids the incoming hit.'});continue;}
+       if(phaseShiftChance>0&&secureRandom()<phaseShiftChance){actions.push({actor:'player',kind:'ability',text:'Phase Shift evades the incoming attack.'});continue;}
       let incoming=enemy.damage,strike='The '+enemy.name+' hits for ';
       if(enemy.boss&&s.combatBeats%4===0){incoming=Math.round(incoming*1.75);strike='The '+enemy.name+' cleaves for ';}
       else if(enemy.id.endsWith('ember-acolyte')&&s.combatBeats%3===0){incoming+=Math.round(s.maxHealth*.035);strike='The Ember Acolyte burns for ';}
@@ -520,8 +617,10 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
       const absorbed=Math.min(s.skillRuntime.shield,incoming);
       if(absorbed>0){s.skillRuntime.shield-=absorbed;incoming-=absorbed;actions.push({actor:'player',kind:'ability',text:'Shield absorbs '+absorbed.toLocaleString()+' damage.'});}
       if(incoming>0)s.health=Math.max(0,s.health-incoming);
-      if(activeThorns>0&&enemyHp>1){const reflected=Math.min(enemyHp-1,Math.max(0,Math.round((incoming+absorbed)*activeThorns)));if(reflected>0){enemyHp-=reflected;actions.push({actor:'player',kind:'attack',damage:reflected,text:'Starforged Core reflects '+reflected.toLocaleString()+' damage.'});}}
+      const totalReflection=Math.min(.8,activeThorns+reflectionPercent);
+      if(totalReflection>0&&enemyHp>1){const reflected=Math.min(enemyHp-1,Math.max(0,Math.round((incoming+absorbed)*totalReflection)));if(reflected>0){enemyHp-=reflected;actions.push({actor:'player',kind:'attack',damage:reflected,text:(reflectionPercent>0?'Mirrorplate':'Starforged Core')+' reflects '+reflected.toLocaleString()+' damage.'});}}
       actions.push({actor:'enemy',kind:'attack',damage:incoming,text:incoming>0?strike+incoming+' damage.':strike+' The shield blocks the hit.'});
+      if(pulseShieldPercent>0&&incoming+absorbed>0){const before=s.skillRuntime.shield;s.skillRuntime.shield=Math.min(Math.round(s.maxHealth*.75),s.skillRuntime.shield+Math.max(1,Math.round(s.maxHealth*pulseShieldPercent)));if(s.skillRuntime.shield>before)actions.push({actor:'player',kind:'ability',text:'Aegis Pulse builds '+(s.skillRuntime.shield-before).toLocaleString()+' shield.'});}
       const defensiveAbility=s.inventory.find(g=>g.majorAbility?.id==='second-dawn'&&g.majorAbility.trigger==='on-damage'&&Object.values(s.equipment).includes(g.id))?.majorAbility;
       if(defensiveAbility?.id==='second-dawn'&&s.pendingHealAmount===0){
         s.pendingHealAmount=Math.max(1,Math.round(s.maxHealth*defensiveAbility.healPercent));
@@ -549,7 +648,7 @@ export async function scrapCombatItem(itemIdValue:unknown):Promise<CombatSnapsho
     if(Object.values(state.equipment).includes(item.id))throw new Error('Unequip this item before scrapping it.');
     state.inventory=state.inventory.filter(gear=>gear.id!==item.id);
     state.runInventoryIds=state.runInventoryIds.filter(id=>id!==item.id);
-    const gained=combatScrapValue(item);state.scrap=Math.min(Number.MAX_SAFE_INTEGER,state.scrap+gained);
+    const gained=Math.round(combatScrapValue(item)*(1+Math.min(2,equippedMajorAbilityTotal(state,'salvagers-touch','scrapBonusPercent'))));state.scrap=Math.min(Number.MAX_SAFE_INTEGER,state.scrap+gained);
     return {...snapshot(state),scrapResult:{itemName:item.name,gained,total:state.scrap}};
   });
 }
