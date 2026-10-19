@@ -700,12 +700,12 @@ async function resetPlayerGenerationAndSave(
 ): Promise<{ state: ReturnType<typeof createInitialState>; generation: number }> {
   const generationKey = `player-generation:${userId}`;
   const playerKey = `player:${userId}`;
+  const combatStateKey = `infinity-orbs:combat:${userId}`;
 
-  // The generation bump and fresh save are one transaction. If either write
-  // fails, neither becomes visible; stale saves WATCH both keys and therefore
-  // cannot slip in between the two halves of a reset.
+  // Reset the main save and its independent Combat save in one transaction.
+  // Watching the combat key prevents a concurrent combat write from being silently overwritten.
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const txn = await redis.watch(generationKey, playerKey);
+    const txn = await redis.watch(generationKey, playerKey, combatStateKey);
     const rawGeneration = await redis.get(generationKey);
     const parsedGeneration = Number.parseInt(String(rawGeneration ?? '0'), 10);
     const currentGeneration =
@@ -727,6 +727,7 @@ async function resetPlayerGenerationAndSave(
     await txn.multi();
     await txn.set(generationKey, String(generation));
     await txn.set(playerKey, JSON.stringify(fresh));
+    await txn.del(combatStateKey);
     const committed = await txn.exec();
     if (committed !== null) return { state: fresh, generation };
   }
