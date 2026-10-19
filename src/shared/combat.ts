@@ -294,8 +294,11 @@ export const STRATEGY_GUIDE_RANKS:StrategyGuideRankDefinition[]=[
   {rank:4,name:'Equipment Synergy',description:'Uses the current loadout and active debuffs to select more useful skills.',manualCost:1,markCost:12000},
   {rank:5,name:'Adaptive Tactics',description:'Adapts skill priorities to health, boss encounters, active effects, and the selected tactic.',manualCost:1,markCost:30000},
 ];
-export const TACTICIAN_MANUAL_DROP_CHANCE=.25;
-export const TACTICIAN_MANUAL_PITY_BOSSES=4;
+/** Manual drop rate falls with Strategy Guide rank; there is no fixed pity override. */
+export function tacticianManualDropChance(rankValue:unknown):number {
+  const rank=Number.isFinite(Number(rankValue))?Math.max(0,Math.min(STRATEGY_GUIDE_RANKS.length,Math.floor(Number(rankValue)))):0;
+  return [0.25,0.20,0.15,0.10,0.05,0][rank]??0;
+}
 
 
 export interface CombatUpgradeDefinition {
@@ -389,8 +392,6 @@ export interface CombatState {
   skillRuntime:CombatSkillRuntime;
   strategyGuideRank:number;
   tacticianManuals:number;
-  /** Consecutive boss defeats without a Manual, capped below the pity threshold. */
-  bossesSinceManual:number;
   /** Gacha station rank unlocks increasingly rare skill pools. */
   skillGachaRank: number;
   /** Pulls since the last Epic-or-better and Mythic skill, respectively. */
@@ -593,7 +594,7 @@ export function createCombatState(): CombatState {
   const state: CombatState = {
     version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
-    baseDamage:54, coins:0, scrap:0, combatMarks:250, runes:[], equippedRunes:[], combatUpgrades:{}, totalKills:0, skillRolls:0, skillRuntime:createCombatSkillRuntime(), strategyGuideRank:0, tacticianManuals:0, bossesSinceManual:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
+    baseDamage:54, coins:0, scrap:0, combatMarks:250, runes:[], equippedRunes:[], combatUpgrades:{}, totalKills:0, skillRolls:0, skillRuntime:createCombatSkillRuntime(), strategyGuideRank:0, tacticianManuals:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
     combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
     encounterFirstStrikeUsed:false, pendingHealAmount:0, inventory:starter.inventory,
