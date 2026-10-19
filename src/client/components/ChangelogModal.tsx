@@ -11,6 +11,14 @@ const entries: Array<{
   description: string;
 }> = [
   {
+    title: 'Runes · Combat Loot for the Main Game',
+    description: 'Monsters can now drop seven Rune rarities. Equip Runes in the new Runes menu to improve Orb Luck, Coins, Shard chance, or XP in the core game. Bosses always drop a Rune; elites have better odds. Earn more Rune slots through Delver levels and depth, and salvage extras for Combat Marks.',
+  },
+  {
+    title: 'First Steps Tutorial',
+    description: 'New players are guided through their first orb roll, the result, Upgrades, and the Codex. The tutorial respects feature unlock levels and can be skipped at any time.',
+  },
+  {
     title: 'New Skills · Aftershock & Unbroken Momentum',
     description: 'Aftershock is now a Mastery skill that activates Critical Luck from your best dry interval between successive all-time rarity records. Unbroken Momentum is now a Prestige upgrade that unlocks logarithmic session-based Speed: +20% at 48 hours, about +25% at 72 hours, capped at +30%. Their live bonuses are shown in their purchase menus.',
   },
