@@ -2423,7 +2423,7 @@ export async function loadRaw(): Promise<PlayerState> {
     levelXpFloor,
     upgrades: normalizedUpgrades,
     manualRolls: normalizedManualRolls,
-    cosmicDust: finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust, MAX_COSMIC_DUST),
+    cosmicDust: finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust),
     masteryPoints: finiteNonNegativeInteger(parsed.masteryPoints, base.masteryPoints ?? 0),
     totalCrits: finiteNonNegativeInteger(parsed.totalCrits, base.totalCrits),
     lifetimeShards: finiteNonNegativeInteger(parsed.lifetimeShards, base.lifetimeShards),
@@ -2469,6 +2469,8 @@ export async function loadRaw(): Promise<PlayerState> {
     globalBoosters,
     dailyStreakCommunity,
   };
+  // Cosmic Dust has a lower game-specific cap than the shared safe-integer guard.
+  restored.cosmicDust = Math.min(MAX_COSMIC_DUST, restored.cosmicDust);
   playerGuildScopes.set(restored, guildId);
   // One-time migration: persist the new hard cap instead of only clamping its read view.
   if (finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust) > MAX_COSMIC_DUST) {
@@ -3176,20 +3178,13 @@ function finiteNonNegativeNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
-function finiteNonNegativeInteger(
-  value: unknown,
-  fallback = 0,
-  maximum = Number.MAX_SAFE_INTEGER,
-): number {
-  const cap = Number.isSafeInteger(maximum) && maximum >= 0
-    ? maximum
-    : Number.MAX_SAFE_INTEGER;
+function finiteNonNegativeInteger(value: unknown, fallback = 0): number {
   const safeFallback = Number.isFinite(fallback)
-    ? Math.min(cap, Math.max(0, Math.floor(fallback)))
+    ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(fallback)))
     : 0;
   const n = Number(value);
   return Number.isFinite(n)
-    ? Math.min(cap, Math.max(0, Math.floor(n)))
+    ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(n)))
     : safeFallback;
 }
 
