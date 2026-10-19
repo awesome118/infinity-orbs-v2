@@ -116,9 +116,12 @@ test('Frenzy posts use Orb terminology and claims return a visible Orb volley', 
 
 test('Frenzy claims expose 23-hour eligibility and expiry', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
-  assert.match(source, /canClaim: !expired && data\.consumedAt == null && \(claimCooldownRemainingMs <= 0 \|\| selfClaimTest\)/);
-  assert.match(source, /consumedAt: now/);
+  assert.match(source, /canClaim: !expired && !alreadyClaimedByViewer && \(claimCooldownRemainingMs <= 0 \|\| selfClaimTest\)/);
+  assert.match(source, /const alreadyClaimedByViewer = claimedReceipt != null \|\| data\.consumedBy === viewerId/);
+  assert.match(source, /const claimReceiptKey = frenzyClaimReceiptKey\(postId, claimantId\)/);
+  assert.match(source, /key: claimReceiptKey,[\s\S]*?expectedValue: null/);
   assert.match(source, /key: FRENZY_POST_PREFIX \+ postId/);
+  assert.doesNotMatch(source, /nextValue: consumedPostValue/);
   assert.match(source, /frenzyClaimCooldownRemaining/);
   assert.match(source, /isFrenzyPostExpired/);
   assert.match(source, /selfClaimTest/);
