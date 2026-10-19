@@ -2544,13 +2544,17 @@ export function App() {
             </>}
             {tutorialStep === 1 && <>
               <h2>Read the result</h2>
-              <p>{lastOrb ? `You found ${lastOrb.name} (1 / ${formatNumber(lastOrb.rarity)}). ` : ''}Rarer orbs are worth more. Your collection records every rarity you find, and coins let you improve future rolls.</p>
-              <button type="button" className="io-tutorial-primary" onClick={() => { setTutorialStep(2); changeTab('upgrades'); }}>Explore Upgrades <Zap size={15} /></button>
+              <p>{lastOrb ? `You found ${lastOrb.name} (1 / ${formatNumber(lastOrb.rarity)}). ` : ''}Rarer orbs are worth more. Keep rolling to earn XP; reaching Level 2 unlocks Upgrades, where Luck and Speed can improve future rolls.</p>
+              {state.level >= 2
+                ? <button type="button" className="io-tutorial-primary" onClick={() => { setTutorialStep(2); changeTab('upgrades'); }}>Explore Upgrades <Zap size={15} /></button>
+                : <button type="button" className="io-tutorial-primary" disabled={isRolling || busy} onClick={() => { void handleRoll(false); }}>Roll toward Level 2 <Sparkles size={15} /></button>}
             </>}
             {tutorialStep === 2 && <>
               <h2>Make the next roll better</h2>
-              <p>Luck improves your rarity odds; Speed reduces the wait between rolls. Coin and XP upgrades help you reinvest as you play. Buy whichever upgrade fits your next goal.</p>
-              <button type="button" className="io-tutorial-primary" onClick={() => { setTutorialStep(3); changeTab('collection'); }}>Open the Codex <BookOpen size={15} /></button>
+              <p>Luck improves your rarity odds; Speed reduces the wait between rolls. Coin and XP upgrades help you reinvest as you play. The Codex unlocks at Level 4 and tracks the rarities you’ve discovered.</p>
+              {state.level >= 4
+                ? <button type="button" className="io-tutorial-primary" onClick={() => { setTutorialStep(3); changeTab('collection'); }}>Open the Codex <BookOpen size={15} /></button>
+                : <button type="button" className="io-tutorial-primary" disabled={isRolling || busy} onClick={() => { void handleRoll(false); }}>Roll toward Level 4 <Sparkles size={15} /></button>}
             </>}
             {tutorialStep >= 3 && <>
               <h2>Your journey is tracked</h2>
