@@ -2589,7 +2589,7 @@ export function App() {
             </>}
             {tutorialStep >= 3 && <>
               <h2>Your journey is tracked</h2>
-              <p>The Codex tracks the rarities you’ve discovered. Later, defeat monsters in Combat to earn Runes, then equip them in the Runes menu for bonuses to your normal orb rolls.</p>
+              <p>The Codex tracks the rarities you’ve discovered. Later, defeat monsters in Combat to earn Runes. Open Combat → Runes and equip them to improve your normal orb rolls.</p>
               <button type="button" className="io-tutorial-primary" onClick={() => { finishTutorial(); changeTab('roll'); }}>Finish &amp; keep rolling <Sparkles size={15} /></button>
             </>}
           </section>
