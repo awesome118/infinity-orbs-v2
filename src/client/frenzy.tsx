@@ -292,7 +292,7 @@ function FrenzyPost() {
             <p className="io-frenzy-orb-label">orb in their Frenzy</p>
             <p className="io-frenzy-instruction">
               {info.consumed
-                ? 'This Frenzy has already been claimed.'
+                ? 'You have already claimed this Frenzy.'
                 : info.expired
                   ? 'This Frenzy has expired.'
                   : 'Click below to claim it. You can only claim one every 23 hours. If you claim it, please consider upvoting this post to thank its owner.'}
