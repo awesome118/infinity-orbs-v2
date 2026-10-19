@@ -1,4 +1,4 @@
-export type CombatPage = 'fight' | 'dungeons' | 'gear' | 'forge' | 'skills' | 'arena';
+export type CombatPage = 'fight' | 'dungeons' | 'gear' | 'forge' | 'skills' | 'arena' | 'runes';
 export type CombatIntent = 'strike' | 'heavy' | 'guard' | 'mend';
 export type CombatCommand = CombatIntent | 'auto' | 'ability';
 export type CombatAbilityType = 'strike' | 'flurry' | 'mend' | 'focus' | 'bounty';
@@ -76,15 +76,17 @@ export function combatRuneSalvageValue(rarity: CombatRuneRarity): number {
   return ({ Common: 50, Uncommon: 100, Rare: 250, Epic: 800, Legendary: 2500, Mythic: 10000, Cosmic: 40000 })[rarity];
 }
 export type CombatSkillStat = 'damagePct' | 'speedFlat' | 'healthPct' | 'critChance' | 'coinBonus';
-export type CombatUpgradeId = 'edge-training' | 'vitality' | 'precision' | 'scavenger' | 'orb-resonance';
-export type CombatUpgradeStat = 'damagePct' | 'healthPct' | 'speedFlat' | 'critChance' | 'markBonus' | 'orbFocusPct';
+export type CombatUpgradeId = 'edge-training' | 'vitality' | 'precision' | 'scavenger' | 'orb-resonance' | 'mark-magnet' | 'ward-training';
+export type CombatUpgradeStat = 'damagePct' | 'healthPct' | 'speedFlat' | 'critChance' | 'markBonus' | 'orbFocusPct' | 'damageReduction';
 export type CombatTrait = 'bleed' | 'keen' | 'first-strike' | 'bulwark' | 'regeneration' | 'desperation';
 export type CombatGearSlot = 'weapon' | 'armor' | 'helmet' | 'gloves' | 'boots' | 'ring' | 'amulet';
 export type CombatMajorAbility =
   | { id:'second-dawn'; name:string; trigger:'on-damage'; healPercent:number; description:string; }
   | { id:'chrono-surge'; name:string; trigger:'passive'; speedPercent:number; description:string; }
   | { id:'void-edge'; name:string; trigger:'passive'; damagePercent:number; description:string; }
-  | { id:'aegis-ward'; name:string; trigger:'passive'; damageReduction:number; description:string; };
+  | { id:'aegis-ward'; name:string; trigger:'passive'; damageReduction:number; description:string; }
+  | { id:'starfall'; name:string; trigger:'passive'; critChanceBonus:number; description:string; }
+  | { id:'mark-harvest'; name:string; trigger:'passive'; markBonusPercent:number; description:string; };
 export interface CombatOrbRoll { rarity:number; tier:string; name:string; damageMultiplier:number; baseDamage:number; }
 
 export interface CombatGear {
@@ -291,6 +293,8 @@ export const COMBAT_UPGRADES: CombatUpgradeDefinition[] = [
   { id:'precision', name:'Critical Calibration', description:'+1 percentage point critical chance per rank', stat:'critChance', value:.01, baseCost:25, costMultiplier:1.60, maxRank:10 },
   { id:'scavenger', name:'Battle Scavenger', description:'+8% Combat Marks from kills per rank', stat:'markBonus', value:.08, baseCost:28, costMultiplier:1.62, maxRank:10 },
   { id:'orb-resonance', name:'Orb Resonance', description:'+1.5% focused-orb combat power per rank', stat:'orbFocusPct', value:.015, baseCost:32, costMultiplier:1.65, maxRank:10 },
+  { id:'mark-magnet', name:'Mark Magnet', description:'+10% Combat Marks from kills per rank', stat:'markBonus', value:.10, baseCost:48, costMultiplier:1.68, maxRank:10 },
+  { id:'ward-training', name:'Warding Doctrine', description:'+1.5 percentage points damage reduction per rank', stat:'damageReduction', value:.015, baseCost:42, costMultiplier:1.65, maxRank:10 },
 ];
 export type CombatUpgradeLevels = Partial<Record<CombatUpgradeId, number>>;
 
@@ -590,9 +594,10 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const effectiveHealthBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.maxHealthBonus*qualityOf(item)),0);
   const effectiveArmorBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.armorBonus*qualityOf(item)),0);
   const effectiveCritBonus=equippedItems.reduce((sum,item)=>sum+item.critChanceBonus*qualityOf(item),0);
+  const majorCritBonus=equippedItems.reduce((sum,item)=>sum+(item.majorAbility?.id==='starfall'?item.majorAbility.critChanceBonus*qualityOf(item):0),0);
   const traitEffectiveness=(trait:CombatTrait)=>equippedItems.filter(item=>item.trait===trait).reduce((best,item)=>Math.max(best,qualityOf(item)),0);
   // Acquired skills are equipped active abilities, not permanent passive-stat stacks.
-  let damagePct=0, speedFlat=0, healthPct=0, critChance=.08, coinBonus=0;
+  let damagePct=0, speedFlat=0, healthPct=0, critChance=.08, coinBonus=0, damageReductionPct=0;
   for (const upgrade of COMBAT_UPGRADES) {
     const rank = combatUpgradeRank(state, upgrade.id);
     if (!rank) continue;
@@ -600,6 +605,7 @@ export function combatStatsFor(state: CombatState): CombatStats {
     else if (upgrade.stat === 'healthPct') healthPct += upgrade.value * rank;
     else if (upgrade.stat === 'speedFlat') speedFlat += upgrade.value * rank;
     else if (upgrade.stat === 'critChance') critChance += upgrade.value * rank;
+    else if (upgrade.stat === 'damageReduction') damageReductionPct += upgrade.value * rank;
   }
   const gearQualityRequirement = floorQualityRequirement(floor);
   const orbRarity = Math.max(2, Math.min(1_000_000_000_000_000_000, Math.floor(Number(state.orbFocusRarity) || 2)));
@@ -614,8 +620,8 @@ export function combatStatsFor(state: CombatState): CombatStats {
   let speed = Math.round((310 + effectiveSpeedBonus + speedFlat + dungeonSpeedBonus) * (1 + majorSpeedPercent));
   if (traitEffectiveness('desperation')>0 && state.health>0 && state.health<=maxHealth*.4) speed+=Math.round(20*traitEffectiveness('desperation'));
   if (traitEffectiveness('keen')>0) critChance+=.04*traitEffectiveness('keen');
-  critChance += effectiveCritBonus + dungeonCritBonus;
-  const damageReduction = Math.min(.80, effectiveArmorBonus/250 + .04*traitEffectiveness('bulwark') + majorDamageReduction);
+  critChance += effectiveCritBonus + majorCritBonus + dungeonCritBonus;
+  const damageReduction = Math.min(.80, effectiveArmorBonus/250 + .04*traitEffectiveness('bulwark') + majorDamageReduction + damageReductionPct);
   return {
     damage:Math.max(1,Math.round(flatDamage*(1+damagePct)*(1+majorDamagePercent)*(1+coreProgressionBonus)*(1+dungeonDamageBonus)*(1+orbFocusBonus))),
     speed:Math.min(800,speed), maxHealth, armor:effectiveArmorBonus,
@@ -637,8 +643,15 @@ export function synchronizeCombatStats(state: CombatState): CombatStats {
   return stats;
 }
 
-export function combatMarkMultiplier(state: Pick<CombatState, 'combatUpgrades'>): number {
-  return 1 + combatUpgradeRank(state, 'scavenger') * .08;
+export function combatMarkMultiplier(state: Pick<CombatState, 'combatUpgrades'> & Partial<Pick<CombatState, 'equipment' | 'inventory' | 'depth'>>): number {
+  const floor = Math.max(0, Math.floor(Number(state.depth ?? 1) - 1));
+  const inventory = Array.isArray(state.inventory) ? state.inventory : [];
+  const equipment = state.equipment ?? {};
+  const majorMarkBonus = (Object.entries(equipment) as [CombatGearSlot, string | null][]).reduce((sum, [slot, id]) => {
+    const item = inventory.find(candidate => candidate.id === id && candidate.slot === slot);
+    return sum + (item?.majorAbility?.id === 'mark-harvest' ? item.majorAbility.markBonusPercent * gearQualityEffectiveness(item, floor) : 0);
+  }, 0);
+  return 1 + combatUpgradeRank(state, 'scavenger') * .08 + combatUpgradeRank(state, 'mark-magnet') * .10 + majorMarkBonus;
 }
 
 export interface CombatSkillCopyResult {
