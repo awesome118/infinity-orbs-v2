@@ -2396,4 +2396,6 @@ test('Combat is level-gated, guided, and reset with the rest of the player save'
   assert.ok(debug.includes('const combatStateKey = `infinity-orbs:combat:${userId}`'));
   assert.ok(debug.includes('redis.watch(generationKey, playerKey, combatStateKey)'));
   assert.ok(debug.includes('await txn.del(combatStateKey)'));
+  assert.equal((combat.match(/window\\.innerHeight-376/g) ?? []).length, 2);
+  assert.ok(combat.includes("maxHeight:'min(360px, calc(100vh - 16px))'"));
 });
