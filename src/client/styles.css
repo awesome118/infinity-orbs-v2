@@ -2036,8 +2036,8 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-combat-stage{position:relative;overflow:hidden}
 .io-combat-sonic-blast{position:absolute;z-index:5;left:0;right:0;top:49%;height:0;pointer-events:none}
 .io-combat-sonic-blast span{position:absolute;top:-30px;width:54px;height:64px;border:2px solid #9bf4ff;border-radius:50%;filter:drop-shadow(0 0 8px rgba(94,224,255,.9));opacity:0;animation:io-sonic-wave-player 1.55s cubic-bezier(.15,.6,.25,1) both}
-.io-combat-sonic-blast span:nth-child(2){width:76px;height:86px;top:-40px;animation-delay:.24s}
-.io-combat-sonic-blast span:nth-child(3){width:98px;height:108px;top:-50px;animation-delay:.12s}
+.io-combat-sonic-blast span:nth-child(2){width:76px;height:86px;top:-40px;animation-delay:.12s}
+.io-combat-sonic-blast span:nth-child(3){width:98px;height:108px;top:-50px;animation-delay:.24s}
 .io-combat-sonic-blast.is-player span{left:-110px;border-color:#86f6ff;background:linear-gradient(90deg,transparent,rgba(92,229,255,.12),transparent)}
 .io-combat-sonic-blast.is-enemy span{right:-110px;border-color:#ff9e8c;background:linear-gradient(270deg,transparent,rgba(255,101,85,.13),transparent);animation-name:io-sonic-wave-enemy}
 @keyframes io-sonic-wave-player{0%{transform:translateX(0) scaleX(.55);opacity:0}12%{opacity:.95}100%{transform:translateX(calc(100vw + 240px)) scaleX(1.5);opacity:0}}
