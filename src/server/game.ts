@@ -2423,7 +2423,7 @@ export async function loadRaw(): Promise<PlayerState> {
     levelXpFloor,
     upgrades: normalizedUpgrades,
     manualRolls: normalizedManualRolls,
-    cosmicDust: Math.min(MAX_COSMIC_DUST, finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust)),
+    cosmicDust: finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust, MAX_COSMIC_DUST),
     masteryPoints: finiteNonNegativeInteger(parsed.masteryPoints, base.masteryPoints ?? 0),
     totalCrits: finiteNonNegativeInteger(parsed.totalCrits, base.totalCrits),
     lifetimeShards: finiteNonNegativeInteger(parsed.lifetimeShards, base.lifetimeShards),
@@ -3176,11 +3176,21 @@ function finiteNonNegativeNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
-function finiteNonNegativeInteger(value: unknown, fallback = 0): number {
+function finiteNonNegativeInteger(
+  value: unknown,
+  fallback = 0,
+  maximum = Number.MAX_SAFE_INTEGER,
+): number {
+  const cap = Number.isSafeInteger(maximum) && maximum >= 0
+    ? maximum
+    : Number.MAX_SAFE_INTEGER;
+  const safeFallback = Number.isFinite(fallback)
+    ? Math.min(cap, Math.max(0, Math.floor(fallback)))
+    : 0;
   const n = Number(value);
   return Number.isFinite(n)
-    ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(n)))
-    : fallback;
+    ? Math.min(cap, Math.max(0, Math.floor(n)))
+    : safeFallback;
 }
 
 function normalizeSafeInteger(value: unknown, fallback = 0): number {
