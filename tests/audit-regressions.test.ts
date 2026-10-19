@@ -2377,3 +2377,23 @@ test('Aftershock and Unbroken Momentum are unlocked through their purchase menus
   assert.match(changelog, /Bug Fixes & Improvements/);
 });
 
+
+
+test('Combat is level-gated, guided, and reset with the rest of the player save', () => {
+  const shared = source('src/shared/game.ts');
+  const main = source('src/client/main.tsx');
+  const header = source('src/client/components/Header.tsx');
+  const debug = source('src/server/debug.ts');
+  const combat = source('src/client/components/CombatSection.tsx');
+  assert.match(shared, /combat: 8/);
+  assert.match(main, /Buy Auto Roll there/);
+  assert.match(main, /COMBAT UNLOCKED · LEVEL \\{FEATURE_UNLOCK_LEVELS\\.combat\\}/);
+  assert.match(main, /changeTab\\('runes'\\)/);
+  assert.doesNotMatch(main, /import \\{ RunesSection \\} from/);
+  assert.match(combat, /if\\(page==='runes'\\)return <RunesSection\\/>/);
+  assert.match(header, /!combatMode &&/);
+  assert.match(header, /combatMode &&/);
+  assert.ok(debug.includes('const combatStateKey = `infinity-orbs:combat:${userId}`'));
+  assert.match(debug, /redis\\.watch\\(generationKey, playerKey, combatStateKey\\)/);
+  assert.match(debug, /await txn\\.del\\(combatStateKey\\)/);
+});
