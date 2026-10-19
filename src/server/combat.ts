@@ -1,7 +1,7 @@
 import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import { getOrbInfo, luckMultiplier, rollContinuum } from '../shared/game.js';
-import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
+import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatSkillDefinition, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
 import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, STRATEGY_GUIDE_RANKS, TACTICIAN_MANUAL_DROP_CHANCE, TACTICIAN_MANUAL_PITY_BOSSES, createCombatSkillRuntime, combatRuneBonuses, combatRuneEffectText, combatRuneSalvageValue, combatRuneSlotsUnlocked, combatRuneValueFor } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
@@ -296,7 +296,7 @@ function chooseGuidedSkillId(s:CombatState,enemy:CombatEnemy):CombatSkillId|null
   if(s.strategyGuideRank<1)return null;
   const energy=combatEnergyAfterRegen(s.energy,s.maxEnergy);
   const ready=s.equippedAbilities.map(id=>COMBAT_SKILLS.find(skill=>skill.id===id))
-    .filter((skill):skill is NonNullable<typeof skill>=>Boolean(skill)&&(s.skillLevels[skill.id]??0)>0&&(s.abilityCooldowns[skill.id]??0)<=s.sequence&&energy>=combatSkillEnergyCost(skill.rarity));
+    .filter((skill):skill is CombatSkillDefinition=>Boolean(skill)&&(s.skillLevels[skill.id]??0)>0&&(s.abilityCooldowns[skill.id]??0)<=s.sequence&&energy>=combatSkillEnergyCost(skill.rarity));
   if(!ready.length)return null;
   const ids=new Set(ready.map(skill=>skill.id)),healthRatio=s.health/Math.max(1,s.maxHealth),tactic=s.autoTactic;
   let priority:CombatSkillId[]=[];
