@@ -480,7 +480,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
           const manualChance=tacticianManualDropChance(s.strategyGuideRank);
           if(manualChance>0&&secureRandom()<manualChance){
             s.tacticianManuals=1;
-            actions.push({actor:'player',kind:'loot',text:"Boss drop: Tactician's Manual! ("+Math.round(manualChance*100)+"% chance at Strategy Guide Rank "+s.strategyGuideRank+")."});
+            actions.push({actor:'player',kind:'loot',text:"Boss drop: Tactician's Manual! ("+(manualChance*100).toFixed(1)+"% chance at Strategy Guide Rank "+s.strategyGuideRank+")."});
           }
         }
         if((s.dungeonId==='cinder-vault'?s.depth%4===0:s.depth%5===0)||enemy.kind!=='common'||enemy.boss){
