@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { combatMarkMultiplier, addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated, type CombatGear } from '../src/shared/combat.js';
+import { combatMarkMultiplier, addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, STRATEGY_GUIDE_RANKS, TACTICIAN_MANUAL_DROP_CHANCE, TACTICIAN_MANUAL_PITY_BOSSES, createCombatSkillRuntime, undercryptOrbLuckMultiplier, undercryptWardensDefeated, type CombatGear } from '../src/shared/combat.js';
 
 test('starter combat build carries the Auto-Dungeons baseline', () => {
   const state=createCombatState();
@@ -18,6 +18,16 @@ test('every combat rarity has seven active abilities', () => {
   for(const rarity of ['Common','Uncommon','Rare','Epic','Mythic']) assert.equal(COMBAT_SKILLS.filter(skill=>skill.rarity===rarity).length,7);
   assert.equal(COMBAT_SKILLS.length,35);
   assert.equal(COMBAT_ABILITY_SLOTS,3);
+});
+test('skill catalog descriptions are distinct and Strategy Guide has pity-protected boss drops',()=>{
+  assert.equal(COMBAT_SKILLS.length,35);
+  assert.equal(new Set(COMBAT_SKILLS.map(skill=>skill.id)).size,35);
+  assert.equal(new Set(COMBAT_SKILLS.map(skill=>skill.effect)).size,35,'every skill communicates a distinct mechanic');
+  assert.equal(TACTICIAN_MANUAL_DROP_CHANCE,.35);
+  assert.equal(TACTICIAN_MANUAL_PITY_BOSSES,4);
+  assert.deepEqual(STRATEGY_GUIDE_RANKS.map(rank=>rank.rank),[1,2,3,4,5]);
+  assert.deepEqual(STRATEGY_GUIDE_RANKS.map(rank=>rank.manualCost),[1,0,0,1,1]);
+  assert.equal(createCombatSkillRuntime().shield,0);
 });
 test('equipped gear changes derived stats', () => {
   const state=createCombatState(), before=combatStatsFor(state);

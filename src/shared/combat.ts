@@ -238,43 +238,65 @@ export function skillRarityUnlocked(_rarity: CombatRarity, _gachaRankValue: unkn
   return true;
 }
 export const COMBAT_SKILLS: CombatSkillDefinition[] = [
-  { id:'ember-lung', name:'Ember Lung', rarity:'Common', stat:'damagePct', value:.025, effect:'+2.5% damage per rank' },
-  { id:'surefoot', name:'Surefoot', rarity:'Common', stat:'speedFlat', value:8, effect:'+8 Speed per rank' },
-  { id:'ironbark', name:'Ironbark', rarity:'Common', stat:'healthPct', value:.03, effect:'+3% max health per rank' },
-  { id:'lucky-fang', name:'Lucky Fang', rarity:'Common', stat:'critChance', value:.01, effect:'+1 percentage point critical chance per rank' },
-  { id:'penny-hunter', name:'Penny Hunter', rarity:'Common', stat:'coinBonus', value:.05, effect:'+5% Combat Marks per rank' },
-  { id:'razor-current', name:'Razor Current', rarity:'Uncommon', stat:'damagePct', value:.04, effect:'+4% damage per rank' },
-  { id:'quicksilver', name:'Quicksilver', rarity:'Uncommon', stat:'speedFlat', value:14, effect:'+14 Speed per rank' },
-  { id:'deep-vitals', name:'Deep Vitals', rarity:'Uncommon', stat:'healthPct', value:.05, effect:'+5% max health per rank' },
-  { id:'execution-script', name:'Execution Script', rarity:'Uncommon', stat:'critChance', value:.018, effect:'+1.8 percentage points critical chance per rank' },
-  { id:'bone-collector', name:'Bone Collector', rarity:'Uncommon', stat:'coinBonus', value:.08, effect:'+8% Combat Marks per rank' },
-  { id:'rift-hammer', name:'Rift Hammer', rarity:'Rare', stat:'damagePct', value:.065, effect:'+6.5% damage per rank' },
-  { id:'afterimage', name:'Afterimage', rarity:'Rare', stat:'speedFlat', value:22, effect:'+22 Speed per rank' },
-  { id:'titan-blood', name:'Titan Blood', rarity:'Rare', stat:'healthPct', value:.075, effect:'+7.5% max health per rank' },
-  { id:'fracture-math', name:'Fracture Math', rarity:'Rare', stat:'critChance', value:.025, effect:'+2.5 percentage points critical chance per rank' },
-  { id:'gilded-kill', name:'Gilded Kill', rarity:'Rare', stat:'coinBonus', value:.12, effect:'+12% Combat Marks per rank' },
-  { id:'singularity-edge', name:'Singularity Edge', rarity:'Epic', stat:'damagePct', value:.09, effect:'+9% damage per rank' },
-  { id:'time-shear', name:'Time Shear', rarity:'Epic', stat:'speedFlat', value:32, effect:'+32 Speed per rank' },
-  { id:'starforged-core', name:'Starforged Core', rarity:'Epic', stat:'healthPct', value:.10, effect:'+10% max health per rank' },
-  { id:'apex-instinct', name:'Apex Instinct', rarity:'Epic', stat:'critChance', value:.035, effect:'+3.5 percentage points critical chance per rank' },
-  { id:'royal-tithe', name:'Royal Tithe', rarity:'Epic', stat:'coinBonus', value:.18, effect:'+18% Combat Marks per rank' },
-  { id:'infinity-cleaver', name:'Infinity Cleaver', rarity:'Mythic', stat:'damagePct', value:.13, effect:'+13% damage per rank' },
-  { id:'chronos-heel', name:'Chronos Heel', rarity:'Mythic', stat:'speedFlat', value:45, effect:'+45 Speed per rank' },
-  { id:'worldheart', name:'Worldheart', rarity:'Mythic', stat:'healthPct', value:.15, effect:'+15% max health per rank' },
-  { id:'annihilator', name:'Annihilator', rarity:'Mythic', stat:'critChance', value:.05, effect:'+5 percentage points critical chance per rank' },
-  { id:'infinite-bounty', name:'Infinite Bounty', rarity:'Mythic', stat:'coinBonus', value:.25, effect:'+25% Combat Marks per rank' },
-  { id:'steady-hand', name:'Steady Hand', rarity:'Common', stat:'critChance', value:.008, effect:'+0.8 percentage points critical chance per rank' },
-  { id:'coin-sense', name:'Coin Sense', rarity:'Common', stat:'coinBonus', value:.03, effect:'+3% Combat Marks per rank' },
-  { id:'sunder-mark', name:'Sunder Mark', rarity:'Uncommon', stat:'damagePct', value:.035, effect:'+3.5% damage per rank' },
-  { id:'lightstep', name:'Lightstep', rarity:'Uncommon', stat:'speedFlat', value:12, effect:'+12 Speed per rank' },
-  { id:'warden-slayer', name:'Warden Slayer', rarity:'Rare', stat:'damagePct', value:.08, effect:'+8% damage per rank' },
-  { id:'crystal-aegis', name:'Crystal Aegis', rarity:'Rare', stat:'healthPct', value:.065, effect:'+6.5% max health per rank' },
-  { id:'blackstar-velocity', name:'Blackstar Velocity', rarity:'Epic', stat:'speedFlat', value:36, effect:'+36 Speed per rank' },
-  { id:'astral-scavenger', name:'Astral Scavenger', rarity:'Epic', stat:'coinBonus', value:.20, effect:'+20% Combat Marks per rank' },
-  { id:'worldbreaker', name:'Worldbreaker', rarity:'Mythic', stat:'damagePct', value:.16, effect:'+16% damage per rank' },
-  { id:'phoenix-engine', name:'Phoenix Engine', rarity:'Mythic', stat:'healthPct', value:.18, effect:'+18% max health per rank' },
+  { id:'ember-lung', name:'Ember Lung', rarity:'Common', stat:'damagePct', value:.025, effect:"Applies Burn for several beats; each tick deals rank-scaled damage before your next attack." },
+  { id:'surefoot', name:'Surefoot', rarity:'Common', stat:'speedFlat', value:8, effect:"Launches a quick combo of weakened bonus strikes and evades the next enemy hit." },
+  { id:'ironbark', name:'Ironbark', rarity:'Common', stat:'healthPct', value:.03, effect:"Raises a personal shield that absorbs incoming damage; shield strength grows with rank." },
+  { id:'lucky-fang', name:'Lucky Fang', rarity:'Common', stat:'critChance', value:.01, effect:"Your opening hit is a guaranteed critical strike with extra critical damage." },
+  { id:'penny-hunter', name:'Penny Hunter', rarity:'Common', stat:'coinBonus', value:.05, effect:"Places a bounty on the target. Defeating it grants bonus Combat Marks." },
+  { id:'razor-current', name:'Razor Current', rarity:'Uncommon', stat:'damagePct', value:.04, effect:"Pierces defenses with a heavy strike and leaves the target exposed to follow-up attacks." },
+  { id:'quicksilver', name:'Quicksilver', rarity:'Uncommon', stat:'speedFlat', value:14, effect:"Unleashes a rapid flurry of weakened hits, respecting the 12-hit combat cap." },
+  { id:'deep-vitals', name:'Deep Vitals', rarity:'Uncommon', stat:'healthPct', value:.05, effect:"Restores a portion of maximum HP and recovers 1 Energy." },
+  { id:'execution-script', name:'Execution Script', rarity:'Uncommon', stat:'critChance', value:.018, effect:"Marks the target; attacks gain a finisher bonus once it falls below 25% HP." },
+  { id:'bone-collector', name:'Bone Collector', rarity:'Uncommon', stat:'coinBonus', value:.08, effect:"Your next kill grants bonus Delver XP." },
+  { id:'rift-hammer', name:'Rift Hammer', rarity:'Rare', stat:'damagePct', value:.065, effect:"Smashes enemy defenses, applying a strong armor break and a heavy impact." },
+  { id:'afterimage', name:'Afterimage', rarity:'Rare', stat:'speedFlat', value:22, effect:"Replays part of your previous hit as delayed damage on your next beat." },
+  { id:'titan-blood', name:'Titan Blood', rarity:'Rare', stat:'healthPct', value:.075, effect:"Leeches a share of the damage dealt by this cast as HP." },
+  { id:'fracture-math', name:'Fracture Math', rarity:'Rare', stat:'critChance', value:.025, effect:"Against an armor-broken enemy, guarantees a critical hit and magnifies its damage." },
+  { id:'gilded-kill', name:'Gilded Kill', rarity:'Rare', stat:'coinBonus', value:.12, effect:"Critical hits during this cast also mint bonus Combat Marks." },
+  { id:'singularity-edge', name:'Singularity Edge', rarity:'Epic', stat:'damagePct', value:.09, effect:"Releases stored attack energy into a burst; ordinary attacks slowly charge the reserve." },
+  { id:'time-shear', name:'Time Shear', rarity:'Epic', stat:'speedFlat', value:32, effect:"Cancels one enemy action when possible and shortens other skill cooldowns." },
+  { id:'starforged-core', name:'Starforged Core', rarity:'Epic', stat:'healthPct', value:.10, effect:"Creates a shield that retaliates against a portion of incoming damage." },
+  { id:'apex-instinct', name:'Apex Instinct', rarity:'Epic', stat:'critChance', value:.035, effect:"If this beat's Orb is at least 1 in 1,000, delivers an empowered critical strike." },
+  { id:'royal-tithe', name:'Royal Tithe', rarity:'Epic', stat:'coinBonus', value:.18, effect:"Empowers Combat Mark rewards from your next three kills." },
+  { id:'infinity-cleaver', name:'Infinity Cleaver', rarity:'Mythic', stat:'damagePct', value:.13, effect:"Deals a powerful cut, with a devastating finisher bonus below 30% enemy HP." },
+  { id:'chronos-heel', name:'Chronos Heel', rarity:'Mythic', stat:'speedFlat', value:45, effect:"Shortens other equipped abilities' cooldowns and strikes immediately." },
+  { id:'worldheart', name:'Worldheart', rarity:'Mythic', stat:'healthPct', value:.15, effect:"Restores HP and reinforces you with an additional shield." },
+  { id:'annihilator', name:'Annihilator', rarity:'Mythic', stat:'critChance', value:.05, effect:"Damage grows with missing enemy HP, putting pressure on wounded foes." },
+  { id:'infinite-bounty', name:'Infinite Bounty', rarity:'Mythic', stat:'coinBonus', value:.25, effect:"Pays Combat Marks now and grows a capped bounty streak for future kills." },
+  { id:'steady-hand', name:'Steady Hand', rarity:'Common', stat:'critChance', value:.008, effect:"Steadies the strike for bonus damage and restores 1 Energy." },
+  { id:'coin-sense', name:'Coin Sense', rarity:'Common', stat:'coinBonus', value:.03, effect:"Converts a share of damage dealt by this cast into immediate Combat Marks." },
+  { id:'sunder-mark', name:'Sunder Mark', rarity:'Uncommon', stat:'damagePct', value:.035, effect:"Shreds the target's guard for several beats, increasing follow-up damage." },
+  { id:'lightstep', name:'Lightstep', rarity:'Uncommon', stat:'speedFlat', value:12, effect:"Evades the next incoming hit and gains 1 Energy." },
+  { id:'warden-slayer', name:'Warden Slayer', rarity:'Rare', stat:'damagePct', value:.08, effect:"Deals greatly increased damage to bosses while remaining useful against ordinary foes." },
+  { id:'crystal-aegis', name:'Crystal Aegis', rarity:'Rare', stat:'healthPct', value:.065, effect:"Converts missing HP into a large, capped protective barrier." },
+  { id:'blackstar-velocity', name:'Blackstar Velocity', rarity:'Epic', stat:'speedFlat', value:36, effect:"Turns a temporal burst into hard-hitting bonus strikes." },
+  { id:'astral-scavenger', name:'Astral Scavenger', rarity:'Epic', stat:'coinBonus', value:.20, effect:"Improves the next eligible Rune drop chance; boss Rune guarantees remain unchanged." },
+  { id:'worldbreaker', name:'Worldbreaker', rarity:'Mythic', stat:'damagePct', value:.16, effect:"Adds a capped burst of damage based on the enemy's maximum HP." },
+  { id:'phoenix-engine', name:'Phoenix Engine', rarity:'Mythic', stat:'healthPct', value:.18, effect:"Arms a once-per-encounter survival spark that prevents one lethal hit." },
 ];
 export type CombatSkillLevels = Partial<Record<CombatSkillId, number>>;
+
+export interface CombatSkillRuntime {
+  burnTicks:number; burnDamage:number; armorBreakBeats:number; shield:number;
+  delayedDamage:number; delayedDamageReadyAtSequence:number; lastAttackDamage:number; storedDamage:number;
+  executeMarked:boolean; evadeNext:boolean; phoenixReady:boolean; phoenixUsed:boolean;
+  nextKillMarkBonus:number; nextKillXpBonus:number; royalTitheKills:number; bountyStreak:number; nextRuneDropBonus:number;
+}
+export function createCombatSkillRuntime():CombatSkillRuntime {
+  return {burnTicks:0,burnDamage:0,armorBreakBeats:0,shield:0,delayedDamage:0,delayedDamageReadyAtSequence:0,lastAttackDamage:0,storedDamage:0,
+    executeMarked:false,evadeNext:false,phoenixReady:false,phoenixUsed:false,nextKillMarkBonus:0,nextKillXpBonus:0,royalTitheKills:0,bountyStreak:0,nextRuneDropBonus:0};
+}
+export interface StrategyGuideRankDefinition {rank:number;name:string;description:string;manualCost:number;markCost:number;}
+export const STRATEGY_GUIDE_RANKS:StrategyGuideRankDefinition[]=[
+  {rank:1,name:'Intent Awareness',description:'Auto Fight can use equipped skills and make basic decisions from current combat state.',manualCost:1,markCost:0},
+  {rank:2,name:'Survival Management',description:'Prioritizes recovery and protection when health is low.',manualCost:0,markCost:1000},
+  {rank:3,name:'Ability Planning',description:'Prefers setup effects before compatible follow-up skills.',manualCost:0,markCost:4000},
+  {rank:4,name:'Equipment Synergy',description:'Uses the current loadout and active debuffs to select more useful skills.',manualCost:1,markCost:12000},
+  {rank:5,name:'Adaptive Tactics',description:'Adapts skill priorities to health, boss encounters, active effects, and the selected tactic.',manualCost:1,markCost:30000},
+];
+export const TACTICIAN_MANUAL_DROP_CHANCE=.35;
+export const TACTICIAN_MANUAL_PITY_BOSSES=4;
+
 
 export interface CombatUpgradeDefinition {
   id: CombatUpgradeId;
@@ -364,6 +386,11 @@ export interface CombatState {
   combatUpgrades: CombatUpgradeLevels;
   totalKills: number;
   skillRolls: number;
+  skillRuntime:CombatSkillRuntime;
+  strategyGuideRank:number;
+  tacticianManuals:number;
+  /** Consecutive boss defeats without a Manual, capped below the pity threshold. */
+  bossesSinceManual:number;
   /** Gacha station rank unlocks increasingly rare skill pools. */
   skillGachaRank: number;
   /** Pulls since the last Epic-or-better and Mythic skill, respectively. */
@@ -566,7 +593,7 @@ export function createCombatState(): CombatState {
   const state: CombatState = {
     version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
-    baseDamage:54, coins:0, scrap:0, combatMarks:250, runes:[], equippedRunes:[], combatUpgrades:{}, totalKills:0, skillRolls:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
+    baseDamage:54, coins:0, scrap:0, combatMarks:250, runes:[], equippedRunes:[], combatUpgrades:{}, totalKills:0, skillRolls:0, skillRuntime:createCombatSkillRuntime(), strategyGuideRank:0, tacticianManuals:0, bossesSinceManual:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
     combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
     encounterFirstStrikeUsed:false, pendingHealAmount:0, inventory:starter.inventory,
