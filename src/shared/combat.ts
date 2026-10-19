@@ -294,7 +294,7 @@ export const STRATEGY_GUIDE_RANKS:StrategyGuideRankDefinition[]=[
   {rank:4,name:'Equipment Synergy',description:'Uses the current loadout and active debuffs to select more useful skills.',manualCost:1,markCost:12000},
   {rank:5,name:'Adaptive Tactics',description:'Adapts skill priorities to health, boss encounters, active effects, and the selected tactic.',manualCost:1,markCost:30000},
 ];
-export const TACTICIAN_MANUAL_DROP_CHANCE=.35;
+export const TACTICIAN_MANUAL_DROP_CHANCE=.25;
 export const TACTICIAN_MANUAL_PITY_BOSSES=4;
 
 

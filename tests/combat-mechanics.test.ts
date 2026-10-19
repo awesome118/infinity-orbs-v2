@@ -23,7 +23,7 @@ test('skill catalog descriptions are distinct and Strategy Guide has pity-protec
   assert.equal(COMBAT_SKILLS.length,35);
   assert.equal(new Set(COMBAT_SKILLS.map(skill=>skill.id)).size,35);
   assert.equal(new Set(COMBAT_SKILLS.map(skill=>skill.effect)).size,35,'every skill communicates a distinct mechanic');
-  assert.equal(TACTICIAN_MANUAL_DROP_CHANCE,.35);
+  assert.equal(TACTICIAN_MANUAL_DROP_CHANCE,.25);
   assert.equal(TACTICIAN_MANUAL_PITY_BOSSES,4);
   assert.deepEqual(STRATEGY_GUIDE_RANKS.map(rank=>rank.rank),[1,2,3,4,5]);
   assert.deepEqual(STRATEGY_GUIDE_RANKS.map(rank=>rank.manualCost),[1,0,0,1,1]);
