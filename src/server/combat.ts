@@ -297,7 +297,8 @@ function chooseGuidedSkillId(s:CombatState,enemy:CombatEnemy):CombatSkillId|null
   if(s.strategyGuideRank<1)return null;
   const energy=combatEnergyAfterRegen(s.energy,s.maxEnergy);
   const ready=s.equippedAbilities.map(id=>COMBAT_SKILLS.find(skill=>skill.id===id))
-    .filter((skill):skill is CombatSkillDefinition=>Boolean(skill)&&(s.skillLevels[skill.id]??0)>0&&(s.abilityCooldowns[skill.id]??0)<=s.sequence&&energy>=combatSkillEnergyCost(skill.rarity));
+    .filter((skill):skill is CombatSkillDefinition=>skill!==undefined)
+    .filter(skill=>(s.skillLevels[skill.id]??0)>0&&(s.abilityCooldowns[skill.id]??0)<=s.sequence&&energy>=combatSkillEnergyCost(skill.rarity));
   if(!ready.length)return null;
   const ids=new Set(ready.map(skill=>skill.id)),healthRatio=s.health/Math.max(1,s.maxHealth),tactic=s.autoTactic;
   let priority:CombatSkillId[]=[];
@@ -360,7 +361,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     const orbRarity=rollContinuum(orbLuck*(1+Math.min(400,runeLuck)/100),secureRandom),orbInfo=getOrbInfo(orbRarity),damageMultiplier=combatOrbDamageMultiplier(orbRarity);
     const orbRoll:CombatOrbRoll={rarity:orbRarity,tier:String(orbInfo.tier),name:orbInfo.name,damageMultiplier,baseDamage:Math.max(1,Math.round(stats.damage*damageMultiplier))};
     actions.push({actor:'player',kind:'ability',text:'Orb roll: '+orbInfo.name+' · 1 / '+orbRarity.toLocaleString()+' · ×'+damageMultiplier.toFixed(2)+' damage.'});
-    const resolvedIntent:CombatIntent=activeSkill?'strike':intent==='auto'?chooseAutoCombatIntent(s):intent;
+    const resolvedIntent:CombatIntent=activeSkill?'strike':intent==='auto'?chooseAutoCombatIntent(s):intent==='ability'?'strike':intent;
     const playerActions=Math.min(12,Math.max(0,Math.floor(s.combatBeats*stats.speed/100)-s.playerActionsResolved));
     let enemyActions=Math.min(3,Math.max(0,Math.floor(s.combatBeats*enemy.speed/100)-s.enemyActionsResolved));
     if(activeSkill&&playerActions<1)throw new Error('No player action is ready for this ability.');
