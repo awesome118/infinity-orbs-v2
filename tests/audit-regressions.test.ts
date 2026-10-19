@@ -84,7 +84,7 @@ test('Global Chat comments are submitted as USER and Reddit comment triggers are
   const game = source('src/server/game.ts');
   assert.match(game, /postFrenzyThankYouComment/);
   assert.match(game, /runAs: 'USER'/);
-  assert.match(game, /consumedBy: claimantId/);
+  assert.ok(game.includes('nextValue: JSON.stringify({ postId, claimantId, claimedAt: now })'), 'Frenzy claims use a durable per-claimant receipt');
   assert.match(game, /consider upvoting the post/);
 });
 
@@ -937,7 +937,7 @@ test('targeted wipes and Reset All write generation plus fresh save atomically',
   const helperEnd = debug.indexOf('async function wipeUser', helperStart);
   assert.ok(helperStart >= 0 && helperEnd > helperStart);
   const helper = debug.slice(helperStart, helperEnd);
-  assert.match(helper, /redis\.watch\(generationKey, playerKey\)/);
+  assert.match(helper, /redis\.watch\(generationKey, playerKey, combatStateKey\)/);
   assert.match(helper, /await txn\.multi\(\)/);
   assert.match(helper, /txn\.set\(generationKey/);
   assert.match(helper, /txn\.set\(playerKey/);
