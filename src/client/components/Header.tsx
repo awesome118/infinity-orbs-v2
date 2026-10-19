@@ -6,6 +6,7 @@ import { sound } from '../sound.js';
 
 interface HeaderProps {
   state: PlayerState;
+  combatMode?: boolean;
   soundEnabled: boolean;
   onToggleSound: () => void;
   onOpenOdds: () => void;
@@ -21,6 +22,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   state,
+  combatMode = false,
   soundEnabled,
   onToggleSound,
   onOpenOdds,
@@ -130,21 +132,23 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Currencies */}
           <div className="header-resource-row resource-chip flex items-center gap-2 bg-slate-950/70 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-semibold">
-            {/* Coins */}
-            <div className="flex items-center gap-1 text-amber-400" title="Coins (Coins = Orb Rarity)">
-              <Coins className="w-3.5 h-3.5" />
-              <span>{fmt(state.coins)}</span>
-            </div>
+            {/* Core-game Coins stay hidden while in Combat. */}
+            {!combatMode && <>
+              <div className="flex items-center gap-1 text-amber-400" title="Coins (Coins = Orb Rarity)">
+                <Coins className="w-3.5 h-3.5" />
+                <span>{fmt(state.coins)}</span>
+              </div>
+              <div className="w-[1px] h-3.5 bg-slate-800" />
+            </>}
 
-            <div className="w-[1px] h-3.5 bg-slate-800" />
-
-            {/* Combat Marks are the shared Combat currency, fetched from combat state. */}
-            <div className="flex items-center gap-1 text-lime-300" title="Combat Marks are earned in battles and spent on combat upgrades and Skill Gacha.">
-              <Swords className="w-3.5 h-3.5" />
-              <span>{fmt(combatMarks)}</span>
-            </div>
-
-            <div className="w-[1px] h-3.5 bg-slate-800" />
+            {/* Combat Marks are shown only while in the Combat section. */}
+            {combatMode && <>
+              <div className="flex items-center gap-1 text-lime-300" title="Combat Marks are earned in battles and spent on combat upgrades and Skill Gacha.">
+                <Swords className="w-3.5 h-3.5" />
+                <span>{fmt(combatMarks)}</span>
+              </div>
+              <div className="w-[1px] h-3.5 bg-slate-800" />
+            </>}
 
             {/* Shards */}
             <div className="flex items-center gap-1 text-cyan-400" title="Shards">
