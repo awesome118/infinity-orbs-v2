@@ -665,7 +665,10 @@ export function combatScrapValue(item: Pick<CombatGear,'power'|'quality'|'source
   const power = Number.isFinite(Number(item.power)) ? Math.max(1, Math.min(1_000_000, Number(item.power))) : 1;
   const quality = Number.isFinite(Number(item.quality)) ? Math.max(0, Math.min(100, Number(item.quality))) : 0;
   const floor = Number.isFinite(Number(item.sourceFloor)) ? Math.max(0, Math.min(COMBAT_MAX_DEPTH, Number(item.sourceFloor))) : 0;
-  return Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.round(4 + power * 0.6 + quality * 0.1 + Math.log10(floor + 1) * 2)));
+  // Make even ordinary drops contribute to forging; deeper, stronger gear pays substantially more.
+  const depthMultiplier = 1 + Math.min(4, Math.sqrt(floor / 250));
+  const rawValue = (20 + power * 1.1 + quality * 0.75 + Math.log10(floor + 1) * 8) * depthMultiplier;
+  return Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.round(rawValue)));
 }
 
 export function combatForgeCost(floorValue: unknown): number {
