@@ -216,7 +216,7 @@ export function App() {
     try { return window.localStorage.getItem('io-first-roll-tutorial-v1') === 'done'; } catch { return false; }
   });
   useEffect(() => {
-    if (!tutorialDismissed && state && state.totalRolls > 0 && tutorialStep === 0) setTutorialStep(1);
+    if (!tutorialDismissed && state && state.totalRolls > 0 && state.totalRolls <= 3 && tutorialStep === 0) setTutorialStep(1);
   }, [state?.totalRolls, tutorialDismissed, tutorialStep]);
   const combatMode = tab === 'fight' || tab === 'dungeons' || tab === 'gear' || tab === 'forge' || tab === 'skills' || tab === 'arena';
   const [autoRoll, setAutoRoll] = useState<boolean>(false);
