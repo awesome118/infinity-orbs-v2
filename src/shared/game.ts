@@ -795,7 +795,8 @@ export type FeatureId =
   | 'social'
   | 'altar'
   | 'mastery'
-  | 'prestige';
+  | 'prestige'
+  | 'combat';
 
 export const FEATURE_UNLOCK_LEVELS: Record<FeatureId, number> = {
   upgrades: 2,
@@ -807,6 +808,7 @@ export const FEATURE_UNLOCK_LEVELS: Record<FeatureId, number> = {
   altar: 10,
   mastery: 15,
   prestige: 20,
+  combat: 8,
 };
 
 export function featureUnlockLevel(feature: FeatureId): number {
