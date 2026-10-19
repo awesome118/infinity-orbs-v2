@@ -50,6 +50,10 @@ function normalizeGear(value:unknown,fallbackFloor=0):CombatGear|null {
       ?{id:'void-edge',name:abilityName('Void Edge'),trigger:'passive',damagePercent:Math.max(0,Math.min(.75,Number.isFinite(Number(rawAbility.damagePercent))?Number(rawAbility.damagePercent):.12)),description:abilityDescription('Increases outgoing damage while equipped.')}
     :rawAbility&&rawAbility.id==='aegis-ward'&&rawAbility.trigger==='passive'
       ?{id:'aegis-ward',name:abilityName('Aegis Ward'),trigger:'passive',damageReduction:Math.max(0,Math.min(.25,Number.isFinite(Number(rawAbility.damageReduction))?Number(rawAbility.damageReduction):.08)),description:abilityDescription('Reduces incoming damage while equipped.')}
+    :rawAbility&&rawAbility.id==='starfall'&&rawAbility.trigger==='passive'
+      ?{id:'starfall',name:abilityName('Starfall'),trigger:'passive',critChanceBonus:Math.max(0,Math.min(.12,Number.isFinite(Number(rawAbility.critChanceBonus))?Number(rawAbility.critChanceBonus):.05)),description:abilityDescription('Adds critical-hit chance while equipped.')}
+    :rawAbility&&rawAbility.id==='mark-harvest'&&rawAbility.trigger==='passive'
+      ?{id:'mark-harvest',name:abilityName('Mark Harvest'),trigger:'passive',markBonusPercent:Math.max(0,Math.min(1,Number.isFinite(Number(rawAbility.markBonusPercent))?Number(rawAbility.markBonusPercent):.15)),description:abilityDescription('Increases Combat Marks earned from kills while equipped.')}
     :undefined;
   return {id:x.id.slice(0,160),name:x.name.slice(0,100),slot,quality:Math.max(0,Math.min(100,Number.isFinite(Number(x.quality))?Number(x.quality):0)),sourceFloor:finiteInt(x.sourceFloor,fallbackFloor,0,COMBAT_MAX_DEPTH-1),power:finiteInt(x.power,1,1,1_000_000),effect:x.id==='starter-weapon'?'Adds +4 damage. Critical chance +4 percentage points.':typeof x.effect==='string'?x.effect.slice(0,180):traitText(trait),trait,damageBonus:finiteInt(x.damageBonus,0,0,1_000_000),speedBonus:0,maxHealthBonus:finiteInt(x.maxHealthBonus,0,0,1_000_000),armorBonus:finiteInt(x.armorBonus,0,0,1_000_000),critChanceBonus:Math.max(0,Math.min(.75,Number.isFinite(Number(x.critChanceBonus))?Number(x.critChanceBonus):0)),...(majorAbility?{majorAbility}:{})};
 }
@@ -211,11 +215,13 @@ function createGear(sourceFloor:number,requestedSlot?:CombatGearSlot,requestedQu
   const majorAbilityRoll=secureRandom();
   const majorAbility:CombatMajorAbility|undefined=majorAbilityRoll<majorAbilityChance
     ?(()=>{
-      const kind=Math.floor(secureRandom()*4);
+      const kind=Math.floor(secureRandom()*6);
       if(kind===0){const speedPercent=Math.round((.10+quality*.0025)*1000)/1000;return {id:'chrono-surge',name:'Chrono Surge',trigger:'passive',speedPercent,description:'Increases turn speed by '+Math.round(speedPercent*100)+'% while equipped.'} as const;}
       if(kind===1)return {id:'second-dawn',name:'Second Dawn',trigger:'on-damage',healPercent:.15,description:'After taking damage, heal 15% of Max HP at the start of your next turn.'} as const;
       if(kind===2){const damagePercent=Math.round((.08+quality*.001)*1000)/1000;return {id:'void-edge',name:'Void Edge',trigger:'passive',damagePercent,description:'Increases outgoing damage by '+Math.round(damagePercent*100)+'% while equipped.'} as const;}
-      const damageReduction=Math.round((.05+quality*.0005)*1000)/1000;return {id:'aegis-ward',name:'Aegis Ward',trigger:'passive',damageReduction,description:'Reduces incoming damage by '+Math.round(damageReduction*100)+'% while equipped.'} as const;
+      if(kind===3){const damageReduction=Math.round((.05+quality*.0005)*1000)/1000;return {id:'aegis-ward',name:'Aegis Ward',trigger:'passive',damageReduction,description:'Reduces incoming damage by '+Math.round(damageReduction*100)+'% while equipped.'} as const;}
+      if(kind===4){const critChanceBonus=Math.round((.025+quality*.00045)*1000)/1000;return {id:'starfall',name:'Starfall',trigger:'passive',critChanceBonus,description:'Adds '+Math.round(critChanceBonus*1000)/10+' percentage points of critical-hit chance while equipped.'} as const;}
+      const markBonusPercent=Math.round((.08+quality*.001)*1000)/1000;return {id:'mark-harvest',name:'Mark Harvest',trigger:'passive',markBonusPercent,description:'Increases Combat Marks from kills by '+Math.round(markBonusPercent*100)+'% while equipped.'} as const;
     })()
     :undefined;
   const firstWord=pick(firstWords),secondWord=pick(secondWords.filter(word=>word!==firstWord));
