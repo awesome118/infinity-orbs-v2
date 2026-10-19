@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated, type CombatGear } from '../src/shared/combat.js';
+import { combatMarkMultiplier, addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated, type CombatGear } from '../src/shared/combat.js';
 
 test('starter combat build carries the Auto-Dungeons baseline', () => {
   const state=createCombatState();
@@ -294,4 +294,32 @@ test('dungeon choices have separate enemy modifiers and distinct combat builds',
   assert.ok(combatStatsFor(cinderBuild).damage > combatStatsFor(baseline).damage);
   assert.ok(combatStatsFor(glassBuild).speed > combatStatsFor(baseline).speed);
   assert.ok(combatStatsFor(glassBuild).critChance > combatStatsFor(baseline).critChance);
+});
+
+
+test('Mark Magnet adds Combat Marks to the upgrade economy', () => {
+  const state = createCombatState();
+  const base = combatMarkMultiplier(state);
+  state.combatUpgrades['mark-magnet'] = 3;
+  assert.equal(combatMarkMultiplier(state), base + 0.30);
+});
+
+test('Warding Doctrine adds permanent damage reduction', () => {
+  const state = createCombatState();
+  const base = combatStatsFor(state).damageReduction;
+  state.combatUpgrades['ward-training'] = 4;
+  assert.ok(combatStatsFor(state).damageReduction >= base + 0.06 - 1e-9);
+});
+
+test('Starfall and Mark Harvest Major Abilities apply equipped bonuses', () => {
+  const state = createCombatState();
+  const weapon = state.inventory.find(item => item.slot === 'weapon');
+  assert.ok(weapon, 'starter weapon exists');
+  state.equipment.weapon = weapon!.id;
+  const baseCrit = combatStatsFor(state).critChance;
+  weapon!.majorAbility = { id:'starfall', name:'Starfall', trigger:'passive', critChanceBonus:.08, description:'Adds critical-hit chance while equipped.' };
+  assert.ok(combatStatsFor(state).critChance >= baseCrit + .08 - 1e-9);
+  const baseMarks = combatMarkMultiplier(state);
+  weapon!.majorAbility = { id:'mark-harvest', name:'Mark Harvest', trigger:'passive', markBonusPercent:.25, description:'Increases Combat Marks earned from kills while equipped.' };
+  assert.ok(combatMarkMultiplier(state) >= baseMarks + .25 - 1e-9);
 });
