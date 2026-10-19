@@ -1109,6 +1109,7 @@ export async function getCcuPeaks(): Promise<{
 }
 
 const FRENZY_POST_PREFIX = 'io:frenzy:post:';
+const FRENZY_CLAIM_RECEIPT_PREFIX = 'io:frenzy:claim-receipt:';
 const FRENZY_POST_RECEIPT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const FRENZY_HANDOFF_PREFIX = 'io:frenzy:handoff:';
 const FRENZY_HANDOFF_TTL_MS = 60_000;
@@ -1116,6 +1117,10 @@ const FRENZY_THANK_YOU_PREFIX = 'io:frenzy:thank-you:';
 
 function frenzyHandoffKey(userId: string): string {
   return FRENZY_HANDOFF_PREFIX + userId;
+}
+
+function frenzyClaimReceiptKey(postId: string, userId: string): string {
+  return FRENZY_CLAIM_RECEIPT_PREFIX + encodeURIComponent(postId) + ':' + encodeURIComponent(userId);
 }
 
 function isFrenzyTestAdmin(username?: string): boolean {
@@ -5979,12 +5984,16 @@ export async function getOrbFrenzyInfo(): Promise<{
     adminTest?: boolean;
     inGame?: boolean;
     consumedAt?: number | null;
+    consumedBy?: string;
   }>(raw);
   if (!data) throw new Error('Orb Frenzy data is corrupted.');
 
   const now = Date.now();
   const expiresAt = Number(data.expiresAt ?? frenzyPostExpiresAt(data.createdAt));
   const expired = isFrenzyPostExpired(data.createdAt, now);
+  const viewerId = currentUserId();
+  const claimedReceipt = await redis.get(frenzyClaimReceiptKey(postId, viewerId));
+  const alreadyClaimedByViewer = claimedReceipt != null || data.consumedBy === viewerId;
   const s = await getMe();
   const claimCooldownRemainingMs = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
   const claimCooldownEndsAt = claimCooldownRemainingMs > 0 ? now + claimCooldownRemainingMs : 0;
@@ -6001,12 +6010,14 @@ export async function getOrbFrenzyInfo(): Promise<{
     createdAt: data.createdAt,
     expiresAt,
     expired,
-    consumed: data.consumedAt != null,
+    // Legacy consumedAt marked a post globally. New claims are shared by every player;
+    // only this viewer's durable receipt (or legacy consumedBy) marks it claimed to them.
+    consumed: alreadyClaimedByViewer,
     claimedToday,
     claimCooldownRemainingMs,
     claimCooldownEndsAt,
     isOwner,
-    canClaim: !expired && data.consumedAt == null && (claimCooldownRemainingMs <= 0 || selfClaimTest) && (!isOwner || selfClaimTest),
+    canClaim: !expired && !alreadyClaimedByViewer && (claimCooldownRemainingMs <= 0 || selfClaimTest) && (!isOwner || selfClaimTest),
     selfClaimTest,
     postId,
     inGame: data.inGame === true,
@@ -6053,6 +6064,7 @@ export async function claimOrbFrenzy(options: {
     adminTest?: boolean;
     inGame?: boolean;
     consumedAt?: number | null;
+    consumedBy?: string;
     createdAt?: number;
     expiresAt?: number;
   }>(raw);
@@ -6063,7 +6075,11 @@ export async function claimOrbFrenzy(options: {
   if (handoff && handoff.expiresAt <= Date.now()) {
     throw new Error('This Frenzy handoff expired. Please reopen the post.');
   }
-  if (data.consumedAt != null) throw new Error('This Orb Frenzy has already been claimed.');
+  const claimReceiptKey = frenzyClaimReceiptKey(postId, claimantId);
+  const existingClaimReceipt = await redis.get(claimReceiptKey);
+  if (existingClaimReceipt != null || data.consumedBy === claimantId) {
+    throw new Error('You have already claimed this Orb Frenzy.');
+  }
 
   const isOwner = data.ownerId === claimantId;
 
@@ -6314,22 +6330,28 @@ export async function claimOrbFrenzy(options: {
     ownerRewardWrites = ownerReward.writes;
   }
 
-  // Consume the post atomically with both the claimant save and the owner's
-  // reward. Different players have different locks, so the watched keys also
-  // protect the transaction if one of those distributed leases expires.
-  const consumedPostValue = JSON.stringify({ ...data, consumedAt: now, consumedBy: claimantId });
+  // Write a distinct idempotency receipt for this claimant. The post itself remains
+  // unchanged, so any number of other players can claim it while each player can
+  // only claim it once. WATCH/EXEC verifies the post didn't change during rewards.
   await save(s, [
+    {
+      key: claimReceiptKey,
+      expectedValue: null,
+      nextValue: JSON.stringify({ postId, claimantId, claimedAt: now }),
+      expiration: new Date(frenzyPostExpiresAt(createdAt) + FRENZY_POST_RECEIPT_RETENTION_MS),
+      conflictMessage: 'You have already claimed this Orb Frenzy.',
+    },
     {
       key: FRENZY_POST_PREFIX + postId,
       expectedValue: raw,
-      nextValue: consumedPostValue,
+      nextValue: raw,
       expiration: new Date(frenzyPostExpiresAt(createdAt) + FRENZY_POST_RECEIPT_RETENTION_MS),
-      conflictMessage: 'This Orb Frenzy has already been claimed.',
+      conflictMessage: 'This Frenzy changed before your claim could be committed.',
     },
     ...ownerRewardWrites,
   ]);
-  // save() rejects generation invalidation and returns only after the
-  // claimant, consumed-post receipt, and owner reward writes commit atomically.
+  // save() returns only after the claimant receipt, claimant reward, and owner
+  // reward writes commit atomically.
   // Handoff cleanup is temporary metadata (60-second TTL), not part of claim
   // settlement. Its failure must not turn a committed claim into an API error.
   if (handoff && handoff.postId === postId) {
