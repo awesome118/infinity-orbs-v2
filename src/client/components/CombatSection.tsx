@@ -55,18 +55,18 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor}:{item:Comb
     onPointerMove={event=>{
       if(event.pointerType!=='mouse')return;
       const x=Math.max(8,Math.min(Math.max(8,window.innerWidth-326),event.clientX+16));
-      const y=Math.max(8,Math.min(Math.max(8,window.innerHeight-230),event.clientY+16));
+      const y=Math.max(8,Math.min(Math.max(8,window.innerHeight-376),event.clientY+16));
       setTooltipPoint(previous=>previous&&Math.abs(previous.x-x)<3&&Math.abs(previous.y-y)<3?previous:{x,y});
     }}
     onPointerLeave={()=>{if(!showTooltip)setTooltipPoint(null)}}
   >
-    <div className="io-combat-gear-head"><div className="io-combat-gear-name"><SlotIcon size={24} strokeWidth={1.8} aria-hidden="true"/><div><span className="io-combat-eyebrow">{item.quality.toFixed(2)}% · F{fmt(item.sourceFloor)} · {slotLabel(item.slot).toUpperCase()}</span><h3>{item.name}</h3></div></div><div className="io-combat-gear-actions"><span className="io-combat-power">PWR {fmt(item.power)}</span><button type="button" className="io-combat-inspect-button" onClick={event=>{const card=event.currentTarget.closest('.io-combat-gear-card');const rect=card?.getBoundingClientRect();if(rect){const x=Math.max(8,Math.min(Math.max(8,window.innerWidth-326),rect.left+Math.min(rect.width-16,24)));const y=Math.max(8,Math.min(Math.max(8,window.innerHeight-230),rect.bottom+12));setTooltipPoint({x,y});}setShowTooltip(value=>!value)}} aria-expanded={showTooltip} aria-label={'Inspect '+item.name}><Info size={12}/> Details</button></div></div>
+    <div className="io-combat-gear-head"><div className="io-combat-gear-name"><SlotIcon size={24} strokeWidth={1.8} aria-hidden="true"/><div><span className="io-combat-eyebrow">{item.quality.toFixed(2)}% · F{fmt(item.sourceFloor)} · {slotLabel(item.slot).toUpperCase()}</span><h3>{item.name}</h3></div></div><div className="io-combat-gear-actions"><span className="io-combat-power">PWR {fmt(item.power)}</span><button type="button" className="io-combat-inspect-button" onClick={event=>{const card=event.currentTarget.closest('.io-combat-gear-card');const rect=card?.getBoundingClientRect();if(rect){const x=Math.max(8,Math.min(Math.max(8,window.innerWidth-326),rect.left+Math.min(rect.width-16,24)));const y=Math.max(8,Math.min(Math.max(8,window.innerHeight-376),rect.bottom+12));setTooltipPoint({x,y});}setShowTooltip(value=>!value)}} aria-expanded={showTooltip} aria-label={'Inspect '+item.name}><Info size={12}/> Details</button></div></div>
     <p>{item.effect}</p>
     <div className="io-combat-gear-stats">{bonuses.map(stat=><span className={'io-combat-stat-'+stat.kind} key={stat.label} title={stat.detail}>{stat.label}</span>)}
       <span>DROPPED FLOOR {fmt(item.sourceFloor)}</span><span>EXPECTED {floorQualityRequirement(currentFloor).toFixed(0)}%+</span><span>EFFECTIVE {Math.round(gearQualityEffectiveness(item,currentFloor)*100)}%</span>
     </div>
     {item.majorAbility&&<div className={'io-combat-major-ability '+(item.majorAbility.id==='void-edge'?'io-combat-major-offense':item.majorAbility.id==='aegis-ward'?'io-combat-major-defense':'')}><span>{item.majorAbility.id==='chrono-surge'?<Clock3 size={13} aria-hidden="true"/>:<Sparkles size={13} aria-hidden="true"/>} MAJOR ABILITY</span><strong>{item.majorAbility.name}</strong><p>{item.majorAbility.description}</p></div>}
-    <div className={'io-combat-gear-tooltip '+(showTooltip?'is-open':'')} style={{position:'fixed',left:tooltipPoint?.x??12,top:tooltipPoint?.y??12,right:'auto',maxWidth:310,maxHeight:'calc(100vh - 16px)',overflow:'auto'}} role="tooltip">
+    <div className={'io-combat-gear-tooltip '+(showTooltip?'is-open':'')} style={{position:'fixed',left:tooltipPoint?.x??12,top:tooltipPoint?.y??12,right:'auto',maxWidth:'min(310px, calc(100vw - 16px))',maxHeight:'min(360px, calc(100vh - 16px))',overflow:'auto'}} role="tooltip">
       <span className="io-combat-eyebrow">{grade.toUpperCase()} ITEM · {item.quality.toFixed(2)}% QUALITY · FLOOR {fmt(item.sourceFloor)}</span>
       <strong>{item.name}</strong><p>{slotLabel(item.slot)} · Power {fmt(item.power)}</p>
       <div>{bonuses.length?bonuses.map(stat=><span className={'io-combat-stat-'+stat.kind} key={stat.label}>{stat.label}</span>):<span>No direct stat bonuses</span>}</div>
