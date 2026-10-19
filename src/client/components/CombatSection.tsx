@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Coins, Info, Pause, Play, Sparkles, Swords, Zap, Sword, Shield, Crown, Hand, Footprints, CircleDot, Gem, Hammer, Clock3, Timer, type LucideIcon } from 'lucide-react';
 import { RunesSection } from './RunesSection.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatAutoScrapSettings, CombatCommand, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatOrbRoll, CombatPage, CombatSkillDefinition, CombatSkillId, CombatSnapshot, CombatState, CombatStats, CombatTactic } from '../../shared/combat.js';
-import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
+import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
 
 interface Props { page: CombatPage; onNavigate:(page:CombatPage)=>void; }
 interface ApiResponse extends CombatSnapshot {
@@ -28,14 +28,8 @@ const GEAR_SLOTS:{slot:CombatGearSlot;label:string;Icon:LucideIcon}[]=[
 ];
 const slotLabel=(slot:CombatGearSlot)=>GEAR_SLOTS.find(entry=>entry.slot===slot)?.label??slot;
 const equipped=(state:CombatState,slot:CombatGearSlot)=>state.inventory.find(item=>item.id===state.equipment[slot]&&item.slot===slot)??null;
-function skillValue(skill:CombatSkillDefinition,rank:number,speed=300):string {
-  const type=combatAbilityType(skill),scale=Math.log2(Math.max(1,rank)+1);
-  if(type==='strike')return 'Active strike · '+Math.round((1.2+skill.value*2+scale*.15)*100)+'% damage multiplier';
-  if(type==='flurry')return 'Active flurry · adds '+combatEffectiveFlurryBonusAttacks(1+Math.floor(scale),Math.min(12,Math.max(1,Math.floor(speed/100))))+' bonus strikes at '+Math.round(combatFlurryAttackMultiplier(skill.value)*100)+'% damage each (12-hit cap)';
-  if(type==='mend')return 'Active mend · heals '+Math.round(Math.min(.9,.10+skill.value+scale*.06)*100)+'% max HP';
-  if(type==='focus')return 'Active focus · guaranteed critical strike';
-  const reward=combatBountyReward(skill.value,rank);
-  return 'Active bounty · '+fmt(reward)+' Combat Marks in PvE; buffs a strike in Arena';
+function skillValue(skill:CombatSkillDefinition,rank:number,_speed=300):string {
+  return skill.effect+' Rank '+fmt(rank)+' · '+combatSkillEnergyCost(skill.rarity)+' Energy · '+combatSkillCooldown(skill.rarity,rank)+'-beat cooldown';
 }
 function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor}:{item:CombatGear;isEquipped:boolean;onEquip:()=>void;onScrap:()=>void;busy:boolean;currentFloor:number}) {
   const [showTooltip,setShowTooltip]=useState(false);
@@ -248,6 +242,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const forgeQualityCost=combatForgeQualityCost(currentFloor,forgeQuality);
   const visibleGear=state.inventory.slice(0,visibleGearCount);
   const visibleSkills=COMBAT_SKILLS.filter(skill=>showAllSkills||rankOf(state,skill.id)>0);
+  const nextStrategyGuide=STRATEGY_GUIDE_RANKS.find(entry=>entry.rank===state.strategyGuideRank+1)??null;
   if(page==='runes')return <RunesSection/>;
   const hpPct=Math.max(0,Math.min(100,state.health/Math.max(1,state.maxHealth)*100));
   const enemyPct=Math.max(0,Math.min(100,enemy.hp/Math.max(1,enemy.maxHp)*100));
@@ -355,6 +350,18 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     </>}
     {page==='skills'&&<>
       <div className="io-combat-skill-banner"><div><span className="io-combat-eyebrow">SKILL GACHA · RANK {state.skillGachaRank}/{SKILL_GACHA_RANK_MAX}</span><h2>Improve rarity odds through Gacha ranks</h2><p>All rarities are in the pool from Rank 1; each rank shifts probability away from Common. At Rank 30, Mythic is 0.50% base chance and Common, Uncommon, Rare, and Epic each have 24.875% base chance (pity can override a roll).</p><div className="io-combat-skill-progress"><span style={{width:(state.skillGachaRank/SKILL_GACHA_RANK_MAX*100)+'%'}}/></div></div><div className="io-combat-pull-box"><span><Swords size={15}/> {fmt(state.combatMarks)} COMBAT MARKS</span><button type="button" className="io-combat-button is-primary" disabled={mutating||state.combatMarks<pullCost} onClick={()=>void mutate('/api/combat/skills/roll')}>{mutating?'Rolling…':'Roll Skill · '+fmt(pullCost)+' Marks'}</button><small>Base odds · Common {(gachaOdds.Common*100).toFixed(3)}% · Uncommon {(gachaOdds.Uncommon*100).toFixed(3)}% · Rare {(gachaOdds.Rare*100).toFixed(3)}% · Epic {(gachaOdds.Epic*100).toFixed(3)}% · Mythic {(gachaOdds.Mythic*100).toFixed(3)}%. Pulls {fmt(state.skillRolls)}. Epic pity {state.skillPityEpic}/9 · Mythic pity {state.skillPityMythic}/39.</small></div></div>
+      <section className="io-combat-panel" style={{marginBottom:20}}>
+        <div className="io-combat-panel-head">
+          <div><span className="io-combat-eyebrow">BOSS PROGRESSION</span><h2>Strategy Guide · Rank {state.strategyGuideRank}/5</h2>
+            <p>{nextStrategyGuide?nextStrategyGuide.description:'Adaptive Tactics mastered. Auto Fight uses your loadout and current combat conditions to prioritize skills.'}</p>
+            <p>Tactician's Manuals: <strong>{fmt(state.tacticianManuals)}</strong> · Bosses without a Manual: {state.bossesSinceManual}/3</p>
+          </div>
+          {nextStrategyGuide&&<button type="button" className="io-combat-button is-primary" disabled={mutating||state.tacticianManuals<nextStrategyGuide.manualCost||state.combatMarks<nextStrategyGuide.markCost} onClick={()=>void mutate('/api/combat/strategy-guide/buy',{})}>
+            {state.tacticianManuals<nextStrategyGuide.manualCost?'Need '+nextStrategyGuide.manualCost+' Manual':state.combatMarks<nextStrategyGuide.markCost?'Need '+fmt(nextStrategyGuide.markCost-state.combatMarks)+' Marks':'Unlock Rank '+nextStrategyGuide.rank}
+          </button>}
+        </div>
+        {nextStrategyGuide&&<small>Next rank cost: {nextStrategyGuide.manualCost} Tactician's Manual · {fmt(nextStrategyGuide.markCost)} Combat Marks. Manuals drop from bosses at a 35% base chance, guaranteed after three misses.</small>}
+      </section>
       {lastSkill&&<div className={'io-combat-skill-result '+rarityClass(lastSkill.rarity)}><Sparkles size={18}/><div><strong>{lastSkill.name}</strong><p>{lastSkill.duplicate?(lastSkill.rankedUp?'Ranked up to Rank '+fmt(lastSkill.rank)+'.':'Duplicate progress '+fmt(lastSkill.progress)+'/'+fmt(lastSkill.copiesNeeded)+' toward Rank '+fmt(lastSkill.rank+1)+'. Higher ranks require more duplicate copies.'):'Unlocked as a new Rank 1 active ability.'}</p></div><span>{lastSkill.rarity.toUpperCase()}</span></div>}
       {gachaRequirement&&<section className="io-combat-panel" style={{marginBottom:20}}><div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">GACHA PROGRESSION</span><h2>Rank Up to {gachaRequirement.rank} · {gachaRequirement.unlocks}</h2><p>Requires {fmt(gachaRequirement.requiredPulls)} lifetime skill pulls and {fmt(gachaRequirement.requiredMarks)} Combat Marks. Current progress: {fmt(state.skillRolls)} pulls and {fmt(state.combatMarks)} Marks.</p></div><button type="button" className="io-combat-button is-primary" disabled={mutating||state.skillRolls<gachaRequirement.requiredPulls||state.combatMarks<gachaRequirement.requiredMarks} onClick={()=>void mutate('/api/combat/skills/rank-up')}>{state.skillRolls<gachaRequirement.requiredPulls?'Need '+fmt(gachaRequirement.requiredPulls-state.skillRolls)+' pulls':state.combatMarks<gachaRequirement.requiredMarks?'Need '+fmt(gachaRequirement.requiredMarks-state.combatMarks)+' Marks':'Rank Up Gacha'}</button></div></section>}
       <div className="io-combat-codex-toolbar"><div><span className="io-combat-eyebrow">SKILL CODEX</span><h2>{ownedSkills.length} / {COMBAT_SKILLS.length} discovered · {state.equippedAbilities.length}/{COMBAT_ABILITY_SLOTS} equipped</h2></div><button type="button" className="io-combat-button is-secondary" onClick={()=>setShowAllSkills(!showAllSkills)}>{showAllSkills?'Owned only':'Show all skills'}</button></div>
