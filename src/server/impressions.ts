@@ -96,7 +96,7 @@ export async function recordPostImpression(
     const entries = Object.entries(currentIndex ?? {}).flatMap(([field, raw]) => {
       try {
         const parsed = JSON.parse(String(raw)) as { postType?: unknown; postId?: unknown; lastSeenAt?: unknown };
-        const indexedType = normalizePostType(parsed.postType);
+        normalizePostType(parsed.postType);
         const indexedPostId = String(parsed.postId ?? '').trim();
         const indexedAt = Number(parsed.lastSeenAt ?? 0);
         if (!indexedPostId || indexedPostId.length > 200) return [];
