@@ -567,6 +567,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
         </button>
 
         <button
+          type="button"
+          aria-busy={busy}
           onClick={() => void onOrbFrenzy()}
           disabled={busy || frenzyArmed || frenzyUsedToday}
           className={
@@ -607,6 +609,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
           {/* Auto Roll Toggle */}
           {isAutoUnlocked ? (
             <button
+              type="button"
+              aria-pressed={autoRoll}
               onClick={() => {
                 sound.playClick();
                 onToggleAutoRoll();
@@ -630,6 +634,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
           {/* Celestial Sonar Silent Mode Toggle (Unlocked via Prestige) */}
           {hasSonarUpgrade && (
             <button
+              type="button"
+              aria-pressed={sonarActive}
               onClick={() => {
                 const next = !sonarActive;
                 setSonarActive(next);
@@ -642,7 +648,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               }`}
               title="Silent Mode: Mutes standard rolls and alerts with a crystal chime on rare drops"
             >
-              <BellRing className={`w-3.5 h-3.5 ${sonarActive ? 'text-cyan-400 animate-pulse' : ''}`} />
+              <BellRing className={`w-3.5 h-3.5 ${sonarActive ? 'text-cyan-400 motion-safe:animate-pulse' : ''}`} />
               <span>Sonar Ping: {sonarActive ? 'SILENT' : 'OFF'}</span>
             </button>
           )}
@@ -650,6 +656,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
           {/* Chrono-Skip Instant Multi-Roll (Unlocked via Prestige) */}
           {hasInstantUpgrade && (
             <button
+              type="button"
+              aria-pressed={instantRevealActive}
               onClick={() => {
                 const next = !instantRevealActive;
                 setInstantRevealActive(next);
@@ -673,6 +681,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
           {/* Singularity Filter Toggle (Unlocked via Prestige) */}
           {hasFilterUpgrade && (
             <button
+              type="button"
+              aria-pressed={filterActive}
               onClick={() => {
                 const next = !filterActive;
                 setFilterActive(next);
@@ -811,6 +821,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
                 </span>
               )}
               <button
+                type="button"
+                aria-expanded={showBatchDetails}
+                aria-label={showBatchDetails ? 'Hide batch breakdown' : 'Show batch breakdown'}
                 onClick={() => {
                   sound.playClick();
                   setShowBatchDetails(!showBatchDetails);
@@ -856,6 +869,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
       {/* Share to Reddit Action */}
       {lastOrb && lastOrb.rarity >= 100 && (
         <button
+          type="button"
+          aria-label={`Share orb rarity 1/${formatRarity(lastOrb.rarity)} to Reddit`}
           onClick={() => {
             sound.playClick();
             onOpenShareModal(lastOrb.rarity);
