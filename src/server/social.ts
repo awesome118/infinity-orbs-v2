@@ -2284,9 +2284,20 @@ async function isCurrentFrenzyPostContext(): Promise<boolean> {
   return false;
 }
 
+async function isRegisteredFrenzyPost(postId: string): Promise<boolean> {
+  return (await redis.get('io:frenzy:post:' + postId)) != null;
+}
+
 async function resolveGlobalGamePostId(): Promise<string> {
   const saved = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
-  if (saved) return saved;
+  if (saved) {
+    // A stale legacy registration must never route player-authored Global Chat
+    // comments into a Frenzy post. Fail closed and let the launcher repair it.
+    if (await isRegisteredFrenzyPost(saved)) {
+      throw new Error('Global Chat destination is invalid because it points to a Frenzy post. Reopen the main Game launcher to repair it.');
+    }
+    return saved;
+  }
 
   const currentRawId = String(context.postId ?? '').trim();
   const currentPostId = normalizeRedditPostId(currentRawId);
@@ -2301,6 +2312,9 @@ async function resolveGlobalGamePostId(): Promise<string> {
   await redis.set(GLOBAL_GAME_POST_KEY, currentPostId, { nx: true });
   const registered = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
   if (!registered) throw new Error('Could not register the Game post. Please retry.');
+  if (await isRegisteredFrenzyPost(registered)) {
+    throw new Error('Global Chat destination is invalid because it points to a Frenzy post. Reopen the main Game launcher to repair it.');
+  }
   return registered;
 }
 
@@ -2310,36 +2324,9 @@ export async function getGlobalChatStatus(
 ): Promise<{ enabled: boolean; reason?: string }> {
   const saved = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
 
-  if (fromFrenzyPost) {
-    return {
-      enabled: false,
-      reason: "Global Chat is disabled because you're not in the main Game launcher.",
-    };
-  }
-
-  // The main launcher entry point marks its own handshake. This also recovers
-  // when a development environment reuses a post ID that has stale Frenzy
-  // metadata, without allowing the ordinary Frenzy widget to register itself.
-  if (fromMainLauncher) {
-    if (saved) return { enabled: true };
-    const currentPostId = normalizeRedditPostId(String(context.postId ?? '').trim());
-    if (!currentPostId) {
-      return {
-        enabled: false,
-        reason: 'Global Chat is disabled because the main Game launcher post is not available in this context.',
-      };
-    }
-    await redis.set(GLOBAL_GAME_POST_KEY, currentPostId, { nx: true });
-    const registered = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
-    if (registered) return { enabled: true };
-    return {
-      enabled: false,
-      reason: 'Global Chat could not register the main Game launcher. Please reopen the game.',
-    };
-  }
-
-  // Frenzy posts may display history, but posting is disabled there even after
-  // the canonical main Game post has registered.
+  // These query flags are client supplied, not trusted post identity. Inspect
+  // the server's current post receipt before honoring a claimed main-launcher
+  // handshake, otherwise ?launcher=main could register a Frenzy as Global Chat.
   if (await isCurrentFrenzyPostContext()) {
     return {
       enabled: false,
@@ -2347,7 +2334,49 @@ export async function getGlobalChatStatus(
     };
   }
 
-  if (saved) return { enabled: true };
+  if (fromFrenzyPost) {
+    return {
+      enabled: false,
+      reason: "Global Chat is disabled because you're not in the main Game launcher.",
+    };
+  }
+
+  // Reject stale registrations that would otherwise publish player-authored
+  // comments into a Frenzy post. A known main launcher can recover a stale key.
+  const savedIsFrenzy = saved ? await isRegisteredFrenzyPost(saved) : false;
+
+  if (fromMainLauncher) {
+    const currentPostId = normalizeRedditPostId(String(context.postId ?? '').trim());
+    if (!currentPostId) {
+      return {
+        enabled: false,
+        reason: 'Global Chat is disabled because the main Game launcher post is not available in this context.',
+      };
+    }
+    if (saved && !savedIsFrenzy) return { enabled: true };
+
+    if (savedIsFrenzy) {
+      // This write intentionally replaces only a known-invalid Frenzy target
+      // with the current non-Frenzy launcher context.
+      await redis.set(GLOBAL_GAME_POST_KEY, currentPostId);
+    } else {
+      await redis.set(GLOBAL_GAME_POST_KEY, currentPostId, { nx: true });
+    }
+    const registered = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
+    if (registered && !(await isRegisteredFrenzyPost(registered))) return { enabled: true };
+    return {
+      enabled: false,
+      reason: 'Global Chat could not register the main Game launcher. Please reopen the game.',
+    };
+  }
+
+  if (saved && !savedIsFrenzy) return { enabled: true };
+  if (savedIsFrenzy) {
+    return {
+      enabled: false,
+      reason: 'Global Chat destination points to an invalid Frenzy post. Open the main Game launcher to repair it.',
+    };
+  }
   try {
     await resolveGlobalGamePostId();
     return { enabled: true };
