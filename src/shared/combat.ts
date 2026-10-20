@@ -17,17 +17,23 @@ export type CombatRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Mythic';
 
 export type CombatRuneRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Legendary' | 'Mythic' | 'Cosmic';
 export type CombatRuneStat = 'luckPct' | 'coinGainPct' | 'shardChancePct' | 'xpGainPct';
+export type CombatRuneMajorAbility =
+  | { id:'fateweaver'; name:string; valuePct:number; description:string; }
+  | { id:'midas-engine'; name:string; valuePct:number; description:string; }
+  | { id:'memory-well'; name:string; valuePct:number; description:string; };
 export interface CombatRune {
   id: string;
   name: string;
   rarity: CombatRuneRarity;
   stat: CombatRuneStat;
-  /** Percent bonus, except shardChancePct which is percentage points of added proc chance. */
+  /** Base percentage; rune level scales non-shard stats exponentially. */
   value: number;
+  /** Starts at 1 and has no gameplay rank ceiling. Older saves migrate to level 1. */
+  level?: number;
   sourceDepth: number;
   sourceDungeon: CombatDungeonId;
-  /** Optional combat ability; older saved Runes remain valid without one. */
-  majorAbility?: CombatMajorAbility;
+  /** Main-game-only perk; distinct from combat gear Major Abilities. */
+  majorAbility?: CombatRuneMajorAbility;
 }
 export interface CombatRuneBonuses { luckPct: number; coinGainPct: number; shardChancePct: number; xpGainPct: number; }
 export const COMBAT_RUNE_INVENTORY_CAP = 200;
@@ -67,29 +73,57 @@ export function combatRuneValueFor(rarity: CombatRuneRarity, stat: CombatRuneSta
   const factor = 10 ** decimals;
   return Math.round(COMBAT_RUNE_BASE_VALUE[stat] * COMBAT_RUNE_RARITY_MULTIPLIER[rarity] * depthMultiplier * factor) / factor;
 }
-export function combatRuneEffectText(rune: Pick<CombatRune, 'stat' | 'value'>): string {
-  if (rune.stat === 'luckPct') return '+' + rune.value.toFixed(2) + '% Orb Luck';
-  if (rune.stat === 'coinGainPct') return '+' + rune.value.toFixed(2) + '% Coins';
-  if (rune.stat === 'shardChancePct') return '+' + rune.value.toFixed(3) + '% Shard chance';
-  return '+' + rune.value.toFixed(2) + '% XP';
+export function combatRuneLevelMultiplier(levelValue: unknown): number {
+  const level = Number.isFinite(Number(levelValue)) ? Math.max(1, Math.floor(Number(levelValue))) : 1;
+  const raw = Math.pow(1.7, level - 1);
+  return Number.isFinite(raw) ? Math.min(Number.MAX_SAFE_INTEGER, raw) : Number.MAX_SAFE_INTEGER;
+}
+export function combatRuneLevelCost(levelValue: unknown): number {
+  const level = Number.isFinite(Number(levelValue)) ? Math.max(1, Math.floor(Number(levelValue))) : 1;
+  const raw = 25 * Math.pow(level, 1.5);
+  return Math.max(25, Number.isFinite(raw) ? Math.min(Number.MAX_SAFE_INTEGER, Math.round(raw)) : Number.MAX_SAFE_INTEGER);
+}
+export function combatRuneScaledValue(rune: Pick<CombatRune, 'stat' | 'value' | 'level'>): number {
+  const value = Number(rune.value);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  // Shard Rune values intentionally remain unchanged at every level.
+  if (rune.stat === 'shardChancePct') return Math.min(100, value);
+  const scaled = value * combatRuneLevelMultiplier(rune.level);
+  return Number.isFinite(scaled) ? Math.min(Number.MAX_SAFE_INTEGER, scaled) : Number.MAX_SAFE_INTEGER;
+}
+function runePercentText(value: number, decimals: number): string {
+  return value >= 1e21 ? value.toExponential(2) : value.toFixed(decimals);
+}
+export function combatRuneEffectText(rune: Pick<CombatRune, 'stat' | 'value' | 'level'>): string {
+  const value = combatRuneScaledValue(rune);
+  if (rune.stat === 'luckPct') return '+' + runePercentText(value, 2) + '% Orb Luck';
+  if (rune.stat === 'coinGainPct') return '+' + runePercentText(value, 2) + '% Coins';
+  if (rune.stat === 'shardChancePct') return '+' + runePercentText(value, 3) + '% Shard chance';
+  return '+' + runePercentText(value, 2) + '% XP';
 }
 export function combatRuneBonuses(runesValue: unknown, equippedValue: unknown): CombatRuneBonuses {
   const bonuses: CombatRuneBonuses = { luckPct: 0, coinGainPct: 0, shardChancePct: 0, xpGainPct: 0 };
   const equipped = new Set((Array.isArray(equippedValue) ? equippedValue : []).filter((value): value is string => typeof value === 'string'));
   if (!equipped.size || !Array.isArray(runesValue)) return bonuses;
   const validStats = new Set<CombatRuneStat>(['luckPct', 'coinGainPct', 'shardChancePct', 'xpGainPct']);
+  const safeAdd = (current: number, extra: number) => Math.min(Number.MAX_SAFE_INTEGER, current + Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, extra)));
   for (const raw of runesValue) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
     const rune = raw as Partial<CombatRune>;
     if (typeof rune.id !== 'string' || !equipped.has(rune.id) || !rune.stat || !validStats.has(rune.stat)) continue;
-    const value = Number(rune.value);
-    if (!Number.isFinite(value) || value <= 0) continue;
-    bonuses[rune.stat] += Math.min(rune.stat === 'shardChancePct' ? 100 : 300, value);
+    const value = combatRuneScaledValue(rune as Pick<CombatRune, 'stat' | 'value' | 'level'>);
+    if (value <= 0) continue;
+    bonuses[rune.stat] = safeAdd(bonuses[rune.stat], rune.stat === 'shardChancePct' ? Math.min(100, value) : value);
+    const ability = rune.majorAbility;
+    if (ability && Number.isFinite(Number(ability.valuePct)) && Number(ability.valuePct) > 0) {
+      const abilityValue = Math.min(Number.MAX_SAFE_INTEGER, Number(ability.valuePct) * combatRuneLevelMultiplier(rune.level));
+      if (ability.id === 'fateweaver') bonuses.luckPct = safeAdd(bonuses.luckPct, abilityValue);
+      else if (ability.id === 'midas-engine') bonuses.coinGainPct = safeAdd(bonuses.coinGainPct, abilityValue);
+      else if (ability.id === 'memory-well') bonuses.xpGainPct = safeAdd(bonuses.xpGainPct, abilityValue);
+    }
   }
-  bonuses.luckPct = Math.min(400, bonuses.luckPct);
-  bonuses.coinGainPct = Math.min(300, bonuses.coinGainPct);
+  // Shard chance deliberately retains its pre-overhaul cap and percentage-point contribution.
   bonuses.shardChancePct = Math.min(100, bonuses.shardChancePct);
-  bonuses.xpGainPct = Math.min(300, bonuses.xpGainPct);
   return bonuses;
 }
 export function combatRuneSalvageValue(rarity: CombatRuneRarity): number {
@@ -130,7 +164,9 @@ export type CombatMajorAbility =
   | { id:'unending-ward'; name:string; trigger:'passive'; shieldOnKillPercent:number; description:string; }
   | { id:'full-moon'; name:string; trigger:'passive'; critChanceBonus:number; description:string; }
   | { id:'unstable-singularity'; name:string; trigger:'passive'; burstChance:number; burstDamagePercent:number; description:string; }
-  | { id:'genesis-core'; name:string; trigger:'passive'; regenPercent:number; description:string; };
+  | { id:'genesis-core'; name:string; trigger:'passive'; regenPercent:number; description:string; }
+  | { id:'expanded-reserves'; name:string; trigger:'passive'; maxEnergyFlat:number; description:string; }
+  | { id:'third-beat-recharge'; name:string; trigger:'passive'; energyPerThreeTurns:number; description:string; };
 
 export const COMBAT_MAJOR_ABILITY_IDS = [
   'second-dawn',
@@ -162,7 +198,9 @@ export const COMBAT_MAJOR_ABILITY_IDS = [
   'unending-ward',
   'full-moon',
   'unstable-singularity',
-  'genesis-core'
+  'genesis-core',
+  'expanded-reserves',
+  'third-beat-recharge'
 ] as const;
 export interface CombatOrbRoll { rarity:number; tier:string; name:string; damageMultiplier:number; baseDamage:number; }
 
@@ -279,10 +317,21 @@ export function combatBountyReward(value: unknown, rankValue: unknown): number {
 /** Energy actually available after the beat's one-point regeneration, respecting the cap. */
 export function combatEnergyAfterRegen(energyValue: unknown, maxEnergyValue: unknown): number {
   const rawMax = Number(maxEnergyValue);
-  const maxEnergy = Number.isFinite(rawMax) ? Math.max(1, Math.min(10, Math.floor(rawMax))) : 5;
+  const maxEnergy = Number.isFinite(rawMax) ? Math.max(1, Math.min(50, Math.floor(rawMax))) : 5;
   const rawEnergy = Number(energyValue);
   const energy = Number.isFinite(rawEnergy) ? Math.max(0, Math.min(maxEnergy, Math.floor(rawEnergy))) : 0;
   return Math.min(maxEnergy, energy + 1);
+}
+/** Actions owed at a cumulative speed threshold; shared by resolution and tests. */
+export function combatActionsDue(speedValue: unknown, beatValue: unknown, resolvedValue: unknown, maxActionsValue = 12): number {
+  const speedRaw = Number(speedValue), beatRaw = Number(beatValue), resolvedRaw = Number(resolvedValue);
+  const speed = Number.isFinite(speedRaw) ? Math.max(0, speedRaw) : 0;
+  const beats = Number.isFinite(beatRaw) ? Math.max(0, Math.floor(beatRaw)) : 0;
+  const resolved = Number.isFinite(resolvedRaw) ? Math.max(0, Math.floor(resolvedRaw)) : 0;
+  const rawLimit = Number(maxActionsValue);
+  const limit = Number.isFinite(rawLimit) ? Math.max(0, Math.min(100, Math.floor(rawLimit))) : 12;
+  const target = Math.floor(Math.min(Number.MAX_SAFE_INTEGER, beats * speed / 100));
+  return Math.max(0, Math.min(limit, target - resolved));
 }
 
 export function combatSkillEnergyCost(rarity: CombatRarity): number {
@@ -518,6 +567,8 @@ export interface CombatState {
   combatBeats: number;
   playerActionsResolved: number;
   enemyActionsResolved: number;
+  /** Lifetime count of completed player actions, used by Third-Beat Recharge across rooms. */
+  playerTurnsCompleted: number;
   energy: number;
   maxEnergy: number;
   guardBeats: number;
@@ -545,6 +596,7 @@ export interface CombatStats {
   damage: number;
   speed: number;
   maxHealth: number;
+  maxEnergy: number;
   armor: number;
   critChance: number;
   damageReduction: number;
@@ -704,7 +756,7 @@ export function createCombatState(): CombatState {
     version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
     baseDamage:54, coins:0, scrap:0, combatMarks:250, runes:[], equippedRunes:[], combatUpgrades:{}, totalKills:0, skillRolls:0, skillRuntime:createCombatSkillRuntime(), strategyGuideRank:0, tacticianManuals:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
-    combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0,
+    combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0, playerTurnsCompleted:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
     encounterFirstStrikeUsed:false, pendingHealAmount:0, inventory:starter.inventory,
     equipment:starter.equipment, runInventoryIds:[],
@@ -721,20 +773,13 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const equipmentSlots = Object.entries(state.equipment) as [CombatGearSlot,string|null][];
   const equippedItems = equipmentSlots.map(([slot,id]) => state.inventory.find(item => item.id === id && item.slot === slot)).filter((item):item is CombatGear=>Boolean(item));
   const qualityOf = (item:CombatGear) => gearQualityEffectiveness(item,floor);
-  const equippedRuneIds = new Set(state.equippedRunes ?? []);
-  const equippedRunes = (state.runes ?? []).filter(rune => equippedRuneIds.has(rune.id));
   const abilityTotal=(id:CombatMajorAbility['id'],property:string)=>{
-    const gearTotal=equippedItems.reduce((sum,item)=>{
+    // Rune perks are main-game-only; only equipped combat gear contributes here.
+    return equippedItems.reduce((sum,item)=>{
       if(item.majorAbility?.id!==id)return sum;
       const raw=Number((item.majorAbility as unknown as Record<string,unknown>)[property]);
       return sum+(Number.isFinite(raw)?Math.max(0,raw)*qualityOf(item):0);
     },0);
-    const runeTotal=equippedRunes.reduce((sum,rune)=>{
-      if(rune.majorAbility?.id!==id)return sum;
-      const raw=Number((rune.majorAbility as unknown as Record<string,unknown>)[property]);
-      return sum+(Number.isFinite(raw)?Math.max(0,raw)*combatRuneMajorAbilityMultiplier(rune.rarity):0);
-    },0);
-    return gearTotal+runeTotal;
   };
   const effectiveDamageBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.damageBonus*qualityOf(item)),0);
   // Turn speed is intentionally restricted to Major Abilities, not ordinary gear affixes.
@@ -744,6 +789,8 @@ export function combatStatsFor(state: CombatState): CombatStats {
     Math.min(.4,abilityTotal('deep-roots','damagePerTenLevelsPercent')*Math.floor(floor/10)));
   const majorDamageReduction=abilityTotal('aegis-ward','damageReduction');
   const majorHealthPercent=Math.min(1.5,abilityTotal('titan-heart','maxHealthPercent'));
+  const majorMaxEnergyFlat=Math.floor(Math.max(0,Math.min(45,abilityTotal('expanded-reserves','maxEnergyFlat'))));
+  const maxEnergy=Math.max(5,Math.min(50,5+majorMaxEnergyFlat));
   const majorLastStand=state.health>0&&state.health<=Math.max(1,Number(state.maxHealth)||1000)*.35?abilityTotal('last-bastion','damageReduction'):0;
   const majorFrostbrandReduction=abilityTotal('frostbrand','damageReduction');
   const majorGlassCannonTaken=abilityTotal('glass-cannon','damageTakenPercent');
@@ -782,7 +829,7 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const damageReduction = Math.max(-.50,Math.min(.80,effectiveArmorBonus/250 + .04*traitEffectiveness('bulwark') + majorDamageReduction + majorLastStand + majorFrostbrandReduction + damageReductionPct - majorGlassCannonTaken));
   return {
     damage:Math.max(1,Math.round(flatDamage*(1+damagePct)*(1+majorDamagePercent)*(1+coreProgressionBonus)*(1+dungeonDamageBonus)*(1+orbFocusBonus))),
-    speed:Math.min(10_000_000,speed), maxHealth, armor:effectiveArmorBonus,
+    speed:Math.min(10_000_000,speed), maxHealth, maxEnergy, armor:effectiveArmorBonus,
     critChance:Math.min(.75,Math.max(0,critChance)),
     damageReduction,
     coinMultiplier:1+coinBonus, coreProgressionBonus, orbFocusBonus, gearQualityRequirement,
@@ -796,7 +843,7 @@ export function synchronizeCombatStats(state: CombatState): CombatStats {
   if (!Number.isFinite(state.health)) state.health=state.maxHealth;
   state.health=Math.max(0,Math.min(state.maxHealth,state.health));
   if (previousMax<=0) state.health=state.maxHealth;
-  state.maxEnergy=Math.max(1,Math.min(10,Math.floor(Number(state.maxEnergy)||5)));
+  state.maxEnergy=stats.maxEnergy;
   state.energy=Math.max(0,Math.min(state.maxEnergy,Math.floor(Number(state.energy)||0)));
   return stats;
 }
@@ -809,12 +856,7 @@ export function combatMarkMultiplier(state: Pick<CombatState, 'combatUpgrades'> 
     const item = inventory.find(candidate => candidate.id === id && candidate.slot === slot);
     return sum + (item?.majorAbility?.id === 'mark-harvest' ? item.majorAbility.markBonusPercent * gearQualityEffectiveness(item, floor) : 0);
   }, 0);
-  const equippedRuneIds = new Set(state.equippedRunes ?? []);
-  const runeMarkBonus = (state.runes ?? []).reduce((sum, rune) => {
-    if (!equippedRuneIds.has(rune.id) || rune.majorAbility?.id !== 'mark-harvest') return sum;
-    return sum + rune.majorAbility.markBonusPercent * combatRuneMajorAbilityMultiplier(rune.rarity);
-  }, 0);
-  return 1 + combatUpgradeRank(state, 'scavenger') * .08 + combatUpgradeRank(state, 'mark-magnet') * .10 + majorMarkBonus + runeMarkBonus;
+  return 1 + combatUpgradeRank(state, 'scavenger') * .08 + combatUpgradeRank(state, 'mark-magnet') * .10 + majorMarkBonus;
 }
 
 export interface CombatSkillCopyResult {

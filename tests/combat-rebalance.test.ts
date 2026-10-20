@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   COMBAT_MAX_DEPTH, combatGearQualityFromRoll, combatGearRarityForQuality, combatGearRarityOdds,
-  combatGearStatBudgetMultiplier, combatNextBeatDelayMs, combatRuneMajorAbilityChance,
+  combatActionsDue, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, combatRuneMajorAbilityChance,
   combatRuneMajorAbilityMultiplier, combatScrapValue, combatStatsFor, createCombatState,
   getEnemyForDungeonDepth, type CombatRune,
 } from '../src/shared/combat.js';
@@ -46,17 +46,33 @@ test('Auto cadence derives its deadline from the accepted server beat timestamp'
   assert.equal(combatNextBeatDelayMs(40000,10000),150);
 });
 
-test('equipped Rune Major Abilities contribute to combat stats',()=>{
+test('Rune Major Abilities are main-game-only and do not change combat stats',()=>{
   const state=createCombatState();
   const rune:CombatRune={
-    id:'rune-major-titan-test',name:'Test Titan Rune',rarity:'Mythic',stat:'luckPct',value:4,
+    id:'rune-main-game-only-test',name:'Test Fate Rune',rarity:'Mythic',stat:'luckPct',value:4,level:10,
     sourceDepth:0,sourceDungeon:'undercrypt',
-    majorAbility:{id:'titan-heart',name:"Titan's Heart",trigger:'passive',maxHealthPercent:.65,description:'Increases maximum HP.'},
+    majorAbility:{id:'fateweaver',name:'Fateweaver',valuePct:25,description:'Main-game Luck only.'},
   };
   state.runes=[rune];state.equippedRunes=[rune.id];
   const baseline=combatStatsFor({...state,runes:[],equippedRunes:[]});
   const equipped=combatStatsFor(state);
-  assert.ok(equipped.maxHealth>baseline.maxHealth);
+  assert.equal(equipped.damage,baseline.damage);
+  assert.equal(equipped.maxHealth,baseline.maxHealth);
+  assert.equal(equipped.speed,baseline.speed);
+  assert.equal(equipped.critChance,baseline.critChance);
+});
+test('combat speed is reflected in action cadence and fast enemies can exceed three actions',()=>{
+  assert.equal(combatActionsDue(100,1,0),1);
+  assert.equal(combatActionsDue(350,1,0),3);
+  assert.equal(combatActionsDue(700,1,0),7);
+  assert.ok(getEnemyForDungeonDepth('undercrypt',100).speed>getEnemyForDungeonDepth('undercrypt',1).speed);
+});
+test('Expanded Reserves increases the actual Energy cap',()=>{
+  const state=createCombatState();
+  const weapon=state.inventory.find(item=>item.slot==='weapon')!;
+  weapon.quality=100;
+  weapon.majorAbility={id:'expanded-reserves',name:'Expanded Reserves',trigger:'passive',maxEnergyFlat:5,description:'More Energy.'};
+  assert.equal(combatStatsFor(state).maxEnergy,10);
 });
 
 test('late-game player stats and enemy progression reach large numbers without overflow',()=>{

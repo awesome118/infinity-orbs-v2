@@ -2,7 +2,7 @@ import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import { getOrbInfo, luckMultiplier, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatSkillDefinition, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneBonuses, combatRuneEffectText, combatRuneSalvageValue, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatRuneMajorAbilityMultiplier, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatActionsDue, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneSalvageValue, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneLevelCost, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -66,6 +66,8 @@ function normalizeMajorAbility(raw:Record<string,unknown>|null):CombatMajorAbili
     case 'full-moon': return raw.trigger==='passive'?{id:'full-moon',name:name('Full Moon'),trigger:'passive',critChanceBonus:value('critChanceBonus',.06,.3),description:description('Adds critical chance while at full HP.')}:undefined;
     case 'unstable-singularity': return raw.trigger==='passive'?{id:'unstable-singularity',name:name('Unstable Singularity'),trigger:'passive',burstChance:value('burstChance',.08,.3),burstDamagePercent:value('burstDamagePercent',.5,2),description:description('Hits can erupt in a burst of bonus damage.')}:undefined;
     case 'genesis-core': return raw.trigger==='passive'?{id:'genesis-core',name:name('Genesis Core'),trigger:'passive',regenPercent:value('regenPercent',.01,.05),description:description('Regenerates a little HP on every combat beat.')}:undefined;
+    case 'expanded-reserves': return raw.trigger==='passive'?{id:'expanded-reserves',name:name('Expanded Reserves'),trigger:'passive',maxEnergyFlat:value('maxEnergyFlat',1,45),description:description('Increases maximum Energy while this gear is equipped.')}:undefined;
+    case 'third-beat-recharge': return raw.trigger==='passive'?{id:'third-beat-recharge',name:name('Third-Beat Recharge'),trigger:'passive',energyPerThreeTurns:value('energyPerThreeTurns',1,10),description:description('Restores Energy every three completed player turns.')}:undefined;
     default:return undefined;
   }
 }
@@ -84,6 +86,22 @@ function normalizeGear(value:unknown,fallbackFloor=0):CombatGear|null {
 
   return {id:x.id.slice(0,160),name:x.name.slice(0,100),slot,quality:Math.max(0,Math.min(100,Number.isFinite(Number(x.quality))?Number(x.quality):0)),sourceFloor:finiteInt(x.sourceFloor,fallbackFloor,0,COMBAT_MAX_DEPTH-1),power:finiteInt(x.power,1,1,1_000_000),effect:x.id==='starter-weapon'?'Adds +4 damage. Critical chance +4 percentage points.':typeof x.effect==='string'?x.effect.slice(0,180):traitText(trait),trait,damageBonus:finiteInt(x.damageBonus,0,0,1_000_000),speedBonus:0,maxHealthBonus:finiteInt(x.maxHealthBonus,0,0,1_000_000),armorBonus:finiteInt(x.armorBonus,0,0,1_000_000),critChanceBonus:Math.max(0,Math.min(.75,Number.isFinite(Number(x.critChanceBonus))?Number(x.critChanceBonus):0)),...(majorAbility?{majorAbility}:{})};
 }
+function normalizeRuneMajorAbility(raw:Record<string,unknown>|null,stat:CombatRuneStat):CombatRune['majorAbility'] {
+  if(!raw)return undefined;
+  const valid=raw.id==='fateweaver'||raw.id==='midas-engine'||raw.id==='memory-well';
+  const id:NonNullable<CombatRune['majorAbility']>['id']=valid
+    ?raw.id as NonNullable<CombatRune['majorAbility']>['id']
+    :stat==='coinGainPct'?'midas-engine':stat==='xpGainPct'?'memory-well':'fateweaver';
+  const names={fateweaver:'Fateweaver','midas-engine':'Midas Engine','memory-well':'Memory Well'};
+  const descriptions={
+    fateweaver:'Adds extra Luck to main-game Infinity Orb rolls only.',
+    'midas-engine':'Adds extra Coins to main-game Infinity Orb rewards only.',
+    'memory-well':'Adds extra XP to main-game Infinity Orb rewards only.',
+  };
+  const rawValue=Number(raw.valuePct);
+  const valuePct=Number.isFinite(rawValue)?Math.max(0,Math.min(Number.MAX_SAFE_INTEGER,rawValue)):10;
+  return {id,name:typeof raw.name==='string'?raw.name.slice(0,60):names[id],valuePct,description:descriptions[id]};
+}
 function normalizeRune(value:unknown):CombatRune|null {
   if(!value||typeof value!=='object'||Array.isArray(value))return null;
   const x=value as Record<string,unknown>,rarity=x.rarity,stat=x.stat,dungeon=x.sourceDungeon;
@@ -92,12 +110,15 @@ function normalizeRune(value:unknown):CombatRune|null {
   if(!(['luckPct','coinGainPct','shardChancePct','xpGainPct'] as unknown[]).includes(stat))return null;
   const sourceDungeon:CombatDungeonId=(['undercrypt','cinder-vault','glass-labyrinth'] as unknown[]).includes(dungeon)?dungeon as CombatDungeonId:'undercrypt';
   const sourceDepth=finiteInt(x.sourceDepth,0,0,COMBAT_MAX_DEPTH-1);
-  const rawValue=Number(x.value),cap=stat==='shardChancePct'?100:300;
+  const rawValue=Number(x.value),cap=stat==='shardChancePct'?100:Number.MAX_SAFE_INTEGER;
   const runeValue=Number.isFinite(rawValue)?Math.max(0,Math.min(cap,rawValue)):0;
   if(runeValue<=0)return null;
   const rawAbility=x.majorAbility&&typeof x.majorAbility==='object'&&!Array.isArray(x.majorAbility)?x.majorAbility as Record<string,unknown>:null;
-  const majorAbility=normalizeMajorAbility(rawAbility);
-  return {id:x.id.trim(),name:typeof x.name==='string'?x.name.slice(0,120):'Unnamed Rune',rarity:rarity as CombatRuneRarity,stat:stat as CombatRuneStat,value:runeValue,sourceDepth,sourceDungeon,...(majorAbility?{majorAbility}:{})};
+  // Migrate saved combat-style Rune perks into core-game-only Rune perks.
+  const majorAbility=normalizeRuneMajorAbility(rawAbility,stat as CombatRuneStat);
+  return {id:x.id.trim(),name:typeof x.name==='string'?x.name.slice(0,120):'Unnamed Rune',
+    rarity:rarity as CombatRuneRarity,stat:stat as CombatRuneStat,value:runeValue,
+    level:finiteInt(x.level,1,1,Number.MAX_SAFE_INTEGER),sourceDepth,sourceDungeon,...(majorAbility?{majorAbility}:{})};
 }
 function equippedMajorAbilityTotal(state:CombatState,abilityId:CombatMajorAbility['id'],property:string):number {
   const floor=Math.max(0,state.depth-1);
@@ -109,15 +130,17 @@ function equippedMajorAbilityTotal(state:CombatState,abilityId:CombatMajorAbilit
     const raw=Number((item.majorAbility as unknown as Record<string,unknown>)[property]);
     if(Number.isFinite(raw)&&raw>0)total+=Math.min(10,raw)*gearQualityEffectiveness(item,floor);
   }
-  const equippedRuneIds=new Set(state.equippedRunes);
-  for(const rune of state.runes){
-    if(!equippedRuneIds.has(rune.id)||rune.majorAbility?.id!==abilityId)continue;
-    const raw=Number((rune.majorAbility as unknown as Record<string,unknown>)[property]);
-    if(Number.isFinite(raw)&&raw>0)total+=Math.min(10,raw)*combatRuneMajorAbilityMultiplier(rune.rarity);
-  }
   return total;
 }
 
+function createRuneMajorAbility(qualityValue:number):NonNullable<CombatRune['majorAbility']> {
+  const quality=Math.max(0,Math.min(100,Number(qualityValue)||0));
+  const valuePct=Math.round((5+quality*.15)*100)/100;
+  const id=pick(['fateweaver','midas-engine','memory-well'] as const);
+  if(id==='fateweaver')return {id,name:'Fateweaver',valuePct,description:'Adds extra Luck to main-game Infinity Orb rolls only.'};
+  if(id==='midas-engine')return {id,name:'Midas Engine',valuePct,description:'Adds extra Coins to main-game Infinity Orb rewards only.'};
+  return {id:'memory-well',name:'Memory Well',valuePct,description:'Adds extra XP to main-game Infinity Orb rewards only.'};
+}
 function createCombatRune(sourceDepth:number,sourceDungeon:CombatDungeonId,totalKills:number,sequence:number):CombatRune {
   const rarityRoll=secureRandom();
   const rarity:CombatRuneRarity=rarityRoll<.0005?'Cosmic':rarityRoll<.0025?'Mythic':rarityRoll<.01?'Legendary':rarityRoll<.035?'Epic':rarityRoll<.12?'Rare':rarityRoll<.35?'Uncommon':'Common';
@@ -125,9 +148,9 @@ function createCombatRune(sourceDepth:number,sourceDungeon:CombatDungeonId,total
   const value=combatRuneValueFor(rarity,stat,sourceDepth);
   const rarityName:Record<CombatRuneRarity,string>={Common:'Fractured',Uncommon:'Polished',Rare:'Radiant',Epic:'Runed',Legendary:'Ascendant',Mythic:'Mythic',Cosmic:'Cosmic'};
   const statName:Record<CombatRuneStat,string>={luckPct:'Fate',coinGainPct:'Hoard',shardChancePct:'Prism',xpGainPct:'Insight'};
-  const majorAbility=secureRandom()<combatRuneMajorAbilityChance(rarity)?createMajorAbility(combatRuneMajorAbilityQuality(rarity)):undefined;
+  const majorAbility=secureRandom()<combatRuneMajorAbilityChance(rarity)?createRuneMajorAbility(combatRuneMajorAbilityQuality(rarity)):undefined;
   const suffix=Math.floor(secureRandom()*1_000_000_000).toString(36);
-  return {id:'rune-'+sourceDungeon+'-'+totalKills+'-'+sequence+'-'+suffix,name:rarityName[rarity]+' '+statName[stat]+' Rune',rarity,stat,value,sourceDepth,sourceDungeon,...(majorAbility?{majorAbility}:{})};
+  return {id:'rune-'+sourceDungeon+'-'+totalKills+'-'+sequence+'-'+suffix,name:rarityName[rarity]+' '+statName[stat]+' Rune',rarity,stat,value,level:1,sourceDepth,sourceDungeon,...(majorAbility?{majorAbility}:{})};
 }
 function normalizeState(raw:string|null|undefined):CombatState {
   if(!raw)return createCombatState();
@@ -161,7 +184,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.coreLevel=finiteInt(s.coreLevel,1,1,1_000_000);s.coreHighestRarity=finiteInt(s.coreHighestRarity,2,2,1_000_000_000_000_000_000);
   s.autoTactic=(['balanced','aggressive','defensive','recovery'] as unknown[]).includes(s.autoTactic)?s.autoTactic:'balanced';
   s.scrap=finiteInt(s.scrap,0,0,Number.MAX_SAFE_INTEGER);s.autoScrapUnlocked=s.autoScrapUnlocked===true;s.autoScrapSettings=normalizeCombatAutoScrapSettings(s.autoScrapSettings);s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillGachaRank=finiteInt(storedGachaRank,legacyUnlockedRank,1,SKILL_GACHA_RANK_MAX);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,1_000_000_000_000_000_000);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
-  s.playerActionsResolved=finiteInt(s.playerActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.enemyActionsResolved=finiteInt(s.enemyActionsResolved,0,0,Number.MAX_SAFE_INTEGER);
+  s.playerActionsResolved=finiteInt(s.playerActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.enemyActionsResolved=finiteInt(s.enemyActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.playerTurnsCompleted=finiteInt(s.playerTurnsCompleted,0,0,Number.MAX_SAFE_INTEGER);
   s.strategyGuideRank=finiteInt(s.strategyGuideRank,0,0,STRATEGY_GUIDE_RANKS.length);
   s.tacticianManuals=finiteInt(s.tacticianManuals,0,0,1);
   // Remove the retired miss counter from older saved combat states.
@@ -181,7 +204,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
     royalTitheKills:finiteInt(rawSkillRuntime.royalTitheKills,0,0,10),bountyStreak:finiteInt(rawSkillRuntime.bountyStreak,0,0,10),
     nextRuneDropBonus:Math.max(0,Math.min(.5,Number.isFinite(Number(rawSkillRuntime.nextRuneDropBonus))?Number(rawSkillRuntime.nextRuneDropBonus):defaultSkillRuntime.nextRuneDropBonus)),
   };
-  s.energy=finiteInt(s.energy,3,0,10);s.maxEnergy=finiteInt(s.maxEnergy,5,1,10);s.guardBeats=finiteInt(s.guardBeats,0,0,10);s.encounterFirstStrikeUsed=s.encounterFirstStrikeUsed===true;s.pendingHealAmount=finiteInt(s.pendingHealAmount,0,0,1_000_000_000);
+  s.energy=finiteInt(s.energy,3,0,50);s.maxEnergy=finiteInt(s.maxEnergy,5,1,50);s.guardBeats=finiteInt(s.guardBeats,0,0,10);s.encounterFirstStrikeUsed=s.encounterFirstStrikeUsed===true;s.pendingHealAmount=finiteInt(s.pendingHealAmount,0,0,1_000_000_000);
   const defaults=createCombatState();
   const persisted=p as Partial<CombatState>&{
     inventoryByDungeon?:Partial<Record<CombatDungeonId,unknown>>;
@@ -292,6 +315,8 @@ function createMajorAbility(qualityValue:number,requestedAbilityId?:CombatMajorA
     'full-moon':()=>({id:'full-moon',name:'Full Moon',trigger:'passive',critChanceBonus:v(.04,.001),description:'Adds '+Math.round(v(.04,.001)*100)+' percentage points of critical chance while at full HP.'}),
     'unstable-singularity':()=>({id:'unstable-singularity',name:'Unstable Singularity',trigger:'passive',burstChance:v(.04,.001),burstDamagePercent:v(.3,.007),description:'Hits have a '+Math.round(v(.04,.001)*100)+'% chance to burst for '+Math.round(v(.3,.007)*100)+'% bonus Orb damage.'}),
     'genesis-core':()=>({id:'genesis-core',name:'Genesis Core',trigger:'passive',regenPercent:v(.005,.0002),description:'Regenerates '+Math.round(v(.005,.0002)*1000)/10+'% Max HP each combat beat.'}),
+    'expanded-reserves':()=>({id:'expanded-reserves',name:'Expanded Reserves',trigger:'passive',maxEnergyFlat:1+Math.floor(quality/20),description:'Increases maximum Energy by '+(1+Math.floor(quality/20))+' while equipped.'}),
+    'third-beat-recharge':()=>({id:'third-beat-recharge',name:'Third-Beat Recharge',trigger:'passive',energyPerThreeTurns:1,description:'Restores +1 Energy every 3 completed player turns.'}),
   };
   const validRequested=requestedAbilityId&&COMBAT_MAJOR_ABILITY_IDS.includes(requestedAbilityId)?requestedAbilityId:null;
   return f[validRequested??pick([...COMBAT_MAJOR_ABILITY_IDS])]();
@@ -413,7 +438,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     if(sequence!==s.sequence+1)throw new Error('stale combat sequence');
     const manualSkillId=typeof skillIdValue==='string'&&COMBAT_SKILLS.some(skill=>skill.id===skillIdValue)?skillIdValue as CombatSkillId:null;
     const guideEnemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);
-    const predictedPlayerActions=Math.min(12,Math.max(0,Math.floor((s.combatBeats+1)*Math.max(1,s.speed)/100)-s.playerActionsResolved));
+    const predictedPlayerActions=combatActionsDue(s.speed,s.combatBeats+1,s.playerActionsResolved);
     const activeSkillId=intent==='ability'?manualSkillId:intent==='auto'&&predictedPlayerActions>0?chooseGuidedSkillId(s,guideEnemy):null;
     const activeSkill=activeSkillId?COMBAT_SKILLS.find(skill=>skill.id===activeSkillId):null;
     if(intent==='ability'&&!activeSkill)throw new Error('Choose a valid equipped ability.');
@@ -434,6 +459,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     }
     let enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);const stats=combatStatsFor(s);
      const majorTotal=(id:CombatMajorAbility['id'],property:string)=>equippedMajorAbilityTotal(s,id,property);
+     const thirdBeatRecharge=majorTotal('third-beat-recharge','energyPerThreeTurns');
      const passiveLifesteal=Math.min(.35,majorTotal('blood-drinker','lifestealPercent'));
      const criticalDamageBonus=Math.min(1,majorTotal('critical-mass','critDamageBonus'));
      const orbConduitBonus=Math.min(.75,majorTotal('orb-conduit','orbDamagePercent'));
@@ -453,13 +479,12 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
      if(genesisRegenPercent>0&&s.health>0){const heal=Math.min(s.maxHealth-s.health,Math.max(0,Math.round(s.maxHealth*genesisRegenPercent)));if(heal>0){s.health+=heal;actions.push({actor:'player',kind:'ability',text:'Genesis Core regenerates '+heal.toLocaleString()+' HP.'});}}
 
     // Each accepted beat receives its own server-side cryptographic orb roll; rarity drives all attacks that beat.
-    const runeLuck=combatRuneBonuses(s.runes,s.equippedRunes).luckPct;
-    const orbRarity=rollContinuum(orbLuck*(1+Math.min(400,runeLuck)/100),secureRandom),orbInfo=getOrbInfo(orbRarity),damageMultiplier=combatOrbDamageMultiplier(orbRarity);
+    const orbRarity=rollContinuum(orbLuck,secureRandom),orbInfo=getOrbInfo(orbRarity),damageMultiplier=combatOrbDamageMultiplier(orbRarity);
     const orbRoll:CombatOrbRoll={rarity:orbRarity,tier:String(orbInfo.tier),name:orbInfo.name,damageMultiplier,baseDamage:Math.max(1,Math.round(stats.damage*damageMultiplier*(1+orbConduitBonus)))};
     actions.push({actor:'player',kind:'ability',text:'Orb roll: '+orbInfo.name+' · 1 / '+orbRarity.toLocaleString()+' · ×'+damageMultiplier.toFixed(2)+' damage.'});
     const resolvedIntent:CombatIntent=activeSkill?'strike':intent==='auto'?chooseAutoCombatIntent(s):intent==='ability'?'strike':intent;
-    const playerActions=Math.min(12,Math.max(0,Math.floor(s.combatBeats*stats.speed/100)-s.playerActionsResolved));
-    let enemyActions=Math.min(3,Math.max(0,Math.floor(s.combatBeats*enemy.speed/100)-s.enemyActionsResolved));
+    const playerActions=combatActionsDue(stats.speed,s.combatBeats,s.playerActionsResolved);
+    let enemyActions=combatActionsDue(enemy.speed,s.combatBeats,s.enemyActionsResolved);
     if(activeSkill&&playerActions<1)throw new Error('No player action is ready for this ability.');
     s.playerActionsResolved+=playerActions;s.enemyActionsResolved+=enemyActions;
     let enemyHp=Math.max(1,s.enemyHp||enemy.maxHp),heavy=false,consumed=false,defeated=false,died=false;
@@ -554,6 +579,12 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
       if(crit&&passiveMarkOnCrit>0){const gained=Math.min(Number.MAX_SAFE_INTEGER-s.combatMarks,Math.max(0,Math.round(appliedDamage*passiveMarkOnCrit)));if(gained>0){s.combatMarks+=gained;actions.push({actor:'player',kind:'loot',text:'Fortune Engine mints '+gained.toLocaleString()+' Combat Marks.'});}}
       if(activeSkill?.id!=='singularity-edge')s.skillRuntime.storedDamage=Math.min(Math.round(s.maxHealth*2),s.skillRuntime.storedDamage+Math.round(appliedDamage*.04));
       actions.push({actor:'player',kind:'attack',damage:appliedDamage,text:(crit?'Critical hit for ':'Strike for ')+appliedDamage+' damage.'});
+      s.playerTurnsCompleted=Math.min(Number.MAX_SAFE_INTEGER,s.playerTurnsCompleted+1);
+      if(thirdBeatRecharge>0&&s.playerTurnsCompleted%3===0&&s.energy<s.maxEnergy){
+        const restored=Math.min(s.maxEnergy-s.energy,Math.max(1,Math.round(thirdBeatRecharge)));
+        s.energy+=restored;
+        actions.push({actor:'player',kind:'ability',text:'Third-Beat Recharge restores '+restored+' Energy.'});
+      }
       if(enemyHp<=0){
         defeated=true;actions.push({actor:'player',kind:'death',text:'The '+enemy.name+' falls.'});s.totalKills=Math.min(Number.MAX_SAFE_INTEGER,s.totalKills+1);
         if(soulHarvestPercent>0){const healed=Math.min(s.maxHealth-s.health,Math.max(0,Math.round(s.maxHealth*soulHarvestPercent)));if(healed>0){s.health+=healed;actions.push({actor:'player',kind:'ability',text:'Soul Harvest restores '+healed.toLocaleString()+' HP.'});}}
@@ -712,6 +743,19 @@ export async function equipCombatRune(runeIdValue:unknown,equipValue:unknown):Pr
       if(s.equippedRunes.length>=slots)throw new Error('All Rune slots are full. Unequip a Rune or reach the next slot milestone.');
       s.equippedRunes=[...s.equippedRunes,rune.id];
     }else if(!shouldEquip&&currentlyEquipped){s.equippedRunes=s.equippedRunes.filter(id=>id!==rune.id);}
+    return snapshot(s);
+  });
+}
+export async function levelUpCombatRune(runeIdValue:unknown):Promise<CombatSnapshot>{
+  if(typeof runeIdValue!=='string'||!runeIdValue.trim()||runeIdValue.length>160)throw new Error('A valid Rune is required.');
+  return mutate(s=>{
+    const rune=s.runes.find(item=>item.id===runeIdValue);
+    if(!rune)throw new Error('Rune is not in your inventory.');
+    const level=Math.max(1,Math.floor(Number(rune.level)||1));
+    if(level>=Number.MAX_SAFE_INTEGER)throw new Error('Rune level reached numeric precision limit.');
+    const cost=combatRuneLevelCost(level);
+    if(s.combatMarks<cost)throw new Error('Not enough Combat Marks to level this Rune.');
+    s.combatMarks-=cost;rune.level=level+1;
     return snapshot(s);
   });
 }
