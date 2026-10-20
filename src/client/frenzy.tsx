@@ -93,6 +93,7 @@ function FrenzyPost() {
   const [loading, setLoading] = useState(false);
   const [loadingInfo, setLoadingInfo] = useState(false);
   const loadInFlightRef = useRef(false);
+  const impressionRecordedRef = useRef(false);
   const [openedGame, setOpenedGame] = useState(false);
   const [showThankYouPrompt, setShowThankYouPrompt] = useState(false);
   const [thankYouMessage, setThankYouMessage] = useState('');
@@ -124,7 +125,11 @@ function FrenzyPost() {
   useEffect(() => { void load(); }, []);
 
   // Viewing a Frenzy post is an impression, not a live-player heartbeat.
-  useEffect(() => { void recordPostImpression('frenzy'); }, []);
+  useEffect(() => {
+    if (impressionRecordedRef.current) return;
+    impressionRecordedRef.current = true;
+    void recordPostImpression('frenzy');
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
