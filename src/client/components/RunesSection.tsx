@@ -69,7 +69,7 @@ export const RunesSection:React.FC=()=>{
     if(strengthenTargetId&&!runes.some(rune=>rune.id===strengthenTargetId))setStrengthenTargetId('');
     if(inspectedRuneId&&!runes.some(rune=>rune.id===inspectedRuneId))setInspectedRuneId('');
   },[runes,strengthenTargetId,inspectedRuneId]);
-  useEffect(()=>{const closeDetails=(event:KeyboardEvent)=>{if(event.key==='Escape'){setInspectedRuneId('');setStrengthenTargetId('');}};window.addEventListener('keydown',closeDetails);return()=>window.removeEventListener('keydown',closeDetails);},[]);
+  useEffect(()=>{const closeDetails=(event:KeyboardEvent)=>{if(event.key!=='Escape')return;setInspectedRuneId('');setStrengthenTargetId('');const target=event.target;if(target instanceof HTMLElement&&target.closest('.io-runes-icon-wrap.is-inspected'))target.blur();};window.addEventListener('keydown',closeDetails);return()=>window.removeEventListener('keydown',closeDetails);},[]);
   const mutate=async(url:string,body:unknown,runeId:string,success:string)=>{
     if(actionLockRef.current)return;
     actionLockRef.current=true;
