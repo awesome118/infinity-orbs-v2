@@ -190,10 +190,12 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
   const safeStoredLevel=Number.isFinite(Number(state.level))?Math.max(1,Math.min(1000,Math.floor(Number(state.level)))):1;
   const displayedLevel=safeStoredLevel;
   const safeTotalXp=Number.isFinite(Number(state.xp))?Math.max(0,Number(state.xp)):0;
+  const isMaxLevel=safeStoredLevel>=1000;
   const levelProgress=getLevelProgress(safeStoredLevel,safeTotalXp,state.levelXpFloor);
   const levelInfo={
     ...levelProgress,
-    progressPercent:Math.max(0,Math.min(100,Math.round(Number(levelProgress.progressPercent)||0))),
+    currentLevelXp:isMaxLevel?levelProgress.nextLevelXp:levelProgress.currentLevelXp,
+    progressPercent:isMaxLevel?100:Math.max(0,Math.min(100,Math.round(Number(levelProgress.progressPercent)||0))),
   };
   const levelBenefits = getLevelBenefits(displayedLevel);
 
@@ -233,7 +235,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
         {/* EXP Progress Bar */}
         <div className="space-y-2 bg-slate-950/60 border border-purple-900/40 p-4 rounded-2xl">
           <div className="flex items-center justify-between text-xs font-mono">
-            <span className="text-slate-300 font-bold">Progress to Level {levelInfo.level + 1}</span>
+            <span className="text-slate-300 font-bold">{isMaxLevel ? 'Maximum Level Reached' : 'Progress to Level ' + (levelInfo.level + 1)}</span>
             <span className="text-purple-300">
               {fmt(levelInfo.currentLevelXp)} / {fmt(levelInfo.nextLevelXp)} XP ({levelInfo.progressPercent}%)
             </span>
@@ -243,7 +245,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
               className="h-full bg-gradient-to-r from-purple-500 via-indigo-400 to-cyan-400 rounded-full motion-safe:transition-all duration-500 shadow-[0_0_12px_rgba(168,85,247,0.8)] relative"
               style={{ width: `${levelInfo.progressPercent}%` }}
             >
-              <div className="absolute inset-0 bg-white/25 animate-pulse" />
+              <div className="absolute inset-0 bg-white/25 motion-safe:animate-pulse" />
             </div>
           </div>
         </div>
