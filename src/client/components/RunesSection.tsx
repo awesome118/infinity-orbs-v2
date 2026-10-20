@@ -46,6 +46,7 @@ export const RunesSection:React.FC=()=>{
   const [busyRune,setBusyRune]=useState<string|null>(null);
   const [sacrificing,setSacrificing]=useState(false);
   const [strengthenTargetId,setStrengthenTargetId]=useState('');
+  const [inspectedRuneId,setInspectedRuneId]=useState('');
   const [autoSacrificeBusy,setAutoSacrificeBusy]=useState(false);
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
@@ -64,7 +65,8 @@ export const RunesSection:React.FC=()=>{
   const runes=useMemo(()=>[...(state?.runes??[])].sort((a,b)=>(RARITY_ORDER[b.rarity]??0)-(RARITY_ORDER[a.rarity]??0)||(Number(b.level)||1)-(Number(a.level)||1)||b.value-a.value||a.name.localeCompare(b.name)),[state?.runes]);
   useEffect(()=>{
     if(strengthenTargetId&&!runes.some(rune=>rune.id===strengthenTargetId))setStrengthenTargetId('');
-  },[runes,strengthenTargetId]);
+    if(inspectedRuneId&&!runes.some(rune=>rune.id===inspectedRuneId))setInspectedRuneId('');
+  },[runes,strengthenTargetId,inspectedRuneId]);
   const mutate=async(url:string,body:unknown,runeId:string,success:string)=>{
     if(actionLockRef.current)return;
     actionLockRef.current=true;
@@ -93,7 +95,7 @@ export const RunesSection:React.FC=()=>{
     setSacrificing(true);setError('');setNotice('');
     try{
       const result=await request<SacrificeResponse>('/api/combat/runes/sacrifice','POST',{targetRuneId:target.id,donorRuneId:donor.id});
-      setSnapshot(result);setStrengthenTargetId('');
+      setSnapshot(result);setStrengthenTargetId('');setInspectedRuneId('');
       const detail=result.runeSacrifice;
       setNotice(detail
         ?detail.donorName+' sacrificed into '+detail.targetName+': +'+fmt(detail.gainedXp)+' Rune XP. '+detail.targetName+' is now Level '+fmt(detail.level)+'.'
@@ -110,8 +112,7 @@ export const RunesSection:React.FC=()=>{
       void sacrifice(strengthenTargetId,rune.id);
       return;
     }
-    const isEquipped=Boolean(state?.equippedRunes.includes(rune.id));
-    void mutate('/api/combat/runes/equip',{runeId:rune.id,equip:!isEquipped},rune.id,isEquipped?'Rune unequipped.':'Rune equipped.');
+    setInspectedRuneId(current=>current===rune.id?'':rune.id);
   };
   const saveAutoSacrificeSettings=async(enabled:boolean,maxRarity:CombatRuneRarity)=>{
     if(actionLockRef.current)return;
@@ -159,7 +160,7 @@ export const RunesSection:React.FC=()=>{
         <p className="io-runes-muted" style={{marginTop:'.75rem'}}>Slot milestones: start with 2; unlock a third at Delver Level 10, a fourth at Level 25, and a fifth at best Depth 50. Rune bonuses affect main-game online and offline orb-roll rewards, never dungeon combat.</p>
       </section>
       <section className="io-runes-panel">
-        <div className="io-runes-panel-head"><h2>Rune inventory</h2><span className="io-runes-muted">{state.runes.length} / 200 · Open a Rune tooltip and select Strengthen, then click the Rune to consume.</span></div>
+        <div className="io-runes-panel-head"><h2>Rune inventory</h2><span className="io-runes-muted">{state.runes.length} / 200 · Tap a Rune to inspect it. Select Strengthen in its details to sacrifice a donor.</span></div>
         {strengthenTargetRune&&<div className="io-runes-strengthen-mode" role="status">
           <div><strong>Strengthen: {strengthenTargetRune.name}</strong><span>Click another Rune to sacrifice it into this Rune. This permanently consumes the donor.</span></div>
           <button type="button" className="io-runes-button" onClick={()=>{setStrengthenTargetId('');setNotice('Strengthen selection cancelled.');}}>Cancel</button>
@@ -186,15 +187,18 @@ export const RunesSection:React.FC=()=>{
             const canEquip=isEquipped||state.equippedRunes.length<slots;
             const level=Math.max(1,Math.floor(Number(rune.level)||1));
             const levelXp=Math.max(0,Math.floor(Number(rune.experience)||0));
-            const nextXp=combatRuneExperienceForLevel(level+1);
-            const iconLabel=(isEquipped?'Unequip ':'Equip ')+rune.name;
-            return <article key={rune.id} className={'io-runes-icon-wrap '+rarityClass(rune.rarity)+(isEquipped?' is-equipped':'')}>
+            const currentLevelXp=combatRuneExperienceForLevel(level);
+            const nextXp=Math.max(currentLevelXp+1,combatRuneExperienceForLevel(level+1));
+            const levelProgressPct=Math.max(0,Math.min(100,Math.round(((levelXp-currentLevelXp)/Math.max(1,nextXp-currentLevelXp))*100)));
+            const iconLabel='Inspect '+rune.name;
+            return <article key={rune.id} className={'io-runes-icon-wrap '+rarityClass(rune.rarity)+(isEquipped?' is-equipped':'')+(inspectedRuneId===rune.id?' is-inspected':'')}>
               <button type="button" className={'io-runes-icon '+rarityClass(rune.rarity)+(isEquipped?' is-equipped':'')+(strengthenTargetId===rune.id?' is-strengthen-target':'')} disabled={sacrificing||Boolean(busyRune)||(strengthenTargetId?false:(!isEquipped&&!canEquip))} onClick={()=>handleRuneClick(rune)} aria-label={strengthenTargetId?(rune.id===strengthenTargetId?'Cancel Strengthen selection':'Sacrifice '+rune.name+' into '+(strengthenTargetRune?.name??'selected Rune')):iconLabel} title={strengthenTargetId?(rune.id===strengthenTargetId?'Cancel Strengthen selection':'Sacrifice into '+(strengthenTargetRune?.name??'selected Rune')):iconLabel}>
                 <span className="io-runes-icon-art">{STAT_ICON[rune.stat]}</span><small>Lv. {fmt(level)}</small>{isEquipped&&<span className="io-runes-equipped-mark"><ShieldCheck size={12}/></span>}
               </button>
               <div className="io-runes-tooltip" role="tooltip">
                 <span className={'io-runes-tooltip-rarity '+rarityClass(rune.rarity)}>{rune.rarity.toUpperCase()} · {STAT_LABEL[rune.stat].toUpperCase()}</span>
                 <strong>{rune.name}</strong><span className="io-runes-tooltip-level">Level {fmt(level)} · Rune XP {fmt(levelXp)} / {fmt(nextXp)} · Found at depth {rune.sourceDepth+1}</span>
+                 <div className="io-runes-level-progress" role="progressbar" aria-label={rune.name+' progress to Level '+fmt(level+1)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={levelProgressPct}><span style={{width:levelProgressPct+'%'}}/></div>
                 <p className="io-runes-tooltip-value">{combatRuneEffectText(rune)}</p>
                 <p>{rune.stat==='luckPct'?'Improves rarity odds on normal orb rolls.':rune.stat==='coinGainPct'?'Increases Coins earned from normal orb rolls.':rune.stat==='shardChancePct'?'Adds its existing percentage-point chance to find a Shard; Rune levels do not alter this stat.':'Increases XP earned from normal orb rolls.'}</p>
                 {rune.majorAbility&&<div className="io-runes-major-card"><span>✦ MAIN-GAME MAJOR ABILITY</span><strong>{rune.majorAbility.name} · LEVEL-SCALING EFFECT</strong><p>{combatRuneMajorAbilitySummary(rune.majorAbility,level)}</p></div>}
