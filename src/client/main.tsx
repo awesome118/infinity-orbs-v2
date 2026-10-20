@@ -695,9 +695,10 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!stateRef.current) return;
+    // Don't allocate prediction tickets for people who only viewed the post splash.
+    if (!splashEntered || !stateRef.current) return;
     void ensureRollTicket().catch(() => null);
-  }, [state?.stateRevision, ensureRollTicket]);
+  }, [state?.stateRevision, ensureRollTicket, splashEntered]);
 
   // Initial load. Timer updates stay local to the screens that display them.
   useEffect(() => {
@@ -932,6 +933,8 @@ export function App() {
   }, [state, splashEntered, frenzyRunTriggered, applyPlayerState, enqueueMutation]);
 
   useEffect(() => {
+    // Start the daily prompt delay when the player enters, not while a preview is idle.
+    if (!splashEntered) return;
     const startedAt = Date.now();
 
     const checkPrompt = () => {
@@ -957,7 +960,7 @@ export function App() {
     const interval = window.setInterval(checkPrompt, 15_000);
     checkPrompt();
     return () => window.clearInterval(interval);
-  }, []);
+  }, [splashEntered]);
 
   // Social quests count only when the player actually opens the social area.
   // Background leaderboard/guild refreshes must not award the visit quest.
@@ -989,6 +992,8 @@ export function App() {
 
   // Roll action
   const handleRoll = useCallback(async (isAutoRoll = false) => {
+    // A persisted Auto Roll setting must not execute until Play is pressed.
+    if (isAutoRoll && !splashEntered) return;
     if (rollActionLockRef.current) return;
     const currentState = stateRef.current;
     if (!currentState) return;
@@ -1096,18 +1101,19 @@ export function App() {
     ensureRollTicket,
     refreshAll,
     frenzyArmed,
+    splashEntered,
   ]);
 
   // Auto roll watcher (paced steadily)
   useEffect(() => {
-    if (!autoRoll || !state || state.upgrades.auto === 0) return;
+    if (!splashEntered || !autoRoll || !state || state.upgrades.auto === 0) return;
     const interval = setInterval(() => {
       if (Date.now() >= readyAt && !isRolling) {
         void handleRoll(true);
       }
     }, 300);
     return () => clearInterval(interval);
-  }, [autoRoll, state, readyAt, isRolling, handleRoll]);
+  }, [autoRoll, state, readyAt, isRolling, handleRoll, splashEntered]);
 
   // Standard upgrades are applied optimistically, queued for a short burst
   // window, and validated together by one authoritative server mutation.
