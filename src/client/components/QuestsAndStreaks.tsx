@@ -236,7 +236,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
           {state.weeklyQuests.map(q => {
             const isUnlocked = q.unlocked !== false;
             const isComplete = isUnlocked && q.progress >= q.target;
-            const pct = isUnlocked ? Math.min(100, Math.round((q.progress / q.target) * 100)) : 0;
+            const pct = questProgressPct(q.progress, q.target, isUnlocked);
 
             return (
               <div
