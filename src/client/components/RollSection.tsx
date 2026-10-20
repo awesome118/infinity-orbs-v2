@@ -50,7 +50,6 @@ interface RollSectionProps {
   onOrbFrenzy: () => Promise<void>;
   frenzyArmed: boolean;
   onOpenShareModal: (rarity: number) => void;
-  onNewBest?: (orb: Orb, prevBest: number) => void;
 }
 
 function formatTimeLeft(ms: number): string {
@@ -86,7 +85,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
   onOrbFrenzy,
   frenzyArmed,
   onOpenShareModal,
-  onNewBest,
 }) => {
   const [showBatchDetails, setShowBatchDetails] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -120,8 +118,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
   });
 
   const prevOrbRef = useRef<Orb | null>(null);
-  const handledBestResultRef = useRef<Orb | null>(null);
-  const previousBestRarityRef = useRef(Math.max(2, Number(state.highestRarity) || 2));
   const lastFanfareTimeRef = useRef<number>(0);
 
   const hasSonarUpgrade = (state.prestigeUpgrades?.sonarPing ?? 0) > 0;
@@ -297,28 +293,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const displayOrb = lastOrb;
   const orbInfo = displayOrb ? getOrbInfo(displayOrb.rarity) : null;
 
-  // Celebrate a completed manual-roll record once, but never interrupt Auto Roll.
-  // Hold the previous best while busy so batched server-state updates cannot hide the milestone.
-  useEffect(() => {
-    const currentBest = Math.max(2, Number(state.highestRarity) || 2);
-    if (!displayOrb) {
-      previousBestRarityRef.current = currentBest;
-      return;
-    }
-    if (busy) return;
-    if (handledBestResultRef.current === displayOrb) {
-      previousBestRarityRef.current = Math.max(previousBestRarityRef.current, currentBest);
-      return;
-    }
-
-    handledBestResultRef.current = displayOrb;
-    const previousBest = Math.max(2, previousBestRarityRef.current);
-    const resultRarity = Math.max(0, Number(displayOrb.rarity) || 0);
-    if (!autoRoll && resultRarity > previousBest && resultRarity >= currentBest) {
-      onNewBest?.(displayOrb, previousBest);
-    }
-    previousBestRarityRef.current = Math.max(previousBest, currentBest, resultRarity);
-  }, [displayOrb, state.highestRarity, busy, autoRoll, onNewBest]);
 
   const cosmeticEffectClass =
     state.activeCosmetic === 'galaxy'
