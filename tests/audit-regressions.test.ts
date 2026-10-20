@@ -2689,3 +2689,30 @@ test('header experience progress and icon-only actions have keyboard/screen-read
   assert.ok(header.includes("aria-label={notificationsEnabled ? 'Disable Reddit notifications' : 'Enable Reddit notifications'}"));
   assert.ok(header.includes("aria-label={soundEnabled ? 'Mute sound' : 'Enable sound'}"));
 });
+
+test('best-orb reveal badges reflect critical and discovery flags from the selected orb', () => {
+  const server = source('src/server/game.ts');
+  assert.ok(server.includes('let bestIsCrit = false;'));
+  assert.ok(server.includes('let bestIsNew = false;'));
+  assert.ok(server.includes('bestIsCrit = isCrit;'));
+  assert.ok(server.includes('bestIsNew = isNew;'));
+  assert.ok(server.includes('isNew: bestIsNew,'));
+  assert.ok(server.includes('isCrit: bestIsCrit,'));
+
+  const shared = source('src/shared/game.ts');
+  assert.ok(shared.includes('let bestIsCrit = false;'));
+  assert.ok(shared.includes('isCrit: bestIsCrit,'));
+  assert.ok(!shared.includes('isCrit: bestRarity > (sourceState.highestRarity ?? 0),'));
+});
+
+test('armed Frenzy readiness and Pity Luck meter use the actual gameplay thresholds', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  assert.ok(roll.includes('const frenzyReady = frenzyArmed && canRoll;'));
+  assert.ok(roll.includes('const primaryActionLabel = busy'));
+  assert.ok(roll.includes("? 'RELEASE FRENZY'"));
+  assert.ok(roll.includes("frenzyReady ? 'frenzy-supercharged'"));
+  assert.ok(roll.includes('const pityInterval = Math.max(6, 18 - pityCalibration * 2);'));
+  assert.ok(roll.includes('const pityProgress = ((dryStreak % pityInterval) / pityInterval) * 100;'));
+  assert.ok(roll.includes('width: `${pityProgress}%`'));
+  assert.ok(roll.includes('{dryStreak % pityInterval} / {pityInterval} rolls to next stack'));
+});
