@@ -327,8 +327,13 @@ export function createApp() {
 
   const mutationLockKey = (playerKey: string) => MUTATION_LOCK_PREFIX + playerKey;
 
-  const mutationLockOwner = (): string =>
-    String(globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const mutationLockOwner = (): string => {
+    // This token fences the request-level Redis mutation lease. Do not silently
+    // fall back to Math.random if UUID support is absent in a runtime.
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  };
 
   const parseMutationLock = (raw: string | null): { owner: string; expiresAt: number } | null => {
     if (!raw) return null;
