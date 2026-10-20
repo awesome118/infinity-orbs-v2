@@ -413,3 +413,17 @@ test('Frenzy handoff keys have a Redis expiry as well as an application expiry',
   assert.match(arm, /const handoffExpiresAt = Date\.now\(\) \+ FRENZY_HANDOFF_TTL_MS/);
   assert.match(arm, /expiration: new Date\(handoffExpiresAt\)/);
 });
+
+
+test('Frenzy preview, arm, and claim checks honor the stored expiration timestamp', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  assert.match(source, /function isFrenzyPostRecordExpired\([\s\S]{0,250}post\.expiresAt \?\? frenzyPostExpiresAt\(post\.createdAt\)/);
+  const infoStart = source.indexOf('export async function getOrbFrenzyInfo');
+  const claimStart = source.indexOf('export async function claimOrbFrenzy');
+  const armStart = source.indexOf('export async function armOrbFrenzyClaim');
+  const handoffStart = source.indexOf('export async function getOrbFrenzyHandoff');
+  assert.ok(infoStart >= 0 && claimStart > infoStart && armStart > 0 && handoffStart > armStart);
+  assert.match(source.slice(infoStart, claimStart), /isFrenzyPostRecordExpired\(data, now\)/);
+  assert.match(source.slice(armStart, handoffStart), /isFrenzyPostRecordExpired\(data, now\)/);
+  assert.match(source.slice(claimStart, claimStart + 8000), /isFrenzyPostRecordExpired\(data, now\)/);
+});
