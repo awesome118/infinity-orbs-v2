@@ -2133,6 +2133,8 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-runes-tooltip-rarity{display:block;font-size:.58rem;font-weight:950;letter-spacing:.1em}
 .io-runes-tooltip>strong{display:block;margin:.25rem 0;color:#f8fafc;font-size:.88rem;overflow-wrap:anywhere}
 .io-runes-tooltip-level{display:block;color:#94a3b8;font-size:.65rem}
+.io-runes-level-progress{height:4px;margin-top:.4rem;overflow:hidden;border-radius:999px;background:rgba(71,85,105,.55)}.io-runes-level-progress>span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#8b5cf6,#22d3ee);transition:width .2s ease}
+.io-runes-icon-wrap.is-inspected .io-runes-tooltip{display:block}
 .io-runes-tooltip p{margin:.4rem 0 0;color:#cbd5e1;font-size:.72rem;line-height:1.45}
 .io-runes-tooltip-value{color:#c4b5fd!important;font-weight:900}
 .io-runes-major-card{margin-top:.65rem;padding:.6rem;border:1px solid rgba(167,139,250,.28);border-radius:.55rem;background:rgba(91,33,182,.12)}
