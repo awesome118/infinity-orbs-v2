@@ -2474,3 +2474,13 @@ test('API responses default to non-cacheable because they depend on viewer or Re
   assert.match(app, /app\.get\('\/api\/collection'/);
   assert.match(app, /app\.get\('\/api\/chat\/status'/);
 });
+
+
+test('distributed player lock fencing tokens use 128 bits of cryptographic randomness', () => {
+  const lock = source('src/server/player-lock.ts');
+  assert.match(lock, /function randomLockToken\(\): string/);
+  assert.match(lock, /new Uint8Array\(16\)/);
+  assert.match(lock, /globalThis\.crypto\.getRandomValues\(sample\)/);
+  assert.match(lock, /const token = 'lock-' \+ randomLockToken\(\)/);
+  assert.doesNotMatch(lock, /randomUint32\(\)/);
+});
