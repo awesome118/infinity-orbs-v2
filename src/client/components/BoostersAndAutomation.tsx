@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Bot,
   Clock,
@@ -89,14 +89,29 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
 }) => {
   const [now, setNow] = useState(Date.now());
   const [activatingGlobalBooster, setActivatingGlobalBooster] = useState<GlobalBoosterId | null>(null);
+  const [activatingPremiumBooster, setActivatingPremiumBooster] = useState<PremiumBoosterId | null>(null);
+  const activationLockRef=useRef(false);
 
   const handleGlobalActivation = async (id: GlobalBoosterId, useCredit: boolean) => {
-    if (activatingGlobalBooster) return;
+    if (activationLockRef.current) return;
+    activationLockRef.current=true;
     setActivatingGlobalBooster(id);
     try {
       await onActivateGlobalBooster(id, useCredit);
     } finally {
+      activationLockRef.current=false;
       setActivatingGlobalBooster(null);
+    }
+  };
+  const handlePremiumActivation = async (id: PremiumBoosterId) => {
+    if (activationLockRef.current || busy) return;
+    activationLockRef.current=true;
+    setActivatingPremiumBooster(id);
+    try {
+      await onActivateBooster(id);
+    } finally {
+      activationLockRef.current=false;
+      setActivatingPremiumBooster(null);
     }
   };
 
@@ -323,8 +338,8 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                     {active ? 'ACTIVE • ' + formatDuration(remaining) + ' left' : 'Ready to activate'}
                   </span>
                   <button
-                    onClick={() => void onActivateBooster(id)}
-                    disabled={busy || !canAfford}
+                    onClick={() => void handlePremiumActivation(id)}
+                    disabled={busy || activatingPremiumBooster!==null || !canAfford}
                     className={
                       active
                         ? 'px-3 py-2 rounded-xl text-xs font-black transition-all bg-indigo-500/20 border border-indigo-400/30 text-indigo-200 hover:bg-indigo-500/30 active:scale-95'
@@ -333,7 +348,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                           : 'px-3 py-2 rounded-xl text-xs font-black transition-all bg-slate-800 text-slate-500 cursor-not-allowed'
                     }
                   >
-                    {active ? 'Extend' : 'Activate'}
+                    {activatingPremiumBooster===id?'Activating…':active ? 'Extend' : 'Activate'}
                   </button>
                 </div>
               </div>
