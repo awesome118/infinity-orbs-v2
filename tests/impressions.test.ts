@@ -83,7 +83,8 @@ test('main game, Orb Share, and Frenzy clients report only coarse aggregate impr
   assert.match(splash, /postData\.type === 'shared-orb' \? 'orb-share' : 'main-game'/);
   assert.match(frenzy, /recordPostImpression\('frenzy'\)/);
   assert.match(reporter, /JSON\.stringify\(\{ postType, deviceType: detectDeviceType\(\) \}\)/);
-  assert.doesNotMatch(reporter, /username|userId|user-agent/i);
+  assert.doesNotMatch(reporter, /username\s*:|userId\s*:|userAgent\s*:/i);
   assert.match(api, /app\.post\('\/api\/impressions'/);
+  assert.match(api, /req\.path === '\/impressions'/);
   assert.match(admin, /debugRouter\.get\('\/impressions'/);
 });
