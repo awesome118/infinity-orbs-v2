@@ -2658,3 +2658,34 @@ test('passive splash loads only the save before deferring auxiliary bootstrap re
   assert.ok(tutorialEffectStart >= 0 && tutorialFetch > tutorialEffectStart);
   assert.match(client.slice(tutorialEffectStart, tutorialFetch), /if \(!splashEntered \|\| !state\) return;/);
 });
+
+
+test('roll interactions explain current state and animate server resolution without breaking reduced motion', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  assert.ok(roll.includes('const cooldownProgress = busy || canRoll'));
+  assert.ok(roll.includes(': cd > 0'));
+  assert.ok(roll.includes('const actionHint = busy'));
+  assert.ok(roll.includes('Resolving your roll'));
+  assert.ok(roll.includes('One press uses all'));
+  assert.ok(roll.includes('id="roll-action-hint"'));
+  assert.ok(roll.includes('<Loader2 className="w-5 h-5 animate-spin"'));
+  assert.ok(roll.includes('aria-describedby="roll-action-hint"'));
+  assert.ok(roll.includes('Personal best'));
+
+  const css = source('src/client/styles.css');
+  assert.ok(css.includes('.roll-action-hint {'));
+  assert.ok(css.includes('.roll-stage.is-rolling::after'));
+  assert.ok(css.includes('@keyframes io-roll-resolve-ring'));
+  assert.ok(css.includes('.roll-stage.is-rolling::after, .roll-stage.is-rolling > .absolute.w-64 { animation: none !important; }'));
+});
+
+test('header experience progress and icon-only actions have keyboard/screen-reader labels', () => {
+  const header = source('src/client/components/Header.tsx');
+  assert.ok(header.includes('aria-label={`Open profile. Experience progress'));
+  assert.ok(header.includes('focus-visible:outline-purple-300'));
+  assert.ok(header.includes('aria-label="View probability and drop odds"'));
+  assert.ok(header.includes('aria-label="Report a bug or send a suggestion"'));
+  assert.ok(header.includes('aria-label="Open admin console"'));
+  assert.ok(header.includes("aria-label={notificationsEnabled ? 'Disable Reddit notifications' : 'Enable Reddit notifications'}"));
+  assert.ok(header.includes("aria-label={soundEnabled ? 'Mute sound' : 'Enable sound'}"));
+});
