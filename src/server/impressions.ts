@@ -108,7 +108,9 @@ export async function recordPostImpression(
         return [];
       }
     }).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
-    for (const stale of entries.slice(MAX_INDEXED_POSTS)) {
+    // Limit serial deletes so an old oversized index cannot turn one post
+    // impression into an unbounded Redis request. Subsequent sweeps continue pruning.
+    for (const stale of entries.slice(MAX_INDEXED_POSTS, MAX_INDEXED_POSTS + 250)) {
       await redis.hDel(POST_INDEX_KEY, stale.field);
     }
   }
