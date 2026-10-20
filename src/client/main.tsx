@@ -2704,7 +2704,6 @@ export function App() {
             onOrbFrenzy={handleStartOrbFrenzy}
             frenzyArmed={frenzyArmed}
             onOpenShareModal={r => setShareRarity(r)}
-            onNewBest={(orb, prevBest) => setNewBestModalData({ orb, prevBest })}
           />
         )}
 
