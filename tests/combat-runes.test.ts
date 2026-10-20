@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   COMBAT_RUNE_EFFECT_MULTIPLIER_CAP,
+  COMBAT_RUNE_RARITIES,
+  DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS,
+  combatRuneRarityAtOrBelow,
   combatRuneBonuses,
   combatRuneExperienceForLevel,
   combatRuneLevelFromExperience,
@@ -19,6 +22,15 @@ const runes:CombatRune[]=[
   {id:'prism-1',name:'Radiant Prism Rune',rarity:'Rare',stat:'shardChancePct',value:.08,level:100,sourceDepth:20,sourceDungeon:'undercrypt'},
   {id:'insight-1',name:'Runed Insight Rune',rarity:'Epic',stat:'xpGainPct',value:4.2,sourceDepth:30,sourceDungeon:'glass-labyrinth'},
 ];
+test('Rune Auto Sacrifice threshold is inclusive, ordered by rarity, and disabled by default',()=>{
+  assert.deepEqual(COMBAT_RUNE_RARITIES,['Common','Uncommon','Rare','Epic','Legendary','Mythic','Cosmic']);
+  assert.deepEqual(DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS,{enabled:false,maxRarity:'Common'});
+  assert.equal(combatRuneRarityAtOrBelow('Common','Common'),true);
+  assert.equal(combatRuneRarityAtOrBelow('Rare','Rare'),true);
+  assert.equal(combatRuneRarityAtOrBelow('Uncommon','Rare'),true);
+  assert.equal(combatRuneRarityAtOrBelow('Epic','Rare'),false);
+  assert.equal(combatRuneRarityAtOrBelow('Cosmic','Mythic'),false);
+});
 test('Rune bonuses only count Runes in the equipped loadout',()=>{
   assert.deepEqual(combatRuneBonuses(runes,['fate-1','insight-1']),{luckPct:1.4,coinGainPct:0,shardChancePct:0,xpGainPct:4.2});
 });
