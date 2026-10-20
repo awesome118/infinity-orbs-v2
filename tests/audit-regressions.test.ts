@@ -2557,6 +2557,12 @@ test('passive player snapshots and the Play splash do not register active sessio
   assert.match(getMe, /loadRaw\(\{ registerActivity: false \}\)/);
   assert.match(getMe, /getState\(\{ registerActivity: false \}\)/);
 
+  const api = source('src/server/app.ts');
+  const featureStart = api.indexOf('const feature = featureForPath(req.path);');
+  const featureEnd = api.indexOf('// Game bans are enforced server-side.', featureStart);
+  assert.ok(featureStart >= 0 && featureEnd > featureStart);
+  assert.match(api.slice(featureStart, featureEnd), /loadRaw\(\{ registerActivity: false \}\)/);
+
   const client = source('src/client/main.tsx');
   const heartbeatStart = client.indexOf('const heartbeat = () =>');
   const heartbeatEnd = client.indexOf('}, [Boolean(state), splashEntered]);', heartbeatStart);
