@@ -30,7 +30,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
   const questProgressPct = (progress: number, target: number, unlocked: boolean) =>
     unlocked ? Math.max(0, Math.min(100, Math.round((Math.max(0, progress) / Math.max(1, target)) * 100))) : 0;
   const alreadyClaimedStreak = state.streak.lastClaimDate === today;
-  const currentStreakDay = ((state.streak.count - 1) % 7) + 1;
+  const currentStreakDay = ((Math.max(1, state.streak.count || 1) - 1) % 7) + 1;
 
   const streakRewards = [
     { day: 1, coins: 50, shards: 0 },
@@ -59,7 +59,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Current streak: <span className="font-black text-white">{Math.max(1, state.streak.count || 1)}</span> days · Longest: {state.streak.longestStreak} days.
+                Current streak: <span className="font-black text-white">{Math.max(0, state.streak.count || 0)}</span> days · Longest: {Math.max(0, state.streak.longestStreak || 0)} days.
               </p>
             </div>
           </div>
