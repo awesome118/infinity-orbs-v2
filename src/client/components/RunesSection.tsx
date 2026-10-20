@@ -47,6 +47,8 @@ export const RunesSection:React.FC=()=>{
   const [sacrificing,setSacrificing]=useState(false);
   const [strengthenTargetId,setStrengthenTargetId]=useState('');
   const [inspectedRuneId,setInspectedRuneId]=useState('');
+  const [runeSearch,setRuneSearch]=useState('');
+  const [runeFilter,setRuneFilter]=useState<'all'|'equipped'|'spare'>('all');
   const [autoSacrificeBusy,setAutoSacrificeBusy]=useState(false);
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
@@ -76,6 +78,16 @@ export const RunesSection:React.FC=()=>{
     finally{actionLockRef.current=false;setBusyRune(null);}
   };
   const equippedRunes=state?(state.equippedRunes.map(id=>state.runes.find(rune=>rune.id===id)).filter((rune):rune is CombatRune=>Boolean(rune))):[];
+  const visibleRunes=useMemo(()=>{
+    const query=runeSearch.trim().toLowerCase();
+    return runes.filter(rune=>{
+      const equipped=Boolean(state?.equippedRunes.includes(rune.id));
+      if(runeFilter==='equipped'&&!equipped)return false;
+      if(runeFilter==='spare'&&equipped)return false;
+      if(!query)return true;
+      return [rune.name,rune.rarity,rune.stat,rune.majorAbility?.name??''].some(value=>String(value).toLowerCase().includes(query));
+    });
+  },[runes,runeSearch,runeFilter,state?.equippedRunes]);
   const strengthenTargetRune=runes.find(rune=>rune.id===strengthenTargetId);
   const autoSacrificeSettings=state?.runeAutoSacrifice??{enabled:false,maxRarity:'Common' as CombatRuneRarity};
   const autoSacrificeEligibleCount=state?runes.filter(rune=>
@@ -181,8 +193,13 @@ export const RunesSection:React.FC=()=>{
           </button>
           <p>When enabled, new Runes at or below the selected rarity are sacrificed into a random equipped Rune. The button processes existing eligible Runes too. Equipped Runes are protected from auto-sacrifice; manual Strengthen can consume any other Rune.</p>
         </div>
+        {!!runes.length&&<div className="io-runes-inventory-tools">
+          <label className="io-runes-search-label">Find Rune<input type="search" value={runeSearch} onChange={event=>setRuneSearch(event.target.value)} placeholder="Name, rarity, stat, ability…" aria-label="Search runes by name, rarity, stat, or Major Ability"/></label>
+          <div className="io-runes-filter-group" role="group" aria-label="Filter Rune inventory">{(['all','equipped','spare'] as const).map(filter=><button key={filter} type="button" aria-pressed={runeFilter===filter} className={runeFilter===filter?'is-active':''} onClick={()=>setRuneFilter(filter)}>{filter==='all'?'All':filter==='equipped'?'Equipped':'Spare'}</button>)}</div>
+          <span className="io-runes-muted">Showing {fmt(visibleRunes.length)} of {fmt(runes.length)}</span>
+        </div>}
         {!runes.length?<div className="io-runes-empty"><Gem size={22} style={{margin:'0 auto .5rem',color:'#a78bfa'}}/><strong style={{display:'block',color:'#e2e8f0'}}>No Runes found yet</strong>Defeat monsters in Combat. Common monsters can drop a Rune, elite enemies have a higher chance, and bosses always drop one.</div>:
-          <div className="io-runes-inventory">{runes.map(rune=>{
+          <div className="io-runes-inventory">{visibleRunes.map(rune=>{
             const isEquipped=state.equippedRunes.includes(rune.id);
             const canEquip=isEquipped||state.equippedRunes.length<slots;
             const level=Math.max(1,Math.floor(Number(rune.level)||1));
