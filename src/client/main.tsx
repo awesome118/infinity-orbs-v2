@@ -115,8 +115,10 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
   const maxAttempts = isRead ? 3 : 1;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let responseReceived = false;
     try {
       const res = await fetch(url, options);
+      responseReceived = true;
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         const message =
@@ -164,6 +166,7 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
     } catch (error: any) {
       const retryableNetworkRead =
         isRead &&
+        !responseReceived &&
         attempt < maxAttempts - 1 &&
         error?.name !== 'AbortError';
 
@@ -221,11 +224,7 @@ export function App() {
     } catch {
       // The server status still works when embedded-webview storage is unavailable.
     }
-    void fetch('/api/tutorial/first-roll/status', { cache: 'no-store' })
-      .then(async response => {
-        if (!response.ok) throw new Error('Could not load first-roll tutorial status.');
-        return await response.json() as { seen?: boolean };
-      })
+    void getJsonWithTimeout<{ seen?: boolean }>('/api/tutorial/first-roll/status', 5_000, { cache: 'no-store' })
       .then(result => {
         if (!active) return;
         const done = result.seen === true || localDone;
@@ -257,11 +256,7 @@ export function App() {
     let active = true;
     let localDone = false;
     try { localDone = window.localStorage.getItem('io-combat-tutorial-v1') === 'done'; } catch { /* Use server persistence when webview storage is unavailable. */ }
-    void fetch('/api/combat/tutorial/status', { cache: 'no-store' })
-      .then(async response => {
-        if (!response.ok) throw new Error('Could not load Combat tutorial status.');
-        return await response.json() as { seen?: boolean };
-      })
+    void getJsonWithTimeout<{ seen?: boolean }>('/api/combat/tutorial/status', 5_000, { cache: 'no-store' })
       .then(result => {
         if (!active) return;
         const done = result.seen === true || localDone;
