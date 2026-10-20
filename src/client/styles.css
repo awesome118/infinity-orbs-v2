@@ -2234,3 +2234,7 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-combat-arena-filters input:focus-visible,.io-combat-arena-filters select:focus-visible{border-color:#a78bfa;box-shadow:0 0 0 2px rgba(167,139,250,.2)}
 @media(max-width:760px){.io-combat-arena-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.io-combat-arena-filters label:first-child{grid-column:1/-1}}
 @media(max-width:420px){.io-combat-arena-filters{grid-template-columns:minmax(0,1fr)}.io-combat-arena-filters label:first-child{grid-column:auto}}
+
+.io-combat-gear-details-close{position:sticky;float:right;top:0;margin:-.15rem -.15rem .25rem .5rem;width:1.8rem;height:1.8rem;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(148,163,184,.25);border-radius:.5rem;background:#0f172a;color:#cbd5e1;font-size:1rem;font-weight:900;cursor:pointer}
+.io-combat-gear-details-close:hover{background:#1e293b;color:#fff}
+.io-combat-gear-details-close:focus-visible{outline:2px solid #c4b5fd;outline-offset:2px}
