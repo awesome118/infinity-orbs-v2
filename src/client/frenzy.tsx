@@ -7,6 +7,21 @@ import { formatRarity, getOrbInfo, FRENZY_POST_LIFETIME_MS } from '../shared/gam
 import { GlobalChatWindow } from './components/GlobalChatWindow.js';
 import { recordPostImpression } from './impressions.js';
 
+async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 10_000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Request timed out. For claims or comments, refresh to verify the result before trying again.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 interface FrenzyInfo {
   rarity: number;
   ownerUsername: string;
@@ -109,7 +124,7 @@ function FrenzyPost() {
     setLoadingInfo(true);
     setError(null);
     try {
-      const res = await fetch('/api/frenzy/info');
+      const res = await fetchWithTimeout('/api/frenzy/info');
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not load Frenzy.');
       const data = await res.json() as FrenzyInfo;
       setInfo(data);
@@ -150,7 +165,7 @@ function FrenzyPost() {
     } catch (error) {
       expansionPromise = Promise.reject(error);
     }
-    const armPromise = fetch('/api/frenzy/arm', { method: 'POST' }).then(async arm => {
+    const armPromise = fetchWithTimeout('/api/frenzy/arm', { method: 'POST' }).then(async arm => {
       const armData = await arm.json().catch(() => ({}));
       if (!arm.ok) throw new Error(armData.error || 'Could not arm Frenzy.');
     });
@@ -169,7 +184,7 @@ function FrenzyPost() {
     // Some previews cannot expand. Finish the claim on this screen instead.
     // The claim endpoint is called exactly once, regardless of arm outcome.
     try {
-      const res = await fetch('/api/frenzy/claim', { method: 'POST' });
+      const res = await fetchWithTimeout('/api/frenzy/claim', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not claim Frenzy.');
       setThankYouMessage(`I claimed your 1/${formatRarity(info.rarity)} Orb Frenzy. Thanks, u/${info.ownerUsername}!`);
@@ -188,7 +203,7 @@ function FrenzyPost() {
     setPostingThankYou(true);
     setThankYouStatus(null);
     try {
-      const response = await fetch('/api/frenzy/thank-you', {
+      const response = await fetchWithTimeout('/api/frenzy/thank-you', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ postId: info.postId, text: thankYouMessage.trim() }),
