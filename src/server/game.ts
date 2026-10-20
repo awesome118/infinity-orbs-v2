@@ -3461,9 +3461,19 @@ export async function applyRolls(
   const temporalMomentumPerRoll = runeAbilityEffects.temporalLoopMomentumPerRoll;
   const prismaticForkChance = Math.min(.45, runeAbilityEffects.prismaticForkPct / 100);
   const prismaticForkRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.prismaticForkPct / 100);
+  const criticalConvergenceChance = Math.min(.35, runeAbilityEffects.criticalConvergencePct / 100);
+  const criticalConvergenceRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.criticalConvergencePct / 100);
+  const rarityLadderRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.rarityLadderPct / 100);
+  const stellarDividendInterval = Math.max(20, Math.floor(100 / (1 + runeAbilityEffects.stellarDividendPct / 100)));
+  const shardJackpotChance = Math.min(.50, runeAbilityEffects.shardJackpotPct / 100);
+  const milestoneRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.milestoneEnginePct / 100);
   let paradoxTriggered = false;
   let constellationTriggered = false;
   let temporalLoopTriggered = false;
+  let stellarDividendTriggered = false;
+  let rarityLadderTriggered = false;
+  let previousBatchRarity = 0;
+  let risingRarityChain = 0;
   const validCharge = (value: unknown) => Number.isFinite(Number(value)) ? Math.min(1_000_000, Math.max(0, Number(value))) : 0;
   s.runeConstellationCharge = validCharge(s.runeConstellationCharge);
   s.runeTemporalMomentum = validCharge(s.runeTemporalMomentum);
@@ -3518,7 +3528,8 @@ export async function applyRolls(
     if (isNew) uniqueGained++;
     s.collection[String(rarity)] = (s.collection[String(rarity)] ?? 0) + 1;
 
-    const isNewRarityRecord = rarity > s.highestRarity;
+    const previousAllTimeRarity = s.highestRarity;
+    const isNewRarityRecord = rarity > previousAllTimeRarity;
     if (isNewRarityRecord) {
       // The rolls since the previous record become an Aftershock candidate
       // only when a strictly rarer all-time orb finally appears.
@@ -3540,6 +3551,33 @@ export async function applyRolls(
     if (isNewRarityRecord && !suppressOtherRuneProcs && runeAbilityEffects.eventHorizonPct > 0) {
       const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity + 1, Math.ceil(rarity * eventHorizonRarityMultiplier)));
       addRuneBonusRolls(runeAbilityEffects.eventHorizonBonusRolls, { minRarity: floor, skipAllProcs: true });
+    }
+    // Milestone Engine pays for each new order-of-magnitude reached by the all-time record.
+    if (isNewRarityRecord && previousAllTimeRarity > 0 && !suppressOtherRuneProcs && runeAbilityEffects.milestoneEnginePct > 0) {
+      const decadesCrossed = Math.min(5, Math.max(0, Math.floor(Math.log10(rarity)) - Math.floor(Math.log10(previousAllTimeRarity))));
+      if (decadesCrossed > 0) {
+        shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + runeAbilityEffects.milestoneEngineBonusShards * decadesCrossed);
+        const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity + 1, Math.ceil(rarity * milestoneRarityMultiplier)));
+        addRuneBonusRolls(runeAbilityEffects.milestoneEngineBonusRolls * decadesCrossed, { minRarity: floor, skipAllProcs: true });
+      }
+    }
+    // Critical Convergence converts a critical hit into a chance for a non-recursive, rarity-floored bonus.
+    if (isCrit && !suppressOtherRuneProcs && criticalConvergenceChance > 0 && rng() < criticalConvergenceChance) {
+      const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity, Math.ceil(rarity * criticalConvergenceRarityMultiplier)));
+      addRuneBonusRolls(runeMajorBonusRollCount(runeAbilityEffects.criticalConvergencePct, 1), { minRarity: floor, skipAllProcs: true });
+    }
+    // Three strictly rising results in the same activation trigger Rarity Ladder once.
+    risingRarityChain = rarity > previousBatchRarity ? risingRarityChain + 1 : 1;
+    previousBatchRarity = rarity;
+    if (!rarityLadderTriggered && !suppressOtherRuneProcs && risingRarityChain >= 3 && runeAbilityEffects.rarityLadderPct > 0) {
+      const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity + 1, Math.ceil(rarity * rarityLadderRarityMultiplier)));
+      addRuneBonusRolls(runeAbilityEffects.rarityLadderBonusRolls, { minRarity: floor, skipAllProcs: true });
+      rarityLadderTriggered = true;
+    }
+    // Stellar Dividend pays once per activation when a processed roll hits its lifetime milestone.
+    if (!stellarDividendTriggered && !suppressOtherRuneProcs && runeAbilityEffects.stellarDividendPct > 0 && s.totalRolls % stellarDividendInterval === 0) {
+      addRuneBonusRolls(runeAbilityEffects.stellarDividendBonusRolls, { skipAllProcs: true });
+      stellarDividendTriggered = true;
     }
     // Paradox Engine gets one proc check per multi-roll activation.
     if (i === 0 && baseBatchRollCount > 1 && paradoxChance > 0 && rng() < paradoxChance) {
@@ -3588,6 +3626,10 @@ export async function applyRolls(
     );
     if (rng() < shardProcChance) {
       earnedShards += 1;
+    }
+    // Shard Jackpot only modifies an actual Shard payout, including rarity-based drops.
+    if (earnedShards > 0 && !suppressOtherRuneProcs && shardJackpotChance > 0 && rng() < shardJackpotChance) {
+      earnedShards = Math.min(Number.MAX_SAFE_INTEGER, earnedShards + Math.max(1, Math.round(earnedShards * runeAbilityEffects.shardJackpotExtraMultiplier)));
     }
 
     shardsGained += earnedShards;
