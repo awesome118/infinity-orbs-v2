@@ -4,7 +4,7 @@ import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
-import { combatRuneBonuses, combatRuneLuckMultiplier, undercryptOrbLuckMultiplier } from '../shared/combat.js';
+import { combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityEffects, undercryptOrbLuckMultiplier } from '../shared/combat.js';
 import {
   createInitialState,
   type PlayerState,
@@ -3352,6 +3352,7 @@ export async function applyRolls(
   if (rollCount > 1 && magnetLevel > 0 && rng() < 0.10 * magnetLevel) {
     rollCount += 2;
   }
+  const baseBatchRollCount = rollCount;
 
   // The player-state parser rejects unsafe lifetime roll counters. Refuse an
   // invalid or overflowing batch before shared reads or per-orb mutations.
@@ -3394,11 +3395,13 @@ export async function applyRolls(
   const communityLuck = worldEvent?.buffMultiplier ?? 1;
   let combatBestDepth = 1;
   let runeBonuses = combatRuneBonuses([], []);
+  let runeAbilityEffects = combatRuneMajorAbilityEffects([], []);
   if (typeof combatStateRaw === 'string') {
     try {
       const parsed = JSON.parse(combatStateRaw) as { bestDepth?: unknown; dungeonId?: unknown; dungeonBestDepths?: { undercrypt?: unknown }; runes?: unknown; equippedRunes?: unknown };
       combatBestDepth = Number(parsed?.dungeonBestDepths?.undercrypt) || (parsed?.dungeonId === 'undercrypt' ? Number(parsed?.bestDepth) || 1 : 1);
       runeBonuses = combatRuneBonuses(parsed?.runes, parsed?.equippedRunes);
+      runeAbilityEffects = combatRuneMajorAbilityEffects(parsed?.runes, parsed?.equippedRunes);
     } catch {
       // Ignore invalid optional combat state and preserve ordinary orb luck.
     }
@@ -3431,8 +3434,44 @@ export async function applyRolls(
     (s.prestigeUpgrades?.cosmicValuation ?? 0) * 0.05;
 
   const effectiveCritChance = effectiveRollCritChance(s, globalBoosters);
+  // Rune bonus rolls are bounded per activation and never exceed the existing server batch cap.
+  const runeBonusRollBudget = Math.max(0, Math.min(
+    50,
+    maxSupportedRollCount - baseBatchRollCount,
+    Number.MAX_SAFE_INTEGER - s.totalRolls - baseBatchRollCount,
+  ));
+  let runeBonusRollsUsed = 0;
+  const runeBonusRollSpecs: { minRarity?: number; echoDepth?: number; echoOnly?: boolean; skipAllProcs?: boolean }[] = [];
+  const addRuneBonusRolls = (
+    requestedCount: number,
+    spec: { minRarity?: number; echoDepth?: number; echoOnly?: boolean; skipAllProcs?: boolean },
+  ): number => {
+    const requested = Number.isFinite(requestedCount) ? Math.max(0, Math.floor(requestedCount)) : 0;
+    const count = Math.min(requested, runeBonusRollBudget - runeBonusRollsUsed);
+    for (let j = 0; j < count; j++) runeBonusRollSpecs.push({ ...spec });
+    rollCount += count;
+    runeBonusRollsUsed += count;
+    return count;
+  };
+  const echoChance = Math.min(.45, runeAbilityEffects.echoChamberPct / 100);
+  const maxEchoChain = runeAbilityEffects.echoChamberMaxChain;
+  const paradoxChance = Math.min(.50, runeAbilityEffects.paradoxEnginePct / 100);
+  const eventHorizonRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.eventHorizonPct / 100);
+  const shardConstellationThreshold = Math.max(3, Math.floor(12 / (1 + runeAbilityEffects.shardConstellationPct / 100)));
+  const temporalMomentumPerRoll = runeAbilityEffects.temporalLoopMomentumPerRoll;
+  const prismaticForkChance = Math.min(.45, runeAbilityEffects.prismaticForkPct / 100);
+  const prismaticForkRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.prismaticForkPct / 100);
+  let paradoxTriggered = false;
+  let constellationTriggered = false;
+  let temporalLoopTriggered = false;
+  const validCharge = (value: unknown) => Number.isFinite(Number(value)) ? Math.min(1_000_000, Math.max(0, Number(value))) : 0;
+  s.runeConstellationCharge = validCharge(s.runeConstellationCharge);
+  s.runeTemporalMomentum = validCharge(s.runeTemporalMomentum);
 
   for (let i = 0; i < rollCount; i++) {
+    const currentRuneSpec = i >= baseBatchRollCount ? runeBonusRollSpecs[i - baseBatchRollCount] : undefined;
+    const echoDepth = currentRuneSpec?.echoDepth ?? 0;
+    const suppressOtherRuneProcs = currentRuneSpec?.skipAllProcs === true || currentRuneSpec?.echoOnly === true;
     // New-player hype: the third Orb this account ever rolls is guaranteed
     // to land in the 1/101 through 1/120 range. It cannot crit upward, so the
     // guarantee is the exact advertised range.
@@ -3456,14 +3495,15 @@ export async function applyRolls(
     // The third lifetime Orb overrides the random result with a guaranteed beginner drop.
     const minimumRarity = 2 + (s.prestigeUpgrades?.luckyFloor ?? 0);
     const beginnerRarity = 101 + Math.floor(rng() * 20);
+    const runeRarityFloor = Math.max(minimumRarity, currentRuneSpec?.minRarity ?? minimumRarity);
     const rolledRarity = isGuaranteedThirdBall
       ? beginnerRarity
       : (forcedRarity && i === 0)
         ? forcedRarity
-        : Math.max(minimumRarity, Math.min(MAX_ORB_RARITY, Math.round(rollContinuum(effectiveLuck, rng) * runeLuckMultiplier)));
+        : Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY, Math.round(rollContinuum(effectiveLuck, rng) * runeLuckMultiplier)));
     const baseRarity = exactRarity && forcedRarity != null && i === 0
       ? forcedRarity
-      : Math.max(minimumRarity, rolledRarity);
+      : Math.max(minimumRarity, isGuaranteedThirdBall ? rolledRarity : runeRarityFloor, rolledRarity);
     const rarity = isCrit ? Math.min(MAX_ORB_RARITY, Math.round(baseRarity * effectiveCm)) : baseRarity;
     const finalVal = Math.round(rarity * valueMul);
 
