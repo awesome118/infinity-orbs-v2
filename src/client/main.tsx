@@ -278,6 +278,8 @@ export function App() {
   const [toast, setToast] = useState<{ msg: string; type?: 'info' | 'success' | 'warn' } | null>(null);
 
   useEffect(() => {
+    // Shared HUD polling is deferred until the player enters from the post splash.
+    if (!splashEntered) return;
     const pollAnnouncement = async () => {
       try {
         const announcement = await getJson<{
@@ -310,7 +312,7 @@ export function App() {
         window.clearTimeout(boosterAnnouncementTimerRef.current);
       }
     };
-  }, []);
+  }, [splashEntered]);
 
   useEffect(() => {
     void getJson<{ isBeta: boolean }>('/api/app-info').then(info => setIsBeta(info.isBeta === true)).catch(() => setIsBeta(false));
@@ -708,6 +710,7 @@ export function App() {
   // Live developer announcement feed. All open clients poll the same Redis-backed
   // announcement so edits appear automatically without requiring a page refresh.
   useEffect(() => {
+    if (!splashEntered) return;
     let cancelled = false;
 
     const pollDeveloperAnnouncement = async () => {
@@ -736,11 +739,12 @@ export function App() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, []);
+  }, [splashEntered]);
 
   // Detect when the installed game has a newer client bundle. The endpoint is
   // deliberately uncached so stale Reddit/CDN responses do not hide updates.
   useEffect(() => {
+    if (!splashEntered) return;
     const checkForUpdate = async () => {
       try {
         const res = await fetch('/api/version?check=' + Date.now(), {
@@ -760,29 +764,48 @@ export function App() {
     void checkForUpdate();
     const interval = window.setInterval(() => void checkForUpdate(), 30_000);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [splashEntered]);
 
-  // Periodic background refresh for social & community event rolling counter
+  // Refresh shared community data only while actively playing. Pull once on
+  // entry/tab change so the player doesn't wait for the first polling interval.
   useEffect(() => {
-    const pollInterval = tab === 'social' ? 3000 : 8000;
-    const interval = setInterval(() => {
-      void getJson<WorldEvent>('/api/world-event').then(we => {
-        if (we) setWorldEvent(we);
-      }).catch(() => null);
-
-      if (tab === 'social') {
-        void getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds').then(gd => {
-          if (gd) setGuildData(gd);
-        }).catch(() => null);
+    if (!splashEntered) return;
+    let cancelled = false;
+    let inFlight = false;
+    const refreshCommunityState = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const requests: Promise<unknown>[] = [
+          getJson<WorldEvent>('/api/world-event').then(we => {
+            if (!cancelled && we) setWorldEvent(we);
+          }).catch(() => undefined),
+        ];
+        if (tab === 'social') {
+          requests.push(
+            getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds').then(gd => {
+              if (!cancelled && gd) setGuildData(gd);
+            }).catch(() => undefined),
+          );
+        }
+        await Promise.all(requests);
+      } finally {
+        inFlight = false;
       }
-    }, pollInterval);
-    return () => clearInterval(interval);
-  }, [tab]);
+    };
+    void refreshCommunityState();
+    const pollInterval = tab === 'social' ? 3000 : 8000;
+    const interval = window.setInterval(() => void refreshCommunityState(), pollInterval);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [tab, splashEntered]);
 
 
   // Global Boosters are shared state, so refresh them independently of player-state polling.
   useEffect(() => {
-    if (tab !== 'boosters') return;
+    if (!splashEntered || tab !== 'boosters') return;
 
     const refreshGlobalBoosters = () => {
       void getJson<GlobalBoosterSnapshot>('/api/global-boosters')
@@ -801,27 +824,46 @@ export function App() {
     refreshGlobalBoosters();
     const interval = setInterval(refreshGlobalBoosters, 1500);
     return () => clearInterval(interval);
-  }, [tab]);
+  }, [tab, splashEntered]);
 
   // Presence is independent from player-state persistence. Do not poll /api/me
   // here because game-state reads must never be responsible for saving the player.
   useEffect(() => {
-    const presenceInterval = setInterval(() => {
-      void getJson<{ onlinePlayers: number }>('/api/online')
-        .then(({ onlinePlayers }) => {
-          const safeOnlinePlayers = Number.isSafeInteger(onlinePlayers)
-            ? Math.max(0, onlinePlayers)
-            : 0;
-          onlinePlayersRef.current = safeOnlinePlayers;
-          if (stateRef.current) {
-            stateRef.current = { ...stateRef.current, onlinePlayers: safeOnlinePlayers };
-          }
-          setState(prev => prev ? { ...prev, onlinePlayers: safeOnlinePlayers } : prev);
-        })
-        .catch(() => null);
-    }, 10_000);
-    return () => clearInterval(presenceInterval);
-  }, []);
+    if (!splashEntered) return;
+    let cancelled = false;
+    let inFlight = false;
+    const refreshPresence = async () => {
+      if (inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      try {
+        const { onlinePlayers } = await getJson<{ onlinePlayers: number }>('/api/online');
+        if (cancelled) return;
+        const safeOnlinePlayers = Number.isSafeInteger(onlinePlayers)
+          ? Math.max(0, onlinePlayers)
+          : 0;
+        onlinePlayersRef.current = safeOnlinePlayers;
+        if (stateRef.current) {
+          stateRef.current = { ...stateRef.current, onlinePlayers: safeOnlinePlayers };
+        }
+        setState(prev => prev ? { ...prev, onlinePlayers: safeOnlinePlayers } : prev);
+      } catch {
+        // Presence is supplemental; keep the last good count on transient errors.
+      } finally {
+        inFlight = false;
+      }
+    };
+    void refreshPresence();
+    const presenceInterval = window.setInterval(() => void refreshPresence(), 10_000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refreshPresence();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.clearInterval(presenceInterval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [splashEntered]);
 
   useEffect(() => {
     if (!state || !splashEntered || frenzyRunTriggered || frenzyClaimActiveRef.current) return;
