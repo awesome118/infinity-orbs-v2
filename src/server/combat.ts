@@ -808,10 +808,10 @@ export async function updateCombatRuneAutoSacrificeSettings(enabledValue: unknow
   });
 }
 export async function processCombatRuneAutoSacrifice(): Promise<CombatSnapshot & { runeAutoSacrificeResult: { runesSacrificed: number; totalXp: number } }> {
-  return mutate(s => ({
-    ...snapshot(s),
-    runeAutoSacrificeResult: processAutoSacrificeForCurrentInventory(s),
-  }));
+  return mutate(s => {
+    const runeAutoSacrificeResult = processAutoSacrificeForCurrentInventory(s);
+    return { ...snapshot(s), runeAutoSacrificeResult };
+  });
 }
 export async function equipCombatRune(runeIdValue:unknown,equipValue:unknown):Promise<CombatSnapshot>{
   if(typeof runeIdValue!=='string'||!runeIdValue.trim()||runeIdValue.length>160)throw new Error('A valid Rune is required.');
