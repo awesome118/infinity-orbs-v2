@@ -58,6 +58,5 @@
         "endpoint": "/internal/scheduler/offline-orbs-full"
       }
     }
-  },
-  "version": "1.2.37"
+  }
 }
