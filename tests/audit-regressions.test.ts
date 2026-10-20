@@ -2583,13 +2583,15 @@ test('passive player snapshots and the Play splash do not register active sessio
 });
 
 
-test('HTTP mutation lease owner tokens never fall back to Math.random', () => {
+test('request coordination and feedback cooldowns use cryptographic tokens', () => {
   const app = source('src/server/app.ts');
-  const start = app.indexOf('const mutationLockOwner = (): string => {');
-  const end = app.indexOf('const parseMutationLock', start);
-  assert.ok(start >= 0 && end > start, 'request-level mutation lease owner generator must exist');
-  const owner = app.slice(start, end);
-  assert.match(owner, /new Uint8Array\(16\)/);
-  assert.match(owner, /globalThis\.crypto\.getRandomValues\(bytes\)/);
-  assert.doesNotMatch(owner, /Math\.random/);
+  const helperStart = app.indexOf('const secureRequestToken = (): string => {');
+  const parseStart = app.indexOf('const parseMutationLock', helperStart);
+  assert.ok(helperStart >= 0 && parseStart > helperStart, 'shared request token helper must exist');
+  const coordination = app.slice(helperStart, parseStart);
+  assert.match(coordination, /new Uint8Array\\(16\\)/);
+  assert.match(coordination, /globalThis\\.crypto\\.getRandomValues\\(bytes\\)/);
+  assert.match(coordination, /const mutationLockOwner = \\(\\): string => 'lease-' \\+ secureRequestToken\\(\\);/);
+  assert.match(app, /const feedbackCooldownToken = secureRequestToken\\(\\);/);
+  assert.doesNotMatch(app, /Math\\.random\\(\\)/);
 });
