@@ -2117,7 +2117,7 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 
 /* Runes and Skills: rarity-framed square icons with hover/focus detail tooltips. */
 .io-runes-panel{overflow:visible}
-.io-runes-inventory{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.55rem;align-items:start;overflow:visible}
+.io-runes-inventory{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));column-gap:.22rem;row-gap:.48rem;align-items:start;overflow:visible}
 .io-runes-icon-wrap{position:relative;min-width:0;display:flex;justify-content:center;outline:none}
 .io-runes-icon{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.25rem;width:100%;max-width:76px;aspect-ratio:1;border:2px solid #4a414f;border-radius:10px;background:linear-gradient(145deg,rgba(30,41,59,.85),rgba(2,6,23,.92));color:#e2e8f0;cursor:pointer;transition:transform .12s ease,box-shadow .12s ease}
 .io-runes-icon:hover,.io-runes-icon:focus-visible{transform:translateY(-2px);box-shadow:0 0 0 2px rgba(167,139,250,.25),0 8px 18px rgba(0,0,0,.3);outline:none}
@@ -2139,6 +2139,11 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-runes-major-card>span{display:block;color:#c4b5fd;font-size:.55rem;font-weight:950;letter-spacing:.08em}
 .io-runes-major-card>strong{display:block;color:#f5f3ff;font-size:.73rem}
 .io-runes-major-card p{font-size:.66rem}
+.io-runes-sacrifice-controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;align-items:end;gap:.4rem;margin:.45rem 0 .75rem;padding:.55rem;border:1px solid rgba(167,139,250,.2);border-radius:.7rem;background:rgba(2,6,23,.28)}
+.io-runes-sacrifice-controls label{display:grid;min-width:0;gap:.25rem;color:#c4b5fd;font-size:.62rem;font-weight:900}
+.io-runes-sacrifice-controls select{width:100%;min-width:0;min-height:2rem;padding:.35rem .4rem;border:1px solid rgba(167,139,250,.25);border-radius:.45rem;color:#e9d5ff;background:#11101b;font-size:.68rem}
+.io-runes-sacrifice-button{white-space:nowrap;min-height:2rem}
+.io-runes-sacrifice-note{grid-column:1/-1;color:#94a3b8;font-size:.63rem;line-height:1.45}
 .io-runes-tooltip-actions{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.7rem}
 .io-runes-button{display:inline-flex;align-items:center;justify-content:center;gap:.35rem;min-height:2rem;padding:.45rem .65rem;border:1px solid rgba(167,139,250,.35);border-radius:.55rem;color:#ede9fe;background:rgba(109,40,217,.16);font-size:.65rem;font-weight:900}
 .io-runes-button:hover{background:rgba(109,40,217,.3)}
@@ -2163,7 +2168,7 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-combat-skill-tooltip>p{margin:0 0 8px;color:#b0a7b3;font-size:10px;line-height:1.55}
 .io-combat-skill-tooltip>small{color:#d5ff85;font-size:9px}
 @media(max-width:700px){.io-combat-skill-icons{grid-template-columns:repeat(5,minmax(0,1fr))}.io-runes-inventory{grid-template-columns:repeat(5,minmax(0,1fr))}}
-@media(max-width:520px){.io-combat-skill-icons{grid-template-columns:repeat(4,minmax(0,1fr))}.io-runes-inventory{grid-template-columns:repeat(4,minmax(0,1fr))}.io-runes-header{align-items:center}.io-runes-panel{padding:.8rem}}
+@media(max-width:520px){.io-combat-skill-icons{grid-template-columns:repeat(4,minmax(0,1fr))}.io-runes-inventory{grid-template-columns:repeat(4,minmax(0,1fr));column-gap:.18rem}.io-runes-sacrifice-controls{grid-template-columns:1fr}.io-runes-sacrifice-button{width:100%}.io-runes-header{align-items:center}.io-runes-panel{padding:.8rem}}
 @media(max-width:360px){.io-combat-skill-icons,.io-runes-inventory{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
 /* Gear inventory matches the square-icon pattern used by Runes and Skills. */
