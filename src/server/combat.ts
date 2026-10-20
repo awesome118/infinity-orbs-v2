@@ -434,24 +434,42 @@ export async function getCombatMarksBalance():Promise<number>{
 }
 export async function getCombatSnapshot():Promise<CombatSnapshot>{
   let coreProgression:{level?:unknown;highestRarity?:unknown;autoScrapLevel?:unknown;autoScrapSettings?:unknown}|null=null;
-  try {
+  try{
     const core=await loadRaw();
     coreProgression={level:core.level,highestRarity:core.highestRarity,autoScrapLevel:core.prestigeUpgrades?.autoScrap,autoScrapSettings:core.combatAutoScrap};
-  } catch(error) {
+  }catch(error){
     // Core-game progress is a bonus, not a prerequisite for loading combat.
     console.error('[Combat] Could not refresh core-game attunement; retaining saved values.',error);
   }
-  const state=await mutate(s=>{
-    if(coreProgression){
-      s.coreLevel=finiteInt(coreProgression.level,s.coreLevel,1,1_000_000);
-      s.coreHighestRarity=finiteInt(coreProgression.highestRarity,s.coreHighestRarity,2,1_000_000_000_000_000_000);
-      s.autoScrapUnlocked=Number(coreProgression.autoScrapLevel)>0;
-      s.autoScrapSettings=normalizeCombatAutoScrapSettings(coreProgression.autoScrapSettings);
-      if(!s.autoScrapUnlocked)s.autoScrapSettings.enabled=false;
+
+  // Snapshots are polled by the combat UI. Read and normalize without a write
+  // when the cross-game projection is already current; otherwise every poll
+  // competes with the active beat's WATCH/MULTI/EXEC save for the same key.
+  const current=normalizeState(await redis.get(combatKey()));
+  let state=current;
+  if(coreProgression){
+    const coreLevel=finiteInt(coreProgression.level,current.coreLevel,1,1_000_000);
+    const coreHighestRarity=finiteInt(coreProgression.highestRarity,current.coreHighestRarity,2,1_000_000_000_000_000_000);
+    const autoScrapUnlocked=Number(coreProgression.autoScrapLevel)>0;
+    const autoScrapSettings=normalizeCombatAutoScrapSettings(coreProgression.autoScrapSettings);
+    if(!autoScrapUnlocked)autoScrapSettings.enabled=false;
+
+    const projectionChanged=
+      current.coreLevel!==coreLevel||
+      current.coreHighestRarity!==coreHighestRarity||
+      current.autoScrapUnlocked!==autoScrapUnlocked||
+      JSON.stringify(current.autoScrapSettings)!==JSON.stringify(autoScrapSettings);
+    if(projectionChanged){
+      state=await mutate(s=>{
+        s.coreLevel=coreLevel;
+        s.coreHighestRarity=coreHighestRarity;
+        s.autoScrapUnlocked=autoScrapUnlocked;
+        s.autoScrapSettings={...autoScrapSettings};
+        synchronizeCombatStats(s);
+        return s;
+      });
     }
-    synchronizeCombatStats(s);
-    return s;
-  });
+  }
   const userId=String(context.userId??'').trim();
   if(userId){
     const profile=createArenaProfile(userId,arenaName(context.username),state,Date.now());
@@ -459,6 +477,7 @@ export async function getCombatSnapshot():Promise<CombatSnapshot>{
   }
   return snapshot(state);
 }
+
 function grantXp(s:CombatState,amount:number,actions:CombatAction[]):void {
   s.xp+=amount;
   while(s.xp>=s.xpToNext&&s.level<60){s.xp-=s.xpToNext;s.level+=1;s.xpToNext=Math.round(s.xpToNext*1.19);synchronizeCombatStats(s);s.health=Math.min(s.maxHealth,s.health+Math.round(s.maxHealth*.08));actions.push({actor:'player',kind:'level',text:'Delver reached Level '+s.level+'.'});}
