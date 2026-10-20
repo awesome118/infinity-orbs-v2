@@ -1,4 +1,5 @@
-import type { ImpressionPostType, ImpressionDeviceType } from '../server/impressions.js';
+export type ImpressionPostType = 'main-game' | 'orb-share' | 'frenzy';
+type ImpressionDeviceType = 'mobile' | 'tablet' | 'desktop' | 'unknown';
 
 function detectDeviceType(): ImpressionDeviceType {
   if (typeof navigator === 'undefined') return 'unknown';
