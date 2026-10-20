@@ -1,6 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { combatRuneBonuses, combatRuneLevelCost, combatRuneLevelMultiplier, combatRuneLuckMultiplier, combatRuneSalvageValue, combatRuneSlotsUnlocked, combatRuneValueFor, type CombatRune } from '../src/shared/combat.js';
+import {
+  COMBAT_RUNE_EFFECT_MULTIPLIER_CAP,
+  combatRuneBonuses,
+  combatRuneExperienceForLevel,
+  combatRuneLevelFromExperience,
+  combatRuneLevelMultiplier,
+  combatRuneLuckMultiplier,
+  combatRuneSacrificeExperience,
+  combatRuneSlotsUnlocked,
+  combatRuneValueFor,
+  type CombatRune,
+} from '../src/shared/combat.js';
 
 const runes:CombatRune[]=[
   {id:'fate-1',name:'Radiant Fate Rune',rarity:'Rare',stat:'luckPct',value:1.4,sourceDepth:20,sourceDungeon:'undercrypt'},
@@ -27,19 +38,22 @@ test('Rune Luck percentages map directly to strong rarity multipliers',()=>{
   assert.ok(combatRuneLuckMultiplier(9_000)>90);
   assert.ok(combatRuneLuckMultiplier(Number.MAX_VALUE)>Number.MAX_SAFE_INTEGER);
 });
-test('Rune levels scale Luck, Coins, and XP beyond the old caps, without a level ceiling',()=>{
+test('Rune effect scaling grows strongly and approaches a large soft cap',()=>{
   assert.equal(combatRuneLevelMultiplier(1),1);
   assert.ok(combatRuneLevelMultiplier(20)>combatRuneLevelMultiplier(10));
-  assert.ok(combatRuneLevelMultiplier(100)>Number.MAX_SAFE_INTEGER,'Rune scaling must continue beyond the safe-integer range instead of flattening around level 75');
-  assert.ok(combatRuneLevelCost(5)>combatRuneLevelCost(1));
+  assert.ok(combatRuneLevelMultiplier(100)<COMBAT_RUNE_EFFECT_MULTIPLIER_CAP);
+  assert.ok(combatRuneLevelMultiplier(10_000)>990_000);
+  assert.equal(combatRuneLevelMultiplier(Number.MAX_SAFE_INTEGER),COMBAT_RUNE_EFFECT_MULTIPLIER_CAP);
+  assert.ok(combatRuneExperienceForLevel(100)>combatRuneExperienceForLevel(10));
+  assert.equal(combatRuneLevelFromExperience(0),1);
+  assert.equal(combatRuneLevelFromExperience(combatRuneExperienceForLevel(20)),20);
   const highLuck:CombatRune={id:'hi-luck',name:'Cosmic Fate',rarity:'Cosmic',stat:'luckPct',value:combatRuneValueFor('Cosmic','luckPct',50),level:10,sourceDepth:50,sourceDungeon:'undercrypt'};
   const highCoins:CombatRune={id:'hi-coins',name:'Cosmic Hoard',rarity:'Cosmic',stat:'coinGainPct',value:combatRuneValueFor('Cosmic','coinGainPct',50),level:10,sourceDepth:50,sourceDungeon:'undercrypt'};
   const bonuses=combatRuneBonuses([highLuck,highCoins],[highLuck.id,highCoins.id]);
-  assert.ok(bonuses.luckPct>900,'a high-rarity Luck Rune should pass a roughly 10x benchmark at level 10');
-  assert.ok(bonuses.coinGainPct>900,'a high-rarity Coin Rune should pass a roughly 10x benchmark at level 10');
-  const farBeyondSafeInteger:CombatRune={...highLuck,id:'far-beyond-safe-int',level:100};
-  const hugeBonus=combatRuneBonuses([farBeyondSafeInteger],[farBeyondSafeInteger.id]);
-  assert.ok(hugeBonus.luckPct>Number.MAX_SAFE_INTEGER,'Rune bonus should continue growing beyond JavaScript safe integers');
+  assert.ok(bonuses.luckPct>900,'a high-rarity Luck Rune remains much stronger at level 10');
+  assert.ok(bonuses.coinGainPct>900,'a high-rarity Coin Rune remains much stronger at level 10');
+  const atSoftCap:CombatRune={...highLuck,id:'at-soft-cap',level:Number.MAX_SAFE_INTEGER};
+  assert.ok(combatRuneBonuses([atSoftCap],[atSoftCap.id]).luckPct>highLuck.value*100_000);
 });
 test('Shard Rune chance is exactly unaffected by Rune level',()=>{
   const level1:CombatRune={...runes[2]!,level:1};
@@ -47,7 +61,12 @@ test('Shard Rune chance is exactly unaffected by Rune level',()=>{
   assert.equal(combatRuneBonuses([level1],[level1.id]).shardChancePct,.08);
   assert.equal(combatRuneBonuses([level1000],[level1000.id]).shardChancePct,.08);
 });
-test('Rune salvage rewards increase with rarity',()=>{
-  assert.ok(combatRuneSalvageValue('Cosmic')>combatRuneSalvageValue('Mythic'));
-  assert.ok(combatRuneSalvageValue('Mythic')>combatRuneSalvageValue('Common'));
+test('Rune sacrifice XP increases with rarity, donor level, and source depth',()=>{
+  const common=combatRuneSacrificeExperience({rarity:'Common',level:1,sourceDepth:0});
+  const cosmic=combatRuneSacrificeExperience({rarity:'Cosmic',level:1,sourceDepth:0});
+  const deepCosmic=combatRuneSacrificeExperience({rarity:'Cosmic',level:1,sourceDepth:1000});
+  const rankedCosmic=combatRuneSacrificeExperience({rarity:'Cosmic',level:10,sourceDepth:0});
+  assert.ok(cosmic>common);
+  assert.ok(deepCosmic>cosmic);
+  assert.ok(rankedCosmic>cosmic);
 });
