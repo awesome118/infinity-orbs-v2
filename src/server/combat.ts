@@ -193,9 +193,19 @@ function createCombatRune(sourceDepth:number,sourceDungeon:CombatDungeonId,total
   return {id:'rune-'+sourceDungeon+'-'+totalKills+'-'+sequence+'-'+suffix,name:rarityName[rarity]+' '+statName[stat]+' Rune',rarity,stat,value,level:1,experience:0,sourceDepth,sourceDungeon,...(majorAbility?{majorAbility}:{})};
 }
 function normalizeState(raw:string|null|undefined):CombatState {
-  if(!raw)return createCombatState();
+  // Only a genuinely missing Redis key represents a new player. Never convert
+  // a present but corrupt save into starter state, which a later mutation could
+  // commit over the player's real progress.
+  if(raw == null)return createCombatState();
   let p:Partial<CombatState>;
-  try { p=JSON.parse(raw) as Partial<CombatState>; if(!p||typeof p!=='object'||Array.isArray(p))return createCombatState(); } catch { return createCombatState(); }
+  try {
+    p=JSON.parse(raw) as Partial<CombatState>;
+  } catch {
+    throw new Error('Combat state is corrupted; refusing to overwrite it.');
+  }
+  if(!p||typeof p!=='object'||Array.isArray(p)) {
+    throw new Error('Combat state is corrupted; refusing to overwrite it.');
+  }
   const storedGachaRank=p.skillGachaRank;
   const savedSkillLevels=(p.skillLevels&&typeof p.skillLevels==='object'?p.skillLevels:{}) as Partial<Record<CombatSkillId,number>>;
   const legacyUnlockedRank=Math.max(1,...COMBAT_SKILLS.filter(skill=>Number(savedSkillLevels[skill.id])>0).map(skill=>({Common:1,Uncommon:2,Rare:3,Epic:4,Mythic:5}[skill.rarity])));
@@ -314,7 +324,18 @@ function normalizeState(raw:string|null|undefined):CombatState {
     if(!rune||seenRuneIds.has(rune.id))continue;
     seenRuneIds.add(rune.id);normalizedRunes.push(rune);
   }
-  s.runes=normalizedRunes.slice(-COMBAT_RUNE_INVENTORY_CAP);
+  // Preserve equipped Runes when trimming legacy/oversized saves. Taking the
+  // last N entries alone can silently evict an old equipped Rune and its bonus.
+  const requestedEquippedIds=new Set(
+    Array.isArray(p.equippedRunes)
+      ? p.equippedRunes.filter((id):id is string=>typeof id==='string')
+      : [],
+  );
+  const keptEquippedRunes=normalizedRunes.filter(rune=>requestedEquippedIds.has(rune.id));
+  const keptEquippedIds=new Set(keptEquippedRunes.map(rune=>rune.id));
+  const otherRunes=normalizedRunes.filter(rune=>!keptEquippedIds.has(rune.id));
+  const remainingSlots=Math.max(0,COMBAT_RUNE_INVENTORY_CAP-keptEquippedRunes.length);
+  s.runes=[...otherRunes.slice(-remainingSlots),...keptEquippedRunes].slice(-COMBAT_RUNE_INVENTORY_CAP);
   const ownedRuneIds=new Set(s.runes.map(rune=>rune.id));
   const requestedRunes=Array.isArray(p.equippedRunes)?p.equippedRunes.filter((id):id is string=>typeof id==='string'&&ownedRuneIds.has(id)):[];
   s.equippedRunes=[...new Set(requestedRunes)].slice(0,combatRuneSlotsUnlocked(s.level,Math.max(s.bestDepth,...Object.values(s.dungeonBestDepths))));
@@ -813,11 +834,14 @@ function getEquippedRuneTargets(s: CombatState): CombatRune[] {
     .filter((rune): rune is CombatRune => Boolean(rune));
 }
 function processAutoSacrificeForCurrentInventory(s: CombatState): { runesSacrificed: number; totalXp: number } {
-  const targets = getEquippedRuneTargets(s);
-  if (!targets.length) throw new Error('Equip at least one Rune before auto-sacrifice can strengthen a target.');
   const equipped = new Set(s.equippedRunes);
   const donors = s.runes.filter(rune =>
     !equipped.has(rune.id) && combatRuneRarityAtOrBelow(rune.rarity, s.runeAutoSacrifice.maxRarity));
+  // An empty run is a valid no-op. Only require an equipped target if there
+  // are actual donor Runes that would otherwise be consumed.
+  if (!donors.length) return { runesSacrificed: 0, totalXp: 0 };
+  const targets = getEquippedRuneTargets(s);
+  if (!targets.length) throw new Error('Equip at least one Rune before auto-sacrifice can strengthen a target.');
   const donorIds = new Set(donors.map(rune => rune.id));
   let totalXp = 0;
   for (const donor of donors) {
