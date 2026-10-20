@@ -2511,3 +2511,20 @@ test('Combat snapshot polling only mutates the save when core-game projection ch
   assert.match(snapshot, /if\(projectionChanged\)\{\s*state=await mutate/);
   assert.doesNotMatch(snapshot, /const state=await mutate\(s=>/);
 });
+
+
+test('Social cooldowns and report reservations use cryptographic, collision-resistant tokens', () => {
+  const social = source('src/server/social.ts');
+  assert.match(social, /function secureSocialToken\(prefix: string\): string/);
+  assert.match(social, /new Uint8Array\(16\)/);
+  assert.match(social, /globalThis\.crypto\.getRandomValues\(bytes\)/);
+  const cooldownStart = social.indexOf('async function enforceChatCooldown');
+  const cooldownEnd = social.indexOf('\nasync function ', cooldownStart + 10);
+  assert.ok(cooldownStart >= 0 && cooldownEnd > cooldownStart);
+  assert.match(social.slice(cooldownStart, cooldownEnd), /secureSocialToken\('chat'\)/);
+  const reportStart = social.indexOf('async function submitChatReport');
+  const reportEnd = social.indexOf('\nexport async function ', reportStart);
+  assert.ok(reportStart >= 0 && reportEnd > reportStart);
+  assert.match(social.slice(reportStart, reportEnd), /secureSocialToken\('report'\)/);
+  assert.doesNotMatch(social, /Math\.random\(\)/);
+});
