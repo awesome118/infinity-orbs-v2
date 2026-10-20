@@ -2595,3 +2595,47 @@ test('request coordination and feedback cooldowns use cryptographic tokens', () 
   assert.match(app, /const feedbackCooldownToken = secureRequestToken\(\);/);
   assert.doesNotMatch(app, /Math\.random\(\)/);
 });
+
+
+test('background refreshes are deferred until Play and refresh promptly on entry', () => {
+  const client = source('src/client/main.tsx');
+
+  const boosterStart = client.indexOf('const pollAnnouncement = async () =>');
+  const boosterEffectStart = client.lastIndexOf('useEffect(() => {', boosterStart);
+  const boosterEffectEnd = client.indexOf('}, [splashEntered]);', boosterStart);
+  assert.ok(boosterEffectStart >= 0 && boosterEffectEnd > boosterStart);
+  assert.match(client.slice(boosterEffectStart, boosterStart), /if \(!splashEntered\) return;/);
+
+  const developerStart = client.indexOf('const pollDeveloperAnnouncement = async () =>');
+  const developerEffectStart = client.lastIndexOf('useEffect(() => {', developerStart);
+  assert.match(client.slice(developerEffectStart, developerStart), /if \(!splashEntered\) return;/);
+
+  const versionStart = client.indexOf('const checkForUpdate = async () =>');
+  const versionEffectStart = client.lastIndexOf('useEffect(() => {', versionStart);
+  assert.match(client.slice(versionEffectStart, versionStart), /if \(!splashEntered\) return;/);
+
+  const communityStart = client.indexOf('const refreshCommunityState = async () =>');
+  const communityEffectStart = client.lastIndexOf('useEffect(() => {', communityStart);
+  const communityEffectEnd = client.indexOf('}, [tab, splashEntered]);', communityStart);
+  assert.ok(communityEffectStart >= 0 && communityEffectEnd > communityStart);
+  const communityEffect = client.slice(communityEffectStart, communityEffectEnd);
+  assert.match(communityEffect, /if \(!splashEntered\) return;/);
+  assert.match(communityEffect, /void refreshCommunityState\(\);/);
+  assert.match(communityEffect, /if \(inFlight\) return;/);
+
+  const presenceStart = client.indexOf('const refreshPresence = async () =>');
+  const presenceEffectStart = client.lastIndexOf('useEffect(() => {', presenceStart);
+  const presenceEffectEnd = client.indexOf('}, [splashEntered]);', presenceStart);
+  assert.ok(presenceEffectStart >= 0 && presenceEffectEnd > presenceStart);
+  assert.match(client.slice(presenceEffectStart, presenceEffectEnd), /void refreshPresence\(\);/);
+  assert.match(client.slice(presenceEffectStart, presenceEffectEnd), /if \(inFlight \|\| document\.visibilityState === 'hidden'\) return;/);
+});
+
+test('rolling disables both roll affordances and gives the orb keyboard semantics', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  assert.match(roll, /if \(busy\) return;[\s\S]{0,120}if \(canRoll\)/);
+  assert.match(roll, /<button[\s\S]{0,250}disabled=\{busy\}[\s\S]{0,250}aria-busy=\{busy\}/);
+  assert.match(roll, /aria-label=\{busy \? 'Rolling orbs'/);
+  assert.match(roll, /busy \? 'ROLL IN PROGRESS'/);
+  assert.match(roll, /className=\{'roll-button ' \+ \(busy \? 'is-waiting'/);
+});
