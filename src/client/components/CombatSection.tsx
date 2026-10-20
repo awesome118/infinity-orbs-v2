@@ -89,6 +89,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const [loading,setLoading]=useState(true),[processing,setProcessing]=useState(false),[mutating,setMutating]=useState(false);
   const [auto,setAuto]=useState(()=>{try{return window.localStorage.getItem('io-combat-auto')!=='false';}catch{return true;}}),[paused,setPaused]=useState(()=>{try{return window.localStorage.getItem('io-combat-paused')==='true';}catch{return false;}}),[intent,setIntent]=useState<CombatIntent>('strike');
   const [showAllSkills,setShowAllSkills]=useState(true);
+  const [inspectedSkillId,setInspectedSkillId]=useState<string|null>(null);
   useEffect(()=>{try{window.localStorage.setItem('io-combat-auto',String(auto));}catch{/* Embedded webviews can disable storage. */}},[auto]);
   useEffect(()=>{try{window.localStorage.setItem('io-combat-paused',String(paused));}catch{/* Embedded webviews can disable storage. */}},[paused]);
   const [visibleGearCount,setVisibleGearCount]=useState(60);
@@ -402,21 +403,21 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       </section>
       {lastSkill&&<div className={'io-combat-skill-result '+rarityClass(lastSkill.rarity)}><Sparkles size={18}/><div><strong>{lastSkill.name}</strong><p>{lastSkill.duplicate?(lastSkill.rankedUp?'Ranked up to Rank '+fmt(lastSkill.rank)+'.':'Duplicate progress '+fmt(lastSkill.progress)+'/'+fmt(lastSkill.copiesNeeded)+' toward Rank '+fmt(lastSkill.rank+1)+'. Higher ranks require more duplicate copies.'):'Unlocked as a new Rank 1 active ability.'}</p></div><span>{lastSkill.rarity.toUpperCase()}</span></div>}
       {gachaRequirement&&<section className="io-combat-panel" style={{marginBottom:20}}><div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">GACHA PROGRESSION</span><h2>Rank Up to {gachaRequirement.rank} · {gachaRequirement.unlocks}</h2><p>Requires {fmt(gachaRequirement.requiredPulls)} lifetime skill pulls and {fmt(gachaRequirement.requiredMarks)} Combat Marks. Current progress: {fmt(state.skillRolls)} pulls and {fmt(state.combatMarks)} Marks.</p></div><button type="button" className="io-combat-button is-primary" disabled={mutating||state.skillRolls<gachaRequirement.requiredPulls||state.combatMarks<gachaRequirement.requiredMarks} onClick={()=>void mutate('/api/combat/skills/rank-up')}>{state.skillRolls<gachaRequirement.requiredPulls?'Need '+fmt(gachaRequirement.requiredPulls-state.skillRolls)+' pulls':state.combatMarks<gachaRequirement.requiredMarks?'Need '+fmt(gachaRequirement.requiredMarks-state.combatMarks)+' Marks':'Rank Up Gacha'}</button></div></section>}
-      <div className="io-combat-codex-toolbar"><div><span className="io-combat-eyebrow">SKILL CODEX</span><h2>{ownedSkills.length} / {COMBAT_SKILLS.length} discovered · {state.equippedAbilities.length}/{COMBAT_ABILITY_SLOTS} equipped</h2></div><button type="button" className="io-combat-button is-secondary" onClick={()=>setShowAllSkills(!showAllSkills)}>{showAllSkills?'Owned only':'Show all skills'}</button></div>
+      <div className="io-combat-codex-toolbar"><div><span className="io-combat-eyebrow">SKILL CODEX</span><h2>{ownedSkills.length} / {COMBAT_SKILLS.length} discovered · {state.equippedAbilities.length}/{COMBAT_ABILITY_SLOTS} equipped</h2></div><button type="button" className="io-combat-button is-secondary" onClick={()=>{setInspectedSkillId(null);setShowAllSkills(!showAllSkills);}}>{showAllSkills?'Owned only':'Show all skills'}</button></div>
       <div className="io-combat-skill-grid io-combat-skill-icons">{visibleSkills.map(skill=>{
         const rank=rankOf(state,skill.id),copies=state.skillCopyProgress[skill.id]??0,needed=rank>0?combatSkillCopiesForNextRank(rank):0;
         const isEquipped=state.equippedAbilities.includes(skill.id),unlocked=skillRarityUnlocked(skill.rarity,state.skillGachaRank);
         const rarityUnlockRank=({Common:1,Uncommon:2,Rare:3,Epic:4,Mythic:5} as const)[skill.rarity],slotsFull=state.equippedAbilities.length>=COMBAT_ABILITY_SLOTS;
-        const glyph=skill.stat==='damagePct'?'⚔':skill.stat==='speedFlat'?'⏱':skill.stat==='healthPct'?'♥':skill.stat==='critChance'?'✧':'◈';
+        const glyph=skill.stat==='damagePct'?'⚔':skill.stat==='speedFlat'?'⏱':skill.stat==='healthPct'?'♥':skill.stat==='critChance'?'✧':'◈';const copyProgressPct=Math.max(0,Math.min(100,Math.round(copies/Math.max(1,needed)*100)));
         const actionLabel=!unlocked?'Unlock at Gacha Rank '+rarityUnlockRank:rank===0?'Roll to discover':isEquipped?'Unequip ability':slotsFull?'Ability slots full':'Equip ability';
-        return <article key={skill.id} className={'io-combat-skill-icon-wrap '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')}>
-          <button type="button" className={'io-combat-skill-icon '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')} aria-label={(isEquipped?'Unequip ':'Equip ')+skill.name} title={skill.name} disabled={mutating||!unlocked||rank===0||(!isEquipped&&slotsFull)} onClick={()=>void mutate('/api/combat/skills/equip',{skillId:skill.id,equip:!isEquipped})}>
+        return <article key={skill.id} className={'io-combat-skill-icon-wrap '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')+(inspectedSkillId===skill.id?' is-inspected':'')}>
+          <button type="button" className={'io-combat-skill-icon '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')} aria-label={'Inspect '+skill.name} aria-expanded={inspectedSkillId===skill.id} title={skill.name} disabled={mutating} onClick={()=>setInspectedSkillId(current=>current===skill.id?null:skill.id)}>
             <span>{glyph}</span><small>{rank>0?'R'+fmt(rank):'—'}</small>{isEquipped&&<b>✓</b>}
           </button>
-          <div className="io-combat-skill-tooltip" role="tooltip">
+          <div className="io-combat-skill-tooltip" role="group" aria-label={skill.name+' details and actions'}>
             <span className="io-combat-eyebrow">{skill.rarity.toUpperCase()} · {!unlocked?'GACHA RANK '+rarityUnlockRank:rank?'RANK '+fmt(rank):'NOT OWNED'}</span>
             <strong>{skill.name}</strong><p>{skillValue(skill,Math.max(1,rank),stats.speed)}</p>
-            {rank>0&&<><small>{fmt(copies)} / {fmt(needed)} copies toward Rank {fmt(rank+1)}</small><div className="io-combat-skill-progress"><span style={{width:(copies/Math.max(1,needed)*100)+'%'}}/></div></>}
+            {rank>0&&<><small>{fmt(copies)} / {fmt(needed)} copies toward Rank {fmt(rank+1)}</small><div className="io-combat-skill-progress" role="progressbar" aria-label={skill.name+' duplicate progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={copyProgressPct}><span style={{width:copyProgressPct+'%'}}/></div></>}
             <button type="button" className={isEquipped?'io-combat-button is-equipped':'io-combat-button'} disabled={mutating||!unlocked||rank===0||(!isEquipped&&slotsFull)} onClick={()=>void mutate('/api/combat/skills/equip',{skillId:skill.id,equip:!isEquipped})}>{actionLabel}</button>
           </div>
         </article>;
