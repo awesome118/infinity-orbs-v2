@@ -5,11 +5,11 @@ import { resolve } from 'node:path';
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
-test('all six Rune Major Abilities are normalized, scaled, and resolved server-side',()=>{
+test('all eleven Rune Major Abilities are normalized, scaled, and resolved server-side',()=>{
   const shared=source('src/shared/combat.ts');
   const combat=source('src/server/combat.ts');
   const game=source('src/server/game.ts');
-  const ids=['echo-chamber','paradox-engine','event-horizon','shard-constellation','temporal-loop','prismatic-fork'];
+  const ids=['echo-chamber','paradox-engine','event-horizon','shard-constellation','temporal-loop','prismatic-fork','critical-convergence','rarity-ladder','stellar-dividend','shard-jackpot','milestone-engine'];
   for(const id of ids){
     assert.ok(shared.includes("'"+id+"'"),'shared Rune type must include '+id);
     assert.ok(combat.includes("'"+id+"'"),'Rune generation and migration must include '+id);
@@ -20,6 +20,11 @@ test('all six Rune Major Abilities are normalized, scaled, and resolved server-s
   assert.ok(game.includes('prismaticForkRarityMultiplier'),'Prismatic Fork must impose its rarity floor');
   assert.ok(game.includes('runeConstellationCharge'),'Shard Constellation charge must persist');
   assert.ok(game.includes('runeTemporalMomentum'),'Temporal Loop momentum must persist');
+  assert.ok(game.includes('criticalConvergenceChance'),'Critical Convergence must trigger from critical rolls');
+  assert.ok(game.includes('risingRarityChain'),'Rarity Ladder must watch consecutive rising rolls');
+  assert.ok(game.includes('stellarDividendInterval'),'Stellar Dividend must trigger by lifetime roll milestone');
+  assert.ok(game.includes('shardJackpotChance'),'Shard Jackpot must multiply eligible Shard rewards');
+  assert.ok(game.includes('milestoneRarityMultiplier'),'Milestone Engine must improve rarity-floored bonus rolls');
 });
 
 test('Rune Strengthen is tooltip-driven and Auto Sacrifice only consumes un-equipped donors',()=>{
