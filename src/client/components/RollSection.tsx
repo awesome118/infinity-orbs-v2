@@ -18,6 +18,7 @@ import {
   Compass,
   Globe,
   Award,
+  Loader2,
 } from 'lucide-react';
 import type { PlayerState, Orb } from '../../shared/game.js';
 import type { WorldEvent } from '../../shared/social.js';
@@ -181,6 +182,22 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const visibleTiers = visibleContinuumTiers(state.highestRarity || 0);
   const tiersReached = visibleTiers.filter(tier => (state.highestRarity || 0) >= tier.minRarity).length;
   const nextTier = visibleTiers.find(tier => (state.highestRarity || 0) < tier.minRarity);
+  const cooldownProgress = busy || canRoll
+    ? 100
+    : cd > 0
+      ? Math.max(0, Math.min(100, ((cd - remain) / cd) * 100))
+      : 0;
+  const actionHint = busy
+    ? 'Resolving your roll… rewards appear as soon as the result is confirmed.'
+    : frenzyArmed
+      ? 'Frenzy is charged. Your next manual roll will submit it.'
+      : freeRolls > 0
+        ? `One press uses all ${freeRolls} stored Free Rolls.`
+        : autoRoll
+          ? 'Auto Roll is on. You can still roll manually whenever the timer is ready.'
+          : remain > 0
+            ? 'Auto Roll is off. Browse upgrades or your Codex while the cooldown recovers.'
+            : `Ready · each activation rolls ${multi} ${multi === 1 ? 'orb' : 'orbs'}.`;
 
   // Smooth or instant reveal on new roll, respecting the live OS motion preference.
   useEffect(() => {
@@ -332,7 +349,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       )}
 
       {/* Main Celestial Orb Stage (Orbits & Main Orb are concentric and centered together) */}
-      <div className={`roll-stage relative w-full flex items-center justify-center select-none ${isShaking ? 'animate-screen-shake' : ''}`}>
+      <div className={`roll-stage relative w-full flex items-center justify-center select-none ${busy ? 'is-rolling' : ''} ${isShaking ? 'animate-screen-shake' : ''}`}>
         {/* Ambient Glow Background centered on orb */}
         <div
           className="absolute w-64 h-64 rounded-full blur-3xl opacity-20 pointer-events-none transition-colors duration-700"
@@ -357,6 +374,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           onClick={handleRollClick}
           disabled={busy}
           aria-label={busy ? 'Rolling orbs' : frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} free rolls` : 'Roll'}
+          aria-describedby="roll-action-hint"
           aria-busy={busy}
           className={`appearance-none border-0 p-0 text-inherit relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-300 transform focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-200 ${busy ? 'cursor-wait opacity-80' : 'cursor-pointer active:scale-95'} ${cosmeticEffectClass} ${
             isRevealing && !busy ? 'scale-105 ring-4 ring-white/60' : !busy ? 'hover:scale-102' : ''
@@ -474,9 +492,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           <div className="w-48 h-1.5 bg-slate-800 rounded-full mx-auto mt-2 overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-200"
-              style={{
-                width: busy || canRoll ? '100%' : `${Math.min(100, ((cd - remain) / cd) * 100)}%`,
-              }}
+              style={{ width: `${cooldownProgress}%` }}
             />
           </div>
           {cooldownNotice && (
@@ -508,6 +524,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               ? 'bg-slate-800 text-slate-400 cursor-wait'
               : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700')}
           aria-label={busy ? 'Rolling orbs' : frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} Free Rolls` : 'Roll'}
+          aria-describedby="roll-action-hint"
         >
           {frenzyArmed && (
             <>
@@ -515,7 +532,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
               <Zap className='frenzy-lightning frenzy-lightning-right w-5 h-5' />
             </>
           )}
-          <Sparkles className={'w-5 h-5 ' + (frenzyArmed ? 'text-yellow-200 frenzy-spark' : 'text-cyan-300')} />
+          {busy
+            ? <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
+            : <Sparkles className={'w-5 h-5 ' + (frenzyArmed ? 'text-yellow-200 frenzy-spark' : 'text-cyan-300')} />}
           <span>
             {busy
               ? 'ROLLING...'
@@ -532,6 +551,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
               : 'ROLL ' + (multi > 1 ? '×' + multi : '')}
           </span>
         </button>
+        <p id="roll-action-hint" className="roll-action-hint" aria-live="polite" aria-atomic="true">
+          {actionHint}
+        </p>
 
         <button
           onClick={() => void onOrbFrenzy()}
@@ -884,6 +906,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
             <>
               <div className="field-level"><strong className="!text-[21px]">{nextTier.tier}</strong><span>tier</span></div>
               <div className="field-stat-row mt-2"><span>Threshold</span><strong>1 / {formatRarity(nextTier.minRarity)}</strong></div>
+              <div className="field-stat-row"><span>Personal best</span><strong>1 / {formatRarity(Math.max(2, Number(state.highestRarity) || 2))}</strong></div>
             </>
           ) : (
             <p className="field-empty">Every listed horizon is behind you. The continuum keeps going.</p>
