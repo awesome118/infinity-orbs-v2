@@ -33,7 +33,12 @@ export type CombatRuneMajorAbilityId =
   | 'event-horizon'
   | 'shard-constellation'
   | 'temporal-loop'
-  | 'prismatic-fork';
+  | 'prismatic-fork'
+  | 'critical-convergence'
+  | 'rarity-ladder'
+  | 'stellar-dividend'
+  | 'shard-jackpot'
+  | 'milestone-engine';
 export interface CombatRuneMajorAbility {
   id: CombatRuneMajorAbilityId;
   name: string;
@@ -55,6 +60,16 @@ export interface CombatRuneMajorAbilityEffects {
   temporalLoopMomentumPerRoll:number;
   temporalLoopBonusRolls:number;
   prismaticForkPct:number;
+  criticalConvergencePct:number;
+  rarityLadderPct:number;
+  rarityLadderBonusRolls:number;
+  stellarDividendPct:number;
+  stellarDividendBonusRolls:number;
+  shardJackpotPct:number;
+  shardJackpotExtraMultiplier:number;
+  milestoneEnginePct:number;
+  milestoneEngineBonusRolls:number;
+  milestoneEngineBonusShards:number;
 }
 export interface CombatRune {
   id: string;
@@ -213,6 +228,11 @@ export function combatRuneMajorAbilitySummary(ability:CombatRuneMajorAbility,lev
     case 'shard-constellation':return 'Every '+Math.max(3,Math.floor(12/(1+power/100)))+' Shards found grants '+(1+Math.min(9,Math.floor(power/20)))+' bonus Shards and '+rolls+' bonus roll'+(rolls===1?'':'s')+'.';
     case 'temporal-loop':return 'Each roll adds '+(1+Math.min(9,power/10)).toFixed(2)+' Momentum, and long dry streaks accelerate charge; every 100 Momentum grants '+rolls+' bonus roll'+(rolls===1?'':'s')+'.';
     case 'prismatic-fork':return 'At rarity 1,000+, '+pct(Math.min(45,power))+' chance to fork a bonus roll with a '+(1+Math.min(2,power/100)).toFixed(2)+'× minimum-rarity floor.';
+    case 'critical-convergence':return 'Critical rolls have a '+pct(Math.min(35,power))+' chance to create '+rolls+' extra roll'+(rolls===1?'':'s')+' with a rarity floor based on the critical result.';
+    case 'rarity-ladder':return 'Three rising rarities in one activation trigger '+rolls+' bonus roll'+(rolls===1?'':'s')+' with a '+(1+Math.min(2,power/100)).toFixed(2)+'× rarity floor.';
+    case 'stellar-dividend':return 'Every '+Math.max(20,Math.floor(100/(1+power/100)))+' lifetime rolls triggers '+rolls+' bonus roll'+(rolls===1?'':'s')+'.';
+    case 'shard-jackpot':return pct(Math.min(50,power))+' chance to multiply a Shard payout by up to '+(1+Math.min(5,power/25)).toFixed(2)+'×.';
+    case 'milestone-engine':return 'Each time your all-time rarity crosses a new power of ten, gain '+(1+Math.min(9,Math.floor(power/20)))+' bonus Shards and '+rolls+' rarity-floored bonus roll'+(rolls===1?'':'s')+'.';
   }
 }
 export function combatRuneMajorAbilityEffects(runesValue:unknown,equippedValue:unknown):CombatRuneMajorAbilityEffects {
@@ -223,6 +243,10 @@ export function combatRuneMajorAbilityEffects(runesValue:unknown,equippedValue:u
     shardConstellationPct:0,shardConstellationBonusRolls:1,shardConstellationBonusShards:1,
     temporalLoopPct:0,temporalLoopMomentumPerRoll:0,temporalLoopBonusRolls:1,
     prismaticForkPct:0,
+    criticalConvergencePct:0,rarityLadderPct:0,rarityLadderBonusRolls:1,
+    stellarDividendPct:0,stellarDividendBonusRolls:1,
+    shardJackpotPct:0,shardJackpotExtraMultiplier:0,
+    milestoneEnginePct:0,milestoneEngineBonusRolls:1,milestoneEngineBonusShards:1,
   };
   const equipped=new Set((Array.isArray(equippedValue)?equippedValue:[]).filter((id):id is string=>typeof id==='string'));
   if(!equipped.size||!Array.isArray(runesValue))return effects;
@@ -259,6 +283,26 @@ export function combatRuneMajorAbilityEffects(runesValue:unknown,equippedValue:u
         break;
       case 'prismatic-fork':
         effects.prismaticForkPct=add(effects.prismaticForkPct,power);
+        break;
+      case 'critical-convergence':
+        effects.criticalConvergencePct=add(effects.criticalConvergencePct,power);
+        break;
+      case 'rarity-ladder':
+        effects.rarityLadderPct=add(effects.rarityLadderPct,power);
+        effects.rarityLadderBonusRolls=Math.max(effects.rarityLadderBonusRolls,runeMajorBonusRollCount(power,level));
+        break;
+      case 'stellar-dividend':
+        effects.stellarDividendPct=add(effects.stellarDividendPct,power);
+        effects.stellarDividendBonusRolls=Math.max(effects.stellarDividendBonusRolls,runeMajorBonusRollCount(power,level));
+        break;
+      case 'shard-jackpot':
+        effects.shardJackpotPct=add(effects.shardJackpotPct,power);
+        effects.shardJackpotExtraMultiplier=Math.max(effects.shardJackpotExtraMultiplier,Math.min(5,power/25));
+        break;
+      case 'milestone-engine':
+        effects.milestoneEnginePct=add(effects.milestoneEnginePct,power);
+        effects.milestoneEngineBonusRolls=Math.max(effects.milestoneEngineBonusRolls,runeMajorBonusRollCount(power,level));
+        effects.milestoneEngineBonusShards=Math.max(effects.milestoneEngineBonusShards,1+Math.min(9,Math.floor(power/20)));
         break;
     }
   }
