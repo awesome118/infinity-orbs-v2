@@ -81,7 +81,7 @@ import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
-import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, sacrificeCombatRuneInto, hasCompletedCombatTutorial, markCombatTutorialSeen, buyCombatStrategyGuideRank } from './combat.js';
+import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, sacrificeCombatRuneInto, updateCombatRuneAutoSacrificeSettings, processCombatRuneAutoSacrifice, hasCompletedCombatTutorial, markCombatTutorialSeen, buyCombatStrategyGuideRank } from './combat.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -882,6 +882,16 @@ export function createApp() {
     catch(e:any){const message=e?.message||'Could not sacrifice Rune.';
       const status=message==='Rune is not in your inventory.'?404:message==='A valid Rune is required.'||message==='Choose two different Runes.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;
       res.status(status).json({error:message});}
+  });
+  app.post('/api/combat/runes/auto-sacrifice/settings', async (req,res) => {
+    const enabled=req.body?.enabled, maxRarity=req.body?.maxRarity;
+    if(typeof enabled!=='boolean'||typeof maxRarity!=='string')return res.status(400).json({error:'Auto-sacrifice settings are invalid.'});
+    try{res.setHeader('Cache-Control','no-store');res.json(await updateCombatRuneAutoSacrificeSettings(enabled,maxRarity));}
+    catch(e:any){const message=e?.message||'Could not update Auto Sacrifice settings.';const status=message==='Auto-sacrifice settings are invalid.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
+  });
+  app.post('/api/combat/runes/auto-sacrifice/run', async (_req,res) => {
+    try{res.setHeader('Cache-Control','no-store');res.json(await processCombatRuneAutoSacrifice());}
+    catch(e:any){const message=e?.message||'Could not auto-sacrifice Runes.';const status=message==='Equip at least one Rune before auto-sacrifice can strengthen a target.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
   });
   app.get('/api/combat/tutorial/status', async (_req,res) => {
     try{res.setHeader('Cache-Control','no-store');res.json({seen:await hasCompletedCombatTutorial()});}
