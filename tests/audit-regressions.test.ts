@@ -2639,3 +2639,20 @@ test('rolling disables both roll affordances and gives the orb keyboard semantic
   assert.match(roll, /busy \? 'ROLL IN PROGRESS'/);
   assert.match(roll, /className=\{'roll-button ' \+ \(busy \? 'is-waiting'/);
 });
+
+
+test('passive splash loads only the save before deferring auxiliary bootstrap requests', () => {
+  const client = source('src/client/main.tsx');
+  const refreshStart = client.indexOf('const refreshAll = useCallback(async () =>');
+  const adminStart = client.indexOf("const adminStatus = await getJson<{ isAdmin: boolean }>", refreshStart);
+  const deferStart = client.indexOf('if (!splashEntered) return;', refreshStart);
+  const dependencyEnd = client.indexOf('}, [applyPlayerState, splashEntered]);', refreshStart);
+  assert.ok(refreshStart >= 0 && adminStart > refreshStart && deferStart > refreshStart);
+  assert.ok(deferStart < adminStart, 'auxiliary APIs should not run while only the splash is visible');
+  assert.ok(dependencyEnd > deferStart, 'refreshAll must rerun when Play changes splashEntered');
+
+  const tutorialFetch = client.indexOf("void fetch('/api/combat/tutorial/status'");
+  const tutorialEffectStart = client.lastIndexOf('useEffect(() => {', tutorialFetch);
+  assert.ok(tutorialEffectStart >= 0 && tutorialFetch > tutorialEffectStart);
+  assert.match(client.slice(tutorialEffectStart, tutorialFetch), /if \(!splashEntered \|\| !state\) return;/);
+});
