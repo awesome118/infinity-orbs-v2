@@ -4356,8 +4356,8 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
   const now = Date.now();
   checkPeriodicResets(s, now);
   resetFreeShardBudgetIfNeeded(s, now);
-  // A state read may populate the HUD, but must not add this account to CCU.
-  s.onlinePlayers = await getOnlinePlayers();
+  // Mutations settle the active player's state; read-only paths must not call this.
+  s.onlinePlayers = await touchOnlinePresence();
   s.globalBoosters = await getGlobalBoosters();
 
   // Old saves may outlive a lower current vault cap after prestige/upgrades change.
@@ -4564,7 +4564,7 @@ export async function getState(): Promise<PlayerState> {
   // The next real mutation settles and persists the authoritative state.
   checkPeriodicResets(s, now);
   resetFreeShardBudgetIfNeeded(s, now);
-  s.onlinePlayers = await touchOnlinePresence();
+  s.onlinePlayers = await getOnlinePlayers();
   s.globalBoosters = await getGlobalBoosters();
 
   // Show currently accumulated offline rolls without consuming/persisting them.
