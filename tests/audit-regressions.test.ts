@@ -2449,3 +2449,19 @@ test('Global Chat trusts server post identity, not the client launcher query', (
   const resolverEnd = social.indexOf('export async function getGlobalChatStatus', resolverStart);
   assert.match(social.slice(resolverStart, resolverEnd), /if \(await isRegisteredFrenzyPost\(saved\)\)/);
 });
+
+
+test('legacy guild contribution does not double-count each task update', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('export async function contribute(');
+  const end = social.indexOf('export async function prepareGuildRollEffects', start);
+  assert.ok(start >= 0 && end > start);
+  const contribution = social.slice(start, end);
+  for (const field of [
+    'task.progress = capSafeGuildCounter(task.progress + taskProgressValue)',
+    'task.progress = capSafeGuildCounter(task.progress + taskProgressRolls)',
+    'task.progress = capSafeGuildCounter(task.progress + taskProgressRare)',
+  ]) {
+    assert.equal(contribution.split(field).length - 1, 1, field + ' should be applied once');
+  }
+});
