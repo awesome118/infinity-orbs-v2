@@ -1165,8 +1165,7 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
 
   const s = await settleOffline(await loadRaw());
   const now = Date.now();
-  const createdAt = Number(data.createdAt ?? 0);
-  if (isFrenzyPostExpired(createdAt, now)) throw new Error('This Frenzy has expired.');
+  if (isFrenzyPostRecordExpired(data, now)) throw new Error('This Frenzy has expired.');
   const claimCooldown = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
   const isOwner = data.ownerId === currentUserId();
   const selfClaimTest =
@@ -6103,6 +6102,14 @@ type FrenzyPostRecord = {
  * can defeat normal expiry comparisons, and malformed rarity values can leak
  * into the reward calculation. Invalid receipts must never be claimable.
  */
+function isFrenzyPostRecordExpired(
+  post: Pick<FrenzyPostRecord, 'createdAt' | 'expiresAt'>,
+  now = Date.now(),
+): boolean {
+  const expiresAt = post.expiresAt ?? frenzyPostExpiresAt(post.createdAt);
+  return isFrenzyPostExpired(post.createdAt, now) || now >= expiresAt;
+}
+
 function parseFrenzyPostRecord(raw: unknown): FrenzyPostRecord | null {
   const parsed = parseStoredJson<unknown>(raw);
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
@@ -6177,7 +6184,7 @@ export async function getOrbFrenzyInfo(): Promise<{
 
   const now = Date.now();
   const expiresAt = Number(data.expiresAt ?? frenzyPostExpiresAt(data.createdAt));
-  const expired = isFrenzyPostExpired(data.createdAt, now);
+  const expired = isFrenzyPostRecordExpired(data, now);
   const viewerId = currentUserId();
   const claimedReceipt = await redis.get(frenzyClaimReceiptKey(postId, viewerId));
   const alreadyClaimedByViewer = claimedReceipt != null || data.consumedBy === viewerId;
@@ -6261,8 +6268,7 @@ export async function claimOrbFrenzy(options: {
   const isOwner = data.ownerId === claimantId;
 
   const now = Date.now();
-  const createdAt = Number(data.createdAt ?? 0);
-  if (isFrenzyPostExpired(createdAt, now)) throw new Error('This Frenzy has expired.');
+  if (isFrenzyPostRecordExpired(data, now)) throw new Error('This Frenzy has expired.');
   const loadedState = await loadRaw();
   const performClaim = async () => {
   const s = await settleOffline(loadedState);
