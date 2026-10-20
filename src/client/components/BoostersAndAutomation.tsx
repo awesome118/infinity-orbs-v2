@@ -100,8 +100,13 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   };
 
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
+    const refreshNow = () => setNow(Date.now());
+    const interval = window.setInterval(refreshNow, 1000);
+    document.addEventListener('visibilitychange', refreshNow);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshNow);
+    };
   }, []);
 
   const onlinePlayers = Math.max(1, state.onlinePlayers ?? 1);
