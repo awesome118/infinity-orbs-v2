@@ -41,6 +41,15 @@ function isAdminUsername(value: unknown): boolean {
   return String(value ?? '').trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen';
 }
 const key = (name: string) => `io:${name}`;
+function secureSocialToken(prefix: string): string {
+  // These values identify SET NX reservations and cooldown ownership. Avoid
+  // short Math.random fragments so a same-millisecond collision cannot make
+  // two concurrent requests believe they own one reservation.
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  const nonce = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  return prefix + '-' + Date.now().toString(36) + '-' + nonce;
+}
 const GUILDS_KEY = key('guilds');
 const PLAYER_REGISTRY_KEY = key('player-registry');
 const GUILD_CHAT_MUTES_KEY = key('guild-chat-mutes:v1');
@@ -1441,7 +1450,7 @@ export async function createGuild(name: string, tag: string) {
 
     const now = Date.now();
     const guild: Guild = {
-      id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `${now}-${secureSocialToken('guild')}`,
       name: cleanName,
       tag: cleanTag,
       level: 1,
@@ -2230,7 +2239,7 @@ async function enforceChatCooldown(scope: string, cooldownMs: number): Promise<v
   const userId = user();
   if (!userId || userId === 'unknown') throw new Error('Your Reddit identity is unavailable.');
   const cooldownKey = CHAT_COOLDOWN_PREFIX + scope + ':' + userId;
-  const token = `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const token = secureSocialToken('chat');
 
   // SET NX is atomic across server instances. Readback distinguishes the
   // request that acquired the cooldown from concurrent/later requests.
@@ -2507,7 +2516,7 @@ async function submitChatReport(
   // pair for a day before the external side effect so concurrent retries cannot
   // create a second conversation while the durable report receipt is pending.
   const reservationKey = CHAT_REPORT_RESERVATION_PREFIX + encodeURIComponent(reportKey);
-  const reservationToken = `report-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const reservationToken = secureSocialToken('report');
   await redis.set(reservationKey, reservationToken, {
     nx: true,
     expiration: new Date(Date.now() + 24 * 60 * 60_000),
