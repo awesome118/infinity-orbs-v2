@@ -93,7 +93,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const [skillSearch,setSkillSearch]=useState('');
   useEffect(()=>{try{window.localStorage.setItem('io-combat-auto',String(auto));}catch{/* Embedded webviews can disable storage. */}},[auto]);
   useEffect(()=>{try{window.localStorage.setItem('io-combat-paused',String(paused));}catch{/* Embedded webviews can disable storage. */}},[paused]);
-  useEffect(()=>{const closeDetails=(event:KeyboardEvent)=>{if(event.key==='Escape')setInspectedSkillId(null);};window.addEventListener('keydown',closeDetails);return()=>window.removeEventListener('keydown',closeDetails);},[]);
+  useEffect(()=>{const closeDetails=(event:KeyboardEvent)=>{if(event.key!=='Escape')return;setInspectedSkillId(null);const target=event.target;if(target instanceof HTMLElement&&target.closest('.io-combat-skill-icon-wrap.is-inspected'))target.blur();};window.addEventListener('keydown',closeDetails);return()=>window.removeEventListener('keydown',closeDetails);},[]);
   const [visibleGearCount,setVisibleGearCount]=useState(60);
   const [lastSkill,setLastSkill]=useState<ApiResponse['skillRoll']|null>(null);
   const [error,setError]=useState('');
