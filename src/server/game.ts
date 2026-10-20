@@ -1144,7 +1144,10 @@ async function readFrenzyHandoff(userId: string): Promise<{ postId: string; expi
     !Number.isSafeInteger(expiresAt) ||
     expiresAt <= Date.now()
   ) {
-    if (raw != null) await redis.del(frenzyHandoffKey(userId));
+    // Compare-and-delete the exact observed receipt. A concurrent arm request
+    // may already have installed a fresh handoff after the initial GET; an
+    // unconditional DEL here would erase that newer authorization.
+    if (raw != null) await clearOfflineReminderKeyIfUnchanged(frenzyHandoffKey(userId), raw);
     return null;
   }
   return { postId, expiresAt };
