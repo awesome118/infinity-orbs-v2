@@ -332,3 +332,20 @@ test('Frenzy claim and preview paths fail closed for malformed persisted timesta
   assert.match(source.slice(armStart, claimStart), /parseFrenzyPostRecord\(raw\)/);
   assert.match(source.slice(claimStart, claimStart + 5000), /parseFrenzyPostRecord\(raw\)/);
 });
+
+
+test('viewer-specific Frenzy eligibility and handoff responses are never cacheable', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/app.ts'), 'utf8');
+  for (const route of [
+    "app.post('/api/frenzy/arm'",
+    "app.get('/api/frenzy/handoff'",
+    "app.get('/api/frenzy/info'",
+    "app.post('/api/frenzy/claim'",
+  ]) {
+    const start = source.indexOf(route);
+    assert.ok(start >= 0, 'missing route ' + route);
+    const nextRoute = source.indexOf('\n  app.', start + 5);
+    const end = nextRoute < 0 ? source.length : nextRoute;
+    assert.match(source.slice(start, end), /Cache-Control', 'no-store'/, route + ' must not leak cached per-viewer state');
+  }
+});
