@@ -2436,20 +2436,34 @@ test('Combat is level-gated, guided, and reset with the rest of the player save'
   assert.ok(combat.includes("maxHeight:'min(360px, calc(100vh - 16px))'"));
 });
 
-test('Global Chat trusts server post identity, not the client launcher query', () => {
+test('Global Chat destination cannot be inferred from a client-supplied launcher flag', () => {
   const social = source('src/server/social.ts');
-  const start = social.indexOf('export async function getGlobalChatStatus');
-  const end = social.indexOf('export async function recordGlobalChatComment', start);
-  assert.ok(start >= 0 && end > start);
-  const status = social.slice(start, end);
-  assert.ok(status.indexOf('await isCurrentFrenzyPostContext()') < status.indexOf('if (fromMainLauncher)'), 'server post identity must be checked before client handshake flags');
-  assert.match(status, /const savedIsFrenzy = saved \? await isRegisteredFrenzyPost\(saved\) : false/);
+  const start = social.indexOf('async function resolveGlobalGamePostId');
+  const statusStart = social.indexOf('export async function getGlobalChatStatus');
+  const end = social.indexOf('export async function recordGlobalChatComment', statusStart);
+  assert.ok(start >= 0 && statusStart > start && end > statusStart);
+  const resolver = social.slice(start, statusStart);
+  const status = social.slice(statusStart, end);
+  assert.match(resolver, /if \(!saved\)/);
+  assert.match(resolver, /isRegisteredFrenzyPost\(saved\)/);
+  assert.doesNotMatch(resolver, /context\.postId/);
+  assert.doesNotMatch(status, /fromMainLauncher|fromFrenzyPost/);
   assert.match(social, /async function isRegisteredFrenzyPost\(postId: string\)/);
-  const resolverStart = social.indexOf('async function resolveGlobalGamePostId');
-  const resolverEnd = social.indexOf('export async function getGlobalChatStatus', resolverStart);
-  assert.match(social.slice(resolverStart, resolverEnd), /if \(await isRegisteredFrenzyPost\(saved\)\)/);
-});
 
+  const app = source('src/server/app.ts');
+  const routeStart = app.indexOf("app.get('/api/chat/status'");
+  const routeEnd = app.indexOf("app.get('/api/chat'", routeStart);
+  assert.ok(routeStart >= 0 && routeEnd > routeStart);
+  assert.doesNotMatch(app.slice(routeStart, routeEnd), /req\.query\.launcher/);
+  assert.match(app.slice(routeStart, routeEnd), /getGlobalChatStatus\(\)/);
+
+  const createStart = app.indexOf("app.post('/internal/menu/post-create'");
+  const installStart = app.indexOf("app.post('/internal/on-app-install'");
+  assert.ok(createStart >= 0 && installStart > createStart);
+  const creationRoutes = app.slice(createStart, app.indexOf("app.get('/api/notifications'", installStart));
+  assert.equal((creationRoutes.match(/redis\.set\('io:global-game-post-id', post\.id\)/g) ?? []).length, 2);
+  assert.doesNotMatch(creationRoutes, /global-game-post-id', post\.id, \{ nx: true \}/);
+});
 
 test('legacy guild contribution does not double-count each task update', () => {
   const social = source('src/server/social.ts');
