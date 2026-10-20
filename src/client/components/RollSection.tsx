@@ -198,6 +198,25 @@ export const RollSection: React.FC<RollSectionProps> = ({
           : remain > 0
             ? 'Auto Roll is off. Browse upgrades or your Codex while the cooldown recovers.'
             : `Ready · each activation rolls ${multi} ${multi === 1 ? 'orb' : 'orbs'}.`;
+  const frenzyReady = frenzyArmed && canRoll;
+  const primaryActionLabel = busy
+    ? 'ROLLING...'
+    : frenzyArmed
+      ? canRoll
+        ? 'RELEASE FRENZY'
+        : 'WAIT ' + (remain / 1000).toFixed(1) + 's'
+      : freeRolls > 0
+        ? 'ROLL ALL ' + freeRolls + ' FREE ROLLS'
+        : remain > 0
+          ? 'WAIT ' + (remain / 1000).toFixed(1) + 's'
+          : 'ROLL ' + (multi > 1 ? '×' + multi : '');
+
+  const pityCalibration = Math.max(0, Math.min(5, Math.floor(Number(state.masterySkills?.pityAccelerant ?? 0) || 0)));
+  const pityInterval = Math.max(6, 18 - pityCalibration * 2);
+  const dryStreak = Math.max(0, Math.floor(Number(state.rollsSinceBest ?? 0) || 0));
+  const pityStacks = Math.floor(dryStreak / pityInterval);
+  const pityProgress = ((dryStreak % pityInterval) / pityInterval) * 100;
+  const pityLuckPercent = Math.max(0, Math.floor(Number(state.prestigeUpgrades?.resonanceMeter ?? 0) || 0)) * pityStacks;
 
   // Smooth or instant reveal on new roll, respecting the live OS motion preference.
   useEffect(() => {
@@ -373,7 +392,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           type="button"
           onClick={handleRollClick}
           disabled={busy}
-          aria-label={busy ? 'Rolling orbs' : frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} free rolls` : 'Roll'}
+          aria-label={busy ? 'Rolling orbs' : frenzyArmed ? canRoll ? 'Release Frenzy roll' : 'Frenzy armed; roll not ready' : freeRolls > 0 ? `Roll all ${freeRolls} free rolls` : 'Roll'}
           aria-describedby="roll-action-hint"
           aria-busy={busy}
           className={`appearance-none border-0 p-0 text-inherit relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-300 transform focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-200 ${busy ? 'cursor-wait opacity-80' : 'cursor-pointer active:scale-95'} ${cosmeticEffectClass} ${
@@ -515,15 +534,15 @@ export const RollSection: React.FC<RollSectionProps> = ({
           onClick={handleRollClick}
           disabled={busy}
           aria-busy={busy}
-          className={'roll-button ' + (busy ? 'is-waiting' : frenzyArmed ? 'frenzy-supercharged' : canRoll ? 'is-ready' : 'is-waiting') + ' w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 ' + (busy ? 'cursor-wait ' : 'cursor-pointer ') +
-            (frenzyArmed
+          className={'roll-button ' + (busy ? 'is-waiting' : frenzyReady ? 'frenzy-supercharged' : canRoll ? 'is-ready' : 'is-waiting') + ' w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 ' + (busy ? 'cursor-wait ' : 'cursor-pointer ') +
+            (frenzyReady
               ? 'bg-fuchsia-700 hover:bg-fuchsia-600 text-white border border-fuchsia-300/40 shadow-[0_0_36px_rgba(217,70,239,0.38)]'
               : canRoll
               ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-950/30'
               : busy
               ? 'bg-slate-800 text-slate-400 cursor-wait'
               : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700')}
-          aria-label={busy ? 'Rolling orbs' : frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} Free Rolls` : 'Roll'}
+          aria-label={busy ? 'Rolling orbs' : frenzyArmed ? canRoll ? 'Release Frenzy roll' : 'Frenzy armed; roll not ready' : freeRolls > 0 ? `Roll all ${freeRolls} Free Rolls` : 'Roll'}
           aria-describedby="roll-action-hint"
         >
           {frenzyArmed && (
@@ -535,21 +554,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           {busy
             ? <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
             : <Sparkles className={'w-5 h-5 ' + (frenzyArmed ? 'text-yellow-200 frenzy-spark' : 'text-cyan-300')} />}
-          <span>
-            {busy
-              ? 'ROLLING...'
-              : frenzyArmed
-              ? remain > 0
-                ? 'WAIT ' + (remain / 1000).toFixed(1) + 's'
-                : 'RELEASE FRENZY'
-              : freeRolls > 0
-              ? 'ROLL ALL ' + freeRolls + ' FREE ROLLS'
-              : remain > 0
-              ? 'WAIT ' + (remain / 1000).toFixed(1) + 's'
-              : freeRolls > 0
-              ? 'USE ALL ' + freeRolls + ' FREE ROLL' + (freeRolls === 1 ? '' : 'S')
-              : 'ROLL ' + (multi > 1 ? '×' + multi : '')}
-          </span>
+          <span>{primaryActionLabel}</span>
         </button>
         <p id="roll-action-hint" className="roll-action-hint" aria-live="polite" aria-atomic="true">
           {actionHint}
@@ -692,20 +697,20 @@ export const RollSection: React.FC<RollSectionProps> = ({
                 <span>Pity Luck</span>
               </div>
               <span className="font-mono text-cyan-300 font-bold">
-                +{((state.prestigeUpgrades?.resonanceMeter ?? 1) * Math.floor((state.rollsSinceBest ?? 0) / Math.max(6, 18 - (state.masterySkills?.pityAccelerant ?? 0) * 2)))}% Pity Luck
+                +{pityLuckPercent}% Pity Luck
               </span>
             </div>
             <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
               <div
                 className="h-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-all duration-300"
                 style={{
-                  width: `${Math.min(100, (((state.rollsSinceBest ?? 0) % 20) / 20) * 100)}%`,
+                  width: `${pityProgress}%`,
                 }}
               />
             </div>
             <div className="flex justify-between text-[10px] text-slate-400 font-medium">
-              <span>{((state.rollsSinceBest ?? 0) % 20)} / 20 rolls to next tier</span>
-              <span>Dry streak: {state.rollsSinceBest ?? 0} rolls</span>
+              <span>{dryStreak % pityInterval} / {pityInterval} rolls to next stack</span>
+              <span>Dry streak: {formatNumber(dryStreak)} rolls</span>
             </div>
           </div>
         )}
