@@ -88,7 +88,7 @@ function normalizeGear(value:unknown,fallbackFloor=0):CombatGear|null {
 }
 function normalizeRuneMajorAbility(raw:Record<string,unknown>|null,stat:CombatRuneStat):CombatRune['majorAbility'] {
   if(!raw)return undefined;
-  const validIds=['fateweaver','midas-engine','memory-well','echo-chamber','paradox-engine','event-horizon','shard-constellation','temporal-loop','prismatic-fork'];
+  const validIds=['fateweaver','midas-engine','memory-well','echo-chamber','paradox-engine','event-horizon','shard-constellation','temporal-loop','prismatic-fork','critical-convergence','rarity-ladder','stellar-dividend','shard-jackpot','milestone-engine'];
   const valid=validIds.includes(String(raw.id));
   const id:NonNullable<CombatRune['majorAbility']>['id']=valid
     ?raw.id as NonNullable<CombatRune['majorAbility']>['id']
@@ -97,6 +97,8 @@ function normalizeRuneMajorAbility(raw:Record<string,unknown>|null,stat:CombatRu
     fateweaver:'Fateweaver','midas-engine':'Midas Engine','memory-well':'Memory Well',
     'echo-chamber':'Echo Chamber','paradox-engine':'Paradox Engine','event-horizon':'Event Horizon',
     'shard-constellation':'Shard Constellation','temporal-loop':'Temporal Loop','prismatic-fork':'Prismatic Fork',
+    'critical-convergence':'Critical Convergence','rarity-ladder':'Rarity Ladder','stellar-dividend':'Stellar Dividend',
+    'shard-jackpot':'Shard Jackpot','milestone-engine':'Milestone Engine',
   };
   const descriptions={
     fateweaver:'Adds effective Luck to main-game Infinity Orb rolls.',
@@ -108,6 +110,11 @@ function normalizeRuneMajorAbility(raw:Record<string,unknown>|null,stat:CombatRu
     'shard-constellation':'Shard finds charge a constellation that rewards bonus Shards and rolls.',
     'temporal-loop':'Each roll charges Momentum; a full meter releases a bonus batch.',
     'prismatic-fork':'Rare rolls can fork into a bonus roll with a rarity floor.',
+    'critical-convergence':'Critical rolls can trigger a rarity-floored bonus roll.',
+    'rarity-ladder':'Three rising rarities in one activation trigger bonus rolls.',
+    'stellar-dividend':'Lifetime roll milestones trigger extra rolls.',
+    'shard-jackpot':'Shard payouts can trigger a scaled Shard multiplier.',
+    'milestone-engine':'Crossing a new all-time rarity decade grants bonus Shards and rolls.',
   };
   const rawValue=Number(raw.valuePct);
   const valuePct=Number.isFinite(rawValue)?Math.max(0,Math.min(Number.MAX_VALUE,rawValue)):10;
@@ -149,7 +156,7 @@ function equippedMajorAbilityTotal(state:CombatState,abilityId:CombatMajorAbilit
   return total;
 }
 
-const COMBAT_RUNE_MAJOR_ABILITY_IDS = ['fateweaver','midas-engine','memory-well','echo-chamber','paradox-engine','event-horizon','shard-constellation','temporal-loop','prismatic-fork'] as const;
+const COMBAT_RUNE_MAJOR_ABILITY_IDS = ['fateweaver','midas-engine','memory-well','echo-chamber','paradox-engine','event-horizon','shard-constellation','temporal-loop','prismatic-fork','critical-convergence','rarity-ladder','stellar-dividend','shard-jackpot','milestone-engine'] as const;
 type CombatRuneMajorAbilityId = NonNullable<CombatRune['majorAbility']>['id'];
 function createRuneMajorAbility(qualityValue:number,requestedAbilityId?:CombatRuneMajorAbilityId):NonNullable<CombatRune['majorAbility']> {
   const quality=Math.max(0,Math.min(100,Number(qualityValue)||0));
@@ -165,6 +172,11 @@ function createRuneMajorAbility(qualityValue:number,requestedAbilityId?:CombatRu
     'shard-constellation':{name:'Shard Constellation',description:'Shard finds charge a constellation that rewards bonus Shards and rolls.'},
     'temporal-loop':{name:'Temporal Loop',description:'Each roll charges Momentum; a full meter releases a bonus batch.'},
     'prismatic-fork':{name:'Prismatic Fork',description:'Rare rolls can fork into a bonus roll with a rarity floor.'},
+    'critical-convergence':{name:'Critical Convergence',description:'Critical rolls can trigger a rarity-floored bonus roll.'},
+    'rarity-ladder':{name:'Rarity Ladder',description:'Three rising rarities in one activation trigger bonus rolls.'},
+    'stellar-dividend':{name:'Stellar Dividend',description:'Lifetime roll milestones trigger extra rolls.'},
+    'shard-jackpot':{name:'Shard Jackpot',description:'Shard payouts can trigger a scaled Shard multiplier.'},
+    'milestone-engine':{name:'Milestone Engine',description:'Crossing a new all-time rarity decade grants bonus Shards and rolls.'},
   };
   const definition=definitions[id];
   return {id,name:definition.name,valuePct,description:definition.description};
