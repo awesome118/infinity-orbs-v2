@@ -3,7 +3,7 @@ import {
   X, Wrench, Coins, Gem, Sparkles, Zap, RotateCcw, Play, Shield, Megaphone,
   Users, BellRing, Crown, UserCheck,
   Ban, UserX, CheckCircle2, RefreshCw, Flame,
-  Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy, ClipboardCheck, Gift,
+  Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy, ClipboardCheck, Gift, Eye,
 } from 'lucide-react';
 import { PRESTIGE_UPGRADES, CONTINUUM_TIERS, getOrbInfo, visibleContinuumTiers, formatRarity, formatNumber, frenzyOrbCountForRarity } from '../../shared/game.js';
 import type { RollResponse } from '../../shared/game.js';
@@ -50,6 +50,24 @@ type AdminContext = {
     bannedUntil: number | null;
     reason: string;
   } | null;
+};
+
+type ImpressionPostType = 'main-game' | 'orb-share' | 'frenzy';
+type ImpressionDeviceType = 'mobile' | 'tablet' | 'desktop' | 'unknown';
+type ImpressionTimePoint = {
+  bucket: string;
+  total: number;
+  byType: Record<ImpressionPostType, number>;
+};
+type ImpressionDashboardData = {
+  generatedAt: number;
+  total: number;
+  byType: Record<ImpressionPostType, number>;
+  byDevice: Record<ImpressionDeviceType, number>;
+  byTypeAndDevice: Record<ImpressionPostType, Record<ImpressionDeviceType, number>>;
+  posts: Array<{ postType: ImpressionPostType; postId: string; impressions: number }>;
+  last24Hours: ImpressionTimePoint[];
+  last30Days: ImpressionTimePoint[];
 };
 
 type StatSpySource = {
@@ -398,6 +416,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     effectiveLuckCcu: number;
   } | null>(null);
   const [ccuLoading, setCcuLoading] = useState(false);
+  const [impressionStats, setImpressionStats] = useState<ImpressionDashboardData | null>(null);
+  const [impressionsLoading, setImpressionsLoading] = useState(false);
+  const [impressionsError, setImpressionsError] = useState('');
   const [fakeCcuInput, setFakeCcuInput] = useState('0');
   const [pushTestLoading, setPushTestLoading] = useState(false);
 
@@ -564,8 +585,27 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     }
   };
 
+  const loadImpressions = async () => {
+    setImpressionsLoading(true);
+    setImpressionsError('');
+    try {
+      const res = await fetch('/api/dev/impressions', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load impression analytics.');
+      setImpressionStats(data as ImpressionDashboardData);
+    } catch (error: any) {
+      setImpressionsError(error?.message || 'Could not load impression analytics.');
+    } finally {
+      setImpressionsLoading(false);
+    }
+  };
+
   useEffect(() => {
     void loadCcuStats();
+  }, []);
+
+  useEffect(() => {
+    void loadImpressions();
   }, []);
 
   const setFakeCcu = async (bonus: number) => {
@@ -3412,10 +3452,161 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               <p className="text-[10px] text-emerald-400/70 font-mono">Game moderation: {contextInfo?.gameModerationVersion ?? "loading"}</p>
             </div>
           </div>
-          <button title="Close the admin console." onClick={onClose} className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              title="Jump to aggregate Impressions analytics."
+              onClick={() => {
+                document.getElementById('io-impressions-tab')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                void loadImpressions();
+              }}
+              className={buttonBase + ' bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-200 px-3 py-2'}
+            >
+              <Eye className="inline w-3.5 h-3.5 mr-1" /> Impressions
+            </button>
+            <button title="Close the admin console." onClick={onClose} className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+
+        <section id="io-impressions-tab" className={panelBase + ' border border-cyan-500/30 scroll-mt-4'}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-200">
+                <Eye className="w-4 h-4" /> Impressions
+              </div>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Aggregate app-preview loads for main-game, Orb Share, and Frenzy posts. These are not Reddit feed views or online players. No usernames, user IDs, or raw device fingerprints are stored.
+              </p>
+            </div>
+            <button
+              title="Refresh aggregate post impression data."
+              disabled={impressionsLoading}
+              onClick={() => void loadImpressions()}
+              className={buttonBase + ' bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-200 px-3 py-2 shrink-0'}
+            >
+              <RefreshCw className={'inline w-3.5 h-3.5 mr-1 ' + (impressionsLoading ? 'animate-spin' : '')} />
+              {impressionsLoading ? 'Loading…' : 'Refresh'}
+            </button>
+          </div>
+          {impressionsError && (
+            <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-3 text-xs text-rose-200">
+              {impressionsError}
+            </div>
+          )}
+          {impressionStats ? (
+            <>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                {([
+                  ['All-time impressions', impressionStats.total, 'text-cyan-200'],
+                  ['Main game', impressionStats.byType['main-game'], 'text-emerald-200'],
+                  ['Orb Share', impressionStats.byType['orb-share'], 'text-violet-200'],
+                  ['Frenzy', impressionStats.byType.frenzy, 'text-orange-200'],
+                ] as const).map(([label, count, color]) => (
+                  <div key={label} className="rounded-xl bg-slate-900/80 border border-slate-800 px-3 py-3">
+                    <div className="text-[10px] uppercase font-bold text-slate-500">{label}</div>
+                    <div className={'text-2xl font-black font-mono mt-1 ' + color}>{count.toLocaleString()}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 space-y-2">
+                <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Device breakdown · aggregate only</div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                  {(['mobile', 'tablet', 'desktop', 'unknown'] as ImpressionDeviceType[]).map(device => (
+                    <div key={device} className="rounded-lg bg-black/20 border border-slate-800 p-2">
+                      <div className="text-[10px] uppercase text-slate-500">{device}</div>
+                      <div className="text-lg font-bold font-mono text-slate-100">{impressionStats.byDevice[device].toLocaleString()}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-[10px]">
+                    <thead><tr className="text-slate-500 border-b border-slate-800">
+                      <th className="py-2 pr-3">Post type</th>
+                      <th className="py-2 px-2">Mobile</th>
+                      <th className="py-2 px-2">Tablet</th>
+                      <th className="py-2 px-2">Desktop</th>
+                      <th className="py-2 px-2">Unknown</th>
+                    </tr></thead>
+                    <tbody>
+                      {(['main-game', 'orb-share', 'frenzy'] as ImpressionPostType[]).map(type => (
+                        <tr key={type} className="border-b border-slate-800/70 text-slate-300">
+                          <td className="py-2 pr-3 font-semibold">{type === 'main-game' ? 'Main game' : type === 'orb-share' ? 'Orb Share' : 'Frenzy'}</td>
+                          {(['mobile', 'tablet', 'desktop', 'unknown'] as ImpressionDeviceType[]).map(device => (
+                            <td key={device} className="py-2 px-2 font-mono">{impressionStats.byTypeAndDevice[type][device].toLocaleString()}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-800 overflow-hidden">
+                <div className="px-3 py-2 border-b border-slate-800 text-[10px] uppercase tracking-wider font-bold text-slate-400">
+                  Individual post performance · {impressionStats.posts.length.toLocaleString()} listed
+                </div>
+                {impressionStats.posts.length ? (
+                  <div className="max-h-64 overflow-auto">
+                    <table className="w-full text-left text-[10px]">
+                      <thead className="sticky top-0 bg-slate-900 text-slate-500"><tr>
+                        <th className="px-3 py-2">Type</th><th className="px-3 py-2">Reddit post ID</th><th className="px-3 py-2 text-right">Loads</th>
+                      </tr></thead>
+                      <tbody>
+                        {impressionStats.posts.map(post => (
+                          <tr key={post.postType + ':' + post.postId} className="border-t border-slate-800/70">
+                            <td className="px-3 py-2 text-slate-300">{post.postType === 'main-game' ? 'Main game' : post.postType === 'orb-share' ? 'Orb Share' : 'Frenzy'}</td>
+                            <td className="px-3 py-2 font-mono text-slate-500 break-all">{post.postId}</td>
+                            <td className="px-3 py-2 text-right font-mono font-bold text-cyan-200">{post.impressions.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="p-4 text-xs text-slate-500 text-center">No impressions have been recorded yet.</div>
+                )}
+              </div>
+
+              <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+                <summary className="cursor-pointer text-[10px] uppercase tracking-wider font-bold text-slate-400">Hourly trend · last 24 hours</summary>
+                <div className="mt-3 max-h-64 overflow-auto divide-y divide-slate-800/70">
+                  {impressionStats.last24Hours.slice().reverse().map(point => (
+                    <div key={point.bucket} className="flex items-center gap-3 py-2 text-[10px]">
+                      <span className="w-36 shrink-0 font-mono text-slate-500">{new Date(point.bucket).toLocaleString()}</span>
+                      <span className="w-12 text-right font-mono font-bold text-cyan-200">{point.total.toLocaleString()}</span>
+                      <span className="text-emerald-200">Main {point.byType['main-game'].toLocaleString()}</span>
+                      <span className="text-violet-200">Share {point.byType['orb-share'].toLocaleString()}</span>
+                      <span className="text-orange-200">Frenzy {point.byType.frenzy.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+              <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+                <summary className="cursor-pointer text-[10px] uppercase tracking-wider font-bold text-slate-400">Daily trend · last 30 days</summary>
+                <div className="mt-3 max-h-64 overflow-auto divide-y divide-slate-800/70">
+                  {impressionStats.last30Days.slice().reverse().map(point => (
+                    <div key={point.bucket} className="flex items-center gap-3 py-2 text-[10px]">
+                      <span className="w-24 shrink-0 font-mono text-slate-500">{point.bucket}</span>
+                      <span className="w-12 text-right font-mono font-bold text-cyan-200">{point.total.toLocaleString()}</span>
+                      <span className="text-emerald-200">Main {point.byType['main-game'].toLocaleString()}</span>
+                      <span className="text-violet-200">Share {point.byType['orb-share'].toLocaleString()}</span>
+                      <span className="text-orange-200">Frenzy {point.byType.frenzy.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+              <div className="text-[9px] text-slate-600">
+                Last refreshed {new Date(impressionStats.generatedAt).toLocaleString()}. A counted impression means the app preview loaded; Reddit feed impressions are not exposed to this app. Repeated loads are counted as separate impressions.
+              </div>
+            </>
+          ) : (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-center text-xs text-slate-500">
+              {impressionsLoading ? 'Loading aggregate impression statistics…' : 'Refresh to load impression statistics.'}
+            </div>
+          )}
+        </section>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
           <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-2.5">
