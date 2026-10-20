@@ -48,6 +48,7 @@ function skillValue(skill:CombatSkillDefinition,rank:number,_speed=300):string {
 function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusPercent}:{item:CombatGear;isEquipped:boolean;onEquip:()=>void;onScrap:()=>void;busy:boolean;currentFloor:number;scrapBonusPercent:number}) {
   const [showTooltip,setShowTooltip]=useState(false);
   const [tooltipPoint,setTooltipPoint]=useState<{x:number;y:number}|null>(null);
+  const tooltipPointRef=useRef<{x:number;y:number}|null>(null);
   const grade=combatGearRarityForQuality(item.quality);
   const tooltipId='io-gear-tooltip-'+item.id.replace(/[^A-Za-z0-9_-]/g,'-');
   const SlotIcon=GEAR_SLOTS.find(entry=>entry.slot===item.slot)?.Icon??Gem;
@@ -59,7 +60,12 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     item.critChanceBonus>0?{label:'+'+(item.critChanceBonus*100).toFixed(1)+'% CRIT',detail:'Adds critical-hit chance',kind:'offense' as const}:null,
   ].filter(Boolean) as {label:string;detail:string;kind:'offense'|'defense'}[];
   const moveTooltip=(x:number,y:number)=>{
-    setTooltipPoint({x:Math.max(8,Math.min(Math.max(8,window.innerWidth-326),x+16)),y:Math.max(8,Math.min(Math.max(8,window.innerHeight-376),y+16))});
+    const next={x:Math.max(8,Math.min(Math.max(8,window.innerWidth-326),x+16)),y:Math.max(8,Math.min(Math.max(8,window.innerHeight-376),y+16))};
+    const previous=tooltipPointRef.current;
+    // Ignore high-frequency pointer jitter to avoid re-rendering the entire gear grid per pixel.
+    if(previous&&Math.abs(previous.x-next.x)<8&&Math.abs(previous.y-next.y)<8){setShowTooltip(true);return;}
+    tooltipPointRef.current=next;
+    setTooltipPoint(next);
     setShowTooltip(true);
   };
   return <article className={'io-combat-gear-icon-wrap '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
@@ -414,7 +420,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         <label>Show<select value={gearOwnershipFilter} onChange={event=>{setGearOwnershipFilter(event.target.value as 'all'|'equipped'|'spare');setVisibleGearCount(60);}}><option value="all">All gear</option><option value="equipped">Equipped only</option><option value="spare">Spare only</option></select></label>
         <label>Sort<select value={gearSort} onChange={event=>{setGearSort(event.target.value as typeof gearSort);setVisibleGearCount(60);}}><option value="newest">Newest first</option><option value="power">Highest power</option><option value="quality">Highest quality</option><option value="level">Highest level</option></select></label>
         <span className="io-combat-filter-count">{visibleGear.length} shown of {matchingGear.length}</span>
-        {(gearSearch||gearSlotFilter!=='all'||gearOwnershipFilter!=='all')&&<button type="button" className="io-combat-button is-secondary" onClick={()=>{setGearSearch('');setGearSlotFilter('all');setGearOwnershipFilter('all');setVisibleGearCount(60);}}>Clear filters</button>}
+        {(gearSearch||gearSlotFilter!=='all'||gearOwnershipFilter!=='all'||gearSort!=='newest')&&<button type="button" className="io-combat-button is-secondary" onClick={()=>{setGearSearch('');setGearSlotFilter('all');setGearOwnershipFilter('all');setGearSort('newest');setVisibleGearCount(60);}}>Clear filters</button>}
       </div>
       {matchingGear.length===0?<div className="io-combat-inventory-empty">No gear matches those filters. Clear filters or search for another item.</div>:<div className="io-combat-gear-grid">{visibleGear.map(item=><GearCard key={item.id} item={item} currentFloor={currentFloor} scrapBonusPercent={scrapBonusPercent} isEquipped={state.equipment[item.slot]===item.id} busy={mutating} onEquip={()=>void mutate('/api/combat/equip',{itemId:item.id})} onScrap={()=>void mutate('/api/combat/gear/scrap',{itemId:item.id})}/>)}</div>{matchingGear.length>visibleGear.length&&<button type="button" className="io-combat-button is-secondary" style={{marginTop:12}} onClick={()=>setVisibleGearCount(count=>Math.min(matchingGear.length,count+60))}>Show {Math.min(60,matchingGear.length-visibleGear.length)} more items ({visibleGear.length}/{matchingGear.length})</button>}
       <div className="io-combat-panel" style={{marginTop:20}}><div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">PERMANENT TRAINING</span><h2>Combat Upgrades</h2><p>Earn Combat Marks from kills and spend them on training and Skill Gacha. The balance persists between runs.</p></div><strong>{fmt(state.combatMarks)} MARKS</strong></div><div className="io-combat-skill-grid">{COMBAT_UPGRADES.map(upgrade=>{const rank=combatUpgradeRank(state,upgrade.id);const cost=combatUpgradeCost(state,upgrade.id);return <article key={upgrade.id} className="io-combat-skill-card"><div className="io-combat-skill-card-head"><span>RANK {rank}/{Math.min(COMBAT_UPGRADE_RANK_CAP,upgrade.maxRank)}</span><b>{rank>=upgrade.maxRank?'MAXED':'NEXT '+fmt(cost)+' MARKS'}</b></div><h3>{upgrade.name}</h3><p>{upgrade.description}</p><div className="io-combat-skill-progress"><span style={{width:(rank/upgrade.maxRank*100)+'%'}}/></div><button type="button" className="io-combat-button is-primary" disabled={mutating||rank>=upgrade.maxRank||state.combatMarks<cost} onClick={()=>void mutate('/api/combat/upgrades/buy',{upgradeId:upgrade.id})}>{rank>=upgrade.maxRank?'Max Rank':state.combatMarks<cost?'Need '+fmt(cost-state.combatMarks)+' more':'Buy Rank '+(rank+1)}</button></article>;})}</div></div>
