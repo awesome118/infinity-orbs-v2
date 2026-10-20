@@ -330,8 +330,19 @@ export function App() {
   }, [splashEntered]);
 
   useEffect(() => {
-    void getJson<{ isBeta: boolean }>('/api/app-info').then(info => setIsBeta(info.isBeta === true)).catch(() => setIsBeta(false));
-  }, []);
+    if (!splashEntered) return;
+    let cancelled = false;
+    void getJson<{ isBeta: boolean }>('/api/app-info')
+      .then(info => {
+        if (!cancelled) setIsBeta(info.isBeta === true);
+      })
+      .catch(() => {
+        if (!cancelled) setIsBeta(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [splashEntered]);
 
   useEffect(() => {
     // Merely loading a post preview or the Play splash is not an active session.
