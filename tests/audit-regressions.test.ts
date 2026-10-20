@@ -2528,3 +2528,16 @@ test('Social cooldowns and report reservations use cryptographic, collision-resi
   assert.match(social.slice(reportStart, reportEnd), /secureSocialToken\('report'\)/);
   assert.doesNotMatch(social, /Math\.random\(\)/);
 });
+
+
+test('core idempotency reservations never fall back to Math.random tokens', () => {
+  const game = source('src/server/game.ts');
+  assert.match(game, /function secureServerToken\(prefix: string\): string/);
+  assert.match(game, /new Uint8Array\(16\)/);
+  assert.match(game, /globalThis\.crypto\.getRandomValues\(bytes\)/);
+  assert.match(game, /secureServerToken\('offline-notification'\)/);
+  assert.match(game, /secureServerToken\('offline-job'\)/);
+  assert.match(game, /secureServerToken\('follow-reward'\)/);
+  assert.match(game, /secureServerToken\('frenzy-thank-you'\)/);
+  assert.doesNotMatch(game, /Math\.random\(\)/);
+});
