@@ -361,3 +361,44 @@ test('arming a Frenzy serializes offline settlement with normal player mutations
   assert.match(arm, /await settleOffline\(await loadRaw\(\)\)/);
   assert.match(arm, /frenzyHandoffKey\(currentUserId\(\)\)/);
 });
+
+
+test('expired Frenzy handoff cleanup cannot delete a fresh concurrent handoff', async () => {
+  const {
+    configureDevvitRuntime,
+    context: originalContext,
+    redis: originalRedis,
+    reddit: originalReddit,
+  } = await import('../src/server/devvit-mock.js');
+  const { getOrbFrenzyHandoff } = await import('../src/server/game.js');
+  const userId = 'frenzy-handoff-race-' + Date.now().toString(36);
+  const handoffKey = 'io:frenzy:handoff:' + userId;
+  const stale = JSON.stringify({ postId: 't3_stale', expiresAt: Date.now() - 1 });
+  const fresh = JSON.stringify({ postId: 't3_fresh', expiresAt: Date.now() + 60_000 });
+  const baseRedis = originalRedis;
+  let raced = false;
+  const raceRedis = {
+    ...baseRedis,
+    get: async (key: string) => {
+      const value = await baseRedis.get(key);
+      if (key === handoffKey && !raced) {
+        raced = true;
+        await baseRedis.set(handoffKey, fresh);
+      }
+      return value;
+    },
+  };
+  configureDevvitRuntime({
+    redis: raceRedis,
+    context: { ...originalContext, userId, username: 'FrenzyRaceTest' },
+    reddit: originalReddit,
+  });
+  try {
+    await baseRedis.set(handoffKey, stale);
+    assert.deepEqual(await getOrbFrenzyHandoff(), { armed: false });
+    assert.deepEqual(await getOrbFrenzyHandoff(), { armed: true, postId: 't3_fresh' });
+  } finally {
+    await baseRedis.del(handoffKey);
+    configureDevvitRuntime({ redis: baseRedis, context: originalContext, reddit: originalReddit });
+  }
+});
