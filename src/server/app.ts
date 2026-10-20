@@ -80,7 +80,7 @@ import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
-import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, salvageCombatRune, buyCombatStrategyGuideRank } from './combat.js';
+import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, salvageCombatRune, levelUpCombatRune, buyCombatStrategyGuideRank } from './combat.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -870,6 +870,14 @@ export function createApp() {
     if(typeof equip!=='boolean')return res.status(400).json({error:'Rune equip state must be true or false.'});
     try{res.setHeader('Cache-Control','no-store');res.json(await equipCombatRune(runeId,equip));}
     catch(e:any){const message=e?.message||'Could not update Rune loadout.';const status=message==='Rune is not in your inventory.'?404:message==='A valid Rune is required.'||message.startsWith('All Rune slots are full.')?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
+  });
+  app.post('/api/combat/runes/level', async (req,res) => {
+    const runeId=req.body?.runeId;
+    if(typeof runeId!=='string'||!runeId.trim()||runeId.length>160)return res.status(400).json({error:'A valid Rune is required.'});
+    try{res.setHeader('Cache-Control','no-store');res.json(await levelUpCombatRune(runeId));}
+    catch(e:any){const message=e?.message||'Could not level Rune.';
+      const status=message==='Rune is not in your inventory.'?404:message==='A valid Rune is required.'||message.startsWith('Not enough Combat Marks')?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;
+      res.status(status).json({error:message});}
   });
   app.post('/api/combat/runes/salvage', async (req,res) => {
     const runeId=req.body?.runeId;

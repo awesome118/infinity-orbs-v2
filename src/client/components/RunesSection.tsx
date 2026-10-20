@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, Coins, Gem, RefreshCw, Sparkles, Star } from 'lucide-react';
+import { BookOpen, Coins, Gem, RefreshCw, Sparkles, Star, ArrowUp, ShieldCheck } from 'lucide-react';
 import type { CombatRune, CombatRuneStat, CombatSnapshot } from '../../shared/combat.js';
-import { combatRuneBonuses, combatRuneEffectText, combatRuneSlotsUnlocked } from '../../shared/combat.js';
+import { combatRuneBonuses, combatRuneEffectText, combatRuneLevelCost, combatRuneLevelMultiplier, combatRuneSlotsUnlocked } from '../../shared/combat.js';
 
 async function request<T>(url:string,method='GET',body?:unknown):Promise<T>{
   const response=await fetch(url,{method,headers:{'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
@@ -11,8 +11,9 @@ async function request<T>(url:string,method='GET',body?:unknown):Promise<T>{
 }
 const RARITY_ORDER:Record<string,number>={Cosmic:7,Mythic:6,Legendary:5,Epic:4,Rare:3,Uncommon:2,Common:1};
 const STAT_LABEL:Record<CombatRuneStat,string>={luckPct:'Orb Luck',coinGainPct:'Coin gain',shardChancePct:'Shard chance',xpGainPct:'XP gain'};
-const STAT_ICON:Record<CombatRuneStat,React.ReactNode>={luckPct:<Sparkles size={15}/>,coinGainPct:<Coins size={15}/>,shardChancePct:<Gem size={15}/>,xpGainPct:<BookOpen size={15}/>};
-const pct=(value:number,decimals=2)=>value.toFixed(decimals)+'%';
+const STAT_ICON:Record<CombatRuneStat,React.ReactNode>={luckPct:<Sparkles size={25}/>,coinGainPct:<Coins size={25}/>,shardChancePct:<Gem size={25}/>,xpGainPct:<BookOpen size={25}/>};
+const pct=(value:number,decimals=2)=>value>=1e21?value.toExponential(2)+'%':value.toFixed(decimals)+'%';
+const rarityClass=(rarity:string)=>'io-rarity-'+rarity.toLowerCase();
 export const RunesSection:React.FC=()=>{
   const [snapshot,setSnapshot]=useState<CombatSnapshot|null>(null);
   const [loading,setLoading]=useState(true);
@@ -29,7 +30,7 @@ export const RunesSection:React.FC=()=>{
   const bestRuneDepth=state?Math.max(state.bestDepth,...Object.values(state.dungeonBestDepths)):1;
   const slots=state?combatRuneSlotsUnlocked(state.level,bestRuneDepth):2;
   const bonuses=useMemo(()=>combatRuneBonuses(state?.runes??[],state?.equippedRunes??[]),[state?.runes,state?.equippedRunes]);
-  const runes=useMemo(()=>[...(state?.runes??[])].sort((a,b)=>(RARITY_ORDER[b.rarity]??0)-(RARITY_ORDER[a.rarity]??0)||b.value-a.value||a.name.localeCompare(b.name)),[state?.runes]);
+  const runes=useMemo(()=>[...(state?.runes??[])].sort((a,b)=>(RARITY_ORDER[b.rarity]??0)-(RARITY_ORDER[a.rarity]??0)||(Number(b.level)||1)-(Number(a.level)||1)||b.value-a.value||a.name.localeCompare(b.name)),[state?.runes]);
   const mutate=async(url:string,body:unknown,runeId:string,success:string)=>{
     setBusyRune(runeId);setError('');setNotice('');
     try{const result=await request<CombatSnapshot>(url,'POST',body);setSnapshot(result);setNotice(success);window.dispatchEvent(new CustomEvent('io-combat-marks-updated',{detail:{combatMarks:result.state.combatMarks}}));}
@@ -45,7 +46,7 @@ export const RunesSection:React.FC=()=>{
   ];
   return <div className="io-runes-page">
     <header className="io-runes-header">
-      <div><div className="io-runes-kicker">COMBAT LOOT · CORE-GAME BONUSES</div><h1>Runes</h1><p className="io-runes-intro">Monsters carry Runes: rare finds that tune your orb-rolling build. Equip them here to gain bonuses outside the dungeon too. Better monsters and deeper runs give you more chances at powerful rarities.</p></div>
+      <div><div className="io-runes-kicker">CORE-GAME BONUSES · UNBOUNDED LEVELS</div><h1>Runes</h1><p className="io-runes-intro">Equip monster drops to strengthen normal Infinity Orb rolls. Level Luck, Coins, and XP Runes as far as your Combat Marks can take them; Shard Rune chance does not scale with level.</p></div>
       <button type="button" className="io-runes-button" onClick={()=>{setLoading(true);void load();}} disabled={loading}><RefreshCw size={14}/> Refresh</button>
     </header>
     {error&&<div className="io-runes-error" role="alert">{error}</div>}
@@ -53,41 +54,44 @@ export const RunesSection:React.FC=()=>{
     {loading&&!state?<div className="io-runes-loading">Loading Rune inventory…</div>:state&&<>
       <section className="io-runes-panel">
         <div className="io-runes-panel-head"><h2>Equipped loadout</h2><span className="io-runes-muted">{equippedRunes.length} / {slots} slots used · Delver Lv. {state.level} · Best depth {bestRuneDepth}</span></div>
-        <div className="io-runes-loadout">
-          {Array.from({length:slots},(_,index)=>{
-            const rune=equippedRunes[index];
-            return <div key={index} className={'io-runes-slot'+(rune?' is-filled':'')}>
-              <Star size={15} color={rune?'#c4b5fd':'#475569'}/>
-              {rune?<><strong className={'io-rarity-'+rune.rarity.toLowerCase()}>{rune.name}</strong><span>{combatRuneEffectText(rune)}</span>{rune.majorAbility&&<span className="io-runes-major mt-1 text-xs font-semibold text-violet-200">✦ {rune.majorAbility.name}</span>}</>:<span>Empty slot {index+1}</span>}
-            </div>;
-          })}
-        </div>
-        <div className="io-runes-stat-grid">
-          {statCards.map(card=><div className="io-runes-stat" key={card.label}><span>{card.icon} {card.label}</span><strong>{card.value}</strong></div>)}
-        </div>
-        <p className="io-runes-muted" style={{marginTop:'.75rem'}}>Slot milestones: start with 2; unlock a third at Delver Level 10, a fourth at Level 25, and a fifth at best Depth 50. Bonuses apply to normal online and offline orb-roll rewards.</p>
+        <div className="io-runes-loadout">{Array.from({length:slots},(_,index)=>{
+          const rune=equippedRunes[index];
+          return <div key={index} className={'io-runes-slot'+(rune?' is-filled':'')}>
+            {rune?STAT_ICON[rune.stat]:<Star size={15} color="#475569"/>}
+            {rune?<><strong className={'io-rarity-'+rune.rarity.toLowerCase()}>{rune.name}</strong><span>Lv. {rune.level??1} · {combatRuneEffectText(rune)}</span>{rune.majorAbility&&<span className="io-runes-major">✦ {rune.majorAbility.name}</span>}</>:<span>Empty slot {index+1}</span>}
+          </div>;
+        })}</div>
+        <div className="io-runes-stat-grid">{statCards.map(card=><div className="io-runes-stat" key={card.label}><span>{card.icon} {card.label}</span><strong>{card.value}</strong></div>)}</div>
+        <p className="io-runes-muted" style={{marginTop:'.75rem'}}>Slot milestones: start with 2; unlock a third at Delver Level 10, a fourth at Level 25, and a fifth at best Depth 50. Rune bonuses affect main-game online and offline orb-roll rewards, never dungeon combat.</p>
       </section>
       <section className="io-runes-panel">
-        <div className="io-runes-panel-head"><h2>Rune inventory</h2><span className="io-runes-muted">{state.runes.length} / 200 · {state.runes.length?'Salvage extras for Combat Marks':''}</span></div>
-        {!runes.length?<div className="io-runes-empty"><Gem size={22} style={{margin:'0 auto .5rem',color:'#a78bfa'}}/><strong style={{display:'block',color:'#e2e8f0'}}>No Runes found yet</strong>Defeat monsters in Combat. Common monsters can drop a Rune, elites have a higher chance, and bosses always drop one.</div>:
-          <div className="io-runes-inventory">
-            {runes.map(rune=>{
-              const isEquipped=state.equippedRunes.includes(rune.id);
-              const canEquip=isEquipped||state.equippedRunes.length<slots;
-              return <article key={rune.id} className={'io-runes-card'+(isEquipped?' is-equipped':'')}>
-                <div className="io-runes-card-head"><div><div className={'io-runes-kicker io-rarity-'+rune.rarity.toLowerCase()}>{rune.rarity.toUpperCase()} · {STAT_LABEL[rune.stat]}</div><h3>{rune.name}</h3></div><span style={{color:'#c4b5fd'}}>{STAT_ICON[rune.stat]}</span></div>
-                <p>{combatRuneEffectText(rune)}. {rune.stat==='luckPct'?'Improves the rarity odds when rolling orbs.':rune.stat==='coinGainPct'?'Increases Coins earned from rolls.':rune.stat==='shardChancePct'?'Adds a chance to find extra Shards on a roll.':'Increases XP earned from orb rolls.'}</p>
-                {rune.majorAbility&&<div className="io-runes-major-card mt-3 rounded-lg border border-violet-500/30 bg-violet-500/5 p-3"><span className="text-[9px] font-black uppercase tracking-wider text-violet-300">✦ Major Ability</span><strong className="mt-1 block text-sm text-violet-100">{rune.majorAbility.name}</strong><p className="mt-1 text-xs text-slate-300">{rune.majorAbility.description}</p><small className="mt-2 block text-[9px] text-slate-500">Combat effect while equipped · {rune.rarity} scaling</small></div>}
-                <div className="io-runes-card-meta">DROPPED · {rune.sourceDungeon.toUpperCase()} · DEPTH {rune.sourceDepth+1}</div>
-                <div className="io-runes-card-actions">
+        <div className="io-runes-panel-head"><h2>Rune inventory</h2><span className="io-runes-muted">{state.runes.length} / 200 · Hover or focus for details; click an icon to equip.</span></div>
+        {!runes.length?<div className="io-runes-empty"><Gem size={22} style={{margin:'0 auto .5rem',color:'#a78bfa'}}/><strong style={{display:'block',color:'#e2e8f0'}}>No Runes found yet</strong>Defeat monsters in Combat. Common monsters can drop a Rune, elite enemies have a higher chance, and bosses always drop one.</div>:
+          <div className="io-runes-inventory">{runes.map(rune=>{
+            const isEquipped=state.equippedRunes.includes(rune.id);
+            const canEquip=isEquipped||state.equippedRunes.length<slots;
+            const level=Math.max(1,Math.floor(Number(rune.level)||1));
+            const cost=combatRuneLevelCost(level);
+            const iconLabel=(isEquipped?'Unequip ':'Equip ')+rune.name;
+            return <article key={rune.id} className={'io-runes-icon-wrap '+rarityClass(rune.rarity)+(isEquipped?' is-equipped':'')}>
+              <button type="button" className={'io-runes-icon '+rarityClass(rune.rarity)+(isEquipped?' is-equipped':'')} disabled={busyRune===rune.id||(!isEquipped&&!canEquip)} onClick={()=>void mutate('/api/combat/runes/equip',{runeId:rune.id,equip:!isEquipped},rune.id,isEquipped?'Rune unequipped.':'Rune equipped.')} aria-label={iconLabel} title={iconLabel}>
+                <span className="io-runes-icon-art">{STAT_ICON[rune.stat]}</span><small>Lv. {level}</small>{isEquipped&&<span className="io-runes-equipped-mark"><ShieldCheck size={12}/></span>}
+              </button>
+              <div className="io-runes-tooltip" role="tooltip">
+                <span className={'io-runes-tooltip-rarity '+rarityClass(rune.rarity)}>{rune.rarity.toUpperCase()} · {STAT_LABEL[rune.stat].toUpperCase()}</span>
+                <strong>{rune.name}</strong><span className="io-runes-tooltip-level">Level {level} · Found at depth {rune.sourceDepth+1}</span>
+                <p className="io-runes-tooltip-value">{combatRuneEffectText(rune)}</p>
+                <p>{rune.stat==='luckPct'?'Improves rarity odds on normal orb rolls.':rune.stat==='coinGainPct'?'Increases Coins earned from normal orb rolls.':rune.stat==='shardChancePct'?'Adds its existing percentage-point chance to find a Shard; Rune levels do not alter this stat.':'Increases XP earned from normal orb rolls.'}</p>
+                {rune.majorAbility&&<div className="io-runes-major-card"><span>✦ MAIN-GAME MAJOR ABILITY</span><strong>{rune.majorAbility.name} · +{pct(rune.majorAbility.valuePct*combatRuneLevelMultiplier(level))}</strong><p>{rune.majorAbility.description}</p></div>}
+                <div className="io-runes-tooltip-actions">
                   <button type="button" className="io-runes-button" disabled={busyRune===rune.id||(!isEquipped&&!canEquip)} onClick={()=>void mutate('/api/combat/runes/equip',{runeId:rune.id,equip:!isEquipped},rune.id,isEquipped?'Rune unequipped.':'Rune equipped.')}>{busyRune===rune.id?'Saving…':isEquipped?'Unequip':'Equip'}</button>
+                  <button type="button" className="io-runes-button" disabled={busyRune===rune.id||state.combatMarks<cost} onClick={()=>void mutate('/api/combat/runes/level',{runeId:rune.id},rune.id,'Rune upgraded to Level '+(level+1)+'.')}><ArrowUp size={12}/> Level Up · {cost.toLocaleString()} Marks</button>
                   <button type="button" className="io-runes-button is-secondary" disabled={busyRune===rune.id} onClick={()=>void mutate('/api/combat/runes/salvage',{runeId:rune.id},rune.id,'Rune salvaged for Combat Marks.')}>Salvage</button>
                 </div>
-                {!isEquipped&&!canEquip&&<div className="io-runes-muted" style={{marginTop:'.45rem'}}>All Rune slots are full.</div>}
-              </article>;
-            })}
-          </div>
-        }
+                {!isEquipped&&!canEquip&&<div className="io-runes-muted">All Rune slots are full.</div>}
+              </div>
+            </article>;
+          })}</div>}
       </section>
     </>}
   </div>;

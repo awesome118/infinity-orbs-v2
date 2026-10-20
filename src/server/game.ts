@@ -3410,7 +3410,7 @@ export async function applyRolls(
   // Community Luck is another additive source, kept transient rather than persisted.
   // Cleared Crypt Wardens permanently improve main-game orb Luck without
   // touching the core player save: 1% per boss, capped at a 25% multiplier.
-  const baseLuck = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1)) * undercryptLuck * (1 + Math.min(400, runeBonuses.luckPct) / 100);
+  const baseLuck = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1)) * undercryptLuck * (1 + runeBonuses.luckPct / 100);
 
   // Apex Fortune Mastery: chance on multi-roll to double the luck of that activation
   const apexChance = Math.min(0.45, (s.masterySkills?.apexFortune ?? 0) * 0.03);
@@ -3499,8 +3499,8 @@ export async function applyRolls(
     const xpBonusMul =
       (1 + (s.upgrades.xpBonus ?? 0) * 0.20) *
       levelBenefits.xpMultiplier *
-      (1 + Math.min(300, runeBonuses.xpGainPct) / 100);
-    const earnedXp = Math.round(Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) * xpBonusMul);
+      (1 + runeBonuses.xpGainPct / 100);
+    const earnedXp = Math.min(Number.MAX_SAFE_INTEGER, Math.round(Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) * xpBonusMul));
 
     // Shards bonus for rare orbs (1,000+)
     let earnedShards = 0;
@@ -3551,8 +3551,8 @@ export async function applyRolls(
     (1 + (s.upgrades.coinBonus ?? 0) * 0.15) *
     (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
     (1 + (s.guildPerks?.coinRank ?? 0) * 0.10) *
-    (1 + Math.min(300, runeBonuses.coinGainPct) / 100);
-  coinsGained = Math.round(coinsGained * coinBonusMul);
+    (1 + runeBonuses.coinGainPct / 100);
+  coinsGained = Math.min(Number.MAX_SAFE_INTEGER, Math.round(coinsGained * coinBonusMul));
 
   const lowRarityCoins = rarities
     .filter(r => r < 100)
