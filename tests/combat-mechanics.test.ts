@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { combatMarkMultiplier, addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, undercryptOrbLuckMultiplier, undercryptWardensDefeated, type CombatGear } from '../src/shared/combat.js';
+import { combatMarkMultiplier, addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatActionsDue, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, undercryptOrbLuckMultiplier, undercryptWardensDefeated, type CombatGear } from '../src/shared/combat.js';
 
 test('starter combat build carries the Auto-Dungeons baseline', () => {
   const state=createCombatState();
@@ -42,6 +42,13 @@ test('every tenth Undercrypt depth has a boss', () => {
   assert.equal(getEnemyForDepth(9).boss,false);
   assert.equal(getEnemyForDepth(10).boss,true);
   assert.equal(getEnemyForDepth(20).name,'Crypt Warden');
+});
+test('enemy speed scales continuously with depth and increases actions owed',()=>{
+  const opening=getEnemyForDepth(1);
+  const deeperSameEnemy=getEnemyForDepth(19);
+  assert.equal(opening.id,deeperSameEnemy.id,'comparison uses the same enemy archetype');
+  assert.ok(deeperSameEnemy.speed>opening.speed*1.25,'enemy Speed should rise visibly before the 15-floor mark');
+  assert.ok(combatActionsDue(deeperSameEnemy.speed,10,0)>combatActionsDue(opening.speed,10,0),'scaled Speed must translate into more actions');
 });
 test('skill pull pricing stays fixed regardless of how many skills have been rolled', () => {
   assert.equal(skillPullCost(0),75);
