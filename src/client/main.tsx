@@ -223,6 +223,8 @@ export function App() {
   });
   const [combatTutorialStatusLoaded, setCombatTutorialStatusLoaded] = useState(false);
   useEffect(() => {
+    // Tutorial persistence is irrelevant on the passive post splash; load it on entry.
+    if (!splashEntered || !state) return;
     let active = true;
     let localDone = false;
     try { localDone = window.localStorage.getItem('io-combat-tutorial-v1') === 'done'; } catch { /* Use server persistence when webview storage is unavailable. */ }
@@ -249,7 +251,7 @@ export function App() {
         if (active) setCombatTutorialStatusLoaded(true);
       });
     return () => { active = false; };
-  }, []);
+  }, [splashEntered, Boolean(state)]);
   useEffect(() => {
     const coreTutorialDone = tutorialDismissed || Number(state?.totalRolls ?? 0) > 3;
     if (combatTutorialStatusLoaded && coreTutorialDone && !combatTutorialDismissed && state && state.level >= FEATURE_UNLOCK_LEVELS.combat && combatTutorialStep === 0) {
@@ -651,6 +653,10 @@ export function App() {
       setAuthRequired(false);
       setStartupError(null);
 
+      // The splash only needs the saved state. Defer all auxiliary bootstrap
+      // requests until Play so post previews don't fan out across social APIs.
+      if (!splashEntered) return;
+
       // Admin status is intentionally independent from game-state loading.
       const adminStatus = await getJson<{ isAdmin: boolean }>('/api/dev/status').catch(() => ({ isAdmin: false }));
       setIsAdmin(adminStatus.isAdmin === true);
@@ -694,7 +700,7 @@ export function App() {
       setStartupError(message);
       console.error('Refresh error:', e);
     }
-  }, []);
+  }, [applyPlayerState, splashEntered]);
 
   useEffect(() => {
     // Don't allocate prediction tickets for people who only viewed the post splash.
