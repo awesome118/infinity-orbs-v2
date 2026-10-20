@@ -512,7 +512,8 @@ export function createApp() {
     if (!feature) return next();
 
     try {
-      const s = await loadRaw();
+      // Feature gating is a read-only eligibility check; passive preview requests must not create activity.
+      const s = await loadRaw({ registerActivity: false });
       const requiredLevel = FEATURE_UNLOCK_LEVELS[feature];
       const storedLevel = Math.max(1, Number(s.level) || 1);
       const xpLevel = Math.max(1, calculateLevelFromXp(Number(s.xp) || 0).level);
