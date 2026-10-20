@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { context, redis } from '../src/server/devvit-mock.js';
-import { getCombatSnapshot, performCombatBeat, rollCombatSkill } from '../src/server/combat.js';
+import { getCombatSnapshot, performCombatBeat, rollCombatSkill, processCombatRuneAutoSacrifice } from '../src/server/combat.js';
 import { COMBAT_BEAT_INTERVAL_MS, calculateCombatArenaRatingUpdate, getEnemyForDungeonDepth } from '../src/shared/combat.js';
 
 async function withPlayer<T>(userId: string, run: (key: string) => Promise<T>): Promise<T> {
@@ -125,4 +125,53 @@ test('Arena Elo updates conserve points at all rating boundaries', () => {
     assert.equal(update.playerRating + update.opponentRating, player + opponent);
     assert.equal(update.playerChange + update.opponentChange, 0);
   }
+});
+
+
+test('corrupt persisted combat JSON fails closed without replacing player progress', async () => {
+  await withPlayer('combat-corrupt-state-regression-player', async key => {
+    const corrupt = '{not valid json';
+    await redis.set(key, corrupt);
+    await assert.rejects(getCombatSnapshot(), /Combat state is corrupted; refusing to overwrite it/);
+    assert.equal(await redis.get(key), corrupt, 'the corrupt record must remain available for explicit recovery');
+  });
+});
+
+test('Rune inventory cap preserves equipped Runes while pruning unequipped extras', async () => {
+  await withPlayer('combat-equipped-rune-cap-regression-player', async key => {
+    const initial = await getCombatSnapshot();
+    const state = initial.state;
+    state.runes = Array.from({ length: 201 }, (_, index) => ({
+      id: 'cap-rune-' + index,
+      name: 'Cap Rune ' + index,
+      rarity: 'Common' as const,
+      stat: 'luckPct' as const,
+      value: 1,
+      level: 1,
+      sourceDepth: 0,
+      sourceDungeon: 'undercrypt' as const,
+    }));
+    state.equippedRunes = ['cap-rune-0'];
+    await redis.set(key, JSON.stringify(state));
+
+    const normalized = await getCombatSnapshot();
+    assert.equal(normalized.state.runes.length, 200);
+    assert.ok(normalized.state.runes.some(rune => rune.id === 'cap-rune-0'));
+    assert.deepEqual(normalized.state.equippedRunes, ['cap-rune-0']);
+  });
+});
+
+test('Auto Sacrifice is a safe no-op when there are no eligible donor Runes', async () => {
+  await withPlayer('combat-auto-sacrifice-empty-regression-player', async key => {
+    const initial = await getCombatSnapshot();
+    const state = initial.state;
+    state.runes = [];
+    state.equippedRunes = [];
+    state.runeAutoSacrifice = { enabled: true, maxRarity: 'Common' };
+    await redis.set(key, JSON.stringify(state));
+
+    const result = await processCombatRuneAutoSacrifice();
+    assert.deepEqual(result.runeAutoSacrificeResult, { runesSacrificed: 0, totalXp: 0 });
+    assert.deepEqual(result.state.runes, []);
+  });
 });
