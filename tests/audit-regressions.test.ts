@@ -2575,3 +2575,15 @@ test('passive player snapshots and the Play splash do not register active sessio
   assert.ok(promptStart >= 0 && promptEnd > promptStart, 'daily Frenzy prompt delay must start after Play');
   assert.match(client.slice(promptStart, promptEnd), /if \(!splashEntered\) return;/);
 });
+
+
+test('HTTP mutation lease owner tokens never fall back to Math.random', () => {
+  const app = source('src/server/app.ts');
+  const start = app.indexOf('const mutationLockOwner = (): string => {');
+  const end = app.indexOf('const parseMutationLock', start);
+  assert.ok(start >= 0 && end > start, 'request-level mutation lease owner generator must exist');
+  const owner = app.slice(start, end);
+  assert.match(owner, /new Uint8Array\(16\)/);
+  assert.match(owner, /globalThis\.crypto\.getRandomValues\(bytes\)/);
+  assert.doesNotMatch(owner, /Math\.random/);
+});
