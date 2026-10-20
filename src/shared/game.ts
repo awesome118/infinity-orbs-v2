@@ -185,7 +185,9 @@ export function normalizeAutomations(value: unknown): Partial<Record<AutomationI
 export const FREE_SHARD_DAILY_CAP = 50;
 
 export function todayKey(now = Date.now()): string {
-  return new Date(now).toISOString().slice(0, 10);
+  const timestamp = Number(now);
+  const safeTimestamp = Number.isFinite(timestamp) ? timestamp : Date.now();
+  return new Date(safeTimestamp).toISOString().slice(0, 10);
 }
 
 // Week boundaries are Sunday 00:00 UTC. Using the Unix epoch directly would
@@ -194,7 +196,8 @@ export const WEEK_MS = 604_800_000;
 export const WEEK_EPOCH_SUNDAY = Date.UTC(1970, 0, 4);
 
 export function weekStartMs(now = Date.now()): number {
-  const date = new Date(now);
+  const timestamp = Number(now);
+  const date = new Date(Number.isFinite(timestamp) ? timestamp : Date.now());
   const startOfDay = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
   return startOfDay - date.getUTCDay() * 86_400_000;
 }
