@@ -1,7 +1,7 @@
 {
   "name": "infinity-orbs",
   "private": true,
-  "version": "1.2.33",
+  "version": "1.2.37",
   "type": "module",
   "scripts": {
     "dev": "devvit playtest",
