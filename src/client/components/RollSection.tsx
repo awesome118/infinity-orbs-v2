@@ -102,9 +102,23 @@ export const RollSection: React.FC<RollSectionProps> = ({
   }, []);
 
   useEffect(() => {
-    const interval = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(interval);
-  }, []);
+    let timer: number | null = null;
+    const scheduleTick = () => {
+      const current = Date.now();
+      const remaining = readyAt - current;
+      timer = window.setTimeout(() => {
+        setNow(Date.now());
+        scheduleTick();
+      }, remaining > 0 && remaining <= 3000 ? 250 : 1000);
+    };
+    const syncOnVisibility = () => setNow(Date.now());
+    scheduleTick();
+    document.addEventListener('visibilitychange', syncOnVisibility);
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', syncOnVisibility);
+    };
+  }, [readyAt]);
   useEffect(() => () => {
     if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
   }, []);
@@ -179,6 +193,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const canRoll = (remain <= 0 || (freeRolls > 0 && !frenzyArmed)) && !busy;
   const frenzyCooldownRemain = frenzyCooldownRemaining(state.lastFrenzyAt, now);
   const frenzyUsedToday = frenzyCooldownRemain > 0;
+  const cooldownProgressPct = canRoll ? 100 : Math.max(0, Math.min(100, ((cd - remain) / Math.max(1, cd)) * 100));
   const multi = rollsPerActivation(state);
   const luck = luckMultiplier(state);
   const isAutoUnlocked = (state.upgrades.auto ?? 0) > 0;
@@ -477,11 +492,11 @@ export const RollSection: React.FC<RollSectionProps> = ({
             {canRoll ? 'READY TO ROLL' : `COOLDOWN: ${(remain / 1000).toFixed(1)}s`}
           </div>
           {/* Progress Bar */}
-          <div className="w-48 h-1.5 bg-slate-800 rounded-full mx-auto mt-2 overflow-hidden">
+          <div role="progressbar" aria-label="Roll cooldown progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(cooldownProgressPct)} className="w-48 h-1.5 bg-slate-800 rounded-full mx-auto mt-2 overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-200"
               style={{
-                width: canRoll ? '100%' : `${Math.max(0, Math.min(100, ((cd - remain) / Math.max(1, cd)) * 100))}%`,
+                width: `${cooldownProgressPct}%`,
               }}
             />
           </div>
@@ -514,7 +529,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               : busy
               ? 'bg-slate-800 text-slate-400 cursor-wait'
               : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700')}
-          aria-label={frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} Free Rolls` : 'Roll'}
+          aria-label={busy ? 'Roll in progress' : frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} Free Rolls` : 'Roll'}
         >
           {frenzyArmed && (
             <>
