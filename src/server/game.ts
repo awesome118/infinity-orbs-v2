@@ -2284,7 +2284,7 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
     throw new Error('Could not safely process the refund.');
   });
 }
-export async function loadRaw(): Promise<PlayerState> {
+export async function loadRaw(options: { registerActivity?: boolean } = {}): Promise<PlayerState> {
   const userId = currentUserId();
   const playerKey = key();
   const generationKey = saveGenerationKeyFor(userId);
@@ -2292,7 +2292,9 @@ export async function loadRaw(): Promise<PlayerState> {
   const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
   const raw = await redis.get(playerKey);
   const username = context.username ?? `reddit-user-${userId.slice(-8)}`;
-  await registerPlayer(userId, username);
+  // Passive post previews may read player-specific eligibility without registering
+  // an activity visit. Normal gameplay reads preserve the default registration.
+  if (options.registerActivity !== false) await registerPlayer(userId, username);
   const [guildContext, globalBoosters, dailyStreakCommunity] = await Promise.all([
     getPlayerGuildContext(username, userId).catch(error => {
       console.error('[Guild] Context read failed; using zeroed modifiers until Guild data is repaired.', error);
@@ -5998,7 +6000,8 @@ export async function getOrbFrenzyInfo(): Promise<{
   const viewerId = currentUserId();
   const claimedReceipt = await redis.get(frenzyClaimReceiptKey(postId, viewerId));
   const alreadyClaimedByViewer = claimedReceipt != null || data.consumedBy === viewerId;
-  const s = await getMe();
+  // Preview rendering must be read-only: getMe()/getState() touches online presence.
+  const s = await loadRaw({ registerActivity: false });
   const claimCooldownRemainingMs = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
   const claimCooldownEndsAt = claimCooldownRemainingMs > 0 ? now + claimCooldownRemainingMs : 0;
   const claimedToday = claimCooldownRemainingMs > 0;
