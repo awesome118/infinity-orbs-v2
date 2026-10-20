@@ -2216,3 +2216,13 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-runes-process-button{min-height:2.2rem;white-space:normal;max-width:15rem}
 .io-runes-auto-sacrifice p{grid-column:1/-1;margin:0}
 @media(max-width:600px){.io-runes-auto-sacrifice{grid-template-columns:1fr}.io-runes-process-button{max-width:none}.io-runes-strengthen-mode{align-items:flex-start}.io-runes-strengthen-mode>button{flex:0 0 auto}}
+
+/* Wave 2: compact, keyboard-visible gear inventory filters */
+.io-combat-gear-filters{display:grid;grid-template-columns:minmax(180px,2fr) repeat(3,minmax(120px,1fr)) auto;align-items:end;gap:.55rem;margin:.8rem 0 1rem;padding:.7rem;border:1px solid rgba(148,163,184,.16);border-radius:.85rem;background:rgba(15,23,42,.48)}
+.io-combat-gear-filters label{display:grid;gap:.3rem;min-width:0;color:#cbd5e1;font-size:.68rem;font-weight:850}
+.io-combat-gear-filters input,.io-combat-gear-filters select{width:100%;min-width:0;padding:.55rem .6rem;border:1px solid rgba(148,163,184,.25);border-radius:.5rem;background:#080d17;color:#f8fafc;font-size:.72rem;outline:none}
+.io-combat-gear-filters input:focus-visible,.io-combat-gear-filters select:focus-visible{border-color:#a78bfa;box-shadow:0 0 0 2px rgba(167,139,250,.2)}
+.io-combat-filter-count{align-self:center;white-space:nowrap;color:#94a3b8;font-size:.67rem;font-weight:800}
+.io-combat-inventory-empty{padding:1.25rem;border:1px dashed rgba(148,163,184,.25);border-radius:.8rem;color:#94a3b8;font-size:.8rem;text-align:center}
+@media(max-width:760px){.io-combat-gear-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.io-combat-gear-filters label:first-child{grid-column:1/-1}.io-combat-filter-count{justify-self:start}}
+@media(max-width:420px){.io-combat-gear-filters{grid-template-columns:minmax(0,1fr)}.io-combat-gear-filters label:first-child{grid-column:auto}}
