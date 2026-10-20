@@ -5,6 +5,20 @@ import { resolve } from 'node:path';
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
+test('Rune Strengthen is tooltip-driven and Auto Sacrifice only consumes un-equipped donors',()=>{
+  const ui=source('src/client/components/RunesSection.tsx');
+  const combat=source('src/server/combat.ts');
+  const api=source('src/server/app.ts');
+  assert.ok(ui.includes('>Strengthen</button>'),'Rune tooltip must expose a Strengthen action');
+  assert.ok(ui.includes('handleRuneClick(rune)'),'clicking a Rune must act as the sacrifice donor while Strengthen is active');
+  assert.ok(combat.includes('!equipped.has(rune.id) && combatRuneRarityAtOrBelow'),'bulk auto-sacrifice must protect equipped donors');
+  assert.ok(combat.includes('const target = pick(targets);'),'each donor must select an equipped Rune target at random');
+  assert.ok(combat.includes('const qualifiesForAutoSacrifice = s.runeAutoSacrifice.enabled'),'new eligible drops must use the saved auto-sacrifice setting');
+  assert.ok(api.includes("app.post('/api/combat/runes/auto-sacrifice/settings'"));
+  assert.ok(api.includes("app.post('/api/combat/runes/auto-sacrifice/run'"));
+});
+
+
 test('Follow Reward leaderboard projection failure is not reported as claim failure', () => {
   const game = source('src/server/game.ts');
   const start = game.indexOf('export async function claimFollowReward');
