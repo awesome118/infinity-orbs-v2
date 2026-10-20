@@ -102,11 +102,15 @@ export const RollSection: React.FC<RollSectionProps> = ({
   }, []);
 
   useEffect(() => {
-    const interval = window.setInterval(() => setNow(Date.now()), 250);
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
+  }, []);
+  useEffect(() => () => {
+    if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
   }, []);
   const [isRevealing, setIsRevealing] = useState(false);
   const [cooldownNotice, setCooldownNotice] = useState<string | null>(null);
+  const cooldownNoticeTimerRef = useRef<number | null>(null);
   const [sonarActive, setSonarActive] = useState(() => sound.sonarMode);
   const [sonarThreshold, setSonarThresholdState] = useState(() => sound.sonarThreshold);
   const [sonarPinging, setSonarPinging] = useState(false);
@@ -276,12 +280,18 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const handleRollClick = () => {
     if (canRoll) {
       sound.playClick();
+      if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
+      cooldownNoticeTimerRef.current = null;
       setCooldownNotice(null);
       void onRoll();
     } else if (remain > 0) {
       sound.playClick();
       setCooldownNotice(`Cooldown active (${(remain / 1000).toFixed(1)}s remaining)`);
-      setTimeout(() => setCooldownNotice(null), 1500);
+      if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
+      cooldownNoticeTimerRef.current = window.setTimeout(() => {
+        setCooldownNotice(null);
+        cooldownNoticeTimerRef.current = null;
+      }, 1500);
     }
   };
 
@@ -469,7 +479,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
             <div
               className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-200"
               style={{
-                width: canRoll ? '100%' : `${Math.min(100, ((cd - remain) / cd) * 100)}%`,
+                width: canRoll ? '100%' : `${Math.max(0, Math.min(100, ((cd - remain) / Math.max(1, cd)) * 100))}%`,
               }}
             />
           </div>
