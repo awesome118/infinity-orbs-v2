@@ -188,7 +188,7 @@ async function getJsonWithTimeout<T>(url: string, timeoutMs = 10_000, options?: 
     return await getJson<T>(url, { ...options, signal: controller.signal });
   } catch (error: any) {
     if (error?.name === 'AbortError') {
-      throw new Error('The Infinity Orbs server did not respond within 10 seconds.');
+      throw new Error(`The Infinity Orbs server did not respond within ${Math.max(1, Math.ceil(timeoutMs / 1000))} seconds.`);
     }
     throw error;
   } finally {
@@ -808,10 +808,11 @@ export function App() {
     return () => window.clearInterval(interval);
   }, []);
 
-  // Periodic background refresh for social & community event rolling counter
+  // Refresh live community state while visible; hidden webviews should not poll.
   useEffect(() => {
     const pollInterval = tab === 'social' ? 3000 : 8000;
-    const interval = setInterval(() => {
+    const refreshCommunityState = () => {
+      if (document.visibilityState === 'hidden') return;
       void getJson<WorldEvent | null>('/api/world-event').then(we => {
         setWorldEvent(we);
       }).catch(() => null);
@@ -821,8 +822,14 @@ export function App() {
           if (gd) setGuildData(gd);
         }).catch(() => null);
       }
-    }, pollInterval);
-    return () => clearInterval(interval);
+    };
+    refreshCommunityState();
+    const interval = window.setInterval(refreshCommunityState, pollInterval);
+    document.addEventListener('visibilitychange', refreshCommunityState);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshCommunityState);
+    };
   }, [tab]);
 
 
@@ -831,6 +838,7 @@ export function App() {
     if (tab !== 'boosters') return;
 
     const refreshGlobalBoosters = () => {
+      if (document.visibilityState === 'hidden') return;
       void getJson<GlobalBoosterSnapshot>('/api/global-boosters')
         .then(snapshot => {
           if (snapshot) {
@@ -845,8 +853,12 @@ export function App() {
     };
 
     refreshGlobalBoosters();
-    const interval = setInterval(refreshGlobalBoosters, 5000);
-    return () => clearInterval(interval);
+    const interval = window.setInterval(refreshGlobalBoosters, 5000);
+    document.addEventListener('visibilitychange', refreshGlobalBoosters);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshGlobalBoosters);
+    };
   }, [tab]);
 
   // Presence is independent from player-state persistence. Do not poll /api/me
@@ -854,6 +866,7 @@ export function App() {
   useEffect(() => {
     if (!splashEntered) return;
     const refreshPresence = () => {
+      if (document.visibilityState === 'hidden') return;
       void getJson<{ onlinePlayers: number }>('/api/online')
         .then(({ onlinePlayers }) => {
           const safeOnlinePlayers = Number.isSafeInteger(onlinePlayers)
@@ -868,8 +881,12 @@ export function App() {
         .catch(() => null);
     };
     refreshPresence();
-    const presenceInterval = setInterval(refreshPresence, 10_000);
-    return () => clearInterval(presenceInterval);
+    const presenceInterval = window.setInterval(refreshPresence, 10_000);
+    document.addEventListener('visibilitychange', refreshPresence);
+    return () => {
+      window.clearInterval(presenceInterval);
+      document.removeEventListener('visibilitychange', refreshPresence);
+    };
   }, [splashEntered]);
 
   useEffect(() => {
