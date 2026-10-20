@@ -1118,6 +1118,11 @@ export function App() {
         }),
       }));
 
+      const previousBest = Math.max(2, Number(currentState.highestRarity) || 2);
+      const latestBest = Math.max(2, Number(res.state.highestRarity) || 2);
+      if (!isAutoRoll && res.orb.rarity > previousBest && res.orb.rarity >= latestBest) {
+        setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+      }
       applyPlayerState(res.state);
       setLastOrb(res.orb);
       setLastBatch(res.batch ?? [res.orb]);
