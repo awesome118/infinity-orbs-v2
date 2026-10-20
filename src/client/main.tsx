@@ -282,7 +282,11 @@ export function App() {
   useEffect(() => {
     // Shared HUD polling is deferred until the player enters from the post splash.
     if (!splashEntered) return;
+    let cancelled = false;
+    let inFlight = false;
     const pollAnnouncement = async () => {
+      if (cancelled || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
       try {
         const announcement = await getJson<{
           id: GlobalBoosterId;
@@ -290,7 +294,7 @@ export function App() {
           username: string;
           activatedAt: number;
         } | null>('/api/global-booster-announcement');
-        if (!announcement || announcement.activatedAt <= lastBoosterAnnouncementAtRef.current) return;
+        if (cancelled || !announcement || announcement.activatedAt <= lastBoosterAnnouncementAtRef.current) return;
 
         lastBoosterAnnouncementAtRef.current = announcement.activatedAt;
         setBoosterAnnouncement(announcement);
@@ -303,15 +307,24 @@ export function App() {
         }, 5000);
       } catch {
         // Announcement polling is best-effort and never blocks gameplay.
+      } finally {
+        inFlight = false;
       }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void pollAnnouncement();
     };
 
     void pollAnnouncement();
     const interval = window.setInterval(() => void pollAnnouncement(), 5000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
+      cancelled = true;
       window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       if (boosterAnnouncementTimerRef.current !== null) {
         window.clearTimeout(boosterAnnouncementTimerRef.current);
+        boosterAnnouncementTimerRef.current = null;
       }
     };
   }, [splashEntered]);
@@ -324,13 +337,17 @@ export function App() {
     // Merely loading a post preview or the Play splash is not an active session.
     // Start presence heartbeats only after the user explicitly enters the game.
     if (!state || !splashEntered) return;
+    let inFlight = false;
     const heartbeat = () => {
-      if (!splashEntered || document.visibilityState === 'hidden') return;
+      if (!splashEntered || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
       void getJson('/api/activity/heartbeat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ version: APP_VERSION }),
-      }).catch(() => null);
+      }).catch(() => null).finally(() => {
+        inFlight = false;
+      });
     };
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') heartbeat();
@@ -718,8 +735,11 @@ export function App() {
   useEffect(() => {
     if (!splashEntered) return;
     let cancelled = false;
+    let inFlight = false;
 
     const pollDeveloperAnnouncement = async () => {
+      if (cancelled || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
       try {
         const announcement = await getJson<{ message: string; updatedAt: number; updatedBy: string }>('/api/developer-announcement');
         if (cancelled) return;
@@ -736,14 +756,21 @@ export function App() {
         }
       } catch {
         // Announcement polling is best-effort and must never block gameplay.
+      } finally {
+        inFlight = false;
       }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void pollDeveloperAnnouncement();
     };
 
     void pollDeveloperAnnouncement();
     const interval = window.setInterval(() => void pollDeveloperAnnouncement(), 10000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [splashEntered]);
 
@@ -751,25 +778,39 @@ export function App() {
   // deliberately uncached so stale Reddit/CDN responses do not hide updates.
   useEffect(() => {
     if (!splashEntered) return;
+    let cancelled = false;
+    let inFlight = false;
     const checkForUpdate = async () => {
+      if (cancelled || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
       try {
         const res = await fetch('/api/version?check=' + Date.now(), {
           cache: 'no-store',
           headers: { 'Cache-Control': 'no-cache' },
         });
-        if (!res.ok) return;
+        if (cancelled || !res.ok) return;
         const data = await res.json() as { version?: string };
-        if (data.version && data.version !== APP_VERSION) {
+        if (!cancelled && data.version && data.version !== APP_VERSION) {
           setUpdateAvailable(true);
         }
       } catch {
         // Update detection is best-effort and must never block gameplay.
+      } finally {
+        inFlight = false;
       }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void checkForUpdate();
     };
 
     void checkForUpdate();
     const interval = window.setInterval(() => void checkForUpdate(), 30_000);
-    return () => window.clearInterval(interval);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [splashEntered]);
 
   // Refresh shared community data only while actively playing. Pull once on
@@ -812,24 +853,38 @@ export function App() {
   // Global Boosters are shared state, so refresh them independently of player-state polling.
   useEffect(() => {
     if (!splashEntered || tab !== 'boosters') return;
+    let cancelled = false;
+    let inFlight = false;
 
-    const refreshGlobalBoosters = () => {
-      void getJson<GlobalBoosterSnapshot>('/api/global-boosters')
-        .then(snapshot => {
-          if (snapshot) {
-            latestGlobalBoostersRef.current = snapshot;
-            if (stateRef.current) {
-              stateRef.current = { ...stateRef.current, globalBoosters: snapshot };
-            }
-            setState(prev => prev ? { ...prev, globalBoosters: snapshot } : prev);
-          }
-        })
-        .catch(() => null);
+    const refreshGlobalBoosters = async () => {
+      if (cancelled || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      try {
+        const snapshot = await getJson<GlobalBoosterSnapshot>('/api/global-boosters');
+        if (cancelled || !snapshot) return;
+        latestGlobalBoostersRef.current = snapshot;
+        if (stateRef.current) {
+          stateRef.current = { ...stateRef.current, globalBoosters: snapshot };
+        }
+        setState(prev => prev ? { ...prev, globalBoosters: snapshot } : prev);
+      } catch {
+        // Booster state is supplemental; retain the last successful snapshot.
+      } finally {
+        inFlight = false;
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refreshGlobalBoosters();
     };
 
-    refreshGlobalBoosters();
-    const interval = setInterval(refreshGlobalBoosters, 1500);
-    return () => clearInterval(interval);
+    void refreshGlobalBoosters();
+    const interval = window.setInterval(() => void refreshGlobalBoosters(), 1500);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [tab, splashEntered]);
 
   // Presence is independent from player-state persistence. Do not poll /api/me
