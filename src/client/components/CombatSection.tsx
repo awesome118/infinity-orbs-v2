@@ -110,6 +110,9 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const [lastSkill,setLastSkill]=useState<ApiResponse['skillRoll']|null>(null);
   const [error,setError]=useState('');
   const [arenaOpponents,setArenaOpponents]=useState<CombatArenaProfile[]>([]);
+  const [arenaSearch,setArenaSearch]=useState('');
+  const [arenaOpponentFilter,setArenaOpponentFilter]=useState<'all'|'players'|'practice'>('all');
+  const [arenaSort,setArenaSort]=useState<'rating'|'level'|'depth'>('rating');
   const [arenaSelf,setArenaSelf]=useState<CombatArenaProfile|null>(null);
   const [arenaLoading,setArenaLoading]=useState(false);
   const [arenaResult,setArenaResult]=useState<CombatArenaResult|null>(null);
@@ -310,6 +313,21 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     });
   },[state.inventory,state.equipment,gearSearch,gearSlotFilter,gearOwnershipFilter,gearSort]);
   const visibleGear=matchingGear.slice(0,visibleGearCount);
+  const visibleArenaOpponents=useMemo(()=>{
+    const query=arenaSearch.trim().toLowerCase();
+    return arenaOpponents.filter(opponent=>{
+      const practice=opponent.userId.startsWith('testbot:');
+      if(arenaOpponentFilter==='practice'&&!practice)return false;
+      if(arenaOpponentFilter==='players'&&practice)return false;
+      if(!query)return true;
+      return [opponent.username,opponent.weaponName,opponent.armorName,String(opponent.rating),String(opponent.level),String(opponent.bestDepth)]
+        .some(value=>String(value).toLowerCase().includes(query));
+    }).sort((a,b)=>{
+      if(arenaSort==='level')return b.level-a.level||b.rating-a.rating;
+      if(arenaSort==='depth')return b.bestDepth-a.bestDepth||b.rating-a.rating;
+      return b.rating-a.rating||b.bestDepth-a.bestDepth;
+    });
+  },[arenaOpponents,arenaSearch,arenaOpponentFilter,arenaSort]);
   const visibleSkills=COMBAT_SKILLS.filter(skill=>(showAllSkills||rankOf(state,skill.id)>0)&&[skill.name,skill.rarity,skill.stat].some(value=>String(value).toLowerCase().includes(skillSearch.trim().toLowerCase())));
   const nextStrategyGuide=STRATEGY_GUIDE_RANKS.find(entry=>entry.rank===state.strategyGuideRank+1)??null;
   if(page==='runes')return <RunesSection/>;
