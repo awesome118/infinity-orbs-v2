@@ -448,9 +448,9 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         {state.autoScrapUnlocked?<>
           <label className="io-combat-toggle-row"><input type="checkbox" checked={state.autoScrapSettings.enabled} disabled={mutating} onChange={event=>void saveAutoScrap(event.target.checked,autoScrapQuality)}/><span><strong>Automatically scrap low-quality drops</strong><small>{state.autoScrapSettings.enabled?'Auto Scrap is enabled.':'Auto Scrap is paused.'}</small></span></label>
           <div className="io-combat-quality-title"><label htmlFor="io-auto-scrap-quality">Maximum quality to scrap</label><strong>{autoScrapQuality.toFixed(2)}%</strong></div>
-          <input id="io-auto-scrap-quality" className="io-combat-quality-range" type="range" min={0} max={100} step={0.01} value={autoScrapQuality} onChange={event=>setAutoScrapQuality(Number(event.target.value))}/>
+          <input id="io-auto-scrap-quality" className="io-combat-quality-range" type="range" min={0} max={100} step={0.01} value={autoScrapQuality} aria-valuetext={autoScrapQuality.toFixed(2)+' percent quality cutoff'} disabled={mutating} onChange={event=>setAutoScrapQuality(Number(event.target.value))}/>
           <div className="io-combat-quality-scale"><span>0.00%</span><span>100.00%</span></div>
-          <button type="button" className="io-combat-button is-primary" disabled={mutating} onClick={()=>void saveAutoScrap(state.autoScrapSettings.enabled,autoScrapQuality)}>Save Auto Scrap settings</button>
+          <div className="io-combat-quality-save-row"><span role="status">{autoScrapQuality===state.autoScrapSettings.maxQuality?'Settings saved':'Unsaved quality change'}</span><button type="button" className="io-combat-button is-primary" disabled={mutating||autoScrapQuality===state.autoScrapSettings.maxQuality} onClick={()=>void saveAutoScrap(state.autoScrapSettings.enabled,autoScrapQuality)}>{mutating?'Saving…':'Save Auto Scrap settings'}</button></div>
         </>:<p className="io-combat-resonance-note">Unlock the Auto Scrap Prestige upgrade in the main game first. Once unlocked, enable it and choose the maximum quality to automatically salvage.</p>}
       </section>
       <section className="io-combat-panel io-combat-major-info">
