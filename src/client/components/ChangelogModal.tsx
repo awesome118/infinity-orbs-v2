@@ -12,7 +12,7 @@ const entries: Array<{
 }> = [
   {
     title: 'Rune Major Abilities & Auto Sacrifice',
-    description: 'Rune tooltips now expose six scalable gameplay effects: Echo Chamber, Paradox Engine, Event Horizon, Shard Constellation, Temporal Loop, and Prismatic Fork. Strengthen a chosen Rune by clicking a donor Rune, or configure Auto Sacrifice to feed eligible drops into a random equipped Rune. Temporal Loop charges faster during long dry streaks.',
+    description: 'Rune tooltips now explain eleven scalable Major Abilities: Echo Chamber chains extra rolls, Paradox Engine expands multi-rolls, Event Horizon rewards record rarities, Shard Constellation and Temporal Loop build persistent meters, Prismatic Fork boosts rare outcomes, Critical Convergence reacts to crits, Rarity Ladder rewards rising sequences, Stellar Dividend pays roll milestones, Shard Jackpot multiplies Shard payouts, and Milestone Engine rewards new rarity decades. Strengthen a chosen Rune by clicking a donor, or auto-sacrifice eligible drops into a random equipped Rune.',
   },
   {
     title: 'Combat Unlock & Mark Shop',
