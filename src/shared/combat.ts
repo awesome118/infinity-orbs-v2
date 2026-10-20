@@ -17,6 +17,13 @@ export type CombatRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Mythic';
 
 export type CombatRuneRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Legendary' | 'Mythic' | 'Cosmic';
 export type CombatRuneStat = 'luckPct' | 'coinGainPct' | 'shardChancePct' | 'xpGainPct';
+export const COMBAT_RUNE_RARITIES: CombatRuneRarity[] = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Mythic', 'Cosmic'];
+export interface CombatRuneAutoSacrificeSettings { enabled: boolean; maxRarity: CombatRuneRarity; }
+export const DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS: CombatRuneAutoSacrificeSettings = { enabled: false, maxRarity: 'Common' };
+export function combatRuneRarityAtOrBelow(rarity: CombatRuneRarity, maxRarity: CombatRuneRarity): boolean {
+  return COMBAT_RUNE_RARITIES.indexOf(rarity) >= 0 &&
+    COMBAT_RUNE_RARITIES.indexOf(rarity) <= COMBAT_RUNE_RARITIES.indexOf(maxRarity);
+}
 export type CombatRuneMajorAbility =
   | { id:'fateweaver'; name:string; valuePct:number; description:string; }
   | { id:'midas-engine'; name:string; valuePct:number; description:string; }
@@ -586,6 +593,8 @@ export interface CombatState {
   /** Persistent monster drops that improve the core orb-rolling game while equipped. */
   runes: CombatRune[];
   equippedRunes: string[];
+  /** Auto-sacrifice only consumes un-equipped Runes and feeds XP into a random equipped Rune. */
+  runeAutoSacrifice: CombatRuneAutoSacrificeSettings;
   /** Persisted server-side so the Combat tutorial is only shown once per player. */
   combatTutorialSeen: boolean;
   combatUpgrades: CombatUpgradeLevels;
@@ -802,7 +811,7 @@ export function createCombatState(): CombatState {
   const state: CombatState = {
     version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
-    baseDamage:54, coins:0, scrap:0, combatMarks:250, runes:[], equippedRunes:[], combatTutorialSeen:false, combatUpgrades:{}, totalKills:0, skillRolls:0, skillRuntime:createCombatSkillRuntime(), strategyGuideRank:0, tacticianManuals:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
+    baseDamage:54, coins:0, scrap:0, combatMarks:250, runes:[], equippedRunes:[], runeAutoSacrifice:{...DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS}, combatTutorialSeen:false, combatUpgrades:{}, totalKills:0, skillRolls:0, skillRuntime:createCombatSkillRuntime(), strategyGuideRank:0, tacticianManuals:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
     combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0, playerTurnsCompleted:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
     encounterFirstStrikeUsed:false, pendingHealAmount:0, inventory:starter.inventory,
