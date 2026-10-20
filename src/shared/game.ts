@@ -981,6 +981,10 @@ export interface PlayerState {
   collectionCount?: number;
   codexChain?: number;
   codexDevotionLuckPercent?: number;
+  /** Persistent charge for equipped Shard Constellation Rune effects. */
+  runeConstellationCharge?: number;
+  /** Persistent charge meter for equipped Temporal Loop Rune effects. */
+  runeTemporalMomentum?: number;
   /** If positive, the next accepted roll is exactly one orb of this rarity. */
   chainPatcherNextRarity?: number;
   /** Server-calculated Codex target shown before purchase; null means no extension exists. */
@@ -1649,6 +1653,8 @@ export function createInitialState(now = Date.now()): PlayerState {
     collectionValue: 0,
     lifetimeCollectionValue: 0,
     collection: {},
+    runeConstellationCharge: 0,
+    runeTemporalMomentum: 0,
     chainPatcherNextRarity: 0,
     chainPatcherCooldownUntil: 0,
     lastRollAt: null,
