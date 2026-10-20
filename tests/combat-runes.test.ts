@@ -6,6 +6,7 @@ import {
   DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS,
   combatRuneRarityAtOrBelow,
   combatRuneBonuses,
+  createCombatState,
   combatRuneExperienceForLevel,
   combatRuneLevelFromExperience,
   combatRuneLevelMultiplier,
@@ -25,6 +26,7 @@ const runes:CombatRune[]=[
 test('Rune Auto Sacrifice threshold is inclusive, ordered by rarity, and disabled by default',()=>{
   assert.deepEqual(COMBAT_RUNE_RARITIES,['Common','Uncommon','Rare','Epic','Legendary','Mythic','Cosmic']);
   assert.deepEqual(DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS,{enabled:false,maxRarity:'Common'});
+  assert.deepEqual(createCombatState().runeAutoSacrifice,{enabled:false,maxRarity:'Common'});
   assert.equal(combatRuneRarityAtOrBelow('Common','Common'),true);
   assert.equal(combatRuneRarityAtOrBelow('Rare','Rare'),true);
   assert.equal(combatRuneRarityAtOrBelow('Uncommon','Rare'),true);
