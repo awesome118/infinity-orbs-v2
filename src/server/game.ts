@@ -1151,6 +1151,7 @@ async function readFrenzyHandoff(userId: string): Promise<{ postId: string; expi
 }
 
 export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string }> {
+  return withPlayerMutationLock(async () => {
   const postId = String(context.postId ?? '').trim();
   if (!postId) throw new Error('This is not an Orb Frenzy post.');
 
@@ -1180,6 +1181,7 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
     expiresAt: Date.now() + FRENZY_HANDOFF_TTL_MS,
   }));
   return { armed: true, postId };
+  });
 }
 
 export async function getOrbFrenzyHandoff(): Promise<{ armed: boolean; postId?: string }> {
