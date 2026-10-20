@@ -24,10 +24,38 @@ export function combatRuneRarityAtOrBelow(rarity: CombatRuneRarity, maxRarity: C
   return COMBAT_RUNE_RARITIES.indexOf(rarity) >= 0 &&
     COMBAT_RUNE_RARITIES.indexOf(rarity) <= COMBAT_RUNE_RARITIES.indexOf(maxRarity);
 }
-export type CombatRuneMajorAbility =
-  | { id:'fateweaver'; name:string; valuePct:number; description:string; }
-  | { id:'midas-engine'; name:string; valuePct:number; description:string; }
-  | { id:'memory-well'; name:string; valuePct:number; description:string; };
+export type CombatRuneMajorAbilityId =
+  | 'fateweaver'
+  | 'midas-engine'
+  | 'memory-well'
+  | 'echo-chamber'
+  | 'paradox-engine'
+  | 'event-horizon'
+  | 'shard-constellation'
+  | 'temporal-loop'
+  | 'prismatic-fork';
+export interface CombatRuneMajorAbility {
+  id: CombatRuneMajorAbilityId;
+  name: string;
+  /** Base effect percentage before the ability's slow Rune-level scaling. */
+  valuePct: number;
+  description: string;
+}
+export interface CombatRuneMajorAbilityEffects {
+  echoChamberPct:number;
+  echoChamberMaxChain:number;
+  paradoxEnginePct:number;
+  paradoxEngineBonusRolls:number;
+  eventHorizonPct:number;
+  eventHorizonBonusRolls:number;
+  shardConstellationPct:number;
+  shardConstellationBonusRolls:number;
+  shardConstellationBonusShards:number;
+  temporalLoopPct:number;
+  temporalLoopMomentumPerRoll:number;
+  temporalLoopBonusRolls:number;
+  prismaticForkPct:number;
+}
 export interface CombatRune {
   id: string;
   name: string;
@@ -150,6 +178,93 @@ export function combatRuneEffectText(rune: Pick<CombatRune, 'stat' | 'value' | '
   if (rune.stat === 'shardChancePct') return '+' + runePercentText(value, 3) + '% Shard chance';
   return '+' + runePercentText(value, 2) + '% XP';
 }
+/**
+ * Existing economy-style Rune perks keep their established exponential scaling.
+ * Trigger-style Major Abilities use a slower logarithmic curve so leveling makes
+ * their mechanics stronger without turning a proc chance into an automatic proc.
+ */
+export function combatRuneMajorAbilityStrengthPct(ability:Pick<CombatRuneMajorAbility,'id'|'valuePct'>,levelValue:unknown):number {
+  const raw=Number(ability.valuePct);
+  const value=Number.isFinite(raw)?Math.max(0,raw):0;
+  const level=Number.isFinite(Number(levelValue))?Math.max(1,Math.floor(Number(levelValue))):1;
+  if(ability.id==='fateweaver'||ability.id==='midas-engine'||ability.id==='memory-well'){
+    const scaled=value*combatRuneLevelMultiplier(level);
+    return Number.isFinite(scaled)?Math.min(Number.MAX_VALUE,scaled):Number.MAX_VALUE;
+  }
+  const scaled=value*(1+Math.log2(level)*.12);
+  return Number.isFinite(scaled)?Math.min(1_000_000,scaled):1_000_000;
+}
+function runeMajorBonusRollCount(strengthPct:number,level:number):number {
+  return Math.min(10,Math.max(1,1+Math.floor(strengthPct/20)+Math.floor(Math.log2(level)/6)));
+}
+/** Render the actual proc mechanic in a Rune tooltip instead of a generic percentage. */
+export function combatRuneMajorAbilitySummary(ability:CombatRuneMajorAbility,levelValue:unknown):string {
+  const level=Number.isFinite(Number(levelValue))?Math.max(1,Math.floor(Number(levelValue))):1;
+  const power=combatRuneMajorAbilityStrengthPct(ability,level);
+  const pct=(value:number)=>String(Math.round(value*10)/10)+'%';
+  const rolls=runeMajorBonusRollCount(power,level);
+  switch(ability.id){
+    case 'fateweaver':return '+'+power.toLocaleString(undefined,{maximumFractionDigits:2})+'% effective Luck on main-game rolls.';
+    case 'midas-engine':return '+'+power.toLocaleString(undefined,{maximumFractionDigits:2})+'% Coins from main-game rolls.';
+    case 'memory-well':return '+'+power.toLocaleString(undefined,{maximumFractionDigits:2})+'% XP from main-game rolls.';
+    case 'echo-chamber':return pct(Math.min(45,power))+' chance per roll to echo; each echo can chain again at half the previous chance, up to '+Math.min(8,1+Math.floor(Math.log2(level)/4)+Math.floor(power/20))+' echoes.';
+    case 'paradox-engine':return pct(Math.min(50,power))+' chance on a multi-roll activation to add '+rolls+' extra roll'+(rolls===1?'':'s')+'.';
+    case 'event-horizon':return 'Every new all-time rarity record triggers a '+rolls+'-roll burst with a '+(1+Math.min(2,power/100)).toFixed(2)+'× minimum-rarity floor.';
+    case 'shard-constellation':return 'Every '+Math.max(3,Math.floor(12/(1+power/100)))+' Shards found grants '+(1+Math.min(9,Math.floor(power/20)))+' bonus Shards and '+rolls+' bonus roll'+(rolls===1?'':'s')+'.';
+    case 'temporal-loop':return 'Each roll adds '+(1+Math.min(9,power/10)).toFixed(2)+' Momentum; every 100 Momentum grants '+rolls+' bonus roll'+(rolls===1?'':'s')+'.';
+    case 'prismatic-fork':return 'At rarity 1,000+, '+pct(Math.min(45,power))+' chance to fork a bonus roll with a '+(1+Math.min(2,power/100)).toFixed(2)+'× minimum-rarity floor.';
+  }
+}
+export function combatRuneMajorAbilityEffects(runesValue:unknown,equippedValue:unknown):CombatRuneMajorAbilityEffects {
+  const effects:CombatRuneMajorAbilityEffects={
+    echoChamberPct:0,echoChamberMaxChain:0,
+    paradoxEnginePct:0,paradoxEngineBonusRolls:1,
+    eventHorizonPct:0,eventHorizonBonusRolls:1,
+    shardConstellationPct:0,shardConstellationBonusRolls:1,shardConstellationBonusShards:1,
+    temporalLoopPct:0,temporalLoopMomentumPerRoll:0,temporalLoopBonusRolls:1,
+    prismaticForkPct:0,
+  };
+  const equipped=new Set((Array.isArray(equippedValue)?equippedValue:[]).filter((id):id is string=>typeof id==='string'));
+  if(!equipped.size||!Array.isArray(runesValue))return effects;
+  const add=(current:number,extra:number)=>Math.min(1_000_000,current+Math.max(0,extra));
+  for(const raw of runesValue){
+    if(!raw||typeof raw!=='object'||Array.isArray(raw))continue;
+    const rune=raw as Partial<CombatRune>;
+    if(typeof rune.id!=='string'||!equipped.has(rune.id)||!rune.majorAbility||typeof rune.majorAbility!=='object')continue;
+    const ability=rune.majorAbility;
+    if(!ability.id||!Number.isFinite(Number(ability.valuePct))||Number(ability.valuePct)<=0)continue;
+    const level=Number.isFinite(Number(rune.level))?Math.max(1,Math.floor(Number(rune.level))):1;
+    const power=combatRuneMajorAbilityStrengthPct(ability,level);
+    switch(ability.id){
+      case 'echo-chamber':
+        effects.echoChamberPct=add(effects.echoChamberPct,power);
+        effects.echoChamberMaxChain=Math.max(effects.echoChamberMaxChain,Math.min(8,1+Math.floor(Math.log2(level)/4)+Math.floor(power/20)));
+        break;
+      case 'paradox-engine':
+        effects.paradoxEnginePct=add(effects.paradoxEnginePct,power);
+        effects.paradoxEngineBonusRolls=Math.max(effects.paradoxEngineBonusRolls,runeMajorBonusRollCount(power,level));
+        break;
+      case 'event-horizon':
+        effects.eventHorizonPct=add(effects.eventHorizonPct,power);
+        effects.eventHorizonBonusRolls=Math.max(effects.eventHorizonBonusRolls,runeMajorBonusRollCount(power,level));
+        break;
+      case 'shard-constellation':
+        effects.shardConstellationPct=add(effects.shardConstellationPct,power);
+        effects.shardConstellationBonusRolls=Math.max(effects.shardConstellationBonusRolls,runeMajorBonusRollCount(power,level));
+        effects.shardConstellationBonusShards=Math.max(effects.shardConstellationBonusShards,1+Math.min(9,Math.floor(power/20)));
+        break;
+      case 'temporal-loop':
+        effects.temporalLoopPct=add(effects.temporalLoopPct,power);
+        effects.temporalLoopBonusRolls=Math.max(effects.temporalLoopBonusRolls,runeMajorBonusRollCount(power,level));
+        break;
+      case 'prismatic-fork':
+        effects.prismaticForkPct=add(effects.prismaticForkPct,power);
+        break;
+    }
+  }
+  effects.temporalLoopMomentumPerRoll=effects.temporalLoopPct>0?1+Math.min(9,effects.temporalLoopPct/10):0;
+  return effects;
+}
 export function combatRuneBonuses(runesValue: unknown, equippedValue: unknown): CombatRuneBonuses {
   const bonuses: CombatRuneBonuses = { luckPct: 0, coinGainPct: 0, shardChancePct: 0, xpGainPct: 0 };
   const equipped = new Set((Array.isArray(equippedValue) ? equippedValue : []).filter((value): value is string => typeof value === 'string'));
@@ -164,8 +279,9 @@ export function combatRuneBonuses(runesValue: unknown, equippedValue: unknown): 
     if (value <= 0) continue;
     bonuses[rune.stat] = safeAdd(bonuses[rune.stat], rune.stat === 'shardChancePct' ? Math.min(100, value) : value);
     const ability = rune.majorAbility;
-    if (ability && Number.isFinite(Number(ability.valuePct)) && Number(ability.valuePct) > 0) {
-      const abilityValue = Math.min(Number.MAX_VALUE, Number(ability.valuePct) * combatRuneLevelMultiplier(rune.level));
+    if (ability && Number.isFinite(Number(ability.valuePct)) && Number(ability.valuePct) > 0 &&
+        (ability.id === 'fateweaver' || ability.id === 'midas-engine' || ability.id === 'memory-well')) {
+      const abilityValue = combatRuneMajorAbilityStrengthPct(ability, rune.level);
       if (ability.id === 'fateweaver') bonuses.luckPct = safeAdd(bonuses.luckPct, abilityValue);
       else if (ability.id === 'midas-engine') bonuses.coinGainPct = safeAdd(bonuses.coinGainPct, abilityValue);
       else if (ability.id === 'memory-well') bonuses.xpGainPct = safeAdd(bonuses.xpGainPct, abilityValue);
