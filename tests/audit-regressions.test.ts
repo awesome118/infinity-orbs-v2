@@ -2435,3 +2435,17 @@ test('Combat is level-gated, guided, and reset with the rest of the player save'
   assert.ok(combat.includes('window.innerHeight-376'));
   assert.ok(combat.includes("maxHeight:'min(360px, calc(100vh - 16px))'"));
 });
+
+test('Global Chat trusts server post identity, not the client launcher query', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('export async function getGlobalChatStatus');
+  const end = social.indexOf('export async function recordGlobalChatComment', start);
+  assert.ok(start >= 0 && end > start);
+  const status = social.slice(start, end);
+  assert.ok(status.indexOf('await isCurrentFrenzyPostContext()') < status.indexOf('if (fromMainLauncher)'), 'server post identity must be checked before client handshake flags');
+  assert.match(status, /const savedIsFrenzy = saved \? await isRegisteredFrenzyPost\(saved\) : false/);
+  assert.match(social, /async function isRegisteredFrenzyPost\(postId: string\)/);
+  const resolverStart = social.indexOf('async function resolveGlobalGamePostId');
+  const resolverEnd = social.indexOf('export async function getGlobalChatStatus', resolverStart);
+  assert.match(social.slice(resolverStart, resolverEnd), /if \(await isRegisteredFrenzyPost\(saved\)\)/);
+});
