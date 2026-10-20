@@ -88,3 +88,45 @@ test('main game, Orb Share, and Frenzy clients report only coarse aggregate impr
   assert.match(api, /req\.path === '\/impressions'/);
   assert.match(admin, /debugRouter\.get\('\/impressions'/);
 });
+
+
+test('impression counters commit together instead of leaving partial counts on failure', async () => {
+  const baseRedis = originalRedis;
+  const baseContext = originalContext;
+  const baseReddit = originalReddit;
+  const suffix = Date.now().toString(36);
+  const postId = 't3_impression-atomic-' + suffix;
+  let injected = false;
+  const transactionalRedis = {
+    ...baseRedis,
+    watch: async (...keys: string[]) => {
+      const txn = await baseRedis.watch(...keys);
+      return {
+        ...txn,
+        set: async (key: string, value: string, options?: { expiration?: Date }) => {
+          if (!injected && key.startsWith('io:impressions:device:')) {
+            injected = true;
+            throw new Error('simulated queued counter write failure');
+          }
+          return txn.set(key, value, options);
+        },
+      };
+    },
+  };
+  configureDevvitRuntime({
+    redis: transactionalRedis,
+    context: { ...baseContext, postId, userId: 'impression-atomic-' + suffix, username: 'ImpressionAtomic' },
+    reddit: baseReddit,
+  });
+  try {
+    const before = await getImpressionDashboard();
+    await assert.rejects(recordPostImpression('main-game', 'desktop'), /simulated queued counter write failure/);
+    const after = await getImpressionDashboard();
+    assert.equal(after.total, before.total, 'global total must stay unchanged if the multi-key commit was never issued');
+    assert.equal(after.byType['main-game'], before.byType['main-game']);
+    assert.equal(after.byDevice.desktop, before.byDevice.desktop);
+    assert.equal(after.posts.some(post => post.postId === postId), false);
+  } finally {
+    configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  }
+});
