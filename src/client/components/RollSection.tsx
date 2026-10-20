@@ -274,6 +274,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
   // Handle click on roll button or center orb
   const handleRollClick = () => {
+    // Ignore both the main action and the center-orb shortcut during a request.
+    if (busy) return;
     if (canRoll) {
       sound.playClick();
       setCooldownNotice(null);
@@ -350,10 +352,14 @@ export const RollSection: React.FC<RollSectionProps> = ({
         {/* One restrained ring keeps the stage alive without turning the center into a screensaver. */}
         <div className="absolute w-60 h-60 rounded-full border border-white/10 pointer-events-none" />
         {/* The Central Main Orb */}
-        <div
+        <button
+          type="button"
           onClick={handleRollClick}
-          className={`relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 ${cosmeticEffectClass} ${
-            isRevealing ? 'scale-105 ring-4 ring-white/60' : 'hover:scale-102'
+          disabled={busy}
+          aria-label={busy ? 'Rolling orbs' : frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} free rolls` : 'Roll'}
+          aria-busy={busy}
+          className={`appearance-none border-0 p-0 text-inherit relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-300 transform focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-200 ${busy ? 'cursor-wait opacity-80' : 'cursor-pointer active:scale-95'} ${cosmeticEffectClass} ${
+            isRevealing && !busy ? 'scale-105 ring-4 ring-white/60' : !busy ? 'hover:scale-102' : ''
           }`}
           style={{
             background: orbInfo
@@ -433,7 +439,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               ★ NEW ORB
             </div>
           )}
-        </div>
+        </button>
       </div>
 
       {/* Orbit & Roll Status Callouts (sitting comfortably below the orb and satellites) */}
@@ -462,14 +468,14 @@ export const RollSection: React.FC<RollSectionProps> = ({
         {/* Cooldown Timer */}
         <div className="text-center pt-1">
           <div className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">
-            {canRoll ? 'READY TO ROLL' : `COOLDOWN: ${(remain / 1000).toFixed(1)}s`}
+            {busy ? 'ROLL IN PROGRESS' : canRoll ? 'READY TO ROLL' : `COOLDOWN: ${(remain / 1000).toFixed(1)}s`}
           </div>
           {/* Progress Bar */}
           <div className="w-48 h-1.5 bg-slate-800 rounded-full mx-auto mt-2 overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-200"
               style={{
-                width: canRoll ? '100%' : `${Math.min(100, ((cd - remain) / cd) * 100)}%`,
+                width: busy || canRoll ? '100%' : `${Math.min(100, ((cd - remain) / cd) * 100)}%`,
               }}
             />
           </div>
@@ -491,7 +497,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
         <button
           onClick={handleRollClick}
-          className={'roll-button ' + (frenzyArmed ? 'frenzy-supercharged' : canRoll ? 'is-ready' : 'is-waiting') + ' w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ' +
+          disabled={busy}
+          aria-busy={busy}
+          className={'roll-button ' + (busy ? 'is-waiting' : frenzyArmed ? 'frenzy-supercharged' : canRoll ? 'is-ready' : 'is-waiting') + ' w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 ' + (busy ? 'cursor-wait ' : 'cursor-pointer ') +
             (frenzyArmed
               ? 'bg-fuchsia-700 hover:bg-fuchsia-600 text-white border border-fuchsia-300/40 shadow-[0_0_36px_rgba(217,70,239,0.38)]'
               : canRoll
@@ -499,7 +507,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               : busy
               ? 'bg-slate-800 text-slate-400 cursor-wait'
               : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700')}
-          aria-label={frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} Free Rolls` : 'Roll'}
+          aria-label={busy ? 'Rolling orbs' : frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} Free Rolls` : 'Roll'}
         >
           {frenzyArmed && (
             <>
