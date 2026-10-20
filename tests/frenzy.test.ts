@@ -322,7 +322,7 @@ test('Frenzy claim and preview paths fail closed for malformed persisted timesta
   assert.match(source, /function parseFrenzyPostRecord\(raw: unknown\): FrenzyPostRecord \| null/);
   assert.match(source, /!Number\.isSafeInteger\(record\.createdAt\)/);
   assert.match(source, /record\.createdAt > now/);
-  assert.match(source, /!Number\.isSafeInteger\(record\.rarity\)/);
+  assert.match(source, /!Number\.isInteger\(record\.rarity\)/);
   assert.match(source, /record\.rarity > MAX_ORB_RARITY/);
   const infoStart = source.indexOf('export async function getOrbFrenzyInfo');
   const claimStart = source.indexOf('export async function claimOrbFrenzy');
