@@ -402,3 +402,14 @@ test('expired Frenzy handoff cleanup cannot delete a fresh concurrent handoff', 
     configureDevvitRuntime({ redis: baseRedis, context: originalContext, reddit: originalReddit });
   }
 });
+
+
+test('Frenzy handoff keys have a Redis expiry as well as an application expiry', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  const start = source.indexOf('export async function armOrbFrenzyClaim');
+  const end = source.indexOf('\nexport async function getOrbFrenzyHandoff', start);
+  assert.ok(start >= 0 && end > start);
+  const arm = source.slice(start, end);
+  assert.match(arm, /const handoffExpiresAt = Date\.now\(\) \+ FRENZY_HANDOFF_TTL_MS/);
+  assert.match(arm, /expiration: new Date\(handoffExpiresAt\)/);
+});
