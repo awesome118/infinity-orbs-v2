@@ -2465,3 +2465,12 @@ test('legacy guild contribution does not double-count each task update', () => {
     assert.equal(contribution.split(field).length - 1, 1, field + ' should be applied once');
   }
 });
+
+
+test('API responses default to non-cacheable because they depend on viewer or Reddit context', () => {
+  const app = source('src/server/app.ts');
+  assert.match(app, /app\.use\('\/api',[\s\S]{0,300}Cache-Control', 'no-store'/);
+  assert.match(app, /app\.get\('\/api\/me'/);
+  assert.match(app, /app\.get\('\/api\/collection'/);
+  assert.match(app, /app\.get\('\/api\/chat\/status'/);
+});
