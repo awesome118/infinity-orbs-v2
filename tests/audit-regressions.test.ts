@@ -644,7 +644,7 @@ test('Guild diagnostics UI and endpoint are removed while playtest-only recovery
 
 test('optional Guild projections cannot brick the player state or feature access gate', () => {
   const game = source('src/server/game.ts');
-  const start = game.indexOf('export async function loadRaw(): Promise<PlayerState>');
+  const start = game.indexOf('export async function loadRaw(');
   const end = game.indexOf('function serverRandom()', start);
   assert.ok(start >= 0 && end > start, 'loadRaw boundaries must exist');
   const loader = game.slice(start, end);
