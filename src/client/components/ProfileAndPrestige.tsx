@@ -188,6 +188,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
   };
 
   const safeStoredLevel=Number.isFinite(Number(state.level))?Math.max(1,Math.min(1000,Math.floor(Number(state.level)))):1;
+  const displayedLevel=safeStoredLevel;
   const safeTotalXp=Number.isFinite(Number(state.xp))?Math.max(0,Number(state.xp)):0;
   const levelProgress=getLevelProgress(safeStoredLevel,safeTotalXp,state.levelXpFloor);
   const levelInfo={
