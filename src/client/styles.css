@@ -259,6 +259,18 @@
 .roll-button.is-waiting:hover { filter: none; transform: none; box-shadow: inset 0 1px rgba(255,255,255,.035) !important; }
 .roll-button:disabled { color: #8b9b9e !important; background: #1a282e !important; box-shadow: none !important; }
 .roll-button:hover:disabled { filter: none !important; transform: none !important; box-shadow: none !important; cursor: wait !important; }
+.roll-action-hint { width: 100%; max-width: 330px; min-height: 28px; margin: -1px 0 2px; padding: 0 8px; color: #8da0a2; font-size: 10px; line-height: 1.55; text-align: center; text-wrap: pretty; }
+.roll-stage.is-rolling { border-color: rgba(116, 221, 202, .34); box-shadow: 0 26px 80px rgba(0, 0, 0, .28), 0 0 34px rgba(80, 196, 173, .08), inset 0 1px rgba(255,255,255,.06); }
+.roll-stage.is-rolling::after { border-color: rgba(116, 221, 202, .22); animation: io-roll-resolve-ring 1.25s ease-in-out infinite; }
+.roll-stage.is-rolling > .absolute.w-64 { opacity: .62 !important; animation: io-roll-resolve-glow 1.25s ease-in-out infinite; }
+@keyframes io-roll-resolve-ring {
+  0%, 100% { opacity: .42; transform: translate(-50%, -50%) scale(1); }
+  50% { opacity: .9; transform: translate(-50%, -50%) scale(1.045); }
+}
+@keyframes io-roll-resolve-glow {
+  0%, 100% { opacity: .35; }
+  50% { opacity: .78; }
+}
 .roll-controls { gap: 7px !important; }
 .roll-controls button { border-radius: 10px !important; }
 .roll-sidebar { display: flex; flex-direction: column; gap: 12px; }
@@ -343,6 +355,7 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  .roll-stage.is-rolling::after, .roll-stage.is-rolling > .absolute.w-64 { animation: none !important; }
 }
 
 
