@@ -4356,7 +4356,8 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
   const now = Date.now();
   checkPeriodicResets(s, now);
   resetFreeShardBudgetIfNeeded(s, now);
-  s.onlinePlayers = await touchOnlinePresence();
+  // A state read may populate the HUD, but must not add this account to CCU.
+  s.onlinePlayers = await getOnlinePlayers();
   s.globalBoosters = await getGlobalBoosters();
 
   // Old saves may outlive a lower current vault cap after prestige/upgrades change.
@@ -4546,10 +4547,9 @@ export async function getCollectionPage(options: {
 }
 
 export async function getState(): Promise<PlayerState> {
-  // GET /api/me must remain a read operation. Previously this path called
-  // settleOffline() and save(), which meant every background refresh could
-  // increment stateRevision and race a real mutation.
-  const s = await loadRaw();
+  // GET /api/me is a read, not proof that someone pressed Play. Presence and
+  // activity registration are handled by the explicit post-launch heartbeat.
+  const s = await loadRaw({ registerActivity: false });
   const now = Date.now();
 
   // Recompute Codex projections from the authoritative collection on every read.
@@ -4627,7 +4627,7 @@ export async function buyChainPatcher(): Promise<{
 
 export async function getMe(): Promise<PlayerState> {
   const ban = await getGameBanStatus();
-  const s = ban ? await loadRaw() : await getState();
+  const s = ban ? await loadRaw({ registerActivity: false }) : await getState();
   if (ban) {
     s.gameBan = {
       active: true,
