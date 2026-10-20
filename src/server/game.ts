@@ -1156,12 +1156,7 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
 
   const raw = await redis.get(FRENZY_POST_PREFIX + postId);
   if (!raw) throw new Error('This is not an Orb Frenzy post.');
-  const data = parseStoredJson<{
-    ownerId: string;
-    createdAt?: number;
-    adminTest?: boolean;
-    inGame?: boolean;
-  }>(raw);
+  const data = parseFrenzyPostRecord(raw);
   if (!data || data.inGame !== true) throw new Error('This is not an Orb Frenzy post.');
 
   const s = await settleOffline(await loadRaw());
@@ -6084,6 +6079,71 @@ export async function startOrbFrenzy(options: {
   });
 }
 
+type FrenzyPostRecord = {
+  ownerId: string;
+  ownerUsername: string;
+  rarity: number;
+  subredditName: string;
+  createdAt: number;
+  expiresAt?: number;
+  adminTest?: boolean;
+  inGame?: boolean;
+  consumedAt?: number | null;
+  consumedBy?: string;
+};
+
+/**
+ * Treat persisted Frenzy data as untrusted. In particular, NaN/Infinity dates
+ * can defeat normal expiry comparisons, and malformed rarity values can leak
+ * into the reward calculation. Invalid receipts must never be claimable.
+ */
+function parseFrenzyPostRecord(raw: unknown): FrenzyPostRecord | null {
+  const parsed = parseStoredJson<unknown>(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const record = parsed as Record<string, unknown>;
+  const now = Date.now();
+
+  if (
+    typeof record.ownerId !== 'string' || !record.ownerId.trim() ||
+    typeof record.ownerUsername !== 'string' || !record.ownerUsername.trim() ||
+    typeof record.subredditName !== 'string' || !record.subredditName.trim() ||
+    typeof record.rarity !== 'number' || !Number.isSafeInteger(record.rarity) ||
+    record.rarity < 2 || record.rarity > MAX_ORB_RARITY ||
+    typeof record.createdAt !== 'number' || !Number.isSafeInteger(record.createdAt) ||
+    record.createdAt <= 0 || record.createdAt > now
+  ) return null;
+
+  if (
+    record.expiresAt != null &&
+    (typeof record.expiresAt !== 'number' ||
+      !Number.isSafeInteger(record.expiresAt) ||
+      record.expiresAt <= record.createdAt ||
+      record.expiresAt > frenzyPostExpiresAt(record.createdAt))
+  ) return null;
+
+  if (record.adminTest != null && typeof record.adminTest !== 'boolean') return null;
+  if (record.inGame != null && typeof record.inGame !== 'boolean') return null;
+  if (record.consumedAt != null &&
+      (typeof record.consumedAt !== 'number' ||
+        !Number.isSafeInteger(record.consumedAt) ||
+        record.consumedAt < 0)) return null;
+  if (record.consumedBy != null && typeof record.consumedBy !== 'string') return null;
+
+  return {
+    ownerId: record.ownerId,
+    ownerUsername: record.ownerUsername.trim().replace(/^u\\//i, '').slice(0, 100),
+    rarity: record.rarity,
+    subredditName: record.subredditName.trim().replace(/^r\\//i, '').slice(0, 100),
+    createdAt: record.createdAt,
+    ...(typeof record.expiresAt === 'number' ? { expiresAt: record.expiresAt } : {}),
+    ...(typeof record.adminTest === 'boolean' ? { adminTest: record.adminTest } : {}),
+    ...(typeof record.inGame === 'boolean' ? { inGame: record.inGame } : {}),
+    ...(typeof record.consumedAt === 'number' || record.consumedAt === null
+      ? { consumedAt: record.consumedAt as number | null } : {}),
+    ...(typeof record.consumedBy === 'string' ? { consumedBy: record.consumedBy } : {}),
+  };
+}
+
 export async function getOrbFrenzyInfo(): Promise<{
   rarity: number;
   ownerUsername: string;
@@ -6106,17 +6166,7 @@ export async function getOrbFrenzyInfo(): Promise<{
   const raw = await redis.get(FRENZY_POST_PREFIX + postId);
   if (!raw) throw new Error('Orb Frenzy post data was not found.');
 
-  const data = parseStoredJson<{
-    ownerId: string;
-    ownerUsername: string;
-    rarity: number;
-    createdAt: number;
-    expiresAt?: number;
-    adminTest?: boolean;
-    inGame?: boolean;
-    consumedAt?: number | null;
-    consumedBy?: string;
-  }>(raw);
+  const data = parseFrenzyPostRecord(raw);
   if (!data) throw new Error('Orb Frenzy data is corrupted.');
 
   const now = Date.now();
@@ -6188,18 +6238,7 @@ export async function claimOrbFrenzy(options: {
   const raw = await redis.get(postKey);
   if (!raw) throw new Error('Orb Frenzy post data was not found.');
 
-  const data = parseStoredJson<{
-    ownerId: string;
-    ownerUsername: string;
-    rarity: number;
-    subredditName: string;
-    adminTest?: boolean;
-    inGame?: boolean;
-    consumedAt?: number | null;
-    consumedBy?: string;
-    createdAt?: number;
-    expiresAt?: number;
-  }>(raw);
+  const data = parseFrenzyPostRecord(raw);
   if (!data) throw new Error('Orb Frenzy data is corrupted.');
   if (String(data.ownerId ?? '').trim() !== lockedOwnerId) {
     throw new Error('Frenzy ownership changed. Please reopen the post.');
