@@ -327,13 +327,14 @@ export function createApp() {
 
   const mutationLockKey = (playerKey: string) => MUTATION_LOCK_PREFIX + playerKey;
 
-  const mutationLockOwner = (): string => {
-    // This token fences the request-level Redis mutation lease. Do not silently
-    // fall back to Math.random if UUID support is absent in a runtime.
+  const secureRequestToken = (): string => {
+    // Lock owners and feedback cooldowns are shared coordination credentials.
+    // Generate them with cryptographic randomness instead of a weak fallback.
     const bytes = new Uint8Array(16);
     globalThis.crypto.getRandomValues(bytes);
     return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
   };
+  const mutationLockOwner = (): string => 'lease-' + secureRequestToken();
 
   const parseMutationLock = (raw: string | null): { owner: string; expiresAt: number } | null => {
     if (!raw) return null;
@@ -1496,7 +1497,7 @@ export function createApp() {
         return res.status(401).json({ error: 'Your Reddit identity is unavailable.' });
       }
       const feedbackCooldownKey = `io:feedback-cooldown:${userId}`;
-      const feedbackCooldownToken = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const feedbackCooldownToken = secureRequestToken();
       try {
         await redis.set(feedbackCooldownKey, feedbackCooldownToken, {
           nx: true,
