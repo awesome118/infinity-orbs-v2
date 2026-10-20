@@ -2442,6 +2442,7 @@ export function predictRollActivation(
   const rarities: number[] = [];
   const batch: Orb[] = [];
   let bestRarity = 0;
+  let bestIsCrit = false;
   let totalValueGained = 0;
   let shardsGained = 0;
   let xpGained = 0;
@@ -2485,7 +2486,12 @@ export function predictRollActivation(
       s.rollsSinceBest = (s.rollsSinceBest ?? 0) + 1;
       s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest);
     }
-    bestRarity = Math.max(bestRarity, rarity);
+    if (rarity > bestRarity) {
+      bestRarity = rarity;
+      bestIsCrit = isCrit;
+    } else if (rarity === bestRarity && isCrit) {
+      bestIsCrit = true;
+    }
 
     let earnedShards = 0;
     if (rarity >= 1_000_000) earnedShards = 10;
@@ -2583,7 +2589,7 @@ export function predictRollActivation(
     tier: bestInfo.tier,
     name: bestInfo.name,
     isNew: (sourceState.collection?.[String(bestRarity)] ?? 0) <= 0,
-    isCrit: bestRarity > (sourceState.highestRarity ?? 0),
+    isCrit: bestIsCrit,
   };
 
   return {
