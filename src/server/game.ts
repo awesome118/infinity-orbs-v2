@@ -6107,7 +6107,7 @@ function parseFrenzyPostRecord(raw: unknown): FrenzyPostRecord | null {
     typeof record.ownerId !== 'string' || !record.ownerId.trim() ||
     typeof record.ownerUsername !== 'string' || !record.ownerUsername.trim() ||
     typeof record.subredditName !== 'string' || !record.subredditName.trim() ||
-    typeof record.rarity !== 'number' || !Number.isSafeInteger(record.rarity) ||
+    typeof record.rarity !== 'number' || !Number.isInteger(record.rarity) ||
     record.rarity < 2 || record.rarity > MAX_ORB_RARITY ||
     typeof record.createdAt !== 'number' || !Number.isSafeInteger(record.createdAt) ||
     record.createdAt <= 0 || record.createdAt > now
