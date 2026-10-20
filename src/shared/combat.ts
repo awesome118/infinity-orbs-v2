@@ -26,10 +26,12 @@ export interface CombatRune {
   name: string;
   rarity: CombatRuneRarity;
   stat: CombatRuneStat;
-  /** Base percentage; rune level scales non-shard stats exponentially. */
+  /** Base percentage before the Rune's level multiplier is applied. */
   value: number;
-  /** Starts at 1 and has no gameplay rank ceiling. Older saves migrate to level 1. */
+  /** Rune level is derived from total Rune XP; legacy saves migrate from their saved level. */
   level?: number;
+  /** Total lifetime XP, including XP spent to reach the current level. */
+  experience?: number;
   sourceDepth: number;
   sourceDungeon: CombatDungeonId;
   /** Main-game-only perk; distinct from combat gear Major Abilities. */
@@ -37,6 +39,8 @@ export interface CombatRune {
 }
 export interface CombatRuneBonuses { luckPct: number; coinGainPct: number; shardChancePct: number; xpGainPct: number; }
 export const COMBAT_RUNE_INVENTORY_CAP = 200;
+/** Rune effects approach this multiplier asymptotically instead of growing without bound. */
+export const COMBAT_RUNE_EFFECT_MULTIPLIER_CAP = 1_000_000;
 const COMBAT_RUNE_RARITY_MULTIPLIER: Record<CombatRuneRarity, number> = {
   Common: 1, Uncommon: 1.35, Rare: 1.9, Epic: 2.8, Legendary: 4.4, Mythic: 7, Cosmic: 13,
 };
@@ -80,15 +84,46 @@ export function combatRuneLuckMultiplier(luckBonusPctValue: unknown): number {
   const multiplier=1+bonus/100;
   return Number.isFinite(multiplier)?multiplier:Number.MAX_VALUE;
 }
+/** Total XP needed to have reached a Rune level. Growth remains steep for a long progression curve. */
+export function combatRuneExperienceForLevel(levelValue: unknown): number {
+  const level = Number.isFinite(Number(levelValue))
+    ? Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(Number(levelValue))))
+    : 1;
+  if (level <= 1) return 0;
+  const required = 100 * Math.pow(level - 1, 2.35);
+  return Number.isFinite(required) ? Math.min(Number.MAX_SAFE_INTEGER, Math.ceil(required)) : Number.MAX_SAFE_INTEGER;
+}
+/** Convert accumulated Rune XP into a level using a bounded binary search. */
+export function combatRuneLevelFromExperience(experienceValue: unknown): number {
+  const raw = Number(experienceValue);
+  const xp = Number.isFinite(raw) ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(raw))) : 0;
+  let low = 1;
+  let high = 2;
+  while (high < Number.MAX_SAFE_INTEGER && combatRuneExperienceForLevel(high) <= xp) {
+    low = high;
+    high = Math.min(Number.MAX_SAFE_INTEGER, high * 2);
+    if (high === low) return low;
+  }
+  while (low + 1 < high) {
+    const mid = Math.floor(low + (high - low) / 2);
+    if (combatRuneExperienceForLevel(mid) <= xp) low = mid;
+    else high = mid;
+  }
+  return low;
+}
+/** Large rarity-weighted XP grant for consuming a Rune; deeper drops and higher-level donors are worth more. */
+export function combatRuneSacrificeExperience(rune: Pick<CombatRune, 'rarity' | 'level' | 'sourceDepth'>): number {
+  const base = ({ Common: 100, Uncommon: 250, Rare: 650, Epic: 1_700, Legendary: 4_500, Mythic: 12_000, Cosmic: 32_000 })[rune.rarity];
+  const level = Number.isFinite(Number(rune.level)) ? Math.max(1, Math.floor(Number(rune.level))) : 1;
+  const depth = Number.isFinite(Number(rune.sourceDepth)) ? Math.max(0, Math.floor(Number(rune.sourceDepth))) : 0;
+  const depthMultiplier = 1 + Math.min(1.5, Math.log2(depth + 1) * 0.08);
+  const raw = base * Math.pow(level, 1.25) * depthMultiplier;
+  return Number.isFinite(raw) ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, Math.round(raw))) : Number.MAX_SAFE_INTEGER;
+}
+/** Rune benefits approach a generous soft cap; there is no abrupt level ceiling. */
 export function combatRuneLevelMultiplier(levelValue: unknown): number {
   const level = Number.isFinite(Number(levelValue)) ? Math.max(1, Math.floor(Number(levelValue))) : 1;
-  const raw = Math.pow(1.7, level - 1);
-  return Number.isFinite(raw) ? raw : Number.MAX_VALUE;
-}
-export function combatRuneLevelCost(levelValue: unknown): number {
-  const level = Number.isFinite(Number(levelValue)) ? Math.max(1, Math.floor(Number(levelValue))) : 1;
-  const raw = 25 * Math.pow(level, 1.5);
-  return Math.max(25, Number.isFinite(raw) ? Math.min(Number.MAX_SAFE_INTEGER, Math.round(raw)) : Number.MAX_SAFE_INTEGER);
+  return 1 + (COMBAT_RUNE_EFFECT_MULTIPLIER_CAP - 1) * (1 - Math.exp(-(level - 1) / 1_500));
 }
 export function combatRuneScaledValue(rune: Pick<CombatRune, 'stat' | 'value' | 'level'>): number {
   const value = Number(rune.value);
@@ -132,9 +167,6 @@ export function combatRuneBonuses(runesValue: unknown, equippedValue: unknown): 
   // Shard chance deliberately retains its pre-overhaul cap and percentage-point contribution.
   bonuses.shardChancePct = Math.min(100, bonuses.shardChancePct);
   return bonuses;
-}
-export function combatRuneSalvageValue(rarity: CombatRuneRarity): number {
-  return ({ Common: 50, Uncommon: 100, Rare: 250, Epic: 800, Legendary: 2500, Mythic: 10000, Cosmic: 40000 })[rarity];
 }
 export type CombatSkillStat = 'damagePct' | 'speedFlat' | 'healthPct' | 'critChance' | 'coinBonus';
 export type CombatUpgradeId = 'edge-training' | 'vitality' | 'precision' | 'scavenger' | 'orb-resonance' | 'mark-magnet' | 'ward-training';
@@ -554,6 +586,8 @@ export interface CombatState {
   /** Persistent monster drops that improve the core orb-rolling game while equipped. */
   runes: CombatRune[];
   equippedRunes: string[];
+  /** Persisted server-side so the Combat tutorial is only shown once per player. */
+  combatTutorialSeen: boolean;
   combatUpgrades: CombatUpgradeLevels;
   totalKills: number;
   skillRolls: number;
@@ -768,7 +802,7 @@ export function createCombatState(): CombatState {
   const state: CombatState = {
     version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
-    baseDamage:54, coins:0, scrap:0, combatMarks:250, runes:[], equippedRunes:[], combatUpgrades:{}, totalKills:0, skillRolls:0, skillRuntime:createCombatSkillRuntime(), strategyGuideRank:0, tacticianManuals:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
+    baseDamage:54, coins:0, scrap:0, combatMarks:250, runes:[], equippedRunes:[], combatTutorialSeen:false, combatUpgrades:{}, totalKills:0, skillRolls:0, skillRuntime:createCombatSkillRuntime(), strategyGuideRank:0, tacticianManuals:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
     combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0, playerTurnsCompleted:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
     encounterFirstStrikeUsed:false, pendingHealAmount:0, inventory:starter.inventory,
@@ -936,7 +970,7 @@ export function getEnemyForDepth(depthValue: number): CombatEnemy {
   const scaledHp=Math.min(1e15,Math.round(130*Math.pow(1+floor/100,2.2)*base.hp));
   const maxHp=boss?Math.round(scaledHp*1.15*4.6):scaledHp;
   const damage=Math.min(1e12,Math.max(1,Math.round((20+floor*1.55)*Math.pow(1+floor/100,.35)*base.damage*(boss?2.2*1.15:1))));
-  const speed=Math.min(10_000_000,Math.round((base.speed+Math.floor(floor/15)*25+(boss?55:0))*Math.pow(1+floor/100,.5)));
+  const speed=Math.min(10_000_000,Math.round(base.speed*Math.pow(1+floor/100,1.4)+floor*.8+(boss?55:0)));
   return {id:boss?'crypt-warden':base.id,name:boss?'Crypt Warden':base.name,kind:boss?'boss':base.kind,hp:maxHp,maxHp,damage,speed,room:boss?'Warden Throne':base.room,emoji:boss?'👹':base.emoji,boss};
 }
 
