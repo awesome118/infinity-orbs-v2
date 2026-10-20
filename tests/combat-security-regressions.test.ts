@@ -88,7 +88,7 @@ test('Guard remains active through a slow enemy wind-up and mitigates its next a
     state.enemyHp = getEnemyForDungeonDepth('undercrypt', 4).maxHp;
     state.sequence = 0;
     state.combatBeats = 0;
-    state.playerActionsResolved = 0;
+    state.playerActionsResolved = 2; // Leave exactly one scheduled player action for Guard; avoid defeating the enemy during its wind-up.
     state.enemyActionsResolved = 0;
     state.guardBeats = 0;
     state.lastAcceptedBeatAtMs = 0;
