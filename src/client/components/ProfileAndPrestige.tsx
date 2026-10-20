@@ -76,7 +76,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
     try{
       const controller=new AbortController();
       const timeout=window.setTimeout(()=>controller.abort(),12_000);
-      let data:Record<string,unknown>;
+      let data:Record<string,unknown> = {};
       try {
         const response=await fetch('/api/combat/auto-scrap',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({enabled:autoScrapEnabled,maxQuality:autoScrapQuality})});
         data=await response.json().catch(()=>({}));
