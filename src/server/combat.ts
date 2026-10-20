@@ -2,7 +2,7 @@ import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import { getOrbInfo, luckMultiplier, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatSkillDefinition, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatActionsDue, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneSalvageValue, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneLevelCost, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatActionsDue, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -116,9 +116,14 @@ function normalizeRune(value:unknown):CombatRune|null {
   const rawAbility=x.majorAbility&&typeof x.majorAbility==='object'&&!Array.isArray(x.majorAbility)?x.majorAbility as Record<string,unknown>:null;
   // Migrate saved combat-style Rune perks into core-game-only Rune perks.
   const majorAbility=normalizeRuneMajorAbility(rawAbility,stat as CombatRuneStat);
+  const legacyLevel=finiteInt(x.level,1,1,Number.MAX_SAFE_INTEGER);
+  const rawExperience=Number(x.experience);
+  const hasExperience=x.experience!==undefined&&x.experience!==null&&Number.isFinite(rawExperience)&&rawExperience>=0;
+  const experience=hasExperience?Math.min(Number.MAX_SAFE_INTEGER,Math.floor(rawExperience)):combatRuneExperienceForLevel(legacyLevel);
+  const level=hasExperience?combatRuneLevelFromExperience(experience):legacyLevel;
   return {id:x.id.trim(),name:typeof x.name==='string'?x.name.slice(0,120):'Unnamed Rune',
     rarity:rarity as CombatRuneRarity,stat:stat as CombatRuneStat,value:runeValue,
-    level:finiteInt(x.level,1,1,Number.MAX_SAFE_INTEGER),sourceDepth,sourceDungeon,...(majorAbility?{majorAbility}:{})};
+    level,experience,sourceDepth,sourceDungeon,...(majorAbility?{majorAbility}:{})};
 }
 function equippedMajorAbilityTotal(state:CombatState,abilityId:CombatMajorAbility['id'],property:string):number {
   const floor=Math.max(0,state.depth-1);
@@ -152,7 +157,7 @@ function createCombatRune(sourceDepth:number,sourceDungeon:CombatDungeonId,total
   const statName:Record<CombatRuneStat,string>={luckPct:'Fate',coinGainPct:'Hoard',shardChancePct:'Prism',xpGainPct:'Insight'};
   const majorAbility=secureRandom()<combatRuneMajorAbilityChance(rarity)?createRuneMajorAbility(combatRuneMajorAbilityQuality(rarity)):undefined;
   const suffix=Math.floor(secureRandom()*1_000_000_000).toString(36);
-  return {id:'rune-'+sourceDungeon+'-'+totalKills+'-'+sequence+'-'+suffix,name:rarityName[rarity]+' '+statName[stat]+' Rune',rarity,stat,value,level:1,sourceDepth,sourceDungeon,...(majorAbility?{majorAbility}:{})};
+  return {id:'rune-'+sourceDungeon+'-'+totalKills+'-'+sequence+'-'+suffix,name:rarityName[rarity]+' '+statName[stat]+' Rune',rarity,stat,value,level:1,experience:0,sourceDepth,sourceDungeon,...(majorAbility?{majorAbility}:{})};
 }
 function normalizeState(raw:string|null|undefined):CombatState {
   if(!raw)return createCombatState();
@@ -163,6 +168,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   const legacyUnlockedRank=Math.max(1,...COMBAT_SKILLS.filter(skill=>Number(savedSkillLevels[skill.id])>0).map(skill=>({Common:1,Uncommon:2,Rare:3,Epic:4,Mythic:5}[skill.rarity])));
   const s=Object.assign(createCombatState(),p);
   s.version=1;
+  s.combatTutorialSeen = s.combatTutorialSeen === true;
   s.dungeonId=(['undercrypt','cinder-vault','glass-labyrinth'] as unknown[]).includes(s.dungeonId)?s.dungeonId:'undercrypt';
   s.runId=finiteInt(s.runId,1,1,Number.MAX_SAFE_INTEGER);s.depth=finiteInt(s.depth,1,1,COMBAT_MAX_DEPTH);
   s.bestDepth=Math.max(s.depth,finiteInt(s.bestDepth,1,1,COMBAT_MAX_DEPTH));
@@ -432,6 +438,16 @@ function chooseGuidedSkillId(s:CombatState,enemy:CombatEnemy):CombatSkillId|null
   return ready[0]?.id??null;
 }
 
+export async function hasCompletedCombatTutorial():Promise<boolean>{
+  const raw=await redis.get(combatKey());
+  if(typeof raw!=='string'||!raw.trim())return false;
+  try{const parsed=JSON.parse(raw) as {combatTutorialSeen?:unknown};return parsed?.combatTutorialSeen===true;}
+  catch{return false;}
+}
+export async function markCombatTutorialSeen():Promise<void>{
+  await mutate(s=>{s.combatTutorialSeen=true;return undefined;});
+}
+
 export async function performCombatBeat(sequence:number,intent:CombatCommand,skillIdValue?:unknown,adminSkipCooldown=false):Promise<CombatSnapshot&{actions:CombatAction[];defeated:boolean;died:boolean;item?:CombatGear;orbRoll:CombatOrbRoll;abilityCast?:{id:CombatSkillId;rank:number;cooldown:number}}> {
   let orbLuck=1;
   try { orbLuck=luckMultiplier(await loadRaw()); }
@@ -611,10 +627,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         if(secureRandom()<runeDropChance){
           const rune=createCombatRune(Math.max(0,s.depth-1),s.dungeonId,s.totalKills,s.sequence);
           if(s.runes.length>=COMBAT_RUNE_INVENTORY_CAP){
-            const converted=combatRuneSalvageValue(rune.rarity);
-            const gained=Math.min(Number.MAX_SAFE_INTEGER-s.combatMarks,converted);
-            s.combatMarks+=gained;
-            actions.push({actor:'player',kind:'loot',text:'Rune stash full: '+rune.name+' converted into '+gained.toLocaleString()+' Combat Marks.'});
+            actions.push({actor:'player',kind:'loot',text:'Rune stash full: '+rune.name+' could not be stored. Sacrifice a Rune in the Runes menu to free a slot.'});
           }else{
             s.runes.push(rune);
             actions.push({actor:'player',kind:'loot',text:rune.rarity+' Rune found: '+rune.name+' · '+combatRuneEffectText(rune)+'. Equip it in Runes to boost the main game.'});
@@ -752,30 +765,22 @@ export async function equipCombatRune(runeIdValue:unknown,equipValue:unknown):Pr
     return snapshot(s);
   });
 }
-export async function levelUpCombatRune(runeIdValue:unknown):Promise<CombatSnapshot>{
-  if(typeof runeIdValue!=='string'||!runeIdValue.trim()||runeIdValue.length>160)throw new Error('A valid Rune is required.');
+export async function sacrificeCombatRuneInto(targetIdValue:unknown,donorIdValue:unknown):Promise<CombatSnapshot&{runeSacrifice:{donorName:string;targetName:string;gainedXp:number;totalXp:number;level:number}}>{
+  if(typeof targetIdValue!=='string'||!targetIdValue.trim()||targetIdValue.length>160||
+     typeof donorIdValue!=='string'||!donorIdValue.trim()||donorIdValue.length>160)throw new Error('A valid Rune is required.');
+  if(targetIdValue===donorIdValue)throw new Error('Choose two different Runes.');
   return mutate(s=>{
-    const rune=s.runes.find(item=>item.id===runeIdValue);
-    if(!rune)throw new Error('Rune is not in your inventory.');
-    const level=Math.max(1,Math.floor(Number(rune.level)||1));
-    if(level>=Number.MAX_SAFE_INTEGER)throw new Error('Rune level reached numeric precision limit.');
-    const cost=combatRuneLevelCost(level);
-    if(s.combatMarks<cost)throw new Error('Not enough Combat Marks to level this Rune.');
-    s.combatMarks-=cost;rune.level=level+1;
-    return snapshot(s);
-  });
-}
-export async function salvageCombatRune(runeIdValue:unknown):Promise<CombatSnapshot&{runeSalvage:{runeName:string;gained:number;total:number}}>{
-  if(typeof runeIdValue!=='string'||!runeIdValue.trim()||runeIdValue.length>160)throw new Error('A valid Rune is required.');
-  return mutate(s=>{
-    const index=s.runes.findIndex(item=>item.id===runeIdValue);
-    if(index<0)throw new Error('Rune is not in your inventory.');
-    const [rune]=s.runes.splice(index,1);
-    if(!rune)throw new Error('Rune is not in your inventory.');
-    s.equippedRunes=s.equippedRunes.filter(id=>id!==rune.id);
-    const gained=Math.min(Number.MAX_SAFE_INTEGER-s.combatMarks,combatRuneSalvageValue(rune.rarity));
-    s.combatMarks+=gained;
-    return {...snapshot(s),runeSalvage:{runeName:rune.name,gained,total:s.combatMarks}};
+    const target=s.runes.find(item=>item.id===targetIdValue);
+    const donor=s.runes.find(item=>item.id===donorIdValue);
+    if(!target||!donor)throw new Error('Rune is not in your inventory.');
+    const currentXp=Number.isFinite(Number(target.experience))?Math.max(0,Math.floor(Number(target.experience))):combatRuneExperienceForLevel(target.level??1);
+    const gainedXp=combatRuneSacrificeExperience(donor);
+    const totalXp=Math.min(Number.MAX_SAFE_INTEGER,currentXp+gainedXp);
+    target.experience=totalXp;
+    target.level=combatRuneLevelFromExperience(totalXp);
+    s.runes=s.runes.filter(item=>item.id!==donor.id);
+    s.equippedRunes=s.equippedRunes.filter(id=>id!==donor.id);
+    return {...snapshot(s),runeSacrifice:{donorName:donor.name,targetName:target.name,gainedXp,totalXp,level:target.level??1}};
   });
 }
 
@@ -1326,7 +1331,7 @@ export async function adminCombatLabAction(value:unknown):Promise<CombatSnapshot
       const rarity=String(payload.rarity??'Cosmic') as CombatRuneRarity;
       const stat=String(payload.stat??'luckPct') as CombatRuneStat;
       if(!rarities.includes(rarity)||!stats.includes(stat))throw new Error('Choose a valid Rune rarity and stat.');
-      if(state.runes.length>=COMBAT_RUNE_INVENTORY_CAP)throw new Error('Rune inventory is full; salvage a Rune first.');
+      if(state.runes.length>=COMBAT_RUNE_INVENTORY_CAP)throw new Error('Rune inventory is full; sacrifice a Rune into another Rune first.');
       const abilityId=String(payload.majorAbility??'none');
       let majorAbility:CombatRune['majorAbility'];
       if(abilityId!=='none'){
