@@ -2564,4 +2564,14 @@ test('passive player snapshots and the Play splash do not register active sessio
   const heartbeat = client.slice(heartbeatStart, heartbeatEnd);
   assert.match(client.slice(client.lastIndexOf('useEffect(() =>', heartbeatStart), heartbeatStart), /if \(!state \|\| !splashEntered\) return;/);
   assert.match(heartbeat, /if \(!splashEntered \|\| document\.visibilityState === 'hidden'\) return;/);
+
+  // Saved Auto Roll and resource prefetches must also wait for explicit entry.
+  assert.match(client, /if \(!splashEntered \|\| !stateRef\.current\) return;/);
+  assert.match(client, /if \(isAutoRoll && !splashEntered\) return;/);
+  assert.match(client, /if \(!splashEntered \|\| !autoRoll \|\| !state \|\| state\.upgrades\.auto === 0\) return;/);
+
+  const promptStart = client.lastIndexOf('useEffect(() =>', client.indexOf('const checkPrompt = () =>'));
+  const promptEnd = client.indexOf('}, [splashEntered]);', promptStart);
+  assert.ok(promptStart >= 0 && promptEnd > promptStart, 'daily Frenzy prompt delay must start after Play');
+  assert.match(client.slice(promptStart, promptEnd), /if \(!splashEntered\) return;/);
 });
