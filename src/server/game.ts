@@ -6000,7 +6000,7 @@ export async function getOrbFrenzyInfo(): Promise<{
   const viewerId = currentUserId();
   const claimedReceipt = await redis.get(frenzyClaimReceiptKey(postId, viewerId));
   const alreadyClaimedByViewer = claimedReceipt != null || data.consumedBy === viewerId;
-  // Preview rendering must be read-only: getMe()/getState() touches online presence.
+  // Preview rendering must not invoke the ordinary player-state read, which touches online presence.
   const s = await loadRaw({ registerActivity: false });
   const claimCooldownRemainingMs = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
   const claimCooldownEndsAt = claimCooldownRemainingMs > 0 ? now + claimCooldownRemainingMs : 0;
