@@ -224,7 +224,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.arenaRating=finiteInt(s.arenaRating,1000,100,10000);s.arenaWins=finiteInt(s.arenaWins,0,0,Number.MAX_SAFE_INTEGER);s.arenaLosses=finiteInt(s.arenaLosses,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastChallengeAt=finiteInt(s.arenaLastChallengeAt,0,0,Number.MAX_SAFE_INTEGER);
   s.coreLevel=finiteInt(s.coreLevel,1,1,1_000_000);s.coreHighestRarity=finiteInt(s.coreHighestRarity,2,2,1_000_000_000_000_000_000);
   s.autoTactic=(['balanced','aggressive','defensive','recovery'] as unknown[]).includes(s.autoTactic)?s.autoTactic:'balanced';
-  s.scrap=finiteInt(s.scrap,0,0,Number.MAX_SAFE_INTEGER);s.autoScrapUnlocked=s.autoScrapUnlocked===true;s.autoScrapSettings=normalizeCombatAutoScrapSettings(s.autoScrapSettings);s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillGachaRank=finiteInt(storedGachaRank,legacyUnlockedRank,1,SKILL_GACHA_RANK_MAX);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,1_000_000_000_000_000_000);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER);s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
+  s.scrap=finiteInt(s.scrap,0,0,Number.MAX_SAFE_INTEGER);s.autoScrapUnlocked=s.autoScrapUnlocked===true;s.autoScrapSettings=normalizeCombatAutoScrapSettings(s.autoScrapSettings);s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillGachaRank=finiteInt(storedGachaRank,legacyUnlockedRank,1,SKILL_GACHA_RANK_MAX);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,1_000_000_000_000_000_000);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=Math.min(finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER),Date.now());s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
   s.playerActionsResolved=finiteInt(s.playerActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.enemyActionsResolved=finiteInt(s.enemyActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.playerTurnsCompleted=finiteInt(s.playerTurnsCompleted,0,0,Number.MAX_SAFE_INTEGER);
   s.strategyGuideRank=finiteInt(s.strategyGuideRank,0,0,STRATEGY_GUIDE_RANKS.length);
   s.tacticianManuals=finiteInt(s.tacticianManuals,0,0,1);
@@ -245,7 +245,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
     royalTitheKills:finiteInt(rawSkillRuntime.royalTitheKills,0,0,10),bountyStreak:finiteInt(rawSkillRuntime.bountyStreak,0,0,10),
     nextRuneDropBonus:Math.max(0,Math.min(.5,Number.isFinite(Number(rawSkillRuntime.nextRuneDropBonus))?Number(rawSkillRuntime.nextRuneDropBonus):defaultSkillRuntime.nextRuneDropBonus)),
   };
-  s.energy=finiteInt(s.energy,3,0,50);s.maxEnergy=finiteInt(s.maxEnergy,5,1,50);s.guardBeats=finiteInt(s.guardBeats,0,0,10);s.encounterFirstStrikeUsed=s.encounterFirstStrikeUsed===true;s.pendingHealAmount=finiteInt(s.pendingHealAmount,0,0,1_000_000_000);
+  s.maxEnergy=finiteInt(s.maxEnergy,5,1,50);s.energy=finiteInt(s.energy,Math.min(3,s.maxEnergy),0,s.maxEnergy);s.guardBeats=finiteInt(s.guardBeats,0,0,10);s.encounterFirstStrikeUsed=s.encounterFirstStrikeUsed===true;s.pendingHealAmount=finiteInt(s.pendingHealAmount,0,0,1_000_000_000);
   const defaults=createCombatState();
   const persisted=p as Partial<CombatState>&{
     inventoryByDungeon?:Partial<Record<CombatDungeonId,unknown>>;
@@ -326,6 +326,8 @@ function normalizeState(raw:string|null|undefined):CombatState {
       : DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS.maxRarity,
   };
   synchronizeCombatStats(s);
+  // Legacy gear removal or malformed saves must not leave HP above the newly calculated max.
+  s.health=finiteInt(s.health,s.maxHealth,0,Math.max(1,s.maxHealth));
   const enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);s.enemyHp=finiteInt(s.enemyHp,enemy.maxHp,1,enemy.maxHp);
   return s;
 }
@@ -439,8 +441,16 @@ export async function getCombatSnapshot():Promise<CombatSnapshot>{
   return snapshot(state);
 }
 function grantXp(s:CombatState,amount:number,actions:CombatAction[]):void {
-  s.xp+=amount;
-  while(s.xp>=s.xpToNext&&s.level<60){s.xp-=s.xpToNext;s.level+=1;s.xpToNext=Math.round(s.xpToNext*1.19);synchronizeCombatStats(s);s.health=Math.min(s.maxHealth,s.health+Math.round(s.maxHealth*.08));actions.push({actor:'player',kind:'level',text:'Delver reached Level '+s.level+'.'});}
+  const safeAmount=finiteInt(amount,0,0,Number.MAX_SAFE_INTEGER);
+  s.xp=Math.min(Number.MAX_SAFE_INTEGER,finiteInt(s.xp,0,0,Number.MAX_SAFE_INTEGER)+safeAmount);
+  while(s.xp>=s.xpToNext&&s.level<60){
+    s.xp-=s.xpToNext;
+    s.level+=1;
+    s.xpToNext=Math.min(1_000_000_000,Math.max(1,Math.round(s.xpToNext*1.19)));
+    synchronizeCombatStats(s);
+    s.health=Math.min(s.maxHealth,s.health+Math.round(s.maxHealth*.08));
+    actions.push({actor:'player',kind:'level',text:'Delver reached Level '+s.level+'.'});
+  }
 }
 
 function chooseGuidedSkillId(s:CombatState,enemy:CombatEnemy):CombatSkillId|null {
