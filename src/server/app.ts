@@ -251,6 +251,13 @@ async function resolvePaymentBuyerId(
 
 export function createApp() {
   const app = express();
+  // Every /api response depends on current viewer, game state, or Reddit post
+  // context. Do not let browsers or intermediaries reuse one viewer's state
+  // in another session, or show stale per-post eligibility/presence responses.
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
   app.use(express.json({ limit: '16kb' }));
 
   // Keep the enormous Codex collection out of ordinary client-state payloads.
