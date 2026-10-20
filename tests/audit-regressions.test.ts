@@ -2645,6 +2645,11 @@ test('rolling disables both roll affordances and gives the orb keyboard semantic
 
 test('passive splash loads only the save before deferring auxiliary bootstrap requests', () => {
   const client = source('src/client/main.tsx');
+  const appInfoFetch = client.indexOf("void getJson<{ isBeta: boolean }>('/api/app-info')");
+  const appInfoEffectStart = client.lastIndexOf('useEffect(() => {', appInfoFetch);
+  assert.ok(appInfoFetch > 0 && appInfoEffectStart >= 0);
+  assert.match(client.slice(appInfoEffectStart, appInfoFetch), /if \(!splashEntered\) return;/);
+
   const refreshStart = client.indexOf('const refreshAll = useCallback(async () =>');
   const adminStart = client.indexOf("const adminStatus = await getJson<{ isAdmin: boolean }>", refreshStart);
   const deferStart = client.indexOf('if (!splashEntered) return;', refreshStart);
