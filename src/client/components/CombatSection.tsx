@@ -63,6 +63,7 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     onPointerMove={event=>{if(event.pointerType==='mouse')moveTooltip(event.clientX,event.clientY);}}
     onPointerLeave={()=>setShowTooltip(false)}
     onFocus={()=>setShowTooltip(true)}
+    onKeyDown={event=>{if(event.key==='Escape'){setShowTooltip(false);(event.target as HTMLElement).blur();}}}
     onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))setShowTooltip(false);}}>
     <button type="button" className={'io-combat-gear-icon '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
       aria-label={(isEquipped?'Inspect equipped ':'Equip ')+item.name}
