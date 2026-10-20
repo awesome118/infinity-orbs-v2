@@ -2165,6 +2165,7 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-combat-skill-icon.io-rarity-common{border-color:#4a414f}.io-combat-skill-icon.io-rarity-uncommon{border-color:#588a71}.io-combat-skill-icon.io-rarity-rare{border-color:#5882b6}.io-combat-skill-icon.io-rarity-epic{border-color:#9d70c7}.io-combat-skill-icon.io-rarity-mythic{border-color:#dc9d48}
 .io-combat-skill-tooltip{display:none;position:absolute;z-index:80;left:50%;bottom:calc(100% + 9px);transform:translateX(-50%);width:min(300px,calc(100vw - 28px));max-height:min(420px,calc(100vh - 32px));overflow:auto;padding:12px;border:1px solid #65536c;border-radius:10px;background:#0e0b12;box-shadow:0 16px 42px rgba(0,0,0,.65);text-align:left}
 .io-combat-skill-icon-wrap:hover .io-combat-skill-tooltip,.io-combat-skill-icon-wrap:focus-within .io-combat-skill-tooltip{display:block}
+.io-combat-skill-icon-wrap.is-inspected .io-combat-skill-tooltip{display:block}
 .io-combat-skill-icon-wrap:nth-child(6n) .io-combat-skill-tooltip,.io-combat-skill-icon-wrap:nth-child(6n - 1) .io-combat-skill-tooltip{left:auto;right:0;transform:none}
 .io-combat-skill-tooltip>strong{display:block;margin:5px 0;font-size:13px}
 .io-combat-skill-tooltip>p{margin:0 0 8px;color:#b0a7b3;font-size:10px;line-height:1.55}
