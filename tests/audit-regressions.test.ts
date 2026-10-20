@@ -2716,3 +2716,12 @@ test('armed Frenzy readiness and Pity Luck meter use the actual gameplay thresho
   assert.ok(roll.includes('width: `${pityProgress}%`'));
   assert.ok(roll.includes('{dryStreak % pityInterval} / {pityInterval} rolls to next stack'));
 });
+
+test('new-best celebration fires for completed manual milestones without interrupting automation', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  assert.ok(roll.includes('const handledBestResultRef = useRef<Orb | null>(null);'));
+  assert.ok(roll.includes('if (busy) return;'));
+  assert.ok(roll.includes('if (!autoRoll && resultRarity > previousBest && resultRarity >= currentBest)'));
+  assert.ok(roll.includes('onNewBest?.(displayOrb, previousBest);'));
+  assert.ok(roll.includes('handledBestResultRef.current === displayOrb'));
+});
