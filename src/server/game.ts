@@ -3606,7 +3606,8 @@ export async function applyRolls(
 
     // Temporal Loop charges on every real roll, then releases a bounded bonus batch.
     if (temporalMomentumPerRoll > 0) {
-      s.runeTemporalMomentum = Math.min(1_000_000, validCharge(s.runeTemporalMomentum) + temporalMomentumPerRoll);
+      const dryStreakMomentum = Math.min(5, Math.log2(Math.max(1, s.rollsSinceBest + 1)) * .25);
+      s.runeTemporalMomentum = Math.min(1_000_000, validCharge(s.runeTemporalMomentum) + temporalMomentumPerRoll + dryStreakMomentum);
       if (!temporalLoopTriggered && !suppressOtherRuneProcs && s.runeTemporalMomentum >= 100) {
         s.runeTemporalMomentum -= 100;
         addRuneBonusRolls(runeAbilityEffects.temporalLoopBonusRolls, { skipAllProcs: true });
