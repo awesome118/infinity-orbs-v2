@@ -315,3 +315,20 @@ test('Frenzy post previews do not register online-player activity', () => {
   assert.match(source, /if \(options\.registerActivity !== false\) await registerPlayer\(/);
 });
 
+
+
+test('Frenzy claim and preview paths fail closed for malformed persisted timestamps and rarity', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  assert.match(source, /function parseFrenzyPostRecord\(raw: unknown\): FrenzyPostRecord \| null/);
+  assert.match(source, /!Number\.isSafeInteger\(record\.createdAt\)/);
+  assert.match(source, /record\.createdAt > now/);
+  assert.match(source, /!Number\.isSafeInteger\(record\.rarity\)/);
+  assert.match(source, /record\.rarity > MAX_ORB_RARITY/);
+  const infoStart = source.indexOf('export async function getOrbFrenzyInfo');
+  const claimStart = source.indexOf('export async function claimOrbFrenzy');
+  const armStart = source.indexOf('export async function armOrbFrenzyClaim');
+  assert.ok(infoStart >= 0 && claimStart > infoStart && armStart > 0);
+  assert.match(source.slice(infoStart, claimStart), /parseFrenzyPostRecord\(raw\)/);
+  assert.match(source.slice(armStart, claimStart), /parseFrenzyPostRecord\(raw\)/);
+  assert.match(source.slice(claimStart, claimStart + 5000), /parseFrenzyPostRecord\(raw\)/);
+});
