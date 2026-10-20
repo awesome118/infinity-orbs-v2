@@ -83,6 +83,7 @@ import {
   type PlayerState,
 } from '../shared/game.js';
 import { recordLeaderboard } from './social.js';
+import { getImpressionDashboard } from './impressions.js';
 
 const DEBUG_USERS = new Set([
   'shadow_fen',
@@ -112,6 +113,16 @@ export const debugRouter = Router();
 debugRouter.use((_req, res, next) => {
   if (!isDebugUser()) return res.status(404).json({ error: 'Not found.' });
   next();
+});
+
+debugRouter.get('/impressions', async (_req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await getImpressionDashboard());
+  } catch (error) {
+    console.error('[Admin Impressions] Failed to load aggregate metrics:', error);
+    res.status(500).json({ error: 'Could not load impression analytics.' });
+  }
 });
 
 function combatLabReport(state:CombatState) {
