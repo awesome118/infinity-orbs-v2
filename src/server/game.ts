@@ -6131,9 +6131,9 @@ function parseFrenzyPostRecord(raw: unknown): FrenzyPostRecord | null {
 
   return {
     ownerId: record.ownerId,
-    ownerUsername: record.ownerUsername.trim().replace(/^u\\//i, '').slice(0, 100),
+    ownerUsername: record.ownerUsername.trim().replace(/^u\//i, '').slice(0, 100),
     rarity: record.rarity,
-    subredditName: record.subredditName.trim().replace(/^r\\//i, '').slice(0, 100),
+    subredditName: record.subredditName.trim().replace(/^r\//i, '').slice(0, 100),
     createdAt: record.createdAt,
     ...(typeof record.expiresAt === 'number' ? { expiresAt: record.expiresAt } : {}),
     ...(typeof record.adminTest === 'boolean' ? { adminTest: record.adminTest } : {}),
