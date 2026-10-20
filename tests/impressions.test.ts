@@ -55,6 +55,21 @@ test('post impressions count aggregate metrics without registering online-player
   }
 });
 
+test('dashboard uses a safe timestamp for malformed time inputs and ignores malformed counters', async () => {
+  const baseContext = originalContext;
+  const baseRedis = originalRedis;
+  const baseReddit = originalReddit;
+  configureDevvitRuntime({ redis: baseRedis, context: { ...baseContext, postId: 't3_invalid-dashboard-time' }, reddit: baseReddit });
+  try {
+    const dashboard = await getImpressionDashboard(Number.NaN);
+    assert.ok(Number.isFinite(dashboard.generatedAt));
+    assert.equal(dashboard.last24Hours.length, 24);
+    assert.equal(dashboard.last30Days.length, 30);
+  } finally {
+    configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  }
+});
+
 test('impression recording rejects unsupported post types and skips missing post context', async () => {
   const baseContext = originalContext;
   const baseRedis = originalRedis;
