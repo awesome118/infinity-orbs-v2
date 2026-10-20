@@ -1,5 +1,6 @@
 import express from 'express';
 import { debugRouter, isDebugUser } from './debug.js';
+import { recordPostImpression } from './impressions.js';
 import {
   getMe,
   getRollTicket,
@@ -291,7 +292,7 @@ export function createApp() {
   // Persistent player data is keyed by Reddit user ID. Logged-out users have
   // no account identity, so they must never reach player-state APIs.
   app.use('/api', (req, res, next) => {
-    if (req.path === '/health' || req.path === '/version' || req.path === '/app-info') return next();
+    if (req.path === '/health' || req.path === '/version' || req.path === '/app-info' || req.path === '/impressions') return next();
     const userId = String(context.userId ?? '').trim();
     if (!userId) {
       return res.status(401).json({
@@ -1122,6 +1123,18 @@ export function createApp() {
       res.status(transientContentionError(e) ? 503 : 500).json({
         error: transientContentionError(e) ? 'Presence is busy updating. Please retry.' : e?.message || 'Could not record player activity.',
       });
+    }
+  });
+
+  // Public post-preview analytics are aggregate-only and never register player activity.
+  app.post('/api/impressions', async (req, res) => {
+    try {
+      res.json(await recordPostImpression(req.body?.postType, req.body?.deviceType));
+    } catch (error) {
+      // Impression analytics must never turn a preview into an online player or
+      // block the public post from rendering if analytics is unavailable.
+      console.error('[API /api/impressions] Failed:', error);
+      res.status(400).json({ error: 'Could not record this impression.' });
     }
   });
 
