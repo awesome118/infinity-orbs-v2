@@ -24,12 +24,16 @@ test('Rune base value scales with rarity and depth while retaining shard precisi
 test('Rune levels scale Luck, Coins, and XP beyond the old caps, without a level ceiling',()=>{
   assert.equal(combatRuneLevelMultiplier(1),1);
   assert.ok(combatRuneLevelMultiplier(20)>combatRuneLevelMultiplier(10));
+  assert.ok(combatRuneLevelMultiplier(100)>Number.MAX_SAFE_INTEGER,'Rune scaling must continue beyond the safe-integer range instead of flattening around level 75');
   assert.ok(combatRuneLevelCost(5)>combatRuneLevelCost(1));
   const highLuck:CombatRune={id:'hi-luck',name:'Cosmic Fate',rarity:'Cosmic',stat:'luckPct',value:combatRuneValueFor('Cosmic','luckPct',50),level:10,sourceDepth:50,sourceDungeon:'undercrypt'};
   const highCoins:CombatRune={id:'hi-coins',name:'Cosmic Hoard',rarity:'Cosmic',stat:'coinGainPct',value:combatRuneValueFor('Cosmic','coinGainPct',50),level:10,sourceDepth:50,sourceDungeon:'undercrypt'};
   const bonuses=combatRuneBonuses([highLuck,highCoins],[highLuck.id,highCoins.id]);
   assert.ok(bonuses.luckPct>900,'a high-rarity Luck Rune should pass a roughly 10x benchmark at level 10');
   assert.ok(bonuses.coinGainPct>900,'a high-rarity Coin Rune should pass a roughly 10x benchmark at level 10');
+  const farBeyondSafeInteger:CombatRune={...highLuck,id:'far-beyond-safe-int',level:100};
+  const hugeBonus=combatRuneBonuses([farBeyondSafeInteger],[farBeyondSafeInteger.id]);
+  assert.ok(hugeBonus.luckPct>Number.MAX_SAFE_INTEGER,'Rune bonus should continue growing beyond JavaScript safe integers');
 });
 test('Shard Rune chance is exactly unaffected by Rune level',()=>{
   const level1:CombatRune={...runes[2]!,level:1};

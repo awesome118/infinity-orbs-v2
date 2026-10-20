@@ -76,7 +76,7 @@ export function combatRuneValueFor(rarity: CombatRuneRarity, stat: CombatRuneSta
 export function combatRuneLevelMultiplier(levelValue: unknown): number {
   const level = Number.isFinite(Number(levelValue)) ? Math.max(1, Math.floor(Number(levelValue))) : 1;
   const raw = Math.pow(1.7, level - 1);
-  return Number.isFinite(raw) ? Math.min(Number.MAX_SAFE_INTEGER, raw) : Number.MAX_SAFE_INTEGER;
+  return Number.isFinite(raw) ? raw : Number.MAX_VALUE;
 }
 export function combatRuneLevelCost(levelValue: unknown): number {
   const level = Number.isFinite(Number(levelValue)) ? Math.max(1, Math.floor(Number(levelValue))) : 1;
@@ -89,7 +89,7 @@ export function combatRuneScaledValue(rune: Pick<CombatRune, 'stat' | 'value' | 
   // Shard Rune values intentionally remain unchanged at every level.
   if (rune.stat === 'shardChancePct') return Math.min(100, value);
   const scaled = value * combatRuneLevelMultiplier(rune.level);
-  return Number.isFinite(scaled) ? Math.min(Number.MAX_SAFE_INTEGER, scaled) : Number.MAX_SAFE_INTEGER;
+  return Number.isFinite(scaled) ? scaled : Number.MAX_VALUE;
 }
 function runePercentText(value: number, decimals: number): string {
   return value >= 1e21 ? value.toExponential(2) : value.toFixed(decimals);
@@ -106,7 +106,7 @@ export function combatRuneBonuses(runesValue: unknown, equippedValue: unknown): 
   const equipped = new Set((Array.isArray(equippedValue) ? equippedValue : []).filter((value): value is string => typeof value === 'string'));
   if (!equipped.size || !Array.isArray(runesValue)) return bonuses;
   const validStats = new Set<CombatRuneStat>(['luckPct', 'coinGainPct', 'shardChancePct', 'xpGainPct']);
-  const safeAdd = (current: number, extra: number) => Math.min(Number.MAX_SAFE_INTEGER, current + Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, extra)));
+  const safeAdd = (current: number, extra: number) => Math.min(Number.MAX_VALUE, current + Math.min(Number.MAX_VALUE, Math.max(0, extra)));
   for (const raw of runesValue) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
     const rune = raw as Partial<CombatRune>;
@@ -116,7 +116,7 @@ export function combatRuneBonuses(runesValue: unknown, equippedValue: unknown): 
     bonuses[rune.stat] = safeAdd(bonuses[rune.stat], rune.stat === 'shardChancePct' ? Math.min(100, value) : value);
     const ability = rune.majorAbility;
     if (ability && Number.isFinite(Number(ability.valuePct)) && Number(ability.valuePct) > 0) {
-      const abilityValue = Math.min(Number.MAX_SAFE_INTEGER, Number(ability.valuePct) * combatRuneLevelMultiplier(rune.level));
+      const abilityValue = Math.min(Number.MAX_VALUE, Number(ability.valuePct) * combatRuneLevelMultiplier(rune.level));
       if (ability.id === 'fateweaver') bonuses.luckPct = safeAdd(bonuses.luckPct, abilityValue);
       else if (ability.id === 'midas-engine') bonuses.coinGainPct = safeAdd(bonuses.coinGainPct, abilityValue);
       else if (ability.id === 'memory-well') bonuses.xpGainPct = safeAdd(bonuses.xpGainPct, abilityValue);

@@ -3410,12 +3410,13 @@ export async function applyRolls(
   // Community Luck is another additive source, kept transient rather than persisted.
   // Cleared Crypt Wardens permanently improve main-game orb Luck without
   // touching the core player save: 1% per boss, capped at a 25% multiplier.
-  const baseLuck = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1)) * undercryptLuck * (1 + runeBonuses.luckPct / 100);
+  const baseLuckCandidate = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1)) * undercryptLuck * (1 + runeBonuses.luckPct / 100);
+  const baseLuck = Number.isFinite(baseLuckCandidate) ? Math.max(1, baseLuckCandidate) : Number.MAX_VALUE;
 
   // Apex Fortune Mastery: chance on multi-roll to double the luck of that activation
   const apexChance = Math.min(0.45, (s.masterySkills?.apexFortune ?? 0) * 0.03);
   const isApex = rollCount > 1 && rng() < apexChance;
-  const effectiveLuck = isApex ? baseLuck * 2 : baseLuck;
+  const effectiveLuck = isApex ? Math.min(Number.MAX_VALUE, baseLuck * 2) : baseLuck;
 
   const cm = critMultiplier(s);
   const levelBenefits = getLevelBenefits(s.level || 1);

@@ -99,7 +99,7 @@ function normalizeRuneMajorAbility(raw:Record<string,unknown>|null,stat:CombatRu
     'memory-well':'Adds extra XP to main-game Infinity Orb rewards only.',
   };
   const rawValue=Number(raw.valuePct);
-  const valuePct=Number.isFinite(rawValue)?Math.max(0,Math.min(Number.MAX_SAFE_INTEGER,rawValue)):10;
+  const valuePct=Number.isFinite(rawValue)?Math.max(0,Math.min(Number.MAX_VALUE,rawValue)):10;
   return {id,name:typeof raw.name==='string'?raw.name.slice(0,60):names[id],valuePct,description:descriptions[id]};
 }
 function normalizeRune(value:unknown):CombatRune|null {
@@ -110,7 +110,7 @@ function normalizeRune(value:unknown):CombatRune|null {
   if(!(['luckPct','coinGainPct','shardChancePct','xpGainPct'] as unknown[]).includes(stat))return null;
   const sourceDungeon:CombatDungeonId=(['undercrypt','cinder-vault','glass-labyrinth'] as unknown[]).includes(dungeon)?dungeon as CombatDungeonId:'undercrypt';
   const sourceDepth=finiteInt(x.sourceDepth,0,0,COMBAT_MAX_DEPTH-1);
-  const rawValue=Number(x.value),cap=stat==='shardChancePct'?100:Number.MAX_SAFE_INTEGER;
+  const rawValue=Number(x.value),cap=stat==='shardChancePct'?100:Number.MAX_VALUE;
   const runeValue=Number.isFinite(rawValue)?Math.max(0,Math.min(cap,rawValue)):0;
   if(runeValue<=0)return null;
   const rawAbility=x.majorAbility&&typeof x.majorAbility==='object'&&!Array.isArray(x.majorAbility)?x.majorAbility as Record<string,unknown>:null;
