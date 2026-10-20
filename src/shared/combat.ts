@@ -136,18 +136,23 @@ export function combatRuneLuckMultiplier(luckBonusPctValue: unknown): number {
   return Number.isFinite(multiplier)?multiplier:Number.MAX_VALUE;
 }
 /** Total XP needed to have reached a Rune level. Growth remains steep for a long progression curve. */
+const MAX_RUNE_LEVEL_FROM_SAFE_XP = Math.floor(Math.pow((Number.MAX_SAFE_INTEGER - 1) / 100, 1 / 2.35)) + 1;
 export function combatRuneExperienceForLevel(levelValue: unknown): number {
   const level = Number.isFinite(Number(levelValue))
     ? Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(Number(levelValue))))
     : 1;
   if (level <= 1) return 0;
+  if (level > MAX_RUNE_LEVEL_FROM_SAFE_XP) return Number.MAX_SAFE_INTEGER;
   const required = 100 * Math.pow(level - 1, 2.35);
-  return Number.isFinite(required) ? Math.min(Number.MAX_SAFE_INTEGER, Math.ceil(required)) : Number.MAX_SAFE_INTEGER;
+  return Number.isFinite(required) ? Math.min(Number.MAX_SAFE_INTEGER - 1, Math.ceil(required)) : Number.MAX_SAFE_INTEGER;
 }
 /** Convert accumulated Rune XP into a level using a bounded binary search. */
 export function combatRuneLevelFromExperience(experienceValue: unknown): number {
   const raw = Number(experienceValue);
   const xp = Number.isFinite(raw) ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(raw))) : 0;
+  // Once XP saturates, retain the highest distinguishable level rather than
+  // treating every still-larger level as attained because its cost also saturated.
+  if (xp >= Number.MAX_SAFE_INTEGER) return MAX_RUNE_LEVEL_FROM_SAFE_XP;
   let low = 1;
   let high = 2;
   while (high < Number.MAX_SAFE_INTEGER && combatRuneExperienceForLevel(high) <= xp) {
