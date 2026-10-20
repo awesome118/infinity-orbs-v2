@@ -52,6 +52,16 @@ interface RollSectionProps {
   onNewBest?: (orb: Orb, prevBest: number) => void;
 }
 
+function prefersReducedMotion(): boolean {
+  try {
+    return typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
 function formatTimeLeft(ms: number): string {
   if (ms <= 0) return 'Resetting soon';
   const totalSecs = Math.floor(ms / 1000);
@@ -89,11 +99,10 @@ export const RollSection: React.FC<RollSectionProps> = ({
 }) => {
   const [showBatchDetails, setShowBatchDetails] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-  const [reducedMotion, setReducedMotion] = useState(() =>
-    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-  );
+  const [reducedMotion, setReducedMotion] = useState(() => prefersReducedMotion());
 
   useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
     const updatePreference = (event: MediaQueryListEvent) => setReducedMotion(event.matches);
     setReducedMotion(media.matches);
