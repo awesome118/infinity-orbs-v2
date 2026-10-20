@@ -6,6 +6,9 @@ import {
   DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS,
   combatRuneRarityAtOrBelow,
   combatRuneBonuses,
+  combatRuneMajorAbilityEffects,
+  combatRuneMajorAbilityStrengthPct,
+  combatRuneMajorAbilitySummary,
   createCombatState,
   combatRuneExperienceForLevel,
   combatRuneLevelFromExperience,
@@ -35,6 +38,37 @@ test('Rune Auto Sacrifice threshold is inclusive, ordered by rarity, and disable
 });
 test('Rune bonuses only count Runes in the equipped loadout',()=>{
   assert.deepEqual(combatRuneBonuses(runes,['fate-1','insight-1']),{luckPct:1.4,coinGainPct:0,shardChancePct:0,xpGainPct:4.2});
+});
+test('all six trigger-based Rune Major Abilities scale and expose distinct mechanics',()=>{
+  const abilityRunes:CombatRune[]=[
+    {...runes[0]!,id:'echo',level:1,majorAbility:{id:'echo-chamber',name:'Echo Chamber',valuePct:10,description:''}},
+    {...runes[1]!,id:'paradox',level:1,majorAbility:{id:'paradox-engine',name:'Paradox Engine',valuePct:12,description:''}},
+    {...runes[0]!,id:'horizon',level:1,majorAbility:{id:'event-horizon',name:'Event Horizon',valuePct:15,description:''}},
+    {...runes[2]!,id:'constellation',level:1,majorAbility:{id:'shard-constellation',name:'Shard Constellation',valuePct:20,description:''}},
+    {...runes[3]!,id:'temporal',level:1,majorAbility:{id:'temporal-loop',name:'Temporal Loop',valuePct:8,description:''}},
+    {...runes[0]!,id:'fork',level:1,majorAbility:{id:'prismatic-fork',name:'Prismatic Fork',valuePct:18,description:''}},
+  ];
+  const equipped=abilityRunes.map(rune=>rune.id);
+  const effects=combatRuneMajorAbilityEffects(abilityRunes,equipped);
+  assert.equal(effects.echoChamberPct,10);
+  assert.equal(effects.paradoxEnginePct,12);
+  assert.equal(effects.eventHorizonPct,15);
+  assert.equal(effects.shardConstellationPct,20);
+  assert.equal(effects.temporalLoopPct,8);
+  assert.equal(effects.prismaticForkPct,18);
+  assert.ok(effects.echoChamberMaxChain>=1);
+  assert.ok(effects.paradoxEngineBonusRolls>=1);
+  assert.ok(effects.eventHorizonBonusRolls>=1);
+  assert.ok(effects.shardConstellationBonusShards>=1);
+  assert.ok(effects.temporalLoopMomentumPerRoll>1);
+  assert.ok(combatRuneMajorAbilityStrengthPct(abilityRunes[0]!.majorAbility!,256)>combatRuneMajorAbilityStrengthPct(abilityRunes[0]!.majorAbility!,1));
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[0]!.majorAbility!,20),/echo|chain/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[1]!.majorAbility!,20),/multi-roll|extra roll/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[2]!.majorAbility!,20),/record|rarity floor/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[3]!.majorAbility!,20),/Shards|bonus roll/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[4]!.majorAbility!,20),/Momentum|bonus roll/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[5]!.majorAbility!,20),/fork|rarity floor/i);
+  assert.equal(combatRuneMajorAbilityEffects(abilityRunes,equipped.slice(0,2)).eventHorizonPct,0,'unequipped Major Abilities must not be active');
 });
 test('Rune slot milestones are earned through Delver levels and depth',()=>{
   assert.equal(combatRuneSlotsUnlocked(1,1),2);
