@@ -66,7 +66,8 @@ const automationIcons: Record<AutomationId, React.ReactNode> = {
 };
 
 function formatDuration(ms: number): string {
-  const total = Math.max(0, Math.ceil(ms / 1000));
+  const safeMs=Number.isFinite(ms)?Math.max(0,ms):0;
+  const total = Math.max(0, Math.ceil(safeMs / 1000));
   const days = Math.floor(total / 86_400);
   const hours = Math.floor((total % 86_400) / 3600);
   const minutes = Math.floor((total % 3600) / 60);
@@ -100,12 +101,22 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   };
 
   useEffect(() => {
+    let interval: number | null = null;
     const refreshNow = () => setNow(Date.now());
-    const interval = window.setInterval(refreshNow, 1000);
-    document.addEventListener('visibilitychange', refreshNow);
+    const syncTimer = () => {
+      refreshNow();
+      if (document.visibilityState === 'hidden') {
+        if (interval !== null) window.clearInterval(interval);
+        interval = null;
+      } else if (interval === null) {
+        interval = window.setInterval(refreshNow, 1000);
+      }
+    };
+    syncTimer();
+    document.addEventListener('visibilitychange', syncTimer);
     return () => {
-      window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', refreshNow);
+      if (interval !== null) window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', syncTimer);
     };
   }, []);
 
