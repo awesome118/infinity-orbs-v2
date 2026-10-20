@@ -195,7 +195,7 @@ export const RunesSection:React.FC=()=>{
               <button type="button" className={'io-runes-icon '+rarityClass(rune.rarity)+(isEquipped?' is-equipped':'')+(strengthenTargetId===rune.id?' is-strengthen-target':'')} disabled={sacrificing||Boolean(busyRune)} onClick={()=>handleRuneClick(rune)} aria-label={strengthenTargetId?(rune.id===strengthenTargetId?'Cancel Strengthen selection':'Sacrifice '+rune.name+' into '+(strengthenTargetRune?.name??'selected Rune')):iconLabel} aria-expanded={inspectedRuneId===rune.id} title={strengthenTargetId?(rune.id===strengthenTargetId?'Cancel Strengthen selection':'Sacrifice into '+(strengthenTargetRune?.name??'selected Rune')):iconLabel}>
                 <span className="io-runes-icon-art">{STAT_ICON[rune.stat]}</span><small>Lv. {fmt(level)}</small>{isEquipped&&<span className="io-runes-equipped-mark"><ShieldCheck size={12}/></span>}
               </button>
-              <div className="io-runes-tooltip" role="tooltip">
+              <div className="io-runes-tooltip" role="group" aria-label={rune.name+' details and actions'}>
                 <span className={'io-runes-tooltip-rarity '+rarityClass(rune.rarity)}>{rune.rarity.toUpperCase()} · {STAT_LABEL[rune.stat].toUpperCase()}</span>
                 <strong>{rune.name}</strong><span className="io-runes-tooltip-level">Level {fmt(level)} · Rune XP {fmt(levelXp)} / {fmt(nextXp)} · Found at depth {rune.sourceDepth+1}</span>
                  <div className="io-runes-level-progress" role="progressbar" aria-label={rune.name+' progress to Level '+fmt(level+1)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={levelProgressPct}><span style={{width:levelProgressPct+'%'}}/></div>
