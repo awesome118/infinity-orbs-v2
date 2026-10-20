@@ -23,7 +23,7 @@ test('no unregistered ordinary post can become Global Chat destination via launc
   });
   try {
     await baseRedis.del(gamePostKey);
-    const result = await getGlobalChatStatus(true, false);
+    const result = await getGlobalChatStatus();
     assert.equal(result.enabled, false);
     assert.match(result.reason ?? '', /not registered by the official post-creation flow/);
     assert.equal(await baseRedis.get(gamePostKey), null, 'client-controlled launcher flags must not register arbitrary posts');
@@ -34,7 +34,7 @@ test('no unregistered ordinary post can become Global Chat destination via launc
   }
 });
 
-test('a known-stale Frenzy destination is repaired when the main launcher opens', async () => {
+test('a stale Frenzy destination fails closed until an official post creation registers a new Game post', async () => {
   const baseContext = originalContext;
   const baseRedis = originalRedis;
   const baseReddit = originalReddit;
@@ -62,8 +62,16 @@ test('a known-stale Frenzy destination is repaired when the main launcher opens'
       inGame: true,
     }));
 
-    const result = await getGlobalChatStatus(true, false);
-    assert.equal(result.enabled, true);
+    const stale = await getGlobalChatStatus();
+    assert.equal(stale.enabled, false);
+    assert.match(stale.reason ?? '', /invalid Frenzy post/);
+    assert.equal(await baseRedis.get(gamePostKey), stalePostId, 'ordinary preview requests cannot rewrite the canonical ID');
+
+    // Simulate the trusted on-app-install/menu post creation hook updating the
+    // canonical value to the newly created main Game post.
+    await baseRedis.set(gamePostKey, mainPostId);
+    const repaired = await getGlobalChatStatus();
+    assert.equal(repaired.enabled, true);
     assert.equal(await baseRedis.get(gamePostKey), mainPostId);
   } finally {
     await baseRedis.del(staleFrenzyKey);
