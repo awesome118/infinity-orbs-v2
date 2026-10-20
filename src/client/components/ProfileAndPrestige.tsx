@@ -31,7 +31,7 @@ import type {
 } from '../../shared/game.js';
 import {
   calculateCosmicDust,
-  xpRequiredForLevel,
+  getLevelProgress,
   LEVEL_MILESTONES,
   COSMETICS,
   PRESTIGE_UPGRADES,
@@ -71,12 +71,23 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
   const saveAutoScrapSettings=async()=>{
     setAutoScrapSaving(true);setAutoScrapError('');
     try{
-      const response=await fetch('/api/combat/auto-scrap',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:autoScrapEnabled,maxQuality:autoScrapQuality})});
-      const data=await response.json().catch(()=>({}));
-      if(!response.ok)throw new Error(typeof data.error==='string'?data.error:'Could not save Auto Scrap settings.');
+      const controller=new AbortController();
+      const timeout=window.setTimeout(()=>controller.abort(),12_000);
+      let data:Record<string,unknown>;
+      try {
+        const response=await fetch('/api/combat/auto-scrap',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({enabled:autoScrapEnabled,maxQuality:autoScrapQuality})});
+        data=await response.json().catch(()=>({}));
+        if(!response.ok)throw new Error(typeof data.error==='string'?data.error:'Could not save Auto Scrap settings.');
+      } finally {
+        window.clearTimeout(timeout);
+      }
       const saved=data.settings as {enabled?:unknown;maxQuality?:unknown}|undefined;
-      if(saved){setAutoScrapEnabled(saved.enabled===true);setAutoScrapQuality(Number(saved.maxQuality??20));}
-    }catch(error){setAutoScrapError(error instanceof Error?error.message:'Could not save Auto Scrap settings.');}
+      if(saved){
+        setAutoScrapEnabled(saved.enabled===true);
+        const quality=Number(saved.maxQuality??20);
+        setAutoScrapQuality(Number.isFinite(quality)?Math.max(0,Math.min(100,quality)):20);
+      }
+    }catch(error){setAutoScrapError(error instanceof Error&&error.name==='AbortError'?'Auto Scrap save timed out. Refresh settings to verify whether it was saved.':error instanceof Error?error.message:'Could not save Auto Scrap settings.');}
     finally{setAutoScrapSaving(false);}
   };
   const fmt = (n: number) => formatNumber(n);
@@ -173,18 +184,11 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
     }
   };
 
-  const displayedLevel = Math.max(1, state.level || 1);
-  let xpBeforeLevel = 0;
-  for (let level = 1; level < displayedLevel; level++) {
-    xpBeforeLevel += xpRequiredForLevel(level);
-  }
-  const levelXpRequired = xpRequiredForLevel(displayedLevel);
-  const currentLevelXp = Math.max(0, (state.xp || 0) - xpBeforeLevel);
-  const levelInfo = {
-    level: displayedLevel,
-    currentLevelXp,
-    nextLevelXp: levelXpRequired,
-    progressPercent: Math.min(100, Math.round((currentLevelXp / levelXpRequired) * 100)),
+  const safeStoredLevel=Number.isFinite(Number(state.level))?Math.max(1,Math.min(1000,Math.floor(Number(state.level)))):1;
+  const levelProgress=getLevelProgress(safeStoredLevel,state.xp,state.levelXpFloor);
+  const levelInfo={
+    ...levelProgress,
+    progressPercent:Math.max(0,Math.min(100,Math.round(Number(levelProgress.progressPercent)||0))),
   };
   const levelBenefits = getLevelBenefits(displayedLevel);
 
