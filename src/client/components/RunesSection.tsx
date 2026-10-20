@@ -199,9 +199,12 @@ export const RunesSection:React.FC=()=>{
           <div className="io-runes-filter-group" role="group" aria-label="Filter Rune inventory">{(['all','equipped','spare'] as const).map(filter=><button key={filter} type="button" aria-pressed={runeFilter===filter} className={runeFilter===filter?'is-active':''} onClick={()=>setRuneFilter(filter)}>{filter==='all'?'All':filter==='equipped'?'Equipped':'Spare'}</button>)}</div>
           <span className="io-runes-muted">Showing {fmt(visibleRunes.length)} of {fmt(runes.length)}</span>
         </div>}
-        {!runes.length?<div className="io-runes-empty"><Gem size={22} style={{margin:'0 auto .5rem',color:'#a78bfa'}}/><strong style={{display:'block',color:'#e2e8f0'}}>No Runes found yet</strong>Defeat monsters in Combat. Common monsters can drop a Rune, elite enemies have a higher chance, and bosses always drop one.</div>:
-          {visibleRunes.length===0&&runes.length>0&&<p className="io-runes-no-matches">No Runes match this search. Try another name, rarity, stat, or ability.</p>}
-           <div className="io-runes-inventory">{visibleRunes.map(rune=>{
+        {!runes.length ? (
+          <div className="io-runes-empty"><Gem size={22} style={{margin:'0 auto .5rem',color:'#a78bfa'}}/><strong style={{display:'block',color:'#e2e8f0'}}>No Runes found yet</strong>Defeat monsters in Combat. Common monsters can drop a Rune, elite enemies have a higher chance, and bosses always drop one.</div>
+        ) : (
+          <>
+            {visibleRunes.length===0&&runes.length>0&&<p className="io-runes-no-matches">No Runes match this search. Try another name, rarity, stat, or ability.</p>}
+            <div className="io-runes-inventory">{visibleRunes.map(rune=>{
             const isEquipped=state.equippedRunes.includes(rune.id);
             const canEquip=isEquipped||state.equippedRunes.length<slots;
             const level=Math.max(1,Math.floor(Number(rune.level)||1));
@@ -230,7 +233,9 @@ export const RunesSection:React.FC=()=>{
                 {!isEquipped&&!canEquip&&<div className="io-runes-muted">All Rune slots are full.</div>}
               </div>
             </article>;
-          })}</div>}
+          })}</div>
+          </>
+        )}
       </section>
     </>}
   </div>;
