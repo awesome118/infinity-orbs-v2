@@ -3564,7 +3564,7 @@ export async function applyRolls(
     // Critical Convergence converts a critical hit into a chance for a non-recursive, rarity-floored bonus.
     if (isCrit && !suppressOtherRuneProcs && criticalConvergenceChance > 0 && rng() < criticalConvergenceChance) {
       const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity, Math.ceil(rarity * criticalConvergenceRarityMultiplier)));
-      addRuneBonusRolls(runeMajorBonusRollCount(runeAbilityEffects.criticalConvergencePct, 1), { minRarity: floor, skipAllProcs: true });
+      addRuneBonusRolls(runeAbilityEffects.criticalConvergenceBonusRolls, { minRarity: floor, skipAllProcs: true });
     }
     // Three strictly rising results in the same activation trigger Rarity Ladder once.
     risingRarityChain = rarity > previousBatchRarity ? risingRarityChain + 1 : 1;
