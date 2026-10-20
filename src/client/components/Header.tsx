@@ -95,17 +95,20 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Glowing EXP Bar */}
             <div className="flex items-center gap-2 mt-1">
-              <div
-                className="w-28 sm:w-40 h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800 p-0.5 relative cursor-pointer"
+              <button
+                type="button"
+                className="w-28 sm:w-40 h-3 flex items-center bg-transparent border-0 p-0 relative cursor-pointer rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
                 onClick={onOpenProfile}
                 title={`EXP: ${fmt(levelInfo.currentLevelXp)} / ${fmt(levelInfo.nextLevelXp)} (${levelInfo.progressPercent}%)`}
+                aria-label={`Open profile. Experience progress ${levelInfo.progressPercent} percent, ${fmt(levelInfo.currentLevelXp)} of ${fmt(levelInfo.nextLevelXp)} XP.`}
               >
-                <div
-                  className="h-full bg-purple-400 rounded-full transition-all duration-300 relative"
-                  style={{ width: `${levelInfo.progressPercent}%` }}
-                >
-                </div>
-              </div>
+                <span className="block w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800 p-0.5 relative" aria-hidden="true">
+                  <span
+                    className="block h-full bg-purple-400 rounded-full transition-all duration-300 relative"
+                    style={{ width: `${levelInfo.progressPercent}%` }}
+                  />
+                </span>
+              </button>
               <span className="text-[10px] font-mono text-slate-400 font-medium">
                 {levelInfo.progressPercent}%
               </span>
@@ -185,6 +188,7 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={onOpenOdds}
             className="header-icon-button p-2 text-slate-400 hover:text-cyan-300 hover:bg-slate-800/80 rounded-lg transition-colors"
             title="View Probability & Drop Odds"
+            aria-label="View probability and drop odds"
           >
             <HelpCircle className="w-4 h-4" />
           </button>
@@ -207,6 +211,7 @@ export const Header: React.FC<HeaderProps> = ({
             }}
             className="header-icon-button p-2 text-slate-400 hover:text-amber-300 hover:bg-slate-800/80 rounded-lg transition-colors"
             title="Report a bug or send a suggestion"
+            aria-label="Report a bug or send a suggestion"
           >
             <MessageSquarePlus className="w-4 h-4" />
           </button>
@@ -220,6 +225,7 @@ export const Header: React.FC<HeaderProps> = ({
               }}
               className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-lg text-xs font-bold transition-all"
               title="Admin Console"
+              aria-label="Open admin console"
             >
               <Wrench className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Admin</span>
@@ -234,6 +240,7 @@ export const Header: React.FC<HeaderProps> = ({
             }}
             className="header-icon-button p-2 text-slate-400 hover:text-fuchsia-300 hover:bg-slate-800/80 rounded-lg transition-colors"
             title={notificationsEnabled ? 'Disable Reddit notifications' : 'Enable Reddit notifications'}
+            aria-label={notificationsEnabled ? 'Disable Reddit notifications' : 'Enable Reddit notifications'}
           >
             {notificationsEnabled
               ? <Bell className="w-4 h-4 text-fuchsia-400" />
@@ -248,6 +255,7 @@ export const Header: React.FC<HeaderProps> = ({
             }}
             className="p-2 text-slate-400 hover:text-amber-300 hover:bg-slate-800/80 rounded-lg transition-colors"
             title={soundEnabled ? 'Mute Sound' : 'Enable Sound'}
+            aria-label={soundEnabled ? 'Mute sound' : 'Enable sound'}
           >
             {soundEnabled ? <Volume2 className="w-4 h-4 text-cyan-400" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
           </button>
