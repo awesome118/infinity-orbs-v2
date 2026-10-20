@@ -105,25 +105,23 @@ export const RollSection: React.FC<RollSectionProps> = ({
     let timer: number | null = null;
     const scheduleTick = () => {
       const current = Date.now();
-      const remaining = readyAt - current;
-      if (remaining <= 0) {
-        setNow(current);
+      const rollRemaining = readyAt - current;
+      const frenzyRemaining = frenzyCooldownRemaining(state.lastFrenzyAt, current);
+      const turboRemaining = (state.turboRollUntil ?? 0) - current;
+      const hasActiveCountdown = rollRemaining > 0 || frenzyRemaining > 0 || turboRemaining > 0;
+      setNow(current);
+      if (!hasActiveCountdown) {
         timer = null;
         return;
       }
-      timer = window.setTimeout(() => {
-        const tickAt = Date.now();
-        setNow(tickAt);
-        if (readyAt - tickAt > 0) scheduleTick();
-        else timer = null;
-      }, remaining <= 3000 ? 250 : 1000);
+      // Update quickly during the last three seconds of the roll cooldown;
+      // otherwise retain ticking only while some visible countdown is active.
+      timer = window.setTimeout(scheduleTick, rollRemaining > 0 && rollRemaining <= 3000 ? 250 : 1000);
     };
     const syncOnVisibility = () => {
-      const current = Date.now();
-      setNow(current);
       if (timer !== null) window.clearTimeout(timer);
       timer = null;
-      if (readyAt > current) scheduleTick();
+      scheduleTick();
     };
     scheduleTick();
     document.addEventListener('visibilitychange', syncOnVisibility);
@@ -131,7 +129,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       if (timer !== null) window.clearTimeout(timer);
       document.removeEventListener('visibilitychange', syncOnVisibility);
     };
-  }, [readyAt]);
+  }, [readyAt, state.lastFrenzyAt, state.turboRollUntil]);
   useEffect(() => () => {
     if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
   }, []);
