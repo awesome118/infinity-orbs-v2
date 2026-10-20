@@ -175,7 +175,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const cd = cooldownMs(state, false);
   const remain = Math.max(0, readyAt - now);
   const freeRolls = Math.max(0, state.freeRolls ?? 0);
-  const canRoll = (remain <= 0 || freeRolls > 0) && !busy;
+  // Free rolls bypass the normal cooldown, but never skip the deliberate Frenzy release wait.
+  const canRoll = (remain <= 0 || (freeRolls > 0 && !frenzyArmed)) && !busy;
   const frenzyCooldownRemain = frenzyCooldownRemaining(state.lastFrenzyAt, now);
   const frenzyUsedToday = frenzyCooldownRemain > 0;
   const multi = rollsPerActivation(state);
@@ -278,6 +279,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
   // Handle click on roll button or center orb
   const handleRollClick = () => {
+    if (busy) return;
     if (canRoll) {
       sound.playClick();
       if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
@@ -500,6 +502,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
         )}
 
         <button
+          type="button"
+          disabled={busy}
+          aria-busy={busy}
           onClick={handleRollClick}
           className={'roll-button ' + (frenzyArmed ? 'frenzy-supercharged' : canRoll ? 'is-ready' : 'is-waiting') + ' w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ' +
             (frenzyArmed
