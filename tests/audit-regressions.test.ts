@@ -2729,6 +2729,5 @@ test('new-best celebration is triggered only by a confirmed record-breaking manu
   assert.ok(rollHandler.includes('setNewBestModalData({ orb: res.orb, prevBest: previousBest });'));
   assert.ok(rollHandler.indexOf('setNewBestModalData') > rollHandler.indexOf("'/api/roll'"));
   assert.ok(frenzyStart > rollStart && rollSuccess > frenzyStart, 'Frenzy and regular roll paths remain distinct');
-  assert.ok(rollHandler.indexOf('setNewBestModalData') > rollHandler.indexOf("'/api/roll'"));
   assert.ok(!source('src/client/components/RollSection.tsx').includes('handledBestResultRef'));
 });
