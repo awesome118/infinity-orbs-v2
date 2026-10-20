@@ -5,6 +5,7 @@ import { ArrowRight, Flame, Users } from 'lucide-react';
 import './styles.css';
 import { formatRarity, getOrbInfo, FRENZY_POST_LIFETIME_MS } from '../shared/game.js';
 import { GlobalChatWindow } from './components/GlobalChatWindow.js';
+import { recordPostImpression } from './impressions.js';
 
 interface FrenzyInfo {
   rarity: number;
@@ -121,6 +122,9 @@ function FrenzyPost() {
   };
 
   useEffect(() => { void load(); }, []);
+
+  // Viewing a Frenzy post is an impression, not a live-player heartbeat.
+  useEffect(() => { void recordPostImpression('frenzy'); }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
