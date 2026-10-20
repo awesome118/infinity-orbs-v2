@@ -199,8 +199,15 @@ function FrenzyPost() {
     // The claim endpoint is called exactly once, regardless of arm outcome.
     try {
       const res = await fetchWithTimeout('/api/frenzy/claim', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not claim Frenzy.');
+      const data = await res.json().catch(() => null) as { error?: string } | null;
+      if (!res.ok) throw new Error(data?.error || 'Could not claim Frenzy.');
+      if (!data) {
+        // The claim may have committed even if its response body was lost.
+        // Refresh read-only status; do not automatically replay this reward POST.
+        await load();
+        setError('The claim response could not be read. Your reward may have been granted; refresh the post to verify before trying again.');
+        return;
+      }
       setThankYouMessage(`I claimed your 1/${formatRarity(info.rarity)} Orb Frenzy. Thanks, u/${info.ownerUsername}!`);
       setThankYouStatus(null);
       setShowThankYouPrompt(true);
