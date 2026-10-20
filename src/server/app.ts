@@ -80,7 +80,7 @@ import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
-import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, salvageCombatRune, levelUpCombatRune, buyCombatStrategyGuideRank } from './combat.js';
+import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, sacrificeCombatRuneInto, hasCompletedCombatTutorial, markCombatTutorialSeen, buyCombatStrategyGuideRank } from './combat.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -871,19 +871,24 @@ export function createApp() {
     try{res.setHeader('Cache-Control','no-store');res.json(await equipCombatRune(runeId,equip));}
     catch(e:any){const message=e?.message||'Could not update Rune loadout.';const status=message==='Rune is not in your inventory.'?404:message==='A valid Rune is required.'||message.startsWith('All Rune slots are full.')?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
   });
-  app.post('/api/combat/runes/level', async (req,res) => {
-    const runeId=req.body?.runeId;
-    if(typeof runeId!=='string'||!runeId.trim()||runeId.length>160)return res.status(400).json({error:'A valid Rune is required.'});
-    try{res.setHeader('Cache-Control','no-store');res.json(await levelUpCombatRune(runeId));}
-    catch(e:any){const message=e?.message||'Could not level Rune.';
-      const status=message==='Rune is not in your inventory.'?404:message==='A valid Rune is required.'||message.startsWith('Not enough Combat Marks')?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;
+  app.post('/api/combat/runes/sacrifice', async (req,res) => {
+    const targetRuneId=req.body?.targetRuneId, donorRuneId=req.body?.donorRuneId;
+    if(typeof targetRuneId!=='string'||!targetRuneId.trim()||targetRuneId.length>160||
+       typeof donorRuneId!=='string'||!donorRuneId.trim()||donorRuneId.length>160)
+      return res.status(400).json({error:'A valid Rune is required.'});
+    if(targetRuneId===donorRuneId)return res.status(400).json({error:'Choose two different Runes.'});
+    try{res.setHeader('Cache-Control','no-store');res.json(await sacrificeCombatRuneInto(targetRuneId,donorRuneId));}
+    catch(e:any){const message=e?.message||'Could not sacrifice Rune.';
+      const status=message==='Rune is not in your inventory.'?404:message==='A valid Rune is required.'||message==='Choose two different Runes.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;
       res.status(status).json({error:message});}
   });
-  app.post('/api/combat/runes/salvage', async (req,res) => {
-    const runeId=req.body?.runeId;
-    if(typeof runeId!=='string'||!runeId.trim()||runeId.length>160)return res.status(400).json({error:'A valid Rune is required.'});
-    try{res.setHeader('Cache-Control','no-store');res.json(await salvageCombatRune(runeId));}
-    catch(e:any){const message=e?.message||'Could not salvage Rune.';const status=message==='Rune is not in your inventory.'?404:message==='A valid Rune is required.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
+  app.get('/api/combat/tutorial/status', async (_req,res) => {
+    try{res.setHeader('Cache-Control','no-store');res.json({seen:await hasCompletedCombatTutorial()});}
+    catch(e:any){const message=e?.message||'Could not load tutorial status.';res.status(message==='REDDIT_LOGIN_REQUIRED'?401:503).json({error:message});}
+  });
+  app.post('/api/combat/tutorial/complete', async (_req,res) => {
+    try{await markCombatTutorialSeen();res.setHeader('Cache-Control','no-store');res.json({seen:true});}
+    catch(e:any){const message=e?.message||'Could not save tutorial completion.';res.status(message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500).json({error:message});}
   });
   app.post('/api/combat/beat', async (req,res) => {
     const sequence=req.body?.sequence, intent=req.body?.intent;
