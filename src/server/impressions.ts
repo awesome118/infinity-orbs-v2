@@ -42,6 +42,32 @@ async function readCount(key: string): Promise<number> {
   return normalizeCount(await redis.get(key));
 }
 
+async function incrementCountersAtomically(keys: string[]): Promise<void> {
+  // These counters describe one logical impression. Independent INCR calls can
+  // partially succeed; a retry would then count the same view twice and leave
+  // device/type/hour totals inconsistent with the global total.
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const txn = await redis.watch(...keys);
+    let closed = false;
+    try {
+      const rawValues = await Promise.all(keys.map(key => redis.get(key)));
+      const nextValues = rawValues.map(raw =>
+        Math.min(Number.MAX_SAFE_INTEGER, normalizeCount(raw) + 1),
+      );
+      await txn.multi();
+      for (let index = 0; index < keys.length; index += 1) {
+        await txn.set(keys[index], String(nextValues[index]));
+      }
+      const committed = await txn.exec();
+      closed = true;
+      if (committed !== null) return;
+    } finally {
+      if (!closed) await txn.unwatch().catch(() => undefined);
+    }
+  }
+  throw new Error('Impression counters changed repeatedly; please retry.');
+}
+
 /**
  * Records aggregate post-preview loads only. No username, Reddit user ID,
  * raw user-agent, or per-view browsing event is persisted. Importantly, this
@@ -65,20 +91,24 @@ export async function recordPostImpression(
   const keyForPost = postKey(postType, postId);
   const indexField = postType + ':' + postId;
 
-  // Redis INCR keeps counters safe under concurrent preview traffic.
-  await Promise.all([
-    redis.incr(TOTAL_KEY),
-    redis.incr(TYPE_PREFIX + postType),
-    redis.incr(DEVICE_PREFIX + deviceType),
-    redis.incr(TYPE_DEVICE_PREFIX + postType + ':' + deviceType),
-    redis.incr(keyForPost),
-    redis.incr(HOUR_PREFIX + hour + ':' + postType),
-    redis.incr(DAY_PREFIX + day + ':' + postType),
-  ]);
+  const counterKeys = [
+    TOTAL_KEY,
+    TYPE_PREFIX + postType,
+    DEVICE_PREFIX + deviceType,
+    TYPE_DEVICE_PREFIX + postType + ':' + deviceType,
+    keyForPost,
+    HOUR_PREFIX + hour + ':' + postType,
+    DAY_PREFIX + day + ':' + postType,
+  ];
+  await incrementCountersAtomically(counterKeys);
 
-  // The index contains post metadata only, never viewer data.
+  // The index is a dashboard projection, not part of the counted impression.
+  // If it fails after the atomic counter commit, still return success so the
+  // client does not retry and double-count an impression already recorded.
   await redis.hSet(POST_INDEX_KEY, {
     [indexField]: JSON.stringify({ postType, postId, lastSeenAt: now }),
+  }).catch(error => {
+    console.error('[Impressions] Post index update failed after counters committed.', error);
   });
   return { recorded: true };
 }
