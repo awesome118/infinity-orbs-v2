@@ -156,7 +156,7 @@ export const RunesSection:React.FC=()=>{
       <div><div className="io-runes-kicker">CORE-GAME BONUSES · SOFT-CAPPED LEVELS</div><h1>Runes</h1><p className="io-runes-intro">Equip monster drops to strengthen normal Infinity Orb rolls. Sacrifice spare Runes into a favorite Rune to grant XP and increase its level. Effects approach a large soft cap; Shard Rune chance never scales with level.</p></div>
       <button type="button" className="io-runes-button" onClick={()=>{setLoading(true);void load();}} disabled={loading||Boolean(busyRune)||sacrificing||autoSacrificeBusy}><RefreshCw size={14}/> Refresh</button>
     </header>
-    {error&&<div className="io-runes-error" role="alert">{error}</div>}
+    {error&&<div className="io-runes-error io-runes-error-row" role="alert"><span>{error}</span><button type="button" onClick={()=>{setLoading(true);void load();}} disabled={loading||Boolean(busyRune)||sacrificing||autoSacrificeBusy}>Retry</button></div>}
     {notice&&!error&&<div className="io-runes-muted" role="status">{notice}</div>}
     {loading&&!state?<div className="io-runes-loading">Loading Rune inventory…</div>:state&&<>
       <section className="io-runes-panel">
@@ -199,7 +199,8 @@ export const RunesSection:React.FC=()=>{
           <span className="io-runes-muted">Showing {fmt(visibleRunes.length)} of {fmt(runes.length)}</span>
         </div>}
         {!runes.length?<div className="io-runes-empty"><Gem size={22} style={{margin:'0 auto .5rem',color:'#a78bfa'}}/><strong style={{display:'block',color:'#e2e8f0'}}>No Runes found yet</strong>Defeat monsters in Combat. Common monsters can drop a Rune, elite enemies have a higher chance, and bosses always drop one.</div>:
-          <div className="io-runes-inventory">{visibleRunes.map(rune=>{
+          {visibleRunes.length===0&&runes.length>0&&<p className="io-runes-no-matches">No Runes match this search. Try another name, rarity, stat, or ability.</p>}
+           <div className="io-runes-inventory">{visibleRunes.map(rune=>{
             const isEquipped=state.equippedRunes.includes(rune.id);
             const canEquip=isEquipped||state.equippedRunes.length<slots;
             const level=Math.max(1,Math.floor(Number(rune.level)||1));
