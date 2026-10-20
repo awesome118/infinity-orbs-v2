@@ -13,6 +13,9 @@ const POST_INDEX_KEY = 'io:impressions:post-index';
 const TYPE_DEVICE_PREFIX = 'io:impressions:type-device:';
 const HOUR_PREFIX = 'io:impressions:hour:';
 const DAY_PREFIX = 'io:impressions:day:';
+const INDEX_PRUNE_COUNTER_KEY = 'io:impressions:index-prune-counter';
+const INDEX_PRUNE_EVERY = 100;
+const MAX_INDEXED_POSTS = 2_000;
 
 function normalizePostType(value: unknown): ImpressionPostType {
   const candidate = String(value ?? '').trim();
@@ -30,7 +33,9 @@ function normalizeDeviceType(value: unknown): ImpressionDeviceType {
 }
 
 function normalizeCount(value: unknown): number {
-  const count = Number.parseInt(String(value ?? '0'), 10);
+  const raw = String(value ?? '0').trim();
+  if (!/^\d+$/.test(raw)) return 0;
+  const count = Number(raw);
   return Number.isSafeInteger(count) && count >= 0 ? count : 0;
 }
 
@@ -57,7 +62,9 @@ export async function recordPostImpression(
 
   // Without Reddit post context, do not merge unrelated previews into a fake
   // "unknown post" row. A real post ID is required for useful analytics.
-  if (!postId) return { recorded: false };
+  if (!postId || postId.length > 200 || /[\u0000-\u001f\u007f]/.test(postId)) {
+    return { recorded: false };
+  }
 
   const now = Date.now();
   const hour = Math.floor(now / 3_600_000);
@@ -80,6 +87,31 @@ export async function recordPostImpression(
   await redis.hSet(POST_INDEX_KEY, {
     [indexField]: JSON.stringify({ postType, postId, lastSeenAt: now }),
   });
+
+  // Post indexes are useful for admin diagnostics, but must not grow forever.
+  // Prune only once per hundred impressions to keep preview requests cheap.
+  const pruneSequence = await redis.incr(INDEX_PRUNE_COUNTER_KEY);
+  if (pruneSequence % INDEX_PRUNE_EVERY === 0) {
+    const currentIndex = await redis.hGetAll(POST_INDEX_KEY);
+    const entries = Object.entries(currentIndex ?? {}).flatMap(([field, raw]) => {
+      try {
+        const parsed = JSON.parse(String(raw)) as { postType?: unknown; postId?: unknown; lastSeenAt?: unknown };
+        const indexedType = normalizePostType(parsed.postType);
+        const indexedPostId = String(parsed.postId ?? '').trim();
+        const indexedAt = Number(parsed.lastSeenAt ?? 0);
+        if (!indexedPostId || indexedPostId.length > 200) return [];
+        return [{
+          field,
+          lastSeenAt: Number.isSafeInteger(indexedAt) && indexedAt >= 0 ? indexedAt : 0,
+        }];
+      } catch {
+        return [];
+      }
+    }).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+    for (const stale of entries.slice(MAX_INDEXED_POSTS)) {
+      await redis.hDel(POST_INDEX_KEY, stale.field);
+    }
+  }
   return { recorded: true };
 }
 
@@ -109,6 +141,10 @@ export interface ImpressionDashboard {
 
 /** Reads aggregate impression metrics for the admin-only dashboard. */
 export async function getImpressionDashboard(now = Date.now()): Promise<ImpressionDashboard> {
+  const requestedNow = Number(now);
+  const dashboardNow = Number.isFinite(requestedNow) && requestedNow >= 0
+    ? Math.floor(requestedNow)
+    : Date.now();
   const [total, postIndex] = await Promise.all([
     readCount(TOTAL_KEY),
     redis.hGetAll(POST_INDEX_KEY),
@@ -177,14 +213,24 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
   };
 
   const last24Hours = await Promise.all(Array.from({ length: 24 }, (_, index) => {
-    const bucket = Math.floor(now / 3_600_000) - (23 - index);
+    const bucket = Math.floor(dashboardNow / 3_600_000) - (23 - index);
     return readTimePoint(bucket, HOUR_PREFIX, new Date(bucket * 3_600_000).toISOString());
   }));
 
   const last30Days = await Promise.all(Array.from({ length: 30 }, (_, index) => {
-    const bucket = Math.floor(now / 86_400_000) - (29 - index);
+    const bucket = Math.floor(dashboardNow / 86_400_000) - (29 - index);
     return readTimePoint(bucket, DAY_PREFIX, new Date(bucket * 86_400_000).toISOString().slice(0, 10));
   }));
 
-  return { generatedAt: now, total, trackedPostCount: Object.keys(postIndex ?? {}).length, byType, byDevice, byTypeAndDevice, posts, last24Hours, last30Days };
+  return {
+    generatedAt: dashboardNow,
+    total,
+    trackedPostCount: Object.keys(postIndex ?? {}).length,
+    byType,
+    byDevice,
+    byTypeAndDevice,
+    posts,
+    last24Hours,
+    last30Days,
+  };
 }
