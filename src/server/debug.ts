@@ -1224,7 +1224,6 @@ function buildStatSpyStats(
 
   const prestigeDustMultiplier =
     1 +
-    Number(prestige.dustBounty ?? 0) * 0.15 +
     Number(mastery.cosmicAttunement ?? 0) * 0.08;
 
   const stats: StatSpyStat[] = [
@@ -1378,7 +1377,6 @@ function buildStatSpyStats(
       unit: 'mult',
       sources: [
         statSource('Base dust', 1, 'mult', 'base'),
-        statSource('Dust Bounty', Number(prestige.dustBounty ?? 0) * 15, 'pct', 'add', { level: Number(prestige.dustBounty ?? 0), detail: '+15 percentage points per level' }),
         statSource('Cosmic Affinity', Number(mastery.cosmicAttunement ?? 0) * 8, 'pct', 'add', { level: Number(mastery.cosmicAttunement ?? 0), detail: '+8 percentage points per level' }),
       ],
     },
