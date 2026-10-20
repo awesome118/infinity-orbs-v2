@@ -88,15 +88,26 @@ function normalizeGear(value:unknown,fallbackFloor=0):CombatGear|null {
 }
 function normalizeRuneMajorAbility(raw:Record<string,unknown>|null,stat:CombatRuneStat):CombatRune['majorAbility'] {
   if(!raw)return undefined;
-  const valid=raw.id==='fateweaver'||raw.id==='midas-engine'||raw.id==='memory-well';
+  const validIds=['fateweaver','midas-engine','memory-well','echo-chamber','paradox-engine','event-horizon','shard-constellation','temporal-loop','prismatic-fork'];
+  const valid=validIds.includes(String(raw.id));
   const id:NonNullable<CombatRune['majorAbility']>['id']=valid
     ?raw.id as NonNullable<CombatRune['majorAbility']>['id']
     :stat==='coinGainPct'?'midas-engine':stat==='xpGainPct'?'memory-well':'fateweaver';
-  const names={fateweaver:'Fateweaver','midas-engine':'Midas Engine','memory-well':'Memory Well'};
+  const names={
+    fateweaver:'Fateweaver','midas-engine':'Midas Engine','memory-well':'Memory Well',
+    'echo-chamber':'Echo Chamber','paradox-engine':'Paradox Engine','event-horizon':'Event Horizon',
+    'shard-constellation':'Shard Constellation','temporal-loop':'Temporal Loop','prismatic-fork':'Prismatic Fork',
+  };
   const descriptions={
-    fateweaver:'Adds extra Luck to main-game Infinity Orb rolls only.',
-    'midas-engine':'Adds extra Coins to main-game Infinity Orb rewards only.',
-    'memory-well':'Adds extra XP to main-game Infinity Orb rewards only.',
+    fateweaver:'Adds effective Luck to main-game Infinity Orb rolls.',
+    'midas-engine':'Adds Coins to main-game Infinity Orb rewards.',
+    'memory-well':'Adds XP to main-game Infinity Orb rewards.',
+    'echo-chamber':'Rolls can echo into extra rolls; each echo has a lower chance to continue the chain.',
+    'paradox-engine':'Multi-roll activations can fracture into extra rolls.',
+    'event-horizon':'New all-time rarity records trigger a burst of bonus rolls with a rarity floor.',
+    'shard-constellation':'Shard finds charge a constellation that rewards bonus Shards and rolls.',
+    'temporal-loop':'Each roll charges Momentum; a full meter releases a bonus batch.',
+    'prismatic-fork':'Rare rolls can fork into a bonus roll with a rarity floor.',
   };
   const rawValue=Number(raw.valuePct);
   const valuePct=Number.isFinite(rawValue)?Math.max(0,Math.min(Number.MAX_VALUE,rawValue)):10;
@@ -138,15 +149,25 @@ function equippedMajorAbilityTotal(state:CombatState,abilityId:CombatMajorAbilit
   return total;
 }
 
-const COMBAT_RUNE_MAJOR_ABILITY_IDS = ['fateweaver','midas-engine','memory-well'] as const;
+const COMBAT_RUNE_MAJOR_ABILITY_IDS = ['fateweaver','midas-engine','memory-well','echo-chamber','paradox-engine','event-horizon','shard-constellation','temporal-loop','prismatic-fork'] as const;
 type CombatRuneMajorAbilityId = NonNullable<CombatRune['majorAbility']>['id'];
 function createRuneMajorAbility(qualityValue:number,requestedAbilityId?:CombatRuneMajorAbilityId):NonNullable<CombatRune['majorAbility']> {
   const quality=Math.max(0,Math.min(100,Number(qualityValue)||0));
   const valuePct=Math.round((5+quality*.15)*100)/100;
   const id=requestedAbilityId&&COMBAT_RUNE_MAJOR_ABILITY_IDS.includes(requestedAbilityId)?requestedAbilityId:pick([...COMBAT_RUNE_MAJOR_ABILITY_IDS]);
-  if(id==='fateweaver')return {id,name:'Fateweaver',valuePct,description:'Adds extra Luck to main-game Infinity Orb rolls only.'};
-  if(id==='midas-engine')return {id,name:'Midas Engine',valuePct,description:'Adds extra Coins to main-game Infinity Orb rewards only.'};
-  return {id:'memory-well',name:'Memory Well',valuePct,description:'Adds extra XP to main-game Infinity Orb rewards only.'};
+  const definitions:Record<CombatRuneMajorAbilityId,{name:string;description:string}>={
+    fateweaver:{name:'Fateweaver',description:'Adds effective Luck to main-game Infinity Orb rolls.'},
+    'midas-engine':{name:'Midas Engine',description:'Adds Coins to main-game Infinity Orb rewards.'},
+    'memory-well':{name:'Memory Well',description:'Adds XP to main-game Infinity Orb rewards.'},
+    'echo-chamber':{name:'Echo Chamber',description:'Rolls can echo into extra rolls; each echo has a lower chance to continue the chain.'},
+    'paradox-engine':{name:'Paradox Engine',description:'Multi-roll activations can fracture into extra rolls.'},
+    'event-horizon':{name:'Event Horizon',description:'New all-time rarity records trigger a burst of bonus rolls with a rarity floor.'},
+    'shard-constellation':{name:'Shard Constellation',description:'Shard finds charge a constellation that rewards bonus Shards and rolls.'},
+    'temporal-loop':{name:'Temporal Loop',description:'Each roll charges Momentum; a full meter releases a bonus batch.'},
+    'prismatic-fork':{name:'Prismatic Fork',description:'Rare rolls can fork into a bonus roll with a rarity floor.'},
+  };
+  const definition=definitions[id];
+  return {id,name:definition.name,valuePct,description:definition.description};
 }
 function createCombatRune(sourceDepth:number,sourceDungeon:CombatDungeonId,totalKills:number,sequence:number):CombatRune {
   const rarityRoll=secureRandom();
