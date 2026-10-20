@@ -112,7 +112,7 @@ export const RunesSection:React.FC=()=>{
       void sacrifice(strengthenTargetId,rune.id);
       return;
     }
-    setInspectedRuneId(current=>current===rune.id?'':rune.id);
+    setError('');setInspectedRuneId(current=>current===rune.id?'':rune.id);
   };
   const saveAutoSacrificeSettings=async(enabled:boolean,maxRarity:CombatRuneRarity)=>{
     if(actionLockRef.current)return;
@@ -192,7 +192,7 @@ export const RunesSection:React.FC=()=>{
             const levelProgressPct=Math.max(0,Math.min(100,Math.round(((levelXp-currentLevelXp)/Math.max(1,nextXp-currentLevelXp))*100)));
             const iconLabel='Inspect '+rune.name;
             return <article key={rune.id} className={'io-runes-icon-wrap '+rarityClass(rune.rarity)+(isEquipped?' is-equipped':'')+(inspectedRuneId===rune.id?' is-inspected':'')}>
-              <button type="button" className={'io-runes-icon '+rarityClass(rune.rarity)+(isEquipped?' is-equipped':'')+(strengthenTargetId===rune.id?' is-strengthen-target':'')} disabled={sacrificing||Boolean(busyRune)||(strengthenTargetId?false:(!isEquipped&&!canEquip))} onClick={()=>handleRuneClick(rune)} aria-label={strengthenTargetId?(rune.id===strengthenTargetId?'Cancel Strengthen selection':'Sacrifice '+rune.name+' into '+(strengthenTargetRune?.name??'selected Rune')):iconLabel} title={strengthenTargetId?(rune.id===strengthenTargetId?'Cancel Strengthen selection':'Sacrifice into '+(strengthenTargetRune?.name??'selected Rune')):iconLabel}>
+              <button type="button" className={'io-runes-icon '+rarityClass(rune.rarity)+(isEquipped?' is-equipped':'')+(strengthenTargetId===rune.id?' is-strengthen-target':'')} disabled={sacrificing||Boolean(busyRune)} onClick={()=>handleRuneClick(rune)} aria-label={strengthenTargetId?(rune.id===strengthenTargetId?'Cancel Strengthen selection':'Sacrifice '+rune.name+' into '+(strengthenTargetRune?.name??'selected Rune')):iconLabel} aria-expanded={inspectedRuneId===rune.id} title={strengthenTargetId?(rune.id===strengthenTargetId?'Cancel Strengthen selection':'Sacrifice into '+(strengthenTargetRune?.name??'selected Rune')):iconLabel}>
                 <span className="io-runes-icon-art">{STAT_ICON[rune.stat]}</span><small>Lv. {fmt(level)}</small>{isEquipped&&<span className="io-runes-equipped-mark"><ShieldCheck size={12}/></span>}
               </button>
               <div className="io-runes-tooltip" role="tooltip">
