@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Zap,
@@ -50,16 +50,34 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
 }) => {
   const [recentUpgradeId, setRecentUpgradeId] = useState<UpgradeId | null>(null);
   const [upgradingAll, setUpgradingAll] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(() => {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+  });
+  const recentUpgradeTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReducedMotion(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  useEffect(() => () => {
+    if (recentUpgradeTimerRef.current !== null) window.clearTimeout(recentUpgradeTimerRef.current);
+  }, []);
   const fmt = (n: number) => formatNumber(n);
   const standardUpgradeMaxLevels: Partial<Record<UpgradeId, number>> = { speed: 20, offlineRate: 8 };
 
   const handleUpgradeClick = async (u: (typeof upgradesData)[0]) => {
+    if (busy || upgradingAll) return;
     sound.playLevelUpFanfare();
     setRecentUpgradeId(u.id);
-    setTimeout(() => setRecentUpgradeId(null), 900);
+    if (recentUpgradeTimerRef.current !== null) window.clearTimeout(recentUpgradeTimerRef.current);
+    recentUpgradeTimerRef.current = window.setTimeout(() => {
+      setRecentUpgradeId(null);
+      recentUpgradeTimerRef.current = null;
+    }, 900);
 
     const nextLvl = u.level + 1;
-    if (nextLvl % 5 === 0 || (u.id === 'auto' && nextLvl === 1)) {
+    if (!reducedMotion && (nextLvl % 5 === 0 || (u.id === 'auto' && nextLvl === 1))) {
       confetti({
         particleCount: 45,
         spread: 55,
@@ -72,9 +90,10 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   };
 
   const handleUpgradeAllClick = async () => {
+    if (busy || upgradingAll) return;
     setUpgradingAll(true);
     sound.playLevelUpFanfare();
-    confetti({
+    if (!reducedMotion) confetti({
       particleCount: 60,
       spread: 70,
       origin: { y: 0.6 },
