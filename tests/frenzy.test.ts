@@ -304,14 +304,14 @@ test('public Frenzy initial load offers a deduplicated read-only retry', () => {
 test('Frenzy post previews do not register online-player activity', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
   const infoStart = source.indexOf('export async function getOrbFrenzyInfo');
-  const infoEnd = source.indexOf('\\nexport async function claimOrbFrenzy', infoStart);
+  const infoEnd = source.indexOf('\nexport async function claimOrbFrenzy', infoStart);
   assert.ok(infoStart >= 0 && infoEnd > infoStart, 'Frenzy info handler must exist');
   const info = source.slice(infoStart, infoEnd);
 
   // Preview loads must not use getMe()/getState(), because that path touches
   // the online-presence sorted set. Read only the fields needed for eligibility.
-  assert.match(info, /loadRaw\\(\\{ registerActivity: false \\}\\)/);
-  assert.doesNotMatch(info, /getMe\\(\\)|getState\\(\\)|touchOnlinePresence\\(/);
-  assert.match(source, /if \\(options\\.registerActivity !== false\\) await registerPlayer\\(/);
+  assert.match(info, /loadRaw\(\{ registerActivity: false \}\)/);
+  assert.doesNotMatch(info, /getMe\(\)|getState\(\)|touchOnlinePresence\(/);
+  assert.match(source, /if \(options\.registerActivity !== false\) await registerPlayer\(/);
 });
 
