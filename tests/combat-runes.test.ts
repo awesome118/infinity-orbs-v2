@@ -39,7 +39,7 @@ test('Rune Auto Sacrifice threshold is inclusive, ordered by rarity, and disable
 test('Rune bonuses only count Runes in the equipped loadout',()=>{
   assert.deepEqual(combatRuneBonuses(runes,['fate-1','insight-1']),{luckPct:1.4,coinGainPct:0,shardChancePct:0,xpGainPct:4.2});
 });
-test('all six trigger-based Rune Major Abilities scale and expose distinct mechanics',()=>{
+test('all eleven trigger-based Rune Major Abilities scale and expose distinct mechanics',()=>{
   const abilityRunes:CombatRune[]=[
     {...runes[0]!,id:'echo',level:1,majorAbility:{id:'echo-chamber',name:'Echo Chamber',valuePct:10,description:''}},
     {...runes[1]!,id:'paradox',level:1,majorAbility:{id:'paradox-engine',name:'Paradox Engine',valuePct:12,description:''}},
@@ -47,6 +47,11 @@ test('all six trigger-based Rune Major Abilities scale and expose distinct mecha
     {...runes[2]!,id:'constellation',level:1,majorAbility:{id:'shard-constellation',name:'Shard Constellation',valuePct:20,description:''}},
     {...runes[3]!,id:'temporal',level:1,majorAbility:{id:'temporal-loop',name:'Temporal Loop',valuePct:8,description:''}},
     {...runes[0]!,id:'fork',level:1,majorAbility:{id:'prismatic-fork',name:'Prismatic Fork',valuePct:18,description:''}},
+    {...runes[0]!,id:'critical',level:1,majorAbility:{id:'critical-convergence',name:'Critical Convergence',valuePct:16,description:''}},
+    {...runes[1]!,id:'ladder',level:1,majorAbility:{id:'rarity-ladder',name:'Rarity Ladder',valuePct:14,description:''}},
+    {...runes[0]!,id:'dividend',level:1,majorAbility:{id:'stellar-dividend',name:'Stellar Dividend',valuePct:22,description:''}},
+    {...runes[2]!,id:'jackpot',level:1,majorAbility:{id:'shard-jackpot',name:'Shard Jackpot',valuePct:25,description:''}},
+    {...runes[3]!,id:'milestone',level:1,majorAbility:{id:'milestone-engine',name:'Milestone Engine',valuePct:20,description:''}},
   ];
   const equipped=abilityRunes.map(rune=>rune.id);
   const effects=combatRuneMajorAbilityEffects(abilityRunes,equipped);
@@ -56,11 +61,22 @@ test('all six trigger-based Rune Major Abilities scale and expose distinct mecha
   assert.equal(effects.shardConstellationPct,20);
   assert.equal(effects.temporalLoopPct,8);
   assert.equal(effects.prismaticForkPct,18);
+  assert.equal(effects.criticalConvergencePct,16);
+  assert.equal(effects.rarityLadderPct,14);
+  assert.equal(effects.stellarDividendPct,22);
+  assert.equal(effects.shardJackpotPct,25);
+  assert.equal(effects.milestoneEnginePct,20);
   assert.ok(effects.echoChamberMaxChain>=1);
   assert.ok(effects.paradoxEngineBonusRolls>=1);
   assert.ok(effects.eventHorizonBonusRolls>=1);
   assert.ok(effects.shardConstellationBonusShards>=1);
   assert.ok(effects.temporalLoopMomentumPerRoll>1);
+  assert.ok(effects.criticalConvergenceBonusRolls>=1);
+  assert.ok(effects.rarityLadderBonusRolls>=1);
+  assert.ok(effects.stellarDividendBonusRolls>=1);
+  assert.ok(effects.shardJackpotExtraMultiplier>0);
+  assert.ok(effects.milestoneEngineBonusRolls>=1);
+  assert.ok(effects.milestoneEngineBonusShards>=1);
   assert.ok(combatRuneMajorAbilityStrengthPct(abilityRunes[0]!.majorAbility!,256)>combatRuneMajorAbilityStrengthPct(abilityRunes[0]!.majorAbility!,1));
   assert.match(combatRuneMajorAbilitySummary(abilityRunes[0]!.majorAbility!,20),/echo|chain/i);
   assert.match(combatRuneMajorAbilitySummary(abilityRunes[1]!.majorAbility!,20),/multi-roll|extra roll/i);
@@ -68,6 +84,11 @@ test('all six trigger-based Rune Major Abilities scale and expose distinct mecha
   assert.match(combatRuneMajorAbilitySummary(abilityRunes[3]!.majorAbility!,20),/Shards|bonus roll/i);
   assert.match(combatRuneMajorAbilitySummary(abilityRunes[4]!.majorAbility!,20),/Momentum|bonus roll/i);
   assert.match(combatRuneMajorAbilitySummary(abilityRunes[5]!.majorAbility!,20),/fork|rarity floor/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[6]!.majorAbility!,20),/critical|bonus roll/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[7]!.majorAbility!,20),/rising rarities/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[8]!.majorAbility!,20),/lifetime rolls/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[9]!.majorAbility!,20),/Shard payout/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[10]!.majorAbility!,20),/power of ten/i);
   assert.equal(combatRuneMajorAbilityEffects(abilityRunes,equipped.slice(0,2)).eventHorizonPct,0,'unequipped Major Abilities must not be active');
 });
 test('Rune slot milestones are earned through Delver levels and depth',()=>{
