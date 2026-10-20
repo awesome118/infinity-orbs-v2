@@ -282,15 +282,19 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                 </div>
                 <div className="mt-3 flex gap-2">
                   <button
+                    type="button"
+                    aria-busy={activatingGlobalBooster===id}
                     onClick={() => void handleGlobalActivation(id, false)}
-                    disabled={activatingGlobalBooster !== null || !canAffordGlobal}
+                    disabled={activatingGlobalBooster !== null || activatingPremiumBooster !== null || !canAffordGlobal}
                     className="flex-1 px-2.5 py-2 rounded-xl text-[10px] font-black bg-slate-800 hover:bg-slate-700 text-white disabled:text-slate-500 disabled:cursor-not-allowed"
                   >
                     {`+2h • ${formatNumber(globalCost)} 💎`}
                   </button>
                   <button
+                    type="button"
+                    aria-busy={activatingGlobalBooster===id}
                     onClick={() => void handleGlobalActivation(id, true)}
-                    disabled={activatingGlobalBooster !== null}
+                    disabled={activatingGlobalBooster !== null || activatingPremiumBooster !== null}
                     className="px-2.5 py-2 rounded-xl text-[10px] font-black bg-fuchsia-600/20 border border-fuchsia-500/25 text-fuchsia-200 hover:bg-fuchsia-600/30 disabled:text-slate-600 disabled:cursor-not-allowed"
                     title="Use one free Global Booster activation. The server is authoritative if the displayed credit count is stale."
                   >
@@ -338,8 +342,10 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                     {active ? 'ACTIVE • ' + formatDuration(remaining) + ' left' : 'Ready to activate'}
                   </span>
                   <button
+                    type="button"
+                    aria-busy={activatingPremiumBooster===id}
                     onClick={() => void handlePremiumActivation(id)}
-                    disabled={busy || activatingPremiumBooster!==null || !canAfford}
+                    disabled={busy || activatingPremiumBooster!==null || activatingGlobalBooster!==null || !canAfford}
                     className={
                       active
                         ? 'px-3 py-2 rounded-xl text-xs font-black transition-all bg-indigo-500/20 border border-indigo-400/30 text-indigo-200 hover:bg-indigo-500/30 active:scale-95'
@@ -415,6 +421,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
               </span>
             </div>
             <button
+              type="button"
               onClick={() => void onClaimCommunityReward()}
               disabled={busy || !communityRewardReady}
               className={
