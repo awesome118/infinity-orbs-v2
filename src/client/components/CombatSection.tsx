@@ -17,8 +17,11 @@ async function request<T>(url:string,method='GET',body?:unknown):Promise<T> {
   const timeout=window.setTimeout(()=>controller.abort(),12_000);
   try {
     const response=await fetch(url,{method,headers:{'Content-Type':'application/json'},signal:controller.signal,...(body===undefined?{}:{body:JSON.stringify(body)})});
-    const data=await response.json().catch(()=>({}));
-    if(!response.ok) throw new Error(Number.isFinite(Number(data.retryAfterMs))?'ARENA_COOLDOWN:'+Math.max(0,Number(data.retryAfterMs)):typeof data.error==='string'?data.error:'Combat request failed.');
+    const data=await response.json().catch(()=>null) as Record<string,unknown>|null;
+    if(!response.ok) {
+      const retryAfterMs=Number(data?.retryAfterMs);
+      throw new Error(Number.isFinite(retryAfterMs)?'ARENA_COOLDOWN:'+Math.max(0,retryAfterMs):typeof data?.error==='string'?data.error:'Combat request failed.');
+    }
     if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('Combat returned an invalid response. Refresh and retry.');
     return data as T;
   } catch(error) {
