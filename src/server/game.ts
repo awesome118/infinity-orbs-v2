@@ -1573,6 +1573,19 @@ async function registerPlayer(userId: string, username: string): Promise<void> {
   await touchPlayerActivity(userId, username);
 }
 
+const FIRST_ROLL_TUTORIAL_KEY_PREFIX = 'infinity-orbs:first-roll-tutorial:';
+
+/** Tutorial completion follows the Reddit account across sessions and devices. */
+export async function hasCompletedFirstRollTutorial(): Promise<boolean> {
+  const userId = currentUserId();
+  return (await redis.get(FIRST_ROLL_TUTORIAL_KEY_PREFIX + userId)) === '1';
+}
+
+export async function markFirstRollTutorialSeen(): Promise<void> {
+  const userId = currentUserId();
+  await redis.set(FIRST_ROLL_TUTORIAL_KEY_PREFIX + userId, '1');
+}
+
 export async function recordPlayerHeartbeat(reportedVersion?: unknown): Promise<{
   playtimeMs: number;
   onlinePlayers: number;
