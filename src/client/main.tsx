@@ -317,9 +317,11 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!state) return;
+    // Merely loading a post preview or the Play splash is not an active session.
+    // Start presence heartbeats only after the user explicitly enters the game.
+    if (!state || !splashEntered) return;
     const heartbeat = () => {
-      if (document.visibilityState === 'hidden') return;
+      if (!splashEntered || document.visibilityState === 'hidden') return;
       void getJson('/api/activity/heartbeat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -336,7 +338,7 @@ export function App() {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [Boolean(state)]);
+  }, [Boolean(state), splashEntered]);
 
   // Social & Community state
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
