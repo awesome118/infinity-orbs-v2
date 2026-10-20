@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   COMBAT_MAX_DEPTH, combatGearQualityFromRoll, combatGearRarityForQuality, combatGearRarityOdds,
-  combatActionsDue, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, combatRuneMajorAbilityChance,
+  combatActionsDue, combatTurnsCrossedThree, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, combatRuneMajorAbilityChance,
   combatRuneMajorAbilityMultiplier, combatScrapValue, combatStatsFor, createCombatState,
   getEnemyForDungeonDepth, type CombatRune,
 } from '../src/shared/combat.js';
@@ -65,7 +65,14 @@ test('combat speed is reflected in action cadence and fast enemies can exceed th
   assert.equal(combatActionsDue(100,1,0),1);
   assert.equal(combatActionsDue(350,1,0),3);
   assert.equal(combatActionsDue(700,1,0),7);
+  assert.equal(combatActionsDue(20_000,1,0),100);
   assert.ok(getEnemyForDungeonDepth('undercrypt',100).speed>getEnemyForDungeonDepth('undercrypt',1).speed);
+});
+test('Third-Beat Recharge triggers only when completed player turns cross a multiple of three',()=>{
+  assert.equal(combatTurnsCrossedThree(0,2),0);
+  assert.equal(combatTurnsCrossedThree(2,3),1);
+  assert.equal(combatTurnsCrossedThree(2,8),2);
+  assert.equal(combatTurnsCrossedThree(8,7),0);
 });
 test('Expanded Reserves increases the actual Energy cap',()=>{
   const state=createCombatState();

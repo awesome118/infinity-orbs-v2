@@ -315,6 +315,12 @@ export function combatBountyReward(value: unknown, rankValue: unknown): number {
 }
 
 /** Energy actually available after the beat's one-point regeneration, respecting the cap. */
+export function combatTurnsCrossedThree(previousValue: unknown, currentValue: unknown): number {
+  const previousRaw=Number(previousValue), currentRaw=Number(currentValue);
+  const previous=Number.isFinite(previousRaw)?Math.max(0,Math.floor(previousRaw)):0;
+  const current=Number.isFinite(currentRaw)?Math.max(0,Math.floor(currentRaw)):0;
+  return Math.max(0,Math.floor(current/3)-Math.floor(previous/3));
+}
 export function combatEnergyAfterRegen(energyValue: unknown, maxEnergyValue: unknown): number {
   const rawMax = Number(maxEnergyValue);
   const maxEnergy = Number.isFinite(rawMax) ? Math.max(1, Math.min(50, Math.floor(rawMax))) : 5;
@@ -323,13 +329,13 @@ export function combatEnergyAfterRegen(energyValue: unknown, maxEnergyValue: unk
   return Math.min(maxEnergy, energy + 1);
 }
 /** Actions owed at a cumulative speed threshold; shared by resolution and tests. */
-export function combatActionsDue(speedValue: unknown, beatValue: unknown, resolvedValue: unknown, maxActionsValue = 12): number {
+export function combatActionsDue(speedValue: unknown, beatValue: unknown, resolvedValue: unknown, maxActionsValue = 100): number {
   const speedRaw = Number(speedValue), beatRaw = Number(beatValue), resolvedRaw = Number(resolvedValue);
   const speed = Number.isFinite(speedRaw) ? Math.max(0, speedRaw) : 0;
   const beats = Number.isFinite(beatRaw) ? Math.max(0, Math.floor(beatRaw)) : 0;
   const resolved = Number.isFinite(resolvedRaw) ? Math.max(0, Math.floor(resolvedRaw)) : 0;
   const rawLimit = Number(maxActionsValue);
-  const limit = Number.isFinite(rawLimit) ? Math.max(0, Math.min(100, Math.floor(rawLimit))) : 12;
+  const limit = Number.isFinite(rawLimit) ? Math.max(0, Math.min(1000, Math.floor(rawLimit))) : 100;
   const target = Math.floor(Math.min(Number.MAX_SAFE_INTEGER, beats * speed / 100));
   return Math.max(0, Math.min(limit, target - resolved));
 }

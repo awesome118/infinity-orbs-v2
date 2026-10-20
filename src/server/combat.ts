@@ -2,7 +2,7 @@ import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import { getOrbInfo, luckMultiplier, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatSkillDefinition, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatActionsDue, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneSalvageValue, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneLevelCost, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatActionsDue, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneSalvageValue, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneLevelCost, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -136,7 +136,7 @@ function equippedMajorAbilityTotal(state:CombatState,abilityId:CombatMajorAbilit
 function createRuneMajorAbility(qualityValue:number):NonNullable<CombatRune['majorAbility']> {
   const quality=Math.max(0,Math.min(100,Number(qualityValue)||0));
   const valuePct=Math.round((5+quality*.15)*100)/100;
-  const id=pick(['fateweaver','midas-engine','memory-well'] as const);
+  const id=pick(['fateweaver','midas-engine','memory-well'] as ('fateweaver'|'midas-engine'|'memory-well')[]);
   if(id==='fateweaver')return {id,name:'Fateweaver',valuePct,description:'Adds extra Luck to main-game Infinity Orb rolls only.'};
   if(id==='midas-engine')return {id,name:'Midas Engine',valuePct,description:'Adds extra Coins to main-game Infinity Orb rewards only.'};
   return {id:'memory-well',name:'Memory Well',valuePct,description:'Adds extra XP to main-game Infinity Orb rewards only.'};
@@ -549,7 +549,18 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     else if(resolvedIntent==='mend'&&s.health>=s.maxHealth&&playerActions>0)actions.push({actor:'player',kind:'ability',text:'Already at full health. Basic attacks continue.'});
     else if(resolvedIntent==='mend'&&s.energy>=4&&playerActions>0&&s.health<s.maxHealth){s.energy-=4;const before=s.health;s.health=Math.min(s.maxHealth,s.health+Math.max(1,Math.round(s.maxHealth*.14)));consumed=true;actions.push({actor:'player',kind:'ability',text:'Mend restored '+(s.health-before)+' HP.'});}
     else if(resolvedIntent!=='strike')actions.push({actor:'player',kind:'ability',text:'Not enough energy or no action ready. Basic attacks continue.'});
-    const attacks=Math.min(12,Math.max(0,playerActions-(consumed?1:0))+activeExtraAttacks),weapon=s.inventory.find(g=>g.id===s.equipment.weapon);
+    // Every scheduled player action is a turn, including Heavy/Guard/Mend and skill casts.
+    const previousCompletedTurns=s.playerTurnsCompleted;
+    s.playerTurnsCompleted=Math.min(Number.MAX_SAFE_INTEGER,s.playerTurnsCompleted+playerActions);
+    const rechargeTriggers=combatTurnsCrossedThree(previousCompletedTurns,s.playerTurnsCompleted);
+    if(thirdBeatRecharge>0&&s.energy<s.maxEnergy){
+      for(let trigger=0;trigger<rechargeTriggers&&s.energy<s.maxEnergy;trigger++){
+        const restored=Math.min(s.maxEnergy-s.energy,Math.max(1,Math.round(thirdBeatRecharge)));
+        s.energy+=restored;
+        actions.push({actor:'player',kind:'ability',text:'Third-Beat Recharge restores '+restored+' Energy.'});
+      }
+    }
+    const attacks=Math.min(1000,Math.max(0,playerActions-(consumed?1:0))+activeExtraAttacks),weapon=s.inventory.find(g=>g.id===s.equipment.weapon);
     for(let i=0;i<attacks;i++){
       if(enemyHp<=0)break;
       let multiplier=(heavy&&i===0?1.9:1)*(activeSkill&&i===0?activeDamageMultiplier:1)*(activeSkill&&combatAbilityType(activeSkill)==='flurry'&&i>=playerActions?activeFlurryMultiplier:1);
@@ -579,12 +590,6 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
       if(crit&&passiveMarkOnCrit>0){const gained=Math.min(Number.MAX_SAFE_INTEGER-s.combatMarks,Math.max(0,Math.round(appliedDamage*passiveMarkOnCrit)));if(gained>0){s.combatMarks+=gained;actions.push({actor:'player',kind:'loot',text:'Fortune Engine mints '+gained.toLocaleString()+' Combat Marks.'});}}
       if(activeSkill?.id!=='singularity-edge')s.skillRuntime.storedDamage=Math.min(Math.round(s.maxHealth*2),s.skillRuntime.storedDamage+Math.round(appliedDamage*.04));
       actions.push({actor:'player',kind:'attack',damage:appliedDamage,text:(crit?'Critical hit for ':'Strike for ')+appliedDamage+' damage.'});
-      s.playerTurnsCompleted=Math.min(Number.MAX_SAFE_INTEGER,s.playerTurnsCompleted+1);
-      if(thirdBeatRecharge>0&&s.playerTurnsCompleted%3===0&&s.energy<s.maxEnergy){
-        const restored=Math.min(s.maxEnergy-s.energy,Math.max(1,Math.round(thirdBeatRecharge)));
-        s.energy+=restored;
-        actions.push({actor:'player',kind:'ability',text:'Third-Beat Recharge restores '+restored+' Energy.'});
-      }
       if(enemyHp<=0){
         defeated=true;actions.push({actor:'player',kind:'death',text:'The '+enemy.name+' falls.'});s.totalKills=Math.min(Number.MAX_SAFE_INTEGER,s.totalKills+1);
         if(soulHarvestPercent>0){const healed=Math.min(s.maxHealth-s.health,Math.max(0,Math.round(s.maxHealth*soulHarvestPercent)));if(healed>0){s.health+=healed;actions.push({actor:'player',kind:'ability',text:'Soul Harvest restores '+healed.toLocaleString()+' HP.'});}}
