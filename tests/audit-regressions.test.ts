@@ -2589,9 +2589,9 @@ test('request coordination and feedback cooldowns use cryptographic tokens', () 
   const parseStart = app.indexOf('const parseMutationLock', helperStart);
   assert.ok(helperStart >= 0 && parseStart > helperStart, 'shared request token helper must exist');
   const coordination = app.slice(helperStart, parseStart);
-  assert.match(coordination, /new Uint8Array\\(16\\)/);
-  assert.match(coordination, /globalThis\\.crypto\\.getRandomValues\\(bytes\\)/);
-  assert.match(coordination, /const mutationLockOwner = \\(\\): string => 'lease-' \\+ secureRequestToken\\(\\);/);
-  assert.match(app, /const feedbackCooldownToken = secureRequestToken\\(\\);/);
-  assert.doesNotMatch(app, /Math\\.random\\(\\)/);
+  assert.match(coordination, /new Uint8Array\(16\)/);
+  assert.match(coordination, /globalThis\.crypto\.getRandomValues\(bytes\)/);
+  assert.match(coordination, /const mutationLockOwner = \(\): string => 'lease-' \+ secureRequestToken\(\);/);
+  assert.match(app, /const feedbackCooldownToken = secureRequestToken\(\);/);
+  assert.doesNotMatch(app, /Math\.random\(\)/);
 });
