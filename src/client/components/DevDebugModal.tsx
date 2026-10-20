@@ -62,6 +62,7 @@ type ImpressionTimePoint = {
 type ImpressionDashboardData = {
   generatedAt: number;
   total: number;
+  trackedPostCount: number;
   byType: Record<ImpressionPostType, number>;
   byDevice: Record<ImpressionDeviceType, number>;
   byTypeAndDevice: Record<ImpressionPostType, Record<ImpressionDeviceType, number>>;
@@ -3544,8 +3545,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               </div>
 
               <div className="rounded-xl border border-slate-800 overflow-hidden">
-                <div className="px-3 py-2 border-b border-slate-800 text-[10px] uppercase tracking-wider font-bold text-slate-400">
-                  Individual post performance · {impressionStats.posts.length.toLocaleString()} listed
+                <div className="px-3 py-2 border-b border-slate-800">
+                  <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
+                    Individual post performance · {impressionStats.posts.length.toLocaleString()} listed / {impressionStats.trackedPostCount.toLocaleString()} tracked
+                  </div>
+                  <p className="mt-1 text-[9px] text-slate-600">Shows the highest load counts among the 500 most recently seen post IDs; type totals and time trends cover all recorded impressions.</p>
                 </div>
                 {impressionStats.posts.length ? (
                   <div className="max-h-64 overflow-auto">
