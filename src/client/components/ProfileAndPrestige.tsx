@@ -238,7 +238,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
               {fmt(levelInfo.currentLevelXp)} / {fmt(levelInfo.nextLevelXp)} XP ({levelInfo.progressPercent}%)
             </span>
           </div>
-          <div role="progressbar" aria-label={"Progress to Level "+levelInfo.level+1} aria-valuemin={0} aria-valuemax={100} aria-valuenow={levelInfo.progressPercent} className="w-full bg-slate-900 rounded-full h-3 overflow-hidden border border-slate-800 p-0.5">
+          <div role="progressbar" aria-label={"Level "+levelInfo.level+" experience progress"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={levelInfo.progressPercent} className="w-full bg-slate-900 rounded-full h-3 overflow-hidden border border-slate-800 p-0.5">
             <div
               className="h-full bg-gradient-to-r from-purple-500 via-indigo-400 to-cyan-400 rounded-full motion-safe:transition-all duration-500 shadow-[0_0_12px_rgba(168,85,247,0.8)] relative"
               style={{ width: `${levelInfo.progressPercent}%` }}
