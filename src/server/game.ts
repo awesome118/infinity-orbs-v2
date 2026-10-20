@@ -3518,7 +3518,8 @@ export async function applyRolls(
     if (isNew) uniqueGained++;
     s.collection[String(rarity)] = (s.collection[String(rarity)] ?? 0) + 1;
 
-    if (rarity > s.highestRarity) {
+    const isNewRarityRecord = rarity > s.highestRarity;
+    if (isNewRarityRecord) {
       // The rolls since the previous record become an Aftershock candidate
       // only when a strictly rarer all-time orb finally appears.
       if (s.highestRarity > 0) {
@@ -3533,6 +3534,26 @@ export async function applyRolls(
     } else {
       s.rollsSinceBest = (s.rollsSinceBest ?? 0) + 1;
       s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest);
+    }
+
+    // Event Horizon fires only on genuine all-time records and its generated burst cannot recurse.
+    if (isNewRarityRecord && !suppressOtherRuneProcs && runeAbilityEffects.eventHorizonPct > 0) {
+      const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity + 1, Math.ceil(rarity * eventHorizonRarityMultiplier)));
+      addRuneBonusRolls(runeAbilityEffects.eventHorizonBonusRolls, { minRarity: floor, skipAllProcs: true });
+    }
+    // Paradox Engine gets one proc check per multi-roll activation.
+    if (i === 0 && baseBatchRollCount > 1 && paradoxChance > 0 && rng() < paradoxChance) {
+      addRuneBonusRolls(runeAbilityEffects.paradoxEngineBonusRolls, { skipAllProcs: true });
+    }
+    // Echo Chamber can echo normal rolls and its own echoes; each link has half the chance of the previous link.
+    if (!currentRuneSpec?.skipAllProcs && echoChance > 0 && echoDepth < maxEchoChain &&
+        rng() < echoChance * Math.pow(.5, echoDepth)) {
+      addRuneBonusRolls(1, { echoDepth: echoDepth + 1, echoOnly: true });
+    }
+    // Prismatic Fork is limited to rare-or-better rolls, and its bonus roll cannot fork again.
+    if (!suppressOtherRuneProcs && rarity >= 1_000 && prismaticForkChance > 0 && rng() < prismaticForkChance) {
+      const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity + 1, Math.ceil(rarity * prismaticForkRarityMultiplier)));
+      addRuneBonusRolls(1, { minRarity: floor, skipAllProcs: true });
     }
 
     if (rarity > bestRarity) {
@@ -3571,6 +3592,27 @@ export async function applyRolls(
 
     shardsGained += earnedShards;
     xpGained += earnedXp;
+
+    // Shard Constellation retains charge between activations and pays only once per activation.
+    if (runeAbilityEffects.shardConstellationPct > 0) {
+      s.runeConstellationCharge = Math.min(1_000_000, validCharge(s.runeConstellationCharge) + earnedShards);
+      if (!constellationTriggered && !suppressOtherRuneProcs && s.runeConstellationCharge >= shardConstellationThreshold) {
+        s.runeConstellationCharge -= shardConstellationThreshold;
+        shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + runeAbilityEffects.shardConstellationBonusShards);
+        addRuneBonusRolls(runeAbilityEffects.shardConstellationBonusRolls, { skipAllProcs: true });
+        constellationTriggered = true;
+      }
+    }
+
+    // Temporal Loop charges on every real roll, then releases a bounded bonus batch.
+    if (temporalMomentumPerRoll > 0) {
+      s.runeTemporalMomentum = Math.min(1_000_000, validCharge(s.runeTemporalMomentum) + temporalMomentumPerRoll);
+      if (!temporalLoopTriggered && !suppressOtherRuneProcs && s.runeTemporalMomentum >= 100) {
+        s.runeTemporalMomentum -= 100;
+        addRuneBonusRolls(runeAbilityEffects.temporalLoopBonusRolls, { skipAllProcs: true });
+        temporalLoopTriggered = true;
+      }
+    }
 
     const orbInfo = getOrbInfo(rarity);
     if (batch.length < 50) {
