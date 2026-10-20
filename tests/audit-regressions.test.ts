@@ -2722,7 +2722,7 @@ test('armed Frenzy readiness and Pity Luck meter use the actual gameplay thresho
   assert.ok(roll.includes('{dryStreak % pityInterval} / {pityInterval} rolls to next stack'));
 });
 
-test('new-best celebration is triggered only by a confirmed record-breaking manual roll', () => {
+test('new-best celebration covers confirmed manual, Frenzy, and offline results', () => {
   const client = source('src/client/main.tsx');
   const rollStart = client.indexOf('const handleRoll = useCallback(async (isAutoRoll = false) =>');
   const frenzyStart = client.indexOf("'/api/frenzy/start'", rollStart);
@@ -2730,10 +2730,19 @@ test('new-best celebration is triggered only by a confirmed record-breaking manu
   const rollEnd = client.indexOf('catch (error: any)', rollSuccess);
   assert.ok(rollStart >= 0 && rollSuccess > rollStart && rollEnd > rollSuccess);
   const rollHandler = client.slice(rollStart, rollEnd);
-  assert.ok(rollHandler.includes('if (!isAutoRoll && res.orb.rarity > previousBest && res.orb.rarity >= latestBest)'));
-  assert.ok(rollHandler.includes('setNewBestModalData({ orb: res.orb, prevBest: previousBest });'));
-  assert.ok(rollHandler.indexOf('setNewBestModalData') > rollHandler.indexOf("'/api/roll'"));
+  const frenzyPath = rollHandler.slice(0, rollSuccess - rollStart);
+  const regularRollPath = rollHandler.slice(rollSuccess - rollStart);
+  assert.ok(frenzyPath.includes('if (res.orb.rarity > previousBest && res.orb.rarity >= latestBest)'));
+  assert.ok(frenzyPath.includes('setNewBestModalData({ orb: res.orb, prevBest: previousBest });'));
+  assert.ok(regularRollPath.includes('if (!isAutoRoll && res.orb.rarity > previousBest && res.orb.rarity >= latestBest)'));
+  assert.ok(regularRollPath.includes('setNewBestModalData({ orb: res.orb, prevBest: previousBest });'));
   assert.ok(frenzyStart > rollStart && rollSuccess > frenzyStart, 'Frenzy and regular roll paths remain distinct');
+
+  const offlineClaimStart = client.indexOf('const handleClaimOffline = async () =>');
+  const offlineClaimRequest = client.indexOf("'/api/offline/claim'", offlineClaimStart);
+  const offlineClaimCheck = client.indexOf('const latestBest = Math.max(2, Number(res.state.highestRarity) || 2);', offlineClaimRequest);
+  assert.ok(offlineClaimStart >= 0 && offlineClaimRequest > offlineClaimStart && offlineClaimCheck > offlineClaimRequest);
+  assert.ok(client.slice(offlineClaimStart, offlineClaimCheck + 240).includes('setNewBestModalData({ orb: res.orb, prevBest: previousBest });'));
   assert.ok(!source('src/client/components/RollSection.tsx').includes('handledBestResultRef'));
 });
 
