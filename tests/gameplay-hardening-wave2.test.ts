@@ -10,6 +10,7 @@ import {
   combatRuneLevelFromExperience,
   combatRuneLevelMultiplier,
 } from '../src/shared/combat.js';
+import { todayKey, weekStartMs } from '../src/shared/game.js';
 
 test('combat action scheduling is bounded for invalid and extreme values', () => {
   assert.equal(combatActionsDue(Number.NaN, 20, 0), 0);
@@ -42,4 +43,16 @@ test('Rune XP saturation resolves to a finite distinguishable level', () => {
   assert.ok(Number.isFinite(combatRuneLevelMultiplier(level)));
   assert.equal(combatRuneLevelFromExperience(Number.NaN), 1);
   assert.equal(combatRuneLevelFromExperience(-10), 1);
+});
+
+test('calendar key helpers tolerate invalid timestamps instead of throwing', () => {
+  assert.match(todayKey(Number.NaN), /^\d{4}-\d{2}-\d{2}$/);
+  assert.ok(Number.isFinite(weekStartMs(Number.NaN)));
+  assert.ok(Number.isFinite(weekStartMs(Number.POSITIVE_INFINITY)));
+});
+
+test('calendar keys remain deterministic for a valid timestamp', () => {
+  const timestamp = Date.UTC(2026, 9, 20, 14, 30);
+  assert.equal(todayKey(timestamp), '2026-10-20');
+  assert.equal(weekStartMs(timestamp), Date.UTC(2026, 9, 18));
 });
