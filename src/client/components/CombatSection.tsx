@@ -46,6 +46,7 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
   const [showTooltip,setShowTooltip]=useState(false);
   const [tooltipPoint,setTooltipPoint]=useState<{x:number;y:number}|null>(null);
   const grade=combatGearRarityForQuality(item.quality);
+  const tooltipId='io-gear-tooltip-'+item.id.replace(/[^A-Za-z0-9_-]/g,'-');
   const SlotIcon=GEAR_SLOTS.find(entry=>entry.slot===item.slot)?.Icon??Gem;
   const bonuses=[
     item.damageBonus>0?{label:'+'+fmt(item.damageBonus)+' DAMAGE',detail:'Adds to base damage before the beat orb multiplier',kind:'offense' as const}:null,
@@ -66,16 +67,19 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     <button type="button" className={'io-combat-gear-icon '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
       aria-label={(isEquipped?'Inspect equipped ':'Equip ')+item.name}
       title={item.name}
+      aria-expanded={showTooltip}
+      aria-controls={tooltipId}
       disabled={busy}
-      onClick={()=>{if(!isEquipped)onEquip();else setShowTooltip(value=>!value);}}>
+      onClick={()=>setShowTooltip(true)}>
       <SlotIcon size={27} strokeWidth={1.8} aria-hidden="true"/>
       <small>{item.quality.toFixed(0)}%</small>
       <span className="io-combat-gear-icon-power">{fmt(item.power)}</span>
       {isEquipped&&<span className="io-combat-gear-equipped">✓</span>}
     </button>
-    <div className={'io-combat-gear-tooltip '+(showTooltip?'is-open':'')}
+    <div id={tooltipId} className={'io-combat-gear-tooltip '+(showTooltip?'is-open':'')}
       style={{position:'fixed',left:tooltipPoint?.x??12,top:tooltipPoint?.y??12,right:'auto',maxWidth:'min(310px, calc(100vw - 16px))',maxHeight:'min(360px, calc(100vh - 16px))',overflow:'auto'}}
       role="group" aria-label={item.name+' details and actions'}>
+      <button type="button" className="io-combat-gear-details-close" aria-label="Close gear details" onClick={()=>setShowTooltip(false)}>×</button>
       <span className="io-combat-eyebrow">{grade.toUpperCase()} ITEM · {item.quality.toFixed(2)}% QUALITY · LEVEL {fmt(item.sourceFloor+1)}</span>
       <strong>{item.name}</strong><p>{slotLabel(item.slot)} · Power {fmt(item.power)}</p>
       <div className="io-combat-gear-tooltip-stats">{bonuses.length?bonuses.map(stat=><span className={'io-combat-stat-'+stat.kind} key={stat.label} title={stat.detail}>{stat.label}</span>):<span>No direct stat bonuses</span>}</div>
