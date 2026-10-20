@@ -2165,3 +2165,26 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 @media(max-width:700px){.io-combat-skill-icons{grid-template-columns:repeat(5,minmax(0,1fr))}.io-runes-inventory{grid-template-columns:repeat(5,minmax(0,1fr))}}
 @media(max-width:520px){.io-combat-skill-icons{grid-template-columns:repeat(4,minmax(0,1fr))}.io-runes-inventory{grid-template-columns:repeat(4,minmax(0,1fr))}.io-runes-header{align-items:center}.io-runes-panel{padding:.8rem}}
 @media(max-width:360px){.io-combat-skill-icons,.io-runes-inventory{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* Gear inventory matches the square-icon pattern used by Runes and Skills. */
+.io-combat-gear-grid{grid-template-columns:repeat(6,minmax(0,1fr));gap:.55rem;align-items:start;overflow:visible}
+.io-combat-gear-icon-wrap{position:relative;display:flex;justify-content:center;min-width:0;outline:none}
+.io-combat-gear-icon{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.2rem;width:100%;max-width:76px;aspect-ratio:1;border:2px solid #39313e;border-radius:10px;background:#1b171f;color:#e8e2ec;cursor:pointer;transition:transform .12s ease,box-shadow .12s ease}
+.io-combat-gear-icon>small{color:#cbd5e1;font:850 9px ui-monospace,monospace}
+.io-combat-gear-icon-power{position:absolute;left:4px;bottom:3px;color:#9ca3af;font:800 8px ui-monospace,monospace}
+.io-combat-gear-icon:hover,.io-combat-gear-icon:focus-visible{transform:translateY(-2px);box-shadow:0 0 0 2px rgba(201,255,50,.14),0 8px 18px rgba(0,0,0,.3);outline:none}
+.io-combat-gear-icon:disabled{opacity:.5;cursor:not-allowed}
+.io-combat-gear-icon.is-equipped{box-shadow:inset 0 0 0 1px rgba(201,255,50,.12),0 0 12px rgba(201,255,50,.14);background:rgba(80,96,21,.2)}
+.io-combat-gear-icon.io-rarity-common{border-color:#4a414f}.io-combat-gear-icon.io-rarity-uncommon{border-color:#588a71}.io-combat-gear-icon.io-rarity-rare{border-color:#5882b6}.io-combat-gear-icon.io-rarity-epic{border-color:#9d70c7}.io-combat-gear-icon.io-rarity-mythic{border-color:#dc9d48}
+.io-combat-gear-equipped{position:absolute;top:2px;right:4px;color:#d5ff85;font-size:11px;font-weight:950}
+.io-combat-gear-icon-wrap .io-combat-gear-tooltip{display:none;z-index:90;padding:12px;border:1px solid #514358;border-radius:10px;background:#0e0b12;box-shadow:0 16px 42px rgba(0,0,0,.7);text-align:left}
+.io-combat-gear-icon-wrap .io-combat-gear-tooltip.is-open,.io-combat-gear-icon-wrap:hover .io-combat-gear-tooltip,.io-combat-gear-icon-wrap:focus-within .io-combat-gear-tooltip{display:block}
+.io-combat-gear-icon-wrap .io-combat-gear-tooltip>strong{display:block;margin:5px 0;font-size:13px;overflow-wrap:anywhere}
+.io-combat-gear-tooltip-stats{display:flex;flex-wrap:wrap;gap:5px}
+.io-combat-gear-tooltip-stats>span{font-size:9px}
+.io-combat-gear-tooltip>p{margin:5px 0;color:#cbd5e1;font-size:10px;line-height:1.5}
+.io-combat-gear-tooltip-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.io-combat-gear-tooltip .io-combat-major-ability{margin-top:8px}
+@media(max-width:700px){.io-combat-gear-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
+@media(max-width:520px){.io-combat-gear-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:360px){.io-combat-gear-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}

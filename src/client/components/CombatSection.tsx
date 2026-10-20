@@ -46,31 +46,38 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     item.armorBonus>0?{label:'+'+fmt(item.armorBonus)+' ARMOR',detail:'Reduces incoming damage',kind:'defense' as const}:null,
     item.critChanceBonus>0?{label:'+'+(item.critChanceBonus*100).toFixed(1)+'% CRIT',detail:'Adds critical-hit chance',kind:'offense' as const}:null,
   ].filter(Boolean) as {label:string;detail:string;kind:'offense'|'defense'}[];
-  return <article
-    tabIndex={0}
-    className={'io-combat-gear-card '+rarityClass(grade)}
-    onPointerMove={event=>{
-      if(event.pointerType!=='mouse')return;
-      const x=Math.max(8,Math.min(Math.max(8,window.innerWidth-326),event.clientX+16));
-      const y=Math.max(8,Math.min(Math.max(8,window.innerHeight-376),event.clientY+16));
-      setTooltipPoint(previous=>previous&&Math.abs(previous.x-x)<3&&Math.abs(previous.y-y)<3?previous:{x,y});
-    }}
-    onPointerLeave={()=>{if(!showTooltip)setTooltipPoint(null)}}
-  >
-    <div className="io-combat-gear-head"><div className="io-combat-gear-name"><SlotIcon size={24} strokeWidth={1.8} aria-hidden="true"/><div><span className="io-combat-eyebrow">{item.quality.toFixed(2)}% · LVL {fmt(item.sourceFloor+1)} · {slotLabel(item.slot).toUpperCase()}</span><h3>{item.name}</h3></div></div><div className="io-combat-gear-actions"><span className="io-combat-power">PWR {fmt(item.power)}</span><button type="button" className="io-combat-inspect-button" onClick={event=>{const card=event.currentTarget.closest('.io-combat-gear-card');const rect=card?.getBoundingClientRect();if(rect){const x=Math.max(8,Math.min(Math.max(8,window.innerWidth-326),rect.left+Math.min(rect.width-16,24)));const y=Math.max(8,Math.min(Math.max(8,window.innerHeight-376),rect.bottom+12));setTooltipPoint({x,y});}setShowTooltip(value=>!value)}} aria-expanded={showTooltip} aria-label={'Inspect '+item.name}><Info size={12}/> Details</button></div></div>
-    <p>{item.effect}</p>
-    <div className="io-combat-gear-stats">{bonuses.map(stat=><span className={'io-combat-stat-'+stat.kind} key={stat.label} title={stat.detail}>{stat.label}</span>)}
-      <span>LEVEL {fmt(item.sourceFloor+1)}</span><span>EXPECTED {floorQualityRequirement(currentFloor).toFixed(0)}%+</span><span>EFFECTIVE {Math.round(gearQualityEffectiveness(item,currentFloor)*100)}%</span><span>BUDGET ×{combatGearStatBudgetMultiplier(item.quality).toFixed(2)}</span>
-    </div>
-    {item.majorAbility&&<div className={'io-combat-major-ability '+majorAbilityClass(item.majorAbility.id)}><span>{item.majorAbility.id==='chrono-surge'?<Clock3 size={13} aria-hidden="true"/>:<Sparkles size={13} aria-hidden="true"/>} MAJOR ABILITY</span><strong>{item.majorAbility.name}</strong><p>{item.majorAbility.description}</p></div>}
-    <div className={'io-combat-gear-tooltip '+(showTooltip?'is-open':'')} style={{position:'fixed',left:tooltipPoint?.x??12,top:tooltipPoint?.y??12,right:'auto',maxWidth:'min(310px, calc(100vw - 16px))',maxHeight:'min(360px, calc(100vh - 16px))',overflow:'auto'}} role="tooltip">
+  const moveTooltip=(x:number,y:number)=>{
+    setTooltipPoint({x:Math.max(8,Math.min(Math.max(8,window.innerWidth-326),x+16)),y:Math.max(8,Math.min(Math.max(8,window.innerHeight-376),y+16))});
+    setShowTooltip(true);
+  };
+  return <article className={'io-combat-gear-icon-wrap '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
+    onPointerMove={event=>{if(event.pointerType==='mouse')moveTooltip(event.clientX,event.clientY);}}
+    onPointerLeave={()=>setShowTooltip(false)}
+    onFocus={()=>setShowTooltip(true)}
+    onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))setShowTooltip(false);}}>
+    <button type="button" className={'io-combat-gear-icon '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
+      aria-label={(isEquipped?'Inspect equipped ':'Equip ')+item.name}
+      title={item.name}
+      disabled={busy}
+      onClick={()=>{if(!isEquipped)onEquip();else setShowTooltip(value=>!value);}}>
+      <SlotIcon size={27} strokeWidth={1.8} aria-hidden="true"/>
+      <small>{item.quality.toFixed(0)}%</small>
+      <span className="io-combat-gear-icon-power">{fmt(item.power)}</span>
+      {isEquipped&&<span className="io-combat-gear-equipped">✓</span>}
+    </button>
+    <div className={'io-combat-gear-tooltip '+(showTooltip?'is-open':'')}
+      style={{position:'fixed',left:tooltipPoint?.x??12,top:tooltipPoint?.y??12,right:'auto',maxWidth:'min(310px, calc(100vw - 16px))',maxHeight:'min(360px, calc(100vh - 16px))',overflow:'auto'}}
+      role="tooltip">
       <span className="io-combat-eyebrow">{grade.toUpperCase()} ITEM · {item.quality.toFixed(2)}% QUALITY · LEVEL {fmt(item.sourceFloor+1)}</span>
       <strong>{item.name}</strong><p>{slotLabel(item.slot)} · Power {fmt(item.power)}</p>
-      <div>{bonuses.length?bonuses.map(stat=><span className={'io-combat-stat-'+stat.kind} key={stat.label}>{stat.label}</span>):<span>No direct stat bonuses</span>}</div>
+      <div className="io-combat-gear-tooltip-stats">{bonuses.length?bonuses.map(stat=><span className={'io-combat-stat-'+stat.kind} key={stat.label} title={stat.detail}>{stat.label}</span>):<span>No direct stat bonuses</span>}</div>
       <p>{item.effect}</p><p>Quality effectiveness at this level: {Math.round(gearQualityEffectiveness(item,currentFloor)*100)}%.</p>
-      {item.majorAbility&&<section><b>✦ {item.majorAbility.name}</b><p>{item.majorAbility.description}</p></section>}
+      {item.majorAbility&&<section className={'io-combat-major-ability '+majorAbilityClass(item.majorAbility.id)}><span>✦ MAJOR ABILITY</span><strong>{item.majorAbility.name}</strong><p>{item.majorAbility.description}</p></section>}
+      <div className="io-combat-gear-tooltip-actions">
+        <button type="button" className={isEquipped?'io-combat-button is-equipped':'io-combat-button'} disabled={busy||isEquipped} onClick={onEquip}>{isEquipped?'Equipped':'Equip item'}</button>
+        <button type="button" className="io-combat-button is-secondary" disabled={busy||isEquipped} onClick={onScrap}>Scrap +{fmt(Math.round(combatScrapValue(item)*(1+Math.min(2,scrapBonusPercent))))}</button>
+      </div>
     </div>
-    <div className="io-combat-gear-buttons"><button type="button" disabled={busy||isEquipped} onClick={onEquip} className={isEquipped?'io-combat-button is-equipped':'io-combat-button'}>{isEquipped?<><Check size={14}/> Equipped</>:'Equip'}</button><button type="button" disabled={busy||isEquipped} onClick={onScrap} className="io-combat-button is-secondary">Scrap +{fmt(Math.round(combatScrapValue(item)*(1+Math.min(2,scrapBonusPercent))))}</button></div>
   </article>;
 }
 export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
