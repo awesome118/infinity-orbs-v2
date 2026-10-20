@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { combatRuneBonuses, combatRuneLevelCost, combatRuneLevelMultiplier, combatRuneSalvageValue, combatRuneSlotsUnlocked, combatRuneValueFor, type CombatRune } from '../src/shared/combat.js';
+import { combatRuneBonuses, combatRuneLevelCost, combatRuneLevelMultiplier, combatRuneLuckMultiplier, combatRuneSalvageValue, combatRuneSlotsUnlocked, combatRuneValueFor, type CombatRune } from '../src/shared/combat.js';
 
 const runes:CombatRune[]=[
   {id:'fate-1',name:'Radiant Fate Rune',rarity:'Rare',stat:'luckPct',value:1.4,sourceDepth:20,sourceDungeon:'undercrypt'},
@@ -20,6 +20,12 @@ test('Rune slot milestones are earned through Delver levels and depth',()=>{
 test('Rune base value scales with rarity and depth while retaining shard precision',()=>{
   assert.ok(combatRuneValueFor('Cosmic','luckPct',50)>combatRuneValueFor('Common','luckPct',0));
   assert.ok(combatRuneValueFor('Epic','shardChancePct',30)>0);
+});
+test('Rune Luck percentages map directly to strong rarity multipliers',()=>{
+  assert.equal(combatRuneLuckMultiplier(0),1);
+  assert.equal(combatRuneLuckMultiplier(900),10);
+  assert.ok(combatRuneLuckMultiplier(9_000)>90);
+  assert.ok(combatRuneLuckMultiplier(Number.MAX_VALUE)>Number.MAX_SAFE_INTEGER);
 });
 test('Rune levels scale Luck, Coins, and XP beyond the old caps, without a level ceiling',()=>{
   assert.equal(combatRuneLevelMultiplier(1),1);

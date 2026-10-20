@@ -73,6 +73,13 @@ export function combatRuneValueFor(rarity: CombatRuneRarity, stat: CombatRuneSta
   const factor = 10 ** decimals;
   return Math.round(COMBAT_RUNE_BASE_VALUE[stat] * COMBAT_RUNE_RARITY_MULTIPLIER[rarity] * depthMultiplier * factor) / factor;
 }
+/** Converts the Rune's Luck percentage into a direct rarity multiplier. */
+export function combatRuneLuckMultiplier(luckBonusPctValue: unknown): number {
+  const raw=Number(luckBonusPctValue);
+  const bonus=Number.isFinite(raw)?Math.max(0,raw):0;
+  const multiplier=1+bonus/100;
+  return Number.isFinite(multiplier)?multiplier:Number.MAX_VALUE;
+}
 export function combatRuneLevelMultiplier(levelValue: unknown): number {
   const level = Number.isFinite(Number(levelValue)) ? Math.max(1, Math.floor(Number(levelValue))) : 1;
   const raw = Math.pow(1.7, level - 1);

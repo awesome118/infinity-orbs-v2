@@ -4,7 +4,7 @@ import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
-import { combatRuneBonuses, undercryptOrbLuckMultiplier } from '../shared/combat.js';
+import { combatRuneBonuses, combatRuneLuckMultiplier, undercryptOrbLuckMultiplier } from '../shared/combat.js';
 import {
   createInitialState,
   type PlayerState,
@@ -3410,8 +3410,11 @@ export async function applyRolls(
   // Community Luck is another additive source, kept transient rather than persisted.
   // Cleared Crypt Wardens permanently improve main-game orb Luck without
   // touching the core player save: 1% per boss, capped at a 25% multiplier.
-  const baseLuckCandidate = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1)) * undercryptLuck * (1 + runeBonuses.luckPct / 100);
+  // Ordinary game Luck continues to use the normal distribution curve. Rune Luck is an explicit
+  // rarity multiplier so a 10x Rune really does multiply the rolled rarity by about 10.
+  const baseLuckCandidate = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1)) * undercryptLuck;
   const baseLuck = Number.isFinite(baseLuckCandidate) ? Math.max(1, baseLuckCandidate) : Number.MAX_VALUE;
+  const runeLuckMultiplier = combatRuneLuckMultiplier(runeBonuses.luckPct);
 
   // Apex Fortune Mastery: chance on multi-roll to double the luck of that activation
   const apexChance = Math.min(0.45, (s.masterySkills?.apexFortune ?? 0) * 0.03);
@@ -3455,7 +3458,7 @@ export async function applyRolls(
       ? beginnerRarity
       : (forcedRarity && i === 0)
         ? forcedRarity
-        : Math.max(minimumRarity, rollContinuum(effectiveLuck, rng));
+        : Math.max(minimumRarity, Math.min(MAX_ORB_RARITY, Math.round(rollContinuum(effectiveLuck, rng) * runeLuckMultiplier)));
     const baseRarity = exactRarity && forcedRarity != null && i === 0
       ? forcedRarity
       : Math.max(minimumRarity, rolledRarity);
