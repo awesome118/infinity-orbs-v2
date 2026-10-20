@@ -1139,6 +1139,11 @@ export function App() {
           dramaticReveal: boolean;
         }>('/api/frenzy/start', { method: 'POST' }));
 
+        const previousBest = Math.max(2, Number(currentState.highestRarity) || 2);
+        const latestBest = Math.max(2, Number(res.state.highestRarity) || 2);
+        if (res.orb.rarity > previousBest && res.orb.rarity >= latestBest) {
+          setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+        }
         applyPlayerState(res.state);
         setFrenzyArmed(false);
         setLastOrb(res.orb);
@@ -1673,6 +1678,7 @@ export function App() {
 
   // Claim Offline Rolls
   const handleClaimOffline = async () => {
+    const previousBest = Math.max(2, Number(stateRef.current?.highestRarity) || 2);
     setBusy(true);
     const rollback = beginOptimisticState(current => ({
       ...current,
@@ -1681,6 +1687,10 @@ export function App() {
     }));
     try {
       const res = await getJson<RollResponse>('/api/offline/claim', { method: 'POST' });
+      const latestBest = Math.max(2, Number(res.state.highestRarity) || 2);
+      if (res.orb.rarity > previousBest && res.orb.rarity >= latestBest) {
+        setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+      }
       applyPlayerState(res.state);
       setLastOrb(res.orb);
       setLastBatch(res.batch ?? [res.orb]);
