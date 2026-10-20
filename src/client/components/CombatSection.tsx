@@ -87,9 +87,10 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const [actions,setActions]=useState<CombatAction[]>([]);
   const [lastOrb,setLastOrb]=useState<CombatOrbRoll|null>(null);
   const [loading,setLoading]=useState(true),[processing,setProcessing]=useState(false),[mutating,setMutating]=useState(false);
-  const [auto,setAuto]=useState(()=>{try{return window.localStorage.getItem('io-combat-auto')!=='false';}catch{return true;}}),[paused,setPaused]=useState(false),[intent,setIntent]=useState<CombatIntent>('strike');
+  const [auto,setAuto]=useState(()=>{try{return window.localStorage.getItem('io-combat-auto')!=='false';}catch{return true;}}),[paused,setPaused]=useState(()=>{try{return window.localStorage.getItem('io-combat-paused')==='true';}catch{return false;}}),[intent,setIntent]=useState<CombatIntent>('strike');
   const [showAllSkills,setShowAllSkills]=useState(true);
   useEffect(()=>{try{window.localStorage.setItem('io-combat-auto',String(auto));}catch{/* Embedded webviews can disable storage. */}},[auto]);
+  useEffect(()=>{try{window.localStorage.setItem('io-combat-paused',String(paused));}catch{/* Embedded webviews can disable storage. */}},[paused]);
   const [visibleGearCount,setVisibleGearCount]=useState(60);
   const [lastSkill,setLastSkill]=useState<ApiResponse['skillRoll']|null>(null);
   const [error,setError]=useState('');
@@ -129,9 +130,10 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     return()=>observer.disconnect();
   },[page,Boolean(state)]);
   useEffect(()=>{
+    if(page!=='fight')return;
     const update=()=>setBeatCooldownMs(Math.max(0,COMBAT_BEAT_INTERVAL_MS-(Date.now()-(state?.lastAcceptedBeatAtMs??0))));
     update();const timer=window.setInterval(update,1000);return()=>window.clearInterval(timer);
-  },[state?.lastAcceptedBeatAtMs]);
+  },[page,state?.lastAcceptedBeatAtMs]);
   useEffect(()=>{if(state)setAutoScrapQuality(state.autoScrapSettings.maxQuality);},[state?.autoScrapSettings.maxQuality]);
   const loadArena=useCallback(async()=>{
     setArenaLoading(true);
