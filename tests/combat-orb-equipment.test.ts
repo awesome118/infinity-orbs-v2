@@ -155,11 +155,13 @@ test('turn speed is provided by an equipped Chrono Surge Major Ability', () => {
 });
 
 
-test('Major Ability pool expands to thirty distinct abilities', () => {
-  assert.equal(COMBAT_MAJOR_ABILITY_IDS.length, 30);
-  assert.equal(new Set(COMBAT_MAJOR_ABILITY_IDS).size, 30);
+test('Major Ability pool expands to thirty-two distinct abilities', () => {
+  assert.equal(COMBAT_MAJOR_ABILITY_IDS.length, 32);
+  assert.equal(new Set(COMBAT_MAJOR_ABILITY_IDS).size, 32);
   assert.ok(COMBAT_MAJOR_ABILITY_IDS.includes('titan-heart'));
   assert.ok(COMBAT_MAJOR_ABILITY_IDS.includes('genesis-core'));
+  assert.ok(COMBAT_MAJOR_ABILITY_IDS.includes('expanded-reserves'));
+  assert.ok(COMBAT_MAJOR_ABILITY_IDS.includes('third-beat-recharge'));
 });
 
 test('Titan Heart, Glass Cannon, Frostbrand, and Full Moon apply their equipped effects', () => {

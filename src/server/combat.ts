@@ -133,10 +133,12 @@ function equippedMajorAbilityTotal(state:CombatState,abilityId:CombatMajorAbilit
   return total;
 }
 
-function createRuneMajorAbility(qualityValue:number):NonNullable<CombatRune['majorAbility']> {
+const COMBAT_RUNE_MAJOR_ABILITY_IDS = ['fateweaver','midas-engine','memory-well'] as const;
+type CombatRuneMajorAbilityId = NonNullable<CombatRune['majorAbility']>['id'];
+function createRuneMajorAbility(qualityValue:number,requestedAbilityId?:CombatRuneMajorAbilityId):NonNullable<CombatRune['majorAbility']> {
   const quality=Math.max(0,Math.min(100,Number(qualityValue)||0));
   const valuePct=Math.round((5+quality*.15)*100)/100;
-  const id=pick(['fateweaver','midas-engine','memory-well'] as ('fateweaver'|'midas-engine'|'memory-well')[]);
+  const id=requestedAbilityId&&COMBAT_RUNE_MAJOR_ABILITY_IDS.includes(requestedAbilityId)?requestedAbilityId:pick([...COMBAT_RUNE_MAJOR_ABILITY_IDS]);
   if(id==='fateweaver')return {id,name:'Fateweaver',valuePct,description:'Adds extra Luck to main-game Infinity Orb rolls only.'};
   if(id==='midas-engine')return {id,name:'Midas Engine',valuePct,description:'Adds extra Coins to main-game Infinity Orb rewards only.'};
   return {id:'memory-well',name:'Memory Well',valuePct,description:'Adds extra XP to main-game Infinity Orb rewards only.'};
@@ -667,8 +669,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
       if(totalReflection>0&&enemyHp>1){const reflected=Math.min(enemyHp-1,Math.max(0,Math.round((incoming+absorbed)*totalReflection)));if(reflected>0){enemyHp-=reflected;actions.push({actor:'player',kind:'attack',damage:reflected,text:(reflectionPercent>0?'Mirrorplate':'Starforged Core')+' reflects '+reflected.toLocaleString()+' damage.'});}}
       actions.push({actor:'enemy',kind:'attack',damage:incoming,text:incoming>0?strike+incoming+' damage.':strike+' The shield blocks the hit.'});
       if(pulseShieldPercent>0&&incoming+absorbed>0){const before=s.skillRuntime.shield;s.skillRuntime.shield=Math.min(Math.round(s.maxHealth*.75),s.skillRuntime.shield+Math.max(1,Math.round(s.maxHealth*pulseShieldPercent)));if(s.skillRuntime.shield>before)actions.push({actor:'player',kind:'ability',text:'Aegis Pulse builds '+(s.skillRuntime.shield-before).toLocaleString()+' shield.'});}
-      const defensiveAbility=s.inventory.find(g=>g.majorAbility?.id==='second-dawn'&&g.majorAbility.trigger==='on-damage'&&Object.values(s.equipment).includes(g.id))?.majorAbility
-        ??s.runes.find(r=>s.equippedRunes.includes(r.id)&&r.majorAbility?.id==='second-dawn'&&r.majorAbility.trigger==='on-damage')?.majorAbility;
+      const defensiveAbility=s.inventory.find(g=>g.majorAbility?.id==='second-dawn'&&g.majorAbility.trigger==='on-damage'&&Object.values(s.equipment).includes(g.id))?.majorAbility;
       if(defensiveAbility?.id==='second-dawn'&&s.pendingHealAmount===0){
         s.pendingHealAmount=Math.max(1,Math.round(s.maxHealth*defensiveAbility.healPercent));
         actions.push({actor:'player',kind:'ability',text:defensiveAbility.name+' triggered: '+Math.round(defensiveAbility.healPercent*100)+'% Max HP healing queued for your next turn.'});
@@ -1327,10 +1328,10 @@ export async function adminCombatLabAction(value:unknown):Promise<CombatSnapshot
       if(!rarities.includes(rarity)||!stats.includes(stat))throw new Error('Choose a valid Rune rarity and stat.');
       if(state.runes.length>=COMBAT_RUNE_INVENTORY_CAP)throw new Error('Rune inventory is full; salvage a Rune first.');
       const abilityId=String(payload.majorAbility??'none');
-      let majorAbility:CombatMajorAbility|undefined;
+      let majorAbility:CombatRune['majorAbility'];
       if(abilityId!=='none'){
-        if(!(COMBAT_MAJOR_ABILITY_IDS as readonly string[]).includes(abilityId))throw new Error('Choose a valid Major Ability or None.');
-        majorAbility=createMajorAbility(combatRuneMajorAbilityQuality(rarity),abilityId as CombatMajorAbility['id']);
+        if(!(COMBAT_RUNE_MAJOR_ABILITY_IDS as readonly string[]).includes(abilityId))throw new Error('Choose a valid Rune Major Ability or None.');
+        majorAbility=createRuneMajorAbility(combatRuneMajorAbilityQuality(rarity),abilityId as CombatRuneMajorAbilityId);
       }
       const sourceDepth=Math.max(0,state.depth-1),id='rune-admin-'+Date.now().toString(36)+'-'+Math.floor(secureRandom()*0x7fffffff).toString(36);
       const rune:CombatRune={id,name:'TEST '+rarity+' '+stat+' Rune',rarity,stat,value:combatRuneValueFor(rarity,stat,sourceDepth),sourceDepth,sourceDungeon:state.dungeonId,...(majorAbility?{majorAbility}:{})};
@@ -1361,10 +1362,10 @@ export async function adminCombatLabAction(value:unknown):Promise<CombatSnapshot
       });
       const rarities:CombatRuneRarity[]=['Cosmic','Mythic','Legendary','Epic','Rare'];
       const runeStats:CombatRuneStat[]=['luckPct','coinGainPct','shardChancePct','xpGainPct','luckPct'];
-      const runeAbilityIds=COMBAT_MAJOR_ABILITY_IDS.slice(slots.length,slots.length+rarities.length);
+      const runeAbilityIds=COMBAT_RUNE_MAJOR_ABILITY_IDS;
       rarities.forEach((rarity,index)=>{
         const id='rune-admin-endgame-'+Date.now().toString(36)+'-'+index,sourceDepth=COMBAT_MAX_DEPTH-1,stat=runeStats[index]!;
-        state.runes.push({id,name:'TEST '+rarity+' Major Rune',rarity,stat,value:combatRuneValueFor(rarity,stat,sourceDepth),sourceDepth,sourceDungeon:state.dungeonId,majorAbility:createMajorAbility(combatRuneMajorAbilityQuality(rarity),runeAbilityIds[index]!)});
+        state.runes.push({id,name:'TEST '+rarity+' Major Rune',rarity,stat,value:combatRuneValueFor(rarity,stat,sourceDepth),sourceDepth,sourceDungeon:state.dungeonId,majorAbility:createRuneMajorAbility(combatRuneMajorAbilityQuality(rarity),runeAbilityIds[index%runeAbilityIds.length]!)});
         state.equippedRunes.push(id);
       });
       state.lastAcceptedBeatAtMs=0;state.enemyHp=getEnemyForDungeonDepth(state.dungeonId,state.depth).maxHp;

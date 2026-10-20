@@ -11,6 +11,7 @@ type LabResponse=CombatSnapshot&{
 const slots:CombatGearSlot[]=['weapon','helmet','armor','gloves','boots','ring','amulet'];
 const runeRarities:CombatRuneRarity[]=['Common','Uncommon','Rare','Epic','Legendary','Mythic','Cosmic'];
 const runeStats:CombatRuneStat[]=['luckPct','coinGainPct','shardChancePct','xpGainPct'];
+const runeMajorAbilityIds=['fateweaver','midas-engine','memory-well'] as const;
 const fmt=(v:unknown)=>Number(v||0).toLocaleString(undefined,{maximumFractionDigits:0});
 const title=(v:string)=>v.split('-').map(part=>part.charAt(0).toUpperCase()+part.slice(1)).join(' ');
 async function request<T>(url:string,method='GET',body?:unknown):Promise<T>{
@@ -94,7 +95,7 @@ export const CombatAdminTools:React.FC=()=>{
             <label className="block text-[10px] font-semibold text-slate-400">Rune rarity<select className={field} value={runeRarity} onChange={e=>setRuneRarity(e.target.value as CombatRuneRarity)}>{runeRarities.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
             <label className="block text-[10px] font-semibold text-slate-400">Rune stat<select className={field} value={runeStat} onChange={e=>setRuneStat(e.target.value as CombatRuneStat)}>{runeStats.map(value=><option key={value} value={value}>{title(value)}</option>)}</select></label>
           </div>
-          <label className="block text-[10px] font-semibold text-slate-400">Major Ability<select className={field} value={runeAbility} onChange={e=>setRuneAbility(e.target.value)}><option value="none">None</option>{COMBAT_MAJOR_ABILITY_IDS.map(id=><option key={id} value={id}>{title(id)}</option>)}</select></label>
+          <label className="block text-[10px] font-semibold text-slate-400">Major Ability<select className={field} value={runeAbility} onChange={e=>setRuneAbility(e.target.value)}><option value="none">None</option>{runeMajorAbilityIds.map(id=><option key={id} value={id}>{title(id)}</option>)}</select></label>
           <button type="button" disabled={busy} onClick={()=>void act('grant-rune',{rarity:runeRarity,stat:runeStat,majorAbility:runeAbility})} className={button}><Gem className="h-3.5 w-3.5"/> Grant & Equip Test Rune</button>
         </section>
       </div>
