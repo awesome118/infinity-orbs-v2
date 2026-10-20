@@ -49,6 +49,8 @@ test('calendar key helpers tolerate invalid timestamps instead of throwing', () 
   assert.match(todayKey(Number.NaN), /^\d{4}-\d{2}-\d{2}$/);
   assert.ok(Number.isFinite(weekStartMs(Number.NaN)));
   assert.ok(Number.isFinite(weekStartMs(Number.POSITIVE_INFINITY)));
+  assert.ok(Number.isFinite(weekStartMs(Number.MAX_VALUE)));
+  assert.match(todayKey(Number.MAX_VALUE), /^\\d{4}-\\d{2}-\\d{2}$/);
 });
 
 test('calendar keys remain deterministic for a valid timestamp', () => {
