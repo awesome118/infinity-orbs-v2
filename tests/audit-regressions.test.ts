@@ -2498,3 +2498,16 @@ test('distributed player lock fencing tokens use 128 bits of cryptographic rando
   assert.match(lock, /const token = 'lock-' \+ randomLockToken\(\)/);
   assert.doesNotMatch(lock, /randomUint32\(\)/);
 });
+
+
+test('Combat snapshot polling only mutates the save when core-game projection changed', () => {
+  const combat = source('src/server/combat.ts');
+  const start = combat.indexOf('export async function getCombatSnapshot()');
+  const end = combat.indexOf('\nfunction grantXp', start);
+  assert.ok(start >= 0 && end > start);
+  const snapshot = combat.slice(start, end);
+  assert.match(snapshot, /const current=normalizeState\(await redis\.get\(combatKey\(\)\)\)/);
+  assert.match(snapshot, /const projectionChanged=/);
+  assert.match(snapshot, /if\(projectionChanged\)\{\s*state=await mutate/);
+  assert.doesNotMatch(snapshot, /const state=await mutate\(s=>/);
+});
