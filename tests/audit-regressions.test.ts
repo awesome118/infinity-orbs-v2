@@ -5,6 +5,23 @@ import { resolve } from 'node:path';
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
+test('all six Rune Major Abilities are normalized, scaled, and resolved server-side',()=>{
+  const shared=source('src/shared/combat.ts');
+  const combat=source('src/server/combat.ts');
+  const game=source('src/server/game.ts');
+  const ids=['echo-chamber','paradox-engine','event-horizon','shard-constellation','temporal-loop','prismatic-fork'];
+  for(const id of ids){
+    assert.ok(shared.includes("'"+id+"'"),'shared Rune type must include '+id);
+    assert.ok(combat.includes("'"+id+"'"),'Rune generation and migration must include '+id);
+  }
+  assert.ok(shared.includes('combatRuneMajorAbilityEffects'),'equipped Rune effects must be summarized');
+  assert.ok(game.includes('addRuneBonusRolls'),'bonus rolls must use the server-authoritative roll loop');
+  assert.ok(game.includes('eventHorizonRarityMultiplier'),'Event Horizon must impose its rarity floor');
+  assert.ok(game.includes('prismaticForkRarityMultiplier'),'Prismatic Fork must impose its rarity floor');
+  assert.ok(game.includes('runeConstellationCharge'),'Shard Constellation charge must persist');
+  assert.ok(game.includes('runeTemporalMomentum'),'Temporal Loop momentum must persist');
+});
+
 test('Rune Strengthen is tooltip-driven and Auto Sacrifice only consumes un-equipped donors',()=>{
   const ui=source('src/client/components/RunesSection.tsx');
   const combat=source('src/server/combat.ts');
