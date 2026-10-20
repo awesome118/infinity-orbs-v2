@@ -7,7 +7,6 @@ import {
   combatRuneRarityAtOrBelow,
   combatRuneExperienceForLevel,
   combatRuneLevelMultiplier,
-  combatRuneSacrificeExperience,
   combatRuneSlotsUnlocked,
 } from '../../shared/combat.js';
 
