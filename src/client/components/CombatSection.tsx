@@ -13,10 +13,18 @@ interface ApiResponse extends CombatSnapshot {
   arenaResult?:CombatArenaResult;
 }
 async function request<T>(url:string,method='GET',body?:unknown):Promise<T> {
-  const response=await fetch(url,{method,headers:{'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
-  const data=await response.json().catch(()=>({}));
-  if(!response.ok) throw new Error(Number.isFinite(Number(data.retryAfterMs))?'ARENA_COOLDOWN:'+Math.max(0,Number(data.retryAfterMs)):typeof data.error==='string'?data.error:'Combat request failed.');
-  return data as T;
+  const controller=new AbortController();
+  const timeout=window.setTimeout(()=>controller.abort(),12_000);
+  try {
+    const response=await fetch(url,{method,headers:{'Content-Type':'application/json'},signal:controller.signal,...(body===undefined?{}:{body:JSON.stringify(body)})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(Number.isFinite(Number(data.retryAfterMs))?'ARENA_COOLDOWN:'+Math.max(0,Number(data.retryAfterMs)):typeof data.error==='string'?data.error:'Combat request failed.');
+    if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('Combat returned an invalid response. Refresh and retry.');
+    return data as T;
+  } catch(error) {
+    if(error instanceof Error&&error.name==='AbortError')throw new Error('Combat request timed out. Refresh to confirm whether the action completed.');
+    throw error;
+  } finally { window.clearTimeout(timeout); }
 }
 const fmt=(n:number)=>Math.max(0,Math.floor(n||0)).toLocaleString();
 const MAJOR_OFFENSE_IDS=new Set(['void-edge','starfall','executioner','emberwake','critical-mass','orb-conduit','bossbreaker','echo-fang','blood-moon','deep-roots','glass-cannon','fortune-engine','full-moon','unstable-singularity']);
@@ -67,7 +75,7 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     </button>
     <div className={'io-combat-gear-tooltip '+(showTooltip?'is-open':'')}
       style={{position:'fixed',left:tooltipPoint?.x??12,top:tooltipPoint?.y??12,right:'auto',maxWidth:'min(310px, calc(100vw - 16px))',maxHeight:'min(360px, calc(100vh - 16px))',overflow:'auto'}}
-      role="tooltip">
+      role="group" aria-label={item.name+' details and actions'}>
       <span className="io-combat-eyebrow">{grade.toUpperCase()} ITEM · {item.quality.toFixed(2)}% QUALITY · LEVEL {fmt(item.sourceFloor+1)}</span>
       <strong>{item.name}</strong><p>{slotLabel(item.slot)} · Power {fmt(item.power)}</p>
       <div className="io-combat-gear-tooltip-stats">{bonuses.length?bonuses.map(stat=><span className={'io-combat-stat-'+stat.kind} key={stat.label} title={stat.detail}>{stat.label}</span>):<span>No direct stat bonuses</span>}</div>
@@ -95,6 +103,10 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   useEffect(()=>{try{window.localStorage.setItem('io-combat-paused',String(paused));}catch{/* Embedded webviews can disable storage. */}},[paused]);
   useEffect(()=>{const closeDetails=(event:KeyboardEvent)=>{if(event.key!=='Escape')return;setInspectedSkillId(null);const target=event.target;if(target instanceof HTMLElement&&target.closest('.io-combat-skill-icon-wrap.is-inspected'))target.blur();};window.addEventListener('keydown',closeDetails);return()=>window.removeEventListener('keydown',closeDetails);},[]);
   const [visibleGearCount,setVisibleGearCount]=useState(60);
+  const [gearSearch,setGearSearch]=useState('');
+  const [gearSlotFilter,setGearSlotFilter]=useState<'all'|CombatGearSlot>('all');
+  const [gearOwnershipFilter,setGearOwnershipFilter]=useState<'all'|'equipped'|'spare'>('all');
+  const [gearSort,setGearSort]=useState<'newest'|'power'|'quality'|'level'>('newest');
   const [lastSkill,setLastSkill]=useState<ApiResponse['skillRoll']|null>(null);
   const [error,setError]=useState('');
   const [arenaOpponents,setArenaOpponents]=useState<CombatArenaProfile[]>([]);
@@ -259,7 +271,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       if(activeBeat)await activeBeat;
       const result=await request<ApiResponse>(url,'POST',body);accept(result);if(result.skillRoll)setLastSkill(result.skillRoll);if(result.actions?.length)setActions(old=>[...result.actions!,...old].slice(0,30));if(result.scrapResult)setActions(old=>[{actor:'player' as const,kind:'loot' as const,text:'Scrapped '+result.scrapResult!.itemName+' for '+result.scrapResult!.gained+' Scrap.'},...old].slice(0,30));if(result.forgeResult)setActions(old=>[{actor:'player' as const,kind:'loot' as const,text:'Forged '+result.forgeResult!.item.name+' for '+fmt(result.forgeResult!.cost)+' Scrap.'},...old].slice(0,30));setError('');
     }
-    catch(e){setError(e instanceof Error?e.message:'Combat action failed.');setAuto(false);}
+    catch(e){setError(e instanceof Error?e.message:'Combat action failed.');}
     finally{runtime.current.mutating=false;setMutating(false);}
   };
   if(loading&&!state)return <section className="io-combat-screen"><div className="io-combat-loading">ENTERING THE UNDERCRYPT…</div></section>;
@@ -280,7 +292,24 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     return sum+(isActive&&item.majorAbility?.id==='salvagers-touch'?item.majorAbility.scrapBonusPercent*gearQualityEffectiveness(item,currentFloor):0);
   },0);
   const forgeQualityCost=combatForgeQualityCost(currentFloor,forgeQuality);
-  const visibleGear=state.inventory.slice(0,visibleGearCount);
+  const matchingGear=useMemo(()=>{
+    const query=gearSearch.trim().toLowerCase();
+    const equippedIds=new Set(Object.values(state.equipment).filter((id):id is string=>Boolean(id)));
+    return state.inventory.filter(item=>{
+      if(gearSlotFilter!=='all'&&item.slot!==gearSlotFilter)return false;
+      const isEquipped=equippedIds.has(item.id);
+      if(gearOwnershipFilter==='equipped'&&!isEquipped)return false;
+      if(gearOwnershipFilter==='spare'&&isEquipped)return false;
+      if(!query)return true;
+      return [item.name,item.slot,item.trait,item.effect,item.majorAbility?.name??'',item.majorAbility?.description??''].some(value=>String(value).toLowerCase().includes(query));
+    }).sort((a,b)=>{
+      if(gearSort==='power')return b.power-a.power||b.quality-a.quality||a.name.localeCompare(b.name);
+      if(gearSort==='quality')return b.quality-a.quality||b.power-a.power||a.name.localeCompare(b.name);
+      if(gearSort==='level')return b.sourceFloor-a.sourceFloor||b.power-a.power||a.name.localeCompare(b.name);
+      return state.inventory.indexOf(a)-state.inventory.indexOf(b);
+    });
+  },[state.inventory,state.equipment,gearSearch,gearSlotFilter,gearOwnershipFilter,gearSort]);
+  const visibleGear=matchingGear.slice(0,visibleGearCount);
   const visibleSkills=COMBAT_SKILLS.filter(skill=>(showAllSkills||rankOf(state,skill.id)>0)&&[skill.name,skill.rarity,skill.stat].some(value=>String(value).toLowerCase().includes(skillSearch.trim().toLowerCase())));
   const nextStrategyGuide=STRATEGY_GUIDE_RANKS.find(entry=>entry.rank===state.strategyGuideRank+1)??null;
   if(page==='runes')return <RunesSection/>;
@@ -353,7 +382,15 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       <div className="io-combat-stat-strip io-combat-gear-stat-strip"><div><span>SCRAP</span><strong>{fmt(state.scrap)}</strong></div><div><span className="io-combat-stat-offense">BASE DAMAGE</span><strong className="io-combat-stat-offense">{fmt(stats.damage)}</strong></div><div><span className="io-combat-stat-offense">SPEED</span><strong className="io-combat-stat-offense">{fmt(stats.speed)}</strong></div><div><span className="io-combat-stat-defense">ARMOR</span><strong className="io-combat-stat-defense">{fmt(stats.armor)}</strong></div><div><span className="io-combat-stat-defense">DAMAGE MITIGATION</span><strong className="io-combat-stat-defense">{percent(stats.damageReduction)}</strong></div></div>
       <div className="io-combat-panel"><div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">ACTIVE BUILD</span><h2>Seven equipment slots</h2></div></div><div className="io-combat-equipped-grid io-combat-equipment-slot-grid">{GEAR_SLOTS.map(({slot,label,Icon})=>{const item=equipped(state,slot);return <div className="io-combat-equipped-card" key={slot}><span><Icon size={15} strokeWidth={1.8} aria-hidden="true"/> {label.toUpperCase()}</span><strong>{item?.name||'Empty slot'}</strong><p>{item?.effect||'No item equipped.'}</p><small>{item?['+'+fmt(item.damageBonus)+' DAMAGE','+'+fmt(item.speedBonus)+' SPEED','+'+fmt(item.maxHealthBonus)+' HP','+'+fmt(item.armorBonus)+' ARMOR','+'+(item.critChanceBonus*100).toFixed(1)+'% CRIT'].join(' · '):'Find gear on your descent or forge it from the Forge menu.'}</small>{item?.majorAbility&&<p className="io-combat-major-inline">✦ {item.majorAbility.name}: {item.majorAbility.description}</p>}</div>;})}</div></div>
       <div className="io-combat-inventory-head"><div><span className="io-combat-eyebrow">YOUR INVENTORY</span><h2>Collected gear</h2></div><span>{state.inventory.length} owned · {state.runInventoryIds.length}/30 picked up this run</span></div>
-      <div className="io-combat-gear-grid">{visibleGear.map(item=><GearCard key={item.id} item={item} currentFloor={currentFloor} scrapBonusPercent={scrapBonusPercent} isEquipped={state.equipment[item.slot]===item.id} busy={mutating} onEquip={()=>void mutate('/api/combat/equip',{itemId:item.id})} onScrap={()=>void mutate('/api/combat/gear/scrap',{itemId:item.id})}/>)}</div>{state.inventory.length>visibleGear.length&&<button type="button" className="io-combat-button is-secondary" style={{marginTop:12}} onClick={()=>setVisibleGearCount(count=>Math.min(state.inventory.length,count+60))}>Show {Math.min(60,state.inventory.length-visibleGear.length)} more items ({visibleGear.length}/{state.inventory.length})</button>}
+      <div className="io-combat-gear-filters">
+        <label>Search gear<input type="search" value={gearSearch} onChange={event=>{setGearSearch(event.target.value);setVisibleGearCount(60);}} placeholder="Name, trait, or Major Ability…" aria-label="Search gear by name, slot, trait, or Major Ability"/></label>
+        <label>Slot<select value={gearSlotFilter} onChange={event=>{setGearSlotFilter(event.target.value as 'all'|CombatGearSlot);setVisibleGearCount(60);}}><option value="all">All slots</option>{GEAR_SLOTS.map(slot=><option key={slot.slot} value={slot.slot}>{slot.label}</option>)}</select></label>
+        <label>Show<select value={gearOwnershipFilter} onChange={event=>{setGearOwnershipFilter(event.target.value as 'all'|'equipped'|'spare');setVisibleGearCount(60);}}><option value="all">All gear</option><option value="equipped">Equipped only</option><option value="spare">Spare only</option></select></label>
+        <label>Sort<select value={gearSort} onChange={event=>{setGearSort(event.target.value as typeof gearSort);setVisibleGearCount(60);}}><option value="newest">Newest first</option><option value="power">Highest power</option><option value="quality">Highest quality</option><option value="level">Highest level</option></select></label>
+        <span className="io-combat-filter-count">{visibleGear.length} shown of {matchingGear.length}</span>
+        {(gearSearch||gearSlotFilter!=='all'||gearOwnershipFilter!=='all')&&<button type="button" className="io-combat-button is-secondary" onClick={()=>{setGearSearch('');setGearSlotFilter('all');setGearOwnershipFilter('all');setVisibleGearCount(60);}}>Clear filters</button>}
+      </div>
+      {matchingGear.length===0?<div className="io-combat-inventory-empty">No gear matches those filters. Clear filters or search for another item.</div>:<div className="io-combat-gear-grid">{visibleGear.map(item=><GearCard key={item.id} item={item} currentFloor={currentFloor} scrapBonusPercent={scrapBonusPercent} isEquipped={state.equipment[item.slot]===item.id} busy={mutating} onEquip={()=>void mutate('/api/combat/equip',{itemId:item.id})} onScrap={()=>void mutate('/api/combat/gear/scrap',{itemId:item.id})}/>)}</div>{matchingGear.length>visibleGear.length&&<button type="button" className="io-combat-button is-secondary" style={{marginTop:12}} onClick={()=>setVisibleGearCount(count=>Math.min(matchingGear.length,count+60))}>Show {Math.min(60,matchingGear.length-visibleGear.length)} more items ({visibleGear.length}/{matchingGear.length})</button>}
       <div className="io-combat-panel" style={{marginTop:20}}><div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">PERMANENT TRAINING</span><h2>Combat Upgrades</h2><p>Earn Combat Marks from kills and spend them on training and Skill Gacha. The balance persists between runs.</p></div><strong>{fmt(state.combatMarks)} MARKS</strong></div><div className="io-combat-skill-grid">{COMBAT_UPGRADES.map(upgrade=>{const rank=combatUpgradeRank(state,upgrade.id);const cost=combatUpgradeCost(state,upgrade.id);return <article key={upgrade.id} className="io-combat-skill-card"><div className="io-combat-skill-card-head"><span>RANK {rank}/{Math.min(COMBAT_UPGRADE_RANK_CAP,upgrade.maxRank)}</span><b>{rank>=upgrade.maxRank?'MAXED':'NEXT '+fmt(cost)+' MARKS'}</b></div><h3>{upgrade.name}</h3><p>{upgrade.description}</p><div className="io-combat-skill-progress"><span style={{width:(rank/upgrade.maxRank*100)+'%'}}/></div><button type="button" className="io-combat-button is-primary" disabled={mutating||rank>=upgrade.maxRank||state.combatMarks<cost} onClick={()=>void mutate('/api/combat/upgrades/buy',{upgradeId:upgrade.id})}>{rank>=upgrade.maxRank?'Max Rank':state.combatMarks<cost?'Need '+fmt(cost-state.combatMarks)+' more':'Buy Rank '+(rank+1)}</button></article>;})}</div></div>
     </>}
 
