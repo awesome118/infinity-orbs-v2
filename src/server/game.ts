@@ -3168,6 +3168,13 @@ export async function save(
   throw new Error('Could not safely save player data. Please retry.');
 }
 
+function secureServerToken(prefix: string): string {
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  const nonce = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  return prefix + '-' + Date.now().toString(36) + '-' + nonce;
+}
+
 function serverRandom(): number {
   // Use 64 bits of entropy so the extended rarity continuum is actually
   // reachable. A 32-bit sample bottoms out around 1 / 4.3 billion, which made
@@ -4008,7 +4015,7 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
   // has an ambiguous failure, no provider call occurs, and a later job can
   // reclaim this reserved-v2 marker after the lease expires.
   const attemptNow = Date.now();
-  const nonce = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  const nonce = secureServerToken('offline-notification');
   const reservationStamp = attemptNow.toString(36);
   const reservedToken = `reserved-v2:${reservationStamp}:${nonce}`;
   const sendingToken = `sending-v2:${reservationStamp}:${nonce}`;
@@ -4189,7 +4196,7 @@ async function scheduleOfflineFullNotification(
     Math.max(now + 1_000, Number.isFinite(requestedRunAt) ? requestedRunAt : now + 1_000),
   );
   const expiresAt = Math.max(now + 60_000, Math.min(maxDateMs - 1, safeRunAt + OFFLINE_FULL_RETRY_MS * 2));
-  const randomToken = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  const randomToken = secureServerToken('offline-job');
   const token = `offline-job-${now.toString(36)}-${randomToken}`;
   const reservation = JSON.stringify({ token, jobId: null, runAt: safeRunAt });
 
@@ -4987,10 +4994,7 @@ export async function claimFollowReward(): Promise<{
     // Commit the 200-roll reward and its idempotency marker in the same
     // WATCH/MULTI/EXEC transaction. A marker write failure must never allow a
     // retry to grant the reward a second time.
-    const rewardMarker = String(
-      globalThis.crypto?.randomUUID?.() ??
-      `claimed-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    );
+    const rewardMarker = secureServerToken('follow-reward');
     await save(s, {
       key: rewardKey,
       expectedValue: null,
@@ -6638,7 +6642,7 @@ export async function postFrenzyThankYouComment(
     throw new Error('A thank-you comment was already attempted. Check the Frenzy post before trying again.');
   }
 
-  const reservation = 'pending-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  const reservation = secureServerToken('frenzy-thank-you');
   await redis.set(receiptKey, reservation, { nx: true, expiration });
   if (await redis.get(receiptKey) !== reservation) {
     throw new Error('A thank-you comment was already attempted. Check the Frenzy post before trying again.');
