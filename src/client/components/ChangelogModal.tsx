@@ -11,6 +11,10 @@ const entries: Array<{
   description: string;
 }> = [
   {
+    title: 'Rune Fusion, Enemy Speed & Tutorial Persistence',
+    description: 'Sacrifice unwanted Runes into a chosen Rune to grant experience. Rune bonuses now approach a large soft cap, Rune inventory columns are tighter, enemy Speed scales continuously with depth, and Combat tutorial completion is saved server-side.',
+  },
+  {
     title: 'Combat Unlock & Mark Shop',
     description: 'Combat unlocks at Level 8 with a guided introduction. Coins are shown in the core game, while Combat Marks are shown in Combat. Mark Magnet and Warding Doctrine add new permanent upgrades, and Starfall and Mark Harvest expand possible gear Major Abilities.',
   },
@@ -24,7 +28,7 @@ const entries: Array<{
   },
   {
     title: 'Runes · Combat Loot for the Main Game',
-    description: 'Monsters can now drop seven Rune rarities. Equip Runes in the new Runes menu to improve Orb Luck, Coins, Shard chance, or XP in the core game. Bosses always drop a Rune; elites have better odds. Earn more Rune slots through Delver levels and depth, and salvage extras for Combat Marks.',
+    description: 'Monsters can now drop seven Rune rarities. Equip Runes in the new Runes menu to improve Orb Luck, Coins, Shard chance, or XP in the core game. Bosses always drop a Rune; elites have better odds. Earn more Rune slots through Delver levels and depth, then sacrifice spare Runes into the ones you want to strengthen.',
   },
   {
     title: 'First Steps Tutorial',
