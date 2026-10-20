@@ -2735,7 +2735,7 @@ test('new-best celebration is triggered only by a confirmed record-breaking manu
 test('background polling is single-flight and paused while hidden', () => {
   const client = source('src/client/main.tsx');
   const sharedPollGuard = "if (cancelled || inFlight || document.visibilityState === 'hidden') return;";
-  assert.ok((client.match(new RegExp(sharedPollGuard.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&'), 'g')) ?? []).length >= 4);
+  assert.ok(client.split(sharedPollGuard).length - 1 >= 4);
   assert.ok(client.includes("if (!splashEntered || inFlight || document.visibilityState === 'hidden') return;"));
   assert.ok(client.includes("if (inFlight || document.visibilityState === 'hidden') return;"));
   assert.ok(client.includes("document.addEventListener('visibilitychange', onVisibilityChange);"));
