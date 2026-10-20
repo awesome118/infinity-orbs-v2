@@ -349,3 +349,15 @@ test('viewer-specific Frenzy eligibility and handoff responses are never cacheab
     assert.match(source.slice(start, end), /Cache-Control', 'no-store'/, route + ' must not leak cached per-viewer state');
   }
 });
+
+
+test('arming a Frenzy serializes offline settlement with normal player mutations', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  const start = source.indexOf('export async function armOrbFrenzyClaim');
+  const end = source.indexOf('\nexport async function getOrbFrenzyHandoff', start);
+  assert.ok(start >= 0 && end > start, 'Frenzy arm function must exist');
+  const arm = source.slice(start, end);
+  assert.match(arm, /return withPlayerMutationLock\(async \(\) => \{/);
+  assert.match(arm, /await settleOffline\(await loadRaw\(\)\)/);
+  assert.match(arm, /frenzyHandoffKey\(currentUserId\(\)\)/);
+});
