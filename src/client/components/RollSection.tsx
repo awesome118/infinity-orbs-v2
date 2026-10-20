@@ -106,12 +106,25 @@ export const RollSection: React.FC<RollSectionProps> = ({
     const scheduleTick = () => {
       const current = Date.now();
       const remaining = readyAt - current;
+      if (remaining <= 0) {
+        setNow(current);
+        timer = null;
+        return;
+      }
       timer = window.setTimeout(() => {
-        setNow(Date.now());
-        scheduleTick();
-      }, remaining > 0 && remaining <= 3000 ? 250 : 1000);
+        const tickAt = Date.now();
+        setNow(tickAt);
+        if (readyAt - tickAt > 0) scheduleTick();
+        else timer = null;
+      }, remaining <= 3000 ? 250 : 1000);
     };
-    const syncOnVisibility = () => setNow(Date.now());
+    const syncOnVisibility = () => {
+      const current = Date.now();
+      setNow(current);
+      if (timer !== null) window.clearTimeout(timer);
+      timer = null;
+      if (readyAt > current) scheduleTick();
+    };
     scheduleTick();
     document.addEventListener('visibilitychange', syncOnVisibility);
     return () => {
