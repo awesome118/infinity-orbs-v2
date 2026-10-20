@@ -2717,11 +2717,17 @@ test('armed Frenzy readiness and Pity Luck meter use the actual gameplay thresho
   assert.ok(roll.includes('{dryStreak % pityInterval} / {pityInterval} rolls to next stack'));
 });
 
-test('new-best celebration fires for completed manual milestones without interrupting automation', () => {
-  const roll = source('src/client/components/RollSection.tsx');
-  assert.ok(roll.includes('const handledBestResultRef = useRef<Orb | null>(null);'));
-  assert.ok(roll.includes('if (busy) return;'));
-  assert.ok(roll.includes('if (!autoRoll && resultRarity > previousBest && resultRarity >= currentBest)'));
-  assert.ok(roll.includes('onNewBest?.(displayOrb, previousBest);'));
-  assert.ok(roll.includes('handledBestResultRef.current === displayOrb'));
+test('new-best celebration is triggered only by a confirmed record-breaking manual roll', () => {
+  const client = source('src/client/main.tsx');
+  const rollStart = client.indexOf('const handleRoll = useCallback(async (isAutoRoll = false) =>');
+  const frenzyStart = client.indexOf("'/api/frenzy/start'", rollStart);
+  const rollSuccess = client.indexOf("'/api/roll'", rollStart);
+  const rollEnd = client.indexOf('catch (error: any)', rollSuccess);
+  assert.ok(rollStart >= 0 && rollSuccess > rollStart && rollEnd > rollSuccess);
+  const rollHandler = client.slice(rollStart, rollEnd);
+  assert.ok(rollHandler.includes('if (!isAutoRoll && res.orb.rarity > previousBest && res.orb.rarity >= latestBest)'));
+  assert.ok(rollHandler.includes('setNewBestModalData({ orb: res.orb, prevBest: previousBest });'));
+  assert.ok(rollHandler.indexOf('setNewBestModalData') > rollHandler.indexOf("'/api/roll'"));
+  assert.ok(rollHandler.indexOf('setNewBestModalData') > rollHandler.indexOf(frenzyStart - rollStart + rollStart));
+  assert.ok(!source('src/client/components/RollSection.tsx').includes('handledBestResultRef'));
 });
