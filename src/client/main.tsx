@@ -221,12 +221,41 @@ export function App() {
   const [combatTutorialDismissed, setCombatTutorialDismissed] = useState(() => {
     try { return window.localStorage.getItem('io-combat-tutorial-v1') === 'done'; } catch { return false; }
   });
+  const [combatTutorialStatusLoaded, setCombatTutorialStatusLoaded] = useState(false);
+  useEffect(() => {
+    let active = true;
+    let localDone = false;
+    try { localDone = window.localStorage.getItem('io-combat-tutorial-v1') === 'done'; } catch { /* Use server persistence when webview storage is unavailable. */ }
+    void fetch('/api/combat/tutorial/status', { cache: 'no-store' })
+      .then(async response => {
+        if (!response.ok) throw new Error('Could not load Combat tutorial status.');
+        return await response.json() as { seen?: boolean };
+      })
+      .then(result => {
+        if (!active) return;
+        const done = result.seen === true || localDone;
+        setCombatTutorialDismissed(done);
+        if (done) {
+          try { window.localStorage.setItem('io-combat-tutorial-v1', 'done'); } catch { /* Server is authoritative. */ }
+          if (result.seen !== true) {
+            void fetch('/api/combat/tutorial/complete', { method: 'POST' }).catch(() => undefined);
+          }
+        }
+      })
+      .catch(() => {
+        if (active) setCombatTutorialDismissed(localDone);
+      })
+      .finally(() => {
+        if (active) setCombatTutorialStatusLoaded(true);
+      });
+    return () => { active = false; };
+  }, []);
   useEffect(() => {
     const coreTutorialDone = tutorialDismissed || Number(state?.totalRolls ?? 0) > 3;
-    if (coreTutorialDone && !combatTutorialDismissed && state && state.level >= FEATURE_UNLOCK_LEVELS.combat && combatTutorialStep === 0) {
+    if (combatTutorialStatusLoaded && coreTutorialDone && !combatTutorialDismissed && state && state.level >= FEATURE_UNLOCK_LEVELS.combat && combatTutorialStep === 0) {
       setCombatTutorialStep(1);
     }
-  }, [state?.level, state?.totalRolls, tutorialDismissed, combatTutorialDismissed, combatTutorialStep]);
+  }, [state?.level, state?.totalRolls, tutorialDismissed, combatTutorialDismissed, combatTutorialStep, combatTutorialStatusLoaded]);
   const combatMode = tab === 'fight' || tab === 'dungeons' || tab === 'gear' || tab === 'forge' || tab === 'skills' || tab === 'arena' || tab === 'runes';
   const [autoRoll, setAutoRoll] = useState<boolean>(false);
   const [isBeta, setIsBeta] = useState(false);
@@ -532,7 +561,8 @@ export function App() {
   const finishCombatTutorial = () => {
     setCombatTutorialDismissed(true);
     setCombatTutorialStep(0);
-    try { window.localStorage.setItem('io-combat-tutorial-v1', 'done'); } catch { /* Embedded webviews may disable storage. */ }
+    try { window.localStorage.setItem('io-combat-tutorial-v1', 'done'); } catch { /* Server-side completion is the fallback. */ }
+    void fetch('/api/combat/tutorial/complete', { method: 'POST' }).catch(() => undefined);
   };
 
   const featureForTab = (nextTab: ActiveTab): FeatureId | null => {
@@ -2541,7 +2571,7 @@ export function App() {
         </div>
       </div>
 
-      {state && combatTutorialStep > 0 && !combatTutorialDismissed && (
+      {combatTutorialStatusLoaded && state && combatTutorialStep > 0 && !combatTutorialDismissed && (
         <section className="io-tutorial-guide io-combat-onboarding" aria-live="polite" aria-label="Combat unlock tutorial">
           <div className="io-tutorial-topline"><span>COMBAT UNLOCKED · LEVEL {FEATURE_UNLOCK_LEVELS.combat}</span><span>STEP {combatTutorialStep} / 3</span><button type="button" onClick={finishCombatTutorial} aria-label="Skip Combat tutorial">Skip</button></div>
           {combatTutorialStep === 1 && <>
