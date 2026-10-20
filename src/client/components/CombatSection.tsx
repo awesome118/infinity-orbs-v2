@@ -90,8 +90,10 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const [auto,setAuto]=useState(()=>{try{return window.localStorage.getItem('io-combat-auto')!=='false';}catch{return true;}}),[paused,setPaused]=useState(()=>{try{return window.localStorage.getItem('io-combat-paused')==='true';}catch{return false;}}),[intent,setIntent]=useState<CombatIntent>('strike');
   const [showAllSkills,setShowAllSkills]=useState(true);
   const [inspectedSkillId,setInspectedSkillId]=useState<string|null>(null);
+  const [skillSearch,setSkillSearch]=useState('');
   useEffect(()=>{try{window.localStorage.setItem('io-combat-auto',String(auto));}catch{/* Embedded webviews can disable storage. */}},[auto]);
   useEffect(()=>{try{window.localStorage.setItem('io-combat-paused',String(paused));}catch{/* Embedded webviews can disable storage. */}},[paused]);
+  useEffect(()=>{const closeDetails=(event:KeyboardEvent)=>{if(event.key==='Escape')setInspectedSkillId(null);};window.addEventListener('keydown',closeDetails);return()=>window.removeEventListener('keydown',closeDetails);},[]);
   const [visibleGearCount,setVisibleGearCount]=useState(60);
   const [lastSkill,setLastSkill]=useState<ApiResponse['skillRoll']|null>(null);
   const [error,setError]=useState('');
@@ -279,7 +281,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   },0);
   const forgeQualityCost=combatForgeQualityCost(currentFloor,forgeQuality);
   const visibleGear=state.inventory.slice(0,visibleGearCount);
-  const visibleSkills=COMBAT_SKILLS.filter(skill=>showAllSkills||rankOf(state,skill.id)>0);
+  const visibleSkills=COMBAT_SKILLS.filter(skill=>(showAllSkills||rankOf(state,skill.id)>0)&&[skill.name,skill.rarity,skill.stat].some(value=>String(value).toLowerCase().includes(skillSearch.trim().toLowerCase())));
   const nextStrategyGuide=STRATEGY_GUIDE_RANKS.find(entry=>entry.rank===state.strategyGuideRank+1)??null;
   if(page==='runes')return <RunesSection/>;
   const hpPct=Math.max(0,Math.min(100,state.health/Math.max(1,state.maxHealth)*100));
@@ -404,6 +406,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       {lastSkill&&<div className={'io-combat-skill-result '+rarityClass(lastSkill.rarity)}><Sparkles size={18}/><div><strong>{lastSkill.name}</strong><p>{lastSkill.duplicate?(lastSkill.rankedUp?'Ranked up to Rank '+fmt(lastSkill.rank)+'.':'Duplicate progress '+fmt(lastSkill.progress)+'/'+fmt(lastSkill.copiesNeeded)+' toward Rank '+fmt(lastSkill.rank+1)+'. Higher ranks require more duplicate copies.'):'Unlocked as a new Rank 1 active ability.'}</p></div><span>{lastSkill.rarity.toUpperCase()}</span></div>}
       {gachaRequirement&&<section className="io-combat-panel" style={{marginBottom:20}}><div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">GACHA PROGRESSION</span><h2>Rank Up to {gachaRequirement.rank} · {gachaRequirement.unlocks}</h2><p>Requires {fmt(gachaRequirement.requiredPulls)} lifetime skill pulls and {fmt(gachaRequirement.requiredMarks)} Combat Marks. Current progress: {fmt(state.skillRolls)} pulls and {fmt(state.combatMarks)} Marks.</p></div><button type="button" className="io-combat-button is-primary" disabled={mutating||state.skillRolls<gachaRequirement.requiredPulls||state.combatMarks<gachaRequirement.requiredMarks} onClick={()=>void mutate('/api/combat/skills/rank-up')}>{state.skillRolls<gachaRequirement.requiredPulls?'Need '+fmt(gachaRequirement.requiredPulls-state.skillRolls)+' pulls':state.combatMarks<gachaRequirement.requiredMarks?'Need '+fmt(gachaRequirement.requiredMarks-state.combatMarks)+' Marks':'Rank Up Gacha'}</button></div></section>}
       <div className="io-combat-codex-toolbar"><div><span className="io-combat-eyebrow">SKILL CODEX</span><h2>{ownedSkills.length} / {COMBAT_SKILLS.length} discovered · {state.equippedAbilities.length}/{COMBAT_ABILITY_SLOTS} equipped</h2></div><button type="button" className="io-combat-button is-secondary" onClick={()=>{setInspectedSkillId(null);setShowAllSkills(!showAllSkills);}}>{showAllSkills?'Owned only':'Show all skills'}</button></div>
+      <div className="io-combat-skill-search"><label htmlFor="io-combat-skill-search">Find a skill</label><input id="io-combat-skill-search" type="search" value={skillSearch} onChange={event=>setSkillSearch(event.target.value)} placeholder="Name, rarity, or effect…" /><span>{visibleSkills.length} shown</span></div>
       <div className="io-combat-skill-grid io-combat-skill-icons">{visibleSkills.map(skill=>{
         const rank=rankOf(state,skill.id),copies=state.skillCopyProgress[skill.id]??0,needed=rank>0?combatSkillCopiesForNextRank(rank):0;
         const isEquipped=state.equippedAbilities.includes(skill.id),unlocked=skillRarityUnlocked(skill.rarity,state.skillGachaRank);
