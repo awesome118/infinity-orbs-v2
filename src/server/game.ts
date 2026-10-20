@@ -4350,7 +4350,9 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
   const now = Date.now();
   checkPeriodicResets(s, now);
   resetFreeShardBudgetIfNeeded(s, now);
-  s.onlinePlayers = await touchOnlinePresence();
+  s.onlinePlayers = options.registerActivity === false
+    ? await getOnlinePlayers()
+    : await touchOnlinePresence();
   s.globalBoosters = await getGlobalBoosters();
 
   // Old saves may outlive a lower current vault cap after prestige/upgrades change.
@@ -4539,11 +4541,11 @@ export async function getCollectionPage(options: {
   };
 }
 
-export async function getState(): Promise<PlayerState> {
-  // GET /api/me must remain a read operation. Previously this path called
-  // settleOffline() and save(), which meant every background refresh could
-  // increment stateRevision and race a real mutation.
-  const s = await loadRaw();
+export async function getState(options: { registerActivity?: boolean } = {}): Promise<PlayerState> {
+  // GET /api/me must remain a passive read. A post preview may mount the game
+  // client without a user choosing Play, so let callers explicitly avoid both
+  // player registration and online-presence writes until an active session.
+  const s = await loadRaw({ registerActivity: options.registerActivity });
   const now = Date.now();
 
   // Recompute Codex projections from the authoritative collection on every read.
@@ -4621,7 +4623,11 @@ export async function buyChainPatcher(): Promise<{
 
 export async function getMe(): Promise<PlayerState> {
   const ban = await getGameBanStatus();
-  const s = ban ? await loadRaw() : await getState();
+  // Fetching the initial splash snapshot is not an engagement signal. The
+  // explicit heartbeat (after Play) and saved gameplay actions register activity.
+  const s = ban
+    ? await loadRaw({ registerActivity: false })
+    : await getState({ registerActivity: false });
   if (ban) {
     s.gameBan = {
       active: true,
