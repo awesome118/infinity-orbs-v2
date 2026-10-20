@@ -2541,3 +2541,27 @@ test('core idempotency reservations never fall back to Math.random tokens', () =
   assert.match(game, /secureServerToken\('frenzy-thank-you'\)/);
   assert.doesNotMatch(game, /Math\.random\(\)/);
 });
+
+
+test('passive player snapshots and the Play splash do not register active sessions', () => {
+  const game = source('src/server/game.ts');
+  const stateStart = game.indexOf('export async function getState(');
+  const meStart = game.indexOf('export async function getMe()', stateStart);
+  const offlineStart = game.indexOf('export async function checkOffline()', meStart);
+  assert.ok(stateStart >= 0 && meStart > stateStart && offlineStart > meStart);
+  const getState = game.slice(stateStart, meStart);
+  const getMe = game.slice(meStart, offlineStart);
+
+  assert.match(getState, /loadRaw\(\{ registerActivity: options\.registerActivity \}\)/);
+  assert.match(getState, /options\.registerActivity === false[\s\S]*?await getOnlinePlayers\(\)[\s\S]*?: await touchOnlinePresence\(\)/);
+  assert.match(getMe, /loadRaw\(\{ registerActivity: false \}\)/);
+  assert.match(getMe, /getState\(\{ registerActivity: false \}\)/);
+
+  const client = source('src/client/main.tsx');
+  const heartbeatStart = client.indexOf('const heartbeat = () =>');
+  const heartbeatEnd = client.indexOf('}, [Boolean(state), splashEntered]);', heartbeatStart);
+  assert.ok(heartbeatStart >= 0 && heartbeatEnd > heartbeatStart, 'heartbeat effect must restart when Play is entered');
+  const heartbeat = client.slice(heartbeatStart, heartbeatEnd);
+  assert.match(client.slice(client.lastIndexOf('useEffect(() =>', heartbeatStart), heartbeatStart), /if \(!state \|\| !splashEntered\) return;/);
+  assert.match(heartbeat, /if \(!splashEntered \|\| document\.visibilityState === 'hidden'\) return;/);
+});
