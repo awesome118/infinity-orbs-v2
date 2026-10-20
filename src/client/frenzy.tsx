@@ -147,8 +147,22 @@ function FrenzyPost() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
+    let timer: number | null = null;
+    const syncTimer = () => {
+      setNow(Date.now());
+      if (document.visibilityState === 'hidden') {
+        if (timer !== null) window.clearInterval(timer);
+        timer = null;
+      } else if (timer === null) {
+        timer = window.setInterval(() => setNow(Date.now()), 1000);
+      }
+    };
+    syncTimer();
+    document.addEventListener('visibilitychange', syncTimer);
+    return () => {
+      if (timer !== null) window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', syncTimer);
+    };
   }, []);
 
   const claim = async (event: React.MouseEvent<HTMLButtonElement>) => {
