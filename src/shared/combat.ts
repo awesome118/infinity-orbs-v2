@@ -61,6 +61,7 @@ export interface CombatRuneMajorAbilityEffects {
   temporalLoopBonusRolls:number;
   prismaticForkPct:number;
   criticalConvergencePct:number;
+  criticalConvergenceBonusRolls:number;
   rarityLadderPct:number;
   rarityLadderBonusRolls:number;
   stellarDividendPct:number;
@@ -243,7 +244,7 @@ export function combatRuneMajorAbilityEffects(runesValue:unknown,equippedValue:u
     shardConstellationPct:0,shardConstellationBonusRolls:1,shardConstellationBonusShards:1,
     temporalLoopPct:0,temporalLoopMomentumPerRoll:0,temporalLoopBonusRolls:1,
     prismaticForkPct:0,
-    criticalConvergencePct:0,rarityLadderPct:0,rarityLadderBonusRolls:1,
+    criticalConvergencePct:0,criticalConvergenceBonusRolls:1,rarityLadderPct:0,rarityLadderBonusRolls:1,
     stellarDividendPct:0,stellarDividendBonusRolls:1,
     shardJackpotPct:0,shardJackpotExtraMultiplier:0,
     milestoneEnginePct:0,milestoneEngineBonusRolls:1,milestoneEngineBonusShards:1,
@@ -286,6 +287,7 @@ export function combatRuneMajorAbilityEffects(runesValue:unknown,equippedValue:u
         break;
       case 'critical-convergence':
         effects.criticalConvergencePct=add(effects.criticalConvergencePct,power);
+        effects.criticalConvergenceBonusRolls=Math.max(effects.criticalConvergenceBonusRolls,runeMajorBonusRollCount(power,level));
         break;
       case 'rarity-ladder':
         effects.rarityLadderPct=add(effects.rarityLadderPct,power);
