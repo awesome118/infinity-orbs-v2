@@ -180,7 +180,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                         {fmt(q.progress)} / {fmt(q.target)}
                       </span>
                     </div>
-                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                    <div role="progressbar" aria-label={q.title+' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
                       <div
                         className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all"
                         style={{ width: `${pct}%` }}
@@ -268,7 +268,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                         {fmt(q.progress)} / {fmt(q.target)}
                       </span>
                     </div>
-                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                    <div role="progressbar" aria-label={q.title+' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
                       <div
                         className="h-full bg-gradient-to-r from-cyan-500 to-blue-600 transition-all"
                         style={{ width: `${pct}%` }}
