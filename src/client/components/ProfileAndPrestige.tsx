@@ -185,7 +185,8 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
   };
 
   const safeStoredLevel=Number.isFinite(Number(state.level))?Math.max(1,Math.min(1000,Math.floor(Number(state.level)))):1;
-  const levelProgress=getLevelProgress(safeStoredLevel,state.xp,state.levelXpFloor);
+  const safeTotalXp=Number.isFinite(Number(state.xp))?Math.max(0,Number(state.xp)):0;
+  const levelProgress=getLevelProgress(safeStoredLevel,safeTotalXp,state.levelXpFloor);
   const levelInfo={
     ...levelProgress,
     progressPercent:Math.max(0,Math.min(100,Math.round(Number(levelProgress.progressPercent)||0))),
@@ -199,7 +200,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-purple-800/30 pb-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-purple-500/30">
-              <Star className="w-6 h-6 fill-current text-amber-300 animate-spin" style={{ animationDuration: '14s' }} />
+              <Star className="w-6 h-6 fill-current text-amber-300 motion-safe:animate-spin" style={{ animationDuration: '14s' }} />
             </div>
             <div>
               <div className="flex items-center gap-2">
