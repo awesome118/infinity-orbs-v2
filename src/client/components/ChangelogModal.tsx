@@ -11,8 +11,8 @@ const entries: Array<{
   description: string;
 }> = [
   {
-    title: 'Rune Fusion, Enemy Speed & Tutorial Persistence',
-    description: 'Sacrifice unwanted Runes into a chosen Rune to grant experience. Rune bonuses now approach a large soft cap, Rune inventory columns are tighter, enemy Speed scales continuously with depth, and Combat tutorial completion is saved server-side.',
+    title: 'Rune Major Abilities & Auto Sacrifice',
+    description: 'Rune tooltips now expose six scalable gameplay effects: Echo Chamber, Paradox Engine, Event Horizon, Shard Constellation, Temporal Loop, and Prismatic Fork. Strengthen a chosen Rune by clicking a donor Rune, or configure Auto Sacrifice to feed eligible drops into a random equipped Rune. Temporal Loop charges faster during long dry streaks.',
   },
   {
     title: 'Combat Unlock & Mark Shop',
