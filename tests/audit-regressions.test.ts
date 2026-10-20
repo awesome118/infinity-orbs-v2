@@ -2638,6 +2638,8 @@ test('rolling disables both roll affordances and gives the orb keyboard semantic
   assert.match(roll, /aria-label=\{busy \? 'Rolling orbs'/);
   assert.match(roll, /busy \? 'ROLL IN PROGRESS'/);
   assert.match(roll, /className=\{'roll-button ' \+ \(busy \? 'is-waiting'/);
+  const css = source('src/client/styles.css');
+  assert.match(css, /\.roll-button:hover:disabled \{[^}]*transform: none !important;[^}]*cursor: wait !important;/);
 });
 
 
