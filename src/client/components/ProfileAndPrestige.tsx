@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Sparkles,
   Palette,
@@ -66,9 +66,12 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
   const [autoScrapEnabled,setAutoScrapEnabled]=useState(state.combatAutoScrap?.enabled===true);
   const [autoScrapQuality,setAutoScrapQuality]=useState(state.combatAutoScrap?.maxQuality??20);
   const [autoScrapSaving,setAutoScrapSaving]=useState(false);
+  const autoScrapLockRef=useRef(false);
   const [autoScrapError,setAutoScrapError]=useState('');
   useEffect(()=>{setAutoScrapEnabled(state.combatAutoScrap?.enabled===true);setAutoScrapQuality(state.combatAutoScrap?.maxQuality??20);},[state.combatAutoScrap?.enabled,state.combatAutoScrap?.maxQuality]);
   const saveAutoScrapSettings=async()=>{
+    if(autoScrapLockRef.current||busy)return;
+    autoScrapLockRef.current=true;
     setAutoScrapSaving(true);setAutoScrapError('');
     try{
       const controller=new AbortController();
@@ -88,7 +91,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
         setAutoScrapQuality(Number.isFinite(quality)?Math.max(0,Math.min(100,quality)):20);
       }
     }catch(error){setAutoScrapError(error instanceof Error&&error.name==='AbortError'?'Auto Scrap save timed out. Refresh settings to verify whether it was saved.':error instanceof Error?error.message:'Could not save Auto Scrap settings.');}
-    finally{setAutoScrapSaving(false);}
+    finally{autoScrapLockRef.current=false;setAutoScrapSaving(false);}
   };
   const fmt = (n: number) => formatNumber(n);
   const longestSessionMs = Math.max(0, state.longestRollingSessionMs ?? 0);
