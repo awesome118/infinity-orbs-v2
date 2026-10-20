@@ -78,7 +78,7 @@ export async function recordPostImpression(
 
   // The index contains post metadata only, never viewer data.
   await redis.hSet(POST_INDEX_KEY, {
-    [indexField]: JSON.stringify({ postType, postId }),
+    [indexField]: JSON.stringify({ postType, postId, lastSeenAt: now }),
   });
   return { recorded: true };
 }
@@ -133,23 +133,32 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
     Record<ImpressionDeviceType, number>
   >;
 
-  const rows = await Promise.all(Object.values(postIndex ?? {}).map(async raw => {
+  // Keep dashboard reads bounded as the community creates more share/Frenzy
+  // posts. The hash index is small compared with reading every per-post counter;
+  // only the 500 most recently seen post IDs are expanded into rows.
+  const indexedPosts = Object.values(postIndex ?? {}).flatMap(raw => {
     try {
-      const parsed = JSON.parse(String(raw)) as { postType?: unknown; postId?: unknown };
+      const parsed = JSON.parse(String(raw)) as { postType?: unknown; postId?: unknown; lastSeenAt?: unknown };
       const postType = normalizePostType(parsed.postType);
       const postId = String(parsed.postId ?? '').trim();
-      if (!postId) return null;
-      return {
+      if (!postId) return [];
+      const lastSeenAt = Number(parsed.lastSeenAt ?? 0);
+      return [{
         postType,
         postId,
-        impressions: await readCount(postKey(postType, postId)),
-      } satisfies ImpressionPostRow;
+        lastSeenAt: Number.isSafeInteger(lastSeenAt) && lastSeenAt >= 0 ? lastSeenAt : 0,
+      }];
     } catch {
-      return null;
+      return [];
     }
-  }));
+  }).sort((a, b) => b.lastSeenAt - a.lastSeenAt).slice(0, 500);
+
+  const rows = await Promise.all(indexedPosts.map(async ({ postType, postId }) => ({
+    postType,
+    postId,
+    impressions: await readCount(postKey(postType, postId)),
+  } satisfies ImpressionPostRow)));
   const posts = rows
-    .filter((row): row is ImpressionPostRow => row !== null)
     .sort((a, b) => b.impressions - a.impressions)
     .slice(0, 200);
 
