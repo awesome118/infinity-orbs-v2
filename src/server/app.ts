@@ -796,7 +796,7 @@ export function createApp() {
         title: 'Infinity Orbs',
         entry: 'default',
       });
-      await redis.set('io:global-game-post-id', post.id, { nx: true }).catch((error: unknown) => {
+      await redis.set('io:global-game-post-id', post.id).catch((error: unknown) => {
         console.error('[Global Chat] Could not register the new Game post:', error);
       });
       res.json({ navigateTo: `https://reddit.com/r/${subredditName}/comments/${post.id}` });
@@ -814,7 +814,7 @@ export function createApp() {
         title: 'Infinity Orbs',
         entry: 'default',
       });
-      await redis.set('io:global-game-post-id', post.id, { nx: true }).catch((error: unknown) => {
+      await redis.set('io:global-game-post-id', post.id).catch((error: unknown) => {
         console.error('[Global Chat] Could not register the new Game post:', error);
       });
       res.json({ status: 'success', message: `Created Infinity Orbs post ${post.id} in r/${subredditName}.` });
@@ -1039,15 +1039,11 @@ export function createApp() {
     }
   });
 
-  app.get('/api/chat/status', async (req, res) => {
+  app.get('/api/chat/status', async (_req, res) => {
     try {
-      // The GlobalChatWindow is mounted by the main launcher entry point.
-      // Explicitly mark that handshake so stale test/Frenzy metadata cannot
-      // prevent the main Game post from registering itself.
-      res.json(await getGlobalChatStatus(
-        req.query.launcher === 'main',
-        req.query.launcher === 'frenzy',
-      ));
+      // The query string is untrusted; only the server-owned canonical post ID
+      // set by onAppInstall/menu post creation determines the Global Chat target.
+      res.json(await getGlobalChatStatus());
     } catch (e) { badRequest(res, e, 'Could not determine Global Chat availability.'); }
   });
 
