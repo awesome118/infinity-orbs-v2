@@ -49,6 +49,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
         className="relative w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl space-y-4"
       >
         <button
+          type="button"
           onClick={onClose}
           className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800"
           aria-label="Close feedback"
@@ -68,6 +69,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
 
         <div className="grid grid-cols-2 gap-2">
           <button
+            type="button"
+            aria-pressed={type === 'bug'}
             onClick={() => {
               setType('bug');
               sound.playClick();
@@ -80,6 +83,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
             Bug Report
           </button>
           <button
+            type="button"
+            aria-pressed={type === 'suggestion'}
             onClick={() => {
               setType('suggestion');
               sound.playClick();
@@ -98,6 +103,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
           value={message}
           onChange={e => setMessage(e.target.value.slice(0, 2000))}
           rows={8}
+          maxLength={2000}
           placeholder={type === 'bug'
             ? 'What happened? Include what you expected to happen and what actually happened.'
             : 'What would you like to see changed or added?'}
@@ -105,11 +111,12 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
         />
 
         <div className="flex items-center justify-between gap-3 text-[10px]">
-          <span role={error ? 'alert' : undefined} className={error ? 'text-rose-300' : 'text-slate-600'}>
+          <span role={error ? 'alert' : 'status'} aria-live={error ? 'assertive' : 'polite'} className={error ? 'text-rose-300' : 'text-slate-600'}>
             {error || message.length + '/2000'}
           </span>
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={onClose}
               disabled={busy}
               className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-300 hover:text-white disabled:opacity-50"
@@ -117,6 +124,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
               Cancel
             </button>
             <button
+              type="button"
+              aria-busy={busy}
               onClick={() => void submit()}
               disabled={busy || !message.trim()}
               className="rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 px-4 py-2.5 text-xs font-black text-white hover:from-cyan-500 hover:to-indigo-500 disabled:cursor-not-allowed disabled:opacity-40 flex items-center gap-1.5"

@@ -265,6 +265,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           onClick={() => setOpen(false)}
           className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-800 hover:text-white"
           title="Minimize chat"
+          aria-label="Minimize Global Chat"
         >
           <Minimize2 className="w-3.5 h-3.5" />
         </button>
@@ -284,6 +285,9 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
       )}
 
       <div
+        role="log"
+        aria-label="Global Chat messages"
+        aria-relevant="additions text"
         ref={chatListRef}
         onScroll={() => {
           const element = chatListRef.current;
@@ -357,6 +361,8 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           />
           <button
             type="submit"
+            aria-label={sending ? 'Sending public comment' : 'Send public comment'}
+            aria-busy={sending}
             disabled={chatAvailable !== true || sending || !input.trim()}
             className="rounded-xl bg-indigo-600 px-3 py-2.5 text-white transition-all hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600"
             title="Post public comment"

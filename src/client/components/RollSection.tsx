@@ -490,6 +490,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
         )}
 
         <button
+          type="button"
           onClick={handleRollClick}
           className={'roll-button ' + (frenzyArmed ? 'frenzy-supercharged' : canRoll ? 'is-ready' : 'is-waiting') + ' w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ' +
             (frenzyArmed
@@ -500,6 +501,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
               ? 'bg-slate-800 text-slate-400 cursor-wait'
               : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700')}
           aria-label={frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} Free Rolls` : 'Roll'}
+          disabled={busy}
+          aria-busy={busy}
         >
           {frenzyArmed && (
             <>
@@ -526,6 +529,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
         </button>
 
         <button
+          type="button"
           onClick={() => void onOrbFrenzy()}
           disabled={busy || frenzyArmed || frenzyUsedToday}
           className={

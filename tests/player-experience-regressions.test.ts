@@ -51,3 +51,25 @@ test('Public share previews validate metadata and launch failures are visible an
   assert.match(splash, /Orb preview unavailable/);
   assert.match(splash, /Number\.isSafeInteger\(count\) && count >= 0/);
 });
+
+test('combat controls expose health and selection state and retry always refreshes', () => {
+  const combat = source('src/client/components/CombatSection.tsx');
+  assert.match(combat, /aria-label="Player health" aria-valuemin=\{0\} aria-valuemax=\{100\}/);
+  assert.match(combat, /aria-label=\{enemy\.name\+' health'\}/);
+  assert.match(combat, /aria-pressed=\{intent===cmd\}/);
+  assert.match(combat, /setError\(''\);void load\(\)/);
+  assert.match(combat, /cache:'no-store'/);
+});
+
+test('roll and feedback controls prevent duplicates and announce state', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  const feedback = source('src/client/components/FeedbackModal.tsx');
+  const chat = source('src/client/components/GlobalChatWindow.tsx');
+  assert.match(roll, /disabled=\{busy\}[\s\S]{0,40}aria-busy=\{busy\}/);
+  assert.match(feedback, /maxLength=\{2000\}/);
+  assert.match(feedback, /aria-pressed=\{type === 'bug'\}/);
+  assert.match(feedback, /aria-live=\{error \? 'assertive' : 'polite'\}/);
+  assert.match(chat, /role="log"/);
+  assert.match(chat, /aria-label="Send public comment"/);
+});
+
