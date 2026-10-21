@@ -13,6 +13,9 @@ const POST_INDEX_KEY = 'io:impressions:post-index';
 const TYPE_DEVICE_PREFIX = 'io:impressions:type-device:';
 const HOUR_PREFIX = 'io:impressions:hour:';
 const DAY_PREFIX = 'io:impressions:day:';
+const MAX_POST_ID_LENGTH = 256;
+const MAX_TRACKED_POSTS = 1_000;
+const RETAINED_POSTS_AFTER_PRUNE = 800;
 
 function normalizePostType(value: unknown): ImpressionPostType {
   const candidate = String(value ?? '').trim();
@@ -29,8 +32,11 @@ function normalizeDeviceType(value: unknown): ImpressionDeviceType {
     : 'unknown';
 }
 
-function normalizeCount(value: unknown): number {
-  const count = Number.parseInt(String(value ?? '0'), 10);
+export function normalizeImpressionCount(value: unknown): number {
+  const raw = String(value ?? '0').trim();
+  // parseInt('12garbage', 10) silently returns 12. Reject partial numbers.
+  if (!/^\d+$/.test(raw)) return 0;
+  const count = Number(raw);
   return Number.isSafeInteger(count) && count >= 0 ? count : 0;
 }
 
@@ -39,7 +45,7 @@ function postKey(postType: ImpressionPostType, postId: string): string {
 }
 
 async function readCount(key: string): Promise<number> {
-  return normalizeCount(await redis.get(key));
+  return normalizeImpressionCount(await redis.get(key));
 }
 
 /**
@@ -56,8 +62,8 @@ export async function recordPostImpression(
   const postId = String(context.postId ?? '').trim();
 
   // Without Reddit post context, do not merge unrelated previews into a fake
-  // "unknown post" row. A real post ID is required for useful analytics.
-  if (!postId) return { recorded: false };
+  // "unknown post" row. Bound the ID to avoid oversized Redis keys.
+  if (!postId || postId.length > MAX_POST_ID_LENGTH) return { recorded: false };
 
   const now = Date.now();
   const hour = Math.floor(now / 3_600_000);
@@ -76,10 +82,36 @@ export async function recordPostImpression(
     redis.incr(DAY_PREFIX + day + ':' + postType),
   ]);
 
-  // The index contains post metadata only, never viewer data.
-  await redis.hSet(POST_INDEX_KEY, {
+  // The index contains post metadata only, never viewer data. Keep this hash
+  // bounded so share/Frenzy posts cannot grow it forever.
+  const added = await redis.hSet(POST_INDEX_KEY, {
     [indexField]: JSON.stringify({ postType, postId, lastSeenAt: now }),
   });
+  if (added > 0) {
+    try {
+      const index = await redis.hGetAll(POST_INDEX_KEY);
+      const entries = Object.entries(index ?? {}).map(([field, raw]) => {
+        let lastSeenAt = 0;
+        try {
+          const parsed = JSON.parse(String(raw)) as { lastSeenAt?: unknown };
+          const timestamp = Number(parsed.lastSeenAt ?? 0);
+          if (Number.isSafeInteger(timestamp) && timestamp >= 0) lastSeenAt = timestamp;
+        } catch {
+          // Malformed legacy rows are treated as oldest and pruned first.
+        }
+        return { field, lastSeenAt };
+      });
+      if (entries.length > MAX_TRACKED_POSTS) {
+        const stale = entries
+          .sort((a, b) => a.lastSeenAt - b.lastSeenAt)
+          .slice(0, entries.length - RETAINED_POSTS_AFTER_PRUNE);
+        await Promise.all(stale.map(entry => redis.hDel(POST_INDEX_KEY, entry.field)));
+      }
+    } catch (error) {
+      // Maintenance failure must not make the public preview fail.
+      console.warn('[Impressions] Post index pruning failed:', error);
+    }
+  }
   return { recorded: true };
 }
 
@@ -109,6 +141,7 @@ export interface ImpressionDashboard {
 
 /** Reads aggregate impression metrics for the admin-only dashboard. */
 export async function getImpressionDashboard(now = Date.now()): Promise<ImpressionDashboard> {
+  const safeNow = Number.isSafeInteger(now) && now >= 0 ? now : Date.now();
   const [total, postIndex] = await Promise.all([
     readCount(TOTAL_KEY),
     redis.hGetAll(POST_INDEX_KEY),
@@ -177,14 +210,14 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
   };
 
   const last24Hours = await Promise.all(Array.from({ length: 24 }, (_, index) => {
-    const bucket = Math.floor(now / 3_600_000) - (23 - index);
+    const bucket = Math.floor(safeNow / 3_600_000) - (23 - index);
     return readTimePoint(bucket, HOUR_PREFIX, new Date(bucket * 3_600_000).toISOString());
   }));
 
   const last30Days = await Promise.all(Array.from({ length: 30 }, (_, index) => {
-    const bucket = Math.floor(now / 86_400_000) - (29 - index);
+    const bucket = Math.floor(safeNow / 86_400_000) - (29 - index);
     return readTimePoint(bucket, DAY_PREFIX, new Date(bucket * 86_400_000).toISOString().slice(0, 10));
   }));
 
-  return { generatedAt: now, total, trackedPostCount: Object.keys(postIndex ?? {}).length, byType, byDevice, byTypeAndDevice, posts, last24Hours, last30Days };
+  return { generatedAt: safeNow, total, trackedPostCount: Object.keys(postIndex ?? {}).length, byType, byDevice, byTypeAndDevice, posts, last24Hours, last30Days };
 }

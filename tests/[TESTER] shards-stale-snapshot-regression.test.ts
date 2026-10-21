@@ -16,7 +16,7 @@ import {
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
-test('prediction can show positive Shards when the authoritative daily cap grants zero', () => {
+test('prediction respects the authoritative daily Shard cap', () => {
   const now = Date.now();
   const predictedSource = createInitialState(now);
   predictedSource.shards = 0;
@@ -26,8 +26,9 @@ test('prediction can show positive Shards when the authoritative daily cap grant
 
   const prediction = predictRollActivation(predictedSource, 1337, false, 1);
 
-  assert.ok(prediction.shardsGained > 0);
-  assert.ok(prediction.state.shards > 0);
+  assert.equal(prediction.shardsGained, 0);
+  assert.equal(prediction.state.shards, 0);
+  assert.equal(prediction.state.freeShardsEarnedToday, FREE_SHARD_DAILY_CAP);
 
   const authoritative = createInitialState(now);
   authoritative.shards = 0;
@@ -38,11 +39,10 @@ test('prediction can show positive Shards when the authoritative daily cap grant
   assert.equal(granted, 0);
   assert.equal(authoritative.shards, 0);
 
-  // Confirm this is the actual source-level divergence the test models:
-  // prediction directly adds shards while the server path uses the capped grant helper.
+  // Both paths must use the same helper so the UI never promises capped-out Shards.
   const shared = source('src/shared/game.ts');
   const server = source('src/server/game.ts');
-  assert.match(shared, /s\.shards = Math\.max\(0, \(s\.shards \?\? 0\) \+ shardsGained\)/);
+  assert.match(shared, /shardsGained = grantRollShards\(s, shardsGained, predictionNow\)/);
   assert.match(server, /shardsGained = grantRollShards\(s, shardsGained\)/);
 });
 
