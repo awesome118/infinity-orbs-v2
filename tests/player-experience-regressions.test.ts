@@ -119,9 +119,9 @@ test('upgrade page groups choices and accurately reports Shard, Crit and Turbo v
 test('Booster and Automation actions are single-flight and show their scope clearly', () => {
   const boosters = source('src/client/components/BoostersAndAutomation.tsx');
   assert.match(boosters, /const actionInFlightRef = useRef\(false\)/);
-  assert.match(boosters, /if \(!beginAction\('global:' \+ id\)\) return/);
-  assert.match(boosters, /if \(!beginAction\('premium:' \+ id\)\) return/);
-  assert.match(boosters, /if \(!beginAction\('automation:' \+ id\)\) return/);
+  assert.match(boosters, /if \(busy \|\| !beginAction\('global:' \+ id\)\) return/);
+  assert.match(boosters, /if \(busy \|\| !beginAction\('premium:' \+ id\)\) return/);
+  assert.match(boosters, /if \(busy \|\| !beginAction\('automation:' \+ id\)\) return/);
   assert.match(boosters, /Global Boosters affect everyone, Premium Boosters run on your own timers, and Automation unlocks are permanent purchases/);
   assert.match(boosters, /GLOBAL_BOOSTERS\[id\]\.name.*timer/);
   assert.match(boosters, /Weekly community reward progress/);
