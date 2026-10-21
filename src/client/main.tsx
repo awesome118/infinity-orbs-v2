@@ -2403,7 +2403,7 @@ export function App() {
       {/* Main Navigation Bar */}
       <div className={"io-nav app-nav bg-slate-900/55 border-b border-slate-800/80 px-4 py-2 sticky top-[57px] z-20 backdrop-blur-md" + (combatMode ? " io-nav-combat" : "")}>
         <div className="nav-shell max-w-6xl mx-auto flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-          <button type="button" onClick={() => { sound.playClick(); changeTab(combatMode ? 'roll' : 'fight'); }}
+          <button type="button" onClick={() => { changeTab(combatMode ? 'roll' : 'fight'); }}
             className={"io-combat-mode-switch nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (combatMode ? " is-active" : "")}
             aria-pressed={combatMode} title={combatMode ? "Return to the core orb-rolling game" : (state.level < FEATURE_UNLOCK_LEVELS.combat ? "Unlock Combat at Level " + FEATURE_UNLOCK_LEVELS.combat : "Enter the combat expansion")}>
             <Swords className="w-4 h-4" />
@@ -2412,11 +2412,13 @@ export function App() {
           </button>
 
           {!combatMode && <>
+          <span className="hidden xl:inline-flex self-center mx-1 border-l border-slate-700 pl-3 text-[9px] font-black uppercase tracking-widest text-slate-600" aria-hidden="true">PLAY</span>
           <button
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('roll');
             }}
+            aria-current={tab === 'roll' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               tab === 'roll'
                 ? 'is-active bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-md'
@@ -2427,11 +2429,13 @@ export function App() {
             <span>Roll</span>
           </button>
 
+          <span className="hidden xl:inline-flex self-center mx-1 border-l border-slate-700 pl-3 text-[9px] font-black uppercase tracking-widest text-slate-600" aria-hidden="true">GROW</span>
           <button
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('upgrades');
             }}
+            aria-current={tab === 'upgrades' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'upgrades'
                 ? 'is-active bg-gradient-to-r from-amber-600 to-yellow-500 text-white shadow-md'
@@ -2443,10 +2447,11 @@ export function App() {
             {featureForTab('upgrades' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('upgrades' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 <button
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('boosters');
             }}
+            aria-current={tab === 'boosters' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'boosters'
                 ? 'is-active bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white shadow-md'
@@ -2461,10 +2466,11 @@ export function App() {
           </button>
 
           <button
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('altar');
             }}
+            aria-current={tab === 'altar' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'altar'
                 ? 'is-active bg-gradient-to-r from-orange-600 to-amber-500 text-white shadow-md'
@@ -2477,10 +2483,11 @@ export function App() {
           </button>
 
           <button
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('mastery');
             }}
+            aria-current={tab === 'mastery' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'mastery'
                 ? 'is-active bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
@@ -2495,11 +2502,13 @@ export function App() {
             )}
           </button>
 
+          <span className="hidden xl:inline-flex self-center mx-1 border-l border-slate-700 pl-3 text-[9px] font-black uppercase tracking-widest text-slate-600" aria-hidden="true">DISCOVER</span>
           <button
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('collection');
             }}
+            aria-current={tab === 'collection' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               tab === 'collection'
                 ? 'is-active bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
@@ -2512,10 +2521,11 @@ export function App() {
           </button>
 
           <button
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('quests');
             }}
+            aria-current={tab === 'quests' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'quests'
                 ? 'is-active bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
@@ -2530,11 +2540,13 @@ export function App() {
             )}
           </button>
 
+          <span className="hidden xl:inline-flex self-center mx-1 border-l border-slate-700 pl-3 text-[9px] font-black uppercase tracking-widest text-slate-600" aria-hidden="true">COMMUNITY</span>
           <button
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('social');
             }}
+            aria-current={tab === 'social' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               tab === 'social'
                 ? 'is-active bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
@@ -2546,11 +2558,13 @@ export function App() {
             {featureForTab('social' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('social' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
+          <span className="hidden xl:inline-flex self-center mx-1 border-l border-slate-700 pl-3 text-[9px] font-black uppercase tracking-widest text-slate-600" aria-hidden="true">LONG-TERM</span>
           <button
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('profile');
             }}
+            aria-current={tab === 'profile' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'profile'
                 ? 'is-active bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white shadow-md'
@@ -2566,13 +2580,13 @@ export function App() {
           </button>
           </>}
           {combatMode && <>
-            <button onClick={() => changeTab('fight')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (tab === 'fight' ? " is-active" : "")}><Flame className="w-3.5 h-3.5" /><span>Fight</span></button>
-            <button onClick={() => changeTab('dungeons')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'dungeons' ? " is-active" : "")}><DoorOpen className="w-3.5 h-3.5" /><span>Dungeons</span></button>
-            <button onClick={() => changeTab('gear')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'gear' ? " is-active" : "")}><Package className="w-3.5 h-3.5" /><span>Gear</span></button>
-            <button onClick={() => changeTab('forge')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'forge' ? " is-active" : "")}><Hammer className="w-3.5 h-3.5" /><span>Forge</span></button>
-            <button onClick={() => changeTab('skills')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'skills' ? " is-active" : "")}><Sparkles className="w-3.5 h-3.5" /><span>Skills</span></button>
-            <button onClick={() => changeTab('arena')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'arena' ? " is-active" : "")}><Users className="w-3.5 h-3.5" /><span>Arena</span><span className="io-combat-soon">NEXT</span></button>
-            <button onClick={() => changeTab('runes')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'runes' ? " is-active" : "")}><Gem className="w-3.5 h-3.5" /><span>Runes</span></button>
+            <button type="button" aria-current={tab === 'fight' ? 'page' : undefined} onClick={() => changeTab('fight')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (tab === 'fight' ? " is-active" : "")}><Flame className="w-3.5 h-3.5" /><span>Fight</span></button>
+            <button type="button" aria-current={tab === 'dungeons' ? 'page' : undefined} onClick={() => changeTab('dungeons')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'dungeons' ? " is-active" : "")}><DoorOpen className="w-3.5 h-3.5" /><span>Dungeons</span></button>
+            <button type="button" aria-current={tab === 'gear' ? 'page' : undefined} onClick={() => changeTab('gear')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'gear' ? " is-active" : "")}><Package className="w-3.5 h-3.5" /><span>Gear</span></button>
+            <button type="button" aria-current={tab === 'forge' ? 'page' : undefined} onClick={() => changeTab('forge')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'forge' ? " is-active" : "")}><Hammer className="w-3.5 h-3.5" /><span>Forge</span></button>
+            <button type="button" aria-current={tab === 'skills' ? 'page' : undefined} onClick={() => changeTab('skills')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'skills' ? " is-active" : "")}><Sparkles className="w-3.5 h-3.5" /><span>Skills</span></button>
+            <button type="button" aria-current={tab === 'arena' ? 'page' : undefined} onClick={() => changeTab('arena')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'arena' ? " is-active" : "")}><Users className="w-3.5 h-3.5" /><span>Arena</span><span className="io-combat-soon">PVP</span></button>
+            <button type="button" aria-current={tab === 'runes' ? 'page' : undefined} onClick={() => changeTab('runes')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'runes' ? " is-active" : "")}><Gem className="w-3.5 h-3.5" /><span>Runes</span></button>
           </>}
         </div>
       </div>
