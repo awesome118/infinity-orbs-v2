@@ -70,6 +70,6 @@ test('roll and feedback controls prevent duplicates and announce state', () => {
   assert.match(feedback, /aria-pressed=\{type === 'bug'\}/);
   assert.match(feedback, /aria-live=\{error \? 'assertive' : 'polite'\}/);
   assert.match(chat, /role="log"/);
-  assert.match(chat, /aria-label="Send public comment"/);
+  assert.match(chat, /aria-label=\{sending \? 'Sending public comment' : 'Send public comment'\}/);
 });
 
