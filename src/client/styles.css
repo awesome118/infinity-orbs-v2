@@ -2211,3 +2211,15 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-runes-process-button{min-height:2.2rem;white-space:normal;max-width:15rem}
 .io-runes-auto-sacrifice p{grid-column:1/-1;margin:0}
 @media(max-width:600px){.io-runes-auto-sacrifice{grid-template-columns:1fr}.io-runes-process-button{max-width:none}.io-runes-strengthen-mode{align-items:flex-start}.io-runes-strengthen-mode>button{flex:0 0 auto}}
+
+
+/* Rune inventory tools: compact search/filter controls that wrap cleanly on mobile. */
+.io-runes-inventory-tools{display:flex;flex-direction:column;gap:.6rem;margin:.25rem 0 .9rem}
+.io-runes-search{display:flex;flex-direction:column;gap:.35rem;color:#cbd5e1;font-size:.7rem;font-weight:850}
+.io-runes-search input{width:100%;min-width:0;min-height:2.35rem;padding:.55rem .7rem;border:1px solid rgba(148,163,184,.24);border-radius:.65rem;background:rgba(2,6,23,.58);color:#f8fafc;font:inherit;font-weight:600;outline:none}
+.io-runes-search input:focus-visible{border-color:rgba(167,139,250,.85);box-shadow:0 0 0 2px rgba(167,139,250,.2)}
+.io-runes-filter-group{display:flex;flex-wrap:wrap;gap:.35rem}
+.io-runes-filter-group button{min-height:2rem;padding:.4rem .65rem;border:1px solid rgba(148,163,184,.2);border-radius:.6rem;background:rgba(15,23,42,.7);color:#aab7ca;font-size:.68rem;font-weight:850}
+.io-runes-filter-group button[aria-pressed="true"]{border-color:rgba(167,139,250,.65);background:rgba(109,40,217,.28);color:#ede9fe}
+.io-runes-filter-group button:focus-visible{outline:2px solid #c4b5fd;outline-offset:2px}
+.io-runes-filter-group button:disabled{opacity:.5;cursor:not-allowed}
