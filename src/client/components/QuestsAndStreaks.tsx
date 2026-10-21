@@ -75,7 +75,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
           <button
             type="button"
             aria-busy={busy}
-            onClick={() => {}
+            onClick={() => {
               sound.playClick();
               void onClaimDailyStreak();
             }}

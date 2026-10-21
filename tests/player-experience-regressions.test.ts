@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { normalizeImpressionCount } from '../src/server/impressions.js';
 import { classifyImpressionDeviceType } from '../src/client/impressions.js';
 
@@ -19,8 +21,6 @@ test('coarse device classification identifies Android tablets and unknown enviro
   assert.equal(classifyImpressionDeviceType('Mozilla/5.0 (Macintosh; Intel Mac OS X 13_0)', 'MacIntel', 0), 'desktop');
 });
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
 test('Rune mutations cannot overlap and delayed reads cannot override the current snapshot', () => {
@@ -51,4 +51,3 @@ test('Public share previews validate metadata and launch failures are visible an
   assert.match(splash, /Orb preview unavailable/);
   assert.match(splash, /Number\.isSafeInteger\(count\) && count >= 0/);
 });
-

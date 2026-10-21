@@ -182,11 +182,11 @@ export const RunesSection:React.FC=()=>{
             <span>Automatically strengthen an equipped Rune with new drops</span>
           </label>
           <label className="io-runes-auto-rarity">Sacrifice rarity
-            <select value={autoSacrificeSettings.maxRarity} disabled={actionBusy||autoSacrificeBusy} onChange={event=>void saveAutoSacrificeSettings(autoSacrificeSettings.enabled,event.target.value as CombatRuneRarity)>
+            <select value={autoSacrificeSettings.maxRarity} disabled={actionBusy||autoSacrificeBusy} onChange={event=>void saveAutoSacrificeSettings(autoSacrificeSettings.enabled,event.target.value as CombatRuneRarity)}>
               {RUNE_RARITIES.map(rarity=><option key={rarity} value={rarity}>{rarity} and below</option>)}
             </select>
           </label>
-          <button type="button" className="io-runes-button io-runes-process-button" disabled={actionBusy||autoSacrificeBusy||equippedRunes.length===0||autoSacrificeEligibleCount===0} onClick={()=>void processAutoSacrifice()>
+          <button type="button" className="io-runes-button io-runes-process-button" disabled={actionBusy||autoSacrificeBusy||equippedRunes.length===0||autoSacrificeEligibleCount===0} onClick={()=>void processAutoSacrifice()}>
             {autoSacrificeBusy?'Processing…':'Sacrifice '+fmt(autoSacrificeEligibleCount)+' eligible Runes now'}
           </button>
           <p>When enabled, new Runes at or below the selected rarity are sacrificed into a random equipped Rune. The button processes existing eligible Runes too. Equipped Runes are protected from auto-sacrifice; manual Strengthen can consume any other Rune.</p>
