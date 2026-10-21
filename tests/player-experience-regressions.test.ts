@@ -165,3 +165,64 @@ test('Prestige explains what resets and groups permanent-upgrade filters', () =>
   assert.match(profile, /role="group" aria-label="Filter permanent Prestige upgrades"/);
   assert.equal((profile.match(/aria-pressed=\{filterCategory ===/g) || []).length, 4);
 });
+
+
+test('Pity progress matches its mastery-adjusted interval and cooldown notice timers are cleaned up', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  assert.match(roll, /const pityInterval = Math\.max\(6, 18 -/);
+  assert.match(roll, /pityRollsIntoTier = pityDryRolls % pityInterval/);
+  assert.match(roll, /aria-valuenow=\{pityProgressPct\}/);
+  assert.doesNotMatch(roll, /% 20\) \/ 20/);
+  assert.match(roll, /cooldownNoticeTimerRef\.current !== null\) window\.clearTimeout/);
+});
+
+test('Guild moderation and creation errors are visible and guild tags are validated', () => {
+  const guilds = source('src/client/components/GuildsAndSocial.tsx');
+  assert.match(guilds, /setSocialError\(error instanceof Error \? error\.message/);
+  assert.ok(guilds.includes("if (!/^[A-Z]{2,5}$/.test(tag))"));
+  assert.match(guilds, /createGuildInFlightRef\.current/);
+  assert.match(guilds, /aria-labelledby="io-create-guild-title"/);
+  assert.match(guilds, /mostRolls: \[\]/);
+  assert.match(guilds, /aria-pressed=\{activeLeaderboard === board\.id\}/);
+});
+
+test('Global Chat rejects malformed history, bounds report state, and prevents duplicate posts', () => {
+  const chat = source('src/client/components/GlobalChatWindow.tsx');
+  assert.match(chat, /Chat history response was invalid/);
+  assert.match(chat, /sendingInFlightRef\.current/);
+  assert.match(chat, /reportingInFlightRef\.current/);
+  assert.match(chat, /slice\(-200\)/);
+  assert.match(chat, /refreshRequestRef\.current \+= 1/);
+  assert.match(chat, /Public chat comment/);
+});
+
+test('Rune inventory is filtered without losing empty-state recovery and handles corrupted numeric settings', () => {
+  const runes = source('src/client/components/RunesSection.tsx');
+  assert.match(runes, /bestDepthCandidates/);
+  assert.match(runes, /visibleRunes/);
+  assert.match(runes, /Filter Rune inventory/);
+  assert.match(runes, /No matching Runes/);
+  assert.match(runes, /rawAutoSacrificeSettings/);
+  assert.match(runes, /Number\.isFinite\(value\)/);
+});
+
+test('Combat snapshot and Arena reads cannot overwrite newer responses', () => {
+  const combat = source('src/client/components/CombatSection.tsx');
+  assert.match(combat, /snapshotLoadSequenceRef/);
+  assert.match(combat, /requestSequence!==snapshotLoadSequenceRef\.current/);
+  assert.match(combat, /arenaLoadSequenceRef/);
+  assert.match(combat, /Array\.isArray\(result\.opponents\)/);
+});
+
+test('Feedback submission has a synchronous duplicate lock and field-associated status', () => {
+  const feedback = source('src/client/components/FeedbackModal.tsx');
+  assert.match(feedback, /submitInFlightRef\.current/);
+  assert.match(feedback, /aria-invalid=\{Boolean\(error\)\}/);
+  assert.match(feedback, /aria-describedby="io-feedback-status"/);
+});
+
+test('Community tier labels are safe when a saved event tier is malformed', () => {
+  const quests = source('src/client/components/QuestsAndStreaks.tsx');
+  assert.match(quests, /safeCommunityTier/);
+  assert.match(quests, /Tier \{fmt\(safeCommunityTier\)\}/);
+});

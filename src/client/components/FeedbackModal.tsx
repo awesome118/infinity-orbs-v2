@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Bug, Lightbulb, Send, X } from 'lucide-react';
 import { sound } from '../sound.js';
 
@@ -11,6 +11,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
   const [type, setType] = useState<'bug' | 'suggestion'>('bug');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const submitInFlightRef = useRef(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -22,11 +23,13 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
   }, [busy, onClose]);
 
   const submit = async () => {
+    if (submitInFlightRef.current) return;
     const trimmed = message.trim();
     if (!trimmed) {
       setError('Please describe the bug or suggestion.');
       return;
     }
+    submitInFlightRef.current = true;
     setBusy(true);
     setError('');
     sound.playClick();
@@ -35,6 +38,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not send feedback.');
     } finally {
+      submitInFlightRef.current = false;
       setBusy(false);
     }
   };
@@ -99,7 +103,10 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
         </div>
 
         <textarea
+          id="io-feedback-message"
           aria-label={type === 'bug' ? 'Describe the bug' : 'Describe your suggestion'}
+          aria-invalid={Boolean(error)}
+          aria-describedby="io-feedback-status"
           value={message}
           onChange={e => setMessage(e.target.value.slice(0, 2000))}
           rows={8}
@@ -111,7 +118,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
         />
 
         <div className="flex items-center justify-between gap-3 text-[10px]">
-          <span role={error ? 'alert' : 'status'} aria-live={error ? 'assertive' : 'polite'} className={error ? 'text-rose-300' : 'text-slate-600'}>
+          <span id="io-feedback-status" role={error ? 'alert' : 'status'} aria-live={error ? 'assertive' : 'polite'} className={error ? 'text-rose-300' : 'text-slate-600'}>
             {error || message.length + '/2000'}
           </span>
           <div className="flex gap-2">
