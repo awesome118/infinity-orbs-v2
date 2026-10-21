@@ -106,7 +106,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   };
 
   const handleGlobalActivation = async (id: GlobalBoosterId, useCredit: boolean) => {
-    if (!beginAction('global:' + id)) return;
+    if (busy || !beginAction('global:' + id)) return;
     setActivatingGlobalBooster(id);
     try {
       await onActivateGlobalBooster(id, useCredit);
@@ -116,7 +116,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
     }
   };
   const handlePremiumActivation = async (id: PremiumBoosterId) => {
-    if (!beginAction('premium:' + id)) return;
+    if (busy || !beginAction('premium:' + id)) return;
     setActivatingPremiumBooster(id);
     try {
       await onActivateBooster(id);
@@ -126,7 +126,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
     }
   };
   const handleCommunityRewardClaim = async () => {
-    if (!beginAction('community-reward')) return;
+    if (busy || !beginAction('community-reward')) return;
     setClaimingCommunityReward(true);
     try {
       await onClaimCommunityReward();
@@ -136,7 +136,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
     }
   };
   const handleAutomationPurchase = async (id: AutomationId) => {
-    if (!beginAction('automation:' + id)) return;
+    if (busy || !beginAction('automation:' + id)) return;
     setBuyingAutomation(id);
     try {
       await onBuyAutomation(id);
@@ -165,11 +165,11 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   const communityProgressRaw = Number(worldEvent?.currentProgress ?? 0);
   const communityProgress = Number.isFinite(communityProgressRaw) ? Math.max(0, communityProgressRaw) : 0;
   const communityProgressPct = Math.min(100, communityProgress / communityGoal * 100);
-  const completedCommunityTier = Math.max(
-    0,
-    Math.floor(Number(worldEvent?.completedTier ?? Math.max(0, (worldEvent?.tier ?? 1) - 1)) || 0),
-  );
-  const claimedCommunityTier = Math.max(0, Math.floor(Number(state.communityRewardClaimedTier ?? 0) || 0));
+  const completedCommunityTierRaw = Number(worldEvent?.completedTier ?? Math.max(0, (worldEvent?.tier ?? 1) - 1));
+  const completedCommunityTier = Number.isSafeInteger(completedCommunityTierRaw) && completedCommunityTierRaw >= 0 ? completedCommunityTierRaw : 0;
+  const claimedCommunityTierRaw = Number(state.communityRewardClaimedTier ?? 0);
+  const claimedCommunityTier = Number.isSafeInteger(claimedCommunityTierRaw) && claimedCommunityTierRaw >= 0 ? claimedCommunityTierRaw : 0;
+  const communityBuffAvailable = Boolean(worldEvent && Number.isFinite(worldEvent.endsAt) && worldEvent.endsAt > now);
   const nextCommunityRewardTier = claimedCommunityTier + 1;
   const communityRewardReady = completedCommunityTier >= nextCommunityRewardTier;
 
@@ -230,8 +230,10 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
             const displayed = decayGlobalBoosterState(globalBoosters[id], now);
             const remaining = globalBoosterRemainingMs(displayed, now);
             const active = remaining > 0 && displayed.tier > 0;
-            const activationProgress = Math.max(0, Math.min(4, displayed.activationProgress ?? 0));
-            const timeProgress = globalBoosterTimeProgress(displayed, now);
+            const rawActivationProgress = Number(displayed.activationProgress ?? 0);
+            const activationProgress = Number.isFinite(rawActivationProgress) ? Math.max(0, Math.min(4, rawActivationProgress)) : 0;
+            const rawTimeProgress = globalBoosterTimeProgress(displayed, now);
+            const timeProgress = Number.isFinite(rawTimeProgress) ? Math.max(0, Math.min(100, rawTimeProgress)) : 0;
             const timerDrainRate = displayed.tier > 0 ? 1 + displayed.tier * 0.10 : 1;
             const globalCost = Number(GLOBAL_BOOSTERS[id].costShards ?? 0);
             const canAffordGlobal = walletShards >= globalCost;
@@ -252,7 +254,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                 </div>
                 <div className="mt-2">
                   <div className="relative h-2.5 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
-                    <div role="progressbar" aria-label={`Global ${GLOBAL_BOOSTERS[id].name} timer`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.max(0, Math.min(100, timeProgress)))} className="absolute inset-0 flex">
+                    <div role="progressbar" aria-label={`Global ${GLOBAL_BOOSTERS[id].name} timer`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(timeProgress)} className="absolute inset-0 flex">
                       {Array.from({ length: 4 }, (_, segmentIndex) => {
                         const history = displayed.segmentTiers ?? [];
                         const segmentTier = history.length > 0
@@ -312,7 +314,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                     type="button"
                     onClick={() => void handleGlobalActivation(id, false)}
                     aria-busy={activatingGlobalBooster === id && pendingAction === 'global:' + id}
-                    disabled={pendingAction !== null || !canAffordGlobal}
+                    disabled={busy || pendingAction !== null || !canAffordGlobal}
                     className="flex-1 px-2.5 py-2 rounded-xl text-[10px] font-black bg-slate-800 hover:bg-slate-700 text-white disabled:text-slate-500 disabled:cursor-not-allowed"
                   >
                     {`+2h • ${formatNumber(globalCost)} 💎`}
@@ -321,7 +323,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                     type="button"
                     onClick={() => void handleGlobalActivation(id, true)}
                     aria-busy={activatingGlobalBooster === id && pendingAction === 'global:' + id}
-                    disabled={pendingAction !== null || freeCredits <= 0}
+                    disabled={busy || pendingAction !== null || freeCredits <= 0}
                     className="px-2.5 py-2 rounded-xl text-[10px] font-black bg-fuchsia-600/20 border border-fuchsia-500/25 text-fuchsia-200 hover:bg-fuchsia-600/30 disabled:text-slate-600 disabled:cursor-not-allowed"
                     title="Use one free Global Booster activation. The server is authoritative if the displayed credit count is stale."
                   >
@@ -414,13 +416,8 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                 <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: communityProgressPct + '%' }} />
               </div>
               <div className="mt-2 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-slate-300">
-                <span className="font-black text-amber-300">{worldEvent?.buffDescription ?? '+15% Global Luck Active'}</span>
-                <span className="text-slate-500"> · expires in </span>
-                <span className="font-black text-amber-200">
-                  {worldEvent && worldEvent.endsAt > now
-                    ? formatDuration(worldEvent.endsAt - now)
-                    : '0m 0s'}
-                </span>
+                <span className="font-black text-amber-300">{communityBuffAvailable ? (worldEvent?.buffDescription ?? 'Global boost active') : worldEvent ? 'Weekly global boost expired' : 'Global boost status unavailable'}</span>
+                {communityBuffAvailable && <><span className="text-slate-500"> · expires in </span><span className="font-black text-amber-200">{formatDuration(worldEvent!.endsAt - now)}</span></>}
               </div>
             </div>
           </div>
