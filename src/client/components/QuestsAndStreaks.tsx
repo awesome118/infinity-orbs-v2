@@ -25,18 +25,29 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
   onClaimQuest,
   busy,
 }) => {
-  const fmt = (n: number) => formatNumber(n);
+  const fmt = (n: number) => formatNumber(Number.isFinite(n) ? Math.max(0, n) : 0);
   const today = new Date().toISOString().slice(0, 10);
-  const alreadyClaimedStreak = state.streak.lastClaimDate === today;
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  const lastClaimDate = String(state.streak.lastClaimDate ?? '');
+  const alreadyClaimedStreak = lastClaimDate === today;
+  const rawStreakCount = Number(state.streak.count ?? 0);
+  const streakCount = Number.isSafeInteger(rawStreakCount) && rawStreakCount >= 0 ? rawStreakCount : 0;
+  const rawLongestStreak = Number(state.streak.longestStreak ?? 0);
+  const longestStreak = Number.isSafeInteger(rawLongestStreak) && rawLongestStreak >= 0 ? rawLongestStreak : 0;
+  const visibleStreakCount = alreadyClaimedStreak || lastClaimDate === yesterday ? streakCount : 0;
+  const nextStreakCount = alreadyClaimedStreak || lastClaimDate === yesterday ? streakCount + 1 : 1;
+  const streakRewardDay = ((nextStreakCount - 1) % 7) + 1;
+  const streakReward = streakRewardsForDay(streakRewardDay);
   const streakRewards = [
-    { day: 1, coins: 50, shards: 0 },
-    { day: 2, coins: 100, shards: 0 },
-    { day: 3, coins: 150, shards: 1 },
-    { day: 4, coins: 200, shards: 0 },
-    { day: 5, coins: 250, shards: 0 },
-    { day: 6, coins: 300, shards: 0 },
-    { day: 7, coins: 350, shards: 5 },
+    { day: 1, coins: 100, shards: 0 },
+    { day: 2, coins: 200, shards: 0 },
+    { day: 3, coins: 300, shards: 1 },
+    { day: 4, coins: 400, shards: 0 },
+    { day: 5, coins: 500, shards: 0 },
+    { day: 6, coins: 600, shards: 0 },
+    { day: 7, coins: 700, shards: 5 },
   ];
+  const streakRewardsForDay = (day: number) => streakRewards[Math.max(0, Math.min(6, Math.floor(day) - 1))] ?? streakRewards[0];
   const safeCommunityGoal = Number.isFinite(state.dailyStreakCommunity?.goal)
     ? Math.max(1, state.dailyStreakCommunity?.goal ?? 250)
     : 250;
@@ -68,7 +79,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Current streak: <span className="font-black text-white">{Math.max(1, state.streak.count || 1)}</span> days · Longest: {state.streak.longestStreak} days.
+                Current streak: <span className="font-black text-white">{visibleStreakCount}</span> {visibleStreakCount === 1 ? 'day' : 'days'} · Longest: {longestStreak} {longestStreak === 1 ? 'day' : 'days'}.
               </p>
             </div>
           </div>
@@ -86,15 +97,11 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
             <span>{alreadyClaimedStreak ? 'Claimed Today' : 'Claim Daily Reward'}</span>
           </button>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-5">
+        <div className="mt-3 text-[11px] text-slate-400" role="status" aria-live="polite">{alreadyClaimedStreak ? `Today's Day ${((streakCount - 1) % 7) + 1} reward is claimed. The preview now shows tomorrow's reward.` : `Next claim preview: Day ${streakRewardDay} of 7.`}</div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
           {(() => {
-            const nextStreak = alreadyClaimedStreak
-              ? Math.max(1, state.streak.count || 1)
-              : state.streak.lastClaimDate
-                ? Math.max(1, state.streak.count || 1) + 1
-                : 1;
-            const day = ((nextStreak - 1) % 7) + 1;
-            const reward = streakRewards[day - 1] ?? streakRewards[0];
+            const day = streakRewardDay;
+            const reward = streakReward;
             return [
               <div key="coins" className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
                 <span className="block text-[10px] uppercase font-black text-amber-300/70">Coins</span>
