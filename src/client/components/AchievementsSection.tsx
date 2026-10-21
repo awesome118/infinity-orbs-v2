@@ -197,7 +197,7 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
                   disabled={busy}
                   className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-xs shadow-md active:scale-95 transition-all"
                 >
-                  Claim Reward
+                  {busy ? 'Claiming…' : 'Claim Reward'}
                 </button>
               ) : (
                 <span className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">

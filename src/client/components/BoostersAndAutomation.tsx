@@ -165,7 +165,9 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   const communityProgressRaw = Number(worldEvent?.currentProgress ?? 0);
   const communityProgress = Number.isFinite(communityProgressRaw) ? Math.max(0, communityProgressRaw) : 0;
   const communityProgressPct = Math.min(100, communityProgress / communityGoal * 100);
-  const completedCommunityTierRaw = Number(worldEvent?.completedTier ?? Math.max(0, (worldEvent?.tier ?? 1) - 1));
+  const communityTierRaw = Number(worldEvent?.tier ?? 1);
+  const communityTier = Number.isSafeInteger(communityTierRaw) && communityTierRaw >= 1 ? communityTierRaw : 1;
+  const completedCommunityTierRaw = Number(worldEvent?.completedTier ?? Math.max(0, communityTier - 1));
   const completedCommunityTier = Number.isSafeInteger(completedCommunityTierRaw) && completedCommunityTierRaw >= 0 ? completedCommunityTierRaw : 0;
   const claimedCommunityTierRaw = Number(state.communityRewardClaimedTier ?? 0);
   const claimedCommunityTier = Number.isSafeInteger(claimedCommunityTierRaw) && claimedCommunityTierRaw >= 0 ? claimedCommunityTierRaw : 0;
@@ -199,8 +201,8 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
 
         <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
           <div>
-            <span className="font-black text-cyan-300">Free Shards today: {freeShards}/{FREE_SHARD_DAILY_CAP}</span>
-            <span className="text-slate-500 ml-2">Gameplay earnings are capped server-side.</span>
+            <span className="font-black text-cyan-300">Roll-earned Shards today: {freeShards}/{FREE_SHARD_DAILY_CAP}</span>
+            <span className="text-slate-500 ml-2">The daily cap applies to roll drops; daily and quest rewards are separate.</span>
           </div>
           <div className="text-slate-400">
             {formatNumber(walletShards)} Shards available
@@ -305,7 +307,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                   {displayed.tier > 0 && (
                     <div className="mt-1 text-[10px] text-slate-400">
                       Timer drain: <span className="font-black text-amber-300">×{timerDrainRate.toFixed(2)}</span> normal
-                      {' • '}{id === 'speed' && displayed.tier >= 10 ? 'Tier 10 MAX' : '10% faster per tier'}
+                      {' • '}{id === 'speed' && displayed.tier >= 10 ? 'Speed capped at Tier 10' : 'Each tier drains timers 10% faster'}
                     </div>
                   )}
                 </div>
@@ -409,7 +411,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
 {formatNumber(communityProgress)} / {formatNumber(communityGoal)} rolls
                 </span>
                 <span className="font-bold text-slate-500">
-                  {communityRewardReady ? `Tier ${nextCommunityRewardTier} ready` : `Tier ${worldEvent?.tier ?? 1} in progress`}
+                  {communityRewardReady ? `Tier ${nextCommunityRewardTier} ready` : `Tier ${communityTier} in progress`}
                 </span>
               </div>
               <div role="progressbar" aria-label="Weekly community reward progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={communityProgressPct} className="mt-1.5 h-2 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
