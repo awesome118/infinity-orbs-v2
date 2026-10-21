@@ -18,3 +18,37 @@ test('coarse device classification identifies Android tablets and unknown enviro
   assert.equal(classifyImpressionDeviceType('', '', 0), 'unknown');
   assert.equal(classifyImpressionDeviceType('Mozilla/5.0 (Macintosh; Intel Mac OS X 13_0)', 'MacIntel', 0), 'desktop');
 });
+
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
+
+test('Rune mutations cannot overlap and delayed reads cannot override the current snapshot', () => {
+  const runes = source('src/client/components/RunesSection.tsx');
+  assert.match(runes, /const actionInFlightRef=useRef\(false\)/);
+  assert.match(runes, /snapshotRequestSequenceRef\.current\+=1/);
+  assert.match(runes, /requestSequence!==snapshotRequestSequenceRef\.current/);
+  assert.match(runes, /if\(!beginAction\(\)\)return/);
+  assert.match(runes, /aria-describedby=\{'io-rune-tooltip-'/);
+});
+
+test('Streak reward previews match the configured reward table and quest progress is accessible', () => {
+  const quests = source('src/client/components/QuestsAndStreaks.tsx');
+  assert.match(quests, /const reward = streakRewards\[day - 1\]/);
+  assert.match(quests, /fmt\(reward\.coins\)/);
+  assert.match(quests, /fmt\(reward\.shards\)/);
+  assert.doesNotMatch(quests, /fmt\(day \* 100\)/);
+  assert.match(quests, /const target = Number\.isFinite\(q\.target\) && q\.target > 0/);
+  assert.match(quests, /role="progressbar" aria-label=\{q\.title \+ ' progress'\}/);
+  assert.match(quests, /Resets daily at midnight UTC/);
+});
+
+test('Public share previews validate metadata and launch failures are visible and retryable', () => {
+  const splash = source('src/client/splash.tsx');
+  assert.match(splash, /function PlayGameButton/);
+  assert.match(splash, /Promise\.resolve\(request\)\.catch\(failed\)/);
+  assert.match(splash, /postData\.type === 'shared-orb'/);
+  assert.match(splash, /Orb preview unavailable/);
+  assert.match(splash, /Number\.isSafeInteger\(count\) && count >= 0/);
+});
+

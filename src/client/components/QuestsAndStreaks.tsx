@@ -28,8 +28,6 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
   const fmt = (n: number) => formatNumber(n);
   const today = new Date().toISOString().slice(0, 10);
   const alreadyClaimedStreak = state.streak.lastClaimDate === today;
-  const currentStreakDay = ((state.streak.count - 1) % 7) + 1;
-
   const streakRewards = [
     { day: 1, coins: 50, shards: 0 },
     { day: 2, coins: 100, shards: 0 },
@@ -39,6 +37,19 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
     { day: 6, coins: 300, shards: 0 },
     { day: 7, coins: 350, shards: 5 },
   ];
+  const safeCommunityGoal = Number.isFinite(state.dailyStreakCommunity?.goal)
+    ? Math.max(1, state.dailyStreakCommunity?.goal ?? 250)
+    : 250;
+  const safeCommunityProgress = Number.isFinite(state.dailyStreakCommunity?.currentProgress)
+    ? Math.max(0, state.dailyStreakCommunity?.currentProgress ?? 0)
+    : 0;
+  const communityProgressPct = Math.min(100, (safeCommunityProgress / safeCommunityGoal) * 100);
+  const safeLuckMultiplier = Number.isFinite(state.dailyStreakCommunity?.luckMultiplier)
+    ? state.dailyStreakCommunity?.luckMultiplier ?? 1
+    : 1;
+  const safeSpeedMultiplier = Number.isFinite(state.dailyStreakCommunity?.speedMultiplier)
+    ? state.dailyStreakCommunity?.speedMultiplier ?? 1
+    : 1;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -62,7 +73,9 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
             </div>
           </div>
           <button
-            onClick={() => {
+            type="button"
+            aria-busy={busy}
+            onClick={() => {}
               sound.playClick();
               void onClaimDailyStreak();
             }}
@@ -81,14 +94,15 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                 ? Math.max(1, state.streak.count || 1) + 1
                 : 1;
             const day = ((nextStreak - 1) % 7) + 1;
+            const reward = streakRewards[day - 1] ?? streakRewards[0];
             return [
               <div key="coins" className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
                 <span className="block text-[10px] uppercase font-black text-amber-300/70">Coins</span>
-                <span className="text-lg font-black text-white">+{fmt(day * 100)}</span>
+                <span className="text-lg font-black text-white">+{fmt(reward.coins)}</span>
               </div>,
               <div key="shards" className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
                 <span className="block text-[10px] uppercase font-black text-cyan-300/70">Shards</span>
-                <span className="text-lg font-black text-white">+{day === 7 ? 5 : day === 3 ? 1 : 0}</span>
+                <span className="text-lg font-black text-white">+{fmt(reward.shards)}</span>
                 <span className="block text-[9px] text-cyan-400/70">Daily reward, outside roll cap</span>
               </div>,
               <div key="rolls" className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-3">
@@ -111,15 +125,15 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
               <div className="text-[11px] text-slate-500 mt-1">Each claim contributes your full streak number.</div>
             </div>
             <div className="text-right text-[10px] font-black text-slate-400">
-              {fmt(Math.max(0, state.dailyStreakCommunity?.currentProgress ?? 0))} / {fmt(Math.max(1, state.dailyStreakCommunity?.goal ?? 250))}
+              {fmt(safeCommunityProgress)} / {fmt(safeCommunityGoal)}
             </div>
           </div>
-          <div className="mt-2 h-2 rounded-full bg-slate-900 overflow-hidden border border-slate-800">
-            <div className="h-full bg-emerald-400 transition-all" style={{ width: Math.min(100, Math.max(0, state.dailyStreakCommunity?.currentProgress ?? 0) / Math.max(1, state.dailyStreakCommunity?.goal ?? 250) * 100) + "%" }} />
+          <div role="progressbar" aria-label="Daily Streak Community Goal" aria-valuemin={0} aria-valuemax={100} aria-valuenow={communityProgressPct} className="mt-2 h-2 rounded-full bg-slate-900 overflow-hidden border border-slate-800">
+            <div className="h-full bg-emerald-400 transition-all" style={{ width: communityProgressPct + "%" }} />
           </div>
           <div className="mt-3 flex flex-wrap gap-3 text-[10px] font-bold">
-            <span className="text-emerald-300">+{Math.max(0, Math.round(((state.dailyStreakCommunity?.luckMultiplier ?? 1) - 1) * 100))}% Luck</span>
-            <span className="text-cyan-300">+{Math.max(0, Math.round((1 - (state.dailyStreakCommunity?.speedMultiplier ?? 1)) * 100))}% Speed</span>
+            <span className="text-emerald-300">+{Math.max(0, Math.round((safeLuckMultiplier - 1) * 100))}% Luck</span>
+            <span className="text-cyan-300">+{Math.max(0, Math.round((1 - safeSpeedMultiplier) * 100))}% Speed</span>
             <span className="text-slate-500">Next tier after the goal is completed.</span>
           </div>
         </div>
@@ -133,15 +147,17 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
           </div>
           <span className="text-xs text-slate-400 flex items-center gap-1">
             <Clock className="w-3.5 h-3.5" />
-            <span>Resets daily at midnight</span>
+            <span>Resets daily at midnight UTC</span>
           </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {state.dailyQuests.map(q => {
             const isUnlocked = q.unlocked !== false;
-            const isComplete = isUnlocked && q.progress >= q.target;
-            const pct = isUnlocked ? Math.min(100, Math.round((q.progress / q.target) * 100)) : 0;
+            const target = Number.isFinite(q.target) && q.target > 0 ? q.target : 1;
+            const progress = Number.isFinite(q.progress) ? Math.max(0, q.progress) : 0;
+            const isComplete = isUnlocked && progress >= target;
+            const pct = isUnlocked ? Math.min(100, Math.round((progress / target) * 100)) : 0;
 
             return (
               <div
@@ -175,10 +191,10 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                     <div className="flex justify-between text-[11px] font-semibold text-slate-400 mb-1">
                       <span>Progress</span>
                       <span>
-                        {fmt(q.progress)} / {fmt(q.target)}
+                        {fmt(progress)} / {fmt(target)}
                       </span>
                     </div>
-                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                    <div role="progressbar" aria-label={q.title + ' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
                       <div
                         className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all"
                         style={{ width: `${pct}%` }}
@@ -196,6 +212,8 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                     </span>
                   ) : (
                     <button
+                      type="button"
+                      aria-busy={busy}
                       onClick={() => {
                         sound.playClick();
                         void onClaimQuest('daily', q.id);
@@ -233,8 +251,10 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {state.weeklyQuests.map(q => {
             const isUnlocked = q.unlocked !== false;
-            const isComplete = isUnlocked && q.progress >= q.target;
-            const pct = isUnlocked ? Math.min(100, Math.round((q.progress / q.target) * 100)) : 0;
+            const target = Number.isFinite(q.target) && q.target > 0 ? q.target : 1;
+            const progress = Number.isFinite(q.progress) ? Math.max(0, q.progress) : 0;
+            const isComplete = isUnlocked && progress >= target;
+            const pct = isUnlocked ? Math.min(100, Math.round((progress / target) * 100)) : 0;
 
             return (
               <div
@@ -263,10 +283,10 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                     <div className="flex justify-between text-[11px] font-semibold text-slate-400 mb-1">
                       <span>Progress</span>
                       <span>
-                        {fmt(q.progress)} / {fmt(q.target)}
+                        {fmt(progress)} / {fmt(target)}
                       </span>
                     </div>
-                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                    <div role="progressbar" aria-label={q.title + ' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
                       <div
                         className="h-full bg-gradient-to-r from-cyan-500 to-blue-600 transition-all"
                         style={{ width: `${pct}%` }}
@@ -284,6 +304,8 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                     </span>
                   ) : (
                     <button
+                      type="button"
+                      aria-busy={busy}
                       onClick={() => {
                         sound.playClick();
                         void onClaimQuest('weekly', q.id);
