@@ -18,12 +18,13 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
   busy,
 }) => {
   const [filter, setFilter] = useState<'all' | 'unlocked' | 'claimed'>('all');
-  const fmt = (n: number) => n.toLocaleString();
+  const fmt = (n: number) => Number.isFinite(n) ? Math.max(0, n).toLocaleString() : '0';
 
   const total = achievements.length;
   const unlockedCount = achievements.filter(a => a.unlocked).length;
   const claimedCount = achievements.filter(a => a.claimed).length;
-  const progressPct = total > 0 ? Math.round((unlockedCount / total) * 100) : 0;
+  const readyToClaimCount = achievements.filter(a => a.unlocked && !a.claimed).length;
+  const progressPct = total > 0 ? Math.max(0, Math.min(100, Math.round((unlockedCount / total) * 100))) : 0;
 
   const filtered = achievements.filter(a => {
     if (filter === 'unlocked') return a.unlocked && !a.claimed;
@@ -65,7 +66,7 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
 
         {/* Progress bar */}
         <div className="mt-4">
-          <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+          <div role="progressbar" aria-label="Achievement unlock progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPct} className="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
             <div
               className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 transition-all duration-500"
               style={{ width: `${progressPct}%` }}
@@ -75,9 +76,11 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex items-center gap-2">
+      <div role="group" aria-label="Filter achievements" className="flex flex-wrap items-center gap-2">
         <button
-          onClick={() => setFilter('all')}
+          type="button"
+          aria-pressed={filter === 'all'}
+          onClick={() => setFilter('all')>
           className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
             filter === 'all'
               ? 'bg-amber-500 text-slate-950 font-black shadow-md'
@@ -87,17 +90,21 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
           All ({total})
         </button>
         <button
-          onClick={() => setFilter('unlocked')}
+          type="button"
+          aria-pressed={filter === 'unlocked'}
+          onClick={() => setFilter('unlocked')>
           className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
             filter === 'unlocked'
               ? 'bg-emerald-600 text-white shadow-md'
               : 'text-slate-400 hover:text-white bg-slate-900/60'
           }`}
         >
-          Ready to Claim ({unlockedCount - claimedCount})
+          Ready to Claim ({readyToClaimCount})
         </button>
         <button
-          onClick={() => setFilter('claimed')}
+          type="button"
+          aria-pressed={filter === 'claimed'}
+          onClick={() => setFilter('claimed')>
           className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
             filter === 'claimed'
               ? 'bg-slate-700 text-white shadow-md'
@@ -109,6 +116,17 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
       </div>
 
       {/* Achievements List */}
+      {filtered.length === 0 ? (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-8 text-center space-y-2" role="status" aria-live="polite">
+          <Trophy className="w-7 h-7 mx-auto text-slate-600" />
+          <p className="text-sm font-bold text-slate-300">
+            {filter === 'unlocked' ? 'No rewards ready to claim' : filter === 'claimed' ? 'No rewards collected yet' : 'No achievements found'}
+          </p>
+          <p className="text-xs text-slate-500">
+            {filter === 'unlocked' ? 'Keep playing to unlock your next achievement.' : filter === 'claimed' ? 'Claim an unlocked achievement and it will appear here.' : 'Achievement progress will appear here as you play.'}
+          </p>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
         {filtered.map(ach => (
           <div
@@ -170,6 +188,8 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
                 </span>
               ) : ach.unlocked ? (
                 <button
+                  type="button"
+                  aria-busy={busy}
                   onClick={() => {
                     sound.playClick();
                     void onClaimAchievement(ach.id);
@@ -189,6 +209,7 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 };
