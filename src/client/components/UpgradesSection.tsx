@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Zap,
@@ -50,16 +50,28 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
 }) => {
   const [recentUpgradeId, setRecentUpgradeId] = useState<UpgradeId | null>(null);
   const [upgradingAll, setUpgradingAll] = useState(false);
-  const fmt = (n: number) => formatNumber(n);
+  const [pendingUpgradeId, setPendingUpgradeId] = useState<UpgradeId | null>(null);
+  const pendingUpgradeRef = useRef<UpgradeId | null>(null);
+  const [activatingTurbo, setActivatingTurbo] = useState(false);
+  const activatingTurboRef = useRef(false);
+  const [turboNow, setTurboNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setTurboNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const fmt = (n: number) => formatNumber(Number.isFinite(n) ? Math.max(0, n) : 0);
   const standardUpgradeMaxLevels: Partial<Record<UpgradeId, number>> = { speed: 20, offlineRate: 8 };
 
   const handleUpgradeClick = async (u: (typeof upgradesData)[0]) => {
+    if (busy || upgradingAll || pendingUpgradeRef.current || activatingTurboRef.current) return;
+    pendingUpgradeRef.current = u.id;
+    setPendingUpgradeId(u.id);
     sound.playLevelUpFanfare();
     setRecentUpgradeId(u.id);
     setTimeout(() => setRecentUpgradeId(null), 900);
 
     const nextLvl = u.level + 1;
-    if (nextLvl % 5 === 0 || (u.id === 'auto' && nextLvl === 1)) {
+    if (nextLvl % 5 === 0 && u.id !== 'auto') {
       confetti({
         particleCount: 45,
         spread: 55,
@@ -68,10 +80,16 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       });
     }
 
-    await onBuyUpgrade(u.id);
+    try {
+      await onBuyUpgrade(u.id);
+    } finally {
+      pendingUpgradeRef.current = null;
+      setPendingUpgradeId(null);
+    }
   };
 
   const handleUpgradeAllClick = async () => {
+    if (busy || upgradingAll || pendingUpgradeRef.current || activatingTurboRef.current) return;
     setUpgradingAll(true);
     sound.playLevelUpFanfare();
     confetti({
@@ -99,10 +117,9 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
 
   const manualRolls = Math.min(3, state.manualRolls ?? 0);
   const isAutoUnlocked = manualRolls >= 3;
-  const canUnlockAuto = isAutoUnlocked;
 
   const currentCoinBonusPct = (state.upgrades.coinBonus ?? 0) * 15;
-  const currentShardChancePct = ((state.upgrades.shardChance ?? 0) * 0.5).toFixed(1);
+  const currentShardChancePct = ((state.upgrades.shardChance ?? 0) * 0.15).toFixed(2);
   const currentXpBonusPct = (state.upgrades.xpBonus ?? 0) * 20;
   const currentCritChancePct = (state.upgrades.critChance ?? 0) * 3;
 
@@ -141,7 +158,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       level: state.upgrades.speed ?? 0,
       currentVal: `${(currentCd / 1000).toFixed(1)}s`,
       nextVal: `${(nextCd / 1000).toFixed(1)}s`,
-      desc: '20 levels total. Each level reduces cooldown by 0.15s, for 3.0s maximum from this upgrade.',
+      desc: '20 levels total. Each level reduces cooldown by 0.15 seconds, up to 3.0 seconds from this upgrade. Other speed bonuses may reduce it further.',
       cost: upgradeCost('speed', state.upgrades.speed ?? 0),
     },
     {
@@ -202,8 +219,8 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       icon: <Gem className="w-5 h-5 text-cyan-400" />,
       level: state.upgrades.shardChance ?? 0,
       currentVal: `${currentShardChancePct}%`,
-      nextVal: `${(((state.upgrades.shardChance ?? 0) + 1) * 0.5).toFixed(1)}%`,
-      desc: '+0.5% chance to find a Shard on rolls per level.',
+      nextVal: `${(((state.upgrades.shardChance ?? 0) + 1) * 0.15).toFixed(2)}%`,
+      desc: '+0.15 percentage points of Shard proc chance per level, before other bonuses. The 50-Shard daily roll cap still applies.',
       cost: upgradeCost('shardChance', state.upgrades.shardChance ?? 0),
     },
     {
@@ -228,12 +245,12 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
     },
     {
       id: 'critPower',
-      title: 'Crit Luck',
+      title: 'Critical Rarity Multiplier',
       icon: <ShieldAlert className="w-5 h-5 text-red-400" />,
       level: state.upgrades.critPower ?? 0,
       currentVal: `${currentCritPower}×`,
       nextVal: `${nextCritPower}×`,
-      desc: '+0.25× rarity multiplier on critical rolls per level.',
+      desc: '+0.25× rarity multiplier on critical rolls per level; this increases critical strength, not critical chance.',
       cost: upgradeCost('critPower', state.upgrades.critPower ?? 0),
     },
     {
@@ -259,7 +276,15 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   ];
 
   const affordableCount = upgradesData.filter(u => !u.locked && Number.isFinite(u.cost) && state.coins >= u.cost).length;
-  const isTurboActive = Boolean(state.turboRollUntil && state.turboRollUntil > Date.now());
+  const turboRemainingMs = Math.max(0, (state.turboRollUntil ?? 0) - turboNow);
+  const isTurboActive = turboRemainingMs > 0;
+  const turboRemainingLabel = Math.floor(turboRemainingMs / 60_000) + 'm ' + String(Math.floor((turboRemainingMs % 60_000) / 1000)).padStart(2, '0') + 's';
+  const upgradeGroups: { title: string; subtitle: string; ids: UpgradeId[] }[] = [
+    { title: 'Roll controls', subtitle: 'Change roll cadence and the number of Orbs each activation produces.', ids: ['speed', 'multi', 'clusterRoll', 'auto'] },
+    { title: 'Rarity and criticals', subtitle: 'Improve rarity odds and make critical rolls stronger.', ids: ['luck', 'critChance', 'critPower'] },
+    { title: 'Rewards and value', subtitle: 'Earn more Coins, Shards, XP and collection value.', ids: ['coinBonus', 'shardChance', 'xpBonus', 'valueBonus'] },
+    { title: 'Offline progress', subtitle: 'Improve the rate at which rolls accumulate while you are away.', ids: ['offlineRate'] },
+  ];
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -272,7 +297,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
               <Star className="w-4 h-4 text-amber-400 fill-current animate-spin" style={{ animationDuration: '16s' }} />
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Spend coins on run upgrades. Luck sources combine into one total before RNG diminishing returns.
+              Spend Coins on upgrades. Each card shows its current value, next value and cost. Buy All Affordable purchases as many eligible levels as possible.
             </p>
           </div>
 
@@ -288,7 +313,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
               }`}
             >
               <Zap className="w-3.5 h-3.5 fill-current" />
-              <span>⚡ Upgrade All {affordableCount > 0 ? `(${affordableCount})` : ''}</span>
+              <span>{upgradingAll ? 'Buying…' : `Buy All Affordable${affordableCount > 0 ? ` · ${affordableCount} types` : ''}`}</span>
             </button>
 
             <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-xl">
@@ -342,11 +367,21 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
         </div>
       </div>
 
-      {/* Upgrades Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {upgradesData.map(u => {
+      {/* Related upgrades are grouped for easier comparison. */}
+      <div className="space-y-5">
+        {upgradeGroups.map(group => {
+          const groupUpgrades = upgradesData.filter(u => group.ids.includes(u.id));
+          return (
+            <section key={group.title} className="rounded-2xl border border-slate-800 bg-slate-950/30 p-3 sm:p-4 space-y-3" aria-label={group.title}>
+              <header>
+                <h3 className="text-sm font-black uppercase tracking-wide text-slate-200">{group.title}</h3>
+                <p className="text-xs text-slate-500 mt-1">{group.subtitle}</p>
+              </header>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {groupUpgrades.map(u => {
           const maxLevel = standardUpgradeMaxLevels[u.id];
-          const isMaxed = maxLevel !== undefined ? u.level >= maxLevel : !Number.isFinite(u.cost);
+          const isAutoOwned = u.id === 'auto' && isAutoUnlocked;
+          const isMaxed = u.id === 'auto' ? false : maxLevel !== undefined ? u.level >= maxLevel : !Number.isFinite(u.cost);
           const canAfford = !isMaxed && Number.isFinite(u.cost) && state.coins >= u.cost;
           const isUpgraded = recentUpgradeId === u.id;
 
@@ -388,7 +423,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
                   <div className="text-right text-xs">
                     <div className="flex items-center gap-1 font-mono font-bold text-slate-300">
                       <span>{u.currentVal}</span>
-                      {!isMaxed && (
+                      {!isMaxed && !isAutoOwned && (
                         <>
                           <ArrowRight className="w-3 h-3 text-slate-500" />
                           <span className="text-cyan-400">{u.nextVal}</span>
@@ -413,6 +448,11 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
                     <Lock className="w-3.5 h-3.5" />
                     <span>{u.lockMsg}</span>
                   </button>
+                ) : isAutoOwned ? (
+                  <button type="button" disabled className="w-full bg-emerald-950/30 border border-emerald-500/20 text-emerald-300 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-default">
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Auto Roll Unlocked Automatically</span>
+                  </button>
                 ) : isMaxed ? (
                   <button
                     disabled
@@ -424,10 +464,12 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
                   </button>
                 ) : (
                   <button
+                    type="button"
+                    aria-busy={pendingUpgradeId === u.id}
                     onClick={() => {
                       void handleUpgradeClick(u);
                     }}
-                    disabled={!canAfford}
+                    disabled={!canAfford || busy || upgradingAll || pendingUpgradeId !== null || activatingTurbo}
                     className={`w-full font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all ${
                       canAfford
                         ? 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 shadow-lg shadow-amber-900/20 active:scale-95 cursor-pointer'
@@ -440,6 +482,10 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
                 )}
               </div>
             </div>
+          );
+                })}
+              </div>
+            </section>
           );
         })}
       </div>
@@ -454,17 +500,28 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
             <div>
               <h3 className="text-sm font-black text-white">Turbo Booster</h3>
               <p className="text-xs text-slate-400">
-                Reduces cooldown by 20% for 30 minutes (or 30% for 60m with prestige upgrade).
+                Reduces roll cooldown by 25% for 30 minutes, or 35% for 60 minutes with Chrono Overdrive.
               </p>
+              {isTurboActive && <p className="text-xs font-bold text-amber-300" role="status" aria-live="polite">Active · {turboRemainingLabel} remaining</p>}
             </div>
           </div>
 
           <button
-            onClick={() => {
+            type="button"
+            aria-busy={activatingTurbo}
+            onClick={async () => {
+              if (activatingTurboRef.current || busy || upgradingAll || pendingUpgradeRef.current) return;
+              activatingTurboRef.current = true;
+              setActivatingTurbo(true);
               sound.playClick();
-              void onActivateTurbo();
+              try {
+                await onActivateTurbo();
+              } finally {
+                activatingTurboRef.current = false;
+                setActivatingTurbo(false);
+              }
             }}
-            disabled={(state.shards ?? 0) < 5 || isTurboActive || busy}
+            disabled={(state.shards ?? 0) < 5 || isTurboActive || busy || activatingTurbo || upgradingAll || pendingUpgradeId !== null}
             className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all whitespace-nowrap ${
               isTurboActive
                 ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300 cursor-default'
