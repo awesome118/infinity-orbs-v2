@@ -388,14 +388,23 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Resets current run collection value, coins, and base upgrades to 0. Permanent upgrades, discovered collection, and cosmetics are kept.
+                Resets current-run Collection Value and base upgrades, plus offline rolls and run counters. Cosmic Inheritance determines Coins retained (minimum 50). All Shards, Codex discoveries, permanent upgrades, and cosmetics are kept.
               </p>
             </div>
           </div>
 
           {confirmingPrestige ? (
-            <div className="flex items-center gap-2">
+            <div className="space-y-3 max-w-xl">
+              <div role="status" className="rounded-xl border border-fuchsia-500/30 bg-fuchsia-950/25 p-3 text-xs leading-relaxed text-slate-300">
+                <strong className="block text-fuchsia-200 mb-1">Before you prestige</strong>
+                <p>Reset: current-run Collection Value, base upgrades, offline rolls, and rolls-since-best counters.</p>
+                <p className="mt-1">Keep: all Shards, Codex discoveries, permanent upgrades, and cosmetics. Coins retained depend on Cosmic Inheritance (minimum 50).</p>
+                <p className="mt-1">Gain: +{pendingDust} Cosmic Dust and +3 Mastery Points.</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
               <button
+                type="button"
+                aria-busy={busy}
                 onClick={() => {
                   sound.playClick();
                   setConfirmingPrestige(false);
@@ -407,6 +416,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
                 Confirm Reset (+{pendingDust} Dust)
               </button>
               <button
+                type="button"
                 onClick={() => {
                   sound.playClick();
                   setConfirmingPrestige(false);
@@ -415,9 +425,11 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
               >
                 Cancel
               </button>
+              </div>
             </div>
           ) : (
             <button
+              type="button"
               onClick={() => {
                 sound.playClick();
                 setConfirmingPrestige(true);
@@ -460,6 +472,8 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
             </div>
 
             <button
+              type="button"
+              aria-busy={busy}
               onClick={() => {
                 sound.playClick();
                 void onSynthesizeDust();
@@ -479,8 +493,10 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
 
         {/* Category Filters for Prestige Tree */}
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-1.5 overflow-x-auto">
+          <div role="group" aria-label="Filter permanent Prestige upgrades" className="flex items-center gap-1.5 overflow-x-auto">
             <button
+              type="button"
+              aria-pressed={filterCategory === 'all'}
               onClick={() => {
                 sound.playClick();
                 setFilterCategory('all');
@@ -495,6 +511,8 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
             </button>
 
             <button
+              type="button"
+              aria-pressed={filterCategory === 'qol'}
               onClick={() => {
                 sound.playClick();
                 setFilterCategory('qol');
@@ -510,6 +528,8 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
             </button>
 
             <button
+              type="button"
+              aria-pressed={filterCategory === 'core'}
               onClick={() => {
                 sound.playClick();
                 setFilterCategory('core');
@@ -525,6 +545,8 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
             </button>
 
             <button
+              type="button"
+              aria-pressed={filterCategory === 'alchemy'}
               onClick={() => {
                 sound.playClick();
                 setFilterCategory('alchemy');
@@ -540,7 +562,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
             </button>
           </div>
 
-          <span className="text-xs font-mono text-fuchsia-300">
+          <span className="text-xs font-mono text-fuchsia-300" aria-live="polite">
             {fmt(state.cosmicDust)} Dust Available
           </span>
         </div>
