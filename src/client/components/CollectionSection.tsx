@@ -122,7 +122,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
       sort: sortBy,
     });
 
-    fetch(`/api/collection?${params.toString()}`, { signal: controller.signal })
+    fetch(`/api/collection?${params.toString()}`, { signal: controller.signal, cache: 'no-store' })
       .then(async res => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Failed to load Codex.');
@@ -130,8 +130,15 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
       })
       .then(data => {
         if (controller.signal.aborted) return;
-        setItems(data.items ?? []);
-        setTotal(data.total ?? 0);
+        const safeItems = Array.isArray(data.items) ? data.items.filter(item =>
+          item && Number.isSafeInteger(item.rarity) && item.rarity > 0 &&
+          Number.isSafeInteger(item.count) && item.count >= 0
+        ) : [];
+        const safeTotal = Number.isSafeInteger(data.total) && data.total >= 0
+          ? data.total
+          : safeItems.length;
+        setItems(safeItems);
+        setTotal(safeTotal);
       })
       .catch(error => {
         if (controller.signal.aborted) return;
@@ -147,7 +154,8 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
   }, [page, selectedTier, sortBy, reloadToken]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages - 1);
+  const safePage = Math.max(0, Math.min(page, totalPages - 1));
+  useEffect(() => { if (page !== safePage) setPage(safePage); }, [page, safePage]);
   const pageStart = total === 0 ? 0 : safePage * PAGE_SIZE + 1;
   const pageEnd = Math.min(total, safePage * PAGE_SIZE + items.length);
 
@@ -329,10 +337,12 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 border border-slate-800/80 p-3 rounded-2xl">
-        <div className="flex items-center gap-1 overflow-x-auto max-w-full pb-1 sm:pb-0 scrollbar-thin">
+        <div role="group" aria-label="Filter Codex by tier" className="flex items-center gap-1 overflow-x-auto max-w-full pb-1 sm:pb-0 scrollbar-thin">
           {tiersList.map(t => (
             <button
               key={t}
+              type="button"
+              aria-pressed={selectedTier === t}
               onClick={() => setSelectedTier(t)}
               className={`px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase transition-all whitespace-nowrap ${
                 selectedTier === t
@@ -346,8 +356,10 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500 font-semibold">Sort:</span>
+          <label htmlFor="io-codex-sort" className="text-xs text-slate-500 font-semibold">Sort by</label>
           <select
+            id="io-codex-sort"
+            aria-label="Sort Codex entries"
             value={sortBy}
             onChange={e => setSortBy(e.target.value as 'rarity_desc' | 'rarity_asc' | 'count')}
             className="bg-slate-950 border border-slate-800 text-xs text-slate-300 rounded-lg px-2 py-1 font-semibold"
@@ -365,6 +377,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
           <p className="text-sm font-bold text-rose-300">Codex failed to load</p>
           <p className="text-xs text-slate-500">{loadError}</p>
           <button
+            type="button"
             onClick={() => {
               setLoadError('');
               setReloadToken(value => value + 1);
@@ -383,12 +396,12 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
       ) : items.length === 0 ? (
         <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-10 text-center space-y-2">
           <BookOpen className="w-8 h-8 text-slate-600 mx-auto" />
-          <p className="text-sm font-bold text-slate-400">No Orbs Found in this filter</p>
-          <p className="text-xs text-slate-500">Roll more orbs to discover new rarities along the continuum.</p>
+          <p className="text-sm font-bold text-slate-400">{selectedTier === 'all' ? 'No Orbs discovered yet' : 'No discoveries in this tier yet'}</p>
+          <p className="text-xs text-slate-500">{selectedTier === 'all' ? 'Your first roll will start your Codex.' : 'Try All tiers to see your other discoveries, or keep rolling to find this tier.'}</p>
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-between text-xs text-slate-500 px-1">
+          <div className="flex items-center justify-between text-xs text-slate-500 px-1" aria-live="polite">
             <span>Showing {fmt(pageStart)}–{fmt(pageEnd)} of {fmt(total)}</span>
             <span>Page {safePage + 1} / {totalPages}</span>
           </div>
@@ -440,6 +453,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
                   {item.rarity >= 100 && (
                     <div className="mt-3 pt-2 border-t border-slate-800/80 flex justify-end">
                       <button
+                        type="button"
                         onClick={() => {
                           sound.playClick();
                           onOpenShareModal(item.rarity);
@@ -457,8 +471,10 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
           </div>
 
           {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-3">
+            <nav aria-label="Codex pages" className="flex items-center justify-center gap-3">
               <button
+                type="button"
+                aria-label="Previous Codex page"
                 disabled={safePage === 0}
                 onClick={() => goToPage(safePage - 1)}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold text-slate-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
@@ -468,6 +484,8 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
               </button>
               <span className="text-xs font-mono text-slate-500">Page {safePage + 1} / {totalPages}</span>
               <button
+                type="button"
+                aria-label="Next Codex page"
                 disabled={safePage >= totalPages - 1}
                 onClick={() => goToPage(safePage + 1)}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold text-slate-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
@@ -475,7 +493,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
                 Next
                 <ChevronRight className="w-4 h-4" />
               </button>
-            </div>
+            </nav>
           )}
         </>
       )}
