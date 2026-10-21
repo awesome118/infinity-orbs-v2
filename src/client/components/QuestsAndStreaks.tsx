@@ -54,6 +54,8 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
   const safeCommunityProgress = Number.isFinite(state.dailyStreakCommunity?.currentProgress)
     ? Math.max(0, state.dailyStreakCommunity?.currentProgress ?? 0)
     : 0;
+  const rawCommunityTier = Number(state.dailyStreakCommunity?.tier ?? 1);
+  const safeCommunityTier = Number.isSafeInteger(rawCommunityTier) && rawCommunityTier > 0 ? rawCommunityTier : 1;
   const communityProgressPct = Math.min(100, (safeCommunityProgress / safeCommunityGoal) * 100);
   const safeLuckMultiplier = Number.isFinite(state.dailyStreakCommunity?.luckMultiplier)
     ? state.dailyStreakCommunity?.luckMultiplier ?? 1
@@ -119,7 +121,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
               </div>,
               <div key="community" className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 p-3">
                 <span className="block text-[10px] uppercase font-black text-fuchsia-300/70">Community Tier</span>
-                <span className="text-lg font-black text-white">Tier {state.dailyStreakCommunity?.tier ?? 1}</span>
+                <span className="text-lg font-black text-white">Tier {fmt(safeCommunityTier)}</span>
                 <span className="block text-[9px] text-slate-500">Streak count adds to progress</span>
               </div>,
             ];
