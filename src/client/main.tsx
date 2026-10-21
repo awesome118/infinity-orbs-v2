@@ -1336,7 +1336,13 @@ export function App() {
       const res = await getJson<{ state: PlayerState }>('/api/turbo/activate', { method: 'POST' });
       applyPlayerState(res.state);
       sound.playChime(880, 'sawtooth', 0.3);
-      showToast('Turbo Roll Activated! Cooldowns reduced by 20% for 30m.', 'success');
+      const turboHasOverdrive = (res.state.prestigeUpgrades?.chronoOverdrive ?? 0) > 0;
+      showToast(
+        turboHasOverdrive
+          ? 'Turbo Roll active: 35% faster cooldowns for 60 minutes.'
+          : 'Turbo Roll active: 25% faster cooldowns for 30 minutes.',
+        'success',
+      );
     } catch (e: any) {
       rollback?.();
       showToast(e.message || 'Could not activate turbo roll', 'warn');
@@ -1785,7 +1791,7 @@ export function App() {
       const inheritanceLevel = current.prestigeUpgrades?.cosmicInheritance ?? 0;
       const keepPct = Math.min(0.50, inheritanceLevel * 0.10);
       const keptCoins = Math.max(50, Math.floor(current.coins * keepPct));
-      const keptShards = Math.floor((current.shards ?? 0) * keepPct);
+      // Shards always survive prestige; Cosmic Inheritance only affects Coins.
 
       return {
         ...current,
