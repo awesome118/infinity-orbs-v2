@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { context, redis } from '../src/server/devvit-mock.js';
-import { equipCombatRune, equipCombatSkill, getCombatSnapshot, hasCompletedCombatTutorial, performCombatBeat, rollCombatSkill } from '../src/server/combat.js';
+import { equipCombatRune, equipCombatSkill, getCombatSnapshot, hasCompletedCombatTutorial, performCombatBeat, rollCombatSkill, setCombatDungeon } from '../src/server/combat.js';
 import { COMBAT_BEAT_INTERVAL_MS, calculateCombatArenaRatingUpdate, getEnemyForDungeonDepth } from '../src/shared/combat.js';
 
 async function withPlayer<T>(userId: string, run: (key: string) => Promise<T>): Promise<T> {
@@ -222,5 +222,39 @@ test('death clears pending kill rewards and run-bound modifiers',async()=>{
     assert.equal(result.state.skillRuntime.nextRuneDropBonus,0);
     assert.equal(result.state.skillRuntime.royalTitheKills,0);
     assert.equal(result.state.skillRuntime.bountyStreak,0);
+  });
+});
+
+test('switching dungeons clears encounter-only combat effects and queued rewards',async()=>{
+  await withPlayer('combat-dungeon-reset-regression-player',async key=>{
+    const initial=await getCombatSnapshot();
+    const state=initial.state;
+    state.pendingHealAmount=900;
+    state.skillRuntime.burnTicks=3;
+    state.skillRuntime.burnDamage=77;
+    state.skillRuntime.armorBreakBeats=2;
+    state.skillRuntime.shield=1200;
+    state.skillRuntime.delayedDamage=400;
+    state.skillRuntime.delayedDamageReadyAtSequence=state.sequence+1;
+    state.skillRuntime.lastAttackDamage=500;
+    state.skillRuntime.storedDamage=600;
+    state.skillRuntime.executeMarked=true;
+    state.skillRuntime.evadeNext=true;
+    state.skillRuntime.phoenixReady=true;
+    state.skillRuntime.nextKillMarkBonus=100;
+    state.skillRuntime.nextKillXpBonus=200;
+    state.skillRuntime.nextRuneDropBonus=.2;
+    state.skillRuntime.royalTitheKills=2;
+    state.skillRuntime.bountyStreak=4;
+    await redis.set(key,JSON.stringify(state));
+    const result=await setCombatDungeon('cinder-vault');
+    assert.equal(result.state.dungeonId,'cinder-vault');
+    assert.equal(result.state.pendingHealAmount,0);
+    for(const field of ['burnTicks','burnDamage','armorBreakBeats','shield','delayedDamage','delayedDamageReadyAtSequence','lastAttackDamage','storedDamage','nextKillMarkBonus','nextKillXpBonus','nextRuneDropBonus','royalTitheKills','bountyStreak'] as const){
+      assert.equal(result.state.skillRuntime[field],0,field+' should not carry into the new dungeon');
+    }
+    assert.equal(result.state.skillRuntime.executeMarked,false);
+    assert.equal(result.state.skillRuntime.evadeNext,false);
+    assert.equal(result.state.skillRuntime.phoenixReady,false);
   });
 });
