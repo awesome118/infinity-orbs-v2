@@ -224,8 +224,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const freeRolls = Math.max(0, state.freeRolls ?? 0);
   // Free rolls bypass the normal cooldown, but never skip the deliberate Frenzy release wait.
   const rawChainPatcherTarget = Number(state.chainPatcherNextRarity ?? 0);
+  const chainPatcherPending = rawChainPatcherTarget !== 0;
   const chainPatcherCharged = Number.isSafeInteger(rawChainPatcherTarget) && rawChainPatcherTarget >= 2;
-  const canRoll = (remain <= 0 || (freeRolls > 0 && !frenzyArmed && !chainPatcherCharged)) && !busy;
+  const canRoll = (remain <= 0 || (freeRolls > 0 && !frenzyArmed && !chainPatcherPending)) && !busy;
   const frenzyReady = frenzyArmed && canRoll;
   const cooldownProgress = busy || canRoll;
   const frenzyCooldownRemain = frenzyCooldownRemaining(state.lastFrenzyAt, now);
@@ -355,8 +356,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
     ? 'ROLL IN PROGRESS'
     : frenzyArmed
       ? frenzyReady ? 'RELEASE FRENZY' : `WAIT ${(remain / 1000).toFixed(1)}s`
-      : chainPatcherCharged
-        ? 'ROLL CHAIN PATCHER'
+      : chainPatcherPending
+        ? chainPatcherCharged ? 'ROLL CHAIN PATCHER' : 'CHAIN PATCHER NEEDS REPAIR'
         : freeRolls > 0
           ? `ROLL ALL ${freeRolls} FREE ROLLS`
           : remain > 0
@@ -366,10 +367,12 @@ export const RollSection: React.FC<RollSectionProps> = ({
     ? 'Resolving your roll. The result appears after the server confirms it.'
     : frenzyArmed
       ? frenzyReady ? 'Frenzy is armed and ready to release.' : 'Frenzy is armed; wait for the cooldown before releasing it.'
-      : chainPatcherCharged
-        ? canRoll
-          ? `Chain Patcher is charged for 1/${formatRarity(rawChainPatcherTarget)}. One manual roll consumes it and preserves ${freeRolls} stored Free Rolls.`
-          : `Chain Patcher is charged; wait ${(remain / 1000).toFixed(1)}s. Stored Free Rolls will remain untouched.`
+      : chainPatcherPending
+        ? chainPatcherCharged
+          ? canRoll
+            ? `Chain Patcher is charged for 1/${formatRarity(rawChainPatcherTarget)}. One manual roll consumes it and preserves ${freeRolls} stored Free Rolls.`
+            : `Chain Patcher is charged; wait ${(remain / 1000).toFixed(1)}s. Stored Free Rolls will remain untouched.`
+          : 'The saved Chain Patcher target is invalid. Refresh your save before rolling; stored Free Rolls remain untouched.'
         : freeRolls > 0
           ? `One press uses all ${freeRolls} Free Rolls.`
           : canRoll
