@@ -2754,6 +2754,8 @@ test('Chain Patcher takes priority over Free Roll cooldown bypass in the roll UI
   assert.ok(roll.includes(": chainPatcherPending\n        ? chainPatcherCharged ? 'ROLL CHAIN PATCHER' : 'CHAIN PATCHER NEEDS REPAIR'"));
   assert.ok(roll.includes('Chain Patcher is charged; wait'));
   assert.ok(roll.includes('preserves ${freeRolls} stored Free Rolls.'));
+  const quests = source('src/client/components/QuestsAndStreaks.tsx');
+  assert.ok(quests.includes('Free Rolls bypass cooldown unless Chain Patcher is charged'));
 });
 
 test('armed Frenzy readiness and Pity Luck meter use the actual gameplay thresholds', () => {
