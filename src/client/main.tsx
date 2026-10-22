@@ -428,6 +428,7 @@ export function App() {
   const frenzyClaimActiveRef = useRef(false);
   const componentMountedRef = useRef(true);
   const stateRevisionRef = useRef(0);
+  const refreshSequenceRef = useRef(0);
   const authSessionEpochRef = useRef(0);
 
   useEffect(() => {
@@ -699,11 +700,12 @@ export function App() {
   }, []);
 
   const refreshAll = useCallback(async () => {
+    const refreshSequence = ++refreshSequenceRef.current;
     const revisionAtStart = stateRevisionRef.current;
     try {
       const me = await getJsonWithTimeout<PlayerState>('/api/me');
       try { window.sessionStorage.removeItem('io-wipe-recovery'); } catch { /* Embedded storage is optional. */ }
-      if (revisionAtStart !== stateRevisionRef.current) return;
+      if (refreshSequence !== refreshSequenceRef.current || revisionAtStart !== stateRevisionRef.current) return;
       applyPlayerState(me);
       setAuthRequired(false);
       setStartupError(null);

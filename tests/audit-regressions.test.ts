@@ -1847,18 +1847,19 @@ test('client ignores a conflicting Shards balance at an unchanged server revisio
 test('refreshAll discards a late /api/me response after state has advanced', () => {
   const main = source('src/client/main.tsx');
   const start = main.indexOf('const refreshAll = useCallback');
-  const end = main.indexOf('\n  }, []);', start);
+  const end = main.indexOf('\n  }, [applyPlayerState, splashEntered]);', start);
   assert.ok(start >= 0 && end > start, 'refreshAll must exist');
   const refresh = main.slice(start, end);
 
+  const sequenceSnapshot = refresh.indexOf('const refreshSequence = ++refreshSequenceRef.current');
   const revisionSnapshot = refresh.indexOf('const revisionAtStart = stateRevisionRef.current');
   const request = refresh.indexOf("const me = await getJsonWithTimeout<PlayerState>('/api/me')");
   const staleResponseGuard = refresh.indexOf(
-    'if (revisionAtStart !== stateRevisionRef.current) return;',
+    'if (refreshSequence !== refreshSequenceRef.current || revisionAtStart !== stateRevisionRef.current) return;',
   );
   const applyResponse = refresh.indexOf('applyPlayerState(me)');
 
-  assert.ok(revisionSnapshot >= 0 && request > revisionSnapshot);
+  assert.ok(sequenceSnapshot >= 0 && revisionSnapshot > sequenceSnapshot && request > revisionSnapshot);
   assert.ok(staleResponseGuard > request,
     'state revision must be rechecked after /api/me returns');
   assert.ok(applyResponse > staleResponseGuard,
