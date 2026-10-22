@@ -309,6 +309,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
           <div className="flex flex-wrap items-center gap-2.5">
             {/* Upgrade All Button */}
             <button
+              type="button"
               onClick={handleUpgradeAllClick}
               disabled={affordableCount === 0 || busy || upgradingAll || upgradingId !== null}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-md ${
@@ -447,6 +448,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
               <div className="pt-2">
                 {u.locked ? (
                   <button
+                    type="button"
                     disabled
                     className="w-full bg-slate-950 border border-slate-800 text-slate-500 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-not-allowed"
                   >
@@ -460,6 +462,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
                   </button>
                 ) : isMaxed ? (
                   <button
+                    type="button"
                     disabled
                     title="This upgrade has reached its maximum level."
                   className="w-full bg-slate-900 border border-slate-800 text-slate-500 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-not-allowed"

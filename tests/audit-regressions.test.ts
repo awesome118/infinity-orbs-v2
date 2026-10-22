@@ -2746,6 +2746,24 @@ test('combined Altar offering choices expose selection and local Mastery pending
   assert.ok(combined.includes('disabled={!canAfford || busy || isMax || sacrificing || upgradingSkillId !== null}'));
 });
 
+test('UI-only action buttons declare type=button to avoid accidental form submissions', () => {
+  const upgrades = source('src/client/components/UpgradesSection.tsx');
+  assert.ok(upgrades.includes('<button\n              type="button"\n              onClick={handleUpgradeAllClick}'));
+  assert.ok(upgrades.includes('<button\n                    type="button"\n                    disabled\n                    className="w-full bg-slate-950'));
+  assert.ok(upgrades.includes('<button\n                    type="button"\n                    disabled\n                    title="This upgrade has reached its maximum level."'));
+
+  const profile = source('src/client/components/ProfileAndPrestige.tsx');
+  assert.ok(profile.includes('<button\n                  type="button"\n                  onClick={() => {\n                    sound.playClick();\n                    void onBuyPrestigeUpgrade(id);'));
+  assert.equal((profile.match(/type="button"\s+onClick=\{\(\) => \{\s+sound\.playClick\(\);\s+void onBuyCosmetic\(cosmetic\.id\);/g) ?? []).length, 2);
+
+  const rarity = source('src/client/components/RarityTableModal.tsx');
+  assert.equal((rarity.match(/<button\s+type="button"\s+onClick=\{onClose\}/g) ?? []).length, 2);
+
+  const best = source('src/client/components/NewBestModal.tsx');
+  assert.equal((best.match(/<button\s+type="button"\s+onClick=\{onClose\}/g) ?? []).length, 2);
+  assert.ok(best.includes('<button\n            type="button"\n            onClick={() => {\n              onClose();\n              onOpenShareModal(orb.rarity);'));
+});
+
 test('upgrade and mastery controls use existing local pending state for busy semantics', () => {
   const upgrades = source('src/client/components/UpgradesSection.tsx');
   assert.ok(!upgrades.includes('pendingUpgradeId'));
