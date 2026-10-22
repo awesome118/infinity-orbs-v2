@@ -140,6 +140,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
 
     const checkAvailability = async () => {
       for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (cancelled) return;
         try {
           const response = await fetchChat('/api/chat/status?ts=' + Date.now(), {
             cache: 'no-store',

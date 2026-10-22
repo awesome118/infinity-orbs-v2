@@ -2810,8 +2810,11 @@ test('Global Chat availability retries stop after the launcher unmounts', () => 
   const chat = source('src/client/components/GlobalChatWindow.tsx');
   const start = chat.indexOf('const checkAvailability = async () =>');
   const end = chat.indexOf('    };', start);
-  assert.ok(start >= 0 && end > start);
+  const retryLoopStart = chat.indexOf('for (let attempt = 0; attempt < 3; attempt += 1)', start);
+  const firstTry = chat.indexOf('        try {', retryLoopStart);
+  assert.ok(start >= 0 && end > start && retryLoopStart > start && firstTry > retryLoopStart);
   assert.ok(chat.slice(start, end).includes('if (cancelled) return;'));
+  assert.ok(chat.slice(retryLoopStart, firstTry).includes('if (cancelled) return;'));
 });
 
 test('Quest claim controls expose local pending state to assistive technology', () => {
