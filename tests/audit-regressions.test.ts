@@ -2714,6 +2714,17 @@ test('best-orb reveal badges reflect critical and discovery flags from the selec
   assert.ok(!shared.includes('isCrit: bestRarity > (sourceState.highestRarity ?? 0),'));
 });
 
+test('combined Altar offering choices expose selection and local Mastery pending state', () => {
+  const combined = source('src/client/components/AltarAndMasterySection.tsx');
+  assert.ok((combined.match(/aria-pressed=\{selectedCoinOffer === amt\}/g) ?? []).length === 1);
+  assert.ok(combined.includes('aria-pressed={selectedCoinOffer === state.coins}'));
+  assert.ok(combined.includes('aria-pressed={selectedShardOffer === amt}'));
+  assert.ok(combined.includes('aria-pressed={selectedShardOffer === state.shards}'));
+  assert.ok(combined.includes('const [upgradingSkillId, setUpgradingSkillId] = useState<MasterySkillId | null>(null);'));
+  assert.ok(combined.includes('aria-busy={busy || sacrificing || upgradingSkillId === skillId}'));
+  assert.ok(combined.includes('disabled={!canAfford || busy || isMax || sacrificing || upgradingSkillId !== null}'));
+});
+
 test('upgrade and mastery controls use existing local pending state for busy semantics', () => {
   const upgrades = source('src/client/components/UpgradesSection.tsx');
   assert.ok(!upgrades.includes('pendingUpgradeId'));

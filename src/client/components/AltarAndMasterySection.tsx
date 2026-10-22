@@ -76,6 +76,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
   const [sacrificing, setSacrificing] = useState(false);
   const [activeBranch, setActiveBranch] = useState<'all' | 'fortune' | 'temporal' | 'alchemy' | 'cosmos'>('all');
   const [lastUpgradedSkill, setLastUpgradedSkill] = useState<string | null>(null);
+  const [upgradingSkillId, setUpgradingSkillId] = useState<MasterySkillId | null>(null);
 
   const handleSacrificeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,6 +109,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
   const handleMasteryClick = async (skillId: MasterySkillId) => {
     if (busy || actionLockRef.current || sacrificing) return;
     actionLockRef.current = true;
+    setUpgradingSkillId(skillId);
     setLocalActionError('');
     sound.playLevelUpFanfare();
     if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
@@ -130,6 +132,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
       setLocalActionError(error instanceof Error ? error.message : 'Could not upgrade Mastery. Please retry.');
     } finally {
       actionLockRef.current = false;
+      setUpgradingSkillId(null);
     }
   };
 
@@ -294,6 +297,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
                   <button
                     key={amt}
                     type="button"
+                    aria-pressed={selectedCoinOffer === amt}
                     onClick={() => setSelectedCoinOffer(amt)}
                     disabled={busy || sacrificing || state.coins < amt}
                     className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
@@ -307,6 +311,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
                 ))}
                 <button
                   type="button"
+                  aria-pressed={selectedCoinOffer === state.coins}
                   onClick={() => setSelectedCoinOffer(Math.max(0, state.coins))}
                   disabled={busy || sacrificing}
                   className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-900 border border-slate-800 text-amber-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
@@ -329,6 +334,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
                   <button
                     key={amt}
                     type="button"
+                    aria-pressed={selectedShardOffer === amt}
                     onClick={() => setSelectedShardOffer(amt)}
                     disabled={busy || sacrificing || amt > (state.shards ?? 0)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
@@ -343,6 +349,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
                 {(state.shards ?? 0) > 0 && (
                   <button
                     type="button"
+                    aria-pressed={selectedShardOffer === state.shards}
                     onClick={() => setSelectedShardOffer(state.shards)}
                     disabled={busy || sacrificing}
                     className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-900 border border-slate-800 text-cyan-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
@@ -471,8 +478,10 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
                   </div>
 
                   <button
+                    type="button"
+                    aria-busy={busy || sacrificing || upgradingSkillId === skillId}
                     onClick={() => handleMasteryClick(skillId)}
-                    disabled={!canAfford || busy || isMax || sacrificing}
+                    disabled={!canAfford || busy || isMax || sacrificing || upgradingSkillId !== null}
                     className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
                       isMax
                         ? 'bg-slate-900 text-slate-600 border border-slate-800 cursor-default'
