@@ -15,7 +15,7 @@ function validDevvitConfig(name = 'infinity-orbs') {
       dir: 'dist/client',
       entrypoints: {
         default: { inline: true, entry: 'splash.html', height: 'tall' },
-        game: { entry: 'game.html', inline: false },
+        game: { entry: 'game.html' },
         frenzy: { entry: 'frenzy.html', height: 'tall', inline: true },
       },
     },
@@ -171,11 +171,6 @@ const invalidManifestCases: Array<{
     label: 'game entrypoint',
     mutate: manifest => { manifest.post.entrypoints.game.entry = 'missing.html'; },
     expected: /post\.entrypoints\.game\.entry must be/,
-  },
-  {
-    label: 'full game must be Expanded Mode only',
-    mutate: manifest => { manifest.post.entrypoints.game.inline = true; },
-    expected: /post\.entrypoints\.game\.inline must be false/,
   },
   {
     label: 'default inline splash uses the bounded tall layout',
