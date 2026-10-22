@@ -51,9 +51,9 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     setShowTooltip(true);
   };
   return <article className={'io-combat-gear-icon-wrap '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
-    onPointerMove={event=>{if(event.pointerType==='mouse')moveTooltip(event.clientX,event.clientY);}}
+    onPointerEnter={event=>{if(event.pointerType==='mouse')moveTooltip(event.clientX,event.clientY);}}
     onPointerLeave={()=>setShowTooltip(false)}
-    onFocus={()=>setShowTooltip(true)}
+    onFocus={event=>{const rect=event.currentTarget.getBoundingClientRect();moveTooltip(rect.right,rect.top);}}
     onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))setShowTooltip(false);}}>
     <button type="button" className={'io-combat-gear-icon '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
       aria-label={(isEquipped?'Inspect equipped ':'Equip ')+item.name}
@@ -241,7 +241,12 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const saveAutoScrap=async(enabled:boolean,maxQuality:number)=>{
     if(runtime.current.mutating)return;
     runtime.current.mutating=true;setMutating(true);
-    try{await request<{settings:CombatAutoScrapSettings}>('/api/combat/auto-scrap','POST',{enabled,maxQuality});await load();setError('');}
+    try{
+      const activeBeat=runtime.current.beatPromise;
+      if(activeBeat)await activeBeat;
+      await request<{settings:CombatAutoScrapSettings}>('/api/combat/auto-scrap','POST',{enabled,maxQuality});
+      await load();setError('');
+    }
     catch(e){setError(e instanceof Error?e.message:'Could not update Auto Scrap.');}
     finally{runtime.current.mutating=false;setMutating(false);}
   };
@@ -257,7 +262,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     finally{runtime.current.mutating=false;setMutating(false);}
   };
   if(loading&&!state)return <section className="io-combat-screen"><div className="io-combat-loading">ENTERING THE UNDERCRYPT…</div></section>;
-  if(!state||!enemy||!stats)return <section className="io-combat-screen"><header className="io-combat-page-head"><div><span className="io-combat-eyebrow">COMBAT SYSTEM</span><h1>Could not enter the Undercrypt</h1></div></header><p className="io-combat-error">{error||'Combat data unavailable.'}</p><button type="button" className="io-combat-button" onClick={()=>{setLoading(true);void load();}}>Retry</button></section>;
+  if(!state||!enemy||!stats)return <section className="io-combat-screen"><header className="io-combat-page-head"><div><span className="io-combat-eyebrow">COMBAT SYSTEM</span><h1>Could not enter the Undercrypt</h1></div></header><p className="io-combat-error" role="alert">{error||'Combat data unavailable.'}</p><button type="button" className="io-combat-button" disabled={loading} onClick={()=>{setLoading(true);void load();}}>{loading?'Retrying…':'Retry'}</button></section>;
 
   const weapon=equipped(state,'weapon'), armor=equipped(state,'armor');
   const ownedSkills=Object.entries(state.skillLevels).filter(([,v])=>Number(v)>0);
@@ -282,7 +287,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const enemyPct=Math.max(0,Math.min(100,enemy.hp/Math.max(1,enemy.maxHp)*100));
   return <section className="io-combat-screen">
     <header className="io-combat-page-head"><div><span className="io-combat-eyebrow">INFINITY ORBS · COMBAT EXPANSION</span><h1>{page==='fight'?'Fight':page==='dungeons'?'Dungeons':page==='gear'?'Armory':page==='forge'?'The Forge':page==='skills'?'Skill Gacha':'Arena'}</h1><p>{page==='fight'?'Every accepted beat rolls an orb; its rarity scales base damage before crits and active abilities. Speed determines action frequency and the visible turn order previews who acts next.':page==='dungeons'?'Switching dungeons starts a new run, but your gear inventory and equipped loadout stay with you. Best depth is tracked separately for each dungeon.':page==='gear'?'Your inventory persists between runs and dungeons. The 30-item haul limit resets each run. Gear rolls a mix of offensive and defensive stats, plus rare Major Abilities.':page==='forge'?'Choose the exact quality of new gear. Quality costs rise exponentially, and a guaranteed 100.00% item costs 5,000,000 Scrap. Auto Scrap is configured here.':page==='skills'?'Rank the Gacha to unlock higher rarities, then equip up to three active abilities. Duplicate ranks grow without a hard cap.':'Challenge active delvers with your saved gear and equipped abilities. Ratings update after each duel.'}</p></div><div className="io-combat-run-stamp"><span>RUN {fmt(state.runId)}</span><strong>DEPTH {fmt(state.depth)}</strong><span>BEST {fmt(state.bestDepth)}</span></div></header>
-    {error&&<div className="io-combat-error" role="status">{error} <button className="io-combat-text-link" type="button" onClick={()=>{setError('');if(!state)void load();}}>Dismiss / retry</button></div>}
+    {error&&<div className="io-combat-error" role="alert">{error} <button className="io-combat-text-link" type="button" onClick={()=>{setError('');if(!state)void load();}}>Dismiss / retry</button></div>}
 
     {page==='fight'&&<>
       <div className="io-combat-stage"><div className="io-combat-stage-top"><span>{enemy.room.toUpperCase()}</span><span>{enemy.kind.toUpperCase()} · {state.dungeonId==='undercrypt'?'NEXT WARDEN':'NEXT BOSS'} {fmt(nextBoss)}</span></div>
