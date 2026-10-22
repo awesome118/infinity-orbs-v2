@@ -2259,3 +2259,63 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
 }
+
+/* Scroll-trap review: inline splash/Frenzy cards must remain a bounded, tap-only
+   preview. Expanded game components may scroll; these public post cards may not. */
+.io-public-note-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: #d7b36f;
+  font-size: 10px;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+#root.io-inline-post .io-public,
+#root.io-inline-post .io-public * {
+  overscroll-behavior: auto;
+  touch-action: pan-y pinch-zoom;
+}
+@media (max-width: 680px) {
+  #root.io-inline-post > .io-public {
+    align-items: center;
+    padding: 8px;
+  }
+  #root.io-inline-post .io-public-frame {
+    width: 100%;
+    margin-top: 0;
+  }
+  #root.io-inline-post .io-public-brand {
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  #root.io-inline-post .io-public-brand-mark {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+  #root.io-inline-post .io-public-brand-title { font-size: 15px; }
+  #root.io-inline-post .io-public-brand-subtitle { font-size: 7px; letter-spacing: .12em; }
+  #root.io-inline-post .io-frenzy-card { padding: 14px; }
+  #root.io-inline-post .io-frenzy-copy { margin-top: 5px; }
+  #root.io-inline-post .io-frenzy-rarity-lockup {
+    min-height: 52px;
+    margin: 8px 0 1px;
+    gap: 5px;
+  }
+  #root.io-inline-post .io-frenzy-orb-visual {
+    width: 82px;
+    height: 82px;
+    margin: 9px auto 4px;
+  }
+  #root.io-inline-post .io-frenzy-orb-label { margin-top: 1px; }
+  #root.io-inline-post .io-frenzy-instruction { margin-top: 6px; font-size: 10px; line-height: 1.4; }
+  #root.io-inline-post .io-frenzy-meta { margin-top: 10px; padding-top: 7px; }
+  #root.io-inline-post .io-frenzy-button { margin-top: 10px; }
+  #root.io-inline-post .io-public-result { margin-top: 10px; padding: 10px; }
+  #root.io-inline-post .io-public-note { gap: 4px; margin-top: 8px; font-size: 9px; }
+  #root.io-inline-post .io-launch-steps { margin-top: 12px; }
+  #root.io-inline-post .io-launch-steps > div { padding: 8px; }
+  #root.io-inline-post .io-launch-button { margin-top: 10px; }
+  #root.io-inline-post .io-launch-footer { margin-top: 8px; }
+}
