@@ -6,6 +6,7 @@ import {
   Zap,
   Flame,
   Layers,
+  Loader2,
   ChevronDown,
   ChevronUp,
   AlertCircle,
@@ -169,12 +170,12 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const hasInstantUpgrade = (state.prestigeUpgrades?.instantReveal ?? 0) > 0;
   const hasFilterUpgrade = (state.prestigeUpgrades?.autoFilter ?? 0) > 0;
   const hasResonanceUpgrade = (state.prestigeUpgrades?.resonanceMeter ?? 0) > 0;
-  const pityInterval = Math.max(6, 18 - Math.max(0, Math.min(5, Math.floor(Number(state.masterySkills?.pityAccelerant) || 0))) * 2);
+  const pityCalibration = Math.max(0, Math.min(5, Math.floor(Number(state.masterySkills?.pityAccelerant) || 0)));
+  const pityInterval = Math.max(6, 18 - pityCalibration * 2);
   const rawPityDryRolls = Number(state.rollsSinceBest ?? 0);
-  const pityDryRolls = Number.isSafeInteger(rawPityDryRolls) && rawPityDryRolls >= 0 ? rawPityDryRolls : 0;
-  const pityTier = Math.floor(pityDryRolls / pityInterval);
-  const pityRollsIntoTier = pityDryRolls % pityInterval;
-  const pityProgressPct = (pityRollsIntoTier / pityInterval) * 100;
+  const dryStreak = Number.isSafeInteger(rawPityDryRolls) && rawPityDryRolls >= 0 ? rawPityDryRolls : 0;
+  const pityTier = Math.floor(dryStreak / pityInterval);
+  const pityProgress = ((dryStreak % pityInterval) / pityInterval) * 100;
 
   const [filterActive, setFilterActive] = useState(() => {
     try {
@@ -223,9 +224,11 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const freeRolls = Math.max(0, state.freeRolls ?? 0);
   // Free rolls bypass the normal cooldown, but never skip the deliberate Frenzy release wait.
   const canRoll = (remain <= 0 || (freeRolls > 0 && !frenzyArmed)) && !busy;
+  const frenzyReady = frenzyArmed && canRoll;
+  const cooldownProgress = busy || canRoll;
   const frenzyCooldownRemain = frenzyCooldownRemaining(state.lastFrenzyAt, now);
   const frenzyUsedToday = frenzyCooldownRemain > 0;
-  const cooldownProgressPct = canRoll ? 100 : Math.max(0, Math.min(100, ((cd - remain) / Math.max(1, cd)) * 100));
+  const cooldownProgressPct = cooldownProgress ? 100 : Math.max(0, Math.min(100, ((cd - remain) / Math.max(1, cd)) * 100));
   const multi = rollsPerActivation(state);
   const luck = luckMultiplier(state);
   const isAutoUnlocked = (state.upgrades.auto ?? 0) > 0;
@@ -326,6 +329,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
   // Handle click on roll button or center orb
   const handleRollClick = () => {
+    if (busy) return;
     if (cooldownNoticeTimerRef.current !== null) {
       window.clearTimeout(cooldownNoticeTimerRef.current);
       cooldownNoticeTimerRef.current = null;
@@ -346,6 +350,16 @@ export const RollSection: React.FC<RollSectionProps> = ({
     }
   };
 
+  const primaryActionLabel = busy ? 'ROLL IN PROGRESS' : frenzyReady ? 'RELEASE FRENZY' : freeRolls > 0 ? `ROLL ALL ${freeRolls} FREE ROLLS` : remain > 0 ? `WAIT ${(remain / 1000).toFixed(1)}s` : `ROLL ${multi > 1 ? '×' + multi : ''}`;
+  const actionHint = busy
+    ? 'Resolving your roll. The result appears after the server confirms it.'
+    : frenzyArmed
+      ? frenzyReady ? 'Frenzy is armed and ready to release.' : 'Frenzy is armed; wait for the cooldown before releasing it.'
+      : freeRolls > 0
+        ? `One press uses all ${freeRolls} Free Rolls.`
+        : canRoll
+          ? 'Your next roll is ready.'
+          : `Next roll available in ${(remain / 1000).toFixed(1)} seconds.`;
   const hasMultipleOrbs = lastBatch.length > 1;
   const orbitRadius = typeof window !== 'undefined' && window.innerWidth < 400 ? 118 : 152;
 
@@ -391,7 +405,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       )}
 
       {/* Main Celestial Orb Stage (Orbits & Main Orb are concentric and centered together) */}
-      <div className={`roll-stage relative w-full flex items-center justify-center select-none ${isShaking ? 'animate-screen-shake' : ''}`}>
+      <div className={`roll-stage relative w-full flex items-center justify-center select-none ${busy ? 'is-rolling' : ''} ${isShaking ? 'animate-screen-shake' : ''}`}>
         {/* Ambient Glow Background centered on orb */}
         <div
           className="absolute w-64 h-64 rounded-full blur-3xl opacity-20 pointer-events-none transition-colors duration-700"
@@ -479,6 +493,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
             <div className="text-xs font-semibold text-white/90 mt-1 drop-shadow">
               {orbInfo ? orbInfo.name : 'Tap to Roll'}
             </div>
+            <div className="mt-2 text-[10px] text-slate-300/80" aria-label={`Personal best rarity 1 in ${formatRarity(state.highestRarity)}`}>
+              Personal best · 1/{formatRarity(state.highestRarity)}
+            </div>
           </div>
 
           {/* Critical Roll Badge */}
@@ -534,6 +551,15 @@ export const RollSection: React.FC<RollSectionProps> = ({
               }}
             />
           </div>
+          <div className="pity-meter mt-3 w-48">
+            <div className="flex items-center justify-between gap-2 text-[10px] text-slate-400">
+              <span>Pity Luck · Tier {pityTier}</span>
+              <span>{dryStreak % pityInterval} / {pityInterval} rolls to next stack</span>
+            </div>
+            <div role="progressbar" aria-label="Pity Luck progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pityProgress)} className="h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1">
+              <div className="h-full bg-gradient-to-r from-fuchsia-500 to-cyan-400" style={{ width: `${pityProgress}%` }} />
+            </div>
+          </div>
           {cooldownNotice && (
             <div className="text-[11px] text-amber-400 mt-1 font-medium animate-in fade-in duration-200">
               {cooldownNotice}
@@ -552,10 +578,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
         <button
           type="button"
-          disabled={busy}
-          aria-busy={busy}
           onClick={handleRollClick}
-          className={'roll-button ' + (frenzyArmed ? 'frenzy-supercharged' : canRoll ? 'is-ready' : 'is-waiting') + ' w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ' +
+          className={'roll-button ' + (busy ? 'is-waiting' : frenzyReady ? 'frenzy-supercharged' : canRoll ? 'is-ready' : 'is-waiting') + ' w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ' +
             (frenzyArmed
               ? 'bg-fuchsia-700 hover:bg-fuchsia-600 text-white border border-fuchsia-300/40 shadow-[0_0_36px_rgba(217,70,239,0.38)]'
               : canRoll
@@ -563,7 +587,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
               : busy
               ? 'bg-slate-800 text-slate-400 cursor-wait'
               : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700')}
-          aria-label={busy ? 'Roll in progress' : frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} Free Rolls` : 'Roll'}
+          aria-label={busy ? 'Rolling orbs' : frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} Free Rolls` : 'Roll'}
+          aria-describedby="roll-action-hint"
           disabled={busy}
           aria-busy={busy}
         >
@@ -573,23 +598,12 @@ export const RollSection: React.FC<RollSectionProps> = ({
               <Zap className='frenzy-lightning frenzy-lightning-right w-5 h-5' />
             </>
           )}
-          <Sparkles className={'w-5 h-5 ' + (frenzyArmed ? 'text-yellow-200 frenzy-spark' : 'text-cyan-300')} />
-          <span>
-            {busy
-              ? 'ROLLING...'
-              : frenzyArmed
-              ? remain > 0
-                ? 'WAIT ' + (remain / 1000).toFixed(1) + 's'
-                : 'RELEASE FRENZY'
-              : freeRolls > 0
-              ? 'ROLL ALL ' + freeRolls + ' FREE ROLLS'
-              : remain > 0
-              ? 'WAIT ' + (remain / 1000).toFixed(1) + 's'
-              : freeRolls > 0
-              ? 'USE ALL ' + freeRolls + ' FREE ROLL' + (freeRolls === 1 ? '' : 'S')
-              : 'ROLL ' + (multi > 1 ? '×' + multi : '')}
-          </span>
+          {busy
+            ? <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
+            : <Sparkles className={'w-5 h-5 ' + (frenzyArmed ? 'text-yellow-200 frenzy-spark' : 'text-cyan-300')} />}
+          <span>{primaryActionLabel}</span>
         </button>
+        <div id="roll-action-hint" className="roll-action-hint" aria-live="polite">{actionHint}</div>
 
         <button
           type="button"

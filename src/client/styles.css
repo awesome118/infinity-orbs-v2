@@ -288,6 +288,10 @@ body.io-inline-post { margin: 0; }
 .roll-button:hover { filter: brightness(1.08); transform: translateY(-2px); box-shadow: 0 13px 34px rgba(80, 196, 173, .25), inset 0 1px rgba(255,255,255,.52) !important; }
 .roll-button.is-waiting:hover { filter: none; transform: none; box-shadow: inset 0 1px rgba(255,255,255,.035) !important; }
 .roll-button:disabled { color: #8b9b9e !important; background: #1a282e !important; box-shadow: none !important; }
+.roll-button:hover:disabled { filter: none !important; transform: none !important; cursor: wait !important; }
+.roll-action-hint { max-width: 34rem; min-height: 1.15rem; color: #91a4a7; text-align: center; font-size: 11px; line-height: 1.45; }
+.roll-stage.is-rolling::after { position: absolute; z-index: 1; inset: 7px; border: 1px solid rgba(116, 221, 202, .58); border-radius: 19px; content: ""; pointer-events: none; animation: io-roll-resolve-ring 1.25s ease-in-out infinite; }
+@keyframes io-roll-resolve-ring { 0%, 100% { opacity: .22; box-shadow: inset 0 0 0 rgba(116, 221, 202, 0); } 50% { opacity: .9; box-shadow: inset 0 0 28px rgba(116, 221, 202, .08), 0 0 18px rgba(116, 221, 202, .08); } }
 .roll-controls { gap: 7px !important; }
 .roll-controls button { border-radius: 10px !important; }
 .roll-sidebar { display: flex; flex-direction: column; gap: 12px; }
@@ -372,6 +376,7 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  .roll-stage.is-rolling::after, .roll-stage.is-rolling > .absolute.w-64 { animation: none !important; }
 }
 
 
