@@ -7,8 +7,24 @@ interface GlobalChatWindowProps {
   launcherContext?: 'main' | 'frenzy';
 }
 
+/** Bound slow embedded-webview requests so chat controls never stay busy forever. */
+async function fetchChat(url: string, options: RequestInit = {}, timeoutMs = 12_000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Chat request timed out. Check the conversation before retrying.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 async function loadChat(): Promise<GlobalChatMessage[]> {
-  const response = await fetch('/api/chat?ts=' + Date.now(), {
+  const response = await fetchChat('/api/chat?ts=' + Date.now(), {
     cache: 'no-store',
     headers: { 'Cache-Control': 'no-cache' },
   });
@@ -113,7 +129,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           const launcherQuery = launcherContext === 'main'
             ? '&launcher=main'
             : '&launcher=frenzy';
-          const response = await fetch('/api/chat/status?ts=' + Date.now() + launcherQuery, {
+          const response = await fetchChat('/api/chat/status?ts=' + Date.now() + launcherQuery, {
             cache: 'no-store',
             headers: { 'Cache-Control': 'no-cache' },
           });
@@ -167,7 +183,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
     setReportingId(message.id);
     setActionError(null);
     try {
-      const response = await fetch('/api/chat/report', {
+      const response = await fetchChat('/api/chat/report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messageId: message.id }),
@@ -195,7 +211,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
     setSending(true);
     setActionError(null);
     try {
-      const response = await fetch('/api/chat', {
+      const response = await fetchChat('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
@@ -350,6 +366,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           <input
             value={input}
             onChange={e => setInput(e.target.value)}
+            aria-label="Write a public Global Chat message"
             maxLength={200}
             placeholder={chatAvailable === true ? 'Write a public Reddit comment...' : 'Open the main Game launcher to chat'}
             disabled={sending || chatAvailable !== true}
