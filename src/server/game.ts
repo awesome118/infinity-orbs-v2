@@ -4561,10 +4561,10 @@ export async function getCollectionPage(options: {
   };
 }
 
-export async function getState(): Promise<PlayerState> {
-  // GET /api/me is a read, not proof that someone pressed Play. Presence and
-  // activity registration are handled by the explicit post-launch heartbeat.
-  const s = await loadRaw({ registerActivity: false });
+export async function getState(options: { registerActivity?: boolean } = {}): Promise<PlayerState> {
+  // Callers that only need a snapshot can opt out. The /api/me route and
+  // pre-Play UI reads must not turn a preview into an active session.
+  const s = await loadRaw({ registerActivity: options.registerActivity });
   const now = Date.now();
 
   // Recompute Codex projections from the authoritative collection on every read.
@@ -4579,7 +4579,9 @@ export async function getState(): Promise<PlayerState> {
   // The next real mutation settles and persists the authoritative state.
   checkPeriodicResets(s, now);
   resetFreeShardBudgetIfNeeded(s, now);
-  s.onlinePlayers = await getOnlinePlayers();
+  s.onlinePlayers = options.registerActivity === false
+    ? await getOnlinePlayers()
+    : await touchOnlinePresence();
   s.globalBoosters = await getGlobalBoosters();
 
   // Show currently accumulated offline rolls without consuming/persisting them.
@@ -4642,7 +4644,9 @@ export async function buyChainPatcher(): Promise<{
 
 export async function getMe(): Promise<PlayerState> {
   const ban = await getGameBanStatus();
-  const s = ban ? await loadRaw({ registerActivity: false }) : await getState();
+  const s = ban
+    ? await loadRaw({ registerActivity: false })
+    : await getState({ registerActivity: false });
   if (ban) {
     s.gameBan = {
       active: true,

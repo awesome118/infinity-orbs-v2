@@ -1622,10 +1622,6 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
         else if (task.type === 'rolls') task.progress = capSafeGuildCounter(task.progress + taskProgressRolls);
         else if (task.type === 'rare') task.progress = capSafeGuildCounter(task.progress + taskProgressRare);
 
-        if (task.type === 'value') task.progress = capSafeGuildCounter(task.progress + taskProgressValue);
-        else if (task.type === 'rolls') task.progress = capSafeGuildCounter(task.progress + taskProgressRolls);
-        else if (task.type === 'rare') task.progress = capSafeGuildCounter(task.progress + taskProgressRare);
-
         // Roll the same contribution across successive task tiers. The old
         // one-pass logic clamped overflow below the next target, which made very
         // large tasks appear stuck and forfeited rewards for skipped tiers.
