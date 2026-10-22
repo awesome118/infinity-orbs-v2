@@ -712,6 +712,7 @@ export function App() {
       if (!splashEntered) return;
 
       const adminStatus = await getJson<{ isAdmin: boolean }>('/api/dev/status').catch(() => ({ isAdmin: false }));
+      if (refreshSequence !== refreshSequenceRef.current) return;
       setIsAdmin(adminStatus.isAdmin === true);
       if (me.gameBan?.active) return;
       const [lb, lbs, gd, we, announcement, notificationState] = await Promise.all([
@@ -722,6 +723,7 @@ export function App() {
         getJson<{ message: string; updatedAt: number; updatedBy: string } | null>('/api/developer-announcement').catch(() => null),
         getJson<{ enabled: boolean }>('/api/notifications').catch(() => ({ enabled: false })),
       ]);
+      if (refreshSequence !== refreshSequenceRef.current) return;
       setLeaderboardData(lb);
       setLeaderboards(lbs);
       setGuildData(gd);

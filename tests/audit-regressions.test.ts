@@ -1864,6 +1864,9 @@ test('refreshAll discards a late /api/me response after state has advanced', () 
     'state revision must be rechecked after /api/me returns');
   assert.ok(applyResponse > staleResponseGuard,
     'a stale /api/me response must be rejected before applying its PlayerState');
+  assert.ok(refresh.includes('if (refreshSequence !== refreshSequenceRef.current || revisionAtStart !== stateRevisionRef.current) return;'));
+  assert.ok((refresh.match(/if \(refreshSequence !== refreshSequenceRef\.current\) return;/g) ?? []).length >= 2,
+    'admin and auxiliary bootstrap responses must each be sequence-fenced');
 });
 
 test('share route commits the share cooldown before posting and treats quest projection as best-effort', () => {
