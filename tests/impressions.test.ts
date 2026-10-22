@@ -63,6 +63,7 @@ test('dashboard uses a safe timestamp for malformed time inputs', async () => {
   try {
     const dashboard = await getImpressionDashboard(Number.NaN);
     assert.ok(Number.isFinite(dashboard.generatedAt));
+  assert.equal(dashboard.generatedAt, Math.floor(1_000));
     assert.equal(dashboard.last24Hours.length, 24);
     assert.equal(dashboard.last30Days.length, 30);
   } finally {

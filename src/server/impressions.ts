@@ -298,5 +298,5 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
     return readTimePoint(bucket, DAY_PREFIX, new Date(bucket * 86_400_000).toISOString().slice(0, 10));
   }));
 
-  return { generatedAt: now, total, trackedPostCount, byType, byDevice, byTypeAndDevice, posts, last24Hours, last30Days };
+  return { generatedAt: dashboardNow, total, trackedPostCount, byType, byDevice, byTypeAndDevice, posts, last24Hours, last30Days };
 }

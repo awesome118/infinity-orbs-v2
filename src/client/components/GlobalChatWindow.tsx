@@ -44,7 +44,6 @@ async function loadChat(): Promise<GlobalChatMessage[]> {
 
 const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   username = '',
-  launcherContext = 'main',
 }) => {
   const [open, setOpen] = useState(false);
   // Global Chat stays visible in the main and Frenzy entry points. Frenzy can
@@ -175,7 +174,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [launcherContext]);
+  }, []);
 
   useEffect(() => {
     // Escape closes the floating chat without requiring precise pointer targeting.
