@@ -43,7 +43,7 @@ function postKey(postType: ImpressionPostType, postId: string): string {
 }
 
 async function readCount(key: string): Promise<number> {
-  return normalizeImpressionCount(await redis.get(key));
+  return normalizeCount(await redis.get(key));
 }
 
 /**
