@@ -136,6 +136,16 @@ test('main game, Orb Share, and Frenzy clients report only coarse aggregate impr
 });
 
 
+test('impression time buckets and per-post counters have bounded retention', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/impressions.ts'), 'utf8');
+  assert.match(source, /const postCounterExpiration = new Date\(now \+ 180 \* 86_400_000\)/);
+  assert.match(source, /const hourBucketExpiration = new Date\(\(hour \+ 25\) \* 3_600_000\)/);
+  assert.match(source, /const dayBucketExpiration = new Date\(\(day \+ 31\) \* 86_400_000\)/);
+  assert.match(source, /txn\.set\(keyForPost, String\(nextPost\), \{ expiration: postCounterExpiration \}\)/);
+  assert.match(source, /txn\.set\(HOUR_PREFIX \+ hour \+ ':' \+ postType, String\(nextHour\), \{ expiration: hourBucketExpiration \}\)/);
+  assert.match(source, /txn\.set\(DAY_PREFIX \+ day \+ ':' \+ postType, String\(nextDay\), \{ expiration: dayBucketExpiration \}\)/);
+});
+
 test('impression counters commit together instead of leaving partial counts on failure', async () => {
   const baseRedis = originalRedis;
   const baseContext = originalContext;

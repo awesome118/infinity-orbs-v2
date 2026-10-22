@@ -70,6 +70,11 @@ export async function recordPostImpression(
   const day = Math.floor(now / 86_400_000);
   const keyForPost = postKey(postType, postId);
   const indexField = postType + ':' + postId;
+  // Time buckets only serve recent charts. Per-post counters can be recreated
+  // on the next view, so orphaned/old keys should not accumulate forever.
+  const postCounterExpiration = new Date(now + 180 * 86_400_000);
+  const hourBucketExpiration = new Date((hour + 25) * 3_600_000);
+  const dayBucketExpiration = new Date((day + 31) * 86_400_000);
 
   // Commit the counters and index entry together. Independent INCR calls can
   // otherwise leave totals and breakdowns inconsistent when one write fails.
@@ -133,9 +138,9 @@ export async function recordPostImpression(
       await txn.set(TYPE_PREFIX + postType, String(nextType));
       await txn.set(DEVICE_PREFIX + deviceType, String(nextDevice));
       await txn.set(TYPE_DEVICE_PREFIX + postType + ':' + deviceType, String(nextTypeDevice));
-      await txn.set(keyForPost, String(nextPost));
-      await txn.set(HOUR_PREFIX + hour + ':' + postType, String(nextHour));
-      await txn.set(DAY_PREFIX + day + ':' + postType, String(nextDay));
+      await txn.set(keyForPost, String(nextPost), { expiration: postCounterExpiration });
+      await txn.set(HOUR_PREFIX + hour + ':' + postType, String(nextHour), { expiration: hourBucketExpiration });
+      await txn.set(DAY_PREFIX + day + ':' + postType, String(nextDay), { expiration: dayBucketExpiration });
       await txn.set(INDEX_PRUNE_COUNTER_KEY, String(nextPruneSequence));
       await txn.hSet(POST_INDEX_KEY, {
         [indexField]: JSON.stringify({ postType, postId, lastSeenAt: now }),
