@@ -5,7 +5,6 @@
     "dir": "dist/client",
     "entrypoints": {
       "default": {
-        "inline": true,
         "entry": "splash.html",
         "height": "tall"
       },
@@ -14,8 +13,7 @@
       },
       "frenzy": {
         "entry": "frenzy.html",
-        "height": "tall",
-        "inline": true
+        "height": "tall"
       }
     }
   },
