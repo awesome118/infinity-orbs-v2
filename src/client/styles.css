@@ -2322,3 +2322,74 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
   #root.io-inline-post .io-launch-button { margin-top: 10px; }
   #root.io-inline-post .io-launch-footer { margin-top: 8px; }
 }
+
+/* The compact shared-Orb entry is the inline post view, not a mini gallery.
+   Keep the Orb and all essential copy side-by-side even on narrow feed cards. */
+.io-public-compact {
+  box-sizing: border-box;
+  padding: 8px;
+  overflow: clip;
+  touch-action: pan-y pinch-zoom;
+  overscroll-behavior: auto;
+}
+.io-public-compact .io-public-brand { gap: 8px; margin-bottom: 8px; }
+.io-public-compact .io-public-brand-mark { width: 34px; height: 34px; border-radius: 10px; }
+.io-public-compact .io-public-brand-title { font-size: 15px; }
+.io-public-compact .io-public-brand-subtitle { font-size: 7px; letter-spacing: .12em; }
+.io-public-compact .io-share-card { padding: 12px; }
+.io-public-compact .io-share-heading { align-items: center; gap: 8px; margin-top: 6px; }
+.io-public-compact .io-share-heading h1 { font-size: clamp(19px, 4.5vw, 26px); line-height: 1.08; }
+.io-public-compact .io-share-heading p { margin-top: 4px; font-size: 10px; line-height: 1.35; }
+.io-public-compact .io-share-orb-row {
+  grid-template-columns: 104px minmax(0, 1fr);
+  justify-items: stretch;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.io-public-compact .io-share-orb-row .io-public-orb { width: 104px; height: 104px; }
+.io-public-compact .io-share-orb-row .io-public-orb strong { font-size: 15px; }
+.io-public-compact .io-share-orb-row .io-public-orb small { max-width: 88%; font-size: 8px; overflow-wrap: anywhere; }
+.io-public-compact .io-share-copy { width: auto; min-width: 0; text-align: left; }
+.io-public-compact .io-public-rarity { font-size: clamp(18px, 4vw, 26px); overflow-wrap: anywhere; }
+.io-public-compact .io-public-name { margin-top: 3px; font-size: 13px; line-height: 1.2; overflow-wrap: anywhere; }
+.io-public-compact .io-share-copy p { margin-top: 5px; font-size: 9px; line-height: 1.35; }
+.io-public-compact .io-public-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 9px; }
+.io-public-compact .io-public-stats > div { padding: 7px 5px; }
+.io-public-compact .io-public-stats > div + div { border-left: 1px solid rgba(166,190,193,.09); border-top: 0; }
+.io-public-compact .io-public-stats span { font-size: 6px; letter-spacing: .07em; }
+.io-public-compact .io-public-stats strong { font-size: 9px; }
+.io-public-compact .io-public-actions { margin-top: 8px; }
+.io-public-compact .io-public-actions .io-public-button { width: 100%; min-height: 38px; }
+.io-public-compact .io-public,
+.io-public-compact .io-public * { overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }
+
+@media (max-width: 680px) {
+  #root.io-inline-post .io-public-compact { align-items: center; padding: 8px; }
+  #root.io-inline-post .io-public-compact .io-public-frame { width: 100%; margin-top: 0; }
+  #root.io-inline-post .io-public-compact .io-share-orb-row {
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 8px;
+    margin-top: 8px;
+  }
+  #root.io-inline-post .io-public-compact .io-share-orb-row .io-public-orb {
+    width: 88px;
+    height: 88px;
+  }
+  #root.io-inline-post .io-public-compact .io-share-orb-row .io-public-orb strong { font-size: 13px; }
+  #root.io-inline-post .io-public-compact .io-share-copy p { font-size: 8px; line-height: 1.3; }
+  #root.io-inline-post .io-public-compact .io-public-stats { margin-top: 7px; }
+  #root.io-inline-post .io-public-compact .io-public-stats > div { padding: 6px 3px; }
+  #root.io-inline-post .io-public-compact .io-public-stats span { font-size: 5.5px; }
+  #root.io-inline-post .io-public-compact .io-public-actions { margin-top: 6px; }
+  #root.io-inline-post .io-public-compact .io-public-actions .io-public-button { min-height: 36px; }
+  #root.io-inline-post .io-frenzy-card { padding: 12px; }
+  #root.io-inline-post .io-frenzy-instruction { max-width: 300px; }
+  #root.io-inline-post .io-frenzy-card > .mt-4 { margin-top: 7px; padding: 6px 8px; }
+  #root.io-inline-post .io-frenzy-card > .mt-4 .mt-1 { margin-top: 2px; font-size: 20px; line-height: 1.1; }
+  #root.io-inline-post .io-frenzy-meta { margin-top: 7px; padding-top: 5px; gap: 6px; }
+  #root.io-inline-post .io-frenzy-button { min-height: 40px; margin-top: 7px; }
+  #root.io-inline-post .io-public-result.io-frenzy-opened { margin-top: 7px; padding: 7px; }
+  #root.io-inline-post .io-public-note { margin-top: 6px; line-height: 1.25; }
+  #root.io-inline-post .io-public-note > div { gap: 5px; }
+}
