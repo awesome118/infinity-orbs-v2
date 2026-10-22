@@ -2770,6 +2770,12 @@ test('UI-only action buttons declare type=button to avoid accidental form submis
   assert.ok(best.includes('<button\n            type="button"\n            onClick={() => {\n              onClose();\n              onOpenShareModal(orb.rarity);'));
 });
 
+test('Mastery upgrade disabled expression closes before the next JSX attribute', () => {
+  const mastery = source('src/client/components/MasterySection.tsx');
+  assert.ok(mastery.includes('disabled={!canAfford || busy || isMax || upgradingSkillId !== null}'));
+  assert.ok(!mastery.includes('disabled={!canAfford || busy || isMax || upgradingSkillId !== null>'));
+});
+
 test('upgrade and mastery controls use existing local pending state for busy semantics', () => {
   const upgrades = source('src/client/components/UpgradesSection.tsx');
   assert.ok(!upgrades.includes('pendingUpgradeId'));
