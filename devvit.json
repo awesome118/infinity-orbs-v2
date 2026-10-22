@@ -6,14 +6,16 @@
     "entrypoints": {
       "default": {
         "inline": true,
-        "entry": "splash.html"
+        "entry": "splash.html",
+        "height": "tall"
       },
       "game": {
         "entry": "game.html"
       },
       "frenzy": {
         "entry": "frenzy.html",
-        "height": "tall"
+        "height": "tall",
+        "inline": true
       }
     }
   },
