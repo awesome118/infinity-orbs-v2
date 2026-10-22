@@ -157,7 +157,7 @@ export const RunesSection:React.FC=()=>{
   return <div className="io-runes-page">
     <header className="io-runes-header">
       <div><div className="io-runes-kicker">CORE-GAME BONUSES · SOFT-CAPPED LEVELS</div><h1>Runes</h1><p className="io-runes-intro">Equip monster drops to strengthen normal Infinity Orb rolls. Sacrifice spare Runes into a favorite Rune to grant XP and increase its level. Effects approach a large soft cap; Shard Rune chance never scales with level.</p></div>
-      <button type="button" className="io-runes-button" onClick={()=>{setLoading(true);void load();}} disabled={loading||operationPending}><RefreshCw size={14}/> Refresh</button>
+      <button type="button" className="io-runes-button" aria-label={loading?'Refreshing Rune inventory':'Refresh Rune inventory'} aria-busy={loading||operationPending} onClick={()=>{setLoading(true);void load();}} disabled={loading||operationPending}><RefreshCw size={14} aria-hidden="true" className={loading?'animate-spin':''}/> {loading?'Loading…':'Refresh'}</button>
     </header>
     {error&&<div className="io-runes-error" role="alert">{error}</div>}
     {notice&&!error&&<div className="io-runes-muted" role="status">{notice}</div>}
@@ -178,7 +178,7 @@ export const RunesSection:React.FC=()=>{
         <div className="io-runes-panel-head"><h2>Rune inventory</h2><span className="io-runes-muted">{state.runes.length} / 200 · {visibleRunes.length} shown</span>{state.runes.length>=200&&<span className="io-runes-capacity-warning" role="status">Inventory full — new Rune drops need an open slot.</span>}</div>
         {strengthenTargetRune&&<div className="io-runes-strengthen-mode" role="status">
           <div><strong>Strengthen: {strengthenTargetRune.name}</strong><span>Click another Rune to sacrifice it into this Rune. This permanently consumes the donor.</span></div>
-          <button type="button" className="io-runes-button" onClick={()=>{setStrengthenTargetId('');setNotice('Strengthen selection cancelled.');}}>Cancel</button>
+          <button type="button" className="io-runes-button" disabled={operationPending||sacrificing} onClick={()=>{setStrengthenTargetId('');setNotice('Strengthen selection cancelled.');}}>Cancel</button>
         </div>}
         <div className="io-runes-auto-sacrifice">
           <div className="io-runes-auto-sacrifice-heading"><strong>Auto Sacrifice</strong><span>Turn low-rarity drops into XP for your equipped loadout.</span></div>
@@ -235,7 +235,7 @@ export const RunesSection:React.FC=()=>{
                 <div className="io-runes-tooltip-actions">
                   <button type="button" className="io-runes-button" disabled={operationPending||busyRune===rune.id||(!isEquipped&&!canEquip)||Boolean(strengthenTargetId)} onClick={()=>void mutate('/api/combat/runes/equip',{runeId:rune.id,equip:!isEquipped},rune.id,isEquipped?'Rune unequipped.':'Rune equipped.')}>{busyRune===rune.id?'Saving…':isEquipped?'Unequip':'Equip'}</button>
                   {strengthenTargetId===rune.id
-                    ?<button type="button" className="io-runes-button" onClick={()=>{setStrengthenTargetId('');setNotice('Strengthen selection cancelled.');}}>Cancel Strengthen</button>
+                    ?<button type="button" className="io-runes-button" disabled={operationPending||sacrificing} onClick={()=>{setStrengthenTargetId('');setNotice('Strengthen selection cancelled.');}}>Cancel Strengthen</button>
                     :<button type="button" className="io-runes-button io-runes-strengthen-button" disabled={operationPending||sacrificing||autoSacrificeBusy} onClick={()=>{setStrengthenTargetId(rune.id);setError('');setNotice('Strengthen '+rune.name+': click another Rune to sacrifice it into this one.');}}>Strengthen</button>}
                 </div>
                 {!isEquipped&&!canEquip&&<div className="io-runes-muted">All Rune slots are full.</div>}
