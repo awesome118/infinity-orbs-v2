@@ -14,7 +14,7 @@ function validDevvitConfig(name = 'infinity-orbs') {
     post: {
       dir: 'dist/client',
       entrypoints: {
-        default: { inline: true, entry: 'splash.html' },
+        default: { entry: 'splash.html', height: 'tall' },
         game: { entry: 'game.html' },
         frenzy: { entry: 'frenzy.html', height: 'tall' },
       },
@@ -45,6 +45,7 @@ function createFixture(options: {
   devvitConfig?: Record<string, any>;
   sourceText?: string;
   createSourceDir?: boolean;
+  inlineCssText?: string;
 } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'infinity-orbs-preflight-'));
   const scriptDir = join(root, 'scripts');
@@ -71,8 +72,14 @@ function createFixture(options: {
 
   if (options.createSourceDir !== false) {
     const sourceDir = join(root, 'src');
-    mkdirSync(sourceDir, { recursive: true });
+    const clientDir = join(sourceDir, 'client');
+    mkdirSync(clientDir, { recursive: true });
     writeFileSync(join(sourceDir, 'entry.ts'), options.sourceText ?? 'export const healthy = true;\n');
+    writeFileSync(join(clientDir, 'splash.html'), '<html class="io-inline-post"><body class="io-inline-post"><div id="root" class="io-inline-post"></div></body></html>');
+    writeFileSync(join(clientDir, 'frenzy.html'), '<html class="io-inline-post"><body class="io-inline-post"><div id="root" class="io-inline-post"></div></body></html>');
+    writeFileSync(join(clientDir, 'splash.tsx'), 'export const splashInlineSafe = true;\n');
+    writeFileSync(join(clientDir, 'frenzy.tsx'), 'export const frenzyInlineSafe = true;\n');
+    writeFileSync(join(clientDir, 'styles.css'), options.inlineCssText ?? 'html.io-inline-post, body.io-inline-post { height: 100%; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }\n#root.io-inline-post { overflow: clip; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }\n.io-public { overflow: clip; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }\n.io-combat-log{max-height:245px;overflow:auto}\n');
   }
 
   return {
@@ -167,6 +174,11 @@ const invalidManifestCases: Array<{
     expected: /post\.entrypoints\.game\.entry must be/,
   },
   {
+    label: 'default inline splash uses the bounded tall layout',
+    mutate: manifest => { manifest.post.entrypoints.default.height = 'regular'; },
+    expected: /post\.entrypoints\.default\.height must be/,
+  },
+  {
     label: 'Frenzy entrypoint and tall layout',
     mutate: manifest => { manifest.post.entrypoints.frenzy.height = 'inline'; },
     expected: /post\.entrypoints\.frenzy\.height must be/,
@@ -228,6 +240,59 @@ for (const scenario of invalidManifestCases) {
   });
 }
 
+
+test('deployment preflight rejects root CSS that disables native feed gestures', () => {
+  const fixture = createFixture({
+    inlineCssText: [
+      'html.io-inline-post, body.io-inline-post { height: 100%; overscroll-behavior: none; touch-action: none; }',
+      '#root.io-inline-post { overflow: clip; overscroll-behavior: none; touch-action: none; }',
+      '.io-public { overflow: clip; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }',
+    ].join('\n'),
+  });
+  try {
+    const result = fixture.run();
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /html\\/body must allow native vertical scrolling|html\\/body must let overscroll|html\\/body must not capture/);
+    assert.match(result.stderr, /inline root must allow native vertical scrolling|inline root must let overscroll|inline root must not capture/);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('deployment preflight rejects overscroll containment and horizontal-only touch actions', () => {
+  const fixture = createFixture({
+    inlineCssText: [
+      'html.io-inline-post, body.io-inline-post { height: 100%; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }',
+      '#root.io-inline-post { overflow: clip; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }',
+      '.io-public { overflow: clip; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }',
+      '@media (max-width: 600px) { .io-frenzy-card { overscroll-behavior: contain; touch-action: pan-x; } }',
+    ].join('\n'),
+  });
+  try {
+    const result = fixture.run();
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Inline public-card selector/);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('deployment preflight rejects an internal scroll container on the public inline card', () => {
+  const fixture = createFixture({
+    inlineCssText: [
+      'html.io-inline-post, body.io-inline-post { height: 100%; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }',
+      '#root.io-inline-post { overflow: clip; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }',
+      '.io-public { overflow: auto; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }',
+    ].join('\n'),
+  });
+  try {
+    const result = fixture.run();
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /public post must not capture or create a scroll trap/);
+  } finally {
+    fixture.cleanup();
+  }
+});
 
 test('npm deploy script pins the exact package version instead of implicit patch bumping', () => {
   const pkg = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'));

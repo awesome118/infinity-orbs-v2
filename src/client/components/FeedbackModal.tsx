@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Bug, Lightbulb, Send, X } from 'lucide-react';
 import { sound } from '../sound.js';
 
@@ -12,6 +12,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const submitLockRef = useRef(false);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -22,11 +23,13 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
   }, [busy, onClose]);
 
   const submit = async () => {
+    if (busy || submitLockRef.current) return;
     const trimmed = message.trim();
     if (!trimmed) {
       setError('Please describe the bug or suggestion.');
       return;
     }
+    submitLockRef.current = true;
     setBusy(true);
     setError('');
     sound.playClick();
@@ -35,6 +38,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not send feedback.');
     } finally {
+      submitLockRef.current = false;
       setBusy(false);
     }
   };
@@ -49,8 +53,10 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
         className="relative w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl space-y-4"
       >
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800"
+          disabled={busy}
+          className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 disabled:opacity-40"
           aria-label="Close feedback"
         >
           <X className="w-5 h-5" />
@@ -68,6 +74,9 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
 
         <div className="grid grid-cols-2 gap-2">
           <button
+            type="button"
+            disabled={busy}
+            aria-pressed={type === 'bug'}
             onClick={() => {
               setType('bug');
               sound.playClick();
@@ -80,6 +89,9 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
             Bug Report
           </button>
           <button
+            type="button"
+            disabled={busy}
+            aria-pressed={type === 'suggestion'}
             onClick={() => {
               setType('suggestion');
               sound.playClick();
@@ -96,6 +108,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
         <textarea
           aria-label={type === 'bug' ? 'Describe the bug' : 'Describe your suggestion'}
           value={message}
+          disabled={busy}
+          maxLength={2000}
           onChange={e => setMessage(e.target.value.slice(0, 2000))}
           rows={8}
           placeholder={type === 'bug'

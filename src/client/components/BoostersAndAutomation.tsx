@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Bot,
   Clock,
@@ -88,19 +88,26 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
 }) => {
   const [now, setNow] = useState(Date.now());
   const [activatingGlobalBooster, setActivatingGlobalBooster] = useState<GlobalBoosterId | null>(null);
+  const [globalActivationError, setGlobalActivationError] = useState('');
+  const globalActivationLockRef = useRef(false);
 
   const handleGlobalActivation = async (id: GlobalBoosterId, useCredit: boolean) => {
-    if (activatingGlobalBooster) return;
+    if (busy || activatingGlobalBooster || globalActivationLockRef.current) return;
+    globalActivationLockRef.current = true;
     setActivatingGlobalBooster(id);
+    setGlobalActivationError('');
     try {
       await onActivateGlobalBooster(id, useCredit);
+    } catch (error) {
+      setGlobalActivationError(error instanceof Error ? error.message : 'Global Booster activation was not confirmed. Refresh the credit count before retrying.');
     } finally {
+      globalActivationLockRef.current = false;
       setActivatingGlobalBooster(null);
     }
   };
 
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 250);
+    const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -117,6 +124,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      {globalActivationError && <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-950/30 px-4 py-3 text-xs text-rose-200">{globalActivationError}</div>}
       <section className="rounded-3xl border border-indigo-500/25 bg-gradient-to-br from-slate-900 via-indigo-950/20 to-slate-900 p-5 shadow-xl">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
@@ -252,14 +260,14 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                 <div className="mt-3 flex gap-2">
                   <button
                     onClick={() => void handleGlobalActivation(id, false)}
-                    disabled={activatingGlobalBooster !== null || !canAffordGlobal}
+                    disabled={busy || activatingGlobalBooster !== null || !canAffordGlobal}
                     className="flex-1 px-2.5 py-2 rounded-xl text-[10px] font-black bg-slate-800 hover:bg-slate-700 text-white disabled:text-slate-500 disabled:cursor-not-allowed"
                   >
                     {`+2h • ${formatNumber(globalCost)} 💎`}
                   </button>
                   <button
                     onClick={() => void handleGlobalActivation(id, true)}
-                    disabled={activatingGlobalBooster !== null}
+                    disabled={busy || activatingGlobalBooster !== null}
                     className="px-2.5 py-2 rounded-xl text-[10px] font-black bg-fuchsia-600/20 border border-fuchsia-500/25 text-fuchsia-200 hover:bg-fuchsia-600/30 disabled:text-slate-600 disabled:cursor-not-allowed"
                     title="Use one free Global Booster activation. The server is authoritative if the displayed credit count is stale."
                   >

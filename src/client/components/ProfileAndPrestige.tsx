@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Sparkles,
   Palette,
@@ -67,17 +67,35 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
   const [autoScrapQuality,setAutoScrapQuality]=useState(state.combatAutoScrap?.maxQuality??20);
   const [autoScrapSaving,setAutoScrapSaving]=useState(false);
   const [autoScrapError,setAutoScrapError]=useState('');
+  const autoScrapLockRef=useRef(false);
   useEffect(()=>{setAutoScrapEnabled(state.combatAutoScrap?.enabled===true);setAutoScrapQuality(state.combatAutoScrap?.maxQuality??20);},[state.combatAutoScrap?.enabled,state.combatAutoScrap?.maxQuality]);
   const saveAutoScrapSettings=async()=>{
+    if(busy||autoScrapLockRef.current)return;
+    autoScrapLockRef.current=true;
     setAutoScrapSaving(true);setAutoScrapError('');
+    const controller=new AbortController();
+    const timeout=window.setTimeout(()=>controller.abort(),12_000);
     try{
-      const response=await fetch('/api/combat/auto-scrap',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:autoScrapEnabled,maxQuality:autoScrapQuality})});
+      const quality=Number(autoScrapQuality);
+      if(!Number.isFinite(quality)||quality<0||quality>100)throw new Error('Choose an Auto Scrap cutoff from 0% to 100%.');
+      const response=await fetch('/api/combat/auto-scrap',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({enabled:autoScrapEnabled,maxQuality:Math.round(quality)})});
       const data=await response.json().catch(()=>({}));
       if(!response.ok)throw new Error(typeof data.error==='string'?data.error:'Could not save Auto Scrap settings.');
       const saved=data.settings as {enabled?:unknown;maxQuality?:unknown}|undefined;
-      if(saved){setAutoScrapEnabled(saved.enabled===true);setAutoScrapQuality(Number(saved.maxQuality??20));}
-    }catch(error){setAutoScrapError(error instanceof Error?error.message:'Could not save Auto Scrap settings.');}
-    finally{setAutoScrapSaving(false);}
+      if(saved){
+        const rawQuality=Number(saved.maxQuality??20);
+        setAutoScrapEnabled(saved.enabled===true);
+        setAutoScrapQuality(Number.isFinite(rawQuality)?Math.max(0,Math.min(100,rawQuality)):20);
+      }else{
+        throw new Error('The server did not confirm the saved Auto Scrap settings. Refresh before retrying.');
+      }
+    }catch(error){
+      setAutoScrapError(error instanceof Error&&error.name==='AbortError'?'Saving Auto Scrap timed out. Refresh the saved setting before retrying.':error instanceof Error?error.message:'Could not save Auto Scrap settings.');
+    }finally{
+      window.clearTimeout(timeout);
+      autoScrapLockRef.current=false;
+      setAutoScrapSaving(false);
+    }
   };
   const fmt = (n: number) => formatNumber(n);
   const longestSessionMs = Math.max(0, state.longestRollingSessionMs ?? 0);

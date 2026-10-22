@@ -124,14 +124,26 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
 
     fetch(`/api/collection?${params.toString()}`, { signal: controller.signal })
       .then(async res => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'Failed to load Codex.');
+        const raw: unknown = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message = raw && typeof raw === 'object' && 'error' in raw && typeof raw.error === 'string'
+            ? raw.error
+            : 'Failed to load Codex.';
+          throw new Error(message);
+        }
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Codex returned an invalid response. Refresh and try again.');
+        const data = raw as Partial<CollectionPageResponse>;
+        if (!Array.isArray(data.items) || !Number.isSafeInteger(data.total) || Number(data.total) < 0) {
+          throw new Error('Codex returned invalid collection data. Refresh and try again.');
+        }
         return data as CollectionPageResponse;
       })
       .then(data => {
         if (controller.signal.aborted) return;
-        setItems(data.items ?? []);
-        setTotal(data.total ?? 0);
+        setItems(data.items.slice(0, PAGE_SIZE));
+        setTotal(data.total);
+        const nextLastPage = Math.max(0, Math.ceil(data.total / PAGE_SIZE) - 1);
+        setPage(currentPage => Math.min(currentPage, nextLastPage));
       })
       .catch(error => {
         if (controller.signal.aborted) return;

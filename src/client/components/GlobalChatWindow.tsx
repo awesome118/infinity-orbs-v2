@@ -7,8 +7,24 @@ interface GlobalChatWindowProps {
   launcherContext?: 'main' | 'frenzy';
 }
 
+/** Bound slow embedded-webview requests so chat controls never stay busy forever. */
+async function fetchChat(url: string, options: RequestInit = {}, timeoutMs = 12_000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Chat request timed out. Check the conversation before retrying.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 async function loadChat(): Promise<GlobalChatMessage[]> {
-  const response = await fetch('/api/chat?ts=' + Date.now(), {
+  const response = await fetchChat('/api/chat?ts=' + Date.now(), {
     cache: 'no-store',
     headers: { 'Cache-Control': 'no-cache' },
   });
@@ -113,7 +129,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           const launcherQuery = launcherContext === 'main'
             ? '&launcher=main'
             : '&launcher=frenzy';
-          const response = await fetch('/api/chat/status?ts=' + Date.now() + launcherQuery, {
+          const response = await fetchChat('/api/chat/status?ts=' + Date.now() + launcherQuery, {
             cache: 'no-store',
             headers: { 'Cache-Control': 'no-cache' },
           });
@@ -149,6 +165,16 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   }, [launcherContext]);
 
   useEffect(() => {
+    // Escape closes the floating chat without requiring precise pointer targeting.
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [open]);
+
+  useEffect(() => {
     // History remains readable even when posting is disabled in this context.
     void refreshChat();
     const interval = window.setInterval(() => void refreshChat(), open ? 3000 : 10000);
@@ -167,7 +193,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
     setReportingId(message.id);
     setActionError(null);
     try {
-      const response = await fetch('/api/chat/report', {
+      const response = await fetchChat('/api/chat/report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messageId: message.id }),
@@ -195,7 +221,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
     setSending(true);
     setActionError(null);
     try {
-      const response = await fetch('/api/chat', {
+      const response = await fetchChat('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
@@ -227,6 +253,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
     return (
       <button
         type="button"
+        aria-label={unreadCount>0?'Open Global Chat, '+unreadCount+' unread messages':'Open Global Chat'}
         onClick={() => {
           markMessagesSeen(messages);
           shouldFollowMessagesRef.current = true;
@@ -251,7 +278,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   }
 
   return (
-    <section className="fixed bottom-4 right-4 z-40 w-[min(380px,calc(100vw-2rem))] rounded-3xl border border-slate-700 bg-slate-950/95 shadow-2xl backdrop-blur-xl overflow-hidden">
+    <section role="dialog" aria-modal={false} aria-label="Global Chat" className="fixed bottom-4 right-4 z-40 w-[min(380px,calc(100vw-2rem))] rounded-3xl border border-slate-700 bg-slate-950/95 shadow-2xl backdrop-blur-xl overflow-hidden">
       <header className="flex items-center justify-between border-b border-slate-800 bg-slate-900/95 px-4 py-3">
         <div className="flex items-center gap-2">
           <MessageCircle className="w-4 h-4 text-indigo-300" />
@@ -264,6 +291,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           type="button"
           onClick={() => setOpen(false)}
           className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-800 hover:text-white"
+          aria-label="Minimize Global Chat"
           title="Minimize chat"
         >
           <Minimize2 className="w-3.5 h-3.5" />
@@ -285,6 +313,9 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
 
       <div
         ref={chatListRef}
+        role="log"
+        aria-label="Global Chat message history"
+        aria-relevant="additions text"
         onScroll={() => {
           const element = chatListRef.current;
           if (!element) return;
@@ -350,6 +381,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           <input
             value={input}
             onChange={e => setInput(e.target.value)}
+            aria-label="Write a public Global Chat message"
             maxLength={200}
             placeholder={chatAvailable === true ? 'Write a public Reddit comment...' : 'Open the main Game launcher to chat'}
             disabled={sending || chatAvailable !== true}

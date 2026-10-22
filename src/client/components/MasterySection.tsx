@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Star,
@@ -83,20 +83,47 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
 }) => {
   const [activeBranch, setActiveBranch] = useState<'all' | 'fortune' | 'temporal' | 'alchemy' | 'cosmos'>('all');
   const [lastUpgradedSkill, setLastUpgradedSkill] = useState<MasterySkillId | null>(null);
+  const [upgradingSkillId, setUpgradingSkillId] = useState<MasterySkillId | null>(null);
+  const [masteryActionError, setMasteryActionError] = useState('');
+  const actionLockRef = useRef(false);
+  const highlightTimerRef = useRef<number | null>(null);
 
-  const fmt = (n: number) => formatNumber(n);
+  useEffect(() => () => {
+    if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
+  }, []);
+
+  const allowMotionEffects = () =>
+    typeof window === 'undefined' || !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const fmt = (n: number) => formatNumber(Number.isFinite(n) ? n : 0);
 
   const handleMasteryClick = async (skillId: MasterySkillId) => {
+    if (busy || actionLockRef.current) return;
+    actionLockRef.current = true;
+    setUpgradingSkillId(skillId);
+    setMasteryActionError('');
     sound.playLevelUpFanfare();
+    if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
     setLastUpgradedSkill(skillId);
-    setTimeout(() => setLastUpgradedSkill(null), 800);
-    confetti({
-      particleCount: 30,
-      spread: 45,
-      origin: { y: 0.75 },
-      colors: ['#fbbf24', '#38bdf8', '#c084fc'],
-    });
-    await onUpgradeMastery(skillId);
+    highlightTimerRef.current = window.setTimeout(() => {
+      setLastUpgradedSkill(null);
+      highlightTimerRef.current = null;
+    }, 800);
+    if (allowMotionEffects()) {
+      confetti({
+        particleCount: 30,
+        spread: 45,
+        origin: { y: 0.75 },
+        colors: ['#fbbf24', '#38bdf8', '#c084fc'],
+      });
+    }
+    try {
+      await onUpgradeMastery(skillId);
+    } catch (error) {
+      setMasteryActionError(error instanceof Error ? error.message : 'Could not upgrade Mastery. Please retry.');
+    } finally {
+      actionLockRef.current = false;
+      setUpgradingSkillId(null);
+    }
   };
 
   const masterySkillsList = Object.entries(MASTERY_SKILLS) as [MasterySkillId, typeof MASTERY_SKILLS[MasterySkillId]][];
@@ -112,6 +139,7 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300 pb-12">
+      {masteryActionError && <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-950/30 px-4 py-3 text-xs text-rose-200">{masteryActionError}</div>}
       {/* Overview Banner */}
       <div className="bg-gradient-to-r from-purple-950/70 via-slate-900 to-indigo-950/70 border border-purple-800/40 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
         
@@ -337,7 +365,7 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
                   {/* Upgrade button showing cost inside */}
                   <button
                     onClick={() => handleMasteryClick(skillId)}
-                    disabled={!canAfford || busy || isMax}
+                    disabled={!canAfford || busy || isMax || upgradingSkillId !== null}
                     className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
                       isMax
                         ? 'bg-slate-900 text-slate-600 border border-slate-800 cursor-default'

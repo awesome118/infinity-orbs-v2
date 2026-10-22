@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { context, redis } from '../src/server/devvit-mock.js';
-import { getCombatSnapshot, performCombatBeat, rollCombatSkill } from '../src/server/combat.js';
+import { equipCombatRune, equipCombatSkill, getCombatSnapshot, hasCompletedCombatTutorial, performCombatBeat, rollCombatSkill, setCombatDungeon } from '../src/server/combat.js';
 import { COMBAT_BEAT_INTERVAL_MS, calculateCombatArenaRatingUpdate, getEnemyForDungeonDepth } from '../src/shared/combat.js';
 
 async function withPlayer<T>(userId: string, run: (key: string) => Promise<T>): Promise<T> {
@@ -125,4 +125,151 @@ test('Arena Elo updates conserve points at all rating boundaries', () => {
     assert.equal(update.playerRating + update.opponentRating, player + opponent);
     assert.equal(update.playerChange + update.opponentChange, 0);
   }
+});
+
+test('corrupt persisted combat saves fail closed and remain byte-for-byte intact',async()=>{
+  await withPlayer('combat-corrupt-state-regression-player',async key=>{
+    for(const raw of ['', '{broken-json', '[]', '"not-an-object"', '{}', '{"unknownField":true}']){
+      await redis.set(key,raw);
+      await assert.rejects(getCombatSnapshot(),/Combat state is corrupted; refusing to overwrite it/);
+      await assert.rejects(hasCompletedCombatTutorial(),/Combat state is corrupted; refusing to overwrite it/);
+      assert.equal(await redis.get(key),raw,'a read must never replace the damaged save with starter state');
+    }
+  });
+});
+
+test('an intentionally empty gear inventory stays empty after normalization',async()=>{
+  await withPlayer('combat-empty-inventory-regression-player',async key=>{
+    const initial=await getCombatSnapshot();
+    const state=initial.state;
+    state.inventory=[];
+    state.runInventoryIds=[];
+    state.equipment={weapon:null,armor:null,helmet:null,gloves:null,boots:null,ring:null,amulet:null};
+    await redis.set(key,JSON.stringify(state));
+    const loaded=await getCombatSnapshot();
+    assert.deepEqual(loaded.state.inventory,[]);
+    assert.deepEqual(loaded.state.equipment,{weapon:null,armor:null,helmet:null,gloves:null,boots:null,ring:null,amulet:null});
+  });
+});
+
+test('explicitly unequipped starter gear is not silently re-equipped on reload',async()=>{
+  await withPlayer('combat-unequipped-gear-regression-player',async key=>{
+    const initial=await getCombatSnapshot();
+    const state=initial.state;
+    state.equipment.weapon=null;
+    state.equipment.armor=null;
+    await redis.set(key,JSON.stringify(state));
+    const loaded=await getCombatSnapshot();
+    assert.equal(loaded.state.equipment.weapon,null);
+    assert.equal(loaded.state.equipment.armor,null);
+    assert.ok(loaded.state.inventory.some(item=>item.id==='starter-weapon'));
+    assert.ok(loaded.state.inventory.some(item=>item.id==='starter-armor'));
+  });
+});
+
+test('Rune equip endpoint rejects non-boolean intent instead of treating it as an unequip',async()=>{
+  await withPlayer('combat-rune-toggle-regression-player',async key=>{
+    const initial=await getCombatSnapshot();
+    const state=initial.state;
+    const rune={id:'rune-toggle-regression',name:'Test Fate Rune',rarity:'Common' as const,stat:'luckPct' as const,value:1,sourceDepth:0,sourceDungeon:'undercrypt' as const};
+    state.runes=[rune];
+    state.equippedRunes=[rune.id];
+    await redis.set(key,JSON.stringify(state));
+    const before=await redis.get(key);
+    await assert.rejects(equipCombatRune(rune.id,'false'),/Choose whether to equip or unequip the Rune/);
+    assert.equal(await redis.get(key),before,'rejected input must not write any state');
+  });
+});
+
+test('combat Skill equip endpoint rejects malformed toggle intent without changing state',async()=>{
+  await withPlayer('combat-skill-toggle-regression-player',async key=>{
+    const initial=await getCombatSnapshot();
+    const state=initial.state;
+    state.skillLevels={'ember-lung':1};
+    state.equippedAbilities=['ember-lung'];
+    await redis.set(key,JSON.stringify(state));
+    const before=await redis.get(key);
+    await assert.rejects(equipCombatSkill('ember-lung','false'),/Choose whether to equip or unequip the ability/);
+    assert.equal(await redis.get(key),before,'invalid request must not unequip the skill');
+  });
+});
+
+test('death clears pending kill rewards and run-bound modifiers',async()=>{
+  await withPlayer('combat-run-reset-regression-player',async key=>{
+    const initial=await getCombatSnapshot();
+    const state=initial.state;
+    state.depth=4;
+    state.bestDepth=4;
+    state.dungeonBestDepths.undercrypt=4;
+    state.health=1;
+    state.enemyHp=getEnemyForDungeonDepth('undercrypt',4).maxHp;
+    state.sequence=0;
+    state.combatBeats=1;
+    state.playerActionsResolved=100;
+    state.enemyActionsResolved=0;
+    state.guardBeats=0;
+    state.lastAcceptedBeatAtMs=0;
+    state.skillRuntime.nextKillMarkBonus=123;
+    state.skillRuntime.nextKillXpBonus=456;
+    state.skillRuntime.nextRuneDropBonus=.2;
+    state.skillRuntime.royalTitheKills=2;
+    state.skillRuntime.bountyStreak=3;
+    await redis.set(key,JSON.stringify(state));
+    const result=await performCombatBeat(1,'strike');
+    assert.equal(result.died,true,'the prepared low-health player should be defeated by the slow enemy');
+    assert.equal(result.state.skillRuntime.nextKillMarkBonus,0);
+    assert.equal(result.state.skillRuntime.nextKillXpBonus,0);
+    assert.equal(result.state.skillRuntime.nextRuneDropBonus,0);
+    assert.equal(result.state.skillRuntime.royalTitheKills,0);
+    assert.equal(result.state.skillRuntime.bountyStreak,0);
+  });
+});
+
+test('switching dungeons clears encounter-only combat effects and queued rewards',async()=>{
+  await withPlayer('combat-dungeon-reset-regression-player',async key=>{
+    const initial=await getCombatSnapshot();
+    const state=initial.state;
+    state.pendingHealAmount=900;
+    state.skillRuntime.burnTicks=3;
+    state.skillRuntime.burnDamage=77;
+    state.skillRuntime.armorBreakBeats=2;
+    state.skillRuntime.shield=1200;
+    state.skillRuntime.delayedDamage=400;
+    state.skillRuntime.delayedDamageReadyAtSequence=state.sequence+1;
+    state.skillRuntime.lastAttackDamage=500;
+    state.skillRuntime.storedDamage=600;
+    state.skillRuntime.executeMarked=true;
+    state.skillRuntime.evadeNext=true;
+    state.skillRuntime.phoenixReady=true;
+    state.skillRuntime.nextKillMarkBonus=100;
+    state.skillRuntime.nextKillXpBonus=200;
+    state.skillRuntime.nextRuneDropBonus=.2;
+    state.skillRuntime.royalTitheKills=2;
+    state.skillRuntime.bountyStreak=4;
+    await redis.set(key,JSON.stringify(state));
+    const result=await setCombatDungeon('cinder-vault');
+    assert.equal(result.state.dungeonId,'cinder-vault');
+    assert.equal(result.state.pendingHealAmount,0);
+    for(const field of ['burnTicks','burnDamage','armorBreakBeats','shield','delayedDamage','delayedDamageReadyAtSequence','lastAttackDamage','storedDamage','nextKillMarkBonus','nextKillXpBonus','nextRuneDropBonus','royalTitheKills','bountyStreak'] as const){
+      assert.equal(result.state.skillRuntime[field],0,field+' should not carry into the new dungeon');
+    }
+    assert.equal(result.state.skillRuntime.executeMarked,false);
+    assert.equal(result.state.skillRuntime.evadeNext,false);
+    assert.equal(result.state.skillRuntime.phoenixReady,false);
+  });
+});
+
+test('malformed-but-present inventory fields never restore starter gear',async()=>{
+  await withPlayer('combat-malformed-inventory-regression-player',async key=>{
+    const malformedInventories:unknown[]=[null,{},'not-an-inventory',[{id:'broken-gear'}]];
+    for(const malformedInventory of malformedInventories){
+      const base=await getCombatSnapshot();
+      const state=JSON.parse(JSON.stringify(base.state)) as Record<string,unknown>;
+      state.inventory=malformedInventory;
+      state.runInventoryIds=[];
+      await redis.set(key,JSON.stringify(state));
+      const loaded=await getCombatSnapshot();
+      assert.deepEqual(loaded.state.inventory,[],'malformed present inventory must not produce replacement starter gear');
+    }
+  });
 });

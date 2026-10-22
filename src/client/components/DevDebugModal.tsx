@@ -11,6 +11,20 @@ import { APP_VERSION } from '../../shared/version.js';
 import { sound } from '../sound.js';
 import { CombatAdminTools } from './CombatAdminTools.js';
 
+let clientOperationSequence = 0;
+function createClientOperationId(prefix: string): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === 'function') return prefix + '-' + cryptoApi.randomUUID();
+  if (typeof cryptoApi?.getRandomValues === 'function') {
+    const bytes = cryptoApi.getRandomValues(new Uint32Array(4));
+    return prefix + '-' + Array.from(bytes, value => value.toString(36)).join('-');
+  }
+  // This is only a client retry/idempotency key, not an authentication secret.
+  // The monotonic fallback still avoids same-millisecond collisions without Math.random.
+  clientOperationSequence = (clientOperationSequence + 1) % Number.MAX_SAFE_INTEGER;
+  return prefix + '-' + Date.now().toString(36) + '-' + clientOperationSequence.toString(36);
+}
+
 function formatPlaytime(ms: number): string {
   const totalMinutes = Math.max(0, Math.floor(Number(ms) / 60_000));
   if (totalMinutes < 60) return totalMinutes + 'm';
@@ -420,6 +434,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [impressionStats, setImpressionStats] = useState<ImpressionDashboardData | null>(null);
   const [impressionsLoading, setImpressionsLoading] = useState(false);
   const [impressionsError, setImpressionsError] = useState('');
+  const impressionsLoadLockRef = useRef(false);
   const [fakeCcuInput, setFakeCcuInput] = useState('0');
   const [pushTestLoading, setPushTestLoading] = useState(false);
 
@@ -587,16 +602,36 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   };
 
   const loadImpressions = async () => {
+    if (impressionsLoadLockRef.current) return;
+    impressionsLoadLockRef.current = true;
     setImpressionsLoading(true);
     setImpressionsError('');
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
     try {
-      const res = await fetch('/api/dev/impressions', { cache: 'no-store' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Could not load impression analytics.');
+      const res = await fetch('/api/dev/impressions', { cache: 'no-store', signal: controller.signal });
+      const raw: unknown = await res.json().catch(() => null);
+      if (!res.ok) {
+        const message = raw && typeof raw === 'object' && 'error' in raw && typeof raw.error === 'string'
+          ? raw.error
+          : 'Could not load impression analytics.';
+        throw new Error(message);
+      }
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Impression analytics returned invalid data.');
+      const data = raw as Partial<ImpressionDashboardData>;
+      if (!Number.isSafeInteger(data.total) || Number(data.total) < 0 ||
+          !Array.isArray(data.posts) || !Array.isArray(data.last24Hours) || !Array.isArray(data.last30Days) ||
+          !data.byType || !data.byDevice || !data.byTypeAndDevice) {
+        throw new Error('Impression analytics returned an incomplete dashboard. Refresh and retry.');
+      }
       setImpressionStats(data as ImpressionDashboardData);
-    } catch (error: any) {
-      setImpressionsError(error?.message || 'Could not load impression analytics.');
+    } catch (error) {
+      setImpressionsError(error instanceof Error && error.name === 'AbortError'
+        ? 'Impression analytics timed out. Refresh to retry.'
+        : error instanceof Error ? error.message : 'Could not load impression analytics.');
     } finally {
+      window.clearTimeout(timeout);
+      impressionsLoadLockRef.current = false;
       setImpressionsLoading(false);
     }
   };
@@ -965,7 +1000,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     const operation = sameOperation && previousOperation
       ? previousOperation
       : {
-          operationId: `gb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+          operationId: createClientOperationId('gb'),
           scope,
           amount,
           targetUser: scope === 'user' ? cleanTargetUser : '',

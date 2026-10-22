@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Zap,
@@ -50,17 +50,32 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
 }) => {
   const [recentUpgradeId, setRecentUpgradeId] = useState<UpgradeId | null>(null);
   const [upgradingAll, setUpgradingAll] = useState(false);
+  const [upgradingId, setUpgradingId] = useState<UpgradeId | null>(null);
+  const upgradeActionLockRef = useRef(false);
+  const recentUpgradeTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (recentUpgradeTimerRef.current !== null) window.clearTimeout(recentUpgradeTimerRef.current);
+  }, []);
+  const allowMotionEffects = () =>
+    typeof window === 'undefined' || !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const fmt = (n: number) => formatNumber(n);
   const standardUpgradeMaxLevels: Partial<Record<UpgradeId, number>> = { speed: 20, offlineRate: 8 };
 
   const handleUpgradeClick = async (u: (typeof upgradesData)[0]) => {
+    if (busy || upgradeActionLockRef.current) return;
+    upgradeActionLockRef.current = true;
+    setUpgradingId(u.id);
     sound.playLevelUpFanfare();
+    if (recentUpgradeTimerRef.current !== null) window.clearTimeout(recentUpgradeTimerRef.current);
     setRecentUpgradeId(u.id);
-    setTimeout(() => setRecentUpgradeId(null), 900);
+    recentUpgradeTimerRef.current = window.setTimeout(() => {
+      setRecentUpgradeId(null);
+      recentUpgradeTimerRef.current = null;
+    }, 900);
 
     const nextLvl = u.level + 1;
     if (nextLvl % 5 === 0 || (u.id === 'auto' && nextLvl === 1)) {
-      confetti({
+      if (allowMotionEffects()) confetti({
         particleCount: 45,
         spread: 55,
         origin: { y: 0.65 },
@@ -68,13 +83,20 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       });
     }
 
-    await onBuyUpgrade(u.id);
+    try {
+      await onBuyUpgrade(u.id);
+    } finally {
+      upgradeActionLockRef.current = false;
+      setUpgradingId(null);
+    }
   };
 
   const handleUpgradeAllClick = async () => {
+    if (busy || upgradeActionLockRef.current) return;
+    upgradeActionLockRef.current = true;
     setUpgradingAll(true);
     sound.playLevelUpFanfare();
-    confetti({
+    if (allowMotionEffects()) confetti({
       particleCount: 60,
       spread: 70,
       origin: { y: 0.6 },
@@ -83,6 +105,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
     try {
       await onBuyAllUpgrades();
     } finally {
+      upgradeActionLockRef.current = false;
       setUpgradingAll(false);
     }
   };
@@ -280,7 +303,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
             {/* Upgrade All Button */}
             <button
               onClick={handleUpgradeAllClick}
-              disabled={affordableCount === 0 || busy || upgradingAll}
+              disabled={affordableCount === 0 || busy || upgradingAll || upgradingId !== null}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-md ${
                 affordableCount > 0
                   ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-300 text-slate-950 hover:brightness-110 active:scale-95 cursor-pointer shadow-amber-500/20'
@@ -427,7 +450,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
                     onClick={() => {
                       void handleUpgradeClick(u);
                     }}
-                    disabled={!canAfford}
+                    disabled={!canAfford || busy || upgradingAll || upgradingId !== null}
                     className={`w-full font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all ${
                       canAfford
                         ? 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 shadow-lg shadow-amber-900/20 active:scale-95 cursor-pointer'
@@ -464,7 +487,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
               sound.playClick();
               void onActivateTurbo();
             }}
-            disabled={(state.shards ?? 0) < 5 || isTurboActive || busy}
+            disabled={(state.shards ?? 0) < 5 || isTurboActive || busy || upgradingAll || upgradingId !== null}
             className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all whitespace-nowrap ${
               isTurboActive
                 ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300 cursor-default'

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Flame,
@@ -40,6 +40,10 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
   }, []);
   const [selectedShardOffer, setSelectedShardOffer] = useState<number>(0);
   const [sacrificing, setSacrificing] = useState(false);
+  const [sacrificeError, setSacrificeError] = useState('');
+  const sacrificeLockRef = useRef(false);
+  const allowMotionEffects = () =>
+    typeof window === 'undefined' || !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
   const fmt = (n: number) => formatNumber(n);
 
@@ -70,28 +74,36 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
   const selectedCoinChance = altarCoinDevotionChancePercent(selectedCoinOffer, altarPity, altarLevel);
   const coinOfferMeetsFloor = selectedCoinOffer === 0 || selectedCoinOffer >= currentCoinFloor;
   const canSubmitOffering =
+    selectedCoinOffer <= state.coins &&
+    selectedShardOffer <= (state.shards ?? 0) &&
     (selectedCoinOffer <= 0 || coinOfferMeetsFloor) &&
     (selectedCoinOffer > 0 || selectedShardOffer > 0);
 
   const handleSacrificeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (
-      sacrificing ||
+      busy || sacrificing || sacrificeLockRef.current ||
       (selectedCoinOffer <= 0 && selectedShardOffer <= 0) ||
-      (selectedCoinOffer > 0 && selectedCoinOffer < currentCoinFloor)
+      (selectedCoinOffer > 0 && selectedCoinOffer < currentCoinFloor) ||
+      selectedCoinOffer > state.coins ||
+      selectedShardOffer > (state.shards ?? 0)
     ) return;
 
+    sacrificeLockRef.current = true;
     setSacrificing(true);
+    setSacrificeError('');
     sound.playSacrificeSound();
 
     try {
       const nextState = await onSacrifice(selectedCoinOffer, selectedShardOffer);
-      confetti({
-        particleCount: 50,
-        spread: 60,
-        origin: { y: 0.65 },
-        colors: ['#f59e0b', '#ef4444', '#a855f7'],
-      });
+      if (allowMotionEffects()) {
+        confetti({
+          particleCount: 50,
+          spread: 60,
+          origin: { y: 0.65 },
+          colors: ['#f59e0b', '#ef4444', '#a855f7'],
+        });
+      }
       const nextSacrifices = nextState.sacrifices ?? {
         coinsSacrificed: 0,
         shardsSacrificed: 0,
@@ -101,13 +113,17 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
       const nextFloor = altarCoinFloor(nextSacrifices.altarLevel ?? 0);
       setSelectedCoinOffer(nextState.coins >= nextFloor ? nextFloor : 0);
       setSelectedShardOffer(0);
+    } catch (error) {
+      setSacrificeError(error instanceof Error ? error.message : 'The offering was not confirmed. Check your balances before retrying.');
     } finally {
+      sacrificeLockRef.current = false;
       setSacrificing(false);
     }
   };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300 pb-12">
+      {sacrificeError && <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-950/30 px-4 py-3 text-xs text-rose-200">{sacrificeError}</div>}
       {/* Altar Hero Banner */}
       <div className="bg-gradient-to-r from-orange-950/70 via-slate-900 to-purple-950/70 border border-orange-700/40 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
         {/* Animated Background Rays & Star */}

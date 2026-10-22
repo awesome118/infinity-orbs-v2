@@ -193,13 +193,33 @@ function createCombatRune(sourceDepth:number,sourceDungeon:CombatDungeonId,total
   return {id:'rune-'+sourceDungeon+'-'+totalKills+'-'+sequence+'-'+suffix,name:rarityName[rarity]+' '+statName[stat]+' Rune',rarity,stat,value,level:1,experience:0,sourceDepth,sourceDungeon,...(majorAbility?{majorAbility}:{})};
 }
 function normalizeState(raw:string|null|undefined):CombatState {
-  if(!raw)return createCombatState();
+  // Missing saves are new players; present-but-invalid saves must never be silently
+  // replaced by starter state, which would permanently erase combat progression.
+  if(raw===null||raw===undefined)return createCombatState();
+  if(typeof raw!=='string'||!raw.trim())throw new Error('Combat state is corrupted; refusing to overwrite it.');
   let p:Partial<CombatState>;
-  try { p=JSON.parse(raw) as Partial<CombatState>; if(!p||typeof p!=='object'||Array.isArray(p))return createCombatState(); } catch { return createCombatState(); }
+  try {
+    const parsed:unknown=JSON.parse(raw);
+    if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw new Error('invalid combat-state root');
+    p=parsed as Partial<CombatState>;
+  } catch {
+    throw new Error('Combat state is corrupted; refusing to overwrite it.');
+  }
   const storedGachaRank=p.skillGachaRank;
   const savedSkillLevels=(p.skillLevels&&typeof p.skillLevels==='object'?p.skillLevels:{}) as Partial<Record<CombatSkillId,number>>;
   const legacyUnlockedRank=Math.max(1,...COMBAT_SKILLS.filter(skill=>Number(savedSkillLevels[skill.id])>0).map(skill=>({Common:1,Uncommon:2,Rare:3,Epic:4,Mythic:5}[skill.rarity])));
-  const s=Object.assign(createCombatState(),p);
+  const s=createCombatState();
+  const legacyKeys=new Set(['inventoryByDungeon','equipmentByDungeon']);
+  if(!Object.keys(p).some(key=>Object.prototype.hasOwnProperty.call(s,key)||legacyKeys.has(key))){
+    throw new Error('Combat state is corrupted; refusing to overwrite it.');
+  }
+  // Copy only known own state fields. Besides preventing prototype-key tricks,
+  // this keeps unknown or retired properties from leaking back into saved state.
+  for(const [key,value] of Object.entries(p)){
+    if(Object.prototype.hasOwnProperty.call(s,key)){
+      Object.defineProperty(s,key,{value,writable:true,enumerable:true,configurable:true});
+    }
+  }
   s.version=1;
   s.combatTutorialSeen = s.combatTutorialSeen === true;
   s.dungeonId=(['undercrypt','cinder-vault','glass-labyrinth'] as unknown[]).includes(s.dungeonId)?s.dungeonId:'undercrypt';
@@ -253,19 +273,24 @@ function normalizeState(raw:string|null|undefined):CombatState {
   };
   // Current inventory is authoritative when present; merge in old dungeon bags so previously collected gear is retained.
   const rawInventory:unknown[]=[];
+  const hasPersistedInventory=Object.prototype.hasOwnProperty.call(p,'inventory')||
+    Object.prototype.hasOwnProperty.call(p,'inventoryByDungeon')||
+    (['undercrypt','cinder-vault','glass-labyrinth'] as const).some(dungeon=>Array.isArray(persisted.inventoryByDungeon?.[dungeon]));
   if(Array.isArray(p.inventory))for(const item of p.inventory)rawInventory.push(item);
   for(const dungeon of ['undercrypt','cinder-vault','glass-labyrinth'] as const){
     const legacyBag=persisted.inventoryByDungeon?.[dungeon];
     if(Array.isArray(legacyBag))for(const item of legacyBag)rawInventory.push(item);
   }
-  if(rawInventory.length===0)for(const item of defaults.inventory)rawInventory.push(item);
+  // Default equipment is for genuinely old saves with no inventory field, not
+  // players who deliberately scrapped every item or saved an empty bag.
+  if(rawInventory.length===0&&!hasPersistedInventory)for(const item of defaults.inventory)rawInventory.push(item);
   const knownGearIds=new Set<string>();
   s.inventory=rawInventory.map(g=>normalizeGear(g,Math.max(0,s.depth-1))).filter((g):g is CombatGear=>{
     if(!g||knownGearIds.has(g.id))return false;
     knownGearIds.add(g.id);return true;
   });
-  // A malformed stash must not leave the player with no usable build.
-  if(s.inventory.length===0)s.inventory=defaults.inventory.map(item=>({...item}));
+  // Do not silently recreate starter gear when a persisted inventory was explicitly
+  // empty or contained only invalid records; that masks corruption and undoes scrapping.
   // Restore only this run's tracked pickups, validating each ID against the permanent inventory.
   const knownRunIds=new Set<string>();
   const knownInventoryIds=new Set(s.inventory.map(g=>g.id));
@@ -276,18 +301,28 @@ function normalizeState(raw:string|null|undefined):CombatState {
     if(s.runInventoryIds.length<INVENTORY_CAP)s.runInventoryIds.push(value);
   }
   const savedEquipment=(p.equipment&&typeof p.equipment==='object'&&!Array.isArray(p.equipment)?p.equipment:persisted.equipmentByDungeon?.[s.dungeonId]) as Record<string,unknown>|undefined;
+  const owns=(key:string)=>Boolean(savedEquipment&&Object.prototype.hasOwnProperty.call(savedEquipment,key));
+  const savedSlot=(key:string):string|null=>savedEquipment&&typeof savedEquipment[key]==='string'&&savedEquipment[key]
+    ?String(savedEquipment[key]):null;
   const desired:Record<CombatGearSlot,string|null>={
-    weapon:typeof savedEquipment?.weapon==='string'?savedEquipment.weapon:defaults.equipment.weapon,
-    helmet:typeof savedEquipment?.helmet==='string'?savedEquipment.helmet:null,
-    armor:typeof savedEquipment?.armor==='string'?savedEquipment.armor:typeof savedEquipment?.chest==='string'?savedEquipment.chest:defaults.equipment.armor,
-    gloves:typeof savedEquipment?.gloves==='string'?savedEquipment.gloves:null,
-    boots:typeof savedEquipment?.boots==='string'?savedEquipment.boots:null,
-    ring:typeof savedEquipment?.ring==='string'?savedEquipment.ring:null,
-    amulet:typeof savedEquipment?.amulet==='string'?savedEquipment.amulet:null,
+    weapon:owns('weapon')?savedSlot('weapon'):defaults.equipment.weapon,
+    helmet:owns('helmet')?savedSlot('helmet'):null,
+    armor:owns('armor')?savedSlot('armor'):owns('chest')?savedSlot('chest'):defaults.equipment.armor,
+    gloves:owns('gloves')?savedSlot('gloves'):null,
+    boots:owns('boots')?savedSlot('boots'):null,
+    ring:owns('ring')?savedSlot('ring'):null,
+    amulet:owns('amulet')?savedSlot('amulet'):null,
+  };
+  const explicitlyCleared=(slot:CombatGearSlot):boolean=>{
+    if(!savedEquipment)return false;
+    if(slot==='armor'&&owns('armor'))return savedEquipment.armor===null;
+    if(slot==='armor'&&owns('chest'))return savedEquipment.chest===null;
+    return owns(slot)&&savedEquipment[slot]===null;
   };
   const slots:CombatGearSlot[]=['weapon','armor','helmet','gloves','boots','ring','amulet'];
   const migratedEquipment={} as Record<CombatGearSlot,string|null>;
   for(const slot of slots){
+    if(explicitlyCleared(slot)){migratedEquipment[slot]=null;continue;}
     const selected=s.inventory.find(g=>g.id===desired[slot]&&g.slot===slot);
     migratedEquipment[slot]=selected?.id??s.inventory.filter(g=>g.slot===slot).sort((a,b)=>b.power-a.power||b.quality-a.quality)[0]?.id??null;
   }
@@ -479,10 +514,9 @@ function chooseGuidedSkillId(s:CombatState,enemy:CombatEnemy):CombatSkillId|null
 }
 
 export async function hasCompletedCombatTutorial():Promise<boolean>{
-  const raw=await redis.get(combatKey());
-  if(typeof raw!=='string'||!raw.trim())return false;
-  try{const parsed=JSON.parse(raw) as {combatTutorialSeen?:unknown};return parsed?.combatTutorialSeen===true;}
-  catch{return false;}
+  // Share the same fail-closed save validation as all combat reads. A damaged
+  // save must not masquerade as an unseen tutorial and then be overwritten.
+  return normalizeState(await redis.get(combatKey())).combatTutorialSeen;
 }
 export async function markCombatTutorialSeen():Promise<void>{
   await mutate(s=>{s.combatTutorialSeen=true;return undefined;});
@@ -704,7 +738,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.guardBeats=0;s.encounterFirstStrikeUsed=false;
         if(s.depth>=COMBAT_MAX_DEPTH){
           // Do not step beyond the normalized depth limit and farm a capped room forever.
-          s.runId+=1;s.depth=1;resetCombatRunCarry(s);s.energy=Math.min(s.maxEnergy,3);s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;synchronizeCombatStats(s);s.health=s.maxHealth;
+          s.runId+=1;s.depth=1;resetCombatRunCarry(s);s.pendingHealAmount=0;s.skillRuntime.lastAttackDamage=0;s.skillRuntime.nextKillMarkBonus=0;s.skillRuntime.nextKillXpBonus=0;s.skillRuntime.nextRuneDropBonus=0;s.skillRuntime.royalTitheKills=0;s.skillRuntime.bountyStreak=0;s.energy=Math.min(s.maxEnergy,3);s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;synchronizeCombatStats(s);s.health=s.maxHealth;
           actions.push({actor:'player',kind:'advance',text:'Depth limit reached. A new descent begins at Depth 1; all permanent progress remains.'});
         }else{
           s.depth+=1;s.bestDepth=Math.max(s.bestDepth,s.depth);s.dungeonBestDepths[s.dungeonId]=Math.max(s.dungeonBestDepths[s.dungeonId],s.bestDepth);s.energy=Math.min(s.maxEnergy,s.energy+1);
@@ -735,7 +769,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         actions.push({actor:'player',kind:'ability',text:defensiveAbility.name+' triggered: '+Math.round(defensiveAbility.healPercent*100)+'% Max HP healing queued for your next turn.'});
       }
       if(s.health<=0&&s.skillRuntime.phoenixReady&&!s.skillRuntime.phoenixUsed){s.health=1;s.skillRuntime.phoenixReady=false;s.skillRuntime.phoenixUsed=true;actions.push({actor:'player',kind:'ability',text:'Phoenix Engine prevents a lethal blow and leaves you at 1 HP.'});}
-      if(s.health<=0){died=true;s.pendingHealAmount=0;actions.push({actor:'enemy',kind:'death',text:'Run '+s.runId+' ended at Depth '+s.depth+'. Permanent progress retained.'});s.runId+=1;s.depth=1;resetCombatRunCarry(s);s.skillRuntime.burnTicks=0;s.skillRuntime.burnDamage=0;s.skillRuntime.armorBreakBeats=0;s.skillRuntime.shield=0;s.skillRuntime.delayedDamage=0;s.skillRuntime.delayedDamageReadyAtSequence=0;s.skillRuntime.executeMarked=false;s.skillRuntime.evadeNext=false;s.skillRuntime.phoenixReady=false;s.skillRuntime.phoenixUsed=false;s.skillRuntime.bountyStreak=0;s.skillRuntime.storedDamage=0;s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,3);s.guardBeats=0;s.encounterFirstStrikeUsed=false;s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;synchronizeCombatStats(s);s.health=s.maxHealth;actions.push({actor:'player',kind:'advance',text:'A new descent begins automatically at Depth 1.'});break;}
+      if(s.health<=0){died=true;s.pendingHealAmount=0;actions.push({actor:'enemy',kind:'death',text:'Run '+s.runId+' ended at Depth '+s.depth+'. Permanent progress retained.'});s.runId+=1;s.depth=1;resetCombatRunCarry(s);s.skillRuntime.burnTicks=0;s.skillRuntime.burnDamage=0;s.skillRuntime.armorBreakBeats=0;s.skillRuntime.shield=0;s.skillRuntime.delayedDamage=0;s.skillRuntime.delayedDamageReadyAtSequence=0;s.skillRuntime.executeMarked=false;s.skillRuntime.evadeNext=false;s.skillRuntime.phoenixReady=false;s.skillRuntime.phoenixUsed=false;s.skillRuntime.bountyStreak=0;s.skillRuntime.storedDamage=0;s.skillRuntime.lastAttackDamage=0;s.skillRuntime.nextKillMarkBonus=0;s.skillRuntime.nextKillXpBonus=0;s.skillRuntime.nextRuneDropBonus=0;s.skillRuntime.royalTitheKills=0;s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,3);s.guardBeats=0;s.encounterFirstStrikeUsed=false;s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;synchronizeCombatStats(s);s.health=s.maxHealth;actions.push({actor:'player',kind:'advance',text:'A new descent begins automatically at Depth 1.'});break;}
     }
     // Persist surviving enemy damage, including Burn and thorns contributions.
     if(!defeated&&!died)s.enemyHp=Math.max(1,enemyHp);
@@ -848,7 +882,8 @@ export async function processCombatRuneAutoSacrifice(): Promise<CombatSnapshot &
 }
 export async function equipCombatRune(runeIdValue:unknown,equipValue:unknown):Promise<CombatSnapshot>{
   if(typeof runeIdValue!=='string'||!runeIdValue.trim()||runeIdValue.length>160)throw new Error('A valid Rune is required.');
-  const shouldEquip=equipValue===true;
+  if(typeof equipValue!=='boolean')throw new Error('Choose whether to equip or unequip the Rune.');
+  const shouldEquip=equipValue;
   return mutate(s=>{
     const rune=s.runes.find(item=>item.id===runeIdValue);
     if(!rune)throw new Error('Rune is not in your inventory.');
@@ -892,7 +927,8 @@ export async function rollCombatSkill():Promise<CombatSnapshot&{skillRoll:{id:Co
 export async function equipCombatSkill(skillIdValue:unknown,equipValue:unknown):Promise<CombatSnapshot>{
   const skillId=typeof skillIdValue==='string'&&COMBAT_SKILLS.some(skill=>skill.id===skillIdValue)?skillIdValue as CombatSkillId:null;
   if(!skillId)throw new Error('Invalid combat ability.');
-  const shouldEquip=equipValue===true;
+  if(typeof equipValue!=='boolean')throw new Error('Choose whether to equip or unequip the ability.');
+  const shouldEquip=equipValue;
   return mutate(s=>{
     if((s.skillLevels[skillId]??0)<1)throw new Error('Ability not owned.');
     const isEquipped=s.equippedAbilities.includes(skillId);
@@ -1369,6 +1405,26 @@ export async function setCombatDungeon(dungeonValue: unknown): Promise<CombatSna
     state.bestDepth = state.dungeonBestDepths[nextDungeon];
     state.runId += 1;
     resetCombatRunCarry(state);
+    // Switching dungeons starts a fresh encounter. Do not carry shields, Burn,
+    // queued healing, pending loot modifiers, or once-per-encounter triggers over.
+    state.pendingHealAmount = 0;
+    state.skillRuntime.burnTicks = 0;
+    state.skillRuntime.burnDamage = 0;
+    state.skillRuntime.armorBreakBeats = 0;
+    state.skillRuntime.shield = 0;
+    state.skillRuntime.delayedDamage = 0;
+    state.skillRuntime.delayedDamageReadyAtSequence = 0;
+    state.skillRuntime.lastAttackDamage = 0;
+    state.skillRuntime.storedDamage = 0;
+    state.skillRuntime.executeMarked = false;
+    state.skillRuntime.evadeNext = false;
+    state.skillRuntime.phoenixReady = false;
+    state.skillRuntime.phoenixUsed = false;
+    state.skillRuntime.nextKillMarkBonus = 0;
+    state.skillRuntime.nextKillXpBonus = 0;
+    state.skillRuntime.nextRuneDropBonus = 0;
+    state.skillRuntime.royalTitheKills = 0;
+    state.skillRuntime.bountyStreak = 0;
     state.combatBeats = 0;
     state.playerActionsResolved = 0;
     state.enemyActionsResolved = 0;

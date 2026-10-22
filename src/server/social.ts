@@ -46,6 +46,17 @@ const PLAYER_REGISTRY_KEY = key('player-registry');
 const GUILD_CHAT_MUTES_KEY = key('guild-chat-mutes:v1');
 const GUILD_TOKEN_RESET_KEY = key('guild-token-reset:v1');
 const GUILD_UPGRADE_RESET_KEY = key('guild-upgrade-reset:v1');
+/** Create collision-resistant IDs for guild, chat, and moderation receipts. */
+function createSecureId(): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === 'function') return cryptoApi.randomUUID();
+  if (typeof cryptoApi?.getRandomValues === 'function') {
+    const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+  }
+  throw new Error('Secure identifier generation is unavailable.');
+}
+
 
 // All writes to the serialized Guild document coordinate through one lock.
 // Guild progress is currently stored as a shared JSON document, so concurrent
@@ -1441,7 +1452,7 @@ export async function createGuild(name: string, tag: string) {
 
     const now = Date.now();
     const guild: Guild = {
-      id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `${now}-${createSecureId()}`,
       name: cleanName,
       tag: cleanTag,
       level: 1,
@@ -2234,7 +2245,7 @@ async function enforceChatCooldown(scope: string, cooldownMs: number): Promise<v
   const userId = user();
   if (!userId || userId === 'unknown') throw new Error('Your Reddit identity is unavailable.');
   const cooldownKey = CHAT_COOLDOWN_PREFIX + scope + ':' + userId;
-  const token = `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const token = `chat-${createSecureId()}`;
 
   // SET NX is atomic across server instances. Readback distinguishes the
   // request that acquired the cooldown from concurrent/later requests.
@@ -2546,7 +2557,7 @@ async function submitChatReport(
   // pair for a day before the external side effect so concurrent retries cannot
   // create a second conversation while the durable report receipt is pending.
   const reservationKey = CHAT_REPORT_RESERVATION_PREFIX + encodeURIComponent(reportKey);
-  const reservationToken = `report-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const reservationToken = `report-${createSecureId()}`;
   await redis.set(reservationKey, reservationToken, {
     nx: true,
     expiration: new Date(Date.now() + 24 * 60 * 60_000),

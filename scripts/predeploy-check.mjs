@@ -59,7 +59,7 @@ if (devvit) {
     reportFailure("devvit.json post.entrypoints must define default, game, and frenzy entrypoints.");
   } else {
     requireManifestValue("post.entrypoints.default.entry", entrypoints.default?.entry, "splash.html");
-    requireManifestValue("post.entrypoints.default.inline", entrypoints.default?.inline, true);
+    requireManifestValue("post.entrypoints.default.height", entrypoints.default?.height, "tall");
     requireManifestValue("post.entrypoints.game.entry", entrypoints.game?.entry, "game.html");
     requireManifestValue("post.entrypoints.frenzy.entry", entrypoints.frenzy?.entry, "frenzy.html");
     requireManifestValue("post.entrypoints.frenzy.height", entrypoints.frenzy?.height, "tall");
@@ -130,6 +130,77 @@ function scanDirectory(dir) {
 scanDirectory(sourceRoot);
 if (sourceFilesScanned === 0) {
   reportFailure("No supported source files were scanned under src/.");
+}
+
+// Inline post entries are deliberately bounded previews, not a scrollable game.
+// Keep scroll-heavy UI in game.html (Expanded Mode) and fail the release guard if
+// a future change mounts a nested scroller or gesture-capturing UI into a post.
+function readInlineSource(file) {
+  try {
+    return readFileSync(resolve(file), "utf8");
+  } catch (error) {
+    reportFailure(`Could not read inline entry source ${file}: ${error.message}`);
+    return "";
+  }
+}
+for (const file of ["src/client/splash.html", "src/client/frenzy.html"]) {
+  const html = readInlineSource(file);
+  if (!/class=["']io-inline-post["']/.test(html)) {
+    reportFailure(`${file} must mark the page as an inline-safe post surface.`);
+  }
+  if (!/id=["']root["'][^>]*class=["']io-inline-post["']/.test(html)) {
+    reportFailure(`${file} root must use the bounded inline-post layout.`);
+  }
+}
+const splashInline = readInlineSource("src/client/splash.tsx");
+const frenzyInline = readInlineSource("src/client/frenzy.tsx");
+if (frenzyInline.includes("GlobalChatWindow")) {
+  reportFailure("src/client/frenzy.tsx must not mount GlobalChatWindow: its history list captures inline-post scrolling.");
+}
+for (const [file, code] of [
+  ["src/client/splash.tsx", splashInline],
+  ["src/client/frenzy.tsx", frenzyInline],
+]) {
+  if (/onWheel\s*=|onTouchMove\s*=|onPointerMove\s*=|addEventListener\s*\(\s*['"](?:wheel|touchmove|pointermove)['"]|\.preventDefault\s*\(/.test(code)) {
+    reportFailure(`${file} must not intercept native inline scroll or gesture events.`);
+  }
+  if (/overflow-(?:y-)?(?:auto|scroll)|overflow\s*:\s*(?:auto|scroll)/.test(code)) {
+    reportFailure(`${file} must not introduce a nested scroll panel into an inline post.`);
+  }
+}
+const stylesheet = readInlineSource("src/client/styles.css");
+const documentRule = stylesheet.match(/html\.io-inline-post,\s*body\.io-inline-post\s*\{([^}]+)\}/)?.[1] ?? "";
+const rootRule = stylesheet.match(/#root\.io-inline-post\s*\{([^}]+)\}/)?.[1] ?? "";
+const publicRule = stylesheet.match(/^\s*\.io-public\s*\{([^}]+)\}/m)?.[1] ?? "";
+function hasInlineGestureViolation(rule) {
+  const touchActions = Array.from(rule.matchAll(/touch-action\s*:\s*([^;]+)/gi), match => match[1].trim().toLowerCase());
+  const badTouchAction = touchActions.some(value => !/^pan-y(?:\s+pinch-zoom)?$/.test(value));
+  const blockedOverscroll = /overscroll-behavior(?:-[xy])?\s*:\s*(?:none|contain)\b/i.test(rule);
+  const nestedScroller = /overflow(?:-[xy])?\s*:\s*(?:auto|scroll)\b/i.test(rule);
+  return badTouchAction || blockedOverscroll || nestedScroller;
+}
+for (const [label, rule] of [["html/body", documentRule], ["inline root", rootRule], ["public post", publicRule]]) {
+  if (!/touch-action\s*:\s*pan-y(?:\s+pinch-zoom)?/.test(rule)) {
+    reportFailure(`The ${label} must allow native vertical scrolling with touch-action: pan-y.`);
+  }
+  if (!/overscroll-behavior\s*:\s*auto/.test(rule)) {
+    reportFailure(`The ${label} must let overscroll propagate to Reddit.`);
+  }
+  if (hasInlineGestureViolation(rule)) {
+    reportFailure(`The ${label} must not capture or create a scroll trap.`);
+  }
+}
+
+// Scan every CSS rule that can be part of an inline public card, not just the
+// outer shell. Nested overflow:auto/scroll is a trap even when the outer shell
+// itself is correctly bounded.
+for (const match of stylesheet.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+  const selector = match[1];
+  const declarations = match[2];
+  if (/\.io-public(?:[-\w]*)\b|\.io-share-card\b|\.io-frenzy-card\b/.test(selector) &&
+      hasInlineGestureViolation(declarations)) {
+    reportFailure(`Inline public-card selector ${selector.trim()} must not block gestures or declare overflow:auto/scroll.`);
+  }
 }
 
 if (failures.length) {

@@ -115,6 +115,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const [chatMessages, setChatMessages] = useState<GuildMessage[]>([]);
   const [reportingId, setReportingId] = useState<string | null>(null);
   const [reportedIds, setReportedIds] = useState<Set<string>>(() => new Set());
+  const [chatReportError, setChatReportError] = useState('');
   const [activeLeaderboard, setActiveLeaderboard] = useState<LeaderboardId>('collectionValue');
   const leaderboardBoards: LeaderboardBoards = leaderboards ?? {
     collectionValue: leaderboard,
@@ -185,22 +186,29 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const handleReportChat = async (message: GuildMessage) => {
     if (message.isSystem || reportingId) return;
     setReportingId(message.id);
+    setChatReportError('');
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
     try {
       const response = await fetch('/api/guilds/chat/report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({ messageId: message.id }),
       });
-      const payload = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(payload.error || 'Could not report message.');
+      const payload = await response.json().catch(() => ({})) as { error?: unknown };
+      if (!response.ok) throw new Error(typeof payload.error === 'string' ? payload.error : 'Could not report message.');
       setReportedIds(prev => {
         const next = new Set(prev);
         next.add(message.id);
         return next;
       });
     } catch (error) {
-      console.error('Guild chat report error:', error);
+      setChatReportError(error instanceof Error && error.name === 'AbortError'
+        ? 'Reporting timed out. Check your connection and try again.'
+        : error instanceof Error ? error.message : 'Could not report message.');
     } finally {
+      window.clearTimeout(timeout);
       setReportingId(null);
     }
   };
@@ -325,9 +333,11 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
 
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
                     {(myGuild.tasks ?? []).map(task => {
-                      const target = Math.max(1, task.target);
-                      const progress = Math.max(0, Math.min(target, task.progress));
-                      const percent = Math.min(100, (progress / target) * 100);
+                      const rawTarget = Number(task.target);
+                      const target = Number.isFinite(rawTarget) && rawTarget > 0 ? rawTarget : 1;
+                      const rawProgress = Number(task.progress);
+                      const progress = Number.isFinite(rawProgress) ? Math.max(0, Math.min(target, rawProgress)) : 0;
+                      const percent = Math.max(0, Math.min(100, (progress / target) * 100));
                       return (
                         <div key={task.id} className="bg-slate-950/60 border border-slate-800 rounded-2xl p-3">
                           <div className="flex items-center justify-between gap-2">
@@ -337,7 +347,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                             </span>
                           </div>
                           <p className="text-xs font-bold text-white mt-2">{task.label}</p>
-                          <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800 mt-2">
+                          <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800 mt-2" role="progressbar" aria-label={task.label+' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)}>
                             <div
                               className="h-full bg-gradient-to-r from-purple-500 to-amber-400 transition-all"
                               style={{ width: `${percent}%` }}
@@ -871,6 +881,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                       <p className="mt-0.5 text-[9px] text-slate-600">Automated guild activity only. Player chat is disabled.</p>
                     </div>
                   </div>
+                  {chatReportError && <p role="alert" className="text-[10px] leading-relaxed text-rose-300">{chatReportError}</p>}
 
                   {/* Message History */}
                   <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">

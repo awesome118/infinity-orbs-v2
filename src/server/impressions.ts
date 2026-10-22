@@ -30,7 +30,8 @@ function normalizeDeviceType(value: unknown): ImpressionDeviceType {
 }
 
 function normalizeCount(value: unknown): number {
-  const count = Number.parseInt(String(value ?? '0'), 10);
+  const raw = value === null || value === undefined || value === '' ? '0' : value;
+  const count = typeof raw === 'number' ? raw : Number(String(raw).trim());
   return Number.isSafeInteger(count) && count >= 0 ? count : 0;
 }
 
@@ -137,7 +138,7 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
   // Keep dashboard reads bounded as the community creates more share/Frenzy
   // posts. The hash index is small compared with reading every per-post counter;
   // only the 500 most recently seen post IDs are expanded into rows.
-  const indexedPosts = Object.values(postIndex ?? {}).flatMap(raw => {
+  const validIndexedPosts = Object.values(postIndex ?? {}).flatMap(raw => {
     try {
       const parsed = JSON.parse(String(raw)) as { postType?: unknown; postId?: unknown; lastSeenAt?: unknown };
       const postType = normalizePostType(parsed.postType);
@@ -152,7 +153,9 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
     } catch {
       return [];
     }
-  }).sort((a, b) => b.lastSeenAt - a.lastSeenAt).slice(0, 500);
+  }).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+  const trackedPostCount = validIndexedPosts.length;
+  const indexedPosts = validIndexedPosts.slice(0, 500);
 
   const rows = await Promise.all(indexedPosts.map(async ({ postType, postId }) => ({
     postType,
@@ -186,5 +189,5 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
     return readTimePoint(bucket, DAY_PREFIX, new Date(bucket * 86_400_000).toISOString().slice(0, 10));
   }));
 
-  return { generatedAt: now, total, trackedPostCount: Object.keys(postIndex ?? {}).length, byType, byDevice, byTypeAndDevice, posts, last24Hours, last30Days };
+  return { generatedAt: now, total, trackedPostCount, byType, byDevice, byTypeAndDevice, posts, last24Hours, last30Days };
 }
