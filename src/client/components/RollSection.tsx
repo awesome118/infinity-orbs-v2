@@ -444,8 +444,19 @@ export const RollSection: React.FC<RollSectionProps> = ({
         <div className="absolute w-60 h-60 rounded-full border border-white/10 pointer-events-none" />
         {/* The Central Main Orb */}
         <div
+          role="button"
+          tabIndex={0}
+          aria-label={primaryActionLabel.toLowerCase()}
+          aria-busy={busy}
+          aria-disabled={busy}
           onClick={handleRollClick}
-          className={`relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 ${cosmeticEffectClass} ${
+          onKeyDown={event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              handleRollClick();
+            }
+          }}
+          className={`relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 ${cosmeticEffectClass} ${
             isRevealing ? 'scale-105 ring-4 ring-white/60' : 'hover:scale-102'
           }`}
           style={{

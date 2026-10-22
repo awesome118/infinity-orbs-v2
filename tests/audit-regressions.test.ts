@@ -2714,6 +2714,14 @@ test('best-orb reveal badges reflect critical and discovery flags from the selec
   assert.ok(!shared.includes('isCrit: bestRarity > (sourceState.highestRarity ?? 0),'));
 });
 
+test('central Orb roll affordance is keyboard operable and announces busy state', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  assert.match(roll, /role="button"[\s\S]{0,120}tabIndex=\{0\}[\s\S]{0,180}aria-label=\{primaryActionLabel\.toLowerCase\(\)\}/);
+  assert.match(roll, /onKeyDown=\{event => \{[\s\S]{0,180}event\.key === 'Enter' \|\| event\.key === ' '/);
+  assert.match(roll, /aria-busy=\{busy\}[\s\S]{0,40}aria-disabled=\{busy\}/);
+  assert.ok(roll.includes('focus-visible:outline-cyan-300'));
+});
+
 test('Chain Patcher takes priority over Free Roll cooldown bypass in the roll UI', () => {
   const roll = source('src/client/components/RollSection.tsx');
   const canRollStart = roll.indexOf('const canRoll =');
