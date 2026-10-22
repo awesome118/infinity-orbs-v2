@@ -45,6 +45,8 @@ html.io-inline-post,
 body.io-inline-post {
   height: 100%;
   min-height: 0;
+  overscroll-behavior: auto;
+  touch-action: pan-y pinch-zoom;
 }
 body.io-inline-post { margin: 0; }
 #root.io-inline-post {
