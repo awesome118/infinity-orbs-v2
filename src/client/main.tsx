@@ -118,6 +118,7 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
     let receivedNonRetryableHttpError = false;
     try {
       const res = await fetch(url, options);
+      responseReceived = true;
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         const message =
@@ -188,7 +189,7 @@ async function getJsonWithTimeout<T>(url: string, timeoutMs = 10_000, options?: 
     return await getJson<T>(url, { ...options, signal: controller.signal });
   } catch (error: any) {
     if (error?.name === 'AbortError') {
-      throw new Error('The Infinity Orbs server did not respond within 10 seconds.');
+      throw new Error(`The Infinity Orbs server did not respond within ${Math.max(1, Math.ceil(timeoutMs / 1000))} seconds.`);
     }
     throw error;
   } finally {
@@ -214,12 +215,39 @@ export function App() {
   const [readyAt, setReadyAt] = useState<number>(0);
   const [tab, setTab] = useState<ActiveTab>('roll');
   const [tutorialStep, setTutorialStep] = useState(0);
-  const [tutorialDismissed, setTutorialDismissed] = useState(() => {
-    try { return window.localStorage.getItem('io-first-roll-tutorial-v1') === 'done'; } catch { return false; }
-  });
+  const [tutorialDismissed, setTutorialDismissed] = useState(false);
+  const [tutorialStatusLoaded, setTutorialStatusLoaded] = useState(false);
   useEffect(() => {
-    if (!tutorialDismissed && state && state.totalRolls > 0 && state.totalRolls <= 3 && tutorialStep === 0) setTutorialStep(1);
-  }, [state?.totalRolls, tutorialDismissed, tutorialStep]);
+    let active = true;
+    let localDone = false;
+    try {
+      localDone = window.localStorage.getItem('io-first-roll-tutorial-v1') === 'done';
+    } catch {
+      // The server status still works when embedded-webview storage is unavailable.
+    }
+    void getJsonWithTimeout<{ seen?: boolean }>('/api/tutorial/first-roll/status', 5_000, { cache: 'no-store' })
+      .then(result => {
+        if (!active) return;
+        const done = result.seen === true || localDone;
+        setTutorialDismissed(done);
+        if (done) {
+          try { window.localStorage.setItem('io-first-roll-tutorial-v1', 'done'); } catch { /* Server persistence is authoritative. */ }
+          if (result.seen !== true) {
+            void fetch('/api/tutorial/first-roll/complete', { method: 'POST' }).catch(() => undefined);
+          }
+        }
+      })
+      .catch(() => {
+        if (active) setTutorialDismissed(localDone);
+      })
+      .finally(() => {
+        if (active) setTutorialStatusLoaded(true);
+      });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    if (tutorialStatusLoaded && !tutorialDismissed && state && state.totalRolls > 0 && state.totalRolls <= 3 && tutorialStep === 0) setTutorialStep(1);
+  }, [state?.totalRolls, tutorialDismissed, tutorialStep, tutorialStatusLoaded]);
   const [combatTutorialStep, setCombatTutorialStep] = useState(0);
   const [combatTutorialDismissed, setCombatTutorialDismissed] = useState(() => {
     try { return window.localStorage.getItem('io-combat-tutorial-v1') === 'done'; } catch { return false; }
@@ -229,11 +257,7 @@ export function App() {
     let active = true;
     let localDone = false;
     try { localDone = window.localStorage.getItem('io-combat-tutorial-v1') === 'done'; } catch { /* Use server persistence when webview storage is unavailable. */ }
-    void fetch('/api/combat/tutorial/status', { cache: 'no-store' })
-      .then(async response => {
-        if (!response.ok) throw new Error('Could not load Combat tutorial status.');
-        return await response.json() as { seen?: boolean };
-      })
+    void getJsonWithTimeout<{ seen?: boolean }>('/api/combat/tutorial/status', 5_000, { cache: 'no-store' })
       .then(result => {
         if (!active) return;
         const done = result.seen === true || localDone;
@@ -320,7 +344,9 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!state) return;
+    // A post preview is not a player session. Count activity only after Play
+    // opens the actual game, otherwise previews inflate online-player counts.
+    if (!state || !splashEntered) return;
     const heartbeat = () => {
       if (document.visibilityState === 'hidden') return;
       void getJson('/api/activity/heartbeat', {
@@ -339,7 +365,7 @@ export function App() {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [Boolean(state)]);
+  }, [Boolean(state), splashEntered]);
 
   // Social & Community state
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
@@ -392,6 +418,10 @@ export function App() {
   useEffect(() => {
     return () => {
       componentMountedRef.current = false;
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
     };
   }, []);
   const appliedServerGenerationRef = useRef(-1);
@@ -423,6 +453,7 @@ export function App() {
   const flushUpgradeBatchRef = useRef<(() => Promise<void>) | null>(null);
   const lastBoosterAnnouncementAtRef = useRef(0);
   const boosterAnnouncementTimerRef = useRef<number | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
 
   const applyPlayerState = useCallback((nextState: PlayerState) => {
     const nextServerRevision = Number(nextState.stateRevision);
@@ -451,7 +482,17 @@ export function App() {
       if (
         nextServerRevision === appliedServerRevisionRef.current &&
         currentState &&
-        (nextState.shards ?? 0) !== (currentState.shards ?? 0)
+        (
+          (nextState.coins ?? 0) !== (currentState.coins ?? 0) ||
+          (nextState.shards ?? 0) !== (currentState.shards ?? 0) ||
+          (nextState.xp ?? 0) !== (currentState.xp ?? 0) ||
+          (nextState.level ?? 1) !== (currentState.level ?? 1) ||
+          (nextState.totalRolls ?? 0) !== (currentState.totalRolls ?? 0) ||
+          (nextState.freeRolls ?? 0) !== (currentState.freeRolls ?? 0) ||
+          (nextState.highestRarity ?? 0) !== (currentState.highestRarity ?? 0) ||
+          (nextState.totalRollValue ?? 0) !== (currentState.totalRollValue ?? 0) ||
+          (nextState.prestigeCount ?? 0) !== (currentState.prestigeCount ?? 0)
+        )
       ) {
         return;
       }
@@ -558,7 +599,9 @@ export function App() {
 
   const finishTutorial = () => {
     setTutorialDismissed(true);
+    setTutorialStep(0);
     try { window.localStorage.setItem('io-first-roll-tutorial-v1', 'done'); } catch { /* Embedded webviews may disable storage. */ }
+    void fetch('/api/tutorial/first-roll/complete', { method: 'POST' }).catch(() => undefined);
   };
 
   const finishCombatTutorial = () => {
@@ -595,9 +638,12 @@ export function App() {
   };
 
   const showToast = (msg: string, type: 'info' | 'success' | 'warn' = 'info') => {
+    // Reset the old timer so a repeated message stays visible for a full 4 seconds.
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
     setToast({ msg, type });
-    setTimeout(() => {
+    toastTimerRef.current = window.setTimeout(() => {
       setToast(prev => (prev?.msg === msg ? null : prev));
+      toastTimerRef.current = null;
     }, 4000);
   };
 
@@ -662,16 +708,17 @@ export function App() {
         getJson<LeaderboardEntry[]>('/api/leaderboard').catch(() => []),
         getJson<LeaderboardBoards>('/api/leaderboards').catch(() => null),
         getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds').catch(() => ({ guilds: [], mine: null })),
-        getJson<WorldEvent>('/api/world-event').catch(() => null),
-        getJson<{ message: string; updatedAt: number; updatedBy: string }>('/api/developer-announcement').catch(() => null),
+        getJson<WorldEvent | null>('/api/world-event').catch(() => null),
+        getJson<{ message: string; updatedAt: number; updatedBy: string } | null>('/api/developer-announcement').catch(() => null),
         getJson<{ enabled: boolean }>('/api/notifications').catch(() => ({ enabled: false })),
       ]);
 
       setLeaderboardData(lb);
       setLeaderboards(lbs);
       setGuildData(gd);
-      if (we) setWorldEvent(we);
-      if (announcement) setDeveloperAnnouncement(announcement);
+      setWorldEvent(we);
+      if (announcement === null || !announcement.message) setDeveloperAnnouncement(null);
+      else setDeveloperAnnouncement(announcement);
       setNotificationsEnabled(notificationState.enabled === true);
     } catch (e: any) {
       if (e?.message === 'REDDIT_LOGIN_REQUIRED') {
@@ -712,10 +759,10 @@ export function App() {
 
     const pollDeveloperAnnouncement = async () => {
       try {
-        const announcement = await getJson<{ message: string; updatedAt: number; updatedBy: string }>('/api/developer-announcement');
+        const announcement = await getJson<{ message: string; updatedAt: number; updatedBy: string } | null>('/api/developer-announcement');
         if (cancelled) return;
 
-        if (!announcement.message) {
+        if (!announcement?.message) {
           setDeveloperAnnouncement(null);
           return;
         }
@@ -762,12 +809,13 @@ export function App() {
     return () => window.clearInterval(interval);
   }, []);
 
-  // Periodic background refresh for social & community event rolling counter
+  // Refresh live community state while visible; hidden webviews should not poll.
   useEffect(() => {
     const pollInterval = tab === 'social' ? 3000 : 8000;
-    const interval = setInterval(() => {
-      void getJson<WorldEvent>('/api/world-event').then(we => {
-        if (we) setWorldEvent(we);
+    const refreshCommunityState = () => {
+      if (document.visibilityState === 'hidden') return;
+      void getJson<WorldEvent | null>('/api/world-event').then(we => {
+        setWorldEvent(we);
       }).catch(() => null);
 
       if (tab === 'social') {
@@ -775,8 +823,14 @@ export function App() {
           if (gd) setGuildData(gd);
         }).catch(() => null);
       }
-    }, pollInterval);
-    return () => clearInterval(interval);
+    };
+    refreshCommunityState();
+    const interval = window.setInterval(refreshCommunityState, pollInterval);
+    document.addEventListener('visibilitychange', refreshCommunityState);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshCommunityState);
+    };
   }, [tab]);
 
 
@@ -785,6 +839,7 @@ export function App() {
     if (tab !== 'boosters') return;
 
     const refreshGlobalBoosters = () => {
+      if (document.visibilityState === 'hidden') return;
       void getJson<GlobalBoosterSnapshot>('/api/global-boosters')
         .then(snapshot => {
           if (snapshot) {
@@ -799,14 +854,20 @@ export function App() {
     };
 
     refreshGlobalBoosters();
-    const interval = setInterval(refreshGlobalBoosters, 1500);
-    return () => clearInterval(interval);
+    const interval = window.setInterval(refreshGlobalBoosters, 5000);
+    document.addEventListener('visibilitychange', refreshGlobalBoosters);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshGlobalBoosters);
+    };
   }, [tab]);
 
   // Presence is independent from player-state persistence. Do not poll /api/me
   // here because game-state reads must never be responsible for saving the player.
   useEffect(() => {
-    const presenceInterval = setInterval(() => {
+    if (!splashEntered) return;
+    const refreshPresence = () => {
+      if (document.visibilityState === 'hidden') return;
       void getJson<{ onlinePlayers: number }>('/api/online')
         .then(({ onlinePlayers }) => {
           const safeOnlinePlayers = Number.isSafeInteger(onlinePlayers)
@@ -819,9 +880,15 @@ export function App() {
           setState(prev => prev ? { ...prev, onlinePlayers: safeOnlinePlayers } : prev);
         })
         .catch(() => null);
-    }, 10_000);
-    return () => clearInterval(presenceInterval);
-  }, []);
+    };
+    refreshPresence();
+    const presenceInterval = window.setInterval(refreshPresence, 10_000);
+    document.addEventListener('visibilitychange', refreshPresence);
+    return () => {
+      window.clearInterval(presenceInterval);
+      document.removeEventListener('visibilitychange', refreshPresence);
+    };
+  }, [splashEntered]);
 
   useEffect(() => {
     if (!state || !splashEntered || frenzyRunTriggered || frenzyClaimActiveRef.current) return;
@@ -1321,12 +1388,11 @@ export function App() {
   // Turbo Roll Booster
   const handleActivateTurbo = async () => {
     setBusy(true);
+    const durationMinutes = (stateRef.current?.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 60 : 30;
+    const durationMs = durationMinutes * 60 * 1000;
     const rollback = beginOptimisticState(current => {
       if ((current.shards ?? 0) < 5) return current;
       const now = Date.now();
-      const durationMs = (current.prestigeUpgrades?.chronoOverdrive ?? 0) > 0
-        ? 60 * 60 * 1000
-        : 30 * 60 * 1000;
       const purchased = current.purchasedShards ?? 0;
       return {
         ...current,
@@ -1339,7 +1405,7 @@ export function App() {
       const res = await getJson<{ state: PlayerState }>('/api/turbo/activate', { method: 'POST' });
       applyPlayerState(res.state);
       sound.playChime(880, 'sawtooth', 0.3);
-      showToast('Turbo Roll Activated! Cooldowns reduced by 20% for 30m.', 'success');
+      showToast(`Turbo Roll Activated! Cooldowns reduced by 20% for ${durationMinutes}m.`, 'success');
     } catch (e: any) {
       rollback?.();
       showToast(e.message || 'Could not activate turbo roll', 'warn');
@@ -2398,7 +2464,7 @@ export function App() {
       )}
 
       {/* Main Navigation Bar */}
-      <div className={"io-nav app-nav bg-slate-900/55 border-b border-slate-800/80 px-4 py-2 sticky top-[57px] z-20 backdrop-blur-md" + (combatMode ? " io-nav-combat" : "")}>
+      <div role="navigation" aria-label={combatMode ? "Combat navigation" : "Game navigation"} className={"io-nav app-nav bg-slate-900/55 border-b border-slate-800/80 px-4 py-2 sticky top-[57px] z-20 backdrop-blur-md" + (combatMode ? " io-nav-combat" : "")}>
         <div className="nav-shell max-w-6xl mx-auto flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
           <button type="button" onClick={() => { sound.playClick(); changeTab(combatMode ? 'roll' : 'fight'); }}
             className={"io-combat-mode-switch nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (combatMode ? " is-active" : "")}
@@ -2409,7 +2475,7 @@ export function App() {
           </button>
 
           {!combatMode && <>
-          <button
+          <button aria-current={tab === 'roll' ? 'page' : undefined}
             onClick={() => {
               sound.playClick();
               changeTab('roll');
@@ -2424,7 +2490,7 @@ export function App() {
             <span>Roll</span>
           </button>
 
-          <button
+          <button aria-current={tab === 'upgrades' ? 'page' : undefined}
             onClick={() => {
               sound.playClick();
               changeTab('upgrades');
@@ -2439,7 +2505,7 @@ export function App() {
             <span>Upgrades</span>
             {featureForTab('upgrades' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('upgrades' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
-<button
+<button aria-current={tab === 'boosters' ? 'page' : undefined}
             onClick={() => {
               sound.playClick();
               changeTab('boosters');
@@ -2457,7 +2523,7 @@ export function App() {
             )}
           </button>
 
-          <button
+          <button aria-current={tab === 'altar' ? 'page' : undefined}
             onClick={() => {
               sound.playClick();
               changeTab('altar');
@@ -2473,7 +2539,7 @@ export function App() {
             {featureForTab('altar' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('altar' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
-          <button
+          <button aria-current={tab === 'mastery' ? 'page' : undefined}
             onClick={() => {
               sound.playClick();
               changeTab('mastery');
@@ -2492,7 +2558,7 @@ export function App() {
             )}
           </button>
 
-          <button
+          <button aria-current={tab === 'collection' ? 'page' : undefined}
             onClick={() => {
               sound.playClick();
               changeTab('collection');
@@ -2508,7 +2574,7 @@ export function App() {
             {featureForTab('collection' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('collection' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
-          <button
+          <button aria-current={tab === 'quests' ? 'page' : undefined}
             onClick={() => {
               sound.playClick();
               changeTab('quests');
@@ -2527,7 +2593,7 @@ export function App() {
             )}
           </button>
 
-          <button
+          <button aria-current={tab === 'social' ? 'page' : undefined}
             onClick={() => {
               sound.playClick();
               changeTab('social');
@@ -2543,7 +2609,7 @@ export function App() {
             {featureForTab('social' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('social' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
-          <button
+          <button aria-current={tab === 'profile' ? 'page' : undefined}
             onClick={() => {
               sound.playClick();
               changeTab('profile');
@@ -2563,13 +2629,13 @@ export function App() {
           </button>
           </>}
           {combatMode && <>
-            <button onClick={() => changeTab('fight')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (tab === 'fight' ? " is-active" : "")}><Flame className="w-3.5 h-3.5" /><span>Fight</span></button>
-            <button onClick={() => changeTab('dungeons')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'dungeons' ? " is-active" : "")}><DoorOpen className="w-3.5 h-3.5" /><span>Dungeons</span></button>
-            <button onClick={() => changeTab('gear')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'gear' ? " is-active" : "")}><Package className="w-3.5 h-3.5" /><span>Gear</span></button>
-            <button onClick={() => changeTab('forge')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'forge' ? " is-active" : "")}><Hammer className="w-3.5 h-3.5" /><span>Forge</span></button>
-            <button onClick={() => changeTab('skills')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'skills' ? " is-active" : "")}><Sparkles className="w-3.5 h-3.5" /><span>Skills</span></button>
-            <button onClick={() => changeTab('arena')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'arena' ? " is-active" : "")}><Users className="w-3.5 h-3.5" /><span>Arena</span><span className="io-combat-soon">NEXT</span></button>
-            <button onClick={() => changeTab('runes')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'runes' ? " is-active" : "")}><Gem className="w-3.5 h-3.5" /><span>Runes</span></button>
+            <button aria-current={tab === 'fight' ? 'page' : undefined} onClick={() => changeTab('fight')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (tab === 'fight' ? " is-active" : "")}><Flame className="w-3.5 h-3.5" /><span>Fight</span></button>
+            <button aria-current={tab === 'dungeons' ? 'page' : undefined} onClick={() => changeTab('dungeons')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'dungeons' ? " is-active" : "")}><DoorOpen className="w-3.5 h-3.5" /><span>Dungeons</span></button>
+            <button aria-current={tab === 'gear' ? 'page' : undefined} onClick={() => changeTab('gear')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'gear' ? " is-active" : "")}><Package className="w-3.5 h-3.5" /><span>Gear</span></button>
+            <button aria-current={tab === 'forge' ? 'page' : undefined} onClick={() => changeTab('forge')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'forge' ? " is-active" : "")}><Hammer className="w-3.5 h-3.5" /><span>Forge</span></button>
+            <button aria-current={tab === 'skills' ? 'page' : undefined} onClick={() => changeTab('skills')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'skills' ? " is-active" : "")}><Sparkles className="w-3.5 h-3.5" /><span>Skills</span></button>
+            <button aria-current={tab === 'arena' ? 'page' : undefined} onClick={() => changeTab('arena')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'arena' ? " is-active" : "")}><Users className="w-3.5 h-3.5" /><span>Arena</span><span className="io-combat-soon">NEXT</span></button>
+            <button aria-current={tab === 'runes' ? 'page' : undefined} onClick={() => changeTab('runes')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'runes' ? " is-active" : "")}><Gem className="w-3.5 h-3.5" /><span>Runes</span></button>
           </>}
         </div>
       </div>
@@ -2598,7 +2664,7 @@ export function App() {
       {/* Main Container Content */}
       <main className="app-main flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8">
 
-        {!combatMode && state && !tutorialDismissed && (state.totalRolls <= 3 || tutorialStep > 0) && (
+        {!combatMode && state && tutorialStatusLoaded && !tutorialDismissed && (state.totalRolls <= 3 || tutorialStep > 0) && (
           <section className="io-tutorial-guide" aria-live="polite" aria-label="First steps tutorial">
             <div className="io-tutorial-topline"><span>FIRST STEPS</span><span>STEP {Math.min(4, tutorialStep + 1)} / 4</span><button type="button" onClick={finishTutorial} aria-label="Skip tutorial">Skip</button></div>
             {tutorialStep === 0 && <>

@@ -1585,6 +1585,19 @@ async function registerPlayer(userId: string, username: string): Promise<void> {
   await touchPlayerActivity(userId, username);
 }
 
+const FIRST_ROLL_TUTORIAL_KEY_PREFIX = 'infinity-orbs:first-roll-tutorial:';
+
+/** Tutorial completion follows the Reddit account across sessions and devices. */
+export async function hasCompletedFirstRollTutorial(): Promise<boolean> {
+  const userId = currentUserId();
+  return (await redis.get(FIRST_ROLL_TUTORIAL_KEY_PREFIX + userId)) === '1';
+}
+
+export async function markFirstRollTutorialSeen(): Promise<void> {
+  const userId = currentUserId();
+  await redis.set(FIRST_ROLL_TUTORIAL_KEY_PREFIX + userId, '1');
+}
+
 export async function recordPlayerHeartbeat(reportedVersion?: unknown): Promise<{
   playtimeMs: number;
   onlinePlayers: number;
@@ -4355,6 +4368,7 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
   const now = Date.now();
   checkPeriodicResets(s, now);
   resetFreeShardBudgetIfNeeded(s, now);
+  // Mutations settle the active player's state; read-only paths must not call this.
   s.onlinePlayers = await touchOnlinePresence();
   s.globalBoosters = await getGlobalBoosters();
 
@@ -4545,10 +4559,9 @@ export async function getCollectionPage(options: {
 }
 
 export async function getState(): Promise<PlayerState> {
-  // GET /api/me must remain a read operation. Previously this path called
-  // settleOffline() and save(), which meant every background refresh could
-  // increment stateRevision and race a real mutation.
-  const s = await loadRaw();
+  // GET /api/me is a read, not proof that someone pressed Play. Presence and
+  // activity registration are handled by the explicit post-launch heartbeat.
+  const s = await loadRaw({ registerActivity: false });
   const now = Date.now();
 
   // Recompute Codex projections from the authoritative collection on every read.
@@ -4563,7 +4576,7 @@ export async function getState(): Promise<PlayerState> {
   // The next real mutation settles and persists the authoritative state.
   checkPeriodicResets(s, now);
   resetFreeShardBudgetIfNeeded(s, now);
-  s.onlinePlayers = await touchOnlinePresence();
+  s.onlinePlayers = await getOnlinePlayers();
   s.globalBoosters = await getGlobalBoosters();
 
   // Show currently accumulated offline rolls without consuming/persisting them.
@@ -4626,7 +4639,7 @@ export async function buyChainPatcher(): Promise<{
 
 export async function getMe(): Promise<PlayerState> {
   const ban = await getGameBanStatus();
-  const s = ban ? await loadRaw() : await getState();
+  const s = ban ? await loadRaw({ registerActivity: false }) : await getState();
   if (ban) {
     s.gameBan = {
       active: true,

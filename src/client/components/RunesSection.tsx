@@ -81,7 +81,9 @@ export const RunesSection:React.FC=()=>{
   },[runes,runeSearch,inventoryFilter,state?.equippedRunes]);
   useEffect(()=>{
     if(strengthenTargetId&&!runes.some(rune=>rune.id===strengthenTargetId))setStrengthenTargetId('');
-  },[runes,strengthenTargetId]);
+    if(inspectedRuneId&&!runes.some(rune=>rune.id===inspectedRuneId))setInspectedRuneId('');
+  },[runes,strengthenTargetId,inspectedRuneId]);
+  useEffect(()=>{const closeDetails=(event:KeyboardEvent)=>{if(event.key!=='Escape')return;setInspectedRuneId('');setStrengthenTargetId('');const target=event.target;if(target instanceof HTMLElement&&target.closest('.io-runes-icon-wrap.is-inspected'))target.blur();};window.addEventListener('keydown',closeDetails);return()=>window.removeEventListener('keydown',closeDetails);},[]);
   const mutate=async(url:string,body:unknown,runeId:string,success:string)=>{
     if(!beginOperation())return;
     setBusyRune(runeId);setError('');setNotice('');
@@ -90,6 +92,16 @@ export const RunesSection:React.FC=()=>{
     finally{setBusyRune(null);endOperation();}
   };
   const equippedRunes=state?(state.equippedRunes.map(id=>state.runes.find(rune=>rune.id===id)).filter((rune):rune is CombatRune=>Boolean(rune))):[];
+  const visibleRunes=useMemo(()=>{
+    const query=runeSearch.trim().toLowerCase();
+    return runes.filter(rune=>{
+      const equipped=Boolean(state?.equippedRunes.includes(rune.id));
+      if(runeFilter==='equipped'&&!equipped)return false;
+      if(runeFilter==='spare'&&equipped)return false;
+      if(!query)return true;
+      return [rune.name,rune.rarity,rune.stat,rune.majorAbility?.name??''].some(value=>String(value).toLowerCase().includes(query));
+    });
+  },[runes,runeSearch,runeFilter,state?.equippedRunes]);
   const strengthenTargetRune=runes.find(rune=>rune.id===strengthenTargetId);
   const autoSacrificeSettings=state?.runeAutoSacrifice??{enabled:false,maxRarity:'Common' as CombatRuneRarity};
   const autoSacrificeEligibleCount=state?runes.filter(rune=>
@@ -104,12 +116,13 @@ export const RunesSection:React.FC=()=>{
   const sacrifice=async(targetId:string,donorId:string)=>{
     const target=state?.runes.find(rune=>rune.id===targetId);
     const donor=state?.runes.find(rune=>rune.id===donorId);
-    if(!target||!donor||target.id===donor.id)return;
+    if(!target||!donor||target.id===donor.id||actionLockRef.current)return;
+    actionLockRef.current=true;
     if(!beginOperation())return;
     setSacrificing(true);setError('');setNotice('');
     try{
       const result=await request<SacrificeResponse>('/api/combat/runes/sacrifice','POST',{targetRuneId:target.id,donorRuneId:donor.id});
-      setSnapshot(result);setStrengthenTargetId('');
+      setSnapshot(result);setStrengthenTargetId('');setInspectedRuneId('');
       const detail=result.runeSacrifice;
       setNotice(detail
         ?detail.donorName+' sacrificed into '+detail.targetName+': +'+fmt(detail.gainedXp)+' Rune XP. '+detail.targetName+' is now Level '+fmt(detail.level)+'.'
@@ -128,8 +141,7 @@ export const RunesSection:React.FC=()=>{
       void sacrifice(strengthenTargetId,rune.id);
       return;
     }
-    const isEquipped=Boolean(state?.equippedRunes.includes(rune.id));
-    void mutate('/api/combat/runes/equip',{runeId:rune.id,equip:!isEquipped},rune.id,isEquipped?'Rune unequipped.':'Rune equipped.');
+    setError('');setInspectedRuneId(current=>current===rune.id?'':rune.id);
   };
   const saveAutoSacrificeSettings=async(enabled:boolean,maxRarity:CombatRuneRarity)=>{
     if(!beginOperation())return;
@@ -159,7 +171,7 @@ export const RunesSection:React.FC=()=>{
       <div><div className="io-runes-kicker">CORE-GAME BONUSES · SOFT-CAPPED LEVELS</div><h1>Runes</h1><p className="io-runes-intro">Equip monster drops to strengthen normal Infinity Orb rolls. Sacrifice spare Runes into a favorite Rune to grant XP and increase its level. Effects approach a large soft cap; Shard Rune chance never scales with level.</p></div>
       <button type="button" className="io-runes-button" aria-label={loading?'Refreshing Rune inventory':'Refresh Rune inventory'} aria-busy={loading||operationPending} onClick={()=>{setLoading(true);void load();}} disabled={loading||operationPending}><RefreshCw size={14} aria-hidden="true" className={loading?'animate-spin':''}/> {loading?'Loading…':'Refresh'}</button>
     </header>
-    {error&&<div className="io-runes-error" role="alert">{error}</div>}
+    {error&&<div className="io-runes-error io-runes-error-row" role="alert"><span>{error}</span><button type="button" onClick={()=>{setLoading(true);void load();}} disabled={loading||Boolean(busyRune)||sacrificing||autoSacrificeBusy}>Retry</button></div>}
     {notice&&!error&&<div className="io-runes-muted" role="status">{notice}</div>}
     {loading&&!state?<div className="io-runes-loading">Loading Rune inventory…</div>:state&&<>
       <section className="io-runes-panel">
@@ -241,7 +253,9 @@ export const RunesSection:React.FC=()=>{
                 {!isEquipped&&!canEquip&&<div className="io-runes-muted">All Rune slots are full.</div>}
               </div>
             </article>;
-          })}</div>}
+          })}</div>
+          </>
+        )}
           </>
       </section>
     </>}

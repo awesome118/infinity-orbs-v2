@@ -66,7 +66,8 @@ const automationIcons: Record<AutomationId, React.ReactNode> = {
 };
 
 function formatDuration(ms: number): string {
-  const total = Math.max(0, Math.ceil(ms / 1000));
+  const safeMs=Number.isFinite(ms)?Math.max(0,ms):0;
+  const total = Math.max(0, Math.ceil(safeMs / 1000));
   const days = Math.floor(total / 86_400);
   const hours = Math.floor((total % 86_400) / 3600);
   const minutes = Math.floor((total % 3600) / 60);
@@ -103,6 +104,17 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
     } finally {
       globalActivationLockRef.current = false;
       setActivatingGlobalBooster(null);
+    }
+  };
+  const handlePremiumActivation = async (id: PremiumBoosterId) => {
+    if (activationLockRef.current || busy) return;
+    activationLockRef.current=true;
+    setActivatingPremiumBooster(id);
+    try {
+      await onActivateBooster(id);
+    } finally {
+      activationLockRef.current=false;
+      setActivatingPremiumBooster(null);
     }
   };
 
@@ -259,6 +271,8 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                 </div>
                 <div className="mt-3 flex gap-2">
                   <button
+                    type="button"
+                    aria-busy={activatingGlobalBooster===id}
                     onClick={() => void handleGlobalActivation(id, false)}
                     disabled={busy || activatingGlobalBooster !== null || !canAffordGlobal}
                     className="flex-1 px-2.5 py-2 rounded-xl text-[10px] font-black bg-slate-800 hover:bg-slate-700 text-white disabled:text-slate-500 disabled:cursor-not-allowed"
@@ -266,6 +280,8 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                     {`+2h • ${formatNumber(globalCost)} 💎`}
                   </button>
                   <button
+                    type="button"
+                    aria-busy={activatingGlobalBooster===id}
                     onClick={() => void handleGlobalActivation(id, true)}
                     disabled={busy || activatingGlobalBooster !== null}
                     className="px-2.5 py-2 rounded-xl text-[10px] font-black bg-fuchsia-600/20 border border-fuchsia-500/25 text-fuchsia-200 hover:bg-fuchsia-600/30 disabled:text-slate-600 disabled:cursor-not-allowed"
@@ -315,8 +331,10 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                     {active ? 'ACTIVE • ' + formatDuration(remaining) + ' left' : 'Ready to activate'}
                   </span>
                   <button
-                    onClick={() => void onActivateBooster(id)}
-                    disabled={busy || !canAfford}
+                    type="button"
+                    aria-busy={activatingPremiumBooster===id}
+                    onClick={() => void handlePremiumActivation(id)}
+                    disabled={busy || activatingPremiumBooster!==null || activatingGlobalBooster!==null || !canAfford}
                     className={
                       active
                         ? 'px-3 py-2 rounded-xl text-xs font-black transition-all bg-indigo-500/20 border border-indigo-400/30 text-indigo-200 hover:bg-indigo-500/30 active:scale-95'
@@ -325,7 +343,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                           : 'px-3 py-2 rounded-xl text-xs font-black transition-all bg-slate-800 text-slate-500 cursor-not-allowed'
                     }
                   >
-                    {active ? 'Extend' : 'Activate'}
+                    {activatingPremiumBooster===id?'Activating…':active ? 'Extend' : 'Activate'}
                   </button>
                 </div>
               </div>
@@ -392,6 +410,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
               </span>
             </div>
             <button
+              type="button"
               onClick={() => void onClaimCommunityReward()}
               disabled={busy || !communityRewardReady}
               className={

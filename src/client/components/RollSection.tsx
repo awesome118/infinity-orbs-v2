@@ -52,6 +52,16 @@ interface RollSectionProps {
   onNewBest?: (orb: Orb, prevBest: number) => void;
 }
 
+function prefersReducedMotion(): boolean {
+  try {
+    return typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
 function formatTimeLeft(ms: number): string {
   if (ms <= 0) return 'Resetting soon';
   const totalSecs = Math.floor(ms / 1000);
@@ -89,11 +99,10 @@ export const RollSection: React.FC<RollSectionProps> = ({
 }) => {
   const [showBatchDetails, setShowBatchDetails] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-  const [reducedMotion, setReducedMotion] = useState(() =>
-    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-  );
+  const [reducedMotion, setReducedMotion] = useState(() => prefersReducedMotion());
 
   useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
     const updatePreference = (event: MediaQueryListEvent) => setReducedMotion(event.matches);
     setReducedMotion(media.matches);
@@ -102,8 +111,36 @@ export const RollSection: React.FC<RollSectionProps> = ({
   }, []);
 
   useEffect(() => {
-    const interval = window.setInterval(() => setNow(Date.now()), 250);
-    return () => window.clearInterval(interval);
+    let timer: number | null = null;
+    const scheduleTick = () => {
+      const current = Date.now();
+      const rollRemaining = readyAt - current;
+      const frenzyRemaining = frenzyCooldownRemaining(state.lastFrenzyAt, current);
+      const turboRemaining = (state.turboRollUntil ?? 0) - current;
+      const hasActiveCountdown = rollRemaining > 0 || frenzyRemaining > 0 || turboRemaining > 0;
+      setNow(current);
+      if (!hasActiveCountdown) {
+        timer = null;
+        return;
+      }
+      // Update quickly during the last three seconds of the roll cooldown;
+      // otherwise retain ticking only while some visible countdown is active.
+      timer = window.setTimeout(scheduleTick, rollRemaining > 0 && rollRemaining <= 3000 ? 250 : 1000);
+    };
+    const syncOnVisibility = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = null;
+      scheduleTick();
+    };
+    scheduleTick();
+    document.addEventListener('visibilitychange', syncOnVisibility);
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', syncOnVisibility);
+    };
+  }, [readyAt, state.lastFrenzyAt, state.turboRollUntil]);
+  useEffect(() => () => {
+    if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
   }, []);
   const [isRevealing, setIsRevealing] = useState(false);
   const [cooldownNotice, setCooldownNotice] = useState<string | null>(null);
@@ -175,9 +212,11 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const cd = cooldownMs(state, false);
   const remain = Math.max(0, readyAt - now);
   const freeRolls = Math.max(0, state.freeRolls ?? 0);
-  const canRoll = (remain <= 0 || freeRolls > 0) && !busy;
+  // Free rolls bypass the normal cooldown, but never skip the deliberate Frenzy release wait.
+  const canRoll = (remain <= 0 || (freeRolls > 0 && !frenzyArmed)) && !busy;
   const frenzyCooldownRemain = frenzyCooldownRemaining(state.lastFrenzyAt, now);
   const frenzyUsedToday = frenzyCooldownRemain > 0;
+  const cooldownProgressPct = canRoll ? 100 : Math.max(0, Math.min(100, ((cd - remain) / Math.max(1, cd)) * 100));
   const multi = rollsPerActivation(state);
   const luck = luckMultiplier(state);
   const isAutoUnlocked = (state.upgrades.auto ?? 0) > 0;
@@ -284,6 +323,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
     }
     if (canRoll) {
       sound.playClick();
+      if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
+      cooldownNoticeTimerRef.current = null;
       setCooldownNotice(null);
       void onRoll();
     } else if (remain > 0) {
@@ -476,11 +517,11 @@ export const RollSection: React.FC<RollSectionProps> = ({
             {canRoll ? 'READY TO ROLL' : `COOLDOWN: ${(remain / 1000).toFixed(1)}s`}
           </div>
           {/* Progress Bar */}
-          <div className="w-48 h-1.5 bg-slate-800 rounded-full mx-auto mt-2 overflow-hidden">
+          <div role="progressbar" aria-label="Roll cooldown progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(cooldownProgressPct)} className="w-48 h-1.5 bg-slate-800 rounded-full mx-auto mt-2 overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-200"
               style={{
-                width: canRoll ? '100%' : `${Math.min(100, ((cd - remain) / cd) * 100)}%`,
+                width: `${cooldownProgressPct}%`,
               }}
             />
           </div>
@@ -501,6 +542,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
         )}
 
         <button
+          type="button"
+          disabled={busy}
+          aria-busy={busy}
           onClick={handleRollClick}
           className={'roll-button ' + (frenzyArmed ? 'frenzy-supercharged' : canRoll ? 'is-ready' : 'is-waiting') + ' w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ' +
             (frenzyArmed
@@ -510,7 +554,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               : busy
               ? 'bg-slate-800 text-slate-400 cursor-wait'
               : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700')}
-          aria-label={frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} Free Rolls` : 'Roll'}
+          aria-label={busy ? 'Roll in progress' : frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} Free Rolls` : 'Roll'}
         >
           {frenzyArmed && (
             <>
@@ -537,6 +581,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
         </button>
 
         <button
+          type="button"
+          aria-busy={busy}
           onClick={() => void onOrbFrenzy()}
           disabled={busy || frenzyArmed || frenzyUsedToday}
           className={
@@ -577,6 +623,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
           {/* Auto Roll Toggle */}
           {isAutoUnlocked ? (
             <button
+              type="button"
+              aria-pressed={autoRoll}
               onClick={() => {
                 sound.playClick();
                 onToggleAutoRoll();
@@ -600,6 +648,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
           {/* Celestial Sonar Silent Mode Toggle (Unlocked via Prestige) */}
           {hasSonarUpgrade && (
             <button
+              type="button"
+              aria-pressed={sonarActive}
               onClick={() => {
                 const next = !sonarActive;
                 setSonarActive(next);
@@ -612,7 +662,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               }`}
               title="Silent Mode: Mutes standard rolls and alerts with a crystal chime on rare drops"
             >
-              <BellRing className={`w-3.5 h-3.5 ${sonarActive ? 'text-cyan-400 animate-pulse' : ''}`} />
+              <BellRing className={`w-3.5 h-3.5 ${sonarActive ? 'text-cyan-400 motion-safe:animate-pulse' : ''}`} />
               <span>Sonar Ping: {sonarActive ? 'SILENT' : 'OFF'}</span>
             </button>
           )}
@@ -620,6 +670,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
           {/* Chrono-Skip Instant Multi-Roll (Unlocked via Prestige) */}
           {hasInstantUpgrade && (
             <button
+              type="button"
+              aria-pressed={instantRevealActive}
               onClick={() => {
                 const next = !instantRevealActive;
                 setInstantRevealActive(next);
@@ -643,6 +695,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
           {/* Singularity Filter Toggle (Unlocked via Prestige) */}
           {hasFilterUpgrade && (
             <button
+              type="button"
+              aria-pressed={filterActive}
               onClick={() => {
                 const next = !filterActive;
                 setFilterActive(next);
@@ -781,6 +835,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
                 </span>
               )}
               <button
+                type="button"
+                aria-expanded={showBatchDetails}
+                aria-label={showBatchDetails ? 'Hide batch breakdown' : 'Show batch breakdown'}
                 onClick={() => {
                   sound.playClick();
                   setShowBatchDetails(!showBatchDetails);
@@ -826,6 +883,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
       {/* Share to Reddit Action */}
       {lastOrb && lastOrb.rarity >= 100 && (
         <button
+          type="button"
+          aria-label={`Share orb rarity 1/${formatRarity(lastOrb.rarity)} to Reddit`}
           onClick={() => {
             sound.playClick();
             onOpenShareModal(lastOrb.rarity);

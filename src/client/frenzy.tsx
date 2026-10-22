@@ -6,6 +6,21 @@ import './styles.css';
 import { formatRarity, getOrbInfo, FRENZY_POST_LIFETIME_MS } from '../shared/game.js';
 import { recordPostImpression } from './impressions.js';
 
+async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 10_000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Request timed out. For claims or comments, refresh to verify the result before trying again.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 interface FrenzyInfo {
   rarity: number;
   ownerUsername: string;
@@ -108,7 +123,7 @@ function FrenzyPost() {
     setLoadingInfo(true);
     setError(null);
     try {
-      const res = await fetch('/api/frenzy/info');
+      const res = await fetchWithTimeout('/api/frenzy/info');
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not load Frenzy.');
       const data = await res.json() as FrenzyInfo;
       setInfo(data);
@@ -131,8 +146,22 @@ function FrenzyPost() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
+    let timer: number | null = null;
+    const syncTimer = () => {
+      setNow(Date.now());
+      if (document.visibilityState === 'hidden') {
+        if (timer !== null) window.clearInterval(timer);
+        timer = null;
+      } else if (timer === null) {
+        timer = window.setInterval(() => setNow(Date.now()), 1000);
+      }
+    };
+    syncTimer();
+    document.addEventListener('visibilitychange', syncTimer);
+    return () => {
+      if (timer !== null) window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', syncTimer);
+    };
   }, []);
 
   const claim = async (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -149,7 +178,7 @@ function FrenzyPost() {
     } catch (error) {
       expansionPromise = Promise.reject(error);
     }
-    const armPromise = fetch('/api/frenzy/arm', { method: 'POST' }).then(async arm => {
+    const armPromise = fetchWithTimeout('/api/frenzy/arm', { method: 'POST' }).then(async arm => {
       const armData = await arm.json().catch(() => ({}));
       if (!arm.ok) throw new Error(armData.error || 'Could not arm Frenzy.');
     });

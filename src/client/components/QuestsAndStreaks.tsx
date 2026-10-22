@@ -9,7 +9,7 @@ import {
   Award,
 } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { formatNumber } from '../../shared/game.js';
+import { formatNumber, todayKey } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface QuestsAndStreaksProps {
@@ -43,7 +43,9 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
       setClaimPending(false);
     }
   };
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayKey();
+  const questProgressPct = (progress: number, target: number, unlocked: boolean) =>
+    unlocked ? Math.max(0, Math.min(100, Math.round((Math.max(0, progress) / Math.max(1, target)) * 100))) : 0;
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
   const lastClaimDate = typeof state.streak.lastClaimDate === 'string' ? state.streak.lastClaimDate : '';
   const alreadyClaimedStreak = lastClaimDate === today;
@@ -250,7 +252,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
           {state.weeklyQuests.map(q => {
             const isUnlocked = q.unlocked !== false;
             const isComplete = isUnlocked && q.progress >= q.target;
-            const pct = isUnlocked ? Math.min(100, Math.round((q.progress / q.target) * 100)) : 0;
+            const pct = questProgressPct(q.progress, q.target, isUnlocked);
 
             return (
               <div

@@ -31,7 +31,7 @@ import type {
 } from '../../shared/game.js';
 import {
   calculateCosmicDust,
-  xpRequiredForLevel,
+  getLevelProgress,
   LEVEL_MILESTONES,
   COSMETICS,
   PRESTIGE_UPGRADES,
@@ -66,6 +66,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
   const [autoScrapEnabled,setAutoScrapEnabled]=useState(state.combatAutoScrap?.enabled===true);
   const [autoScrapQuality,setAutoScrapQuality]=useState(state.combatAutoScrap?.maxQuality??20);
   const [autoScrapSaving,setAutoScrapSaving]=useState(false);
+  const autoScrapLockRef=useRef(false);
   const [autoScrapError,setAutoScrapError]=useState('');
   const autoScrapLockRef=useRef(false);
   useEffect(()=>{setAutoScrapEnabled(state.combatAutoScrap?.enabled===true);setAutoScrapQuality(state.combatAutoScrap?.maxQuality??20);},[state.combatAutoScrap?.enabled,state.combatAutoScrap?.maxQuality]);
@@ -191,18 +192,15 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
     }
   };
 
-  const displayedLevel = Math.max(1, state.level || 1);
-  let xpBeforeLevel = 0;
-  for (let level = 1; level < displayedLevel; level++) {
-    xpBeforeLevel += xpRequiredForLevel(level);
-  }
-  const levelXpRequired = xpRequiredForLevel(displayedLevel);
-  const currentLevelXp = Math.max(0, (state.xp || 0) - xpBeforeLevel);
-  const levelInfo = {
-    level: displayedLevel,
-    currentLevelXp,
-    nextLevelXp: levelXpRequired,
-    progressPercent: Math.min(100, Math.round((currentLevelXp / levelXpRequired) * 100)),
+  const safeStoredLevel=Number.isFinite(Number(state.level))?Math.max(1,Math.min(1000,Math.floor(Number(state.level)))):1;
+  const displayedLevel=safeStoredLevel;
+  const safeTotalXp=Number.isFinite(Number(state.xp))?Math.max(0,Number(state.xp)):0;
+  const isMaxLevel=safeStoredLevel>=1000;
+  const levelProgress=getLevelProgress(safeStoredLevel,safeTotalXp,state.levelXpFloor);
+  const levelInfo={
+    ...levelProgress,
+    currentLevelXp:isMaxLevel?levelProgress.nextLevelXp:levelProgress.currentLevelXp,
+    progressPercent:isMaxLevel?100:Math.max(0,Math.min(100,Math.round(Number(levelProgress.progressPercent)||0))),
   };
   const levelBenefits = getLevelBenefits(displayedLevel);
 
@@ -213,7 +211,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-purple-800/30 pb-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-purple-500/30">
-              <Star className="w-6 h-6 fill-current text-amber-300 animate-spin" style={{ animationDuration: '14s' }} />
+              <Star className="w-6 h-6 fill-current text-amber-300 motion-safe:animate-spin" style={{ animationDuration: '14s' }} />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -242,17 +240,17 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
         {/* EXP Progress Bar */}
         <div className="space-y-2 bg-slate-950/60 border border-purple-900/40 p-4 rounded-2xl">
           <div className="flex items-center justify-between text-xs font-mono">
-            <span className="text-slate-300 font-bold">Progress to Level {levelInfo.level + 1}</span>
+            <span className="text-slate-300 font-bold">{isMaxLevel ? 'Maximum Level Reached' : 'Progress to Level ' + (levelInfo.level + 1)}</span>
             <span className="text-purple-300">
               {fmt(levelInfo.currentLevelXp)} / {fmt(levelInfo.nextLevelXp)} XP ({levelInfo.progressPercent}%)
             </span>
           </div>
-          <div className="w-full bg-slate-900 rounded-full h-3 overflow-hidden border border-slate-800 p-0.5">
+          <div role="progressbar" aria-label={"Level "+levelInfo.level+" experience progress"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={levelInfo.progressPercent} className="w-full bg-slate-900 rounded-full h-3 overflow-hidden border border-slate-800 p-0.5">
             <div
-              className="h-full bg-gradient-to-r from-purple-500 via-indigo-400 to-cyan-400 rounded-full transition-all duration-500 shadow-[0_0_12px_rgba(168,85,247,0.8)] relative"
+              className="h-full bg-gradient-to-r from-purple-500 via-indigo-400 to-cyan-400 rounded-full motion-safe:transition-all duration-500 shadow-[0_0_12px_rgba(168,85,247,0.8)] relative"
               style={{ width: `${levelInfo.progressPercent}%` }}
             >
-              <div className="absolute inset-0 bg-white/25 animate-pulse" />
+              <div className="absolute inset-0 bg-white/25 motion-safe:animate-pulse" />
             </div>
           </div>
         </div>
