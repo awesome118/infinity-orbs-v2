@@ -115,6 +115,7 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
   const maxAttempts = isRead ? 3 : 1;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let receivedNonRetryableHttpError = false;
     try {
       const res = await fetch(url, options);
       if (!res.ok) {
@@ -157,6 +158,7 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
           continue;
         }
 
+        receivedNonRetryableHttpError = true;
         throw new Error(message);
       }
 
@@ -164,6 +166,7 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
     } catch (error: any) {
       const retryableNetworkRead =
         isRead &&
+        !receivedNonRetryableHttpError &&
         attempt < maxAttempts - 1 &&
         error?.name !== 'AbortError';
 
