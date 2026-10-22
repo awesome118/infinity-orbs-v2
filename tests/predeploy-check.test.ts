@@ -14,9 +14,9 @@ function validDevvitConfig(name = 'infinity-orbs') {
     post: {
       dir: 'dist/client',
       entrypoints: {
-        default: { inline: true, entry: 'splash.html' },
-        game: { entry: 'game.html' },
-        frenzy: { entry: 'frenzy.html', height: 'tall' },
+        default: { inline: true, entry: 'splash.html', height: 'tall' },
+        game: { entry: 'game.html', inline: false },
+        frenzy: { entry: 'frenzy.html', height: 'tall', inline: true },
       },
     },
     server: { dir: 'dist/server', entry: 'index.cjs' },
@@ -71,8 +71,14 @@ function createFixture(options: {
 
   if (options.createSourceDir !== false) {
     const sourceDir = join(root, 'src');
-    mkdirSync(sourceDir, { recursive: true });
+    const clientDir = join(sourceDir, 'client');
+    mkdirSync(clientDir, { recursive: true });
     writeFileSync(join(sourceDir, 'entry.ts'), options.sourceText ?? 'export const healthy = true;\n');
+    writeFileSync(join(clientDir, 'splash.html'), '<html class="io-inline-post"><body class="io-inline-post"><div id="root" class="io-inline-post"></div></body></html>');
+    writeFileSync(join(clientDir, 'frenzy.html'), '<html class="io-inline-post"><body class="io-inline-post"><div id="root" class="io-inline-post"></div></body></html>');
+    writeFileSync(join(clientDir, 'splash.tsx'), 'export const splashInlineSafe = true;\n');
+    writeFileSync(join(clientDir, 'frenzy.tsx'), 'export const frenzyInlineSafe = true;\n');
+    writeFileSync(join(clientDir, 'styles.css'), '.io-public { overflow: clip; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }\n.io-combat-log{max-height:245px;overflow:auto}\n');
   }
 
   return {
@@ -165,6 +171,21 @@ const invalidManifestCases: Array<{
     label: 'game entrypoint',
     mutate: manifest => { manifest.post.entrypoints.game.entry = 'missing.html'; },
     expected: /post\.entrypoints\.game\.entry must be/,
+  },
+  {
+    label: 'full game must be Expanded Mode only',
+    mutate: manifest => { manifest.post.entrypoints.game.inline = true; },
+    expected: /post\.entrypoints\.game\.inline must be false/,
+  },
+  {
+    label: 'default inline splash uses the bounded tall layout',
+    mutate: manifest => { manifest.post.entrypoints.default.height = 'regular'; },
+    expected: /post\.entrypoints\.default\.height must be/,
+  },
+  {
+    label: 'Frenzy post is explicitly inline',
+    mutate: manifest => { manifest.post.entrypoints.frenzy.inline = false; },
+    expected: /post\.entrypoints\.frenzy\.inline must be true/,
   },
   {
     label: 'Frenzy entrypoint and tall layout',
