@@ -187,7 +187,7 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
             </h2>
           </div>
 
-          <div className="flex gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-slate-800 flex-wrap">
+          <div role="group" aria-label="Filter Mastery skills by branch" className="flex gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-slate-800 flex-wrap">
             {[
               { id: 'all', label: 'All Branches' },
               { id: 'fortune', label: '🍀 Fortune' },

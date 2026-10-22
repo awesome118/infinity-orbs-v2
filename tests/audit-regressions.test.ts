@@ -2692,6 +2692,7 @@ test('header experience progress and icon-only actions have keyboard/screen-read
   const header = source('src/client/components/Header.tsx');
   assert.ok(header.includes('aria-label={`Open profile. Experience progress'));
   assert.ok(header.includes('focus-visible:outline-purple-300'));
+  assert.ok(header.includes("!event.repeat && (event.key === 'Enter' || event.key === ' ')"));
   assert.ok(header.includes('aria-label="View probability and drop odds"'));
   assert.ok(header.includes('aria-label="Report a bug or send a suggestion"'));
   assert.ok(header.includes('aria-label="Open admin console"'));
@@ -2768,6 +2769,14 @@ test('combined Mastery Cosmos filter includes every Cosmos-branch skill', () => 
   for (const skill of ['critMastery', 'celestialSurge', 'cosmicAttunement', 'celestialVolley', 'aftershock']) {
     assert.ok(mastery.includes("id === '" + skill + "'"));
     assert.ok(combined.includes("id === '" + skill + "'"));
+  }
+});
+
+test('Mastery branch filters are named groups with pressed-state buttons', () => {
+  for (const path of ['src/client/components/MasterySection.tsx', 'src/client/components/AltarAndMasterySection.tsx']) {
+    const content = source(path);
+    assert.ok(content.includes('role="group" aria-label="Filter Mastery skills by branch"'));
+    assert.ok(content.includes('aria-pressed={activeBranch === b.id}'));
   }
 });
 

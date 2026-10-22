@@ -389,7 +389,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
           </div>
 
           {/* Filter Branches */}
-          <div className="flex flex-wrap gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-slate-800">
+          <div role="group" aria-label="Filter Mastery skills by branch" className="flex flex-wrap gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-slate-800">
             {[
               { id: 'all', label: 'All Branches' },
               { id: 'fortune', label: '🍀 Fortune' },
