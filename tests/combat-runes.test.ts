@@ -139,3 +139,12 @@ test('Rune sacrifice XP increases with rarity, donor level, and source depth',()
   assert.ok(deepCosmic>cosmic);
   assert.ok(rankedCosmic>cosmic);
 });
+
+test('invalid Rune progression inputs cannot unlock slots or propagate NaN values',()=>{
+  assert.equal(combatRuneSlotsUnlocked(Number.POSITIVE_INFINITY,Number.POSITIVE_INFINITY),2);
+  assert.equal(combatRuneSlotsUnlocked(Number.NaN,Number.NaN),2);
+  assert.equal(combatRuneValueFor('Unknown' as never,'luckPct',10),0);
+  assert.equal(combatRuneValueFor('Rare','unknown' as never,10),0);
+  assert.equal(combatRuneValueFor('Rare','luckPct',Number.POSITIVE_INFINITY),combatRuneValueFor('Rare','luckPct',0));
+  assert.equal(combatRuneSacrificeExperience({rarity:'Unknown' as never,level:1,sourceDepth:0}),1);
+});
