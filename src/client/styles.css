@@ -2211,3 +2211,24 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-runes-process-button{min-height:2.2rem;white-space:normal;max-width:15rem}
 .io-runes-auto-sacrifice p{grid-column:1/-1;margin:0}
 @media(max-width:600px){.io-runes-auto-sacrifice{grid-template-columns:1fr}.io-runes-process-button{max-width:none}.io-runes-strengthen-mode{align-items:flex-start}.io-runes-strengthen-mode>button{flex:0 0 auto}}
+
+/* 1.2.44 audit pass: keyboard focus, low-motion support, and compact Rune inventory controls. */
+.io-runes-inventory-controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(8rem,.35fr) auto;align-items:end;gap:.55rem;margin:.55rem 0 .8rem}
+.io-runes-search,.io-runes-filter{display:grid;gap:.28rem;min-width:0;color:#c4b5fd;font-size:.64rem;font-weight:900}
+.io-runes-search input,.io-runes-filter select{box-sizing:border-box;width:100%;min-width:0;min-height:2.35rem;padding:.5rem .6rem;border:1px solid rgba(167,139,250,.3);border-radius:.5rem;background:#11101b;color:#f5f3ff;font:inherit;font-size:.72rem}
+.io-runes-search input::placeholder{color:#7c7890}
+.io-runes-search input:focus-visible,.io-runes-filter select:focus-visible{outline:2px solid #c4b5fd;outline-offset:2px}
+.io-runes-clear-filter{white-space:nowrap;min-height:2.35rem}
+.io-runes-xp-track{height:5px;overflow:hidden;margin:.42rem 0 .25rem;border-radius:999px;background:rgba(148,163,184,.15)}
+.io-runes-xp-track>span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#7c3aed,#c4b5fd);transition:width .2s ease}
+.io-runes-capacity-warning,.io-runes-auto-warning{color:#fde68a;font-size:.68rem;line-height:1.45}
+.io-runes-capacity-warning{display:block;grid-column:1/-1}
+.io-runes-auto-warning{padding:.5rem .6rem;border:1px solid rgba(251,191,36,.25);border-radius:.45rem;background:rgba(120,53,15,.14)}
+.io-runes-page{padding-bottom:max(.75rem,env(safe-area-inset-bottom))}
+button:focus-visible,a:focus-visible,[role="button"]:focus-visible{outline:2px solid #c4b5fd;outline-offset:3px}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #c4b5fd;outline-offset:2px}
+@media(max-width:600px){.io-runes-inventory-controls{grid-template-columns:minmax(0,1fr) minmax(7rem,.55fr)}.io-runes-clear-filter{grid-column:1/-1;width:100%}}
+@media(max-width:360px){.io-runes-inventory-controls{grid-template-columns:minmax(0,1fr)}.io-runes-clear-filter{grid-column:auto}}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
+}
