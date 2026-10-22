@@ -1007,8 +1007,9 @@ export function createApp() {
     try { res.setHeader('Cache-Control','no-store'); res.json(await challengeCombatArena(opponentId)); }
     catch(e:any) {
       const message=e?.message||'Arena challenge failed.';
-      const status=message==='REDDIT_LOGIN_REQUIRED'?401:message==='ARENA_SELF_CHALLENGE'?400:message==='ARENA_OPPONENT_UNAVAILABLE'?404:message.startsWith('ARENA_COOLDOWN:')?429:message==='Combat state changed repeatedly. Please retry.'?503:500;
-      res.status(status).json({error:message.startsWith('ARENA_COOLDOWN:')?'Your next Arena challenge is not ready yet.':message,...(message.startsWith('ARENA_COOLDOWN:')?{retryAfterMs:Math.max(0,Number(message.slice('ARENA_COOLDOWN:'.length))||0)}:{})});
+      const targetCooldown=message.startsWith('ARENA_OPPONENT_COOLDOWN:');
+      const status=message==='REDDIT_LOGIN_REQUIRED'?401:message==='ARENA_SELF_CHALLENGE'?400:message==='ARENA_OPPONENT_UNAVAILABLE'?404:message.startsWith('ARENA_COOLDOWN:')||targetCooldown?429:message==='Combat state changed repeatedly. Please retry.'?503:500;
+      res.status(status).json({error:message.startsWith('ARENA_COOLDOWN:')?'Your next Arena challenge is not ready yet.':targetCooldown?'This opponent was challenged recently. Choose another opponent.':message,...(message.startsWith('ARENA_COOLDOWN:')?{retryAfterMs:Math.max(0,Number(message.slice('ARENA_COOLDOWN:'.length))||0)}:targetCooldown?{retryAfterMs:Math.max(0,Number(message.slice('ARENA_OPPONENT_COOLDOWN:'.length))||0)}:{})});
     }
   });
 
