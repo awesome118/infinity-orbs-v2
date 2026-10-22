@@ -399,6 +399,8 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
             ].map(b => (
               <button
                 key={b.id}
+                type="button"
+                aria-pressed={activeBranch === b.id}
                 onClick={() => setActiveBranch(b.id as any)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   activeBranch === b.id

@@ -2735,6 +2735,15 @@ test('upgrade and mastery controls use existing local pending state for busy sem
   assert.ok(combined.includes('aria-busy={sacrificing || busy}'));
 });
 
+test('Mastery branch filters expose their selected state to assistive technology', () => {
+  const mastery = source('src/client/components/MasterySection.tsx');
+  const combined = source('src/client/components/AltarAndMasterySection.tsx');
+  assert.ok(mastery.includes('aria-pressed={activeBranch === b.id}'));
+  assert.ok(combined.includes('aria-pressed={activeBranch === b.id}'));
+  assert.ok((mastery.match(/type="button"\s+aria-pressed=\{activeBranch === b\.id\}/g) ?? []).length === 1);
+  assert.ok((combined.match(/type="button"\s+aria-pressed=\{activeBranch === b\.id\}/g) ?? []).length === 1);
+});
+
 test('Altar descriptions match the implemented multiplicative bonus rates', () => {
   const altar = source('src/client/components/AltarSection.tsx');
   const combined = source('src/client/components/AltarAndMasterySection.tsx');
