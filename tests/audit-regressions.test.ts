@@ -2714,6 +2714,14 @@ test('best-orb reveal badges reflect critical and discovery flags from the selec
   assert.ok(!shared.includes('isCrit: bestRarity > (sourceState.highestRarity ?? 0),'));
 });
 
+test('Altar range controls have explicit labels connected to their inputs', () => {
+  const altar = source('src/client/components/AltarSection.tsx');
+  assert.ok(altar.includes('<label htmlFor="altar-coin-offer"'));
+  assert.ok(altar.includes('<input\n              id="altar-coin-offer"'));
+  assert.ok(altar.includes('<label htmlFor="altar-shard-offer"'));
+  assert.ok(altar.includes('<input\n              id="altar-shard-offer"'));
+});
+
 test('Quest claim controls expose local pending state to assistive technology', () => {
   const quests = source('src/client/components/QuestsAndStreaks.tsx');
   assert.ok((quests.match(/aria-busy=\{busy \|\| claimPending\}/g) ?? []).length >= 3);

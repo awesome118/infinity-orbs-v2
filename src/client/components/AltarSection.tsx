@@ -284,7 +284,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
           {/* Coins Offering Box */}
           <div className="space-y-3 bg-slate-950/60 border border-slate-800/80 p-4 rounded-2xl">
             <div className="flex items-center justify-between text-xs">
-              <label className="font-bold text-amber-300 flex items-center gap-1.5">
+              <label htmlFor="altar-coin-offer" className="font-bold text-amber-300 flex items-center gap-1.5">
                 <Coins className="w-3.5 h-3.5 text-amber-400" />
                 <span>Coin Sacrifice</span>
               </label>
@@ -294,6 +294,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
             </div>
 
             <input
+              id="altar-coin-offer"
               type="range"
               min={0}
               max={state.coins}
@@ -331,7 +332,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
           {/* Shards Offering Box */}
           <div className="space-y-3 bg-slate-950/60 border border-slate-800/80 p-4 rounded-2xl">
             <div className="flex items-center justify-between text-xs">
-              <label className="font-bold text-cyan-300 flex items-center gap-1.5">
+              <label htmlFor="altar-shard-offer" className="font-bold text-cyan-300 flex items-center gap-1.5">
                 <Gem className="w-3.5 h-3.5 text-cyan-400" />
                 <span>Shard Sacrifice</span>
               </label>
@@ -341,6 +342,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
             </div>
 
             <input
+              id="altar-shard-offer"
               type="range"
               min={0}
               max={state.shards ?? 0}
