@@ -171,15 +171,19 @@ for (const [file, code] of [
   }
 }
 const stylesheet = readInlineSource("src/client/styles.css");
+const documentRule = stylesheet.match(/html\.io-inline-post,\s*body\.io-inline-post\s*\{([^}]+)\}/)?.[1] ?? "";
+const rootRule = stylesheet.match(/#root\.io-inline-post\s*\{([^}]+)\}/)?.[1] ?? "";
 const publicRule = stylesheet.match(/\.io-public\s*\{([^}]+)\}/)?.[1] ?? "";
-if (!/touch-action\s*:\s*pan-y(?:\s+pinch-zoom)?/.test(publicRule)) {
-  reportFailure("The inline public post surface must explicitly allow vertical feed scrolling with touch-action: pan-y.");
-}
-if (!/overscroll-behavior\s*:\s*auto/.test(publicRule)) {
-  reportFailure("The inline public post surface must let vertical overscroll propagate to Reddit.");
-}
-if (/overflow\s*:\s*(?:auto|scroll)|overflow-y\s*:\s*(?:auto|scroll)/.test(publicRule)) {
-  reportFailure("The inline public post surface must not become a scroll container.");
+for (const [label, rule] of [["html/body", documentRule], ["inline root", rootRule], ["public post", publicRule]]) {
+  if (!/touch-action\s*:\s*pan-y(?:\s+pinch-zoom)?/.test(rule)) {
+    reportFailure(`The ${label} must allow native vertical scrolling with touch-action: pan-y.`);
+  }
+  if (!/overscroll-behavior\s*:\s*auto/.test(rule)) {
+    reportFailure(`The ${label} must let overscroll propagate to Reddit.`);
+  }
+  if (/touch-action\s*:\s*none|overscroll-behavior\s*:\s*none|overflow(?:-[xy])?\s*:\s*(?:auto|scroll)/.test(rule)) {
+    reportFailure(`The ${label} must not capture or create a scroll trap.`);
+  }
 }
 
 if (failures.length) {
