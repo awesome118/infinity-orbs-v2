@@ -513,10 +513,9 @@ function chooseGuidedSkillId(s:CombatState,enemy:CombatEnemy):CombatSkillId|null
 }
 
 export async function hasCompletedCombatTutorial():Promise<boolean>{
-  const raw=await redis.get(combatKey());
-  if(typeof raw!=='string'||!raw.trim())return false;
-  try{const parsed=JSON.parse(raw) as {combatTutorialSeen?:unknown};return parsed?.combatTutorialSeen===true;}
-  catch{return false;}
+  // Share the same fail-closed save validation as all combat reads. A damaged
+  // save must not masquerade as an unseen tutorial and then be overwritten.
+  return normalizeState(await redis.get(combatKey())).combatTutorialSeen;
 }
 export async function markCombatTutorialSeen():Promise<void>{
   await mutate(s=>{s.combatTutorialSeen=true;return undefined;});
