@@ -2762,6 +2762,15 @@ test('Mastery and Altar success effects wait for confirmed server results', () =
   assert.ok(combinedMastery.indexOf('await onUpgradeMastery(skillId)') < combinedMastery.indexOf('sound.playLevelUpFanfare()'));
 });
 
+test('combined Mastery Cosmos filter includes every Cosmos-branch skill', () => {
+  const mastery = source('src/client/components/MasterySection.tsx');
+  const combined = source('src/client/components/AltarAndMasterySection.tsx');
+  for (const skill of ['critMastery', 'celestialSurge', 'cosmicAttunement', 'celestialVolley', 'aftershock']) {
+    assert.ok(mastery.includes("id === '" + skill + "'"));
+    assert.ok(combined.includes("id === '" + skill + "'"));
+  }
+});
+
 test('Mastery branch filters expose their selected state to assistive technology', () => {
   const mastery = source('src/client/components/MasterySection.tsx');
   const combined = source('src/client/components/AltarAndMasterySection.tsx');
@@ -2830,7 +2839,7 @@ test('Chain Patcher takes priority over Free Roll cooldown bypass in the roll UI
   assert.ok(roll.includes('Chain Patcher is charged; wait'));
   assert.ok(roll.includes('preserves ${freeRolls} stored Free Rolls.'));
   const quests = source('src/client/components/QuestsAndStreaks.tsx');
-  assert.ok(quests.includes('Free Rolls bypass cooldown unless Chain Patcher is charged'));
+  assert.ok(quests.includes('Manual Free Rolls bypass normal cooldown; Frenzy and Chain Patcher take priority'));
 });
 
 test('armed Frenzy readiness and Pity Luck meter use the actual gameplay thresholds', () => {

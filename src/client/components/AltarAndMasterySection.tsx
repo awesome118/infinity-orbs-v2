@@ -143,7 +143,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
     if (activeBranch === 'fortune' && (id === 'continuumLuck' || id === 'pityAccelerant' || id === 'apexFortune')) return true;
     if (activeBranch === 'temporal' && (id === 'chronoFlow')) return true;
     if (activeBranch === 'alchemy' && (id === 'prosperity' || id === 'shardAttunement' || id === 'infiniteVault')) return true;
-    if (activeBranch === 'cosmos' && (id === 'critMastery' || id === 'celestialSurge' || id === 'cosmicAttunement')) return true;
+    if (activeBranch === 'cosmos' && (id === 'critMastery' || id === 'celestialSurge' || id === 'cosmicAttunement' || id === 'celestialVolley' || id === 'aftershock')) return true;
     return false;
   });
 

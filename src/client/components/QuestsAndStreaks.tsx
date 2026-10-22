@@ -115,7 +115,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
               <div key="rolls" className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-3">
                 <span className="block text-[10px] uppercase font-black text-purple-300/70">Free Rolls</span>
                 <span className="text-lg font-black text-white">+{day * 5}</span>
-                <span className="block text-[9px] text-slate-500">Free Rolls bypass cooldown unless Chain Patcher is charged</span>
+                <span className="block text-[9px] text-slate-500">Manual Free Rolls bypass normal cooldown; Frenzy and Chain Patcher take priority</span>
               </div>,
               <div key="community" className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 p-3">
                 <span className="block text-[10px] uppercase font-black text-fuchsia-300/70">Community Tier</span>
