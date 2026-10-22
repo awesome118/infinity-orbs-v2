@@ -273,7 +273,8 @@ function normalizeState(raw:string|null|undefined):CombatState {
   };
   // Current inventory is authoritative when present; merge in old dungeon bags so previously collected gear is retained.
   const rawInventory:unknown[]=[];
-  const hasPersistedInventory=Array.isArray(p.inventory)||
+  const hasPersistedInventory=Object.prototype.hasOwnProperty.call(p,'inventory')||
+    Object.prototype.hasOwnProperty.call(p,'inventoryByDungeon')||
     (['undercrypt','cinder-vault','glass-labyrinth'] as const).some(dungeon=>Array.isArray(persisted.inventoryByDungeon?.[dungeon]));
   if(Array.isArray(p.inventory))for(const item of p.inventory)rawInventory.push(item);
   for(const dungeon of ['undercrypt','cinder-vault','glass-labyrinth'] as const){
