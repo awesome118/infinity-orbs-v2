@@ -32,22 +32,11 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
   const alreadyClaimedStreak = lastClaimDate === today;
   const streakCount = Number.isSafeInteger(state.streak.count) ? Math.max(0, state.streak.count) : 0;
   const streakIsActive = alreadyClaimedStreak || lastClaimDate === yesterday;
-  const currentStreakDay = streakCount > 0 ? ((streakCount - 1) % 7) + 1 : 1;
   const progressPercent = (progress: number, target: number) => {
     const safeProgress = Number(progress), safeTarget = Number(target);
     if (!Number.isFinite(safeProgress) || !Number.isFinite(safeTarget) || safeTarget <= 0) return 0;
     return Math.max(0, Math.min(100, Math.round(safeProgress / safeTarget * 100)));
   };
-
-  const streakRewards = [
-    { day: 1, coins: 50, shards: 0 },
-    { day: 2, coins: 100, shards: 0 },
-    { day: 3, coins: 150, shards: 1 },
-    { day: 4, coins: 200, shards: 0 },
-    { day: 5, coins: 250, shards: 0 },
-    { day: 6, coins: 300, shards: 0 },
-    { day: 7, coins: 350, shards: 5 },
-  ];
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
