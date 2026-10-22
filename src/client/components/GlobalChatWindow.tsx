@@ -165,6 +165,16 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   }, [launcherContext]);
 
   useEffect(() => {
+    // Escape closes the floating chat without requiring precise pointer targeting.
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [open]);
+
+  useEffect(() => {
     // History remains readable even when posting is disabled in this context.
     void refreshChat();
     const interval = window.setInterval(() => void refreshChat(), open ? 3000 : 10000);
@@ -243,6 +253,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
     return (
       <button
         type="button"
+        aria-label={unreadCount>0?'Open Global Chat, '+unreadCount+' unread messages':'Open Global Chat'}
         onClick={() => {
           markMessagesSeen(messages);
           shouldFollowMessagesRef.current = true;
@@ -267,7 +278,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   }
 
   return (
-    <section className="fixed bottom-4 right-4 z-40 w-[min(380px,calc(100vw-2rem))] rounded-3xl border border-slate-700 bg-slate-950/95 shadow-2xl backdrop-blur-xl overflow-hidden">
+    <section role="dialog" aria-modal={false} aria-label="Global Chat" className="fixed bottom-4 right-4 z-40 w-[min(380px,calc(100vw-2rem))] rounded-3xl border border-slate-700 bg-slate-950/95 shadow-2xl backdrop-blur-xl overflow-hidden">
       <header className="flex items-center justify-between border-b border-slate-800 bg-slate-900/95 px-4 py-3">
         <div className="flex items-center gap-2">
           <MessageCircle className="w-4 h-4 text-indigo-300" />
@@ -280,6 +291,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           type="button"
           onClick={() => setOpen(false)}
           className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-800 hover:text-white"
+          aria-label="Minimize Global Chat"
           title="Minimize chat"
         >
           <Minimize2 className="w-3.5 h-3.5" />
@@ -301,6 +313,9 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
 
       <div
         ref={chatListRef}
+        role="log"
+        aria-label="Global Chat message history"
+        aria-relevant="additions text"
         onScroll={() => {
           const element = chatListRef.current;
           if (!element) return;
