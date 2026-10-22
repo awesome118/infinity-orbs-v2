@@ -37,6 +37,8 @@ function skillValue(skill:CombatSkillDefinition,rank:number,_speed=300):string {
 function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusPercent}:{item:CombatGear;isEquipped:boolean;onEquip:()=>void;onScrap:()=>void;busy:boolean;currentFloor:number;scrapBonusPercent:number}) {
   const [showTooltip,setShowTooltip]=useState(false);
   const [tooltipPoint,setTooltipPoint]=useState<{x:number;y:number}|null>(null);
+  const lastPointerTypeRef=useRef<string>('mouse');
+  const tooltipId='io-combat-gear-tooltip-'+encodeURIComponent(item.id);
   const grade=combatGearRarityForQuality(item.quality);
   const SlotIcon=GEAR_SLOTS.find(entry=>entry.slot===item.slot)?.Icon??Gem;
   const bonuses=[
@@ -51,23 +53,25 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     setShowTooltip(true);
   };
   return <article className={'io-combat-gear-icon-wrap '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
-    onPointerEnter={event=>{if(event.pointerType==='mouse')moveTooltip(event.clientX,event.clientY);}}
-    onPointerLeave={()=>setShowTooltip(false)}
+    onPointerEnter={event=>{lastPointerTypeRef.current=event.pointerType;if(event.pointerType==='mouse')moveTooltip(event.clientX,event.clientY);}}
+    onPointerLeave={()=>{if(lastPointerTypeRef.current==='mouse')setShowTooltip(false);}}
     onFocus={event=>{const rect=event.currentTarget.getBoundingClientRect();moveTooltip(rect.right,rect.top);}}
     onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))setShowTooltip(false);}}>
     <button type="button" className={'io-combat-gear-icon '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
-      aria-label={(isEquipped?'Inspect equipped ':'Equip ')+item.name}
+      aria-label={(isEquipped?'Inspect equipped ':'Inspect ')+item.name}
+       aria-expanded={showTooltip}
+       aria-controls={tooltipId}
       title={item.name}
       disabled={busy}
-      onClick={()=>{if(!isEquipped)onEquip();else setShowTooltip(value=>!value);}}>
+      onClick={()=>{if(lastPointerTypeRef.current==='touch')setShowTooltip(value=>!value);else if(!isEquipped)onEquip();else setShowTooltip(value=>!value);}}>
       <SlotIcon size={27} strokeWidth={1.8} aria-hidden="true"/>
       <small>{item.quality.toFixed(0)}%</small>
       <span className="io-combat-gear-icon-power">{fmt(item.power)}</span>
       {isEquipped&&<span className="io-combat-gear-equipped">✓</span>}
     </button>
-    <div className={'io-combat-gear-tooltip '+(showTooltip?'is-open':'')}
+    <div id={tooltipId} className={'io-combat-gear-tooltip '+(showTooltip?'is-open':'')}
       style={{position:'fixed',left:tooltipPoint?.x??12,top:tooltipPoint?.y??12,right:'auto',maxWidth:'min(310px, calc(100vw - 16px))',maxHeight:'min(360px, calc(100vh - 16px))',overflow:'auto'}}
-      role="tooltip">
+      role="group" aria-label={item.name+' details'}>
       <span className="io-combat-eyebrow">{grade.toUpperCase()} ITEM · {item.quality.toFixed(2)}% QUALITY · LEVEL {fmt(item.sourceFloor+1)}</span>
       <strong>{item.name}</strong><p>{slotLabel(item.slot)} · Power {fmt(item.power)}</p>
       <div className="io-combat-gear-tooltip-stats">{bonuses.length?bonuses.map(stat=><span className={'io-combat-stat-'+stat.kind} key={stat.label} title={stat.detail}>{stat.label}</span>):<span>No direct stat bonuses</span>}</div>
