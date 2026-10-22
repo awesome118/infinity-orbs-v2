@@ -137,7 +137,7 @@ test('Global Chat closes on Escape and announces new message additions', () => {
   assert.match(chat, /aria-relevant="additions text"/);
 });
 
-test('inline post entrypoints are bounded tap-only previews and the full game is expanded-only', () => {
+test('inline post entrypoints are bounded tap-only previews with a click-driven Expanded Mode path', () => {
   const manifest = JSON.parse(source('devvit.json')) as {
     post: { entrypoints: Record<string, { inline?: boolean; height?: string; entry?: string }> };
   };
@@ -148,7 +148,6 @@ test('inline post entrypoints are bounded tap-only previews and the full game is
   assert.equal(manifest.post.entrypoints.frenzy?.inline, true);
   assert.equal(manifest.post.entrypoints.frenzy?.height, 'tall');
   assert.equal(manifest.post.entrypoints.game?.entry, 'game.html');
-  assert.equal(manifest.post.entrypoints.game?.inline, false);
 
   for (const htmlPath of ['src/client/splash.html', 'src/client/frenzy.html']) {
     const html = source(htmlPath);
@@ -158,6 +157,8 @@ test('inline post entrypoints are bounded tap-only previews and the full game is
 
   const splash = source('src/client/splash.tsx');
   const frenzy = source('src/client/frenzy.tsx');
+  assert.match(splash, /requestExpandedMode\(e\.nativeEvent, 'game'\)/);
+  assert.match(frenzy, /requestExpandedMode\(event\.nativeEvent, 'game'\)/);
   assert.doesNotMatch(splash, /overflow-(?:y-)?(?:auto|scroll)|overflow\s*:\s*(?:auto|scroll)/);
   assert.doesNotMatch(frenzy, /overflow-(?:y-)?(?:auto|scroll)|overflow\s*:\s*(?:auto|scroll)/);
   assert.doesNotMatch(frenzy, /GlobalChatWindow/, 'the inline Frenzy post must not mount the independently scrollable chat history');
