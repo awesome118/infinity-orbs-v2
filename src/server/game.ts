@@ -97,6 +97,18 @@ import {
   prepareDailyStreakCommunityProgress,
 } from './social.js';
 
+/** Use non-guessable identifiers for leases, reservations, and idempotency receipts. */
+function createSecureId(): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === 'function') return cryptoApi.randomUUID();
+  if (typeof cryptoApi?.getRandomValues === 'function') {
+    const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+  }
+  throw new Error('Secure identifier generation is unavailable.');
+}
+
+
 
 interface SaveExtraWrite {
   key: string;
@@ -4008,7 +4020,7 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
   // has an ambiguous failure, no provider call occurs, and a later job can
   // reclaim this reserved-v2 marker after the lease expires.
   const attemptNow = Date.now();
-  const nonce = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  const nonce = createSecureId();
   const reservationStamp = attemptNow.toString(36);
   const reservedToken = `reserved-v2:${reservationStamp}:${nonce}`;
   const sendingToken = `sending-v2:${reservationStamp}:${nonce}`;
@@ -4189,7 +4201,7 @@ async function scheduleOfflineFullNotification(
     Math.max(now + 1_000, Number.isFinite(requestedRunAt) ? requestedRunAt : now + 1_000),
   );
   const expiresAt = Math.max(now + 60_000, Math.min(maxDateMs - 1, safeRunAt + OFFLINE_FULL_RETRY_MS * 2));
-  const randomToken = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  const randomToken = createSecureId();
   const token = `offline-job-${now.toString(36)}-${randomToken}`;
   const reservation = JSON.stringify({ token, jobId: null, runAt: safeRunAt });
 
@@ -4987,10 +4999,7 @@ export async function claimFollowReward(): Promise<{
     // Commit the 200-roll reward and its idempotency marker in the same
     // WATCH/MULTI/EXEC transaction. A marker write failure must never allow a
     // retry to grant the reward a second time.
-    const rewardMarker = String(
-      globalThis.crypto?.randomUUID?.() ??
-      `claimed-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    );
+    const rewardMarker = createSecureId();
     await save(s, {
       key: rewardKey,
       expectedValue: null,
@@ -6587,7 +6596,7 @@ export async function postFrenzyThankYouComment(
     throw new Error('A thank-you comment was already attempted. Check the Frenzy post before trying again.');
   }
 
-  const reservation = 'pending-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  const reservation = 'pending-' + createSecureId();
   await redis.set(receiptKey, reservation, { nx: true, expiration });
   if (await redis.get(receiptKey) !== reservation) {
     throw new Error('A thank-you comment was already attempted. Check the Frenzy post before trying again.');
