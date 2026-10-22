@@ -16,6 +16,7 @@ const DAY_PREFIX = 'io:impressions:day:';
 const INDEX_PRUNE_COUNTER_KEY = 'io:impressions:index-prune-counter';
 const INDEX_PRUNE_EVERY = 100;
 const MAX_INDEXED_POSTS = 2_000;
+const MAX_COUNTER_COMMIT_ATTEMPTS = 24;
 
 function normalizePostType(value: unknown): ImpressionPostType {
   const candidate = String(value ?? '').trim();
@@ -100,7 +101,7 @@ export async function recordPostImpression(
     return current + 1;
   };
 
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  for (let attempt = 0; attempt < MAX_COUNTER_COMMIT_ATTEMPTS; attempt += 1) {
     const txn = await redis.watch(...counterKeys);
     let transactionClosed = false;
     try {

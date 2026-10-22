@@ -146,6 +146,33 @@ test('impression time buckets and per-post counters have bounded retention', () 
   assert.match(source, /txn\.set\(DAY_PREFIX \+ day \+ ':' \+ postType, String\(nextDay\), \{ expiration: dayBucketExpiration \}\)/);
 });
 
+test('concurrent impression bursts preserve every committed aggregate count', async () => {
+  const baseContext = originalContext;
+  const baseRedis = originalRedis;
+  const baseReddit = originalReddit;
+  const suffix = Date.now().toString(36);
+  const postId = 't3_impression-burst-' + suffix;
+  configureDevvitRuntime({
+    redis: baseRedis,
+    context: { ...baseContext, postId, userId: 'impression-burst-' + suffix, username: 'ImpressionBurst' },
+    reddit: baseReddit,
+  });
+  try {
+    const before = await getImpressionDashboard();
+    const burstSize = 16;
+    const results = await Promise.all(Array.from({ length: burstSize }, () => recordPostImpression('main-game', 'desktop')));
+    assert.ok(results.every(result => result.recorded));
+    const after = await getImpressionDashboard();
+    assert.equal(after.total - before.total, burstSize);
+    assert.equal(after.byType['main-game'] - before.byType['main-game'], burstSize);
+    assert.equal(after.byDevice.desktop - before.byDevice.desktop, burstSize);
+    const post = after.posts.find(row => row.postId === postId && row.postType === 'main-game');
+    assert.equal(post?.impressions, burstSize);
+  } finally {
+    configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  }
+});
+
 test('impression counters commit together instead of leaving partial counts on failure', async () => {
   const baseRedis = originalRedis;
   const baseContext = originalContext;
