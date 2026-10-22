@@ -451,7 +451,7 @@ export async function getCombatMarksBalance():Promise<number>{
 export async function getCombatSnapshot():Promise<CombatSnapshot>{
   let coreProgression:{level?:unknown;highestRarity?:unknown;autoScrapLevel?:unknown;autoScrapSettings?:unknown}|null=null;
   try {
-    const core=await loadRaw();
+    const core=await loadRaw({ registerActivity: false });
     coreProgression={level:core.level,highestRarity:core.highestRarity,autoScrapLevel:core.prestigeUpgrades?.autoScrap,autoScrapSettings:core.combatAutoScrap};
   } catch(error) {
     // Core-game progress is a bonus, not a prerequisite for loading combat.

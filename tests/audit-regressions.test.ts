@@ -2561,6 +2561,12 @@ test('passive player snapshots and the Play splash do not register active sessio
   assert.match(getMe, /loadRaw\(\{ registerActivity: false \}\)/);
   assert.match(getMe, /getState\(\{ registerActivity: false \}\)/);
 
+  const combat = source('src/server/combat.ts');
+  const snapshotStart = combat.indexOf('export async function getCombatSnapshot()');
+  const snapshotEnd = combat.indexOf('\nfunction grantXp', snapshotStart);
+  assert.ok(snapshotStart >= 0 && snapshotEnd > snapshotStart);
+  assert.match(combat.slice(snapshotStart, snapshotEnd), /loadRaw\(\{ registerActivity: false \}\)/);
+
   const api = source('src/server/app.ts');
   const featureStart = api.indexOf('const feature = featureForPath(req.path);');
   const featureEnd = api.indexOf('// Game bans are enforced server-side.', featureStart);
