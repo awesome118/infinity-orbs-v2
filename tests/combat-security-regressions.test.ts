@@ -258,3 +258,18 @@ test('switching dungeons clears encounter-only combat effects and queued rewards
     assert.equal(result.state.skillRuntime.phoenixReady,false);
   });
 });
+
+test('malformed-but-present inventory fields never restore starter gear',async()=>{
+  await withPlayer('combat-malformed-inventory-regression-player',async key=>{
+    const malformedInventories:unknown[]=[null,{},'not-an-inventory',[{id:'broken-gear'}]];
+    for(const malformedInventory of malformedInventories){
+      const base=await getCombatSnapshot();
+      const state=JSON.parse(JSON.stringify(base.state)) as Record<string,unknown>;
+      state.inventory=malformedInventory;
+      state.runInventoryIds=[];
+      await redis.set(key,JSON.stringify(state));
+      const loaded=await getCombatSnapshot();
+      assert.deepEqual(loaded.state.inventory,[],'malformed present inventory must not produce replacement starter gear');
+    }
+  });
+});
