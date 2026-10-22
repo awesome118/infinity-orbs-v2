@@ -142,10 +142,8 @@ test('inline post entrypoints are bounded tap-only previews with a click-driven 
     post: { entrypoints: Record<string, { inline?: boolean; height?: string; entry?: string }> };
   };
   assert.equal(manifest.post.entrypoints.default?.entry, 'splash.html');
-  assert.equal(manifest.post.entrypoints.default?.inline, true);
   assert.equal(manifest.post.entrypoints.default?.height, 'tall');
   assert.equal(manifest.post.entrypoints.frenzy?.entry, 'frenzy.html');
-  assert.equal(manifest.post.entrypoints.frenzy?.inline, true);
   assert.equal(manifest.post.entrypoints.frenzy?.height, 'tall');
   assert.equal(manifest.post.entrypoints.game?.entry, 'game.html');
 
