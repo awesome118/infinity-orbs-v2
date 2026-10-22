@@ -2439,3 +2439,325 @@ test('Combat is level-gated, guided, and reset with the rest of the player save'
   assert.ok(combat.includes('window.innerHeight-376'));
   assert.ok(combat.includes("maxHeight:'min(360px, calc(100vh - 16px))'"));
 });
+
+test('Global Chat destination cannot be inferred from a client-supplied launcher flag', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('async function resolveGlobalGamePostId');
+  const statusStart = social.indexOf('export async function getGlobalChatStatus');
+  const end = social.indexOf('export async function recordGlobalChatComment', statusStart);
+  assert.ok(start >= 0 && statusStart > start && end > statusStart);
+  const resolver = social.slice(start, statusStart);
+  const status = social.slice(statusStart, end);
+  assert.match(resolver, /if \(!saved\)/);
+  assert.match(resolver, /isRegisteredFrenzyPost\(saved\)/);
+  assert.doesNotMatch(resolver, /context\.postId/);
+  assert.doesNotMatch(status, /fromMainLauncher|fromFrenzyPost/);
+  assert.match(social, /async function isRegisteredFrenzyPost\(postId: string\)/);
+
+  const app = source('src/server/app.ts');
+  const routeStart = app.indexOf("app.get('/api/chat/status'");
+  const routeEnd = app.indexOf("app.get('/api/chat'", routeStart);
+  assert.ok(routeStart >= 0 && routeEnd > routeStart);
+  assert.doesNotMatch(app.slice(routeStart, routeEnd), /req\.query\.launcher/);
+  assert.match(app.slice(routeStart, routeEnd), /getGlobalChatStatus\(\)/);
+
+  const createStart = app.indexOf("app.post('/internal/menu/post-create'");
+  const installStart = app.indexOf("app.post('/internal/on-app-install'");
+  assert.ok(createStart >= 0 && installStart > createStart);
+  const creationRoutes = app.slice(createStart, app.indexOf("app.get('/api/notifications'", installStart));
+  assert.equal((creationRoutes.match(/redis\.set\('io:global-game-post-id', post\.id\)/g) ?? []).length, 2);
+  assert.doesNotMatch(creationRoutes, /global-game-post-id', post\.id, \{ nx: true \}/);
+});
+
+test('legacy guild contribution does not double-count each task update', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('export async function contribute(');
+  const end = social.indexOf('export async function prepareGuildRollEffects', start);
+  assert.ok(start >= 0 && end > start);
+  const contribution = social.slice(start, end);
+  for (const field of [
+    'task.progress = capSafeGuildCounter(task.progress + taskProgressValue)',
+    'task.progress = capSafeGuildCounter(task.progress + taskProgressRolls)',
+    'task.progress = capSafeGuildCounter(task.progress + taskProgressRare)',
+  ]) {
+    assert.equal(contribution.split(field).length - 1, 1, field + ' should be applied once');
+  }
+});
+
+
+test('API responses default to non-cacheable because they depend on viewer or Reddit context', () => {
+  const app = source('src/server/app.ts');
+  assert.match(app, /app\.use\('\/api',[\s\S]{0,300}Cache-Control', 'no-store'/);
+  assert.match(app, /app\.get\('\/api\/me'/);
+  assert.match(app, /app\.get\('\/api\/collection'/);
+  assert.match(app, /app\.get\('\/api\/chat\/status'/);
+});
+
+
+test('distributed player lock fencing tokens use 128 bits of cryptographic randomness', () => {
+  const lock = source('src/server/player-lock.ts');
+  assert.match(lock, /function randomLockToken\(\): string/);
+  assert.match(lock, /new Uint8Array\(16\)/);
+  assert.match(lock, /globalThis\.crypto\.getRandomValues\(sample\)/);
+  assert.match(lock, /const token = 'lock-' \+ randomLockToken\(\)/);
+  assert.doesNotMatch(lock, /randomUint32\(\)/);
+});
+
+
+test('Combat snapshot polling only mutates the save when core-game projection changed', () => {
+  const combat = source('src/server/combat.ts');
+  const start = combat.indexOf('export async function getCombatSnapshot()');
+  const end = combat.indexOf('\nfunction grantXp', start);
+  assert.ok(start >= 0 && end > start);
+  const snapshot = combat.slice(start, end);
+  assert.match(snapshot, /const current=normalizeState\(await redis\.get\(combatKey\(\)\)\)/);
+  assert.match(snapshot, /const projectionChanged=/);
+  assert.match(snapshot, /if\(projectionChanged\)\{\s*state=await mutate/);
+  assert.doesNotMatch(snapshot, /const state=await mutate\(s=>/);
+});
+
+
+test('Social cooldowns and report reservations use cryptographic, collision-resistant tokens', () => {
+  const social = source('src/server/social.ts');
+  assert.match(social, /function secureSocialToken\(prefix: string\): string/);
+  assert.match(social, /new Uint8Array\(16\)/);
+  assert.match(social, /globalThis\.crypto\.getRandomValues\(bytes\)/);
+  const cooldownStart = social.indexOf('async function enforceChatCooldown');
+  const cooldownEnd = social.indexOf('\nasync function ', cooldownStart + 10);
+  assert.ok(cooldownStart >= 0 && cooldownEnd > cooldownStart);
+  assert.match(social.slice(cooldownStart, cooldownEnd), /secureSocialToken\('chat'\)/);
+  const reportStart = social.indexOf('async function submitChatReport');
+  const reportEnd = social.indexOf('\nexport async function ', reportStart);
+  assert.ok(reportStart >= 0 && reportEnd > reportStart);
+  assert.match(social.slice(reportStart, reportEnd), /secureSocialToken\('report'\)/);
+  assert.doesNotMatch(social, /Math\.random\(\)/);
+});
+
+
+test('core idempotency reservations never fall back to Math.random tokens', () => {
+  const game = source('src/server/game.ts');
+  assert.match(game, /function secureServerToken\(prefix: string\): string/);
+  assert.match(game, /new Uint8Array\(16\)/);
+  assert.match(game, /globalThis\.crypto\.getRandomValues\(bytes\)/);
+  assert.match(game, /secureServerToken\('offline-notification'\)/);
+  assert.match(game, /secureServerToken\('offline-job'\)/);
+  assert.match(game, /secureServerToken\('follow-reward'\)/);
+  assert.match(game, /secureServerToken\('frenzy-thank-you'\)/);
+  assert.doesNotMatch(game, /Math\.random\(\)/);
+});
+
+
+test('passive player snapshots and the Play splash do not register active sessions', () => {
+  const game = source('src/server/game.ts');
+  const stateStart = game.indexOf('export async function getState(');
+  const meStart = game.indexOf('export async function getMe()', stateStart);
+  const offlineStart = game.indexOf('export async function checkOffline()', meStart);
+  assert.ok(stateStart >= 0 && meStart > stateStart && offlineStart > meStart);
+  const getState = game.slice(stateStart, meStart);
+  const getMe = game.slice(meStart, offlineStart);
+
+  assert.match(getState, /loadRaw\(\{ registerActivity: options\.registerActivity \}\)/);
+  assert.match(getState, /options\.registerActivity === false[\s\S]*?await getOnlinePlayers\(\)[\s\S]*?: await touchOnlinePresence\(\)/);
+  assert.match(getMe, /loadRaw\(\{ registerActivity: false \}\)/);
+  assert.match(getMe, /getState\(\{ registerActivity: false \}\)/);
+
+  const api = source('src/server/app.ts');
+  const featureStart = api.indexOf('const feature = featureForPath(req.path);');
+  const featureEnd = api.indexOf('// Game bans are enforced server-side.', featureStart);
+  assert.ok(featureStart >= 0 && featureEnd > featureStart);
+  assert.match(api.slice(featureStart, featureEnd), /loadRaw\(\{ registerActivity: false \}\)/);
+
+  const client = source('src/client/main.tsx');
+  const heartbeatStart = client.indexOf('const heartbeat = () =>');
+  const heartbeatEnd = client.indexOf('}, [Boolean(state), splashEntered]);', heartbeatStart);
+  assert.ok(heartbeatStart >= 0 && heartbeatEnd > heartbeatStart, 'heartbeat effect must restart when Play is entered');
+  const heartbeat = client.slice(heartbeatStart, heartbeatEnd);
+  assert.match(client.slice(client.lastIndexOf('useEffect(() =>', heartbeatStart), heartbeatStart), /if \(!state \|\| !splashEntered\) return;/);
+  assert.match(heartbeat, /if \(!splashEntered \|\| document\.visibilityState === 'hidden'\) return;/);
+
+  // Saved Auto Roll and resource prefetches must also wait for explicit entry.
+  assert.match(client, /if \(!splashEntered \|\| !stateRef\.current\) return;/);
+  assert.match(client, /if \(isAutoRoll && !splashEntered\) return;/);
+  assert.match(client, /if \(!splashEntered \|\| !autoRoll \|\| !state \|\| state\.upgrades\.auto === 0\) return;/);
+
+  const promptStart = client.lastIndexOf('useEffect(() =>', client.indexOf('const checkPrompt = () =>'));
+  const promptEnd = client.indexOf('}, [splashEntered]);', promptStart);
+  assert.ok(promptStart >= 0 && promptEnd > promptStart, 'daily Frenzy prompt delay must start after Play');
+  assert.match(client.slice(promptStart, promptEnd), /if \(!splashEntered\) return;/);
+});
+
+
+test('request coordination and feedback cooldowns use cryptographic tokens', () => {
+  const app = source('src/server/app.ts');
+  const helperStart = app.indexOf('const secureRequestToken = (): string => {');
+  const parseStart = app.indexOf('const parseMutationLock', helperStart);
+  assert.ok(helperStart >= 0 && parseStart > helperStart, 'shared request token helper must exist');
+  const coordination = app.slice(helperStart, parseStart);
+  assert.match(coordination, /new Uint8Array\(16\)/);
+  assert.match(coordination, /globalThis\.crypto\.getRandomValues\(bytes\)/);
+  assert.match(coordination, /const mutationLockOwner = \(\): string => 'lease-' \+ secureRequestToken\(\);/);
+  assert.match(app, /const feedbackCooldownToken = secureRequestToken\(\);/);
+  assert.doesNotMatch(app, /Math\.random\(\)/);
+});
+
+
+test('background refreshes are deferred until Play and refresh promptly on entry', () => {
+  const client = source('src/client/main.tsx');
+
+  const boosterStart = client.indexOf('const pollAnnouncement = async () =>');
+  const boosterEffectStart = client.lastIndexOf('useEffect(() => {', boosterStart);
+  const boosterEffectEnd = client.indexOf('}, [splashEntered]);', boosterStart);
+  assert.ok(boosterEffectStart >= 0 && boosterEffectEnd > boosterStart);
+  assert.match(client.slice(boosterEffectStart, boosterStart), /if \(!splashEntered\) return;/);
+
+  const developerStart = client.indexOf('const pollDeveloperAnnouncement = async () =>');
+  const developerEffectStart = client.lastIndexOf('useEffect(() => {', developerStart);
+  assert.match(client.slice(developerEffectStart, developerStart), /if \(!splashEntered\) return;/);
+
+  const versionStart = client.indexOf('const checkForUpdate = async () =>');
+  const versionEffectStart = client.lastIndexOf('useEffect(() => {', versionStart);
+  assert.match(client.slice(versionEffectStart, versionStart), /if \(!splashEntered\) return;/);
+
+  const communityStart = client.indexOf('const refreshCommunityState = async () =>');
+  const communityEffectStart = client.lastIndexOf('useEffect(() => {', communityStart);
+  const communityEffectEnd = client.indexOf('}, [tab, splashEntered]);', communityStart);
+  assert.ok(communityEffectStart >= 0 && communityEffectEnd > communityStart);
+  const communityEffect = client.slice(communityEffectStart, communityEffectEnd);
+  assert.match(communityEffect, /if \(!splashEntered\) return;/);
+  assert.match(communityEffect, /void refreshCommunityState\(\);/);
+  assert.match(communityEffect, /if \(inFlight\) return;/);
+
+  const presenceStart = client.indexOf('const refreshPresence = async () =>');
+  const presenceEffectStart = client.lastIndexOf('useEffect(() => {', presenceStart);
+  const presenceEffectEnd = client.indexOf('}, [splashEntered]);', presenceStart);
+  assert.ok(presenceEffectStart >= 0 && presenceEffectEnd > presenceStart);
+  assert.match(client.slice(presenceEffectStart, presenceEffectEnd), /void refreshPresence\(\);/);
+  assert.match(client.slice(presenceEffectStart, presenceEffectEnd), /if \(inFlight \|\| document\.visibilityState === 'hidden'\) return;/);
+});
+
+test('rolling disables both roll affordances and gives the orb keyboard semantics', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  assert.match(roll, /if \(busy\) return;[\s\S]{0,120}if \(canRoll\)/);
+  assert.match(roll, /<button[\s\S]{0,250}disabled=\{busy\}[\s\S]{0,250}aria-busy=\{busy\}/);
+  assert.match(roll, /aria-label=\{busy \? 'Rolling orbs'/);
+  assert.match(roll, /busy \? 'ROLL IN PROGRESS'/);
+  assert.match(roll, /className=\{'roll-button ' \+ \(busy \? 'is-waiting'/);
+  const css = source('src/client/styles.css');
+  assert.match(css, /\.roll-button:hover:disabled \{[^}]*transform: none !important;[^}]*cursor: wait !important;/);
+});
+
+
+test('passive splash loads only the save before deferring auxiliary bootstrap requests', () => {
+  const client = source('src/client/main.tsx');
+  const appInfoFetch = client.indexOf("void getJson<{ isBeta: boolean }>('/api/app-info')");
+  const appInfoEffectStart = client.lastIndexOf('useEffect(() => {', appInfoFetch);
+  assert.ok(appInfoFetch > 0 && appInfoEffectStart >= 0);
+  assert.match(client.slice(appInfoEffectStart, appInfoFetch), /if \(!splashEntered\) return;/);
+
+  const refreshStart = client.indexOf('const refreshAll = useCallback(async () =>');
+  const adminStart = client.indexOf("const adminStatus = await getJson<{ isAdmin: boolean }>", refreshStart);
+  const deferStart = client.indexOf('if (!splashEntered) return;', refreshStart);
+  const dependencyEnd = client.indexOf('}, [applyPlayerState, splashEntered]);', refreshStart);
+  assert.ok(refreshStart >= 0 && adminStart > refreshStart && deferStart > refreshStart);
+  assert.ok(deferStart < adminStart, 'auxiliary APIs should not run while only the splash is visible');
+  assert.ok(dependencyEnd > deferStart, 'refreshAll must rerun when Play changes splashEntered');
+
+  const tutorialFetch = client.indexOf("void fetch('/api/combat/tutorial/status'");
+  const tutorialEffectStart = client.lastIndexOf('useEffect(() => {', tutorialFetch);
+  assert.ok(tutorialEffectStart >= 0 && tutorialFetch > tutorialEffectStart);
+  assert.match(client.slice(tutorialEffectStart, tutorialFetch), /if \(!splashEntered \|\| !state\) return;/);
+});
+
+
+test('roll interactions explain current state and animate server resolution without breaking reduced motion', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  assert.ok(roll.includes('const cooldownProgress = busy || canRoll'));
+  assert.ok(roll.includes(': cd > 0'));
+  assert.ok(roll.includes('const actionHint = busy'));
+  assert.ok(roll.includes('Resolving your roll'));
+  assert.ok(roll.includes('One press uses all'));
+  assert.ok(roll.includes('id="roll-action-hint"'));
+  assert.ok(roll.includes('<Loader2 className="w-5 h-5 animate-spin"'));
+  assert.ok(roll.includes('aria-describedby="roll-action-hint"'));
+  assert.ok(roll.includes('Personal best'));
+
+  const css = source('src/client/styles.css');
+  assert.ok(css.includes('.roll-action-hint {'));
+  assert.ok(css.includes('.roll-stage.is-rolling::after'));
+  assert.ok(css.includes('@keyframes io-roll-resolve-ring'));
+  assert.ok(css.includes('.roll-stage.is-rolling::after, .roll-stage.is-rolling > .absolute.w-64 { animation: none !important; }'));
+});
+
+test('header experience progress and icon-only actions have keyboard/screen-reader labels', () => {
+  const header = source('src/client/components/Header.tsx');
+  assert.ok(header.includes('aria-label={`Open profile. Experience progress'));
+  assert.ok(header.includes('focus-visible:outline-purple-300'));
+  assert.ok(header.includes('aria-label="View probability and drop odds"'));
+  assert.ok(header.includes('aria-label="Report a bug or send a suggestion"'));
+  assert.ok(header.includes('aria-label="Open admin console"'));
+  assert.ok(header.includes("aria-label={notificationsEnabled ? 'Disable Reddit notifications' : 'Enable Reddit notifications'}"));
+  assert.ok(header.includes("aria-label={soundEnabled ? 'Mute sound' : 'Enable sound'}"));
+});
+
+test('best-orb reveal badges reflect critical and discovery flags from the selected orb', () => {
+  const server = source('src/server/game.ts');
+  assert.ok(server.includes('let bestIsCrit = false;'));
+  assert.ok(server.includes('let bestIsNew = false;'));
+  assert.ok(server.includes('bestIsCrit = isCrit;'));
+  assert.ok(server.includes('bestIsNew = isNew;'));
+  assert.ok(server.includes('isNew: bestIsNew,'));
+  assert.ok(server.includes('isCrit: bestIsCrit,'));
+
+  const shared = source('src/shared/game.ts');
+  assert.ok(shared.includes('let bestIsCrit = false;'));
+  assert.ok(shared.includes('isCrit: bestIsCrit,'));
+  assert.ok(!shared.includes('isCrit: bestRarity > (sourceState.highestRarity ?? 0),'));
+});
+
+test('armed Frenzy readiness and Pity Luck meter use the actual gameplay thresholds', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  assert.ok(roll.includes('const frenzyReady = frenzyArmed && canRoll;'));
+  assert.ok(roll.includes('const primaryActionLabel = busy'));
+  assert.ok(roll.includes("? 'RELEASE FRENZY'"));
+  assert.ok(roll.includes("frenzyReady ? 'frenzy-supercharged'"));
+  assert.ok(roll.includes('const pityInterval = Math.max(6, 18 - pityCalibration * 2);'));
+  assert.ok(roll.includes('const pityProgress = ((dryStreak % pityInterval) / pityInterval) * 100;'));
+  assert.ok(roll.includes('width: `${pityProgress}%`'));
+  assert.ok(roll.includes('{dryStreak % pityInterval} / {pityInterval} rolls to next stack'));
+});
+
+test('new-best celebration covers confirmed manual, Frenzy, and offline results', () => {
+  const client = source('src/client/main.tsx');
+  const rollStart = client.indexOf('const handleRoll = useCallback(async (isAutoRoll = false) =>');
+  const frenzyStart = client.indexOf("'/api/frenzy/start'", rollStart);
+  const rollSuccess = client.indexOf("'/api/roll'", rollStart);
+  const rollEnd = client.indexOf('catch (error: any)', rollSuccess);
+  assert.ok(rollStart >= 0 && rollSuccess > rollStart && rollEnd > rollSuccess);
+  const rollHandler = client.slice(rollStart, rollEnd);
+  const frenzyPath = rollHandler.slice(0, rollSuccess - rollStart);
+  const regularRollPath = rollHandler.slice(rollSuccess - rollStart);
+  assert.ok(frenzyPath.includes('if (res.orb.rarity > previousBest && res.orb.rarity >= latestBest)'));
+  assert.ok(frenzyPath.includes('setNewBestModalData({ orb: res.orb, prevBest: previousBest });'));
+  assert.ok(regularRollPath.includes('if (!isAutoRoll && res.orb.rarity > previousBest && res.orb.rarity >= latestBest)'));
+  assert.ok(regularRollPath.includes('setNewBestModalData({ orb: res.orb, prevBest: previousBest });'));
+  assert.ok(frenzyStart > rollStart && rollSuccess > frenzyStart, 'Frenzy and regular roll paths remain distinct');
+
+  const offlineClaimStart = client.indexOf('const handleClaimOffline = async () =>');
+  const offlineClaimRequest = client.indexOf("'/api/offline/claim'", offlineClaimStart);
+  const offlineClaimCheck = client.indexOf('const latestBest = Math.max(2, Number(res.state.highestRarity) || 2);', offlineClaimRequest);
+  assert.ok(offlineClaimStart >= 0 && offlineClaimRequest > offlineClaimStart && offlineClaimCheck > offlineClaimRequest);
+  assert.ok(client.slice(offlineClaimStart, offlineClaimCheck + 240).includes('setNewBestModalData({ orb: res.orb, prevBest: previousBest });'));
+  assert.ok(!source('src/client/components/RollSection.tsx').includes('handledBestResultRef'));
+});
+
+test('background polling is single-flight and paused while hidden', () => {
+  const client = source('src/client/main.tsx');
+  const sharedPollGuard = "if (cancelled || inFlight || document.visibilityState === 'hidden') return;";
+  assert.ok(client.split(sharedPollGuard).length - 1 >= 4);
+  assert.ok(client.includes("if (!splashEntered || inFlight || document.visibilityState === 'hidden') return;"));
+  assert.ok(client.includes("if (inFlight || document.visibilityState === 'hidden') return;"));
+  assert.ok(client.includes("document.addEventListener('visibilitychange', onVisibilityChange);"));
+  assert.ok(client.includes("document.removeEventListener('visibilitychange', onVisibilityChange);"));
+  assert.ok(client.includes("if (cancelled || !snapshot) return;"));
+  assert.ok(client.includes("if (cancelled || !res.ok) return;"));
+});
