@@ -169,6 +169,15 @@ test('inline post entrypoints are bounded tap-only previews with a click-driven 
   assert.match(publicRule, /touch-action:\s*pan-y pinch-zoom/);
   assert.match(publicRule, /overscroll-behavior:\s*auto/);
   assert.doesNotMatch(publicRule, /overflow(?:-y)?:\s*(?:auto|scroll)/);
+  const documentRule = css.match(/html\.io-inline-post,\s*body\.io-inline-post\s*\{([^}]+)\}/)?.[1] ?? '';
+  const rootRule = css.match(/#root\.io-inline-post\s*\{([^}]+)\}/)?.[1] ?? '';
+  for (const rule of [documentRule, rootRule]) {
+    assert.match(rule, /touch-action:\s*pan-y pinch-zoom/);
+    assert.match(rule, /overscroll-behavior:\s*auto/);
+    assert.doesNotMatch(rule, /touch-action:\s*none|overscroll-behavior:\s*none|overflow(?:-[xy])?:\s*(?:auto|scroll)/);
+  }
+  assert.match(frenzy, /io-frenzy-success-card/);
+  assert.match(frenzy, /Continue in Infinity Orbs/);
 });
 
 test('the deploy guard rejects inline scroll traps while keeping expanded-game scrolling available', () => {
