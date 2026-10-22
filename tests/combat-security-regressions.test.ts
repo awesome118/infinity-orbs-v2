@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { context, redis } from '../src/server/devvit-mock.js';
-import { equipCombatRune, equipCombatSkill, getCombatSnapshot, performCombatBeat, rollCombatSkill } from '../src/server/combat.js';
+import { equipCombatRune, equipCombatSkill, getCombatSnapshot, hasCompletedCombatTutorial, performCombatBeat, rollCombatSkill } from '../src/server/combat.js';
 import { COMBAT_BEAT_INTERVAL_MS, calculateCombatArenaRatingUpdate, getEnemyForDungeonDepth } from '../src/shared/combat.js';
 
 async function withPlayer<T>(userId: string, run: (key: string) => Promise<T>): Promise<T> {
@@ -132,6 +132,7 @@ test('corrupt persisted combat saves fail closed and remain byte-for-byte intact
     for(const raw of ['', '{broken-json', '[]', '"not-an-object"', '{}', '{"unknownField":true}']){
       await redis.set(key,raw);
       await assert.rejects(getCombatSnapshot(),/Combat state is corrupted; refusing to overwrite it/);
+      await assert.rejects(hasCompletedCombatTutorial(),/Combat state is corrupted; refusing to overwrite it/);
       assert.equal(await redis.get(key),raw,'a read must never replace the damaged save with starter state');
     }
   });
