@@ -74,7 +74,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
     }, 900);
 
     const nextLvl = u.level + 1;
-    if (nextLvl % 5 === 0 || (u.id === 'auto' && nextLvl === 1)) {
+    if (!reducedMotion && (nextLvl % 5 === 0 || (u.id === 'auto' && nextLvl === 1))) {
       if (allowMotionEffects()) confetti({
         particleCount: 45,
         spread: 55,

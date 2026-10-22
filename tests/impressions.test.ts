@@ -55,6 +55,51 @@ test('post impressions count aggregate metrics without registering online-player
   }
 });
 
+test('dashboard uses a safe timestamp for malformed time inputs', async () => {
+  const baseContext = originalContext;
+  const baseRedis = originalRedis;
+  const baseReddit = originalReddit;
+  configureDevvitRuntime({ redis: baseRedis, context: { ...baseContext, postId: 't3_invalid-dashboard-time' }, reddit: baseReddit });
+  try {
+    const dashboard = await getImpressionDashboard(Number.NaN);
+    assert.ok(Number.isFinite(dashboard.generatedAt));
+    assert.equal(dashboard.last24Hours.length, 24);
+    assert.equal(dashboard.last30Days.length, 30);
+  } finally {
+    configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  }
+});
+
+test('impression dashboard treats malformed aggregate counters as zero', async () => {
+  const baseContext = originalContext;
+  const baseRedis = originalRedis;
+  const baseReddit = originalReddit;
+  const key = 'io:impressions:total';
+  const previous = await baseRedis.get(key);
+  configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  try {
+    await baseRedis.set(key, '12visits');
+    const dashboard = await getImpressionDashboard(Date.UTC(2026, 9, 20));
+    assert.equal(dashboard.total, 0);
+  } finally {
+    if (previous == null) await baseRedis.del(key);
+    else await baseRedis.set(key, previous);
+    configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  }
+});
+
+test('impression recording ignores unreasonably long post identifiers', async () => {
+  const baseContext = originalContext;
+  const baseRedis = originalRedis;
+  const baseReddit = originalReddit;
+  configureDevvitRuntime({ redis: baseRedis, context: { ...baseContext, postId: 'x'.repeat(201) }, reddit: baseReddit });
+  try {
+    assert.deepEqual(await recordPostImpression('frenzy', 'desktop'), { recorded: false });
+  } finally {
+    configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  }
+});
+
 test('impression recording rejects unsupported post types and skips missing post context', async () => {
   const baseContext = originalContext;
   const baseRedis = originalRedis;

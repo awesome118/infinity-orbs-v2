@@ -53,6 +53,8 @@ import {
   setNotificationState,
   settleOffline,
   recordPlayerHeartbeat,
+  hasCompletedFirstRollTutorial,
+  markFirstRollTutorialSeen,
 } from './game.js';
 import {
   createGuild,
@@ -903,6 +905,26 @@ export function createApp() {
     try{res.setHeader('Cache-Control','no-store');res.json(await processCombatRuneAutoSacrifice());}
     catch(e:any){const message=e?.message||'Could not auto-sacrifice Runes.';const status=message==='Equip at least one Rune before auto-sacrifice can strengthen a target.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
   });
+  app.get('/api/tutorial/first-roll/status', async (_req, res) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ seen: await hasCompletedFirstRollTutorial() });
+    } catch (error: any) {
+      const message = error?.message || 'Could not load tutorial status.';
+      res.status(message === 'REDDIT_LOGIN_REQUIRED' ? 401 : 503).json({ error: message });
+    }
+  });
+  app.post('/api/tutorial/first-roll/complete', async (_req, res) => {
+    try {
+      await markFirstRollTutorialSeen();
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ seen: true });
+    } catch (error: any) {
+      const message = error?.message || 'Could not save tutorial completion.';
+      res.status(message === 'REDDIT_LOGIN_REQUIRED' ? 401 : 503).json({ error: message });
+    }
+  });
+
   app.get('/api/combat/tutorial/status', async (_req,res) => {
     try{res.setHeader('Cache-Control','no-store');res.json({seen:await hasCompletedCombatTutorial()});}
     catch(e:any){const message=e?.message||'Could not load tutorial status.';res.status(message==='REDDIT_LOGIN_REQUIRED'?401:503).json({error:message});}

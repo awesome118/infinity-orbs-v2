@@ -171,6 +171,8 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Offline Rolls Waiting Notification */}
           {state.offlineRolls > 0 && (
             <button
+              type="button"
+              aria-label={`Claim ${fmt(state.offlineRolls)} offline rolls`}
               onClick={onClaimOffline}
               className="offline-button flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3 py-1.5 rounded-xl shadow-md transition-all"
               title="Claim rolls accumulated while away"
@@ -182,6 +184,8 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Fair RNG Odds Button */}
           <button
+            type="button"
+            aria-label="View probability and drop odds"
             onClick={onOpenOdds}
             className="header-icon-button p-2 text-slate-400 hover:text-cyan-300 hover:bg-slate-800/80 rounded-lg transition-colors"
             title="View Probability & Drop Odds"
@@ -192,15 +196,17 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Changelog */}
           <div className={changelogUnread ? 'relative rounded-lg ring-2 ring-emerald-400/80 shadow-[0_0_16px_rgba(74,222,128,0.75)] animate-pulse' : 'relative rounded-lg'}>
             {changelogUnread && <span className="absolute -top-1 -right-1 z-10 rounded-full bg-emerald-400 px-1.5 py-0.5 text-[8px] font-black text-slate-950 shadow-md">NEW</span>}
-            <button onClick={() => { sound.playClick(); onOpenChangelog(); }}
+            <button type="button" aria-label="View Changelog" onClick={() => { sound.playClick(); onOpenChangelog(); }}
               className="header-icon-button p-2 text-slate-400 hover:text-purple-300 hover:bg-slate-800/80 rounded-lg transition-colors"
-              title={changelogUnread ? 'New changelog since your last visit' : 'View Changelog'} aria-label="View Changelog">
+              title={changelogUnread ? 'New changelog since your last visit' : 'View Changelog'}>
               <ScrollText className="w-4 h-4" />
             </button>
           </div>
 
           {/* Bug report / suggestions */}
           <button
+            type="button"
+            aria-label="Report a bug or send a suggestion"
             onClick={() => {
               sound.playClick();
               onOpenFeedback();
@@ -214,6 +220,8 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Admin Console */}
           {onOpenDevDebug && (
             <button
+              type="button"
+              aria-label="Open Admin Console"
               onClick={() => {
                 sound.playClick();
                 onOpenDevDebug();
@@ -228,6 +236,9 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Reddit Notification Toggle */}
           <button
+            type="button"
+            aria-label={notificationsEnabled ? 'Disable Reddit notifications' : 'Enable Reddit notifications'}
+            aria-pressed={notificationsEnabled}
             onClick={() => {
               sound.playClick();
               onToggleNotifications();
@@ -242,6 +253,9 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Sound Toggle */}
           <button
+            type="button"
+            aria-label={soundEnabled ? 'Mute sound' : 'Enable sound'}
+            aria-pressed={soundEnabled}
             onClick={() => {
               sound.playClick();
               onToggleSound();
