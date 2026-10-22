@@ -356,7 +356,8 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
 
           <button
             type="submit"
-            disabled={sacrificing || busy || (selectedCoinOffer <= 0 && selectedShardOffer <= 0) || state.coins < selectedCoinOffer || (state.shards ?? 0) < selectedShardOffer}
+            aria-busy={sacrificing || busy}
+            disabled={sacrificing || busy || (selectedCoinOffer <= 0 && selectedShardOffer <= 0) || state.coins < selectedCoinOffer || (state.shards ?? 0) < selectedShardOffer>
             className="w-full py-3 rounded-xl bg-gradient-to-r from-orange-600 via-amber-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 disabled:from-slate-800 disabled:to-slate-800 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-orange-950/40 transition-all active:scale-98 cursor-pointer disabled:cursor-not-allowed"
           >
             <Flame className="w-4 h-4 text-amber-200 animate-flame" />

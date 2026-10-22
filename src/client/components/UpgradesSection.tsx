@@ -470,7 +470,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
                 ) : (
                   <button
                     type="button"
-                    aria-busy={pendingUpgradeId === u.id}
+                    aria-busy={upgradingId === u.id}
                     onClick={() => {
                       void handleUpgradeClick(u);
                     }}

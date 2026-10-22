@@ -364,8 +364,10 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
 
                   {/* Upgrade button showing cost inside */}
                   <button
+                    type="button"
+                    aria-busy={busy || upgradingSkillId === skillId}
                     onClick={() => handleMasteryClick(skillId)}
-                    disabled={!canAfford || busy || isMax || upgradingSkillId !== null}
+                    disabled={!canAfford || busy || isMax || upgradingSkillId !== null>
                     className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
                       isMax
                         ? 'bg-slate-900 text-slate-600 border border-slate-800 cursor-default'

@@ -2714,6 +2714,16 @@ test('best-orb reveal badges reflect critical and discovery flags from the selec
   assert.ok(!shared.includes('isCrit: bestRarity > (sourceState.highestRarity ?? 0),'));
 });
 
+test('upgrade and mastery controls use existing local pending state for busy semantics', () => {
+  const upgrades = source('src/client/components/UpgradesSection.tsx');
+  assert.ok(!upgrades.includes('pendingUpgradeId'));
+  assert.ok(upgrades.includes('aria-busy={upgradingId === u.id}'));
+  const mastery = source('src/client/components/MasterySection.tsx');
+  assert.ok(mastery.includes('aria-busy={busy || upgradingSkillId === skillId}'));
+  const combined = source('src/client/components/AltarAndMasterySection.tsx');
+  assert.ok(combined.includes('aria-busy={sacrificing || busy}'));
+});
+
 test('Altar range controls have explicit labels connected to their inputs', () => {
   const altar = source('src/client/components/AltarSection.tsx');
   assert.ok(altar.includes('<label htmlFor="altar-coin-offer"'));
