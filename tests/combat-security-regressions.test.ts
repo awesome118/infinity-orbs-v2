@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { context, redis } from '../src/server/devvit-mock.js';
-import { getCombatSnapshot, performCombatBeat, rollCombatSkill } from '../src/server/combat.js';
+import { equipCombatRune, getCombatSnapshot, performCombatBeat, rollCombatSkill } from '../src/server/combat.js';
 import { COMBAT_BEAT_INTERVAL_MS, calculateCombatArenaRatingUpdate, getEnemyForDungeonDepth } from '../src/shared/combat.js';
 
 async function withPlayer<T>(userId: string, run: (key: string) => Promise<T>): Promise<T> {
@@ -125,4 +125,57 @@ test('Arena Elo updates conserve points at all rating boundaries', () => {
     assert.equal(update.playerRating + update.opponentRating, player + opponent);
     assert.equal(update.playerChange + update.opponentChange, 0);
   }
+});
+
+test('corrupt persisted combat saves fail closed and remain byte-for-byte intact',async()=>{
+  await withPlayer('combat-corrupt-state-regression-player',async key=>{
+    for(const raw of ['', '{broken-json', '[]', '"not-an-object"']){
+      await redis.set(key,raw);
+      await assert.rejects(getCombatSnapshot(),/Combat state is corrupted; refusing to overwrite it/);
+      assert.equal(await redis.get(key),raw,'a read must never replace the damaged save with starter state');
+    }
+  });
+});
+
+test('an intentionally empty gear inventory stays empty after normalization',async()=>{
+  await withPlayer('combat-empty-inventory-regression-player',async key=>{
+    const initial=await getCombatSnapshot();
+    const state=initial.state;
+    state.inventory=[];
+    state.runInventoryIds=[];
+    state.equipment={weapon:null,armor:null,helmet:null,gloves:null,boots:null,ring:null,amulet:null};
+    await redis.set(key,JSON.stringify(state));
+    const loaded=await getCombatSnapshot();
+    assert.deepEqual(loaded.state.inventory,[]);
+    assert.deepEqual(loaded.state.equipment,{weapon:null,armor:null,helmet:null,gloves:null,boots:null,ring:null,amulet:null});
+  });
+});
+
+test('explicitly unequipped starter gear is not silently re-equipped on reload',async()=>{
+  await withPlayer('combat-unequipped-gear-regression-player',async key=>{
+    const initial=await getCombatSnapshot();
+    const state=initial.state;
+    state.equipment.weapon=null;
+    state.equipment.armor=null;
+    await redis.set(key,JSON.stringify(state));
+    const loaded=await getCombatSnapshot();
+    assert.equal(loaded.state.equipment.weapon,null);
+    assert.equal(loaded.state.equipment.armor,null);
+    assert.ok(loaded.state.inventory.some(item=>item.id==='starter-weapon'));
+    assert.ok(loaded.state.inventory.some(item=>item.id==='starter-armor'));
+  });
+});
+
+test('Rune equip endpoint rejects non-boolean intent instead of treating it as an unequip',async()=>{
+  await withPlayer('combat-rune-toggle-regression-player',async key=>{
+    const initial=await getCombatSnapshot();
+    const state=initial.state;
+    const rune={id:'rune-toggle-regression',name:'Test Fate Rune',rarity:'Common' as const,stat:'luckPct' as const,value:1,sourceDepth:0,sourceDungeon:'undercrypt' as const};
+    state.runes=[rune];
+    state.equippedRunes=[rune.id];
+    await redis.set(key,JSON.stringify(state));
+    const before=await redis.get(key);
+    await assert.rejects(equipCombatRune(rune.id,'false'),/Choose whether to equip or unequip the Rune/);
+    assert.equal(await redis.get(key),before,'rejected input must not write any state');
+  });
 });
