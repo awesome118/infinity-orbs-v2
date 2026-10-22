@@ -171,7 +171,7 @@ for (const [file, code] of [
 const stylesheet = readInlineSource("src/client/styles.css");
 const documentRule = stylesheet.match(/html\.io-inline-post,\s*body\.io-inline-post\s*\{([^}]+)\}/)?.[1] ?? "";
 const rootRule = stylesheet.match(/#root\.io-inline-post\s*\{([^}]+)\}/)?.[1] ?? "";
-const publicRule = stylesheet.match(/\.io-public\s*\{([^}]+)\}/)?.[1] ?? "";
+const publicRule = stylesheet.match(/^\s*\.io-public\s*\{([^}]+)\}/m)?.[1] ?? "";
 for (const [label, rule] of [["html/body", documentRule], ["inline root", rootRule], ["public post", publicRule]]) {
   if (!/touch-action\s*:\s*pan-y(?:\s+pinch-zoom)?/.test(rule)) {
     reportFailure(`The ${label} must allow native vertical scrolling with touch-action: pan-y.`);
@@ -181,6 +181,18 @@ for (const [label, rule] of [["html/body", documentRule], ["inline root", rootRu
   }
   if (/touch-action\s*:\s*none|overscroll-behavior\s*:\s*none|overflow(?:-[xy])?\s*:\s*(?:auto|scroll)/.test(rule)) {
     reportFailure(`The ${label} must not capture or create a scroll trap.`);
+  }
+}
+
+// Scan every CSS rule that can be part of an inline public card, not just the
+// outer shell. Nested overflow:auto/scroll is a trap even when the outer shell
+// itself is correctly bounded.
+for (const match of stylesheet.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+  const selector = match[1];
+  const declarations = match[2];
+  if (/\.io-public(?:[-\w]*)\b|\.io-share-card\b|\.io-frenzy-card\b/.test(selector) &&
+      /overflow(?:-[xy])?\s*:\s*(?:auto|scroll)/.test(declarations)) {
+    reportFailure(`Inline public-card selector ${selector.trim()} must not declare overflow:auto/scroll.`);
   }
 }
 
