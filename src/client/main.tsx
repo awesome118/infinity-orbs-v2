@@ -828,7 +828,8 @@ export function App() {
     let cancelled = false;
     let inFlight = false;
     const refreshCommunityState = async () => {
-      if (!splashEntered || inFlight || document.visibilityState === 'hidden') return;
+      if (!splashEntered) return;
+      if (inFlight || document.visibilityState === 'hidden') return;
       inFlight = true;
       try {
         const we = await getJson<WorldEvent | null>('/api/world-event');

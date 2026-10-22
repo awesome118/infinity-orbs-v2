@@ -2662,7 +2662,7 @@ test('passive splash loads only the save before deferring auxiliary bootstrap re
   assert.ok(deferStart < adminStart, 'auxiliary APIs should not run while only the splash is visible');
   assert.ok(dependencyEnd > deferStart, 'refreshAll must rerun when Play changes splashEntered');
 
-  const tutorialFetch = client.indexOf("void fetch('/api/combat/tutorial/status'");
+  const tutorialFetch = client.indexOf("getJsonWithTimeout<{ seen?: boolean }>('/api/combat/tutorial/status'");
   const tutorialEffectStart = client.lastIndexOf('useEffect(() => {', tutorialFetch);
   assert.ok(tutorialEffectStart >= 0 && tutorialFetch > tutorialEffectStart);
   assert.match(client.slice(tutorialEffectStart, tutorialFetch), /if \(!splashEntered \|\| !state\) return;/);

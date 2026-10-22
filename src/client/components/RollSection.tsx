@@ -228,7 +228,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const cooldownProgress = busy || canRoll;
   const frenzyCooldownRemain = frenzyCooldownRemaining(state.lastFrenzyAt, now);
   const frenzyUsedToday = frenzyCooldownRemain > 0;
-  const cooldownProgressPct = cooldownProgress ? 100 : Math.max(0, Math.min(100, ((cd - remain) / Math.max(1, cd)) * 100));
+  const cooldownProgressPct = cooldownProgress ? 100 : cd > 0 ? Math.max(0, Math.min(100, ((cd - remain) / cd) * 100)) : 0;
   const multi = rollsPerActivation(state);
   const luck = luckMultiplier(state);
   const isAutoUnlocked = (state.upgrades.auto ?? 0) > 0;
@@ -578,6 +578,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
         <button
           type="button"
+          disabled={busy}
+          aria-busy={busy}
           onClick={handleRollClick}
           className={'roll-button ' + (busy ? 'is-waiting' : frenzyReady ? 'frenzy-supercharged' : canRoll ? 'is-ready' : 'is-waiting') + ' w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ' +
             (frenzyArmed
@@ -589,8 +591,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
               : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700')}
           aria-label={busy ? 'Rolling orbs' : frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} Free Rolls` : 'Roll'}
           aria-describedby="roll-action-hint"
-          disabled={busy}
-          aria-busy={busy}
         >
           {frenzyArmed && (
             <>
