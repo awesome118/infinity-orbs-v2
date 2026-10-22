@@ -336,7 +336,6 @@ function FrenzyPost() {
               <p>The full claim result appears in the game.</p>
             </div>
           ) : (
-          ) : (
             <button
               onClick={(event) => void claim(event)}
               disabled={!canClaim || loading}
