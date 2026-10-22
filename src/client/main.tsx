@@ -1429,6 +1429,7 @@ export function App() {
   const handleActivateTurbo = async () => {
     setBusy(true);
     const durationMinutes = (stateRef.current?.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 60 : 30;
+    const turboReductionPercent = durationMinutes === 60 ? 35 : 25;
     const durationMs = durationMinutes * 60 * 1000;
     const rollback = beginOptimisticState(current => {
       if ((current.shards ?? 0) < 5) return current;
@@ -1445,7 +1446,7 @@ export function App() {
       const res = await getJson<{ state: PlayerState }>('/api/turbo/activate', { method: 'POST' });
       applyPlayerState(res.state);
       sound.playChime(880, 'sawtooth', 0.3);
-      showToast(`Turbo Roll Activated! Cooldowns reduced by 20% for ${durationMinutes}m.`, 'success');
+      showToast(`Turbo Roll Activated! Cooldowns reduced by ${turboReductionPercent}% for ${durationMinutes}m.`, 'success');
     } catch (e: any) {
       rollback?.();
       showToast(e.message || 'Could not activate turbo roll', 'warn');

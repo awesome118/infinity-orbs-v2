@@ -2722,6 +2722,14 @@ test('Altar range controls have explicit labels connected to their inputs', () =
   assert.ok(altar.includes('<input\n              id="altar-shard-offer"'));
 });
 
+test('Turbo Booster confirmation reports the actual cooldown reduction', () => {
+  const client = source('src/client/main.tsx');
+  const shared = source('src/shared/game.ts');
+  assert.ok(client.includes('const turboReductionPercent = durationMinutes === 60 ? 35 : 25;'));
+  assert.ok(client.includes('Cooldowns reduced by ${turboReductionPercent}% for ${durationMinutes}m.'));
+  assert.ok(shared.includes("const turboReduction = (s.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 0.65 : 0.75;"));
+});
+
 test('Quest claim controls expose local pending state to assistive technology', () => {
   const quests = source('src/client/components/QuestsAndStreaks.tsx');
   assert.ok((quests.match(/aria-busy=\{busy \|\| claimPending\}/g) ?? []).length >= 3);
