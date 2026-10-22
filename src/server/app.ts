@@ -121,6 +121,17 @@ function parsePaymentPayload(value: unknown): unknown {
   }
 }
 
+/** Non-guessable tokens are required for locks and idempotency receipts. */
+function createSecureId(prefix: string): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === 'function') return prefix + '-' + cryptoApi.randomUUID();
+  if (typeof cryptoApi?.getRandomValues === 'function') {
+    const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+    return prefix + '-' + Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+  }
+  throw new Error('Secure identifier generation is unavailable.');
+}
+
 function normalizePaymentOrder(value: unknown, depth = 0): PaymentOrder {
   const parsed = parsePaymentPayload(value);
   const record = paymentRecord(parsed);
@@ -320,8 +331,7 @@ export function createApp() {
 
   const mutationLockKey = (playerKey: string) => MUTATION_LOCK_PREFIX + playerKey;
 
-  const mutationLockOwner = (): string =>
-    String(globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const mutationLockOwner = (): string => createSecureId('mutation');
 
   const parseMutationLock = (raw: string | null): { owner: string; expiresAt: number } | null => {
     if (!raw) return null;
@@ -1483,7 +1493,7 @@ export function createApp() {
         return res.status(401).json({ error: 'Your Reddit identity is unavailable.' });
       }
       const feedbackCooldownKey = `io:feedback-cooldown:${userId}`;
-      const feedbackCooldownToken = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const feedbackCooldownToken = createSecureId('feedback');
       try {
         await redis.set(feedbackCooldownKey, feedbackCooldownToken, {
           nx: true,
