@@ -2857,6 +2857,21 @@ test('Altar range controls have explicit labels connected to their inputs', () =
   assert.ok(altar.includes('<input\n              id="altar-shard-offer"'));
 });
 
+test('Turbo banner matches the active cooldown reduction and roll timer cleanup is unique', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  assert.ok(roll.includes('const turboReductionPercent = (state.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 35 : 25;'));
+  assert.ok(roll.includes('TURBO ACTIVE (-{turboReductionPercent}% Cooldown)'));
+  assert.ok(!roll.includes('TURBO ACTIVE (-20% Cooldown)'));
+  const cleanup = 'useEffect(() => () => {\n    if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);\n  }, []);';
+  assert.equal(roll.split(cleanup).length - 1, 1);
+
+  const client = source('src/client/main.tsx');
+  const guardStart = client.indexOf('const refreshGlobalBoosters = async () =>');
+  const guardEnd = client.indexOf('inFlight = true;', guardStart);
+  assert.ok(guardStart >= 0 && guardEnd > guardStart);
+  assert.equal((client.slice(guardStart, guardEnd).match(/if \(.*document\.visibilityState === 'hidden'\).*return;/g) ?? []).length, 1);
+});
+
 test('Turbo Booster confirmation reports the actual cooldown reduction', () => {
   const client = source('src/client/main.tsx');
   const shared = source('src/shared/game.ts');

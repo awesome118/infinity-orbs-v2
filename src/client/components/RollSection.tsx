@@ -140,12 +140,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
       document.removeEventListener('visibilitychange', syncOnVisibility);
     };
   }, [readyAt, state.lastFrenzyAt, state.turboRollUntil]);
-  useEffect(() => () => {
-    if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
-  }, []);
-  useEffect(() => () => {
-    if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
-  }, []);
   const [isRevealing, setIsRevealing] = useState(false);
   const [cooldownNotice, setCooldownNotice] = useState<string | null>(null);
   const cooldownNoticeTimerRef = useRef<number | null>(null);
@@ -239,6 +233,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const luck = luckMultiplier(state);
   const isAutoUnlocked = (state.upgrades.auto ?? 0) > 0;
   const isTurbo = Boolean(state.turboRollUntil && state.turboRollUntil > now);
+  const turboReductionPercent = (state.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 35 : 25;
   const visibleTiers = visibleContinuumTiers(state.highestRarity || 0);
   const tiersReached = visibleTiers.filter(tier => (state.highestRarity || 0) >= tier.minRarity).length;
   const nextTier = visibleTiers.find(tier => (state.highestRarity || 0) < tier.minRarity);
@@ -425,7 +420,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
         <div className="w-full bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 rounded-xl px-3 py-1.5 flex items-center justify-between text-xs text-amber-300">
           <div className="flex items-center gap-1.5 font-bold">
             <Flame className="w-4 h-4 text-amber-400" />
-            <span>TURBO ACTIVE (-20% Cooldown)</span>
+            <span>TURBO ACTIVE (-{turboReductionPercent}% Cooldown)</span>
           </div>
           <span className="font-mono font-medium">
             {Math.ceil((state.turboRollUntil - now) / 60000)}m left

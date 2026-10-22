@@ -862,8 +862,7 @@ export function App() {
     let cancelled = false;
     let inFlight = false;
     const refreshGlobalBoosters = async () => {
-      if (!splashEntered || inFlight || document.visibilityState === 'hidden') return;
-      if (cancelled || inFlight || document.visibilityState === 'hidden') return;
+      if (cancelled || !splashEntered || inFlight || document.visibilityState === 'hidden') return;
       inFlight = true;
       try {
         const snapshot = await getJson<GlobalBoosterSnapshot>('/api/global-boosters');
