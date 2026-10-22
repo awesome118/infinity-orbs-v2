@@ -11,10 +11,17 @@ import {
 } from '../../shared/combat.js';
 
 async function request<T>(url:string,method='GET',body?:unknown):Promise<T>{
-  const response=await fetch(url,{method,headers:{'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
-  const data=await response.json().catch(()=>({}));
-  if(!response.ok)throw new Error(typeof data.error==='string'?data.error:'Rune request failed.');
-  return data as T;
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),15_000);
+  try{
+    const response=await fetch(url,{method,headers:{'Content-Type':'application/json'},signal:controller.signal,...(body===undefined?{}:{body:JSON.stringify(body)})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(typeof data.error==='string'?data.error:'Rune request failed.');
+    return data as T;
+  }catch(error){
+    if(error instanceof Error&&error.name==='AbortError')throw new Error('Rune request timed out. Refresh your inventory before trying again.');
+    throw error;
+  }finally{clearTimeout(timeout);}
 }
 const RARITY_ORDER:Record<string,number>={Cosmic:7,Mythic:6,Legendary:5,Epic:4,Rare:3,Uncommon:2,Common:1};
 const STAT_LABEL:Record<CombatRuneStat,string>={luckPct:'Orb Luck',coinGainPct:'Coin gain',shardChancePct:'Shard chance',xpGainPct:'XP gain'};
@@ -44,17 +51,17 @@ export const RunesSection:React.FC=()=>{
   const [notice,setNotice]=useState('');
   const operationLockRef=useRef(false);
   const [operationPending,setOperationPending]=useState(false);
-  const beginOperation=()=>{
+  const beginOperation=useCallback(()=>{
     if(operationLockRef.current)return false;
     operationLockRef.current=true;setOperationPending(true);return true;
-  };
-  const endOperation=()=>{operationLockRef.current=false;setOperationPending(false);};
+  },[]);
+  const endOperation=useCallback(()=>{operationLockRef.current=false;setOperationPending(false);},[]);
   const load=useCallback(async()=>{
     if(!beginOperation())return;
     try{const result=await request<CombatSnapshot>('/api/combat/state');setSnapshot(result);setError('');}
     catch(e){setError(e instanceof Error?e.message:'Could not load Runes.');}
     finally{setLoading(false);endOperation();}
-  },[]);
+  },[beginOperation,endOperation]);
   useEffect(()=>{void load();},[load]);
   const state=snapshot?.state??null;
   const bestRuneDepth=state?Math.max(state.bestDepth,...Object.values(state.dungeonBestDepths)):1;
@@ -215,10 +222,10 @@ export const RunesSection:React.FC=()=>{
             const xpProgress=progressRange>0?Math.max(0,Math.min(100,(levelXp-currentXp)/progressRange*100)):100;
             const iconLabel=(isEquipped?'Unequip ':'Equip ')+rune.name;
             return <article key={rune.id} className={'io-runes-icon-wrap '+rarityClass(rune.rarity)+(isEquipped?' is-equipped':'')}>
-              <button type="button" className={'io-runes-icon '+rarityClass(rune.rarity)+(isEquipped?' is-equipped':'')+(strengthenTargetId===rune.id?' is-strengthen-target':'')} disabled={operationPending||sacrificing||(strengthenTargetId?false:busyRune===rune.id||(!isEquipped&&!canEquip))} onClick={()=>handleRuneClick(rune)} aria-pressed={strengthenTargetId?strengthenTargetId===rune.id:isEquipped} aria-label={strengthenTargetId?(rune.id===strengthenTargetId?'Cancel Strengthen selection':'Sacrifice '+rune.name+' into '+(strengthenTargetRune?.name??'selected Rune')):iconLabel} title={strengthenTargetId?(rune.id===strengthenTargetId?'Cancel Strengthen selection':'Sacrifice into '+(strengthenTargetRune?.name??'selected Rune')):iconLabel}>
+              <button type="button" className={'io-runes-icon '+rarityClass(rune.rarity)+(isEquipped?' is-equipped':'')+(strengthenTargetId===rune.id?' is-strengthen-target':'')} disabled={operationPending||sacrificing||(strengthenTargetId?false:busyRune===rune.id||(!isEquipped&&!canEquip))} onClick={()=>handleRuneClick(rune)} aria-describedby={'io-rune-tooltip-'+encodeURIComponent(rune.id)} aria-pressed={strengthenTargetId?strengthenTargetId===rune.id:isEquipped} aria-label={strengthenTargetId?(rune.id===strengthenTargetId?'Cancel Strengthen selection':'Sacrifice '+rune.name+' into '+(strengthenTargetRune?.name??'selected Rune')):iconLabel} title={strengthenTargetId?(rune.id===strengthenTargetId?'Cancel Strengthen selection':'Sacrifice into '+(strengthenTargetRune?.name??'selected Rune')):iconLabel}>
                 <span className="io-runes-icon-art">{STAT_ICON[rune.stat]}</span><small>Lv. {fmt(level)}</small>{isEquipped&&<span className="io-runes-equipped-mark"><ShieldCheck size={12}/></span>}
               </button>
-              <div className="io-runes-tooltip" role="tooltip">
+              <div id={'io-rune-tooltip-'+encodeURIComponent(rune.id)} className="io-runes-tooltip" role="tooltip">
                 <span className={'io-runes-tooltip-rarity '+rarityClass(rune.rarity)}>{rune.rarity.toUpperCase()} · {STAT_LABEL[rune.stat].toUpperCase()}</span>
                 <strong>{rune.name}</strong><span className="io-runes-tooltip-level">Level {fmt(level)} · Rune XP {fmt(levelXp)} / {fmt(nextXp)} · Found at depth {rune.sourceDepth+1}</span>
                 <div className="io-runes-xp-track" role="progressbar" aria-label={rune.name+' progress toward level '+fmt(level+1)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(xpProgress)}><span style={{width:xpProgress+'%'}}/></div>
