@@ -98,6 +98,16 @@ const localRedis = {
     const raw = readStore(key);
     return raw ? JSON.parse(raw) as Record<string, string> : {};
   },
+  hDel: async (key: string, field: string): Promise<number> => {
+    const raw = readStore(key);
+    if (!raw) return 0;
+    const values = JSON.parse(raw) as Record<string, string>;
+    if (!(field in values)) return 0;
+    delete values[field];
+    if (Object.keys(values).length === 0) deleteStore(key);
+    else writeStore(key, JSON.stringify(values));
+    return 1;
+  },
   mGet: async (keys: string[]): Promise<Array<string | null>> => keys.map(key => readStore(key) ?? null),
   set: async (
     key: string,

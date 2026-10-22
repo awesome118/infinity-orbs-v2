@@ -107,6 +107,10 @@ export const RollSection: React.FC<RollSectionProps> = ({
   }, []);
   const [isRevealing, setIsRevealing] = useState(false);
   const [cooldownNotice, setCooldownNotice] = useState<string | null>(null);
+  const cooldownNoticeTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
+  }, []);
   const [sonarActive, setSonarActive] = useState(() => sound.sonarMode);
   const [sonarThreshold, setSonarThresholdState] = useState(() => sound.sonarThreshold);
   const [sonarPinging, setSonarPinging] = useState(false);
@@ -274,6 +278,10 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
   // Handle click on roll button or center orb
   const handleRollClick = () => {
+    if (cooldownNoticeTimerRef.current !== null) {
+      window.clearTimeout(cooldownNoticeTimerRef.current);
+      cooldownNoticeTimerRef.current = null;
+    }
     if (canRoll) {
       sound.playClick();
       setCooldownNotice(null);
@@ -281,7 +289,10 @@ export const RollSection: React.FC<RollSectionProps> = ({
     } else if (remain > 0) {
       sound.playClick();
       setCooldownNotice(`Cooldown active (${(remain / 1000).toFixed(1)}s remaining)`);
-      setTimeout(() => setCooldownNotice(null), 1500);
+      cooldownNoticeTimerRef.current = window.setTimeout(() => {
+        setCooldownNotice(null);
+        cooldownNoticeTimerRef.current = null;
+      }, 1500);
     }
   };
 

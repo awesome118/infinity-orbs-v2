@@ -12,9 +12,14 @@ import {
   RefreshCw,
   Flame,
   Shield,
+  Swords,
+  DoorOpen,
+  Package,
+  Hammer,
   Lock,
   Megaphone,
   X,
+  Gem,
 } from 'lucide-react';
 import type {
   PlayerState,
@@ -42,6 +47,7 @@ import {
   formatNumber,
   cooldownMs,
   calculateCosmicDust,
+  MAX_COSMIC_DUST,
   calculateLevelFromXp,
   applyLevelProgress,
   createInitialState,
@@ -63,6 +69,8 @@ import {
 } from '../shared/game.js';
 import { sound } from './sound.js';
 import { Header } from './components/Header.js';
+import { CombatSection } from './components/CombatSection.js';
+import type { CombatPage } from '../shared/combat.js';
 import { RollSection } from './components/RollSection.js';
 import { UpgradesSection } from './components/UpgradesSection.js';
 import { AltarSection } from './components/AltarSection.js';
@@ -90,9 +98,16 @@ type ActiveTab =
   | 'altar'
   | 'mastery'
   | 'collection'
+  | 'runes'
   | 'quests'
   | 'social'
-  | 'profile';
+  | 'profile'
+  | 'fight'
+  | 'dungeons'
+  | 'gear'
+  | 'forge'
+  | 'skills'
+  | 'arena';
 
 async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
   const method = String(options?.method ?? 'GET').toUpperCase();
@@ -100,6 +115,7 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
   const maxAttempts = isRead ? 3 : 1;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let receivedNonRetryableHttpError = false;
     try {
       const res = await fetch(url, options);
       if (!res.ok) {
@@ -142,6 +158,7 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
           continue;
         }
 
+        receivedNonRetryableHttpError = true;
         throw new Error(message);
       }
 
@@ -149,6 +166,7 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
     } catch (error: any) {
       const retryableNetworkRead =
         isRead &&
+        !receivedNonRetryableHttpError &&
         attempt < maxAttempts - 1 &&
         error?.name !== 'AbortError';
 
@@ -195,6 +213,53 @@ export function App() {
 
   const [readyAt, setReadyAt] = useState<number>(0);
   const [tab, setTab] = useState<ActiveTab>('roll');
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const [tutorialDismissed, setTutorialDismissed] = useState(() => {
+    try { return window.localStorage.getItem('io-first-roll-tutorial-v1') === 'done'; } catch { return false; }
+  });
+  useEffect(() => {
+    if (!tutorialDismissed && state && state.totalRolls > 0 && state.totalRolls <= 3 && tutorialStep === 0) setTutorialStep(1);
+  }, [state?.totalRolls, tutorialDismissed, tutorialStep]);
+  const [combatTutorialStep, setCombatTutorialStep] = useState(0);
+  const [combatTutorialDismissed, setCombatTutorialDismissed] = useState(() => {
+    try { return window.localStorage.getItem('io-combat-tutorial-v1') === 'done'; } catch { return false; }
+  });
+  const [combatTutorialStatusLoaded, setCombatTutorialStatusLoaded] = useState(false);
+  useEffect(() => {
+    let active = true;
+    let localDone = false;
+    try { localDone = window.localStorage.getItem('io-combat-tutorial-v1') === 'done'; } catch { /* Use server persistence when webview storage is unavailable. */ }
+    void fetch('/api/combat/tutorial/status', { cache: 'no-store' })
+      .then(async response => {
+        if (!response.ok) throw new Error('Could not load Combat tutorial status.');
+        return await response.json() as { seen?: boolean };
+      })
+      .then(result => {
+        if (!active) return;
+        const done = result.seen === true || localDone;
+        setCombatTutorialDismissed(done);
+        if (done) {
+          try { window.localStorage.setItem('io-combat-tutorial-v1', 'done'); } catch { /* Server is authoritative. */ }
+          if (result.seen !== true) {
+            void fetch('/api/combat/tutorial/complete', { method: 'POST' }).catch(() => undefined);
+          }
+        }
+      })
+      .catch(() => {
+        if (active) setCombatTutorialDismissed(localDone);
+      })
+      .finally(() => {
+        if (active) setCombatTutorialStatusLoaded(true);
+      });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    const coreTutorialDone = tutorialDismissed || Number(state?.totalRolls ?? 0) > 3;
+    if (combatTutorialStatusLoaded && coreTutorialDone && !combatTutorialDismissed && state && state.level >= FEATURE_UNLOCK_LEVELS.combat && combatTutorialStep === 0) {
+      setCombatTutorialStep(1);
+    }
+  }, [state?.level, state?.totalRolls, tutorialDismissed, combatTutorialDismissed, combatTutorialStep, combatTutorialStatusLoaded]);
+  const combatMode = tab === 'fight' || tab === 'dungeons' || tab === 'gear' || tab === 'forge' || tab === 'skills' || tab === 'arena' || tab === 'runes';
   const [autoRoll, setAutoRoll] = useState<boolean>(false);
   const [isBeta, setIsBeta] = useState(false);
   const [changelogUnread, setChangelogUnread] = useState(() => {
@@ -491,6 +556,18 @@ export function App() {
     })(),
   );
 
+  const finishTutorial = () => {
+    setTutorialDismissed(true);
+    try { window.localStorage.setItem('io-first-roll-tutorial-v1', 'done'); } catch { /* Embedded webviews may disable storage. */ }
+  };
+
+  const finishCombatTutorial = () => {
+    setCombatTutorialDismissed(true);
+    setCombatTutorialStep(0);
+    try { window.localStorage.setItem('io-combat-tutorial-v1', 'done'); } catch { /* Server-side completion is the fallback. */ }
+    void fetch('/api/combat/tutorial/complete', { method: 'POST' }).catch(() => undefined);
+  };
+
   const featureForTab = (nextTab: ActiveTab): FeatureId | null => {
     if (nextTab === 'upgrades') return 'upgrades';
     if (nextTab === 'quests') return 'quests';
@@ -500,6 +577,7 @@ export function App() {
     if (nextTab === 'altar') return 'altar';
     if (nextTab === 'mastery') return 'mastery';
     if (nextTab === 'profile') return 'prestige';
+    if (nextTab === 'fight' || nextTab === 'dungeons' || nextTab === 'gear' || nextTab === 'forge' || nextTab === 'skills' || nextTab === 'arena' || nextTab === 'runes') return 'combat';
     return null;
   };
 
@@ -1579,6 +1657,7 @@ export function App() {
           prosperity: current.masterySkills?.prosperity ?? 0,
           shardAttunement: current.masterySkills?.shardAttunement ?? 0,
           critMastery: current.masterySkills?.critMastery ?? 0,
+          aftershock: current.masterySkills?.aftershock ?? 0,
           chronoFlow: current.masterySkills?.chronoFlow ?? 0,
           infiniteVault: current.masterySkills?.infiniteVault ?? 0,
           cosmicAttunement: current.masterySkills?.cosmicAttunement ?? 0,
@@ -1713,7 +1792,7 @@ export function App() {
 
       return {
         ...current,
-        cosmicDust: (current.cosmicDust ?? 0) + dustEarned,
+        cosmicDust: Math.min(MAX_COSMIC_DUST, (current.cosmicDust ?? 0) + dustEarned),
         prestigeCount: (current.prestigeCount ?? 0) + 1,
         masteryPoints: (current.masteryPoints ?? 0) + 3,
         collectionValue: 0,
@@ -2187,6 +2266,7 @@ export function App() {
       {/* Sticky Top Header */}
       <Header
         state={state}
+        combatMode={combatMode}
         soundEnabled={soundEnabled}
         onToggleSound={() => setSoundEnabled(sound.toggle())}
         onOpenOdds={() => setShowOddsModal(true)}
@@ -2318,9 +2398,17 @@ export function App() {
       )}
 
       {/* Main Navigation Bar */}
-      <div className="io-nav app-nav bg-slate-900/55 border-b border-slate-800/80 px-4 py-2 sticky top-[57px] z-20 backdrop-blur-md">
+      <div className={"io-nav app-nav bg-slate-900/55 border-b border-slate-800/80 px-4 py-2 sticky top-[57px] z-20 backdrop-blur-md" + (combatMode ? " io-nav-combat" : "")}>
         <div className="nav-shell max-w-6xl mx-auto flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          <button type="button" onClick={() => { sound.playClick(); changeTab(combatMode ? 'roll' : 'fight'); }}
+            className={"io-combat-mode-switch nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (combatMode ? " is-active" : "")}
+            aria-pressed={combatMode} title={combatMode ? "Return to the core orb-rolling game" : (state.level < FEATURE_UNLOCK_LEVELS.combat ? "Unlock Combat at Level " + FEATURE_UNLOCK_LEVELS.combat : "Enter the combat expansion")}>
+            <Swords className="w-4 h-4" />
+            <span>{combatMode ? "Back to Orbs" : "Combat"}</span>
+            <span className="io-combat-mode-mark">{combatMode ? "ON" : state.level < FEATURE_UNLOCK_LEVELS.combat ? "LV " + FEATURE_UNLOCK_LEVELS.combat : "NEW"}</span>
+          </button>
 
+          {!combatMode && <>
           <button
             onClick={() => {
               sound.playClick();
@@ -2473,11 +2561,76 @@ export function App() {
               <span className="w-2 h-2 rounded-full bg-fuchsia-400" />
             )}
           </button>
+          </>}
+          {combatMode && <>
+            <button onClick={() => changeTab('fight')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (tab === 'fight' ? " is-active" : "")}><Flame className="w-3.5 h-3.5" /><span>Fight</span></button>
+            <button onClick={() => changeTab('dungeons')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'dungeons' ? " is-active" : "")}><DoorOpen className="w-3.5 h-3.5" /><span>Dungeons</span></button>
+            <button onClick={() => changeTab('gear')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'gear' ? " is-active" : "")}><Package className="w-3.5 h-3.5" /><span>Gear</span></button>
+            <button onClick={() => changeTab('forge')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'forge' ? " is-active" : "")}><Hammer className="w-3.5 h-3.5" /><span>Forge</span></button>
+            <button onClick={() => changeTab('skills')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'skills' ? " is-active" : "")}><Sparkles className="w-3.5 h-3.5" /><span>Skills</span></button>
+            <button onClick={() => changeTab('arena')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'arena' ? " is-active" : "")}><Users className="w-3.5 h-3.5" /><span>Arena</span><span className="io-combat-soon">NEXT</span></button>
+            <button onClick={() => changeTab('runes')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'runes' ? " is-active" : "")}><Gem className="w-3.5 h-3.5" /><span>Runes</span></button>
+          </>}
         </div>
       </div>
 
+      {combatTutorialStatusLoaded && state && combatTutorialStep > 0 && !combatTutorialDismissed && (
+        <section className="io-tutorial-guide io-combat-onboarding" aria-live="polite" aria-label="Combat unlock tutorial">
+          <div className="io-tutorial-topline"><span>COMBAT UNLOCKED · LEVEL {FEATURE_UNLOCK_LEVELS.combat}</span><span>STEP {combatTutorialStep} / 3</span><button type="button" onClick={finishCombatTutorial} aria-label="Skip Combat tutorial">Skip</button></div>
+          {combatTutorialStep === 1 && <>
+            <h2>Your next progression path is Combat</h2>
+            <p>Combat unlocks at Level {FEATURE_UNLOCK_LEVELS.combat}. Your current orb is the source of combat power: each accepted beat rolls an orb, and its rarity increases the damage of your attacks.</p>
+            <button type="button" className="io-tutorial-primary" onClick={() => { setCombatTutorialStep(2); changeTab('fight'); }}><Swords size={15} /> Enter Combat</button>
+          </>}
+          {combatTutorialStep === 2 && <>
+            <h2>Learn the rhythm</h2>
+            <p>Fight beats resolve on a 30-second cadence. Speed controls turn order; Auto Fight can resolve your selected tactic when your next beat is ready. Defeating enemies earns Combat Marks and gear.</p>
+            <button type="button" className="io-tutorial-primary" onClick={() => { setCombatTutorialStep(3); changeTab('gear'); }}><Package size={15} /> View your Gear</button>
+          </>}
+          {combatTutorialStep === 3 && <>
+            <h2>Grow your build</h2>
+            <p>Spend Combat Marks on permanent Combat upgrades and Skill Gacha. Equip gear for stat bonuses, and open Runes to equip monster drops that improve your main-game rolls. Bosses always drop a Rune.</p>
+            <button type="button" className="io-tutorial-primary" onClick={() => { finishCombatTutorial(); changeTab('runes'); }}><Gem size={15} /> Finish in Runes</button>
+          </>}
+        </section>
+      )}
+
       {/* Main Container Content */}
       <main className="app-main flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+
+        {!combatMode && state && !tutorialDismissed && (state.totalRolls <= 3 || tutorialStep > 0) && (
+          <section className="io-tutorial-guide" aria-live="polite" aria-label="First steps tutorial">
+            <div className="io-tutorial-topline"><span>FIRST STEPS</span><span>STEP {Math.min(4, tutorialStep + 1)} / 4</span><button type="button" onClick={finishTutorial} aria-label="Skip tutorial">Skip</button></div>
+            {tutorialStep === 0 && <>
+              <h2>Roll your first orb</h2>
+              <p>Every roll can reveal a rarer orb. The orb’s rarity drives its value, while rolls also earn coins, XP, and sometimes Shards. Start with one roll to see the core loop.</p>
+              <button type="button" className="io-tutorial-primary" disabled={isRolling || busy} onClick={() => { void handleRoll(false); }}><Sparkles size={15} /> Roll my first orb</button>
+            </>}
+            {tutorialStep === 1 && <>
+              <h2>Read the result</h2>
+              <p>{lastOrb ? `You found ${lastOrb.name} (1 / ${formatNumber(lastOrb.rarity)}). ` : ''}Rarer orbs are worth more. Keep rolling to earn XP; Level 2 unlocks Upgrades. Buy Auto Roll there, then switch it on from the Roll screen to repeat rolls as cooldowns allow.</p>
+              {state.level >= 2
+                ? <button type="button" className="io-tutorial-primary" onClick={() => { setTutorialStep(2); changeTab('upgrades'); }}>Explore Upgrades <Zap size={15} /></button>
+                : <button type="button" className="io-tutorial-primary" disabled={isRolling || busy} onClick={() => { void handleRoll(false); }}>Roll toward Level 2 <Sparkles size={15} /></button>}
+            </>}
+            {tutorialStep === 2 && <>
+              <h2>Make the next roll better</h2>
+              <p>Luck improves your rarity odds; Speed reduces the wait between rolls. Coin and XP upgrades help you reinvest as you play. The Codex unlocks at Level 4 and tracks the rarities you’ve discovered.</p>
+              {state.level >= 4
+                ? <button type="button" className="io-tutorial-primary" onClick={() => { setTutorialStep(3); changeTab('collection'); }}>Open the Codex <BookOpen size={15} /></button>
+                : <button type="button" className="io-tutorial-primary" disabled={isRolling || busy} onClick={() => { void handleRoll(false); }}>Roll toward Level 4 <Sparkles size={15} /></button>}
+            </>}
+            {tutorialStep >= 3 && <>
+              <h2>Your journey is tracked</h2>
+              <p>The Codex tracks the rarities you’ve discovered. Later, defeat monsters in Combat to earn Runes. Open Combat → Runes and equip them to improve your normal orb rolls.</p>
+              <button type="button" className="io-tutorial-primary" onClick={() => { finishTutorial(); changeTab('roll'); }}>Finish &amp; keep rolling <Sparkles size={15} /></button>
+            </>}
+          </section>
+        )}
+        {combatMode ? (
+          <CombatSection page={tab as CombatPage} onNavigate={changeTab} />
+        ) : (
+          <>
         {tab === 'roll' && (
           <RollSection
             state={state}
@@ -2502,7 +2655,6 @@ export function App() {
             state={state}
             onBuyUpgrade={handleBuyUpgrade}
             onBuyAllUpgrades={handleBuyAllUpgrades}
-            onBuyChainPatcher={handleBuyChainPatcher}
             onActivateTurbo={handleActivateTurbo}
             busy={false}
           />
@@ -2546,6 +2698,7 @@ export function App() {
           <CollectionSection
             state={state}
             onOpenShareModal={r => setShareRarity(r)}
+            onBuyChainPatcher={handleBuyChainPatcher}
           />
         )}
 
@@ -2589,6 +2742,8 @@ export function App() {
             busy={false}
           />
         )}
+          </>
+        )}
       </main>
 
       {showFrenzyPrompt && (
@@ -2601,7 +2756,7 @@ export function App() {
             <h2 className="mt-2 text-2xl font-black text-white">Post today’s Frenzy</h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-400">
               Charge a public Frenzy from today’s best roll. Your next manual Roll creates the post
-              and lets someone else claim it. Every player can claim one Frenzy a day.
+              and lets other players claim that same Frenzy. Each player can claim it once, subject to their personal claim cooldown.
             </p>
             <div className="io-frenzy-prompt-reward">
               <div className="text-3xl font-black text-fuchsia-200">+{FRENZY_OWNER_SHARD_REWARD} Shards</div>
@@ -2715,7 +2870,7 @@ export function App() {
       )}
 
       {/* Global Chat */}
-      <GlobalChatWindow username={state.username ?? ''} />
+      <GlobalChatWindow username={state.username ?? ''} launcherContext="main" />
 
       {/* Changelog */}
       {showChangelogModal && (

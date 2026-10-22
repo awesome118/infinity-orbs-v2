@@ -5,6 +5,8 @@ import {
   createInitialState,
   addCollectionValue,
   calculatePrestigeDust,
+  calculateCosmicDust,
+  MAX_COSMIC_DUST,
   aftershockCriticalLuckBonus,
   unbrokenMomentumSpeedBonus,
   recordRollingSessionActivity,
@@ -47,8 +49,6 @@ import {
   CHAIN_PATCHER_COOLDOWN_MS,
   applyLevelProgress,
   xpRequiredForLevel,
-  SINGULARITY_TITHE_ROLLS_PER_DUST,
-  singularityTitheDustForRolls,
 } from '../src/shared/game.js';
 import {
   createGuildTask,
@@ -99,6 +99,17 @@ test('Prestige Dust has a million-value minimum step and logarithmic diminishing
   assert.equal(calculatePrestigeDust(300_000_000), 58);
 });
 
+test('Cosmic Dust earnings never exceed the 50-Dust wallet cap', () => {
+  const state=createInitialState();
+  state.collectionValue=300_000_000;
+  assert.equal(MAX_COSMIC_DUST,50);
+  assert.equal(calculateCosmicDust(state),50);
+  state.cosmicDust=49;
+  assert.equal(calculateCosmicDust(state),1,'only remaining capacity can be earned');
+  state.cosmicDust=50;
+  assert.equal(calculateCosmicDust(state),0,'prestige should not consume a run without any Dust reward');
+});
+
 test('Aftershock turns the best record-breaking dry interval into permanent Critical Luck', () => {
   assert.equal(aftershockCriticalLuckBonus(0), 0);
   assert.equal(aftershockCriticalLuckBonus(9), 0);
@@ -110,16 +121,22 @@ test('Aftershock turns the best record-breaking dry interval into permanent Crit
   const state = createInitialState(NOW);
   const baseCriticalLuck = critMultiplier(state);
   state.aftershockRecord = 80_000;
-  assert.equal(critMultiplier(state), baseCriticalLuck + 0.02);
+  assert.equal(critMultiplier(state), baseCriticalLuck, 'Aftershock is inactive until purchased');
+  state.masterySkills!.aftershock = 1;
+  assert.equal(critMultiplier(state), baseCriticalLuck + 0.02, 'purchased Aftershock applies its record bonus');
 });
 
 test('Unbroken Momentum tracks uninterrupted sessions and grants capped Speed', () => {
   assert.equal(UNBROKEN_MOMENTUM_SESSION_GAP_MS, 5 * 60_000);
   assert.equal(unbrokenMomentumSpeedBonus(0), 0);
   assert.equal(unbrokenMomentumSpeedBonus(5 * 60_000 - 1), 0);
-  assert.equal(unbrokenMomentumSpeedBonus(5 * 60_000), 0.01);
-  assert.equal(unbrokenMomentumSpeedBonus(30 * 60_000), 0.06);
-  assert.equal(unbrokenMomentumSpeedBonus(180 * 60_000), 0.30);
+  const expectedFiveMinuteBonus = 0.20 * Math.log1p((5 / 60) / 20) / Math.log1p(48 / 20);
+  assert.ok(Math.abs(unbrokenMomentumSpeedBonus(5 * 60_000) - expectedFiveMinuteBonus) < 1e-12);
+  const expectedThirtyMinuteBonus = 0.20 * Math.log1p(0.5 / 20) / Math.log1p(48 / 20);
+  assert.ok(Math.abs(unbrokenMomentumSpeedBonus(30 * 60_000) - expectedThirtyMinuteBonus) < 1e-12);
+  assert.equal(unbrokenMomentumSpeedBonus(48 * 60 * 60_000), 0.20);
+  assert.ok(Math.abs(unbrokenMomentumSpeedBonus(72 * 60 * 60_000) - 0.25) < 0.001);
+  assert.equal(unbrokenMomentumSpeedBonus(120 * 60 * 60_000), 0.30);
 
   const state = createInitialState(NOW);
   recordRollingSessionActivity(state, NOW);
@@ -135,9 +152,15 @@ test('Unbroken Momentum tracks uninterrupted sessions and grants capped Speed', 
   assert.equal(state.longestRollingSessionMs, 6 * 60_000);
 
   const baseCooldown = cooldownMs(createInitialState(NOW));
+  const lockedMomentumState = createInitialState(NOW);
+  lockedMomentumState.longestRollingSessionMs = 30 * 60_000;
+  assert.equal(cooldownMs(lockedMomentumState), baseCooldown, 'Momentum is inactive until purchased');
+
   const momentumState = createInitialState(NOW);
   momentumState.longestRollingSessionMs = 30 * 60_000;
-  assert.equal(cooldownMs(momentumState), Math.max(300, Math.round(baseCooldown / 1.06)));
+  momentumState.prestigeUpgrades.unbrokenMomentum = 1;
+  const momentumBonus = unbrokenMomentumSpeedBonus(momentumState.longestRollingSessionMs);
+  assert.equal(cooldownMs(momentumState), Math.max(300, Math.round(baseCooldown / (1 + momentumBonus))));
 });
 
 test('Altar rank compounds at 1.05× per level and the coin floor grows by 1.5×', () => {
@@ -221,12 +244,6 @@ test('Legacy high-level accounts can progress after the XP curve changed', () =>
   assert.equal(state.masteryPoints, 1);
 });
 
-test('Singularity Tithe awards dust every 200 processed rolls and counts batches', () => {
-  assert.equal(SINGULARITY_TITHE_ROLLS_PER_DUST, 200);
-  assert.equal(singularityTitheDustForRolls(199, 1, 1), 1);
-  assert.equal(singularityTitheDustForRolls(198, 2, 2), 2);
-  assert.equal(singularityTitheDustForRolls(200, 100, 1), 0);
-});
 
 test('fresh state starts with an inactive Guild Combo', () => {
   const state = createInitialGuildCombo(NOW);
@@ -280,7 +297,7 @@ test('Guild Combo bonuses match the half-strength design', () => {
     lastTickAt: NOW,
   };
   const tier10 = {
-    tier: GUILD_COMBO_MAX_TIER,
+    tier: 10,
     activationProgress: 0,
     endsAt: NOW + GUILD_COMBO_BASE_DURATION_MS,
     lastTickAt: NOW,
@@ -328,8 +345,8 @@ test('higher Guild Combo tiers drain faster', () => {
   const d4 = decayGuildComboState(tier4, NOW + elapsed);
 
   assert.ok(d1.endsAt > d4.endsAt);
-  assert.equal(d1.endsAt, tier1.endsAt - Math.round(elapsed * 1 * 0.25));
-  assert.equal(d4.endsAt, tier4.endsAt - Math.round(elapsed * 4 * 0.25));
+  assert.equal(d1.endsAt, tier1.endsAt - Math.round(elapsed * 0.25 * Math.log2(2)));
+  assert.equal(d4.endsAt, tier4.endsAt - Math.round(elapsed * 0.25 * Math.log2(5)));
 });
 
 test('Combo Reserve duration multiplier increases Combo time', () => {
@@ -339,13 +356,17 @@ test('Combo Reserve duration multiplier increases Combo time', () => {
   assert.equal(boosted, Math.round(base * 1.10));
 });
 
-test('Guild Combo tier cannot exceed the configured maximum', () => {
+test('Guild Combo advances beyond tier 10 and remains bounded by the configured maximum', () => {
   let state = createInitialGuildCombo(NOW);
 
   for (let i = 0; i < 100; i += 1) {
     state = activateGuildComboStack(state, NOW, GUILD_COMBO_MAX_TIER);
   }
+  assert.ok(state.tier > 10, 'Guild Combo should not stop at tier 10');
 
+  for (let i = 100; i < GUILD_COMBO_MAX_TIER * GUILD_COMBO_ACTIVATIONS_PER_TIER; i += 1) {
+    state = activateGuildComboStack(state, NOW, GUILD_COMBO_MAX_TIER);
+  }
   assert.equal(state.tier, GUILD_COMBO_MAX_TIER);
 });
 
@@ -574,4 +595,16 @@ test('Global Booster segment history is bounded and sanitized when reading store
     endsAt: 0,
     segmentTiers: [1, 2, 3, 4],
   }, NOW).segmentTiers?.length, 0);
+});
+
+
+test('Unbroken Momentum uses the requested logarithmic Speed curve', () => {
+  const hour = 60 * 60 * 1000;
+  assert.equal(unbrokenMomentumSpeedBonus(0), 0);
+  assert.ok(Math.abs(unbrokenMomentumSpeedBonus(48 * hour) - 0.20) < 1e-10,
+    '48 hours should grant exactly 20% permanent Speed');
+  assert.ok(Math.abs(unbrokenMomentumSpeedBonus(72 * hour) - 0.25) < 0.001,
+    '72 hours should grant approximately 25% permanent Speed');
+  assert.equal(unbrokenMomentumSpeedBonus(1000 * hour), 0.30,
+    'long sessions should respect the 30% cap');
 });

@@ -144,6 +144,8 @@ export interface GlobalChatMessage {
   text: string;
   timestamp: number;
   userId?: string;
+  /** Computed by the server from the authoritative Reddit author name. */
+  isAdmin?: boolean;
 }
 
 export interface Achievement {

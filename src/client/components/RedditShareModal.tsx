@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ArrowBigUp, ArrowRight, CheckCircle2, MessageSquare, Share2, X } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
 import { formatNumber, formatRarity, getOrbInfo } from '../../shared/game.js';
@@ -18,13 +18,15 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
   onShare,
 }) => {
   const [busy, setBusy] = useState(false);
+  const shareLockRef = useRef(false);
   const [successPostId, setSuccessPostId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const info = getOrbInfo(rarity);
 
   const handleShare = async () => {
-    if (busy) return;
+    if (busy || shareLockRef.current) return;
+    shareLockRef.current = true;
     setBusy(true);
     setErrorMessage(null);
     sound.playClick();
@@ -43,14 +45,15 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
           : 'Could not create the Reddit post. Please try again.',
       );
     } finally {
+      shareLockRef.current = false;
       setBusy(false);
     }
   };
 
   return (
     <div className="io-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="io-modal-card bg-slate-900 text-slate-100 relative w-full max-w-xl max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
-        <button onClick={onClose} className="io-modal-close" aria-label="Close share dialog">
+      <div role="dialog" aria-modal="true" aria-labelledby="io-share-dialog-title" aria-busy={busy} className="io-modal-card bg-slate-900 text-slate-100 relative w-full max-w-xl max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
+        <button type="button" onClick={onClose} disabled={busy} className="io-modal-close disabled:opacity-40 disabled:cursor-not-allowed" aria-label="Close share dialog" title={busy?'Wait for Reddit to confirm the post before closing':'Close share dialog'}>
           <X className="w-4 h-4" />
         </button>
 
@@ -61,7 +64,7 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
               <Share2 className="w-3.5 h-3.5" />
               Share discovery
             </div>
-            <h3>Post this Orb to Reddit</h3>
+            <h3 id="io-share-dialog-title">Post this Orb to Reddit</h3>
           </div>
         </div>
 
@@ -140,7 +143,7 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
           </div>
         ) : (
           <div className="io-modal-actions">
-            <button onClick={onClose} className="io-public-button io-public-button-secondary">Cancel</button>
+            <button type="button" onClick={onClose} disabled={busy} className="io-public-button io-public-button-secondary disabled:opacity-40">Cancel</button>
             <button onClick={handleShare} disabled={busy} className="io-public-button io-public-button-primary">
               <Share2 className="w-4 h-4" />
               {busy ? 'Posting…' : 'Post to Reddit'}
@@ -150,7 +153,7 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
         )}
 
         {successPostId && (
-          <button onClick={onClose} className="io-public-button io-public-button-secondary io-modal-close-button">
+          <button type="button" onClick={onClose} className="io-public-button io-public-button-secondary io-modal-close-button">
             Close
           </button>
         )}

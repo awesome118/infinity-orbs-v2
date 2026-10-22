@@ -29,6 +29,7 @@ import {
   weekKey,
   createInitialGuildCombo,
   decayGuildComboState,
+  GUILD_COMBO_MAX_TIER,
   activateGuildComboStack,
   highestCodexChain,
   type GuildComboState,
@@ -36,12 +37,26 @@ import {
 
 const user = () => context.userId ?? 'unknown';
 const username = () => context.username ?? `reddit-user-${user().slice(-8)}`;
+function isAdminUsername(value: unknown): boolean {
+  return String(value ?? '').trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen';
+}
 const key = (name: string) => `io:${name}`;
 const GUILDS_KEY = key('guilds');
 const PLAYER_REGISTRY_KEY = key('player-registry');
 const GUILD_CHAT_MUTES_KEY = key('guild-chat-mutes:v1');
 const GUILD_TOKEN_RESET_KEY = key('guild-token-reset:v1');
 const GUILD_UPGRADE_RESET_KEY = key('guild-upgrade-reset:v1');
+/** Create collision-resistant IDs for guild, chat, and moderation receipts. */
+function createSecureId(): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === 'function') return cryptoApi.randomUUID();
+  if (typeof cryptoApi?.getRandomValues === 'function') {
+    const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+  }
+  throw new Error('Secure identifier generation is unavailable.');
+}
+
 
 // All writes to the serialized Guild document coordinate through one lock.
 // Guild progress is currently stored as a shared JSON document, so concurrent
@@ -229,7 +244,7 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
       if (!Number.isSafeInteger(value) || Number(value) < 0) throw invalid(`guild.combo.${field}`);
     }
     if (
-      (guild.combo.tier != null && Number(guild.combo.tier) > 10) ||
+      (guild.combo.tier != null && Number(guild.combo.tier) > GUILD_COMBO_MAX_TIER) ||
       (guild.combo.activationProgress != null && Number(guild.combo.activationProgress) > 3)
     ) {
       throw invalid('guild.combo tier/activationProgress');
@@ -380,7 +395,7 @@ function recoverGuildRecordForPlaytest(guild: Record<string, any>, index: number
   if (!isRecordValue(guild.combo)) {
     delete guild.combo;
   } else {
-    guild.combo.tier = clampInt(guild.combo.tier, 0, 10, 0);
+    guild.combo.tier = clampInt(guild.combo.tier, 0, GUILD_COMBO_MAX_TIER, 0);
     guild.combo.activationProgress = clampInt(guild.combo.activationProgress, 0, 3, 0);
     guild.combo.endsAt = clampInt(guild.combo.endsAt, 0, Number.MAX_SAFE_INTEGER, 0);
     guild.combo.lastTickAt = clampInt(guild.combo.lastTickAt, 0, Number.MAX_SAFE_INTEGER, 0);
@@ -1437,7 +1452,7 @@ export async function createGuild(name: string, tag: string) {
 
     const now = Date.now();
     const guild: Guild = {
-      id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `${now}-${createSecureId()}`,
       name: cleanName,
       tag: cleanTag,
       level: 1,
@@ -1610,9 +1625,9 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
         // Roll the same contribution across successive task tiers. The old
         // one-pass logic clamped overflow below the next target, which made very
         // large tasks appear stuck and forfeited rewards for skipped tiers.
-        let rolloverGuard = 0;
-        while (task.progress >= task.target && rolloverGuard < 256) {
-          rolloverGuard += 1;
+        let completions = 0;
+        while (task.progress >= task.target && completions < 1000) {
+          completions += 1;
           const completedTier = Math.max(1, Math.floor(Number(task.tier) || 1));
           const overflow = Math.max(0, task.progress - task.target);
           const reward = Math.max(1, Math.floor(task.reward * taskBountyMultiplier));
@@ -1624,7 +1639,7 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
           guild.combo = activateGuildComboStack(
             guild.combo,
             now,
-            10,
+            GUILD_COMBO_MAX_TIER,
             comboDurationMultiplier,
           );
 
@@ -1758,9 +1773,9 @@ export async function prepareGuildRollEffects(
         // A single Collection Value contribution can satisfy several successive
         // tiers. Keep carrying every remaining point forward and pay every tier's
         // Token/XP reward rather than clamping overflow below the next target.
-        let rolloverGuard = 0;
-        while (task.progress >= task.target && rolloverGuard < 256) {
-          rolloverGuard += 1;
+        let completions = 0;
+        while (task.progress >= task.target && completions < 1000) {
+          completions += 1;
           const completedTier = Math.max(1, Math.floor(Number(task.tier) || 1));
           const overflow = Math.max(0, task.progress - task.target);
           const reward = Math.max(1, Math.floor(task.reward * taskBountyMultiplier));
@@ -1769,7 +1784,7 @@ export async function prepareGuildRollEffects(
           guild.xp = capInteger(guild.xp + xpReward);
           guild.level = 1 + Math.floor(guild.xp / 500);
           guild.taskCompletions = capInteger((guild.taskCompletions ?? 0) + 1);
-          guild.combo = activateGuildComboStack(guild.combo, now, 10, comboDurationMultiplier);
+          guild.combo = activateGuildComboStack(guild.combo, now, GUILD_COMBO_MAX_TIER, comboDurationMultiplier);
 
           const replacement = createGuildTask(task.type, completedTier + 1, guild.level);
           replacement.progress = Math.min(Number.MAX_SAFE_INTEGER, overflow);
@@ -2230,7 +2245,7 @@ async function enforceChatCooldown(scope: string, cooldownMs: number): Promise<v
   const userId = user();
   if (!userId || userId === 'unknown') throw new Error('Your Reddit identity is unavailable.');
   const cooldownKey = CHAT_COOLDOWN_PREFIX + scope + ':' + userId;
-  const token = `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const token = `chat-${createSecureId()}`;
 
   // SET NX is atomic across server instances. Readback distinguishes the
   // request that acquired the cooldown from concurrent/later requests.
@@ -2300,18 +2315,50 @@ async function resolveGlobalGamePostId(): Promise<string> {
   return registered;
 }
 
-export async function getGlobalChatStatus(): Promise<{ enabled: boolean; reason?: string }> {
+export async function getGlobalChatStatus(
+  fromMainLauncher = false,
+  fromFrenzyPost = false,
+): Promise<{ enabled: boolean; reason?: string }> {
   const saved = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
-  if (await isCurrentFrenzyPostContext()) {
-    // If the canonical launcher is registered, posting from a Frenzy embed is
-    // safe: postGlobalChatMessage always targets this saved Game-post ID.
-    if (saved) return { enabled: true };
+
+  if (fromFrenzyPost) {
     return {
       enabled: false,
-      reason: 'Global Chat is disabled on this Frenzy post until you open the main Game launcher once.',
+      reason: "Global Chat is disabled because you're not in the main Game launcher.",
     };
   }
 
+  // The main launcher entry point marks its own handshake. This also recovers
+  // when a development environment reuses a post ID that has stale Frenzy
+  // metadata, without allowing the ordinary Frenzy widget to register itself.
+  if (fromMainLauncher) {
+    if (saved) return { enabled: true };
+    const currentPostId = normalizeRedditPostId(String(context.postId ?? '').trim());
+    if (!currentPostId) {
+      return {
+        enabled: false,
+        reason: 'Global Chat is disabled because the main Game launcher post is not available in this context.',
+      };
+    }
+    await redis.set(GLOBAL_GAME_POST_KEY, currentPostId, { nx: true });
+    const registered = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
+    if (registered) return { enabled: true };
+    return {
+      enabled: false,
+      reason: 'Global Chat could not register the main Game launcher. Please reopen the game.',
+    };
+  }
+
+  // Frenzy posts may display history, but posting is disabled there even after
+  // the canonical main Game post has registered.
+  if (await isCurrentFrenzyPostContext()) {
+    return {
+      enabled: false,
+      reason: "Global Chat is disabled because you're not in the main Game launcher.",
+    };
+  }
+
+  if (saved) return { enabled: true };
   try {
     await resolveGlobalGamePostId();
     return { enabled: true };
@@ -2351,6 +2398,7 @@ export async function recordGlobalChatComment(input: {
       ? Number(input.timestamp)
       : Date.now(),
     ...(userId ? { userId } : {}),
+    isAdmin: isAdminUsername(input.username),
   };
 
   await ensureRedisStringKey(GLOBAL_CHAT_KEY, '[]');
@@ -2509,7 +2557,7 @@ async function submitChatReport(
   // pair for a day before the external side effect so concurrent retries cannot
   // create a second conversation while the durable report receipt is pending.
   const reservationKey = CHAT_REPORT_RESERVATION_PREFIX + encodeURIComponent(reportKey);
-  const reservationToken = `report-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const reservationToken = `report-${createSecureId()}`;
   await redis.set(reservationKey, reservationToken, {
     nx: true,
     expiration: new Date(Date.now() + 24 * 60 * 60_000),
@@ -2620,7 +2668,13 @@ export async function getGlobalChat(): Promise<GlobalChatMessage[]> {
       return !mutedIds.has(messageUserId) && !mutedNames.has(messageUsername);
     })
     .sort((a, b) => a.timestamp - b.timestamp)
-    .slice(-GLOBAL_CHAT_MAX_MESSAGES);
+    .slice(-GLOBAL_CHAT_MAX_MESSAGES)
+    .map(message => ({
+      ...message,
+      // Never trust a persisted/client-supplied badge: recalculate it from the
+      // authoritative author name each time chat history is returned.
+      isAdmin: isAdminUsername(message.username),
+    }));
 }
 
 export async function reportGlobalChatMessage(messageId: string): Promise<{ success: true }> {
@@ -2659,6 +2713,7 @@ export async function postGlobalChatMessage(text: string): Promise<GlobalChatMes
       text: messageText,
       timestamp,
       userId: user(),
+      isAdmin: isAdminUsername(username()),
     };
 
     // Reddit has already accepted the comment. Do not report the whole action as

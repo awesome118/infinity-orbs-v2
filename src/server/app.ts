@@ -1,5 +1,6 @@
 import express from 'express';
 import { debugRouter, isDebugUser } from './debug.js';
+import { recordPostImpression } from './impressions.js';
 import {
   getMe,
   getRollTicket,
@@ -16,6 +17,7 @@ import {
   claimQuest,
   prestige,
   buyPrestigeUpgrade,
+  updateCombatAutoScrapSettings,
   synthesizeDust,
   buyCosmetic,
   activateTurbo,
@@ -77,8 +79,9 @@ import {
 import { context, reddit, redis } from './devvit-mock.js';
 import { withPlayerMutationLock } from './player-lock.js';
 import * as devvitServer from '@devvit/web/server';
-import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
+import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
+import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, sacrificeCombatRuneInto, updateCombatRuneAutoSacrificeSettings, processCombatRuneAutoSacrifice, hasCompletedCombatTutorial, markCombatTutorialSeen, buyCombatStrategyGuideRank } from './combat.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -116,6 +119,17 @@ function parsePaymentPayload(value: unknown): unknown {
   } catch {
     return value;
   }
+}
+
+/** Non-guessable tokens are required for locks and idempotency receipts. */
+function createSecureId(prefix: string): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === 'function') return prefix + '-' + cryptoApi.randomUUID();
+  if (typeof cryptoApi?.getRandomValues === 'function') {
+    const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+    return prefix + '-' + Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+  }
+  throw new Error('Secure identifier generation is unavailable.');
 }
 
 function normalizePaymentOrder(value: unknown, depth = 0): PaymentOrder {
@@ -264,8 +278,17 @@ export function createApp() {
       'highestRarity' in value
     ) {
       const copy = { ...value };
+      const sourceCollection = value.collection && typeof value.collection === 'object' && !Array.isArray(value.collection)
+        ? value.collection as Record<string, number>
+        : {};
+      const pendingPatcherRarity = Math.floor(Number(value.chainPatcherNextRarity ?? 0) || 0);
+      // Client state intentionally omits the full Codex, so preserve the correct
+      // pre-purchase target as a tiny server-calculated projection.
+      copy.chainPatcherSuggestedRarity = pendingPatcherRarity >= 2
+        ? pendingPatcherRarity
+        : nextCodexChainRarity(sourceCollection);
       copy.collection = {};
-      copy.collectionCount = Object.keys(value.collection ?? {}).length;
+      copy.collectionCount = Object.keys(sourceCollection).length;
       return copy;
     }
     if (!Array.isArray(value) && value.state && typeof value.state === 'object') {
@@ -280,7 +303,7 @@ export function createApp() {
   // Persistent player data is keyed by Reddit user ID. Logged-out users have
   // no account identity, so they must never reach player-state APIs.
   app.use('/api', (req, res, next) => {
-    if (req.path === '/health' || req.path === '/version' || req.path === '/app-info') return next();
+    if (req.path === '/health' || req.path === '/version' || req.path === '/app-info' || req.path === '/impressions') return next();
     const userId = String(context.userId ?? '').trim();
     if (!userId) {
       return res.status(401).json({
@@ -308,8 +331,7 @@ export function createApp() {
 
   const mutationLockKey = (playerKey: string) => MUTATION_LOCK_PREFIX + playerKey;
 
-  const mutationLockOwner = (): string =>
-    String(globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const mutationLockOwner = (): string => createSecureId('mutation');
 
   const parseMutationLock = (raw: string | null): { owner: string; expiresAt: number } | null => {
     if (!raw) return null;
@@ -401,6 +423,23 @@ export function createApp() {
   };
 
   app.use('/api', async (req, res, next) => {
+    // Combat uses a separate Redis key, but dungeon progression and orb rolls
+    // share this per-player FIFO so the two progression systems never overlap.
+    // Gear, gacha, training and Arena writes still use combat-state CAS retries.
+    if (
+      req.path === '/combat/equip' ||
+      req.path === '/combat/gear/scrap' ||
+      req.path === '/combat/forge' ||
+      req.path === '/combat/auto-scrap' ||
+      req.path === '/combat/skills/roll' ||
+      req.path === '/combat/skills/equip' ||
+      req.path === '/combat/skills/rank-up' ||
+      req.path === '/combat/strategy-guide/buy' ||
+      req.path === '/combat/upgrades/buy' ||
+      req.path === '/combat/arena/challenge' ||
+      req.path === '/combat/tactics'
+    ) return next();
+
     const mutatesState = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
     const readsAndPersistsPlayerState =
       req.method === 'GET' &&
@@ -828,6 +867,129 @@ export function createApp() {
     res.json({ isBeta: subredditName === 'infinity_orbs_dev' });
   });
 
+  app.get('/api/combat/marks', async (_req, res) => {
+    try { res.setHeader('Cache-Control','no-store'); res.json({combatMarks: await getCombatMarksBalance()}); }
+    catch (e:any) { const message=e?.message||'Could not load Combat Marks.';res.status(message==='REDDIT_LOGIN_REQUIRED'?401:503).json({error:message}); }
+  });
+  app.get('/api/combat/state', async (_req, res) => {
+    try { res.setHeader('Cache-Control','no-store'); res.json(await getCombatSnapshot()); }
+    catch (e:any) { const message=e?.message||'Could not load combat state.';res.status(message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500).json({error:message}); }
+  });
+  app.post('/api/combat/runes/equip', async (req,res) => {
+    const runeId=req.body?.runeId, equip=req.body?.equip;
+    if(typeof runeId!=='string'||!runeId.trim()||runeId.length>160)return res.status(400).json({error:'A valid Rune is required.'});
+    if(typeof equip!=='boolean')return res.status(400).json({error:'Rune equip state must be true or false.'});
+    try{res.setHeader('Cache-Control','no-store');res.json(await equipCombatRune(runeId,equip));}
+    catch(e:any){const message=e?.message||'Could not update Rune loadout.';const status=message==='Rune is not in your inventory.'?404:message==='A valid Rune is required.'||message.startsWith('All Rune slots are full.')?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
+  });
+  app.post('/api/combat/runes/sacrifice', async (req,res) => {
+    const targetRuneId=req.body?.targetRuneId, donorRuneId=req.body?.donorRuneId;
+    if(typeof targetRuneId!=='string'||!targetRuneId.trim()||targetRuneId.length>160||
+       typeof donorRuneId!=='string'||!donorRuneId.trim()||donorRuneId.length>160)
+      return res.status(400).json({error:'A valid Rune is required.'});
+    if(targetRuneId===donorRuneId)return res.status(400).json({error:'Choose two different Runes.'});
+    try{res.setHeader('Cache-Control','no-store');res.json(await sacrificeCombatRuneInto(targetRuneId,donorRuneId));}
+    catch(e:any){const message=e?.message||'Could not sacrifice Rune.';
+      const status=message==='Rune is not in your inventory.'?404:message==='A valid Rune is required.'||message==='Choose two different Runes.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;
+      res.status(status).json({error:message});}
+  });
+  app.post('/api/combat/runes/auto-sacrifice/settings', async (req,res) => {
+    const enabled=req.body?.enabled, maxRarity=req.body?.maxRarity;
+    if(typeof enabled!=='boolean'||typeof maxRarity!=='string')return res.status(400).json({error:'Auto-sacrifice settings are invalid.'});
+    try{res.setHeader('Cache-Control','no-store');res.json(await updateCombatRuneAutoSacrificeSettings(enabled,maxRarity));}
+    catch(e:any){const message=e?.message||'Could not update Auto Sacrifice settings.';const status=message==='Auto-sacrifice settings are invalid.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
+  });
+  app.post('/api/combat/runes/auto-sacrifice/run', async (_req,res) => {
+    try{res.setHeader('Cache-Control','no-store');res.json(await processCombatRuneAutoSacrifice());}
+    catch(e:any){const message=e?.message||'Could not auto-sacrifice Runes.';const status=message==='Equip at least one Rune before auto-sacrifice can strengthen a target.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
+  });
+  app.get('/api/combat/tutorial/status', async (_req,res) => {
+    try{res.setHeader('Cache-Control','no-store');res.json({seen:await hasCompletedCombatTutorial()});}
+    catch(e:any){const message=e?.message||'Could not load tutorial status.';res.status(message==='REDDIT_LOGIN_REQUIRED'?401:503).json({error:message});}
+  });
+  app.post('/api/combat/tutorial/complete', async (_req,res) => {
+    try{await markCombatTutorialSeen();res.setHeader('Cache-Control','no-store');res.json({seen:true});}
+    catch(e:any){const message=e?.message||'Could not save tutorial completion.';res.status(message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500).json({error:message});}
+  });
+  app.post('/api/combat/beat', async (req,res) => {
+    const sequence=req.body?.sequence, intent=req.body?.intent;
+    if(!Number.isSafeInteger(sequence)||sequence<1)return res.status(400).json({error:'A valid combat sequence is required.'});
+    if(!['auto','strike','heavy','guard','mend','ability'].includes(intent))return res.status(400).json({error:'Invalid combat command.'});
+    if(intent==='ability'&&(typeof req.body?.skillId!=='string'||req.body.skillId.length>100))return res.status(400).json({error:'A valid active ability is required.'});
+    try { res.setHeader('Cache-Control','no-store');res.json(await performCombatBeat(sequence,intent,req.body?.skillId)); }
+    catch(e:any){const message=e?.message||'Combat beat failed.';const status=message==='stale combat sequence'||message==='Ability is on cooldown.'||message==='No player action is ready for this ability.'?409:message==='REDDIT_LOGIN_REQUIRED'?401:message.startsWith('COMBAT_BEAT_TOO_SOON:')?429:message==='Combat state changed repeatedly. Please retry.'?503:['Invalid combat command.','Choose a valid equipped ability.','Ability is not equipped.','Not enough energy for this ability.'].includes(message)?400:500;res.status(status).json({error:message});}
+  });
+  app.post('/api/combat/dungeon', async (req,res) => {
+    try { res.setHeader('Cache-Control','no-store'); res.json(await setCombatDungeon(req.body?.dungeonId)); }
+    catch(e:any) { const message=e?.message||'Could not switch dungeon.'; res.status(message==='REDDIT_LOGIN_REQUIRED'?401:message==='Invalid combat dungeon.'?400:503).json({error:message}); }
+  });
+  app.post('/api/combat/tactics', async (req,res) => {
+    try { res.setHeader('Cache-Control','no-store'); res.json(await setCombatAutoTactic(req.body?.tactic)); }
+    catch(e:any) { const message=e?.message||'Could not update combat tactic.'; res.status(message==='REDDIT_LOGIN_REQUIRED'?401:message==='Invalid combat tactic.'?400:503).json({error:message}); }
+  });
+  app.post('/api/combat/equip', async (req,res) => {
+    const itemId=req.body?.itemId;
+    if(typeof itemId!=='string'||!itemId.trim()||itemId.length>160)return res.status(400).json({error:'A valid gear item is required.'});
+    try{res.setHeader('Cache-Control','no-store');res.json(await equipCombatItem(itemId));}
+    catch(e:any){const message=e?.message||'Could not equip gear.';const status=message==='item not owned'?404:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
+  });
+  app.post('/api/combat/gear/scrap', async (req,res) => {
+    try { res.setHeader('Cache-Control','no-store');res.json(await scrapCombatItem(req.body?.itemId)); }
+    catch(e:any) { const message=e?.message||'Could not scrap gear.';const status=message==='A valid gear item is required.'||message==='Gear item is not in your inventory.'||message==='Unequip this item before scrapping it.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message}); }
+  });
+  app.post('/api/combat/forge', async (req,res) => {
+    try { res.setHeader('Cache-Control','no-store');res.json(await forgeCombatGear(req.body?.slot,req.body?.quality)); }
+    catch(e:any) { const message=e?.message||'Forge failed.';const status=message==='Choose a valid equipment slot for the Forge.'||message==='Choose a valid item quality for the Forge.'||message==='Not enough Scrap to forge this item.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message}); }
+  });
+  app.post('/api/combat/auto-scrap', async (req,res) => {
+    try {
+      const settings=await updateCombatAutoScrapSettings(req.body?.enabled,req.body?.maxQuality);
+      await getCombatSnapshot();
+      res.setHeader('Cache-Control','no-store');res.json({settings});
+    } catch(e:any) { const message=e?.message||'Could not update Auto Scrap settings.';const status=message==='Auto Scrap Prestige upgrade is required.'||message==='Auto Scrap quality threshold must be between 0 and 100.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message}); }
+  });
+  app.post('/api/combat/skills/roll', async (_req,res) => {
+    try{res.setHeader('Cache-Control','no-store');res.json(await rollCombatSkill());}
+    catch(e:any){const message=e?.message||'Skill roll failed.';const status=message==='Not enough Combat Marks.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
+  });
+  app.post('/api/combat/skills/equip', async (req,res) => {
+    const skillId=req.body?.skillId;
+    if(typeof skillId!=='string'||!skillId.trim()||skillId.length>100)return res.status(400).json({error:'A valid combat ability is required.'});
+    if(typeof req.body?.equip!=='boolean')return res.status(400).json({error:'A boolean equip value is required.'});
+    try{res.setHeader('Cache-Control','no-store');res.json(await equipCombatSkill(skillId,req.body.equip));}
+    catch(e:any){const message=e?.message||'Could not update ability loadout.';const status=message==='Ability not owned.'||message==='All active ability slots are full.'||message==='Invalid combat ability.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message});}
+  });
+  app.post('/api/combat/skills/rank-up', async (_req,res) => {
+    try{res.setHeader('Cache-Control','no-store');res.json(await rankUpCombatSkillGacha());}
+    catch(e:any){const message=e?.message||'Could not rank up Skill Gacha.';const status=message.startsWith('Need ')||message==='Not enough Combat Marks to rank up the Skill Gacha.'||message==='Skill Gacha is already max rank.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message});}
+  });
+    app.post('/api/combat/strategy-guide/buy', async (_req,res) => {
+    try{res.setHeader('Cache-Control','no-store');res.json(await buyCombatStrategyGuideRank());}
+    catch(e:any){
+      const message=e?.message||'Strategy Guide purchase failed.';
+      const status=message==="Need a Tactician's Manual."||message==='Not enough Combat Marks for Strategy Guide.'||message==='Strategy Guide is already max rank.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;
+      res.status(status).json({error:message});
+    }
+  });
+  app.post('/api/combat/upgrades/buy', async (req,res) => {
+    try{res.setHeader('Cache-Control','no-store');res.json(await buyCombatUpgrade(req.body?.upgradeId));}
+    catch(e:any){const message=e?.message||'Combat upgrade failed.';const status=message==='Not enough Combat Marks.'||message==='Combat upgrade is already max rank.'||message==='Invalid combat upgrade.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message});}
+  });
+    app.get('/api/combat/arena/opponents', async (_req,res) => {
+    try { res.setHeader('Cache-Control','no-store'); res.json(await getCombatArenaOpponents()); }
+    catch(e:any) { const message=e?.message||'Could not load Arena opponents.'; res.status(message==='REDDIT_LOGIN_REQUIRED'?401:503).json({error:message}); }
+  });
+  app.post('/api/combat/arena/challenge', async (req,res) => {
+    const opponentId=req.body?.opponentId;
+    if(typeof opponentId!=='string'||!opponentId.trim()||opponentId.length>256) return res.status(400).json({error:'A valid Arena opponent is required.'});
+    try { res.setHeader('Cache-Control','no-store'); res.json(await challengeCombatArena(opponentId)); }
+    catch(e:any) {
+      const message=e?.message||'Arena challenge failed.';
+      const status=message==='REDDIT_LOGIN_REQUIRED'?401:message==='ARENA_SELF_CHALLENGE'?400:message==='ARENA_OPPONENT_UNAVAILABLE'?404:message.startsWith('ARENA_COOLDOWN:')?429:message==='Combat state changed repeatedly. Please retry.'?503:500;
+      res.status(status).json({error:message.startsWith('ARENA_COOLDOWN:')?'Your next Arena challenge is not ready yet.':message,...(message.startsWith('ARENA_COOLDOWN:')?{retryAfterMs:Math.max(0,Number(message.slice('ARENA_COOLDOWN:'.length))||0)}:{})});
+    }
+  });
+
   app.get('/api/me', async (_req, res) => {
     try { res.json(await getMe()); }
     catch (e: any) {
@@ -880,9 +1042,16 @@ export function createApp() {
     }
   });
 
-  app.get('/api/chat/status', async (_req, res) => {
-    try { res.json(await getGlobalChatStatus()); }
-    catch (e) { badRequest(res, e, 'Could not determine Global Chat availability.'); }
+  app.get('/api/chat/status', async (req, res) => {
+    try {
+      // The GlobalChatWindow is mounted by the main launcher entry point.
+      // Explicitly mark that handshake so stale test/Frenzy metadata cannot
+      // prevent the main Game post from registering itself.
+      res.json(await getGlobalChatStatus(
+        req.query.launcher === 'main',
+        req.query.launcher === 'frenzy',
+      ));
+    } catch (e) { badRequest(res, e, 'Could not determine Global Chat availability.'); }
   });
 
   app.get('/api/chat', async (_req, res) => {
@@ -974,6 +1143,18 @@ export function createApp() {
       res.status(transientContentionError(e) ? 503 : 500).json({
         error: transientContentionError(e) ? 'Presence is busy updating. Please retry.' : e?.message || 'Could not record player activity.',
       });
+    }
+  });
+
+  // Public post-preview analytics are aggregate-only and never register player activity.
+  app.post('/api/impressions', async (req, res) => {
+    try {
+      res.json(await recordPostImpression(req.body?.postType, req.body?.deviceType));
+    } catch (error) {
+      // Impression analytics must never turn a preview into an online player or
+      // block the public post from rendering if analytics is unavailable.
+      console.error('[API /api/impressions] Failed:', error);
+      res.status(400).json({ error: 'Could not record this impression.' });
     }
   });
 
@@ -1088,7 +1269,10 @@ export function createApp() {
       if (!ticketId || !Number.isSafeInteger(ticketIndex)) {
         return res.status(400).json({ error: 'Roll request is missing its ticket. Refresh the game and try again.' });
       }
-      res.json(await roll(req.body?.auto === true, ticketId, ticketIndex, req.body?.useAllFreeRolls === true));
+      const result = await roll(req.body?.auto === true, ticketId, ticketIndex, req.body?.useAllFreeRolls === true);
+      const rolledOrb = (result as { orb?: { rarity?: number; name?: string } }).orb;
+      if (rolledOrb) await setCombatOrbFocus(rolledOrb.rarity, rolledOrb.name).catch(error => console.error('[Combat Orb Focus] Could not sync orb roll.', error));
+      res.json(result);
     } catch (e) { badRequest(res, e, 'Roll failed.'); }
   });
 
@@ -1099,7 +1283,12 @@ export function createApp() {
   });
 
   app.post('/api/offline/claim', async (_req, res) => {
-    try { res.json(await claimOffline()); } catch (e) { badRequest(res, e, 'Offline claim failed.'); }
+    try {
+      const result = await claimOffline();
+      const rolledOrb = (result as { orb?: { rarity?: number; name?: string } }).orb;
+      if (rolledOrb) await setCombatOrbFocus(rolledOrb.rarity, rolledOrb.name).catch(error => console.error('[Combat Orb Focus] Could not sync offline orb claim.', error));
+      res.json(result);
+    } catch (e) { badRequest(res, e, 'Offline claim failed.'); }
   });
 
   app.post('/api/upgrade', async (req, res) => {
@@ -1161,12 +1350,12 @@ export function createApp() {
     try {
       const { id } = req.body || {};
       const validIds = [
-        'permLuck', 'permSpeed', 'vaultCap', 'dustBounty', 'sonarPing', 'instantReveal',
+        'permLuck', 'permSpeed', 'vaultCap', 'sonarPing', 'instantReveal',
         'autoOverclock', 'autoFilter', 'resonanceMeter', 'stellarMagnet', 'chronoOverdrive',
         'transmutation', 'shardSynthesis', 'astralBarrage', 'cosmicInheritance',
-        'autoBuyer', 'supernova', 'altarResonator', 'offlineOverdrive', 'singularityTithe',
+        'autoBuyer', 'supernova', 'altarResonator', 'offlineOverdrive',
         'luckyFloor', 'astralArsenal', 'deepVault', 'masteryEngine', 'steadyHands', 'offlineFortune',
-        'frenzyVolley', 'astralReserve', 'temporalCompression', 'shardResonator', 'cosmicValuation', 'cosmicReserve'
+        'frenzyVolley', 'astralReserve', 'temporalCompression', 'shardResonator', 'cosmicValuation', 'cosmicReserve', 'autoScrap'
       ];
       if (!validIds.includes(id)) return res.status(400).json({ error: 'Invalid prestige upgrade.' });
       res.json({ state: await buyPrestigeUpgrade(id) });
@@ -1259,8 +1448,12 @@ export function createApp() {
   });
 
   app.post('/api/frenzy/claim', async (_req, res) => {
-    try { res.json(await claimOrbFrenzy()); }
-    catch (e) { badRequest(res, e, 'Could not claim Orb Frenzy.'); }
+    try {
+      const result = await claimOrbFrenzy();
+      const rolledOrb = (result as { orb?: { rarity?: number; name?: string } }).orb;
+      if (rolledOrb) await setCombatOrbFocus(rolledOrb.rarity, rolledOrb.name).catch(error => console.error('[Combat Orb Focus] Could not sync Frenzy orb claim.', error));
+      res.json(result);
+    } catch (e) { badRequest(res, e, 'Could not claim Orb Frenzy.'); }
   });
 
   app.post('/api/frenzy/thank-you', async (req, res) => {
@@ -1300,7 +1493,7 @@ export function createApp() {
         return res.status(401).json({ error: 'Your Reddit identity is unavailable.' });
       }
       const feedbackCooldownKey = `io:feedback-cooldown:${userId}`;
-      const feedbackCooldownToken = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const feedbackCooldownToken = createSecureId('feedback');
       try {
         await redis.set(feedbackCooldownKey, feedbackCooldownToken, {
           nx: true,

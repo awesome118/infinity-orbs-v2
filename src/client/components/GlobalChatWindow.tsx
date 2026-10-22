@@ -4,10 +4,27 @@ import type { GlobalChatMessage } from '../../shared/social.js';
 
 interface GlobalChatWindowProps {
   username?: string;
+  launcherContext?: 'main' | 'frenzy';
+}
+
+/** Bound slow embedded-webview requests so chat controls never stay busy forever. */
+async function fetchChat(url: string, options: RequestInit = {}, timeoutMs = 12_000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Chat request timed out. Check the conversation before retrying.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 async function loadChat(): Promise<GlobalChatMessage[]> {
-  const response = await fetch('/api/chat?ts=' + Date.now(), {
+  const response = await fetchChat('/api/chat?ts=' + Date.now(), {
     cache: 'no-store',
     headers: { 'Cache-Control': 'no-cache' },
   });
@@ -15,11 +32,15 @@ async function loadChat(): Promise<GlobalChatMessage[]> {
   return await response.json() as GlobalChatMessage[];
 }
 
-const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username = '' }) => {
+const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
+  username = '',
+  launcherContext = 'main',
+}) => {
   const [open, setOpen] = useState(false);
-  // A Frenzy embed can route comments to the canonical Game launcher only
-  // after that launcher has registered its post ID. Hide chat if it cannot.
+  // Global Chat stays visible in the main and Frenzy entry points. Frenzy can
+  // read history, but posting is disabled until the player opens the main Game launcher.
   const [chatAvailable, setChatAvailable] = useState<boolean | null>(null);
+  const [chatUnavailableReason, setChatUnavailableReason] = useState('');
   const [messages, setMessages] = useState<GlobalChatMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const hasPersistedSeenStateRef = useRef(false);
@@ -30,6 +51,9 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
   const [reportedIds, setReportedIds] = useState<Set<string>>(() => new Set());
   const [actionError, setActionError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const chatListRef = useRef<HTMLDivElement | null>(null);
+  const shouldFollowMessagesRef = useRef(true);
+  const jumpToBottomRef = useRef(false);
   const refreshRequestRef = useRef(0);
 
   useEffect(() => {
@@ -102,17 +126,31 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
     const checkAvailability = async () => {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          const response = await fetch('/api/chat/status?ts=' + Date.now(), {
+          const launcherQuery = launcherContext === 'main'
+            ? '&launcher=main'
+            : '&launcher=frenzy';
+          const response = await fetchChat('/api/chat/status?ts=' + Date.now() + launcherQuery, {
             cache: 'no-store',
             headers: { 'Cache-Control': 'no-cache' },
           });
-          const payload = await response.json().catch(() => ({})) as { enabled?: unknown };
+          const payload = await response.json().catch(() => ({})) as { enabled?: unknown; reason?: unknown };
           if (!response.ok) throw new Error('Could not determine Global Chat availability.');
-          if (!cancelled) setChatAvailable(payload.enabled === true);
+          const enabled = payload.enabled === true;
+          if (!cancelled) {
+            setChatAvailable(enabled);
+            setChatUnavailableReason(enabled
+              ? ''
+              : typeof payload.reason === 'string' && payload.reason.trim()
+                ? payload.reason
+                : "Global Chat is disabled because you're not in the main Game launcher.");
+          }
           return;
         } catch {
           if (attempt === 2) {
-            if (!cancelled) setChatAvailable(false);
+            if (!cancelled) {
+              setChatAvailable(false);
+              setChatUnavailableReason("Global Chat is disabled because you're not in the main Game launcher.");
+            }
             return;
           }
           await new Promise(resolve => setTimeout(resolve, 150 * (attempt + 1)));
@@ -124,18 +162,30 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [launcherContext]);
 
   useEffect(() => {
-    if (chatAvailable !== true) return;
+    // Escape closes the floating chat without requiring precise pointer targeting.
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [open]);
+
+  useEffect(() => {
+    // History remains readable even when posting is disabled in this context.
     void refreshChat();
     const interval = window.setInterval(() => void refreshChat(), open ? 3000 : 10000);
     return () => window.clearInterval(interval);
   }, [open, chatAvailable]);
 
   useEffect(() => {
-    if (!open) return;
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!open || !shouldFollowMessagesRef.current) return;
+    const behavior: ScrollBehavior = jumpToBottomRef.current ? 'auto' : 'smooth';
+    jumpToBottomRef.current = false;
+    endRef.current?.scrollIntoView({ behavior, block: 'end' });
   }, [messages, open]);
 
   const reportMessage = async (message: GlobalChatMessage) => {
@@ -143,7 +193,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
     setReportingId(message.id);
     setActionError(null);
     try {
-      const response = await fetch('/api/chat/report', {
+      const response = await fetchChat('/api/chat/report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messageId: message.id }),
@@ -166,12 +216,12 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const text = input.trim();
-    if (!text || sending) return;
+    if (!text || sending || chatAvailable !== true) return;
 
     setSending(true);
     setActionError(null);
     try {
-      const response = await fetch('/api/chat', {
+      const response = await fetchChat('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
@@ -182,6 +232,9 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
       }
       const sentMessage = payload as GlobalChatMessage;
       setInput('');
+      // Sending a message is an explicit decision to resume following the conversation.
+      shouldFollowMessagesRef.current = true;
+      jumpToBottomRef.current = true;
       setMessages(prev => mergeMessages(prev, [sentMessage]));
       // Pull the authoritative history after posting. The merge keeps any
       // newer local messages if a concurrent poll is still in flight.
@@ -194,23 +247,27 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
     }
   };
 
-  // Do not show a non-working chat control on a Frenzy post while no
-  // canonical Game launcher has been registered. Sending is also guarded server-side.
-  if (chatAvailable !== true) return null;
-
+  // Keep Global Chat discoverable in every context. If the canonical main
+  // launcher is not available, the open panel explains why posting is disabled.
   if (!open) {
     return (
       <button
         type="button"
+        aria-label={unreadCount>0?'Open Global Chat, '+unreadCount+' unread messages':'Open Global Chat'}
         onClick={() => {
           markMessagesSeen(messages);
+          shouldFollowMessagesRef.current = true;
+          jumpToBottomRef.current = true;
           setOpen(true);
         }}
         className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-2xl border border-indigo-500/30 bg-slate-900/95 px-4 py-3 text-xs font-black text-white shadow-2xl backdrop-blur-md hover:bg-slate-800 transition-all"
-        title="Open global chat"
+        title={chatAvailable === true ? 'Open global chat' : 'Global Chat is disabled outside the main Game launcher'}
       >
         <MessageCircle className="w-4 h-4 text-indigo-300" />
         <span>Global Chat</span>
+        {chatAvailable === false && (
+          <span className="rounded-full border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-[9px] font-bold text-slate-400">Disabled</span>
+        )}
         {unreadCount > 0 && (
           <span aria-label={unreadCount + ' unread messages'} className="rounded-full bg-indigo-500/20 px-1.5 py-0.5 text-[9px] text-indigo-200">
             {unreadCount > 99 ? '99+' : unreadCount}
@@ -221,7 +278,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
   }
 
   return (
-    <section className="fixed bottom-4 right-4 z-40 w-[min(380px,calc(100vw-2rem))] rounded-3xl border border-slate-700 bg-slate-950/95 shadow-2xl backdrop-blur-xl overflow-hidden">
+    <section role="dialog" aria-modal={false} aria-label="Global Chat" className="fixed bottom-4 right-4 z-40 w-[min(380px,calc(100vw-2rem))] rounded-3xl border border-slate-700 bg-slate-950/95 shadow-2xl backdrop-blur-xl overflow-hidden">
       <header className="flex items-center justify-between border-b border-slate-800 bg-slate-900/95 px-4 py-3">
         <div className="flex items-center gap-2">
           <MessageCircle className="w-4 h-4 text-indigo-300" />
@@ -234,6 +291,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
           type="button"
           onClick={() => setOpen(false)}
           className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-800 hover:text-white"
+          aria-label="Minimize Global Chat"
           title="Minimize chat"
         >
           <Minimize2 className="w-3.5 h-3.5" />
@@ -246,7 +304,27 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
         </div>
       )}
 
-      <div className="h-72 overflow-y-auto px-3 py-3 space-y-2">
+      {chatAvailable !== true && (
+        <div role="status" className="border-b border-amber-500/20 bg-amber-950/30 px-3 py-2.5 text-[11px] leading-relaxed text-amber-200">
+          {chatAvailable === null ? 'Checking Global Chat availability…' : chatUnavailableReason || "Global Chat is disabled because you're not in the main Game launcher."}
+          <div className="mt-1 text-[10px] text-amber-200/60">Messages remain visible; open the main Infinity Orbs Game launcher to post.</div>
+        </div>
+      )}
+
+      <div
+        ref={chatListRef}
+        role="log"
+        aria-label="Global Chat message history"
+        aria-relevant="additions text"
+        onScroll={() => {
+          const element = chatListRef.current;
+          if (!element) return;
+          // Follow new messages only while the reader is already near the bottom.
+          shouldFollowMessagesRef.current =
+            element.scrollHeight - element.scrollTop - element.clientHeight < 48;
+        }}
+        className="h-72 overflow-y-auto px-3 py-3 space-y-2"
+      >
         {messages.length === 0 ? (
           <div className="flex h-full items-center justify-center text-center text-xs text-slate-600">
             <div>
@@ -259,14 +337,14 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
             <div key={message.id} className="rounded-xl border border-slate-800/80 bg-slate-900/70 px-3 py-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-1.5 min-w-0">
-                  <span className={(message.isAdmin === true || message.username.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen')
+                  <span className={(message.isAdmin === true)
                     ? 'text-xs font-black text-red-400'
                     : message.username === username
                     ? 'text-xs font-black text-indigo-300'
                     : 'text-xs font-bold text-slate-200'}>
                     {message.username}
                   </span>
-                  {(message.isAdmin === true || message.username.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen') && (
+                  {(message.isAdmin === true) && (
                     <span className="rounded border border-red-500/40 bg-red-500/10 px-1 py-0.5 text-[8px] font-black tracking-wider text-red-300">ADMIN</span>
                   )}
                 </span>
@@ -303,14 +381,15 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({ username =
           <input
             value={input}
             onChange={e => setInput(e.target.value)}
+            aria-label="Write a public Global Chat message"
             maxLength={200}
-            placeholder="Write a public Reddit comment..."
-            disabled={sending}
+            placeholder={chatAvailable === true ? 'Write a public Reddit comment...' : 'Open the main Game launcher to chat'}
+            disabled={sending || chatAvailable !== true}
             className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-xs text-white placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
           />
           <button
             type="submit"
-            disabled={sending || !input.trim()}
+            disabled={chatAvailable !== true || sending || !input.trim()}
             className="rounded-xl bg-indigo-600 px-3 py-2.5 text-white transition-all hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600"
             title="Post public comment"
           >

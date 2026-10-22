@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Flame,
@@ -41,7 +41,17 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
   busy,
   now,
 }) => {
-  const fmt = (n: number) => formatNumber(n);
+  const fmt = (n: number) => formatNumber(Number.isFinite(n) ? n : 0);
+  const actionLockRef = useRef(false);
+  const highlightTimerRef = useRef<number | null>(null);
+  const [localActionError, setLocalActionError] = useState('');
+
+  useEffect(() => () => {
+    if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
+  }, []);
+
+  const allowMotionEffects = () =>
+    typeof window === 'undefined' || !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
   // Sacrifice Altar stats
   const coinsSacrificed = state.sacrifices?.coinsSacrificed ?? 0;
@@ -69,35 +79,58 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
 
   const handleSacrificeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedCoinOffer <= 0 && selectedShardOffer <= 0) return;
+    if (busy || actionLockRef.current || (selectedCoinOffer <= 0 && selectedShardOffer <= 0) ||
+        selectedCoinOffer > state.coins || selectedShardOffer > (state.shards ?? 0)) return;
+    actionLockRef.current = true;
     setSacrificing(true);
+    setLocalActionError('');
     try {
       sound.playSacrificeSound();
       await onSacrifice(selectedCoinOffer, selectedShardOffer);
-      confetti({
-        particleCount: 40,
-        spread: 45,
-        origin: { y: 0.7 },
-        colors: ['#f59e0b', '#ef4444', '#a855f7'],
-      });
-      setSelectedCoinOffer(Math.min(1000, state.coins));
+      if (allowMotionEffects()) {
+        confetti({
+          particleCount: 40,
+          spread: 45,
+          origin: { y: 0.7 },
+          colors: ['#f59e0b', '#ef4444', '#a855f7'],
+        });
+      }
+      setSelectedCoinOffer(Math.min(1000, Math.max(0, state.coins - selectedCoinOffer)));
       setSelectedShardOffer(0);
+    } catch (error) {
+      setLocalActionError(error instanceof Error ? error.message : 'The offering was not confirmed. Check your balance before retrying.');
     } finally {
+      actionLockRef.current = false;
       setSacrificing(false);
     }
   };
 
   const handleMasteryClick = async (skillId: MasterySkillId) => {
+    if (busy || actionLockRef.current || sacrificing) return;
+    actionLockRef.current = true;
+    setLocalActionError('');
     sound.playLevelUpFanfare();
+    if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
     setLastUpgradedSkill(skillId);
-    setTimeout(() => setLastUpgradedSkill(null), 800);
-    confetti({
-      particleCount: 25,
-      spread: 40,
-      origin: { y: 0.8 },
-      colors: ['#fbbf24', '#38bdf8', '#c084fc'],
-    });
-    await onUpgradeMastery(skillId);
+    highlightTimerRef.current = window.setTimeout(() => {
+      setLastUpgradedSkill(null);
+      highlightTimerRef.current = null;
+    }, 800);
+    if (allowMotionEffects()) {
+      confetti({
+        particleCount: 25,
+        spread: 40,
+        origin: { y: 0.8 },
+        colors: ['#fbbf24', '#38bdf8', '#c084fc'],
+      });
+    }
+    try {
+      await onUpgradeMastery(skillId);
+    } catch (error) {
+      setLocalActionError(error instanceof Error ? error.message : 'Could not upgrade Mastery. Please retry.');
+    } finally {
+      actionLockRef.current = false;
+    }
   };
 
   const masterySkillsList = Object.entries(MASTERY_SKILLS) as [MasterySkillId, typeof MASTERY_SKILLS[MasterySkillId]][];
@@ -113,6 +146,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-300 pb-12">
+      {localActionError && <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-950/30 px-4 py-3 text-xs text-rose-200">{localActionError}</div>}
       {/* Overview Banner */}
       <div className="bg-gradient-to-r from-purple-950/60 via-slate-900 to-indigo-950/60 border border-purple-800/40 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
         <div className="absolute -top-12 -right-12 w-64 h-64 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
@@ -261,7 +295,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
                     key={amt}
                     type="button"
                     onClick={() => setSelectedCoinOffer(amt)}
-                    disabled={state.coins < amt}
+                    disabled={busy || sacrificing || state.coins < amt}
                     className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
                       selectedCoinOffer === amt
                         ? 'bg-amber-500/20 border-amber-400 text-amber-300'
@@ -274,7 +308,8 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
                 <button
                   type="button"
                   onClick={() => setSelectedCoinOffer(Math.max(0, state.coins))}
-                  className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-900 border border-slate-800 text-amber-400 hover:bg-slate-800 cursor-pointer"
+                  disabled={busy || sacrificing}
+                  className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-900 border border-slate-800 text-amber-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
                   Max ({fmt(state.coins)})
                 </button>
@@ -295,7 +330,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
                     key={amt}
                     type="button"
                     onClick={() => setSelectedShardOffer(amt)}
-                    disabled={amt > (state.shards ?? 0)}
+                    disabled={busy || sacrificing || amt > (state.shards ?? 0)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
                       selectedShardOffer === amt
                         ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
@@ -309,7 +344,8 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
                   <button
                     type="button"
                     onClick={() => setSelectedShardOffer(state.shards)}
-                    className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-900 border border-slate-800 text-cyan-400 hover:bg-slate-800 cursor-pointer"
+                    disabled={busy || sacrificing}
+                    className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-900 border border-slate-800 text-cyan-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                   >
                     All ({state.shards})
                   </button>
@@ -435,7 +471,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
 
                   <button
                     onClick={() => handleMasteryClick(skillId)}
-                    disabled={!canAfford || busy || isMax}
+                    disabled={!canAfford || busy || isMax || sacrificing}
                     className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
                       isMax
                         ? 'bg-slate-900 text-slate-600 border border-slate-800 cursor-default'

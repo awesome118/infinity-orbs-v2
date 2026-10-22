@@ -1,11 +1,12 @@
-import React from 'react';
-import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star, Users, MessageSquarePlus, Bell, BellOff, ScrollText } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star, Users, MessageSquarePlus, Bell, BellOff, ScrollText, Swords } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
 import { LEVEL_MILESTONES, getLevelBenefits, getLevelProgress, onlinePlayerLuckMultiplier } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface HeaderProps {
   state: PlayerState;
+  combatMode?: boolean;
   soundEnabled: boolean;
   onToggleSound: () => void;
   onOpenOdds: () => void;
@@ -21,6 +22,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   state,
+  combatMode = false,
   soundEnabled,
   onToggleSound,
   onOpenOdds,
@@ -34,6 +36,28 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleNotifications,
 }) => {
   const fmt = (n: number) => n.toLocaleString();
+  const [combatMarks,setCombatMarks]=useState(0);
+  useEffect(()=>{
+    let cancelled=false;
+    const refreshCombatMarks=async()=>{
+      try{
+        const response=await fetch('/api/combat/marks',{cache:'no-store'});
+        if(!response.ok)return;
+        const payload=await response.json() as {combatMarks?:unknown};
+        const value=Number(payload.combatMarks);
+        if(!cancelled&&Number.isSafeInteger(value)&&value>=0)setCombatMarks(value);
+      }catch{
+        // Combat currency is supplemental HUD information; offline combat must not break the header.
+      }
+    };
+    const onCombatMarksUpdated=(event:Event)=>{
+      const value=Number((event as CustomEvent<{combatMarks?:unknown}>).detail?.combatMarks);
+      if(Number.isSafeInteger(value)&&value>=0)setCombatMarks(value);
+    };
+    void refreshCombatMarks();
+    window.addEventListener('io-combat-marks-updated',onCombatMarksUpdated);
+    return()=>{cancelled=true;window.removeEventListener('io-combat-marks-updated',onCombatMarksUpdated);};
+  },[]);
   const levelInfo = getLevelProgress(
     Math.max(1, state.level || 1),
     state.xp || 0,
@@ -108,13 +132,23 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Currencies */}
           <div className="header-resource-row resource-chip flex items-center gap-2 bg-slate-950/70 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-semibold">
-            {/* Coins */}
-            <div className="flex items-center gap-1 text-amber-400" title="Coins (Coins = Orb Rarity)">
-              <Coins className="w-3.5 h-3.5" />
-              <span>{fmt(state.coins)}</span>
-            </div>
+            {/* Core-game Coins stay hidden while in Combat. */}
+            {!combatMode && <>
+              <div className="flex items-center gap-1 text-amber-400" title="Coins (Coins = Orb Rarity)">
+                <Coins className="w-3.5 h-3.5" />
+                <span>{fmt(state.coins)}</span>
+              </div>
+              <div className="w-[1px] h-3.5 bg-slate-800" />
+            </>}
 
-            <div className="w-[1px] h-3.5 bg-slate-800" />
+            {/* Combat Marks are shown only while in the Combat section. */}
+            {combatMode && <>
+              <div className="flex items-center gap-1 text-lime-300" title="Combat Marks are earned in battles and spent on combat upgrades and Skill Gacha.">
+                <Swords className="w-3.5 h-3.5" />
+                <span>{fmt(combatMarks)}</span>
+              </div>
+              <div className="w-[1px] h-3.5 bg-slate-800" />
+            </>}
 
             {/* Shards */}
             <div className="flex items-center gap-1 text-cyan-400" title="Shards">

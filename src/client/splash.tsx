@@ -1,8 +1,10 @@
 import { requestExpandedMode, context } from '@devvit/web/client';
 import { createRoot } from 'react-dom/client';
+import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { ArrowRight, BookOpen, Orbit, Share2, Trophy } from 'lucide-react';
 import { getOrbInfo, formatNumber, formatRarity, MAX_ORB_RARITY } from '../shared/game.js';
+import { recordPostImpression, type ImpressionPostType } from './impressions.js';
 import './styles.css';
 
 type SharedOrbPostData = {
@@ -131,6 +133,14 @@ function SharedOrbPost({ data }: { data: SharedOrbPostData }) {
 
 function Splash() {
   const postData = (context.postData ?? {}) as SharedOrbPostData;
+  const impressionPostType: ImpressionPostType = postData.type === 'shared-orb' ? 'orb-share' : 'main-game';
+  const impressionRecordedRef = useRef(false);
+
+  useEffect(() => {
+    if (impressionRecordedRef.current) return;
+    impressionRecordedRef.current = true;
+    void recordPostImpression(impressionPostType);
+  }, [impressionPostType]);
 
   if (
     postData.type === 'shared-orb' &&

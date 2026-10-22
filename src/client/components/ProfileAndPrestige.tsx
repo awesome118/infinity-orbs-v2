@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Sparkles,
   Palette,
@@ -37,9 +37,9 @@ import {
   PRESTIGE_UPGRADES,
   prestigeUpgradeCost,
   SHARD_SYNTHESIS_COST,
+  MAX_COSMIC_DUST,
   getLevelBenefits,
   formatNumber,
-  aftershockCriticalLuckBonus,
   unbrokenMomentumSpeedBonus,
 } from '../../shared/game.js';
 import { sound } from '../sound.js';
@@ -63,9 +63,41 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
 }) => {
   const [confirmingPrestige, setConfirmingPrestige] = useState(false);
   const [filterCategory, setFilterCategory] = useState<'all' | 'qol' | 'core' | 'alchemy'>('all');
+  const [autoScrapEnabled,setAutoScrapEnabled]=useState(state.combatAutoScrap?.enabled===true);
+  const [autoScrapQuality,setAutoScrapQuality]=useState(state.combatAutoScrap?.maxQuality??20);
+  const [autoScrapSaving,setAutoScrapSaving]=useState(false);
+  const [autoScrapError,setAutoScrapError]=useState('');
+  const autoScrapLockRef=useRef(false);
+  useEffect(()=>{setAutoScrapEnabled(state.combatAutoScrap?.enabled===true);setAutoScrapQuality(state.combatAutoScrap?.maxQuality??20);},[state.combatAutoScrap?.enabled,state.combatAutoScrap?.maxQuality]);
+  const saveAutoScrapSettings=async()=>{
+    if(busy||autoScrapLockRef.current)return;
+    autoScrapLockRef.current=true;
+    setAutoScrapSaving(true);setAutoScrapError('');
+    const controller=new AbortController();
+    const timeout=window.setTimeout(()=>controller.abort(),12_000);
+    try{
+      const quality=Number(autoScrapQuality);
+      if(!Number.isFinite(quality)||quality<0||quality>100)throw new Error('Choose an Auto Scrap cutoff from 0% to 100%.');
+      const response=await fetch('/api/combat/auto-scrap',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({enabled:autoScrapEnabled,maxQuality:Math.round(quality)})});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(typeof data.error==='string'?data.error:'Could not save Auto Scrap settings.');
+      const saved=data.settings as {enabled?:unknown;maxQuality?:unknown}|undefined;
+      if(saved){
+        const rawQuality=Number(saved.maxQuality??20);
+        setAutoScrapEnabled(saved.enabled===true);
+        setAutoScrapQuality(Number.isFinite(rawQuality)?Math.max(0,Math.min(100,rawQuality)):20);
+      }else{
+        throw new Error('The server did not confirm the saved Auto Scrap settings. Refresh before retrying.');
+      }
+    }catch(error){
+      setAutoScrapError(error instanceof Error&&error.name==='AbortError'?'Saving Auto Scrap timed out. Refresh the saved setting before retrying.':error instanceof Error?error.message:'Could not save Auto Scrap settings.');
+    }finally{
+      window.clearTimeout(timeout);
+      autoScrapLockRef.current=false;
+      setAutoScrapSaving(false);
+    }
+  };
   const fmt = (n: number) => formatNumber(n);
-  const aftershockRecord = Math.max(0, state.aftershockRecord ?? 0);
-  const aftershockCritLuckBonusValue = aftershockCriticalLuckBonus(aftershockRecord);
   const longestSessionMs = Math.max(0, state.longestRollingSessionMs ?? 0);
   const momentumSpeedPercent = unbrokenMomentumSpeedBonus(longestSessionMs) * 100;
   const longestSessionSeconds = Math.floor(longestSessionMs / 1000);
@@ -90,7 +122,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
       : 'Average';
 
   const hasForgeUpgrade = (state.prestigeUpgrades?.shardSynthesis ?? 0) > 0;
-  const canSynthesize = (state.shards ?? 0) >= SHARD_SYNTHESIS_COST;
+  const canSynthesize = (state.shards ?? 0) >= SHARD_SYNTHESIS_COST && state.cosmicDust < MAX_COSMIC_DUST;
 
   const upgradeKeys = Object.keys(PRESTIGE_UPGRADES) as PrestigeUpgradeId[];
   const filteredUpgrades = upgradeKeys.filter(id => {
@@ -106,10 +138,10 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
         return <Clover className="w-4 h-4 text-fuchsia-400" />;
       case 'permSpeed':
         return <Clock className="w-4 h-4 text-cyan-400" />;
+      case 'unbrokenMomentum':
+        return <Zap className="w-4 h-4 text-sky-300" />;
       case 'vaultCap':
         return <Archive className="w-4 h-4 text-amber-400" />;
-      case 'dustBounty':
-        return <Sparkles className="w-4 h-4 text-fuchsia-400" />;
       case 'sonarPing':
         return <BellRing className="w-4 h-4 text-cyan-400 animate-pulse" />;
       case 'instantReveal':
@@ -142,8 +174,8 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
         return <Flame className="w-4 h-4 text-orange-400" />;
       case 'offlineOverdrive':
         return <Clock className="w-4 h-4 text-teal-400" />;
-      case 'singularityTithe':
-        return <Gem className="w-4 h-4 text-yellow-400" />;
+      case 'autoScrap':
+        return <Hammer className="w-4 h-4 text-orange-400" />;
       case 'luckyFloor':
         return <Clover className="w-4 h-4 text-emerald-400" />;
       case 'astralArsenal':
@@ -356,29 +388,6 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
             <span className="text-[10px] text-slate-500">Points & donations</span>
           </div>
 
-          <div className="bg-slate-950/60 border border-amber-500/20 rounded-2xl p-3.5">
-            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">
-              Aftershock Record
-            </span>
-            <span className="text-sm font-black text-amber-300 block">
-              {fmt(aftershockRecord)} rolls
-            </span>
-            <span className="text-[10px] text-slate-500">
-              +{aftershockCritLuckBonusValue.toFixed(3)}× permanent Critical Luck
-            </span>
-          </div>
-
-          <div className="bg-slate-950/60 border border-cyan-500/20 rounded-2xl p-3.5">
-            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">
-              Unbroken Momentum
-            </span>
-            <span className="text-sm font-black text-cyan-300 block">
-              {longestSessionLabel}
-            </span>
-            <span className="text-[10px] text-slate-500">
-              +{momentumSpeedPercent.toFixed(0)}% permanent Speed
-            </span>
-          </div>
         </div>
       </div>
 
@@ -463,7 +472,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Convert 10 Shards into 1 Cosmic Dust.
+                  Convert 10 Shards into 1 Cosmic Dust. Cosmic Dust is capped at {MAX_COSMIC_DUST}.
                 </p>
               </div>
             </div>
@@ -481,7 +490,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              <span>Forge 1 Dust ({SHARD_SYNTHESIS_COST} Shards)</span>
+              <span>{state.cosmicDust >= MAX_COSMIC_DUST ? 'Cosmic Dust Cap Reached' : `Forge 1 Dust (${SHARD_SYNTHESIS_COST} Shards)`}</span>
             </button>
           </div>
         )}
@@ -588,6 +597,36 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mt-2 leading-relaxed">{info.desc}</p>
+                  {id === 'autoScrap' && currentLevel > 0 && (
+                    <div className="mt-3 rounded-xl border border-orange-500/25 bg-orange-500/5 px-3 py-3 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div><div className="text-[10px] uppercase font-black tracking-wide text-orange-300">Auto Scrap Rules</div><p className="text-[10px] text-slate-400 mt-1">Automatically convert new gear at or below your cutoff into Scrap. Better drops stay in your dungeon bag.</p></div>
+                        <label className="flex items-center gap-2 text-xs text-slate-200 whitespace-nowrap"><input type="checkbox" checked={autoScrapEnabled} onChange={event=>setAutoScrapEnabled(event.target.checked)} disabled={busy||autoScrapSaving}/><span>{autoScrapEnabled?'Enabled':'Disabled'}</span></label>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] text-slate-400"><label htmlFor="io-auto-scrap-quality">Scrap quality cutoff</label><strong className="text-orange-200">{autoScrapQuality.toFixed(0)}%</strong></div>
+                        <input id="io-auto-scrap-quality" type="range" min="0" max="100" step="1" value={autoScrapQuality} onChange={event=>setAutoScrapQuality(Number(event.target.value))} disabled={busy||autoScrapSaving} className="w-full accent-orange-500"/>
+                        <div className="flex justify-between text-[9px] text-slate-600"><span>0% · almost never scrap</span><span>100% · scrap every drop</span></div>
+                      </div>
+                      {autoScrapError&&<p className="text-[10px] text-rose-300" role="status">{autoScrapError}</p>}
+                      <button type="button" onClick={()=>void saveAutoScrapSettings()} disabled={busy||autoScrapSaving} className="w-full py-2 rounded-xl bg-orange-600/80 hover:bg-orange-500 text-xs font-bold text-white disabled:opacity-50">{autoScrapSaving?'Saving…':'Save Auto Scrap Settings'}</button>
+                    </div>
+                  )}
+                  {id === 'unbrokenMomentum' && (
+                    <div className="mt-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2.5 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[10px] uppercase tracking-wide font-black text-cyan-300">Longest rolling session</span>
+                        <span className="text-sm font-black font-mono text-white">{longestSessionLabel}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[10px] text-slate-500">{currentLevel > 0 ? 'Active Speed bonus' : 'Speed bonus after purchase'}</span>
+                        <span className="text-base font-black text-cyan-200">+{momentumSpeedPercent.toFixed(1)}%</span>
+                      </div>
+                      <div className="text-[10px] leading-relaxed text-slate-500">
+                        48h: +20% · 72h: about +25% · cap: +30%. Only completed five-minute blocks count.
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <button

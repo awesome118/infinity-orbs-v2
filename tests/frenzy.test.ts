@@ -116,13 +116,18 @@ test('Frenzy posts use Orb terminology and claims return a visible Orb volley', 
 
 test('Frenzy claims expose 23-hour eligibility and expiry', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
-  assert.match(source, /canClaim: !expired && data\.consumedAt == null && \(claimCooldownRemainingMs <= 0 \|\| selfClaimTest\)/);
-  assert.match(source, /consumedAt: now/);
+  assert.match(source, /canClaim: !expired && !alreadyClaimedByViewer && \(claimCooldownRemainingMs <= 0 \|\| selfClaimTest\)/);
+  assert.match(source, /const alreadyClaimedByViewer = claimedReceipt != null \|\| data\.consumedBy === viewerId/);
+  assert.match(source, /const claimReceiptKey = frenzyClaimReceiptKey\(postId, claimantId\)/);
+  assert.match(source, /key: claimReceiptKey,[\s\S]*?expectedValue: null/);
   assert.match(source, /key: FRENZY_POST_PREFIX \+ postId/);
+  assert.doesNotMatch(source, /nextValue: consumedPostValue/);
   assert.match(source, /frenzyClaimCooldownRemaining/);
   assert.match(source, /isFrenzyPostExpired/);
   assert.match(source, /selfClaimTest/);
   assert.match(source, /data\.adminTest === true/);
+  assert.ok(source.includes('const claimReceipt = await redis.get(frenzyClaimReceiptKey(postId, claimantId))'));
+  assert.ok(source.includes('legacyClaimedByThisUser'));
 });
 
 
@@ -295,3 +300,18 @@ test('public Frenzy initial load offers a deduplicated read-only retry', () => {
   assert.ok(errorPanel.includes('onClick={() => void load()}'));
   assert.ok(errorPanel.includes('disabled={loadingInfo}'));
 });
+
+test('Frenzy post previews do not register online-player activity', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  const infoStart = source.indexOf('export async function getOrbFrenzyInfo');
+  const infoEnd = source.indexOf('\nexport async function claimOrbFrenzy', infoStart);
+  assert.ok(infoStart >= 0 && infoEnd > infoStart, 'Frenzy info handler must exist');
+  const info = source.slice(infoStart, infoEnd);
+
+  // Preview loads must not use getMe()/getState(), because that path touches
+  // the online-presence sorted set. Read only the fields needed for eligibility.
+  assert.match(info, /loadRaw\(\{ registerActivity: false \}\)/);
+  assert.doesNotMatch(info, /getMe\(\)|getState\(\)|touchOnlinePresence\(/);
+  assert.match(source, /if \(options\.registerActivity !== false\) await registerPlayer\(/);
+});
+

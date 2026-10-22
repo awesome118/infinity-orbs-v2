@@ -17,6 +17,7 @@ export type MasterySkillId =
   | 'prosperity'
   | 'shardAttunement'
   | 'critMastery'
+  | 'aftershock'
   | 'chronoFlow'
   | 'infiniteVault'
   | 'cosmicAttunement'
@@ -56,6 +57,12 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
     desc: '+3% critical chance and +0.3x crit multiplier per level.',
     maxLevel: 25,
     costMultiplier: 2,
+  },
+  aftershock: {
+    name: 'Aftershock',
+    desc: 'Unlocks permanent Critical Luck from your best dry interval between successive all-time rarity records. Each 10× record tier grants +0.005×, up to +0.075×.',
+    maxLevel: 1,
+    costMultiplier: 4,
   },
   chronoFlow: {
     name: 'Chrono Flow',
@@ -397,7 +404,7 @@ export interface GuildComboState {
 
 export const GUILD_COMBO_BASE_DURATION_MS = 20 * 60 * 1000;
 export const GUILD_COMBO_ACTIVATIONS_PER_TIER = 4;
-export const GUILD_COMBO_MAX_TIER = 10;
+export const GUILD_COMBO_MAX_TIER = 100;
 export const GUILD_COMBO_DURATION_DECAY_PER_TIER = 0.85;
 export const GUILD_COMBO_TIMER_ACCELERATION_PER_TIER = 0.25;
 
@@ -508,7 +515,9 @@ export function decayGuildComboState(
   const elapsed = Math.max(0, now - previousTickAt);
 
   if (tier > 0 && endsAt > 0 && elapsed > 0) {
-    endsAt -= Math.round(elapsed * tier * GUILD_COMBO_TIMER_ACCELERATION_PER_TIER);
+    // Diminishing timer acceleration keeps high-tier combos demanding without making
+    // tiers above 10 expire almost instantly.
+    endsAt -= Math.round(elapsed * GUILD_COMBO_TIMER_ACCELERATION_PER_TIER * Math.log2(tier + 1));
   }
 
   if (tier <= 0 || endsAt <= now) {
@@ -786,7 +795,8 @@ export type FeatureId =
   | 'social'
   | 'altar'
   | 'mastery'
-  | 'prestige';
+  | 'prestige'
+  | 'combat';
 
 export const FEATURE_UNLOCK_LEVELS: Record<FeatureId, number> = {
   upgrades: 2,
@@ -798,6 +808,7 @@ export const FEATURE_UNLOCK_LEVELS: Record<FeatureId, number> = {
   altar: 10,
   mastery: 15,
   prestige: 20,
+  combat: 8,
 };
 
 export function featureUnlockLevel(feature: FeatureId): number {
@@ -846,8 +857,8 @@ export const ORB_FRENZY_DAILY_KEY_OFFSET = 0;
 export type PrestigeUpgradeId =
   | 'permLuck'
   | 'permSpeed'
+  | 'unbrokenMomentum'
   | 'vaultCap'
-  | 'dustBounty'
   | 'sonarPing'
   | 'instantReveal'
   | 'autoOverclock'
@@ -863,7 +874,6 @@ export type PrestigeUpgradeId =
   | 'supernova'
   | 'altarResonator'
   | 'offlineOverdrive'
-  | 'singularityTithe'
   | 'luckyFloor'
   | 'astralArsenal'
   | 'deepVault'
@@ -874,7 +884,8 @@ export type PrestigeUpgradeId =
   | 'temporalCompression'
   | 'shardResonator'
   | 'cosmicValuation'
-  | 'cosmicReserve';
+  | 'cosmicReserve'
+  | 'autoScrap';
 
 export function createSeededRandom(seed: number): () => number {
   let state = (Math.floor(Number(seed)) >>> 0) || 0x6d2b79f5;
@@ -970,8 +981,14 @@ export interface PlayerState {
   collectionCount?: number;
   codexChain?: number;
   codexDevotionLuckPercent?: number;
+  /** Persistent charge for equipped Shard Constellation Rune effects. */
+  runeConstellationCharge?: number;
+  /** Persistent charge meter for equipped Temporal Loop Rune effects. */
+  runeTemporalMomentum?: number;
   /** If positive, the next accepted roll is exactly one orb of this rarity. */
   chainPatcherNextRarity?: number;
+  /** Server-calculated Codex target shown before purchase; null means no extension exists. */
+  chainPatcherSuggestedRarity?: number | null;
   /** Absolute timestamp when the next Chain Patcher purchase is allowed. */
   chainPatcherCooldownUntil?: number;
   lastRollAt: number | null;
@@ -1003,6 +1020,8 @@ export interface PlayerState {
   turboRollUntil: number; // timestamp
   activeBoosters?: Partial<Record<PremiumBoosterId, number>>;
   automations?: Partial<Record<AutomationId, boolean>>;
+  /** User-configurable Auto Scrap cutoff, gated by the Auto Scrap Prestige upgrade. */
+  combatAutoScrap: { enabled: boolean; maxQuality: number };
   onlinePlayers?: number;
   communityRewardClaimedAt?: number;
   freeShardsEarnedToday?: number;
@@ -1015,10 +1034,6 @@ export interface PlayerState {
   globalBoosterCreditLots?: Record<string, number>;
   globalBoosters?: GlobalBoosterSnapshot;
   guildCombo?: GuildComboState;
-
-  // Lifetime roll counter used by Singularity Tithe. It counts processed orbs,
-  // including multi-roll and offline batches, once Tithe is active.
-  singularityTitheSingleRolls?: number;
 
   lastFrenzyDate?: string;
   lastFrenzyAt?: number;
@@ -1270,16 +1285,14 @@ export function getOrbInfo(rarity: number): RarityTierInfo {
  * instead of multiplying the rolled rarity directly. This keeps high Luck
  * valuable without turning ordinary rolls into giant outliers.
  */
-// Luck is deliberately a gentle tail multiplier. At 1× Luck the distribution
-// remains P(Rarity >= R) ≈ 1/R; higher Luck improves the scale slowly instead of
-// changing the distribution's exponent and making extreme drops commonplace.
+// Luck gently raises the whole orb distribution, so average orb rarity keeps
+// improving as Luck grows instead of hitting the old 5× hard ceiling. The 0.08
+// exponent gives diminishing returns: 10× Luck is only ~1.20× rarity, while
+// 1,000,000× Luck is ~3.02×. The safety ceiling is reached only at extreme values.
 export function luckRarityFactor(luck: number): number {
   const rawLuck = Number(luck);
   const effectiveLuck = Number.isFinite(rawLuck) ? Math.max(1, rawLuck) : 1;
-  // Luck should make rare results meaningfully better without turning the
-  // upper tail into routine drops.  Every full order of magnitude of Luck
-  // adds only 0.75× to the rarity scale, capped at 5×.
-  return Math.min(5, 1 + Math.log10(effectiveLuck) * 0.75);
+  return Math.min(25, Math.pow(effectiveLuck, 0.08));
 }
 
 // Kept for compatibility with older callers. The continuum no longer changes its exponent.
@@ -1379,19 +1392,19 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
     maxLevel: 5,
     costPerLevel: 3,
   },
+  unbrokenMomentum: {
+    name: 'Unbroken Momentum',
+    desc: 'Unlocks permanent Speed from your longest uninterrupted online rolling session. The logarithmic bonus reaches +20% at 48 hours, about +25% at 72 hours, and caps at +30%. Only completed five-minute blocks count.',
+    category: 'core',
+    maxLevel: 1,
+    costPerLevel: 8,
+  },
   vaultCap: {
     name: 'Vault Expansion',
     desc: '+250 offline roll capacity per level.',
     category: 'core',
     maxLevel: 5,
     costPerLevel: 1,
-  },
-  dustBounty: {
-    name: 'Cosmic Dust Bounty',
-    desc: '+15% Cosmic Dust from prestige per level.',
-    category: 'core',
-    maxLevel: 5,
-    costPerLevel: 5,
   },
   sonarPing: {
     name: 'Silent Alert Mode',
@@ -1423,6 +1436,14 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
     category: 'qol',
     maxLevel: 1,
     costPerLevel: 3,
+    qol: true,
+  },
+  autoScrap: {
+    name: 'Auto Scrap',
+    desc: 'Unlocks configurable automatic combat-gear salvaging. Set a quality threshold in this upgrade; drops at or below it become Scrap instead of taking inventory space.',
+    category: 'qol',
+    maxLevel: 1,
+    costPerLevel: 4,
     qol: true,
   },
   resonanceMeter: {
@@ -1507,13 +1528,6 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
     maxLevel: 3,
     costPerLevel: 3,
     qol: true,
-  },
-  singularityTithe: {
-    name: 'Singularity Tithe',
-    desc: 'Passively generate +1 Cosmic Dust every 200 rolls per level.',
-    category: 'alchemy',
-    maxLevel: 3,
-    costPerLevel: 5,
   },
   luckyFloor: {
     name: 'Lucky Floor',
@@ -1639,6 +1653,8 @@ export function createInitialState(now = Date.now()): PlayerState {
     collectionValue: 0,
     lifetimeCollectionValue: 0,
     collection: {},
+    runeConstellationCharge: 0,
+    runeTemporalMomentum: 0,
     chainPatcherNextRarity: 0,
     chainPatcherCooldownUntil: 0,
     lastRollAt: null,
@@ -1663,8 +1679,8 @@ export function createInitialState(now = Date.now()): PlayerState {
     prestigeUpgrades: {
       permLuck: 0,
       permSpeed: 0,
+      unbrokenMomentum: 0,
       vaultCap: 0,
-      dustBounty: 0,
       sonarPing: 0,
       instantReveal: 0,
       autoOverclock: 0,
@@ -1680,7 +1696,6 @@ export function createInitialState(now = Date.now()): PlayerState {
       supernova: 0,
       altarResonator: 0,
       offlineOverdrive: 0,
-      singularityTithe: 0,
       luckyFloor: 0,
       astralArsenal: 0,
       deepVault: 0,
@@ -1692,6 +1707,7 @@ export function createInitialState(now = Date.now()): PlayerState {
       shardResonator: 0,
       cosmicValuation: 0,
       cosmicReserve: 0,
+      autoScrap: 0,
     },
     streak: { count: 1, lastClaimDate: '', longestStreak: 1 },
     dailyStreakCommunity: createInitialDailyStreakCommunity(now),
@@ -1711,6 +1727,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     turboRollUntil: 0,
     activeBoosters: {},
     automations: {},
+    combatAutoScrap: { enabled:false, maxQuality:20 },
     onlinePlayers: 1,
     communityRewardClaimedAt: 0,
     freeShardsEarnedToday: 0,
@@ -1743,6 +1760,7 @@ export function createInitialState(now = Date.now()): PlayerState {
       prosperity: 0,
       shardAttunement: 0,
       critMastery: 0,
+      aftershock: 0,
       chronoFlow: 0,
       infiniteVault: 0,
       cosmicAttunement: 0,
@@ -1981,11 +1999,13 @@ export const OFFLINE_TICK_MS = 60_000; // 1 offline roll every 60 seconds
 
 export const SHARD_SYNTHESIS_COST = 10;
 
-// Unbroken Momentum treats a gap longer than five minutes as the end of a
-// rolling session. Every completed five minutes in the personal-best session
-// grants +1% Speed, capped at +30%.
+// Unbroken Momentum ends a rolling session after a five-minute gap.
+// Its permanent Speed reward scales logarithmically: 48 hours = 20%,
+// 72 hours ≈ 25%, and the bonus never exceeds 30%.
 export const UNBROKEN_MOMENTUM_SESSION_GAP_MS = 5 * 60_000;
+/** @deprecated Retained for compatibility; the logarithmic curve no longer uses fixed steps. */
 export const UNBROKEN_MOMENTUM_STEP_MS = 5 * 60_000;
+/** @deprecated Retained for compatibility; the logarithmic curve no longer uses a per-step bonus. */
 export const UNBROKEN_MOMENTUM_PER_STEP = 0.01;
 export const UNBROKEN_MOMENTUM_MAX_BONUS = 0.30;
 
@@ -1993,8 +2013,15 @@ export function unbrokenMomentumSpeedBonus(longestSessionMs: number | null | und
   const safeDuration = Number.isFinite(Number(longestSessionMs))
     ? Math.max(0, Math.floor(Number(longestSessionMs)))
     : 0;
-  const completedSteps = Math.floor(safeDuration / UNBROKEN_MOMENTUM_STEP_MS);
-  return Math.min(UNBROKEN_MOMENTUM_MAX_BONUS, completedSteps * UNBROKEN_MOMENTUM_PER_STEP);
+  // Only completed five-minute blocks count toward the recorded session bonus.
+  const completedDurationMs = Math.floor(safeDuration / UNBROKEN_MOMENTUM_STEP_MS) * UNBROKEN_MOMENTUM_STEP_MS;
+  const hours = completedDurationMs / 3_600_000;
+  if (hours <= 0) return 0;
+
+  // Normalize the logarithmic curve so the requested 48h and 72h landmarks
+  // map to 20% and approximately 25%, respectively.
+  const normalized = Math.log1p(hours / 20) / Math.log1p(48 / 20);
+  return Math.min(UNBROKEN_MOMENTUM_MAX_BONUS, Math.max(0, 0.20 * normalized));
 }
 
 /**
@@ -2036,23 +2063,6 @@ export function recordRollingSessionActivity(s: PlayerState, now = Date.now()): 
   s.longestRollingSessionMs = Math.max(previousBest, sessionDuration);
 }
 
-export const SINGULARITY_TITHE_ROLLS_PER_DUST = 200;
-export function singularityTitheDustForRolls(
-  previousRolls: number,
-  processedRolls: number,
-  level: number,
-): number {
-  const before = Math.max(0, Math.floor(Number(previousRolls) || 0));
-  const rolls = Math.max(0, Math.floor(Number(processedRolls) || 0));
-  const safeLevel = Math.max(0, Math.floor(Number(level) || 0));
-  if (rolls === 0 || safeLevel === 0) return 0;
-
-  const milestonesBefore = Math.floor(before / SINGULARITY_TITHE_ROLLS_PER_DUST);
-  const milestonesAfter = Math.floor((before + rolls) / SINGULARITY_TITHE_ROLLS_PER_DUST);
-  return Math.max(0, milestonesAfter - milestonesBefore) * safeLevel;
-}
-
-
 export function effectiveOfflineTickMs(s: PlayerState): number {
   const rateReduction = Math.min(0.60, Math.min(8, Math.max(0, s.upgrades.offlineRate ?? 0)) * 0.08);
   const overdriveLevel = Math.max(0, Math.min(3, s.prestigeUpgrades?.offlineOverdrive ?? 0));
@@ -2065,7 +2075,7 @@ export function critMultiplier(s: PlayerState): number {
   return 2.0 +
     (s.upgrades.critPower ?? 0) * 0.25 +
     masteryCritPower +
-    aftershockCriticalLuckBonus(s.aftershockRecord) +
+    ((s.masterySkills?.aftershock ?? 0) > 0 ? aftershockCriticalLuckBonus(s.aftershockRecord) : 0) +
     globalBoosterCritLuckBonus(s.globalBoosters?.crit) +
     guildComboCritLuckBonus(s.guildCombo);
 }
@@ -2131,7 +2141,9 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
 
   // Unbroken Momentum increases actual roll frequency by dividing cooldown
   // by the best-session Speed multiplier; the common 300ms floor still applies.
-  const momentumSpeedMultiplier = 1 + unbrokenMomentumSpeedBonus(s.longestRollingSessionMs);
+  const momentumSpeedMultiplier = 1 + ((s.prestigeUpgrades?.unbrokenMomentum ?? 0) > 0
+    ? unbrokenMomentumSpeedBonus(s.longestRollingSessionMs)
+    : 0);
   return Math.max(300, Math.round(cd / momentumSpeedMultiplier));
 }
 
@@ -2424,8 +2436,7 @@ export function predictRollActivation(
     (s.masterySkills?.critMastery ?? 0) * 0.03 +
     (s.guildPerks?.critRank ?? 0) * 0.015 +
     globalBoosterCritChanceBonus(s.globalBoosters?.crit) +
-    guildComboCritChanceBonus(s.guildCombo) +
-    aftershockCriticalLuckBonus(s.aftershockRecord),
+    guildComboCritChanceBonus(s.guildCombo),
   );
 
   const rarities: number[] = [];
@@ -2648,22 +2659,27 @@ export function calculatePrestigeDust(collectionValue: number): number {
   return 2 + Math.max(0, additionalDust);
 }
 
+export const MAX_COSMIC_DUST = 50;
+
 export function calculateCosmicDust(s: PlayerState): number {
   const currentVal = s.collectionValue ?? 0;
   if (currentVal < 1_000_000) return 0;
   const base = calculatePrestigeDust(currentVal);
   if (base <= 0) return 0;
-  const bonus = (s.prestigeUpgrades?.dustBounty ?? 0) * 0.15;
   const masteryBonus = (s.masterySkills?.cosmicAttunement ?? 0) * 0.08;
-  return Math.floor(base * (1 + bonus + masteryBonus));
+  const existingDust = Math.max(0, Math.min(MAX_COSMIC_DUST,
+    Number.isSafeInteger(s.cosmicDust) ? s.cosmicDust : 0,
+  ));
+  const pending = Math.floor(base * (1 + masteryBonus));
+  return Math.max(0, Math.min(MAX_COSMIC_DUST - existingDust, pending));
 }
 
 export function prestigeUpgradeCost(id: PrestigeUpgradeId, level: number): number {
   const bases: Record<PrestigeUpgradeId, number> = {
     permLuck: 2,
     permSpeed: 3,
+    unbrokenMomentum: 8,
     vaultCap: 1,
-    dustBounty: 5,
     sonarPing: 2,
     instantReveal: 2,
     autoOverclock: 2,
@@ -2679,7 +2695,6 @@ export function prestigeUpgradeCost(id: PrestigeUpgradeId, level: number): numbe
     supernova: 3,
     altarResonator: 3,
     offlineOverdrive: 3,
-    singularityTithe: 5,
     luckyFloor: 3,
     astralArsenal: 5,
     deepVault: 2,
@@ -2690,7 +2705,8 @@ export function prestigeUpgradeCost(id: PrestigeUpgradeId, level: number): numbe
     temporalCompression: 4,
     shardResonator: 4,
     cosmicValuation: 5,
-    cosmicReserve: 5,
+    cosmicReserve: 8,
+    autoScrap: 4,
   };
   const base = bases[id] ?? 2;
   return Math.round(base * Math.pow(1.5, level));

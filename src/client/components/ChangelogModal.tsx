@@ -6,11 +6,63 @@ interface ChangelogModalProps {
   onClose: () => void;
 }
 
-// Release notes are intentionally empty until the release author provides them.
 const entries: Array<{
   title: string;
   description: string;
-}> = [];
+}> = [
+  {
+    title: 'Inline Post Scroll Compliance',
+    description: 'Inline launch and Orb Frenzy posts now use bounded, non-scrollable preview surfaces that allow vertical feed gestures to pass through to Reddit. The in-post Global Chat scroller and oversized fallback dialog were removed from Frenzy; full chat and long interactions stay in Expanded Mode.',
+  },
+  {
+    title: 'Combat Reliability & Rune Inventory',
+    description: 'Combat saves now fail safely instead of silently resetting, empty gear inventories stay empty, and encounter effects clear when a new run begins. Rune inventory adds search, equipped filters, level progress, capacity warnings, safer Strengthen actions, and serialized requests. Upgrade purchases, Global Chat requests, quest progress, and daily-streak previews have additional reliability and accessibility fixes.',
+  },
+  {
+    title: 'Rune Major Abilities & Auto Sacrifice',
+    description: 'Rune tooltips now explain eleven scalable Major Abilities: Echo Chamber chains extra rolls, Paradox Engine expands multi-rolls, Event Horizon rewards record rarities, Shard Constellation and Temporal Loop build persistent meters, Prismatic Fork boosts rare outcomes, Critical Convergence reacts to crits, Rarity Ladder rewards rising sequences, Stellar Dividend pays roll milestones, Shard Jackpot multiplies Shard payouts, and Milestone Engine rewards new rarity decades. Strengthen a chosen Rune by clicking a donor, or auto-sacrifice eligible drops into a random equipped Rune.',
+  },
+  {
+    title: 'Combat Unlock & Mark Shop',
+    description: 'Combat unlocks at Level 8 with a guided introduction. Coins are shown in the core game, while Combat Marks are shown in Combat. Mark Magnet and Warding Doctrine add new permanent upgrades, and Starfall and Mark Harvest expand possible gear Major Abilities.',
+  },
+  {
+    title: 'Shared Orb Frenzies',
+    description: 'An Orb Frenzy can now be claimed by multiple different players during its lifetime. Per-player receipts prevent duplicate claims, and the existing individual claim cooldown remains in force.',
+  },
+  {
+    title: 'Combat Reset & Readability',
+    description: 'Full player wipes now clear the separate Combat save. Combat echo waves last longer, and item Details tooltips use viewport-aware positioning on narrow screens.',
+  },
+  {
+    title: 'Runes · Combat Loot for the Main Game',
+    description: 'Monsters can now drop seven Rune rarities. Equip Runes in the new Runes menu to improve Orb Luck, Coins, Shard chance, or XP in the core game. Bosses always drop a Rune; elites have better odds. Earn more Rune slots through Delver levels and depth, then sacrifice spare Runes into the ones you want to strengthen.',
+  },
+  {
+    title: 'First Steps Tutorial',
+    description: 'New players are guided through their first orb roll, the result, Upgrades, and the Codex. The tutorial respects feature unlock levels and can be skipped at any time.',
+  },
+  {
+    title: 'New Skills · Aftershock & Unbroken Momentum',
+    description: 'Aftershock is now a Mastery skill that activates Critical Luck from your best dry interval between successive all-time rarity records. Unbroken Momentum is now a Prestige upgrade that unlocks logarithmic session-based Speed: +20% at 48 hours, about +25% at 72 hours, capped at +30%. Their live bonuses are shown in their purchase menus.',
+  },
+  {
+    title: 'Codex Devotion',
+    description: 'The Mastery upgrade now displays both its current Luck bonus and the bonus after the next level, calculated from your longest consecutive Codex rarity chain.',
+  },
+  {
+    title: 'Balancing',
+    description: 'Mastery Engine has been removed for balancing purposes.',
+  },
+  {
+    title: 'Chain Patcher',
+    description: 'Chain Patcher is now located in the Codex. Its pre-purchase preview correctly shows the next rarity and Shard cost using your full server-side Codex. It targets the cheapest missing rarity adjacent to your longest consecutive chain, guarantees exactly one orb of that rarity on your next accepted roll, and has a 24-hour purchase cooldown.',
+  },
+  {
+    title: 'Bug Fixes & Improvements',
+    description: 'Global Chat remains visible when posting is unavailable and explains why. The player list includes each active player’s current session length. Session-based bonuses now activate only after purchase, and the release includes regression fixes for Codex placement, chat availability, and logarithmic Momentum scaling.',
+  },
+];
 
 export const ChangelogModal: React.FC<ChangelogModalProps> = ({ onClose }) => {
   return (

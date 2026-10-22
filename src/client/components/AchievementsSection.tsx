@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Trophy, CheckCircle2, Lock, Coins, Gem, Sparkles } from 'lucide-react';
 import type { Achievement } from '../../shared/social.js';
 import type { PlayerState } from '../../shared/game.js';
@@ -18,7 +18,24 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
   busy,
 }) => {
   const [filter, setFilter] = useState<'all' | 'unlocked' | 'claimed'>('all');
-  const fmt = (n: number) => n.toLocaleString();
+  const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [claimError, setClaimError] = useState('');
+  const claimLockRef = useRef(false);
+  const fmt = (n: number) => (Number.isFinite(n) ? n : 0).toLocaleString();
+  const handleClaim = async (id: string) => {
+    if (busy || claimLockRef.current) return;
+    claimLockRef.current = true;
+    setClaimingId(id);
+    setClaimError('');
+    try {
+      await onClaimAchievement(id);
+    } catch (error) {
+      setClaimError(error instanceof Error ? error.message : 'Achievement reward could not be claimed. Please retry.');
+    } finally {
+      claimLockRef.current = false;
+      setClaimingId(null);
+    }
+  };
 
   const total = achievements.length;
   const unlockedCount = achievements.filter(a => a.unlocked).length;
@@ -33,6 +50,7 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      {claimError && <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-950/30 px-4 py-3 text-xs text-rose-200">{claimError}</div>}
       {/* Header Overview Card */}
       <div className="bg-gradient-to-r from-slate-900 via-amber-950/20 to-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -65,7 +83,7 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
 
         {/* Progress bar */}
         <div className="mt-4">
-          <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+          <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800" role="progressbar" aria-label="Achievement unlock progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPct}>
             <div
               className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 transition-all duration-500"
               style={{ width: `${progressPct}%` }}
@@ -77,7 +95,7 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
       {/* Filter Tabs */}
       <div className="flex items-center gap-2">
         <button
-          onClick={() => setFilter('all')}
+          type="button" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}
           className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
             filter === 'all'
               ? 'bg-amber-500 text-slate-950 font-black shadow-md'
@@ -87,7 +105,7 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
           All ({total})
         </button>
         <button
-          onClick={() => setFilter('unlocked')}
+          type="button" aria-pressed={filter === 'unlocked'} onClick={() => setFilter('unlocked')}
           className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
             filter === 'unlocked'
               ? 'bg-emerald-600 text-white shadow-md'
@@ -97,7 +115,7 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
           Ready to Claim ({unlockedCount - claimedCount})
         </button>
         <button
-          onClick={() => setFilter('claimed')}
+          type="button" aria-pressed={filter === 'claimed'} onClick={() => setFilter('claimed')}
           className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
             filter === 'claimed'
               ? 'bg-slate-700 text-white shadow-md'
@@ -170,14 +188,15 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
                 </span>
               ) : ach.unlocked ? (
                 <button
+                  type="button"
                   onClick={() => {
                     sound.playClick();
-                    void onClaimAchievement(ach.id);
+                    void handleClaim(ach.id);
                   }}
-                  disabled={busy}
+                  disabled={busy || claimingId !== null}
                   className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-xs shadow-md active:scale-95 transition-all"
                 >
-                  Claim Reward
+                  {claimingId === ach.id ? 'Claiming…' : 'Claim Reward'}
                 </button>
               ) : (
                 <span className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">

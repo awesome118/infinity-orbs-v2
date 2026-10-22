@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Calendar,
   CheckCircle2,
@@ -25,23 +25,39 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
   onClaimQuest,
   busy,
 }) => {
-  const fmt = (n: number) => formatNumber(n);
+  const fmt = (n: number) => formatNumber(Number.isFinite(n) ? Math.max(0, n) : 0);
+  const [claimPending, setClaimPending] = useState(false);
+  const [claimError, setClaimError] = useState('');
+  const claimLockRef = useRef(false);
+  const runClaim = async (claim: () => Promise<void>) => {
+    if (busy || claimLockRef.current) return;
+    claimLockRef.current = true;
+    setClaimPending(true);
+    setClaimError('');
+    try {
+      await claim();
+    } catch (error) {
+      setClaimError(error instanceof Error ? error.message : 'Reward claim was not confirmed. Refresh the quest state before retrying.');
+    } finally {
+      claimLockRef.current = false;
+      setClaimPending(false);
+    }
+  };
   const today = new Date().toISOString().slice(0, 10);
-  const alreadyClaimedStreak = state.streak.lastClaimDate === today;
-  const currentStreakDay = ((state.streak.count - 1) % 7) + 1;
-
-  const streakRewards = [
-    { day: 1, coins: 50, shards: 0 },
-    { day: 2, coins: 100, shards: 0 },
-    { day: 3, coins: 150, shards: 1 },
-    { day: 4, coins: 200, shards: 0 },
-    { day: 5, coins: 250, shards: 0 },
-    { day: 6, coins: 300, shards: 0 },
-    { day: 7, coins: 350, shards: 5 },
-  ];
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  const lastClaimDate = typeof state.streak.lastClaimDate === 'string' ? state.streak.lastClaimDate : '';
+  const alreadyClaimedStreak = lastClaimDate === today;
+  const streakCount = Number.isSafeInteger(state.streak.count) ? Math.max(0, state.streak.count) : 0;
+  const streakIsActive = alreadyClaimedStreak || lastClaimDate === yesterday;
+  const progressPercent = (progress: number, target: number) => {
+    const safeProgress = Number(progress), safeTarget = Number(target);
+    if (!Number.isFinite(safeProgress) || !Number.isFinite(safeTarget) || safeTarget <= 0) return 0;
+    return Math.max(0, Math.min(100, Math.round(safeProgress / safeTarget * 100)));
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      {claimError && <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-950/30 px-4 py-3 text-xs text-rose-200">{claimError}</div>}
       {/* Daily Streak */}
       <div className="bg-gradient-to-r from-slate-900 via-emerald-950/15 to-slate-900 border border-emerald-500/20 rounded-3xl p-5 sm:p-6 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -57,16 +73,16 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Current streak: <span className="font-black text-white">{Math.max(1, state.streak.count || 1)}</span> days · Longest: {state.streak.longestStreak} days.
+                Current streak: <span className="font-black text-white">{streakIsActive ? streakCount : 0}</span> days · Longest: {fmt(state.streak.longestStreak)} days.
               </p>
             </div>
           </div>
           <button
             onClick={() => {
               sound.playClick();
-              void onClaimDailyStreak();
+              void runClaim(onClaimDailyStreak);
             }}
-            disabled={alreadyClaimedStreak || busy}
+            disabled={alreadyClaimedStreak || busy || claimPending}
             className={alreadyClaimedStreak ? 'bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed px-5 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2' : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-900/30 active:scale-95 px-5 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all'}
           >
             <Gift className="w-4 h-4" />
@@ -76,9 +92,9 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-5">
           {(() => {
             const nextStreak = alreadyClaimedStreak
-              ? Math.max(1, state.streak.count || 1)
-              : state.streak.lastClaimDate
-                ? Math.max(1, state.streak.count || 1) + 1
+              ? Math.max(1, streakCount)
+              : lastClaimDate === yesterday
+                ? Math.max(1, streakCount) + 1
                 : 1;
             const day = ((nextStreak - 1) % 7) + 1;
             return [
@@ -140,8 +156,8 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {state.dailyQuests.map(q => {
             const isUnlocked = q.unlocked !== false;
-            const isComplete = isUnlocked && q.progress >= q.target;
-            const pct = isUnlocked ? Math.min(100, Math.round((q.progress / q.target) * 100)) : 0;
+            const isComplete = isUnlocked && Number.isFinite(Number(q.progress)) && Number.isFinite(Number(q.target)) && Number(q.target) > 0 && Number(q.progress) >= Number(q.target);
+            const pct = isUnlocked ? progressPercent(q.progress, q.target) : 0;
 
             return (
               <div
@@ -178,7 +194,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                         {fmt(q.progress)} / {fmt(q.target)}
                       </span>
                     </div>
-                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800" role="progressbar" aria-label={q.title+' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
                       <div
                         className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all"
                         style={{ width: `${pct}%` }}
@@ -198,9 +214,9 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                     <button
                       onClick={() => {
                         sound.playClick();
-                        void onClaimQuest('daily', q.id);
+                        void runClaim(() => onClaimQuest('daily', q.id));
                       }}
-                      disabled={!isComplete || busy}
+                      disabled={!isComplete || busy || claimPending}
                       className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                         isComplete
                           ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md active:scale-95'
@@ -266,7 +282,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                         {fmt(q.progress)} / {fmt(q.target)}
                       </span>
                     </div>
-                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800" role="progressbar" aria-label={q.title+' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
                       <div
                         className="h-full bg-gradient-to-r from-cyan-500 to-blue-600 transition-all"
                         style={{ width: `${pct}%` }}
@@ -286,9 +302,9 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                     <button
                       onClick={() => {
                         sound.playClick();
-                        void onClaimQuest('weekly', q.id);
+                        void runClaim(() => onClaimQuest('weekly', q.id));
                       }}
-                      disabled={!isComplete || busy}
+                      disabled={!isComplete || busy || claimPending}
                       className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                         isComplete
                           ? 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-md active:scale-95'

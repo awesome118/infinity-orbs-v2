@@ -4,6 +4,7 @@ import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
+import { combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityEffects, undercryptOrbLuckMultiplier } from '../shared/combat.js';
 import {
   createInitialState,
   type PlayerState,
@@ -34,12 +35,12 @@ import {
   MAX_OFFLINE_ROLLS,
   OFFLINE_TICK_MS,
   calculateCosmicDust,
+  MAX_COSMIC_DUST,
   effectiveOfflineTickMs,
   critMultiplier,
   calculateLevelFromXp,
   applyLevelProgress,
   totalXpRequiredBeforeLevel,
-  singularityTitheDustForRolls,
   type MasterySkillId,
   type PremiumBoosterId,
   type AutomationId,
@@ -95,6 +96,18 @@ import {
   getDailyStreakCommunity,
   prepareDailyStreakCommunityProgress,
 } from './social.js';
+
+/** Use non-guessable identifiers for leases, reservations, and idempotency receipts. */
+function createSecureId(): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === 'function') return cryptoApi.randomUUID();
+  if (typeof cryptoApi?.getRandomValues === 'function') {
+    const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+  }
+  throw new Error('Secure identifier generation is unavailable.');
+}
+
 
 
 interface SaveExtraWrite {
@@ -1108,6 +1121,7 @@ export async function getCcuPeaks(): Promise<{
 }
 
 const FRENZY_POST_PREFIX = 'io:frenzy:post:';
+const FRENZY_CLAIM_RECEIPT_PREFIX = 'io:frenzy:claim-receipt:';
 const FRENZY_POST_RECEIPT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const FRENZY_HANDOFF_PREFIX = 'io:frenzy:handoff:';
 const FRENZY_HANDOFF_TTL_MS = 60_000;
@@ -1115,6 +1129,10 @@ const FRENZY_THANK_YOU_PREFIX = 'io:frenzy:thank-you:';
 
 function frenzyHandoffKey(userId: string): string {
   return FRENZY_HANDOFF_PREFIX + userId;
+}
+
+function frenzyClaimReceiptKey(postId: string, userId: string): string {
+  return FRENZY_CLAIM_RECEIPT_PREFIX + encodeURIComponent(postId) + ':' + encodeURIComponent(userId);
 }
 
 function isFrenzyTestAdmin(username?: string): boolean {
@@ -1594,6 +1612,8 @@ export interface PlayerListEntry {
   level: number;
   xp: number;
   playtimeMs: number;
+  /** Live duration of the current online session; zero when the player is inactive. */
+  currentSessionMs: number;
   totalRolls: number;
   highestRarity: number;
   coins: number;
@@ -1617,6 +1637,11 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
       validPastTimestamp(registry.lastSeenAt, now),
       validPastTimestamp(save?.lastSeenAt, now),
     );
+    const onlineSessionStartedAt = validPastTimestamp(registry.lastLoginAt, now);
+    const currentSessionMs =
+      lastSeenAt >= now - PLAYER_ACTIVE_WINDOW_MS && onlineSessionStartedAt > 0
+        ? Math.max(0, now - onlineSessionStartedAt)
+        : 0;
     return {
       userId,
       username: String(registry.username ?? save?.username ?? ('user-' + userId.slice(-8))).trim().slice(0, 100),
@@ -1626,6 +1651,7 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
       level: Math.max(1, Number(save?.level ?? 1) || 1),
       xp: Math.max(0, Number(save?.xp ?? 0) || 0),
       playtimeMs: Math.max(0, Number(registry.playtimeMs ?? 0) || 0),
+      currentSessionMs,
       totalRolls: Math.max(0, Number(save?.totalRolls ?? 0) || 0),
       highestRarity: Math.max(0, Number(save?.highestRarity ?? 0) || 0),
       coins: Math.max(0, Number(save?.coins ?? 0) || 0),
@@ -1758,6 +1784,12 @@ const PRESTIGE_UPGRADE_LEVEL_LIMITS = Object.fromEntries(
 const MASTERY_SKILL_LEVEL_LIMITS = Object.fromEntries(
   Object.entries(MASTERY_SKILLS).map(([id, info]) => [id, info.maxLevel]),
 ) as Record<MasterySkillId, number>;
+
+function normalizeCombatAutoScrapSettings(value: unknown, fallback: { enabled: boolean; maxQuality: number } = { enabled:false, maxQuality:20 }): { enabled:boolean; maxQuality:number } {
+  if(!value||typeof value!=='object'||Array.isArray(value))return {...fallback};
+  const raw=value as Record<string,unknown>,quality=Number(raw.maxQuality);
+  return {enabled:raw.enabled===true,maxQuality:Number.isFinite(quality)?Math.round(Math.max(0,Math.min(100,quality))*100)/100:fallback.maxQuality};
+}
 
 function isValidQuestList(value: unknown): value is QuestItem[] {
   if (!Array.isArray(value) || value.length === 0) return false;
@@ -2264,7 +2296,7 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
     throw new Error('Could not safely process the refund.');
   });
 }
-export async function loadRaw(): Promise<PlayerState> {
+export async function loadRaw(options: { registerActivity?: boolean } = {}): Promise<PlayerState> {
   const userId = currentUserId();
   const playerKey = key();
   const generationKey = saveGenerationKeyFor(userId);
@@ -2272,7 +2304,9 @@ export async function loadRaw(): Promise<PlayerState> {
   const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
   const raw = await redis.get(playerKey);
   const username = context.username ?? `reddit-user-${userId.slice(-8)}`;
-  await registerPlayer(userId, username);
+  // Passive post previews may read player-specific eligibility without registering
+  // an activity visit. Normal gameplay reads preserve the default registration.
+  if (options.registerActivity !== false) await registerPlayer(userId, username);
   const [guildContext, globalBoosters, dailyStreakCommunity] = await Promise.all([
     getPlayerGuildContext(username, userId).catch(error => {
       console.error('[Guild] Context read failed; using zeroed modifiers until Guild data is repaired.', error);
@@ -2393,10 +2427,6 @@ export async function loadRaw(): Promise<PlayerState> {
     coins: finiteNonNegativeInteger(parsed.coins),
     lifetimeCoins: finiteNonNegativeInteger(parsed.lifetimeCoins ?? parsed.coins),
     offlineRolls: Math.min(MAX_OFFLINE_ROLLS, finiteNonNegativeInteger(parsed.offlineRolls, base.offlineRolls)),
-    singularityTitheSingleRolls: finiteNonNegativeInteger(
-      parsed.singularityTitheSingleRolls,
-      base.singularityTitheSingleRolls ?? 0,
-    ),
     purchasedShards: normalizedPurchasedShards,
     purchasedShardLots: normalizedPurchasedShardLots,
     globalBoosterCredits: normalizedGlobalBoosterCredits,
@@ -2434,6 +2464,7 @@ export async function loadRaw(): Promise<PlayerState> {
     stateRevision: Math.max(0, Math.floor(Number(parsed.stateRevision ?? 0)) || 0),
     username,
     prestigeUpgrades: normalizedPrestigeUpgrades,
+    combatAutoScrap: normalizeCombatAutoScrapSettings(parsed.combatAutoScrap, base.combatAutoScrap),
     // Malformed nested save shapes are optional progress data, not a reason to poison gameplay math.
     collection: isValidCollection(parsed.collection) ? parsed.collection : base.collection,
     claimedAchievements: isStringList(parsed.claimedAchievements) ? parsed.claimedAchievements : base.claimedAchievements,
@@ -2457,7 +2488,17 @@ export async function loadRaw(): Promise<PlayerState> {
     globalBoosters,
     dailyStreakCommunity,
   };
+  // Cosmic Dust has a lower game-specific cap than the shared safe-integer guard.
+  restored.cosmicDust = Math.min(MAX_COSMIC_DUST, restored.cosmicDust);
   playerGuildScopes.set(restored, guildId);
+  // One-time migration: persist the new hard cap instead of only clamping its read view.
+  if (finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust) > MAX_COSMIC_DUST) {
+    try {
+      await save(restored);
+    } catch (error) {
+      console.error('[Prestige] Cosmic Dust cap migration will retry on next load.', error);
+    }
+  }
   return restored;
 }
 
@@ -3157,10 +3198,13 @@ function finiteNonNegativeNumber(value: unknown, fallback = 0): number {
 }
 
 function finiteNonNegativeInteger(value: unknown, fallback = 0): number {
+  const safeFallback = Number.isFinite(fallback)
+    ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(fallback)))
+    : 0;
   const n = Number(value);
   return Number.isFinite(n)
     ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(n)))
-    : fallback;
+    : safeFallback;
 }
 
 function normalizeSafeInteger(value: unknown, fallback = 0): number {
@@ -3320,6 +3364,7 @@ export async function applyRolls(
   if (rollCount > 1 && magnetLevel > 0 && rng() < 0.10 * magnetLevel) {
     rollCount += 2;
   }
+  const baseBatchRollCount = rollCount;
 
   // The player-state parser rejects unsafe lifetime roll counters. Refuse an
   // invalid or overflowing batch before shared reads or per-orb mutations.
@@ -3332,18 +3377,6 @@ export async function applyRolls(
   ) {
     throw new Error('Roll counter would exceed the safe integer range; no rolls were processed.');
   }
-  const titheLevelForBatch = s.prestigeUpgrades?.singularityTithe ?? 0;
-  if (
-    titheLevelForBatch > 0 &&
-    rollCount > 0 &&
-    (
-      !Number.isSafeInteger(s.singularityTitheSingleRolls) ||
-      (s.singularityTitheSingleRolls ?? 0) < 0 ||
-      rollCount > Number.MAX_SAFE_INTEGER - (s.singularityTitheSingleRolls ?? 0)
-    )
-  ) {
-    throw new Error('Singularity Tithe counter would exceed the safe integer range; no rolls were processed.');
-  }
   const maxSupportedRollCount = offlineRollCap(s) * rollsPerActivation(s) + 2;
   if (!Number.isSafeInteger(maxSupportedRollCount) || rollCount > maxSupportedRollCount) {
     throw new Error('Roll batch exceeds the supported processing cap; no rolls were processed.');
@@ -3351,7 +3384,7 @@ export async function applyRolls(
 
   // These reads are independent. Keep them parallel so a roll does not spend
   // several sequential Redis round trips before it can even start rolling.
-  const [freshGlobalBoosters, worldEvent, fakeCcuBonus] = await Promise.all([
+  const [freshGlobalBoosters, worldEvent, fakeCcuBonus, combatStateRaw] = await Promise.all([
     getGlobalBoosters(),
     getCommunityEvent().catch(error => {
       // The shared World Event is a bonus/progress feature, not a prerequisite
@@ -3362,22 +3395,48 @@ export async function applyRolls(
       return null;
     }),
     getFakeCcuBonus(),
+    redis.get('infinity-orbs:combat:' + spyUserId).catch((error: unknown) => {
+      // Combat progression is an optional cross-mode bonus. A transient failure
+      // to read it must never prevent a normal orb roll.
+      console.error('[Undercrypt Resonance] Read failed; rolling without the bonus.', error);
+      return null;
+    }),
   ]);
   s.globalBoosters = freshGlobalBoosters;
   const globalBoosters = s.globalBoosters;
   const communityLuck = worldEvent?.buffMultiplier ?? 1;
+  let combatBestDepth = 1;
+  let runeBonuses = combatRuneBonuses([], []);
+  let runeAbilityEffects = combatRuneMajorAbilityEffects([], []);
+  if (typeof combatStateRaw === 'string') {
+    try {
+      const parsed = JSON.parse(combatStateRaw) as { bestDepth?: unknown; dungeonId?: unknown; dungeonBestDepths?: { undercrypt?: unknown }; runes?: unknown; equippedRunes?: unknown };
+      combatBestDepth = Number(parsed?.dungeonBestDepths?.undercrypt) || (parsed?.dungeonId === 'undercrypt' ? Number(parsed?.bestDepth) || 1 : 1);
+      runeBonuses = combatRuneBonuses(parsed?.runes, parsed?.equippedRunes);
+      runeAbilityEffects = combatRuneMajorAbilityEffects(parsed?.runes, parsed?.equippedRunes);
+    } catch {
+      // Ignore invalid optional combat state and preserve ordinary orb luck.
+    }
+  }
+  const undercryptLuck = undercryptOrbLuckMultiplier(combatBestDepth);
 
   // Fake CCU is an admin testing offset applied only to this player's luck calculation.
   // The underlying CCU metric and historical peaks always remain based on real players.
   const luckCcu = Math.max(1, Math.floor((s.onlinePlayers ?? 1) + fakeCcuBonus));
   const luckState = luckCcu === (s.onlinePlayers ?? 1) ? s : { ...s, onlinePlayers: luckCcu };
   // Community Luck is another additive source, kept transient rather than persisted.
-  const baseLuck = luckMultiplier(luckState) + Math.max(0, communityLuck - 1);
+  // Cleared Crypt Wardens permanently improve main-game orb Luck without
+  // touching the core player save: 1% per boss, capped at a 25% multiplier.
+  // Ordinary game Luck continues to use the normal distribution curve. Rune Luck is an explicit
+  // rarity multiplier so a 10x Rune really does multiply the rolled rarity by about 10.
+  const baseLuckCandidate = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1)) * undercryptLuck;
+  const baseLuck = Number.isFinite(baseLuckCandidate) ? Math.max(1, baseLuckCandidate) : Number.MAX_VALUE;
+  const runeLuckMultiplier = combatRuneLuckMultiplier(runeBonuses.luckPct);
 
   // Apex Fortune Mastery: chance on multi-roll to double the luck of that activation
   const apexChance = Math.min(0.45, (s.masterySkills?.apexFortune ?? 0) * 0.03);
   const isApex = rollCount > 1 && rng() < apexChance;
-  const effectiveLuck = isApex ? baseLuck * 2 : baseLuck;
+  const effectiveLuck = isApex ? Math.min(Number.MAX_VALUE, baseLuck * 2) : baseLuck;
 
   const cm = critMultiplier(s);
   const levelBenefits = getLevelBenefits(s.level || 1);
@@ -3387,8 +3446,54 @@ export async function applyRolls(
     (s.prestigeUpgrades?.cosmicValuation ?? 0) * 0.05;
 
   const effectiveCritChance = effectiveRollCritChance(s, globalBoosters);
+  // Rune bonus rolls are bounded per activation and never exceed the existing server batch cap.
+  const runeBonusRollBudget = Math.max(0, Math.min(
+    50,
+    maxSupportedRollCount - baseBatchRollCount,
+    Number.MAX_SAFE_INTEGER - s.totalRolls - baseBatchRollCount,
+  ));
+  let runeBonusRollsUsed = 0;
+  const runeBonusRollSpecs: { minRarity?: number; echoDepth?: number; echoOnly?: boolean; skipAllProcs?: boolean }[] = [];
+  const addRuneBonusRolls = (
+    requestedCount: number,
+    spec: { minRarity?: number; echoDepth?: number; echoOnly?: boolean; skipAllProcs?: boolean },
+  ): number => {
+    const requested = Number.isFinite(requestedCount) ? Math.max(0, Math.floor(requestedCount)) : 0;
+    const count = Math.min(requested, runeBonusRollBudget - runeBonusRollsUsed);
+    for (let j = 0; j < count; j++) runeBonusRollSpecs.push({ ...spec });
+    rollCount += count;
+    runeBonusRollsUsed += count;
+    return count;
+  };
+  const echoChance = Math.min(.45, runeAbilityEffects.echoChamberPct / 100);
+  const maxEchoChain = runeAbilityEffects.echoChamberMaxChain;
+  const paradoxChance = Math.min(.50, runeAbilityEffects.paradoxEnginePct / 100);
+  const eventHorizonRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.eventHorizonPct / 100);
+  const shardConstellationThreshold = Math.max(3, Math.floor(12 / (1 + runeAbilityEffects.shardConstellationPct / 100)));
+  const temporalMomentumPerRoll = runeAbilityEffects.temporalLoopMomentumPerRoll;
+  const prismaticForkChance = Math.min(.45, runeAbilityEffects.prismaticForkPct / 100);
+  const prismaticForkRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.prismaticForkPct / 100);
+  const criticalConvergenceChance = Math.min(.35, runeAbilityEffects.criticalConvergencePct / 100);
+  const criticalConvergenceRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.criticalConvergencePct / 100);
+  const rarityLadderRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.rarityLadderPct / 100);
+  const stellarDividendInterval = Math.max(20, Math.floor(100 / (1 + runeAbilityEffects.stellarDividendPct / 100)));
+  const shardJackpotChance = Math.min(.50, runeAbilityEffects.shardJackpotPct / 100);
+  const milestoneRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.milestoneEnginePct / 100);
+  let paradoxTriggered = false;
+  let constellationTriggered = false;
+  let temporalLoopTriggered = false;
+  let stellarDividendTriggered = false;
+  let rarityLadderTriggered = false;
+  let previousBatchRarity = 0;
+  let risingRarityChain = 0;
+  const validCharge = (value: unknown) => Number.isFinite(Number(value)) ? Math.min(1_000_000, Math.max(0, Number(value))) : 0;
+  s.runeConstellationCharge = validCharge(s.runeConstellationCharge);
+  s.runeTemporalMomentum = validCharge(s.runeTemporalMomentum);
 
   for (let i = 0; i < rollCount; i++) {
+    const currentRuneSpec = i >= baseBatchRollCount ? runeBonusRollSpecs[i - baseBatchRollCount] : undefined;
+    const echoDepth = currentRuneSpec?.echoDepth ?? 0;
+    const suppressOtherRuneProcs = currentRuneSpec?.skipAllProcs === true || currentRuneSpec?.echoOnly === true;
     // New-player hype: the third Orb this account ever rolls is guaranteed
     // to land in the 1/101 through 1/120 range. It cannot crit upward, so the
     // guarantee is the exact advertised range.
@@ -3412,14 +3517,15 @@ export async function applyRolls(
     // The third lifetime Orb overrides the random result with a guaranteed beginner drop.
     const minimumRarity = 2 + (s.prestigeUpgrades?.luckyFloor ?? 0);
     const beginnerRarity = 101 + Math.floor(rng() * 20);
+    const runeRarityFloor = Math.max(minimumRarity, currentRuneSpec?.minRarity ?? minimumRarity);
     const rolledRarity = isGuaranteedThirdBall
       ? beginnerRarity
       : (forcedRarity && i === 0)
         ? forcedRarity
-        : Math.max(minimumRarity, rollContinuum(effectiveLuck, rng));
+        : Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY, Math.round(rollContinuum(effectiveLuck, rng) * runeLuckMultiplier)));
     const baseRarity = exactRarity && forcedRarity != null && i === 0
       ? forcedRarity
-      : Math.max(minimumRarity, rolledRarity);
+      : Math.max(minimumRarity, isGuaranteedThirdBall ? rolledRarity : runeRarityFloor, rolledRarity);
     const rarity = isCrit ? Math.min(MAX_ORB_RARITY, Math.round(baseRarity * effectiveCm)) : baseRarity;
     const finalVal = Math.round(rarity * valueMul);
 
@@ -3434,7 +3540,9 @@ export async function applyRolls(
     if (isNew) uniqueGained++;
     s.collection[String(rarity)] = (s.collection[String(rarity)] ?? 0) + 1;
 
-    if (rarity > s.highestRarity) {
+    const previousAllTimeRarity = s.highestRarity;
+    const isNewRarityRecord = rarity > previousAllTimeRarity;
+    if (isNewRarityRecord) {
       // The rolls since the previous record become an Aftershock candidate
       // only when a strictly rarer all-time orb finally appears.
       if (s.highestRarity > 0) {
@@ -3451,6 +3559,53 @@ export async function applyRolls(
       s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest);
     }
 
+    // Event Horizon fires only on genuine all-time records and its generated burst cannot recurse.
+    if (isNewRarityRecord && !suppressOtherRuneProcs && runeAbilityEffects.eventHorizonPct > 0) {
+      const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity + 1, Math.ceil(rarity * eventHorizonRarityMultiplier)));
+      addRuneBonusRolls(runeAbilityEffects.eventHorizonBonusRolls, { minRarity: floor, skipAllProcs: true });
+    }
+    // Milestone Engine pays for each new order-of-magnitude reached by the all-time record.
+    if (isNewRarityRecord && previousAllTimeRarity > 0 && !suppressOtherRuneProcs && runeAbilityEffects.milestoneEnginePct > 0) {
+      const decadesCrossed = Math.min(5, Math.max(0, Math.floor(Math.log10(rarity)) - Math.floor(Math.log10(previousAllTimeRarity))));
+      if (decadesCrossed > 0) {
+        shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + runeAbilityEffects.milestoneEngineBonusShards * decadesCrossed);
+        const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity + 1, Math.ceil(rarity * milestoneRarityMultiplier)));
+        addRuneBonusRolls(runeAbilityEffects.milestoneEngineBonusRolls * decadesCrossed, { minRarity: floor, skipAllProcs: true });
+      }
+    }
+    // Critical Convergence converts a critical hit into a chance for a non-recursive, rarity-floored bonus.
+    if (isCrit && !suppressOtherRuneProcs && criticalConvergenceChance > 0 && rng() < criticalConvergenceChance) {
+      const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity, Math.ceil(rarity * criticalConvergenceRarityMultiplier)));
+      addRuneBonusRolls(runeAbilityEffects.criticalConvergenceBonusRolls, { minRarity: floor, skipAllProcs: true });
+    }
+    // Three strictly rising results in the same activation trigger Rarity Ladder once.
+    risingRarityChain = rarity > previousBatchRarity ? risingRarityChain + 1 : 1;
+    previousBatchRarity = rarity;
+    if (!rarityLadderTriggered && !suppressOtherRuneProcs && risingRarityChain >= 3 && runeAbilityEffects.rarityLadderPct > 0) {
+      const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity + 1, Math.ceil(rarity * rarityLadderRarityMultiplier)));
+      addRuneBonusRolls(runeAbilityEffects.rarityLadderBonusRolls, { minRarity: floor, skipAllProcs: true });
+      rarityLadderTriggered = true;
+    }
+    // Stellar Dividend pays once per activation when a processed roll hits its lifetime milestone.
+    if (!stellarDividendTriggered && !suppressOtherRuneProcs && runeAbilityEffects.stellarDividendPct > 0 && s.totalRolls % stellarDividendInterval === 0) {
+      addRuneBonusRolls(runeAbilityEffects.stellarDividendBonusRolls, { skipAllProcs: true });
+      stellarDividendTriggered = true;
+    }
+    // Paradox Engine gets one proc check per multi-roll activation.
+    if (i === 0 && baseBatchRollCount > 1 && paradoxChance > 0 && rng() < paradoxChance) {
+      addRuneBonusRolls(runeAbilityEffects.paradoxEngineBonusRolls, { skipAllProcs: true });
+    }
+    // Echo Chamber can echo normal rolls and its own echoes; each link has half the chance of the previous link.
+    if (!currentRuneSpec?.skipAllProcs && echoChance > 0 && echoDepth < maxEchoChain &&
+        rng() < echoChance * Math.pow(.5, echoDepth)) {
+      addRuneBonusRolls(1, { echoDepth: echoDepth + 1, echoOnly: true });
+    }
+    // Prismatic Fork is limited to rare-or-better rolls, and its bonus roll cannot fork again.
+    if (!suppressOtherRuneProcs && rarity >= 1_000 && prismaticForkChance > 0 && rng() < prismaticForkChance) {
+      const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity + 1, Math.ceil(rarity * prismaticForkRarityMultiplier)));
+      addRuneBonusRolls(1, { minRarity: floor, skipAllProcs: true });
+    }
+
     if (rarity > bestRarity) {
       bestRarity = rarity;
       bestIsCrit = isCrit;
@@ -3460,8 +3615,9 @@ export async function applyRolls(
 
     const xpBonusMul =
       (1 + (s.upgrades.xpBonus ?? 0) * 0.20) *
-      levelBenefits.xpMultiplier;
-    const earnedXp = Math.round(Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) * xpBonusMul);
+      levelBenefits.xpMultiplier *
+      (1 + runeBonuses.xpGainPct / 100);
+    const earnedXp = Math.min(Number.MAX_SAFE_INTEGER, Math.round(Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) * xpBonusMul));
 
     // Shards bonus for rare orbs (1,000+)
     let earnedShards = 0;
@@ -3477,14 +3633,41 @@ export async function applyRolls(
       (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
       (s.guildPerks?.shardRank ?? 0) * 0.0005 +
       (s.prestigeUpgrades?.shardResonator ?? 0) * 0.0025 +
-      levelBenefits.shardChance
+      levelBenefits.shardChance +
+      Math.min(100, runeBonuses.shardChancePct) / 100
     );
     if (rng() < shardProcChance) {
       earnedShards += 1;
     }
+    // Shard Jackpot only modifies an actual Shard payout, including rarity-based drops.
+    if (earnedShards > 0 && !suppressOtherRuneProcs && shardJackpotChance > 0 && rng() < shardJackpotChance) {
+      earnedShards = Math.min(Number.MAX_SAFE_INTEGER, earnedShards + Math.max(1, Math.round(earnedShards * runeAbilityEffects.shardJackpotExtraMultiplier)));
+    }
 
     shardsGained += earnedShards;
     xpGained += earnedXp;
+
+    // Shard Constellation retains charge between activations and pays only once per activation.
+    if (runeAbilityEffects.shardConstellationPct > 0) {
+      s.runeConstellationCharge = Math.min(1_000_000, validCharge(s.runeConstellationCharge) + earnedShards);
+      if (!constellationTriggered && !suppressOtherRuneProcs && s.runeConstellationCharge >= shardConstellationThreshold) {
+        s.runeConstellationCharge -= shardConstellationThreshold;
+        shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + runeAbilityEffects.shardConstellationBonusShards);
+        addRuneBonusRolls(runeAbilityEffects.shardConstellationBonusRolls, { skipAllProcs: true });
+        constellationTriggered = true;
+      }
+    }
+
+    // Temporal Loop charges on every real roll, then releases a bounded bonus batch.
+    if (temporalMomentumPerRoll > 0) {
+      const dryStreakMomentum = Math.min(5, Math.log2(Math.max(1, s.rollsSinceBest + 1)) * .25);
+      s.runeTemporalMomentum = Math.min(1_000_000, validCharge(s.runeTemporalMomentum) + temporalMomentumPerRoll + dryStreakMomentum);
+      if (!temporalLoopTriggered && !suppressOtherRuneProcs && s.runeTemporalMomentum >= 100) {
+        s.runeTemporalMomentum -= 100;
+        addRuneBonusRolls(runeAbilityEffects.temporalLoopBonusRolls, { skipAllProcs: true });
+        temporalLoopTriggered = true;
+      }
+    }
 
     const orbInfo = getOrbInfo(rarity);
     if (batch.length < 50) {
@@ -3510,8 +3693,9 @@ export async function applyRolls(
     levelBenefits.coinsMultiplier *
     (1 + (s.upgrades.coinBonus ?? 0) * 0.15) *
     (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
-    (1 + (s.guildPerks?.coinRank ?? 0) * 0.10);
-  coinsGained = Math.round(coinsGained * coinBonusMul);
+    (1 + (s.guildPerks?.coinRank ?? 0) * 0.10) *
+    (1 + runeBonuses.coinGainPct / 100);
+  coinsGained = Math.min(Number.MAX_SAFE_INTEGER, Math.round(coinsGained * coinBonusMul));
 
   const lowRarityCoins = rarities
     .filter(r => r < 100)
@@ -3587,16 +3771,6 @@ export async function applyRolls(
   if (source === 'online' && rollCount > 0) recordRollingSessionActivity(s, now);
 
   // Coin earnings and their lifetime statistic are capped independently at the safe-integer ceiling.
-
-  // Singularity Tithe pays +1 Cosmic Dust per 200 processed rolls per level.
-  // Every processed orb counts, including multi-roll, auto-roll, offline, and Frenzy rolls.
-  const titheLevel = s.prestigeUpgrades?.singularityTithe ?? 0;
-  if (titheLevel > 0 && rollCount > 0) {
-    const before = Math.max(0, Math.floor(s.singularityTitheSingleRolls ?? 0));
-    s.singularityTitheSingleRolls = before + rollCount;
-    const dustEarned = singularityTitheDustForRolls(before, rollCount, titheLevel);
-    if (dustEarned > 0) s.cosmicDust = (s.cosmicDust ?? 0) + dustEarned;
-  }
 
   // Celestial Auto-Buyer Prestige Upgrade: auto-buy cheapest affordable upgrade
   const autoBuyerLevel = s.prestigeUpgrades?.autoBuyer ?? 0;
@@ -3846,7 +4020,7 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
   // has an ambiguous failure, no provider call occurs, and a later job can
   // reclaim this reserved-v2 marker after the lease expires.
   const attemptNow = Date.now();
-  const nonce = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  const nonce = createSecureId();
   const reservationStamp = attemptNow.toString(36);
   const reservedToken = `reserved-v2:${reservationStamp}:${nonce}`;
   const sendingToken = `sending-v2:${reservationStamp}:${nonce}`;
@@ -4027,7 +4201,7 @@ async function scheduleOfflineFullNotification(
     Math.max(now + 1_000, Number.isFinite(requestedRunAt) ? requestedRunAt : now + 1_000),
   );
   const expiresAt = Math.max(now + 60_000, Math.min(maxDateMs - 1, safeRunAt + OFFLINE_FULL_RETRY_MS * 2));
-  const randomToken = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  const randomToken = createSecureId();
   const token = `offline-job-${now.toString(36)}-${randomToken}`;
   const reservation = JSON.stringify({ token, jobId: null, runAt: safeRunAt });
 
@@ -4825,10 +4999,7 @@ export async function claimFollowReward(): Promise<{
     // Commit the 200-roll reward and its idempotency marker in the same
     // WATCH/MULTI/EXEC transaction. A marker write failure must never allow a
     // retry to grant the reward a second time.
-    const rewardMarker = String(
-      globalThis.crypto?.randomUUID?.() ??
-      `claimed-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    );
+    const rewardMarker = createSecureId();
     await save(s, {
       key: rewardKey,
       expectedValue: null,
@@ -5159,7 +5330,7 @@ export async function prestige(): Promise<{ state: PlayerState; cosmicDustEarned
     throw new Error('Requires at least 1,000,000 Collection Value in current run.');
   }
 
-  s.cosmicDust = (s.cosmicDust ?? 0) + dustEarned;
+  s.cosmicDust = Math.min(MAX_COSMIC_DUST, (s.cosmicDust ?? 0) + dustEarned);
   s.prestigeCount = (s.prestigeCount ?? 0) + 1;
   s.masteryPoints = (s.masteryPoints ?? 0) + 3;
 
@@ -5244,6 +5415,19 @@ export async function buyPrestigeUpgrade(id: PrestigeUpgradeId): Promise<PlayerS
   return s;
 
   });}
+
+export async function updateCombatAutoScrapSettings(enabledValue: unknown, maxQualityValue: unknown): Promise<PlayerState['combatAutoScrap']> {
+  return withPlayerMutationLock(async () => {
+    const s = await settleOffline(await loadRaw());
+    if ((s.prestigeUpgrades?.autoScrap ?? 0) < 1) throw new Error('Auto Scrap Prestige upgrade is required.');
+    const numericQuality = Number(maxQualityValue);
+    if (!Number.isFinite(numericQuality) || numericQuality < 0 || numericQuality > 100) throw new Error('Auto Scrap quality threshold must be between 0 and 100.');
+    const settings = { enabled: enabledValue === true, maxQuality: Math.round(numericQuality * 100) / 100 };
+    s.combatAutoScrap = settings;
+    await save(s);
+    return settings;
+  });
+}
 
 export async function sacrificeToAltar(coins: number, shards: number): Promise<{
   state: PlayerState;
@@ -5359,6 +5543,7 @@ export async function upgradeMasterySkill(skillId: MasterySkillId): Promise<Play
       prosperity: 0,
       shardAttunement: 0,
       critMastery: 0,
+      aftershock: 0,
       chronoFlow: 0,
       infiniteVault: 0,
       cosmicAttunement: 0,
@@ -5399,12 +5584,15 @@ export async function synthesizeDust(): Promise<{ state: PlayerState; dustEarned
   if ((s.prestigeUpgrades?.shardSynthesis ?? 0) < 1) {
     throw new Error('Astral Forge prestige upgrade is required to synthesize Cosmic Dust.');
   }
+  if ((s.cosmicDust ?? 0) >= MAX_COSMIC_DUST) {
+    throw new Error(`Cosmic Dust is capped at ${MAX_COSMIC_DUST}; no Shards were spent.`);
+  }
   if ((s.shards ?? 0) < SHARD_SYNTHESIS_COST) {
     throw new Error(`Synthesizing requires at least ${SHARD_SYNTHESIS_COST} Shards.`);
   }
 
   spendShards(s, SHARD_SYNTHESIS_COST);
-  s.cosmicDust = (s.cosmicDust ?? 0) + 1;
+  s.cosmicDust = Math.min(MAX_COSMIC_DUST, (s.cosmicDust ?? 0) + 1);
   await save(s);
   await appendPlayerSpyLog('dust-synthesis', {
     shardsSpent: SHARD_SYNTHESIS_COST,
@@ -5936,13 +6124,18 @@ export async function getOrbFrenzyInfo(): Promise<{
     adminTest?: boolean;
     inGame?: boolean;
     consumedAt?: number | null;
+    consumedBy?: string;
   }>(raw);
   if (!data) throw new Error('Orb Frenzy data is corrupted.');
 
   const now = Date.now();
   const expiresAt = Number(data.expiresAt ?? frenzyPostExpiresAt(data.createdAt));
   const expired = isFrenzyPostExpired(data.createdAt, now);
-  const s = await getMe();
+  const viewerId = currentUserId();
+  const claimedReceipt = await redis.get(frenzyClaimReceiptKey(postId, viewerId));
+  const alreadyClaimedByViewer = claimedReceipt != null || data.consumedBy === viewerId;
+  // Preview rendering must not invoke the ordinary player-state read, which touches online presence.
+  const s = await loadRaw({ registerActivity: false });
   const claimCooldownRemainingMs = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
   const claimCooldownEndsAt = claimCooldownRemainingMs > 0 ? now + claimCooldownRemainingMs : 0;
   const claimedToday = claimCooldownRemainingMs > 0;
@@ -5958,12 +6151,14 @@ export async function getOrbFrenzyInfo(): Promise<{
     createdAt: data.createdAt,
     expiresAt,
     expired,
-    consumed: data.consumedAt != null,
+    // Legacy consumedAt marked a post globally. New claims are shared by every player;
+    // only this viewer's durable receipt (or legacy consumedBy) marks it claimed to them.
+    consumed: alreadyClaimedByViewer,
     claimedToday,
     claimCooldownRemainingMs,
     claimCooldownEndsAt,
     isOwner,
-    canClaim: !expired && data.consumedAt == null && (claimCooldownRemainingMs <= 0 || selfClaimTest) && (!isOwner || selfClaimTest),
+    canClaim: !expired && !alreadyClaimedByViewer && (claimCooldownRemainingMs <= 0 || selfClaimTest) && (!isOwner || selfClaimTest),
     selfClaimTest,
     postId,
     inGame: data.inGame === true,
@@ -6010,6 +6205,7 @@ export async function claimOrbFrenzy(options: {
     adminTest?: boolean;
     inGame?: boolean;
     consumedAt?: number | null;
+    consumedBy?: string;
     createdAt?: number;
     expiresAt?: number;
   }>(raw);
@@ -6020,7 +6216,11 @@ export async function claimOrbFrenzy(options: {
   if (handoff && handoff.expiresAt <= Date.now()) {
     throw new Error('This Frenzy handoff expired. Please reopen the post.');
   }
-  if (data.consumedAt != null) throw new Error('This Orb Frenzy has already been claimed.');
+  const claimReceiptKey = frenzyClaimReceiptKey(postId, claimantId);
+  const existingClaimReceipt = await redis.get(claimReceiptKey);
+  if (existingClaimReceipt != null || data.consumedBy === claimantId) {
+    throw new Error('You have already claimed this Orb Frenzy.');
+  }
 
   const isOwner = data.ownerId === claimantId;
 
@@ -6050,20 +6250,6 @@ export async function claimOrbFrenzy(options: {
     rollsPerActivation(s),
     s.prestigeUpgrades?.frenzyVolley ?? 0,
   );
-
-  // Validate Tithe's lifetime counter before applying any claim rewards, too.
-  const titheLevelForClaim = s.prestigeUpgrades?.singularityTithe ?? 0;
-  if (
-    titheLevelForClaim > 0 &&
-    count > 0 &&
-    (
-      !Number.isSafeInteger(s.singularityTitheSingleRolls) ||
-      (s.singularityTitheSingleRolls ?? 0) < 0 ||
-      count > Number.MAX_SAFE_INTEGER - (s.singularityTitheSingleRolls ?? 0)
-    )
-  ) {
-    throw new Error('Singularity Tithe counter would exceed the safe integer range; Frenzy claim was not processed.');
-  }
 
   // This path writes totalRolls directly instead of going through applyRolls().
   // Reject an overflowing batch before reward mutation, shared Guild/community
@@ -6250,15 +6436,6 @@ export async function claimOrbFrenzy(options: {
   // Claiming a Frenzy is active online rolling activity for Unbroken Momentum.
   if (count > 0) recordRollingSessionActivity(s, now);
 
-  // Frenzy claim rolls are real processed rolls and therefore count toward Tithe.
-  const titheLevel = s.prestigeUpgrades?.singularityTithe ?? 0;
-  if (titheLevel > 0 && count > 0) {
-    const beforeTitheRolls = Math.max(0, Math.floor(s.singularityTitheSingleRolls ?? 0));
-    s.singularityTitheSingleRolls = beforeTitheRolls + count;
-    const dustEarned = singularityTitheDustForRolls(beforeTitheRolls, count, titheLevel);
-    if (dustEarned > 0) s.cosmicDust = (s.cosmicDust ?? 0) + dustEarned;
-  }
-
   advanceQuestProgress(s, 'roll', count);
   advanceQuestProgress(s, 'rare', bestRarity);
   advanceQuestProgress(s, 'value', finalValue);
@@ -6294,22 +6471,28 @@ export async function claimOrbFrenzy(options: {
     ownerRewardWrites = ownerReward.writes;
   }
 
-  // Consume the post atomically with both the claimant save and the owner's
-  // reward. Different players have different locks, so the watched keys also
-  // protect the transaction if one of those distributed leases expires.
-  const consumedPostValue = JSON.stringify({ ...data, consumedAt: now, consumedBy: claimantId });
+  // Write a distinct idempotency receipt for this claimant. The post itself remains
+  // unchanged, so any number of other players can claim it while each player can
+  // only claim it once. WATCH/EXEC verifies the post didn't change during rewards.
   await save(s, [
+    {
+      key: claimReceiptKey,
+      expectedValue: null,
+      nextValue: JSON.stringify({ postId, claimantId, claimedAt: now }),
+      expiration: new Date(frenzyPostExpiresAt(createdAt) + FRENZY_POST_RECEIPT_RETENTION_MS),
+      conflictMessage: 'You have already claimed this Orb Frenzy.',
+    },
     {
       key: FRENZY_POST_PREFIX + postId,
       expectedValue: raw,
-      nextValue: consumedPostValue,
+      nextValue: raw,
       expiration: new Date(frenzyPostExpiresAt(createdAt) + FRENZY_POST_RECEIPT_RETENTION_MS),
-      conflictMessage: 'This Orb Frenzy has already been claimed.',
+      conflictMessage: 'This Frenzy changed before your claim could be committed.',
     },
     ...ownerRewardWrites,
   ]);
-  // save() rejects generation invalidation and returns only after the
-  // claimant, consumed-post receipt, and owner reward writes commit atomically.
+  // save() returns only after the claimant receipt, claimant reward, and owner
+  // reward writes commit atomically.
   // Handoff cleanup is temporary metadata (60-second TTL), not part of claim
   // settlement. Its failure must not turn a committed claim into an API error.
   if (handoff && handoff.postId === postId) {
@@ -6391,12 +6574,9 @@ export async function postFrenzyThankYouComment(
     consumedAt?: number | null;
     consumedBy?: string;
   }>(postRaw);
-  if (
-    !postData ||
-    postData.consumedAt == null ||
-    postData.consumedBy !== claimantId ||
-    !postData.ownerUsername
-  ) {
+  const claimReceipt = await redis.get(frenzyClaimReceiptKey(postId, claimantId));
+  const legacyClaimedByThisUser = postData?.consumedAt != null && postData.consumedBy === claimantId;
+  if (!postData || (claimReceipt == null && !legacyClaimedByThisUser) || !postData.ownerUsername) {
     throw new Error('You can only leave a thank-you comment after you claim this Frenzy.');
   }
 
@@ -6416,7 +6596,7 @@ export async function postFrenzyThankYouComment(
     throw new Error('A thank-you comment was already attempted. Check the Frenzy post before trying again.');
   }
 
-  const reservation = 'pending-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  const reservation = 'pending-' + createSecureId();
   await redis.set(receiptKey, reservation, { nx: true, expiration });
   if (await redis.get(receiptKey) !== reservation) {
     throw new Error('A thank-you comment was already attempted. Check the Frenzy post before trying again.');
