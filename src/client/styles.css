@@ -37,6 +37,31 @@
 
 #root { min-height: 100vh; isolation: isolate; }
 .app-shell { color: var(--paper); background: transparent !important; }
+
+/* Inline Reddit posts must never become their own scroll container.
+   Keep the document inside the Devvit-provided viewport and explicitly allow
+   vertical feed pan + pinch zoom to pass through the public post surface. */
+html.io-inline-post,
+body.io-inline-post {
+  height: 100%;
+  min-height: 0;
+}
+body.io-inline-post { margin: 0; }
+#root.io-inline-post {
+  height: 100%;
+  min-height: 0;
+  overflow: clip;
+  overscroll-behavior: auto;
+  touch-action: pan-y pinch-zoom;
+}
+#root.io-inline-post > .io-public {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  overflow: clip;
+  overscroll-behavior: auto;
+  touch-action: pan-y pinch-zoom;
+}
 #root::before {
   position: fixed;
   z-index: -1;
@@ -362,7 +387,9 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow: clip;
+  overscroll-behavior: auto;
+  touch-action: pan-y pinch-zoom;
   padding: 24px;
   color: #edf0e9;
   background:
