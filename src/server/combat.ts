@@ -241,7 +241,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.coins=0;
   s.combatMarks=Math.min(Number.MAX_SAFE_INTEGER,legacyCoins+legacyMarks);
   s.totalKills=finiteInt(s.totalKills,0,0,Number.MAX_SAFE_INTEGER);
-  s.arenaRating=finiteInt(s.arenaRating,1000,100,10000);s.arenaWins=finiteInt(s.arenaWins,0,0,Number.MAX_SAFE_INTEGER);s.arenaLosses=finiteInt(s.arenaLosses,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastChallengeAt=finiteInt(s.arenaLastChallengeAt,0,0,Number.MAX_SAFE_INTEGER);
+  s.arenaRating=finiteInt(s.arenaRating,1000,100,10000);s.arenaWins=finiteInt(s.arenaWins,0,0,Number.MAX_SAFE_INTEGER);s.arenaLosses=finiteInt(s.arenaLosses,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastChallengeAt=finiteInt(s.arenaLastChallengeAt,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastMatchAt=finiteInt(arenaLastMatchAtValue,0,0,Number.MAX_SAFE_INTEGER);
   s.coreLevel=finiteInt(s.coreLevel,1,1,1_000_000);s.coreHighestRarity=finiteInt(s.coreHighestRarity,2,2,1_000_000_000_000_000_000);
   s.autoTactic=(['balanced','aggressive','defensive','recovery'] as unknown[]).includes(s.autoTactic)?s.autoTactic:'balanced';
   s.scrap=finiteInt(s.scrap,0,0,Number.MAX_SAFE_INTEGER);s.autoScrapUnlocked=s.autoScrapUnlocked===true;s.autoScrapSettings=normalizeCombatAutoScrapSettings(s.autoScrapSettings);s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillGachaRank=finiteInt(storedGachaRank,legacyUnlockedRank,1,SKILL_GACHA_RANK_MAX);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,1_000_000_000_000_000_000);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=Math.min(finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER),Date.now());s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
@@ -1005,6 +1005,8 @@ function createArenaProfile(userId: string, username: string, state: CombatState
   const build = arenaBuild(state);
   const weapon = build.state.inventory.find(item => item.id === build.state.equipment.weapon && item.slot === 'weapon');
   const armor = build.state.inventory.find(item => item.id === build.state.equipment.armor && item.slot === 'armor');
+  const cooldownNow = Date.now();
+  const protectionMs = arenaCooldownRemaining(state.arenaLastMatchAt, cooldownNow);
   return {
     userId,
     username: arenaName(username),
@@ -1014,6 +1016,7 @@ function createArenaProfile(userId: string, username: string, state: CombatState
     wins: state.arenaWins,
     losses: state.arenaLosses,
     updatedAt,
+    challengeBlockedUntil: protectionMs > 0 ? cooldownNow + protectionMs : 0,
     damage: build.stats.damage,
     speed: build.stats.speed,
     maxHealth: build.stats.maxHealth,
@@ -1067,6 +1070,7 @@ function parseArenaProfile(userId: string, raw: unknown): CombatArenaProfile | n
       wins: finiteInt(p.wins, 0, 0, Number.MAX_SAFE_INTEGER),
       losses: finiteInt(p.losses, 0, 0, Number.MAX_SAFE_INTEGER),
       updatedAt: finiteInt(updatedAt, 0, 0, Number.MAX_SAFE_INTEGER),
+      challengeBlockedUntil: finiteInt(p.challengeBlockedUntil, 0, 0, Number.MAX_SAFE_INTEGER),
       damage: finiteInt(p.damage, 1, 1, 1_000_000_000),
       speed: finiteInt(p.speed, 1, 1, 800),
       maxHealth: finiteInt(p.maxHealth, 1, 1, 1_000_000_000),
@@ -1239,7 +1243,7 @@ export async function getCombatArenaOpponents(): Promise<{
   return {
     self,
     opponents:visibleOpponents,
-    cooldownRemainingMs: Math.max(0, ARENA_CHALLENGE_COOLDOWN_MS - (now - state.arenaLastChallengeAt)),
+    cooldownRemainingMs: arenaCooldownRemaining(state.arenaLastChallengeAt, now),
   };
 }
 
@@ -1299,10 +1303,22 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
       const ownState = normalizeState(ownRaw);
       const opponentState = normalizeState(opponentRaw);
       const now = Date.now();
-      const remaining = ARENA_CHALLENGE_COOLDOWN_MS - (now - ownState.arenaLastChallengeAt);
+      const remaining = arenaCooldownRemaining(ownState.arenaLastChallengeAt, now);
       if (remaining > 0) {
         await txn.unwatch(); closed = true;
         throw new Error('ARENA_COOLDOWN:' + remaining);
+      }
+      const opponentProtection = arenaCooldownRemaining(opponentState.arenaLastMatchAt, now);
+      if (opponentProtection > 0) {
+        await txn.unwatch(); closed = true;
+        // Refresh the cached card too, including legacy profiles whose schema
+        // predates challengeBlockedUntil. The combat-state check remains authoritative.
+        const protectedProfile = createArenaProfile(
+          opponentId, opponentProfile.username, opponentState, opponentProfile.updatedAt,
+        );
+        await redis.hSet(ARENA_PROFILE_KEY, { [opponentId]: JSON.stringify(protectedProfile) })
+          .catch(error => console.error('[Combat Arena] Could not refresh protected profile.', error));
+        throw new Error('ARENA_OPPONENT_COOLDOWN:' + opponentProtection);
       }
 
       const duel = resolveArenaDuel(ownState, opponentState);
@@ -1326,6 +1342,8 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
         opponentState.arenaWins += 1;
       }
       ownState.arenaLastChallengeAt = now;
+      ownState.arenaLastMatchAt = now;
+      opponentState.arenaLastMatchAt = now;
 
       await txn.multi();
       await txn.set(ownKey, JSON.stringify(ownState));
