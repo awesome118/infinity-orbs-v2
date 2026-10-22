@@ -67,6 +67,16 @@ test('follow reward save and its idempotency marker commit through the same save
   assert.doesNotMatch(reward, /await redis\.set\(rewardKey,/);
 });
 
+test('Frenzy claim mounted-state guard recovers after an effect replay', () => {
+  const client = source('src/client/main.tsx');
+  const start = client.indexOf('const componentMountedRef = useRef(true);');
+  const end = client.indexOf('const appliedServerGenerationRef', start);
+  assert.ok(start >= 0 && end > start);
+  const lifecycle = client.slice(start, end);
+  assert.ok(lifecycle.indexOf('componentMountedRef.current = true;') < lifecycle.indexOf('componentMountedRef.current = false;'));
+  assert.ok(lifecycle.includes('componentMountedRef.current = false;'));
+});
+
 test('Frenzy client retries read-only preflight but does not retry the claim POST', () => {
   const main = source('src/client/main.tsx');
   const start = main.indexOf('const resolveFrenzy = async () =>');

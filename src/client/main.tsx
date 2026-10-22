@@ -431,6 +431,9 @@ export function App() {
   const authSessionEpochRef = useRef(0);
 
   useEffect(() => {
+    // React Strict Mode replays effects in development. Restore the mounted
+    // flag on every setup so the replayed cleanup cannot suppress real claims.
+    componentMountedRef.current = true;
     return () => {
       componentMountedRef.current = false;
       if (toastTimerRef.current !== null) {
