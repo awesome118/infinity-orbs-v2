@@ -70,6 +70,9 @@ function AnimatedRarity({ rarity, color }: { rarity: number; color: string }) {
     };
   }, [rarity]);
 
+  const rarityTextLength = formatRarity(rarity).length;
+  const rarityFontVw = Math.min(8, 80 / Math.max(1, rarityTextLength));
+
   return (
     <div className="io-frenzy-rarity-lockup" style={{ color }}>
       <span className="io-frenzy-rarity-prefix">1 /</span>
@@ -77,7 +80,7 @@ function AnimatedRarity({ rarity, color }: { rarity: number; color: string }) {
         key={rarity}
         className="io-frenzy-rarity-number"
         aria-label={'1/' + formatRarity(rarity)}
-        style={{ textShadow: '0 0 34px ' + color + '55' }}
+        style={{ textShadow: '0 0 34px ' + color + '55', fontSize: 'clamp(16px, ' + rarityFontVw + 'vw, 82px)' }}
       >
         {formatRarity(display)}
       </span>
