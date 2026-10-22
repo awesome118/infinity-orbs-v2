@@ -25,10 +25,19 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
   onClaimQuest,
   busy,
 }) => {
-  const fmt = (n: number) => formatNumber(n);
+  const fmt = (n: number) => formatNumber(Number.isFinite(n) ? Math.max(0, n) : 0);
   const today = new Date().toISOString().slice(0, 10);
-  const alreadyClaimedStreak = state.streak.lastClaimDate === today;
-  const currentStreakDay = ((state.streak.count - 1) % 7) + 1;
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  const lastClaimDate = typeof state.streak.lastClaimDate === 'string' ? state.streak.lastClaimDate : '';
+  const alreadyClaimedStreak = lastClaimDate === today;
+  const streakCount = Number.isSafeInteger(state.streak.count) ? Math.max(0, state.streak.count) : 0;
+  const streakIsActive = alreadyClaimedStreak || lastClaimDate === yesterday;
+  const currentStreakDay = streakCount > 0 ? ((streakCount - 1) % 7) + 1 : 1;
+  const progressPercent = (progress: number, target: number) => {
+    const safeProgress = Number(progress), safeTarget = Number(target);
+    if (!Number.isFinite(safeProgress) || !Number.isFinite(safeTarget) || safeTarget <= 0) return 0;
+    return Math.max(0, Math.min(100, Math.round(safeProgress / safeTarget * 100)));
+  };
 
   const streakRewards = [
     { day: 1, coins: 50, shards: 0 },
@@ -57,7 +66,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Current streak: <span className="font-black text-white">{Math.max(1, state.streak.count || 1)}</span> days · Longest: {state.streak.longestStreak} days.
+                Current streak: <span className="font-black text-white">{streakIsActive ? streakCount : 0}</span> days · Longest: {fmt(state.streak.longestStreak)} days.
               </p>
             </div>
           </div>
@@ -76,9 +85,9 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-5">
           {(() => {
             const nextStreak = alreadyClaimedStreak
-              ? Math.max(1, state.streak.count || 1)
-              : state.streak.lastClaimDate
-                ? Math.max(1, state.streak.count || 1) + 1
+              ? Math.max(1, streakCount)
+              : lastClaimDate === yesterday
+                ? Math.max(1, streakCount) + 1
                 : 1;
             const day = ((nextStreak - 1) % 7) + 1;
             return [
@@ -140,8 +149,8 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {state.dailyQuests.map(q => {
             const isUnlocked = q.unlocked !== false;
-            const isComplete = isUnlocked && q.progress >= q.target;
-            const pct = isUnlocked ? Math.min(100, Math.round((q.progress / q.target) * 100)) : 0;
+            const isComplete = isUnlocked && Number.isFinite(Number(q.progress)) && Number.isFinite(Number(q.target)) && Number(q.target) > 0 && Number(q.progress) >= Number(q.target);
+            const pct = isUnlocked ? progressPercent(q.progress, q.target) : 0;
 
             return (
               <div
@@ -178,7 +187,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                         {fmt(q.progress)} / {fmt(q.target)}
                       </span>
                     </div>
-                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800" role="progressbar" aria-label={q.title+' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
                       <div
                         className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all"
                         style={{ width: `${pct}%` }}
@@ -266,7 +275,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                         {fmt(q.progress)} / {fmt(q.target)}
                       </span>
                     </div>
-                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800" role="progressbar" aria-label={q.title+' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
                       <div
                         className="h-full bg-gradient-to-r from-cyan-500 to-blue-600 transition-all"
                         style={{ width: `${pct}%` }}
