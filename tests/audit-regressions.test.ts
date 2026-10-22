@@ -2727,8 +2727,9 @@ test('Chain Patcher takes priority over Free Roll cooldown bypass in the roll UI
   const canRollStart = roll.indexOf('const canRoll =');
   const canRollEnd = roll.indexOf('const frenzyReady =', canRollStart);
   assert.ok(canRollStart >= 0 && canRollEnd > canRollStart);
-  assert.match(roll.slice(canRollStart, canRollEnd), /!frenzyArmed && !chainPatcherPending/);
+  assert.match(roll.slice(canRollStart, canRollEnd), /chainPatcherPending\s*\?\s*chainPatcherCharged && remain <= 0/);
   assert.ok(roll.includes('const chainPatcherPending = rawChainPatcherTarget !== 0;'));
+  assert.ok(roll.includes('Chain Patcher target is invalid. Refresh your save before rolling.'));
   assert.ok(roll.includes(": chainPatcherPending\n        ? chainPatcherCharged ? 'ROLL CHAIN PATCHER' : 'CHAIN PATCHER NEEDS REPAIR'"));
   assert.ok(roll.includes('Chain Patcher is charged; wait'));
   assert.ok(roll.includes('preserves ${freeRolls} stored Free Rolls.'));

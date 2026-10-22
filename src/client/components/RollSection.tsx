@@ -226,7 +226,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const rawChainPatcherTarget = Number(state.chainPatcherNextRarity ?? 0);
   const chainPatcherPending = rawChainPatcherTarget !== 0;
   const chainPatcherCharged = Number.isSafeInteger(rawChainPatcherTarget) && rawChainPatcherTarget >= 2;
-  const canRoll = (remain <= 0 || (freeRolls > 0 && !frenzyArmed && !chainPatcherPending)) && !busy;
+  const canRoll = !busy && (chainPatcherPending
+    ? chainPatcherCharged && remain <= 0
+    : remain <= 0 || (freeRolls > 0 && !frenzyArmed));
   const frenzyReady = frenzyArmed && canRoll;
   const cooldownProgress = busy || canRoll;
   const frenzyCooldownRemain = frenzyCooldownRemaining(state.lastFrenzyAt, now);
@@ -341,6 +343,14 @@ export const RollSection: React.FC<RollSectionProps> = ({
       sound.playClick();
       setCooldownNotice(null);
       void onRoll();
+    } else if (chainPatcherPending && !chainPatcherCharged) {
+      sound.playClick();
+      setCooldownNotice('Chain Patcher target is invalid. Refresh your save before rolling.');
+      if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
+      cooldownNoticeTimerRef.current = window.setTimeout(() => {
+        setCooldownNotice(null);
+        cooldownNoticeTimerRef.current = null;
+      }, 2500);
     } else if (remain > 0) {
       if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
       sound.playClick();
