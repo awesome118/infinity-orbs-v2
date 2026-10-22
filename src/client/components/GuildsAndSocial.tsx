@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Shield,
   Users,
@@ -119,12 +119,12 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const [activeLeaderboard, setActiveLeaderboard] = useState<LeaderboardId>('collectionValue');
   const leaderboardBoards: LeaderboardBoards = leaderboards ?? {
     collectionValue: leaderboard,
-    mostRolls: leaderboard,
-    highestDryStreak: leaderboard,
-    currentDryStreak: leaderboard,
-    bestOrb: leaderboard,
-    mostPlaytime: leaderboard,
-    chainLength: leaderboard,
+    mostRolls: [],
+    highestDryStreak: [],
+    currentDryStreak: [],
+    bestOrb: [],
+    mostPlaytime: [],
+    chainLength: [],
   };
   const leaderboardMeta: Array<{ id: LeaderboardId; label: string }> = [
     { id: 'collectionValue', label: 'Collection Value' },
@@ -135,16 +135,20 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     { id: 'mostPlaytime', label: 'Most Playtime' },
     { id: 'chainLength', label: 'Chain Length' },
   ];
-  const displayedLeaderboard = leaderboardBoards[activeLeaderboard];
+  const displayedLeaderboard = Array.isArray(leaderboardBoards[activeLeaderboard]) ? leaderboardBoards[activeLeaderboard] : [];
   const leaderboardMetric = (entry: LeaderboardEntry): string => {
     switch (activeLeaderboard) {
       case 'collectionValue': return `${fmt(entry.value)} Val`;
       case 'mostRolls': return `${fmt(entry.totalRolls)} Rolls`;
       case 'highestDryStreak': return `${fmt(entry.highestDryStreak ?? 0)} Dry`;
       case 'currentDryStreak': return `${fmt(entry.currentDryStreak ?? 0)} Dry`;
-      case 'bestOrb': return `1/${formatRarity(entry.highestRarity)}`;
+      case 'bestOrb': {
+        const rarity = Number.isFinite(entry.highestRarity) && entry.highestRarity > 0 ? entry.highestRarity : 1;
+        return `1/${formatRarity(rarity)}`;
+      }
       case 'mostPlaytime': {
-        const minutes = Math.floor((entry.playtimeMs ?? 0) / 60000);
+        const rawPlaytime = Number(entry.playtimeMs ?? 0);
+        const minutes = Math.floor((Number.isFinite(rawPlaytime) ? Math.max(0, rawPlaytime) : 0) / 60000);
         const hours = Math.floor(minutes / 60);
         return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
       }
@@ -171,20 +175,21 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     });
   }, [myGuild?.id, myGuild?.chat]);
 
-  const fmt = (n: number) => formatNumber(n);
-  const currentGuildMember = myGuild?.members.find(m => m.username === playerUsername);
+  const fmt = (n: number) => formatNumber(Number.isFinite(n) ? Math.max(0, n) : 0);
+  const normalizeUsername = (value: string) => value.trim().toLowerCase();
+  const currentGuildMember = myGuild?.members.find(m => normalizeUsername(m.username) === normalizeUsername(playerUsername));
   const canManageGuild = currentGuildMember?.role === 'owner' ||
     currentGuildMember?.role === 'officer' ||
     currentGuildMember?.trusted === true;
   const canSeeLastLogins = canManageGuild;
   const canKickGuildMember = (member: Guild['members'][number]): boolean => {
-    if (!currentGuildMember || member.username === playerUsername || member.role === 'owner') return false;
+    if (!currentGuildMember || normalizeUsername(member.username) === normalizeUsername(playerUsername) || member.role === 'owner') return false;
     if (currentGuildMember.role === 'owner') return true;
     return canManageGuild && member.role !== 'officer' && member.trusted !== true;
   };
 
   const handleReportChat = async (message: GuildMessage) => {
-    if (message.isSystem || reportingId) return;
+    if (message.isSystem || reportingId || reportedIds.has(message.id)) return;
     setReportingId(message.id);
     setChatReportError('');
     const controller = new AbortController();
@@ -192,6 +197,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     try {
       const response = await fetch('/api/guilds/chat/report', {
         method: 'POST',
+        cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({ messageId: message.id }),
@@ -201,8 +207,9 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
       setReportedIds(prev => {
         const next = new Set(prev);
         next.add(message.id);
-        return next;
+        return new Set(Array.from(next).slice(-200));
       });
+      setSocialNotice('Report sent to subreddit moderators.');
     } catch (error) {
       setChatReportError(error instanceof Error && error.name === 'AbortError'
         ? 'Reporting timed out. Check your connection and try again.'
@@ -215,21 +222,45 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
 
   const handleCreateGuild = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!createName.trim() || !createTag.trim() || busy) return;
+    const name = createName.trim();
+    const tag = createTag.trim().toUpperCase();
+    if (!name || busy || creatingGuild || createGuildInFlightRef.current) return;
+    if (!/^[A-Z]{2,5}$/.test(tag)) {
+      setSocialError('Guild tags must contain 2–5 letters (A–Z).');
+      setSocialNotice('');
+      return;
+    }
+    createGuildInFlightRef.current = true;
+    setCreatingGuild(true);
+    setSocialError('');
+    setSocialNotice('');
     sound.playClick();
-    const created = await onCreateGuild(createName.trim(), createTag.trim());
-    if (created) {
-      setCreateName('');
-      setCreateTag('');
-      setShowCreateModal(false);
+    try {
+      const created = await onCreateGuild(name, tag);
+      if (created) {
+        setCreateName('');
+        setCreateTag('');
+        setShowCreateModal(false);
+        setSocialNotice('Guild created successfully.');
+      } else {
+        setSocialError('Guild could not be created. Check the name and tag, then try again.');
+      }
+    } catch (error) {
+      setSocialError(error instanceof Error ? error.message : 'Guild could not be created. Please try again.');
+    } finally {
+      createGuildInFlightRef.current = false;
+      setCreatingGuild(false);
     }
   };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      {(socialError || socialNotice) && <div role={socialError ? 'alert' : 'status'} aria-live={socialError ? 'assertive' : 'polite'} className={socialError ? 'rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-xs text-rose-200' : 'rounded-xl border border-emerald-500/20 bg-emerald-950/10 p-3 text-xs text-emerald-200'}>{socialError || socialNotice}</div>}
       {/* Sub-navigation */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+      <div role="group" aria-label="Guilds and social sections" className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">
         <button
+          type="button"
+          aria-pressed={activeTab === 'guild'}
           onClick={() => {
             sound.playClick();
             setActiveTab('guild');
@@ -245,6 +276,8 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
         </button>
 
         <button
+          type="button"
+          aria-pressed={activeTab === 'leaderboard'}
           onClick={() => {
             sound.playClick();
             setActiveTab('leaderboard');
@@ -260,6 +293,8 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
         </button>
 
         <button
+          type="button"
+          aria-pressed={activeTab === 'event'}
           onClick={() => {
             sound.playClick();
             setActiveTab('event');
@@ -917,6 +952,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                                     void handleReportChat(msg);
                                   }}
                                   disabled={reportingId === msg.id || reportedIds.has(msg.id)}
+                                  aria-busy={reportingId === msg.id}
                                   className="relative z-20 shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-950/20 px-3 py-2 text-[10px] font-black text-rose-300 hover:border-rose-400/60 hover:bg-rose-950/40 hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer touch-manipulation"
                                   title={reportedIds.has(msg.id) ? 'Report sent to subreddit moderators' : 'Report this message'}
                                   aria-label={reportedIds.has(msg.id) ? 'Message reported' : 'Report message'}
@@ -1000,17 +1036,18 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
           {/* Create Guild Modal */}
           {showCreateModal && (
             <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
-                <h3 className="text-lg font-black text-white">Found a New Guild</h3>
+              <div role="dialog" aria-modal="true" aria-labelledby="io-create-guild-title" className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
+                <h3 id="io-create-guild-title" className="text-lg font-black text-white">Found a New Guild</h3>
                 <p className="text-xs text-slate-400">
                   Choose a guild name and a 2-5 letter tag.
                 </p>
                 <form onSubmit={handleCreateGuild} className="space-y-3">
                   <div>
-                    <label className="text-[11px] font-bold text-slate-400 uppercase block mb-1">
+                    <label htmlFor="io-create-guild-name" className="text-[11px] font-bold text-slate-400 uppercase block mb-1">
                       Guild Name
                     </label>
                     <input
+                      id="io-create-guild-name"
                       type="text"
                       value={createName}
                       onChange={e => setCreateName(e.target.value)}
@@ -1021,10 +1058,11 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] font-bold text-slate-400 uppercase block mb-1">
+                    <label htmlFor="io-create-guild-tag" className="text-[11px] font-bold text-slate-400 uppercase block mb-1">
                       Guild Tag (2-5 Letters)
                     </label>
                     <input
+                      id="io-create-guild-tag"
                       type="text"
                       value={createTag}
                       onChange={e => setCreateTag(e.target.value.toUpperCase())}
@@ -1044,10 +1082,11 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                     </button>
                     <button
                       type="submit"
-                      disabled={busy}
-                      className="flex-1 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold cursor-pointer"
+                      disabled={busy || creatingGuild}
+                      aria-busy={creatingGuild}
+                      className="flex-1 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold cursor-pointer disabled:cursor-wait disabled:opacity-60"
                     >
-                      Create
+                      {creatingGuild ? 'Creating…' : 'Create'}
                     </button>
                   </div>
                 </form>
@@ -1069,15 +1108,15 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
               {playerHasShared ? 'Leaderboard eligible' : 'Share an Orb post to appear'}
             </div>
           </div>
-          <div className="flex gap-1.5 overflow-x-auto pb-1">
+          <div role="group" aria-label="Choose leaderboard metric" className="flex gap-1.5 overflow-x-auto pb-1">
             {leaderboardMeta.map(board => (
-              <button key={board.id} onClick={() => { sound.playClick(); setActiveLeaderboard(board.id); }}
+              <button key={board.id} type="button" aria-pressed={activeLeaderboard === board.id} onClick={() => { sound.playClick(); setActiveLeaderboard(board.id); }}
                 className={activeLeaderboard === board.id ? 'px-3 py-2 rounded-xl bg-purple-600 text-white text-[11px] font-black whitespace-nowrap' : 'px-3 py-2 rounded-xl bg-slate-900/70 border border-slate-800 text-slate-400 hover:text-white text-[11px] font-bold whitespace-nowrap'}>
                 {board.label}
               </button>
             ))}
           </div>
-          {displayedLeaderboard.length === 0 && <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-500">No eligible players yet.</div>}
+          {displayedLeaderboard.length === 0 && <div role="status" className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-500">No entries for {leaderboardMeta.find(item => item.id === activeLeaderboard)?.label ?? 'this leaderboard'} yet. Eligible players appear after sharing an Orb post.</div>}
           <div className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-800/60">
             {displayedLeaderboard.map((entry, idx) => (
               <div key={entry.username} className="flex items-center justify-between p-3 sm:px-4 text-xs hover:bg-slate-800/40 transition-colors">

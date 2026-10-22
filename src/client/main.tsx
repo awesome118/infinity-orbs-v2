@@ -1854,7 +1854,7 @@ export function App() {
       const inheritanceLevel = current.prestigeUpgrades?.cosmicInheritance ?? 0;
       const keepPct = Math.min(0.50, inheritanceLevel * 0.10);
       const keptCoins = Math.max(50, Math.floor(current.coins * keepPct));
-      const keptShards = Math.floor((current.shards ?? 0) * keepPct);
+      // Shards always survive prestige; Cosmic Inheritance only affects Coins.
 
       return {
         ...current,
@@ -2466,7 +2466,7 @@ export function App() {
       {/* Main Navigation Bar */}
       <div role="navigation" aria-label={combatMode ? "Combat navigation" : "Game navigation"} className={"io-nav app-nav bg-slate-900/55 border-b border-slate-800/80 px-4 py-2 sticky top-[57px] z-20 backdrop-blur-md" + (combatMode ? " io-nav-combat" : "")}>
         <div className="nav-shell max-w-6xl mx-auto flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-          <button type="button" onClick={() => { sound.playClick(); changeTab(combatMode ? 'roll' : 'fight'); }}
+          <button type="button" onClick={() => { changeTab(combatMode ? 'roll' : 'fight'); }}
             className={"io-combat-mode-switch nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (combatMode ? " is-active" : "")}
             aria-pressed={combatMode} title={combatMode ? "Return to the core orb-rolling game" : (state.level < FEATURE_UNLOCK_LEVELS.combat ? "Unlock Combat at Level " + FEATURE_UNLOCK_LEVELS.combat : "Enter the combat expansion")}>
             <Swords className="w-4 h-4" />
@@ -2476,10 +2476,11 @@ export function App() {
 
           {!combatMode && <>
           <button aria-current={tab === 'roll' ? 'page' : undefined}
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('roll');
             }}
+            aria-current={tab === 'roll' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               tab === 'roll'
                 ? 'is-active bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-md'
@@ -2491,10 +2492,11 @@ export function App() {
           </button>
 
           <button aria-current={tab === 'upgrades' ? 'page' : undefined}
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('upgrades');
             }}
+            aria-current={tab === 'upgrades' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'upgrades'
                 ? 'is-active bg-gradient-to-r from-amber-600 to-yellow-500 text-white shadow-md'
@@ -2506,10 +2508,11 @@ export function App() {
             {featureForTab('upgrades' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('upgrades' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 <button aria-current={tab === 'boosters' ? 'page' : undefined}
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('boosters');
             }}
+            aria-current={tab === 'boosters' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'boosters'
                 ? 'is-active bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white shadow-md'
@@ -2524,10 +2527,11 @@ export function App() {
           </button>
 
           <button aria-current={tab === 'altar' ? 'page' : undefined}
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('altar');
             }}
+            aria-current={tab === 'altar' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'altar'
                 ? 'is-active bg-gradient-to-r from-orange-600 to-amber-500 text-white shadow-md'
@@ -2540,10 +2544,11 @@ export function App() {
           </button>
 
           <button aria-current={tab === 'mastery' ? 'page' : undefined}
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('mastery');
             }}
+            aria-current={tab === 'mastery' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'mastery'
                 ? 'is-active bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
@@ -2559,10 +2564,11 @@ export function App() {
           </button>
 
           <button aria-current={tab === 'collection' ? 'page' : undefined}
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('collection');
             }}
+            aria-current={tab === 'collection' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               tab === 'collection'
                 ? 'is-active bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
@@ -2575,10 +2581,11 @@ export function App() {
           </button>
 
           <button aria-current={tab === 'quests' ? 'page' : undefined}
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('quests');
             }}
+            aria-current={tab === 'quests' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'quests'
                 ? 'is-active bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
@@ -2594,10 +2601,11 @@ export function App() {
           </button>
 
           <button aria-current={tab === 'social' ? 'page' : undefined}
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('social');
             }}
+            aria-current={tab === 'social' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               tab === 'social'
                 ? 'is-active bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
@@ -2610,10 +2618,11 @@ export function App() {
           </button>
 
           <button aria-current={tab === 'profile' ? 'page' : undefined}
+            type="button"
             onClick={() => {
-              sound.playClick();
               changeTab('profile');
             }}
+            aria-current={tab === 'profile' ? 'page' : undefined}
             className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
               tab === 'profile'
                 ? 'is-active bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white shadow-md'

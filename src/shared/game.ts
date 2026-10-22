@@ -2415,6 +2415,8 @@ export function predictRollActivation(
       ? JSON.parse(JSON.stringify(sourceState.globalBoosters)) as GlobalBoosterSnapshot
       : sourceState.globalBoosters,
   };
+  const predictionNow = Date.now();
+  resetFreeShardBudgetIfNeeded(s, predictionNow);
   const rng = createSeededRandom(seed);
   const levelBenefits = getLevelBenefits(Math.max(1, s.level || 1));
 
@@ -2563,7 +2565,8 @@ export function predictRollActivation(
   }
   s.coins += coinsGained;
   s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
-  s.shards = Math.max(0, (s.shards ?? 0) + shardsGained);
+  // Match the authoritative cap and wallet overflow handling in predictions.
+  shardsGained = grantRollShards(s, shardsGained, predictionNow);
   s.xp += xpGained;
 
   const oldLevel = Math.max(1, sourceState.level || 1);

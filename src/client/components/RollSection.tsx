@@ -142,6 +142,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
   useEffect(() => () => {
     if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
   }, []);
+  useEffect(() => () => {
+    if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
+  }, []);
   const [isRevealing, setIsRevealing] = useState(false);
   const [cooldownNotice, setCooldownNotice] = useState<string | null>(null);
   const cooldownNoticeTimerRef = useRef<number | null>(null);
@@ -166,6 +169,12 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const hasInstantUpgrade = (state.prestigeUpgrades?.instantReveal ?? 0) > 0;
   const hasFilterUpgrade = (state.prestigeUpgrades?.autoFilter ?? 0) > 0;
   const hasResonanceUpgrade = (state.prestigeUpgrades?.resonanceMeter ?? 0) > 0;
+  const pityInterval = Math.max(6, 18 - Math.max(0, Math.min(5, Math.floor(Number(state.masterySkills?.pityAccelerant) || 0))) * 2);
+  const rawPityDryRolls = Number(state.rollsSinceBest ?? 0);
+  const pityDryRolls = Number.isSafeInteger(rawPityDryRolls) && rawPityDryRolls >= 0 ? rawPityDryRolls : 0;
+  const pityTier = Math.floor(pityDryRolls / pityInterval);
+  const pityRollsIntoTier = pityDryRolls % pityInterval;
+  const pityProgressPct = (pityRollsIntoTier / pityInterval) * 100;
 
   const [filterActive, setFilterActive] = useState(() => {
     try {
@@ -555,6 +564,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
               ? 'bg-slate-800 text-slate-400 cursor-wait'
               : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700')}
           aria-label={busy ? 'Roll in progress' : frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} Free Rolls` : 'Roll'}
+          disabled={busy}
+          aria-busy={busy}
         >
           {frenzyArmed && (
             <>
@@ -685,6 +696,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
                   ? 'bg-purple-500/15 border-purple-500/40 text-purple-300 hover:bg-purple-500/25 ring-1 ring-purple-500/30'
                   : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
               }`}
+              type="button"
+              aria-pressed={instantRevealActive}
               title="Skip roll animations for instant reveals"
             >
               <FastForward className={`w-3.5 h-3.5 ${instantRevealActive ? 'text-purple-400' : ''}`} />
@@ -727,20 +740,19 @@ export const RollSection: React.FC<RollSectionProps> = ({
                 <span>Pity Luck</span>
               </div>
               <span className="font-mono text-cyan-300 font-bold">
-                +{((state.prestigeUpgrades?.resonanceMeter ?? 1) * Math.floor((state.rollsSinceBest ?? 0) / Math.max(6, 18 - (state.masterySkills?.pityAccelerant ?? 0) * 2)))}% Pity Luck
+                +{((state.prestigeUpgrades?.resonanceMeter ?? 1) * pityTier)}% Pity Luck
               </span>
             </div>
             <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
               <div
                 className="h-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-all duration-300"
-                style={{
-                  width: `${Math.min(100, (((state.rollsSinceBest ?? 0) % 20) / 20) * 100)}%`,
-                }}
+                role="progressbar" aria-label="Pity Luck progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pityProgressPct}
+                style={{ width: `${pityProgressPct}%` }}
               />
             </div>
             <div className="flex justify-between text-[10px] text-slate-400 font-medium">
-              <span>{((state.rollsSinceBest ?? 0) % 20)} / 20 rolls to next tier</span>
-              <span>Dry streak: {state.rollsSinceBest ?? 0} rolls</span>
+              <span>{pityRollsIntoTier} / {pityInterval} rolls to next tier</span>
+              <span>Dry streak: {pityDryRolls} rolls</span>
             </div>
           </div>
         )}
@@ -758,6 +770,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
               ].map(opt => (
                 <button
                   key={opt.val}
+                  type="button"
+                  aria-pressed={sonarThreshold === opt.val}
                   onClick={() => {
                     setSonarThresholdState(opt.val);
                     sound.setSonarThreshold(opt.val);

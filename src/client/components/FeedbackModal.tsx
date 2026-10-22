@@ -11,6 +11,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
   const [type, setType] = useState<'bug' | 'suggestion'>('bug');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const submitInFlightRef = useRef(false);
   const [error, setError] = useState('');
   const submitLockRef = useRef(false);
 
@@ -106,12 +107,16 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
         </div>
 
         <textarea
+          id="io-feedback-message"
           aria-label={type === 'bug' ? 'Describe the bug' : 'Describe your suggestion'}
+          aria-invalid={Boolean(error)}
+          aria-describedby="io-feedback-status"
           value={message}
           disabled={busy}
           maxLength={2000}
           onChange={e => setMessage(e.target.value.slice(0, 2000))}
           rows={8}
+          maxLength={2000}
           placeholder={type === 'bug'
             ? 'What happened? Include what you expected to happen and what actually happened.'
             : 'What would you like to see changed or added?'}
@@ -119,11 +124,12 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
         />
 
         <div className="flex items-center justify-between gap-3 text-[10px]">
-          <span role={error ? 'alert' : undefined} className={error ? 'text-rose-300' : 'text-slate-600'}>
+          <span id="io-feedback-status" role={error ? 'alert' : 'status'} aria-live={error ? 'assertive' : 'polite'} className={error ? 'text-rose-300' : 'text-slate-600'}>
             {error || message.length + '/2000'}
           </span>
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={onClose}
               disabled={busy}
               className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-300 hover:text-white disabled:opacity-50"
@@ -131,6 +137,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
               Cancel
             </button>
             <button
+              type="button"
+              aria-busy={busy}
               onClick={() => void submit()}
               disabled={busy || !message.trim()}
               className="rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 px-4 py-2.5 text-xs font-black text-white hover:from-cyan-500 hover:to-indigo-500 disabled:cursor-not-allowed disabled:opacity-40 flex items-center gap-1.5"

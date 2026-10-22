@@ -1,21 +1,32 @@
 export type ImpressionPostType = 'main-game' | 'orb-share' | 'frenzy';
 type ImpressionDeviceType = 'mobile' | 'tablet' | 'desktop' | 'unknown';
 
-function detectDeviceType(): ImpressionDeviceType {
-  if (typeof navigator === 'undefined') return 'unknown';
-  const agent = String(navigator.userAgent ?? '');
-  const platform = String(navigator.platform ?? '');
-  const touchPoints = Number(navigator.maxTouchPoints ?? 0);
-
-  // iPads may report a Mac platform; multiple touch points distinguish them
-  // from ordinary desktop Macs without persisting the raw platform or UA.
+export function classifyImpressionDeviceType(
+  agentValue: unknown,
+  platformValue: unknown = '',
+  touchPointsValue: unknown = 0,
+): ImpressionDeviceType {
+  const agent = typeof agentValue === 'string' ? agentValue : '';
+  const platform = typeof platformValue === 'string' ? platformValue : '';
+  const touchPoints = typeof touchPointsValue === 'number' &&
+    Number.isSafeInteger(touchPointsValue) && touchPointsValue >= 0
+    ? touchPointsValue
+    : 0;
+  if (!agent.trim() && !platform.trim()) return 'unknown';
   if (/iPad|Tablet|PlayBook|Silk/i.test(agent) || (platform === 'MacIntel' && touchPoints > 1)) {
     return 'tablet';
   }
-  if (/Mobi|Android|iPhone|iPod|Windows Phone|IEMobile/i.test(agent)) {
+  if (/iPhone|iPod|Windows Phone|IEMobile|Mobi/i.test(agent) ||
+      (/Android/i.test(agent) && /Mobile/i.test(agent))) {
     return 'mobile';
   }
+  if (/Android/i.test(agent)) return 'tablet';
   return 'desktop';
+}
+
+function detectDeviceType(): ImpressionDeviceType {
+  if (typeof navigator === 'undefined') return 'unknown';
+  return classifyImpressionDeviceType(navigator.userAgent, navigator.platform, navigator.maxTouchPoints);
 }
 
 /**

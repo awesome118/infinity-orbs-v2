@@ -43,7 +43,7 @@ function postKey(postType: ImpressionPostType, postId: string): string {
 }
 
 async function readCount(key: string): Promise<number> {
-  return normalizeCount(await redis.get(key));
+  return normalizeImpressionCount(await redis.get(key));
 }
 
 /**
@@ -82,8 +82,9 @@ export async function recordPostImpression(
     redis.incr(DAY_PREFIX + day + ':' + postType),
   ]);
 
-  // The index contains post metadata only, never viewer data.
-  await redis.hSet(POST_INDEX_KEY, {
+  // The index contains post metadata only, never viewer data. Keep this hash
+  // bounded so share/Frenzy posts cannot grow it forever.
+  const added = await redis.hSet(POST_INDEX_KEY, {
     [indexField]: JSON.stringify({ postType, postId, lastSeenAt: now }),
   });
 

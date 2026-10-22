@@ -35,7 +35,9 @@ export const Header: React.FC<HeaderProps> = ({
   notificationsEnabled,
   onToggleNotifications,
 }) => {
-  const fmt = (n: number) => n.toLocaleString();
+  const fmt = (n: number) => Number.isFinite(n) ? Math.max(0, n).toLocaleString() : '0';
+  const onlineCountRaw = Number(state.onlinePlayers ?? 1);
+  const onlineCount = Number.isFinite(onlineCountRaw) ? Math.max(1, Math.floor(onlineCountRaw)) : 1;
   const [combatMarks,setCombatMarks]=useState(0);
   useEffect(()=>{
     let cancelled=false;
@@ -84,6 +86,8 @@ export const Header: React.FC<HeaderProps> = ({
               </h1>
               {/* Level Badge with click to view perks */}
               <button
+                type="button"
+                aria-label={`View Level ${levelInfo.level} perks`}
                 onClick={onOpenProfile}
                 className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-200 border border-purple-400/25 hover:border-purple-300/50 flex items-center gap-1 cursor-pointer transition-colors"
                 title={`Level ${levelInfo.level} Perks: ${levelBenefits.luckMultiplier.toFixed(2)}× Luck, ${levelBenefits.coinsMultiplier.toFixed(2)}× Coins, +${levelBenefits.bonusBalls} Balls`}
@@ -96,8 +100,12 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Glowing EXP Bar */}
             <div className="flex items-center gap-2 mt-1">
               <div
+                role="button"
+                tabIndex={0}
+                aria-label={`View experience progress: ${levelInfo.progressPercent}% to level ${levelInfo.level + 1}`}
                 className="w-28 sm:w-40 h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800 p-0.5 relative cursor-pointer"
                 onClick={onOpenProfile}
+                onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenProfile(); } }}
                 title={`EXP: ${fmt(levelInfo.currentLevelXp)} / ${fmt(levelInfo.nextLevelXp)} (${levelInfo.progressPercent}%)`}
               >
                 <div
@@ -126,8 +134,8 @@ export const Header: React.FC<HeaderProps> = ({
             title="Players currently active in this Reddit game installation. More players give everyone a logarithmic Luck bonus."
           >
             <Users className="w-3.5 h-3.5 text-indigo-300" />
-            <span>{(state.onlinePlayers ?? 1).toLocaleString()} Online</span>
-            <span className="text-indigo-300/70">×{onlinePlayerLuckMultiplier(state.onlinePlayers ?? 1).toFixed(2)} Luck</span>
+            <span>{fmt(onlineCount)} Online</span>
+            <span className="text-indigo-300/70">×{onlinePlayerLuckMultiplier(onlineCount).toFixed(2)} Luck</span>
           </div>
 
           {/* Currencies */}
@@ -187,6 +195,7 @@ export const Header: React.FC<HeaderProps> = ({
             type="button"
             aria-label="View probability and drop odds"
             onClick={onOpenOdds}
+            aria-label="View probability and drop odds"
             className="header-icon-button p-2 text-slate-400 hover:text-cyan-300 hover:bg-slate-800/80 rounded-lg transition-colors"
             title="View Probability & Drop Odds"
           >

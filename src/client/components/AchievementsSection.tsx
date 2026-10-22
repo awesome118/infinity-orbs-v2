@@ -40,7 +40,8 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
   const total = achievements.length;
   const unlockedCount = achievements.filter(a => a.unlocked).length;
   const claimedCount = achievements.filter(a => a.claimed).length;
-  const progressPct = total > 0 ? Math.round((unlockedCount / total) * 100) : 0;
+  const readyToClaimCount = achievements.filter(a => a.unlocked && !a.claimed).length;
+  const progressPct = total > 0 ? Math.max(0, Math.min(100, Math.round((unlockedCount / total) * 100))) : 0;
 
   const filtered = achievements.filter(a => {
     if (filter === 'unlocked') return a.unlocked && !a.claimed;
@@ -93,7 +94,7 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex items-center gap-2">
+      <div role="group" aria-label="Filter achievements" className="flex flex-wrap items-center gap-2">
         <button
           type="button" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}
           className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
@@ -112,7 +113,7 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
               : 'text-slate-400 hover:text-white bg-slate-900/60'
           }`}
         >
-          Ready to Claim ({unlockedCount - claimedCount})
+          Ready to Claim ({readyToClaimCount})
         </button>
         <button
           type="button" aria-pressed={filter === 'claimed'} onClick={() => setFilter('claimed')}
@@ -127,6 +128,17 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
       </div>
 
       {/* Achievements List */}
+      {filtered.length === 0 ? (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-8 text-center space-y-2" role="status" aria-live="polite">
+          <Trophy className="w-7 h-7 mx-auto text-slate-600" />
+          <p className="text-sm font-bold text-slate-300">
+            {filter === 'unlocked' ? 'No rewards ready to claim' : filter === 'claimed' ? 'No rewards collected yet' : 'No achievements found'}
+          </p>
+          <p className="text-xs text-slate-500">
+            {filter === 'unlocked' ? 'Keep playing to unlock your next achievement.' : filter === 'claimed' ? 'Claim an unlocked achievement and it will appear here.' : 'Achievement progress will appear here as you play.'}
+          </p>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
         {filtered.map(ach => (
           <div
@@ -208,6 +220,7 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 };

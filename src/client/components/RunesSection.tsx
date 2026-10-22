@@ -26,8 +26,14 @@ async function request<T>(url:string,method='GET',body?:unknown):Promise<T>{
 const RARITY_ORDER:Record<string,number>={Cosmic:7,Mythic:6,Legendary:5,Epic:4,Rare:3,Uncommon:2,Common:1};
 const STAT_LABEL:Record<CombatRuneStat,string>={luckPct:'Orb Luck',coinGainPct:'Coin gain',shardChancePct:'Shard chance',xpGainPct:'XP gain'};
 const STAT_ICON:Record<CombatRuneStat,React.ReactNode>={luckPct:<Sparkles size={25}/>,coinGainPct:<Coins size={25}/>,shardChancePct:<Gem size={25}/>,xpGainPct:<BookOpen size={25}/>};
-const pct=(value:number,decimals=2)=>value>=1e21?value.toExponential(2)+'%':value.toFixed(decimals)+'%';
-const fmt=(value:unknown)=>Math.max(0,Math.floor(Number(value)||0)).toLocaleString();
+const pct=(value:number,decimals=2)=>{
+  const safe=Number.isFinite(value)?Math.max(0,value):0;
+  return safe>=1e21?safe.toExponential(2)+'%':safe.toFixed(decimals)+'%';
+};
+const fmt=(value:unknown)=>{
+  const number=Number(value);
+  return Number.isFinite(number)&&number>0?Math.floor(number).toLocaleString():'0';
+};
 const rarityClass=(rarity:string)=>'io-rarity-'+rarity.toLowerCase();
 
 interface SacrificeResponse extends CombatSnapshot {
@@ -64,10 +70,19 @@ export const RunesSection:React.FC=()=>{
   },[beginOperation,endOperation]);
   useEffect(()=>{void load();},[load]);
   const state=snapshot?.state??null;
-  const bestRuneDepth=state?Math.max(state.bestDepth,...Object.values(state.dungeonBestDepths)):1;
+  const bestDepthCandidates=state?[state.bestDepth,...Object.values(state.dungeonBestDepths??{}).map(Number)].filter(depth=>Number.isFinite(depth)&&depth>=0):[];
+  const bestRuneDepth=bestDepthCandidates.length?Math.max(...bestDepthCandidates):1;
   const slots=state?combatRuneSlotsUnlocked(state.level,bestRuneDepth):2;
   const bonuses=useMemo(()=>combatRuneBonuses(state?.runes??[],state?.equippedRunes??[]),[state?.runes,state?.equippedRunes]);
-  const runes=useMemo(()=>[...(state?.runes??[])].sort((a,b)=>(RARITY_ORDER[b.rarity]??0)-(RARITY_ORDER[a.rarity]??0)||(Number(b.level)||1)-(Number(a.level)||1)||b.value-a.value||a.name.localeCompare(b.name)),[state?.runes]);
+  const runes=useMemo(()=>[...(state?.runes??[])].sort((a,b)=>(RARITY_ORDER[b.rarity]??0)-(RARITY_ORDER[a.rarity]??0)||(Number(b.level)||1)-(Number(a.level)||1)||(Number.isFinite(b.value)?b.value:0)-(Number.isFinite(a.value)?a.value:0)||String(a.name??'').localeCompare(String(b.name??''))),[state?.runes]);
+  const visibleRunes=useMemo(()=>{
+    const query=runeSearch.trim().toLowerCase();
+    return runes.filter(rune=>{
+      const equipped=Boolean(state?.equippedRunes.includes(rune.id));
+      const matchesFilter=runeFilter==='all'||(runeFilter==='equipped'&&equipped)||(runeFilter==='unequipped'&&!equipped)||(runeFilter==='auto'&&!equipped&&combatRuneRarityAtOrBelow(rune.rarity,state?.runeAutoSacrifice?.maxRarity??'Common'));
+      return matchesFilter&&(!query||String(rune.name??'').toLowerCase().includes(query)||String(rune.stat??'').toLowerCase().includes(query)||String(rune.rarity??'').toLowerCase().includes(query));
+    });
+  },[runes,runeFilter,runeSearch,state?.equippedRunes,state?.runeAutoSacrifice?.maxRarity]);
   const visibleRunes=useMemo(()=>{
     const query=runeSearch.trim().toLowerCase();
     return runes.filter(rune=>{
@@ -103,7 +118,8 @@ export const RunesSection:React.FC=()=>{
     });
   },[runes,runeSearch,runeFilter,state?.equippedRunes]);
   const strengthenTargetRune=runes.find(rune=>rune.id===strengthenTargetId);
-  const autoSacrificeSettings=state?.runeAutoSacrifice??{enabled:false,maxRarity:'Common' as CombatRuneRarity};
+  const rawAutoSacrificeSettings=state?.runeAutoSacrifice??{enabled:false,maxRarity:'Common' as CombatRuneRarity};
+  const autoSacrificeSettings={enabled:rawAutoSacrificeSettings.enabled===true,maxRarity:RUNE_RARITIES.includes(rawAutoSacrificeSettings.maxRarity)?rawAutoSacrificeSettings.maxRarity:'Common' as CombatRuneRarity};
   const autoSacrificeEligibleCount=state?runes.filter(rune=>
     !state.equippedRunes.includes(rune.id)&&combatRuneRarityAtOrBelow(rune.rarity,autoSacrificeSettings.maxRarity)
   ).length:0;
@@ -131,6 +147,7 @@ export const RunesSection:React.FC=()=>{
     finally{setSacrificing(false);endOperation();}
   };
   const handleRuneClick=(rune:CombatRune)=>{
+    if(actionInFlightRef.current)return;
     if(strengthenTargetId){
       if(rune.id===strengthenTargetId){
         setStrengthenTargetId('');setNotice('Strengthen selection cancelled.');
@@ -172,10 +189,11 @@ export const RunesSection:React.FC=()=>{
       <button type="button" className="io-runes-button" aria-label={loading?'Refreshing Rune inventory':'Refresh Rune inventory'} aria-busy={loading||operationPending} onClick={()=>{setLoading(true);void load();}} disabled={loading||operationPending}><RefreshCw size={14} aria-hidden="true" className={loading?'animate-spin':''}/> {loading?'Loading…':'Refresh'}</button>
     </header>
     {error&&<div className="io-runes-error io-runes-error-row" role="alert"><span>{error}</span><button type="button" onClick={()=>{setLoading(true);void load();}} disabled={loading||Boolean(busyRune)||sacrificing||autoSacrificeBusy}>Retry</button></div>}
-    {notice&&!error&&<div className="io-runes-muted" role="status">{notice}</div>}
+    {notice&&!error&&<div className="io-runes-muted" role="status" aria-live="polite">{notice}</div>}
+    {actionBusy&&<div className="io-runes-muted" role="status" aria-live="polite">Saving Rune changes…</div>}
     {loading&&!state?<div className="io-runes-loading">Loading Rune inventory…</div>:state&&<>
       <section className="io-runes-panel">
-        <div className="io-runes-panel-head"><h2>Equipped loadout</h2><span className="io-runes-muted">{equippedRunes.length} / {slots} slots used · Delver Lv. {state.level} · Best depth {bestRuneDepth}</span></div>
+        <div className="io-runes-panel-head"><h2>Equipped loadout</h2><span className="io-runes-muted" aria-live="polite">{equippedRunes.length} / {slots} slots used · Delver Lv. {fmt(state.level)} · Best depth {fmt(bestRuneDepth)}</span></div>
         <div className="io-runes-loadout">{Array.from({length:slots},(_,index)=>{
           const rune=equippedRunes[index];
           return <div key={index} className={'io-runes-slot'+(rune?' is-filled':'')}>
@@ -208,6 +226,16 @@ export const RunesSection:React.FC=()=>{
           </button>
           {autoSacrificeSettings.enabled&&equippedRunes.length===0&&<p className="io-runes-auto-warning" role="status">Auto Sacrifice is enabled, but no Runes are equipped. New eligible drops will be kept until you equip a Rune target.</p>}
           <p>When enabled, new Runes at or below the selected rarity are sacrificed into a random equipped Rune. The button processes existing eligible Runes too. Equipped Runes are protected from auto-sacrifice; manual Strengthen can consume any other Rune and will ask before consuming an equipped Rune.</p>
+          {equippedRunes.length===0&&<p className="io-runes-muted" role="note">Equip at least one Rune before enabling Auto Sacrifice, so every consumed Rune has a valid strengthening target.</p>}
+        </div>
+        <div className="io-runes-inventory-tools">
+          <label className="io-runes-search">Search Runes
+            <input type="search" value={runeSearch} onChange={event=>setRuneSearch(event.target.value.slice(0,80))} placeholder="Name, stat, or rarity…" maxLength={80} aria-label="Search Rune inventory"/>
+          </label>
+          <div role="group" aria-label="Filter Rune inventory" className="io-runes-filter-group">
+            {([{id:'all',label:'All'},{id:'equipped',label:'Equipped'},{id:'unequipped',label:'Unequipped'},{id:'auto',label:'Auto-sacrifice eligible'}] as const).map(option=><button key={option.id} type="button" aria-pressed={runeFilter===option.id} disabled={actionBusy} onClick={()=>setRuneFilter(option.id)}>{option.label}</button>)}
+          </div>
+          <p className="io-runes-muted" role="status" aria-live="polite">Showing {fmt(visibleRunes.length)} of {fmt(runes.length)} Runes · {fmt(equippedRunes.length)} equipped · Inventory limit 200</p>
         </div>
         {!runes.length?<div className="io-runes-empty"><Gem size={22} style={{margin:'0 auto .5rem',color:'#a78bfa'}}/><strong style={{display:'block',color:'#e2e8f0'}}>No Runes found yet</strong>Defeat monsters in Combat. Common monsters can drop a Rune, elite enemies have a higher chance, and bosses always drop one.</div>:
           <>
