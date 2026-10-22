@@ -330,17 +330,16 @@ export const RollSection: React.FC<RollSectionProps> = ({
   // Handle click on roll button or center orb
   const handleRollClick = () => {
     if (busy) return;
-    if (cooldownNoticeTimerRef.current !== null) {
-      window.clearTimeout(cooldownNoticeTimerRef.current);
-      cooldownNoticeTimerRef.current = null;
-    }
     if (canRoll) {
+      if (cooldownNoticeTimerRef.current !== null) {
+        window.clearTimeout(cooldownNoticeTimerRef.current);
+        cooldownNoticeTimerRef.current = null;
+      }
       sound.playClick();
-      if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
-      cooldownNoticeTimerRef.current = null;
       setCooldownNotice(null);
       void onRoll();
     } else if (remain > 0) {
+      if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
       sound.playClick();
       setCooldownNotice(`Cooldown active (${(remain / 1000).toFixed(1)}s remaining)`);
       cooldownNoticeTimerRef.current = window.setTimeout(() => {
