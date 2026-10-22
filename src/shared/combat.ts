@@ -117,16 +117,23 @@ export function combatRuneMajorAbilityMultiplier(rarity: CombatRuneRarity): numb
   return COMBAT_RUNE_MAJOR_ABILITY_MULTIPLIER[rarity];
 }
 export function combatRuneSlotsUnlocked(levelValue: unknown, bestDepthValue: unknown): number {
-  const level = Math.max(1, Math.floor(Number(levelValue) || 1));
-  const bestDepth = Math.max(1, Math.floor(Number(bestDepthValue) || 1));
+  const rawLevel = Number(levelValue);
+  const rawBestDepth = Number(bestDepthValue);
+  // Invalid/infinite client snapshots must not accidentally unlock progression.
+  const level = Number.isFinite(rawLevel) ? Math.max(1, Math.floor(rawLevel)) : 1;
+  const bestDepth = Number.isFinite(rawBestDepth) ? Math.max(1, Math.floor(rawBestDepth)) : 1;
   return 2 + (level >= 10 ? 1 : 0) + (level >= 25 ? 1 : 0) + (bestDepth >= 50 ? 1 : 0);
 }
 export function combatRuneValueFor(rarity: CombatRuneRarity, stat: CombatRuneStat, depthValue: unknown): number {
-  const depth = Math.max(0, Math.floor(Number(depthValue) || 0));
+  if (!Object.prototype.hasOwnProperty.call(COMBAT_RUNE_BASE_VALUE, stat) ||
+      !Object.prototype.hasOwnProperty.call(COMBAT_RUNE_RARITY_MULTIPLIER, rarity)) return 0;
+  const rawDepth = Number(depthValue);
+  const depth = Number.isFinite(rawDepth) ? Math.max(0, Math.floor(rawDepth)) : 0;
   const depthMultiplier = 1 + Math.min(.4, Math.log2(depth + 1) * .025);
   const decimals = stat === 'shardChancePct' ? 4 : 2;
   const factor = 10 ** decimals;
-  return Math.round(COMBAT_RUNE_BASE_VALUE[stat] * COMBAT_RUNE_RARITY_MULTIPLIER[rarity] * depthMultiplier * factor) / factor;
+  const result = Math.round(COMBAT_RUNE_BASE_VALUE[stat] * COMBAT_RUNE_RARITY_MULTIPLIER[rarity] * depthMultiplier * factor) / factor;
+  return Number.isFinite(result) ? Math.max(0, result) : 0;
 }
 /** Converts the Rune's Luck percentage into a direct rarity multiplier. */
 export function combatRuneLuckMultiplier(luckBonusPctValue: unknown): number {
@@ -164,8 +171,10 @@ export function combatRuneLevelFromExperience(experienceValue: unknown): number 
 }
 /** Large rarity-weighted XP grant for consuming a Rune; deeper drops and higher-level donors are worth more. */
 export function combatRuneSacrificeExperience(rune: Pick<CombatRune, 'rarity' | 'level' | 'sourceDepth'>): number {
-  const base = ({ Common: 100, Uncommon: 250, Rare: 650, Epic: 1_700, Legendary: 4_500, Mythic: 12_000, Cosmic: 32_000 })[rune.rarity];
-  const level = Number.isFinite(Number(rune.level)) ? Math.max(1, Math.floor(Number(rune.level))) : 1;
+  const base = ({ Common: 100, Uncommon: 250, Rare: 650, Epic: 1_700, Legendary: 4_500, Mythic: 12_000, Cosmic: 32_000 } as Record<string, number>)[String(rune.rarity)];
+  if (!Number.isFinite(base) || base <= 0) return 1;
+  const rawLevel = Number(rune.level);
+  const level = Number.isFinite(rawLevel) ? Math.max(1, Math.floor(rawLevel)) : 1;
   const depth = Number.isFinite(Number(rune.sourceDepth)) ? Math.max(0, Math.floor(Number(rune.sourceDepth))) : 0;
   const depthMultiplier = 1 + Math.min(1.5, Math.log2(depth + 1) * 0.08);
   const raw = base * Math.pow(level, 1.25) * depthMultiplier;
