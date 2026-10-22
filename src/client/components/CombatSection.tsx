@@ -29,7 +29,7 @@ async function request<T>(url:string,method='GET',body?:unknown):Promise<T> {
     throw error;
   } finally { window.clearTimeout(timeout); }
 }
-const fmt=(n:number)=>Math.max(0,Math.floor(n||0)).toLocaleString();
+const fmt=(n:number)=>Number.isFinite(n)&&n>0?Math.floor(n).toLocaleString():'0';
 const MAJOR_OFFENSE_IDS=new Set(['void-edge','starfall','executioner','emberwake','critical-mass','orb-conduit','bossbreaker','echo-fang','blood-moon','deep-roots','glass-cannon','fortune-engine','full-moon','unstable-singularity']);
 const MAJOR_DEFENSE_IDS=new Set(['second-dawn','aegis-ward','titan-heart','blood-drinker','mirrorplate','last-bastion','phase-shift','frostbrand','aegis-pulse','unending-ward','genesis-core']);
 const majorAbilityClass=(id:string)=>MAJOR_OFFENSE_IDS.has(id)?'io-combat-major-offense':MAJOR_DEFENSE_IDS.has(id)?'io-combat-major-defense':['mark-harvest','salvagers-touch','rune-savant'].includes(id)?'io-combat-major-economy':'';
@@ -142,18 +142,31 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const [autoScrapQuality,setAutoScrapQuality]=useState(20);
   const turnSequenceRef=useRef<HTMLDivElement|null>(null);
   const stateRef=useRef<CombatState|null>(null);
+  const snapshotLoadSequenceRef=useRef(0);
+  const arenaLoadSequenceRef=useRef(0);
   const runtime=useRef({intent:'strike' as CombatIntent,auto:true,paused:false,busy:false,mutating:false,beatPromise:null as Promise<void>|null,manual:false,pendingIntent:false,pendingAbilityId:null as CombatSkillId|null,pendingCommandVersion:0});
   runtime.current.intent=intent; runtime.current.auto=auto; runtime.current.paused=paused;
   const accept=useCallback((result:CombatSnapshot)=>{
+    // Any newer authoritative response invalidates state reads already in flight.
+    snapshotLoadSequenceRef.current+=1;
     stateRef.current=result.state;setState(result.state);setEnemy(result.enemy);setStats(result.stats);
     window.dispatchEvent(new CustomEvent('io-combat-marks-updated',{detail:{combatMarks:result.state.combatMarks}}));
   },[]);
   const load=useCallback(async()=>{
-    try { const result=await request<CombatSnapshot>('/api/combat/state');accept(result);setError(''); }
-    catch(e){setError(e instanceof Error?e.message:'Combat data unavailable.');}
-    finally{setLoading(false);}
+    const requestSequence=++snapshotLoadSequenceRef.current;
+    try {
+      const result=await request<CombatSnapshot>('/api/combat/state');
+      if(requestSequence!==snapshotLoadSequenceRef.current)return;
+      setLoading(false);
+      accept(result);
+      setError('');
+    } catch(e) {
+      if(requestSequence===snapshotLoadSequenceRef.current)setError(e instanceof Error?e.message:'Combat data unavailable.');
+    } finally {
+      if(requestSequence===snapshotLoadSequenceRef.current)setLoading(false);
+    }
   },[accept]);
-  useEffect(()=>{void load();},[load]);
+  useEffect(()=>{void load();return()=>{snapshotLoadSequenceRef.current+=1;};},[load]);
   useEffect(()=>()=>{if(lootPopupTimerRef.current!==null)window.clearTimeout(lootPopupTimerRef.current);},[]);
   useEffect(()=>{
     if(page!=='fight')return;
@@ -170,17 +183,20 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   },[page,state?.lastAcceptedBeatAtMs]);
   useEffect(()=>{if(state)setAutoScrapQuality(state.autoScrapSettings.maxQuality);},[state?.autoScrapSettings.maxQuality]);
   const loadArena=useCallback(async()=>{
+    const requestSequence=++arenaLoadSequenceRef.current;
     setArenaLoading(true);
     try{
       const result=await request<{self:CombatArenaProfile;opponents:CombatArenaProfile[];cooldownRemainingMs:number}>('/api/combat/arena/opponents');
-      setArenaSelf(result.self);setArenaOpponents(result.opponents);setArenaCooldownMs(result.cooldownRemainingMs);setError('');
-    }catch(e){setError(e instanceof Error?e.message:'Could not load Arena opponents.');}
-    finally{setArenaLoading(false);}
+      if(requestSequence!==arenaLoadSequenceRef.current)return;
+      setArenaSelf(result.self);setArenaOpponents(Array.isArray(result.opponents)?result.opponents:[]);setArenaCooldownMs(Number.isFinite(result.cooldownRemainingMs)?Math.max(0,result.cooldownRemainingMs):0);setError('');
+    }catch(e){if(requestSequence===arenaLoadSequenceRef.current)setError(e instanceof Error?e.message:'Could not load Arena opponents.');}
+    finally{if(requestSequence===arenaLoadSequenceRef.current)setArenaLoading(false);}
   },[]);
-  useEffect(()=>{if(page==='arena')void loadArena();},[page,loadArena]);
+  useEffect(()=>{if(page==='arena')void loadArena();else arenaLoadSequenceRef.current+=1;},[page,loadArena]);
   useEffect(()=>{if(arenaCooldownMs<=0)return;const timer=window.setInterval(()=>setArenaCooldownMs(ms=>Math.max(0,ms-1000)),1000);return()=>window.clearInterval(timer);},[arenaCooldownMs>0]);
   const challengeArena=async(opponentId:string)=>{
     if(runtime.current.mutating)return;
+    arenaLoadSequenceRef.current+=1;
     runtime.current.mutating=true;setMutating(true);setArenaResult(null);
     try{
       const activeBeat=runtime.current.beatPromise;
@@ -364,13 +380,13 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         {sonicBlasts.map((blast,index)=><div key={blast.id} className={'io-combat-sonic-blast '+(blast.actor==='player'?'is-player':'is-enemy')} style={{animationDelay:(index*65)+'ms'}} aria-hidden="true"><span/><span/><span/></div>)}
         {lootPopup&&<div key={lootPopup.id} className="io-combat-loot-popup" role="status"><div className="io-combat-loot-popup-head"><Sparkles size={16}/><strong>{lootPopup.title}</strong><button type="button" aria-label="Dismiss loot summary" onClick={()=>setLootPopup(null)}>×</button></div><div className="io-combat-loot-items">{lootPopup.lines.map((line,index)=><div key={index}><span>✦</span>{line}</div>)}</div></div>}
         <div className="io-combat-duel">
-          <div className="io-combat-combatant io-combat-hero"><div className="io-combat-sprite">🔮</div><div className="io-combat-name">{state.orbFocusName.toUpperCase()} <span>LV {state.level}</span></div><div className="io-combat-hp"><span style={{width:hpPct+'%'}}/></div><small>{fmt(state.health)} / {fmt(state.maxHealth)} HP · ORB POWER +{percent(stats.orbFocusBonus)}</small></div>
+          <div className="io-combat-combatant io-combat-hero"><div className="io-combat-sprite">🔮</div><div className="io-combat-name">{state.orbFocusName.toUpperCase()} <span>LV {state.level}</span></div><div className="io-combat-hp" role="progressbar" aria-label="Player health" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(hpPct)}><span style={{width:hpPct+'%'}}/></div><small>{fmt(state.health)} / {fmt(state.maxHealth)} HP · ORB POWER +{percent(stats.orbFocusBonus)}</small></div>
           <div className="io-combat-versus">VS</div>
-          <div className="io-combat-combatant io-combat-foe"><div className="io-combat-sprite">{enemy.emoji}</div><div className="io-combat-name">{enemy.name.toUpperCase()}</div><div className="io-combat-hp is-enemy"><span style={{width:enemyPct+'%'}}/></div><small>{fmt(enemy.hp)} / {fmt(enemy.maxHp)} HP</small></div>
+          <div className="io-combat-combatant io-combat-foe"><div className="io-combat-sprite">{enemy.emoji}</div><div className="io-combat-name">{enemy.name.toUpperCase()}</div><div className="io-combat-hp is-enemy" role="progressbar" aria-label={enemy.name+' health'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(enemyPct)}><span style={{width:enemyPct+'%'}}/></div><small>{fmt(enemy.hp)} / {fmt(enemy.maxHp)} HP</small></div>
         </div>
         <div className="io-combat-stage-foot"><span><Zap size={14}/> {state.energy}/{state.maxEnergy} ENERGY</span><span>{fmt(stats.speed)} SPD</span><span>{fmt(stats.damage)} BASE DMG</span><span>{percent(stats.critChance)} CRIT</span></div>
       </div>
-      <div className={'io-combat-orb-panel '+(lastOrb?'has-orb':'')} aria-live="polite">
+      <div className={'io-combat-orb-panel '+(lastOrb?'has-orb':'')} aria-live="polite" aria-busy={processing||mutating}>
         <div className="io-combat-orb-art"><span>✦</span></div>
         <div className="io-combat-orb-copy"><span className="io-combat-eyebrow">{processing?(lastOrb?'LATEST RESOLVED ORB · NEXT BEAT IN PROGRESS':'ROLLING FIRST BEAT'):'LATEST BEAT ORB'} {lastOrb?'· '+lastOrb.tier.toUpperCase():'· AWAITING FIRST ROLL'}</span><h2>{lastOrb?lastOrb.name:'Every beat rolls an orb'}</h2><p>{lastOrb?'Rarity 1 / '+fmt(lastOrb.rarity)+' · Damage multiplier ×'+lastOrb.damageMultiplier.toFixed(2):'Orb rarity directly multiplies every attack resolved this beat.'}</p></div>
         <div className="io-combat-orb-damage"><span>ORB BASE DAMAGE</span><strong>{lastOrb?fmt(lastOrb.baseDamage):'—'}</strong><small>{lastOrb?'before critical hits and active abilities':'awaiting first beat'}</small></div>

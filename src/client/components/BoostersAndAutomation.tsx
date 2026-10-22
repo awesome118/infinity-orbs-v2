@@ -92,6 +92,17 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   const [globalActivationError, setGlobalActivationError] = useState('');
   const globalActivationLockRef = useRef(false);
 
+  const beginAction = (key: string) => {
+    if (actionInFlightRef.current) return false;
+    actionInFlightRef.current = true;
+    setPendingAction(key);
+    return true;
+  };
+  const endAction = () => {
+    actionInFlightRef.current = false;
+    setPendingAction(null);
+  };
+
   const handleGlobalActivation = async (id: GlobalBoosterId, useCredit: boolean) => {
     if (busy || activatingGlobalBooster || globalActivationLockRef.current) return;
     globalActivationLockRef.current = true;
@@ -104,6 +115,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
     } finally {
       globalActivationLockRef.current = false;
       setActivatingGlobalBooster(null);
+      endAction();
     }
   };
   const handlePremiumActivation = async (id: PremiumBoosterId) => {
@@ -123,14 +135,27 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  const onlinePlayers = Math.max(1, state.onlinePlayers ?? 1);
+  const onlinePlayersRaw = Number(state.onlinePlayers ?? 1);
+  const onlinePlayers = Number.isFinite(onlinePlayersRaw) ? Math.max(1, Math.floor(onlinePlayersRaw)) : 1;
   const onlineLuck = onlinePlayerLuckMultiplier(onlinePlayers);
-  const freeShards = Math.min(FREE_SHARD_DAILY_CAP, state.freeShardsEarnedToday ?? 0);
-  const completedCommunityTier = Math.max(
-    0,
-    Math.floor(Number(worldEvent?.completedTier ?? Math.max(0, (worldEvent?.tier ?? 1) - 1)) || 0),
-  );
-  const claimedCommunityTier = Math.max(0, Math.floor(Number(state.communityRewardClaimedTier ?? 0) || 0));
+  const freeShardsRaw = Number(state.freeShardsEarnedToday ?? 0);
+  const freeShards = Number.isFinite(freeShardsRaw) ? Math.max(0, Math.min(FREE_SHARD_DAILY_CAP, Math.floor(freeShardsRaw))) : 0;
+  const walletShardsRaw = Number(state.shards ?? 0);
+  const walletShards = Number.isSafeInteger(walletShardsRaw) && walletShardsRaw >= 0 ? walletShardsRaw : 0;
+  const freeCreditsRaw = Number(state.globalBoosterCredits ?? 0);
+  const freeCredits = Number.isSafeInteger(freeCreditsRaw) && freeCreditsRaw >= 0 ? freeCreditsRaw : 0;
+  const communityGoalRaw = Number(worldEvent?.goal ?? 100_000);
+  const communityGoal = Number.isFinite(communityGoalRaw) ? Math.max(1, communityGoalRaw) : 100_000;
+  const communityProgressRaw = Number(worldEvent?.currentProgress ?? 0);
+  const communityProgress = Number.isFinite(communityProgressRaw) ? Math.max(0, communityProgressRaw) : 0;
+  const communityProgressPct = Math.min(100, communityProgress / communityGoal * 100);
+  const communityTierRaw = Number(worldEvent?.tier ?? 1);
+  const communityTier = Number.isSafeInteger(communityTierRaw) && communityTierRaw >= 1 ? communityTierRaw : 1;
+  const completedCommunityTierRaw = Number(worldEvent?.completedTier ?? Math.max(0, communityTier - 1));
+  const completedCommunityTier = Number.isSafeInteger(completedCommunityTierRaw) && completedCommunityTierRaw >= 0 ? completedCommunityTierRaw : 0;
+  const claimedCommunityTierRaw = Number(state.communityRewardClaimedTier ?? 0);
+  const claimedCommunityTier = Number.isSafeInteger(claimedCommunityTierRaw) && claimedCommunityTierRaw >= 0 ? claimedCommunityTierRaw : 0;
+  const communityBuffAvailable = Boolean(worldEvent && Number.isFinite(worldEvent.endsAt) && worldEvent.endsAt > now);
   const nextCommunityRewardTier = claimedCommunityTier + 1;
   const communityRewardReady = completedCommunityTier >= nextCommunityRewardTier;
 
@@ -142,8 +167,9 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-black text-white">Boosters & Automation</h2>
-              <Sparkles className="w-4 h-4 text-purple-300 animate-pulse" />
+              <Sparkles className="w-4 h-4 text-purple-300" />
             </div>
+            <p className="mt-1 text-xs text-slate-400">Global Boosters affect everyone, Premium Boosters run on your own timers, and Automation unlocks are permanent purchases.</p>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs">
@@ -160,11 +186,11 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
 
         <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
           <div>
-            <span className="font-black text-cyan-300">Free Shards today: {freeShards}/{FREE_SHARD_DAILY_CAP}</span>
-            <span className="text-slate-500 ml-2">Gameplay earnings are capped server-side.</span>
+            <span className="font-black text-cyan-300">Roll-earned Shards today: {freeShards}/{FREE_SHARD_DAILY_CAP}</span>
+            <span className="text-slate-500 ml-2">The daily cap applies to roll drops; daily and quest rewards are separate.</span>
           </div>
           <div className="text-slate-400">
-            {formatNumber(state.shards)} Shards available
+            {formatNumber(walletShards)} Shards available
           </div>
         </div>
       </section>
@@ -177,13 +203,12 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
               <Users className="w-4 h-4 text-fuchsia-300" />
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Each booster runs independently. Every activation adds 2 hours to its timer.
-              Higher tiers also make its timer drain faster: every tier adds 10% to the timer drain rate.
-              Tier 1 = ×1.10 drain, Tier 10 = ×2.00 drain.
+              Each booster has its own timer. Activating it adds 2 hours; higher tiers drain faster.
+              Tier 1 drains at ×1.10 normal speed and Tier 10 at ×2.00.
             </p>
           </div>
           <div className="text-[11px] font-bold text-fuchsia-200">
-            Free Global Boosts: {state.globalBoosterCredits ?? 0}
+            Free Global Boosts: {freeCredits}
           </div>
         </div>
 
@@ -192,11 +217,13 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
             const displayed = decayGlobalBoosterState(globalBoosters[id], now);
             const remaining = globalBoosterRemainingMs(displayed, now);
             const active = remaining > 0 && displayed.tier > 0;
-            const activationProgress = Math.max(0, Math.min(4, displayed.activationProgress ?? 0));
-            const timeProgress = globalBoosterTimeProgress(displayed, now);
+            const rawActivationProgress = Number(displayed.activationProgress ?? 0);
+            const activationProgress = Number.isFinite(rawActivationProgress) ? Math.max(0, Math.min(4, rawActivationProgress)) : 0;
+            const rawTimeProgress = globalBoosterTimeProgress(displayed, now);
+            const timeProgress = Number.isFinite(rawTimeProgress) ? Math.max(0, Math.min(100, rawTimeProgress)) : 0;
             const timerDrainRate = displayed.tier > 0 ? 1 + displayed.tier * 0.10 : 1;
             const globalCost = Number(GLOBAL_BOOSTERS[id].costShards ?? 0);
-            const canAffordGlobal = Number(state.shards ?? 0) >= globalCost;
+            const canAffordGlobal = walletShards >= globalCost;
             const effect = id === 'luck'
               ? '×' + globalBoosterLuckMultiplier(displayed, now).toFixed(2) + ' Luck'
               : id === 'speed'
@@ -214,7 +241,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                 </div>
                 <div className="mt-2">
                   <div className="relative h-2.5 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
-                    <div className="absolute inset-0 flex" aria-label={`Global ${GLOBAL_BOOSTERS[id].name} time`}>
+                    <div role="progressbar" aria-label={`Global ${GLOBAL_BOOSTERS[id].name} timer`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(timeProgress)} className="absolute inset-0 flex">
                       {Array.from({ length: 4 }, (_, segmentIndex) => {
                         const history = displayed.segmentTiers ?? [];
                         const segmentTier = history.length > 0
@@ -265,7 +292,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                   {displayed.tier > 0 && (
                     <div className="mt-1 text-[10px] text-slate-400">
                       Timer drain: <span className="font-black text-amber-300">×{timerDrainRate.toFixed(2)}</span> normal
-                      {' • '}{id === 'speed' && displayed.tier >= 10 ? 'Tier 10 MAX' : '10% faster per tier'}
+                      {' • '}{id === 'speed' && displayed.tier >= 10 ? 'Speed capped at Tier 10' : 'Each tier drains timers 10% faster'}
                     </div>
                   )}
                 </div>
@@ -287,7 +314,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                     className="px-2.5 py-2 rounded-xl text-[10px] font-black bg-fuchsia-600/20 border border-fuchsia-500/25 text-fuchsia-200 hover:bg-fuchsia-600/30 disabled:text-slate-600 disabled:cursor-not-allowed"
                     title="Use one free Global Booster activation. The server is authoritative if the displayed credit count is stale."
                   >
-                    {activatingGlobalBooster === id ? 'Activating…' : 'Free • ' + (state.globalBoosterCredits ?? 0)}
+                    {activatingGlobalBooster === id ? 'Activating…' : 'Free • ' + freeCredits}
                   </button>
                 </div>
               </div>
@@ -307,7 +334,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
             const info = PREMIUM_BOOSTERS[id];
             const remaining = premiumBoosterRemainingMs(state, id, now);
             const active = remaining > 0;
-            const canAfford = state.shards >= info.costShards;
+            const canAfford = walletShards >= info.costShards;
 
             return (
               <div key={id} className="rounded-2xl border border-slate-800 bg-slate-900/85 p-4 shadow-md">
@@ -328,7 +355,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
 
                 <div className="mt-3 flex items-center justify-between gap-2">
                   <span className={active ? 'text-emerald-300 text-xs font-black' : 'text-slate-500 text-xs font-bold'}>
-                    {active ? 'ACTIVE • ' + formatDuration(remaining) + ' left' : 'Ready to activate'}
+                    {activatingPremiumBooster === id ? 'ACTIVATING…' : active ? 'ACTIVE • ' + formatDuration(remaining) + ' left' : 'Ready to activate'}
                   </span>
                   <button
                     type="button"
@@ -366,31 +393,18 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
             <div className="mt-3">
               <div className="flex items-center justify-between gap-2 text-[10px]">
                 <span className="font-black text-emerald-300">
-                  {formatNumber(worldEvent?.currentProgress ?? 0)} / {formatNumber(worldEvent?.goal ?? 100_000)} rolls
+{formatNumber(communityProgress)} / {formatNumber(communityGoal)} rolls
                 </span>
                 <span className="font-bold text-slate-500">
-                  {communityRewardReady ? `Tier ${nextCommunityRewardTier} ready` : `Tier ${worldEvent?.tier ?? 1} in progress`}
+                  {communityRewardReady ? `Tier ${nextCommunityRewardTier} ready` : `Tier ${communityTier} in progress`}
                 </span>
               </div>
-              <div className="mt-1.5 h-2 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
-                <div
-                  className="h-full bg-emerald-500 transition-all duration-500"
-                  style={{
-                    width: Math.min(
-                      100,
-                      ((worldEvent?.currentProgress ?? 0) / Math.max(1, worldEvent?.goal ?? 100_000)) * 100,
-                    ) + '%',
-                  }}
-                />
+              <div role="progressbar" aria-label="Weekly community reward progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={communityProgressPct} className="mt-1.5 h-2 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
+                <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: communityProgressPct + '%' }} />
               </div>
               <div className="mt-2 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-slate-300">
-                <span className="font-black text-amber-300">{worldEvent?.buffDescription ?? '+15% Global Luck Active'}</span>
-                <span className="text-slate-500"> · expires in </span>
-                <span className="font-black text-amber-200">
-                  {worldEvent && worldEvent.endsAt > now
-                    ? formatDuration(worldEvent.endsAt - now)
-                    : '0m 0s'}
-                </span>
+                <span className="font-black text-amber-300">{communityBuffAvailable ? (worldEvent?.buffDescription ?? 'Global boost active') : worldEvent ? 'Weekly global boost expired' : 'Global boost status unavailable'}</span>
+                {communityBuffAvailable && <><span className="text-slate-500"> · expires in </span><span className="font-black text-amber-200">{formatDuration(worldEvent!.endsAt - now)}</span></>}
               </div>
             </div>
           </div>
@@ -419,7 +433,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                   : 'px-4 py-2.5 rounded-xl text-xs font-black bg-slate-800 text-slate-500 cursor-not-allowed'
               }
             >
-              {communityRewardReady ? `Claim Tier ${nextCommunityRewardTier}` : 'No Reward'}
+              {claimingCommunityReward ? 'Claiming…' : communityRewardReady ? `Claim Tier ${nextCommunityRewardTier}` : 'No Reward'}
             </button>
           </div>
         </div>
@@ -429,13 +443,14 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
         <div className="flex items-center gap-2 px-1">
           <Bot className="w-4 h-4 text-cyan-300" />
           <h3 className="text-sm font-black text-white uppercase tracking-wide">Permanent Automation</h3>
+          <p className="text-xs text-slate-500">One-time Shard purchases. Once unlocked, these run automatically without an expiry timer.</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {(Object.keys(AUTOMATIONS) as AutomationId[]).map(id => {
             const info = AUTOMATIONS[id];
             const owned = Boolean(state.automations?.[id]);
-            const canAfford = state.shards >= info.costShards;
+            const canAfford = walletShards >= info.costShards;
 
             return (
               <div key={id} className={
@@ -477,8 +492,10 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                             : 'Keeps affordable standard upgrades flowing.'}
                   </span>
                   <button
-                    onClick={() => void onBuyAutomation(id)}
-                    disabled={busy || owned || !canAfford}
+                    type="button"
+                    onClick={() => void handleAutomationPurchase(id)}
+                    aria-busy={buyingAutomation === id}
+                    disabled={busy || pendingAction !== null || owned || !canAfford}
                     className={
                       owned
                         ? 'px-3 py-2 rounded-xl text-xs font-black bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 cursor-default'
@@ -487,7 +504,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                           : 'px-3 py-2 rounded-xl text-xs font-black bg-slate-800 text-slate-500 cursor-not-allowed'
                     }
                   >
-                    {owned ? 'Active' : 'Unlock'}
+                    {buyingAutomation === id ? 'Unlocking…' : owned ? 'Unlocked' : 'Unlock'}
                   </button>
                 </div>
               </div>

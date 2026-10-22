@@ -29,7 +29,17 @@ async function loadChat(): Promise<GlobalChatMessage[]> {
     headers: { 'Cache-Control': 'no-cache' },
   });
   if (!response.ok) throw new Error('Could not load chat.');
-  return await response.json() as GlobalChatMessage[];
+  const payload: unknown = await response.json().catch(() => null);
+  if (!Array.isArray(payload)) throw new Error('Chat history response was invalid.');
+  return payload.filter((value): value is GlobalChatMessage => Boolean(
+    value && typeof value === 'object' &&
+    typeof (value as GlobalChatMessage).id === 'string' &&
+    typeof (value as GlobalChatMessage).username === 'string' &&
+    typeof (value as GlobalChatMessage).text === 'string'
+  )).map(message => ({
+    ...message,
+    timestamp: Number.isFinite(message.timestamp) && message.timestamp >= 0 ? message.timestamp : 0,
+  }));
 }
 
 const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
@@ -47,7 +57,9 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const sendingInFlightRef = useRef(false);
   const [reportingId, setReportingId] = useState<string | null>(null);
+  const reportingInFlightRef = useRef<string | null>(null);
   const [reportedIds, setReportedIds] = useState<Set<string>>(() => new Set());
   const [actionError, setActionError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -90,7 +102,11 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
     for (const message of current) merged.set(message.id, message);
     for (const message of incoming) merged.set(message.id, message);
     return Array.from(merged.values())
-      .sort((a, b) => a.timestamp - b.timestamp)
+      .sort((a, b) => {
+        const left = Number.isFinite(a.timestamp) && a.timestamp >= 0 ? a.timestamp : 0;
+        const right = Number.isFinite(b.timestamp) && b.timestamp >= 0 ? b.timestamp : 0;
+        return left - right;
+      })
       .slice(-100);
   };
 
@@ -189,7 +205,8 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   }, [messages, open]);
 
   const reportMessage = async (message: GlobalChatMessage) => {
-    if (reportingId) return;
+    if (reportingInFlightRef.current || reportedIds.has(message.id)) return;
+    reportingInFlightRef.current = message.id;
     setReportingId(message.id);
     setActionError(null);
     try {
@@ -203,12 +220,13 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
       setReportedIds(prev => {
         const next = new Set(prev);
         next.add(message.id);
-        return next;
+        return new Set(Array.from(next).slice(-200));
       });
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Could not report message.');
       console.error('Global chat report error:', error);
     } finally {
+      reportingInFlightRef.current = null;
       setReportingId(null);
     }
   };
@@ -216,8 +234,9 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const text = input.trim();
-    if (!text || sending || chatAvailable !== true) return;
+    if (!text || sending || sendingInFlightRef.current || chatAvailable !== true) return;
 
+    sendingInFlightRef.current = true;
     setSending(true);
     setActionError(null);
     try {
@@ -243,12 +262,18 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
       setActionError(error instanceof Error ? error.message : 'Could not send message.');
       console.error('Global chat error:', error);
     } finally {
+      sendingInFlightRef.current = false;
       setSending(false);
     }
   };
 
   // Keep Global Chat discoverable in every context. If the canonical main
   // launcher is not available, the open panel explains why posting is disabled.
+  useEffect(() => () => {
+    // Ignore any poll that resolves after this launcher panel unmounts.
+    refreshRequestRef.current += 1;
+  }, []);
+
   if (!open) {
     return (
       <button
@@ -293,6 +318,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-800 hover:text-white"
           aria-label="Minimize Global Chat"
           title="Minimize chat"
+          aria-label="Minimize Global Chat"
         >
           <Minimize2 className="w-3.5 h-3.5" />
         </button>
@@ -312,6 +338,9 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
       )}
 
       <div
+        role="log"
+        aria-label="Global Chat messages"
+        aria-relevant="additions text"
         ref={chatListRef}
         role="log"
         aria-label="Global Chat message history"
@@ -376,11 +405,12 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
         <div ref={endRef} />
       </div>
 
-      <form onSubmit={sendMessage} className="border-t border-slate-800 bg-slate-900/95 p-3">
+      <form aria-label="Post a public chat comment" onSubmit={sendMessage} className="border-t border-slate-800 bg-slate-900/95 p-3">
         <div className="flex items-center gap-2">
           <input
+            aria-label="Public chat comment"
             value={input}
-            onChange={e => setInput(e.target.value)}
+            onChange={e => setInput(e.target.value.slice(0, 200))}
             aria-label="Write a public Global Chat message"
             maxLength={200}
             placeholder={chatAvailable === true ? 'Write a public Reddit comment...' : 'Open the main Game launcher to chat'}
@@ -389,6 +419,8 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           />
           <button
             type="submit"
+            aria-label={sending ? 'Sending public comment' : 'Send public comment'}
+            aria-busy={sending}
             disabled={chatAvailable !== true || sending || !input.trim()}
             className="rounded-xl bg-indigo-600 px-3 py-2.5 text-white transition-all hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600"
             title="Post public comment"
@@ -396,7 +428,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
             {sending ? <X className="w-4 h-4 animate-pulse" /> : <Send className="w-4 h-4" />}
           </button>
         </div>
-        <div className="mt-1 text-right text-[9px] text-slate-600">{input.length}/200</div>
+        <div role="status" aria-live="polite" className="mt-1 text-right text-[9px] text-slate-600">{input.length} / 200 characters</div>
       </form>
     </section>
   );

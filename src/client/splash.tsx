@@ -1,7 +1,7 @@
 import { requestExpandedMode, context } from '@devvit/web/client';
 import { createRoot } from 'react-dom/client';
-import { useEffect, useRef } from 'react';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import { ArrowRight, BookOpen, Orbit, Share2, Trophy } from 'lucide-react';
 import { getOrbInfo, formatNumber, formatRarity, MAX_ORB_RARITY } from '../shared/game.js';
 import { recordPostImpression, type ImpressionPostType } from './impressions.js';
@@ -20,6 +20,43 @@ function BrandMark() {
     <div className="io-public-brand-mark" aria-hidden="true">
       <span>∞</span>
     </div>
+  );
+}
+
+function PlayGameButton({
+  label = 'Play Infinity Orbs',
+  className = 'io-public-button io-public-button-primary',
+  leadingIcon,
+}: {
+  label?: string;
+  className?: string;
+  leadingIcon?: ReactNode;
+}) {
+  const [opening, setOpening] = useState(false);
+  const [error, setError] = useState('');
+  const openGame = (event: MouseEvent<HTMLButtonElement>) => {
+    if (opening) return;
+    setOpening(true);
+    setError('');
+    const failed = () => {
+      setError("Reddit couldn't open the game from this preview. Try reloading the post and opening it again.");
+      setOpening(false);
+    };
+    try {
+      // This API must be invoked synchronously inside the trusted click turn.
+      const request = requestExpandedMode(event.nativeEvent, 'game');
+      void Promise.resolve(request).catch(failed);
+    } catch {
+      failed();
+    }
+  };
+  return (
+    <>
+      <button type="button" className={className} onClick={openGame} disabled={opening} aria-busy={opening}>
+        {opening ? 'Opening Infinity Orbs…' : <>{leadingIcon}{label}<ArrowRight className="w-4 h-4" /></>}
+      </button>
+      {error && <p className="io-public-inline-error" role="alert" aria-live="assertive">{error}</p>}
+    </>
   );
 }
 
@@ -47,9 +84,14 @@ function SharedOrbPost({ data }: { data: SharedOrbPostData }) {
     ? Number(data.rarity)
     : 0;
   const info = rarity > 0 ? getOrbInfo(rarity) : null;
-  const username = String(data.username ?? '').trim().replace(/^u\//i, '') || 'a player';
-  const totalRolls = Math.max(0, Math.floor(Number(data.totalRolls ?? 0)));
-  const collectionValue = Math.max(0, Math.floor(Number(data.collectionValue ?? 0)));
+  const rawUsername = String(data.username ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().replace(/^u\//i, '');
+  const username = rawUsername.slice(0, 25) || 'a player';
+  const safeMetadataCount = (value: unknown) => {
+    const count = typeof value === 'number' ? value : Number(value ?? 0);
+    return Number.isSafeInteger(count) && count >= 0 ? count : 0;
+  };
+  const totalRolls = safeMetadataCount(data.totalRolls);
+  const collectionValue = safeMetadataCount(data.collectionValue);
 
   if (!info) return null;
 
@@ -117,14 +159,10 @@ function SharedOrbPost({ data }: { data: SharedOrbPostData }) {
         </div>
 
         <div className="io-public-actions">
-          <button
+          <PlayGameButton
             className="io-public-button io-public-button-primary"
-            onClick={(e) => requestExpandedMode(e.nativeEvent, 'game')}
-          >
-            <Orbit className="w-4 h-4" />
-            Play Infinity Orbs
-            <ArrowRight className="w-4 h-4" />
-          </button>
+            leadingIcon={<Orbit className="w-4 h-4" />}
+          />
         </div>
       </section>
     </PublicShell>
@@ -142,13 +180,25 @@ function Splash() {
     void recordPostImpression(impressionPostType);
   }, [impressionPostType]);
 
-  if (
-    postData.type === 'shared-orb' &&
-    Number.isInteger(postData.rarity) &&
-    Number(postData.rarity) > 0 &&
-    Number(postData.rarity) <= MAX_ORB_RARITY
-  ) {
-    return <SharedOrbPost data={postData} />;
+  if (postData.type === 'shared-orb') {
+    if (
+      Number.isSafeInteger(postData.rarity) &&
+      Number(postData.rarity) > 0 &&
+      Number(postData.rarity) <= MAX_ORB_RARITY
+    ) {
+      return <SharedOrbPost data={postData} />;
+    }
+    // Bad metadata should not masquerade as a normal main-game post.
+    return (
+      <PublicShell compact>
+        <section className="io-public-card io-share-card">
+          <div className="io-public-eyebrow">Community discovery</div>
+          <h1>Orb preview unavailable</h1>
+          <p>This shared Orb has missing or outdated post data. You can still open Infinity Orbs and keep rolling.</p>
+          <PlayGameButton />
+        </section>
+      </PublicShell>
+    );
   }
 
   return (
@@ -193,13 +243,7 @@ function Splash() {
           </div>
         </div>
 
-        <button
-          className="io-public-button io-public-button-primary io-launch-button"
-          onClick={(e) => requestExpandedMode(e.nativeEvent, 'game')}
-        >
-          Play Infinity Orbs
-          <ArrowRight className="w-4 h-4" />
-        </button>
+        <PlayGameButton className="io-public-button io-public-button-primary io-launch-button" />
 
         <div className="io-launch-footer">
           <span>Persistent Reddit save</span>
