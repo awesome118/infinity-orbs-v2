@@ -161,8 +161,8 @@ for (const [file, code] of [
   ["src/client/splash.tsx", splashInline],
   ["src/client/frenzy.tsx", frenzyInline],
 ]) {
-  if (/onWheel\s*=|onTouchMove\s*=|onPointerMove\s*=/.test(code)) {
-    reportFailure(`${file} must not capture scroll/pointer gestures in inline mode.`);
+  if (/onWheel\s*=|onTouchMove\s*=|onPointerMove\s*=|addEventListener\s*\(\s*['"](?:wheel|touchmove|pointermove)['"]|\.preventDefault\s*\(/.test(code)) {
+    reportFailure(`${file} must not intercept native inline scroll or gesture events.`);
   }
   if (/overflow-(?:y-)?(?:auto|scroll)|overflow\s*:\s*(?:auto|scroll)/.test(code)) {
     reportFailure(`${file} must not introduce a nested scroll panel into an inline post.`);
@@ -191,8 +191,8 @@ for (const match of stylesheet.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
   const selector = match[1];
   const declarations = match[2];
   if (/\.io-public(?:[-\w]*)\b|\.io-share-card\b|\.io-frenzy-card\b/.test(selector) &&
-      /overflow(?:-[xy])?\s*:\s*(?:auto|scroll)/.test(declarations)) {
-    reportFailure(`Inline public-card selector ${selector.trim()} must not declare overflow:auto/scroll.`);
+      /touch-action\s*:\s*none|overscroll-behavior\s*:\s*none|overflow(?:-[xy])?\s*:\s*(?:auto|scroll)/.test(declarations)) {
+    reportFailure(`Inline public-card selector ${selector.trim()} must not block gestures or declare overflow:auto/scroll.`);
   }
 }
 
