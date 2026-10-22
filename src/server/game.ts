@@ -3351,6 +3351,7 @@ export async function applyRolls(
 ): Promise<{ bestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number; rollCount: number }> {
   let bestRarity = 0;
   let bestIsCrit = false;
+  let bestIsNew = false;
   let totalVal = 0;
   let coinsGained = 0;
   let shardsGained = 0;
@@ -3553,7 +3554,6 @@ export async function applyRolls(
     s.collectionValue = addCollectionValue(s.collectionValue, finalVal);
     s.lifetimeCollectionValue = addCollectionValue(s.lifetimeCollectionValue, finalVal);
 
-    const isNew = !s.collection[String(rarity)];
     if (isNew) uniqueGained++;
     s.collection[String(rarity)] = (s.collection[String(rarity)] ?? 0) + 1;
 
@@ -3623,11 +3623,14 @@ export async function applyRolls(
       addRuneBonusRolls(1, { minRarity: floor, skipAllProcs: true });
     }
 
+    const isNew = !s.collection[String(rarity)];
     if (rarity > bestRarity) {
       bestRarity = rarity;
       bestIsCrit = isCrit;
-    } else if (rarity === bestRarity && isCrit) {
-      bestIsCrit = true;
+      bestIsNew = isNew;
+    } else if (rarity === bestRarity) {
+      if (isCrit) bestIsCrit = true;
+      bestIsNew = bestIsNew || isNew;
     }
 
     const xpBonusMul =
@@ -3823,7 +3826,7 @@ export async function applyRolls(
     rolledAt: now,
     tier: bestInfo.tier,
     name: bestInfo.name,
-    isNew: s.collection[String(bestRarity)] === 1,
+    isNew: bestIsNew,
     isCrit: bestIsCrit,
   };
 
