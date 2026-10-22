@@ -10,8 +10,7 @@
         "height": "tall"
       },
       "game": {
-        "entry": "game.html",
-        "inline": false
+        "entry": "game.html"
       },
       "frenzy": {
         "entry": "frenzy.html",
