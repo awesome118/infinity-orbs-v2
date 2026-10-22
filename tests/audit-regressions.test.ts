@@ -2714,6 +2714,17 @@ test('best-orb reveal badges reflect critical and discovery flags from the selec
   assert.ok(!shared.includes('isCrit: bestRarity > (sourceState.highestRarity ?? 0),'));
 });
 
+test('Chain Patcher takes priority over Free Roll cooldown bypass in the roll UI', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  const canRollStart = roll.indexOf('const canRoll =');
+  const canRollEnd = roll.indexOf('const frenzyReady =', canRollStart);
+  assert.ok(canRollStart >= 0 && canRollEnd > canRollStart);
+  assert.match(roll.slice(canRollStart, canRollEnd), /!frenzyArmed && !chainPatcherCharged/);
+  assert.ok(roll.includes(": chainPatcherCharged\n        ? 'ROLL CHAIN PATCHER'"));
+  assert.ok(roll.includes('Chain Patcher is charged; wait'));
+  assert.ok(roll.includes('preserves ${freeRolls} stored Free Rolls.'));
+});
+
 test('armed Frenzy readiness and Pity Luck meter use the actual gameplay thresholds', () => {
   const roll = source('src/client/components/RollSection.tsx');
   assert.ok(roll.includes('const frenzyReady = frenzyArmed && canRoll;'));

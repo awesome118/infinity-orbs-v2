@@ -223,7 +223,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const remain = Math.max(0, readyAt - now);
   const freeRolls = Math.max(0, state.freeRolls ?? 0);
   // Free rolls bypass the normal cooldown, but never skip the deliberate Frenzy release wait.
-  const canRoll = (remain <= 0 || (freeRolls > 0 && !frenzyArmed)) && !busy;
+  const rawChainPatcherTarget = Number(state.chainPatcherNextRarity ?? 0);
+  const chainPatcherCharged = Number.isSafeInteger(rawChainPatcherTarget) && rawChainPatcherTarget >= 2;
+  const canRoll = (remain <= 0 || (freeRolls > 0 && !frenzyArmed && !chainPatcherCharged)) && !busy;
   const frenzyReady = frenzyArmed && canRoll;
   const cooldownProgress = busy || canRoll;
   const frenzyCooldownRemain = frenzyCooldownRemaining(state.lastFrenzyAt, now);
@@ -349,16 +351,30 @@ export const RollSection: React.FC<RollSectionProps> = ({
     }
   };
 
-  const primaryActionLabel = busy ? 'ROLL IN PROGRESS' : frenzyReady ? 'RELEASE FRENZY' : freeRolls > 0 ? `ROLL ALL ${freeRolls} FREE ROLLS` : remain > 0 ? `WAIT ${(remain / 1000).toFixed(1)}s` : `ROLL ${multi > 1 ? '×' + multi : ''}`;
+  const primaryActionLabel = busy
+    ? 'ROLL IN PROGRESS'
+    : frenzyArmed
+      ? frenzyReady ? 'RELEASE FRENZY' : `WAIT ${(remain / 1000).toFixed(1)}s`
+      : chainPatcherCharged
+        ? 'ROLL CHAIN PATCHER'
+        : freeRolls > 0
+          ? `ROLL ALL ${freeRolls} FREE ROLLS`
+          : remain > 0
+            ? `WAIT ${(remain / 1000).toFixed(1)}s`
+            : `ROLL ${multi > 1 ? '×' + multi : ''}`;
   const actionHint = busy
     ? 'Resolving your roll. The result appears after the server confirms it.'
     : frenzyArmed
       ? frenzyReady ? 'Frenzy is armed and ready to release.' : 'Frenzy is armed; wait for the cooldown before releasing it.'
-      : freeRolls > 0
-        ? `One press uses all ${freeRolls} Free Rolls.`
-        : canRoll
-          ? 'Your next roll is ready.'
-          : `Next roll available in ${(remain / 1000).toFixed(1)} seconds.`;
+      : chainPatcherCharged
+        ? canRoll
+          ? `Chain Patcher is charged for 1/${formatRarity(rawChainPatcherTarget)}. One manual roll consumes it and preserves ${freeRolls} stored Free Rolls.`
+          : `Chain Patcher is charged; wait ${(remain / 1000).toFixed(1)}s. Stored Free Rolls will remain untouched.`
+        : freeRolls > 0
+          ? `One press uses all ${freeRolls} Free Rolls.`
+          : canRoll
+            ? 'Your next roll is ready.'
+            : `Next roll available in ${(remain / 1000).toFixed(1)} seconds.`;
   const hasMultipleOrbs = lastBatch.length > 1;
   const orbitRadius = typeof window !== 'undefined' && window.innerWidth < 400 ? 118 : 152;
 
