@@ -281,7 +281,7 @@ function FrenzyPost() {
                 ? 'You have already claimed this Frenzy.'
                 : info.expired
                   ? 'This Frenzy has expired.'
-                  : 'Click below to claim it. Other players can claim this same Frenzy too; each person can claim once every 23 hours. If you claim it, please consider upvoting this post to thank its owner.'}
+                  : 'Others can claim too—once every 23 hours per player. Upvote to thank the owner.'}
             </p>
           </div>
 
@@ -338,8 +338,7 @@ function FrenzyPost() {
           {error && <p className="io-public-inline-error" role="alert">{error}</p>}
 
           <div className="io-public-note">
-            <div><Users className="w-3.5 h-3.5" /> Claim cooldown: 23 hours per player.</div>
-            <div><Flame className="w-3.5 h-3.5" /> Your Multi Roll multiplies the Frenzy size when you claim it.</div>
+            <div><Users className="w-3.5 h-3.5" /> One claim every 23 hours per player. Multi Roll scales your reward.</div>
           </div>
         </section>
       </div>
