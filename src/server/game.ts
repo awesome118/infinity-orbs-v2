@@ -4536,7 +4536,7 @@ export async function getCollectionPage(options: {
   offset: number;
   limit: number;
 }> {
-  const s = await loadRaw();
+  const s = await loadRaw({ registerActivity: false });
   const offset = Math.max(0, Math.floor(Number(options.offset ?? 0)));
   const limit = Math.min(100, Math.max(1, Math.floor(Number(options.limit ?? 60))));
   const sort = options.sort ?? 'rarity_desc';

@@ -2547,6 +2547,20 @@ test('core idempotency reservations never fall back to Math.random tokens', () =
 });
 
 
+test('read-only Collection and admin mechanics endpoints do not register active presence', () => {
+  const game = source('src/server/game.ts');
+  const collectionStart = game.indexOf('export async function getCollectionPage(');
+  const collectionEnd = game.indexOf('export async function getState(', collectionStart);
+  assert.ok(collectionStart >= 0 && collectionEnd > collectionStart);
+  assert.match(game.slice(collectionStart, collectionEnd), /loadRaw\(\{ registerActivity: false \}\)/);
+
+  const debug = source('src/server/debug.ts');
+  const mechanicsStart = debug.indexOf("debugRouter.get('/mechanics'");
+  const mechanicsEnd = debug.indexOf("debugRouter.post('/currency'", mechanicsStart);
+  assert.ok(mechanicsStart >= 0 && mechanicsEnd > mechanicsStart);
+  assert.match(debug.slice(mechanicsStart, mechanicsEnd), /loadRaw\(\{ registerActivity: false \}\)/);
+});
+
 test('passive player snapshots and the Play splash do not register active sessions', () => {
   const game = source('src/server/game.ts');
   const stateStart = game.indexOf('export async function getState(');
