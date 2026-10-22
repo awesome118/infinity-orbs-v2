@@ -2262,6 +2262,9 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 
 /* Scroll-trap review: inline splash/Frenzy cards must remain a bounded, tap-only
    preview. Expanded game components may scroll; these public post cards may not. */
+.io-public-orb,
+.io-frenzy-card,
+.io-frenzy-rarity-number { overflow: clip; }
 .io-public-note-link {
   display: inline-block;
   margin-top: 8px;
