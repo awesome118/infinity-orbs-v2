@@ -239,7 +239,7 @@ function FrenzyPost() {
               className="io-public-button io-public-button-primary io-frenzy-success-button"
               onClick={(event) => {
                 try {
-                  void requestExpandedMode(event.nativeEvent, 'game').catch(error => setError(error instanceof Error ? error.message : 'Could not open the full game.'));
+                  void Promise.resolve(requestExpandedMode(event.nativeEvent, 'game')).catch(error => setError(error instanceof Error ? error.message : 'Could not open the full game.'));
                 } catch (error) {
                   setError(error instanceof Error ? error.message : 'Could not open the full game.');
                 }
