@@ -86,3 +86,24 @@ test('shared CSS supports keyboard focus, mobile Rune filters, and reduced motio
   assert.match(css, /:focus-visible/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
 });
+
+test('game API client does not retry non-retryable HTTP errors as if they were network failures', () => {
+  const main = source('src/client/main.tsx');
+  assert.match(main, /let receivedNonRetryableHttpError = false/);
+  assert.match(main, /!receivedNonRetryableHttpError/);
+  assert.match(main, /const retryableRead =/);
+});
+
+test('upgrade feedback timers are cleaned up and reduced-motion users skip confetti', () => {
+  const upgrades = source('src/client/components/UpgradesSection.tsx');
+  assert.match(upgrades, /recentUpgradeTimerRef/);
+  assert.match(upgrades, /window\.clearTimeout\(recentUpgradeTimerRef\.current\)/);
+  assert.match(upgrades, /prefers-reduced-motion: reduce/);
+  assert.match(upgrades, /allowMotionEffects\(\)/);
+});
+
+test('run resets clear stale Last Attack state before a new descent', () => {
+  const combat = source('src/server/combat.ts');
+  assert.match(combat, /state\.skillRuntime\.lastAttackDamage = 0/);
+  assert.match(combat, /s\.skillRuntime\.lastAttackDamage=0/);
+});
