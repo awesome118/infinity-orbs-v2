@@ -461,7 +461,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           aria-disabled={busy}
           onClick={handleRollClick}
           onKeyDown={event => {
-            if (event.key === 'Enter' || event.key === ' ') {
+            if (!event.repeat && (event.key === 'Enter' || event.key === ' ')) {
               event.preventDefault();
               handleRollClick();
             }

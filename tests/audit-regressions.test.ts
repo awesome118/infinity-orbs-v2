@@ -2714,10 +2714,15 @@ test('best-orb reveal badges reflect critical and discovery flags from the selec
   assert.ok(!shared.includes('isCrit: bestRarity > (sourceState.highestRarity ?? 0),'));
 });
 
+test('Quest claim controls expose local pending state to assistive technology', () => {
+  const quests = source('src/client/components/QuestsAndStreaks.tsx');
+  assert.ok((quests.match(/aria-busy=\{busy \|\| claimPending\}/g) ?? []).length >= 3);
+});
+
 test('central Orb roll affordance is keyboard operable and announces busy state', () => {
   const roll = source('src/client/components/RollSection.tsx');
   assert.match(roll, /role="button"[\s\S]{0,120}tabIndex=\{0\}[\s\S]{0,180}aria-label=\{primaryActionLabel\.toLowerCase\(\)\}/);
-  assert.match(roll, /onKeyDown=\{event => \{[\s\S]{0,180}event\.key === 'Enter' \|\| event\.key === ' '/);
+  assert.match(roll, /onKeyDown=\{event => \{[\s\S]{0,180}!event\.repeat && \(event\.key === 'Enter' \|\| event\.key === ' '/);
   assert.match(roll, /aria-busy=\{busy\}[\s\S]{0,40}aria-disabled=\{busy\}/);
   assert.ok(roll.includes('focus-visible:outline-cyan-300'));
 });

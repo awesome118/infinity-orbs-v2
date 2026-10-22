@@ -81,7 +81,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
           </div>
           <button
             type="button"
-            aria-busy={busy}
+            aria-busy={busy || claimPending}
             onClick={() => {
               sound.playClick();
               void runClaim(onClaimDailyStreak);
@@ -218,7 +218,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                   ) : (
                     <button
                       type="button"
-                      aria-busy={busy}
+                      aria-busy={busy || claimPending}
                       onClick={() => {
                         sound.playClick();
                         void runClaim(() => onClaimQuest('daily', q.id));
@@ -308,7 +308,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                   ) : (
                     <button
                       type="button"
-                      aria-busy={busy}
+                      aria-busy={busy || claimPending}
                       onClick={() => {
                         sound.playClick();
                         void runClaim(() => onClaimQuest('weekly', q.id));
