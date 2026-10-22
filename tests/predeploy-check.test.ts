@@ -14,9 +14,9 @@ function validDevvitConfig(name = 'infinity-orbs') {
     post: {
       dir: 'dist/client',
       entrypoints: {
-        default: { inline: true, entry: 'splash.html', height: 'tall' },
+        default: { entry: 'splash.html', height: 'tall' },
         game: { entry: 'game.html' },
-        frenzy: { entry: 'frenzy.html', height: 'tall', inline: true },
+        frenzy: { entry: 'frenzy.html', height: 'tall' },
       },
     },
     server: { dir: 'dist/server', entry: 'index.cjs' },
@@ -177,11 +177,6 @@ const invalidManifestCases: Array<{
     label: 'default inline splash uses the bounded tall layout',
     mutate: manifest => { manifest.post.entrypoints.default.height = 'regular'; },
     expected: /post\.entrypoints\.default\.height must be/,
-  },
-  {
-    label: 'Frenzy post is explicitly inline',
-    mutate: manifest => { manifest.post.entrypoints.frenzy.inline = false; },
-    expected: /post\.entrypoints\.frenzy\.inline must be true/,
   },
   {
     label: 'Frenzy entrypoint and tall layout',
