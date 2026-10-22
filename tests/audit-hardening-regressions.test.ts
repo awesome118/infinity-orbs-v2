@@ -179,7 +179,7 @@ test('inline post entrypoints are bounded tap-only previews with a click-driven 
   assert.match(frenzy, /io-frenzy-success-card/);
   assert.match(frenzy, /Continue in Infinity Orbs/);
   assert.match(guard, /Inline public-card selector/);
-  assert.match(css, /#root\.io-inline-post \.io-frenzy-card \{[^}]*overflow: clip/);
+  assert.match(css, /#root\.io-inline-post \.io-frenzy-card \{\s*box-sizing: border-box;\s*padding: 14px 22px;\s*overflow: clip;/);
 });
 
 test('the deploy guard rejects inline scroll traps while keeping expanded-game scrolling available', () => {
