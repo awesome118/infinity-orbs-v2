@@ -186,7 +186,7 @@ test('the deploy guard rejects inline scroll traps while keeping expanded-game s
   const guard = source('scripts/predeploy-check.mjs');
   assert.match(guard, /must not mount GlobalChatWindow/);
   assert.match(guard, /must not introduce a nested scroll panel into an inline post/);
-  assert.match(guard, /must explicitly allow vertical feed scrolling/);
+  assert.match(guard, /must allow native vertical scrolling with touch-action: pan-y/);
   const css = source('src/client/styles.css');
   assert.match(css, /\.io-combat-log\{[^}]*overflow:auto/);
   assert.match(css, /#root\.io-inline-post > \.io-public/);
