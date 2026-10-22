@@ -4,7 +4,6 @@ import { requestExpandedMode } from '@devvit/web/client';
 import { ArrowRight, Flame, Users } from 'lucide-react';
 import './styles.css';
 import { formatRarity, getOrbInfo, FRENZY_POST_LIFETIME_MS } from '../shared/game.js';
-import { GlobalChatWindow } from './components/GlobalChatWindow.js';
 import { recordPostImpression } from './impressions.js';
 
 interface FrenzyInfo {
@@ -95,10 +94,7 @@ function FrenzyPost() {
   const loadInFlightRef = useRef(false);
   const impressionRecordedRef = useRef(false);
   const [openedGame, setOpenedGame] = useState(false);
-  const [showThankYouPrompt, setShowThankYouPrompt] = useState(false);
-  const [thankYouMessage, setThankYouMessage] = useState('');
-  const [postingThankYou, setPostingThankYou] = useState(false);
-  const [thankYouStatus, setThankYouStatus] = useState<string | null>(null);
+  const [inlineClaimedRarity, setInlineClaimedRarity] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   const load = async () => {
@@ -170,11 +166,12 @@ function FrenzyPost() {
     // The claim endpoint is called exactly once, regardless of arm outcome.
     try {
       const res = await fetch('/api/frenzy/claim', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not claim Frenzy.');
-      setThankYouMessage(`I claimed your 1/${formatRarity(info.rarity)} Orb Frenzy. Thanks, u/${info.ownerUsername}!`);
-      setThankYouStatus(null);
-      setShowThankYouPrompt(true);
+      const data = await res.json() as { error?: unknown; orb?: { rarity?: unknown } };
+      if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not claim Frenzy.');
+      const resultRarity = Number(data.orb?.rarity);
+      setInlineClaimedRarity(Number.isSafeInteger(resultRarity) && resultRarity >= 2 ? resultRarity : info.rarity);
+      setError(null);
+      setClaimed(true);
       await load();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not claim Frenzy.');
@@ -183,26 +180,6 @@ function FrenzyPost() {
     }
   };
 
-  const submitThankYouComment = async () => {
-    if (!info?.postId || !thankYouMessage.trim() || postingThankYou) return;
-    setPostingThankYou(true);
-    setThankYouStatus(null);
-    try {
-      const response = await fetch('/api/frenzy/thank-you', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ postId: info.postId, text: thankYouMessage.trim() }),
-      });
-      const payload = await response.json().catch(() => ({})) as { error?: string; success?: boolean };
-      if (!response.ok) throw new Error(payload.error || 'Could not post the thank-you comment.');
-      setShowThankYouPrompt(false);
-      setThankYouStatus('Thank-you comment posted as you. Please consider upvoting this Frenzy post, too.');
-    } catch (submitError) {
-      setThankYouStatus(submitError instanceof Error ? submitError.message : 'Could not post the thank-you comment.');
-    } finally {
-      setPostingThankYou(false);
-    }
-  };
 
   if (error && !info) {
     return (
@@ -324,6 +301,13 @@ function FrenzyPost() {
               <strong>Your Frenzy is loading in Infinity Orbs.</strong>
               <p>The full claim result appears in the game.</p>
             </div>
+          ) : inlineClaimedRarity !== null ? (
+            <div className="io-public-result io-frenzy-opened" role="status">
+              <div className="io-public-eyebrow io-public-eyebrow-success">Frenzy claimed</div>
+              <strong>You found a 1/{formatRarity(inlineClaimedRarity)} Orb.</strong>
+              <p>Your reward is saved. Open the main game in Expanded Mode to continue playing.</p>
+              <a href={`https://www.reddit.com/comments/${info.postId.replace(/^t3_/, '')}/`} target="_blank" rel="noreferrer" className="io-public-note-link">Open the Frenzy post to upvote</a>
+            </div>
           ) : (
             <button
               onClick={(event) => void claim(event)}
@@ -351,8 +335,7 @@ function FrenzyPost() {
             </button>
           )}
 
-          {error && <p className="io-public-inline-error">{error}</p>}
-          {thankYouStatus && <p className="io-public-inline-error" role="status">{thankYouStatus}</p>}
+          {error && <p className="io-public-inline-error" role="alert">{error}</p>}
 
           <div className="io-public-note">
             <div><Users className="w-3.5 h-3.5" /> Claim cooldown: 23 hours per player.</div>
@@ -361,59 +344,7 @@ function FrenzyPost() {
         </section>
       </div>
 
-      {showThankYouPrompt && info && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm">
-          <section role="dialog" aria-modal="true" aria-labelledby="frenzy-thanks-fallback-title" className="w-full max-w-md rounded-3xl border border-fuchsia-500/30 bg-slate-950 p-5 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-widest text-fuchsia-300">Frenzy thank-you</div>
-            <h2 id="frenzy-thanks-fallback-title" className="mt-2 text-2xl font-black text-white">Thank the Frenzy poster</h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-300">
-              You claimed u/{info.ownerUsername}'s Frenzy. You can leave an optional public comment below.
-              It will be posted as your Reddit account, not the app.
-            </p>
-            <p className="mt-2 text-xs leading-relaxed text-slate-500">
-              Please consider upvoting the Frenzy post, too. Commenting is optional and gives no gameplay reward.
-            </p>
-            <a
-              href={`https://www.reddit.com/comments/${info.postId.replace(/^t3_/, '')}/`}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-3 inline-block text-xs font-bold text-fuchsia-300 underline hover:text-fuchsia-200"
-            >
-              Open the Frenzy post to upvote
-            </a>
-            <label className="mt-4 block text-xs font-bold text-slate-300" htmlFor="frenzy-thanks-fallback-message">Public comment</label>
-            <textarea
-              id="frenzy-thanks-fallback-message"
-              value={thankYouMessage}
-              onChange={event => setThankYouMessage(event.target.value)}
-              maxLength={500}
-              rows={4}
-              disabled={postingThankYou}
-              className="mt-3 w-full rounded-xl border border-slate-800 bg-slate-900 p-3 text-sm text-white focus:border-fuchsia-500 focus:outline-none"
-            />
-            <div className="mt-1 text-right text-[10px] text-slate-600">{thankYouMessage.length}/500</div>
-            <div className="mt-4 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => void submitThankYouComment()}
-                disabled={postingThankYou || !thankYouMessage.trim()}
-                className="io-public-button io-public-button-primary disabled:opacity-50"
-              >
-                {postingThankYou ? 'Posting comment…' : 'Post comment as your Reddit user'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowThankYouPrompt(false)}
-                disabled={postingThankYou}
-                className="io-public-button io-public-button-secondary"
-              >
-                Not now
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
-      <GlobalChatWindow launcherContext="frenzy" />
+
     </main>
   );
 }
