@@ -158,6 +158,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           }
           return;
         } catch {
+          if (cancelled) return;
           if (attempt === 2) {
             if (!cancelled) {
               setChatAvailable(false);

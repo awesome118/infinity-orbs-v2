@@ -2730,6 +2730,14 @@ test('Turbo Booster confirmation reports the actual cooldown reduction', () => {
   assert.ok(shared.includes("const turboReduction = (s.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 0.65 : 0.75;"));
 });
 
+test('Global Chat availability retries stop after the launcher unmounts', () => {
+  const chat = source('src/client/components/GlobalChatWindow.tsx');
+  const start = chat.indexOf('const checkAvailability = async () =>');
+  const end = chat.indexOf('    };', start);
+  assert.ok(start >= 0 && end > start);
+  assert.ok(chat.slice(start, end).includes('if (cancelled) return;'));
+});
+
 test('Quest claim controls expose local pending state to assistive technology', () => {
   const quests = source('src/client/components/QuestsAndStreaks.tsx');
   assert.ok((quests.match(/aria-busy=\{busy \|\| claimPending\}/g) ?? []).length >= 3);
