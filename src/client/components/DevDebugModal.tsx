@@ -2582,9 +2582,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           if (chatStatus.enabled !== true) {
             throw new Error(chatStatus.reason || 'Main launcher did not register Global Chat.');
           }
-          const frenzyChatStatus = await request<any>('/api/chat/status?launcher=frenzy');
-          if (frenzyChatStatus.enabled !== false || !String(frenzyChatStatus.reason ?? '').includes('main Game launcher')) {
-            throw new Error('Global Chat must remain visible but disabled outside the main launcher.');
+          // The query string is intentionally untrusted. A caller cannot change
+          // launcher identity by appending ?launcher=frenzy to a main-post request.
+          const spoofedLauncherStatus = await request<any>('/api/chat/status?launcher=frenzy');
+          if (spoofedLauncherStatus.enabled !== chatStatus.enabled) {
+            throw new Error('Global Chat status changed in response to a client-controlled launcher flag.');
           }
           const message = await request<any>('/api/chat', { text: '[ADMIN TEST] chat-report notification check' });
           await request('/api/chat/report', { messageId: message.id });
