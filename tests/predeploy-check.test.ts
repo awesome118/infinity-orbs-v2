@@ -78,7 +78,7 @@ function createFixture(options: {
     writeFileSync(join(clientDir, 'frenzy.html'), '<html class="io-inline-post"><body class="io-inline-post"><div id="root" class="io-inline-post"></div></body></html>');
     writeFileSync(join(clientDir, 'splash.tsx'), 'export const splashInlineSafe = true;\n');
     writeFileSync(join(clientDir, 'frenzy.tsx'), 'export const frenzyInlineSafe = true;\n');
-    writeFileSync(join(clientDir, 'styles.css'), '.io-public { overflow: clip; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }\n.io-combat-log{max-height:245px;overflow:auto}\n');
+    writeFileSync(join(clientDir, 'styles.css'), 'html.io-inline-post, body.io-inline-post { height: 100%; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }\\n#root.io-inline-post { overflow: clip; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }\\n.io-public { overflow: clip; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }\\n.io-combat-log{max-height:245px;overflow:auto}\\n');
   }
 
   return {
