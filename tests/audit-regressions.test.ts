@@ -2440,6 +2440,18 @@ test('Combat is level-gated, guided, and reset with the rest of the player save'
   assert.ok(combat.includes("maxHeight:'min(360px, calc(100vh - 16px))'"));
 });
 
+test('Global Chat history is server-gated to the registered main Game post', () => {
+  const api = source('src/server/app.ts');
+  const start = api.indexOf("app.get('/api/chat', async (_req, res) => {");
+  const end = api.indexOf("app.post('/api/chat',", start);
+  assert.ok(start >= 0 && end > start);
+  const route = api.slice(start, end);
+  assert.ok(route.includes('const status = await getGlobalChatStatus();'));
+  assert.ok(route.includes('if (!status.enabled)'));
+  assert.ok(route.includes('res.status(403).json'));
+  assert.ok(route.indexOf('if (!status.enabled)') < route.indexOf('res.json(await getGlobalChat())'));
+});
+
 test('Global Chat destination cannot be inferred from a client-supplied launcher flag', () => {
   const social = source('src/server/social.ts');
   const start = social.indexOf('async function resolveGlobalGamePostId');

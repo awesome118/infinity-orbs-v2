@@ -1080,8 +1080,15 @@ export function createApp() {
   });
 
   app.get('/api/chat', async (_req, res) => {
-    try { res.json(await getGlobalChat()); }
-    catch (e) { badRequest(res, e, 'Could not load global chat.'); }
+    try {
+      // Do not rely on the client hiding the history panel: enforce the
+      // registered main-Game-post restriction for direct API callers too.
+      const status = await getGlobalChatStatus();
+      if (!status.enabled) {
+        return res.status(403).json({ error: status.reason || 'Global Chat is unavailable here.' });
+      }
+      res.json(await getGlobalChat());
+    } catch (e) { badRequest(res, e, 'Could not load global chat.'); }
   });
 
   app.post('/api/chat', async (req, res) => {
