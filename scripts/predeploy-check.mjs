@@ -62,6 +62,7 @@ if (devvit) {
     requireManifestValue("post.entrypoints.default.inline", entrypoints.default?.inline, true);
     requireManifestValue("post.entrypoints.default.height", entrypoints.default?.height, "tall");
     requireManifestValue("post.entrypoints.game.entry", entrypoints.game?.entry, "game.html");
+    requireManifestValue("post.entrypoints.game.inline", entrypoints.game?.inline, false);
     requireManifestValue("post.entrypoints.frenzy.entry", entrypoints.frenzy?.entry, "frenzy.html");
     requireManifestValue("post.entrypoints.frenzy.inline", entrypoints.frenzy?.inline, true);
     requireManifestValue("post.entrypoints.frenzy.height", entrypoints.frenzy?.height, "tall");
