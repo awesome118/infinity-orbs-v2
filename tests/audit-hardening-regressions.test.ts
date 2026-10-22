@@ -136,3 +136,48 @@ test('Global Chat closes on Escape and announces new message additions', () => {
   assert.match(chat, /role="log"/);
   assert.match(chat, /aria-relevant="additions text"/);
 });
+
+test('inline post entrypoints are bounded tap-only previews and the full game is expanded-only', () => {
+  const manifest = JSON.parse(source('devvit.json')) as {
+    post: { entrypoints: Record<string, { inline?: boolean; height?: string; entry?: string }> };
+  };
+  assert.equal(manifest.post.entrypoints.default?.entry, 'splash.html');
+  assert.equal(manifest.post.entrypoints.default?.inline, true);
+  assert.equal(manifest.post.entrypoints.default?.height, 'tall');
+  assert.equal(manifest.post.entrypoints.frenzy?.entry, 'frenzy.html');
+  assert.equal(manifest.post.entrypoints.frenzy?.inline, true);
+  assert.equal(manifest.post.entrypoints.frenzy?.height, 'tall');
+  assert.equal(manifest.post.entrypoints.game?.entry, 'game.html');
+  assert.equal(manifest.post.entrypoints.game?.inline, false);
+
+  for (const htmlPath of ['src/client/splash.html', 'src/client/frenzy.html']) {
+    const html = source(htmlPath);
+    assert.match(html, /class="io-inline-post"/, htmlPath + ' must declare the inline-safe document class');
+    assert.match(html, /id="root" class="io-inline-post"/, htmlPath + ' must bound its root');
+  }
+
+  const splash = source('src/client/splash.tsx');
+  const frenzy = source('src/client/frenzy.tsx');
+  assert.doesNotMatch(splash, /overflow-(?:y-)?(?:auto|scroll)|overflow\s*:\s*(?:auto|scroll)/);
+  assert.doesNotMatch(frenzy, /overflow-(?:y-)?(?:auto|scroll)|overflow\s*:\s*(?:auto|scroll)/);
+  assert.doesNotMatch(frenzy, /GlobalChatWindow/, 'the inline Frenzy post must not mount the independently scrollable chat history');
+  assert.doesNotMatch(splash, /onWheel\s*=|onTouchMove\s*=|onPointerMove\s*=/);
+  assert.doesNotMatch(frenzy, /onWheel\s*=|onTouchMove\s*=|onPointerMove\s*=/);
+
+  const css = source('src/client/styles.css');
+  const publicRule = css.match(/\.io-public\s*\{([^}]+)\}/)?.[1] ?? '';
+  assert.match(publicRule, /overflow:\s*clip/);
+  assert.match(publicRule, /touch-action:\s*pan-y pinch-zoom/);
+  assert.match(publicRule, /overscroll-behavior:\s*auto/);
+  assert.doesNotMatch(publicRule, /overflow(?:-y)?:\s*(?:auto|scroll)/);
+});
+
+test('the deploy guard rejects inline scroll traps while keeping expanded-game scrolling available', () => {
+  const guard = source('scripts/predeploy-check.mjs');
+  assert.match(guard, /must not mount GlobalChatWindow/);
+  assert.match(guard, /must not introduce a nested scroll panel into an inline post/);
+  assert.match(guard, /must explicitly allow vertical feed scrolling/);
+  const css = source('src/client/styles.css');
+  assert.match(css, /\.io-combat-log\{[^}]*overflow:auto/);
+  assert.match(css, /#root\.io-inline-post > \.io-public/);
+});
