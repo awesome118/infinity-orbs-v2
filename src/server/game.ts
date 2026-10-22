@@ -99,13 +99,17 @@ import {
 
 /** Use non-guessable identifiers for leases, reservations, and idempotency receipts. */
 function createSecureId(): string {
-  const cryptoApi = globalThis.crypto;
-  if (typeof cryptoApi?.randomUUID === 'function') return cryptoApi.randomUUID();
-  if (typeof cryptoApi?.getRandomValues === 'function') {
-    const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
     return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
   }
   throw new Error('Secure identifier generation is unavailable.');
+}
+
+function secureServerToken(prefix: string): string {
+  return prefix + '-' + createSecureId();
 }
 
 
@@ -4033,7 +4037,7 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
   // has an ambiguous failure, no provider call occurs, and a later job can
   // reclaim this reserved-v2 marker after the lease expires.
   const attemptNow = Date.now();
-  const nonce = createSecureId();
+  const nonce = secureServerToken('offline-notification');
   const reservationStamp = attemptNow.toString(36);
   const reservedToken = `reserved-v2:${reservationStamp}:${nonce}`;
   const sendingToken = `sending-v2:${reservationStamp}:${nonce}`;
@@ -4214,8 +4218,7 @@ async function scheduleOfflineFullNotification(
     Math.max(now + 1_000, Number.isFinite(requestedRunAt) ? requestedRunAt : now + 1_000),
   );
   const expiresAt = Math.max(now + 60_000, Math.min(maxDateMs - 1, safeRunAt + OFFLINE_FULL_RETRY_MS * 2));
-  const randomToken = createSecureId();
-  const token = `offline-job-${now.toString(36)}-${randomToken}`;
+  const token = secureServerToken('offline-job');
   const reservation = JSON.stringify({ token, jobId: null, runAt: safeRunAt });
 
   // Reserve before making the scheduler call. Two overlapping requests can no
@@ -5012,7 +5015,7 @@ export async function claimFollowReward(): Promise<{
     // Commit the 200-roll reward and its idempotency marker in the same
     // WATCH/MULTI/EXEC transaction. A marker write failure must never allow a
     // retry to grant the reward a second time.
-    const rewardMarker = createSecureId();
+    const rewardMarker = secureServerToken('follow-reward');
     await save(s, {
       key: rewardKey,
       expectedValue: null,
@@ -6609,7 +6612,7 @@ export async function postFrenzyThankYouComment(
     throw new Error('A thank-you comment was already attempted. Check the Frenzy post before trying again.');
   }
 
-  const reservation = 'pending-' + createSecureId();
+  const reservation = 'pending-' + secureServerToken('frenzy-thank-you');
   await redis.set(receiptKey, reservation, { nx: true, expiration });
   if (await redis.get(receiptKey) !== reservation) {
     throw new Error('A thank-you comment was already attempted. Check the Frenzy post before trying again.');

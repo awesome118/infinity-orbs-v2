@@ -457,17 +457,30 @@ export async function getCombatSnapshot():Promise<CombatSnapshot>{
     // Core-game progress is a bonus, not a prerequisite for loading combat.
     console.error('[Combat] Could not refresh core-game attunement; retaining saved values.',error);
   }
-  const state=await mutate(s=>{
-    if(coreProgression){
-      s.coreLevel=finiteInt(coreProgression.level,s.coreLevel,1,1_000_000);
-      s.coreHighestRarity=finiteInt(coreProgression.highestRarity,s.coreHighestRarity,2,1_000_000_000_000_000_000);
-      s.autoScrapUnlocked=Number(coreProgression.autoScrapLevel)>0;
-      s.autoScrapSettings=normalizeCombatAutoScrapSettings(coreProgression.autoScrapSettings);
-      if(!s.autoScrapUnlocked)s.autoScrapSettings.enabled=false;
-    }
+  const current=normalizeState(await redis.get(combatKey()));
+  const nextCoreLevel=coreProgression?finiteInt(coreProgression.level,current.coreLevel,1,1_000_000):current.coreLevel;
+  const nextCoreHighestRarity=coreProgression?finiteInt(coreProgression.highestRarity,current.coreHighestRarity,2,1_000_000_000_000_000_000):current.coreHighestRarity;
+  const nextAutoScrapUnlocked=coreProgression?Number(coreProgression.autoScrapLevel)>0:current.autoScrapUnlocked;
+  const nextAutoScrapSettings=coreProgression
+    ? normalizeCombatAutoScrapSettings(coreProgression.autoScrapSettings)
+    : { ...current.autoScrapSettings };
+  if(!nextAutoScrapUnlocked)nextAutoScrapSettings.enabled=false;
+  const projectionChanged=Boolean(coreProgression)&&(
+    current.coreLevel!==nextCoreLevel||
+    current.coreHighestRarity!==nextCoreHighestRarity||
+    current.autoScrapUnlocked!==nextAutoScrapUnlocked||
+    JSON.stringify(current.autoScrapSettings)!==JSON.stringify(nextAutoScrapSettings)
+  );
+  let state=current;
+  if(projectionChanged){state=await mutate(s=>{
+    s.coreLevel=nextCoreLevel;
+    s.coreHighestRarity=nextCoreHighestRarity;
+    s.autoScrapUnlocked=nextAutoScrapUnlocked;
+    s.autoScrapSettings=nextAutoScrapSettings;
     synchronizeCombatStats(s);
     return s;
-  });
+  });}
+  synchronizeCombatStats(state);
   const userId=String(context.userId??'').trim();
   if(userId){
     const profile=createArenaProfile(userId,arenaName(context.username),state,Date.now());
@@ -475,6 +488,7 @@ export async function getCombatSnapshot():Promise<CombatSnapshot>{
   }
   return snapshot(state);
 }
+
 function grantXp(s:CombatState,amount:number,actions:CombatAction[]):void {
   const safeAmount=finiteInt(amount,0,0,Number.MAX_SAFE_INTEGER);
   s.xp=Math.min(Number.MAX_SAFE_INTEGER,finiteInt(s.xp,0,0,Number.MAX_SAFE_INTEGER)+safeAmount);

@@ -48,13 +48,17 @@ const GUILD_TOKEN_RESET_KEY = key('guild-token-reset:v1');
 const GUILD_UPGRADE_RESET_KEY = key('guild-upgrade-reset:v1');
 /** Create collision-resistant IDs for guild, chat, and moderation receipts. */
 function createSecureId(): string {
-  const cryptoApi = globalThis.crypto;
-  if (typeof cryptoApi?.randomUUID === 'function') return cryptoApi.randomUUID();
-  if (typeof cryptoApi?.getRandomValues === 'function') {
-    const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
     return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
   }
   throw new Error('Secure identifier generation is unavailable.');
+}
+
+function secureSocialToken(prefix: string): string {
+  return prefix + '-' + createSecureId();
 }
 
 
@@ -2245,7 +2249,7 @@ async function enforceChatCooldown(scope: string, cooldownMs: number): Promise<v
   const userId = user();
   if (!userId || userId === 'unknown') throw new Error('Your Reddit identity is unavailable.');
   const cooldownKey = CHAT_COOLDOWN_PREFIX + scope + ':' + userId;
-  const token = `chat-${createSecureId()}`;
+  const token = secureSocialToken('chat');
 
   // SET NX is atomic across server instances. Readback distinguishes the
   // request that acquired the cooldown from concurrent/later requests.
@@ -2283,12 +2287,12 @@ function parseGlobalChatList(raw: unknown): GlobalChatMessage[] {
 }
 
 
-async function isCurrentFrenzyPostContext(): Promise<boolean> {
-  const currentRawId = String(context.postId ?? '').trim();
-  const currentPostId = normalizeRedditPostId(currentRawId);
-  if (!currentPostId) return false;
-
-  const candidates = [...new Set([currentRawId, currentPostId].filter(Boolean))];
+async function isRegisteredFrenzyPost(postId: string): Promise<boolean> {
+  const rawId = String(postId ?? '').trim();
+  const normalizedId = normalizeRedditPostId(rawId);
+  if (!normalizedId) return false;
+  const bareId = normalizedId.replace(/^t3_/i, '');
+  const candidates = [...new Set([rawId, normalizedId, bareId].filter(Boolean))];
   for (const candidate of candidates) {
     if (await redis.get('io:frenzy:post:' + candidate) != null) return true;
   }
@@ -2297,70 +2301,27 @@ async function isCurrentFrenzyPostContext(): Promise<boolean> {
 
 async function resolveGlobalGamePostId(): Promise<string> {
   const saved = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
-  if (saved) return saved;
-
-  const currentRawId = String(context.postId ?? '').trim();
-  const currentPostId = normalizeRedditPostId(currentRawId);
-  if (!currentPostId) {
-    throw new Error('The main Game post is not registered yet. Open Global Chat from the Infinity Orbs launcher.');
+  if (!saved) {
+    throw new Error('Global Chat is disabled because the main Game post was not registered by the official post-creation flow.');
   }
-  // Never register a Frenzy post as the Global Chat destination.
-  if (await isCurrentFrenzyPostContext()) {
-    throw new Error('Global Chat is unavailable on this Frenzy post until the main Game launcher has registered itself.');
+  if (await isRegisteredFrenzyPost(saved)) {
+    throw new Error('Global Chat is disabled because the registered Game destination is an invalid Frenzy post. Create a new main Game post.');
   }
-
-  await redis.set(GLOBAL_GAME_POST_KEY, currentPostId, { nx: true });
-  const registered = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
-  if (!registered) throw new Error('Could not register the Game post. Please retry.');
-  return registered;
+  return saved;
 }
 
-export async function getGlobalChatStatus(
-  fromMainLauncher = false,
-  fromFrenzyPost = false,
-): Promise<{ enabled: boolean; reason?: string }> {
-  const saved = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
-
-  if (fromFrenzyPost) {
-    return {
-      enabled: false,
-      reason: "Global Chat is disabled because you're not in the main Game launcher.",
-    };
+async function requireGlobalChatLauncher(): Promise<string> {
+  const destination = await resolveGlobalGamePostId();
+  const currentPostId = normalizeRedditPostId(String(context.postId ?? '').trim());
+  if (!currentPostId || currentPostId !== destination || await isRegisteredFrenzyPost(currentPostId)) {
+    throw new Error("Global Chat is disabled because you're not in the main Game launcher.");
   }
+  return destination;
+}
 
-  // The main launcher entry point marks its own handshake. This also recovers
-  // when a development environment reuses a post ID that has stale Frenzy
-  // metadata, without allowing the ordinary Frenzy widget to register itself.
-  if (fromMainLauncher) {
-    if (saved) return { enabled: true };
-    const currentPostId = normalizeRedditPostId(String(context.postId ?? '').trim());
-    if (!currentPostId) {
-      return {
-        enabled: false,
-        reason: 'Global Chat is disabled because the main Game launcher post is not available in this context.',
-      };
-    }
-    await redis.set(GLOBAL_GAME_POST_KEY, currentPostId, { nx: true });
-    const registered = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
-    if (registered) return { enabled: true };
-    return {
-      enabled: false,
-      reason: 'Global Chat could not register the main Game launcher. Please reopen the game.',
-    };
-  }
-
-  // Frenzy posts may display history, but posting is disabled there even after
-  // the canonical main Game post has registered.
-  if (await isCurrentFrenzyPostContext()) {
-    return {
-      enabled: false,
-      reason: "Global Chat is disabled because you're not in the main Game launcher.",
-    };
-  }
-
-  if (saved) return { enabled: true };
+export async function getGlobalChatStatus(): Promise<{ enabled: boolean; reason?: string }> {
   try {
-    await resolveGlobalGamePostId();
+    await requireGlobalChatLauncher();
     return { enabled: true };
   } catch (error) {
     return {
@@ -2369,7 +2330,6 @@ export async function getGlobalChatStatus(
     };
   }
 }
-
 
 export async function recordGlobalChatComment(input: {
   postId: string;
@@ -2557,7 +2517,7 @@ async function submitChatReport(
   // pair for a day before the external side effect so concurrent retries cannot
   // create a second conversation while the durable report receipt is pending.
   const reservationKey = CHAT_REPORT_RESERVATION_PREFIX + encodeURIComponent(reportKey);
-  const reservationToken = `report-${createSecureId()}`;
+  const reservationToken = secureSocialToken('report');
   await redis.set(reservationKey, reservationToken, {
     nx: true,
     expiration: new Date(Date.now() + 24 * 60 * 60_000),
@@ -2680,6 +2640,7 @@ export async function getGlobalChat(): Promise<GlobalChatMessage[]> {
 export async function reportGlobalChatMessage(messageId: string): Promise<{ success: true }> {
   const cleanId = String(messageId ?? '').trim();
   if (!cleanId) throw new Error('Message ID is required.');
+  await requireGlobalChatLauncher();
   const message = (await getGlobalChat()).find(item => item.id === cleanId);
   if (!message) throw new Error('That chat message is no longer available to report.');
   return submitChatReport('Global Chat', message);
@@ -2692,7 +2653,7 @@ export async function postGlobalChatMessage(text: string): Promise<GlobalChatMes
     if (await isGuildChatMuted()) throw new Error('You are muted from Global Chat.');
     if (messageText.length > 200) throw new Error('Messages must be 200 characters or fewer.');
     // Resolve the canonical destination before consuming the user's chat cooldown.
-    const postId = await resolveGlobalGamePostId();
+    const postId = await requireGlobalChatLauncher();
     await enforceChatCooldown('global', 2_000);
     // Sending is a deliberate button action in the player's chat UI. Reddit
     // must attribute the public comment to that player, never to the app.

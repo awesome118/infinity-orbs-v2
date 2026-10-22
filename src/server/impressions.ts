@@ -71,47 +71,119 @@ export async function recordPostImpression(
   const keyForPost = postKey(postType, postId);
   const indexField = postType + ':' + postId;
 
-  // Redis INCR keeps counters safe under concurrent preview traffic.
-  await Promise.all([
-    redis.incr(TOTAL_KEY),
-    redis.incr(TYPE_PREFIX + postType),
-    redis.incr(DEVICE_PREFIX + deviceType),
-    redis.incr(TYPE_DEVICE_PREFIX + postType + ':' + deviceType),
-    redis.incr(keyForPost),
-    redis.incr(HOUR_PREFIX + hour + ':' + postType),
-    redis.incr(DAY_PREFIX + day + ':' + postType),
-  ]);
+  // Commit the counters and index entry together. Independent INCR calls can
+  // otherwise leave totals and breakdowns inconsistent when one write fails.
+  const counterKeys = [
+    TOTAL_KEY,
+    TYPE_PREFIX + postType,
+    DEVICE_PREFIX + deviceType,
+    TYPE_DEVICE_PREFIX + postType + ':' + deviceType,
+    keyForPost,
+    HOUR_PREFIX + hour + ':' + postType,
+    DAY_PREFIX + day + ':' + postType,
+    INDEX_PRUNE_COUNTER_KEY,
+    POST_INDEX_KEY,
+  ];
+  let pruneSequence = 0;
+  let committed = false;
 
-  // The index contains post metadata only, never viewer data. Keep this hash
-  // bounded so share/Frenzy posts cannot grow it forever.
-  const added = await redis.hSet(POST_INDEX_KEY, {
-    [indexField]: JSON.stringify({ postType, postId, lastSeenAt: now }),
-  });
+  const nextCounter = (raw: unknown): number => {
+    const current = normalizeCount(raw);
+    if (current >= Number.MAX_SAFE_INTEGER) {
+      throw new Error('Impression counter exceeded the safe integer limit.');
+    }
+    return current + 1;
+  };
 
-  // Post indexes are useful for admin diagnostics, but must not grow forever.
-  // Prune only once per hundred impressions to keep preview requests cheap.
-  const pruneSequence = await redis.incr(INDEX_PRUNE_COUNTER_KEY);
-  if (pruneSequence % INDEX_PRUNE_EVERY === 0) {
-    const currentIndex = await redis.hGetAll(POST_INDEX_KEY);
-    const entries = Object.entries(currentIndex ?? {}).flatMap(([field, raw]) => {
-      try {
-        const parsed = JSON.parse(String(raw)) as { postType?: unknown; postId?: unknown; lastSeenAt?: unknown };
-        normalizePostType(parsed.postType);
-        const indexedPostId = String(parsed.postId ?? '').trim();
-        const indexedAt = Number(parsed.lastSeenAt ?? 0);
-        if (!indexedPostId || indexedPostId.length > 200) return [];
-        return [{
-          field,
-          lastSeenAt: Number.isSafeInteger(indexedAt) && indexedAt >= 0 ? indexedAt : 0,
-        }];
-      } catch {
-        return [];
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const txn = await redis.watch(...counterKeys);
+    let transactionClosed = false;
+    try {
+      const [
+        totalRaw,
+        typeRaw,
+        deviceRaw,
+        typeDeviceRaw,
+        postRaw,
+        hourRaw,
+        dayRaw,
+        pruneRaw,
+      ] = await Promise.all([
+        redis.get(TOTAL_KEY),
+        redis.get(TYPE_PREFIX + postType),
+        redis.get(DEVICE_PREFIX + deviceType),
+        redis.get(TYPE_DEVICE_PREFIX + postType + ':' + deviceType),
+        redis.get(keyForPost),
+        redis.get(HOUR_PREFIX + hour + ':' + postType),
+        redis.get(DAY_PREFIX + day + ':' + postType),
+        redis.get(INDEX_PRUNE_COUNTER_KEY),
+      ]);
+
+      const nextTotal = nextCounter(totalRaw);
+      const nextType = nextCounter(typeRaw);
+      const nextDevice = nextCounter(deviceRaw);
+      const nextTypeDevice = nextCounter(typeDeviceRaw);
+      const nextPost = nextCounter(postRaw);
+      const nextHour = nextCounter(hourRaw);
+      const nextDay = nextCounter(dayRaw);
+      const nextPruneSequence = nextCounter(pruneRaw);
+
+      await txn.multi();
+      await txn.set(TOTAL_KEY, String(nextTotal));
+      await txn.set(TYPE_PREFIX + postType, String(nextType));
+      await txn.set(DEVICE_PREFIX + deviceType, String(nextDevice));
+      await txn.set(TYPE_DEVICE_PREFIX + postType + ':' + deviceType, String(nextTypeDevice));
+      await txn.set(keyForPost, String(nextPost));
+      await txn.set(HOUR_PREFIX + hour + ':' + postType, String(nextHour));
+      await txn.set(DAY_PREFIX + day + ':' + postType, String(nextDay));
+      await txn.set(INDEX_PRUNE_COUNTER_KEY, String(nextPruneSequence));
+      await txn.hSet(POST_INDEX_KEY, {
+        [indexField]: JSON.stringify({ postType, postId, lastSeenAt: now }),
+      });
+
+      const result = await txn.exec();
+      transactionClosed = true;
+      if (result !== null) {
+        pruneSequence = nextPruneSequence;
+        committed = true;
+        break;
       }
-    }).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
-    // Limit serial deletes so an old oversized index cannot turn one post
-    // impression into an unbounded Redis request. Subsequent sweeps continue pruning.
-    for (const stale of entries.slice(MAX_INDEXED_POSTS, MAX_INDEXED_POSTS + 250)) {
-      await redis.hDel(POST_INDEX_KEY, stale.field);
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+    }
+    // Optimistic retries need a small yield; do not spin synchronously under load.
+    await new Promise(resolve => setTimeout(resolve, Math.min(2 * (attempt + 1), 16)));
+  }
+
+  if (!committed) {
+    throw new Error('Impression counters changed repeatedly. Please retry.');
+  }
+
+  // Index pruning is best-effort after commit; it must not turn a recorded
+  // impression into an apparent failure that causes clients to retry it.
+  if (pruneSequence % INDEX_PRUNE_EVERY === 0) {
+    try {
+      const currentIndex = await redis.hGetAll(POST_INDEX_KEY);
+      const entries = Object.entries(currentIndex ?? {}).flatMap(([field, raw]) => {
+        try {
+          const parsed = JSON.parse(String(raw)) as { postType?: unknown; postId?: unknown; lastSeenAt?: unknown };
+          normalizePostType(parsed.postType);
+          const indexedPostId = String(parsed.postId ?? '').trim();
+          const indexedAt = Number(parsed.lastSeenAt ?? 0);
+          if (!indexedPostId || indexedPostId.length > 200) return [];
+          return [{
+            field,
+            lastSeenAt: Number.isSafeInteger(indexedAt) && indexedAt >= 0 ? indexedAt : 0,
+          }];
+        } catch {
+          return [];
+        }
+      }).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+      for (const stale of entries.slice(MAX_INDEXED_POSTS, MAX_INDEXED_POSTS + 250)) {
+        await redis.hDel(POST_INDEX_KEY, stale.field);
+      }
+    } catch (error) {
+      console.error('[Impressions] Index pruning failed after the impression committed.', error);
     }
   }
   return { recorded: true };
