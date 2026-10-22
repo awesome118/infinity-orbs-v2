@@ -1404,6 +1404,26 @@ export async function setCombatDungeon(dungeonValue: unknown): Promise<CombatSna
     state.bestDepth = state.dungeonBestDepths[nextDungeon];
     state.runId += 1;
     resetCombatRunCarry(state);
+    // Switching dungeons starts a fresh encounter. Do not carry shields, Burn,
+    // queued healing, pending loot modifiers, or once-per-encounter triggers over.
+    state.pendingHealAmount = 0;
+    state.skillRuntime.burnTicks = 0;
+    state.skillRuntime.burnDamage = 0;
+    state.skillRuntime.armorBreakBeats = 0;
+    state.skillRuntime.shield = 0;
+    state.skillRuntime.delayedDamage = 0;
+    state.skillRuntime.delayedDamageReadyAtSequence = 0;
+    state.skillRuntime.lastAttackDamage = 0;
+    state.skillRuntime.storedDamage = 0;
+    state.skillRuntime.executeMarked = false;
+    state.skillRuntime.evadeNext = false;
+    state.skillRuntime.phoenixReady = false;
+    state.skillRuntime.phoenixUsed = false;
+    state.skillRuntime.nextKillMarkBonus = 0;
+    state.skillRuntime.nextKillXpBonus = 0;
+    state.skillRuntime.nextRuneDropBonus = 0;
+    state.skillRuntime.royalTitheKills = 0;
+    state.skillRuntime.bountyStreak = 0;
     state.combatBeats = 0;
     state.playerActionsResolved = 0;
     state.enemyActionsResolved = 0;
