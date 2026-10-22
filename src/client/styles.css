@@ -2483,3 +2483,29 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
   #root.io-inline-post .io-frenzy-meta { margin-top: 6px; padding-top: 4px; }
   #root.io-inline-post .io-frenzy-button { min-height: 38px; margin-top: 6px; }
 }
+
+#root.io-inline-post .io-frenzy-success-card {
+  padding: 16px 20px;
+  overflow: clip;
+}
+#root.io-inline-post .io-frenzy-success-title {
+  margin: 8px 0 0;
+  color: #f1f1e8;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(20px, 4vw, 28px);
+  font-weight: 600;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+#root.io-inline-post .io-frenzy-success-copy {
+  margin: 7px 0 0;
+  color: #91a0a4;
+  font-size: 11px;
+  line-height: 1.45;
+}
+#root.io-inline-post .io-frenzy-success-button {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 12px;
+}
+#root.io-inline-post .io-frenzy-success-card .io-public-note-link { margin-top: 9px; }
