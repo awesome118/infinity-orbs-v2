@@ -92,10 +92,10 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
     sacrificeLockRef.current = true;
     setSacrificing(true);
     setSacrificeError('');
-    sound.playSacrificeSound();
 
     try {
       const nextState = await onSacrifice(selectedCoinOffer, selectedShardOffer);
+      sound.playSacrificeSound();
       if (allowMotionEffects()) {
         confetti({
           particleCount: 50,

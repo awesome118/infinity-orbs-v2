@@ -2735,6 +2735,33 @@ test('upgrade and mastery controls use existing local pending state for busy sem
   assert.ok(combined.includes('aria-busy={sacrificing || busy}'));
 });
 
+test('Mastery and Altar success effects wait for confirmed server results', () => {
+  const client = source('src/client/main.tsx');
+  const masteryHandlerStart = client.indexOf('const handleUpgradeMastery = async (skillId: MasterySkillId) =>');
+  const masteryHandlerEnd = client.indexOf('// Daily Streak', masteryHandlerStart);
+  const mainMastery = client.slice(masteryHandlerStart, masteryHandlerEnd);
+  assert.ok(masteryHandlerStart >= 0 && masteryHandlerEnd > masteryHandlerStart);
+  assert.ok(mainMastery.includes('rollback?.();\n      throw e;'));
+  assert.ok(!mainMastery.includes("showToast(e.message || 'Mastery upgrade failed'"));
+
+  const mastery = source('src/client/components/MasterySection.tsx');
+  const masteryClickStart = mastery.indexOf('const handleMasteryClick = async (skillId: MasterySkillId) =>');
+  const masteryClickEnd = mastery.indexOf('const masterySkillsList', masteryClickStart);
+  const masteryClick = mastery.slice(masteryClickStart, masteryClickEnd);
+  assert.ok(masteryClick.indexOf('await onUpgradeMastery(skillId)') < masteryClick.indexOf('sound.playLevelUpFanfare()'));
+
+  const altar = source('src/client/components/AltarSection.tsx');
+  const altarStart = altar.indexOf('const handleSacrificeSubmit = async (e: React.FormEvent) =>');
+  const altarEnd = altar.indexOf('return (', altarStart);
+  assert.ok(altar.slice(altarStart, altarEnd).indexOf('await onSacrifice(selectedCoinOffer, selectedShardOffer)') < altar.slice(altarStart, altarEnd).indexOf('sound.playSacrificeSound()'));
+
+  const combined = source('src/client/components/AltarAndMasterySection.tsx');
+  const combinedMasteryStart = combined.indexOf('const handleMasteryClick = async (skillId: MasterySkillId) =>');
+  const combinedMasteryEnd = combined.indexOf('const masterySkillsList', combinedMasteryStart);
+  const combinedMastery = combined.slice(combinedMasteryStart, combinedMasteryEnd);
+  assert.ok(combinedMastery.indexOf('await onUpgradeMastery(skillId)') < combinedMastery.indexOf('sound.playLevelUpFanfare()'));
+});
+
 test('Mastery branch filters expose their selected state to assistive technology', () => {
   const mastery = source('src/client/components/MasterySection.tsx');
   const combined = source('src/client/components/AltarAndMasterySection.tsx');

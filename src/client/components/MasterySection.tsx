@@ -101,23 +101,23 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
     actionLockRef.current = true;
     setUpgradingSkillId(skillId);
     setMasteryActionError('');
-    sound.playLevelUpFanfare();
-    if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
-    setLastUpgradedSkill(skillId);
-    highlightTimerRef.current = window.setTimeout(() => {
-      setLastUpgradedSkill(null);
-      highlightTimerRef.current = null;
-    }, 800);
-    if (allowMotionEffects()) {
-      confetti({
-        particleCount: 30,
-        spread: 45,
-        origin: { y: 0.75 },
-        colors: ['#fbbf24', '#38bdf8', '#c084fc'],
-      });
-    }
     try {
       await onUpgradeMastery(skillId);
+      sound.playLevelUpFanfare();
+      if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
+      setLastUpgradedSkill(skillId);
+      highlightTimerRef.current = window.setTimeout(() => {
+        setLastUpgradedSkill(null);
+        highlightTimerRef.current = null;
+      }, 800);
+      if (allowMotionEffects()) {
+        confetti({
+          particleCount: 30,
+          spread: 45,
+          origin: { y: 0.75 },
+          colors: ['#fbbf24', '#38bdf8', '#c084fc'],
+        });
+      }
     } catch (error) {
       setMasteryActionError(error instanceof Error ? error.message : 'Could not upgrade Mastery. Please retry.');
     } finally {

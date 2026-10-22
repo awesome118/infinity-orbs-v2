@@ -86,8 +86,8 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
     setSacrificing(true);
     setLocalActionError('');
     try {
-      sound.playSacrificeSound();
       await onSacrifice(selectedCoinOffer, selectedShardOffer);
+      sound.playSacrificeSound();
       if (allowMotionEffects()) {
         confetti({
           particleCount: 40,
@@ -111,23 +111,23 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
     actionLockRef.current = true;
     setUpgradingSkillId(skillId);
     setLocalActionError('');
-    sound.playLevelUpFanfare();
-    if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
-    setLastUpgradedSkill(skillId);
-    highlightTimerRef.current = window.setTimeout(() => {
-      setLastUpgradedSkill(null);
-      highlightTimerRef.current = null;
-    }, 800);
-    if (allowMotionEffects()) {
-      confetti({
-        particleCount: 25,
-        spread: 40,
-        origin: { y: 0.8 },
-        colors: ['#fbbf24', '#38bdf8', '#c084fc'],
-      });
-    }
     try {
       await onUpgradeMastery(skillId);
+      sound.playLevelUpFanfare();
+      if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
+      setLastUpgradedSkill(skillId);
+      highlightTimerRef.current = window.setTimeout(() => {
+        setLastUpgradedSkill(null);
+        highlightTimerRef.current = null;
+      }, 800);
+      if (allowMotionEffects()) {
+        confetti({
+          particleCount: 25,
+          spread: 40,
+          origin: { y: 0.8 },
+          colors: ['#fbbf24', '#38bdf8', '#c084fc'],
+        });
+      }
     } catch (error) {
       setLocalActionError(error instanceof Error ? error.message : 'Could not upgrade Mastery. Please retry.');
     } finally {

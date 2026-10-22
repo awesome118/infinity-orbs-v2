@@ -1791,7 +1791,7 @@ export function App() {
       showToast('Mastery Skill enhanced!', 'success');
     } catch (e: any) {
       rollback?.();
-      showToast(e.message || 'Mastery upgrade failed', 'warn');
+      throw e;
     } finally {
       setBusy(false);
     }
