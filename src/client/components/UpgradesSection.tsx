@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Zap,
@@ -52,6 +52,12 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   const [upgradingAll, setUpgradingAll] = useState(false);
   const [upgradingId, setUpgradingId] = useState<UpgradeId | null>(null);
   const upgradeActionLockRef = useRef(false);
+  const recentUpgradeTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (recentUpgradeTimerRef.current !== null) window.clearTimeout(recentUpgradeTimerRef.current);
+  }, []);
+  const allowMotionEffects = () =>
+    typeof window === 'undefined' || !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const fmt = (n: number) => formatNumber(n);
   const standardUpgradeMaxLevels: Partial<Record<UpgradeId, number>> = { speed: 20, offlineRate: 8 };
 
@@ -60,12 +66,16 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
     upgradeActionLockRef.current = true;
     setUpgradingId(u.id);
     sound.playLevelUpFanfare();
+    if (recentUpgradeTimerRef.current !== null) window.clearTimeout(recentUpgradeTimerRef.current);
     setRecentUpgradeId(u.id);
-    setTimeout(() => setRecentUpgradeId(null), 900);
+    recentUpgradeTimerRef.current = window.setTimeout(() => {
+      setRecentUpgradeId(null);
+      recentUpgradeTimerRef.current = null;
+    }, 900);
 
     const nextLvl = u.level + 1;
     if (nextLvl % 5 === 0 || (u.id === 'auto' && nextLvl === 1)) {
-      confetti({
+      if (allowMotionEffects()) confetti({
         particleCount: 45,
         spread: 55,
         origin: { y: 0.65 },
@@ -86,7 +96,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
     upgradeActionLockRef.current = true;
     setUpgradingAll(true);
     sound.playLevelUpFanfare();
-    confetti({
+    if (allowMotionEffects()) confetti({
       particleCount: 60,
       spread: 70,
       origin: { y: 0.6 },
