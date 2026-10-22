@@ -2773,9 +2773,12 @@ test('armed Frenzy readiness and Pity Luck meter use the actual gameplay thresho
   assert.ok(roll.includes("? 'RELEASE FRENZY'"));
   assert.ok(roll.includes("frenzyReady ? 'frenzy-supercharged'"));
   assert.ok(roll.includes('const pityInterval = Math.max(6, 18 - pityCalibration * 2);'));
-  assert.ok(roll.includes('const pityProgress = ((dryStreak % pityInterval) / pityInterval) * 100;'));
-  assert.ok(roll.includes('width: `${pityProgress}%`'));
-  assert.ok(roll.includes('{dryStreak % pityInterval} / {pityInterval} rolls to next stack'));
+  assert.ok(roll.includes('const pityRollsIntoTier = pityDryRolls % pityInterval;'));
+  assert.ok(roll.includes('const pityProgressPct = (pityRollsIntoTier / pityInterval) * 100;'));
+  assert.ok(roll.includes('aria-valuenow={pityProgressPct}'));
+  assert.ok(roll.includes('width: `${pityProgressPct}%`'));
+  assert.ok(roll.includes('{pityRollsIntoTier} / {pityInterval} rolls to next stack'));
+  assert.ok(roll.includes('{hasResonanceUpgrade && ('));
 });
 
 test('new-best celebration covers confirmed manual, Frenzy, and offline results', () => {

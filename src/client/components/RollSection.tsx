@@ -173,9 +173,10 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const pityCalibration = Math.max(0, Math.min(5, Math.floor(Number(state.masterySkills?.pityAccelerant) || 0)));
   const pityInterval = Math.max(6, 18 - pityCalibration * 2);
   const rawPityDryRolls = Number(state.rollsSinceBest ?? 0);
-  const dryStreak = Number.isSafeInteger(rawPityDryRolls) && rawPityDryRolls >= 0 ? rawPityDryRolls : 0;
-  const pityTier = Math.floor(dryStreak / pityInterval);
-  const pityProgress = ((dryStreak % pityInterval) / pityInterval) * 100;
+  const pityDryRolls = Number.isSafeInteger(rawPityDryRolls) && rawPityDryRolls >= 0 ? rawPityDryRolls : 0;
+  const pityTier = Math.floor(pityDryRolls / pityInterval);
+  const pityRollsIntoTier = pityDryRolls % pityInterval;
+  const pityProgressPct = (pityRollsIntoTier / pityInterval) * 100;
 
   const [filterActive, setFilterActive] = useState(() => {
     try {
@@ -590,15 +591,17 @@ export const RollSection: React.FC<RollSectionProps> = ({
               }}
             />
           </div>
-          <div className="pity-meter mt-3 w-48">
-            <div className="flex items-center justify-between gap-2 text-[10px] text-slate-400">
-              <span>Pity Luck · Tier {pityTier}</span>
-              <span>{dryStreak % pityInterval} / {pityInterval} rolls to next stack</span>
+          {hasResonanceUpgrade && (
+            <div className="pity-meter mt-3 w-48">
+              <div className="flex items-center justify-between gap-2 text-[10px] text-slate-400">
+                <span>Pity Luck · Tier {pityTier}</span>
+                <span>{pityRollsIntoTier} / {pityInterval} rolls to next stack</span>
+              </div>
+              <div role="progressbar" aria-label="Pity Luck progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pityProgressPct} className="h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1">
+                <div className="h-full bg-gradient-to-r from-fuchsia-500 to-cyan-400" style={{ width: `${pityProgressPct}%` }} />
+              </div>
             </div>
-            <div role="progressbar" aria-label="Pity Luck progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pityProgress)} className="h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1">
-              <div className="h-full bg-gradient-to-r from-fuchsia-500 to-cyan-400" style={{ width: `${pityProgress}%` }} />
-            </div>
-          </div>
+          )}
           {cooldownNotice && (
             <div className="text-[11px] text-amber-400 mt-1 font-medium animate-in fade-in duration-200">
               {cooldownNotice}
