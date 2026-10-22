@@ -2735,6 +2735,12 @@ test('best-orb reveal badges reflect critical and discovery flags from the selec
   assert.ok(!shared.includes('isCrit: bestRarity > (sourceState.highestRarity ?? 0),'));
 });
 
+test('combined Altar submit button has a closed disabled expression', () => {
+  const combined = source('src/client/components/AltarAndMasterySection.tsx');
+  assert.ok(combined.includes('disabled={sacrificing || busy || (selectedCoinOffer <= 0 && selectedShardOffer <= 0) || state.coins < selectedCoinOffer || (state.shards ?? 0) < selectedShardOffer}'));
+  assert.ok(!combined.includes('state.shards ?? 0) < selectedShardOffer>'));
+});
+
 test('combined Altar offering choices expose selection and local Mastery pending state', () => {
   const combined = source('src/client/components/AltarAndMasterySection.tsx');
   assert.ok((combined.match(/aria-pressed=\{selectedCoinOffer === amt\}/g) ?? []).length === 1);
