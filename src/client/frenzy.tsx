@@ -305,8 +305,23 @@ function FrenzyPost() {
             <div className="io-public-result io-frenzy-opened" role="status">
               <div className="io-public-eyebrow io-public-eyebrow-success">Frenzy claimed</div>
               <strong>You found a 1/{formatRarity(inlineClaimedRarity)} Orb.</strong>
-              <p>Your reward is saved. Open the main game in Expanded Mode to continue playing.</p>
-              <a href={`https://www.reddit.com/comments/${info.postId.replace(/^t3_/, '')}/`} target="_blank" rel="noreferrer" className="io-public-note-link">Open the Frenzy post to upvote</a>
+              <p>Your reward is saved. Continue in the full game for more rolls.</p>
+              <button
+                type="button"
+                className="io-public-button io-public-button-primary"
+                onClick={(event) => {
+                  try {
+                    void requestExpandedMode(event.nativeEvent, 'game')
+                      .then(() => setOpenedGame(true))
+                      .catch(error => setError(error instanceof Error ? error.message : 'Could not open the full game.'));
+                  } catch (error) {
+                    setError(error instanceof Error ? error.message : 'Could not open the full game.');
+                  }
+                }}
+              >
+                Continue in Infinity Orbs
+              </button>
+              <a href={`https://www.reddit.com/comments/${info.postId.replace(/^t3_/, '')}/`} target="_blank" rel="noreferrer" className="io-public-note-link">Upvote the Frenzy post</a>
             </div>
           ) : (
             <button
