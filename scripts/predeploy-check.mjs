@@ -60,8 +60,10 @@ if (devvit) {
   } else {
     requireManifestValue("post.entrypoints.default.entry", entrypoints.default?.entry, "splash.html");
     requireManifestValue("post.entrypoints.default.inline", entrypoints.default?.inline, true);
+    requireManifestValue("post.entrypoints.default.height", entrypoints.default?.height, "tall");
     requireManifestValue("post.entrypoints.game.entry", entrypoints.game?.entry, "game.html");
     requireManifestValue("post.entrypoints.frenzy.entry", entrypoints.frenzy?.entry, "frenzy.html");
+    requireManifestValue("post.entrypoints.frenzy.inline", entrypoints.frenzy?.inline, true);
     requireManifestValue("post.entrypoints.frenzy.height", entrypoints.frenzy?.height, "tall");
   }
 
@@ -130,6 +132,54 @@ function scanDirectory(dir) {
 scanDirectory(sourceRoot);
 if (sourceFilesScanned === 0) {
   reportFailure("No supported source files were scanned under src/.");
+}
+
+// Inline post entries are deliberately bounded previews, not a scrollable game.
+// Keep scroll-heavy UI in game.html (Expanded Mode) and fail the release guard if
+// a future change mounts a nested scroller or gesture-capturing UI into a post.
+function readInlineSource(file) {
+  try {
+    return readFileSync(resolve(file), "utf8");
+  } catch (error) {
+    reportFailure(`Could not read inline entry source ${file}: ${error.message}`);
+    return "";
+  }
+}
+for (const file of ["src/client/splash.html", "src/client/frenzy.html"]) {
+  const html = readInlineSource(file);
+  if (!/class=["']io-inline-post["']/.test(html)) {
+    reportFailure(`${file} must mark the page as an inline-safe post surface.`);
+  }
+  if (!/id=["']root["'][^>]*class=["']io-inline-post["']/.test(html)) {
+    reportFailure(`${file} root must use the bounded inline-post layout.`);
+  }
+}
+const splashInline = readInlineSource("src/client/splash.tsx");
+const frenzyInline = readInlineSource("src/client/frenzy.tsx");
+if (frenzyInline.includes("GlobalChatWindow")) {
+  reportFailure("src/client/frenzy.tsx must not mount GlobalChatWindow: its history list captures inline-post scrolling.");
+}
+for (const [file, code] of [
+  ["src/client/splash.tsx", splashInline],
+  ["src/client/frenzy.tsx", frenzyInline],
+]) {
+  if (/onWheel\s*=|onTouchMove\s*=|onPointerMove\s*=/.test(code)) {
+    reportFailure(`${file} must not capture scroll/pointer gestures in inline mode.`);
+  }
+  if (/overflow-(?:y-)?(?:auto|scroll)|overflow\s*:\s*(?:auto|scroll)/.test(code)) {
+    reportFailure(`${file} must not introduce a nested scroll panel into an inline post.`);
+  }
+}
+const stylesheet = readInlineSource("src/client/styles.css");
+const publicRule = stylesheet.match(/\.io-public\s*\{([^}]+)\}/)?.[1] ?? "";
+if (!/touch-action\s*:\s*pan-y(?:\s+pinch-zoom)?/.test(publicRule)) {
+  reportFailure("The inline public post surface must explicitly allow vertical feed scrolling with touch-action: pan-y.");
+}
+if (!/overscroll-behavior\s*:\s*auto/.test(publicRule)) {
+  reportFailure("The inline public post surface must let vertical overscroll propagate to Reddit.");
+}
+if (/overflow\s*:\s*(?:auto|scroll)|overflow-y\s*:\s*(?:auto|scroll)/.test(publicRule)) {
+  reportFailure("The inline public post surface must not become a scroll container.");
 }
 
 if (failures.length) {
