@@ -862,6 +862,7 @@ export function App() {
     let cancelled = false;
     let inFlight = false;
     const refreshGlobalBoosters = async () => {
+      if (!splashEntered || inFlight || document.visibilityState === 'hidden') return;
       if (cancelled || inFlight || document.visibilityState === 'hidden') return;
       inFlight = true;
       try {
