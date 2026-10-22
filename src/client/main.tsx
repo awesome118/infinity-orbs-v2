@@ -218,6 +218,7 @@ export function App() {
   const [tutorialDismissed, setTutorialDismissed] = useState(false);
   const [tutorialStatusLoaded, setTutorialStatusLoaded] = useState(false);
   useEffect(() => {
+    if (!splashEntered || !state) return;
     let active = true;
     let localDone = false;
     try {
@@ -244,7 +245,7 @@ export function App() {
         if (active) setTutorialStatusLoaded(true);
       });
     return () => { active = false; };
-  }, []);
+  }, [splashEntered, Boolean(state)]);
   useEffect(() => {
     if (tutorialStatusLoaded && !tutorialDismissed && state && state.totalRolls > 0 && state.totalRolls <= 3 && tutorialStep === 0) setTutorialStep(1);
   }, [state?.totalRolls, tutorialDismissed, tutorialStep, tutorialStatusLoaded]);
@@ -254,6 +255,7 @@ export function App() {
   });
   const [combatTutorialStatusLoaded, setCombatTutorialStatusLoaded] = useState(false);
   useEffect(() => {
+    if (!splashEntered || !state) return;
     let active = true;
     let localDone = false;
     try { localDone = window.localStorage.getItem('io-combat-tutorial-v1') === 'done'; } catch { /* Use server persistence when webview storage is unavailable. */ }
@@ -276,7 +278,7 @@ export function App() {
         if (active) setCombatTutorialStatusLoaded(true);
       });
     return () => { active = false; };
-  }, []);
+  }, [splashEntered, Boolean(state)]);
   useEffect(() => {
     const coreTutorialDone = tutorialDismissed || Number(state?.totalRolls ?? 0) > 3;
     if (combatTutorialStatusLoaded && coreTutorialDone && !combatTutorialDismissed && state && state.level >= FEATURE_UNLOCK_LEVELS.combat && combatTutorialStep === 0) {
@@ -305,7 +307,12 @@ export function App() {
   const [toast, setToast] = useState<{ msg: string; type?: 'info' | 'success' | 'warn' } | null>(null);
 
   useEffect(() => {
+    if (!splashEntered) return;
+    let cancelled = false;
+    let inFlight = false;
     const pollAnnouncement = async () => {
+      if (cancelled || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
       try {
         const announcement = await getJson<{
           id: GlobalBoosterId;
@@ -313,42 +320,50 @@ export function App() {
           username: string;
           activatedAt: number;
         } | null>('/api/global-booster-announcement');
-        if (!announcement || announcement.activatedAt <= lastBoosterAnnouncementAtRef.current) return;
-
+        if (cancelled || !announcement || announcement.activatedAt <= lastBoosterAnnouncementAtRef.current) return;
         lastBoosterAnnouncementAtRef.current = announcement.activatedAt;
         setBoosterAnnouncement(announcement);
-        if (boosterAnnouncementTimerRef.current !== null) {
-          window.clearTimeout(boosterAnnouncementTimerRef.current);
-        }
+        if (boosterAnnouncementTimerRef.current !== null) window.clearTimeout(boosterAnnouncementTimerRef.current);
         boosterAnnouncementTimerRef.current = window.setTimeout(() => {
           setBoosterAnnouncement(null);
           boosterAnnouncementTimerRef.current = null;
         }, 5000);
       } catch {
         // Announcement polling is best-effort and never blocks gameplay.
+      } finally {
+        inFlight = false;
       }
     };
-
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void pollAnnouncement(); };
     void pollAnnouncement();
     const interval = window.setInterval(() => void pollAnnouncement(), 5000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
+      cancelled = true;
       window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       if (boosterAnnouncementTimerRef.current !== null) {
         window.clearTimeout(boosterAnnouncementTimerRef.current);
+        boosterAnnouncementTimerRef.current = null;
       }
     };
-  }, []);
+  }, [splashEntered]);
 
   useEffect(() => {
-    void getJson<{ isBeta: boolean }>('/api/app-info').then(info => setIsBeta(info.isBeta === true)).catch(() => setIsBeta(false));
-  }, []);
+    if (!splashEntered) return;
+    let cancelled = false;
+    void getJson<{ isBeta: boolean }>('/api/app-info')
+      .then(info => { if (!cancelled) setIsBeta(info.isBeta === true); })
+      .catch(() => { if (!cancelled) setIsBeta(false); });
+    return () => { cancelled = true; };
+  }, [splashEntered]);
 
   useEffect(() => {
     // A post preview is not a player session. Count activity only after Play
     // opens the actual game, otherwise previews inflate online-player counts.
     if (!state || !splashEntered) return;
     const heartbeat = () => {
-      if (document.visibilityState === 'hidden') return;
+      if (!splashEntered || document.visibilityState === 'hidden') return;
       void getJson('/api/activity/heartbeat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -683,27 +698,17 @@ export function App() {
   const refreshAll = useCallback(async () => {
     const revisionAtStart = stateRevisionRef.current;
     try {
-      // Load the player's state first. Admin/debug status is auxiliary and must
-      // never block the entire game from rendering if that endpoint is slow.
       const me = await getJsonWithTimeout<PlayerState>('/api/me');
-      try {
-        window.sessionStorage.removeItem('io-wipe-recovery');
-      } catch {
-        // sessionStorage can be unavailable in some embedded webviews.
-      }
+      try { window.sessionStorage.removeItem('io-wipe-recovery'); } catch { /* Embedded storage is optional. */ }
       if (revisionAtStart !== stateRevisionRef.current) return;
       applyPlayerState(me);
       setAuthRequired(false);
       setStartupError(null);
+      if (!splashEntered) return;
 
-      // Admin status is intentionally independent from game-state loading.
       const adminStatus = await getJson<{ isAdmin: boolean }>('/api/dev/status').catch(() => ({ isAdmin: false }));
       setIsAdmin(adminStatus.isAdmin === true);
-
-      // A banned non-admin only needs their own state so the ban screen can load.
-      // The admin may continue to use the normal game endpoints while testing a ban.
       if (me.gameBan?.active) return;
-
       const [lb, lbs, gd, we, announcement, notificationState] = await Promise.all([
         getJson<LeaderboardEntry[]>('/api/leaderboard').catch(() => []),
         getJson<LeaderboardBoards>('/api/leaderboards').catch(() => null),
@@ -712,13 +717,11 @@ export function App() {
         getJson<{ message: string; updatedAt: number; updatedBy: string } | null>('/api/developer-announcement').catch(() => null),
         getJson<{ enabled: boolean }>('/api/notifications').catch(() => ({ enabled: false })),
       ]);
-
       setLeaderboardData(lb);
       setLeaderboards(lbs);
       setGuildData(gd);
       setWorldEvent(we);
-      if (announcement === null || !announcement.message) setDeveloperAnnouncement(null);
-      else setDeveloperAnnouncement(announcement);
+      setDeveloperAnnouncement(announcement?.message ? announcement : null);
       setNotificationsEnabled(notificationState.enabled === true);
     } catch (e: any) {
       if (e?.message === 'REDDIT_LOGIN_REQUIRED') {
@@ -740,153 +743,179 @@ export function App() {
       setStartupError(message);
       console.error('Refresh error:', e);
     }
-  }, []);
+  }, [applyPlayerState, splashEntered]);
 
   useEffect(() => {
-    if (!stateRef.current) return;
+    if (!splashEntered || !stateRef.current) return;
     void ensureRollTicket().catch(() => null);
-  }, [state?.stateRevision, ensureRollTicket]);
+  }, [state?.stateRevision, ensureRollTicket, splashEntered]);
 
-  // Initial load. Timer updates stay local to the screens that display them.
+  // First pass loads the save for the splash; toggling splashEntered reruns
+  // refreshAll to fetch the remaining panels once the player presses Play.
   useEffect(() => {
     void refreshAll();
   }, [refreshAll]);
 
-  // Live developer announcement feed. All open clients poll the same Redis-backed
+    // Live developer announcement feed. All open clients poll the same Redis-backed
   // announcement so edits appear automatically without requiring a page refresh.
   useEffect(() => {
+    if (!splashEntered) return;
     let cancelled = false;
-
+    let inFlight = false;
     const pollDeveloperAnnouncement = async () => {
+      if (cancelled || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
       try {
         const announcement = await getJson<{ message: string; updatedAt: number; updatedBy: string } | null>('/api/developer-announcement');
         if (cancelled) return;
-
         if (!announcement?.message) {
           setDeveloperAnnouncement(null);
           return;
         }
-
-        if (announcement.updatedAt > dismissedDeveloperAnnouncementRef.current) {
-          setDeveloperAnnouncement(announcement);
-        } else {
-          setDeveloperAnnouncement(null);
-        }
+        setDeveloperAnnouncement(announcement.updatedAt > dismissedDeveloperAnnouncementRef.current ? announcement : null);
       } catch {
-        // Announcement polling is best-effort and must never block gameplay.
+        // Announcement polling is best-effort and never blocks gameplay.
+      } finally {
+        inFlight = false;
       }
     };
-
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void pollDeveloperAnnouncement(); };
     void pollDeveloperAnnouncement();
     const interval = window.setInterval(() => void pollDeveloperAnnouncement(), 10000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, []);
+  }, [splashEntered]);
 
   // Detect when the installed game has a newer client bundle. The endpoint is
   // deliberately uncached so stale Reddit/CDN responses do not hide updates.
   useEffect(() => {
+    if (!splashEntered) return;
+    let cancelled = false;
+    let inFlight = false;
     const checkForUpdate = async () => {
+      if (cancelled || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
       try {
-        const res = await fetch('/api/version?check=' + Date.now(), {
-          cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache' },
-        });
-        if (!res.ok) return;
+        const res = await fetch('/api/version?check=' + Date.now(), { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
+        if (cancelled || !res.ok) return;
         const data = await res.json() as { version?: string };
-        if (data.version && data.version !== APP_VERSION) {
-          setUpdateAvailable(true);
-        }
+        if (!cancelled && data.version && data.version !== APP_VERSION) setUpdateAvailable(true);
       } catch {
-        // Update detection is best-effort and must never block gameplay.
+        // Update detection is best-effort and never blocks gameplay.
+      } finally {
+        inFlight = false;
       }
     };
-
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void checkForUpdate(); };
     void checkForUpdate();
     const interval = window.setInterval(() => void checkForUpdate(), 30_000);
-    return () => window.clearInterval(interval);
-  }, []);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [splashEntered]);
 
   // Refresh live community state while visible; hidden webviews should not poll.
   useEffect(() => {
+    if (!splashEntered) return;
     const pollInterval = tab === 'social' ? 3000 : 8000;
-    const refreshCommunityState = () => {
-      if (document.visibilityState === 'hidden') return;
-      void getJson<WorldEvent | null>('/api/world-event').then(we => {
+    let cancelled = false;
+    let inFlight = false;
+    const refreshCommunityState = async () => {
+      if (!splashEntered || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      try {
+        const we = await getJson<WorldEvent | null>('/api/world-event');
+        if (cancelled) return;
         setWorldEvent(we);
-      }).catch(() => null);
-
-      if (tab === 'social') {
-        void getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds').then(gd => {
-          if (gd) setGuildData(gd);
-        }).catch(() => null);
+        if (tab === 'social') {
+          const gd = await getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds');
+          if (!cancelled && gd) setGuildData(gd);
+        }
+      } catch {
+        // Community panels recover on a later poll without blocking gameplay.
+      } finally {
+        inFlight = false;
       }
     };
-    refreshCommunityState();
-    const interval = window.setInterval(refreshCommunityState, pollInterval);
-    document.addEventListener('visibilitychange', refreshCommunityState);
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void refreshCommunityState(); };
+    void refreshCommunityState();
+    const interval = window.setInterval(() => void refreshCommunityState(), pollInterval);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
+      cancelled = true;
       window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', refreshCommunityState);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [tab]);
-
+  }, [tab, splashEntered]);
 
   // Global Boosters are shared state, so refresh them independently of player-state polling.
   useEffect(() => {
-    if (tab !== 'boosters') return;
-
-    const refreshGlobalBoosters = () => {
-      if (document.visibilityState === 'hidden') return;
-      void getJson<GlobalBoosterSnapshot>('/api/global-boosters')
-        .then(snapshot => {
-          if (snapshot) {
-            latestGlobalBoostersRef.current = snapshot;
-            if (stateRef.current) {
-              stateRef.current = { ...stateRef.current, globalBoosters: snapshot };
-            }
-            setState(prev => prev ? { ...prev, globalBoosters: snapshot } : prev);
-          }
-        })
-        .catch(() => null);
+    if (!splashEntered || tab !== 'boosters') return;
+    let cancelled = false;
+    let inFlight = false;
+    const refreshGlobalBoosters = async () => {
+      if (cancelled || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      try {
+        const snapshot = await getJson<GlobalBoosterSnapshot>('/api/global-boosters');
+        if (cancelled || !snapshot) return;
+        latestGlobalBoostersRef.current = snapshot;
+        if (stateRef.current) stateRef.current = { ...stateRef.current, globalBoosters: snapshot };
+        setState(prev => prev ? { ...prev, globalBoosters: snapshot } : prev);
+      } catch {
+        // A failed shared-state refresh is retried on the next visible poll.
+      } finally {
+        inFlight = false;
+      }
     };
-
-    refreshGlobalBoosters();
-    const interval = window.setInterval(refreshGlobalBoosters, 5000);
-    document.addEventListener('visibilitychange', refreshGlobalBoosters);
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void refreshGlobalBoosters(); };
+    void refreshGlobalBoosters();
+    const interval = window.setInterval(() => void refreshGlobalBoosters(), 5000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
+      cancelled = true;
       window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', refreshGlobalBoosters);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [tab]);
+  }, [tab, splashEntered]);
 
   // Presence is independent from player-state persistence. Do not poll /api/me
   // here because game-state reads must never be responsible for saving the player.
   useEffect(() => {
     if (!splashEntered) return;
-    const refreshPresence = () => {
-      if (document.visibilityState === 'hidden') return;
-      void getJson<{ onlinePlayers: number }>('/api/online')
-        .then(({ onlinePlayers }) => {
-          const safeOnlinePlayers = Number.isSafeInteger(onlinePlayers)
-            ? Math.max(0, onlinePlayers)
-            : 0;
-          onlinePlayersRef.current = safeOnlinePlayers;
-          if (stateRef.current) {
-            stateRef.current = { ...stateRef.current, onlinePlayers: safeOnlinePlayers };
-          }
-          setState(prev => prev ? { ...prev, onlinePlayers: safeOnlinePlayers } : prev);
-        })
-        .catch(() => null);
+    let cancelled = false;
+    let inFlight = false;
+    const refreshPresence = async () => {
+      if (inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      try {
+        const { onlinePlayers } = await getJson<{ onlinePlayers: number }>('/api/online');
+        if (cancelled) return;
+        const safeOnlinePlayers = Number.isSafeInteger(onlinePlayers) ? Math.max(0, onlinePlayers) : 0;
+        onlinePlayersRef.current = safeOnlinePlayers;
+        if (stateRef.current) stateRef.current = { ...stateRef.current, onlinePlayers: safeOnlinePlayers };
+        setState(prev => prev ? { ...prev, onlinePlayers: safeOnlinePlayers } : prev);
+      } catch {
+        // Presence is supplementary; retry on the next visible poll.
+      } finally {
+        inFlight = false;
+      }
     };
-    refreshPresence();
-    const presenceInterval = window.setInterval(refreshPresence, 10_000);
-    document.addEventListener('visibilitychange', refreshPresence);
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void refreshPresence(); };
+    void refreshPresence();
+    const presenceInterval = window.setInterval(() => void refreshPresence(), 10_000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
+      cancelled = true;
       window.clearInterval(presenceInterval);
-      document.removeEventListener('visibilitychange', refreshPresence);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [splashEntered]);
 
@@ -1000,15 +1029,15 @@ export function App() {
   }, [state, splashEntered, frenzyRunTriggered, applyPlayerState, enqueueMutation]);
 
   useEffect(() => {
+    if (!splashEntered) return;
     const startedAt = Date.now();
-
     const checkPrompt = () => {
+      if (!splashEntered) return;
       const now = Date.now();
       const current = stateRef.current;
       if (!current || now - startedAt < FRENZY_PROMPT_DELAY_MS) return;
       if (!canShowDailyFrenzyPrompt(current.lastFrenzyAt ?? current.lastFrenzyDate, now)) return;
       if (frenzyPromptShownRef.current) return;
-
       const storageKey = `io-frenzy-prompt-shown-${todayKey(now)}`;
       try {
         if (window.localStorage.getItem(storageKey) === '1') return;
@@ -1017,20 +1046,18 @@ export function App() {
         // Storage can be unavailable in embedded webviews. The in-memory
         // state still prevents repeated prompts during this session.
       }
-
       frenzyPromptShownRef.current = true;
       setShowFrenzyPrompt(true);
     };
-
     const interval = window.setInterval(checkPrompt, 15_000);
     checkPrompt();
     return () => window.clearInterval(interval);
-  }, []);
+  }, [splashEntered]);
 
   // Social quests count only when the player actually opens the social area.
   // Background leaderboard/guild refreshes must not award the visit quest.
   useEffect(() => {
-    if (tab !== 'social') return;
+    if (!splashEntered || tab !== 'social') return;
 
     // Mark the visit locally before the server records it. The server response
     // remains authoritative for quest progress and cross-device state.
@@ -1053,10 +1080,11 @@ export function App() {
       .catch(() => {
         rollback?.();
       });
-  }, [applyPlayerState, beginOptimisticState, tab]);
+  }, [applyPlayerState, beginOptimisticState, tab, splashEntered]);
 
   // Roll action
   const handleRoll = useCallback(async (isAutoRoll = false) => {
+    if (isAutoRoll && !splashEntered) return;
     if (rollActionLockRef.current) return;
     const currentState = stateRef.current;
     if (!currentState) return;
@@ -1164,18 +1192,19 @@ export function App() {
     ensureRollTicket,
     refreshAll,
     frenzyArmed,
+    splashEntered,
   ]);
 
   // Auto roll watcher (paced steadily)
   useEffect(() => {
-    if (!autoRoll || !state || state.upgrades.auto === 0) return;
+    if (!splashEntered || !autoRoll || !state || state.upgrades.auto === 0) return;
     const interval = setInterval(() => {
       if (Date.now() >= readyAt && !isRolling) {
         void handleRoll(true);
       }
     }, 300);
     return () => clearInterval(interval);
-  }, [autoRoll, state, readyAt, isRolling, handleRoll]);
+  }, [autoRoll, state, readyAt, isRolling, handleRoll, splashEntered]);
 
   // Standard upgrades are applied optimistically, queued for a short burst
   // window, and validated together by one authoritative server mutation.
