@@ -107,3 +107,32 @@ test('run resets clear stale Last Attack state before a new descent', () => {
   assert.match(combat, /state\.skillRuntime\.lastAttackDamage = 0/);
   assert.match(combat, /s\.skillRuntime\.lastAttackDamage=0/);
 });
+
+test('mobile Gear cards reveal details on touch before equipping and expose the popover state', () => {
+  const combat = source('src/client/components/CombatSection.tsx');
+  assert.match(combat, /lastPointerTypeRef\.current==='touch'\)setShowTooltip/);
+  assert.match(combat, /aria-expanded=\{showTooltip\}/);
+  assert.match(combat, /aria-controls=\{tooltipId\}/);
+  assert.match(combat, /role="group" aria-label=\{item\.name\+' details'\}/);
+});
+
+test('Reddit Share dialog has a programmatic name and explicit dialog semantics', () => {
+  const share = source('src/client/components/RedditShareModal.tsx');
+  assert.match(share, /role="dialog" aria-modal="true"/);
+  assert.match(share, /aria-labelledby="io-share-dialog-title"/);
+  assert.match(share, /id="io-share-dialog-title"/);
+});
+
+test('Rune refresh announces loading and Strengthen selection cannot be cancelled mid-mutation', () => {
+  const runes = source('src/client/components/RunesSection.tsx');
+  assert.match(runes, /Refreshing Rune inventory/);
+  assert.match(runes, /aria-busy=\{loading\|\|operationPending\}/);
+  assert.match(runes, /disabled=\{operationPending\|\|sacrificing\}/);
+});
+
+test('Global Chat closes on Escape and announces new message additions', () => {
+  const chat = source('src/client/components/GlobalChatWindow.tsx');
+  assert.match(chat, /event\.key === 'Escape'/);
+  assert.match(chat, /role="log"/);
+  assert.match(chat, /aria-relevant="additions text"/);
+});
