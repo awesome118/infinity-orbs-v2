@@ -11,6 +11,10 @@ const entries: Array<{
   description: string;
 }> = [
   {
+    title: 'Inline Post Scroll Compliance',
+    description: 'Inline launch and Orb Frenzy posts now use bounded, non-scrollable preview surfaces that allow vertical feed gestures to pass through to Reddit. The in-post Global Chat scroller and oversized fallback dialog were removed from Frenzy; full chat and long interactions stay in Expanded Mode.',
+  },
+  {
     title: 'Combat Reliability & Rune Inventory',
     description: 'Combat saves now fail safely instead of silently resetting, empty gear inventories stay empty, and encounter effects clear when a new run begins. Rune inventory adds search, equipped filters, level progress, capacity warnings, safer Strengthen actions, and serialized requests. Upgrade purchases, Global Chat requests, quest progress, and daily-streak previews have additional reliability and accessibility fixes.',
   },
