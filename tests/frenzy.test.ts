@@ -315,3 +315,115 @@ test('Frenzy post previews do not register online-player activity', () => {
   assert.match(source, /if \(options\.registerActivity !== false\) await registerPlayer\(/);
 });
 
+
+
+test('Frenzy claim and preview paths fail closed for malformed persisted timestamps and rarity', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  assert.match(source, /function parseFrenzyPostRecord\(raw: unknown\): FrenzyPostRecord \| null/);
+  assert.match(source, /!Number\.isSafeInteger\(record\.createdAt\)/);
+  assert.match(source, /record\.createdAt > now/);
+  assert.match(source, /!Number\.isInteger\(record\.rarity\)/);
+  assert.match(source, /record\.rarity > MAX_ORB_RARITY/);
+  const infoStart = source.indexOf('export async function getOrbFrenzyInfo');
+  const claimStart = source.indexOf('export async function claimOrbFrenzy');
+  const armStart = source.indexOf('export async function armOrbFrenzyClaim');
+  assert.ok(infoStart >= 0 && claimStart > infoStart && armStart > 0);
+  assert.match(source.slice(infoStart, claimStart), /parseFrenzyPostRecord\(raw\)/);
+  assert.match(source.slice(armStart, claimStart), /parseFrenzyPostRecord\(raw\)/);
+  assert.match(source.slice(claimStart, claimStart + 5000), /parseFrenzyPostRecord\(raw\)/);
+});
+
+
+test('viewer-specific Frenzy eligibility and handoff responses are never cacheable', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/app.ts'), 'utf8');
+  for (const route of [
+    "app.post('/api/frenzy/arm'",
+    "app.get('/api/frenzy/handoff'",
+    "app.get('/api/frenzy/info'",
+    "app.post('/api/frenzy/claim'",
+  ]) {
+    const start = source.indexOf(route);
+    assert.ok(start >= 0, 'missing route ' + route);
+    const nextRoute = source.indexOf('\n  app.', start + 5);
+    const end = nextRoute < 0 ? source.length : nextRoute;
+    assert.match(source.slice(start, end), /Cache-Control', 'no-store'/, route + ' must not leak cached per-viewer state');
+  }
+});
+
+
+test('arming a Frenzy serializes offline settlement with normal player mutations', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  const start = source.indexOf('export async function armOrbFrenzyClaim');
+  const end = source.indexOf('\nexport async function getOrbFrenzyHandoff', start);
+  assert.ok(start >= 0 && end > start, 'Frenzy arm function must exist');
+  const arm = source.slice(start, end);
+  assert.match(arm, /return withPlayerMutationLock\(async \(\) => \{/);
+  assert.match(arm, /await settleOffline\(await loadRaw\(\)\)/);
+  assert.match(arm, /frenzyHandoffKey\(currentUserId\(\)\)/);
+});
+
+
+test('expired Frenzy handoff cleanup cannot delete a fresh concurrent handoff', async () => {
+  const {
+    configureDevvitRuntime,
+    context: originalContext,
+    redis: originalRedis,
+    reddit: originalReddit,
+  } = await import('../src/server/devvit-mock.js');
+  const { getOrbFrenzyHandoff } = await import('../src/server/game.js');
+  const userId = 'frenzy-handoff-race-' + Date.now().toString(36);
+  const handoffKey = 'io:frenzy:handoff:' + userId;
+  const stale = JSON.stringify({ postId: 't3_stale', expiresAt: Date.now() - 1 });
+  const fresh = JSON.stringify({ postId: 't3_fresh', expiresAt: Date.now() + 60_000 });
+  const baseRedis = originalRedis;
+  let raced = false;
+  const raceRedis = {
+    ...baseRedis,
+    get: async (key: string) => {
+      const value = await baseRedis.get(key);
+      if (key === handoffKey && !raced) {
+        raced = true;
+        await baseRedis.set(handoffKey, fresh);
+      }
+      return value;
+    },
+  };
+  configureDevvitRuntime({
+    redis: raceRedis,
+    context: { ...originalContext, userId, username: 'FrenzyRaceTest' },
+    reddit: originalReddit,
+  });
+  try {
+    await baseRedis.set(handoffKey, stale);
+    assert.deepEqual(await getOrbFrenzyHandoff(), { armed: false });
+    assert.deepEqual(await getOrbFrenzyHandoff(), { armed: true, postId: 't3_fresh' });
+  } finally {
+    await baseRedis.del(handoffKey);
+    configureDevvitRuntime({ redis: baseRedis, context: originalContext, reddit: originalReddit });
+  }
+});
+
+
+test('Frenzy handoff keys have a Redis expiry as well as an application expiry', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  const start = source.indexOf('export async function armOrbFrenzyClaim');
+  const end = source.indexOf('\nexport async function getOrbFrenzyHandoff', start);
+  assert.ok(start >= 0 && end > start);
+  const arm = source.slice(start, end);
+  assert.match(arm, /const handoffExpiresAt = Date\.now\(\) \+ FRENZY_HANDOFF_TTL_MS/);
+  assert.match(arm, /expiration: new Date\(handoffExpiresAt\)/);
+});
+
+
+test('Frenzy preview, arm, and claim checks honor the stored expiration timestamp', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  assert.match(source, /function isFrenzyPostRecordExpired\([\s\S]{0,250}post\.expiresAt \?\? frenzyPostExpiresAt\(post\.createdAt\)/);
+  const infoStart = source.indexOf('export async function getOrbFrenzyInfo');
+  const claimStart = source.indexOf('export async function claimOrbFrenzy');
+  const armStart = source.indexOf('export async function armOrbFrenzyClaim');
+  const handoffStart = source.indexOf('export async function getOrbFrenzyHandoff');
+  assert.ok(infoStart >= 0 && claimStart > infoStart && armStart > 0 && handoffStart > armStart);
+  assert.match(source.slice(infoStart, claimStart), /isFrenzyPostRecordExpired\(data, now\)/);
+  assert.match(source.slice(armStart, handoffStart), /isFrenzyPostRecordExpired\(data, now\)/);
+  assert.match(source.slice(claimStart, claimStart + 8000), /isFrenzyPostRecordExpired\(data, now\)/);
+});
