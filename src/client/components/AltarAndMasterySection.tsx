@@ -196,7 +196,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
               <h2 className="text-lg font-black text-white">Altar of Perpetual Devotion</h2>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              Sacrifice Coins to permanently raise your Altar Devotion Luck (+1% per Level). Sacrifice Shards for permanent Infusion (+2%/shard) & Luck Surges!
+              Sacrifice Coins to raise Altar Rank; each rank compounds Coin Devotion by 1.05×. Shards add a base +2% permanent luck each before Altar Resonator and level bonuses, and extend Luck Surges.
             </p>
           </div>
 

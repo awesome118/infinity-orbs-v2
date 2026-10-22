@@ -247,7 +247,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
             {shardMultiplier.toFixed(2)}× <span className="text-xs font-normal text-cyan-400">Shard Multiplier</span>
           </div>
           <p className="text-[11px] text-slate-400">
-            {sacrifices.shardsSacrificed} Shards permanently infused (+3% multiplicative luck per shard).
+            {sacrifices.shardsSacrificed} Shards permanently infused (base +2% multiplicative luck per shard, before Altar Resonator and level bonuses).
           </p>
         </div>
 

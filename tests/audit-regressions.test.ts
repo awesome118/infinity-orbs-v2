@@ -2735,6 +2735,16 @@ test('upgrade and mastery controls use existing local pending state for busy sem
   assert.ok(combined.includes('aria-busy={sacrificing || busy}'));
 });
 
+test('Altar descriptions match the implemented multiplicative bonus rates', () => {
+  const altar = source('src/client/components/AltarSection.tsx');
+  const combined = source('src/client/components/AltarAndMasterySection.tsx');
+  assert.ok(altar.includes('base +2% multiplicative luck per shard'));
+  assert.ok(!altar.includes('+3% multiplicative luck per shard'));
+  assert.ok(combined.includes('each rank compounds Coin Devotion by 1.05×'));
+  assert.ok(combined.includes('base +2% permanent luck each'));
+  assert.ok(!combined.includes('Altar Devotion Luck (+1% per Level)'));
+});
+
 test('Altar range controls have explicit labels connected to their inputs', () => {
   const altar = source('src/client/components/AltarSection.tsx');
   assert.ok(altar.includes('<label htmlFor="altar-coin-offer"'));
