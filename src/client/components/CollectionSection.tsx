@@ -23,13 +23,14 @@ import { sound } from '../sound.js';
 
 interface CollectionSectionProps {
   state: PlayerState;
-  onOpenShareModal: (rarity: number) => void;
+  onOpenShareModal: (rarity: number, isInfinity?: boolean) => void;
   onBuyChainPatcher: () => Promise<void>;
 }
 
 interface CollectionPageItem {
   rarity: number;
   count: number;
+  isInfinity?: boolean;
 }
 
 interface CollectionPageResponse {
@@ -197,7 +198,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
                 Highest Orb
               </span>
               <span className="text-lg font-black text-purple-300">
-                1 / {formatRarity(state.highestRarity || 2)}
+                1 / {formatRarity(state.highestRarity || 2, state.highestRarityIsInfinity)}
               </span>
             </div>
           </div>
@@ -413,10 +414,10 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {items.map(item => {
-              const info = getOrbInfo(item.rarity);
+              const info = getOrbInfo(item.rarity, item.isInfinity);
               return (
                 <div
-                  key={item.rarity}
+                  key={item.isInfinity ? 'Infinity' : item.rarity}
                   className="relative rounded-2xl p-4 border bg-slate-900/90 border-slate-800 hover:border-slate-700 transition-all shadow-md"
                 >
                   <div className="flex items-center gap-3.5">
@@ -425,7 +426,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
                       style={{ background: info.bgGradient }}
                     >
                       <span className="text-[10px] font-black text-white/90 drop-shadow">
-                        1/{formatRarity(item.rarity)}
+                        1/{formatRarity(item.rarity, item.isInfinity)}
                       </span>
                     </div>
 
@@ -447,7 +448,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
                       <h3 className="text-sm font-black text-white truncate mt-1">{info.name}</h3>
 
                       <div className="flex items-center justify-between text-xs text-slate-400 mt-1">
-                        <span className="font-mono text-[11px]">1 in {formatRarity(item.rarity)}</span>
+                        <span className="font-mono text-[11px]">1 in {formatRarity(item.rarity, item.isInfinity)}</span>
                         <span className="text-amber-400 font-semibold text-[11px]">
                           +{fmt(coinsForRarity(item.rarity))} Coins
                         </span>
@@ -461,7 +462,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
                         type="button"
                         onClick={() => {
                           sound.playClick();
-                          onOpenShareModal(item.rarity);
+                          onOpenShareModal(item.rarity, item.isInfinity);
                         }}
                         className="text-[11px] font-bold text-orange-400 hover:text-orange-300 flex items-center gap-1 transition-colors"
                       >
