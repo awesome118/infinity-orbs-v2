@@ -56,19 +56,25 @@ export const RunesSection:React.FC=()=>{
   const [autoSacrificeBusy,setAutoSacrificeBusy]=useState(false);
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
-  const operationLockRef=useRef(false);
+  const actionInFlightRef=useRef(false);
+  const snapshotRequestSequenceRef=useRef(0);
   const [operationPending,setOperationPending]=useState(false);
-  const beginOperation=useCallback(()=>{
-    if(operationLockRef.current)return false;
-    operationLockRef.current=true;setOperationPending(true);return true;
+  const beginAction=useCallback(()=>{
+    if(actionInFlightRef.current)return false;
+    actionInFlightRef.current=true;setOperationPending(true);return true;
   },[]);
-  const endOperation=useCallback(()=>{operationLockRef.current=false;setOperationPending(false);},[]);
+  const endAction=useCallback(()=>{actionInFlightRef.current=false;setOperationPending(false);},[]);
   const load=useCallback(async()=>{
-    if(!beginOperation())return;
-    try{const result=await request<CombatSnapshot>('/api/combat/state');setSnapshot(result);setError('');}
-    catch(e){setError(e instanceof Error?e.message:'Could not load Runes.');}
-    finally{setLoading(false);endOperation();}
-  },[beginOperation,endOperation]);
+    if(!beginAction())return;
+    snapshotRequestSequenceRef.current+=1;
+    const requestSequence=snapshotRequestSequenceRef.current;
+    try{
+      const result=await request<CombatSnapshot>('/api/combat/state');
+      if(requestSequence!==snapshotRequestSequenceRef.current)return;
+      setSnapshot(result);setError('');
+    }catch(e){if(requestSequence===snapshotRequestSequenceRef.current)setError(e instanceof Error?e.message:'Could not load Runes.');}
+    finally{setLoading(false);endAction();}
+  },[beginAction,endAction]);
   useEffect(()=>{void load();},[load]);
   const state=snapshot?.state??null;
   const bestDepthCandidates=state?[state.bestDepth,...Object.values(state.dungeonBestDepths??{}).map(Number)].filter(depth=>Number.isFinite(depth)&&depth>=0):[];
@@ -92,11 +98,11 @@ export const RunesSection:React.FC=()=>{
   },[runes,strengthenTargetId,inspectedRuneId]);
   useEffect(()=>{const closeDetails=(event:KeyboardEvent)=>{if(event.key!=='Escape')return;setInspectedRuneId('');setStrengthenTargetId('');const target=event.target;if(target instanceof HTMLElement&&target.closest('.io-runes-icon-wrap.is-inspected'))target.blur();};window.addEventListener('keydown',closeDetails);return()=>window.removeEventListener('keydown',closeDetails);},[]);
   const mutate=async(url:string,body:unknown,runeId:string,success:string)=>{
-    if(!beginOperation())return;
+    if(!beginAction())return;
     setBusyRune(runeId);setError('');setNotice('');
-    try{const result=await request<CombatSnapshot>(url,'POST',body);setSnapshot(result);setNotice(success);}
+    try{const result=await request<CombatSnapshot>(url,'POST',body);snapshotRequestSequenceRef.current+=1;setSnapshot(result);setNotice(success);}
     catch(e){setError(e instanceof Error?e.message:'Rune update failed.');}
-    finally{setBusyRune(null);endOperation();}
+    finally{setBusyRune(null);endAction();}
   };
   const equippedRunes=state?(state.equippedRunes.map(id=>state.runes.find(rune=>rune.id===id)).filter((rune):rune is CombatRune=>Boolean(rune))):[];
 
@@ -116,20 +122,20 @@ export const RunesSection:React.FC=()=>{
     const target=state?.runes.find(rune=>rune.id===targetId);
     const donor=state?.runes.find(rune=>rune.id===donorId);
     if(!target||!donor||target.id===donor.id)return;
-    if(!beginOperation())return;
+    if(!beginAction())return;
     setSacrificing(true);setError('');setNotice('');
     try{
       const result=await request<SacrificeResponse>('/api/combat/runes/sacrifice','POST',{targetRuneId:target.id,donorRuneId:donor.id});
-      setSnapshot(result);setStrengthenTargetId('');setInspectedRuneId('');
+      snapshotRequestSequenceRef.current+=1;setSnapshot(result);setStrengthenTargetId('');setInspectedRuneId('');
       const detail=result.runeSacrifice;
       setNotice(detail
         ?detail.donorName+' sacrificed into '+detail.targetName+': +'+fmt(detail.gainedXp)+' Rune XP. '+detail.targetName+' is now Level '+fmt(detail.level)+'.'
         :'Rune sacrificed to strengthen the selected Rune.');
     }catch(e){setError(e instanceof Error?e.message:'Rune sacrifice failed.');}
-    finally{setSacrificing(false);endOperation();}
+    finally{setSacrificing(false);endAction();}
   };
   const handleRuneClick=(rune:CombatRune)=>{
-    if(operationLockRef.current)return;
+    if(actionInFlightRef.current)return;
     if(strengthenTargetId){
       if(rune.id===strengthenTargetId){
         setStrengthenTargetId('');setNotice('Strengthen selection cancelled.');
@@ -143,27 +149,27 @@ export const RunesSection:React.FC=()=>{
     setError('');setInspectedRuneId(current=>current===rune.id?'':rune.id);
   };
   const saveAutoSacrificeSettings=async(enabled:boolean,maxRarity:CombatRuneRarity)=>{
-    if(!beginOperation())return;
+    if(!beginAction())return;
     setAutoSacrificeBusy(true);setError('');setNotice('');
     try{
       const result=await request<CombatSnapshot>('/api/combat/runes/auto-sacrifice/settings','POST',{enabled,maxRarity});
-      setSnapshot(result);setNotice(enabled?'Auto Sacrifice enabled. New Runes at or below '+maxRarity+' will strengthen a random equipped Rune.':'Auto Sacrifice disabled.');
+      snapshotRequestSequenceRef.current+=1;setSnapshot(result);setNotice(enabled?'Auto Sacrifice enabled. New Runes at or below '+maxRarity+' will strengthen a random equipped Rune.':'Auto Sacrifice disabled.');
     }catch(e){setError(e instanceof Error?e.message:'Auto Sacrifice settings could not be saved.');}
-    finally{setAutoSacrificeBusy(false);endOperation();}
+    finally{setAutoSacrificeBusy(false);endAction();}
   };
   const processAutoSacrifice=async()=>{
-    if(!beginOperation())return;
+    if(!beginAction())return;
     setAutoSacrificeBusy(true);setError('');setNotice('');
     try{
       const result=await request<AutoSacrificeResponse>('/api/combat/runes/auto-sacrifice/run','POST',{});
-      setSnapshot(result);
+      snapshotRequestSequenceRef.current+=1;setSnapshot(result);
       const summary=result.runeAutoSacrificeResult;
       setNotice(summary
         ?'Auto Sacrifice consumed '+fmt(summary.runesSacrificed)+' Runes and granted '+fmt(summary.totalXp)+' Rune XP across random equipped targets.'
         :'Auto Sacrifice completed.');
       setStrengthenTargetId('');
     }catch(e){setError(e instanceof Error?e.message:'Auto Sacrifice could not run.');}
-    finally{setAutoSacrificeBusy(false);endOperation();}
+    finally{setAutoSacrificeBusy(false);endAction();}
   };
   return <div className="io-runes-page">
     <header className="io-runes-header">
@@ -221,7 +227,7 @@ export const RunesSection:React.FC=()=>{
         </div>
         {!runes.length?<div className="io-runes-empty"><Gem size={22} style={{margin:'0 auto .5rem',color:'#a78bfa'}}/><strong style={{display:'block',color:'#e2e8f0'}}>No Runes found yet</strong>Defeat monsters in Combat. Common monsters can drop a Rune, elite enemies have a higher chance, and bosses always drop one.</div>:
           <>
-          {visibleRunes.length===0?<div className="io-runes-empty">No Runes match this search and filter. Clear filters to see your full inventory.</div>:
+          {visibleRunes.length===0?<div className="io-runes-empty">No matching Runes. Clear filters to see your full inventory.</div>:
           <div className="io-runes-inventory">{visibleRunes.map(rune=>{
             const isEquipped=state.equippedRunes.includes(rune.id);
             const canEquip=isEquipped||state.equippedRunes.length<slots;
