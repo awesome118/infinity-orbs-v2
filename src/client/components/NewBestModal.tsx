@@ -9,7 +9,7 @@ interface NewBestModalProps {
   orb: Orb;
   prevBest: number;
   onClose: () => void;
-  onOpenShareModal: (rarity: number) => void;
+  onOpenShareModal: (rarity: number, isInfinity?: boolean) => void;
 }
 
 export const NewBestModal: React.FC<NewBestModalProps> = ({
@@ -18,7 +18,7 @@ export const NewBestModal: React.FC<NewBestModalProps> = ({
   onClose,
   onOpenShareModal,
 }) => {
-  const orbInfo = getOrbInfo(orb.rarity);
+  const orbInfo = getOrbInfo(orb.rarity, orb.isInfinity);
   const isMinorDiscovery = orb.rarity < 100;
 
   useEffect(() => {
@@ -109,7 +109,7 @@ export const NewBestModal: React.FC<NewBestModalProps> = ({
                 {orbInfo.tier}
               </span>
               <div className="text-sm font-black text-white font-mono">
-                1 / {formatRarity(orb.rarity)}
+                1 / {formatRarity(orb.rarity, orb.isInfinity)}
               </div>
               <div className="text-[10px] text-white/90">
                 {orbInfo.name}
@@ -189,7 +189,7 @@ export const NewBestModal: React.FC<NewBestModalProps> = ({
               {orbInfo.tier}
             </span>
             <div className="text-xl sm:text-2xl font-black text-white font-mono drop-shadow-md">
-              1 / {formatRarity(orb.rarity)}
+              1 / {formatRarity(orb.rarity, orb.isInfinity)}
             </div>
             <div className="text-xs font-bold text-white/90 drop-shadow mt-0.5">
               {orbInfo.name}
@@ -222,7 +222,7 @@ export const NewBestModal: React.FC<NewBestModalProps> = ({
             type="button"
             onClick={() => {
               onClose();
-              onOpenShareModal(orb.rarity);
+              onOpenShareModal(orb.rarity, orb.isInfinity);
             }}
             className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-orange-600 via-amber-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-orange-950/50 transition-all active:scale-95 cursor-pointer"
           >
