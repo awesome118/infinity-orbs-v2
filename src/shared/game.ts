@@ -2559,12 +2559,13 @@ export function predictRollActivation(
     xpGained += earnedXp;
 
     if (batch.length < 50) {
-      const info = getOrbInfo(rarity);
+      const info = getOrbInfo(rarity, isInfinityOrb);
       batch.push({
         rarity,
         rolledAt: Date.now(),
         tier: info.tier,
         name: info.name,
+        isInfinity: isInfinityOrb,
         isNew,
         isCrit,
       });
