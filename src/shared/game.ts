@@ -1264,7 +1264,12 @@ export function formatRarity(rarity: number): string {
   if (safe >= 100_000_000) {
     const exponent = Math.floor(Math.log10(safe));
     const mantissa = safe / Math.pow(10, exponent);
-    return `${mantissa.toFixed(2)}e${exponent}`;
+    // Keep values immediately below the cap from rounding up to "1.80e308",
+    // which would visually imply a value beyond the finite Number ceiling.
+    const mantissaText = exponent >= 300
+      ? mantissa.toFixed(6).replace(/\\.?0+$/, '')
+      : mantissa.toFixed(2);
+    return `${mantissaText}e${exponent}`;
   }
   return safe.toLocaleString('en-US');
 }
