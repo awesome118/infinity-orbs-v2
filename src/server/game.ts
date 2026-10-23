@@ -3616,6 +3616,8 @@ export async function applyRolls(
       ? Math.min(MAX_ORB_RARITY, Number.isFinite(rawCritRarity) ? rawCritRarity : MAX_ORB_RARITY)
       : baseRarity;
     const finalVal = Math.min(MAX_ORB_RARITY, Math.round(rarity * valueMul));
+    const rarityKey = isInfinityOrb ? 'Infinity' : String(rarity);
+    const isNew = !s.collection[rarityKey];
 
     totalVal = Math.min(Number.MAX_VALUE, totalVal + finalVal);
     rarities.push(rarity);
@@ -3694,8 +3696,6 @@ export async function applyRolls(
       addRuneBonusRolls(1, { minRarity: floor, skipAllProcs: true });
     }
 
-    const rarityKey = isInfinityOrb ? 'Infinity' : String(rarity);
-    const isNew = !s.collection[rarityKey];
     if (rarity > bestRarity || (isInfinityOrb && !bestIsInfinity)) {
       bestRarity = rarity;
       bestIsCrit = isCrit;

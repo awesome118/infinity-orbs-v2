@@ -241,7 +241,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.coins=0;
   s.combatMarks=Math.min(Number.MAX_SAFE_INTEGER,legacyCoins+legacyMarks);
   s.totalKills=finiteInt(s.totalKills,0,0,Number.MAX_SAFE_INTEGER);
-  s.arenaRating=finiteInt(s.arenaRating,1000,100,10000);s.arenaWins=finiteInt(s.arenaWins,0,0,Number.MAX_SAFE_INTEGER);s.arenaLosses=finiteInt(s.arenaLosses,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastChallengeAt=finiteInt(s.arenaLastChallengeAt,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastMatchAt=finiteInt(arenaLastMatchAtValue,0,0,Number.MAX_SAFE_INTEGER);
+  s.arenaRating=finiteInt(s.arenaRating,1000,100,10000);s.arenaWins=finiteInt(s.arenaWins,0,0,Number.MAX_SAFE_INTEGER);s.arenaLosses=finiteInt(s.arenaLosses,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastChallengeAt=finiteInt(s.arenaLastChallengeAt,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastMatchAt=finiteInt(s.arenaLastMatchAt,0,0,Number.MAX_SAFE_INTEGER);
   s.coreLevel=finiteInt(s.coreLevel,1,1,1_000_000);s.coreHighestRarity=finiteInt(s.coreHighestRarity,2,2,Number.MAX_VALUE);
   s.autoTactic=(['balanced','aggressive','defensive','recovery'] as unknown[]).includes(s.autoTactic)?s.autoTactic:'balanced';
   s.scrap=finiteInt(s.scrap,0,0,Number.MAX_SAFE_INTEGER);s.autoScrapUnlocked=s.autoScrapUnlocked===true;s.autoScrapSettings=normalizeCombatAutoScrapSettings(s.autoScrapSettings);s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillGachaRank=finiteInt(storedGachaRank,legacyUnlockedRank,1,SKILL_GACHA_RANK_MAX);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,Number.MAX_VALUE);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=Math.min(finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER),Date.now());s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
@@ -985,6 +985,12 @@ const ARENA_PROFILE_KEY = 'infinity-orbs:combat:arena:profiles';
 const ARENA_PROFILE_TTL_MS = 24 * 60 * 60_000;
 const ARENA_CHALLENGE_COOLDOWN_MS = 90_000;
 
+function arenaCooldownRemaining(lastAtValue: unknown, now = Date.now()): number {
+  const lastAt = finiteInt(lastAtValue, 0, 0, Number.MAX_SAFE_INTEGER);
+  if (lastAt <= 0) return 0;
+  return Math.max(0, ARENA_CHALLENGE_COOLDOWN_MS - Math.max(0, now - lastAt));
+}
+
 /** Synthetic opponents are explicitly labelled practice bots and never written to player storage. */
 const ARENA_TEST_BOTS = [
   { id:'testbot:rookie-sentinel', username:'Practice Bot · Rookie', level:3, bestDepth:5, rating:720, wins:8, losses:17, upgradeRank:0, skillId:'ember-lung' as CombatSkillId },
@@ -1334,7 +1340,7 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
           opponentId, opponentProfile.username, opponentState, opponentProfile.updatedAt,
         );
         await redis.hSet(ARENA_PROFILE_KEY, { [opponentId]: JSON.stringify(protectedProfile) })
-          .catch(error => console.error('[Combat Arena] Could not refresh protected profile.', error));
+          .catch((error: unknown) => console.error('[Combat Arena] Could not refresh protected profile.', error));
         throw new Error('ARENA_OPPONENT_COOLDOWN:' + opponentProtection);
       }
 

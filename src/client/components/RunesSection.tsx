@@ -50,7 +50,8 @@ export const RunesSection:React.FC=()=>{
   const [busyRune,setBusyRune]=useState<string|null>(null);
   const [sacrificing,setSacrificing]=useState(false);
   const [strengthenTargetId,setStrengthenTargetId]=useState('');
-  const [inventoryFilter,setInventoryFilter]=useState<'all'|'equipped'|'unequipped'>('all');
+  const [inspectedRuneId,setInspectedRuneId]=useState('');
+  const [runeFilter,setRuneFilter]=useState<'all'|'equipped'|'unequipped'|'auto'>('all');
   const [runeSearch,setRuneSearch]=useState('');
   const [autoSacrificeBusy,setAutoSacrificeBusy]=useState(false);
   const [error,setError]=useState('');
@@ -80,20 +81,11 @@ export const RunesSection:React.FC=()=>{
     return runes.filter(rune=>{
       const equipped=Boolean(state?.equippedRunes.includes(rune.id));
       const matchesFilter=runeFilter==='all'||(runeFilter==='equipped'&&equipped)||(runeFilter==='unequipped'&&!equipped)||(runeFilter==='auto'&&!equipped&&combatRuneRarityAtOrBelow(rune.rarity,state?.runeAutoSacrifice?.maxRarity??'Common'));
-      return matchesFilter&&(!query||String(rune.name??'').toLowerCase().includes(query)||String(rune.stat??'').toLowerCase().includes(query)||String(rune.rarity??'').toLowerCase().includes(query));
+      const searchable=[rune.name,rune.stat,STAT_LABEL[rune.stat],rune.rarity,rune.majorAbility?.name??'',rune.majorAbility?.description??''].join(' ').toLowerCase();
+      return matchesFilter&&(!query||searchable.includes(query));
     });
   },[runes,runeFilter,runeSearch,state?.equippedRunes,state?.runeAutoSacrifice?.maxRarity]);
-  const visibleRunes=useMemo(()=>{
-    const query=runeSearch.trim().toLowerCase();
-    return runes.filter(rune=>{
-      const equipped=Boolean(state?.equippedRunes.includes(rune.id));
-      if(inventoryFilter==='equipped'&&!equipped)return false;
-      if(inventoryFilter==='unequipped'&&equipped)return false;
-      if(!query)return true;
-      const searchable=[rune.name,rune.rarity,STAT_LABEL[rune.stat],rune.majorAbility?.name??'',rune.majorAbility?.description??''].join(' ').toLowerCase();
-      return searchable.includes(query);
-    });
-  },[runes,runeSearch,inventoryFilter,state?.equippedRunes]);
+
   useEffect(()=>{
     if(strengthenTargetId&&!runes.some(rune=>rune.id===strengthenTargetId))setStrengthenTargetId('');
     if(inspectedRuneId&&!runes.some(rune=>rune.id===inspectedRuneId))setInspectedRuneId('');
@@ -107,16 +99,7 @@ export const RunesSection:React.FC=()=>{
     finally{setBusyRune(null);endOperation();}
   };
   const equippedRunes=state?(state.equippedRunes.map(id=>state.runes.find(rune=>rune.id===id)).filter((rune):rune is CombatRune=>Boolean(rune))):[];
-  const visibleRunes=useMemo(()=>{
-    const query=runeSearch.trim().toLowerCase();
-    return runes.filter(rune=>{
-      const equipped=Boolean(state?.equippedRunes.includes(rune.id));
-      if(runeFilter==='equipped'&&!equipped)return false;
-      if(runeFilter==='spare'&&equipped)return false;
-      if(!query)return true;
-      return [rune.name,rune.rarity,rune.stat,rune.majorAbility?.name??''].some(value=>String(value).toLowerCase().includes(query));
-    });
-  },[runes,runeSearch,runeFilter,state?.equippedRunes]);
+
   const strengthenTargetRune=runes.find(rune=>rune.id===strengthenTargetId);
   const rawAutoSacrificeSettings=state?.runeAutoSacrifice??{enabled:false,maxRarity:'Common' as CombatRuneRarity};
   const autoSacrificeSettings={enabled:rawAutoSacrificeSettings.enabled===true,maxRarity:RUNE_RARITIES.includes(rawAutoSacrificeSettings.maxRarity)?rawAutoSacrificeSettings.maxRarity:'Common' as CombatRuneRarity};
@@ -132,8 +115,7 @@ export const RunesSection:React.FC=()=>{
   const sacrifice=async(targetId:string,donorId:string)=>{
     const target=state?.runes.find(rune=>rune.id===targetId);
     const donor=state?.runes.find(rune=>rune.id===donorId);
-    if(!target||!donor||target.id===donor.id||actionLockRef.current)return;
-    actionLockRef.current=true;
+    if(!target||!donor||target.id===donor.id)return;
     if(!beginOperation())return;
     setSacrificing(true);setError('');setNotice('');
     try{
@@ -147,7 +129,7 @@ export const RunesSection:React.FC=()=>{
     finally{setSacrificing(false);endOperation();}
   };
   const handleRuneClick=(rune:CombatRune)=>{
-    if(actionInFlightRef.current)return;
+    if(operationLockRef.current)return;
     if(strengthenTargetId){
       if(rune.id===strengthenTargetId){
         setStrengthenTargetId('');setNotice('Strengthen selection cancelled.');
@@ -190,7 +172,7 @@ export const RunesSection:React.FC=()=>{
     </header>
     {error&&<div className="io-runes-error io-runes-error-row" role="alert"><span>{error}</span><button type="button" onClick={()=>{setLoading(true);void load();}} disabled={loading||Boolean(busyRune)||sacrificing||autoSacrificeBusy}>Retry</button></div>}
     {notice&&!error&&<div className="io-runes-muted" role="status" aria-live="polite">{notice}</div>}
-    {actionBusy&&<div className="io-runes-muted" role="status" aria-live="polite">Saving Rune changes…</div>}
+    {operationPending&&<div className="io-runes-muted" role="status" aria-live="polite">Saving Rune changes…</div>}
     {loading&&!state?<div className="io-runes-loading">Loading Rune inventory…</div>:state&&<>
       <section className="io-runes-panel">
         <div className="io-runes-panel-head"><h2>Equipped loadout</h2><span className="io-runes-muted" aria-live="polite">{equippedRunes.length} / {slots} slots used · Delver Lv. {fmt(state.level)} · Best depth {fmt(bestRuneDepth)}</span></div>
@@ -233,23 +215,12 @@ export const RunesSection:React.FC=()=>{
             <input type="search" value={runeSearch} onChange={event=>setRuneSearch(event.target.value.slice(0,80))} placeholder="Name, stat, or rarity…" maxLength={80} aria-label="Search Rune inventory"/>
           </label>
           <div role="group" aria-label="Filter Rune inventory" className="io-runes-filter-group">
-            {([{id:'all',label:'All'},{id:'equipped',label:'Equipped'},{id:'unequipped',label:'Unequipped'},{id:'auto',label:'Auto-sacrifice eligible'}] as const).map(option=><button key={option.id} type="button" aria-pressed={runeFilter===option.id} disabled={actionBusy} onClick={()=>setRuneFilter(option.id)}>{option.label}</button>)}
+            {([{id:'all',label:'All'},{id:'equipped',label:'Equipped'},{id:'unequipped',label:'Unequipped'},{id:'auto',label:'Auto-sacrifice eligible'}] as const).map(option=><button key={option.id} type="button" aria-pressed={runeFilter===option.id} disabled={operationPending} onClick={()=>setRuneFilter(option.id)}>{option.label}</button>)}
           </div>
           <p className="io-runes-muted" role="status" aria-live="polite">Showing {fmt(visibleRunes.length)} of {fmt(runes.length)} Runes · {fmt(equippedRunes.length)} equipped · Inventory limit 200</p>
         </div>
         {!runes.length?<div className="io-runes-empty"><Gem size={22} style={{margin:'0 auto .5rem',color:'#a78bfa'}}/><strong style={{display:'block',color:'#e2e8f0'}}>No Runes found yet</strong>Defeat monsters in Combat. Common monsters can drop a Rune, elite enemies have a higher chance, and bosses always drop one.</div>:
           <>
-          <div className="io-runes-inventory-controls">
-            <label className="io-runes-search">Search Runes
-              <input type="search" value={runeSearch} onChange={event=>setRuneSearch(event.target.value)} placeholder="Name, rarity, stat, ability…" aria-label="Search Rune inventory by name, rarity, stat, or Major Ability"/>
-            </label>
-            <label className="io-runes-filter">Show
-              <select value={inventoryFilter} onChange={event=>setInventoryFilter(event.target.value as 'all'|'equipped'|'unequipped')} aria-label="Filter Rune inventory">
-                <option value="all">All Runes</option><option value="equipped">Equipped</option><option value="unequipped">Unequipped</option>
-              </select>
-            </label>
-            {(runeSearch||inventoryFilter!=='all')&&<button type="button" className="io-runes-button io-runes-clear-filter" onClick={()=>{setRuneSearch('');setInventoryFilter('all');}}>Clear filters</button>}
-          </div>
           {visibleRunes.length===0?<div className="io-runes-empty">No Runes match this search and filter. Clear filters to see your full inventory.</div>:
           <div className="io-runes-inventory">{visibleRunes.map(rune=>{
             const isEquipped=state.equippedRunes.includes(rune.id);
@@ -261,7 +232,7 @@ export const RunesSection:React.FC=()=>{
             const progressRange=nextXp-currentXp;
             const xpProgress=progressRange>0?Math.max(0,Math.min(100,(levelXp-currentXp)/progressRange*100)):100;
             const iconLabel=(isEquipped?'Unequip ':'Equip ')+rune.name;
-            return <article key={rune.id} className={'io-runes-icon-wrap '+rarityClass(rune.rarity)+(isEquipped?' is-equipped':'')}>
+            return <article key={rune.id} className={'io-runes-icon-wrap '+rarityClass(rune.rarity)+(isEquipped?' is-equipped':'')+(inspectedRuneId===rune.id?' is-inspected':'')}>
               <button type="button" className={'io-runes-icon '+rarityClass(rune.rarity)+(isEquipped?' is-equipped':'')+(strengthenTargetId===rune.id?' is-strengthen-target':'')} disabled={operationPending||sacrificing||(strengthenTargetId?false:busyRune===rune.id||(!isEquipped&&!canEquip))} onClick={()=>handleRuneClick(rune)} aria-describedby={'io-rune-tooltip-'+encodeURIComponent(rune.id)} aria-pressed={strengthenTargetId?strengthenTargetId===rune.id:isEquipped} aria-label={strengthenTargetId?(rune.id===strengthenTargetId?'Cancel Strengthen selection':'Sacrifice '+rune.name+' into '+(strengthenTargetRune?.name??'selected Rune')):iconLabel} title={strengthenTargetId?(rune.id===strengthenTargetId?'Cancel Strengthen selection':'Sacrifice into '+(strengthenTargetRune?.name??'selected Rune')):iconLabel}>
                 <span className="io-runes-icon-art">{STAT_ICON[rune.stat]}</span><small>Lv. {fmt(level)}</small>{isEquipped&&<span className="io-runes-equipped-mark"><ShieldCheck size={12}/></span>}
               </button>

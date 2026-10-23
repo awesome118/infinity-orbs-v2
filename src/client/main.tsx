@@ -118,7 +118,6 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
     let receivedNonRetryableHttpError = false;
     try {
       const res = await fetch(url, options);
-      responseReceived = true;
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         const message =
@@ -510,7 +509,7 @@ export function App() {
           (nextState.totalRolls ?? 0) !== (currentState.totalRolls ?? 0) ||
           (nextState.freeRolls ?? 0) !== (currentState.freeRolls ?? 0) ||
           (nextState.highestRarity ?? 0) !== (currentState.highestRarity ?? 0) ||
-          (nextState.totalRollValue ?? 0) !== (currentState.totalRollValue ?? 0) ||
+          (nextState.collectionValue ?? 0) !== (currentState.collectionValue ?? 0) ||
           (nextState.prestigeCount ?? 0) !== (currentState.prestigeCount ?? 0)
         )
       ) {
@@ -2543,7 +2542,7 @@ export function App() {
           </button>
 
           {!combatMode && <>
-          <button aria-current={tab === 'roll' ? 'page' : undefined}
+          <button
             type="button"
             onClick={() => {
               changeTab('roll');
@@ -2559,7 +2558,7 @@ export function App() {
             <span>Roll</span>
           </button>
 
-          <button aria-current={tab === 'upgrades' ? 'page' : undefined}
+          <button
             type="button"
             onClick={() => {
               changeTab('upgrades');
@@ -2575,7 +2574,7 @@ export function App() {
             <span>Upgrades</span>
             {featureForTab('upgrades' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('upgrades' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
-<button aria-current={tab === 'boosters' ? 'page' : undefined}
+<button
             type="button"
             onClick={() => {
               changeTab('boosters');
@@ -2594,7 +2593,7 @@ export function App() {
             )}
           </button>
 
-          <button aria-current={tab === 'altar' ? 'page' : undefined}
+          <button
             type="button"
             onClick={() => {
               changeTab('altar');
@@ -2611,7 +2610,7 @@ export function App() {
             {featureForTab('altar' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('altar' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
-          <button aria-current={tab === 'mastery' ? 'page' : undefined}
+          <button
             type="button"
             onClick={() => {
               changeTab('mastery');
@@ -2631,7 +2630,7 @@ export function App() {
             )}
           </button>
 
-          <button aria-current={tab === 'collection' ? 'page' : undefined}
+          <button
             type="button"
             onClick={() => {
               changeTab('collection');
@@ -2648,7 +2647,7 @@ export function App() {
             {featureForTab('collection' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('collection' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
-          <button aria-current={tab === 'quests' ? 'page' : undefined}
+          <button
             type="button"
             onClick={() => {
               changeTab('quests');
@@ -2668,7 +2667,7 @@ export function App() {
             )}
           </button>
 
-          <button aria-current={tab === 'social' ? 'page' : undefined}
+          <button
             type="button"
             onClick={() => {
               changeTab('social');
@@ -2685,7 +2684,7 @@ export function App() {
             {featureForTab('social' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('social' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
-          <button aria-current={tab === 'profile' ? 'page' : undefined}
+          <button
             type="button"
             onClick={() => {
               changeTab('profile');
