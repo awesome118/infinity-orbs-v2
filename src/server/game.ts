@@ -4677,6 +4677,16 @@ export async function setAutoRollEnabled(enabled: boolean): Promise<PlayerState>
     throw new Error('Auto Roll is not unlocked yet.');
   }
 
+  if (enabled) {
+    const pendingPatcherRarity = Number(s.chainPatcherNextRarity ?? 0);
+    if (pendingPatcherRarity !== 0) {
+      throw new Error(Number.isSafeInteger(pendingPatcherRarity) &&
+        pendingPatcherRarity >= 2 && pendingPatcherRarity <= MAX_ORB_RARITY
+        ? 'Use the charged Chain Patcher with one manual roll before re-enabling Auto Roll.'
+        : 'Chain Patcher save data is invalid; repair it before enabling Auto Roll.');
+    }
+  }
+
   s.autoRollEnabled = Boolean(enabled);
   await save(s);
   return s;
@@ -4736,6 +4746,9 @@ export async function roll(
       throw new Error('Chain Patcher save data is invalid; no roll was processed.');
     }
     const usingChainPatcher = rawPatcherRarity >= 2;
+    if (isAuto && usingChainPatcher) {
+      throw new Error('Chain Patcher charge must be used by a manual roll. Auto Roll remains paused.');
+    }
     const availableFreeRolls = Math.max(0, Math.floor(Number(s.freeRolls ?? 0) || 0));
     // A charged Chain Patcher must resolve as one deliberate, exact orb. It
     // does not consume or batch any accumulated Free Rolls.

@@ -161,6 +161,15 @@ test('Chain Patcher is server-authoritative, arms exactly one guaranteed rarity,
   assert.match(game, /s\.chainPatcherCooldownUntil = now \+ CHAIN_PATCHER_COOLDOWN_MS/);
   assert.match(game, /s\.autoRollEnabled = false/);
   assert.match(game, /Auto Roll is disabled/);
+  const autoToggleStart = game.indexOf('export async function setAutoRollEnabled');
+  const autoToggleEnd = game.indexOf('export async function roll(', autoToggleStart);
+  assert.ok(autoToggleStart >= 0 && autoToggleEnd > autoToggleStart);
+  const autoToggle = game.slice(autoToggleStart, autoToggleEnd);
+  assert.match(autoToggle, /if \(enabled\)[\s\S]*?pendingPatcherRarity !== 0/);
+  const rollStart = game.indexOf('export async function roll(');
+  const rollEnd = game.indexOf('export async function', rollStart + 20);
+  assert.ok(rollStart >= 0 && rollEnd > rollStart);
+  assert.match(game.slice(rollStart, rollEnd), /if \(isAuto && usingChainPatcher\)/);
   assert.match(game, /const activations = usingChainPatcher \? 1 : freeRollActivations/);
   assert.match(game, /usingChainPatcher,/);
   assert.match(game, /if \(usingChainPatcher\) s\.chainPatcherNextRarity = 0/);
