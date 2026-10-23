@@ -31,7 +31,7 @@
 - Added Rune inventory search, equipped filters, level and XP progress, capacity warnings, and clearer Strengthen and Auto Sacrifice controls.
 - Improved Global Chat status messaging when posting is unavailable and added active-session length to the player list.
 - Updated the in-feed Game, shared-Orb, and Frenzy previews to fit Reddit's inline view; longer interactions open in Expanded Mode.
-- Extended the rarity ceiling to the largest finite number JavaScript can represent. The cap is displayed as **Infinity**.
+- Rolls whose calculated rarity exceeds JavaScript's largest finite number now display as **1/Infinity**. The finite `1.797693e308` rarity remains a numeric rarity.
 
 ### Balance Changes:
 
