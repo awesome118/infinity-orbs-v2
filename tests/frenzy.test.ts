@@ -93,7 +93,7 @@ test('posted Frenzy opens the actual game entrypoint from the claim button', () 
 test('posted Frenzy rarity uses the rarity color and roll-up animation', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/client/frenzy.tsx'), 'utf8');
   const styles = readFileSync(resolve(process.cwd(), 'src/client/styles.css'), 'utf8');
-  assert.match(source, /getOrbInfo\(info\.rarity\)/);
+  assert.match(source, /getOrbInfo\(info\.rarity(?:,\s*info\.isInfinity)?\)/);
   assert.match(source, /style=\{\{ color \}\}/);
   assert.match(styles, /@keyframes io-frenzy-number-roll/);
   assert.match(styles, /\.io-frenzy-rarity-number/);
@@ -109,7 +109,7 @@ test('starting a Frenzy creates a dedicated public Frenzy post', () => {
 test('Frenzy posts use Orb terminology and claims return a visible Orb volley', () => {
   const server = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
   assert.doesNotMatch(server, /got a 1\/\$\{formatRarity\(rarity\)\} ball in their Frenzy/);
-  assert.match(server, /got a 1\/\$\{formatRarity\(rarity\)\} Orb in their Frenzy/);
+  assert.match(server, /got a 1\/\$\{formatRarity\(rarity,\s*isInfinity\)\} Orb in their Frenzy/);
   assert.match(server, /const visibleBatch: Orb\[\] = \[\]/);
   assert.match(server, /batch: visibleBatch/);
 });
@@ -291,7 +291,7 @@ test('public Frenzy initial load offers a deduplicated read-only retry', () => {
   assert.ok(loadStart >= 0 && loadEnd > loadStart, 'read-only load function must exist');
   const load = source.slice(loadStart, loadEnd);
   assert.ok(load.includes('if (loadInFlightRef.current) return;'));
-  assert.ok(load.includes("fetch('/api/frenzy/info')"));
+  assert.ok(load.includes("fetchWithTimeout('/api/frenzy/info')"), 'the read-only info request must have a timeout');
   assert.ok(!load.includes('/api/frenzy/arm') && !load.includes('/api/frenzy/claim'));
   const errorStart = source.indexOf('if (error && !info)');
   const errorEnd = source.indexOf('\n  if (!info)', errorStart);
