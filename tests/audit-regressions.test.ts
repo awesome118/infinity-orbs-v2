@@ -2513,9 +2513,9 @@ test('Combat is level-gated, guided, and reset with the rest of the player save'
 
 test('Combat menu loading keeps the React hook count stable', () => {
   const combat = source('src/client/components/CombatSection.tsx');
-  assert.doesNotMatch(combat, /useMemo\\s*\\(/, 'combat list filtering must not introduce hooks below early returns');
-  assert.match(combat, /if\\(loading&&!state\\)return/);
-  assert.match(combat, /if\\(!state\\|\\|!enemy\\|\\|!stats\\)return/);
+  assert.doesNotMatch(combat, /useMemo\s*\(/, 'combat list filtering must not introduce hooks below early returns');
+  assert.match(combat, /if\(loading&&!state\)return/);
+  assert.match(combat, /if\(!state\|\|!enemy\|\|!stats\)return/);
 });
 
 test('Navigation contains no category labels but preserves destination buttons', () => {

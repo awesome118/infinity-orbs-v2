@@ -235,7 +235,7 @@ export async function recordPostImpression(
   const indexField = postType + ':' + postId;
   const postCounterExpiration = new Date(now + 180 * 86_400_000);
   const hourBucketExpiration = new Date((hour + 25) * 3_600_000);
-  const dayBucketExpiration = new Date((day + 31) * DAY_MS);
+  const dayBucketExpiration = new Date((day + 31) * 86_400_000);
   const uniqueDayExpiration = new Date((day + Math.ceil(UNIQUE_DAY_RETENTION_MS / DAY_MS)) * DAY_MS);
 
   const uniquePostMarkerKey = UNIQUE_POST_MARKER_PREFIX + postType + ':' + encodeURIComponent(postId) + ':' + userHash;
