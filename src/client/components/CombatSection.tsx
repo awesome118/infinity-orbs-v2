@@ -414,7 +414,54 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       })()}
       <div className="io-combat-tactic-row"><label htmlFor="io-combat-auto-tactic"><span className="io-combat-eyebrow">AUTO TACTIC</span><strong>{state.autoTactic==='balanced'?'Balanced':state.autoTactic==='aggressive'?'Aggressive':state.autoTactic==='defensive'?'Defensive':'Recovery'}</strong></label><select id="io-combat-auto-tactic" value={state.autoTactic} disabled={mutating} onChange={event=>void mutate('/api/combat/tactics',{tactic:event.target.value as CombatTactic})}><option value="balanced">Balanced — heal low, otherwise strike hard</option><option value="aggressive">Aggressive — spend energy on Heavy</option><option value="defensive">Defensive — heal and guard earlier</option><option value="recovery">Recovery — prioritize staying healthy</option></select></div>
       <div className="io-combat-control-row"><div className="io-combat-command-group">{(['strike','heavy','guard','mend'] as CombatIntent[]).map(cmd=><button key={cmd} type="button" aria-pressed={intent===cmd} onClick={()=>{runtime.current.pendingCommandVersion+=1;runtime.current.intent=cmd;runtime.current.pendingIntent=true;runtime.current.pendingAbilityId=null;setIntent(cmd);}} className={intent===cmd?'io-combat-command is-selected':'io-combat-command'}><span>{cmd==='strike'?'Strike':cmd==='heavy'?'Heavy':cmd==='guard'?'Guard':'Mend'}</span><small>{cmd==='strike'?'FREE':cmd==='heavy'?'3 EN':cmd==='guard'?'2 EN':'4 EN'}</small></button>)}</div><div className="io-combat-run-controls"><button type="button" aria-pressed={paused} className="io-combat-button" onClick={()=>setPaused(!paused)}>{paused?<Play size={14}/>:<Pause size={14}/>} {paused?'Resume':'Pause'}</button><button type="button" aria-pressed={auto} className="io-combat-button" onClick={()=>setAuto(!auto)}>Auto: {auto?'ON':'OFF'}</button><button type="button" disabled={processing||mutating||beatCooldownMs>0} className="io-combat-button is-secondary" onClick={manualBeat}>{processing?'Resolving…':beatCooldownMs>0?'Next beat in '+Math.ceil(beatCooldownMs/1000)+'s':'Next Beat'}</button></div></div>
-      <section className="io-combat-panel" style={{marginTop:16}}><div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">ACTIVE ABILITIES</span><h2>Equipped · {state.equippedAbilities.length}/{COMBAT_ABILITY_SLOTS}</h2></div><button className="io-combat-text-link" type="button" onClick={()=>onNavigate('skills')}>Manage loadout →</button></div>{state.equippedAbilities.length===0?<p>No abilities equipped yet. Pull a Common skill and equip it from Skill Gacha.</p>:<div className="io-combat-skill-grid">{state.equippedAbilities.map(id=>{const skill=COMBAT_SKILLS.find(entry=>entry.id===id);if(!skill)return null;const rank=rankOf(state,id);const energyCost=combatSkillEnergyCost(skill.rarity);const cooldownLeft=Math.max(0,(state.abilityCooldowns[id]??0)-state.sequence);return <article key={id} className={'io-combat-skill-card '+rarityClass(skill.rarity)}><div className="io-combat-skill-card-head"><span>{skill.rarity.toUpperCase()} · RANK {fmt(rank)}</span><b>{cooldownLeft>0?'COOLDOWN '+cooldownLeft:'READY'}</b></div><h3>{skill.name}</h3><p>{skillValue(skill,rank)}</p><button type="button" className="io-combat-button is-primary" disabled={processing||mutating||beatCooldownMs>0||cooldownLeft>0||combatEnergyAfterRegen(state.energy,state.maxEnergy)<energyCost} onClick={()=>activateAbility(id)}>{processing?'Resolving…':beatCooldownMs>0?'Next beat in '+Math.ceil(beatCooldownMs/1000)+'s':cooldownLeft>0?'Ready in '+cooldownLeft+' beats' :combatEnergyAfterRegen(state.energy,state.maxEnergy)<energyCost?'Need '+energyCost+' energy':'Cast · '+energyCost+' Energy'}</button></article>})</div>}</section>
+      <section className="io-combat-panel" style={{ marginTop: 16 }}>
+        <div className="io-combat-panel-head">
+          <div>
+            <span className="io-combat-eyebrow">ACTIVE ABILITIES</span>
+            <h2>Equipped · {state.equippedAbilities.length}/{COMBAT_ABILITY_SLOTS}</h2>
+          </div>
+          <button className="io-combat-text-link" type="button" onClick={() => onNavigate('skills')}>Manage loadout →</button>
+        </div>
+        {state.equippedAbilities.length === 0 ? (
+          <p>No abilities equipped yet. Pull a Common skill and equip it from Skill Gacha.</p>
+        ) : (
+          <div className="io-combat-skill-grid">
+            {state.equippedAbilities.map((id) => {
+              const skill = COMBAT_SKILLS.find((entry) => entry.id === id);
+              if (!skill) return null;
+              const rank = rankOf(state, id);
+              const energyCost = combatSkillEnergyCost(skill.rarity);
+              const cooldownLeft = Math.max(0, (state.abilityCooldowns[id] ?? 0) - state.sequence);
+              return (
+                <article key={id} className={'io-combat-skill-card ' + rarityClass(skill.rarity)}>
+                  <div className="io-combat-skill-card-head">
+                    <span>{skill.rarity.toUpperCase()} · RANK {fmt(rank)}</span>
+                    <b>{cooldownLeft > 0 ? 'COOLDOWN ' + cooldownLeft : 'READY'}</b>
+                  </div>
+                  <h3>{skill.name}</h3>
+                  <p>{skillValue(skill, rank)}</p>
+                  <button
+                    type="button"
+                    className="io-combat-button is-primary"
+                    disabled={processing || mutating || beatCooldownMs > 0 || cooldownLeft > 0 || combatEnergyAfterRegen(state.energy, state.maxEnergy) < energyCost}
+                    onClick={() => activateAbility(id)}
+                  >
+                    {processing
+                      ? 'Resolving…'
+                      : beatCooldownMs > 0
+                        ? 'Next beat in ' + Math.ceil(beatCooldownMs / 1000) + 's'
+                        : cooldownLeft > 0
+                          ? 'Ready in ' + cooldownLeft + ' beats'
+                          : combatEnergyAfterRegen(state.energy, state.maxEnergy) < energyCost
+                            ? 'Need ' + energyCost + ' energy'
+                            : 'Cast · ' + energyCost + ' Energy'}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
       <div className="io-combat-stat-strip"><div><span>COMBAT MARKS</span><strong>{fmt(state.combatMarks)}</strong></div><div><span>SCRAP</span><strong>{fmt(state.scrap)}</strong></div><div><span>RUN HAUL</span><strong>{state.runInventoryIds.length}/30</strong></div><div><span>SKILL RANKS</span><strong>{ownedSkills.reduce((n,[,v])=>n+Number(v),0)}</strong></div><div><span>KILLS</span><strong>{fmt(state.totalKills)}</strong></div></div>
       <div className="io-combat-columns"><section className="io-combat-panel"><div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">FIELD NOTES</span><h2>Combat log</h2></div><span>{processing?'RESOLVING':paused?'PAUSED':auto?'AUTO-RUN':'MANUAL'}</span></div><div className="io-combat-log" aria-live="polite">{actions.length?actions.map((a,i)=><p key={state.sequence+'-'+i} className={'io-log-'+a.actor+' io-log-'+a.kind}>{a.text}</p>):<p>The Delver readies a weapon. The first beat is imminent.</p>}</div></section>
         <section className="io-combat-panel"><div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">YOUR LOADOUT</span><h2>Equipped</h2></div><button className="io-combat-text-link" type="button" onClick={()=>onNavigate('gear')}>Armory →</button></div><div className="io-combat-equipped-lines">{GEAR_SLOTS.map(({slot,label,Icon})=>{const item=equipped(state,slot);return <div className="io-combat-equipped-line" key={slot}><span><Icon size={13} aria-hidden="true"/> {label.toUpperCase()}</span><strong>{item?.name||'Empty slot'}</strong><small>{item?item.effect:'No item equipped'}</small></div>;})}</div><button className="io-combat-button is-primary" type="button" onClick={()=>onNavigate('skills')}>Open Skill Gacha</button></section></div>
