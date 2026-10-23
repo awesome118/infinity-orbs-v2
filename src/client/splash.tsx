@@ -182,7 +182,7 @@ function Splash() {
 
   if (postData.type === 'shared-orb') {
     if (
-      Number.isSafeInteger(postData.rarity) &&
+      Number.isInteger(postData.rarity) &&
       Number(postData.rarity) > 0 &&
       Number(postData.rarity) <= MAX_ORB_RARITY
     ) {
