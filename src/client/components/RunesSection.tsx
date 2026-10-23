@@ -282,9 +282,9 @@ export const RunesSection:React.FC=()=>{
               </div>
             </article>;
           })}</div>
+          }
           </>
-        )}
-          </>
+        }
       </section>
     </>}
   </div>;
