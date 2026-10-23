@@ -214,13 +214,13 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Bug report / suggestions */}
           <button
             type="button"
-            aria-label="Report a bug or send a suggestion"
+            aria-label="Report a bug or suggest an improvement"
             onClick={() => {
               sound.playClick();
               onOpenFeedback();
             }}
             className="header-icon-button p-2 text-slate-400 hover:text-amber-300 hover:bg-slate-800/80 rounded-lg transition-colors"
-            title="Report a bug or send a suggestion"
+            title="Report a bug or suggest an improvement"
           >
             <MessageSquarePlus className="w-4 h-4" />
           </button>
