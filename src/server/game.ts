@@ -3204,12 +3204,14 @@ function serverRandom(): number {
 }
 
 /**
- * Produces a uniform [0, 1) sample with 1,024 random bits for the inverse-CDF
- * rarity roll. A 53- or 64-bit uniform cannot naturally reach the full Number
- * rarity range; retain the leading 53 mantissa bits and the sampled exponent.
+ * Produces a uniform [0, 1) sample with 1,088 random bits for the inverse-CDF
+ * rarity roll. More than 1,074 bits keeps sampling resolution finer than the
+ * smallest positive Number step, so the extreme rarity tail is not quantized
+ * into just one or two probability outcomes near the finite Number ceiling.
+ * Retain the leading 53 mantissa bits and the sampled exponent when converting.
  */
 function serverRarityRandom(): number {
-  const words = new Uint32Array(32);
+  const words = new Uint32Array(34);
   globalThis.crypto.getRandomValues(words);
   let sample = 0n;
   for (const word of words) sample = (sample << 32n) | BigInt(word);
@@ -3219,7 +3221,7 @@ function serverRarityRandom(): number {
   const mantissaBits = Math.min(53, bitLength);
   const leadingBits = sample >> BigInt(bitLength - mantissaBits);
   const mantissa = Number(leadingBits) / Math.pow(2, mantissaBits);
-  const value = mantissa * Math.pow(2, bitLength - 1024);
+  const value = mantissa * Math.pow(2, bitLength - 1088);
   return Number.isFinite(value)
     ? Math.min(1 - Number.EPSILON, Math.max(Number.MIN_VALUE, value))
     : Number.MIN_VALUE;
