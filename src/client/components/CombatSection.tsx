@@ -48,8 +48,8 @@ function skillValue(skill:CombatSkillDefinition,rank:number,_speed=300):string {
 function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusPercent}:{item:CombatGear;isEquipped:boolean;onEquip:()=>void;onScrap:()=>void;busy:boolean;currentFloor:number;scrapBonusPercent:number}) {
   const [showTooltip,setShowTooltip]=useState(false);
   const [tooltipPoint,setTooltipPoint]=useState<{x:number;y:number}|null>(null);
+  const tooltipPointRef=useRef<{x:number;y:number}|null>(null);
   const lastPointerTypeRef=useRef<string>('mouse');
-  const tooltipId='io-combat-gear-tooltip-'+encodeURIComponent(item.id);
   const grade=combatGearRarityForQuality(item.quality);
   const tooltipId='io-gear-tooltip-'+item.id.replace(/[^A-Za-z0-9_-]/g,'-');
   const SlotIcon=GEAR_SLOTS.find(entry=>entry.slot===item.slot)?.Icon??Gem;
@@ -77,11 +77,9 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))setShowTooltip(false);}}>
     <button type="button" className={'io-combat-gear-icon '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
       aria-label={(isEquipped?'Inspect equipped ':'Inspect ')+item.name}
-       aria-expanded={showTooltip}
-       aria-controls={tooltipId}
-      title={item.name}
       aria-expanded={showTooltip}
       aria-controls={tooltipId}
+      title={item.name}
       disabled={busy}
       onClick={()=>{if(lastPointerTypeRef.current==='touch')setShowTooltip(value=>!value);else if(!isEquipped)onEquip();else setShowTooltip(value=>!value);}}>
       <SlotIcon size={27} strokeWidth={1.8} aria-hidden="true"/>
