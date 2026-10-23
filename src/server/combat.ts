@@ -1410,7 +1410,7 @@ export async function buyCombatUpgrade(upgradeValue: unknown): Promise<CombatSna
 /** Most recent main-game orb roll becomes the character's active combat focus. */
 export async function setCombatOrbFocus(rarityValue: unknown, nameValue: unknown): Promise<CombatSnapshot> {
   const raw = Number(rarityValue);
-  const rarity = Number.isFinite(raw) ? Math.max(2, Math.min(1_000_000_000_000_000_000, Math.floor(raw))) : 2;
+  const rarity = Number.isFinite(raw) ? Math.max(2, Math.min(Number.MAX_VALUE, Math.floor(raw))) : 2;
   const name = String(nameValue ?? 'Common Orb').trim().slice(0, 100) || 'Common Orb';
   return mutate(state => {
     state.orbFocusRarity = rarity;
