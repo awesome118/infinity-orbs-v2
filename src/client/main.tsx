@@ -934,6 +934,9 @@ export function App() {
     if (!state || !splashEntered || frenzyRunTriggered || frenzyClaimActiveRef.current) return;
 
     const resolveFrenzy = async () => {
+      // Lock before the first await. Effect replay must not run a second
+      // handoff preflight before the first request reaches its claim guard.
+      frenzyClaimActiveRef.current = true;
       let readyToClaim = false;
       let claimedFrenzyInfo: { rarity: number; ownerUsername: string; postId: string } | null = null;
       let lastPreflightError: unknown = null;
@@ -975,7 +978,7 @@ export function App() {
         return;
       }
 
-      frenzyClaimActiveRef.current = true;
+      if (!componentMountedRef.current) return;
       setFrenzyRunTriggered(true);
       setBusy(true);
       setIsRolling(true);
@@ -1031,9 +1034,13 @@ export function App() {
 
     void resolveFrenzy()
       .catch(error => {
-        showToast(error?.message || 'Could not claim Orb Frenzy.', 'warn');
+        if (componentMountedRef.current) {
+          showToast(error?.message || 'Could not claim Orb Frenzy.', 'warn');
+        }
       })
       .finally(() => {
+        frenzyClaimActiveRef.current = false;
+        if (!componentMountedRef.current) return;
         setIsRolling(false);
         setBusy(false);
       });

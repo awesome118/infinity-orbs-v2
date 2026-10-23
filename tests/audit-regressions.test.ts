@@ -77,6 +77,21 @@ test('Frenzy claim mounted-state guard recovers after an effect replay', () => {
   assert.ok(lifecycle.includes('componentMountedRef.current = false;'));
 });
 
+test('Frenzy handoff preflight is single-flight and stops before claim after unmount', () => {
+  const client = source('src/client/main.tsx');
+  const start = client.indexOf('const resolveFrenzy = async () => {');
+  const end = client.indexOf('}, [state, splashEntered, frenzyRunTriggered, applyPlayerState, enqueueMutation]);', start);
+  assert.ok(start >= 0 && end > start);
+  const effect = client.slice(start, end);
+  const lock = effect.indexOf('frenzyClaimActiveRef.current = true;');
+  const firstHandoffRead = effect.indexOf("await getJson<{ armed: boolean }>('/api/frenzy/handoff')");
+  assert.ok(lock >= 0 && lock < firstHandoffRead, 'lock must be acquired before the first awaited preflight');
+  const mountedGuard = effect.indexOf('if (!componentMountedRef.current) return;');
+  const claim = effect.indexOf("getJson<RollResponse>('/api/frenzy/claim'");
+  assert.ok(mountedGuard > 0 && claim > mountedGuard, 'mounted state must be checked before the claim POST');
+  assert.ok(client.includes('frenzyClaimActiveRef.current = false;\n        if (!componentMountedRef.current) return;'));
+});
+
 test('Frenzy client retries read-only preflight but does not retry the claim POST', () => {
   const main = source('src/client/main.tsx');
   const start = main.indexOf('const resolveFrenzy = async () =>');
