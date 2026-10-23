@@ -41,6 +41,5 @@
 ### Bug Fixes:
 
 - Fixed encounter effects carrying into a new run.
-- Fixed Rune inventory actions so overlapping Equip, Strengthen, and Auto Sacrifice requests do not race each other.
 - Fixed shared Orb previews rejecting valid large rarity values.
 - Fixed Rune controls so Equip, Strengthen, and Auto Sacrifice actions no longer conflict when used in quick succession.
