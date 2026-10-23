@@ -753,6 +753,8 @@ export interface CombatState {
   dungeonBestDepths: Record<CombatDungeonId, number>;
   depth: number;
   bestDepth: number;
+  /** True when the final supported depth has been cleared; prevents repeat farming. */
+  depthCapCleared?: boolean;
   level: number;
   xp: number;
   xpToNext: number;
@@ -987,7 +989,7 @@ export function skillPullCost(_skillRolls: number): number {
 export function createCombatState(): CombatState {
   const starter = createCombatStarterGear();
   const state: CombatState = {
-    version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1,
+    version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1, depthCapCleared:false,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
     baseDamage:54, coins:0, scrap:0, combatMarks:250, runes:[], equippedRunes:[], runeAutoSacrifice:{...DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS}, combatTutorialSeen:false, combatUpgrades:{}, totalKills:0, skillRolls:0, skillRuntime:createCombatSkillRuntime(), strategyGuideRank:0, tacticianManuals:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
     combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0, playerTurnsCompleted:0,
