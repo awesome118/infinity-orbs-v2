@@ -1,6 +1,6 @@
 import express from 'express';
 import { debugRouter, isDebugUser } from './debug.js';
-import { recordPostImpression } from './impressions.js';
+import { recordPostImpression, recordPlayerActivityForImpressions } from './impressions.js';
 import {
   getMe,
   getRollTicket,
@@ -1163,7 +1163,13 @@ export function createApp() {
 
   app.post('/api/activity/heartbeat', async (req, res) => {
     try {
-      res.json(await recordPlayerHeartbeat(req.body?.version));
+      const heartbeat = await recordPlayerHeartbeat(req.body?.version);
+      try {
+        await recordPlayerActivityForImpressions(context.userId);
+      } catch (analyticsError) {
+        console.error('[Impressions] First-play attribution failed; heartbeat remains successful.', analyticsError);
+      }
+      res.json(heartbeat);
     } catch (e: any) {
       reportRedisTransactionFailure(e);
       console.error('[API /api/activity/heartbeat] Failed:', {

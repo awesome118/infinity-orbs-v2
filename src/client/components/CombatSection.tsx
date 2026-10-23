@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Coins, Info, Pause, Play, Sparkles, Swords, Zap, Sword, Shield, Crown, Hand, Footprints, CircleDot, Gem, Hammer, Clock3, Timer, type LucideIcon } from 'lucide-react';
 import { RunesSection } from './RunesSection.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatAutoScrapSettings, CombatCommand, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatOrbRoll, CombatPage, CombatSkillDefinition, CombatSkillId, CombatSnapshot, CombatState, CombatStats, CombatTactic } from '../../shared/combat.js';
@@ -331,39 +331,35 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     return sum+(isActive&&item.majorAbility?.id==='salvagers-touch'?item.majorAbility.scrapBonusPercent*gearQualityEffectiveness(item,currentFloor):0);
   },0);
   const forgeQualityCost=combatForgeQualityCost(currentFloor,forgeQuality);
-  const matchingGear=useMemo(()=>{
-    const query=gearSearch.trim().toLowerCase();
-    const equippedIds=new Set(Object.values(state.equipment).filter((id):id is string=>Boolean(id)));
-    return state.inventory.filter(item=>{
-      if(gearSlotFilter!=='all'&&item.slot!==gearSlotFilter)return false;
-      const isEquipped=equippedIds.has(item.id);
-      if(gearOwnershipFilter==='equipped'&&!isEquipped)return false;
-      if(gearOwnershipFilter==='spare'&&isEquipped)return false;
-      if(!query)return true;
-      return [item.name,item.slot,item.trait,item.effect,item.majorAbility?.name??'',item.majorAbility?.description??''].some(value=>String(value).toLowerCase().includes(query));
-    }).sort((a,b)=>{
-      if(gearSort==='power')return b.power-a.power||b.quality-a.quality||a.name.localeCompare(b.name);
-      if(gearSort==='quality')return b.quality-a.quality||b.power-a.power||a.name.localeCompare(b.name);
-      if(gearSort==='level')return b.sourceFloor-a.sourceFloor||b.power-a.power||a.name.localeCompare(b.name);
-      return state.inventory.indexOf(a)-state.inventory.indexOf(b);
-    });
-  },[state.inventory,state.equipment,gearSearch,gearSlotFilter,gearOwnershipFilter,gearSort]);
+  const gearQuery=gearSearch.trim().toLowerCase();
+  const equippedIds=new Set(Object.values(state.equipment).filter((id):id is string=>Boolean(id)));
+  const matchingGear=state.inventory.filter(item=>{
+    if(gearSlotFilter!=='all'&&item.slot!==gearSlotFilter)return false;
+    const isEquipped=equippedIds.has(item.id);
+    if(gearOwnershipFilter==='equipped'&&!isEquipped)return false;
+    if(gearOwnershipFilter==='spare'&&isEquipped)return false;
+    if(!gearQuery)return true;
+    return [item.name,item.slot,item.trait,item.effect,item.majorAbility?.name??'',item.majorAbility?.description??''].some(value=>String(value).toLowerCase().includes(gearQuery));
+  }).sort((a,b)=>{
+    if(gearSort==='power')return b.power-a.power||b.quality-a.quality||a.name.localeCompare(b.name);
+    if(gearSort==='quality')return b.quality-a.quality||b.power-a.power||a.name.localeCompare(b.name);
+    if(gearSort==='level')return b.sourceFloor-a.sourceFloor||b.power-a.power||a.name.localeCompare(b.name);
+    return state.inventory.indexOf(a)-state.inventory.indexOf(b);
+  });
   const visibleGear=matchingGear.slice(0,visibleGearCount);
-  const visibleArenaOpponents=useMemo(()=>{
-    const query=arenaSearch.trim().toLowerCase();
-    return arenaOpponents.filter(opponent=>{
-      const practice=opponent.userId.startsWith('testbot:');
-      if(arenaOpponentFilter==='practice'&&!practice)return false;
-      if(arenaOpponentFilter==='players'&&practice)return false;
-      if(!query)return true;
-      return [opponent.username,opponent.weaponName,opponent.armorName,String(opponent.rating),String(opponent.level),String(opponent.bestDepth)]
-        .some(value=>String(value).toLowerCase().includes(query));
-    }).sort((a,b)=>{
-      if(arenaSort==='level')return b.level-a.level||b.rating-a.rating;
-      if(arenaSort==='depth')return b.bestDepth-a.bestDepth||b.rating-a.rating;
-      return b.rating-a.rating||b.bestDepth-a.bestDepth;
-    });
-  },[arenaOpponents,arenaSearch,arenaOpponentFilter,arenaSort]);
+  const arenaQuery=arenaSearch.trim().toLowerCase();
+  const visibleArenaOpponents=arenaOpponents.filter(opponent=>{
+    const practice=opponent.userId.startsWith('testbot:');
+    if(arenaOpponentFilter==='practice'&&!practice)return false;
+    if(arenaOpponentFilter==='players'&&practice)return false;
+    if(!arenaQuery)return true;
+    return [opponent.username,opponent.weaponName,opponent.armorName,String(opponent.rating),String(opponent.level),String(opponent.bestDepth)]
+      .some(value=>String(value).toLowerCase().includes(arenaQuery));
+  }).sort((a,b)=>{
+    if(arenaSort==='level')return b.level-a.level||b.rating-a.rating;
+    if(arenaSort==='depth')return b.bestDepth-a.bestDepth||b.rating-a.rating;
+    return b.rating-a.rating||b.bestDepth-a.bestDepth;
+  });
   const visibleSkills=COMBAT_SKILLS.filter(skill=>(showAllSkills||rankOf(state,skill.id)>0)&&[skill.name,skill.rarity,skill.stat].some(value=>String(value).toLowerCase().includes(skillSearch.trim().toLowerCase())));
   const nextStrategyGuide=STRATEGY_GUIDE_RANKS.find(entry=>entry.rank===state.strategyGuideRank+1)??null;
   if(page==='runes')return <RunesSection/>;

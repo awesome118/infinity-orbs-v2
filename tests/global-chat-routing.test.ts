@@ -6,7 +6,7 @@ import {
   redis as originalRedis,
   reddit as originalReddit,
 } from '../src/server/devvit-mock.js';
-import { getGlobalChatStatus } from '../src/server/social.js';
+import { getGlobalChatStatus, postGlobalChatMessage } from '../src/server/social.js';
 
 test('no unregistered ordinary post can become Global Chat destination via launcher=main', async () => {
   const baseContext = originalContext;
@@ -29,6 +29,57 @@ test('no unregistered ordinary post can become Global Chat destination via launc
     assert.equal(await baseRedis.get(gamePostKey), null, 'client-controlled launcher flags must not register arbitrary posts');
   } finally {
     await baseRedis.del(gamePostKey);
+    if (previousGamePost != null) await baseRedis.set(gamePostKey, previousGamePost);
+    configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  }
+});
+
+
+test('registered Frenzy Global Chat routes public comments to the canonical main Game post', async () => {
+  const baseContext = originalContext;
+  const baseRedis = originalRedis;
+  const baseReddit = originalReddit;
+  const suffix = Date.now().toString(36);
+  const mainPostId = 't3_main-chat-target-' + suffix;
+  const frenzyPostId = 't3_frenzy-chat-source-' + suffix;
+  const userId = 'chat-frenzy-routing-' + suffix;
+  const gamePostKey = 'io:global-game-post-id';
+  const frenzyKey = 'io:frenzy:post:' + frenzyPostId;
+  const chatKey = 'io:global-chat:v1';
+  const cooldownKey = 'io:chat-cooldown:v1:global:' + userId;
+  const previousGamePost = await baseRedis.get(gamePostKey);
+  const previousFrenzy = await baseRedis.get(frenzyKey);
+  const previousChat = await baseRedis.get(chatKey);
+  const previousCooldown = await baseRedis.get(cooldownKey);
+  let submittedTo = '';
+  const commentId = 'route' + suffix.replace(/[^a-z0-9]/gi, '');
+  const reddit = {
+    ...baseReddit,
+    submitComment: async (options: { id: string; text: string; runAs?: string }) => {
+      submittedTo = options.id;
+      return { id: commentId };
+    },
+  };
+  configureDevvitRuntime({
+    redis: baseRedis,
+    context: { ...baseContext, postId: frenzyPostId, userId, username: 'ChatFrenzyTest' },
+    reddit,
+  });
+  try {
+    await baseRedis.set(gamePostKey, mainPostId);
+    await baseRedis.set(frenzyKey, JSON.stringify({ ownerId: 'frenzy-owner', createdAt: Date.now() }));
+    assert.deepEqual(await getGlobalChatStatus(), { enabled: true });
+    const message = await postGlobalChatMessage('This should appear on the main Game post.');
+    assert.equal(submittedTo, mainPostId);
+    assert.equal(message.id, 't1_' + commentId);
+  } finally {
+    await baseRedis.del(frenzyKey);
+    await baseRedis.del(cooldownKey);
+    await baseRedis.del(chatKey);
+    await baseRedis.del(gamePostKey);
+    if (previousFrenzy != null) await baseRedis.set(frenzyKey, previousFrenzy);
+    if (previousCooldown != null) await baseRedis.set(cooldownKey, previousCooldown);
+    if (previousChat != null) await baseRedis.set(chatKey, previousChat);
     if (previousGamePost != null) await baseRedis.set(gamePostKey, previousGamePost);
     configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
   }

@@ -16,11 +16,13 @@ test('post impressions count aggregate metrics without registering online-player
   const baseContext = originalContext;
   const baseReddit = originalReddit;
   const suffix = Date.now().toString(36);
+  const mainPostId = 't3_impression-main-' + suffix;
+  const sharePostId = 't3_impression-share-' + suffix;
   const testContext = {
     ...baseContext,
     userId: 'impression-viewer-' + suffix,
     username: 'ImpressionViewer',
-    postId: 't3_impression-test-' + suffix,
+    postId: mainPostId,
   };
 
   configureDevvitRuntime({ redis: baseRedis, context: testContext, reddit: baseReddit });
@@ -32,6 +34,7 @@ test('post impressions count aggregate metrics without registering online-player
     ]);
 
     assert.deepEqual(await recordPostImpression('main-game', 'desktop'), { recorded: true });
+    configureDevvitRuntime({ redis: baseRedis, context: { ...testContext, postId: sharePostId }, reddit: baseReddit });
     assert.deepEqual(await recordPostImpression('orb-share', 'mobile'), { recorded: true });
 
     const [after, presenceAfter, registryAfter] = await Promise.all([
@@ -40,13 +43,17 @@ test('post impressions count aggregate metrics without registering online-player
       baseRedis.hGetAll('io:player-registry'),
     ]);
 
-    assert.equal(after.total - before.total, 2);
+    assert.equal(after.total - before.total, 2, 'one unique account view is counted per post');
+    assert.equal(after.uniqueUsers - before.uniqueUsers, 1, 'same account deduplicates across posts');
+    assert.equal(after.uniqueToday - before.uniqueToday, 1, 'same account deduplicates for the day');
+    assert.equal(after.uniqueByType['main-game'] - before.uniqueByType['main-game'], 1);
+    assert.equal(after.uniqueByType['orb-share'] - before.uniqueByType['orb-share'], 1);
     assert.equal(after.byType['main-game'] - before.byType['main-game'], 1);
     assert.equal(after.byType['orb-share'] - before.byType['orb-share'], 1);
     assert.equal(after.byDevice.desktop - before.byDevice.desktop, 1);
     assert.equal(after.byDevice.mobile - before.byDevice.mobile, 1);
-    assert.ok(after.posts.some(post => post.postId === testContext.postId && post.postType === 'main-game' && post.impressions === 1));
-    assert.ok(after.posts.some(post => post.postId === testContext.postId && post.postType === 'orb-share' && post.impressions === 1));
+    assert.ok(after.posts.some(post => post.postId === mainPostId && post.postType === 'main-game' && post.impressions === 1));
+    assert.ok(after.posts.some(post => post.postId === sharePostId && post.postType === 'orb-share' && post.impressions === 1));
 
     assert.equal(presenceAfter, presenceBefore, 'impressions must not touch the online-player sorted set');
     assert.deepEqual(registryAfter, registryBefore, 'impressions must not register player activity');
@@ -79,7 +86,7 @@ test('impression dashboard treats malformed aggregate counters as zero', async (
   const baseContext = originalContext;
   const baseRedis = originalRedis;
   const baseReddit = originalReddit;
-  const key = 'io:impressions:total';
+  const key = 'io:impressions:unique-v2:post-views';
   const previous = await baseRedis.get(key);
   configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
   try {
@@ -162,7 +169,7 @@ test('dashboard excludes and cleans expired or corrupt post-index rows during qu
   const suffix = Date.now().toString(36);
   const oldPostId = 't3_stale-impression-index-' + suffix;
   const badPostId = 't3_corrupt-impression-index-' + suffix;
-  const indexKey = 'io:impressions:post-index';
+  const indexKey = 'io:impressions:unique-v2:post-index';
   const oldField = 'main-game:' + oldPostId;
   const badField = 'main-game:' + badPostId;
   const oldValue = await baseRedis.hGet(indexKey, oldField);
@@ -197,7 +204,7 @@ test('watched impression-index cleanup does not delete a row refreshed concurren
   const baseReddit = originalReddit;
   const suffix = Date.now().toString(36);
   const postId = 't3_impression-cleanup-race-' + suffix;
-  const indexKey = 'io:impressions:post-index';
+  const indexKey = 'io:impressions:unique-v2:post-index';
   const field = 'main-game:' + postId;
   const previous = await baseRedis.hGet(indexKey, field);
   const cutoff = Date.now() - 181 * 86_400_000;
@@ -242,7 +249,7 @@ test('watched impression-index cleanup does not delete a row refreshed concurren
   }
 });
 
-test('concurrent impression bursts preserve every committed aggregate count', async () => {
+test('concurrent impression bursts count one account/post view', async () => {
   const baseContext = originalContext;
   const baseRedis = originalRedis;
   const baseReddit = originalReddit;
@@ -257,13 +264,14 @@ test('concurrent impression bursts preserve every committed aggregate count', as
     const before = await getImpressionDashboard();
     const burstSize = 16;
     const results = await Promise.all(Array.from({ length: burstSize }, () => recordPostImpression('main-game', 'desktop')));
-    assert.ok(results.every(result => result.recorded));
+    assert.equal(results.filter(result => result.recorded).length, 1, 'only the first duplicate request should count');
     const after = await getImpressionDashboard();
-    assert.equal(after.total - before.total, burstSize);
-    assert.equal(after.byType['main-game'] - before.byType['main-game'], burstSize);
-    assert.equal(after.byDevice.desktop - before.byDevice.desktop, burstSize);
+    assert.equal(after.total - before.total, 1);
+    assert.equal(after.uniqueUsers - before.uniqueUsers, 1);
+    assert.equal(after.byType['main-game'] - before.byType['main-game'], 1);
+    assert.equal(after.byDevice.desktop - before.byDevice.desktop, 1);
     const post = after.posts.find(row => row.postId === postId && row.postType === 'main-game');
-    assert.equal(post?.impressions, burstSize);
+    assert.equal(post?.impressions, 1);
   } finally {
     configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
   }

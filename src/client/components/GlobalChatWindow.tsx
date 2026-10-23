@@ -46,8 +46,8 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   username = '',
 }) => {
   const [open, setOpen] = useState(false);
-  // Global Chat stays visible in the main and Frenzy entry points. Frenzy can
-  // read history, but posting is disabled until the player opens the main Game launcher.
+  // Server status permits only the registered main Game or a registered Frenzy context.
+  // Submissions from either context are routed to the canonical main Game post.
   const [chatAvailable, setChatAvailable] = useState<boolean | null>(null);
   const [chatUnavailableReason, setChatUnavailableReason] = useState('');
   const [messages, setMessages] = useState<GlobalChatMessage[]>([]);
@@ -176,7 +176,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
               ? ''
               : typeof payload.reason === 'string' && payload.reason.trim()
                 ? payload.reason
-                : "Global Chat is disabled because you're not in the main Game launcher.");
+                : "Global Chat is available only in the registered main Game or a registered Frenzy post.");
           }
           return;
         } catch {
@@ -184,7 +184,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           if (attempt === 2) {
             if (!cancelled) {
               setChatAvailable(false);
-              setChatUnavailableReason("Global Chat is disabled because you're not in the main Game launcher.");
+              setChatUnavailableReason("Global Chat is available only in the registered main Game or a registered Frenzy post.");
             }
             return;
           }
@@ -319,7 +319,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           setOpen(true);
         }}
         className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-2xl border border-indigo-500/30 bg-slate-900/95 px-4 py-3 text-xs font-black text-white shadow-2xl backdrop-blur-md hover:bg-slate-800 transition-all"
-        title={chatAvailable === true ? 'Open global chat' : 'Global Chat is disabled outside the main Game launcher'}
+        title={chatAvailable === true ? 'Open global chat' : 'Global Chat is disabled outside registered Game and Frenzy posts'}
       >
         <MessageCircle className="w-4 h-4 text-indigo-300" />
         <span>Global Chat</span>
@@ -364,8 +364,8 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
 
       {chatAvailable !== true && (
         <div role="status" className="border-b border-amber-500/20 bg-amber-950/30 px-3 py-2.5 text-[11px] leading-relaxed text-amber-200">
-          {chatAvailable === null ? 'Checking Global Chat availability…' : chatUnavailableReason || "Global Chat is disabled because you're not in the main Game launcher."}
-          <div className="mt-1 text-[10px] text-amber-200/60">Messages remain visible; open the main Infinity Orbs Game launcher to post.</div>
+          {chatAvailable === null ? 'Checking Global Chat availability…' : chatUnavailableReason || "Global Chat is available only in the registered main Game or a registered Frenzy post."}
+          <div className="mt-1 text-[10px] text-amber-200/60">Messages remain visible; open the main Game post or a registered Frenzy post to post.</div>
         </div>
       )}
 
@@ -443,7 +443,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
             onChange={e => setInput(e.target.value.slice(0, 200))}
             aria-label="Write a public Global Chat message"
             maxLength={200}
-            placeholder={chatAvailable === true ? 'Write a public Reddit comment...' : 'Open the main Game launcher to chat'}
+            placeholder={chatAvailable === true ? 'Write a public Reddit comment...' : 'Open a registered Game or Frenzy post to chat'}
             disabled={sending || chatAvailable !== true}
             className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-xs text-white placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
           />

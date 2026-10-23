@@ -2511,6 +2511,21 @@ test('Combat is level-gated, guided, and reset with the rest of the player save'
   assert.ok(combat.includes("maxHeight:'min(360px, calc(100vh - 16px))'"));
 });
 
+test('Combat menu loading keeps the React hook count stable', () => {
+  const combat = source('src/client/components/CombatSection.tsx');
+  assert.doesNotMatch(combat, /useMemo\\s*\\(/, 'combat list filtering must not introduce hooks below early returns');
+  assert.match(combat, /if\\(loading&&!state\\)return/);
+  assert.match(combat, /if\\(!state\\|\\|!enemy\\|\\|!stats\\)return/);
+});
+
+test('Navigation contains no category labels but preserves destination buttons', () => {
+  const main = source('src/client/main.tsx');
+  assert.doesNotMatch(main, /io-nav-group-label[^>]*>(?:PLAY|GROW|DISCOVER|COMMUNITY|LONG-TERM)</i);
+  for (const tab of ["changeTab('roll')", "changeTab('upgrades')", "changeTab('collection')", "changeTab('quests')", "changeTab('profile')"]) {
+    assert.ok(main.includes(tab), 'missing navigation destination ' + tab);
+  }
+});
+
 test('Global Chat comment ingestion rejects a canonical destination that is a Frenzy post', () => {
   const social = source('src/server/social.ts');
   const start = social.indexOf('export async function recordGlobalChatComment');

@@ -76,6 +76,13 @@ type ImpressionTimePoint = {
 type ImpressionDashboardData = {
   generatedAt: number;
   total: number;
+  uniqueUsers: number;
+  uniqueToday: number;
+  uniqueByType: Record<ImpressionPostType, number>;
+  newPlayersToday: number;
+  day1Retention: { cohortDay: string; cohortSize: number; retained: number; rate: number | null };
+  day3Retention: { cohortDay: string; cohortSize: number; retained: number; rate: number | null };
+  conversion: Record<'orb-share' | 'frenzy', { eligibleViewers: number; conversions: number; rate: number | null }>;
   trackedPostCount: number;
   byType: Record<ImpressionPostType, number>;
   byDevice: Record<ImpressionDeviceType, number>;
@@ -620,6 +627,10 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Impression analytics returned invalid data.');
       const data = raw as Partial<ImpressionDashboardData>;
       if (!Number.isSafeInteger(data.total) || Number(data.total) < 0 ||
+          !Number.isSafeInteger(data.uniqueUsers) || Number(data.uniqueUsers) < 0 ||
+          !Number.isSafeInteger(data.uniqueToday) || Number(data.uniqueToday) < 0 ||
+          !Number.isSafeInteger(data.newPlayersToday) || Number(data.newPlayersToday) < 0 ||
+          !data.day1Retention || !data.day3Retention || !data.conversion || !data.uniqueByType ||
           !Array.isArray(data.posts) || !Array.isArray(data.last24Hours) || !Array.isArray(data.last30Days) ||
           !data.byType || !data.byDevice || !data.byTypeAndDevice) {
         throw new Error('Impression analytics returned an incomplete dashboard. Refresh and retry.');
@@ -3543,7 +3554,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 <Eye className="w-4 h-4" /> Impressions
               </div>
               <p className="mt-1 text-[10px] text-slate-500">
-                Aggregate app-preview loads for main-game, Orb Share, and Frenzy posts. These are not Reddit feed views or online players. No usernames, user IDs, or raw device fingerprints are stored.
+                Unique account/post previews for main-game, Orb Share, and Frenzy. Repeated loads of the same post count once per account for 180 days. Raw IDs and usernames are not stored. Reddit feed views are not exposed.
               </p>
             </div>
             <button type="button"
@@ -3565,16 +3576,46 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                 {([
-                  ['All-time impressions', impressionStats.total, 'text-cyan-200'],
-                  ['Main game', impressionStats.byType['main-game'], 'text-emerald-200'],
-                  ['Orb Share', impressionStats.byType['orb-share'], 'text-violet-200'],
-                  ['Frenzy', impressionStats.byType.frenzy, 'text-orange-200'],
+                  ['Unique post views', impressionStats.total, 'text-cyan-200'],
+                  ['Unique accounts', impressionStats.uniqueUsers, 'text-fuchsia-200'],
+                  ['Unique today', impressionStats.uniqueToday, 'text-emerald-200'],
+                  ['New players today', impressionStats.newPlayersToday, 'text-amber-200'],
+                  ['Main game views', impressionStats.byType['main-game'], 'text-emerald-200'],
+                  ['Orb Share views', impressionStats.byType['orb-share'], 'text-violet-200'],
+                  ['Frenzy views', impressionStats.byType.frenzy, 'text-orange-200'],
                 ] as const).map(([label, count, color]) => (
                   <div key={label} className="rounded-xl bg-slate-900/80 border border-slate-800 px-3 py-3">
                     <div className="text-[10px] uppercase font-bold text-slate-500">{label}</div>
                     <div className={'text-2xl font-black font-mono mt-1 ' + color}>{count.toLocaleString()}</div>
                   </div>
                 ))}
+              </div>
+
+              <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
+                {([
+                  ['Day-1 retention', impressionStats.day1Retention],
+                  ['Day-3 retention', impressionStats.day3Retention],
+                ] as const).map(([label, metric]) => (
+                  <div key={label} className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-3">
+                    <div className="text-[10px] uppercase font-bold text-slate-500">{label}</div>
+                    <div className="text-2xl font-black font-mono mt-1 text-cyan-200">
+                      {metric.rate === null ? '—' : (metric.rate * 100).toFixed(1) + '%'}
+                    </div>
+                    <div className="mt-1 text-[9px] text-slate-500">{metric.retained.toLocaleString()} / {metric.cohortSize.toLocaleString()} returned on {metric.cohortDay}</div>
+                  </div>
+                ))}
+                {(['orb-share', 'frenzy'] as const).map(type => {
+                  const metric = impressionStats.conversion[type];
+                  return (
+                    <div key={type} className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-3">
+                      <div className="text-[10px] uppercase font-bold text-slate-500">{type === 'orb-share' ? 'Orb Share conversion' : 'Frenzy conversion'}</div>
+                      <div className="text-2xl font-black font-mono mt-1 text-emerald-200">
+                        {metric.rate === null ? '—' : (metric.rate * 100).toFixed(1) + '%'}
+                      </div>
+                      <div className="mt-1 text-[9px] text-slate-500">{metric.conversions.toLocaleString()} / {metric.eligibleViewers.toLocaleString()} unique viewers played for the first time</div>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 space-y-2">
@@ -3613,15 +3654,15 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               <div className="rounded-xl border border-slate-800 overflow-hidden">
                 <div className="px-3 py-2 border-b border-slate-800">
                   <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
-                    Individual post performance · {impressionStats.posts.length.toLocaleString()} listed / {impressionStats.trackedPostCount.toLocaleString()} tracked
+                    Unique post viewers · {impressionStats.posts.length.toLocaleString()} listed / {impressionStats.trackedPostCount.toLocaleString()} tracked
                   </div>
-                  <p className="mt-1 text-[9px] text-slate-600">Shows the highest load counts among the 500 most recently seen post IDs; type totals and time trends cover all recorded impressions.</p>
+                  <p className="mt-1 text-[9px] text-slate-600">Shows unique-account counts among the 500 most recently seen post IDs; type totals and time trends count unique account/post views.</p>
                 </div>
                 {impressionStats.posts.length ? (
                   <div className="max-h-64 overflow-auto">
                     <table className="w-full text-left text-[10px]">
                       <thead className="sticky top-0 bg-slate-900 text-slate-500"><tr>
-                        <th className="px-3 py-2">Type</th><th className="px-3 py-2">Reddit post ID</th><th className="px-3 py-2 text-right">Loads</th>
+                        <th className="px-3 py-2">Type</th><th className="px-3 py-2">Reddit post ID</th><th className="px-3 py-2 text-right">Unique viewers</th>
                       </tr></thead>
                       <tbody>
                         {impressionStats.posts.map(post => (
@@ -3668,7 +3709,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 </div>
               </details>
               <div className="text-[9px] text-slate-600">
-                Last refreshed {new Date(impressionStats.generatedAt).toLocaleString()}. A counted impression means the app preview loaded; Reddit feed impressions are not exposed to this app. Repeated loads are counted as separate impressions.
+                Last refreshed {new Date(impressionStats.generatedAt).toLocaleString()}. Reddit feed views are not exposed. Repeated loads of a post count once per account in the rolling 180-day window.
               </div>
             </>
           ) : (
