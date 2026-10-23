@@ -1465,21 +1465,25 @@ export function createApp() {
   });
 
   app.post('/api/frenzy/arm', async (_req, res) => {
+    res.set('Cache-Control', 'no-store');
     try { res.json(await armOrbFrenzyClaim()); }
     catch (e) { badRequest(res, e, 'Could not arm Orb Frenzy.'); }
   });
 
   app.get('/api/frenzy/handoff', async (_req, res) => {
+    res.set('Cache-Control', 'no-store');
     try { res.json(await getOrbFrenzyHandoff()); }
     catch (e) { badRequest(res, e, 'Could not load Frenzy handoff.'); }
   });
 
   app.get('/api/frenzy/info', async (_req, res) => {
+    res.set('Cache-Control', 'no-store');
     try { res.json(await getOrbFrenzyInfo()); }
     catch (e) { badRequest(res, e, 'Could not load Orb Frenzy.'); }
   });
 
   app.post('/api/frenzy/claim', async (_req, res) => {
+    res.set('Cache-Control', 'no-store');
     try {
       const result = await claimOrbFrenzy();
       const rolledOrb = (result as { orb?: { rarity?: number; name?: string } }).orb;
