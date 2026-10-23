@@ -1231,10 +1231,11 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
     throw new Error('Frenzy claim is on cooldown for ' + Math.ceil(claimCooldown / 1000) + ' more seconds.');
   }
 
+  const handoffExpiresAt = Date.now() + FRENZY_HANDOFF_TTL_MS;
   await redis.set(frenzyHandoffKey(currentUserId()), JSON.stringify({
     postId,
-    expiresAt: Date.now() + FRENZY_HANDOFF_TTL_MS,
-  }));
+    expiresAt: handoffExpiresAt,
+  }), { expiration: new Date(handoffExpiresAt) });
   return { armed: true, postId };
 }
 
