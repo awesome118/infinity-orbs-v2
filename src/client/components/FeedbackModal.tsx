@@ -13,7 +13,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
   const [busy, setBusy] = useState(false);
   const submitInFlightRef = useRef(false);
   const [error, setError] = useState('');
-  const submitLockRef = useRef(false);
+  const submitInFlightRef = useRef(false);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -24,13 +24,13 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
   }, [busy, onClose]);
 
   const submit = async () => {
-    if (busy || submitLockRef.current) return;
+    if (busy || submitInFlightRef.current) return;
     const trimmed = message.trim();
     if (!trimmed) {
       setError('Please describe the bug or suggestion.');
       return;
     }
-    submitLockRef.current = true;
+    submitInFlightRef.current = true;
     setBusy(true);
     setError('');
     sound.playClick();
@@ -39,7 +39,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not send feedback.');
     } finally {
-      submitLockRef.current = false;
+      submitInFlightRef.current = false;
       setBusy(false);
     }
   };
