@@ -1,1 +1,2 @@
 One-time deployment marker for infinity-orbs@1.2.48 to r/infinity_orbs_dev. Bundled UI, chat routing, combat hook-order, and unique-impression fixes.
+Preflight follow-up: align stale assertions and make the death-reset test deterministic.

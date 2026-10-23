@@ -86,15 +86,13 @@ test('streak preview follows the server reward schedule and resets after a misse
   assert.match(game, /s\.streak\.lastClaimDate === yesterday \? previousCount \+ 1 : 1/);
 });
 
-test('navigation is grouped by purpose and selected tabs are exposed', () => {
+test('navigation omits category labels while selected tabs remain exposed', () => {
   const main = source('src/client/main.tsx');
   const start = main.indexOf('{/* Main Navigation Bar */}');
   const end = main.indexOf('{combatTutorialStatusLoaded', start);
   assert.ok(start >= 0 && end > start);
   const nav = main.slice(start, end);
-  for (const label of ['PLAY', 'GROW', 'DISCOVER', 'COMMUNITY', 'LONG-TERM']) {
-    assert.ok(nav.includes('>' + label + '</span>'), 'missing navigation group ' + label);
-  }
+  assert.doesNotMatch(nav, /io-nav-group-label[^>]*>(?:PLAY|GROW|DISCOVER|COMMUNITY|LONG-TERM)</i);
   assert.match(nav, /aria-current=\{tab === 'roll' \? 'page' : undefined\}/);
   assert.match(nav, /aria-current=\{tab === 'runes' \? 'page' : undefined\}/);
   assert.match(nav, /io-combat-soon">PVP/);

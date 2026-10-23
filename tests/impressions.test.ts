@@ -291,7 +291,7 @@ test('impression counters commit together instead of leaving partial counts on f
       return {
         ...txn,
         set: async (key: string, value: string, options?: { expiration?: Date }) => {
-          if (!injected && key.startsWith('io:impressions:device:')) {
+          if (!injected && key.startsWith('io:impressions:unique-v2:device:')) {
             injected = true;
             throw new Error('simulated queued counter write failure');
           }

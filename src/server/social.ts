@@ -2311,7 +2311,7 @@ async function requireGlobalChatLauncher(): Promise<string> {
   const currentPostId = normalizeRedditPostId(String(context.postId ?? '').trim());
   const isFrenzyLauncher = currentPostId ? await isRegisteredFrenzyPost(currentPostId) : false;
   if (!currentPostId || (currentPostId !== destination && !isFrenzyLauncher)) {
-    throw new Error('Global Chat is available only from the registered main Game post or a registered Frenzy post. Messages always go to the main Game comments.');
+    throw new Error("Global Chat is disabled because you're not in the main Game launcher.");
   }
   // Even from a Frenzy launcher, only the server-registered canonical destination is returned.
   return destination;

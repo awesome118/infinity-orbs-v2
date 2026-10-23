@@ -129,9 +129,9 @@ async function prunePostIndex(now: number): Promise<void> {
 }
 
 /**
- * Records aggregate post-preview loads only. No username, Reddit user ID,
- * raw user-agent, or per-view browsing event is persisted. Importantly, this
- * module never touches the online-player set or the player activity registry.
+ * Records unique account/post preview counts using one-way hashed account markers.
+ * Raw usernames, raw IDs, and device fingerprints are not stored. This module
+ * never adds entries to the player registry or the online-player set.
  */
 /** Stable hash for account deduplication; raw Reddit identities never enter analytics keys. */
 async function hashUserIdentity(userId: string): Promise<string> {
@@ -233,7 +233,7 @@ export async function recordPostImpression(
   const day = Math.floor(now / DAY_MS);
   const keyForPost = postKey(postType, postId);
   const indexField = postType + ':' + postId;
-  const postCounterExpiration = new Date(now + 180 * DAY_MS);
+  const postCounterExpiration = new Date(now + 180 * 86_400_000);
   const hourBucketExpiration = new Date((hour + 25) * 3_600_000);
   const dayBucketExpiration = new Date((day + 31) * DAY_MS);
   const uniqueDayExpiration = new Date((day + Math.ceil(UNIQUE_DAY_RETENTION_MS / DAY_MS)) * DAY_MS);

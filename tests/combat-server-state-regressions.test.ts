@@ -68,7 +68,8 @@ test('death resets the run while retaining permanent combat progress', async () 
     state.xp = 42;
     state.sequence = 0;
     state.combatBeats = 0;
-    state.playerActionsResolved = 0;
+    // Force the death-reset path to run before a random high-rarity Orb can kill the boss.
+    state.playerActionsResolved = 100;
     state.enemyActionsResolved = 0;
     state.skillLevels = { 'surefoot': 2 };
     state.enemyHp = getEnemyForDepth(10).maxHp;
