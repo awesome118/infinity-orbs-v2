@@ -851,6 +851,11 @@ function parseFrenzyPostRecord(raw: unknown): FrenzyPostRecord | null {
   return record as FrenzyPostRecord;
 }
 
+function isFrenzyPostRecordExpired(post: Pick<FrenzyPostRecord, 'createdAt' | 'expiresAt'>, now = Date.now()): boolean {
+  const expiresAt = post.expiresAt ?? frenzyPostExpiresAt(post.createdAt);
+  return !Number.isSafeInteger(expiresAt) || expiresAt <= now;
+}
+
 async function ensureRedisStringKey(keyName: string, fallback: string): Promise<void> {
   const existing = await redis.get(keyName);
   if (existing == null) {
@@ -1210,6 +1215,8 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
   if (!raw) throw new Error('This is not an Orb Frenzy post.');
   const data = parseFrenzyPostRecord(raw);
   if (!data || data.inGame !== true) throw new Error('This is not an Orb Frenzy post.');
+  const now = Date.now();
+  if (isFrenzyPostRecordExpired(data, now)) throw new Error('This Frenzy has expired.');
 
   const s = await settleOffline(await loadRaw());
   const now = Date.now();
@@ -6239,7 +6246,7 @@ export async function getOrbFrenzyInfo(): Promise<{
 
   const now = Date.now();
   const expiresAt = Number(data.expiresAt ?? frenzyPostExpiresAt(data.createdAt));
-  const expired = isFrenzyPostExpired(data.createdAt, now);
+  const expired = isFrenzyPostRecordExpired(data, now);
   const viewerId = currentUserId();
   const claimedReceipt = await redis.get(frenzyClaimReceiptKey(postId, viewerId));
   const alreadyClaimedByViewer = claimedReceipt != null || data.consumedBy === viewerId;
@@ -6325,7 +6332,7 @@ export async function claimOrbFrenzy(options: {
 
   const now = Date.now();
   const createdAt = Number(data.createdAt ?? 0);
-  if (isFrenzyPostExpired(createdAt, now)) throw new Error('This Frenzy has expired.');
+  if (isFrenzyPostRecordExpired(data, now)) throw new Error('This Frenzy has expired.');
   const loadedState = await loadRaw();
   const performClaim = async () => {
   const s = await settleOffline(loadedState);
