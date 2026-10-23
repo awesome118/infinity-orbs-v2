@@ -3194,15 +3194,35 @@ export async function save(
 }
 
 function serverRandom(): number {
-  // Use 64 bits of entropy so the extended rarity continuum is actually
-  // reachable. A 32-bit sample bottoms out around 1 / 4.3 billion, which made
-  // the upper rarity tiers mathematically decorative.
+  // Use 64 bits of entropy for ordinary probability checks.
   const sample = new BigUint64Array(1);
   globalThis.crypto.getRandomValues(sample);
   const denominator = 18_446_744_073_709_551_616;
   const value = Number(sample[0]) / denominator;
   if (value >= 1) return 0.9999999999999999;
   return Math.max(Number.MIN_VALUE, value);
+}
+
+/**
+ * Produces a uniform [0, 1) sample with 1,024 random bits for the inverse-CDF
+ * rarity roll. A 53- or 64-bit uniform cannot naturally reach the full Number
+ * rarity range; retain the leading 53 mantissa bits and the sampled exponent.
+ */
+function serverRarityRandom(): number {
+  const words = new Uint32Array(32);
+  globalThis.crypto.getRandomValues(words);
+  let sample = 0n;
+  for (const word of words) sample = (sample << 32n) | BigInt(word);
+  if (sample === 0n) return Number.MIN_VALUE;
+
+  const bitLength = sample.toString(2).length;
+  const mantissaBits = Math.min(53, bitLength);
+  const leadingBits = sample >> BigInt(bitLength - mantissaBits);
+  const mantissa = Number(leadingBits) / Math.pow(2, mantissaBits);
+  const value = mantissa * Math.pow(2, bitLength - 1024);
+  return Number.isFinite(value)
+    ? Math.min(1 - Number.EPSILON, Math.max(Number.MIN_VALUE, value))
+    : Number.MIN_VALUE;
 }
 
 function finiteNonNegativeNumber(value: unknown, fallback = 0): number {
@@ -3521,7 +3541,7 @@ export async function applyRolls(
       s.totalCrits = (s.totalCrits ?? 0) + 1;
       const supernovaLevel = s.prestigeUpgrades?.supernova ?? 0;
       if (supernovaLevel > 0 && rng() < supernovaLevel * 0.10) {
-        effectiveCm = 5; // Supernova always resolves to exactly 5x the base rarity.
+        effectiveCm = cm * 5; // Supernova multiplies the full normal critical strength by 5.
       }
     }
 
@@ -3535,7 +3555,7 @@ export async function applyRolls(
       ? beginnerRarity
       : (forcedRarity && i === 0)
         ? forcedRarity
-        : Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY, Math.round(rollContinuum(effectiveLuck, rng) * runeLuckMultiplier)));
+        : Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY, Math.round(rollContinuum(effectiveLuck, randomOverride ?? serverRarityRandom) * runeLuckMultiplier)));
     const baseRarity = exactRarity && forcedRarity != null && i === 0
       ? forcedRarity
       : Math.max(minimumRarity, isGuaranteedThirdBall ? rolledRarity : runeRarityFloor, rolledRarity);
