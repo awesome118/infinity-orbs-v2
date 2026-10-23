@@ -62,8 +62,12 @@ test('dashboard uses a safe timestamp for malformed time inputs', async () => {
   configureDevvitRuntime({ redis: baseRedis, context: { ...baseContext, postId: 't3_invalid-dashboard-time' }, reddit: baseReddit });
   try {
     const dashboard = await getImpressionDashboard(Number.NaN);
+    const hugeFiniteDashboard = await getImpressionDashboard(Number.MAX_SAFE_INTEGER);
     assert.ok(Number.isFinite(dashboard.generatedAt));
     assert.ok(dashboard.generatedAt > 0);
+    assert.ok(Number.isFinite(new Date(dashboard.generatedAt).getTime()));
+    assert.ok(Number.isFinite(new Date(hugeFiniteDashboard.generatedAt).getTime()));
+    assert.ok(hugeFiniteDashboard.generatedAt < Number.MAX_SAFE_INTEGER);
     assert.equal(dashboard.last24Hours.length, 24);
     assert.equal(dashboard.last30Days.length, 30);
   } finally {

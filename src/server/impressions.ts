@@ -259,7 +259,11 @@ export interface ImpressionDashboard {
 /** Reads aggregate impression metrics for the admin-only dashboard. */
 export async function getImpressionDashboard(now = Date.now()): Promise<ImpressionDashboard> {
   const requestedNow = Number(now);
-  const dashboardNow = Number.isFinite(requestedNow) && requestedNow >= 0
+  // Date#toISOString throws outside the ECMAScript time-value range, even for
+  // finite numbers. Clamp invalid requests to the current server clock.
+  const dashboardNow = Number.isFinite(requestedNow) &&
+    requestedNow >= 0 &&
+    requestedNow <= 8_640_000_000_000_000
     ? Math.floor(requestedNow)
     : Date.now();
   const [total, postIndex] = await Promise.all([
