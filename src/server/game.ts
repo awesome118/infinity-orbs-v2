@@ -3560,9 +3560,9 @@ export async function applyRolls(
       ? forcedRarity
       : Math.max(minimumRarity, isGuaranteedThirdBall ? rolledRarity : runeRarityFloor, rolledRarity);
     const rarity = isCrit ? Math.min(MAX_ORB_RARITY, Math.round(baseRarity * effectiveCm)) : baseRarity;
-    const finalVal = Math.round(rarity * valueMul);
+    const finalVal = Math.min(MAX_ORB_RARITY, Math.round(rarity * valueMul));
 
-    totalVal += finalVal;
+    totalVal = Math.min(Number.MAX_VALUE, totalVal + finalVal);
     rarities.push(rarity);
     s.totalRolls++;
     s.currentRunRolls = (s.currentRunRolls ?? 0) + 1;
@@ -6307,7 +6307,7 @@ export async function claimOrbFrenzy(options: {
 
   const normalCritCount = Math.max(0, critCount - supernovaCount);
   const normalCritRarity = Math.min(MAX_ORB_RARITY, Math.round(data.rarity * critMultiplier(s)));
-  const supernovaRarity = Math.min(MAX_ORB_RARITY, Math.round(data.rarity * 5));
+  const supernovaRarity = Math.min(MAX_ORB_RARITY, Math.round(data.rarity * critMultiplier(s) * 5));
 
   const groups = [
     { count: count - critCount, rarity: data.rarity },
