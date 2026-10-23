@@ -438,7 +438,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           <input
             value={input}
             onChange={e => setInput(e.target.value.slice(0, 200))}
-            aria-label="Write a public Global Chat message"
+            aria-label="Public chat comment"
             maxLength={200}
             placeholder={chatAvailable === true ? 'Write a public Reddit comment...' : 'Open the main Game launcher to chat'}
             disabled={sending || chatAvailable !== true}
