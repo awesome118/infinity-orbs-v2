@@ -434,7 +434,7 @@ test('share endpoint validates rarity against the game cap instead of MAX_SAFE_I
   assert.ok(start >= 0 && end > start, 'share route must exist');
   const route = app.slice(start, end);
   assert.ok(app.includes('MAX_ORB_RARITY'), 'server must import the canonical rarity cap');
-  assert.ok(shared.includes('export const MAX_ORB_RARITY = 1_000_000_000_000_000_000'));
+  assert.ok(shared.includes('export const MAX_ORB_RARITY = Number.MAX_VALUE'));
   assert.ok(route.includes('!Number.isInteger(value) || value < 2 || value > MAX_ORB_RARITY'));
   assert.ok(!route.includes('Number.isSafeInteger(value)'), 'valid supported rarity values can exceed MAX_SAFE_INTEGER');
   assert.ok(route.includes('(s.collection[String(value)] ?? 0) <= 0'), 'sharing must still require ownership');
