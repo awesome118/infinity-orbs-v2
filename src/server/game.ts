@@ -1218,7 +1218,6 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
 
   const s = await settleOffline(await loadRaw());
   const now = Date.now();
-  const createdAt = Number(data.createdAt ?? 0);
   if (isFrenzyPostRecordExpired(data, now)) throw new Error('This Frenzy has expired.');
   const claimCooldown = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
   const isOwner = data.ownerId === currentUserId();
