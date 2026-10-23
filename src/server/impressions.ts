@@ -47,6 +47,61 @@ async function readCount(key: string): Promise<number> {
   return normalizeCount(await redis.get(key));
 }
 
+async function prunePostIndex(now: number): Promise<void> {
+  const retentionCutoff = now - 180 * 86_400_000;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const txn = await redis.watch(POST_INDEX_KEY);
+    let transactionClosed = false;
+    try {
+      const currentIndex = await redis.hGetAll(POST_INDEX_KEY);
+      const entries = Object.entries(currentIndex ?? {}).map(([field, raw]) => {
+        try {
+          const parsed = JSON.parse(String(raw)) as { postType?: unknown; postId?: unknown; lastSeenAt?: unknown };
+          normalizePostType(parsed.postType);
+          const postId = String(parsed.postId ?? '').trim();
+          const lastSeenAt = Number(parsed.lastSeenAt ?? 0);
+          const valid = Boolean(postId) && postId.length <= 200 &&
+            Number.isSafeInteger(lastSeenAt) && lastSeenAt >= 0;
+          return { field, lastSeenAt: valid ? lastSeenAt : 0, invalid: !valid };
+        } catch {
+          return { field, lastSeenAt: 0, invalid: true };
+        }
+      }).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+
+      const expiredOrInvalid = entries.filter(
+        entry => entry.invalid || entry.lastSeenAt < retentionCutoff,
+      );
+      const recentEntries = entries.filter(
+        entry => !entry.invalid && entry.lastSeenAt >= retentionCutoff,
+      );
+      const fieldsToPrune = [...new Set([
+        ...expiredOrInvalid,
+        ...recentEntries.slice(MAX_INDEXED_POSTS),
+      ].map(entry => entry.field))].slice(0, 250);
+
+      if (fieldsToPrune.length === 0) {
+        await txn.unwatch();
+        transactionClosed = true;
+        return;
+      }
+
+      await txn.multi();
+      for (const field of fieldsToPrune) await txn.hDel(POST_INDEX_KEY, field);
+      const result = await txn.exec();
+      transactionClosed = true;
+      if (result !== null) return;
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+    }
+
+    // Another view changed the shared hash during the prune. Yield and retry
+    // a small, bounded number of times; the next impression/dashboard read can
+    // continue cleanup if contention remains high.
+    await new Promise(resolve => setTimeout(resolve, Math.min(5 * (attempt + 1), 20)));
+  }
+  throw new Error('Impression index changed repeatedly; cleanup will retry later.');
+}
+
 /**
  * Records aggregate post-preview loads only. No username, Reddit user ID,
  * raw user-agent, or per-view browsing event is persisted. Importantly, this
@@ -169,44 +224,7 @@ export async function recordPostImpression(
   // impression into an apparent failure that causes clients to retry it.
   if (pruneSequence % INDEX_PRUNE_EVERY === 0) {
     try {
-      const currentIndex = await redis.hGetAll(POST_INDEX_KEY);
-      const postIndexRetentionCutoff = now - 180 * 86_400_000;
-      const entries = Object.entries(currentIndex ?? {}).map(([field, raw]) => {
-        try {
-          const parsed = JSON.parse(String(raw)) as { postType?: unknown; postId?: unknown; lastSeenAt?: unknown };
-          normalizePostType(parsed.postType);
-          const indexedPostId = String(parsed.postId ?? '').trim();
-          const indexedAt = Number(parsed.lastSeenAt ?? 0);
-          const valid = Boolean(indexedPostId) &&
-            indexedPostId.length <= 200 &&
-            Number.isSafeInteger(indexedAt) &&
-            indexedAt >= 0;
-          return {
-            field,
-            lastSeenAt: valid ? indexedAt : 0,
-            invalid: !valid,
-          };
-        } catch {
-          return { field, lastSeenAt: 0, invalid: true };
-        }
-      }).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
-
-      // Expiry of the per-post counter also expires the index record. Prune old
-      // or corrupt entries even when the dashboard index is far below its size
-      // limit, then prune any additional overflow. Cap each sweep's deletes.
-      const expiredOrInvalid = entries.filter(
-        entry => entry.invalid || entry.lastSeenAt < postIndexRetentionCutoff,
-      );
-      const recentEntries = entries.filter(
-        entry => !entry.invalid && entry.lastSeenAt >= postIndexRetentionCutoff,
-      );
-      const overflowEntries = recentEntries.slice(MAX_INDEXED_POSTS);
-      const fieldsToPrune = [...new Set(
-        [...expiredOrInvalid, ...overflowEntries].map(entry => entry.field),
-      )].slice(0, 250);
-      for (const field of fieldsToPrune) {
-        await redis.hDel(POST_INDEX_KEY, field);
-      }
+      await prunePostIndex(now);
     } catch (error) {
       console.error('[Impressions] Index pruning failed after the impression committed.', error);
     }
@@ -292,13 +310,15 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
     }
   }).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
 
-  // Bound cleanup work on the admin read path. Later reads continue the sweep.
-  await Promise.all(staleIndexFields.slice(0, 250).map(field =>
-    redis.hDel(POST_INDEX_KEY, field).catch((error: unknown) => {
+  // The displayed snapshot filters these rows immediately. Clean the underlying
+  // hash through WATCH/MULTI/EXEC so a concurrent fresh impression cannot be lost.
+  if (staleIndexFields.length > 0 || validIndexedPosts.length > MAX_INDEXED_POSTS) {
+    try {
+      await prunePostIndex(dashboardNow);
+    } catch (error) {
       console.error('[Impressions] Dashboard index cleanup failed.', error);
-      return 0;
-    }),
-  ));
+    }
+  }
   const trackedPostCount = validIndexedPosts.length;
   const indexedPosts = validIndexedPosts.slice(0, 500);
 

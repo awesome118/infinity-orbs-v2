@@ -187,6 +187,57 @@ test('dashboard excludes and cleans expired or corrupt post-index rows during qu
   }
 });
 
+test('watched impression-index cleanup does not delete a row refreshed concurrently', async () => {
+  const baseRedis = originalRedis;
+  const baseContext = originalContext;
+  const baseReddit = originalReddit;
+  const suffix = Date.now().toString(36);
+  const postId = 't3_impression-cleanup-race-' + suffix;
+  const indexKey = 'io:impressions:post-index';
+  const field = 'main-game:' + postId;
+  const previous = await baseRedis.hGet(indexKey, field);
+  const cutoff = Date.now() - 181 * 86_400_000;
+  let changedAfterWatchedRead = false;
+  let armed = false;
+  const racingRedis = {
+    ...baseRedis,
+    watch: async (...keys: string[]) => {
+      const txn = await baseRedis.watch(...keys);
+      if (keys.includes(indexKey)) armed = true;
+      return txn;
+    },
+    hGetAll: async (key: string) => {
+      const snapshot = await baseRedis.hGetAll(key);
+      if (key === indexKey && armed && !changedAfterWatchedRead) {
+        changedAfterWatchedRead = true;
+        await baseRedis.hSet(indexKey, {
+          [field]: JSON.stringify({ postType: 'main-game', postId, lastSeenAt: Date.now() }),
+        });
+      }
+      return snapshot;
+    },
+  };
+  configureDevvitRuntime({
+    redis: racingRedis,
+    context: { ...baseContext, userId: 'impression-cleanup-race-' + suffix, username: 'ImpressionCleanupRace' },
+    reddit: baseReddit,
+  });
+  try {
+    await baseRedis.hSet(indexKey, {
+      [field]: JSON.stringify({ postType: 'main-game', postId, lastSeenAt: cutoff }),
+    });
+    await getImpressionDashboard();
+    const current = await baseRedis.hGet(indexKey, field);
+    assert.ok(current, 'freshened index record must survive stale-snapshot cleanup');
+    assert.ok(Number(JSON.parse(String(current)).lastSeenAt) >= Date.now() - 10_000);
+    assert.equal(changedAfterWatchedRead, true);
+  } finally {
+    if (previous == null) await baseRedis.hDel(indexKey, field);
+    else await baseRedis.hSet(indexKey, { [field]: previous });
+    configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  }
+});
+
 test('concurrent impression bursts preserve every committed aggregate count', async () => {
   const baseContext = originalContext;
   const baseRedis = originalRedis;
