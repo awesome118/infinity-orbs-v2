@@ -7,6 +7,7 @@ import {
   MAX_ORB_RARITY,
   formatRarity,
   getOrbTier,
+  getOrbInfo,
   rollContinuum,
   calculatePrestigeDust,
   calculateCosmicDust,
@@ -62,12 +63,14 @@ import {
 const NOW = 1_800_000_000_000;
 
 
-test('Infinity is the display name for the maximum finite orb rarity', () => {
+test('the finite rarity ceiling stays numeric while over-cap rolls display as Infinity', () => {
   assert.equal(MAX_ORB_RARITY, Number.MAX_VALUE);
-  assert.equal(rollContinuum(1, () => Number.MIN_VALUE), Number.MAX_VALUE);
-  assert.equal(getOrbTier(MAX_ORB_RARITY), 'Infinity');
-  assert.equal(formatRarity(MAX_ORB_RARITY), 'Infinity');
+  assert.equal(rollContinuum(1, () => Number.MIN_VALUE), Number.POSITIVE_INFINITY);
+  assert.equal(getOrbTier(MAX_ORB_RARITY), 'Endless');
+  assert.equal(formatRarity(MAX_ORB_RARITY), '1.797693e308');
   assert.equal(formatRarity(Number.POSITIVE_INFINITY), 'Infinity');
+  assert.equal(formatRarity(MAX_ORB_RARITY, true), 'Infinity');
+  assert.equal(getOrbInfo(MAX_ORB_RARITY, true).tier, 'Infinity');
   assert.equal(formatRarity(Number.MAX_VALUE * (1 - Number.EPSILON)), '1.797693e308');
   assert.equal(formatRarity(1e15), '1.00e15');
 });
