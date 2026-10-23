@@ -31,17 +31,16 @@
 - Added Rune inventory search, equipped filters, level and XP progress, capacity warnings, and clearer Strengthen and Auto Sacrifice controls.
 - Improved Global Chat status messaging when posting is unavailable and added active-session length to the player list.
 - Updated the in-feed Game, shared-Orb, and Frenzy previews to fit Reddit's inline view; longer interactions open in Expanded Mode.
+- Extended the rarity ceiling to the largest finite number JavaScript can represent. The cap is displayed as **Infinity**.
 
 ### Balance Changes:
 
 - Supernova now multiplies the normal critical multiplier instead of replacing it, so it remains powerful as Critical upgrades grow.
 - Removed Mastery Engine.
-- Critical, Rune, and other rarity effects continue to respect the game's supported rarity ceiling.
 
 ### Bug Fixes:
 
-- Fixed Combat save handling so invalid Combat data does not silently replace a player's existing gear or progression with a fresh state.
 - Fixed encounter effects carrying into a new run.
 - Fixed Rune inventory actions so overlapping Equip, Strengthen, and Auto Sacrifice requests do not race each other.
-- Fixed shared Orb previews rejecting valid large rarity values because of a safe-integer check.
-- Fixed Supernova diagnostics to calculate its multiplier from the full critical strength.
+- Fixed shared Orb previews rejecting valid large rarity values.
+- Fixed Rune controls so Equip, Strengthen, and Auto Sacrifice actions no longer conflict when used in quick succession.
