@@ -424,7 +424,7 @@ export const COMBAT_MAJOR_ABILITY_IDS = [
   'expanded-reserves',
   'third-beat-recharge'
 ] as const;
-export interface CombatOrbRoll { rarity:number; tier:string; name:string; damageMultiplier:number; baseDamage:number; }
+export interface CombatOrbRoll { rarity:number; tier:string; name:string; isInfinity?:boolean; damageMultiplier:number; baseDamage:number; }
 
 export interface CombatGear {
   id: string;
