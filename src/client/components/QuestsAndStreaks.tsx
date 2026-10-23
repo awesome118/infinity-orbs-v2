@@ -181,8 +181,10 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {state.dailyQuests.map(q => {
             const isUnlocked = q.unlocked !== false;
-            const isComplete = isUnlocked && Number.isFinite(Number(q.progress)) && Number.isFinite(Number(q.target)) && Number(q.target) > 0 && Number(q.progress) >= Number(q.target);
-            const pct = isUnlocked ? progressPercent(q.progress, q.target) : 0;
+            const progress = Number.isFinite(q.progress) && q.progress >= 0 ? q.progress : 0;
+            const target = Number.isFinite(q.target) && q.target > 0 ? q.target : 1;
+            const isComplete = isUnlocked && progress >= target;
+            const pct = isUnlocked ? progressPercent(progress, target) : 0;
 
             return (
               <div
@@ -216,10 +218,10 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                     <div className="flex justify-between text-[11px] font-semibold text-slate-400 mb-1">
                       <span>Progress</span>
                       <span>
-                        {fmt(Number(q.progress) || 0)} / {fmt(Number(q.target) || 0)}
+                        {fmt(progress)} / {fmt(target)}
                       </span>
                     </div>
-                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800" role="progressbar" aria-label={q.title+' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800" role="progressbar" aria-label={q.title + ' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
                       <div
                         className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all"
                         style={{ width: `${pct}%` }}
@@ -276,8 +278,10 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {state.weeklyQuests.map(q => {
             const isUnlocked = q.unlocked !== false;
-            const isComplete = isUnlocked && q.progress >= q.target;
-            const pct = questProgressPct(q.progress, q.target, isUnlocked);
+            const progress = Number.isFinite(q.progress) && q.progress >= 0 ? q.progress : 0;
+            const target = Number.isFinite(q.target) && q.target > 0 ? q.target : 1;
+            const isComplete = isUnlocked && progress >= target;
+            const pct = questProgressPct(progress, target, isUnlocked);
 
             return (
               <div
@@ -306,10 +310,10 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                     <div className="flex justify-between text-[11px] font-semibold text-slate-400 mb-1">
                       <span>Progress</span>
                       <span>
-                        {fmt(Number(q.progress) || 0)} / {fmt(Number(q.target) || 0)}
+                        {fmt(progress)} / {fmt(target)}
                       </span>
                     </div>
-                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800" role="progressbar" aria-label={q.title+' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800" role="progressbar" aria-label={q.title + ' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
                       <div
                         className="h-full bg-gradient-to-r from-cyan-500 to-blue-600 transition-all"
                         style={{ width: `${pct}%` }}
