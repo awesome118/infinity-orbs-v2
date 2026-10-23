@@ -595,9 +595,12 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
      if(genesisRegenPercent>0&&s.health>0){const heal=Math.min(s.maxHealth-s.health,Math.max(0,Math.round(s.maxHealth*genesisRegenPercent)));if(heal>0){s.health+=heal;actions.push({actor:'player',kind:'ability',text:'Genesis Core regenerates '+heal.toLocaleString()+' HP.'});}}
 
     // Each accepted beat receives its own server-side cryptographic orb roll; rarity drives all attacks that beat.
-    const orbRarity=rollContinuum(orbLuck,secureRandom),orbInfo=getOrbInfo(orbRarity),damageMultiplier=combatOrbDamageMultiplier(orbRarity);
-    const orbRoll:CombatOrbRoll={rarity:orbRarity,tier:String(orbInfo.tier),name:orbInfo.name,damageMultiplier,baseDamage:Math.max(1,Math.round(stats.damage*damageMultiplier*(1+orbConduitBonus)))};
-    actions.push({actor:'player',kind:'ability',text:'Orb roll: '+orbInfo.name+' · 1 / '+orbRarity.toLocaleString()+' · ×'+damageMultiplier.toFixed(2)+' damage.'});
+    const rawOrbRarity=rollContinuum(orbLuck,secureRandom);
+    const isInfinity=rawOrbRarity===Number.POSITIVE_INFINITY || rawOrbRarity>Number.MAX_VALUE;
+    const orbRarity=Number.isFinite(rawOrbRarity)?Math.min(Number.MAX_VALUE,rawOrbRarity):Number.MAX_VALUE;
+    const orbInfo=getOrbInfo(orbRarity,isInfinity),damageMultiplier=combatOrbDamageMultiplier(orbRarity);
+    const orbRoll:CombatOrbRoll={rarity:orbRarity,tier:String(orbInfo.tier),name:orbInfo.name,isInfinity,damageMultiplier,baseDamage:Math.max(1,Math.round(stats.damage*damageMultiplier*(1+orbConduitBonus)))};
+    actions.push({actor:'player',kind:'ability',text:'Orb roll: '+orbInfo.name+' · 1 / '+(isInfinity?'Infinity':orbRarity.toLocaleString())+' · ×'+damageMultiplier.toFixed(2)+' damage.'});
     const resolvedIntent:CombatIntent=activeSkill?'strike':intent==='auto'?chooseAutoCombatIntent(s):intent==='ability'?'strike':intent;
     const playerActions=combatActionsDue(stats.speed,s.combatBeats,s.playerActionsResolved);
     let enemyActions=combatActionsDue(enemy.speed,s.combatBeats,s.enemyActionsResolved);
