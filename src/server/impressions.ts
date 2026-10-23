@@ -269,25 +269,36 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
     Record<ImpressionDeviceType, number>
   >;
 
-  // Keep dashboard reads bounded as the community creates more share/Frenzy
-  // posts. The hash index is small compared with reading every per-post counter;
-  // only the 500 most recently seen post IDs are expanded into rows.
-  const validIndexedPosts = Object.values(postIndex ?? {}).flatMap(raw => {
+  // Keep dashboard reads bounded and consistent with the per-post counter TTL.
+  // Stale/corrupt rows are excluded immediately and lazily deleted even during
+  // quiet periods when no new impression arrives to trigger the periodic sweep.
+  const postIndexRetentionCutoff = dashboardNow - 180 * 86_400_000;
+  const staleIndexFields: string[] = [];
+  const validIndexedPosts = Object.entries(postIndex ?? {}).flatMap(([field, raw]) => {
     try {
       const parsed = JSON.parse(String(raw)) as { postType?: unknown; postId?: unknown; lastSeenAt?: unknown };
       const postType = normalizePostType(parsed.postType);
       const postId = String(parsed.postId ?? '').trim();
-      if (!postId) return [];
       const lastSeenAt = Number(parsed.lastSeenAt ?? 0);
-      return [{
-        postType,
-        postId,
-        lastSeenAt: Number.isSafeInteger(lastSeenAt) && lastSeenAt >= 0 ? lastSeenAt : 0,
-      }];
+      if (!postId || postId.length > 200 || !Number.isSafeInteger(lastSeenAt) ||
+          lastSeenAt < 0 || lastSeenAt < postIndexRetentionCutoff) {
+        staleIndexFields.push(field);
+        return [];
+      }
+      return [{ postType, postId, lastSeenAt }];
     } catch {
+      staleIndexFields.push(field);
       return [];
     }
   }).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+
+  // Bound cleanup work on the admin read path. Later reads continue the sweep.
+  await Promise.all(staleIndexFields.slice(0, 250).map(field =>
+    redis.hDel(POST_INDEX_KEY, field).catch((error: unknown) => {
+      console.error('[Impressions] Dashboard index cleanup failed.', error);
+      return 0;
+    }),
+  ));
   const trackedPostCount = validIndexedPosts.length;
   const indexedPosts = validIndexedPosts.slice(0, 500);
 

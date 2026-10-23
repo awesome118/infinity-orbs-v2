@@ -151,6 +151,42 @@ test('impression time buckets and per-post counters have bounded retention', () 
   assert.match(source, /\.slice\(0, 250\)/);
 });
 
+test('dashboard excludes and cleans expired or corrupt post-index rows during quiet periods', async () => {
+  const baseRedis = originalRedis;
+  const baseContext = originalContext;
+  const baseReddit = originalReddit;
+  const suffix = Date.now().toString(36);
+  const oldPostId = 't3_stale-impression-index-' + suffix;
+  const badPostId = 't3_corrupt-impression-index-' + suffix;
+  const indexKey = 'io:impressions:post-index';
+  const oldField = 'main-game:' + oldPostId;
+  const badField = 'main-game:' + badPostId;
+  const oldValue = await baseRedis.hGet(indexKey, oldField);
+  const badValue = await baseRedis.hGet(indexKey, badField);
+  configureDevvitRuntime({
+    redis: baseRedis,
+    context: { ...baseContext, userId: 'impression-index-retention-' + suffix, username: 'ImpressionIndexRetention' },
+    reddit: baseReddit,
+  });
+  try {
+    const now = Date.now();
+    await baseRedis.hSet(indexKey, {
+      [oldField]: JSON.stringify({ postType: 'main-game', postId: oldPostId, lastSeenAt: now - 181 * 86_400_000 }),
+      [badField]: '{invalid json',
+    });
+    const dashboard = await getImpressionDashboard(now);
+    assert.equal(dashboard.posts.some(row => row.postId === oldPostId || row.postId === badPostId), false);
+    assert.equal(await baseRedis.hGet(indexKey, oldField), undefined);
+    assert.equal(await baseRedis.hGet(indexKey, badField), undefined);
+  } finally {
+    if (oldValue == null) await baseRedis.hDel(indexKey, oldField);
+    else await baseRedis.hSet(indexKey, { [oldField]: oldValue });
+    if (badValue == null) await baseRedis.hDel(indexKey, badField);
+    else await baseRedis.hSet(indexKey, { [badField]: badValue });
+    configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  }
+});
+
 test('concurrent impression bursts preserve every committed aggregate count', async () => {
   const baseContext = originalContext;
   const baseRedis = originalRedis;
