@@ -3511,7 +3511,22 @@ export async function applyRolls(
   if (typeof combatStateRaw === 'string') {
     try {
       const parsed = JSON.parse(combatStateRaw) as { bestDepth?: unknown; dungeonId?: unknown; dungeonBestDepths?: { undercrypt?: unknown }; runes?: unknown; equippedRunes?: unknown };
-      combatBestDepth = Number(parsed?.dungeonBestDepths?.undercrypt) || (parsed?.dungeonId === 'undercrypt' ? Number(parsed?.bestDepth) || 1 : 1);
+      const savedUndercryptDepth = Number(parsed?.dungeonBestDepths?.undercrypt);
+      const legacyBestDepth = Number(parsed?.bestDepth);
+      if (Number.isSafeInteger(savedUndercryptDepth) && savedUndercryptDepth > 0) {
+        combatBestDepth = savedUndercryptDepth;
+      } else if (
+        parsed?.dungeonId === 'undercrypt' ||
+        parsed?.dungeonId == null
+      ) {
+        // Legacy saves without dungeonId/dungeonBestDepths represented Undercrypt progress
+        // using bestDepth. Accept only a safe positive integer; malformed JSON stays neutral.
+        combatBestDepth = Number.isSafeInteger(legacyBestDepth) && legacyBestDepth > 0
+          ? legacyBestDepth
+          : 1;
+      } else {
+        combatBestDepth = 1;
+      }
       runeBonuses = combatRuneBonuses(parsed?.runes, parsed?.equippedRunes);
       runeAbilityEffects = combatRuneMajorAbilityEffects(parsed?.runes, parsed?.equippedRunes);
     } catch {
