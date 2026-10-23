@@ -114,6 +114,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   const isDocumentVisible = (): boolean => document.visibilityState === 'visible';
 
   const refreshChat = async (queueIfBusy = false) => {
+    if (document.visibilityState === 'hidden') return;
     if (!isDocumentVisible()) return;
     if (refreshInFlightRef.current) {
       if (queueIfBusy) refreshPendingRef.current = true;
@@ -435,10 +436,12 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
 
       <form aria-label="Post a public chat comment" onSubmit={sendMessage} className="border-t border-slate-800 bg-slate-900/95 p-3">
         <div className="flex items-center gap-2">
+          <label htmlFor="io-global-chat-input" className="sr-only">Public chat comment</label>
           <input
+            id="io-global-chat-input"
             value={input}
             onChange={e => setInput(e.target.value.slice(0, 200))}
-            aria-label="Public chat comment"
+            aria-label="Write a public Global Chat message"
             maxLength={200}
             placeholder={chatAvailable === true ? 'Write a public Reddit comment...' : 'Open the main Game launcher to chat'}
             disabled={sending || chatAvailable !== true}
