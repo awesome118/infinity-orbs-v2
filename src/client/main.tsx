@@ -731,6 +731,9 @@ export function App() {
       setDeveloperAnnouncement(announcement?.message ? announcement : null);
       setNotificationsEnabled(notificationState.enabled === true);
     } catch (e: any) {
+      // Do not let a late error from an older request clear a newer session or
+      // overwrite a newer successful refresh with a stale network error.
+      if (refreshSequence !== refreshSequenceRef.current || revisionAtStart !== stateRevisionRef.current) return;
       if (e?.message === 'REDDIT_LOGIN_REQUIRED') {
         setAuthRequired(true);
         stateRef.current = null;

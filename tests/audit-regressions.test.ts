@@ -1865,7 +1865,13 @@ test('refreshAll discards a late /api/me response after state has advanced', () 
     'state revision must be rechecked after /api/me returns');
   assert.ok(applyResponse > staleResponseGuard,
     'a stale /api/me response must be rejected before applying its PlayerState');
+  assert.ok(refresh.includes('} catch (e: any) {\n      // Do not let a late error from an older request clear a newer session or'));
   assert.ok(refresh.includes('if (refreshSequence !== refreshSequenceRef.current || revisionAtStart !== stateRevisionRef.current) return;'));
+  const catchIndex = refresh.indexOf('} catch (e: any) {');
+  const catchGuard = refresh.indexOf('if (refreshSequence !== refreshSequenceRef.current || revisionAtStart !== stateRevisionRef.current) return;', catchIndex);
+  const authReset = refresh.indexOf("if (e?.message === 'REDDIT_LOGIN_REQUIRED')", catchIndex);
+  assert.ok(catchIndex >= 0 && catchGuard > catchIndex && authReset > catchGuard,
+    'stale errors must be discarded before auth-reset handling');
   assert.ok((refresh.match(/if \(refreshSequence !== refreshSequenceRef\.current\) return;/g) ?? []).length >= 2,
     'admin and auxiliary bootstrap responses must each be sequence-fenced');
 });
