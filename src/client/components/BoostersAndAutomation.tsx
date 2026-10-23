@@ -211,7 +211,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
               <h2 className="text-xl font-black text-white">Boosters & Automation</h2>
               <Sparkles className="w-4 h-4 text-purple-300" />
             </div>
-            <p className="mt-1 text-xs text-slate-400">Global Boosters affect everyone, Premium Boosters run on your own timers, and Automation unlocks are permanent purchases. Every Global Booster activation adds 2 hours to its timer.</p>
+            <p className="mt-1 text-xs text-slate-400">Global Boosters affect everyone, Premium Boosters run on your own timers, and Automation unlocks are permanent purchases. Every activation adds 2 hours to its timer.</p>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs">
