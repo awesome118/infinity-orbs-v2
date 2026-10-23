@@ -123,7 +123,8 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
     // A new request satisfies any queued refresh; requests arriving while this
     // one is active can schedule at most one follow-up.
     refreshPendingRef.current = false;
-    const requestId = ++refreshRequestRef.current;
+    refreshRequestRef.current += 1;
+    const requestId = refreshRequestRef.current;
     try {
       const next = await loadChat();
       // Ignore responses from older requests. Embedded webviews can finish
