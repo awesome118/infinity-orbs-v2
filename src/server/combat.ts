@@ -242,9 +242,9 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.combatMarks=Math.min(Number.MAX_SAFE_INTEGER,legacyCoins+legacyMarks);
   s.totalKills=finiteInt(s.totalKills,0,0,Number.MAX_SAFE_INTEGER);
   s.arenaRating=finiteInt(s.arenaRating,1000,100,10000);s.arenaWins=finiteInt(s.arenaWins,0,0,Number.MAX_SAFE_INTEGER);s.arenaLosses=finiteInt(s.arenaLosses,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastChallengeAt=finiteInt(s.arenaLastChallengeAt,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastMatchAt=finiteInt(arenaLastMatchAtValue,0,0,Number.MAX_SAFE_INTEGER);
-  s.coreLevel=finiteInt(s.coreLevel,1,1,1_000_000);s.coreHighestRarity=finiteInt(s.coreHighestRarity,2,2,1_000_000_000_000_000_000);
+  s.coreLevel=finiteInt(s.coreLevel,1,1,1_000_000);s.coreHighestRarity=finiteInt(s.coreHighestRarity,2,2,Number.MAX_VALUE);
   s.autoTactic=(['balanced','aggressive','defensive','recovery'] as unknown[]).includes(s.autoTactic)?s.autoTactic:'balanced';
-  s.scrap=finiteInt(s.scrap,0,0,Number.MAX_SAFE_INTEGER);s.autoScrapUnlocked=s.autoScrapUnlocked===true;s.autoScrapSettings=normalizeCombatAutoScrapSettings(s.autoScrapSettings);s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillGachaRank=finiteInt(storedGachaRank,legacyUnlockedRank,1,SKILL_GACHA_RANK_MAX);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,1_000_000_000_000_000_000);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=Math.min(finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER),Date.now());s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
+  s.scrap=finiteInt(s.scrap,0,0,Number.MAX_SAFE_INTEGER);s.autoScrapUnlocked=s.autoScrapUnlocked===true;s.autoScrapSettings=normalizeCombatAutoScrapSettings(s.autoScrapSettings);s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillGachaRank=finiteInt(storedGachaRank,legacyUnlockedRank,1,SKILL_GACHA_RANK_MAX);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,Number.MAX_VALUE);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=Math.min(finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER),Date.now());s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
   s.playerActionsResolved=finiteInt(s.playerActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.enemyActionsResolved=finiteInt(s.enemyActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.playerTurnsCompleted=finiteInt(s.playerTurnsCompleted,0,0,Number.MAX_SAFE_INTEGER);
   s.strategyGuideRank=finiteInt(s.strategyGuideRank,0,0,STRATEGY_GUIDE_RANKS.length);
   s.tacticianManuals=finiteInt(s.tacticianManuals,0,0,1);
@@ -460,7 +460,7 @@ export async function getCombatSnapshot():Promise<CombatSnapshot>{
   const state=await mutate(s=>{
     if(coreProgression){
       s.coreLevel=finiteInt(coreProgression.level,s.coreLevel,1,1_000_000);
-      s.coreHighestRarity=finiteInt(coreProgression.highestRarity,s.coreHighestRarity,2,1_000_000_000_000_000_000);
+      s.coreHighestRarity=finiteInt(coreProgression.highestRarity,s.coreHighestRarity,2,Number.MAX_VALUE);
       s.autoScrapUnlocked=Number(coreProgression.autoScrapLevel)>0;
       s.autoScrapSettings=normalizeCombatAutoScrapSettings(coreProgression.autoScrapSettings);
       if(!s.autoScrapUnlocked)s.autoScrapSettings.enabled=false;
