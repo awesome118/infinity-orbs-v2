@@ -2542,6 +2542,7 @@ export function App() {
           </button>
 
           {!combatMode && <>
+          <span className="io-nav-group-label text-[9px] font-black uppercase tracking-widest text-slate-500 px-2 self-center">PLAY</span>
           <button
             type="button"
             onClick={() => {
@@ -2558,6 +2559,7 @@ export function App() {
             <span>Roll</span>
           </button>
 
+          <span className="io-nav-group-label text-[9px] font-black uppercase tracking-widest text-slate-500 px-2 self-center">GROW</span>
           <button
             type="button"
             onClick={() => {
@@ -2630,6 +2632,7 @@ export function App() {
             )}
           </button>
 
+          <span className="io-nav-group-label text-[9px] font-black uppercase tracking-widest text-slate-500 px-2 self-center">DISCOVER</span>
           <button
             type="button"
             onClick={() => {
@@ -2647,6 +2650,7 @@ export function App() {
             {featureForTab('collection' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('collection' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
+          <span className="io-nav-group-label text-[9px] font-black uppercase tracking-widest text-slate-500 px-2 self-center">COMMUNITY</span>
           <button
             type="button"
             onClick={() => {
@@ -2684,6 +2688,7 @@ export function App() {
             {featureForTab('social' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('social' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
+          <span className="io-nav-group-label text-[9px] font-black uppercase tracking-widest text-slate-500 px-2 self-center">LONG-TERM</span>
           <button
             type="button"
             onClick={() => {
@@ -2705,6 +2710,7 @@ export function App() {
           </button>
           </>}
           {combatMode && <>
+            <span className="io-combat-soon">PVP</span>
             <button type="button" aria-current={tab === 'fight' ? 'page' : undefined} onClick={() => changeTab('fight')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (tab === 'fight' ? " is-active" : "")}><Flame className="w-3.5 h-3.5" /><span>Fight</span></button>
             <button type="button" aria-current={tab === 'dungeons' ? 'page' : undefined} onClick={() => changeTab('dungeons')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'dungeons' ? " is-active" : "")}><DoorOpen className="w-3.5 h-3.5" /><span>Dungeons</span></button>
             <button type="button" aria-current={tab === 'gear' ? 'page' : undefined} onClick={() => changeTab('gear')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'gear' ? " is-active" : "")}><Package className="w-3.5 h-3.5" /><span>Gear</span></button>
