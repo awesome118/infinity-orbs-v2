@@ -6388,9 +6388,9 @@ export async function claimOrbFrenzy(options: {
   const supernovaRarity = Math.min(MAX_ORB_RARITY, Number.isFinite(rawSupernovaRarity) ? rawSupernovaRarity : MAX_ORB_RARITY);
 
   const groups = [
-    { count: count - critCount, rarity: data.rarity, isInfinity: baseIsInfinity },
-    { count: normalCritCount, rarity: normalCritRarity, isInfinity: normalCritIsInfinity },
-    { count: supernovaCount, rarity: supernovaRarity, isInfinity: supernovaIsInfinity },
+    { count: count - critCount, rarity: data.rarity, isInfinity: baseIsInfinity, isCrit: false },
+    { count: normalCritCount, rarity: normalCritRarity, isInfinity: normalCritIsInfinity, isCrit: true },
+    { count: supernovaCount, rarity: supernovaRarity, isInfinity: supernovaIsInfinity, isCrit: true },
   ].filter(group => group.count > 0);
 
   const valueMul =
@@ -6527,6 +6527,7 @@ export async function claimOrbFrenzy(options: {
     s.collection[keyForRarity] = (s.collection[keyForRarity] ?? 0) + group.count;
   }
   const bestIsInfinity = groups.some(group => group.rarity === bestRarity && group.isInfinity);
+  const bestIsCrit = groups.some(group => group.rarity === bestRarity && group.isCrit);
   s.highestRarity = Math.max(s.highestRarity, bestRarity);
   if (bestRarity > previousHighest || (bestIsInfinity && !s.highestRarityIsInfinity)) {
     s.highestRarity = bestRarity;
@@ -6629,7 +6630,7 @@ export async function claimOrbFrenzy(options: {
         name: groupInfo.name,
         isInfinity: group.isInfinity,
         isNew: groupIsNew,
-        isCrit: group.rarity > data.rarity,
+        isCrit: group.isCrit,
       });
     }
   }
@@ -6642,7 +6643,7 @@ export async function claimOrbFrenzy(options: {
     name: orbInfo.name,
     isInfinity: bestIsInfinity,
     isNew: newRarityKeys.some(group => group.rarity === bestRarity && Boolean(group.isInfinity) === bestIsInfinity),
-    isCrit: bestRarity > data.rarity,
+    isCrit: bestIsCrit,
   };
   if (visibleBatch.length === 0) visibleBatch.push(bestOrb);
 
