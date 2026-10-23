@@ -1215,13 +1215,11 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
   if (!raw) throw new Error('This is not an Orb Frenzy post.');
   const data = parseFrenzyPostRecord(raw);
   if (!data || data.inGame !== true) throw new Error('This is not an Orb Frenzy post.');
-  const now = Date.now();
-  if (isFrenzyPostRecordExpired(data, now)) throw new Error('This Frenzy has expired.');
 
   const s = await settleOffline(await loadRaw());
   const now = Date.now();
   const createdAt = Number(data.createdAt ?? 0);
-  if (isFrenzyPostExpired(createdAt, now)) throw new Error('This Frenzy has expired.');
+  if (isFrenzyPostRecordExpired(data, now)) throw new Error('This Frenzy has expired.');
   const claimCooldown = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
   const isOwner = data.ownerId === currentUserId();
   const selfClaimTest =
