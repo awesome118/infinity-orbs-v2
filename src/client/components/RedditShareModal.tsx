@@ -6,13 +6,15 @@ import { sound } from '../sound.js';
 
 interface RedditShareModalProps {
   rarity: number;
+  isInfinity?: boolean;
   state: PlayerState;
   onClose: () => void;
-  onShare: (rarity: number) => Promise<{ success: boolean; id?: string }>;
+  onShare: (rarity: number, isInfinity?: boolean) => Promise<{ success: boolean; id?: string }>;
 }
 
 export const RedditShareModal: React.FC<RedditShareModalProps> = ({
   rarity,
+  isInfinity = false,
   state,
   onClose,
   onShare,
@@ -22,7 +24,7 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
   const [successPostId, setSuccessPostId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const info = getOrbInfo(rarity);
+  const info = getOrbInfo(rarity, isInfinity);
 
   const handleShare = async () => {
     if (busy || shareLockRef.current) return;
@@ -31,7 +33,7 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
     setErrorMessage(null);
     sound.playClick();
     try {
-      const res = await onShare(rarity);
+      const res = await onShare(rarity, isInfinity);
       if (res.success) {
         sound.playEpicFanfare();
         setSuccessPostId(res.id ?? 'post-shared');
@@ -99,7 +101,7 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
             </span>
           </div>
 
-          <h4>u/you found a 1/{formatRarity(rarity)} Orb</h4>
+          <h4>u/you found a 1/{formatRarity(rarity, isInfinity)} Orb</h4>
 
           <div className="io-share-preview-orb">
             <div
@@ -112,12 +114,12 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
             >
               <span className="io-public-orb-ring" />
               <span className="io-public-orb-tier">{info.tier}</span>
-              <strong>1/{formatRarity(rarity)}</strong>
+              <strong>1/{formatRarity(rarity, isInfinity)}</strong>
               <small>{info.name}</small>
             </div>
             <div>
               <strong>{info.name}</strong>
-              <p>Odds: 1 in {formatRarity(rarity)}</p>
+              <p>Odds: 1 in {formatRarity(rarity, isInfinity)}</p>
               <p>Roll #{formatNumber(state.totalRolls)}</p>
             </div>
           </div>
