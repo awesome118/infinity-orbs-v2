@@ -2474,6 +2474,7 @@ export function predictRollActivation(
   let bestRarity = 0;
   let bestIsCrit = false;
   let bestIsNew = false;
+  let bestIsInfinity = false;
   let totalValueGained = 0;
   let shardsGained = 0;
   let xpGained = 0;
@@ -2495,31 +2496,39 @@ export function predictRollActivation(
 
     const minimumRarity = 2 + (s.prestigeUpgrades?.luckyFloor ?? 0);
     const beginnerRarity = 101 + Math.floor(rng() * 20);
-    const rolledRarity = isGuaranteedThirdBall
-      ? beginnerRarity
-      : Math.max(minimumRarity, rollContinuum(effectiveLuck, rng));
+    const rawRolledRarity = isGuaranteedThirdBall ? beginnerRarity : rollContinuum(effectiveLuck, rng);
+    const rawCritRarity = isCrit ? Math.round(rawRolledRarity * effectiveCm) : rawRolledRarity;
+    const isInfinityOrb = !isGuaranteedThirdBall &&
+      (rawRolledRarity === Number.POSITIVE_INFINITY || rawCritRarity === Number.POSITIVE_INFINITY ||
+       !Number.isFinite(rawCritRarity) || rawCritRarity > MAX_ORB_RARITY);
+    const rolledRarity = Math.max(minimumRarity, Math.min(MAX_ORB_RARITY,
+      Number.isFinite(rawRolledRarity) ? rawRolledRarity : MAX_ORB_RARITY));
     const rarity = isCrit
-      ? Math.min(MAX_ORB_RARITY, Math.round(rolledRarity * effectiveCm))
+      ? Math.min(MAX_ORB_RARITY, Number.isFinite(rawCritRarity) ? Math.round(rawCritRarity) : MAX_ORB_RARITY)
       : rolledRarity;
 
     const finalVal = Math.min(MAX_ORB_RARITY, Math.round(rarity * valueMul));
-    const isNew = !s.collection[String(rarity)];
-    if (rarity > bestRarity) {
+    const rarityKey = isInfinityOrb ? 'Infinity' : String(rarity);
+    const isNew = !s.collection[rarityKey];
+    if (rarity > bestRarity || (isInfinityOrb && !bestIsInfinity)) {
       bestRarity = rarity;
       bestIsCrit = isCrit;
       bestIsNew = isNew;
+      bestIsInfinity = isInfinityOrb;
     } else if (rarity === bestRarity) {
       if (isCrit) bestIsCrit = true;
       bestIsNew = bestIsNew || isNew;
+      bestIsInfinity = bestIsInfinity || isInfinityOrb;
     }
     if (isNew) uniqueGained++;
-    s.collection[String(rarity)] = (s.collection[String(rarity)] ?? 0) + 1;
+    s.collection[rarityKey] = (s.collection[rarityKey] ?? 0) + 1;
     s.totalRolls++;
     s.currentRunRolls = (s.currentRunRolls ?? 0) + 1;
     s.collectionValue = addCollectionValue(s.collectionValue, finalVal);
     s.lifetimeCollectionValue = addCollectionValue(s.lifetimeCollectionValue, finalVal);
-    if (rarity > s.highestRarity) {
+    if (rarity > s.highestRarity || (isInfinityOrb && !s.highestRarityIsInfinity)) {
       s.highestRarity = rarity;
+      s.highestRarityIsInfinity = isInfinityOrb;
       s.rollsSinceBest = 0;
     } else {
       s.rollsSinceBest = (s.rollsSinceBest ?? 0) + 1;
@@ -2616,12 +2625,13 @@ export function predictRollActivation(
   s.lastRollAt = Date.now();
   s.lastSeenAt = Date.now();
 
-  const bestInfo = getOrbInfo(bestRarity);
+  const bestInfo = getOrbInfo(bestRarity, bestIsInfinity);
   const bestOrb: Orb = {
     rarity: bestRarity,
     rolledAt: Date.now(),
     tier: bestInfo.tier,
     name: bestInfo.name,
+    isInfinity: bestIsInfinity,
     isNew: bestIsNew,
     isCrit: bestIsCrit,
   };
