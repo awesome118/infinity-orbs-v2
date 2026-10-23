@@ -704,6 +704,7 @@ export function App() {
     const revisionAtStart = stateRevisionRef.current;
     try {
       const me = await getJsonWithTimeout<PlayerState>('/api/me');
+      if (!componentMountedRef.current) return;
       try { window.sessionStorage.removeItem('io-wipe-recovery'); } catch { /* Embedded storage is optional. */ }
       if (refreshSequence !== refreshSequenceRef.current || revisionAtStart !== stateRevisionRef.current) return;
       applyPlayerState(me);
@@ -712,6 +713,7 @@ export function App() {
       if (!splashEntered) return;
 
       const adminStatus = await getJson<{ isAdmin: boolean }>('/api/dev/status').catch(() => ({ isAdmin: false }));
+      if (!componentMountedRef.current) return;
       if (refreshSequence !== refreshSequenceRef.current) return;
       setIsAdmin(adminStatus.isAdmin === true);
       if (me.gameBan?.active) return;
@@ -723,6 +725,7 @@ export function App() {
         getJson<{ message: string; updatedAt: number; updatedBy: string } | null>('/api/developer-announcement').catch(() => null),
         getJson<{ enabled: boolean }>('/api/notifications').catch(() => ({ enabled: false })),
       ]);
+      if (!componentMountedRef.current) return;
       if (refreshSequence !== refreshSequenceRef.current) return;
       setLeaderboardData(lb);
       setLeaderboards(lbs);
@@ -733,6 +736,7 @@ export function App() {
     } catch (e: any) {
       // Do not let a late error from an older request clear a newer session or
       // overwrite a newer successful refresh with a stale network error.
+      if (!componentMountedRef.current) return;
       if (refreshSequence !== refreshSequenceRef.current || revisionAtStart !== stateRevisionRef.current) return;
       if (e?.message === 'REDDIT_LOGIN_REQUIRED') {
         setAuthRequired(true);

@@ -1881,7 +1881,10 @@ test('refreshAll discards a late /api/me response after state has advanced', () 
   assert.ok(applyResponse > staleResponseGuard,
     'a stale /api/me response must be rejected before applying its PlayerState');
   assert.ok(refresh.includes('} catch (e: any) {\n      // Do not let a late error from an older request clear a newer session or'));
+  assert.ok(refresh.includes('if (!componentMountedRef.current) return;'));
   assert.ok(refresh.includes('if (refreshSequence !== refreshSequenceRef.current || revisionAtStart !== stateRevisionRef.current) return;'));
+  assert.ok((refresh.match(/if \(!componentMountedRef\.current\) return;/g) ?? []).length >= 4,
+    'each refresh phase should stop applying results after unmount');
   const catchIndex = refresh.indexOf('} catch (e: any) {');
   const catchGuard = refresh.indexOf('if (refreshSequence !== refreshSequenceRef.current || revisionAtStart !== stateRevisionRef.current) return;', catchIndex);
   const authReset = refresh.indexOf("if (e?.message === 'REDDIT_LOGIN_REQUIRED')", catchIndex);
