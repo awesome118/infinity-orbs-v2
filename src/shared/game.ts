@@ -2476,7 +2476,7 @@ export function predictRollActivation(
       s.totalCrits = (s.totalCrits ?? 0) + 1;
       const supernovaLevel = s.prestigeUpgrades?.supernova ?? 0;
       if (supernovaLevel > 0 && rng() < supernovaLevel * 0.10) {
-        effectiveCm = 5;
+        effectiveCm = cm * 5;
       }
     }
 
@@ -2489,7 +2489,7 @@ export function predictRollActivation(
       ? Math.min(MAX_ORB_RARITY, Math.round(rolledRarity * effectiveCm))
       : rolledRarity;
 
-    const finalVal = Math.round(rarity * valueMul);
+    const finalVal = Math.min(MAX_ORB_RARITY, Math.round(rarity * valueMul));
     const isNew = !s.collection[String(rarity)];
     if (isNew) uniqueGained++;
     s.collection[String(rarity)] = (s.collection[String(rarity)] ?? 0) + 1;
@@ -2541,7 +2541,7 @@ export function predictRollActivation(
       });
     }
     rarities.push(rarity);
-    totalValueGained += finalVal;
+    totalValueGained = Math.min(Number.MAX_VALUE, totalValueGained + finalVal);
   }
 
   rarities.sort((a, b) => b - a);
