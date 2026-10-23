@@ -35,7 +35,7 @@ function PlayGameButton({
 }) {
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState('');
-  const openGame = (event: MouseEvent<HTMLButtonElement>) => {
+  const openGame = (e: MouseEvent<HTMLButtonElement>) => {
     if (opening) return;
     setOpening(true);
     setError('');
@@ -45,7 +45,7 @@ function PlayGameButton({
     };
     try {
       // This API must be invoked synchronously inside the trusted click turn.
-      const request = requestExpandedMode(event.nativeEvent, 'game');
+      const request = requestExpandedMode(e.nativeEvent, 'game');
       void Promise.resolve(request).catch(failed);
     } catch {
       failed();
