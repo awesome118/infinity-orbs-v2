@@ -144,6 +144,11 @@ test('impression time buckets and per-post counters have bounded retention', () 
   assert.match(source, /txn\.set\(keyForPost, String\(nextPost\), \{ expiration: postCounterExpiration \}\)/);
   assert.match(source, /txn\.set\(HOUR_PREFIX \+ hour \+ ':' \+ postType, String\(nextHour\), \{ expiration: hourBucketExpiration \}\)/);
   assert.match(source, /txn\.set\(DAY_PREFIX \+ day \+ ':' \+ postType, String\(nextDay\), \{ expiration: dayBucketExpiration \}\)/);
+  assert.match(source, /const postIndexRetentionCutoff = now - 180 \* 86_400_000/);
+  assert.match(source, /entry\.invalid \|\| entry\.lastSeenAt < postIndexRetentionCutoff/);
+  assert.match(source, /const recentEntries = entries\.filter\(/);
+  assert.match(source, /const overflowEntries = recentEntries\.slice\(MAX_INDEXED_POSTS\)/);
+  assert.match(source, /\.slice\(0, 250\)/);
 });
 
 test('concurrent impression bursts preserve every committed aggregate count', async () => {

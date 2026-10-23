@@ -170,23 +170,42 @@ export async function recordPostImpression(
   if (pruneSequence % INDEX_PRUNE_EVERY === 0) {
     try {
       const currentIndex = await redis.hGetAll(POST_INDEX_KEY);
-      const entries = Object.entries(currentIndex ?? {}).flatMap(([field, raw]) => {
+      const postIndexRetentionCutoff = now - 180 * 86_400_000;
+      const entries = Object.entries(currentIndex ?? {}).map(([field, raw]) => {
         try {
           const parsed = JSON.parse(String(raw)) as { postType?: unknown; postId?: unknown; lastSeenAt?: unknown };
           normalizePostType(parsed.postType);
           const indexedPostId = String(parsed.postId ?? '').trim();
           const indexedAt = Number(parsed.lastSeenAt ?? 0);
-          if (!indexedPostId || indexedPostId.length > 200) return [];
-          return [{
+          const valid = Boolean(indexedPostId) &&
+            indexedPostId.length <= 200 &&
+            Number.isSafeInteger(indexedAt) &&
+            indexedAt >= 0;
+          return {
             field,
-            lastSeenAt: Number.isSafeInteger(indexedAt) && indexedAt >= 0 ? indexedAt : 0,
-          }];
+            lastSeenAt: valid ? indexedAt : 0,
+            invalid: !valid,
+          };
         } catch {
-          return [];
+          return { field, lastSeenAt: 0, invalid: true };
         }
       }).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
-      for (const stale of entries.slice(MAX_INDEXED_POSTS, MAX_INDEXED_POSTS + 250)) {
-        await redis.hDel(POST_INDEX_KEY, stale.field);
+
+      // Expiry of the per-post counter also expires the index record. Prune old
+      // or corrupt entries even when the dashboard index is far below its size
+      // limit, then prune any additional overflow. Cap each sweep's deletes.
+      const expiredOrInvalid = entries.filter(
+        entry => entry.invalid || entry.lastSeenAt < postIndexRetentionCutoff,
+      );
+      const recentEntries = entries.filter(
+        entry => !entry.invalid && entry.lastSeenAt >= postIndexRetentionCutoff,
+      );
+      const overflowEntries = recentEntries.slice(MAX_INDEXED_POSTS);
+      const fieldsToPrune = [...new Set(
+        [...expiredOrInvalid, ...overflowEntries].map(entry => entry.field),
+      )].slice(0, 250);
+      for (const field of fieldsToPrune) {
+        await redis.hDel(POST_INDEX_KEY, field);
       }
     } catch (error) {
       console.error('[Impressions] Index pruning failed after the impression committed.', error);
