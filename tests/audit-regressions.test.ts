@@ -1983,7 +1983,8 @@ test('critical rarity caps match the continuum ceiling and cannot downgrade high
   const applyEnd = game.indexOf('async function sendOfflineFullNotification', applyStart);
   assert.ok(applyStart >= 0 && applyEnd > applyStart);
   const apply = game.slice(applyStart, applyEnd);
-  assert.match(apply, /Math\.min\(MAX_ORB_RARITY, Math\.round\(baseRarity \* effectiveCm\)\)/);
+  assert.match(apply, /const rawCritRarity = isCrit \? Math\.round\(baseRarity \* effectiveCm\) : baseRarity/);
+  assert.match(apply, /if \(isCrit && \(!Number\.isFinite\(rawCritRarity\) \|\| rawCritRarity > MAX_ORB_RARITY\)\) isInfinityOrb = true/);
   const claimStart = game.indexOf('export async function claimOrbFrenzy');
   const claimEnd = game.indexOf('function sampleBinomial', claimStart);
   assert.ok(claimStart >= 0 && claimEnd > claimStart);
