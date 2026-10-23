@@ -1954,8 +1954,8 @@ test('the rarity continuum can sample and display its full finite Infinity ceili
   assert.match(shared, /return 'Infinity'/);
   assert.match(shared, /Infinity: \['Infinity Orb'\]/);
   assert.match(game, /function serverRarityRandom\(\): number/);
-  assert.match(game, /new Uint32Array\(32\)/);
-  assert.match(game, /bitLength - 1024/);
+  assert.match(game, /new Uint32Array\(34\)/);
+  assert.match(game, /bitLength - 1088/);
   assert.match(game, /rollContinuum\(effectiveLuck, randomOverride \?\? serverRarityRandom\)/);
 });
 
