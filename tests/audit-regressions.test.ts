@@ -2263,7 +2263,7 @@ test('Global Booster polling synchronizes the state ref and survives stale playe
   assert.match(applier, /latestGlobalBoostersRef\.current \?\? currentState\?\.globalBoosters \?\? nextState\.globalBoosters/);
   assert.match(applier, /globalBoosters: currentGlobalBoosters/);
 
-  const pollStart = main.indexOf('const refreshGlobalBoosters = () =>');
+  const pollStart = main.indexOf('const refreshGlobalBoosters = async () =>');
   const pollEnd = main.indexOf('}, [tab]);', pollStart);
   assert.ok(pollStart >= 0 && pollEnd > pollStart);
   const poll = main.slice(pollStart, pollEnd);
@@ -2538,7 +2538,7 @@ test('Global Chat destination cannot be inferred from a client-supplied launcher
   const statusStart = social.indexOf('export async function getGlobalChatStatus');
   const end = social.indexOf('export async function recordGlobalChatComment', statusStart);
   assert.ok(start >= 0 && statusStart > start && end > statusStart);
-  const resolver = social.slice(start, statusStart);
+  const resolver = social.slice(start, social.indexOf('\n}', start) + 2);
   const status = social.slice(statusStart, end);
   assert.match(resolver, /if \(!saved\)/);
   assert.match(resolver, /isRegisteredFrenzyPost\(saved\)/);
@@ -2806,7 +2806,7 @@ test('header experience progress and icon-only actions have keyboard/screen-read
   assert.ok(header.includes('focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300'));
   assert.ok(header.includes("!event.repeat && (event.key === 'Enter' || event.key === ' ')"));
   assert.ok(header.includes('aria-label="View probability and drop odds"'));
-  assert.ok(header.includes('aria-label="Report a bug or send a suggestion"'));
+  assert.ok(header.includes('aria-label="Report a bug or suggest an improvement"'));
   assert.ok(header.includes('aria-label="Open admin console"'));
   assert.ok(header.includes("aria-label={notificationsEnabled ? 'Disable Reddit notifications' : 'Enable Reddit notifications'}"));
   assert.ok(header.includes("aria-label={soundEnabled ? 'Mute sound' : 'Enable sound'}"));
@@ -2977,7 +2977,7 @@ test('Turbo Booster confirmation reports the actual cooldown reduction', () => {
   const client = source('src/client/main.tsx');
   const shared = source('src/shared/game.ts');
   assert.ok(client.includes('const turboReductionPercent = durationMinutes === 60 ? 35 : 25;'));
-  assert.ok(client.includes('Cooldowns reduced by ${turboReductionPercent}% for ${durationMinutes}m.'));
+  assert.ok(client.includes("const turboDescription = durationMinutes === 60\n        ? '35% faster cooldowns for 60 minutes'\n        : '25% faster cooldowns for 30 minutes';"));
   assert.ok(shared.includes("const turboReduction = (s.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 0.65 : 0.75;"));
 });
 
