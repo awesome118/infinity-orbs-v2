@@ -223,7 +223,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.version=1;
   s.combatTutorialSeen = s.combatTutorialSeen === true;
   s.dungeonId=(['undercrypt','cinder-vault','glass-labyrinth'] as unknown[]).includes(s.dungeonId)?s.dungeonId:'undercrypt';
-  s.runId=finiteInt(s.runId,1,1,Number.MAX_SAFE_INTEGER);s.depth=finiteInt(s.depth,1,1,COMBAT_MAX_DEPTH);
+  s.runId=finiteInt(s.runId,1,1,Number.MAX_SAFE_INTEGER);s.depth=finiteInt(s.depth,1,1,COMBAT_MAX_DEPTH);s.depthCapCleared=s.depthCapCleared===true;
   s.bestDepth=Math.max(s.depth,finiteInt(s.bestDepth,1,1,COMBAT_MAX_DEPTH));
   const savedDungeonBests=(s.dungeonBestDepths&&typeof s.dungeonBestDepths==='object'?s.dungeonBestDepths:{}) as Partial<Record<CombatDungeonId,number>>;
   s.dungeonBestDepths={
@@ -552,6 +552,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
   catch(error) { console.error('[Combat] Could not refresh Luck for the beat orb; using baseline Luck.',error); }
   return mutate(s=>{
     if(sequence!==s.sequence+1)throw new Error('stale combat sequence');
+    if(s.depthCapCleared && s.depth>=COMBAT_MAX_DEPTH)throw new Error('Maximum supported depth reached. Switch dungeons to begin a new descent.');
     const manualSkillId=typeof skillIdValue==='string'&&COMBAT_SKILLS.some(skill=>skill.id===skillIdValue)?skillIdValue as CombatSkillId:null;
     const guideEnemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);
     const predictedPlayerActions=combatActionsDue(s.speed,s.combatBeats+1,s.playerActionsResolved);
@@ -764,9 +765,20 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         s.skillRuntime.burnTicks=0;s.skillRuntime.burnDamage=0;s.skillRuntime.armorBreakBeats=0;s.skillRuntime.shield=0;s.skillRuntime.delayedDamage=0;s.skillRuntime.delayedDamageReadyAtSequence=0;s.skillRuntime.executeMarked=false;s.skillRuntime.evadeNext=false;s.skillRuntime.phoenixReady=false;s.skillRuntime.phoenixUsed=false;s.skillRuntime.storedDamage=0;
         s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.guardBeats=0;s.encounterFirstStrikeUsed=false;
         if(s.depth>=COMBAT_MAX_DEPTH){
-          // Do not step beyond the normalized depth limit and farm a capped room forever.
-          s.runId+=1;s.depth=1;resetCombatRunCarry(s);s.pendingHealAmount=0;s.skillRuntime.lastAttackDamage=0;s.skillRuntime.nextKillMarkBonus=0;s.skillRuntime.nextKillXpBonus=0;s.skillRuntime.nextRuneDropBonus=0;s.skillRuntime.royalTitheKills=0;s.skillRuntime.bountyStreak=0;s.energy=Math.min(s.maxEnergy,3);s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;synchronizeCombatStats(s);s.health=s.maxHealth;
-          actions.push({actor:'player',kind:'advance',text:'Depth limit reached. A new descent begins at Depth 1; all permanent progress remains.'});
+          // The last supported boss can be cleared once. Keep the displayed depth
+          // at its real cap, then require a dungeon switch before any further beats.
+          s.depth=COMBAT_MAX_DEPTH;
+          s.bestDepth=COMBAT_MAX_DEPTH;
+          s.dungeonBestDepths[s.dungeonId]=Math.max(s.dungeonBestDepths[s.dungeonId],COMBAT_MAX_DEPTH);
+          s.depthCapCleared=true;
+          s.runId+=1;
+          resetCombatRunCarry(s);
+          s.pendingHealAmount=0;
+          s.energy=Math.min(s.maxEnergy,3);
+          s.enemyHp=enemy.maxHp;
+          synchronizeCombatStats(s);
+          s.health=s.maxHealth;
+          actions.push({actor:'player',kind:'advance',text:'Maximum supported depth reached. This dungeon is cleared at Depth '+COMBAT_MAX_DEPTH+'. Switch dungeons to begin a new descent; permanent progress remains.'});
         }else{
           s.depth+=1;s.bestDepth=Math.max(s.bestDepth,s.depth);s.dungeonBestDepths[s.dungeonId]=Math.max(s.dungeonBestDepths[s.dungeonId],s.bestDepth);s.energy=Math.min(s.maxEnergy,s.energy+1);
           enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);s.enemyHp=enemy.maxHp;actions.push({actor:'player',kind:'advance',text:'Descending to Depth '+s.depth+'.'});
@@ -1450,7 +1462,8 @@ export async function setCombatDungeon(dungeonValue: unknown): Promise<CombatSna
   }
   return mutate(state => {
     const nextDungeon = dungeonValue as CombatDungeonId;
-    if (state.dungeonId === nextDungeon) return snapshot(state);
+    if (state.dungeonId === nextDungeon && !state.depthCapCleared) return snapshot(state);
+    state.depthCapCleared = false;
     state.dungeonId = nextDungeon;
     state.depth = 1;
     state.bestDepth = state.dungeonBestDepths[nextDungeon];
