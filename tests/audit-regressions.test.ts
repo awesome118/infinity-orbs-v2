@@ -2814,6 +2814,13 @@ test('combined Altar offering choices expose selection and local Mastery pending
 });
 
 test('UI-only action buttons declare type=button to avoid accidental form submissions', () => {
+  const main = source('src/client/main.tsx');
+  assert.match(main, /<button\s+type="button"\s+onClick=\{\(\) => setShowDevModal\(true\)\}/);
+  assert.match(main, /<button\s+type="button"\s+aria-current=\{tab === 'fight'/);
+  const admin = source('src/client/components/DevDebugModal.tsx');
+  assert.match(admin, /<button\s+type="button"\s+title="Jump to aggregate Impressions analytics\."/);
+  assert.match(admin, /<button\s+type="button"\s+title="Close the admin console\."/);
+  assert.match(admin, /<button\s+type="button"\s+title="Delete all stored payment traces\."/);
   const upgrades = source('src/client/components/UpgradesSection.tsx');
   assert.ok(upgrades.includes('<button\n              type="button"\n              onClick={handleUpgradeAllClick}'));
   assert.ok(upgrades.includes('<button\n                    type="button"\n                    disabled\n                    className="w-full bg-slate-950'));

@@ -3520,7 +3520,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <button type="button"
               title="Jump to aggregate Impressions analytics."
               onClick={() => {
                 document.getElementById('io-impressions-tab')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -3530,7 +3530,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             >
               <Eye className="inline w-3.5 h-3.5 mr-1" /> Impressions
             </button>
-            <button title="Close the admin console." onClick={onClose} className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
+            <button type="button" title="Close the admin console." onClick={onClose} className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -3546,7 +3546,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 Aggregate app-preview loads for main-game, Orb Share, and Frenzy posts. These are not Reddit feed views or online players. No usernames, user IDs, or raw device fingerprints are stored.
               </p>
             </div>
-            <button
+            <button type="button"
               title="Refresh aggregate post impression data."
               disabled={impressionsLoading}
               onClick={() => void loadImpressions()}
@@ -3715,7 +3715,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                   A player reported an in-game chat message. Review the report below and mark it read after handling it.
                 </p>
               </div>
-              <button
+              <button type="button"
                 disabled={chatReportsLoading}
                 onClick={() => void loadChatReports()}
                 className={buttonBase + ' bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/30 text-rose-200 px-3 py-2'}
@@ -3741,7 +3741,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                         ? 'Modmail outcome uncertain · check Modmail'
                         : report.status === 'sent' ? 'Modmail sent' : 'Legacy report'}
                     </span>
-                    <button
+                    <button type="button"
                       onClick={() => void markChatReportRead(report.reportId)}
                       className={buttonBase + ' bg-rose-600/20 hover:bg-rose-600/30 border-rose-500/40 text-rose-100 px-2.5 py-1.5'}
                     >
@@ -3770,7 +3770,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
-              <button
+              <button type="button"
                 disabled={fullTestRunning}
                 title="Run the full end-to-end admin test. This wipes and rewrites the current admin save."
                 onClick={() => {
@@ -3781,7 +3781,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 <ClipboardCheck className="inline w-3.5 h-3.5 mr-1" />
                 {fullTestRunning ? 'Running…' : 'Run Full Test'}
               </button>
-              <button
+              <button type="button"
                 disabled={fullTestRunning || fullTestLogs.length === 0}
                 title="Copy the current comprehensive test log."
                 onClick={async () => {
@@ -3868,14 +3868,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               placeholder="Fake CCU to add"
               title="Number of additional virtual players to add to the current real CCU for your Luck calculation."
             />
-            <button
+            <button type="button"
               disabled={ccuLoading}
               onClick={() => void setFakeCcu(Math.max(0, Math.min(1_000_000, Math.floor(Number(fakeCcuInput) || 0))))}
               className={buttonBase + ' bg-fuchsia-600 hover:bg-fuchsia-500 border-fuchsia-500 text-white px-3 py-2'}
             >
               Set Fake CCU
             </button>
-            <button
+            <button type="button"
               disabled={ccuLoading}
               onClick={() => {
                 setFakeCcuInput('0');
@@ -3914,7 +3914,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 Peak concurrent players recorded from the game's 30-second online presence window.
               </p>
             </div>
-            <button
+            <button type="button"
               title="Refresh current and historical peak concurrent-user counts."
               disabled={ccuLoading}
               onClick={() => void loadCcuStats()}
@@ -3952,7 +3952,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
-              <button
+              <button type="button"
                 title="Load the latest payment trace from the server."
                 disabled={paymentLogsLoading}
                 onClick={() => void loadPaymentLogs()}
@@ -3960,7 +3960,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               >
                 {paymentLogsLoading ? 'Loading…' : 'Refresh'}
               </button>
-              <button
+              <button type="button"
                 title="Copy the complete payment trace."
                 disabled={paymentLogs.length === 0}
                 onClick={() => void copyPaymentLogs()}
@@ -3968,7 +3968,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               >
                 <Copy className="w-3.5 h-3.5 inline mr-1" /> Copy
               </button>
-              <button
+              <button type="button"
                 title="Delete all stored payment traces."
                 disabled={paymentLogsLoading || paymentLogs.length === 0}
                 onClick={() => void clearPaymentLogs()}
@@ -4011,7 +4011,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               {[0, 1, 5, 10].map(v => <option key={v} value={v}>{v === 0 ? 'Off' : 'Tier ' + v}</option>)}
             </select>
             <input value={globalMinutes} onChange={e => setGlobalMinutes(e.target.value)} type="number" min="1" title="How many minutes the forced Global Booster state should remain active." className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white font-mono" placeholder="minutes" />
-            <button
+            <button type="button"
               title="Set a Global Booster tier and duration directly without spending Shards."
               disabled={loading}
               onClick={() => void sendAdminAction('/api/dev/global-booster', { id: globalBooster, tier: Number(globalTier), minutes: Number(globalMinutes) })}
@@ -4049,7 +4049,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <button
+            <button type="button"
               title="Give the entered number of free Global Booster activation credits to one specific Reddit user."
               disabled={globalBoosterGrantLoading || !globalBoosterTargetUser.trim()}
               onClick={() => void grantFreeGlobalBoosters('user')}
@@ -4088,13 +4088,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
-              <button title="Load recent save diagnostics, filtered by the Player Spy username when present." disabled={saveLogsLoading} onClick={() => void loadSaveLogs()} className={buttonBase + ' bg-slate-900 border-slate-700 text-slate-200 px-3 py-2'}>
+              <button type="button" title="Load recent save diagnostics, filtered by the Player Spy username when present." disabled={saveLogsLoading} onClick={() => void loadSaveLogs()} className={buttonBase + ' bg-slate-900 border-slate-700 text-slate-200 px-3 py-2'}>
                 {saveLogsLoading ? 'Loading…' : 'Refresh'}
               </button>
-              <button title="Copy the complete save trace." disabled={saveLogs.length === 0} onClick={() => void copySaveLogs()} className={buttonBase + ' bg-emerald-600/20 border-emerald-500/30 text-emerald-200 px-3 py-2'}>
+              <button type="button" title="Copy the complete save trace." disabled={saveLogs.length === 0} onClick={() => void copySaveLogs()} className={buttonBase + ' bg-emerald-600/20 border-emerald-500/30 text-emerald-200 px-3 py-2'}>
                 <Copy className="w-3.5 h-3.5 inline mr-1" /> Copy
               </button>
-              <button title="Delete all save diagnostics." disabled={saveLogsLoading || saveLogs.length === 0} onClick={() => void clearSaveLogs()} className={buttonBase + ' bg-red-600/20 border-red-500/30 text-red-200 px-3 py-2'}>
+              <button type="button" title="Delete all save diagnostics." disabled={saveLogsLoading || saveLogs.length === 0} onClick={() => void clearSaveLogs()} className={buttonBase + ' bg-red-600/20 border-red-500/30 text-red-200 px-3 py-2'}>
                 <Trash2 className="w-3.5 h-3.5 inline mr-1" /> Clear
               </button>
             </div>
@@ -4119,7 +4119,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
-              <button
+              <button type="button"
                 title="Refresh the human-readable Global Boosters Log."
                 disabled={globalBoosterActivationLogLoading}
                 onClick={() => void loadGlobalBoosterActivationLog()}
@@ -4127,7 +4127,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               >
                 {globalBoosterActivationLogLoading ? 'Loading…' : 'Refresh'}
               </button>
-              <button
+              <button type="button"
                 title="Clear the Global Boosters Log."
                 disabled={globalBoosterActivationLogLoading || globalBoosterActivationLog.length === 0}
                 onClick={() => void clearGlobalBoosterActivationLog()}
@@ -4177,13 +4177,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
-              <button title="Load the latest Global Booster trace." disabled={globalBoosterLogsLoading} onClick={() => void loadGlobalBoosterLogs()} className={buttonBase + ' bg-slate-900 border-slate-700 text-slate-200 px-3 py-2'}>
+              <button type="button" title="Load the latest Global Booster trace." disabled={globalBoosterLogsLoading} onClick={() => void loadGlobalBoosterLogs()} className={buttonBase + ' bg-slate-900 border-slate-700 text-slate-200 px-3 py-2'}>
                 {globalBoosterLogsLoading ? 'Loading…' : 'Refresh'}
               </button>
-              <button title="Copy the complete Global Booster trace." disabled={globalBoosterLogs.length === 0} onClick={() => void copyGlobalBoosterLogs()} className={buttonBase + ' bg-emerald-600/20 border-emerald-500/30 text-emerald-200 px-3 py-2'}>
+              <button type="button" title="Copy the complete Global Booster trace." disabled={globalBoosterLogs.length === 0} onClick={() => void copyGlobalBoosterLogs()} className={buttonBase + ' bg-emerald-600/20 border-emerald-500/30 text-emerald-200 px-3 py-2'}>
                 <Copy className="w-3.5 h-3.5 inline mr-1" /> Copy
               </button>
-              <button title="Delete all Global Booster traces." disabled={globalBoosterLogsLoading || globalBoosterLogs.length === 0} onClick={() => void clearGlobalBoosterLogs()} className={buttonBase + ' bg-red-600/20 border-red-500/30 text-red-200 px-3 py-2'}>
+              <button type="button" title="Delete all Global Booster traces." disabled={globalBoosterLogsLoading || globalBoosterLogs.length === 0} onClick={() => void clearGlobalBoosterLogs()} className={buttonBase + ' bg-red-600/20 border-red-500/30 text-red-200 px-3 py-2'}>
                 <Trash2 className="w-3.5 h-3.5 inline mr-1" /> Clear
               </button>
             </div>
@@ -4207,7 +4207,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 Sends a real Reddit push notification to the current admin account. Notifications must be enabled first.
               </p>
             </div>
-            <button
+            <button type="button"
               title="Send a real test push notification to the current admin account."
               disabled={pushTestLoading}
               onClick={() => void sendPushTest()}
@@ -4235,7 +4235,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           />
           <div className="flex items-center justify-between gap-2">
             <span className="text-[10px] text-slate-500">{announcementText.length}/1200 characters</span>
-            <button
+            <button type="button"
               title="Publish the current developer announcement."
               disabled={!announcementLoaded || loading}
               onClick={() => void sendAdminAction('/api/dev/announcement', { message: announcementText }, true, 'Developer announcement updated.')}
@@ -4273,11 +4273,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               ['streak-reset', 'Reset Streak', 'bg-slate-800 hover:bg-slate-700'],
               ['offline-clear', 'Clear Offline', 'bg-slate-800 hover:bg-slate-700'],
             ].map(([id, label, cls]) => (
-              <button title={`Apply the ${label} test preset.`} key={id} disabled={loading} onClick={() => void setPreset(id)} className={`${buttonBase} border-transparent px-3 py-2 text-white ${cls}`}>
+              <button type="button" title={`Apply the ${label} test preset.`} key={id} disabled={loading} onClick={() => void setPreset(id)} className={`${buttonBase} border-transparent px-3 py-2 text-white ${cls}`}>
                 {label}
               </button>
             ))}
-            <button
+            <button type="button"
               title="Reset daily, weekly, streak, free-shard, and Frenzy timing flags."
               disabled={loading}
               onClick={() => void sendAdminAction('/api/dev/reset-daily')}
@@ -4301,13 +4301,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               className="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
               placeholder="Rarity denominator"
             />
-            <button title="Perform one roll at the exact rarity entered in the field." onClick={() => void handleForceRoll(Number(customRarity))} disabled={loading} className={`${buttonBase} bg-cyan-600 hover:bg-cyan-500 border-cyan-500 text-white px-4`}>
+            <button type="button" title="Perform one roll at the exact rarity entered in the field." onClick={() => void handleForceRoll(Number(customRarity))} disabled={loading} className={`${buttonBase} bg-cyan-600 hover:bg-cyan-500 border-cyan-500 text-white px-4`}>
               Roll Exact
             </button>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {[100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000].map(v => (
-              <button title={`Force one roll at exact rarity 1/${formatRarity(v)}.`} key={v} onClick={() => void handleForceRoll(v)} disabled={loading} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-1.5 font-mono`}>
+              <button type="button" title={`Force one roll at exact rarity 1/${formatRarity(v)}.`} key={v} onClick={() => void handleForceRoll(v)} disabled={loading} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-1.5 font-mono`}>
                 1/{v.toLocaleString()}
               </button>
             ))}
@@ -4327,7 +4327,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               ['/api/dev/currency', { shards: 500 }, '+500 Shards'],
               ['/api/dev/currency', { dust: 50 }, '+50 Dust'],
             ].map(([endpoint, body, label]) => (
-              <button title="Add the displayed test resource amount without normal gameplay costs." key={label as string} onClick={() => void sendAdminAction(endpoint as string, body)} disabled={loading} className={`${buttonBase} bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-300 px-2.5 py-2`}>
+              <button type="button" title="Add the displayed test resource amount without normal gameplay costs." key={label as string} onClick={() => void sendAdminAction(endpoint as string, body)} disabled={loading} className={`${buttonBase} bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-300 px-2.5 py-2`}>
                 {label as string}
               </button>
             ))}
@@ -4339,7 +4339,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-purple-300">
               <Database className="w-4 h-4" /> Fine State Control
             </div>
-            <button title="Make the next normal roll immediately available." disabled={loading} onClick={() => void sendAdminAction('/api/dev/reset-cooldown')} className={`${buttonBase} bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500/30 text-indigo-300 px-3 py-1.5`}>
+            <button type="button" title="Make the next normal roll immediately available." disabled={loading} onClick={() => void sendAdminAction('/api/dev/reset-cooldown')} className={`${buttonBase} bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500/30 text-indigo-300 px-3 py-1.5`}>
               <Gauge className="inline w-3.5 h-3.5 mr-1" /> Cooldown Ready
             </button>
           </div>
@@ -4358,16 +4358,16 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             ))}
           </div>
           <div className="flex flex-wrap gap-2">
-            <button title="Apply every nonblank state field above directly to the current test account." disabled={loading} onClick={() => void updateState()} className={`${buttonBase} bg-purple-600 hover:bg-purple-500 border-purple-500 text-white px-4 py-2`}>
+            <button type="button" title="Apply every nonblank state field above directly to the current test account." disabled={loading} onClick={() => void updateState()} className={`${buttonBase} bg-purple-600 hover:bg-purple-500 border-purple-500 text-white px-4 py-2`}>
               <Save className="inline w-3.5 h-3.5 mr-1" /> Apply State Fields
             </button>
-            <button title="Set every standard upgrade to a high testing level." disabled={loading} onClick={() => void sendAdminAction('/api/dev/unlock-upgrades')} className={`${buttonBase} bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-300 px-3 py-2`}>
+            <button type="button" title="Set every standard upgrade to a high testing level." disabled={loading} onClick={() => void sendAdminAction('/api/dev/unlock-upgrades')} className={`${buttonBase} bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-300 px-3 py-2`}>
               Unlock Standard Upgrades
             </button>
-            <button title="Populate the account with a broad maxed progression state for testing." disabled={loading} onClick={() => void sendAdminAction('/api/dev/unlock-everything')} className={`${buttonBase} bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/30 text-rose-300 px-3 py-2`}>
+            <button type="button" title="Populate the account with a broad maxed progression state for testing." disabled={loading} onClick={() => void sendAdminAction('/api/dev/unlock-everything')} className={`${buttonBase} bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/30 text-rose-300 px-3 py-2`}>
               <Sparkles className="inline w-3.5 h-3.5 mr-1" /> Everything
             </button>
-            <button title="Add 50 offline rolls to the vault." disabled={loading} onClick={() => void sendAdminAction('/api/dev/add-offline', { amount: 50 })} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}>
+            <button type="button" title="Add 50 offline rolls to the vault." disabled={loading} onClick={() => void sendAdminAction('/api/dev/add-offline', { amount: 50 })} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}>
               +50 Offline Rolls
             </button>
           </div>
@@ -4385,7 +4385,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               placeholder="Optional forced Frenzy rarity, e.g. 1000000"
               className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
             />
-            <button
+            <button type="button"
               title="Create a new test Frenzy post. The optional rarity forces its starting rarity and bypasses the daily limit."
               disabled={loading}
               onClick={async () => {
@@ -4409,7 +4409,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                   Open Frenzy post
                 </a>
               )}
-              <button
+              <button type="button"
                 title="Claim the latest admin test Frenzy as the owner to test the reward flow."
                 disabled={loading}
                 onClick={() => {
@@ -4423,7 +4423,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </div>
           )}
           <div className="flex flex-wrap gap-2">
-            <button
+            <button type="button"
               title="Open the Daily Frenzy popup immediately in the game so its interaction can be tested."
               disabled={loading}
               onClick={() => {
@@ -4434,11 +4434,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             >
               <BellRing className="inline w-3.5 h-3.5 mr-1" /> Force Frenzy Popup
             </button>
-            <button title="Clear Frenzy flags so another Frenzy test can run immediately." disabled={loading} onClick={() => void sendAdminAction('/api/dev/frenzy/reset')} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}>
+            <button type="button" title="Clear Frenzy flags so another Frenzy test can run immediately." disabled={loading} onClick={() => void sendAdminAction('/api/dev/frenzy/reset')} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}>
               <RotateCcw className="inline w-3.5 h-3.5 mr-1" /> Reset Frenzy Flags
             </button>
             {[100, 10_000, 1_000_000, 100_000_000].map(v => (
-              <button title={`Use 1/${formatRarity(v)} as the forced Frenzy rarity.`} key={v} disabled={loading} onClick={() => setFrenzyRarity(String(v))} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-1.5 font-mono`}>
+              <button type="button" title={`Use 1/${formatRarity(v)} as the forced Frenzy rarity.`} key={v} disabled={loading} onClick={() => setFrenzyRarity(String(v))} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-1.5 font-mono`}>
                 1/{v.toLocaleString()}
               </button>
             ))}
@@ -4451,23 +4451,23 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
             {[1_000, 10_000, 100_000, 1_000_000].map(goal => (
-              <button title={`Set the community event goal to ${goal.toLocaleString()} rolls.`} key={goal} disabled={loading} onClick={() => void sendAdminAction('/api/dev/event', { goal })} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-2 font-mono`}>
+              <button type="button" title={`Set the community event goal to ${goal.toLocaleString()} rolls.`} key={goal} disabled={loading} onClick={() => void sendAdminAction('/api/dev/event', { goal })} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-2 font-mono`}>
                 Goal {goal >= 1_000_000 ? '1M' : goal >= 1_000 ? `${goal / 1000}K` : goal}
               </button>
             ))}
             {[0, 500, 5_000, 50_000].map(progress => (
-              <button title={`Set community event progress to ${progress.toLocaleString()}.`} key={`progress-${progress}`} disabled={loading} onClick={() => void sendAdminAction('/api/dev/event', { progress })} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-2`}>
+              <button type="button" title={`Set community event progress to ${progress.toLocaleString()}.`} key={`progress-${progress}`} disabled={loading} onClick={() => void sendAdminAction('/api/dev/event', { progress })} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-2`}>
                 Progress {progress >= 1000 ? `${progress / 1000}K` : progress}
               </button>
             ))}
           </div>
           <div className="flex flex-wrap gap-2">
             {[500, 5_000, 50_000].map(amount => (
-              <button title={`Add ${amount.toLocaleString()} rolls to community event progress.`} key={amount} disabled={loading} onClick={() => void sendAdminAction('/api/dev/event', { addRolls: amount })} className={`${buttonBase} bg-purple-600/20 hover:bg-purple-600/30 border-purple-500/40 text-purple-300 px-3 py-1.5`}>
+              <button type="button" title={`Add ${amount.toLocaleString()} rolls to community event progress.`} key={amount} disabled={loading} onClick={() => void sendAdminAction('/api/dev/event', { addRolls: amount })} className={`${buttonBase} bg-purple-600/20 hover:bg-purple-600/30 border-purple-500/40 text-purple-300 px-3 py-1.5`}>
                 +{amount.toLocaleString()} Event Rolls
               </button>
             ))}
-            <button title="Reset the community event to its base state." disabled={loading} onClick={() => void sendAdminAction('/api/dev/event', { reset: true })} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-1.5`}>
+            <button type="button" title="Reset the community event to its base state." disabled={loading} onClick={() => void sendAdminAction('/api/dev/event', { reset: true })} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-1.5`}>
               Reset Event
             </button>
           </div>
@@ -4518,7 +4518,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               title="This reason is shown to the player on the Infinity Orbs ban screen." placeholder="Game ban reason"
               className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
             />
-            <button
+            <button type="button"
               title="Ban your own Infinity Orbs account only. The ban screen will keep the admin console available so you can unban yourself."
               disabled={loading}
               onClick={() => {
@@ -4540,7 +4540,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-            <button
+            <button type="button"
               title="Ban the selected account from Infinity Orbs only. This does not affect Reddit."
               disabled={loading || !targetUser.trim()}
               onClick={() => void sendAdminAction('/api/dev/moderation/ban', {
@@ -4552,7 +4552,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             >
               <Ban className="inline w-3.5 h-3.5 mr-1" /> Ban in Game
             </button>
-            <button
+            <button type="button"
               title="Remove the selected account's Infinity Orbs game ban."
               disabled={loading || !targetUser.trim()}
               onClick={() => void sendAdminAction('/api/dev/moderation/unban', { username: targetUser })}
@@ -4560,7 +4560,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             >
               <CheckCircle2 className="inline w-3.5 h-3.5 mr-1" /> Unban Game
             </button>
-            <button
+            <button type="button"
               title="Delete the selected player's Infinity Orbs save. This does not change their game-ban record."
               disabled={loading || !targetUser.trim()}
               onClick={() => requestWipeConfirmation('wipe-game')}
@@ -4568,7 +4568,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             >
               <UserX className="inline w-3.5 h-3.5 mr-1" /> Wipe Save
             </button>
-            <button
+            <button type="button"
               title="Delete the selected save and then apply the selected Infinity Orbs game ban."
               disabled={loading || !targetUser.trim()}
               onClick={() => requestWipeConfirmation('wipe-and-ban')}
@@ -4576,7 +4576,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             >
               <Ban className="inline w-3.5 h-3.5 mr-1" /> Wipe + Ban
             </button>
-            <button
+            <button type="button"
               title="Delete the selected save and remove the selected Infinity Orbs game ban."
               disabled={loading || !targetUser.trim()}
               onClick={() => requestWipeConfirmation('wipe-and-unban')}
@@ -4584,7 +4584,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             >
               <Trash2 className="inline w-3.5 h-3.5 mr-1" /> Wipe + Unban
             </button>
-            <button
+            <button type="button"
               title="Inspect the selected account\'s live save, generation, level, XP, and game-ban state."
               disabled={loading || !targetUser.trim()}
               onClick={async () => {
@@ -4609,7 +4609,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button
+            <button type="button"
               title="Load the current list of active Infinity Orbs game bans."
               disabled={loading}
               onClick={() => void getBannedUsers()}
@@ -4617,7 +4617,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             >
               <RefreshCw className="inline w-3.5 h-3.5 mr-1" /> Load Banned Game Accounts
             </button>
-            <button
+            <button type="button"
               title="Delete your own Infinity Orbs save while keeping your game-ban record unchanged."
               disabled={loading}
               onClick={() => {
@@ -4635,7 +4635,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             >
               Wipe My Save
             </button>
-            <button
+            <button type="button"
               title="Remove your own Infinity Orbs game ban. This is also available from the ban screen."
               disabled={loading}
               onClick={() => {
@@ -4659,7 +4659,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                       {user.bannedUntil === null ? 'Permanent' : `Until ${new Date(user.bannedUntil).toLocaleString()}`} · {user.reason}
                     </div>
                   </div>
-                  <button
+                  <button type="button"
                     title="Remove this listed player's Infinity Orbs game ban."
                     disabled={loading}
                     onClick={() => void sendAdminAction('/api/dev/moderation/unban', { username: user.username })}
@@ -4678,7 +4678,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-300">
               <Users className="w-4 h-4" /> Player List
             </div>
-            <button
+            <button type="button"
               title="Load every player account Infinity Orbs has registered, with currently active players first."
               disabled={loading}
               onClick={() => void getPlayerList()}
@@ -4751,7 +4751,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               placeholder="Reddit username, without u/"
               className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
             />
-            <button
+            <button type="button"
               title="Load the player's complete calculated stat breakdown."
               disabled={statSpyLoading || !statSpyUsername.trim()}
               onClick={() => void loadStatSpy()}
@@ -4874,7 +4874,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               placeholder="Reddit username, without u/"
               className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
             />
-            <button
+            <button type="button"
               title="Load the latest 500 gameplay telemetry events for this player."
               disabled={playerSpyLoading || !playerSpyUsername.trim()}
               onClick={() => void loadPlayerSpy()}
@@ -4883,7 +4883,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               <RefreshCw className="inline w-3.5 h-3.5 mr-1" />
               {playerSpyLoading ? 'Loading…' : 'Spy'}
             </button>
-            <button
+            <button type="button"
               title="Toggle a compact Player Spy format that removes duplicate activation entries and repeated state snapshots so the log is small enough to paste into chat."
               disabled={playerSpyLogs.length === 0}
               onClick={() => {
@@ -4897,7 +4897,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             >
               <ListRestart className="inline w-3.5 h-3.5 mr-1" /> {playerSpyShortened ? 'Full Log' : 'Shorten Log'}
             </button>
-            <button
+            <button type="button"
               title={playerSpyShortened
                 ? 'Copy the shortened Player Spy log for pasting into ChatGPT or another analysis tool.'
                 : 'Copy the Player Spy data as JSON so it can be analyzed externally or pasted into ChatGPT.'}
@@ -5005,7 +5005,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 Moderation-only view of every message currently retained in every guild. Refreshes every 3 seconds after the first load.
               </p>
             </div>
-            <button
+            <button type="button"
               title="Load all stored Guild Chat messages and active chat mutes."
               disabled={guildChatSpyLoading}
               onClick={() => void loadGuildChatSpy()}
@@ -5025,7 +5025,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
             />
             <div className="flex gap-2">
-              <button
+              <button type="button"
                 title="Mute this account from Global Chat and Guild Chat."
                 disabled={loading || !guildChatMuteUser.trim()}
                 onClick={async () => {
@@ -5040,7 +5040,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               >
                 Mute
               </button>
-              <button
+              <button type="button"
                 title="Unmute this account from Global Chat and Guild Chat."
                 disabled={loading || !guildChatMuteUser.trim()}
                 onClick={async () => {
@@ -5063,7 +5063,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               <div className="text-[10px] uppercase font-bold text-rose-300">Muted accounts</div>
               <div className="flex flex-wrap gap-2">
                 {guildChatMutes.map(mute => (
-                  <button
+                  <button type="button"
                     key={mute.userId}
                     title={'Unmute u/' + mute.username + ' from Global Chat and Guild Chat.'}
                     disabled={loading}
@@ -5104,7 +5104,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                                 <div className={'text-xs mt-0.5 whitespace-pre-wrap break-words ' + (msg.isSystem ? 'text-slate-500 italic' : 'text-slate-300')}>{msg.text}</div>
                               </div>
                               {!msg.isSystem && (
-                                <button
+                                <button type="button"
                                   title={(isMuted ? 'Unmute ' : 'Mute ') + 'u/' + msg.username + ' from all Guild Chat.'}
                                   disabled={loading}
                                   onClick={() => void toggleGuildChatMute(msg.username, isMuted)}
@@ -5148,7 +5148,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <Trash2 className="w-4 h-4" /> Destructive Testing
           </div>
           <div className="flex flex-wrap gap-2">
-            <button
+            <button type="button"
               title="Erase the entire current Infinity Orbs save and restore the normal starting state."
               disabled={loading}
               onClick={() => {
@@ -5159,7 +5159,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             >
               <RotateCcw className="inline w-3.5 h-3.5 mr-1" /> Reset My Save
             </button>
-            <button title="Reset the current test account to the ordinary new-player starting state." disabled={loading} onClick={() => void sendAdminAction('/api/dev/preset', { preset: 'fresh' })} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}>
+            <button type="button" title="Reset the current test account to the ordinary new-player starting state." disabled={loading} onClick={() => void sendAdminAction('/api/dev/preset', { preset: 'fresh' })} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}>
               <Database className="inline w-3.5 h-3.5 mr-1" /> Fresh State
             </button>
           </div>

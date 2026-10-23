@@ -2348,7 +2348,7 @@ export function App() {
                 <div className="mb-3 text-xs text-emerald-400 font-semibold">
                   Admin access remains available while this account is game-banned.
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setShowDevModal(true)}
                   className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm"
                 >
@@ -2462,7 +2462,7 @@ export function App() {
               <RefreshCw className="w-4 h-4 shrink-0" />
               <span>New update, please refresh!</span>
             </div>
-            <button
+            <button type="button"
               onClick={() => window.location.reload()}
               className="shrink-0 rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-black text-slate-950 hover:bg-amber-300 transition-colors"
             >
@@ -2480,7 +2480,7 @@ export function App() {
               <div className="text-[10px] uppercase tracking-wider font-black text-cyan-300">Developer Announcement</div>
               <div className="mt-1 text-sm text-slate-200 whitespace-pre-wrap break-words">{developerAnnouncement.message}</div>
             </div>
-            <button
+            <button type="button"
               onClick={dismissDeveloperAnnouncement}
               className="shrink-0 p-1 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
               title="Dismiss this developer announcement"
@@ -2503,7 +2503,7 @@ export function App() {
                   Enable Reddit notifications to get alerts when your offline Orb storage fills up.
                 </p>
               </div>
-              <button
+              <button type="button"
                 onClick={() => setShowNotificationPrompt(false)}
                 className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800"
                 aria-label="Close notification prompt"
@@ -2512,13 +2512,13 @@ export function App() {
               </button>
             </div>
             <div className="mt-5 flex gap-2">
-              <button
+              <button type="button"
                 onClick={() => void handleEnableNotificationsFromPrompt()}
                 className="flex-1 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 px-4 py-2.5 text-xs font-black text-white"
               >
                 Enable Notifications
               </button>
-              <button
+              <button type="button"
                 onClick={() => setShowNotificationPrompt(false)}
                 className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300"
               >
@@ -2704,13 +2704,13 @@ export function App() {
           </button>
           </>}
           {combatMode && <>
-            <button aria-current={tab === 'fight' ? 'page' : undefined} onClick={() => changeTab('fight')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (tab === 'fight' ? " is-active" : "")}><Flame className="w-3.5 h-3.5" /><span>Fight</span></button>
-            <button aria-current={tab === 'dungeons' ? 'page' : undefined} onClick={() => changeTab('dungeons')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'dungeons' ? " is-active" : "")}><DoorOpen className="w-3.5 h-3.5" /><span>Dungeons</span></button>
-            <button aria-current={tab === 'gear' ? 'page' : undefined} onClick={() => changeTab('gear')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'gear' ? " is-active" : "")}><Package className="w-3.5 h-3.5" /><span>Gear</span></button>
-            <button aria-current={tab === 'forge' ? 'page' : undefined} onClick={() => changeTab('forge')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'forge' ? " is-active" : "")}><Hammer className="w-3.5 h-3.5" /><span>Forge</span></button>
-            <button aria-current={tab === 'skills' ? 'page' : undefined} onClick={() => changeTab('skills')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'skills' ? " is-active" : "")}><Sparkles className="w-3.5 h-3.5" /><span>Skills</span></button>
-            <button aria-current={tab === 'arena' ? 'page' : undefined} onClick={() => changeTab('arena')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'arena' ? " is-active" : "")}><Users className="w-3.5 h-3.5" /><span>Arena</span><span className="io-combat-soon">NEXT</span></button>
-            <button aria-current={tab === 'runes' ? 'page' : undefined} onClick={() => changeTab('runes')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'runes' ? " is-active" : "")}><Gem className="w-3.5 h-3.5" /><span>Runes</span></button>
+            <button type="button" aria-current={tab === 'fight' ? 'page' : undefined} onClick={() => changeTab('fight')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (tab === 'fight' ? " is-active" : "")}><Flame className="w-3.5 h-3.5" /><span>Fight</span></button>
+            <button type="button" aria-current={tab === 'dungeons' ? 'page' : undefined} onClick={() => changeTab('dungeons')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'dungeons' ? " is-active" : "")}><DoorOpen className="w-3.5 h-3.5" /><span>Dungeons</span></button>
+            <button type="button" aria-current={tab === 'gear' ? 'page' : undefined} onClick={() => changeTab('gear')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'gear' ? " is-active" : "")}><Package className="w-3.5 h-3.5" /><span>Gear</span></button>
+            <button type="button" aria-current={tab === 'forge' ? 'page' : undefined} onClick={() => changeTab('forge')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'forge' ? " is-active" : "")}><Hammer className="w-3.5 h-3.5" /><span>Forge</span></button>
+            <button type="button" aria-current={tab === 'skills' ? 'page' : undefined} onClick={() => changeTab('skills')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'skills' ? " is-active" : "")}><Sparkles className="w-3.5 h-3.5" /><span>Skills</span></button>
+            <button type="button" aria-current={tab === 'arena' ? 'page' : undefined} onClick={() => changeTab('arena')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'arena' ? " is-active" : "")}><Users className="w-3.5 h-3.5" /><span>Arena</span><span className="io-combat-soon">NEXT</span></button>
+            <button type="button" aria-current={tab === 'runes' ? 'page' : undefined} onClick={() => changeTab('runes')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'runes' ? " is-active" : "")}><Gem className="w-3.5 h-3.5" /><span>Runes</span></button>
           </>}
         </div>
       </div>
@@ -2907,7 +2907,7 @@ export function App() {
               </div>
             </div>
             <div className="io-modal-actions">
-              <button
+              <button type="button"
                 onClick={() => {
                   setShowFrenzyPrompt(false);
                   void handleStartOrbFrenzy();
@@ -2918,7 +2918,7 @@ export function App() {
                 <Flame className="w-4 h-4" />
                 {busy ? 'Charging…' : 'Charge My Frenzy'}
               </button>
-              <button
+              <button type="button"
                 onClick={() => setShowFrenzyPrompt(false)}
                 className="io-public-button io-public-button-secondary"
               >
