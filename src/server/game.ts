@@ -1258,8 +1258,6 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
       expiresAt: handoffExpiresAt,
     }), { expiration: new Date(handoffExpiresAt) });
     return { armed: true, postId };
-  }
-
   });
 }
 
