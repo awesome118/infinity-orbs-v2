@@ -6001,10 +6001,11 @@ export async function startOrbFrenzy(options: {
       .trim()
       .replace(/^u\//i, '') || 'Redditor';
     const rarity = result.bestOrb.rarity;
+    const isInfinity = result.bestOrb.isInfinity === true;
     const createdAt = Date.now();
     const expiresAt = frenzyPostExpiresAt(createdAt);
     const postText =
-      `u/${ownerUsername} got a 1/${formatRarity(rarity)} Orb in their Frenzy.\n\n` +
+      `u/${ownerUsername} got a 1/${formatRarity(rarity, isInfinity)} Orb in their Frenzy.\n\n` +
       `Click below to claim it! You can only claim one every 23 hours.\n\n` +
       `When someone claims your Frenzy, you receive +${FRENZY_OWNER_SHARD_REWARD} Shards. ` +
       `This reward bypasses the 50 Shard daily cap.\n\n` +
@@ -6012,7 +6013,7 @@ export async function startOrbFrenzy(options: {
     const post = await reddit.submitCustomPost({
       runAs: 'USER',
       subredditName,
-      title: `u/${ownerUsername} got a 1/${formatRarity(rarity)} Orb in their Frenzy`,
+      title: `u/${ownerUsername} got a 1/${formatRarity(rarity, isInfinity)} Orb in their Frenzy`,
       flairText: 'frenzy',
       entry: 'frenzy',
       userGeneratedContent: { text: postText },
@@ -6025,6 +6026,7 @@ export async function startOrbFrenzy(options: {
       ownerId: currentUserId(),
       ownerUsername,
       rarity,
+      isInfinity,
       subredditName,
       adminTest,
       inGame: true,
@@ -6180,6 +6182,7 @@ export async function startOrbFrenzy(options: {
 
 export async function getOrbFrenzyInfo(): Promise<{
   rarity: number;
+  isInfinity: boolean;
   ownerUsername: string;
   createdAt: number;
   expiresAt: number;
@@ -6204,6 +6207,7 @@ export async function getOrbFrenzyInfo(): Promise<{
     ownerId: string;
     ownerUsername: string;
     rarity: number;
+    isInfinity?: boolean;
     createdAt: number;
     expiresAt?: number;
     adminTest?: boolean;
@@ -6232,6 +6236,7 @@ export async function getOrbFrenzyInfo(): Promise<{
 
   return {
     rarity: data.rarity,
+    isInfinity: data.isInfinity === true,
     ownerUsername: data.ownerUsername,
     createdAt: data.createdAt,
     expiresAt,
@@ -6286,6 +6291,7 @@ export async function claimOrbFrenzy(options: {
     ownerId: string;
     ownerUsername: string;
     rarity: number;
+    isInfinity?: boolean;
     subredditName: string;
     adminTest?: boolean;
     inGame?: boolean;
