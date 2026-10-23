@@ -4564,6 +4564,7 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
 export interface CollectionPageItem {
   rarity: number;
   count: number;
+  isInfinity?: boolean;
 }
 
 export async function getCollectionPage(options: {
@@ -4584,17 +4585,24 @@ export async function getCollectionPage(options: {
   const tier = String(options.tier ?? 'all');
 
   let entries = Object.entries(s.collection ?? {})
-    .map(([rarityStr, count]) => ({ rarity: Number(rarityStr), count: Number(count) }))
+    .map(([rarityStr, count]) => {
+      const isInfinity = rarityStr === 'Infinity';
+      return {
+        rarity: isInfinity ? MAX_ORB_RARITY : Number(rarityStr),
+        count: Number(count),
+        ...(isInfinity ? { isInfinity: true } : {}),
+      };
+    })
     .filter(item => Number.isFinite(item.rarity) && item.count > 0);
 
   if (tier !== 'all') {
-    entries = entries.filter(item => getOrbInfo(item.rarity).tier === tier);
+    entries = entries.filter(item => getOrbInfo(item.rarity, item.isInfinity).tier === tier);
   }
 
   entries.sort((a, b) => {
-    if (sort === 'rarity_asc') return a.rarity - b.rarity;
-    if (sort === 'count') return b.count - a.count || b.rarity - a.rarity;
-    return b.rarity - a.rarity;
+    if (sort === 'rarity_asc') return a.rarity - b.rarity || Number(a.isInfinity) - Number(b.isInfinity);
+    if (sort === 'count') return b.count - a.count || b.rarity - a.rarity || Number(b.isInfinity) - Number(a.isInfinity);
+    return b.rarity - a.rarity || Number(b.isInfinity) - Number(a.isInfinity);
   });
 
   return {
