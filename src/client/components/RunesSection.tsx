@@ -57,6 +57,8 @@ export const RunesSection:React.FC=()=>{
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
   const actionInFlightRef=useRef(false);
+  // Compatibility alias for diagnostics and older audit checks; both names share one lock.
+  const operationLockRef = actionInFlightRef;
   const snapshotRequestSequenceRef=useRef(0);
   const [operationPending,setOperationPending]=useState(false);
   const beginAction=useCallback(()=>{
