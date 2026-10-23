@@ -1336,7 +1336,20 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
         throw new Error('ARENA_OPPONENT_UNAVAILABLE');
       }
       const ownState = normalizeState(ownRaw);
-      const opponentState = normalizeState(opponentRaw);
+      let opponentState = normalizeState(opponentRaw);
+      // Older Arena saves tracked only the outgoing challenge timestamp. Before
+      // target protection existed, that timestamp is the best available proxy
+      // for a recent match; migrate it when no explicit match timestamp exists.
+      try {
+        const rawOpponentState = JSON.parse(opponentRaw) as Record<string, unknown>;
+        if (!Object.prototype.hasOwnProperty.call(rawOpponentState, 'arenaLastMatchAt')) {
+          opponentState.arenaLastMatchAt = finiteInt(
+            rawOpponentState.arenaLastChallengeAt, 0, 0, Number.MAX_SAFE_INTEGER,
+          );
+        }
+      } catch {
+        // normalizeState owns malformed-save handling; keep its safe default.
+      }
       const now = Date.now();
       const remaining = arenaCooldownRemaining(ownState.arenaLastChallengeAt, now);
       if (remaining > 0) {
