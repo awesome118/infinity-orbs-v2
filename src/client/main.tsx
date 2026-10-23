@@ -843,7 +843,8 @@ export function App() {
     let inFlight = false;
     const refreshCommunityState = async () => {
       if (!splashEntered) return;
-      if (inFlight || document.visibilityState === 'hidden') return;
+      if (inFlight) return;
+      if (document.visibilityState === 'hidden') return;
       inFlight = true;
       try {
         const we = await getJson<WorldEvent | null>('/api/world-event');
