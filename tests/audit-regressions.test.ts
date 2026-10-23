@@ -1973,8 +1973,9 @@ test('third lifetime Orb guarantee uses an immutable pre-batch roll count', () =
 test('critical rarity caps match the continuum ceiling and cannot downgrade high-tier Orbs', () => {
   const shared = source('src/shared/game.ts');
   assert.match(shared, /export const MAX_ORB_RARITY = Number\.MAX_VALUE/);
-  assert.match(shared, /if \(rarity >= MAX_ORB_RARITY\) return 'Infinity'/);
-  assert.match(shared, /raw >= MAX_ORB_RARITY\) return 'Infinity'/);
+  assert.match(shared, /if \(isInfinity \|\| raw === Number\.POSITIVE_INFINITY\) return 'Infinity'/);
+  assert.match(shared, /getOrbInfo\(rarity: number, isInfinity = false\)/);
+  assert.doesNotMatch(shared, /Infinity: \['Infinity Orb'\]/);
   assert.match(shared, /Math\.min\(MAX_ORB_RARITY, Math\.max\(2, rarity\)\)/);
 
   const game = source('src/server/game.ts');
@@ -2000,7 +2001,8 @@ test('the rarity continuum can sample and display its full finite Infinity ceili
   const game = source('src/server/game.ts');
   assert.match(shared, /export const MAX_ORB_RARITY = Number\.MAX_VALUE/);
   assert.match(shared, /return 'Infinity'/);
-  assert.match(shared, /Infinity: \['Infinity Orb'\]/);
+  assert.match(shared, /isInfinity: bestIsInfinity/);
+  assert.doesNotMatch(shared, /Infinity: \['Infinity Orb'\]/);
   assert.match(game, /function serverRarityRandom\(\): number/);
   assert.match(game, /new Uint32Array\(34\)/);
   assert.match(game, /bitLength - 1088/);
