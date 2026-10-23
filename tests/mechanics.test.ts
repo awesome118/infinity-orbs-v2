@@ -4,6 +4,10 @@ import assert from 'node:assert/strict';
 import {
   createInitialState,
   addCollectionValue,
+  MAX_ORB_RARITY,
+  formatRarity,
+  getOrbTier,
+  rollContinuum,
   calculatePrestigeDust,
   calculateCosmicDust,
   MAX_COSMIC_DUST,
@@ -56,6 +60,16 @@ import {
 } from '../src/shared/social.js';
 
 const NOW = 1_800_000_000_000;
+
+
+test('Infinity is the display name for the maximum finite orb rarity', () => {
+  assert.equal(MAX_ORB_RARITY, Number.MAX_VALUE);
+  assert.equal(rollContinuum(1, () => Number.MIN_VALUE), Number.MAX_VALUE);
+  assert.equal(getOrbTier(MAX_ORB_RARITY), 'Infinity');
+  assert.equal(formatRarity(MAX_ORB_RARITY), 'Infinity');
+  assert.equal(formatRarity(Number.POSITIVE_INFINITY), 'Infinity');
+  assert.equal(formatRarity(1e15), '1.00e15');
+});
 
 test('Chain Patcher chooses the lowest adjacent rarity and prices 1/900 at 10 Shards', () => {
   const collection: Record<string, number> = {};
