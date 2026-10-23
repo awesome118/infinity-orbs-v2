@@ -252,7 +252,7 @@ test('deployment preflight rejects root CSS that disables native feed gestures',
   try {
     const result = fixture.run();
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /html\\/body must allow native vertical scrolling|html\\/body must let overscroll|html\\/body must not capture/);
+    assert.match(result.stderr, /html\/body must allow native vertical scrolling|html\/body must let overscroll|html\/body must not capture/);
     assert.match(result.stderr, /inline root must allow native vertical scrolling|inline root must let overscroll|inline root must not capture/);
   } finally {
     fixture.cleanup();
