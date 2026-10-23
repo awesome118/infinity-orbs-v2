@@ -2750,7 +2750,7 @@ async function syncRarityFlair(s: PlayerState): Promise<void> {
       if (!username) return;
 
       const highestRarity = Math.max(2, Math.floor(Number(source.highestRarity ?? 2) || 2));
-      const orbInfo = getOrbInfo(highestRarity);
+      const orbInfo = getOrbInfo(highestRarity, source.highestRarityIsInfinity === true);
       const flairText = orbInfo.tier;
       const backgroundColor = orbInfo.color;
       const textColor = flairTextColorForBackground(backgroundColor);
@@ -2771,7 +2771,7 @@ async function syncRarityFlair(s: PlayerState): Promise<void> {
       const afterRaw = await redis.get(playerKeyFor(userId));
       const after = afterRaw == null ? null : parsePlayerStateValue(afterRaw);
       const afterRarity = Math.max(2, Math.floor(Number(after?.highestRarity ?? source.highestRarity ?? 2) || 2));
-      const afterOrb = getOrbInfo(afterRarity);
+      const afterOrb = getOrbInfo(afterRarity, (after?.highestRarityIsInfinity ?? source.highestRarityIsInfinity) === true);
       const afterState = JSON.stringify({
         text: afterOrb.tier,
         backgroundColor: afterOrb.color,
