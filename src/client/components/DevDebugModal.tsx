@@ -1385,7 +1385,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     };
 
     const rollDetail = (result: RollResponse): string =>
-      `1/${formatRarity(result.orb?.rarity)} · processed=${shortNumber(result.rollsProcessed, 0)} · coins +${shortNumber(result.coinsGained, 0)} · XP +${shortNumber(result.xpGained, 0)}`;
+      `1/${formatRarity(result.orb?.rarity ?? 0, result.orb?.isInfinity)} · processed=${shortNumber(result.rollsProcessed, 0)} · coins +${shortNumber(result.coinsGained, 0)} · XP +${shortNumber(result.xpGained, 0)}`;
 
     try {
       // The test runs inside the live game UI. Disable any pre-existing Auto Roll
@@ -2534,7 +2534,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           if (result.orb?.tier !== 'Paradox') throw new Error('Expected Paradox, got ' + result.orb?.tier + '.');
           return result;
         },
-        result => '1/' + formatRarity(result.orb.rarity) + ' · ' + result.orb.tier,
+        result => '1/' + formatRarity(result.orb.rarity, result.orb.isInfinity) + ' · ' + result.orb.tier,
       );
 
       await step(
@@ -2544,7 +2544,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           if (result.orb?.tier !== 'Beyond') throw new Error('Expected Beyond, got ' + result.orb?.tier + '.');
           return result;
         },
-        result => '1/' + formatRarity(result.orb.rarity) + ' · ' + result.orb.tier,
+        result => '1/' + formatRarity(result.orb.rarity, result.orb.isInfinity) + ' · ' + result.orb.tier,
       );
 
       await step(
@@ -2554,7 +2554,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           if (result.orb?.tier !== 'Endless') throw new Error('Expected Endless, got ' + result.orb?.tier + '.');
           return result;
         },
-        result => '1/' + formatRarity(result.orb.rarity) + ' · ' + result.orb.tier,
+        result => '1/' + formatRarity(result.orb.rarity, result.orb.isInfinity) + ' · ' + result.orb.tier,
       );
 
       await step(
@@ -2884,7 +2884,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           if (Number(result.orb?.rarity) !== 12345) throw new Error('Force-roll returned 1/' + result.orb?.rarity + ' instead of 1/12345.');
           return result;
         },
-        result => 'forced 1/' + formatRarity(result.orb.rarity),
+        result => 'forced 1/' + formatRarity(result.orb.rarity, result.orb.isInfinity),
       );
 
       await step(
@@ -3387,7 +3387,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           }
           return result;
         },
-        result => 'post=' + result.postId + ' · 1/' + formatRarity(result.orb.rarity),
+        result => 'post=' + result.postId + ' · 1/' + formatRarity(result.orb.rarity, result.orb.isInfinity),
       );
 
       await step(
@@ -3437,7 +3437,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'Seed Final Baseline Orb',
         () => request<any>('/api/dev/force-roll', { rarity: 100, randomValue: 0.999999 }),
-        result => '1/' + formatRarity(result.orb?.rarity) + ' · tier=' + result.orb?.tier,
+        result => '1/' + formatRarity(result.orb?.rarity ?? 0, result.orb?.isInfinity) + ' · tier=' + result.orb?.tier,
       );
 
       await step(
