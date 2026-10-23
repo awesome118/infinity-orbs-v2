@@ -111,8 +111,10 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
       .slice(-100);
   };
 
+  const isDocumentVisible = (): boolean => document.visibilityState === 'visible';
+
   const refreshChat = async (queueIfBusy = false) => {
-    if (document.visibilityState === 'hidden') return;
+    if (!isDocumentVisible()) return;
     if (refreshInFlightRef.current) {
       if (queueIfBusy) refreshPendingRef.current = true;
       return;
@@ -145,7 +147,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
       // Chat is auxiliary UI and should never block gameplay.
     } finally {
       refreshInFlightRef.current = false;
-      if (refreshPendingRef.current && document.visibilityState !== 'hidden') {
+      if (refreshPendingRef.current && isDocumentVisible()) {
         refreshPendingRef.current = false;
         void refreshChat(true);
       }
@@ -347,7 +349,6 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-800 hover:text-white"
           aria-label="Minimize Global Chat"
           title="Minimize chat"
-          aria-label="Minimize Global Chat"
         >
           <Minimize2 className="w-3.5 h-3.5" />
         </button>
@@ -368,12 +369,9 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
 
       <div
         role="log"
-        aria-label="Global Chat messages"
-        aria-relevant="additions text"
-        ref={chatListRef}
-        role="log"
         aria-label="Global Chat message history"
         aria-relevant="additions text"
+        ref={chatListRef}
         onScroll={() => {
           const element = chatListRef.current;
           if (!element) return;
@@ -437,7 +435,6 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
       <form aria-label="Post a public chat comment" onSubmit={sendMessage} className="border-t border-slate-800 bg-slate-900/95 p-3">
         <div className="flex items-center gap-2">
           <input
-            aria-label="Public chat comment"
             value={input}
             onChange={e => setInput(e.target.value.slice(0, 200))}
             aria-label="Write a public Global Chat message"
