@@ -2867,7 +2867,7 @@ test('UI-only action buttons declare type=button to avoid accidental form submis
 
   const best = source('src/client/components/NewBestModal.tsx');
   assert.equal((best.match(/<button\s+type="button"\s+onClick=\{onClose\}/g) ?? []).length, 2);
-  assert.ok(best.includes('<button\n            type="button"\n            onClick={() => {\n              onClose();\n              onOpenShareModal(orb.rarity);'));
+  assert.ok(best.includes('<button\n            type="button"\n            onClick={() => {\n              onClose();\n              onOpenShareModal(orb.rarity, orb.isInfinity);'));
 });
 
 test('Mastery upgrade disabled expression closes before the next JSX attribute', () => {
