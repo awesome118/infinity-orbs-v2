@@ -1623,7 +1623,10 @@ export function createApp() {
       await withPlayerMutationLock(async () => {
       const s = await settleOffline(await loadRaw());
       const value = Number(req.body?.rarity);
-      if (!Number.isInteger(value) || value < 2 || value > MAX_ORB_RARITY || (s.collection[String(value)] ?? 0) <= 0) {
+      const isInfinity = req.body?.isInfinity === true;
+      const ownedKey = isInfinity ? 'Infinity' : String(value);
+      if (!Number.isInteger(value) || value < 2 || value > MAX_ORB_RARITY ||
+          (isInfinity && value !== MAX_ORB_RARITY) || (s.collection[ownedKey] ?? 0) <= 0) {
         return res.status(400).json({ error: 'You can only share an orb you actually own.' });
       }
       const subredditName = context.subredditName;
@@ -1632,6 +1635,7 @@ export function createApp() {
       const postData = {
         type: 'shared-orb',
         rarity: value,
+        isInfinity,
         username,
         totalRolls: s.totalRolls,
         collectionValue: s.collectionValue,
@@ -1647,7 +1651,7 @@ export function createApp() {
         const post = await reddit.submitCustomPost({
           runAs: 'USER',
           subredditName,
-          title: `u/${username} found a 1/${formatRarity(value)} Orb`,
+          title: `u/${username} found a 1/${formatRarity(value, isInfinity)} Orb`,
           flairText: 'discovery',
           entry: 'default',
           postData,
