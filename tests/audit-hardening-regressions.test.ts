@@ -41,8 +41,8 @@ test('Rune UI serializes mutations and exposes search, filters, progress, and de
   assert.match(runes, /operationLockRef/);
   assert.match(runes, /AbortController/);
   assert.match(runes, /Search Rune inventory by name, rarity, stat, or Major Ability/);
-  assert.match(runes, /value="equipped"/);
-  assert.match(runes, /value="unequipped"/);
+  assert.match(runes, /id:'equipped',label:'Equipped'/);
+  assert.match(runes, /id:'unequipped',label:'Unequipped'/);
   assert.match(runes, /role="progressbar"/);
   assert.match(runes, /window\.confirm\(/);
   assert.match(runes, /Inventory full/);
@@ -178,6 +178,7 @@ test('inline post entrypoints are bounded tap-only previews with a click-driven 
   }
   assert.match(frenzy, /io-frenzy-success-card/);
   assert.match(frenzy, /Continue in Infinity Orbs/);
+  const guard = source('scripts/predeploy-check.mjs');
   assert.match(guard, /Inline public-card selector/);
   assert.match(css, /#root\.io-inline-post \.io-frenzy-card \{\s*box-sizing: border-box;\s*padding: 14px 22px;\s*overflow: clip;/);
 });

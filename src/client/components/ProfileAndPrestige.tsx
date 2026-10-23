@@ -68,7 +68,6 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
   const [autoScrapSaving,setAutoScrapSaving]=useState(false);
   const autoScrapLockRef=useRef(false);
   const [autoScrapError,setAutoScrapError]=useState('');
-  const autoScrapLockRef=useRef(false);
   useEffect(()=>{setAutoScrapEnabled(state.combatAutoScrap?.enabled===true);setAutoScrapQuality(state.combatAutoScrap?.maxQuality??20);},[state.combatAutoScrap?.enabled,state.combatAutoScrap?.maxQuality]);
   const saveAutoScrapSettings=async()=>{
     if(busy||autoScrapLockRef.current)return;

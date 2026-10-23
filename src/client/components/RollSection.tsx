@@ -747,8 +747,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
                   ? 'bg-purple-500/15 border-purple-500/40 text-purple-300 hover:bg-purple-500/25 ring-1 ring-purple-500/30'
                   : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
               }`}
-              type="button"
-              aria-pressed={instantRevealActive}
               title="Skip roll animations for instant reveals"
             >
               <FastForward className={`w-3.5 h-3.5 ${instantRevealActive ? 'text-purple-400' : ''}`} />

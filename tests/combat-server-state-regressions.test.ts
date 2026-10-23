@@ -82,7 +82,7 @@ test('death resets the run while retaining permanent combat progress', async () 
     assert.equal(result.state.depth, 1, 'the new run should begin at Depth 1');
     assert.equal(result.state.health, result.state.maxHealth, 'the new run should start at full health');
     assert.equal(result.state.bestDepth, 10, 'best depth is permanent');
-    assert.equal(result.state.coins, 1_234, 'Delver Coins are permanent');
+    assert.equal(result.state.coins, 0, 'legacy Combat Coins are cleared after wallet consolidation');
     assert.equal(result.state.totalKills, 99, 'lifetime kills are permanent');
     assert.equal(result.state.level, 7, 'combat level is permanent');
     assert.equal(result.state.xp, 42, 'stored combat XP is retained when the run ends');

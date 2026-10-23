@@ -51,6 +51,31 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
   const alreadyClaimedStreak = lastClaimDate === today;
   const streakCount = Number.isSafeInteger(state.streak.count) ? Math.max(0, state.streak.count) : 0;
   const streakIsActive = alreadyClaimedStreak || lastClaimDate === yesterday;
+  const previewStreakCount = alreadyClaimedStreak ? Math.max(1, streakCount) + 1 : lastClaimDate === yesterday ? Math.max(1, streakCount) + 1 : 1;
+  const streakRewardDay = ((previewStreakCount - 1) % 7) + 1;
+  const streakRewards = [
+    { day: 1, coins: 100, shards: 0 },
+    { day: 2, coins: 200, shards: 0 },
+    { day: 3, coins: 300, shards: 1 },
+    { day: 4, coins: 400, shards: 0 },
+    { day: 5, coins: 500, shards: 0 },
+    { day: 6, coins: 600, shards: 0 },
+    { day: 7, coins: 700, shards: 5 },
+  ] as const;
+  const streakReward = streakRewards[streakRewardDay - 1] ?? streakRewards[0];
+  const reward = streakReward;
+  const rawCommunity = state.dailyStreakCommunity;
+  const rawCommunityTier = Number(rawCommunity?.tier ?? 1);
+  const safeCommunityTier = Number.isSafeInteger(rawCommunityTier) && rawCommunityTier >= 1 ? rawCommunityTier : 1;
+  const rawCommunityGoal = Number(rawCommunity?.goal ?? 250);
+  const safeCommunityGoal = Number.isFinite(rawCommunityGoal) && rawCommunityGoal > 0 ? rawCommunityGoal : 250;
+  const rawCommunityProgress = Number(rawCommunity?.currentProgress ?? 0);
+  const safeCommunityProgress = Number.isFinite(rawCommunityProgress) ? Math.max(0, rawCommunityProgress) : 0;
+  const communityProgressPct = Math.max(0, Math.min(100, Math.round(safeCommunityProgress / safeCommunityGoal * 100)));
+  const rawLuckMultiplier = Number(rawCommunity?.luckMultiplier ?? 1);
+  const safeLuckMultiplier = Number.isFinite(rawLuckMultiplier) ? Math.max(1, Math.min(100, rawLuckMultiplier)) : 1;
+  const rawSpeedMultiplier = Number(rawCommunity?.speedMultiplier ?? 1);
+  const safeSpeedMultiplier = Number.isFinite(rawSpeedMultiplier) ? Math.max(0.6, Math.min(1, rawSpeedMultiplier)) : 1;
   const progressPercent = (progress: number, target: number) => {
     const safeProgress = Number(progress), safeTarget = Number(target);
     if (!Number.isFinite(safeProgress) || !Number.isFinite(safeTarget) || safeTarget <= 0) return 0;
@@ -96,12 +121,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
         <div className="mt-3 text-[11px] text-slate-400" role="status" aria-live="polite">{alreadyClaimedStreak ? `Today's Day ${((streakCount - 1) % 7) + 1} reward is claimed. The preview now shows tomorrow's reward.` : `Next claim preview: Day ${streakRewardDay} of 7.`}</div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
           {(() => {
-            const nextStreak = alreadyClaimedStreak
-              ? Math.max(1, streakCount)
-              : lastClaimDate === yesterday
-                ? Math.max(1, streakCount) + 1
-                : 1;
-            const day = ((nextStreak - 1) % 7) + 1;
+            const day = streakRewardDay;
             return [
               <div key="coins" className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
                 <span className="block text-[10px] uppercase font-black text-amber-300/70">Coins</span>
@@ -161,8 +181,10 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {state.dailyQuests.map(q => {
             const isUnlocked = q.unlocked !== false;
-            const isComplete = isUnlocked && Number.isFinite(Number(q.progress)) && Number.isFinite(Number(q.target)) && Number(q.target) > 0 && Number(q.progress) >= Number(q.target);
-            const pct = isUnlocked ? progressPercent(q.progress, q.target) : 0;
+            const progress = Number.isFinite(q.progress) && q.progress >= 0 ? q.progress : 0;
+            const target = Number.isFinite(q.target) && q.target > 0 ? q.target : 1;
+            const isComplete = isUnlocked && progress >= target;
+            const pct = isUnlocked ? progressPercent(progress, target) : 0;
 
             return (
               <div
@@ -199,7 +221,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                         {fmt(progress)} / {fmt(target)}
                       </span>
                     </div>
-                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800" role="progressbar" aria-label={q.title+' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800" role="progressbar" aria-label={q.title + ' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
                       <div
                         className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all"
                         style={{ width: `${pct}%` }}
@@ -256,8 +278,10 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {state.weeklyQuests.map(q => {
             const isUnlocked = q.unlocked !== false;
-            const isComplete = isUnlocked && q.progress >= q.target;
-            const pct = questProgressPct(q.progress, q.target, isUnlocked);
+            const progress = Number.isFinite(q.progress) && q.progress >= 0 ? q.progress : 0;
+            const target = Number.isFinite(q.target) && q.target > 0 ? q.target : 1;
+            const isComplete = isUnlocked && progress >= target;
+            const pct = questProgressPct(progress, target, isUnlocked);
 
             return (
               <div
@@ -289,7 +313,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                         {fmt(progress)} / {fmt(target)}
                       </span>
                     </div>
-                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800" role="progressbar" aria-label={q.title+' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800" role="progressbar" aria-label={q.title + ' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
                       <div
                         className="h-full bg-gradient-to-r from-cyan-500 to-blue-600 transition-all"
                         style={{ width: `${pct}%` }}

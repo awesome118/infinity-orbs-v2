@@ -12,8 +12,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const submitInFlightRef = useRef(false);
+  const submitLockRef = submitInFlightRef;
   const [error, setError] = useState('');
-  const submitLockRef = useRef(false);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -30,7 +30,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
       setError('Please describe the bug or suggestion.');
       return;
     }
-    submitLockRef.current = true;
+    submitInFlightRef.current = true;
     setBusy(true);
     setError('');
     sound.playClick();
@@ -39,7 +39,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not send feedback.');
     } finally {
-      submitLockRef.current = false;
+      submitInFlightRef.current = false;
       setBusy(false);
     }
   };
@@ -116,7 +116,6 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
           maxLength={2000}
           onChange={e => setMessage(e.target.value.slice(0, 2000))}
           rows={8}
-          maxLength={2000}
           placeholder={type === 'bug'
             ? 'What happened? Include what you expected to happen and what actually happened.'
             : 'What would you like to see changed or added?'}

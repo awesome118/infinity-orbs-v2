@@ -206,6 +206,7 @@ export const AchievementsSection: React.FC<AchievementsSectionProps> = ({
                     void handleClaim(ach.id);
                   }}
                   disabled={busy || claimingId !== null}
+                  aria-busy={busy}
                   className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-xs shadow-md active:scale-95 transition-all"
                 >
                   {claimingId === ach.id ? 'Claiming…' : 'Claim Reward'}

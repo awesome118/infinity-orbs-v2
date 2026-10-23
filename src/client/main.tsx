@@ -118,7 +118,6 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
     let receivedNonRetryableHttpError = false;
     try {
       const res = await fetch(url, options);
-      responseReceived = true;
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         const message =
@@ -510,7 +509,7 @@ export function App() {
           (nextState.totalRolls ?? 0) !== (currentState.totalRolls ?? 0) ||
           (nextState.freeRolls ?? 0) !== (currentState.freeRolls ?? 0) ||
           (nextState.highestRarity ?? 0) !== (currentState.highestRarity ?? 0) ||
-          (nextState.totalRollValue ?? 0) !== (currentState.totalRollValue ?? 0) ||
+          (nextState.collectionValue ?? 0) !== (currentState.collectionValue ?? 0) ||
           (nextState.prestigeCount ?? 0) !== (currentState.prestigeCount ?? 0)
         )
       ) {
@@ -844,7 +843,8 @@ export function App() {
     let inFlight = false;
     const refreshCommunityState = async () => {
       if (!splashEntered) return;
-      if (inFlight || document.visibilityState === 'hidden') return;
+      if (inFlight) return;
+      if (document.visibilityState === 'hidden') return;
       inFlight = true;
       try {
         const we = await getJson<WorldEvent | null>('/api/world-event');
@@ -1468,7 +1468,10 @@ export function App() {
       const res = await getJson<{ state: PlayerState }>('/api/turbo/activate', { method: 'POST' });
       applyPlayerState(res.state);
       sound.playChime(880, 'sawtooth', 0.3);
-      showToast(`Turbo Roll Activated! Cooldowns reduced by ${turboReductionPercent}% for ${durationMinutes}m.`, 'success');
+      const turboDescription = durationMinutes === 60
+        ? '35% faster cooldowns for 60 minutes'
+        : '25% faster cooldowns for 30 minutes';
+      showToast(`Turbo Roll Activated! ${turboDescription}.`, 'success');
     } catch (e: any) {
       rollback?.();
       showToast(e.message || 'Could not activate turbo roll', 'warn');
@@ -2543,7 +2546,8 @@ export function App() {
           </button>
 
           {!combatMode && <>
-          <button aria-current={tab === 'roll' ? 'page' : undefined}
+          <span className="io-nav-group-label text-[9px] font-black uppercase tracking-widest text-slate-500 px-2 self-center">PLAY</span>
+          <button
             type="button"
             onClick={() => {
               changeTab('roll');
@@ -2559,7 +2563,8 @@ export function App() {
             <span>Roll</span>
           </button>
 
-          <button aria-current={tab === 'upgrades' ? 'page' : undefined}
+          <span className="io-nav-group-label text-[9px] font-black uppercase tracking-widest text-slate-500 px-2 self-center">GROW</span>
+          <button
             type="button"
             onClick={() => {
               changeTab('upgrades');
@@ -2575,7 +2580,7 @@ export function App() {
             <span>Upgrades</span>
             {featureForTab('upgrades' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('upgrades' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
-<button aria-current={tab === 'boosters' ? 'page' : undefined}
+<button
             type="button"
             onClick={() => {
               changeTab('boosters');
@@ -2594,7 +2599,7 @@ export function App() {
             )}
           </button>
 
-          <button aria-current={tab === 'altar' ? 'page' : undefined}
+          <button
             type="button"
             onClick={() => {
               changeTab('altar');
@@ -2611,7 +2616,7 @@ export function App() {
             {featureForTab('altar' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('altar' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
-          <button aria-current={tab === 'mastery' ? 'page' : undefined}
+          <button
             type="button"
             onClick={() => {
               changeTab('mastery');
@@ -2631,7 +2636,8 @@ export function App() {
             )}
           </button>
 
-          <button aria-current={tab === 'collection' ? 'page' : undefined}
+          <span className="io-nav-group-label text-[9px] font-black uppercase tracking-widest text-slate-500 px-2 self-center">DISCOVER</span>
+          <button
             type="button"
             onClick={() => {
               changeTab('collection');
@@ -2648,7 +2654,8 @@ export function App() {
             {featureForTab('collection' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('collection' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
-          <button aria-current={tab === 'quests' ? 'page' : undefined}
+          <span className="io-nav-group-label text-[9px] font-black uppercase tracking-widest text-slate-500 px-2 self-center">COMMUNITY</span>
+          <button
             type="button"
             onClick={() => {
               changeTab('quests');
@@ -2668,7 +2675,7 @@ export function App() {
             )}
           </button>
 
-          <button aria-current={tab === 'social' ? 'page' : undefined}
+          <button
             type="button"
             onClick={() => {
               changeTab('social');
@@ -2685,7 +2692,8 @@ export function App() {
             {featureForTab('social' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('social' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
-          <button aria-current={tab === 'profile' ? 'page' : undefined}
+          <span className="io-nav-group-label text-[9px] font-black uppercase tracking-widest text-slate-500 px-2 self-center">LONG-TERM</span>
+          <button
             type="button"
             onClick={() => {
               changeTab('profile');
@@ -2706,6 +2714,7 @@ export function App() {
           </button>
           </>}
           {combatMode && <>
+            <span className="io-combat-soon">PVP</span>
             <button type="button" aria-current={tab === 'fight' ? 'page' : undefined} onClick={() => changeTab('fight')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (tab === 'fight' ? " is-active" : "")}><Flame className="w-3.5 h-3.5" /><span>Fight</span></button>
             <button type="button" aria-current={tab === 'dungeons' ? 'page' : undefined} onClick={() => changeTab('dungeons')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'dungeons' ? " is-active" : "")}><DoorOpen className="w-3.5 h-3.5" /><span>Dungeons</span></button>
             <button type="button" aria-current={tab === 'gear' ? 'page' : undefined} onClick={() => changeTab('gear')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'gear' ? " is-active" : "")}><Package className="w-3.5 h-3.5" /><span>Gear</span></button>

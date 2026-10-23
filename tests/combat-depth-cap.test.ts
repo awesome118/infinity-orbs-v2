@@ -36,6 +36,16 @@ test('defeating the deepest supported enemy keeps current and best depth capped'
     const saved = JSON.parse(savedRaw) as { depth: number; bestDepth: number };
     assert.equal(saved.depth, 50_000);
     assert.equal(saved.bestDepth, 50_000);
+    assert.equal((saved as { depthCapCleared?: boolean }).depthCapCleared, true);
+
+    // The cleared final boss must not be repeatedly farmable at the capped depth.
+    await assert.rejects(
+      () => performCombatBeat(2, 'strike'),
+      /Maximum supported depth reached/,
+    );
+    const afterRejectedBeat = JSON.parse((await redis.get(key)) ?? '{}') as { depth: number; sequence: number };
+    assert.equal(afterRejectedBeat.depth, 50_000);
+    assert.equal(afterRejectedBeat.sequence, 1);
   } finally {
     await redis.del(key);
     context.userId = previousUserId;

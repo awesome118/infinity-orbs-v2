@@ -1188,6 +1188,26 @@ function isFrenzyTestAdmin(username?: string): boolean {
   return candidate === 'shadow_fen';
 }
 
+async function deleteFrenzyHandoffIfUnchanged(keyName: string, expectedValue: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const txn = await redis.watch(keyName);
+    try {
+      const current = await redis.get(keyName);
+      if (current == null || String(current) !== expectedValue) {
+        await txn.unwatch();
+        return false;
+      }
+      await txn.multi();
+      await txn.del(keyName);
+      if (await txn.exec() !== null) return true;
+    } catch (error) {
+      await txn.unwatch().catch(() => undefined);
+      throw error;
+    }
+  }
+  return false;
+}
+
 async function readFrenzyHandoff(userId: string): Promise<{ postId: string; expiresAt: number } | null> {
   const raw = await redis.get(frenzyHandoffKey(userId));
   const data = parseStoredJson<{ postId?: string; expiresAt?: number }>(raw);
@@ -1201,7 +1221,7 @@ async function readFrenzyHandoff(userId: string): Promise<{ postId: string; expi
     !Number.isSafeInteger(expiresAt) ||
     expiresAt <= Date.now()
   ) {
-    if (raw != null) await redis.del(frenzyHandoffKey(userId));
+    if (raw != null) await deleteFrenzyHandoffIfUnchanged(frenzyHandoffKey(userId), String(raw));
     return null;
   }
   return { postId, expiresAt };
@@ -1211,31 +1231,34 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
   const postId = String(context.postId ?? '').trim();
   if (!postId) throw new Error('This is not an Orb Frenzy post.');
 
-  const raw = await redis.get(FRENZY_POST_PREFIX + postId);
-  if (!raw) throw new Error('This is not an Orb Frenzy post.');
-  const data = parseFrenzyPostRecord(raw);
-  if (!data || data.inGame !== true) throw new Error('This is not an Orb Frenzy post.');
+  return withPlayerMutationLock(async () => {
+    const raw = await redis.get(FRENZY_POST_PREFIX + postId);
+    if (!raw) throw new Error('This is not an Orb Frenzy post.');
+    const data = parseFrenzyPostRecord(raw);
+    if (!data || data.inGame !== true) throw new Error('This is not an Orb Frenzy post.');
 
-  const s = await settleOffline(await loadRaw());
-  const now = Date.now();
-  if (isFrenzyPostRecordExpired(data, now)) throw new Error('This Frenzy has expired.');
-  const claimCooldown = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
-  const isOwner = data.ownerId === currentUserId();
-  const selfClaimTest =
-    isOwner &&
-    data.adminTest === true &&
-    isFrenzyTestAdmin(s.username);
+    const s = await settleOffline(await loadRaw());
+    const now = Date.now();
+    if (isFrenzyPostRecordExpired(data, now)) throw new Error('This Frenzy has expired.');
+    const claimCooldown = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
+    const isOwner = data.ownerId === currentUserId();
+    const selfClaimTest =
+      isOwner &&
+      data.adminTest === true &&
+      isFrenzyTestAdmin(s.username);
 
-  if (isOwner && !selfClaimTest) throw new Error('You cannot claim your own Orb Frenzy.');
-  if (claimCooldown > 0 && !selfClaimTest) {
-    throw new Error('Frenzy claim is on cooldown for ' + Math.ceil(claimCooldown / 1000) + ' more seconds.');
-  }
+    if (isOwner && !selfClaimTest) throw new Error('You cannot claim your own Orb Frenzy.');
+    if (claimCooldown > 0 && !selfClaimTest) {
+      throw new Error('Frenzy claim is on cooldown for ' + Math.ceil(claimCooldown / 1000) + ' more seconds.');
+    }
 
-  await redis.set(frenzyHandoffKey(currentUserId()), JSON.stringify({
-    postId,
-    expiresAt: Date.now() + FRENZY_HANDOFF_TTL_MS,
-  }));
-  return { armed: true, postId };
+    const handoffExpiresAt = Date.now() + FRENZY_HANDOFF_TTL_MS;
+    await redis.set(frenzyHandoffKey(currentUserId()), JSON.stringify({
+      postId,
+      expiresAt: handoffExpiresAt,
+    }), { expiration: new Date(handoffExpiresAt) });
+    return { armed: true, postId };
+  });
 }
 
 export async function getOrbFrenzyHandoff(): Promise<{ armed: boolean; postId?: string }> {
@@ -3488,7 +3511,22 @@ export async function applyRolls(
   if (typeof combatStateRaw === 'string') {
     try {
       const parsed = JSON.parse(combatStateRaw) as { bestDepth?: unknown; dungeonId?: unknown; dungeonBestDepths?: { undercrypt?: unknown }; runes?: unknown; equippedRunes?: unknown };
-      combatBestDepth = Number(parsed?.dungeonBestDepths?.undercrypt) || (parsed?.dungeonId === 'undercrypt' ? Number(parsed?.bestDepth) || 1 : 1);
+      const savedUndercryptDepth = Number(parsed?.dungeonBestDepths?.undercrypt);
+      const legacyBestDepth = Number(parsed?.bestDepth);
+      if (Number.isSafeInteger(savedUndercryptDepth) && savedUndercryptDepth > 0) {
+        combatBestDepth = savedUndercryptDepth;
+      } else if (
+        parsed?.dungeonId === 'undercrypt' ||
+        parsed?.dungeonId == null
+      ) {
+        // Legacy saves without dungeonId/dungeonBestDepths represented Undercrypt progress
+        // using bestDepth. Accept only a safe positive integer; malformed JSON stays neutral.
+        combatBestDepth = Number.isSafeInteger(legacyBestDepth) && legacyBestDepth > 0
+          ? legacyBestDepth
+          : 1;
+      } else {
+        combatBestDepth = 1;
+      }
       runeBonuses = combatRuneBonuses(parsed?.runes, parsed?.equippedRunes);
       runeAbilityEffects = combatRuneMajorAbilityEffects(parsed?.runes, parsed?.equippedRunes);
     } catch {
@@ -3616,6 +3654,8 @@ export async function applyRolls(
       ? Math.min(MAX_ORB_RARITY, Number.isFinite(rawCritRarity) ? rawCritRarity : MAX_ORB_RARITY)
       : baseRarity;
     const finalVal = Math.min(MAX_ORB_RARITY, Math.round(rarity * valueMul));
+    const rarityKey = isInfinityOrb ? 'Infinity' : String(rarity);
+    const isNew = !s.collection[rarityKey];
 
     totalVal = Math.min(Number.MAX_VALUE, totalVal + finalVal);
     rarities.push(rarity);
@@ -3694,8 +3734,6 @@ export async function applyRolls(
       addRuneBonusRolls(1, { minRarity: floor, skipAllProcs: true });
     }
 
-    const rarityKey = isInfinityOrb ? 'Infinity' : String(rarity);
-    const isNew = !s.collection[rarityKey];
     if (rarity > bestRarity || (isInfinityOrb && !bestIsInfinity)) {
       bestRarity = rarity;
       bestIsCrit = isCrit;

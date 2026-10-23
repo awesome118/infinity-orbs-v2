@@ -51,6 +51,8 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   const [recentUpgradeId, setRecentUpgradeId] = useState<UpgradeId | null>(null);
   const [upgradingAll, setUpgradingAll] = useState(false);
   const [upgradingId, setUpgradingId] = useState<UpgradeId | null>(null);
+  const [activatingTurbo, setActivatingTurbo] = useState(false);
+  const activatingTurboRef = useRef(false);
   const upgradeActionLockRef = useRef(false);
   const recentUpgradeTimerRef = useRef<number | null>(null);
   useEffect(() => () => {
@@ -58,6 +60,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   }, []);
   const allowMotionEffects = () =>
     typeof window === 'undefined' || !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const reducedMotion = !allowMotionEffects();
   const fmt = (n: number) => formatNumber(n);
   const standardUpgradeMaxLevels: Partial<Record<UpgradeId, number>> = { speed: 20, offlineRate: 8 };
 
@@ -281,6 +284,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   ];
 
   const affordableCount = upgradesData.filter(u => !u.locked && Number.isFinite(u.cost) && state.coins >= u.cost).length;
+  const turboNow = Date.now();
   const turboRemainingMs = Math.max(0, (state.turboRollUntil ?? 0) - turboNow);
   const isTurboActive = turboRemainingMs > 0;
   const turboRemainingLabel = Math.floor(turboRemainingMs / 60_000) + 'm ' + String(Math.floor((turboRemainingMs % 60_000) / 1000)).padStart(2, '0') + 's';
@@ -518,7 +522,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
             type="button"
             aria-busy={activatingTurbo}
             onClick={async () => {
-              if (activatingTurboRef.current || busy || upgradingAll || pendingUpgradeRef.current) return;
+              if (activatingTurboRef.current || busy || upgradingAll || upgradeActionLockRef.current) return;
               activatingTurboRef.current = true;
               setActivatingTurbo(true);
               sound.playClick();
@@ -529,7 +533,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
                 setActivatingTurbo(false);
               }
             }}
-            disabled={(state.shards ?? 0) < 5 || isTurboActive || busy || upgradingAll || upgradingId !== null}
+            disabled={(state.shards ?? 0) < 5 || isTurboActive || activatingTurbo || busy || upgradingAll || upgradingId !== null}
             className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all whitespace-nowrap ${
               isTurboActive
                 ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300 cursor-default'

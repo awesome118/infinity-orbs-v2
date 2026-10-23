@@ -90,6 +90,12 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   const [now, setNow] = useState(Date.now());
   const [activatingGlobalBooster, setActivatingGlobalBooster] = useState<GlobalBoosterId | null>(null);
   const [globalActivationError, setGlobalActivationError] = useState('');
+  const [activatingPremiumBooster, setActivatingPremiumBooster] = useState<PremiumBoosterId | null>(null);
+  const [claimingCommunityReward, setClaimingCommunityReward] = useState(false);
+  const [buyingAutomation, setBuyingAutomation] = useState<AutomationId | null>(null);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const actionInFlightRef = useRef(false);
+  const activationLockRef = useRef(false);
   const globalActivationLockRef = useRef(false);
 
   const beginAction = (key: string) => {
@@ -104,7 +110,8 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   };
 
   const handleGlobalActivation = async (id: GlobalBoosterId, useCredit: boolean) => {
-    if (busy || activatingGlobalBooster || globalActivationLockRef.current) return;
+    if (busy || !beginAction('global:' + id)) return;
+    if (activatingGlobalBooster || globalActivationLockRef.current) { endAction(); return; }
     globalActivationLockRef.current = true;
     setActivatingGlobalBooster(id);
     setGlobalActivationError('');
@@ -119,14 +126,19 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
     }
   };
   const handlePremiumActivation = async (id: PremiumBoosterId) => {
-    if (activationLockRef.current || busy) return;
-    activationLockRef.current=true;
+    if (busy || !beginAction('premium:' + id)) return;
+    if (activationLockRef.current) { endAction(); return; }
+    activationLockRef.current = true;
     setActivatingPremiumBooster(id);
+    setGlobalActivationError('');
     try {
       await onActivateBooster(id);
+    } catch (error) {
+      setGlobalActivationError(error instanceof Error ? error.message : 'Premium Booster activation was not confirmed. Refresh your balance before retrying.');
     } finally {
-      activationLockRef.current=false;
+      activationLockRef.current = false;
       setActivatingPremiumBooster(null);
+      endAction();
     }
   };
 
@@ -159,6 +171,36 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   const nextCommunityRewardTier = claimedCommunityTier + 1;
   const communityRewardReady = completedCommunityTier >= nextCommunityRewardTier;
 
+  const handleCommunityRewardClaim = async () => {
+    if (busy || !communityRewardReady || !beginAction('community-reward')) return;
+    setClaimingCommunityReward(true);
+    setGlobalActivationError('');
+    try {
+      await onClaimCommunityReward();
+    } catch (error) {
+      setGlobalActivationError(error instanceof Error ? error.message : 'Community reward claim was not confirmed. Refresh the reward tier before retrying.');
+    } finally {
+      setClaimingCommunityReward(false);
+      endAction();
+    }
+  };
+
+  const handleAutomationPurchase = async (id: AutomationId) => {
+    const info = AUTOMATIONS[id];
+    if (busy || !beginAction('automation:' + id)) return;
+    if (state.automations?.[id] || walletShards < info.costShards) { endAction(); return; }
+    setBuyingAutomation(id);
+    setGlobalActivationError('');
+    try {
+      await onBuyAutomation(id);
+    } catch (error) {
+      setGlobalActivationError(error instanceof Error ? error.message : 'Automation purchase was not confirmed. Refresh your balance before retrying.');
+    } finally {
+      setBuyingAutomation(null);
+      endAction();
+    }
+  };
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {globalActivationError && <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-950/30 px-4 py-3 text-xs text-rose-200">{globalActivationError}</div>}
@@ -169,7 +211,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
               <h2 className="text-xl font-black text-white">Boosters & Automation</h2>
               <Sparkles className="w-4 h-4 text-purple-300" />
             </div>
-            <p className="mt-1 text-xs text-slate-400">Global Boosters affect everyone, Premium Boosters run on your own timers, and Automation unlocks are permanent purchases.</p>
+            <p className="mt-1 text-xs text-slate-400">Global Boosters affect everyone, Premium Boosters run on your own timers, and Automation unlocks are permanent purchases. Every activation adds 2 hours to its timer.</p>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs">
@@ -425,7 +467,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
             </div>
             <button
               type="button"
-              onClick={() => void onClaimCommunityReward()}
+              onClick={() => void handleCommunityRewardClaim()}
               disabled={busy || !communityRewardReady}
               className={
                 communityRewardReady

@@ -354,6 +354,11 @@ function FrenzyPost() {
                   ? 'This Frenzy has expired.'
                   : 'Others can claim too—once every 23 hours per player. Upvote to thank the owner.'}
             </p>
+            {canClaim && (
+              <p className="io-frenzy-instruction">
+                Click below to claim it. Your Multi Roll multiplies the Frenzy size.
+              </p>
+            )}
           </div>
 
           <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-center" style={{ borderColor: orb.color + '33' }}>
