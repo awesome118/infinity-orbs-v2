@@ -6364,13 +6364,18 @@ export async function claimOrbFrenzy(options: {
     : 0;
 
   const normalCritCount = Math.max(0, critCount - supernovaCount);
-  const normalCritRarity = Math.min(MAX_ORB_RARITY, Math.round(data.rarity * critMultiplier(s)));
-  const supernovaRarity = Math.min(MAX_ORB_RARITY, Math.round(data.rarity * critMultiplier(s) * 5));
+  const baseIsInfinity = data.isInfinity === true;
+  const rawNormalCritRarity = Math.round(data.rarity * critMultiplier(s));
+  const rawSupernovaRarity = Math.round(data.rarity * critMultiplier(s) * 5);
+  const normalCritIsInfinity = baseIsInfinity || !Number.isFinite(rawNormalCritRarity) || rawNormalCritRarity > MAX_ORB_RARITY;
+  const supernovaIsInfinity = baseIsInfinity || !Number.isFinite(rawSupernovaRarity) || rawSupernovaRarity > MAX_ORB_RARITY;
+  const normalCritRarity = Math.min(MAX_ORB_RARITY, Number.isFinite(rawNormalCritRarity) ? rawNormalCritRarity : MAX_ORB_RARITY);
+  const supernovaRarity = Math.min(MAX_ORB_RARITY, Number.isFinite(rawSupernovaRarity) ? rawSupernovaRarity : MAX_ORB_RARITY);
 
   const groups = [
-    { count: count - critCount, rarity: data.rarity },
-    { count: normalCritCount, rarity: normalCritRarity },
-    { count: supernovaCount, rarity: supernovaRarity },
+    { count: count - critCount, rarity: data.rarity, isInfinity: baseIsInfinity },
+    { count: normalCritCount, rarity: normalCritRarity, isInfinity: normalCritIsInfinity },
+    { count: supernovaCount, rarity: supernovaRarity, isInfinity: supernovaIsInfinity },
   ].filter(group => group.count > 0);
 
   const valueMul =
@@ -6498,16 +6503,19 @@ export async function claimOrbFrenzy(options: {
   s.lastFrenzyClaimDate = new Date(now).toISOString().slice(0, 10);
   s.lastFrenzyClaimAt = now;
   const newRarityKeys = groups.filter(
-    group => (s.collection[String(group.rarity)] ?? 0) <= 0,
+    group => (s.collection[group.isInfinity ? 'Infinity' : String(group.rarity)] ?? 0) <= 0,
   );
   const uniqueGained = newRarityKeys.length;
 
   for (const group of groups) {
-    const keyForRarity = String(group.rarity);
+    const keyForRarity = group.isInfinity ? 'Infinity' : String(group.rarity);
     s.collection[keyForRarity] = (s.collection[keyForRarity] ?? 0) + group.count;
   }
+  const bestIsInfinity = groups.some(group => group.rarity === bestRarity && group.isInfinity);
   s.highestRarity = Math.max(s.highestRarity, bestRarity);
-  if (bestRarity > previousHighest) {
+  if (bestRarity > previousHighest || (bestIsInfinity && !s.highestRarityIsInfinity)) {
+    s.highestRarity = bestRarity;
+    s.highestRarityIsInfinity = bestIsInfinity;
     const previousDryRolls = Math.max(0, Math.floor(Number(s.rollsSinceBest ?? 0) || 0));
     if (previousHighest > 0) {
       s.aftershockRecord = Math.max(
@@ -6595,8 +6603,8 @@ export async function claimOrbFrenzy(options: {
   const rolledAt = Date.now();
   const visibleBatch: Orb[] = [];
   for (const group of groups) {
-    const groupInfo = getOrbInfo(group.rarity);
-    const groupIsNew = newRarityKeys.some(item => item.rarity === group.rarity);
+    const groupInfo = getOrbInfo(group.rarity, group.isInfinity);
+    const groupIsNew = newRarityKeys.some(item => item.rarity === group.rarity && Boolean(item.isInfinity) === Boolean(group.isInfinity));
     const visibleCount = Math.min(group.count, Math.max(0, 8 - visibleBatch.length));
     for (let i = 0; i < visibleCount; i += 1) {
       visibleBatch.push({
@@ -6604,19 +6612,21 @@ export async function claimOrbFrenzy(options: {
         rolledAt,
         tier: groupInfo.tier,
         name: groupInfo.name,
+        isInfinity: group.isInfinity,
         isNew: groupIsNew,
         isCrit: group.rarity > data.rarity,
       });
     }
   }
 
-  const orbInfo = getOrbInfo(bestRarity);
+  const orbInfo = getOrbInfo(bestRarity, bestIsInfinity);
   const bestOrb: Orb = {
     rarity: bestRarity,
     rolledAt,
     tier: orbInfo.tier,
     name: orbInfo.name,
-    isNew: newRarityKeys.some(group => group.rarity === bestRarity),
+    isInfinity: bestIsInfinity,
+    isNew: newRarityKeys.some(group => group.rarity === bestRarity && Boolean(group.isInfinity) === bestIsInfinity),
     isCrit: bestRarity > data.rarity,
   };
   if (visibleBatch.length === 0) visibleBatch.push(bestOrb);
