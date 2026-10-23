@@ -49,7 +49,7 @@ interface RollSectionProps {
   onRoll: () => Promise<void>;
   onOrbFrenzy: () => Promise<void>;
   frenzyArmed: boolean;
-  onOpenShareModal: (rarity: number) => void;
+  onOpenShareModal: (rarity: number, isInfinity?: boolean) => void;
   onNewBest?: (orb: Orb, prevBest: number) => void;
 }
 
@@ -313,7 +313,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
   }, [lastOrb, hasSonarUpgrade, instantRevealActive, hasInstantUpgrade, reducedMotion]);
 
   const displayOrb = lastOrb;
-  const orbInfo = displayOrb ? getOrbInfo(displayOrb.rarity) : null;
+  const orbInfo = displayOrb ? getOrbInfo(displayOrb.rarity, displayOrb.isInfinity) : null;
 
   const cosmeticEffectClass =
     state.activeCosmetic === 'galaxy'
@@ -521,15 +521,15 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
             <div className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow-md font-mono">
               {displayOrb
-                ? `1 / ${formatRarity(displayOrb.rarity)}`
+                ? `1 / ${formatRarity(displayOrb.rarity, displayOrb.isInfinity)}`
                 : '1 / ∞'}
             </div>
 
             <div className="text-xs font-semibold text-white/90 mt-1 drop-shadow">
               {orbInfo ? orbInfo.name : 'Tap to Roll'}
             </div>
-            <div className="mt-2 text-[10px] text-slate-300/80" aria-label={`Personal best rarity 1 in ${formatRarity(state.highestRarity)}`}>
-              Personal best · 1/{formatRarity(state.highestRarity)}
+            <div className="mt-2 text-[10px] text-slate-300/80" aria-label={`Personal best rarity 1 in ${formatRarity(state.highestRarity, state.highestRarityIsInfinity)}`}>
+              Personal best · 1/{formatRarity(state.highestRarity, state.highestRarityIsInfinity)}
             </div>
           </div>
 
@@ -887,7 +887,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
                 {lastBatch.length} Orbs Rolled
               </span>
               <span className="text-xs text-slate-400">
-                (Best: 1/{lastOrb ? formatRarity(lastOrb.rarity) : '—'})
+                (Best: 1/{lastOrb ? formatRarity(lastOrb.rarity, lastOrb.isInfinity) : '—'})
               </span>
             </div>
             <div className="flex items-center gap-3">
@@ -919,7 +919,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           {showBatchDetails && (
             <div className="mt-3 pt-3 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1">
               {lastBatch.map((orb, i) => {
-                const info = getOrbInfo(orb.rarity);
+                const info = getOrbInfo(orb.rarity, orb.isInfinity);
                 const isBest = displayOrb && orb.rarity === displayOrb.rarity;
                 return (
                   <div
@@ -932,7 +932,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
                   >
                     <div className="flex items-center gap-1.5 font-mono">
                       {isBest && <Crown className="w-3 h-3 text-amber-400 flex-shrink-0" />}
-                      <span>1/{formatRarity(orb.rarity)}</span>
+                      <span>1/{formatRarity(orb.rarity, orb.isInfinity)}</span>
                     </div>
                     <span className="font-bold text-[10px]" style={{ color: info.color }}>
                       {info.tier}
@@ -949,15 +949,15 @@ export const RollSection: React.FC<RollSectionProps> = ({
       {lastOrb && lastOrb.rarity >= 100 && (
         <button
           type="button"
-          aria-label={`Share orb rarity 1/${formatRarity(lastOrb.rarity)} to Reddit`}
+          aria-label={`Share orb rarity 1/${formatRarity(lastOrb.rarity, lastOrb.isInfinity)} to Reddit`}
           onClick={() => {
             sound.playClick();
-            onOpenShareModal(lastOrb.rarity);
+            onOpenShareModal(lastOrb.rarity, lastOrb.isInfinity);
           }}
           className="flex items-center gap-2 bg-orange-600/20 hover:bg-orange-600/30 border border-orange-500/40 text-orange-300 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg cursor-pointer"
         >
           <Share2 className="w-3.5 h-3.5" />
-          <span>Share 1/{formatRarity(lastOrb.rarity)} to Reddit</span>
+          <span>Share 1/{formatRarity(lastOrb.rarity, lastOrb.isInfinity)} to Reddit</span>
         </button>
       )}
 
@@ -993,7 +993,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               <div className="latest-orb-mark"><Award className="h-5 w-5" /></div>
               <div className="min-w-0">
                 <div className="latest-orb-name">{displayOrb.name}</div>
-                <div className="latest-orb-rarity">1 / {formatRarity(displayOrb.rarity)}</div>
+                <div className="latest-orb-rarity">1 / {formatRarity(displayOrb.rarity, displayOrb.isInfinity)}</div>
               </div>
             </div>
           ) : (
