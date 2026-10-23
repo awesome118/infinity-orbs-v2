@@ -397,6 +397,7 @@ export function App() {
   // once the Devvit app has completed Reddit verification/approval.
   // Modals
   const [shareRarity, setShareRarity] = useState<number | null>(null);
+  const [shareIsInfinity, setShareIsInfinity] = useState(false);
   const [showOddsModal, setShowOddsModal] = useState<boolean>(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState<boolean>(false);
   const [showChangelogModal, setShowChangelogModal] = useState<boolean>(false);
@@ -2251,11 +2252,11 @@ export function App() {
   };
 
   // Share to Reddit
-  const handleShareToReddit = async (rarity: number) => {
+  const handleShareToReddit = async (rarity: number, isInfinity = false) => {
     const res = await getJson<{ success: boolean; id?: string }>('/api/share', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rarity }),
+      body: JSON.stringify({ rarity, isInfinity }),
     });
     void refreshAll();
     return res;
@@ -2786,7 +2787,7 @@ export function App() {
             onRoll={handleRoll}
             onOrbFrenzy={handleStartOrbFrenzy}
             frenzyArmed={frenzyArmed}
-            onOpenShareModal={r => setShareRarity(r)}
+            onOpenShareModal={(r, isInfinity) => { setShareRarity(r); setShareIsInfinity(!!isInfinity); }}
             onNewBest={(orb, prevBest) => setNewBestModalData({ orb, prevBest })}
           />
         )}
@@ -2838,7 +2839,7 @@ export function App() {
         {tab === 'collection' && (
           <CollectionSection
             state={state}
-            onOpenShareModal={r => setShareRarity(r)}
+            onOpenShareModal={(r, isInfinity) => { setShareRarity(r); setShareIsInfinity(!!isInfinity); }}
             onBuyChainPatcher={handleBuyChainPatcher}
           />
         )}
@@ -2938,7 +2939,7 @@ export function App() {
           orb={newBestModalData.orb}
           prevBest={newBestModalData.prevBest}
           onClose={() => setNewBestModalData(null)}
-          onOpenShareModal={r => setShareRarity(r)}
+          onOpenShareModal={(r, isInfinity) => { setShareRarity(r); setShareIsInfinity(!!isInfinity); }}
         />
       )}
 
@@ -2946,6 +2947,7 @@ export function App() {
       {shareRarity !== null && (
         <RedditShareModal
           rarity={shareRarity}
+          isInfinity={shareIsInfinity}
           state={state}
           onClose={() => setShareRarity(null)}
           onShare={handleShareToReddit}
