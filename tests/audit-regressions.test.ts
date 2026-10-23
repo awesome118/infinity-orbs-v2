@@ -1976,7 +1976,7 @@ test('critical rarity caps match the continuum ceiling and cannot downgrade high
   assert.match(shared, /if \(isInfinity \|\| raw === Number\.POSITIVE_INFINITY\) return 'Infinity'/);
   assert.match(shared, /getOrbInfo\(rarity: number, isInfinity = false\)/);
   assert.doesNotMatch(shared, /Infinity: \['Infinity Orb'\]/);
-  assert.match(shared, /Math\.min\(MAX_ORB_RARITY, Math\.max\(2, rarity\)\)/);
+  assert.match(shared, /return Math\.max\(2, Math\.min\(MAX_ORB_RARITY, Math\.floor\(rawRarity\)\)\)/);
 
   const game = source('src/server/game.ts');
   const applyStart = game.indexOf('export async function applyRolls');
@@ -1988,8 +1988,10 @@ test('critical rarity caps match the continuum ceiling and cannot downgrade high
   const claimEnd = game.indexOf('function sampleBinomial', claimStart);
   assert.ok(claimStart >= 0 && claimEnd > claimStart);
   const claim = game.slice(claimStart, claimEnd);
-  assert.match(claim, /Math\.min\(MAX_ORB_RARITY, Math\.round\(data\.rarity \* critMultiplier\(s\)\)\)/);
-  assert.match(claim, /Math\.min\(MAX_ORB_RARITY, Math\.round\(data\.rarity \* critMultiplier\(s\) \* 5\)\)/);
+  assert.match(claim, /const rawNormalCritRarity = Math\.round\(data\.rarity \* critMultiplier\(s\)\)/);
+  assert.match(claim, /const rawSupernovaRarity = Math\.round\(data\.rarity \* critMultiplier\(s\) \* 5\)/);
+  assert.match(claim, /isInfinity: baseIsInfinity/);
+  assert.match(claim, /s\.collection\[group\.isInfinity \? 'Infinity' : String\(group\.rarity\)\]/);
   assert.match(apply, /effectiveCm = cm \* 5/);
   assert.match(shared, /effectiveCm = cm \* 5/);
   assert.doesNotMatch(game, /Math\.min\(1_000_000_000_000_000, Math\.round\((?:baseRarity|data\.rarity)/);
