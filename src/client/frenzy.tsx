@@ -23,6 +23,7 @@ async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 10_
 
 interface FrenzyInfo {
   rarity: number;
+  isInfinity?: boolean;
   ownerUsername: string;
   createdAt: number;
   expiresAt: number;
@@ -50,10 +51,14 @@ function PublicBrand() {
   );
 }
 
-function AnimatedRarity({ rarity, color }: { rarity: number; color: string }) {
+function AnimatedRarity({ rarity, color, isInfinity = false }: { rarity: number; color: string; isInfinity?: boolean }) {
   const [display, setDisplay] = useState(0);
 
   useEffect(() => {
+    if (isInfinity) {
+      setDisplay(rarity);
+      return;
+    }
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let frame = 0;
     const handleMotionPreference = (event: MediaQueryListEvent) => {
@@ -83,9 +88,9 @@ function AnimatedRarity({ rarity, color }: { rarity: number; color: string }) {
       window.cancelAnimationFrame(frame);
       reducedMotion.removeEventListener('change', handleMotionPreference);
     };
-  }, [rarity]);
+  }, [rarity, isInfinity]);
 
-  const rarityTextLength = formatRarity(rarity).length;
+  const rarityTextLength = formatRarity(rarity, isInfinity).length;
   const rarityFontVw = Math.min(8, 80 / Math.max(1, rarityTextLength));
 
   return (
@@ -94,10 +99,10 @@ function AnimatedRarity({ rarity, color }: { rarity: number; color: string }) {
       <span
         key={rarity}
         className="io-frenzy-rarity-number"
-        aria-label={'1/' + formatRarity(rarity)}
+        aria-label={'1/' + formatRarity(rarity, isInfinity)}
         style={{ textShadow: '0 0 34px ' + color + '55', fontSize: 'clamp(16px, ' + rarityFontVw + 'vw, 82px)' }}
       >
-        {formatRarity(display)}
+        {formatRarity(display, isInfinity)}
       </span>
     </div>
   );
@@ -113,6 +118,7 @@ function FrenzyPost() {
   const impressionRecordedRef = useRef(false);
   const [openedGame, setOpenedGame] = useState(false);
   const [inlineClaimedRarity, setInlineClaimedRarity] = useState<number | null>(null);
+  const [inlineClaimedIsInfinity, setInlineClaimedIsInfinity] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   const load = async () => {
@@ -198,10 +204,12 @@ function FrenzyPost() {
     // The claim endpoint is called exactly once, regardless of arm outcome.
     try {
       const res = await fetch('/api/frenzy/claim', { method: 'POST' });
-      const data = await res.json() as { error?: unknown; orb?: { rarity?: unknown } };
+      const data = await res.json() as { error?: unknown; orb?: { rarity?: unknown; isInfinity?: unknown } };
       if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not claim Frenzy.');
       const resultRarity = Number(data.orb?.rarity);
-      setInlineClaimedRarity(Number.isInteger(resultRarity) && resultRarity >= 2 && resultRarity <= MAX_ORB_RARITY ? resultRarity : info.rarity);
+      const validResult = Number.isInteger(resultRarity) && resultRarity >= 2 && resultRarity <= MAX_ORB_RARITY;
+      setInlineClaimedRarity(validResult ? resultRarity : info.rarity);
+      setInlineClaimedIsInfinity(validResult ? data.orb?.isInfinity === true : info.isInfinity === true);
       setError(null);
       setClaimed(true);
       await load();
@@ -261,7 +269,7 @@ function FrenzyPost() {
           <PublicBrand />
           <section className="io-public-card io-frenzy-card io-frenzy-success-card">
             <div className="io-public-eyebrow io-public-eyebrow-success">Frenzy claimed</div>
-            <h1 className="io-frenzy-success-title">You found a 1/{formatRarity(inlineClaimedRarity)} Orb.</h1>
+            <h1 className="io-frenzy-success-title">You found a 1/{formatRarity(inlineClaimedRarity, inlineClaimedIsInfinity)} Orb.</h1>
             <p className="io-frenzy-success-copy">Your reward is saved. Continue in the full game for more rolls.</p>
             <button
               type="button"
@@ -284,7 +292,7 @@ function FrenzyPost() {
     );
   }
 
-  const orb = getOrbInfo(info.rarity);
+  const orb = getOrbInfo(info.rarity, info.isInfinity);
   const expiresAt = info.expiresAt || info.createdAt + FRENZY_POST_LIFETIME_MS;
   const expiresIn = Math.max(0, expiresAt - now);
   const totalExpirySeconds = Math.ceil(expiresIn / 1000);
@@ -323,7 +331,7 @@ function FrenzyPost() {
               <strong>u/{info.ownerUsername}</strong> got a
             </p>
 
-            <AnimatedRarity rarity={info.rarity} color={orb.color} />
+            <AnimatedRarity rarity={info.rarity} color={orb.color} isInfinity={info.isInfinity} />
 
             <div
               className="io-frenzy-orb-visual"
