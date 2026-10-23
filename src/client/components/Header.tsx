@@ -88,7 +88,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 aria-label={`View Level ${levelInfo.level} perks`}
-                onClick={onOpenProfile}
+                onClick={() => onOpenProfile?.()}
                 className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-200 border border-purple-400/25 hover:border-purple-300/50 flex items-center gap-1 cursor-pointer transition-colors"
                 title={`Level ${levelInfo.level} Perks: ${levelBenefits.luckMultiplier.toFixed(2)}× Luck, ${levelBenefits.coinsMultiplier.toFixed(2)}× Coins, +${levelBenefits.bonusBalls} Balls`}
               >
@@ -104,8 +104,8 @@ export const Header: React.FC<HeaderProps> = ({
                 tabIndex={0}
                 aria-label={`Open profile. Experience progress: ${levelInfo.progressPercent}% to level ${levelInfo.level + 1}`}
                 className="w-28 sm:w-40 h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800 p-0.5 relative cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
-                onClick={onOpenProfile}
-                onKeyDown={event => { if (!event.repeat && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpenProfile(); } }}
+                onClick={() => onOpenProfile?.()}
+                onKeyDown={event => { if (!event.repeat && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpenProfile?.(); } }}
                 title={`EXP: ${fmt(levelInfo.currentLevelXp)} / ${fmt(levelInfo.nextLevelXp)} (${levelInfo.progressPercent}%)`}
               >
                 <div
