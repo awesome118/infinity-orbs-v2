@@ -131,7 +131,7 @@ function combatLabReport(state:CombatState) {
     const projected={...state,depth,equipment:{...state.equipment}} as CombatState;
     const stats=combatStatsFor(projected);
     const enemy=getEnemyForDungeonDepth(state.dungeonId,depth);
-    const maxOrbCritDamage=Math.round(stats.damage*combatOrbDamageMultiplier(1_000_000_000_000_000_000)*1.75);
+    const maxOrbCritDamage=Math.round(stats.damage*combatOrbDamageMultiplier(Number.MAX_VALUE)*1.75);
     return {depth,damage:stats.damage,speed:stats.speed,maxHealth:stats.maxHealth,maxOrbCritDamage,enemyHp:enemy.maxHp,enemyDamage:enemy.damage,enemySpeed:enemy.speed};
   });
   const rarityOdds=combatGearRarityOdds();
