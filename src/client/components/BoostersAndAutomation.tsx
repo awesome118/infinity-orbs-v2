@@ -90,6 +90,12 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   const [now, setNow] = useState(Date.now());
   const [activatingGlobalBooster, setActivatingGlobalBooster] = useState<GlobalBoosterId | null>(null);
   const [globalActivationError, setGlobalActivationError] = useState('');
+  const [activatingPremiumBooster, setActivatingPremiumBooster] = useState<PremiumBoosterId | null>(null);
+  const [claimingCommunityReward, setClaimingCommunityReward] = useState(false);
+  const [buyingAutomation, setBuyingAutomation] = useState<AutomationId | null>(null);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const actionInFlightRef = useRef(false);
+  const activationLockRef = useRef(false);
   const globalActivationLockRef = useRef(false);
 
   const beginAction = (key: string) => {
@@ -104,7 +110,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   };
 
   const handleGlobalActivation = async (id: GlobalBoosterId, useCredit: boolean) => {
-    if (busy || activatingGlobalBooster || globalActivationLockRef.current) return;
+    if (busy || activatingGlobalBooster || globalActivationLockRef.current || !beginAction('global:' + id)) return;
     globalActivationLockRef.current = true;
     setActivatingGlobalBooster(id);
     setGlobalActivationError('');
@@ -119,14 +125,18 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
     }
   };
   const handlePremiumActivation = async (id: PremiumBoosterId) => {
-    if (activationLockRef.current || busy) return;
-    activationLockRef.current=true;
+    if (busy || activationLockRef.current || !beginAction('premium:' + id)) return;
+    activationLockRef.current = true;
     setActivatingPremiumBooster(id);
+    setGlobalActivationError('');
     try {
       await onActivateBooster(id);
+    } catch (error) {
+      setGlobalActivationError(error instanceof Error ? error.message : 'Premium Booster activation was not confirmed. Refresh your balance before retrying.');
     } finally {
-      activationLockRef.current=false;
+      activationLockRef.current = false;
       setActivatingPremiumBooster(null);
+      endAction();
     }
   };
 
@@ -158,6 +168,35 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   const communityBuffAvailable = Boolean(worldEvent && Number.isFinite(worldEvent.endsAt) && worldEvent.endsAt > now);
   const nextCommunityRewardTier = claimedCommunityTier + 1;
   const communityRewardReady = completedCommunityTier >= nextCommunityRewardTier;
+
+  const handleCommunityRewardClaim = async () => {
+    if (busy || !communityRewardReady || !beginAction('community-reward')) return;
+    setClaimingCommunityReward(true);
+    setGlobalActivationError('');
+    try {
+      await onClaimCommunityReward();
+    } catch (error) {
+      setGlobalActivationError(error instanceof Error ? error.message : 'Community reward claim was not confirmed. Refresh the reward tier before retrying.');
+    } finally {
+      setClaimingCommunityReward(false);
+      endAction();
+    }
+  };
+
+  const handleAutomationPurchase = async (id: AutomationId) => {
+    const info = AUTOMATIONS[id];
+    if (busy || state.automations?.[id] || walletShards < info.costShards || !beginAction('automation:' + id)) return;
+    setBuyingAutomation(id);
+    setGlobalActivationError('');
+    try {
+      await onBuyAutomation(id);
+    } catch (error) {
+      setGlobalActivationError(error instanceof Error ? error.message : 'Automation purchase was not confirmed. Refresh your balance before retrying.');
+    } finally {
+      setBuyingAutomation(null);
+      endAction();
+    }
+  };
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -425,7 +464,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
             </div>
             <button
               type="button"
-              onClick={() => void onClaimCommunityReward()}
+              onClick={() => void handleCommunityRewardClaim()}
               disabled={busy || !communityRewardReady}
               className={
                 communityRewardReady
