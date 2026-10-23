@@ -423,7 +423,7 @@ export function App() {
   const [frenzyRunTriggered, setFrenzyRunTriggered] = useState(false);
   const [frenzyArmed, setFrenzyArmed] = useState(false);
   const [showFrenzyPrompt, setShowFrenzyPrompt] = useState(false);
-  const [frenzyThanksPrompt, setFrenzyThanksPrompt] = useState<{ rarity: number; ownerUsername: string; postId: string; message: string } | null>(null);
+  const [frenzyThanksPrompt, setFrenzyThanksPrompt] = useState<{ rarity: number; isInfinity?: boolean; ownerUsername: string; postId: string; message: string } | null>(null);
   const [postingFrenzyThanks, setPostingFrenzyThanks] = useState(false);
   const frenzyPromptShownRef = useRef(false);
   const frenzyClaimActiveRef = useRef(false);
@@ -943,7 +943,7 @@ export function App() {
       // handoff preflight before the first request reaches its claim guard.
       frenzyClaimActiveRef.current = true;
       let readyToClaim = false;
-      let claimedFrenzyInfo: { rarity: number; ownerUsername: string; postId: string } | null = null;
+      let claimedFrenzyInfo: { rarity: number; isInfinity?: boolean; ownerUsername: string; postId: string } | null = null;
       let lastPreflightError: unknown = null;
 
       // Retry only the read-only handoff/info checks. Retrying the claim POST
@@ -956,6 +956,7 @@ export function App() {
 
           const info = await getJson<{
             rarity: number;
+            isInfinity?: boolean;
             ownerUsername: string;
             createdAt: number;
             claimedToday: boolean;
@@ -969,7 +970,7 @@ export function App() {
           // Only a Frenzy claim explicitly armed from the public Frenzy post
           // may auto-claim here. Simply opening the game must never consume a Frenzy.
           if (!info.inGame || !info.canClaim) return;
-          claimedFrenzyInfo = { rarity: info.rarity, ownerUsername: info.ownerUsername, postId: info.postId };
+          claimedFrenzyInfo = { rarity: info.rarity, isInfinity: info.isInfinity === true, ownerUsername: info.ownerUsername, postId: info.postId };
           readyToClaim = true;
           break;
         } catch (error) {
@@ -1032,7 +1033,7 @@ export function App() {
       if (claimedFrenzyInfo) {
         setFrenzyThanksPrompt({
           ...claimedFrenzyInfo,
-          message: `I claimed your 1/${formatRarity(claimedFrenzyInfo.rarity)} Orb Frenzy. Thanks, u/${claimedFrenzyInfo.ownerUsername}!`,
+          message: `I claimed your 1/${formatRarity(claimedFrenzyInfo.rarity, claimedFrenzyInfo.isInfinity)} Orb Frenzy. Thanks, u/${claimedFrenzyInfo.ownerUsername}!`,
         });
       }
     };
