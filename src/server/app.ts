@@ -1631,7 +1631,7 @@ export function createApp() {
       }
       const subredditName = context.subredditName;
       const username = String(context.username ?? s.username ?? 'a player').trim().replace(/^u\//i, '') || 'a player';
-      const text = shareText(s, value);
+      const text = shareText(s, value, isInfinity);
       const postData = {
         type: 'shared-orb',
         rarity: value,
