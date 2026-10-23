@@ -48,7 +48,7 @@ async function readCount(key: string): Promise<number> {
 }
 
 async function prunePostIndex(now: number): Promise<void> {
-  const retentionCutoff = now - 180 * 86_400_000;
+  const postIndexRetentionCutoff = now - 180 * 86_400_000;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const txn = await redis.watch(POST_INDEX_KEY);
     let transactionClosed = false;
@@ -69,14 +69,15 @@ async function prunePostIndex(now: number): Promise<void> {
       }).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
 
       const expiredOrInvalid = entries.filter(
-        entry => entry.invalid || entry.lastSeenAt < retentionCutoff,
+        entry => entry.invalid || entry.lastSeenAt < postIndexRetentionCutoff,
       );
       const recentEntries = entries.filter(
-        entry => !entry.invalid && entry.lastSeenAt >= retentionCutoff,
+        entry => !entry.invalid && entry.lastSeenAt >= postIndexRetentionCutoff,
       );
+      const overflowEntries = recentEntries.slice(MAX_INDEXED_POSTS);
       const fieldsToPrune = [...new Set([
         ...expiredOrInvalid,
-        ...recentEntries.slice(MAX_INDEXED_POSTS),
+        ...overflowEntries,
       ].map(entry => entry.field))].slice(0, 250);
 
       if (fieldsToPrune.length === 0) {
