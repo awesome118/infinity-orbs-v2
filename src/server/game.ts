@@ -1188,6 +1188,26 @@ function isFrenzyTestAdmin(username?: string): boolean {
   return candidate === 'shadow_fen';
 }
 
+async function deleteFrenzyHandoffIfUnchanged(keyName: string, expectedValue: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const txn = await redis.watch(keyName);
+    try {
+      const current = await redis.get(keyName);
+      if (current == null || String(current) !== expectedValue) {
+        await txn.unwatch();
+        return false;
+      }
+      await txn.multi();
+      await txn.del(keyName);
+      if (await txn.exec() !== null) return true;
+    } catch (error) {
+      await txn.unwatch().catch(() => undefined);
+      throw error;
+    }
+  }
+  return false;
+}
+
 async function readFrenzyHandoff(userId: string): Promise<{ postId: string; expiresAt: number } | null> {
   const raw = await redis.get(frenzyHandoffKey(userId));
   const data = parseStoredJson<{ postId?: string; expiresAt?: number }>(raw);
@@ -1201,7 +1221,7 @@ async function readFrenzyHandoff(userId: string): Promise<{ postId: string; expi
     !Number.isSafeInteger(expiresAt) ||
     expiresAt <= Date.now()
   ) {
-    if (raw != null) await redis.del(frenzyHandoffKey(userId));
+    if (raw != null) await deleteFrenzyHandoffIfUnchanged(frenzyHandoffKey(userId), String(raw));
     return null;
   }
   return { postId, expiresAt };
@@ -1211,32 +1231,36 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
   const postId = String(context.postId ?? '').trim();
   if (!postId) throw new Error('This is not an Orb Frenzy post.');
 
-  const raw = await redis.get(FRENZY_POST_PREFIX + postId);
-  if (!raw) throw new Error('This is not an Orb Frenzy post.');
-  const data = parseFrenzyPostRecord(raw);
-  if (!data || data.inGame !== true) throw new Error('This is not an Orb Frenzy post.');
+  return withPlayerMutationLock(async () => {
+    const raw = await redis.get(FRENZY_POST_PREFIX + postId);
+    if (!raw) throw new Error('This is not an Orb Frenzy post.');
+    const data = parseFrenzyPostRecord(raw);
+    if (!data || data.inGame !== true) throw new Error('This is not an Orb Frenzy post.');
 
-  const s = await settleOffline(await loadRaw());
-  const now = Date.now();
-  if (isFrenzyPostRecordExpired(data, now)) throw new Error('This Frenzy has expired.');
-  const claimCooldown = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
-  const isOwner = data.ownerId === currentUserId();
-  const selfClaimTest =
-    isOwner &&
-    data.adminTest === true &&
-    isFrenzyTestAdmin(s.username);
+    const s = await settleOffline(await loadRaw());
+    const now = Date.now();
+    if (isFrenzyPostRecordExpired(data, now)) throw new Error('This Frenzy has expired.');
+    const claimCooldown = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
+    const isOwner = data.ownerId === currentUserId();
+    const selfClaimTest =
+      isOwner &&
+      data.adminTest === true &&
+      isFrenzyTestAdmin(s.username);
 
-  if (isOwner && !selfClaimTest) throw new Error('You cannot claim your own Orb Frenzy.');
-  if (claimCooldown > 0 && !selfClaimTest) {
-    throw new Error('Frenzy claim is on cooldown for ' + Math.ceil(claimCooldown / 1000) + ' more seconds.');
+    if (isOwner && !selfClaimTest) throw new Error('You cannot claim your own Orb Frenzy.');
+    if (claimCooldown > 0 && !selfClaimTest) {
+      throw new Error('Frenzy claim is on cooldown for ' + Math.ceil(claimCooldown / 1000) + ' more seconds.');
+    }
+
+    const handoffExpiresAt = Date.now() + FRENZY_HANDOFF_TTL_MS;
+    await redis.set(frenzyHandoffKey(currentUserId()), JSON.stringify({
+      postId,
+      expiresAt: handoffExpiresAt,
+    }), { expiration: new Date(handoffExpiresAt) });
+    return { armed: true, postId };
   }
 
-  const handoffExpiresAt = Date.now() + FRENZY_HANDOFF_TTL_MS;
-  await redis.set(frenzyHandoffKey(currentUserId()), JSON.stringify({
-    postId,
-    expiresAt: handoffExpiresAt,
-  }), { expiration: new Date(handoffExpiresAt) });
-  return { armed: true, postId };
+  });
 }
 
 export async function getOrbFrenzyHandoff(): Promise<{ armed: boolean; postId?: string }> {
