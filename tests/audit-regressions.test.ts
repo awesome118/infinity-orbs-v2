@@ -1630,6 +1630,7 @@ test('Aftershock and Unbroken Momentum are persisted, purchase-gated, and shown 
   const game = source('src/server/game.ts');
   const mastery = source('src/client/components/MasterySection.tsx');
   const profile = source('src/client/components/ProfileAndPrestige.tsx');
+  const debugModal = source('src/client/components/DevDebugModal.tsx');
 
   assert.match(shared, /export function aftershockCriticalLuckBonus/);
   assert.match(shared, /export function unbrokenMomentumSpeedBonus/);
