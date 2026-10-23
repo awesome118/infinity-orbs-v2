@@ -219,8 +219,8 @@ export const RunesSection:React.FC=()=>{
           {equippedRunes.length===0&&<p className="io-runes-muted" role="note">Equip at least one Rune before enabling Auto Sacrifice, so every consumed Rune has a valid strengthening target.</p>}
         </div>
         <div className="io-runes-inventory-tools">
-          <label className="io-runes-search">Search Runes
-            <input type="search" value={runeSearch} onChange={event=>setRuneSearch(event.target.value.slice(0,80))} placeholder="Name, stat, or rarity…" maxLength={80} aria-label="Search Rune inventory"/>
+          <label className="io-runes-search">Search Rune inventory by name, rarity, stat, or Major Ability
+            <input type="search" value={runeSearch} onChange={event=>setRuneSearch(event.target.value.slice(0,80))} placeholder="Name, rarity, stat, or Major Ability…" maxLength={80} aria-label="Search Rune inventory by name, rarity, stat, or Major Ability"/>
           </label>
           <div role="group" aria-label="Filter Rune inventory" className="io-runes-filter-group">
             {([{id:'all',label:'All'},{id:'equipped',label:'Equipped'},{id:'unequipped',label:'Unequipped'},{id:'auto',label:'Auto-sacrifice eligible'}] as const).map(option=><button key={option.id} type="button" aria-pressed={runeFilter===option.id} disabled={operationPending} onClick={()=>setRuneFilter(option.id)}>{option.label}</button>)}
