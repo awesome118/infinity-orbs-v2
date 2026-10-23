@@ -2475,6 +2475,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     collectionValue: finiteNonNegativeNumber(parsed.collectionValue, base.collectionValue),
     lifetimeCollectionValue: finiteNonNegativeNumber(parsed.lifetimeCollectionValue, base.lifetimeCollectionValue),
     highestRarity: finiteNonNegativeNumber(parsed.highestRarity, base.highestRarity),
+    highestRarityIsInfinity: parsed.highestRarityIsInfinity === true,
     saveGeneration: generation,
     // Legacy saves predate stateRevision. Normalize them to revision zero so
     // delayed reads cannot bypass the client's stale-snapshot rejection.
@@ -3374,6 +3375,7 @@ export async function applyRolls(
   let bestRarity = 0;
   let bestIsCrit = false;
   let bestIsNew = false;
+  let bestIsInfinity = false;
   let totalVal = 0;
   let coinsGained = 0;
   let shardsGained = 0;
@@ -3558,15 +3560,26 @@ export async function applyRolls(
     const minimumRarity = 2 + (s.prestigeUpgrades?.luckyFloor ?? 0);
     const beginnerRarity = 101 + Math.floor(rng() * 20);
     const runeRarityFloor = Math.max(minimumRarity, currentRuneSpec?.minRarity ?? minimumRarity);
-    const rolledRarity = isGuaranteedThirdBall
-      ? beginnerRarity
-      : (forcedRarity && i === 0)
-        ? forcedRarity
-        : Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY, Math.round(rollContinuum(effectiveLuck, randomOverride ?? serverRarityRandom) * runeLuckMultiplier)));
+    let isInfinityOrb = false;
+    let rolledRarity: number;
+    if (isGuaranteedThirdBall) {
+      rolledRarity = beginnerRarity;
+    } else if (forcedRarity && i === 0) {
+      rolledRarity = forcedRarity;
+    } else {
+      const rawRolledRarity = Math.round(rollContinuum(effectiveLuck, randomOverride ?? serverRarityRandom) * runeLuckMultiplier);
+      isInfinityOrb = !Number.isFinite(rawRolledRarity) || rawRolledRarity > MAX_ORB_RARITY;
+      rolledRarity = Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY,
+        Number.isFinite(rawRolledRarity) ? rawRolledRarity : MAX_ORB_RARITY));
+    }
     const baseRarity = exactRarity && forcedRarity != null && i === 0
       ? forcedRarity
       : Math.max(minimumRarity, isGuaranteedThirdBall ? rolledRarity : runeRarityFloor, rolledRarity);
-    const rarity = isCrit ? Math.min(MAX_ORB_RARITY, Math.round(baseRarity * effectiveCm)) : baseRarity;
+    const rawCritRarity = isCrit ? Math.round(baseRarity * effectiveCm) : baseRarity;
+    if (isCrit && (!Number.isFinite(rawCritRarity) || rawCritRarity > MAX_ORB_RARITY)) isInfinityOrb = true;
+    const rarity = isCrit
+      ? Math.min(MAX_ORB_RARITY, Number.isFinite(rawCritRarity) ? rawCritRarity : MAX_ORB_RARITY)
+      : baseRarity;
     const finalVal = Math.min(MAX_ORB_RARITY, Math.round(rarity * valueMul));
 
     totalVal = Math.min(Number.MAX_VALUE, totalVal + finalVal);
@@ -3577,10 +3590,10 @@ export async function applyRolls(
     s.lifetimeCollectionValue = addCollectionValue(s.lifetimeCollectionValue, finalVal);
 
     if (isNew) uniqueGained++;
-    s.collection[String(rarity)] = (s.collection[String(rarity)] ?? 0) + 1;
+    s.collection[rarityKey] = (s.collection[rarityKey] ?? 0) + 1;
 
     const previousAllTimeRarity = s.highestRarity;
-    const isNewRarityRecord = rarity > previousAllTimeRarity;
+    const isNewRarityRecord = rarity > previousAllTimeRarity || (isInfinityOrb && !s.highestRarityIsInfinity);
     if (isNewRarityRecord) {
       // The rolls since the previous record become an Aftershock candidate
       // only when a strictly rarer all-time orb finally appears.
@@ -3592,6 +3605,7 @@ export async function applyRolls(
         );
       }
       s.highestRarity = rarity;
+      s.highestRarityIsInfinity = isInfinityOrb;
       s.rollsSinceBest = 0;
     } else {
       s.rollsSinceBest = (s.rollsSinceBest ?? 0) + 1;
@@ -3645,14 +3659,17 @@ export async function applyRolls(
       addRuneBonusRolls(1, { minRarity: floor, skipAllProcs: true });
     }
 
-    const isNew = !s.collection[String(rarity)];
-    if (rarity > bestRarity) {
+    const rarityKey = isInfinityOrb ? 'Infinity' : String(rarity);
+    const isNew = !s.collection[rarityKey];
+    if (rarity > bestRarity || (isInfinityOrb && !bestIsInfinity)) {
       bestRarity = rarity;
       bestIsCrit = isCrit;
       bestIsNew = isNew;
+      bestIsInfinity = isInfinityOrb;
     } else if (rarity === bestRarity) {
       if (isCrit) bestIsCrit = true;
       bestIsNew = bestIsNew || isNew;
+      bestIsInfinity = bestIsInfinity || isInfinityOrb;
     }
 
     const xpBonusMul =
@@ -3711,13 +3728,14 @@ export async function applyRolls(
       }
     }
 
-    const orbInfo = getOrbInfo(rarity);
+    const orbInfo = getOrbInfo(rarity, isInfinityOrb);
     if (batch.length < 50) {
       batch.push({
         rarity,
         rolledAt: now,
         tier: orbInfo.tier,
         name: orbInfo.name,
+        isInfinity: isInfinityOrb,
         isNew,
         isCrit,
       });
@@ -3842,12 +3860,13 @@ export async function applyRolls(
     console.error('[Community Event] Progress not recorded for this roll; preserving shared data.', error);
   }
 
-  const bestInfo = getOrbInfo(bestRarity);
+  const bestInfo = getOrbInfo(bestRarity, bestIsInfinity);
   const bestOrb: Orb = {
     rarity: bestRarity,
     rolledAt: now,
     tier: bestInfo.tier,
     name: bestInfo.name,
+    isInfinity: bestIsInfinity,
     isNew: bestIsNew,
     isCrit: bestIsCrit,
   };
