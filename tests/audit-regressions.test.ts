@@ -2950,6 +2950,17 @@ test('Turbo Booster confirmation reports the actual cooldown reduction', () => {
   assert.ok(shared.includes("const turboReduction = (s.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 0.65 : 0.75;"));
 });
 
+test('Global Chat history polling is single-flight and paused in hidden tabs', () => {
+  const chat = source('src/client/components/GlobalChatWindow.tsx');
+  assert.ok(chat.includes('const refreshInFlightRef = useRef(false);'));
+  assert.ok(chat.includes('const refreshPendingRef = useRef(false);'));
+  assert.ok(chat.includes("if (document.visibilityState === 'hidden') return;"));
+  assert.ok(chat.includes('if (refreshInFlightRef.current) {'));
+  assert.ok(chat.includes("document.addEventListener('visibilitychange', refreshWhenVisible);"));
+  assert.ok(chat.includes("document.removeEventListener('visibilitychange', refreshWhenVisible);"));
+  assert.ok(chat.includes('void refreshChat(true);'));
+});
+
 test('Global Chat availability retries stop after the launcher unmounts', () => {
   const chat = source('src/client/components/GlobalChatWindow.tsx');
   const start = chat.indexOf('const checkAvailability = async () =>');

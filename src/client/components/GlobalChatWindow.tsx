@@ -66,6 +66,8 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   const shouldFollowMessagesRef = useRef(true);
   const jumpToBottomRef = useRef(false);
   const refreshRequestRef = useRef(0);
+  const refreshInFlightRef = useRef(false);
+  const refreshPendingRef = useRef(false);
 
   useEffect(() => {
     try {
@@ -109,7 +111,16 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
       .slice(-100);
   };
 
-  const refreshChat = async () => {
+  const refreshChat = async (queueIfBusy = false) => {
+    if (document.visibilityState === 'hidden') return;
+    if (refreshInFlightRef.current) {
+      if (queueIfBusy) refreshPendingRef.current = true;
+      return;
+    }
+    refreshInFlightRef.current = true;
+    // A new request satisfies any queued refresh; requests arriving while this
+    // one is active can schedule at most one follow-up.
+    refreshPendingRef.current = false;
     const requestId = ++refreshRequestRef.current;
     try {
       const next = await loadChat();
@@ -132,6 +143,12 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
       }
     } catch {
       // Chat is auxiliary UI and should never block gameplay.
+    } finally {
+      refreshInFlightRef.current = false;
+      if (refreshPendingRef.current && document.visibilityState !== 'hidden') {
+        refreshPendingRef.current = false;
+        void refreshChat(true);
+      }
     }
   };
 
@@ -189,10 +206,24 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   }, [open]);
 
   useEffect(() => {
-    // History remains readable even when posting is disabled in this context.
-    void refreshChat();
-    const interval = window.setInterval(() => void refreshChat(), open ? 3000 : 10000);
-    return () => window.clearInterval(interval);
+    let cancelled = false;
+    // Poll only while visible. A queued refresh resumes after a pending request
+    // settles, avoiding overlapping chat history requests in slow webviews.
+    const refreshWhenVisible = () => {
+      if (cancelled || document.visibilityState === 'hidden') return;
+      void refreshChat(true);
+    };
+    refreshWhenVisible();
+    const interval = window.setInterval(() => {
+      if (!cancelled && document.visibilityState !== 'hidden') void refreshChat();
+    }, open ? 3000 : 10000);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      refreshRequestRef.current += 1;
+    };
   }, [open, chatAvailable]);
 
   useEffect(() => {
@@ -255,7 +286,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
       setMessages(prev => mergeMessages(prev, [sentMessage]));
       // Pull the authoritative history after posting. The merge keeps any
       // newer local messages if a concurrent poll is still in flight.
-      void refreshChat();
+      void refreshChat(true);
     } catch (error: any) {
       setActionError(error instanceof Error ? error.message : 'Could not send message.');
       console.error('Global chat error:', error);
