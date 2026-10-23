@@ -13,7 +13,6 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
   const [busy, setBusy] = useState(false);
   const submitInFlightRef = useRef(false);
   const [error, setError] = useState('');
-  const submitInFlightRef = useRef(false);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
