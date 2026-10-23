@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { requestExpandedMode } from '@devvit/web/client';
 import { ArrowRight, Flame, Users } from 'lucide-react';
 import './styles.css';
-import { formatRarity, getOrbInfo, FRENZY_POST_LIFETIME_MS } from '../shared/game.js';
+import { formatRarity, getOrbInfo, FRENZY_POST_LIFETIME_MS, MAX_ORB_RARITY } from '../shared/game.js';
 import { recordPostImpression } from './impressions.js';
 
 async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 10_000): Promise<Response> {
@@ -201,7 +201,7 @@ function FrenzyPost() {
       const data = await res.json() as { error?: unknown; orb?: { rarity?: unknown } };
       if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not claim Frenzy.');
       const resultRarity = Number(data.orb?.rarity);
-      setInlineClaimedRarity(Number.isSafeInteger(resultRarity) && resultRarity >= 2 ? resultRarity : info.rarity);
+      setInlineClaimedRarity(Number.isInteger(resultRarity) && resultRarity >= 2 && resultRarity <= MAX_ORB_RARITY ? resultRarity : info.rarity);
       setError(null);
       setClaimed(true);
       await load();
