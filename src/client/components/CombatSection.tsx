@@ -16,7 +16,7 @@ async function request<T>(url:string,method='GET',body?:unknown):Promise<T> {
   const controller=new AbortController();
   const timeout=window.setTimeout(()=>controller.abort(),12_000);
   try {
-    const response=await fetch(url,{method,headers:{'Content-Type':'application/json'},signal:controller.signal,...(body===undefined?{}:{body:JSON.stringify(body)})});
+    const response=await fetch(url,{method,cache:'no-store',headers:{'Content-Type':'application/json'},signal:controller.signal,...(body===undefined?{}:{body:JSON.stringify(body)})});
     const data=await response.json().catch(()=>null) as Record<string,unknown>|null;
     if(!response.ok) {
       const retryAfterMs=Number(data?.retryAfterMs);
@@ -151,6 +151,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     window.dispatchEvent(new CustomEvent('io-combat-marks-updated',{detail:{combatMarks:result.state.combatMarks}}));
   },[]);
   const load=useCallback(async()=>{
+    setLoading(true);
     const requestSequence=++snapshotLoadSequenceRef.current;
     try {
       const result=await request<CombatSnapshot>('/api/combat/state');
@@ -313,7 +314,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     finally{runtime.current.mutating=false;setMutating(false);}
   };
   if(loading&&!state)return <section className="io-combat-screen"><div className="io-combat-loading">ENTERING THE UNDERCRYPT…</div></section>;
-  if(!state||!enemy||!stats)return <section className="io-combat-screen"><header className="io-combat-page-head"><div><span className="io-combat-eyebrow">COMBAT SYSTEM</span><h1>Could not enter the Undercrypt</h1></div></header><p className="io-combat-error" role="alert">{error||'Combat data unavailable.'}</p><button type="button" className="io-combat-button" disabled={loading} onClick={()=>{setLoading(true);void load();}}>{loading?'Retrying…':'Retry'}</button></section>;
+  if(!state||!enemy||!stats)return <section className="io-combat-screen"><header className="io-combat-page-head"><div><span className="io-combat-eyebrow">COMBAT SYSTEM</span><h1>Could not enter the Undercrypt</h1></div></header><p className="io-combat-error" role="alert">{error||'Combat data unavailable.'}</p><button type="button" className="io-combat-button" disabled={loading} onClick={()=>{setError('');void load();}}>{loading?'Retrying…':'Retry'}</button></section>;
 
   const weapon=equipped(state,'weapon'), armor=equipped(state,'armor');
   const ownedSkills=Object.entries(state.skillLevels).filter(([,v])=>Number(v)>0);
