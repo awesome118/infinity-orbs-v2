@@ -12,6 +12,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const submitInFlightRef = useRef(false);
+  const submitLockRef = submitInFlightRef;
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -23,7 +24,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
   }, [busy, onClose]);
 
   const submit = async () => {
-    if (busy || submitInFlightRef.current) return;
+    if (busy || submitLockRef.current) return;
     const trimmed = message.trim();
     if (!trimmed) {
       setError('Please describe the bug or suggestion.');
