@@ -190,7 +190,7 @@ test('new Orb reveal cancels the previous screen-shake timer', () => {
 test('shared-Orb public preview rejects rarity above the supported game ceiling', () => {
   const shared = source('src/shared/game.ts');
   const splash = source('src/client/splash.tsx');
-  assert.match(shared, /export const MAX_ORB_RARITY = 1_000_000_000_000_000_000/);
+  assert.match(shared, /export const MAX_ORB_RARITY = Number\.MAX_VALUE/);
   assert.match(splash, /Number\.isInteger\(data\.rarity\)[\s\S]*?Number\(data\.rarity\) <= MAX_ORB_RARITY/);
   assert.doesNotMatch(splash, /Number\.isSafeInteger\(data\.rarity\)/);
 });
