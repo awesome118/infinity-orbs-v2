@@ -110,7 +110,8 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   };
 
   const handleGlobalActivation = async (id: GlobalBoosterId, useCredit: boolean) => {
-    if (busy || activatingGlobalBooster || globalActivationLockRef.current || !beginAction('global:' + id)) return;
+    if (busy || !beginAction('global:' + id)) return;
+    if (activatingGlobalBooster || globalActivationLockRef.current) { endAction(); return; }
     globalActivationLockRef.current = true;
     setActivatingGlobalBooster(id);
     setGlobalActivationError('');
@@ -125,7 +126,8 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
     }
   };
   const handlePremiumActivation = async (id: PremiumBoosterId) => {
-    if (busy || activationLockRef.current || !beginAction('premium:' + id)) return;
+    if (busy || !beginAction('premium:' + id)) return;
+    if (activationLockRef.current) { endAction(); return; }
     activationLockRef.current = true;
     setActivatingPremiumBooster(id);
     setGlobalActivationError('');
@@ -185,7 +187,8 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
 
   const handleAutomationPurchase = async (id: AutomationId) => {
     const info = AUTOMATIONS[id];
-    if (busy || state.automations?.[id] || walletShards < info.costShards || !beginAction('automation:' + id)) return;
+    if (busy || !beginAction('automation:' + id)) return;
+    if (state.automations?.[id] || walletShards < info.costShards) { endAction(); return; }
     setBuyingAutomation(id);
     setGlobalActivationError('');
     try {
