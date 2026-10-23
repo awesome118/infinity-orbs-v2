@@ -2338,6 +2338,9 @@ export async function recordGlobalChatComment(input: {
   const targetPostId = normalizeRedditPostId(input.postId);
   const registeredPostId = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
   if (!targetPostId || !registeredPostId || targetPostId !== registeredPostId) return null;
+  // Reddit comment-create events are a separate entry point from the chat API.
+  // Fail closed here too if a legacy/corrupt canonical ID points at a Frenzy post.
+  if (await isRegisteredFrenzyPost(registeredPostId)) return null;
 
   const rawId = String(input.commentId ?? '').trim();
   const bareId = rawId.replace(/^t1_/i, '');

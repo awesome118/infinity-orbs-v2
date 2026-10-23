@@ -2455,6 +2455,16 @@ test('Combat is level-gated, guided, and reset with the rest of the player save'
   assert.ok(combat.includes("maxHeight:'min(360px, calc(100vh - 16px))'"));
 });
 
+test('Global Chat comment ingestion rejects a canonical destination that is a Frenzy post', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('export async function recordGlobalChatComment');
+  const end = social.indexOf('export async function', start + 1);
+  assert.ok(start >= 0 && end > start);
+  const handler = social.slice(start, end);
+  assert.ok(handler.includes('if (await isRegisteredFrenzyPost(registeredPostId)) return null;'));
+  assert.ok(handler.indexOf('targetPostId !== registeredPostId') < handler.indexOf('isRegisteredFrenzyPost(registeredPostId)'));
+});
+
 test('Global Chat history is server-gated to the registered main Game post', () => {
   const api = source('src/server/app.ts');
   const start = api.indexOf("app.get('/api/chat', async (_req, res) => {");
