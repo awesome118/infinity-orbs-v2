@@ -68,6 +68,7 @@ test('Infinity is the display name for the maximum finite orb rarity', () => {
   assert.equal(getOrbTier(MAX_ORB_RARITY), 'Infinity');
   assert.equal(formatRarity(MAX_ORB_RARITY), 'Infinity');
   assert.equal(formatRarity(Number.POSITIVE_INFINITY), 'Infinity');
+  assert.equal(formatRarity(Number.MAX_VALUE * (1 - Number.EPSILON)), '1.797693e308');
   assert.equal(formatRarity(1e15), '1.00e15');
 });
 
