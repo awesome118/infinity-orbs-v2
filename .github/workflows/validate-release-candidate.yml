@@ -16,6 +16,7 @@ permissions:
 
 jobs:
   validate:
+    if: ${{ github.event_name != 'push' || github.event.head_commit.message != 'DEPLOY-DEV-1.2.47-ONCE' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

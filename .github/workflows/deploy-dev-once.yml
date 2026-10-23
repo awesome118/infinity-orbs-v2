@@ -33,7 +33,7 @@ jobs:
             exit 1
           }
           case "$DEVVIT_AUTH_TOKEN" in
-            \\{*) ;;
+            \{*) ;;
             *)
               echo "::error::DEVVIT_TOKEN must be the complete JSON blob from ~/.devvit/token."
               exit 1
