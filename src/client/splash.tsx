@@ -10,6 +10,7 @@ import './styles.css';
 type SharedOrbPostData = {
   type?: string;
   rarity?: number;
+  isInfinity?: boolean;
   username?: string;
   totalRolls?: number;
   collectionValue?: number;
@@ -83,7 +84,8 @@ function SharedOrbPost({ data }: { data: SharedOrbPostData }) {
   const rarity = Number.isInteger(data.rarity) && Number(data.rarity) > 0 && Number(data.rarity) <= MAX_ORB_RARITY
     ? Number(data.rarity)
     : 0;
-  const info = rarity > 0 ? getOrbInfo(rarity) : null;
+  const isInfinity = data.isInfinity === true && rarity === MAX_ORB_RARITY;
+  const info = rarity > 0 ? getOrbInfo(rarity, isInfinity) : null;
   const rawUsername = String(data.username ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().replace(/^u\//i, '');
   const username = rawUsername.slice(0, 25) || 'a player';
   const safeMetadataCount = (value: unknown) => {
@@ -128,16 +130,16 @@ function SharedOrbPost({ data }: { data: SharedOrbPostData }) {
               borderColor: `${info.color}66`,
               boxShadow: `0 0 34px ${info.color}22, inset 0 1px rgba(255,255,255,.32)`,
             }}
-            aria-label={`1/${formatRarity(rarity)} ${info.tier} Orb`}
+            aria-label={`1/${formatRarity(rarity, isInfinity)} ${info.tier} Orb`}
           >
             <span className="io-public-orb-ring" />
             <span className="io-public-orb-tier">{info.tier}</span>
-            <strong>1/{formatRarity(rarity)}</strong>
+            <strong>1/{formatRarity(rarity, isInfinity)}</strong>
             <small>{info.name}</small>
           </div>
 
           <div className="io-share-copy">
-            <div className="io-public-rarity">1/{formatRarity(rarity)}</div>
+            <div className="io-public-rarity">1/{formatRarity(rarity, isInfinity)}</div>
             <div className="io-public-name" style={{ color: info.color }}>{info.name}</div>
             <p>The orb's rarity is its denominator. Higher numbers mean a rarer find.</p>
           </div>
