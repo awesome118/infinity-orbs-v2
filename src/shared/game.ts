@@ -920,10 +920,13 @@ export interface RollPrediction {
 }
 
 export interface Orb {
+  /** Stored numeric rarity; over-cap rolls are represented by MAX_ORB_RARITY plus isInfinity. */
   rarity: number;
   rolledAt: number;
   tier: string;
   name: string;
+  /** True only when the uncapped rarity calculation overflowed the finite Number range. */
+  isInfinity?: boolean;
   isNew?: boolean;
   isCrit?: boolean;
 }
@@ -978,6 +981,8 @@ export interface PlayerState {
   lifetimeCoins: number;
   lifetimeShards: number;
   highestRarity: number;
+  /** True when the best rarity was a mathematically over-cap roll, not merely Number.MAX_VALUE. */
+  highestRarityIsInfinity?: boolean;
   collectionValue: number;
   lifetimeCollectionValue: number;
   collection: Record<string, number>;
@@ -1110,20 +1115,18 @@ export type RarityTierName =
   | 'Omniversal'
   | 'Paradox'
   | 'Beyond'
-  | 'Endless'
-  | 'Infinity';
+  | 'Endless';
 
 export interface RarityTierInfo {
   rarity: number;
   name: string;
-  tier: RarityTierName;
+  tier: RarityTierName | 'Infinity';
   approxChance: string;
   color: string;
   bgGradient: string;
 }
 
 export function getOrbTier(rarity: number): RarityTierName {
-  if (rarity >= MAX_ORB_RARITY) return 'Infinity';
   if (rarity >= 100_000_000_000_000_000) return 'Endless';
   if (rarity >= 10_000_000_000_000_000) return 'Beyond';
   if (rarity >= 1_000_000_000_000_000) return 'Paradox';
@@ -1163,7 +1166,6 @@ const TIER_NAMES: Record<RarityTierName, string[]> = {
   Paradox: ['Paradox Orb', 'Contradiction Core', 'Broken Loop', 'Null Point'],
   Beyond: ['Beyond Orb', 'Outer Core', 'Far Point', 'Unknown Edge'],
   Endless: ['Endless Orb', 'Final Loop', 'Last Horizon', 'Zero Point'],
-  Infinity: ['Infinity Orb'],
 };
 
 const TIER_COLORS: Record<RarityTierName, { color: string; bgGradient: string }> = {
@@ -1239,10 +1241,6 @@ const TIER_COLORS: Record<RarityTierName, { color: string; bgGradient: string }>
     color: '#f1f5f9',
     bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #64748b 35%, #0f172a 80%, #020617 100%)',
   },
-  Infinity: {
-    color: '#ffffff',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #c084fc 25%, #22d3ee 55%, #020617 100%)',
-  },
 };
 
 export function formatNumber(value: number): string {
@@ -1255,11 +1253,11 @@ export function formatNumber(value: number): string {
   return safe.toLocaleString('en-US');
 }
 
-export function formatRarity(rarity: number): string {
+export function formatRarity(rarity: number, isInfinity = false): string {
   const raw = Number(rarity);
-  // The finite numeric ceiling is presented as Infinity; overflow inputs use
-  // the same label rather than rendering NaN or an invalid exponent.
-  if (raw === Number.POSITIVE_INFINITY || raw >= MAX_ORB_RARITY) return 'Infinity';
+  // Infinity is an overflow result represented by a separate marker. The
+  // largest finite Number remains a finite rarity and must never be called Infinity.
+  if (isInfinity || raw === Number.POSITIVE_INFINITY) return 'Infinity';
   const safe = Number.isFinite(raw) ? Math.max(0, raw) : 0;
   if (safe >= 100_000_000) {
     const exponent = Math.floor(Math.log10(safe));
@@ -1278,7 +1276,11 @@ function rarityRangeLabel(minRarity: number, maxRarity: number): string {
   return `1 / ${formatRarity(minRarity)} - 1 / ${formatRarity(maxRarity)}`;
 }
 
-export function getOrbInfo(rarity: number): RarityTierInfo {
+export function getOrbInfo(rarity: number, isInfinity = false): RarityTierInfo {
+  if (isInfinity) {
+    const { color, bgGradient } = { color: '#ffffff', bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #c084fc 25%, #22d3ee 55%, #020617 100%)' };
+    return { rarity, name: 'Infinity Orb', tier: 'Infinity', approxChance: '1 / Infinity', color, bgGradient };
+  }
   const tier = getOrbTier(rarity);
   const names = TIER_NAMES[tier];
   const name = names[Math.abs(Math.floor(rarity)) % names.length];
@@ -1328,8 +1330,12 @@ export function rollContinuum(luck: number, random: () => number = Math.random):
   const u = Number.isFinite(sample)
     ? Math.min(1 - Number.EPSILON, Math.max(Number.MIN_VALUE, sample))
     : 0.5;
-  const rarity = Math.floor((1 / u) * luckRarityFactor(luck));
-  return Math.min(MAX_ORB_RARITY, Math.max(2, rarity));
+  const rawRarity = (1 / u) * luckRarityFactor(luck);
+  // Values beyond Number.MAX_VALUE cannot be stored as finite rarity values.
+  // Return Infinity as a transient sentinel; callers persist MAX_ORB_RARITY
+  // and set Orb.isInfinity instead of serializing a non-finite number.
+  if (!Number.isFinite(rawRarity) || rawRarity > MAX_ORB_RARITY) return Number.POSITIVE_INFINITY;
+  return Math.max(2, Math.min(MAX_ORB_RARITY, Math.floor(rawRarity)));
 }
 
 export interface ContinuumTierMilestone {
@@ -1360,7 +1366,6 @@ export const CONTINUUM_TIERS: ContinuumTierMilestone[] = [
   { tier: 'Paradox', minRarity: 1000000000000000, label: rarityRangeLabel(1000000000000000, 9999999999999999), approxChance: '~0.00000000000009%', coinsPerOrb: `${formatNumber(1000000000000000)} - ${formatNumber(9999999999999999)} Coins`, color: '#ef4444' },
   { tier: 'Beyond', minRarity: 10000000000000000, label: rarityRangeLabel(10000000000000000, 99999999999999999), approxChance: '~0.000000000000009%', coinsPerOrb: `${formatNumber(10000000000000000)} - ${formatNumber(99999999999999999)} Coins`, color: '#8b5cf6' },
   { tier: 'Endless', minRarity: 100000000000000000, label: `1 / ${formatRarity(100000000000000000)}+`, approxChance: '~0.0000000000000009%', coinsPerOrb: `${formatNumber(100000000000000000)}+ Coins`, color: '#f1f5f9' },
-  { tier: 'Infinity', minRarity: MAX_ORB_RARITY, label: 'Infinity', approxChance: 'At cap', coinsPerOrb: 'Capped', color: '#ffffff' },
 ];
 
 export const CONTINUUM_DISCOVERY_UNLOCK_RARITY = 9;
@@ -1672,6 +1677,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     lifetimeCoins: 50,
     lifetimeShards: 5,
     highestRarity: 0,
+    highestRarityIsInfinity: false,
     collectionValue: 0,
     lifetimeCollectionValue: 0,
     collection: {},
