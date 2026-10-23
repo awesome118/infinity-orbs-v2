@@ -19,7 +19,7 @@ export function OrbOrbit({ orbs, radius = 152 }: Props) {
       <div className="relative w-0 h-0 animate-orbit-ring">
         {orbs.slice(0, 8).map((orb, index) => {
           const angle = (index / Math.min(orbs.length, 8)) * Math.PI * 2 - Math.PI / 2;
-          const info = getOrbInfo(orb.rarity);
+          const info = getOrbInfo(orb.rarity, orb.isInfinity);
           return (
             <div
               key={index}
