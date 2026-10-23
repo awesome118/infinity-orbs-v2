@@ -76,6 +76,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
   const [sacrificing, setSacrificing] = useState(false);
   const [activeBranch, setActiveBranch] = useState<'all' | 'fortune' | 'temporal' | 'alchemy' | 'cosmos'>('all');
   const [lastUpgradedSkill, setLastUpgradedSkill] = useState<string | null>(null);
+  const [upgradingSkillId, setUpgradingSkillId] = useState<MasterySkillId | null>(null);
 
   const handleSacrificeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,8 +86,8 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
     setSacrificing(true);
     setLocalActionError('');
     try {
-      sound.playSacrificeSound();
       await onSacrifice(selectedCoinOffer, selectedShardOffer);
+      sound.playSacrificeSound();
       if (allowMotionEffects()) {
         confetti({
           particleCount: 40,
@@ -108,28 +109,30 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
   const handleMasteryClick = async (skillId: MasterySkillId) => {
     if (busy || actionLockRef.current || sacrificing) return;
     actionLockRef.current = true;
+    setUpgradingSkillId(skillId);
     setLocalActionError('');
-    sound.playLevelUpFanfare();
-    if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
-    setLastUpgradedSkill(skillId);
-    highlightTimerRef.current = window.setTimeout(() => {
-      setLastUpgradedSkill(null);
-      highlightTimerRef.current = null;
-    }, 800);
-    if (allowMotionEffects()) {
-      confetti({
-        particleCount: 25,
-        spread: 40,
-        origin: { y: 0.8 },
-        colors: ['#fbbf24', '#38bdf8', '#c084fc'],
-      });
-    }
     try {
       await onUpgradeMastery(skillId);
+      sound.playLevelUpFanfare();
+      if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
+      setLastUpgradedSkill(skillId);
+      highlightTimerRef.current = window.setTimeout(() => {
+        setLastUpgradedSkill(null);
+        highlightTimerRef.current = null;
+      }, 800);
+      if (allowMotionEffects()) {
+        confetti({
+          particleCount: 25,
+          spread: 40,
+          origin: { y: 0.8 },
+          colors: ['#fbbf24', '#38bdf8', '#c084fc'],
+        });
+      }
     } catch (error) {
       setLocalActionError(error instanceof Error ? error.message : 'Could not upgrade Mastery. Please retry.');
     } finally {
       actionLockRef.current = false;
+      setUpgradingSkillId(null);
     }
   };
 
@@ -140,7 +143,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
     if (activeBranch === 'fortune' && (id === 'continuumLuck' || id === 'pityAccelerant' || id === 'apexFortune')) return true;
     if (activeBranch === 'temporal' && (id === 'chronoFlow')) return true;
     if (activeBranch === 'alchemy' && (id === 'prosperity' || id === 'shardAttunement' || id === 'infiniteVault')) return true;
-    if (activeBranch === 'cosmos' && (id === 'critMastery' || id === 'celestialSurge' || id === 'cosmicAttunement')) return true;
+    if (activeBranch === 'cosmos' && (id === 'critMastery' || id === 'celestialSurge' || id === 'cosmicAttunement' || id === 'celestialVolley' || id === 'aftershock')) return true;
     return false;
   });
 
@@ -193,7 +196,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
               <h2 className="text-lg font-black text-white">Altar of Perpetual Devotion</h2>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              Sacrifice Coins to permanently raise your Altar Devotion Luck (+1% per Level). Sacrifice Shards for permanent Infusion (+2%/shard) & Luck Surges!
+              Sacrifice Coins to raise Altar Rank; each rank compounds Coin Devotion by 1.05×. Shards add a base +2% permanent luck each before Altar Resonator and level bonuses, and extend Luck Surges.
             </p>
           </div>
 
@@ -294,6 +297,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
                   <button
                     key={amt}
                     type="button"
+                    aria-pressed={selectedCoinOffer === amt}
                     onClick={() => setSelectedCoinOffer(amt)}
                     disabled={busy || sacrificing || state.coins < amt}
                     className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
@@ -307,6 +311,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
                 ))}
                 <button
                   type="button"
+                  aria-pressed={selectedCoinOffer === state.coins}
                   onClick={() => setSelectedCoinOffer(Math.max(0, state.coins))}
                   disabled={busy || sacrificing}
                   className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-900 border border-slate-800 text-amber-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
@@ -329,6 +334,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
                   <button
                     key={amt}
                     type="button"
+                    aria-pressed={selectedShardOffer === amt}
                     onClick={() => setSelectedShardOffer(amt)}
                     disabled={busy || sacrificing || amt > (state.shards ?? 0)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
@@ -343,6 +349,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
                 {(state.shards ?? 0) > 0 && (
                   <button
                     type="button"
+                    aria-pressed={selectedShardOffer === state.shards}
                     onClick={() => setSelectedShardOffer(state.shards)}
                     disabled={busy || sacrificing}
                     className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-900 border border-slate-800 text-cyan-400 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
@@ -356,6 +363,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
 
           <button
             type="submit"
+            aria-busy={sacrificing || busy}
             disabled={sacrificing || busy || (selectedCoinOffer <= 0 && selectedShardOffer <= 0) || state.coins < selectedCoinOffer || (state.shards ?? 0) < selectedShardOffer}
             className="w-full py-3 rounded-xl bg-gradient-to-r from-orange-600 via-amber-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 disabled:from-slate-800 disabled:to-slate-800 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-orange-950/40 transition-all active:scale-98 cursor-pointer disabled:cursor-not-allowed"
           >
@@ -381,7 +389,7 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
           </div>
 
           {/* Filter Branches */}
-          <div className="flex flex-wrap gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-slate-800">
+          <div role="group" aria-label="Filter Mastery skills by branch" className="flex flex-wrap gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-slate-800">
             {[
               { id: 'all', label: 'All Branches' },
               { id: 'fortune', label: '🍀 Fortune' },
@@ -391,6 +399,8 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
             ].map(b => (
               <button
                 key={b.id}
+                type="button"
+                aria-pressed={activeBranch === b.id}
                 onClick={() => setActiveBranch(b.id as any)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   activeBranch === b.id
@@ -470,8 +480,10 @@ export const AltarAndMasterySection: React.FC<AltarAndMasterySectionProps> = ({
                   </div>
 
                   <button
+                    type="button"
+                    aria-busy={busy || sacrificing || upgradingSkillId === skillId}
                     onClick={() => handleMasteryClick(skillId)}
-                    disabled={!canAfford || busy || isMax || sacrificing}
+                    disabled={!canAfford || busy || isMax || sacrificing || upgradingSkillId !== null}
                     className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
                       isMax
                         ? 'bg-slate-900 text-slate-600 border border-slate-800 cursor-default'

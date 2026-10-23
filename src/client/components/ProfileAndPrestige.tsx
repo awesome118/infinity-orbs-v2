@@ -650,6 +650,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => {
                     sound.playClick();
                     void onBuyPrestigeUpgrade(id);
@@ -726,6 +727,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
 
                 {isOwned ? (
                   <button
+                    type="button"
                     onClick={() => {
                       sound.playClick();
                       void onBuyCosmetic(cosmetic.id);
@@ -741,6 +743,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
                   </button>
                 ) : (
                   <button
+                    type="button"
                     onClick={() => {
                       sound.playClick();
                       void onBuyCosmetic(cosmetic.id);

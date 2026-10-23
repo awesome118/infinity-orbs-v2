@@ -101,23 +101,23 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
     actionLockRef.current = true;
     setUpgradingSkillId(skillId);
     setMasteryActionError('');
-    sound.playLevelUpFanfare();
-    if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
-    setLastUpgradedSkill(skillId);
-    highlightTimerRef.current = window.setTimeout(() => {
-      setLastUpgradedSkill(null);
-      highlightTimerRef.current = null;
-    }, 800);
-    if (allowMotionEffects()) {
-      confetti({
-        particleCount: 30,
-        spread: 45,
-        origin: { y: 0.75 },
-        colors: ['#fbbf24', '#38bdf8', '#c084fc'],
-      });
-    }
     try {
       await onUpgradeMastery(skillId);
+      sound.playLevelUpFanfare();
+      if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
+      setLastUpgradedSkill(skillId);
+      highlightTimerRef.current = window.setTimeout(() => {
+        setLastUpgradedSkill(null);
+        highlightTimerRef.current = null;
+      }, 800);
+      if (allowMotionEffects()) {
+        confetti({
+          particleCount: 30,
+          spread: 45,
+          origin: { y: 0.75 },
+          colors: ['#fbbf24', '#38bdf8', '#c084fc'],
+        });
+      }
     } catch (error) {
       setMasteryActionError(error instanceof Error ? error.message : 'Could not upgrade Mastery. Please retry.');
     } finally {
@@ -187,7 +187,7 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
             </h2>
           </div>
 
-          <div className="flex gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-slate-800 flex-wrap">
+          <div role="group" aria-label="Filter Mastery skills by branch" className="flex gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-slate-800 flex-wrap">
             {[
               { id: 'all', label: 'All Branches' },
               { id: 'fortune', label: '🍀 Fortune' },
@@ -197,6 +197,8 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
             ].map(b => (
               <button
                 key={b.id}
+                type="button"
+                aria-pressed={activeBranch === b.id}
                 onClick={() => setActiveBranch(b.id as any)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   activeBranch === b.id
@@ -364,6 +366,8 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
 
                   {/* Upgrade button showing cost inside */}
                   <button
+                    type="button"
+                    aria-busy={busy || upgradingSkillId === skillId}
                     onClick={() => handleMasteryClick(skillId)}
                     disabled={!canAfford || busy || isMax || upgradingSkillId !== null}
                     className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${

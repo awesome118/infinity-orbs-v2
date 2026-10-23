@@ -6,6 +6,7 @@ import {
   Zap,
   Flame,
   Layers,
+  Loader2,
   ChevronDown,
   ChevronUp,
   AlertCircle,
@@ -139,12 +140,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
       document.removeEventListener('visibilitychange', syncOnVisibility);
     };
   }, [readyAt, state.lastFrenzyAt, state.turboRollUntil]);
-  useEffect(() => () => {
-    if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
-  }, []);
-  useEffect(() => () => {
-    if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
-  }, []);
   const [isRevealing, setIsRevealing] = useState(false);
   const [cooldownNotice, setCooldownNotice] = useState<string | null>(null);
   const cooldownNoticeTimerRef = useRef<number | null>(null);
@@ -169,7 +164,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const hasInstantUpgrade = (state.prestigeUpgrades?.instantReveal ?? 0) > 0;
   const hasFilterUpgrade = (state.prestigeUpgrades?.autoFilter ?? 0) > 0;
   const hasResonanceUpgrade = (state.prestigeUpgrades?.resonanceMeter ?? 0) > 0;
-  const pityInterval = Math.max(6, 18 - Math.max(0, Math.min(5, Math.floor(Number(state.masterySkills?.pityAccelerant) || 0))) * 2);
+  const pityCalibration = Math.max(0, Math.min(5, Math.floor(Number(state.masterySkills?.pityAccelerant) || 0)));
+  const pityInterval = Math.max(6, 18 - pityCalibration * 2);
   const rawPityDryRolls = Number(state.rollsSinceBest ?? 0);
   const pityDryRolls = Number.isSafeInteger(rawPityDryRolls) && rawPityDryRolls >= 0 ? rawPityDryRolls : 0;
   const pityTier = Math.floor(pityDryRolls / pityInterval);
@@ -222,14 +218,22 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const remain = Math.max(0, readyAt - now);
   const freeRolls = Math.max(0, state.freeRolls ?? 0);
   // Free rolls bypass the normal cooldown, but never skip the deliberate Frenzy release wait.
-  const canRoll = (remain <= 0 || (freeRolls > 0 && !frenzyArmed)) && !busy;
+  const rawChainPatcherTarget = Number(state.chainPatcherNextRarity ?? 0);
+  const chainPatcherPending = rawChainPatcherTarget !== 0;
+  const chainPatcherCharged = Number.isSafeInteger(rawChainPatcherTarget) && rawChainPatcherTarget >= 2;
+  const canRoll = !busy && (chainPatcherPending
+    ? chainPatcherCharged && remain <= 0
+    : remain <= 0 || (freeRolls > 0 && !frenzyArmed));
+  const frenzyReady = frenzyArmed && canRoll;
+  const cooldownProgress = busy || canRoll;
   const frenzyCooldownRemain = frenzyCooldownRemaining(state.lastFrenzyAt, now);
   const frenzyUsedToday = frenzyCooldownRemain > 0;
-  const cooldownProgressPct = canRoll ? 100 : Math.max(0, Math.min(100, ((cd - remain) / Math.max(1, cd)) * 100));
+  const cooldownProgressPct = cooldownProgress ? 100 : cd > 0 ? Math.max(0, Math.min(100, ((cd - remain) / cd) * 100)) : 0;
   const multi = rollsPerActivation(state);
   const luck = luckMultiplier(state);
   const isAutoUnlocked = (state.upgrades.auto ?? 0) > 0;
   const isTurbo = Boolean(state.turboRollUntil && state.turboRollUntil > now);
+  const turboReductionPercent = (state.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 35 : 25;
   const visibleTiers = visibleContinuumTiers(state.highestRarity || 0);
   const tiersReached = visibleTiers.filter(tier => (state.highestRarity || 0) >= tier.minRarity).length;
   const nextTier = visibleTiers.find(tier => (state.highestRarity || 0) < tier.minRarity);
@@ -326,17 +330,25 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
   // Handle click on roll button or center orb
   const handleRollClick = () => {
-    if (cooldownNoticeTimerRef.current !== null) {
-      window.clearTimeout(cooldownNoticeTimerRef.current);
-      cooldownNoticeTimerRef.current = null;
-    }
+    if (busy) return;
     if (canRoll) {
+      if (cooldownNoticeTimerRef.current !== null) {
+        window.clearTimeout(cooldownNoticeTimerRef.current);
+        cooldownNoticeTimerRef.current = null;
+      }
       sound.playClick();
-      if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
-      cooldownNoticeTimerRef.current = null;
       setCooldownNotice(null);
       void onRoll();
+    } else if (chainPatcherPending && !chainPatcherCharged) {
+      sound.playClick();
+      setCooldownNotice('Chain Patcher target is invalid. Refresh your save before rolling.');
+      if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
+      cooldownNoticeTimerRef.current = window.setTimeout(() => {
+        setCooldownNotice(null);
+        cooldownNoticeTimerRef.current = null;
+      }, 2500);
     } else if (remain > 0) {
+      if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
       sound.playClick();
       setCooldownNotice(`Cooldown active (${(remain / 1000).toFixed(1)}s remaining)`);
       cooldownNoticeTimerRef.current = window.setTimeout(() => {
@@ -346,6 +358,32 @@ export const RollSection: React.FC<RollSectionProps> = ({
     }
   };
 
+  const primaryActionLabel = busy
+    ? 'ROLL IN PROGRESS'
+    : frenzyArmed
+      ? frenzyReady ? 'RELEASE FRENZY' : `WAIT ${(remain / 1000).toFixed(1)}s`
+      : chainPatcherPending
+        ? chainPatcherCharged ? 'ROLL CHAIN PATCHER' : 'CHAIN PATCHER NEEDS REPAIR'
+        : freeRolls > 0
+          ? `ROLL ALL ${freeRolls} FREE ROLLS`
+          : remain > 0
+            ? `WAIT ${(remain / 1000).toFixed(1)}s`
+            : `ROLL ${multi > 1 ? '×' + multi : ''}`;
+  const actionHint = busy
+    ? 'Resolving your roll. The result appears after the server confirms it.'
+    : frenzyArmed
+      ? frenzyReady ? 'Frenzy is armed and ready to release.' : 'Frenzy is armed; wait for the cooldown before releasing it.'
+      : chainPatcherPending
+        ? chainPatcherCharged
+          ? canRoll
+            ? `Chain Patcher is charged for 1/${formatRarity(rawChainPatcherTarget)}. One manual roll consumes it and preserves ${freeRolls} stored Free Rolls.`
+            : `Chain Patcher is charged; wait ${(remain / 1000).toFixed(1)}s. Stored Free Rolls will remain untouched.`
+          : 'The saved Chain Patcher target is invalid. Refresh your save before rolling; stored Free Rolls remain untouched.'
+        : freeRolls > 0
+          ? `One press uses all ${freeRolls} Free Rolls.`
+          : canRoll
+            ? 'Your next roll is ready.'
+            : `Next roll available in ${(remain / 1000).toFixed(1)} seconds.`;
   const hasMultipleOrbs = lastBatch.length > 1;
   const orbitRadius = typeof window !== 'undefined' && window.innerWidth < 400 ? 118 : 152;
 
@@ -382,7 +420,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
         <div className="w-full bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 rounded-xl px-3 py-1.5 flex items-center justify-between text-xs text-amber-300">
           <div className="flex items-center gap-1.5 font-bold">
             <Flame className="w-4 h-4 text-amber-400" />
-            <span>TURBO ACTIVE (-20% Cooldown)</span>
+            <span>TURBO ACTIVE (-{turboReductionPercent}% Cooldown)</span>
           </div>
           <span className="font-mono font-medium">
             {Math.ceil((state.turboRollUntil - now) / 60000)}m left
@@ -391,7 +429,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       )}
 
       {/* Main Celestial Orb Stage (Orbits & Main Orb are concentric and centered together) */}
-      <div className={`roll-stage relative w-full flex items-center justify-center select-none ${isShaking ? 'animate-screen-shake' : ''}`}>
+      <div className={`roll-stage relative w-full flex items-center justify-center select-none ${busy ? 'is-rolling' : ''} ${isShaking ? 'animate-screen-shake' : ''}`}>
         {/* Ambient Glow Background centered on orb */}
         <div
           className="absolute w-64 h-64 rounded-full blur-3xl opacity-20 pointer-events-none transition-colors duration-700"
@@ -412,8 +450,19 @@ export const RollSection: React.FC<RollSectionProps> = ({
         <div className="absolute w-60 h-60 rounded-full border border-white/10 pointer-events-none" />
         {/* The Central Main Orb */}
         <div
+          role="button"
+          tabIndex={0}
+          aria-label={primaryActionLabel.toLowerCase()}
+          aria-busy={busy}
+          aria-disabled={busy}
           onClick={handleRollClick}
-          className={`relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 ${cosmeticEffectClass} ${
+          onKeyDown={event => {
+            if (!event.repeat && (event.key === 'Enter' || event.key === ' ')) {
+              event.preventDefault();
+              handleRollClick();
+            }
+          }}
+          className={`relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 ${cosmeticEffectClass} ${
             isRevealing ? 'scale-105 ring-4 ring-white/60' : 'hover:scale-102'
           }`}
           style={{
@@ -479,6 +528,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
             <div className="text-xs font-semibold text-white/90 mt-1 drop-shadow">
               {orbInfo ? orbInfo.name : 'Tap to Roll'}
             </div>
+            <div className="mt-2 text-[10px] text-slate-300/80" aria-label={`Personal best rarity 1 in ${formatRarity(state.highestRarity)}`}>
+              Personal best · 1/{formatRarity(state.highestRarity)}
+            </div>
           </div>
 
           {/* Critical Roll Badge */}
@@ -534,6 +586,17 @@ export const RollSection: React.FC<RollSectionProps> = ({
               }}
             />
           </div>
+          {hasResonanceUpgrade && (
+            <div className="pity-meter mt-3 w-48">
+              <div className="flex items-center justify-between gap-2 text-[10px] text-slate-400">
+                <span>Pity Luck · Tier {pityTier}</span>
+                <span>{pityRollsIntoTier} / {pityInterval} rolls to next stack</span>
+              </div>
+              <div role="progressbar" aria-label="Pity Luck progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pityProgressPct} className="h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1">
+                <div className="h-full bg-gradient-to-r from-fuchsia-500 to-cyan-400" style={{ width: `${pityProgressPct}%` }} />
+              </div>
+            </div>
+          )}
           {cooldownNotice && (
             <div className="text-[11px] text-amber-400 mt-1 font-medium animate-in fade-in duration-200">
               {cooldownNotice}
@@ -555,7 +618,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           disabled={busy}
           aria-busy={busy}
           onClick={handleRollClick}
-          className={'roll-button ' + (frenzyArmed ? 'frenzy-supercharged' : canRoll ? 'is-ready' : 'is-waiting') + ' w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ' +
+          className={'roll-button ' + (busy ? 'is-waiting' : frenzyReady ? 'frenzy-supercharged' : canRoll ? 'is-ready' : 'is-waiting') + ' w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ' +
             (frenzyArmed
               ? 'bg-fuchsia-700 hover:bg-fuchsia-600 text-white border border-fuchsia-300/40 shadow-[0_0_36px_rgba(217,70,239,0.38)]'
               : canRoll
@@ -563,9 +626,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
               : busy
               ? 'bg-slate-800 text-slate-400 cursor-wait'
               : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700')}
-          aria-label={busy ? 'Roll in progress' : frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} Free Rolls` : 'Roll'}
-          disabled={busy}
-          aria-busy={busy}
+          aria-label={busy ? 'Rolling orbs' : frenzyArmed ? 'Release Frenzy roll' : freeRolls > 0 ? `Roll all ${freeRolls} Free Rolls` : 'Roll'}
+          aria-describedby="roll-action-hint"
         >
           {frenzyArmed && (
             <>
@@ -573,23 +635,12 @@ export const RollSection: React.FC<RollSectionProps> = ({
               <Zap className='frenzy-lightning frenzy-lightning-right w-5 h-5' />
             </>
           )}
-          <Sparkles className={'w-5 h-5 ' + (frenzyArmed ? 'text-yellow-200 frenzy-spark' : 'text-cyan-300')} />
-          <span>
-            {busy
-              ? 'ROLLING...'
-              : frenzyArmed
-              ? remain > 0
-                ? 'WAIT ' + (remain / 1000).toFixed(1) + 's'
-                : 'RELEASE FRENZY'
-              : freeRolls > 0
-              ? 'ROLL ALL ' + freeRolls + ' FREE ROLLS'
-              : remain > 0
-              ? 'WAIT ' + (remain / 1000).toFixed(1) + 's'
-              : freeRolls > 0
-              ? 'USE ALL ' + freeRolls + ' FREE ROLL' + (freeRolls === 1 ? '' : 'S')
-              : 'ROLL ' + (multi > 1 ? '×' + multi : '')}
-          </span>
+          {busy
+            ? <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
+            : <Sparkles className={'w-5 h-5 ' + (frenzyArmed ? 'text-yellow-200 frenzy-spark' : 'text-cyan-300')} />}
+          <span>{primaryActionLabel}</span>
         </button>
+        <div id="roll-action-hint" className="roll-action-hint" aria-live="polite">{actionHint}</div>
 
         <button
           type="button"

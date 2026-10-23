@@ -218,6 +218,7 @@ export function App() {
   const [tutorialDismissed, setTutorialDismissed] = useState(false);
   const [tutorialStatusLoaded, setTutorialStatusLoaded] = useState(false);
   useEffect(() => {
+    if (!splashEntered || !state) return;
     let active = true;
     let localDone = false;
     try {
@@ -244,7 +245,7 @@ export function App() {
         if (active) setTutorialStatusLoaded(true);
       });
     return () => { active = false; };
-  }, []);
+  }, [splashEntered, Boolean(state)]);
   useEffect(() => {
     if (tutorialStatusLoaded && !tutorialDismissed && state && state.totalRolls > 0 && state.totalRolls <= 3 && tutorialStep === 0) setTutorialStep(1);
   }, [state?.totalRolls, tutorialDismissed, tutorialStep, tutorialStatusLoaded]);
@@ -254,6 +255,7 @@ export function App() {
   });
   const [combatTutorialStatusLoaded, setCombatTutorialStatusLoaded] = useState(false);
   useEffect(() => {
+    if (!splashEntered || !state) return;
     let active = true;
     let localDone = false;
     try { localDone = window.localStorage.getItem('io-combat-tutorial-v1') === 'done'; } catch { /* Use server persistence when webview storage is unavailable. */ }
@@ -276,7 +278,7 @@ export function App() {
         if (active) setCombatTutorialStatusLoaded(true);
       });
     return () => { active = false; };
-  }, []);
+  }, [splashEntered, Boolean(state)]);
   useEffect(() => {
     const coreTutorialDone = tutorialDismissed || Number(state?.totalRolls ?? 0) > 3;
     if (combatTutorialStatusLoaded && coreTutorialDone && !combatTutorialDismissed && state && state.level >= FEATURE_UNLOCK_LEVELS.combat && combatTutorialStep === 0) {
@@ -305,7 +307,12 @@ export function App() {
   const [toast, setToast] = useState<{ msg: string; type?: 'info' | 'success' | 'warn' } | null>(null);
 
   useEffect(() => {
+    if (!splashEntered) return;
+    let cancelled = false;
+    let inFlight = false;
     const pollAnnouncement = async () => {
+      if (cancelled || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
       try {
         const announcement = await getJson<{
           id: GlobalBoosterId;
@@ -313,42 +320,50 @@ export function App() {
           username: string;
           activatedAt: number;
         } | null>('/api/global-booster-announcement');
-        if (!announcement || announcement.activatedAt <= lastBoosterAnnouncementAtRef.current) return;
-
+        if (cancelled || !announcement || announcement.activatedAt <= lastBoosterAnnouncementAtRef.current) return;
         lastBoosterAnnouncementAtRef.current = announcement.activatedAt;
         setBoosterAnnouncement(announcement);
-        if (boosterAnnouncementTimerRef.current !== null) {
-          window.clearTimeout(boosterAnnouncementTimerRef.current);
-        }
+        if (boosterAnnouncementTimerRef.current !== null) window.clearTimeout(boosterAnnouncementTimerRef.current);
         boosterAnnouncementTimerRef.current = window.setTimeout(() => {
           setBoosterAnnouncement(null);
           boosterAnnouncementTimerRef.current = null;
         }, 5000);
       } catch {
         // Announcement polling is best-effort and never blocks gameplay.
+      } finally {
+        inFlight = false;
       }
     };
-
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void pollAnnouncement(); };
     void pollAnnouncement();
     const interval = window.setInterval(() => void pollAnnouncement(), 5000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
+      cancelled = true;
       window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       if (boosterAnnouncementTimerRef.current !== null) {
         window.clearTimeout(boosterAnnouncementTimerRef.current);
+        boosterAnnouncementTimerRef.current = null;
       }
     };
-  }, []);
+  }, [splashEntered]);
 
   useEffect(() => {
-    void getJson<{ isBeta: boolean }>('/api/app-info').then(info => setIsBeta(info.isBeta === true)).catch(() => setIsBeta(false));
-  }, []);
+    if (!splashEntered) return;
+    let cancelled = false;
+    void getJson<{ isBeta: boolean }>('/api/app-info')
+      .then(info => { if (!cancelled) setIsBeta(info.isBeta === true); })
+      .catch(() => { if (!cancelled) setIsBeta(false); });
+    return () => { cancelled = true; };
+  }, [splashEntered]);
 
   useEffect(() => {
     // A post preview is not a player session. Count activity only after Play
     // opens the actual game, otherwise previews inflate online-player counts.
     if (!state || !splashEntered) return;
     const heartbeat = () => {
-      if (document.visibilityState === 'hidden') return;
+      if (!splashEntered || document.visibilityState === 'hidden') return;
       void getJson('/api/activity/heartbeat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -413,9 +428,13 @@ export function App() {
   const frenzyClaimActiveRef = useRef(false);
   const componentMountedRef = useRef(true);
   const stateRevisionRef = useRef(0);
+  const refreshSequenceRef = useRef(0);
   const authSessionEpochRef = useRef(0);
 
   useEffect(() => {
+    // React Strict Mode replays effects in development. Restore the mounted
+    // flag on every setup so the replayed cleanup cannot suppress real claims.
+    componentMountedRef.current = true;
     return () => {
       componentMountedRef.current = false;
       if (toastTimerRef.current !== null) {
@@ -681,29 +700,23 @@ export function App() {
   }, []);
 
   const refreshAll = useCallback(async () => {
+    const refreshSequence = ++refreshSequenceRef.current;
     const revisionAtStart = stateRevisionRef.current;
     try {
-      // Load the player's state first. Admin/debug status is auxiliary and must
-      // never block the entire game from rendering if that endpoint is slow.
       const me = await getJsonWithTimeout<PlayerState>('/api/me');
-      try {
-        window.sessionStorage.removeItem('io-wipe-recovery');
-      } catch {
-        // sessionStorage can be unavailable in some embedded webviews.
-      }
-      if (revisionAtStart !== stateRevisionRef.current) return;
+      if (!componentMountedRef.current) return;
+      try { window.sessionStorage.removeItem('io-wipe-recovery'); } catch { /* Embedded storage is optional. */ }
+      if (refreshSequence !== refreshSequenceRef.current || revisionAtStart !== stateRevisionRef.current) return;
       applyPlayerState(me);
       setAuthRequired(false);
       setStartupError(null);
+      if (!splashEntered) return;
 
-      // Admin status is intentionally independent from game-state loading.
       const adminStatus = await getJson<{ isAdmin: boolean }>('/api/dev/status').catch(() => ({ isAdmin: false }));
+      if (!componentMountedRef.current) return;
+      if (refreshSequence !== refreshSequenceRef.current) return;
       setIsAdmin(adminStatus.isAdmin === true);
-
-      // A banned non-admin only needs their own state so the ban screen can load.
-      // The admin may continue to use the normal game endpoints while testing a ban.
       if (me.gameBan?.active) return;
-
       const [lb, lbs, gd, we, announcement, notificationState] = await Promise.all([
         getJson<LeaderboardEntry[]>('/api/leaderboard').catch(() => []),
         getJson<LeaderboardBoards>('/api/leaderboards').catch(() => null),
@@ -712,15 +725,19 @@ export function App() {
         getJson<{ message: string; updatedAt: number; updatedBy: string } | null>('/api/developer-announcement').catch(() => null),
         getJson<{ enabled: boolean }>('/api/notifications').catch(() => ({ enabled: false })),
       ]);
-
+      if (!componentMountedRef.current) return;
+      if (refreshSequence !== refreshSequenceRef.current) return;
       setLeaderboardData(lb);
       setLeaderboards(lbs);
       setGuildData(gd);
       setWorldEvent(we);
-      if (announcement === null || !announcement.message) setDeveloperAnnouncement(null);
-      else setDeveloperAnnouncement(announcement);
+      setDeveloperAnnouncement(announcement?.message ? announcement : null);
       setNotificationsEnabled(notificationState.enabled === true);
     } catch (e: any) {
+      // Do not let a late error from an older request clear a newer session or
+      // overwrite a newer successful refresh with a stale network error.
+      if (!componentMountedRef.current) return;
+      if (refreshSequence !== refreshSequenceRef.current || revisionAtStart !== stateRevisionRef.current) return;
       if (e?.message === 'REDDIT_LOGIN_REQUIRED') {
         setAuthRequired(true);
         stateRef.current = null;
@@ -740,153 +757,180 @@ export function App() {
       setStartupError(message);
       console.error('Refresh error:', e);
     }
-  }, []);
+  }, [applyPlayerState, splashEntered]);
 
   useEffect(() => {
-    if (!stateRef.current) return;
+    if (!splashEntered || !stateRef.current) return;
     void ensureRollTicket().catch(() => null);
-  }, [state?.stateRevision, ensureRollTicket]);
+  }, [state?.stateRevision, ensureRollTicket, splashEntered]);
 
-  // Initial load. Timer updates stay local to the screens that display them.
+  // First pass loads the save for the splash; toggling splashEntered reruns
+  // refreshAll to fetch the remaining panels once the player presses Play.
   useEffect(() => {
     void refreshAll();
   }, [refreshAll]);
 
-  // Live developer announcement feed. All open clients poll the same Redis-backed
+    // Live developer announcement feed. All open clients poll the same Redis-backed
   // announcement so edits appear automatically without requiring a page refresh.
   useEffect(() => {
+    if (!splashEntered) return;
     let cancelled = false;
-
+    let inFlight = false;
     const pollDeveloperAnnouncement = async () => {
+      if (cancelled || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
       try {
         const announcement = await getJson<{ message: string; updatedAt: number; updatedBy: string } | null>('/api/developer-announcement');
         if (cancelled) return;
-
         if (!announcement?.message) {
           setDeveloperAnnouncement(null);
           return;
         }
-
-        if (announcement.updatedAt > dismissedDeveloperAnnouncementRef.current) {
-          setDeveloperAnnouncement(announcement);
-        } else {
-          setDeveloperAnnouncement(null);
-        }
+        setDeveloperAnnouncement(announcement.updatedAt > dismissedDeveloperAnnouncementRef.current ? announcement : null);
       } catch {
-        // Announcement polling is best-effort and must never block gameplay.
+        // Announcement polling is best-effort and never blocks gameplay.
+      } finally {
+        inFlight = false;
       }
     };
-
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void pollDeveloperAnnouncement(); };
     void pollDeveloperAnnouncement();
     const interval = window.setInterval(() => void pollDeveloperAnnouncement(), 10000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, []);
+  }, [splashEntered]);
 
   // Detect when the installed game has a newer client bundle. The endpoint is
   // deliberately uncached so stale Reddit/CDN responses do not hide updates.
   useEffect(() => {
+    if (!splashEntered) return;
+    let cancelled = false;
+    let inFlight = false;
     const checkForUpdate = async () => {
+      if (cancelled || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
       try {
-        const res = await fetch('/api/version?check=' + Date.now(), {
-          cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache' },
-        });
-        if (!res.ok) return;
+        const res = await fetch('/api/version?check=' + Date.now(), { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
+        if (cancelled || !res.ok) return;
         const data = await res.json() as { version?: string };
-        if (data.version && data.version !== APP_VERSION) {
-          setUpdateAvailable(true);
-        }
+        if (!cancelled && data.version && data.version !== APP_VERSION) setUpdateAvailable(true);
       } catch {
-        // Update detection is best-effort and must never block gameplay.
+        // Update detection is best-effort and never blocks gameplay.
+      } finally {
+        inFlight = false;
       }
     };
-
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void checkForUpdate(); };
     void checkForUpdate();
     const interval = window.setInterval(() => void checkForUpdate(), 30_000);
-    return () => window.clearInterval(interval);
-  }, []);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [splashEntered]);
 
   // Refresh live community state while visible; hidden webviews should not poll.
   useEffect(() => {
+    if (!splashEntered) return;
     const pollInterval = tab === 'social' ? 3000 : 8000;
-    const refreshCommunityState = () => {
-      if (document.visibilityState === 'hidden') return;
-      void getJson<WorldEvent | null>('/api/world-event').then(we => {
+    let cancelled = false;
+    let inFlight = false;
+    const refreshCommunityState = async () => {
+      if (!splashEntered) return;
+      if (inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      try {
+        const we = await getJson<WorldEvent | null>('/api/world-event');
+        if (cancelled) return;
         setWorldEvent(we);
-      }).catch(() => null);
-
-      if (tab === 'social') {
-        void getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds').then(gd => {
-          if (gd) setGuildData(gd);
-        }).catch(() => null);
+        if (tab === 'social') {
+          const gd = await getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds');
+          if (!cancelled && gd) setGuildData(gd);
+        }
+      } catch {
+        // Community panels recover on a later poll without blocking gameplay.
+      } finally {
+        inFlight = false;
       }
     };
-    refreshCommunityState();
-    const interval = window.setInterval(refreshCommunityState, pollInterval);
-    document.addEventListener('visibilitychange', refreshCommunityState);
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void refreshCommunityState(); };
+    void refreshCommunityState();
+    const interval = window.setInterval(() => void refreshCommunityState(), pollInterval);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
+      cancelled = true;
       window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', refreshCommunityState);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [tab]);
-
+  }, [tab, splashEntered]);
 
   // Global Boosters are shared state, so refresh them independently of player-state polling.
   useEffect(() => {
-    if (tab !== 'boosters') return;
-
-    const refreshGlobalBoosters = () => {
-      if (document.visibilityState === 'hidden') return;
-      void getJson<GlobalBoosterSnapshot>('/api/global-boosters')
-        .then(snapshot => {
-          if (snapshot) {
-            latestGlobalBoostersRef.current = snapshot;
-            if (stateRef.current) {
-              stateRef.current = { ...stateRef.current, globalBoosters: snapshot };
-            }
-            setState(prev => prev ? { ...prev, globalBoosters: snapshot } : prev);
-          }
-        })
-        .catch(() => null);
+    if (!splashEntered || tab !== 'boosters') return;
+    let cancelled = false;
+    let inFlight = false;
+    const refreshGlobalBoosters = async () => {
+      if (cancelled || !splashEntered || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      try {
+        const snapshot = await getJson<GlobalBoosterSnapshot>('/api/global-boosters');
+        if (cancelled || !snapshot) return;
+        latestGlobalBoostersRef.current = snapshot;
+        if (stateRef.current) stateRef.current = { ...stateRef.current, globalBoosters: snapshot };
+        setState(prev => prev ? { ...prev, globalBoosters: snapshot } : prev);
+      } catch {
+        // A failed shared-state refresh is retried on the next visible poll.
+      } finally {
+        inFlight = false;
+      }
     };
-
-    refreshGlobalBoosters();
-    const interval = window.setInterval(refreshGlobalBoosters, 5000);
-    document.addEventListener('visibilitychange', refreshGlobalBoosters);
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void refreshGlobalBoosters(); };
+    void refreshGlobalBoosters();
+    const interval = window.setInterval(() => void refreshGlobalBoosters(), 5000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
+      cancelled = true;
       window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', refreshGlobalBoosters);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [tab]);
+  }, [tab, splashEntered]);
 
   // Presence is independent from player-state persistence. Do not poll /api/me
   // here because game-state reads must never be responsible for saving the player.
   useEffect(() => {
     if (!splashEntered) return;
-    const refreshPresence = () => {
-      if (document.visibilityState === 'hidden') return;
-      void getJson<{ onlinePlayers: number }>('/api/online')
-        .then(({ onlinePlayers }) => {
-          const safeOnlinePlayers = Number.isSafeInteger(onlinePlayers)
-            ? Math.max(0, onlinePlayers)
-            : 0;
-          onlinePlayersRef.current = safeOnlinePlayers;
-          if (stateRef.current) {
-            stateRef.current = { ...stateRef.current, onlinePlayers: safeOnlinePlayers };
-          }
-          setState(prev => prev ? { ...prev, onlinePlayers: safeOnlinePlayers } : prev);
-        })
-        .catch(() => null);
+    let cancelled = false;
+    let inFlight = false;
+    const refreshPresence = async () => {
+      if (inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      try {
+        const { onlinePlayers } = await getJson<{ onlinePlayers: number }>('/api/online');
+        if (cancelled) return;
+        const safeOnlinePlayers = Number.isSafeInteger(onlinePlayers) ? Math.max(0, onlinePlayers) : 0;
+        onlinePlayersRef.current = safeOnlinePlayers;
+        if (stateRef.current) stateRef.current = { ...stateRef.current, onlinePlayers: safeOnlinePlayers };
+        setState(prev => prev ? { ...prev, onlinePlayers: safeOnlinePlayers } : prev);
+      } catch {
+        // Presence is supplementary; retry on the next visible poll.
+      } finally {
+        inFlight = false;
+      }
     };
-    refreshPresence();
-    const presenceInterval = window.setInterval(refreshPresence, 10_000);
-    document.addEventListener('visibilitychange', refreshPresence);
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void refreshPresence(); };
+    void refreshPresence();
+    const presenceInterval = window.setInterval(() => void refreshPresence(), 10_000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
+      cancelled = true;
       window.clearInterval(presenceInterval);
-      document.removeEventListener('visibilitychange', refreshPresence);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [splashEntered]);
 
@@ -894,6 +938,9 @@ export function App() {
     if (!state || !splashEntered || frenzyRunTriggered || frenzyClaimActiveRef.current) return;
 
     const resolveFrenzy = async () => {
+      // Lock before the first await. Effect replay must not run a second
+      // handoff preflight before the first request reaches its claim guard.
+      frenzyClaimActiveRef.current = true;
       let readyToClaim = false;
       let claimedFrenzyInfo: { rarity: number; ownerUsername: string; postId: string } | null = null;
       let lastPreflightError: unknown = null;
@@ -935,7 +982,7 @@ export function App() {
         return;
       }
 
-      frenzyClaimActiveRef.current = true;
+      if (!componentMountedRef.current) return;
       setFrenzyRunTriggered(true);
       setBusy(true);
       setIsRolling(true);
@@ -991,24 +1038,28 @@ export function App() {
 
     void resolveFrenzy()
       .catch(error => {
-        showToast(error?.message || 'Could not claim Orb Frenzy.', 'warn');
+        if (componentMountedRef.current) {
+          showToast(error?.message || 'Could not claim Orb Frenzy.', 'warn');
+        }
       })
       .finally(() => {
+        frenzyClaimActiveRef.current = false;
+        if (!componentMountedRef.current) return;
         setIsRolling(false);
         setBusy(false);
       });
   }, [state, splashEntered, frenzyRunTriggered, applyPlayerState, enqueueMutation]);
 
   useEffect(() => {
+    if (!splashEntered) return;
     const startedAt = Date.now();
-
     const checkPrompt = () => {
+      if (!splashEntered) return;
       const now = Date.now();
       const current = stateRef.current;
       if (!current || now - startedAt < FRENZY_PROMPT_DELAY_MS) return;
       if (!canShowDailyFrenzyPrompt(current.lastFrenzyAt ?? current.lastFrenzyDate, now)) return;
       if (frenzyPromptShownRef.current) return;
-
       const storageKey = `io-frenzy-prompt-shown-${todayKey(now)}`;
       try {
         if (window.localStorage.getItem(storageKey) === '1') return;
@@ -1017,20 +1068,18 @@ export function App() {
         // Storage can be unavailable in embedded webviews. The in-memory
         // state still prevents repeated prompts during this session.
       }
-
       frenzyPromptShownRef.current = true;
       setShowFrenzyPrompt(true);
     };
-
     const interval = window.setInterval(checkPrompt, 15_000);
     checkPrompt();
     return () => window.clearInterval(interval);
-  }, []);
+  }, [splashEntered]);
 
   // Social quests count only when the player actually opens the social area.
   // Background leaderboard/guild refreshes must not award the visit quest.
   useEffect(() => {
-    if (tab !== 'social') return;
+    if (!splashEntered || tab !== 'social') return;
 
     // Mark the visit locally before the server records it. The server response
     // remains authoritative for quest progress and cross-device state.
@@ -1053,13 +1102,15 @@ export function App() {
       .catch(() => {
         rollback?.();
       });
-  }, [applyPlayerState, beginOptimisticState, tab]);
+  }, [applyPlayerState, beginOptimisticState, tab, splashEntered]);
 
   // Roll action
   const handleRoll = useCallback(async (isAutoRoll = false) => {
+    if (isAutoRoll && !splashEntered) return;
     if (rollActionLockRef.current) return;
     const currentState = stateRef.current;
     if (!currentState) return;
+    const previousBest = Math.max(2, Number(currentState.highestRarity) || 2);
 
     rollActionLockRef.current = true;
     let frenzySubmissionInFlight = false;
@@ -1088,6 +1139,10 @@ export function App() {
           dramaticReveal: boolean;
         }>('/api/frenzy/start', { method: 'POST' }));
 
+        const latestBest = Math.max(2, Number(res.state.highestRarity) || 2);
+        if (res.orb.rarity > previousBest && res.orb.rarity >= latestBest) {
+          setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+        }
         applyPlayerState(res.state);
         setFrenzyArmed(false);
         setLastOrb(res.orb);
@@ -1133,6 +1188,10 @@ export function App() {
         }),
       }));
 
+      const latestBest = Math.max(2, Number(res.state.highestRarity) || 2);
+      if (!isAutoRoll && res.orb.rarity > previousBest && res.orb.rarity >= latestBest) {
+        setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+      }
       applyPlayerState(res.state);
       setLastOrb(res.orb);
       setLastBatch(res.batch ?? [res.orb]);
@@ -1164,18 +1223,19 @@ export function App() {
     ensureRollTicket,
     refreshAll,
     frenzyArmed,
+    splashEntered,
   ]);
 
   // Auto roll watcher (paced steadily)
   useEffect(() => {
-    if (!autoRoll || !state || state.upgrades.auto === 0) return;
+    if (!splashEntered || !autoRoll || !state || state.upgrades.auto === 0) return;
     const interval = setInterval(() => {
       if (Date.now() >= readyAt && !isRolling) {
         void handleRoll(true);
       }
     }, 300);
     return () => clearInterval(interval);
-  }, [autoRoll, state, readyAt, isRolling, handleRoll]);
+  }, [autoRoll, state, readyAt, isRolling, handleRoll, splashEntered]);
 
   // Standard upgrades are applied optimistically, queued for a short burst
   // window, and validated together by one authoritative server mutation.
@@ -1389,6 +1449,7 @@ export function App() {
   const handleActivateTurbo = async () => {
     setBusy(true);
     const durationMinutes = (stateRef.current?.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 60 : 30;
+    const turboReductionPercent = durationMinutes === 60 ? 35 : 25;
     const durationMs = durationMinutes * 60 * 1000;
     const rollback = beginOptimisticState(current => {
       if ((current.shards ?? 0) < 5) return current;
@@ -1405,7 +1466,7 @@ export function App() {
       const res = await getJson<{ state: PlayerState }>('/api/turbo/activate', { method: 'POST' });
       applyPlayerState(res.state);
       sound.playChime(880, 'sawtooth', 0.3);
-      showToast(`Turbo Roll Activated! Cooldowns reduced by 20% for ${durationMinutes}m.`, 'success');
+      showToast(`Turbo Roll Activated! Cooldowns reduced by ${turboReductionPercent}% for ${durationMinutes}m.`, 'success');
     } catch (e: any) {
       rollback?.();
       showToast(e.message || 'Could not activate turbo roll', 'warn');
@@ -1621,8 +1682,13 @@ export function App() {
       offlineRolls: 0,
       lastSeenAt: Date.now(),
     }));
+    const previousBest = Math.max(2, Number(stateRef.current?.highestRarity) || 2);
     try {
       const res = await getJson<RollResponse>('/api/offline/claim', { method: 'POST' });
+      const latestBest = Math.max(2, Number(res.state.highestRarity) || 2);
+      if (res.orb.rarity > previousBest && res.orb.rarity >= latestBest) {
+        setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+      }
       applyPlayerState(res.state);
       setLastOrb(res.orb);
       setLastBatch(res.batch ?? [res.orb]);
@@ -1745,7 +1811,7 @@ export function App() {
       showToast('Mastery Skill enhanced!', 'success');
     } catch (e: any) {
       rollback?.();
-      showToast(e.message || 'Mastery upgrade failed', 'warn');
+      throw e;
     } finally {
       setBusy(false);
     }
@@ -2282,7 +2348,7 @@ export function App() {
                 <div className="mb-3 text-xs text-emerald-400 font-semibold">
                   Admin access remains available while this account is game-banned.
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setShowDevModal(true)}
                   className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm"
                 >
@@ -2396,7 +2462,7 @@ export function App() {
               <RefreshCw className="w-4 h-4 shrink-0" />
               <span>New update, please refresh!</span>
             </div>
-            <button
+            <button type="button"
               onClick={() => window.location.reload()}
               className="shrink-0 rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-black text-slate-950 hover:bg-amber-300 transition-colors"
             >
@@ -2414,7 +2480,7 @@ export function App() {
               <div className="text-[10px] uppercase tracking-wider font-black text-cyan-300">Developer Announcement</div>
               <div className="mt-1 text-sm text-slate-200 whitespace-pre-wrap break-words">{developerAnnouncement.message}</div>
             </div>
-            <button
+            <button type="button"
               onClick={dismissDeveloperAnnouncement}
               className="shrink-0 p-1 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
               title="Dismiss this developer announcement"
@@ -2437,7 +2503,7 @@ export function App() {
                   Enable Reddit notifications to get alerts when your offline Orb storage fills up.
                 </p>
               </div>
-              <button
+              <button type="button"
                 onClick={() => setShowNotificationPrompt(false)}
                 className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800"
                 aria-label="Close notification prompt"
@@ -2446,13 +2512,13 @@ export function App() {
               </button>
             </div>
             <div className="mt-5 flex gap-2">
-              <button
+              <button type="button"
                 onClick={() => void handleEnableNotificationsFromPrompt()}
                 className="flex-1 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 px-4 py-2.5 text-xs font-black text-white"
               >
                 Enable Notifications
               </button>
-              <button
+              <button type="button"
                 onClick={() => setShowNotificationPrompt(false)}
                 className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300"
               >
@@ -2638,13 +2704,13 @@ export function App() {
           </button>
           </>}
           {combatMode && <>
-            <button aria-current={tab === 'fight' ? 'page' : undefined} onClick={() => changeTab('fight')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (tab === 'fight' ? " is-active" : "")}><Flame className="w-3.5 h-3.5" /><span>Fight</span></button>
-            <button aria-current={tab === 'dungeons' ? 'page' : undefined} onClick={() => changeTab('dungeons')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'dungeons' ? " is-active" : "")}><DoorOpen className="w-3.5 h-3.5" /><span>Dungeons</span></button>
-            <button aria-current={tab === 'gear' ? 'page' : undefined} onClick={() => changeTab('gear')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'gear' ? " is-active" : "")}><Package className="w-3.5 h-3.5" /><span>Gear</span></button>
-            <button aria-current={tab === 'forge' ? 'page' : undefined} onClick={() => changeTab('forge')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'forge' ? " is-active" : "")}><Hammer className="w-3.5 h-3.5" /><span>Forge</span></button>
-            <button aria-current={tab === 'skills' ? 'page' : undefined} onClick={() => changeTab('skills')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'skills' ? " is-active" : "")}><Sparkles className="w-3.5 h-3.5" /><span>Skills</span></button>
-            <button aria-current={tab === 'arena' ? 'page' : undefined} onClick={() => changeTab('arena')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'arena' ? " is-active" : "")}><Users className="w-3.5 h-3.5" /><span>Arena</span><span className="io-combat-soon">NEXT</span></button>
-            <button aria-current={tab === 'runes' ? 'page' : undefined} onClick={() => changeTab('runes')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'runes' ? " is-active" : "")}><Gem className="w-3.5 h-3.5" /><span>Runes</span></button>
+            <button type="button" aria-current={tab === 'fight' ? 'page' : undefined} onClick={() => changeTab('fight')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (tab === 'fight' ? " is-active" : "")}><Flame className="w-3.5 h-3.5" /><span>Fight</span></button>
+            <button type="button" aria-current={tab === 'dungeons' ? 'page' : undefined} onClick={() => changeTab('dungeons')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'dungeons' ? " is-active" : "")}><DoorOpen className="w-3.5 h-3.5" /><span>Dungeons</span></button>
+            <button type="button" aria-current={tab === 'gear' ? 'page' : undefined} onClick={() => changeTab('gear')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'gear' ? " is-active" : "")}><Package className="w-3.5 h-3.5" /><span>Gear</span></button>
+            <button type="button" aria-current={tab === 'forge' ? 'page' : undefined} onClick={() => changeTab('forge')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'forge' ? " is-active" : "")}><Hammer className="w-3.5 h-3.5" /><span>Forge</span></button>
+            <button type="button" aria-current={tab === 'skills' ? 'page' : undefined} onClick={() => changeTab('skills')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'skills' ? " is-active" : "")}><Sparkles className="w-3.5 h-3.5" /><span>Skills</span></button>
+            <button type="button" aria-current={tab === 'arena' ? 'page' : undefined} onClick={() => changeTab('arena')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'arena' ? " is-active" : "")}><Users className="w-3.5 h-3.5" /><span>Arena</span><span className="io-combat-soon">NEXT</span></button>
+            <button type="button" aria-current={tab === 'runes' ? 'page' : undefined} onClick={() => changeTab('runes')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'runes' ? " is-active" : "")}><Gem className="w-3.5 h-3.5" /><span>Runes</span></button>
           </>}
         </div>
       </div>
@@ -2841,7 +2907,7 @@ export function App() {
               </div>
             </div>
             <div className="io-modal-actions">
-              <button
+              <button type="button"
                 onClick={() => {
                   setShowFrenzyPrompt(false);
                   void handleStartOrbFrenzy();
@@ -2852,7 +2918,7 @@ export function App() {
                 <Flame className="w-4 h-4" />
                 {busy ? 'Charging…' : 'Charge My Frenzy'}
               </button>
-              <button
+              <button type="button"
                 onClick={() => setShowFrenzyPrompt(false)}
                 className="io-public-button io-public-button-secondary"
               >

@@ -134,6 +134,12 @@ function createSecureId(prefix: string): string {
   throw new Error('Secure identifier generation is unavailable.');
 }
 
+const secureRequestToken = (): string => {
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+};
+
 function normalizePaymentOrder(value: unknown, depth = 0): PaymentOrder {
   const parsed = parsePaymentPayload(value);
   const record = paymentRecord(parsed);
@@ -305,6 +311,8 @@ export function createApp() {
   // Persistent player data is keyed by Reddit user ID. Logged-out users have
   // no account identity, so they must never reach player-state APIs.
   app.use('/api', (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
     if (req.path === '/health' || req.path === '/version' || req.path === '/app-info' || req.path === '/impressions') return next();
     const userId = String(context.userId ?? '').trim();
     if (!userId) {
@@ -333,7 +341,7 @@ export function createApp() {
 
   const mutationLockKey = (playerKey: string) => MUTATION_LOCK_PREFIX + playerKey;
 
-  const mutationLockOwner = (): string => createSecureId('mutation');
+  const mutationLockOwner = (): string => 'lease-' + secureRequestToken();
 
   const parseMutationLock = (raw: string | null): { owner: string; expiresAt: number } | null => {
     if (!raw) return null;
@@ -512,7 +520,7 @@ export function createApp() {
     if (!feature) return next();
 
     try {
-      const s = await loadRaw();
+      const s = await loadRaw({ registerActivity: false });
       const requiredLevel = FEATURE_UNLOCK_LEVELS[feature];
       const storedLevel = Math.max(1, Number(s.level) || 1);
       const xpLevel = Math.max(1, calculateLevelFromXp(Number(s.xp) || 0).level);
@@ -801,7 +809,7 @@ export function createApp() {
         title: 'Infinity Orbs',
         entry: 'default',
       });
-      await redis.set('io:global-game-post-id', post.id, { nx: true }).catch((error: unknown) => {
+      await redis.set('io:global-game-post-id', post.id).catch((error: unknown) => {
         console.error('[Global Chat] Could not register the new Game post:', error);
       });
       res.json({ navigateTo: `https://reddit.com/r/${subredditName}/comments/${post.id}` });
@@ -819,7 +827,7 @@ export function createApp() {
         title: 'Infinity Orbs',
         entry: 'default',
       });
-      await redis.set('io:global-game-post-id', post.id, { nx: true }).catch((error: unknown) => {
+      await redis.set('io:global-game-post-id', post.id).catch((error: unknown) => {
         console.error('[Global Chat] Could not register the new Game post:', error);
       });
       res.json({ status: 'success', message: `Created Infinity Orbs post ${post.id} in r/${subredditName}.` });
@@ -1065,21 +1073,22 @@ export function createApp() {
     }
   });
 
-  app.get('/api/chat/status', async (req, res) => {
+  app.get('/api/chat/status', async (_req, res) => {
     try {
-      // The GlobalChatWindow is mounted by the main launcher entry point.
-      // Explicitly mark that handshake so stale test/Frenzy metadata cannot
-      // prevent the main Game post from registering itself.
-      res.json(await getGlobalChatStatus(
-        req.query.launcher === 'main',
-        req.query.launcher === 'frenzy',
-      ));
+      res.json(await getGlobalChatStatus());
     } catch (e) { badRequest(res, e, 'Could not determine Global Chat availability.'); }
   });
 
   app.get('/api/chat', async (_req, res) => {
-    try { res.json(await getGlobalChat()); }
-    catch (e) { badRequest(res, e, 'Could not load global chat.'); }
+    try {
+      // Do not rely on the client hiding the history panel: enforce the
+      // registered main-Game-post restriction for direct API callers too.
+      const status = await getGlobalChatStatus();
+      if (!status.enabled) {
+        return res.status(403).json({ error: status.reason || 'Global Chat is unavailable here.' });
+      }
+      res.json(await getGlobalChat());
+    } catch (e) { badRequest(res, e, 'Could not load global chat.'); }
   });
 
   app.post('/api/chat', async (req, res) => {
@@ -1516,7 +1525,7 @@ export function createApp() {
         return res.status(401).json({ error: 'Your Reddit identity is unavailable.' });
       }
       const feedbackCooldownKey = `io:feedback-cooldown:${userId}`;
-      const feedbackCooldownToken = createSecureId('feedback');
+      const feedbackCooldownToken = secureRequestToken();
       try {
         await redis.set(feedbackCooldownKey, feedbackCooldownToken, {
           nx: true,

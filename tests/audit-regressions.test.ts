@@ -67,6 +67,31 @@ test('follow reward save and its idempotency marker commit through the same save
   assert.doesNotMatch(reward, /await redis\.set\(rewardKey,/);
 });
 
+test('Frenzy claim mounted-state guard recovers after an effect replay', () => {
+  const client = source('src/client/main.tsx');
+  const start = client.indexOf('const componentMountedRef = useRef(true);');
+  const end = client.indexOf('const appliedServerGenerationRef', start);
+  assert.ok(start >= 0 && end > start);
+  const lifecycle = client.slice(start, end);
+  assert.ok(lifecycle.indexOf('componentMountedRef.current = true;') < lifecycle.indexOf('componentMountedRef.current = false;'));
+  assert.ok(lifecycle.includes('componentMountedRef.current = false;'));
+});
+
+test('Frenzy handoff preflight is single-flight and stops before claim after unmount', () => {
+  const client = source('src/client/main.tsx');
+  const start = client.indexOf('const resolveFrenzy = async () => {');
+  const end = client.indexOf('}, [state, splashEntered, frenzyRunTriggered, applyPlayerState, enqueueMutation]);', start);
+  assert.ok(start >= 0 && end > start);
+  const effect = client.slice(start, end);
+  const lock = effect.indexOf('frenzyClaimActiveRef.current = true;');
+  const firstHandoffRead = effect.indexOf("await getJson<{ armed: boolean }>('/api/frenzy/handoff')");
+  assert.ok(lock >= 0 && lock < firstHandoffRead, 'lock must be acquired before the first awaited preflight');
+  const mountedGuard = effect.indexOf('if (!componentMountedRef.current) return;');
+  const claim = effect.indexOf("getJson<RollResponse>('/api/frenzy/claim'");
+  assert.ok(mountedGuard > 0 && claim > mountedGuard, 'mounted state must be checked before the claim POST');
+  assert.ok(client.includes('frenzyClaimActiveRef.current = false;\n        if (!componentMountedRef.current) return;'));
+});
+
 test('Frenzy client retries read-only preflight but does not retry the claim POST', () => {
   const main = source('src/client/main.tsx');
   const start = main.indexOf('const resolveFrenzy = async () =>');
@@ -136,6 +161,15 @@ test('Chain Patcher is server-authoritative, arms exactly one guaranteed rarity,
   assert.match(game, /s\.chainPatcherCooldownUntil = now \+ CHAIN_PATCHER_COOLDOWN_MS/);
   assert.match(game, /s\.autoRollEnabled = false/);
   assert.match(game, /Auto Roll is disabled/);
+  const autoToggleStart = game.indexOf('export async function setAutoRollEnabled');
+  const autoToggleEnd = game.indexOf('export async function roll(', autoToggleStart);
+  assert.ok(autoToggleStart >= 0 && autoToggleEnd > autoToggleStart);
+  const autoToggle = game.slice(autoToggleStart, autoToggleEnd);
+  assert.match(autoToggle, /if \(enabled\)[\s\S]*?pendingPatcherRarity !== 0/);
+  const rollStart = game.indexOf('export async function roll(');
+  const rollEnd = game.indexOf('export async function', rollStart + 20);
+  assert.ok(rollStart >= 0 && rollEnd > rollStart);
+  assert.match(game.slice(rollStart, rollEnd), /if \(isAuto && usingChainPatcher\)/);
   assert.match(game, /const activations = usingChainPatcher \? 1 : freeRollActivations/);
   assert.match(game, /usingChainPatcher,/);
   assert.match(game, /if \(usingChainPatcher\) s\.chainPatcherNextRarity = 0/);
@@ -618,7 +652,8 @@ test('one manual action consumes all available Free Rolls and offline rate stops
   const upgrades = source('src/client/components/UpgradesSection.tsx');
   assert.match(game, /const freeRollActivations = usingFreeRoll\s+\? \(useAllFreeRolls \? availableFreeRolls : 1\)/);
   assert.match(game, /await applyRolls\(\s*s,\s*chunkActivations,\s*usingChainPatcher \? rawPatcherRarity : undefined,\s*'online',\s*usingChainPatcher \? 1 : undefined,\s*undefined,\s*usingChainPatcher/);
-  assert.match(modal, /USE ALL ' \+ freeRolls \+ ' FREE ROLL/);
+  assert.ok(modal.includes('ROLL ALL ${freeRolls} FREE ROLLS'));
+  assert.ok(modal.includes('One press uses all ${freeRolls} Free Rolls.'));
   assert.match(shared, /Math\.min\(0\.60, Math\.min\(8, Math\.max\(0, s\.upgrades\.offlineRate/);
   assert.match(shared, /id === 'offlineRate' && level >= 8\) return Infinity/);
   assert.match(upgrades, /offlineRate: 8/);
@@ -1837,22 +1872,35 @@ test('client ignores a conflicting Shards balance at an unchanged server revisio
 test('refreshAll discards a late /api/me response after state has advanced', () => {
   const main = source('src/client/main.tsx');
   const start = main.indexOf('const refreshAll = useCallback');
-  const end = main.indexOf('\n  }, []);', start);
+  const end = main.indexOf('\n  }, [applyPlayerState, splashEntered]);', start);
   assert.ok(start >= 0 && end > start, 'refreshAll must exist');
   const refresh = main.slice(start, end);
 
+  const sequenceSnapshot = refresh.indexOf('const refreshSequence = ++refreshSequenceRef.current');
   const revisionSnapshot = refresh.indexOf('const revisionAtStart = stateRevisionRef.current');
   const request = refresh.indexOf("const me = await getJsonWithTimeout<PlayerState>('/api/me')");
   const staleResponseGuard = refresh.indexOf(
-    'if (revisionAtStart !== stateRevisionRef.current) return;',
+    'if (refreshSequence !== refreshSequenceRef.current || revisionAtStart !== stateRevisionRef.current) return;',
   );
   const applyResponse = refresh.indexOf('applyPlayerState(me)');
 
-  assert.ok(revisionSnapshot >= 0 && request > revisionSnapshot);
+  assert.ok(sequenceSnapshot >= 0 && revisionSnapshot > sequenceSnapshot && request > revisionSnapshot);
   assert.ok(staleResponseGuard > request,
     'state revision must be rechecked after /api/me returns');
   assert.ok(applyResponse > staleResponseGuard,
     'a stale /api/me response must be rejected before applying its PlayerState');
+  assert.ok(refresh.includes('} catch (e: any) {\n      // Do not let a late error from an older request clear a newer session or'));
+  assert.ok(refresh.includes('if (!componentMountedRef.current) return;'));
+  assert.ok(refresh.includes('if (refreshSequence !== refreshSequenceRef.current || revisionAtStart !== stateRevisionRef.current) return;'));
+  assert.ok((refresh.match(/if \(!componentMountedRef\.current\) return;/g) ?? []).length >= 4,
+    'each refresh phase should stop applying results after unmount');
+  const catchIndex = refresh.indexOf('} catch (e: any) {');
+  const catchGuard = refresh.indexOf('if (refreshSequence !== refreshSequenceRef.current || revisionAtStart !== stateRevisionRef.current) return;', catchIndex);
+  const authReset = refresh.indexOf("if (e?.message === 'REDDIT_LOGIN_REQUIRED')", catchIndex);
+  assert.ok(catchIndex >= 0 && catchGuard > catchIndex && authReset > catchGuard,
+    'stale errors must be discarded before auth-reset handling');
+  assert.ok((refresh.match(/if \(refreshSequence !== refreshSequenceRef\.current\) return;/g) ?? []).length >= 2,
+    'admin and auxiliary bootstrap responses must each be sequence-fenced');
 });
 
 test('share route commits the share cooldown before posting and treats quest projection as best-effort', () => {
@@ -2457,6 +2505,28 @@ test('Combat is level-gated, guided, and reset with the rest of the player save'
   assert.ok(combat.includes("maxHeight:'min(360px, calc(100vh - 16px))'"));
 });
 
+test('Global Chat comment ingestion rejects a canonical destination that is a Frenzy post', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('export async function recordGlobalChatComment');
+  const end = social.indexOf('export async function', start + 1);
+  assert.ok(start >= 0 && end > start);
+  const handler = social.slice(start, end);
+  assert.ok(handler.includes('if (await isRegisteredFrenzyPost(registeredPostId)) return null;'));
+  assert.ok(handler.indexOf('targetPostId !== registeredPostId') < handler.indexOf('isRegisteredFrenzyPost(registeredPostId)'));
+});
+
+test('Global Chat history is server-gated to the registered main Game post', () => {
+  const api = source('src/server/app.ts');
+  const start = api.indexOf("app.get('/api/chat', async (_req, res) => {");
+  const end = api.indexOf("app.post('/api/chat',", start);
+  assert.ok(start >= 0 && end > start);
+  const route = api.slice(start, end);
+  assert.ok(route.includes('const status = await getGlobalChatStatus();'));
+  assert.ok(route.includes('if (!status.enabled)'));
+  assert.ok(route.includes('res.status(403).json'));
+  assert.ok(route.indexOf('if (!status.enabled)') < route.indexOf('res.json(await getGlobalChat())'));
+});
+
 test('Global Chat destination cannot be inferred from a client-supplied launcher flag', () => {
   const social = source('src/server/social.ts');
   const start = social.indexOf('async function resolveGlobalGamePostId');
@@ -2564,6 +2634,20 @@ test('core idempotency reservations never fall back to Math.random tokens', () =
 });
 
 
+test('read-only Collection and admin mechanics endpoints do not register active presence', () => {
+  const game = source('src/server/game.ts');
+  const collectionStart = game.indexOf('export async function getCollectionPage(');
+  const collectionEnd = game.indexOf('export async function getState(', collectionStart);
+  assert.ok(collectionStart >= 0 && collectionEnd > collectionStart);
+  assert.match(game.slice(collectionStart, collectionEnd), /loadRaw\(\{ registerActivity: false \}\)/);
+
+  const debug = source('src/server/debug.ts');
+  const mechanicsStart = debug.indexOf("debugRouter.get('/mechanics'");
+  const mechanicsEnd = debug.indexOf("debugRouter.post('/currency'", mechanicsStart);
+  assert.ok(mechanicsStart >= 0 && mechanicsEnd > mechanicsStart);
+  assert.match(debug.slice(mechanicsStart, mechanicsEnd), /loadRaw\(\{ registerActivity: false \}\)/);
+});
+
 test('passive player snapshots and the Play splash do not register active sessions', () => {
   const game = source('src/server/game.ts');
   const stateStart = game.indexOf('export async function getState(');
@@ -2577,6 +2661,12 @@ test('passive player snapshots and the Play splash do not register active sessio
   assert.match(getState, /options\.registerActivity === false[\s\S]*?await getOnlinePlayers\(\)[\s\S]*?: await touchOnlinePresence\(\)/);
   assert.match(getMe, /loadRaw\(\{ registerActivity: false \}\)/);
   assert.match(getMe, /getState\(\{ registerActivity: false \}\)/);
+
+  const combat = source('src/server/combat.ts');
+  const snapshotStart = combat.indexOf('export async function getCombatSnapshot()');
+  const snapshotEnd = combat.indexOf('\nfunction grantXp', snapshotStart);
+  assert.ok(snapshotStart >= 0 && snapshotEnd > snapshotStart);
+  assert.match(combat.slice(snapshotStart, snapshotEnd), /loadRaw\(\{ registerActivity: false \}\)/);
 
   const api = source('src/server/app.ts');
   const featureStart = api.indexOf('const feature = featureForPath(req.path);');
@@ -2657,7 +2747,7 @@ test('rolling disables both roll affordances and gives the orb keyboard semantic
   assert.match(roll, /if \(busy\) return;[\s\S]{0,120}if \(canRoll\)/);
   assert.match(roll, /<button[\s\S]{0,250}disabled=\{busy\}[\s\S]{0,250}aria-busy=\{busy\}/);
   assert.match(roll, /aria-label=\{busy \? 'Rolling orbs'/);
-  assert.match(roll, /busy \? 'ROLL IN PROGRESS'/);
+  assert.match(roll, /const primaryActionLabel = busy[\s\S]*?\? 'ROLL IN PROGRESS'/);
   assert.match(roll, /className=\{'roll-button ' \+ \(busy \? 'is-waiting'/);
   const css = source('src/client/styles.css');
   assert.match(css, /\.roll-button:hover:disabled \{[^}]*transform: none !important;[^}]*cursor: wait !important;/);
@@ -2679,7 +2769,7 @@ test('passive splash loads only the save before deferring auxiliary bootstrap re
   assert.ok(deferStart < adminStart, 'auxiliary APIs should not run while only the splash is visible');
   assert.ok(dependencyEnd > deferStart, 'refreshAll must rerun when Play changes splashEntered');
 
-  const tutorialFetch = client.indexOf("void fetch('/api/combat/tutorial/status'");
+  const tutorialFetch = client.indexOf("getJsonWithTimeout<{ seen?: boolean }>('/api/combat/tutorial/status'");
   const tutorialEffectStart = client.lastIndexOf('useEffect(() => {', tutorialFetch);
   assert.ok(tutorialEffectStart >= 0 && tutorialFetch > tutorialEffectStart);
   assert.match(client.slice(tutorialEffectStart, tutorialFetch), /if \(!splashEntered \|\| !state\) return;/);
@@ -2708,7 +2798,8 @@ test('roll interactions explain current state and animate server resolution with
 test('header experience progress and icon-only actions have keyboard/screen-reader labels', () => {
   const header = source('src/client/components/Header.tsx');
   assert.ok(header.includes('aria-label={`Open profile. Experience progress'));
-  assert.ok(header.includes('focus-visible:outline-purple-300'));
+  assert.ok(header.includes('focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300'));
+  assert.ok(header.includes("!event.repeat && (event.key === 'Enter' || event.key === ' ')"));
   assert.ok(header.includes('aria-label="View probability and drop odds"'));
   assert.ok(header.includes('aria-label="Report a bug or send a suggestion"'));
   assert.ok(header.includes('aria-label="Open admin console"'));
@@ -2731,6 +2822,210 @@ test('best-orb reveal badges reflect critical and discovery flags from the selec
   assert.ok(!shared.includes('isCrit: bestRarity > (sourceState.highestRarity ?? 0),'));
 });
 
+test('combined Altar submit button has a closed disabled expression', () => {
+  const combined = source('src/client/components/AltarAndMasterySection.tsx');
+  assert.ok(combined.includes('disabled={sacrificing || busy || (selectedCoinOffer <= 0 && selectedShardOffer <= 0) || state.coins < selectedCoinOffer || (state.shards ?? 0) < selectedShardOffer}'));
+  assert.ok(!combined.includes('state.shards ?? 0) < selectedShardOffer>'));
+});
+
+test('combined Altar offering choices expose selection and local Mastery pending state', () => {
+  const combined = source('src/client/components/AltarAndMasterySection.tsx');
+  assert.ok((combined.match(/aria-pressed=\{selectedCoinOffer === amt\}/g) ?? []).length === 1);
+  assert.ok(combined.includes('aria-pressed={selectedCoinOffer === state.coins}'));
+  assert.ok(combined.includes('aria-pressed={selectedShardOffer === amt}'));
+  assert.ok(combined.includes('aria-pressed={selectedShardOffer === state.shards}'));
+  assert.ok(combined.includes('const [upgradingSkillId, setUpgradingSkillId] = useState<MasterySkillId | null>(null);'));
+  assert.ok(combined.includes('aria-busy={busy || sacrificing || upgradingSkillId === skillId}'));
+  assert.ok(combined.includes('disabled={!canAfford || busy || isMax || sacrificing || upgradingSkillId !== null}'));
+});
+
+test('UI-only action buttons declare type=button to avoid accidental form submissions', () => {
+  const main = source('src/client/main.tsx');
+  assert.match(main, /<button\s+type="button"\s+onClick=\{\(\) => setShowDevModal\(true\)\}/);
+  assert.match(main, /<button\s+type="button"\s+aria-current=\{tab === 'fight'/);
+  const admin = source('src/client/components/DevDebugModal.tsx');
+  assert.match(admin, /<button\s+type="button"\s+title="Jump to aggregate Impressions analytics\."/);
+  assert.match(admin, /<button\s+type="button"\s+title="Close the admin console\."/);
+  assert.match(admin, /<button\s+type="button"\s+title="Delete all stored payment traces\."/);
+  const upgrades = source('src/client/components/UpgradesSection.tsx');
+  assert.ok(upgrades.includes('<button\n              type="button"\n              onClick={handleUpgradeAllClick}'));
+  assert.ok(upgrades.includes('<button\n                    type="button"\n                    disabled\n                    className="w-full bg-slate-950'));
+  assert.ok(upgrades.includes('<button\n                    type="button"\n                    disabled\n                    title="This upgrade has reached its maximum level."'));
+
+  const profile = source('src/client/components/ProfileAndPrestige.tsx');
+  assert.ok(profile.includes('<button\n                  type="button"\n                  onClick={() => {\n                    sound.playClick();\n                    void onBuyPrestigeUpgrade(id);'));
+  assert.equal((profile.match(/type="button"\s+onClick=\{\(\) => \{\s+sound\.playClick\(\);\s+void onBuyCosmetic\(cosmetic\.id\);/g) ?? []).length, 2);
+
+  const rarity = source('src/client/components/RarityTableModal.tsx');
+  assert.equal((rarity.match(/<button\s+type="button"\s+onClick=\{onClose\}/g) ?? []).length, 2);
+
+  const best = source('src/client/components/NewBestModal.tsx');
+  assert.equal((best.match(/<button\s+type="button"\s+onClick=\{onClose\}/g) ?? []).length, 2);
+  assert.ok(best.includes('<button\n            type="button"\n            onClick={() => {\n              onClose();\n              onOpenShareModal(orb.rarity);'));
+});
+
+test('Mastery upgrade disabled expression closes before the next JSX attribute', () => {
+  const mastery = source('src/client/components/MasterySection.tsx');
+  assert.ok(mastery.includes('disabled={!canAfford || busy || isMax || upgradingSkillId !== null}'));
+  assert.ok(!mastery.includes('disabled={!canAfford || busy || isMax || upgradingSkillId !== null>'));
+});
+
+test('upgrade and mastery controls use existing local pending state for busy semantics', () => {
+  const upgrades = source('src/client/components/UpgradesSection.tsx');
+  assert.ok(!upgrades.includes('pendingUpgradeId'));
+  assert.ok(upgrades.includes('aria-busy={upgradingId === u.id}'));
+  const mastery = source('src/client/components/MasterySection.tsx');
+  assert.ok(mastery.includes('aria-busy={busy || upgradingSkillId === skillId}'));
+  const combined = source('src/client/components/AltarAndMasterySection.tsx');
+  assert.ok(combined.includes('aria-busy={sacrificing || busy}'));
+});
+
+test('Mastery and Altar success effects wait for confirmed server results', () => {
+  const client = source('src/client/main.tsx');
+  const masteryHandlerStart = client.indexOf('const handleUpgradeMastery = async (skillId: MasterySkillId) =>');
+  const masteryHandlerEnd = client.indexOf('// Daily Streak', masteryHandlerStart);
+  const mainMastery = client.slice(masteryHandlerStart, masteryHandlerEnd);
+  assert.ok(masteryHandlerStart >= 0 && masteryHandlerEnd > masteryHandlerStart);
+  assert.ok(mainMastery.includes('rollback?.();\n      throw e;'));
+  assert.ok(!mainMastery.includes("showToast(e.message || 'Mastery upgrade failed'"));
+
+  const mastery = source('src/client/components/MasterySection.tsx');
+  const masteryClickStart = mastery.indexOf('const handleMasteryClick = async (skillId: MasterySkillId) =>');
+  const masteryClickEnd = mastery.indexOf('const masterySkillsList', masteryClickStart);
+  const masteryClick = mastery.slice(masteryClickStart, masteryClickEnd);
+  assert.ok(masteryClick.indexOf('await onUpgradeMastery(skillId)') < masteryClick.indexOf('sound.playLevelUpFanfare()'));
+
+  const altar = source('src/client/components/AltarSection.tsx');
+  const altarStart = altar.indexOf('const handleSacrificeSubmit = async (e: React.FormEvent) =>');
+  const altarEnd = altar.indexOf('return (', altarStart);
+  assert.ok(altar.slice(altarStart, altarEnd).indexOf('await onSacrifice(selectedCoinOffer, selectedShardOffer)') < altar.slice(altarStart, altarEnd).indexOf('sound.playSacrificeSound()'));
+
+  const combined = source('src/client/components/AltarAndMasterySection.tsx');
+  const combinedMasteryStart = combined.indexOf('const handleMasteryClick = async (skillId: MasterySkillId) =>');
+  const combinedMasteryEnd = combined.indexOf('const masterySkillsList', combinedMasteryStart);
+  const combinedMastery = combined.slice(combinedMasteryStart, combinedMasteryEnd);
+  assert.ok(combinedMastery.indexOf('await onUpgradeMastery(skillId)') < combinedMastery.indexOf('sound.playLevelUpFanfare()'));
+});
+
+test('combined Mastery Cosmos filter includes every Cosmos-branch skill', () => {
+  const mastery = source('src/client/components/MasterySection.tsx');
+  const combined = source('src/client/components/AltarAndMasterySection.tsx');
+  for (const skill of ['critMastery', 'celestialSurge', 'cosmicAttunement', 'celestialVolley', 'aftershock']) {
+    assert.ok(mastery.includes("id === '" + skill + "'"));
+    assert.ok(combined.includes("id === '" + skill + "'"));
+  }
+});
+
+test('Mastery branch filters are named groups with pressed-state buttons', () => {
+  for (const path of ['src/client/components/MasterySection.tsx', 'src/client/components/AltarAndMasterySection.tsx']) {
+    const content = source(path);
+    assert.ok(content.includes('role="group" aria-label="Filter Mastery skills by branch"'));
+    assert.ok(content.includes('aria-pressed={activeBranch === b.id}'));
+  }
+});
+
+test('Mastery branch filters expose their selected state to assistive technology', () => {
+  const mastery = source('src/client/components/MasterySection.tsx');
+  const combined = source('src/client/components/AltarAndMasterySection.tsx');
+  assert.ok(mastery.includes('aria-pressed={activeBranch === b.id}'));
+  assert.ok(combined.includes('aria-pressed={activeBranch === b.id}'));
+  assert.ok((mastery.match(/type="button"\s+aria-pressed=\{activeBranch === b\.id\}/g) ?? []).length === 1);
+  assert.ok((combined.match(/type="button"\s+aria-pressed=\{activeBranch === b\.id\}/g) ?? []).length === 1);
+});
+
+test('Altar descriptions match the implemented multiplicative bonus rates', () => {
+  const altar = source('src/client/components/AltarSection.tsx');
+  const combined = source('src/client/components/AltarAndMasterySection.tsx');
+  assert.ok(altar.includes('base +2% multiplicative luck per shard'));
+  assert.ok(altar.includes('Each adds base +2% multiplicative luck before Altar Resonator/level bonuses'));
+  assert.ok(!altar.includes('+3% permanent multiplicative luck'));
+  assert.ok(!altar.includes('+3% multiplicative luck per shard'));
+  assert.ok(combined.includes('each rank compounds Coin Devotion by 1.05×'));
+  assert.ok(combined.includes('base +2% permanent luck each'));
+  assert.ok(!combined.includes('Altar Devotion Luck (+1% per Level)'));
+});
+
+test('Altar range controls have explicit labels connected to their inputs', () => {
+  const altar = source('src/client/components/AltarSection.tsx');
+  assert.ok(altar.includes('<label htmlFor="altar-coin-offer"'));
+  assert.ok(altar.includes('<input\n              id="altar-coin-offer"'));
+  assert.ok(altar.includes('<label htmlFor="altar-shard-offer"'));
+  assert.ok(altar.includes('<input\n              id="altar-shard-offer"'));
+});
+
+test('Turbo banner matches the active cooldown reduction and roll timer cleanup is unique', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  assert.ok(roll.includes('const turboReductionPercent = (state.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 35 : 25;'));
+  assert.ok(roll.includes('TURBO ACTIVE (-{turboReductionPercent}% Cooldown)'));
+  assert.ok(!roll.includes('TURBO ACTIVE (-20% Cooldown)'));
+  const cleanup = 'useEffect(() => () => {\n    if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);\n  }, []);';
+  assert.equal(roll.split(cleanup).length - 1, 1);
+
+  const client = source('src/client/main.tsx');
+  const guardStart = client.indexOf('const refreshGlobalBoosters = async () =>');
+  const guardEnd = client.indexOf('inFlight = true;', guardStart);
+  assert.ok(guardStart >= 0 && guardEnd > guardStart);
+  assert.equal((client.slice(guardStart, guardEnd).match(/if \(.*document\.visibilityState === 'hidden'\).*return;/g) ?? []).length, 1);
+});
+
+test('Turbo Booster confirmation reports the actual cooldown reduction', () => {
+  const client = source('src/client/main.tsx');
+  const shared = source('src/shared/game.ts');
+  assert.ok(client.includes('const turboReductionPercent = durationMinutes === 60 ? 35 : 25;'));
+  assert.ok(client.includes('Cooldowns reduced by ${turboReductionPercent}% for ${durationMinutes}m.'));
+  assert.ok(shared.includes("const turboReduction = (s.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 0.65 : 0.75;"));
+});
+
+test('Global Chat history polling is single-flight and paused in hidden tabs', () => {
+  const chat = source('src/client/components/GlobalChatWindow.tsx');
+  assert.ok(chat.includes('const refreshInFlightRef = useRef(false);'));
+  assert.ok(chat.includes('const refreshPendingRef = useRef(false);'));
+  assert.ok(chat.includes("if (document.visibilityState === 'hidden') return;"));
+  assert.ok(chat.includes('if (refreshInFlightRef.current) {'));
+  assert.ok(chat.includes("document.addEventListener('visibilitychange', refreshWhenVisible);"));
+  assert.ok(chat.includes("document.removeEventListener('visibilitychange', refreshWhenVisible);"));
+  assert.ok(chat.includes('void refreshChat(true);'));
+});
+
+test('Global Chat availability retries stop after the launcher unmounts', () => {
+  const chat = source('src/client/components/GlobalChatWindow.tsx');
+  const start = chat.indexOf('const checkAvailability = async () =>');
+  const end = chat.indexOf('    };', start);
+  const retryLoopStart = chat.indexOf('for (let attempt = 0; attempt < 3; attempt += 1)', start);
+  const firstTry = chat.indexOf('        try {', retryLoopStart);
+  assert.ok(start >= 0 && end > start && retryLoopStart > start && firstTry > retryLoopStart);
+  assert.ok(chat.slice(start, end).includes('if (cancelled) return;'));
+  assert.ok(chat.slice(retryLoopStart, firstTry).includes('if (cancelled) return;'));
+});
+
+test('Quest claim controls expose local pending state to assistive technology', () => {
+  const quests = source('src/client/components/QuestsAndStreaks.tsx');
+  assert.ok((quests.match(/aria-busy=\{busy \|\| claimPending\}/g) ?? []).length >= 3);
+});
+
+test('central Orb roll affordance is keyboard operable and announces busy state', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  assert.match(roll, /role="button"[\s\S]{0,120}tabIndex=\{0\}[\s\S]{0,180}aria-label=\{primaryActionLabel\.toLowerCase\(\)\}/);
+  assert.match(roll, /onKeyDown=\{event => \{[\s\S]{0,180}!event\.repeat && \(event\.key === 'Enter' \|\| event\.key === ' '/);
+  assert.match(roll, /aria-busy=\{busy\}[\s\S]{0,40}aria-disabled=\{busy\}/);
+  assert.ok(roll.includes('focus-visible:outline-cyan-300'));
+});
+
+test('Chain Patcher takes priority over Free Roll cooldown bypass in the roll UI', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  const canRollStart = roll.indexOf('const canRoll =');
+  const canRollEnd = roll.indexOf('const frenzyReady =', canRollStart);
+  assert.ok(canRollStart >= 0 && canRollEnd > canRollStart);
+  assert.match(roll.slice(canRollStart, canRollEnd), /chainPatcherPending\s*\?\s*chainPatcherCharged && remain <= 0/);
+  assert.ok(roll.includes('const chainPatcherPending = rawChainPatcherTarget !== 0;'));
+  assert.ok(roll.includes('Chain Patcher target is invalid. Refresh your save before rolling.'));
+  assert.ok(roll.includes(": chainPatcherPending\n        ? chainPatcherCharged ? 'ROLL CHAIN PATCHER' : 'CHAIN PATCHER NEEDS REPAIR'"));
+  assert.ok(roll.includes('Chain Patcher is charged; wait'));
+  assert.ok(roll.includes('preserves ${freeRolls} stored Free Rolls.'));
+  const quests = source('src/client/components/QuestsAndStreaks.tsx');
+  assert.ok(quests.includes('Manual Free Rolls bypass normal cooldown; Frenzy and Chain Patcher take priority'));
+});
+
 test('armed Frenzy readiness and Pity Luck meter use the actual gameplay thresholds', () => {
   const roll = source('src/client/components/RollSection.tsx');
   assert.ok(roll.includes('const frenzyReady = frenzyArmed && canRoll;'));
@@ -2738,9 +3033,12 @@ test('armed Frenzy readiness and Pity Luck meter use the actual gameplay thresho
   assert.ok(roll.includes("? 'RELEASE FRENZY'"));
   assert.ok(roll.includes("frenzyReady ? 'frenzy-supercharged'"));
   assert.ok(roll.includes('const pityInterval = Math.max(6, 18 - pityCalibration * 2);'));
-  assert.ok(roll.includes('const pityProgress = ((dryStreak % pityInterval) / pityInterval) * 100;'));
-  assert.ok(roll.includes('width: `${pityProgress}%`'));
-  assert.ok(roll.includes('{dryStreak % pityInterval} / {pityInterval} rolls to next stack'));
+  assert.ok(roll.includes('const pityRollsIntoTier = pityDryRolls % pityInterval;'));
+  assert.ok(roll.includes('const pityProgressPct = (pityRollsIntoTier / pityInterval) * 100;'));
+  assert.ok(roll.includes('aria-valuenow={pityProgressPct}'));
+  assert.ok(roll.includes('width: `${pityProgressPct}%`'));
+  assert.ok(roll.includes('{pityRollsIntoTier} / {pityInterval} rolls to next stack'));
+  assert.ok(roll.includes('{hasResonanceUpgrade && ('));
 });
 
 test('new-best celebration covers confirmed manual, Frenzy, and offline results', () => {
@@ -2770,8 +3068,9 @@ test('new-best celebration covers confirmed manual, Frenzy, and offline results'
 test('background polling is single-flight and paused while hidden', () => {
   const client = source('src/client/main.tsx');
   const sharedPollGuard = "if (cancelled || inFlight || document.visibilityState === 'hidden') return;";
-  assert.ok(client.split(sharedPollGuard).length - 1 >= 4);
-  assert.ok(client.includes("if (!splashEntered || inFlight || document.visibilityState === 'hidden') return;"));
+  assert.ok(client.split(sharedPollGuard).length - 1 >= 3);
+  assert.ok(client.includes("if (cancelled || !splashEntered || inFlight || document.visibilityState === 'hidden') return;"));
+  assert.ok(client.includes("if (!splashEntered) return;\n      if (inFlight || document.visibilityState === 'hidden') return;"));
   assert.ok(client.includes("if (inFlight || document.visibilityState === 'hidden') return;"));
   assert.ok(client.includes("document.addEventListener('visibilitychange', onVisibilityChange);"));
   assert.ok(client.includes("document.removeEventListener('visibilitychange', onVisibilityChange);"));

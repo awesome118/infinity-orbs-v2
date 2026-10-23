@@ -1553,7 +1553,7 @@ debugRouter.post('/event', async (req, res) => {
 // Currency controls.
 debugRouter.get('/mechanics', async (_req, res) => {
   try {
-    const s = await loadRaw();
+    const s = await loadRaw({ registerActivity: false });
     res.json({
       ok: true,
       mechanics: {

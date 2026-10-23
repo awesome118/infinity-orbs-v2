@@ -38,10 +38,10 @@ function lockUserId(userId: string | undefined, fallbackUserId: string | undefin
   return id;
 }
 
-function randomUint32(): number {
-  const sample = new Uint32Array(1);
+function randomLockToken(): string {
+  const sample = new Uint8Array(16);
   globalThis.crypto.getRandomValues(sample);
-  return sample[0];
+  return Array.from(sample, value => value.toString(16).padStart(2, '0')).join('');
 }
 
 /**
@@ -156,7 +156,7 @@ export function createPlayerMutationLockRuntime(
     await previous;
 
     const lockKey = PLAYER_MUTATION_LOCK_PREFIX + id;
-    const token = 'lock-' + Date.now().toString(36) + '-' + randomUint32().toString(36);
+    const token = 'lock-' + randomLockToken();
 
     try {
       const client = getRedis();

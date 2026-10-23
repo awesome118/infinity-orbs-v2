@@ -99,13 +99,17 @@ import {
 
 /** Use non-guessable identifiers for leases, reservations, and idempotency receipts. */
 function createSecureId(): string {
-  const cryptoApi = globalThis.crypto;
-  if (typeof cryptoApi?.randomUUID === 'function') return cryptoApi.randomUUID();
-  if (typeof cryptoApi?.getRandomValues === 'function') {
-    const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
     return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
   }
   throw new Error('Secure identifier generation is unavailable.');
+}
+
+function secureServerToken(prefix: string): string {
+  return prefix + '-' + createSecureId();
 }
 
 
@@ -3369,6 +3373,7 @@ export async function applyRolls(
 ): Promise<{ bestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number; rollCount: number }> {
   let bestRarity = 0;
   let bestIsCrit = false;
+  let bestIsNew = false;
   let totalVal = 0;
   let coinsGained = 0;
   let shardsGained = 0;
@@ -3571,7 +3576,6 @@ export async function applyRolls(
     s.collectionValue = addCollectionValue(s.collectionValue, finalVal);
     s.lifetimeCollectionValue = addCollectionValue(s.lifetimeCollectionValue, finalVal);
 
-    const isNew = !s.collection[String(rarity)];
     if (isNew) uniqueGained++;
     s.collection[String(rarity)] = (s.collection[String(rarity)] ?? 0) + 1;
 
@@ -3641,11 +3645,14 @@ export async function applyRolls(
       addRuneBonusRolls(1, { minRarity: floor, skipAllProcs: true });
     }
 
+    const isNew = !s.collection[String(rarity)];
     if (rarity > bestRarity) {
       bestRarity = rarity;
       bestIsCrit = isCrit;
-    } else if (rarity === bestRarity && isCrit) {
-      bestIsCrit = true;
+      bestIsNew = isNew;
+    } else if (rarity === bestRarity) {
+      if (isCrit) bestIsCrit = true;
+      bestIsNew = bestIsNew || isNew;
     }
 
     const xpBonusMul =
@@ -3841,7 +3848,7 @@ export async function applyRolls(
     rolledAt: now,
     tier: bestInfo.tier,
     name: bestInfo.name,
-    isNew: s.collection[String(bestRarity)] === 1,
+    isNew: bestIsNew,
     isCrit: bestIsCrit,
   };
 
@@ -4055,7 +4062,7 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
   // has an ambiguous failure, no provider call occurs, and a later job can
   // reclaim this reserved-v2 marker after the lease expires.
   const attemptNow = Date.now();
-  const nonce = createSecureId();
+  const nonce = secureServerToken('offline-notification');
   const reservationStamp = attemptNow.toString(36);
   const reservedToken = `reserved-v2:${reservationStamp}:${nonce}`;
   const sendingToken = `sending-v2:${reservationStamp}:${nonce}`;
@@ -4236,8 +4243,7 @@ async function scheduleOfflineFullNotification(
     Math.max(now + 1_000, Number.isFinite(requestedRunAt) ? requestedRunAt : now + 1_000),
   );
   const expiresAt = Math.max(now + 60_000, Math.min(maxDateMs - 1, safeRunAt + OFFLINE_FULL_RETRY_MS * 2));
-  const randomToken = createSecureId();
-  const token = `offline-job-${now.toString(36)}-${randomToken}`;
+  const token = secureServerToken('offline-job');
   const reservation = JSON.stringify({ token, jobId: null, runAt: safeRunAt });
 
   // Reserve before making the scheduler call. Two overlapping requests can no
@@ -4552,7 +4558,7 @@ export async function getCollectionPage(options: {
   offset: number;
   limit: number;
 }> {
-  const s = await loadRaw();
+  const s = await loadRaw({ registerActivity: false });
   const offset = Math.max(0, Math.floor(Number(options.offset ?? 0)));
   const limit = Math.min(100, Math.max(1, Math.floor(Number(options.limit ?? 60))));
   const sort = options.sort ?? 'rarity_desc';
@@ -4580,10 +4586,10 @@ export async function getCollectionPage(options: {
   };
 }
 
-export async function getState(): Promise<PlayerState> {
-  // GET /api/me is a read, not proof that someone pressed Play. Presence and
-  // activity registration are handled by the explicit post-launch heartbeat.
-  const s = await loadRaw({ registerActivity: false });
+export async function getState(options: { registerActivity?: boolean } = {}): Promise<PlayerState> {
+  // Callers that only need a snapshot can opt out. The /api/me route and
+  // pre-Play UI reads must not turn a preview into an active session.
+  const s = await loadRaw({ registerActivity: options.registerActivity });
   const now = Date.now();
 
   // Recompute Codex projections from the authoritative collection on every read.
@@ -4598,7 +4604,9 @@ export async function getState(): Promise<PlayerState> {
   // The next real mutation settles and persists the authoritative state.
   checkPeriodicResets(s, now);
   resetFreeShardBudgetIfNeeded(s, now);
-  s.onlinePlayers = await getOnlinePlayers();
+  s.onlinePlayers = options.registerActivity === false
+    ? await getOnlinePlayers()
+    : await touchOnlinePresence();
   s.globalBoosters = await getGlobalBoosters();
 
   // Show currently accumulated offline rolls without consuming/persisting them.
@@ -4661,7 +4669,9 @@ export async function buyChainPatcher(): Promise<{
 
 export async function getMe(): Promise<PlayerState> {
   const ban = await getGameBanStatus();
-  const s = ban ? await loadRaw({ registerActivity: false }) : await getState();
+  const s = ban
+    ? await loadRaw({ registerActivity: false })
+    : await getState({ registerActivity: false });
   if (ban) {
     s.gameBan = {
       active: true,
@@ -4687,6 +4697,16 @@ export async function setAutoRollEnabled(enabled: boolean): Promise<PlayerState>
     s.autoRollEnabled = false;
     await save(s);
     throw new Error('Auto Roll is not unlocked yet.');
+  }
+
+  if (enabled) {
+    const pendingPatcherRarity = Number(s.chainPatcherNextRarity ?? 0);
+    if (pendingPatcherRarity !== 0) {
+      throw new Error(Number.isSafeInteger(pendingPatcherRarity) &&
+        pendingPatcherRarity >= 2 && pendingPatcherRarity <= MAX_ORB_RARITY
+        ? 'Use the charged Chain Patcher with one manual roll before re-enabling Auto Roll.'
+        : 'Chain Patcher save data is invalid; repair it before enabling Auto Roll.');
+    }
   }
 
   s.autoRollEnabled = Boolean(enabled);
@@ -4748,6 +4768,9 @@ export async function roll(
       throw new Error('Chain Patcher save data is invalid; no roll was processed.');
     }
     const usingChainPatcher = rawPatcherRarity >= 2;
+    if (isAuto && usingChainPatcher) {
+      throw new Error('Chain Patcher charge must be used by a manual roll. Auto Roll remains paused.');
+    }
     const availableFreeRolls = Math.max(0, Math.floor(Number(s.freeRolls ?? 0) || 0));
     // A charged Chain Patcher must resolve as one deliberate, exact orb. It
     // does not consume or batch any accumulated Free Rolls.
@@ -5034,7 +5057,7 @@ export async function claimFollowReward(): Promise<{
     // Commit the 200-roll reward and its idempotency marker in the same
     // WATCH/MULTI/EXEC transaction. A marker write failure must never allow a
     // retry to grant the reward a second time.
-    const rewardMarker = createSecureId();
+    const rewardMarker = secureServerToken('follow-reward');
     await save(s, {
       key: rewardKey,
       expectedValue: null,
@@ -6631,7 +6654,7 @@ export async function postFrenzyThankYouComment(
     throw new Error('A thank-you comment was already attempted. Check the Frenzy post before trying again.');
   }
 
-  const reservation = 'pending-' + createSecureId();
+  const reservation = 'pending-' + secureServerToken('frenzy-thank-you');
   await redis.set(receiptKey, reservation, { nx: true, expiration });
   if (await redis.get(receiptKey) !== reservation) {
     throw new Error('A thank-you comment was already attempted. Check the Frenzy post before trying again.');

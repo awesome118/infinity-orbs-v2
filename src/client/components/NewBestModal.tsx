@@ -126,6 +126,7 @@ export const NewBestModal: React.FC<NewBestModalProps> = ({
           </div>
 
           <button
+            type="button"
             onClick={onClose}
             className="w-full py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition-colors cursor-pointer"
           >
@@ -218,6 +219,7 @@ export const NewBestModal: React.FC<NewBestModalProps> = ({
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-3 pt-2">
           <button
+            type="button"
             onClick={() => {
               onClose();
               onOpenShareModal(orb.rarity);
@@ -228,6 +230,7 @@ export const NewBestModal: React.FC<NewBestModalProps> = ({
             <span>Share This Record</span>
           </button>
           <button
+            type="button"
             onClick={onClose}
             className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-950/50 transition-all active:scale-95 cursor-pointer"
           >
