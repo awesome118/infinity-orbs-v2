@@ -1924,7 +1924,9 @@ test('third lifetime Orb guarantee uses an immutable pre-batch roll count', () =
 
 test('critical rarity caps match the continuum ceiling and cannot downgrade high-tier Orbs', () => {
   const shared = source('src/shared/game.ts');
-  assert.match(shared, /export const MAX_ORB_RARITY = 1_000_000_000_000_000_000/);
+  assert.match(shared, /export const MAX_ORB_RARITY = Number\.MAX_VALUE/);
+  assert.match(shared, /if \(rarity >= MAX_ORB_RARITY\) return 'Infinity'/);
+  assert.match(shared, /raw >= MAX_ORB_RARITY\) return 'Infinity'/);
   assert.match(shared, /Math\.min\(MAX_ORB_RARITY, Math\.max\(2, rarity\)\)/);
 
   const game = source('src/server/game.ts');
@@ -1938,8 +1940,23 @@ test('critical rarity caps match the continuum ceiling and cannot downgrade high
   assert.ok(claimStart >= 0 && claimEnd > claimStart);
   const claim = game.slice(claimStart, claimEnd);
   assert.match(claim, /Math\.min\(MAX_ORB_RARITY, Math\.round\(data\.rarity \* critMultiplier\(s\)\)\)/);
-  assert.match(claim, /Math\.min\(MAX_ORB_RARITY, Math\.round\(data\.rarity \* 5\)\)/);
+  assert.match(claim, /Math\.min\(MAX_ORB_RARITY, Math\.round\(data\.rarity \* critMultiplier\(s\) \* 5\)\)/);
+  assert.match(apply, /effectiveCm = cm \* 5/);
+  assert.match(shared, /effectiveCm = cm \* 5/);
   assert.doesNotMatch(game, /Math\.min\(1_000_000_000_000_000, Math\.round\((?:baseRarity|data\.rarity)/);
+});
+
+
+test('the rarity continuum can sample and display its full finite Infinity ceiling', () => {
+  const shared = source('src/shared/game.ts');
+  const game = source('src/server/game.ts');
+  assert.match(shared, /export const MAX_ORB_RARITY = Number\.MAX_VALUE/);
+  assert.match(shared, /return 'Infinity'/);
+  assert.match(shared, /Infinity: \['Infinity Orb'\]/);
+  assert.match(game, /function serverRarityRandom\(\): number/);
+  assert.match(game, /new Uint32Array\(32\)/);
+  assert.match(game, /bitLength - 1024/);
+  assert.match(game, /rollContinuum\(effectiveLuck, randomOverride \?\? serverRarityRandom\)/);
 });
 
 
