@@ -141,7 +141,8 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
       })
       .then(data => {
         if (controller.signal.aborted) return;
-        setItems(data.items.slice(0, PAGE_SIZE));
+        const safeItems = Array.isArray(data.items) ? data.items.slice(0, PAGE_SIZE) : [];
+        setItems(safeItems);
         setTotal(data.total);
         const nextLastPage = Math.max(0, Math.ceil(data.total / PAGE_SIZE) - 1);
         setPage(currentPage => Math.min(currentPage, nextLastPage));
