@@ -2265,7 +2265,7 @@ test('Global Booster polling synchronizes the state ref and survives stale playe
   assert.match(applier, /globalBoosters: currentGlobalBoosters/);
 
   const pollStart = main.indexOf('const refreshGlobalBoosters = async () =>');
-  const pollEnd = main.indexOf('}, [tab]);', pollStart);
+  const pollEnd = main.indexOf('}, [tab, splashEntered]);', pollStart);
   assert.ok(pollStart >= 0 && pollEnd > pollStart);
   const poll = main.slice(pollStart, pollEnd);
   assert.match(poll, /latestGlobalBoostersRef\.current = snapshot/);
