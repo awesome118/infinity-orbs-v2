@@ -11,8 +11,8 @@ const entries: Array<{
   description: string;
 }> = [
   {
-    title: 'Infinity Rarity Ceiling',
-    description: 'The rarity continuum now reaches the largest finite rarity supported by the game. Reaching the cap displays as Infinity; progression beyond Infinity is reserved for a future update.',
+    title: 'Infinity Overflow',
+    description: 'When a roll’s calculated rarity exceeds the largest finite number JavaScript can represent, it displays as 1/Infinity. The finite 1.797693e308 rarity remains numeric; Infinity is a separate overflow result.',
   },
   {
     title: 'Supernova Critical Scaling',
