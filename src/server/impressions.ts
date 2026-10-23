@@ -39,6 +39,11 @@ function normalizeCount(value: unknown): number {
   return Number.isSafeInteger(count) && count >= 0 ? count : 0;
 }
 
+/** Normalize persisted impression counters before exposing or aggregating them. */
+export function normalizeImpressionCount(value: unknown): number {
+  return normalizeCount(value);
+}
+
 function postKey(postType: ImpressionPostType, postId: string): string {
   return POST_PREFIX + postType + ':' + encodeURIComponent(postId);
 }
