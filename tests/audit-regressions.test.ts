@@ -628,7 +628,8 @@ test('one manual action consumes all available Free Rolls and offline rate stops
   const upgrades = source('src/client/components/UpgradesSection.tsx');
   assert.match(game, /const freeRollActivations = usingFreeRoll\s+\? \(useAllFreeRolls \? availableFreeRolls : 1\)/);
   assert.match(game, /await applyRolls\(\s*s,\s*chunkActivations,\s*usingChainPatcher \? rawPatcherRarity : undefined,\s*'online',\s*usingChainPatcher \? 1 : undefined,\s*undefined,\s*usingChainPatcher/);
-  assert.match(modal, /USE ALL ' \+ freeRolls \+ ' FREE ROLL/);
+  assert.ok(modal.includes('ROLL ALL ${freeRolls} FREE ROLLS'));
+  assert.ok(modal.includes('One press uses all ${freeRolls} Free Rolls.'));
   assert.match(shared, /Math\.min\(0\.60, Math\.min\(8, Math\.max\(0, s\.upgrades\.offlineRate/);
   assert.match(shared, /id === 'offlineRate' && level >= 8\) return Infinity/);
   assert.match(upgrades, /offlineRate: 8/);
@@ -2686,7 +2687,7 @@ test('rolling disables both roll affordances and gives the orb keyboard semantic
   assert.match(roll, /if \(busy\) return;[\s\S]{0,120}if \(canRoll\)/);
   assert.match(roll, /<button[\s\S]{0,250}disabled=\{busy\}[\s\S]{0,250}aria-busy=\{busy\}/);
   assert.match(roll, /aria-label=\{busy \? 'Rolling orbs'/);
-  assert.match(roll, /busy \? 'ROLL IN PROGRESS'/);
+  assert.match(roll, /const primaryActionLabel = busy[\s\S]*?\? 'ROLL IN PROGRESS'/);
   assert.match(roll, /className=\{'roll-button ' \+ \(busy \? 'is-waiting'/);
   const css = source('src/client/styles.css');
   assert.match(css, /\.roll-button:hover:disabled \{[^}]*transform: none !important;[^}]*cursor: wait !important;/);
