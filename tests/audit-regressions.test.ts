@@ -3076,7 +3076,7 @@ test('background polling is single-flight and paused while hidden', () => {
   const sharedPollGuard = "if (cancelled || inFlight || document.visibilityState === 'hidden') return;";
   assert.ok(client.split(sharedPollGuard).length - 1 >= 3);
   assert.ok(client.includes("if (cancelled || !splashEntered || inFlight || document.visibilityState === 'hidden') return;"));
-  assert.ok(client.includes("if (!splashEntered) return;\n      if (inFlight || document.visibilityState === 'hidden') return;"));
+  assert.ok(client.includes("if (!splashEntered) return;\n      if (inFlight) return;\n      if (document.visibilityState === 'hidden') return;"));
   assert.ok(client.includes("if (inFlight || document.visibilityState === 'hidden') return;"));
   assert.ok(client.includes("document.addEventListener('visibilitychange', onVisibilityChange);"));
   assert.ok(client.includes("document.removeEventListener('visibilitychange', onVisibilityChange);"));
