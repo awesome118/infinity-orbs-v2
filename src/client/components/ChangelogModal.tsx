@@ -11,6 +11,14 @@ const entries: Array<{
   description: string;
 }> = [
   {
+    title: 'Infinity Rarity Ceiling',
+    description: 'The rarity continuum now reaches the largest finite rarity supported by the game. Reaching the cap displays as Infinity; progression beyond Infinity is reserved for a future update.',
+  },
+  {
+    title: 'Supernova Critical Scaling',
+    description: 'Supernova now multiplies your normal critical rarity by 5×, so it scales with Critical Power instead of replacing it.',
+  },
+  {
     title: 'Inline Post Scroll Compliance',
     description: 'Inline launch and Orb Frenzy posts now use bounded, non-scrollable preview surfaces that allow vertical feed gestures to pass through to Reddit. The in-post Global Chat scroller and oversized fallback dialog were removed from Frenzy; full chat and long interactions stay in Expanded Mode.',
   },
@@ -20,7 +28,7 @@ const entries: Array<{
   },
   {
     title: 'Rune Major Abilities & Auto Sacrifice',
-    description: 'Rune tooltips now explain eleven scalable Major Abilities: Echo Chamber chains extra rolls, Paradox Engine expands multi-rolls, Event Horizon rewards record rarities, Shard Constellation and Temporal Loop build persistent meters, Prismatic Fork boosts rare outcomes, Critical Convergence reacts to crits, Rarity Ladder rewards rising sequences, Stellar Dividend pays roll milestones, Shard Jackpot multiplies Shard payouts, and Milestone Engine rewards new rarity decades. Strengthen a chosen Rune by clicking a donor, or auto-sacrifice eligible drops into a random equipped Rune.',
+    description: 'Rune tooltips now explain fourteen scalable Major Abilities: Fateweaver improves Orb Luck, Midas Engine boosts Coins, Memory Well improves XP, Echo Chamber chains extra rolls, Paradox Engine expands multi-rolls, Event Horizon rewards record rarities, Shard Constellation and Temporal Loop build persistent meters, Prismatic Fork boosts rare outcomes, Critical Convergence reacts to crits, Rarity Ladder rewards rising sequences, Stellar Dividend pays roll milestones, Shard Jackpot boosts Shard payouts, and Milestone Engine rewards new rarity decades. Strengthen a chosen Rune by clicking a donor, or auto-sacrifice eligible drops into a random equipped Rune.',
   },
   {
     title: 'Combat Unlock & Mark Shop',
