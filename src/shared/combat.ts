@@ -1046,7 +1046,7 @@ export function combatStatsFor(state: CombatState): CombatStats {
     else if (upgrade.stat === 'damageReduction') damageReductionPct += upgrade.value * rank;
   }
   const gearQualityRequirement = floorQualityRequirement(floor);
-  const orbRarity = Math.max(2, Math.min(1_000_000_000_000_000_000, Math.floor(Number(state.orbFocusRarity) || 2)));
+  const orbRarity = Math.max(2, Math.min(Number.MAX_VALUE, Math.floor(Number(state.orbFocusRarity) || 2)));
   const orbFocusBonus = Math.min(.35, Math.max(0, (Math.log10(orbRarity) - Math.log10(2)) * .025 + combatUpgradeRank(state, 'orb-resonance') * .015));
   const coreProgressionBonus = coreProgressionCombatBonus(state.coreLevel, state.coreHighestRarity);
   const dungeonDamageBonus = state.dungeonId === 'cinder-vault' ? 0.10 : 0;
@@ -1218,7 +1218,7 @@ export function coreProgressionCombatBonus(coreLevelValue: unknown, highestRarit
   const rawLevel = Number(coreLevelValue);
   const level = Number.isFinite(rawLevel) ? Math.max(1, Math.min(1_000_000, Math.floor(rawLevel))) : 1;
   const rawRarity = Number(highestRarityValue);
-  const rarity = Number.isFinite(rawRarity) ? Math.max(2, Math.min(1_000_000_000_000_000_000, rawRarity)) : 2;
+  const rarity = Number.isFinite(rawRarity) ? Math.max(2, Math.min(Number.MAX_VALUE, rawRarity)) : 2;
   const levelBonus = Math.min(0.20, Math.floor((level - 1) / 10) * 0.02);
   const rarityBonus = Math.min(0.05, Math.max(0, Math.floor(Math.log10(rarity)) * 0.003));
   return Math.round((levelBonus + rarityBonus) * 10_000) / 10_000;
