@@ -2911,6 +2911,8 @@ test('Altar descriptions match the implemented multiplicative bonus rates', () =
   const altar = source('src/client/components/AltarSection.tsx');
   const combined = source('src/client/components/AltarAndMasterySection.tsx');
   assert.ok(altar.includes('base +2% multiplicative luck per shard'));
+  assert.ok(altar.includes('Each adds base +2% multiplicative luck before Altar Resonator/level bonuses'));
+  assert.ok(!altar.includes('+3% permanent multiplicative luck'));
   assert.ok(!altar.includes('+3% multiplicative luck per shard'));
   assert.ok(combined.includes('each rank compounds Coin Devotion by 1.05×'));
   assert.ok(combined.includes('base +2% permanent luck each'));
