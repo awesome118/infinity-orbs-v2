@@ -112,6 +112,10 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const [createName, setCreateName] = useState('');
   const [createTag, setCreateTag] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [creatingGuild, setCreatingGuild] = useState(false);
+  const createGuildInFlightRef = useRef(false);
+  const [socialError, setSocialError] = useState('');
+  const [socialNotice, setSocialNotice] = useState('');
   const [chatMessages, setChatMessages] = useState<GuildMessage[]>([]);
   const [reportingId, setReportingId] = useState<string | null>(null);
   const [reportedIds, setReportedIds] = useState<Set<string>>(() => new Set());
