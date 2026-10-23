@@ -116,7 +116,6 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose, onSubmit 
           maxLength={2000}
           onChange={e => setMessage(e.target.value.slice(0, 2000))}
           rows={8}
-          maxLength={2000}
           placeholder={type === 'bug'
             ? 'What happened? Include what you expected to happen and what actually happened.'
             : 'What would you like to see changed or added?'}
