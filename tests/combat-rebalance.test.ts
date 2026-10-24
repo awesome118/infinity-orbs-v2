@@ -49,9 +49,9 @@ test('new Rune Major Abilities add fractional Shard rewards and rarity-floored d
   assert.equal(effects.discoveryOraclePct,20);
   assert.ok(effects.discoveryOracleBonusRolls>=1);
   assert.equal(effects.dryStreakRefineryRate,0.0001);
-  assert.match(combatRuneMajorAbilitySummary(shardTithe,1),/fractional Shards/);
-  assert.match(combatRuneMajorAbilitySummary(discovery,1),/first-time rarity discovery/i);
-  assert.match(combatRuneMajorAbilitySummary(refinery,1),/100 rolls since your best rarity/i);
+  assert.match(combatRuneMajorAbilitySummary(shardTithe.majorAbility!,1),/fractional Shards/);
+  assert.match(combatRuneMajorAbilitySummary(discovery.majorAbility!,1),/first-time rarity discovery/i);
+  assert.match(combatRuneMajorAbilitySummary(refinery.majorAbility!,1),/100 rolls since your best rarity/i);
 });
 
 test('Auto cadence derives its deadline from the accepted server beat timestamp',()=>{
