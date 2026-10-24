@@ -1,6 +1,6 @@
 name: Deploy Devvit
 
-# Normally manual. A version-specific push marker is available only as a recovery path after a failed dispatch.
+# Normally manual. A version-specific push marker is a one-commit recovery path when dispatch is unavailable.
 # This workflow uploads and installs to the development subreddit only. Production install is a separate post-approval workflow.
 on:
   workflow_dispatch:

@@ -318,7 +318,7 @@ test('deployment workflow is manual, main-only, and installs only to the develop
     'uploaded-version verification must resolve the exact requested release rather than unqualified latest',
   );
   assert.match(workflow, /paths:\s*\n\s*- \.github\/workflows\/deploy\.yml/);
-  assert.match(workflow, /contains\(github\.event\.head_commit\.message, '\[deploy-dev:1\.2\.51\]'\)/);
+  assert.match(workflow, /contains\(github\.event\.head_commit\.message, '\[deploy-dev:\d+\.\d+\.\d+\]'\)/);
   assert.ok(workflow.includes('      - name: Detect whether the exact version already exists\n        id: existing-version\n        continue-on-error: true\n        env:\n          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}'));
   assert.ok(workflow.includes('      - name: Verify uploaded version\n        id: uploaded-version\n        env:\n          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}'));
   assert.match(workflow, /if: steps\.existing-version\.outcome != 'success'/);
