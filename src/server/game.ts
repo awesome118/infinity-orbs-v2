@@ -2529,7 +2529,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     longestRollingSessionMs: finiteNonNegativeInteger(parsed.longestRollingSessionMs, base.longestRollingSessionMs ?? 0),
     highestDryStreak: finiteNonNegativeInteger(parsed.highestDryStreak, base.highestDryStreak ?? 0),
     freeRolls: finiteNonNegativeInteger(parsed.freeRolls, base.freeRolls ?? 0),
-    shardPityRolls: Math.min(SHARD_PITY_ROLLS_TO_REWARD - 1, finiteNonNegativeInteger(parsed.shardPityRolls, 0)),
+    shardPityRolls: 0,
     currentRunRolls: finiteNonNegativeInteger(parsed.currentRunRolls, base.currentRunRolls ?? 0),
     prestigeCount: finiteNonNegativeInteger(parsed.prestigeCount, base.prestigeCount),
     collectionValue: finiteNonNegativeNumber(parsed.collectionValue, base.collectionValue),
