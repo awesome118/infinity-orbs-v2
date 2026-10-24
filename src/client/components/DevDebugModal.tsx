@@ -397,6 +397,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [contextInfo, setContextInfo] = useState<AdminContext | null>(null);
+  const [globalChatRegistrationBusy, setGlobalChatRegistrationBusy] = useState(false);
 
   const [targetUser, setTargetUser] = useState('');
   const [pendingWipe, setPendingWipe] = useState<{ action: 'wipe-game' | 'wipe-and-ban' | 'wipe-and-unban'; username: string } | null>(null);
@@ -924,6 +925,31 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     const interval = window.setInterval(() => void loadChatReports(true), 5000);
     return () => window.clearInterval(interval);
   }, []);
+
+  const registerCurrentPostForGlobalChat = async () => {
+    if (globalChatRegistrationBusy) return;
+    const confirmed = window.confirm(
+      'Register the CURRENT Reddit post as the main Infinity Orbs Game destination for Global Chat? Only confirm while the actual main Game post is open. Never run this on a Frenzy or shared-Orb post.'
+    );
+    if (!confirmed) return;
+    setGlobalChatRegistrationBusy(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/dev/chat/register-current-post', {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not register the current post.');
+      setMessage('Registered ' + String(data.postId ?? 'the current post') + ' for Global Chat. Reload the main Game post to refresh chat availability.');
+    } catch (error) {
+      setMessage('Global Chat registration failed: ' + (error instanceof Error ? error.message : 'Unknown error.'));
+    } finally {
+      setGlobalChatRegistrationBusy(false);
+    }
+  };
 
   const loadGuildChatSpy = async (quiet = false) => {
     if (!quiet) setGuildChatSpyLoading(true);
@@ -3531,6 +3557,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button type="button"
+              title="Repair the canonical Global Chat destination while the main Game post is open."
+              disabled={globalChatRegistrationBusy}
+              onClick={() => void registerCurrentPostForGlobalChat()}
+              className={buttonBase + ' bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-200 px-3 py-2'}
+            >
+              {globalChatRegistrationBusy ? 'Registering…' : 'Repair Global Chat'}
+            </button>
             <button type="button"
               title="Jump to aggregate Impressions analytics."
               onClick={() => {
