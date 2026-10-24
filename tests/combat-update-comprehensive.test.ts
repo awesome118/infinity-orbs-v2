@@ -196,7 +196,7 @@ test('Roll menu is centered, redundant Pity Luck tier text is absent, and Shards
   assert.match(shared, /formatShardAmount\(value: unknown\): string/);
 });
 
-test('Gear and skill tooltips follow the pointer and close when it leaves the right icon', () => {
+test('Gear inspector opens on hover and remains accessible across its portal', () => {
   const combat = source('src/client/components/CombatSection.tsx');
   const styles = source('src/client/styles.css');
   assert.match(combat, /onPointerEnter=\{event=>\{lastPointerTypeRef\.current=event\.pointerType;if\(event\.pointerType==='mouse'\)openTooltip\(\);\}\}/);
