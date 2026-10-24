@@ -1169,7 +1169,7 @@ function buildStatSpyStats(
     statSource('Speed upgrade', Number(upgrades.speed ?? 0) * 150, 'ms', 'reduction', { level: Number(upgrades.speed ?? 0), detail: '-150ms per level' }),
     statSource('Permanent Speed Floor', Number(prestige.permSpeed ?? 0) * 300, 'ms', 'reduction', { level: Number(prestige.permSpeed ?? 0), detail: '-300ms to cooldown and floor per level' }),
     statSource('Guild Speed', Number(guild.speedRank ?? 0) * 100, 'ms', 'reduction', { level: Number(guild.speedRank ?? 0), detail: 'Floor reduction only' }),
-    statSource('Chrono Flow', Number(mastery.chronoFlow ?? 0) * 120, 'ms', 'reduction', { level: Number(mastery.chronoFlow ?? 0), detail: 'Floor reduction only' }),
+    statSource('Chrono Flow', Number(mastery.chronoFlow ?? 0) * 120, 'ms', 'reduction', { level: Number(mastery.chronoFlow ?? 0), detail: 'Reduces active cooldown and minimum floor' }),
     statSource('Steady Hands', Number(prestige.steadyHands ?? 0) * 100, 'ms', 'reduction', { level: Number(prestige.steadyHands ?? 0), detail: '-100ms per level' }),
     statSource('Temporal Compression', Number(prestige.temporalCompression ?? 0) * 75, 'ms', 'reduction', { level: Number(prestige.temporalCompression ?? 0), detail: '-75ms per level' }),
     statSource('Level milestone speed', levelBenefits.cooldownReductionMs, 'ms', 'reduction', { level, detail: 'Unlocked at level milestones' }),
@@ -1685,10 +1685,11 @@ debugRouter.post('/state', async (req, res) => {
     }
 
     if (body.activeBoosters && typeof body.activeBoosters === 'object') {
-      s.activeBoosters = { ...(s.activeBoosters ?? {}) };
-      for (const id of ['fortune', 'hyperdrive', 'barrage', 'prosperity', 'ascension']) {
-        if (id in body.activeBoosters) s.activeBoosters[id as keyof NonNullable<typeof s.activeBoosters>] =
-          nonNegativeInteger(body.activeBoosters[id]);
+      const boosterIds = ['fortune', 'hyperdrive', 'barrage', 'prosperity', 'ascension'] as const;
+      // An explicit empty object is the admin/test reset command; partial updates merge.
+      s.activeBoosters = Object.keys(body.activeBoosters).length === 0 ? {} : { ...(s.activeBoosters ?? {}) };
+      for (const id of boosterIds) {
+        if (id in body.activeBoosters) s.activeBoosters[id] = nonNegativeInteger(body.activeBoosters[id]);
       }
     }
 

@@ -66,7 +66,7 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   },
   chronoFlow: {
     name: 'Chrono Flow',
-    desc: '-120ms cooldown floor per level.',
+    desc: '-120ms cooldown and minimum floor per level.',
     maxLevel: 20,
     costMultiplier: 2,
   },
@@ -96,7 +96,7 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   },
   apexFortune: {
     name: 'Apex Fortune',
-    desc: '5% chance per level on multi-rolls to double the luck of that activation.',
+    desc: '3% chance per level on multi-rolls to double the luck of that activation, capped at 45%.',
     maxLevel: 15,
     costMultiplier: 3,
   },
@@ -2146,11 +2146,11 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
   // Prestige cooldown investments reduce the active cooldown as well as
   // lowering its minimum floor. Otherwise a 15s base cooldown makes these
   // upgrades effectively inert at ordinary roll speeds.
-  const directPrestigeReduction =
-    permReduction + steadyHandsReduction + temporalCompressionReduction;
+  const directCooldownReduction =
+    permReduction + masteryChronoReduction + steadyHandsReduction + temporalCompressionReduction;
   let cd = Math.max(
     floor,
-    BASE_COOLDOWN_MS - coinReduction - directPrestigeReduction,
+    BASE_COOLDOWN_MS - coinReduction - directCooldownReduction,
   );
 
   if (isAuto && (s.prestigeUpgrades?.autoOverclock ?? 0) > 0) {

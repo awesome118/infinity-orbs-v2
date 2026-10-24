@@ -6,7 +6,7 @@ Combat is a mode inside Infinity Orbs, not a separate app or a replacement for o
 ## First playable slice
 - Server-authoritative Undercrypt combat resolves in discrete one-second beats. Auto tactics (Balanced, Aggressive, Defensive, Recovery) choose commands from current health and energy on the server; a manually queued Strike, Heavy, Guard, or Mend overrides the next automatic beat once.
 - Auto-run is the default; Pause, Auto toggle, manual Next Beat, and Strike / Heavy / Guard / Mend selection are available.
-- Speed controls actions resolved per beat. Presentation timing is not a combat stat.
+- Speed controls actions resolved per beat. Player Speed comes from equipped gear and explicit bonuses and does not multiply with dungeon depth; enemy Speed continues to scale with depth. Presentation timing is not a combat stat.
 - Health persists between encounters. Death restarts the push at Depth 1, while best depth, gear, skill ranks, combat level, and Delver Coins persist.
 - Three expedition choices: Undercrypt (balanced, Warden clears improve orb Luck), Cinder Vault (tougher enemies, +10% player damage, +40% coins, more gear drops), and Glass Labyrinth (lower enemy HP, faster/harder enemies, +35 Speed, +5 percentage points crit chance, +25% combat XP). Each dungeon stores its own best depth and has its own boss every tenth depth.
 - Gear has seven slots, randomized names / quality / stat-bearing powers, active traits, and 30 possible Major Abilities. Top grades are substantially rarer, and high-quality gear has a nonlinear stat budget rather than just a cosmetic grade.

@@ -206,7 +206,7 @@ body.io-inline-post { margin: 0; }
 
 /* Roll screen */
 .roll-layout { display: grid; grid-template-columns: minmax(0, 1fr) 272px; align-items: start; gap: 18px; max-width: 1180px; margin: 0 auto; }
-.roll-main { display: flex; min-width: 0; flex-direction: column; align-items: stretch; gap: 16px; }
+.roll-main { display: flex; width: 100%; max-width: 760px; min-width: 0; flex-direction: column; align-items: center; gap: 16px; margin-inline: auto; }
 .roll-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; padding: 2px 3px 5px; }
 .roll-kicker { color: var(--teal); font-size: 9px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; }
 .roll-title { margin: 7px 0 3px; color: #f1f1e8; font-family: Georgia, "Times New Roman", serif; font-size: clamp(25px, 3vw, 35px); font-weight: 500; letter-spacing: -.025em; line-height: 1.06; }
@@ -1879,7 +1879,7 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-combat-combatant{display:flex;flex-direction:column;align-items:center;gap:7px}.io-combat-sprite{width:94px;height:94px;display:grid;place-items:center;border:1px solid #5a4d61;border-radius:25px 12px 23px 12px;background:rgba(19,16,23,.84);box-shadow:0 13px 24px rgba(0,0,0,.25);font-size:51px;font-weight:950}
 .io-combat-hero .io-combat-sprite{color:var(--cl);border-color:rgba(201,255,50,.5);text-shadow:0 0 23px rgba(201,255,50,.26);transform:rotate(-3deg)}.io-combat-foe .io-combat-sprite{border-color:rgba(219,109,67,.65);text-shadow:0 0 20px rgba(219,109,67,.25);transform:rotate(3deg)}
 .io-combat-name{display:flex;align-items:center;gap:7px;font:900 10px ui-monospace,monospace;letter-spacing:.06em;text-align:center}.io-combat-name span{color:var(--cl);font-size:9px}
-.io-combat-hp{width:min(100%,230px);height:8px;background:#0f0d12;border:1px solid #4a414e;border-radius:3px;overflow:hidden}.io-combat-hp span{display:block;height:100%;background:var(--cl);transition:width .2s ease-out}.io-combat-hp.is-enemy span{background:var(--cc)}
+.io-combat-hp{position:relative;width:min(100%,230px);height:8px;background:#0f0d12;border:1px solid #4a414e;border-radius:3px;overflow:hidden}.io-combat-hp>span{position:absolute;top:0;display:block;height:100%;border-radius:2px;transition:width .2s ease-out,left .2s ease-out}.io-combat-hp>.io-combat-hp-fill{left:0;background:linear-gradient(90deg,#3b9d77,#75d8a8);box-shadow:0 0 7px rgba(74,222,128,.18)}.io-combat-hp>.io-combat-hp-overhealth{background:linear-gradient(90deg,#d6a628,#f4d04c);box-shadow:0 0 7px rgba(244,208,76,.3)}.io-combat-hp>.io-combat-hp-shield{background:linear-gradient(90deg,#2678d8,#58a6ff);box-shadow:0 0 7px rgba(88,166,255,.34)}.io-combat-hp.is-enemy>span{left:0!important;background:var(--cc);box-shadow:none}.io-combat-hp-overhealth-label{color:#f4d04c}.io-combat-hp-shield-label{color:#58a6ff}
 .io-combat-combatant small{font:10px ui-monospace,monospace;color:#c4bbc6}.io-combat-versus{color:#8e828f;font:950 11px ui-monospace,monospace;text-align:center;transform:rotate(-7deg)}
 .io-combat-stage-foot{justify-content:center;flex-wrap:wrap;padding-top:10px;border-top:1px solid rgba(241,234,219,.08)}.io-combat-stage-foot span{display:inline-flex;align-items:center;gap:5px;padding:0 10px}.io-combat-stage-foot span:first-child{color:var(--cl)}
 .io-combat-control-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:14px 0}.io-combat-command-group,.io-combat-run-controls{display:flex;flex-wrap:wrap;gap:7px}
@@ -2521,26 +2521,7 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 #root.io-inline-post .io-frenzy-success-card .io-public-note-link { margin-top: 9px; }
 
 
-/* Balance update: keep the primary roll experience centered at desktop widths. */
-@media (min-width: 681px) {
-  .roll-layout {
-    grid-template-columns: minmax(0, 760px) !important;
-    justify-content: center;
-    max-width: 1180px;
-  }
-  .roll-main {
-    width: 100%;
-    max-width: 760px;
-    margin-inline: auto;
-  }
-  .roll-sidebar {
-    display: grid;
-    width: min(100%, 760px);
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    margin-inline: auto;
-  }
-  .roll-sidebar .field-card:last-child { grid-column: auto; }
-}
+
 .io-combat-gacha-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

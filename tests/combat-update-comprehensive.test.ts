@@ -24,13 +24,18 @@ import {
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
-test('player and enemy Speed both scale upward with dungeon depth', () => {
+test('player Speed comes from gear and stays depth-independent while enemy Speed scales', () => {
   const player = createCombatState();
   const basePlayerSpeed = combatStatsFor({ ...player, depth: 1 }).speed;
   const deepPlayerSpeed = combatStatsFor({ ...player, depth: 100 }).speed;
+  assert.equal(deepPlayerSpeed, basePlayerSpeed, 'same loadout must grant the same player Speed at all depths');
+  const weapon = player.inventory.find(item => item.slot === 'weapon');
+  assert.ok(weapon);
+  weapon.speedBonus = 35;
+  assert.equal(combatStatsFor({ ...player, depth: 1 }).speed, basePlayerSpeed + 35);
+  assert.equal(combatStatsFor({ ...player, depth: 100 }).speed, basePlayerSpeed + 35);
   const baseEnemySpeed = getEnemyForDungeonDepth('undercrypt', 1).speed;
   const deepEnemySpeed = getEnemyForDungeonDepth('undercrypt', 100).speed;
-  assert.ok(deepPlayerSpeed > basePlayerSpeed, 'player Speed must increase with depth');
   assert.ok(deepEnemySpeed > baseEnemySpeed, 'enemy Speed must increase with depth');
   assert.ok(Number.isFinite(combatStatsFor({ ...player, depth: 50_000 }).speed));
   assert.ok(Number.isFinite(getEnemyForDungeonDepth('undercrypt', 50_000).speed));
@@ -225,4 +230,22 @@ test('Global Chat never lets launcher context override the registered comment de
   assert.match(social, /return resolveGlobalGamePostId\(\)/);
   assert.doesNotMatch(social, /currentPostId !== destination/);
   assert.match(social, /targetPostId !== registeredPostId/);
+});
+
+
+test('combat health bar separates HP, overhealth, and shields by color', () => {
+  const ui = source('src/client/components/CombatSection.tsx');
+  const css = source('src/client/styles.css');
+  assert.ok(ui.includes('io-combat-hp-overhealth'), 'overhealth must have its own visual segment');
+  assert.ok(ui.includes('io-combat-hp-shield'), 'shield must have its own visual segment');
+  assert.ok(css.includes('.io-combat-hp-overhealth') && css.includes('#f4d04c'), 'overhealth must be yellow');
+  assert.ok(css.includes('.io-combat-hp-shield') && css.includes('#58a6ff'), 'shield must be blue');
+});
+
+test('desktop roll layout keeps discovery cards right of a centered orb column', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  const css = source('src/client/styles.css');
+  assert.ok(roll.includes('<aside className="roll-sidebar"'), 'discovery summary should remain a separate sidebar');
+  assert.ok(css.includes('grid-template-columns: minmax(0, 1fr) 272px'), 'desktop roll layout must reserve a right-hand sidebar');
+  assert.ok(!css.includes('grid-template-columns: minmax(0, 760px) !important'), 'a one-column desktop override must not push discovery cards below the orb');
 });

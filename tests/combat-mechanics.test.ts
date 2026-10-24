@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { combatMarkMultiplier, addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatActionsDue, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatSkillRarityOdds, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, undercryptOrbLuckMultiplier, undercryptWardensDefeated, type CombatGear } from '../src/shared/combat.js';
+import { combatMarkMultiplier, addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatActionsDue, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatGearSpeedBonus, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatSkillRarityOdds, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, undercryptOrbLuckMultiplier, undercryptWardensDefeated, type CombatGear } from '../src/shared/combat.js';
 
 test('starter combat build carries the Auto-Dungeons baseline', () => {
   const state=createCombatState();
@@ -36,7 +36,7 @@ test('equipped gear changes derived stats', () => {
   weapon.damageBonus+=10; weapon.speedBonus+=25;
   const after=combatStatsFor(state);
   assert.equal(after.damage,before.damage+10);
-  assert.equal(after.speed,before.speed, 'ordinary gear speed affixes no longer apply');
+  assert.equal(after.speed,before.speed+25, 'ordinary gear Speed affixes increase player action frequency');
 });
 test('every tenth Undercrypt depth has a boss', () => {
   assert.equal(getEnemyForDepth(9).boss,false);
@@ -347,4 +347,12 @@ test('Starfall and Mark Harvest Major Abilities apply equipped bonuses', () => {
   const baseMarks = combatMarkMultiplier(state);
   weapon!.majorAbility = { id:'mark-harvest', name:'Mark Harvest', trigger:'passive', markBonusPercent:.25, description:'Increases Combat Marks earned from kills while equipped.' };
   assert.ok(combatMarkMultiplier(state) >= baseMarks + .25 - 1e-9);
+});
+
+
+test('gear Speed affix is guaranteed on boots and can roll on lighter slots', () => {
+  assert.equal(combatGearSpeedBonus('boots', 100, 0.99), 65);
+  assert.equal(combatGearSpeedBonus('ring', 100, 0.10), 30);
+  assert.equal(combatGearSpeedBonus('ring', 100, 0.99), 0);
+  assert.equal(combatGearSpeedBonus('armor', 100, 0.01), 0);
 });

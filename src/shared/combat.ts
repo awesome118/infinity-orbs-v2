@@ -508,6 +508,16 @@ export function combatGearStatBudgetMultiplier(qualityValue: unknown): number {
   const quality = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) / 100 : 0;
   return 0.35 + 4.65 * Math.pow(quality, 2.4);
 }
+/** Speed is a flat gear stat. Boots always grant it; lighter slots can roll it too. */
+export function combatGearSpeedBonus(slot: CombatGearSlot, powerValue: unknown, rollValue: unknown): number {
+  const p = Number(powerValue), rawRoll = Number(rollValue);
+  const power = Number.isFinite(p) ? Math.max(1, Math.min(1_000_000, Math.round(p))) : 1;
+  const roll = Number.isFinite(rawRoll) ? Math.max(0, Math.min(0.999999999, rawRoll)) : 0.999999999;
+  if (slot === 'boots') return Math.max(1, Math.round(power * 0.65));
+  if ((slot === 'gloves' || slot === 'ring' || slot === 'amulet') && roll < 0.20) return Math.max(1, Math.round(power * 0.30));
+  return 0;
+}
+
 export function combatNextBeatDelayMs(nowValue: unknown, lastAcceptedValue: unknown, bufferMs = 150): number {
   const now = Number(nowValue), lastAccepted = Number(lastAcceptedValue);
   if (!Number.isFinite(now) || now < 0 || !Number.isFinite(lastAccepted) || lastAccepted <= 0) return 0;
@@ -1065,8 +1075,8 @@ export function combatStatsFor(state: CombatState): CombatStats {
     },0);
   };
   const effectiveDamageBonus=equippedItems.reduce((sum,item)=>sum+Math.round(item.damageBonus*qualityOf(item)),0);
-  // Turn speed is intentionally restricted to Major Abilities, not ordinary gear affixes.
-  const effectiveSpeedBonus=0;
+  // Gear Speed is flat, so equipping an item grants the same Speed at every depth.
+  const effectiveSpeedBonus=equippedItems.reduce((sum,item)=>sum+Math.max(0,Math.floor(Number(item.speedBonus)||0)),0);
   const majorSpeedPercent=abilityTotal('chrono-surge','speedPercent');
   const majorDamagePercent=Math.min(1.5,abilityTotal('void-edge','damagePercent')+abilityTotal('glass-cannon','damagePercent')+
     Math.min(.4,abilityTotal('deep-roots','damagePerTenLevelsPercent')*Math.floor(floor/10)));
@@ -1104,9 +1114,8 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const flatDamage = 50 + (Math.max(1,state.level)-1)*4 + effectiveDamageBonus + Math.round(floor*10);
   const flatHealth = 1000 + (Math.max(1,state.level)-1)*30 + effectiveHealthBonus + Math.round(floor*20);
   const maxHealth = Math.max(1,Math.round(flatHealth*(1+healthPct)*(1+coreProgressionBonus)*(1+orbFocusBonus*.65)*(1+majorHealthPercent)));
-  // Scale player action frequency with the same depth curve used for enemies.
-  const depthSpeedMultiplier = Math.pow(1 + floor / 100, 1.4);
-  let speed = Math.round((310 + effectiveSpeedBonus + speedFlat + dungeonSpeedBonus) * (1 + majorSpeedPercent) * depthSpeedMultiplier);
+  // Player Speed comes from gear and explicit bonuses, never dungeon depth.
+  let speed = Math.round((310 + effectiveSpeedBonus + speedFlat + dungeonSpeedBonus) * (1 + majorSpeedPercent));
   if (traitEffectiveness('desperation')>0 && state.health>0 && state.health<=maxHealth*.4) speed+=Math.round(20*traitEffectiveness('desperation'));
   if (traitEffectiveness('keen')>0) critChance+=.04*traitEffectiveness('keen');
   critChance += effectiveCritBonus + majorCritBonus + dungeonCritBonus;
@@ -1207,7 +1216,7 @@ export function getEnemyForDepth(depthValue: number): CombatEnemy {
   const scaledHp=Math.min(1e15,Math.round(130*Math.pow(1+floor/100,2.2)*base.hp));
   const maxHp=boss?Math.round(scaledHp*1.15*4.6):scaledHp;
   const damage=Math.min(1e12,Math.max(1,Math.round((20+floor*1.55)*Math.pow(1+floor/100,.35)*base.damage*(boss?2.2*1.15:1))));
-  // Enemy Speed scales with depth using the same exponent as player Speed; it must not remain a flat encounter stat.
+  // Enemy Speed deliberately scales with depth; player Speed does not.
   const depthSpeedMultiplier = Math.pow(1 + floor / 100, 1.4);
   const speed=Math.min(10_000_000,Math.round(base.speed*depthSpeedMultiplier+floor*1.2+(boss?55:0)));
   return {id:boss?'crypt-warden':base.id,name:boss?'Crypt Warden':base.name,kind:boss?'boss':base.kind,hp:maxHp,maxHp,damage,speed,room:boss?'Warden Throne':base.room,emoji:boss?'👹':base.emoji,boss};

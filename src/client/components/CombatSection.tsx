@@ -376,7 +376,17 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     .sort((a,b)=>(skillRarityOrder[a.rarity]??99)-(skillRarityOrder[b.rarity]??99)||a.name.localeCompare(b.name));
   const nextStrategyGuide=STRATEGY_GUIDE_RANKS.find(entry=>entry.rank===state.strategyGuideRank+1)??null;
   if(page==='runes')return <RunesSection/>;
-  const hpPct=Math.max(0,Math.min(100,state.health/Math.max(1,state.maxHealth)*100));
+  const healthMax=Math.max(1,Number(state.maxHealth)||1);
+  const currentHealth=Math.max(0,Number(state.health)||0);
+  const shieldAmount=Math.max(0,Number(state.skillRuntime?.shield)||0);
+  const overhealthAmount=Math.max(0,currentHealth-healthMax);
+  const healthCapacity=Math.max(1,healthMax+overhealthAmount+shieldAmount);
+  const baseHpSegmentPct=Math.min(currentHealth,healthMax)/healthCapacity*100;
+  const overhealthPct=overhealthAmount/healthCapacity*100;
+  const shieldPct=shieldAmount/healthCapacity*100;
+  const overhealthOffset=baseHpSegmentPct;
+  const shieldOffset=(Math.min(currentHealth,healthMax)+overhealthAmount)/healthCapacity*100;
+  const hpPct=Math.max(0,Math.min(100,(currentHealth+shieldAmount)/healthCapacity*100));
   const enemyPct=Math.max(0,Math.min(100,enemy.hp/Math.max(1,enemy.maxHp)*100));
   const beatProgressPct=Math.max(0,Math.min(100,Math.round((COMBAT_BEAT_INTERVAL_MS-beatCooldownMs)/COMBAT_BEAT_INTERVAL_MS*100)));
   return <section className="io-combat-screen">
@@ -388,7 +398,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         {sonicBlasts.map((blast,index)=><div key={blast.id} className={'io-combat-sonic-blast '+(blast.actor==='player'?'is-player':'is-enemy')} style={{animationDelay:(index*65)+'ms'}} aria-hidden="true"><span/><span/><span/></div>)}
         {lootPopup&&<div key={lootPopup.id} className="io-combat-loot-popup" role="status"><div className="io-combat-loot-popup-head"><Sparkles size={16}/><strong>{lootPopup.title}</strong><button type="button" aria-label="Dismiss loot summary" onClick={()=>setLootPopup(null)}>×</button></div><div className="io-combat-loot-items">{lootPopup.lines.map((line,index)=><div key={index}><span>✦</span>{line}</div>)}</div></div>}
         <div className="io-combat-duel">
-          <div className="io-combat-combatant io-combat-hero"><div className="io-combat-sprite">🔮</div><div className="io-combat-name">{state.orbFocusName.toUpperCase()} <span>LV {state.level}</span></div><div className="io-combat-hp" role="progressbar" aria-label="Player health" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(hpPct)}><span style={{width:hpPct+'%'}}/></div><small>{fmt(state.health)} / {fmt(state.maxHealth)} HP · ORB POWER +{percent(stats.orbFocusBonus)}</small></div>
+          <div className="io-combat-combatant io-combat-hero"><div className="io-combat-sprite">🔮</div><div className="io-combat-name">{state.orbFocusName.toUpperCase()} <span>LV {state.level}</span></div><div className="io-combat-hp io-combat-hp-player" role="progressbar" aria-label="Player health and defenses" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(hpPct)} aria-valuetext={fmt(currentHealth)+' HP; '+fmt(shieldAmount)+' shield; '+fmt(overhealthAmount)+' overhealth'}><span className="io-combat-hp-fill" style={{width:baseHpSegmentPct+'%'}}/>{overhealthAmount>0&&<span className="io-combat-hp-overhealth" style={{left:overhealthOffset+'%',width:overhealthPct+'%'}}/>}{shieldAmount>0&&<span className="io-combat-hp-shield" style={{left:shieldOffset+'%',width:shieldPct+'%'}}/>}</div><small>{fmt(currentHealth)} / {fmt(state.maxHealth)} HP{overhealthAmount>0&&<span className="io-combat-hp-overhealth-label"> · +{fmt(overhealthAmount)} OVERHEALTH</span>}{shieldAmount>0&&<span className="io-combat-hp-shield-label"> · +{fmt(shieldAmount)} SHIELD</span>} · ORB POWER +{percent(stats.orbFocusBonus)}</small></div>
           <div className="io-combat-versus">VS</div>
           <div className="io-combat-combatant io-combat-foe"><div className="io-combat-sprite">{enemy.emoji}</div><div className="io-combat-name">{enemy.name.toUpperCase()}</div><div className="io-combat-hp is-enemy" role="progressbar" aria-label={enemy.name+' health'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(enemyPct)}><span style={{width:enemyPct+'%'}}/></div><small>{fmt(enemy.hp)} / {fmt(enemy.maxHp)} HP</small></div>
         </div>
