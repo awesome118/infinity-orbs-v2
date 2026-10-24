@@ -366,7 +366,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
       ? rawRuneAutoSacrifice!.maxRarity as CombatRuneRarity
       : DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS.maxRarity,
     targetRuneId: typeof rawRuneAutoSacrifice?.targetRuneId === 'string' &&
-      ownedRuneIds.has(rawRuneAutoSacrifice.targetRuneId)
+      s.equippedRunes.includes(rawRuneAutoSacrifice.targetRuneId)
       ? rawRuneAutoSacrifice.targetRuneId
       : null,
     preserveSpecialEffects: rawRuneAutoSacrifice?.preserveSpecialEffects !== false,
@@ -945,6 +945,9 @@ export async function updateCombatRuneAutoSacrificeSettings(
         : null;
     if (targetRuneId && !s.runes.some(rune => rune.id === targetRuneId)) {
       throw new Error('Auto-sacrifice target Rune is not in your inventory.');
+    }
+    if (targetRuneId && !s.equippedRunes.includes(targetRuneId)) {
+      throw new Error('Auto-sacrifice target Rune must be equipped.');
     }
     s.runeAutoSacrifice = {
       enabled: enabledValue,
