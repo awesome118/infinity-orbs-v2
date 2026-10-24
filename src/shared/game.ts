@@ -144,11 +144,11 @@ export interface PremiumBoosterInfo {
 }
 
 export const PREMIUM_BOOSTERS: Record<PremiumBoosterId, PremiumBoosterInfo> = {
-  fortune: { name: 'Fortune Surge', desc: 'Multiplies Luck by 4× while active. RNG still decides every roll.', costShards: 75, durationMs: 30 * 60 * 1000 },
-  hyperdrive: { name: 'Hyperdrive', desc: 'Cuts roll cooldown to 25% of its normal value while active.', costShards: 75, durationMs: 30 * 60 * 1000 },
-  barrage: { name: 'Orb Barrage', desc: 'Adds 25 extra orbs to every activation while active.', costShards: 100, durationMs: 30 * 60 * 1000 },
-  prosperity: { name: 'Prosperity Field', desc: 'Multiplies Coin rewards by 10× while active.', costShards: 50, durationMs: 30 * 60 * 1000 },
-  ascension: { name: 'Ascension', desc: 'Multiplies roll XP by 10× while active.', costShards: 75, durationMs: 30 * 60 * 1000 },
+  fortune: { name: 'Fortune Surge', desc: 'Multiplies Luck by 4× while active. RNG still decides every roll.', costShards: 750, durationMs: 30 * 60 * 1000 },
+  hyperdrive: { name: 'Hyperdrive', desc: 'Cuts roll cooldown to 25% of its normal value while active.', costShards: 750, durationMs: 30 * 60 * 1000 },
+  barrage: { name: 'Orb Barrage', desc: 'Adds 25 extra orbs to every activation while active.', costShards: 1_000, durationMs: 30 * 60 * 1000 },
+  prosperity: { name: 'Prosperity Field', desc: 'Multiplies Coin rewards by 10× while active.', costShards: 500, durationMs: 30 * 60 * 1000 },
+  ascension: { name: 'Ascension', desc: 'Multiplies roll XP by 10× while active.', costShards: 750, durationMs: 30 * 60 * 1000 },
 };
 
 export function normalizeActiveBoosters(value: unknown): Partial<Record<PremiumBoosterId, number>> {
@@ -166,11 +166,11 @@ export function normalizeActiveBoosters(value: unknown): Partial<Record<PremiumB
 }
 
 export const AUTOMATIONS: Record<AutomationId, { name: string; desc: string; costShards: number }> = {
-  autoQuestClaim: { name: 'Auto-Complete Quests', desc: 'Automatically claims completed daily and weekly quest rewards.', costShards: 750 },
-  autoStreakClaim: { name: 'Auto-Claim Streak', desc: 'Automatically claims the daily streak reward when it becomes available.', costShards: 500 },
-  autoCommunityClaim: { name: 'Auto-Claim Community Rewards', desc: 'Automatically claims each newly reached Community Reward tier.', costShards: 1_000 },
-  autoOfflineClaim: { name: 'Auto-Claim Offline Rolls', desc: 'Automatically claims accumulated offline rolls when you return to the game.', costShards: 750 },
-  autoUpgrade: { name: 'Auto-Complete Upgrades', desc: 'Automatically purchases one affordable standard upgrade whenever the game processes your state.', costShards: 1_500 },
+  autoQuestClaim: { name: 'Auto-Complete Quests', desc: 'Automatically claims completed daily and weekly quest rewards.', costShards: 7_500 },
+  autoStreakClaim: { name: 'Auto-Claim Streak', desc: 'Automatically claims the daily streak reward when it becomes available.', costShards: 5_000 },
+  autoCommunityClaim: { name: 'Auto-Claim Community Rewards', desc: 'Automatically claims each newly reached Community Reward tier.', costShards: 10_000 },
+  autoOfflineClaim: { name: 'Auto-Claim Offline Rolls', desc: 'Automatically claims accumulated offline rolls when you return to the game.', costShards: 7_500 },
+  autoUpgrade: { name: 'Auto-Complete Upgrades', desc: 'Automatically purchases one affordable standard upgrade whenever the game processes your state.', costShards: 15_000 },
 };
 
 export function normalizeAutomations(value: unknown): Partial<Record<AutomationId, boolean>> {
@@ -182,7 +182,22 @@ export function normalizeAutomations(value: unknown): Partial<Record<AutomationI
   ) as Partial<Record<AutomationId, boolean>>;
 }
 
+/** Legacy telemetry field only; roll-earned Shards are no longer capped per day. */
 export const FREE_SHARD_DAILY_CAP = 50;
+export const SHARD_DECIMAL_PLACES = 3;
+export const SHARD_PRECISION = 10 ** SHARD_DECIMAL_PLACES;
+
+/** Round currency to the supported thousandth-Shard precision without producing NaN/Infinity. */
+export function roundShardAmount(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(Number.MAX_SAFE_INTEGER, Math.round((n + Number.EPSILON) * SHARD_PRECISION) / SHARD_PRECISION);
+}
+
+/** A compact display that preserves fractional Shard drops without trailing zeroes. */
+export function formatShardAmount(value: unknown): string {
+  return roundShardAmount(value).toLocaleString('en-US', { maximumFractionDigits: SHARD_DECIMAL_PLACES });
+}
 
 export function todayKey(now = Date.now()): string {
   const timestamp = Number(now);
@@ -259,16 +274,18 @@ export function resetFreeShardBudgetIfNeeded(s: PlayerState, now = Date.now()): 
 }
 
 function addShardsWithinSafeIntegerLimit(s: PlayerState, requested: number): number {
-  const amount = Number.isFinite(requested)
-    ? Math.max(0, Math.floor(requested))
-    : 0;
-  const currentShards = s.shards ?? 0;
+  const amount = roundShardAmount(requested);
+  const rawCurrentShards = s.shards ?? 0;
+  const currentShards = typeof rawCurrentShards === 'number' && Number.isFinite(rawCurrentShards) && rawCurrentShards >= 0 && rawCurrentShards <= Number.MAX_SAFE_INTEGER
+    ? roundShardAmount(rawCurrentShards)
+    : rawCurrentShards;
   // The persisted-state parser already rejects invalid balances. Keep shared
   // helpers defensive too, without silently resetting a bad balance to zero.
   if (
     typeof currentShards !== 'number' ||
-    !Number.isSafeInteger(currentShards) ||
-    currentShards < 0
+    !Number.isFinite(currentShards) ||
+    currentShards < 0 ||
+    currentShards > Number.MAX_SAFE_INTEGER
   ) {
     return 0;
   }
@@ -276,9 +293,9 @@ function addShardsWithinSafeIntegerLimit(s: PlayerState, requested: number): num
   const rawLifetimeShards = s.lifetimeShards;
   const lifetimeShards =
     typeof rawLifetimeShards === 'number' &&
-    Number.isSafeInteger(rawLifetimeShards) &&
+    Number.isFinite(rawLifetimeShards) &&
     rawLifetimeShards >= 0
-      ? rawLifetimeShards
+      ? roundShardAmount(rawLifetimeShards)
       : 0;
   s.lifetimeShards = lifetimeShards;
 
@@ -286,9 +303,9 @@ function addShardsWithinSafeIntegerLimit(s: PlayerState, requested: number): num
   // statistic independently so a maxed lifetime counter never blocks new
   // Shards that still fit safely in the player's spendable balance.
   const safeRoom = Math.max(0, Number.MAX_SAFE_INTEGER - currentShards);
-  const granted = Math.min(amount, safeRoom);
-  s.shards = currentShards + granted;
-  s.lifetimeShards = Math.min(Number.MAX_SAFE_INTEGER, lifetimeShards + granted);
+  const granted = roundShardAmount(Math.min(amount, safeRoom));
+  s.shards = roundShardAmount(currentShards + granted);
+  s.lifetimeShards = roundShardAmount(Math.min(Number.MAX_SAFE_INTEGER, lifetimeShards + granted));
   return granted;
 }
 
@@ -299,25 +316,15 @@ export function grantFreeShards(s: PlayerState, requested: number, _now = Date.n
 
 export function grantRollShards(s: PlayerState, requested: number, now = Date.now()): number {
   resetFreeShardBudgetIfNeeded(s, now);
-  const amount = Number.isFinite(requested)
-    ? Math.max(0, Math.floor(requested))
-    : 0;
-
-  // Treat a genuinely missing legacy counter as a fresh day's zero, but never
-  // let a malformed counter (e.g. a persisted string/NaN) bypass the daily cap.
   const rawEarnedToday = s.freeShardsEarnedToday;
-  const earnedToday = rawEarnedToday == null
-    ? 0
-    : typeof rawEarnedToday === 'number' &&
-        Number.isSafeInteger(rawEarnedToday) &&
-        rawEarnedToday >= 0
-      ? Math.min(FREE_SHARD_DAILY_CAP, rawEarnedToday)
-      : FREE_SHARD_DAILY_CAP;
+  // This field is telemetry only now: malformed values are repaired, not used to
+  // suppress or multiply spendable currency. There is no daily roll-earned cap.
+  const earnedToday = typeof rawEarnedToday === 'number' && Number.isFinite(rawEarnedToday) && rawEarnedToday >= 0
+    ? roundShardAmount(rawEarnedToday)
+    : 0;
   s.freeShardsEarnedToday = earnedToday;
-
-  const available = Math.max(0, FREE_SHARD_DAILY_CAP - earnedToday);
-  const granted = addShardsWithinSafeIntegerLimit(s, Math.min(amount, available));
-  s.freeShardsEarnedToday = earnedToday + granted;
+  const granted = addShardsWithinSafeIntegerLimit(s, requested);
+  s.freeShardsEarnedToday = roundShardAmount(earnedToday + granted);
   return granted;
 }
 
@@ -325,7 +332,9 @@ export function spendShards(s: PlayerState, requested: number): number {
   if (!Number.isFinite(requested)) throw new Error('Invalid Shards amount.');
   const amount = Math.max(0, Math.floor(requested));
   if (!Number.isSafeInteger(amount)) throw new Error('Invalid Shards amount.');
-  const shardBalance = Number.isSafeInteger(s.shards) && s.shards >= 0 ? s.shards : 0;
+  const shardBalance = typeof s.shards === 'number' && Number.isFinite(s.shards) && s.shards >= 0 && s.shards <= Number.MAX_SAFE_INTEGER
+    ? roundShardAmount(s.shards)
+    : 0;
   if (shardBalance < amount) throw new Error('Not enough Shards.');
   if (amount <= 0) return 0;
 
@@ -336,8 +345,11 @@ export function spendShards(s: PlayerState, requested: number): number {
     shardBalance,
   );
   const freeBalance = Math.max(0, shardBalance - purchasedBalance);
-  const purchasedToSpend = Math.max(0, amount - Math.min(amount, freeBalance));
-  s.shards = shardBalance - amount;
+  // Whole-number purchases consume whole free Shards first and preserve any
+  // fractional remainder in the wallet; purchased entitlement lots remain integers.
+  const wholeFreeBalance = Math.floor(freeBalance + 1e-9);
+  const purchasedToSpend = Math.max(0, amount - Math.min(amount, wholeFreeBalance));
+  s.shards = roundShardAmount(shardBalance - amount);
   if (purchasedToSpend <= 0) return amount;
 
   const lots: Record<string, number> = { ...(s.purchasedShardLots ?? {}) };
@@ -620,17 +632,17 @@ export const GLOBAL_BOOSTERS: Record<GlobalBoosterId, {
   luck: {
     name: 'Global Luck',
     desc: 'Improves Luck for everyone.',
-    costShards: 25,
+    costShards: 250,
   },
   speed: {
     name: 'Global Speed',
     desc: 'Reduces roll cooldown for everyone.',
-    costShards: 25,
+    costShards: 250,
   },
   crit: {
     name: 'Global Crit Luck',
     desc: 'Improves Crit Chance and Crit Luck for everyone.',
-    costShards: 25,
+    costShards: 250,
   },
 };
 
@@ -2025,7 +2037,7 @@ export const AUTO_UNLOCK_COST = 0;
 export const MAX_OFFLINE_ROLLS = 1_000;
 export const OFFLINE_TICK_MS = 60_000; // 1 offline roll every 60 seconds
 
-export const SHARD_SYNTHESIS_COST = 10;
+export const SHARD_SYNTHESIS_COST = 100;
 
 // Unbroken Momentum ends a rolling session after a five-minute gap.
 // Its permanent Speed reward scales logarithmically: 48 hours = 20%,
@@ -2283,8 +2295,8 @@ export function nextCodexChainRarity(
 }
 
 /**
- * Shard cost scales in 100-rarity bands: floor(target / 100) + 1.
- * This makes a guaranteed 1/900 orb cost exactly 10 Shards.
+ * Shard cost scales in 100-rarity bands and is tuned 10× for the fractional-Shard economy.
+ * A guaranteed 1/900 orb costs 100 Shards; global Booster costs remain flat by booster type.
  */
 export function chainPatcherShardCost(targetRarity: number): number {
   if (
@@ -2294,7 +2306,7 @@ export function chainPatcherShardCost(targetRarity: number): number {
   ) {
     throw new Error('Chain Patcher target rarity is invalid.');
   }
-  return Math.min(Number.MAX_SAFE_INTEGER, Math.floor(targetRarity / 100) + 1);
+  return Math.min(Number.MAX_SAFE_INTEGER, 10 * (Math.floor(targetRarity / 100) + 1));
 }
 
 export function codexDevotionLuckPercent(skillLevel: number, chain: number): number {
