@@ -186,6 +186,10 @@ export function normalizeAutomations(value: unknown): Partial<Record<AutomationI
 export const FREE_SHARD_DAILY_CAP = 50;
 export const SHARD_DECIMAL_PLACES = 3;
 export const SHARD_PRECISION = 10 ** SHARD_DECIMAL_PLACES;
+/** A small guaranteed bonus protects players from indefinitely dry Shard-proc streaks. */
+export const SHARD_PITY_ROLLS_TO_REWARD = 100;
+export const SHARD_PROC_REWARD = 0.001;
+export const SHARD_PITY_REWARD = 0.01;
 
 /** Round currency to the supported thousandth-Shard precision without producing NaN/Infinity. */
 export function roundShardAmount(value: unknown): number {
@@ -197,6 +201,22 @@ export function roundShardAmount(value: unknown): number {
 /** A compact display that preserves fractional Shard drops without trailing zeroes. */
 export function formatShardAmount(value: unknown): string {
   return roundShardAmount(value).toLocaleString('en-US', { maximumFractionDigits: SHARD_DECIMAL_PLACES });
+}
+
+/** Returns the bonus for this roll and persists/reset the consecutive-miss counter. */
+export function resolveShardPityReward(state: Pick<PlayerState, 'shardPityRolls'>, procTriggered: boolean): number {
+  const misses = Math.min(SHARD_PITY_ROLLS_TO_REWARD - 1, finiteNonNegativeInteger(state.shardPityRolls, 0));
+  if (procTriggered) {
+    state.shardPityRolls = 0;
+    return SHARD_PROC_REWARD;
+  }
+  const nextMisses = misses + 1;
+  if (nextMisses >= SHARD_PITY_ROLLS_TO_REWARD) {
+    state.shardPityRolls = 0;
+    return SHARD_PITY_REWARD;
+  }
+  state.shardPityRolls = nextMisses;
+  return 0;
 }
 
 export function todayKey(now = Date.now()): string {
@@ -1045,6 +1065,8 @@ export interface PlayerState {
   onlinePlayers?: number;
   communityRewardClaimedAt?: number;
   freeShardsEarnedToday?: number;
+  /** Consecutive rolls without a Shard proc; resets on proc or guaranteed pity. */
+  shardPityRolls?: number;
   lastFreeShardReset?: string;
   purchasedShards?: number;
   /** Remaining purchased Shards by payment order. Legacy saves migrate into the "legacy" lot. */
@@ -1771,6 +1793,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     onlinePlayers: 1,
     communityRewardClaimedAt: 0,
     freeShardsEarnedToday: 0,
+    shardPityRolls: 0,
     lastFreeShardReset: today,
     purchasedShards: 0,
     purchasedShardLots: {},
@@ -2560,7 +2583,8 @@ export function predictRollActivation(
       (s.guildPerks?.shardRank ?? 0) * 0.0005 +
       levelBenefits.shardChance,
     );
-    if (rng() < shardProcChance) earnedShards += 0.001;
+    const shardProcTriggered = rng() < shardProcChance;
+    earnedShards += resolveShardPityReward(s, shardProcTriggered);
 
     shardsGained = roundShardAmount(shardsGained + earnedShards);
     const earnedXp = Math.round(
