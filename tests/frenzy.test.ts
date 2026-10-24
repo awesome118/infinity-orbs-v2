@@ -136,7 +136,7 @@ test('daily Frenzy prompt appears after the delay and explains the owner reward'
   assert.match(source, /FRENZY_PROMPT_DELAY_MS/);
   assert.match(source, /Post today’s Frenzy/);
   assert.match(source, /\+\{FRENZY_OWNER_SHARD_REWARD\} Shards/);
-  assert.match(source, /bypasses the 50 Shard daily cap/);
+  assert.match(source, /does not count toward your roll-earned Shard total/);
   assert.match(source, /localStorage\.setItem\(storageKey, '1'\)/);
 });
 
