@@ -30,7 +30,6 @@ import {
   formatRarity,
   createInitialDailyQuests,
   createInitialWeeklyQuests,
-  COSMETICS_LIST,
   rollContinuum,
   coinsForRarity,
   MAX_OFFLINE_ROLLS,
@@ -5785,35 +5784,11 @@ export async function synthesizeDust(): Promise<{ state: PlayerState; dustEarned
 
   });}
 
-export async function buyCosmetic(id: string): Promise<PlayerState> {
-  return withPlayerMutationLock(async () => {
-  const s = await settleOffline(await loadRaw());
-  const cosmetic = COSMETICS_LIST.find(c => c.id === id);
-  if (!cosmetic) throw new Error('Cosmetic not found.');
-  if (s.unlockedCosmetics.includes(id)) {
-    s.activeCosmetic = id;
-    await save(s);
-    return s;
-  }
-
-  if (s.coins < cosmetic.costCoins || s.shards < cosmetic.costShards) {
-    throw new Error('Not enough Coins or Shards.');
-  }
-
-  s.coins -= cosmetic.costCoins;
-  spendShards(s, cosmetic.costShards);
-  s.unlockedCosmetics.push(id);
-  s.activeCosmetic = id;
-  await save(s);
-  await appendPlayerSpyLog('cosmetic-purchase', {
-    cosmeticId: id,
-    coinsSpent: cosmetic.costCoins,
-    shardsSpent: cosmetic.costShards,
-    snapshot: playerSpySnapshot(s),
-  });
-  return s;
-
-  });}
+export async function buyCosmetic(_id: string): Promise<PlayerState> {
+  // Legacy endpoint is retained only to give old clients a clear response. Cosmetics
+  // were removed from gameplay; no currency can be spent through this endpoint.
+  throw new Error('Cosmetics are disabled in Infinity Orbs. No currency was spent.');
+}
 
 async function claimWorldBoosterActivation(
   s: PlayerState,
