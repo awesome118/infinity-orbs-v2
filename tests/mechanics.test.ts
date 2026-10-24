@@ -24,6 +24,12 @@ import {
   effectiveOfflineTickMs,
   upgradeCost,
   createInitialGlobalBoosters,
+  GLOBAL_BOOSTERS,
+  PREMIUM_BOOSTERS,
+  AUTOMATIONS,
+  SHARD_SYNTHESIS_COST,
+  formatShardAmount,
+  roundShardAmount,
   activateGlobalBoosterStack,
   decayGlobalBoosterState,
   createInitialGuildCombo,
@@ -582,6 +588,17 @@ test('Frenzy Volley counts each additional multiball at 20% efficiency', () => {
   assert.equal(frenzyClaimCountForRarity(100, 3, 1), Math.floor(base * 1.40));
 });
 
+
+test('Shard sinks are pricier, fractional values are formatted, and Global Booster costs ignore tier', () => {
+  assert.deepEqual(Object.values(GLOBAL_BOOSTERS).map(booster => booster.costShards), [250, 250, 250]);
+  assert.equal(PREMIUM_BOOSTERS.barrage.costShards, 1_000);
+  assert.equal(AUTOMATIONS.autoUpgrade.costShards, 15_000);
+  assert.equal(SHARD_SYNTHESIS_COST, 100);
+  assert.equal(chainPatcherShardCost(900), 100);
+  assert.equal(formatShardAmount(0.005), '0.005');
+  assert.equal(formatShardAmount(3.125), '3.125');
+  assert.equal(roundShardAmount(1.23456), 1.235);
+});
 
 test('Global Booster bar preserves the real tier of its latest four activation segments', () => {
   let booster = createInitialGlobalBoosters(NOW).luck;
