@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { combatMarkMultiplier, addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatActionsDue, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatGearSpeedBonus, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatSkillRarityOdds, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, undercryptOrbLuckMultiplier, undercryptWardensDefeated, type CombatGear } from '../src/shared/combat.js';
+import { combatMarkMultiplier, addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatActionsDue, combatActionTimeline, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatGearSpeedBonus, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatSkillRarityOdds, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, undercryptOrbLuckMultiplier, undercryptWardensDefeated, type CombatGear } from '../src/shared/combat.js';
 
 test('starter combat build carries the Auto-Dungeons baseline', () => {
   const state=createCombatState();
@@ -49,6 +49,15 @@ test('enemy speed scales continuously with depth and increases actions owed',()=
   assert.equal(opening.id,deeperSameEnemy.id,'comparison uses the same enemy archetype');
   assert.ok(deeperSameEnemy.speed>opening.speed*1.25,'enemy Speed should rise visibly before the 15-floor mark');
   assert.ok(combatActionsDue(deeperSameEnemy.speed,10,0)>combatActionsDue(opening.speed,10,0),'scaled Speed must translate into more actions');
+});
+test('speed thresholds resolve actions on the correct beat and reorder mixed-speed turns',()=>{
+  assert.equal(combatActionsDue(310,1,0),1,'the opening action is available immediately');
+  assert.equal(combatActionsDue(310,2,1),1,'310 Speed earns action two on beat 2');
+  assert.equal(combatActionsDue(100,3,1),0,'100 Speed has not earned action two by beat 3');
+  assert.equal(combatActionsDue(100,4,1),1,'100 Speed earns action two on beat 4');
+  const timeline=combatActionTimeline(500,300,1,0,0,2,1);
+  assert.deepEqual(timeline.map(event=>event.actor),['player','enemy','player'],'the faster Delver gets a second action within the same beat');
+  assert.ok(timeline[2]!.time>0.79&&timeline[2]!.time<0.81,'the second 500-Speed action lands at 80% of the beat');
 });
 test('skill pull prices rise with Gacha rank and lifetime pulls', () => {
   assert.equal(skillPullCost(0,1),75);
