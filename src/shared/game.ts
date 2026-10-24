@@ -182,8 +182,7 @@ export function normalizeAutomations(value: unknown): Partial<Record<AutomationI
   ) as Partial<Record<AutomationId, boolean>>;
 }
 
-/** Legacy telemetry field only; roll-earned Shards are no longer capped per day. */
-export const FREE_SHARD_DAILY_CAP = 50;
+/** Shard wallet precision and anti-drought pity tuning. */
 export const SHARD_DECIMAL_PLACES = 3;
 export const SHARD_PRECISION = 10 ** SHARD_DECIMAL_PLACES;
 /** A small guaranteed bonus protects players from indefinitely dry Shard-proc streaks. */
