@@ -18,7 +18,6 @@ import {
   SHARD_SYNTHESIS_COST,
   roundShardAmount,
   resolveShardPityReward,
-  SHARD_PITY_ROLLS_TO_REWARD,
   PRESTIGE_UPGRADES,
   cooldownMs,
   rollsPerActivation,
@@ -1920,7 +1919,6 @@ function parsePlayerStateValue(value: unknown, depth = 0): PlayerState | null {
       Number.isFinite(record.shards) &&
       record.shards >= 0 &&
       record.shards <= Number.MAX_SAFE_INTEGER &&
-      Math.abs(record.shards * 1_000 - Math.round(record.shards * 1_000)) < 1e-6 &&
       Number.isSafeInteger(record.totalRolls) &&
       Number(record.totalRolls) >= 0 &&
       (
@@ -1999,7 +1997,7 @@ function parsePaymentPlayerState(raw: unknown): PlayerState {
         ...base,
         ...validatedState,
         shards: normalizedWalletShards,
-        shardPityRolls: Math.min(SHARD_PITY_ROLLS_TO_REWARD - 1, finiteNonNegativeInteger(record.shardPityRolls, 0)),
+        shardPityRolls: 0,
         purchasedShards: normalizedPurchasedShards,
         purchasedShardLots: normalizeEntitlementLots(
           record.purchasedShardLots,
