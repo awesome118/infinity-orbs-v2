@@ -676,9 +676,13 @@ export function combatActionTimeline(
     if (speed <= 0 || count <= 0) return;
     for (let actionIndex = 0; actionIndex < count; actionIndex += 1) {
       const ordinal = Math.min(Number.MAX_SAFE_INTEGER, resolved + actionIndex + 1);
+      // The opening action is immediate. Later actions are placed at their
+      // actual fractional threshold within this beat; subtracting beat - 2
+      // delayed sub-threshold actors to the end of every beat and made their
+      // Speed effectively irrelevant.
       const rawTime = ordinal <= 1
-        ? Math.min(1, COMBAT_SPEED_PER_ACTION / speed)
-        : ((ordinal - 1) * COMBAT_SPEED_PER_ACTION / speed) - (beat - 2);
+        ? 0
+        : ((ordinal - 1) * COMBAT_SPEED_PER_ACTION / speed) - (beat - 1);
       timeline.push({
         actor,
         actionIndex,
@@ -1113,10 +1117,11 @@ export function combatScrapValue(item: Pick<CombatGear,'power'|'quality'|'source
   const power = Number.isFinite(Number(item.power)) ? Math.max(1, Math.min(1_000_000, Number(item.power))) : 1;
   const quality = Number.isFinite(Number(item.quality)) ? Math.max(0, Math.min(100, Number(item.quality))) : 0;
   const floor = Number.isFinite(Number(item.sourceFloor)) ? Math.max(0, Math.min(COMBAT_MAX_DEPTH, Number(item.sourceFloor))) : 0;
-  // Make even ordinary drops contribute to forging; deeper, stronger gear pays substantially more.
+  // Scrap was overfunding the Forge; cut the previous payout in half while
+  // preserving a minimum of one Scrap and the existing depth/quality scaling.
   const depthMultiplier = 1 + Math.min(4, Math.sqrt(floor / 250));
   const rawValue = (20 + power * 1.1 + quality * 0.75 + Math.log10(floor + 1) * 8) * depthMultiplier;
-  return Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.round(rawValue)));
+  return Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.round(rawValue * 0.5)));
 }
 
 export function combatForgeCost(floorValue: unknown): number {
