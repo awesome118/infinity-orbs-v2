@@ -516,8 +516,8 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       </div>
       {(()=>{
         const maxSpeed=Math.max(1,stats.speed,enemy.speed);
-        const playerCharge=Math.round(stats.speed/maxSpeed*100);
-        const enemyCharge=Math.round(enemy.speed/maxSpeed*100);
+        const playerPace=Math.round(stats.speed/maxSpeed*100);
+        const enemyPace=Math.round(enemy.speed/maxSpeed*100);
         const projected:{actor:'player'|'enemy';time:number;step:number;speed:number}[]=[];
         let playerCharge=Math.max(0,Math.min(1,Number(state.playerSpeedCharge)||0));
         let enemyCharge=Math.max(0,Math.min(1,Number(state.enemySpeedCharge)||0));
@@ -537,8 +537,8 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
           <div className="io-combat-turn-head"><div><span className="io-combat-eyebrow">SPEED & INITIATIVE</span><h2>Turn order</h2><p>One beat resolves about every 30 seconds.</p></div><strong>{beatCooldownMs>0?'NEXT BEAT '+Math.ceil(beatCooldownMs/1000)+'s':'BEAT READY'}</strong></div>
           <div className="io-combat-beat-track" role="progressbar" aria-label="Time until the next combat beat" aria-valuemin={0} aria-valuemax={100} aria-valuenow={beatProgressPct}><span style={{width:beatProgressPct+'%'}}/></div>
            <div className="io-combat-speed-bars">
-            <div className="io-combat-speed-row"><span>∞ DELVER <b>{fmt(stats.speed)} SPD</b></span><div className="io-combat-speed-track"><span className="is-player" style={{width:playerCharge+'%'}}/></div><strong>{playerCharge}% pace</strong></div>
-            <div className="io-combat-speed-row"><span>{enemy.emoji} {enemy.name.toUpperCase()} <b>{fmt(enemy.speed)} SPD</b></span><div className="io-combat-speed-track"><span className="is-enemy" style={{width:enemyCharge+'%'}}/></div><strong>{enemyCharge}% pace</strong></div>
+            <div className="io-combat-speed-row"><span>∞ DELVER <b>{fmt(stats.speed)} SPD</b></span><div className="io-combat-speed-track"><span className="is-player" style={{width:playerPace+'%'}}/></div><strong>{playerPace}% pace</strong></div>
+            <div className="io-combat-speed-row"><span>{enemy.emoji} {enemy.name.toUpperCase()} <b>{fmt(enemy.speed)} SPD</b></span><div className="io-combat-speed-track"><span className="is-enemy" style={{width:enemyPace+'%'}}/></div><strong>{enemyPace}% pace</strong></div>
           </div>
           <div className="io-combat-turn-sequence" ref={turnSequenceRef}><div className="io-combat-turn-track" key={state.sequence}>{events.map((event,index)=><div key={event.actor+'-'+event.time+'-'+event.step} className={'io-combat-turn-chip '+(index===0?'is-next':'')+(event.actor==='enemy'?' is-foe':'')}><small>{index===0?'NEXT':index===1?'THEN':'TURN '+(index+1)}</small><strong>{event.actor==='player'?'DELVER':enemy.name}</strong><span>Turn {event.time} · {fmt(event.speed)} SPD</span></div>)}</div></div>
         </section>;
