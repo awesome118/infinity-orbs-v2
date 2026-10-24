@@ -257,7 +257,7 @@ export function combatRuneMajorAbilitySummary(ability:CombatRuneMajorAbility,lev
     case 'milestone-engine':return 'Each time your all-time rarity crosses a new power of ten, gain '+(1+Math.min(9,Math.floor(power/20)))+' bonus Shards and '+rolls+' rarity-floored bonus roll'+(rolls===1?'':'s')+'.';
     case 'shard-tithe':return Math.min(.25,power/400).toFixed(2)+'% chance to grant +1 whole Shard on each main-game roll.';
     case 'discovery-oracle':return pct(Math.min(20,power/5))+' chance for a first-time rarity discovery to grant '+rolls+' extra roll'+(rolls===1?'':'s')+' with the same rarity floor.';
-    case 'dry-streak-refinery':return 'Each 100 rolls since your best rarity increases the chance of +1 whole Shard, up to +0.25% per roll.';
+    case 'dry-streak-refinery':return 'Each 100 rolls since your best rarity adds up to '+Math.min(.25,power/4000).toFixed(3)+'% chance per roll to grant +1 whole Shard.';
   }
 }
 export function combatRuneMajorAbilityEffects(runesValue:unknown,equippedValue:unknown):CombatRuneMajorAbilityEffects {
