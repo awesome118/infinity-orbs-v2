@@ -84,7 +84,7 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
       aria-controls={tooltipId}
       title={item.name}
       disabled={busy}
-      onClick={()=>{if(lastPointerTypeRef.current==='touch')setShowTooltip(value=>!value);else if(!isEquipped)onEquip();else setShowTooltip(value=>!value);}}>
+      onClick={()=>{setShowTooltip(value=>!value);}}>
       <SlotIcon size={27} strokeWidth={1.8} aria-hidden="true"/>
       <small>{item.quality.toFixed(0)}%</small>
       <span className="io-combat-gear-icon-power">{fmt(item.power)}</span>
@@ -303,8 +303,9 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const manualBeat=()=>{if(runtime.current.mutating||runtime.current.busy)return;setError('');runtime.current.manual=true;void beat();};
   const activateAbility=(skillId:CombatSkillId)=>{
     if(runtime.current.mutating||runtime.current.busy)return;
+    // Queue the selected ability; the next scheduled/manual beat consumes it.
     runtime.current.pendingCommandVersion+=1;runtime.current.pendingAbilityId=skillId;runtime.current.pendingIntent=true;runtime.current.intent='strike';runtime.current.manual=true;
-    setError('');void beat();
+    setError('');
   };
   const saveAutoScrap=async(enabled:boolean,maxQuality:number)=>{
     if(runtime.current.mutating)return;
@@ -469,7 +470,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
                   <button
                     type="button"
                     className="io-combat-button is-primary"
-                    disabled={processing || mutating || beatCooldownMs > 0 || cooldownLeft > 0 || combatEnergyAfterRegen(state.energy, state.maxEnergy) < energyCost}
+                    disabled={processing || mutating || cooldownLeft > 0 || combatEnergyAfterRegen(state.energy, state.maxEnergy) < energyCost}
                     onClick={() => activateAbility(id)}
                   >
                     {processing
