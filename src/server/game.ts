@@ -1999,6 +1999,7 @@ function parsePaymentPlayerState(raw: unknown): PlayerState {
         ...base,
         ...validatedState,
         shards: normalizedWalletShards,
+        shardPityRolls: Math.min(SHARD_PITY_ROLLS_TO_REWARD - 1, finiteNonNegativeInteger(record.shardPityRolls, 0)),
         purchasedShards: normalizedPurchasedShards,
         purchasedShardLots: normalizeEntitlementLots(
           record.purchasedShardLots,
