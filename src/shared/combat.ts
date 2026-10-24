@@ -255,9 +255,9 @@ export function combatRuneMajorAbilitySummary(ability:CombatRuneMajorAbility,lev
     case 'stellar-dividend':return 'Every '+Math.max(20,Math.floor(100/(1+power/100)))+' lifetime rolls triggers '+rolls+' bonus roll'+(rolls===1?'':'s')+'.';
     case 'shard-jackpot':return pct(Math.min(50,power))+' chance to multiply a Shard payout by up to '+(1+Math.min(5,power/25)).toFixed(2)+'×.';
     case 'milestone-engine':return 'Each time your all-time rarity crosses a new power of ten, gain '+(1+Math.min(9,Math.floor(power/20)))+' bonus Shards and '+rolls+' rarity-floored bonus roll'+(rolls===1?'':'s')+'.';
-    case 'shard-tithe':return 'Adds +'+Math.min(.02,power/5000).toFixed(4)+' fractional Shards to every main-game roll.';
+    case 'shard-tithe':return 'Adds +'+Math.min(.005,power/20000).toFixed(4)+' fractional Shards to every main-game roll.';
     case 'discovery-oracle':return pct(Math.min(20,power/5))+' chance for a first-time rarity discovery to grant '+rolls+' extra roll'+(rolls===1?'':'s')+' with the same rarity floor.';
-    case 'dry-streak-refinery':return 'Each 100 rolls since your best rarity adds +'+Math.min(.01,power/100000).toFixed(4)+' Shards to every roll, up to +0.01 Shards per roll.';
+    case 'dry-streak-refinery':return 'Each 100 rolls since your best rarity adds +'+Math.min(.005,power/200000).toFixed(4)+' Shards to every roll, up to +0.005 Shards per roll.';
   }
 }
 export function combatRuneMajorAbilityEffects(runesValue:unknown,equippedValue:unknown):CombatRuneMajorAbilityEffects {
@@ -332,14 +332,14 @@ export function combatRuneMajorAbilityEffects(runesValue:unknown,equippedValue:u
         effects.milestoneEngineBonusShards=Math.max(effects.milestoneEngineBonusShards,1+Math.min(9,Math.floor(power/20)));
         break;
       case 'shard-tithe':
-        effects.shardTithePerRoll=Math.min(.02,effects.shardTithePerRoll+Math.min(.02,power/5000));
+        effects.shardTithePerRoll=Math.min(.02,effects.shardTithePerRoll+Math.min(.005,power/20000));
         break;
       case 'discovery-oracle':
         effects.discoveryOraclePct=add(effects.discoveryOraclePct,power);
         effects.discoveryOracleBonusRolls=Math.max(effects.discoveryOracleBonusRolls,runeMajorBonusRollCount(power,level));
         break;
       case 'dry-streak-refinery':
-        effects.dryStreakRefineryRate=Math.min(.01,effects.dryStreakRefineryRate+Math.min(.01,power/100000));
+        effects.dryStreakRefineryRate=Math.min(.005,effects.dryStreakRefineryRate+Math.min(.005,power/200000));
         break;
     }
   }
