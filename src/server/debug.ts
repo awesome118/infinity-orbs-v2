@@ -1603,7 +1603,7 @@ debugRouter.post('/state', async (req, res) => {
     const body = req.body || {};
 
     const numericFields = [
-      'coins', 'cosmicDust', 'xp', 'totalRolls', 'totalCrits',
+      'coins', 'cosmicDust', 'xp', 'totalRolls', 'totalCrits', 'shardPityRolls',
       'lifetimeCoins', 'highestRarity', 'collectionValue',
       'lifetimeCollectionValue', 'offlineRolls', 'prestigeCount', 'rollsSinceBest',
       'turboRollUntil', 'onlinePlayers', 'purchasedShards',
