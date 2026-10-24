@@ -182,6 +182,11 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const arenaLoadSequenceRef=useRef(0);
   const runtime=useRef({intent:'strike' as CombatIntent,auto:true,paused:false,busy:false,mutating:false,beatPromise:null as Promise<void>|null,manual:false,pendingIntent:false,pendingAbilityId:null as CombatSkillId|null,pendingCommandVersion:0});
   runtime.current.intent=intent; runtime.current.auto=auto; runtime.current.paused=paused;
+  useEffect(()=>{
+    const stopAutoFight=()=>{runtime.current.auto=false;runtime.current.manual=false;setAuto(false);};
+    window.addEventListener('io-combat-leaving',stopAutoFight);
+    return()=>window.removeEventListener('io-combat-leaving',stopAutoFight);
+  },[]);
   const accept=useCallback((result:CombatSnapshot)=>{
     // Any newer authoritative response invalidates state reads already in flight.
     snapshotLoadSequenceRef.current+=1;
