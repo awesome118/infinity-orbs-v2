@@ -57,6 +57,18 @@ test('moderator repair helper registers an existing main post and rejects a regi
     assert.equal(result.postId, mainPostId);
     assert.equal(await baseRedis.get(gamePostKey), mainPostId);
 
+    const unrelatedPostId = 't3_unrelated-post-repair-' + suffix;
+    configureDevvitRuntime({
+      redis: baseRedis,
+      context: { ...baseContext, postId: unrelatedPostId, userId: 'chat-repair-test', username: 'shadow_fen' },
+      reddit: baseReddit,
+    });
+    await assert.rejects(
+      () => registerCurrentPostAsGlobalChatDestination(),
+      /A valid main Game post is already registered/,
+    );
+    assert.equal(await baseRedis.get(gamePostKey), mainPostId, 'an unrelated post must not overwrite a valid main destination');
+
     await baseRedis.set(frenzyKey, JSON.stringify({ ownerId: 'test-owner', createdAt: Date.now() }));
     configureDevvitRuntime({
       redis: baseRedis,
