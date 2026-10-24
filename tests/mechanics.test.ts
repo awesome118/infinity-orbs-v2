@@ -465,34 +465,34 @@ test('Offline Generation Speed cannot be purchased past its 60% hard cap', () =>
   assert.equal(upgradeCost('offlineRate', 8), Infinity);
 });
 
-test('roll Shards are uncapped, fractional, and tracked without integer rounding', () => {
+test('roll Shards are uncapped, whole-number only, and tracked without rounding errors', () => {
   const state = createInitialState(NOW);
   state.lastFreeShardReset = new Date(NOW).toISOString().slice(0, 10);
   state.freeShardsEarnedToday = 49.75;
   state.shards = 0;
   state.lifetimeShards = 0;
 
-  assert.equal(grantRollShards(state, 0.125, NOW), 0.125);
-  assert.equal(state.shards, 0.125);
-  assert.equal(state.freeShardsEarnedToday, 49.875);
-  assert.equal(grantRollShards(state, 60.125, NOW), 60.125);
-  assert.equal(state.shards, 60.25);
+  assert.equal(grantRollShards(state, 1, NOW), 1);
+  assert.equal(state.shards, 1);
+  assert.equal(state.freeShardsEarnedToday, 50);
+  assert.equal(grantRollShards(state, 60, NOW), 60);
+  assert.equal(state.shards, 61);
   assert.equal(state.freeShardsEarnedToday, 110);
 
-  assert.equal(grantFreeShards(state, 0.005, NOW), 0.005);
-  assert.equal(state.shards, 60.255);
+  assert.equal(grantFreeShards(state, 5, NOW), 5);
+  assert.equal(state.shards, 66);
   assert.equal(state.freeShardsEarnedToday, 110);
-  assert.equal(state.lifetimeShards, 60.255);
+  assert.equal(state.lifetimeShards, 66);
 });
 
-test('whole-number Shard sinks preserve fractional remainder and purchased provenance', () => {
+test('whole-number Shard sinks discard legacy fractional remainders and preserve purchased provenance', () => {
   const state = createInitialState(NOW);
   state.shards = 250.75;
   state.purchasedShards = 100;
   state.purchasedShardLots = { orderA: 100 };
 
   assert.equal(spendShards(state, 250), 250);
-  assert.equal(state.shards, 0.75);
+  assert.equal(state.shards, 0);
   assert.equal(state.purchasedShards, 0);
   assert.deepEqual(state.purchasedShardLots, {});
 });
@@ -527,27 +527,25 @@ test("Shard reward paths do not overflow the persisted balance's safe integer ra
   assert.equal(state.lifetimeShards, Number.MAX_SAFE_INTEGER);
 });
 
-test('malformed Shard telemetry is repaired without suppressing fractional rewards', () => {
+test('malformed Shard telemetry is repaired without suppressing whole-number rewards', () => {
   const state = createInitialState(NOW);
   state.lastFreeShardReset = new Date(NOW).toISOString().slice(0, 10);
   state.freeShardsEarnedToday = 'broken' as unknown as number;
   state.shards = 0;
   state.lifetimeShards = 'broken' as unknown as number;
 
-  assert.equal(grantRollShards(state, 0.125, NOW), 0.125);
-  assert.equal(state.freeShardsEarnedToday, 0.125);
-  assert.equal(state.shards, 0.125);
-  assert.equal(state.lifetimeShards, 0.125);
+  assert.equal(grantRollShards(state, 1, NOW), 1);
+  assert.equal(state.freeShardsEarnedToday, 1);
+  assert.equal(state.shards, 1);
+  assert.equal(state.lifetimeShards, 1);
 });
 
-test('Shard proc pity rewards a fractional bonus after 100 misses and resets on proc', () => {
+test('Shard pity is removed: misses pay nothing and successful procs pay one whole Shard', () => {
   const state = createInitialState(NOW);
-  assert.equal(state.shardPityRolls, 0);
-  for (let i = 0; i < SHARD_PITY_ROLLS_TO_REWARD - 1; i += 1) {
-    assert.equal(resolveShardPityReward(state, false), 0);
-  }
-  assert.equal(state.shardPityRolls, SHARD_PITY_ROLLS_TO_REWARD - 1);
-  assert.equal(resolveShardPityReward(state, false), SHARD_PITY_REWARD);
+  assert.equal(SHARD_PITY_ROLLS_TO_REWARD, 0);
+  assert.equal(SHARD_PITY_REWARD, 0);
+  state.shardPityRolls = 100;
+  assert.equal(resolveShardPityReward(state, false), 0);
   assert.equal(state.shardPityRolls, 0);
   assert.equal(resolveShardPityReward(state, true), SHARD_PROC_REWARD);
   assert.equal(state.shardPityRolls, 0);
