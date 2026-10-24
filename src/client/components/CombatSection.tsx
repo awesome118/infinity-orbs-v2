@@ -558,7 +558,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         return <article key={skill.id} className={'io-combat-skill-icon-wrap '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')+(inspectedSkillId===skill.id?' is-inspected':'')}
           onPointerEnter={event=>{lastSkillPointerTypeRef.current=event.pointerType;if(event.pointerType==='mouse')setInspectedSkillId(skill.id);}}
           onPointerLeave={()=>{if(lastSkillPointerTypeRef.current==='mouse')setInspectedSkillId(current=>current===skill.id?null:current);}}>
-          <button type="button" className={'io-combat-skill-icon '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')} aria-label={'Inspect '+skill.name} aria-expanded={inspectedSkillId===skill.id} title={skill.name} disabled={mutating} onClick={()=>{if(lastSkillPointerTypeRef.current!=='mouse')setInspectedSkillId(current=>current===skill.id?null:skill.id);}}>
+          <button type="button" className={'io-combat-skill-icon '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')} aria-label={'Inspect '+skill.name} aria-expanded={inspectedSkillId===skill.id} title={skill.name} disabled={mutating} onFocus={()=>setInspectedSkillId(skill.id)} onBlur={()=>setInspectedSkillId(current=>current===skill.id?null:current)} onClick={()=>{if(lastSkillPointerTypeRef.current!=='mouse')setInspectedSkillId(current=>current===skill.id?null:skill.id);}}>
             <span>{glyph}</span><small>{rank>0?'R'+fmt(rank):'—'}</small>{isEquipped&&<b>✓</b>}
           </button>
           <div className="io-combat-skill-tooltip" role="group" aria-label={skill.name+' details and actions'}>
