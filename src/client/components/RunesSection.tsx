@@ -5,6 +5,7 @@ import {
   combatRuneBonuses,
   combatRuneEffectText,
   shouldAutoSacrificeRune,
+  combatRuneRarityAtOrBelow,
   combatRuneExperienceForLevel,
   combatRuneMajorAbilitySummary,
   combatRuneSlotsUnlocked,
