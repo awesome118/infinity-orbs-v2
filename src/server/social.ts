@@ -2306,6 +2306,15 @@ async function resolveGlobalGamePostId(): Promise<string> {
   return saved;
 }
 
+/** Repairs a missing/stale registration when the moderator is viewing the real main Game post. */
+export async function registerCurrentPostAsGlobalChatDestination(): Promise<{ postId: string }> {
+  const postId = normalizeRedditPostId(String(context.postId ?? '').trim());
+  if (!postId || postId === 't3_') throw new Error('The current Reddit post ID is unavailable. Open the main Infinity Orbs Game post and retry.');
+  if (await isRegisteredFrenzyPost(postId)) throw new Error('A Frenzy post cannot be registered as the Global Chat destination. Open the main Game post and retry.');
+  await redis.set(GLOBAL_GAME_POST_KEY, postId);
+  return { postId };
+}
+
 async function requireGlobalChatLauncher(): Promise<string> {
   // Global Chat may be opened from the main Game or a Frenzy web view, and
   // Devvit's context.postId can vary across embedded entrypoints. The canonical
