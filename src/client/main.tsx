@@ -1454,13 +1454,13 @@ export function App() {
     const turboReductionPercent = durationMinutes === 60 ? 35 : 25;
     const durationMs = durationMinutes * 60 * 1000;
     const rollback = beginOptimisticState(current => {
-      if ((current.shards ?? 0) < 5) return current;
+      if ((current.shards ?? 0) < 50) return current;
       const now = Date.now();
       const purchased = current.purchasedShards ?? 0;
       return {
         ...current,
-        shards: current.shards - 5,
-        purchasedShards: Math.max(0, purchased - Math.min(5, purchased)),
+        shards: current.shards - 50,
+        purchasedShards: Math.max(0, purchased - Math.min(50, purchased)),
         turboRollUntil: Math.max(now, current.turboRollUntil ?? 0) + durationMs,
       };
     });
@@ -1544,12 +1544,12 @@ export function App() {
           globalBoosterCredits: Math.max(0, (current.globalBoosterCredits ?? 0) - 1),
         };
       }
-      if ((current.shards ?? 0) < 25) return current;
+      if ((current.shards ?? 0) < 250) return current;
       const purchased = current.purchasedShards ?? 0;
       return {
         ...current,
-        shards: current.shards - 25,
-        purchasedShards: Math.max(0, purchased - Math.min(25, purchased)),
+        shards: current.shards - 250,
+        purchasedShards: Math.max(0, purchased - Math.min(250, purchased)),
       };
     });
     try {
@@ -1995,12 +1995,12 @@ export function App() {
   const handleSynthesizeDust = async () => {
     setBusy(true);
     const rollback = beginOptimisticState(current => {
-      if ((current.shards ?? 0) < 10) return current;
+      if ((current.shards ?? 0) < 100) return current;
       const purchased = current.purchasedShards ?? 0;
       return {
         ...current,
-        shards: current.shards - 10,
-        purchasedShards: Math.max(0, purchased - Math.min(10, purchased)),
+        shards: current.shards - 100,
+        purchasedShards: Math.max(0, purchased - Math.min(100, purchased)),
         cosmicDust: (current.cosmicDust ?? 0) + 1,
       };
     });
