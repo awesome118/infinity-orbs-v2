@@ -52,6 +52,7 @@ import {
   applyLevelProgress,
   createInitialState,
   grantFreeShards,
+  spendShards,
   todayKey,
   canShowDailyFrenzyPrompt,
   frenzyCooldownRemaining,
@@ -89,6 +90,26 @@ import { ChangelogModal } from './components/ChangelogModal.js';
 import { SplashScreen } from './components/SplashScreen.js';
 import { APP_VERSION } from '../shared/version.js';
 import './styles.css';
+
+function optimisticShardSpend(
+  state: PlayerState,
+  amount: number,
+): Pick<PlayerState, 'shards' | 'purchasedShards' | 'purchasedShardLots'> | null {
+  const next: PlayerState = {
+    ...state,
+    purchasedShardLots: { ...(state.purchasedShardLots ?? {}) },
+  };
+  try {
+    spendShards(next, amount);
+    return {
+      shards: next.shards,
+      purchasedShards: next.purchasedShards,
+      purchasedShardLots: next.purchasedShardLots,
+    };
+  } catch {
+    return null;
+  }
+}
 
 type ActiveTab =
   | 'roll'
@@ -1453,13 +1474,12 @@ export function App() {
     const turboReductionPercent = durationMinutes === 60 ? 35 : 25;
     const durationMs = durationMinutes * 60 * 1000;
     const rollback = beginOptimisticState(current => {
-      if ((current.shards ?? 0) < 50) return current;
+      const wallet = optimisticShardSpend(current, 50);
+      if (!wallet) return current;
       const now = Date.now();
-      const purchased = current.purchasedShards ?? 0;
       return {
         ...current,
-        shards: current.shards - 50,
-        purchasedShards: Math.max(0, purchased - Math.min(50, purchased)),
+        ...wallet,
         turboRollUntil: Math.max(now, current.turboRollUntil ?? 0) + durationMs,
       };
     });
@@ -1543,12 +1563,11 @@ export function App() {
           globalBoosterCredits: Math.max(0, (current.globalBoosterCredits ?? 0) - 1),
         };
       }
-      if ((current.shards ?? 0) < 250) return current;
-      const purchased = current.purchasedShards ?? 0;
+      const wallet = optimisticShardSpend(current, 250);
+      if (!wallet) return current;
       return {
         ...current,
-        shards: current.shards - 250,
-        purchasedShards: Math.max(0, purchased - Math.min(250, purchased)),
+        ...wallet,
       };
     });
     try {
@@ -1592,12 +1611,11 @@ export function App() {
     setBusy(true);
     const rollback = beginOptimisticState(current => {
       const info = PREMIUM_BOOSTERS[id];
-      if (!info || (current.shards ?? 0) < info.costShards) return current;
-      const purchased = current.purchasedShards ?? 0;
+      const wallet = info ? optimisticShardSpend(current, info.costShards) : null;
+      if (!info || !wallet) return current;
       return {
         ...current,
-        shards: current.shards - info.costShards,
-        purchasedShards: Math.max(0, purchased - Math.min(info.costShards, purchased)),
+        ...wallet,
         activeBoosters: {
           ...(current.activeBoosters ?? {}),
           [id]: Math.max(Date.now(), current.activeBoosters?.[id] ?? 0) + info.durationMs,
@@ -1626,12 +1644,12 @@ export function App() {
     setBusy(true);
     const rollback = beginOptimisticState(current => {
       const info = AUTOMATIONS[id];
-      if (!info || current.automations?.[id] || (current.shards ?? 0) < info.costShards) return current;
-      const purchased = current.purchasedShards ?? 0;
+      if (!info || current.automations?.[id]) return current;
+      const wallet = optimisticShardSpend(current, info.costShards);
+      if (!wallet) return current;
       return {
         ...current,
-        shards: current.shards - info.costShards,
-        purchasedShards: Math.max(0, purchased - Math.min(info.costShards, purchased)),
+        ...wallet,
         automations: { ...(current.automations ?? {}), [id]: true },
       };
     });
@@ -1994,12 +2012,11 @@ export function App() {
   const handleSynthesizeDust = async () => {
     setBusy(true);
     const rollback = beginOptimisticState(current => {
-      if ((current.shards ?? 0) < 100) return current;
-      const purchased = current.purchasedShards ?? 0;
+      const wallet = optimisticShardSpend(current, 100);
+      if (!wallet) return current;
       return {
         ...current,
-        shards: current.shards - 100,
-        purchasedShards: Math.max(0, purchased - Math.min(100, purchased)),
+        ...wallet,
         cosmicDust: (current.cosmicDust ?? 0) + 1,
       };
     });
