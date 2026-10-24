@@ -3781,7 +3781,7 @@ export async function applyRolls(
     else if (rarity >= 10_000) earnedShards += 0.01;
     else if (rarity >= 1_000) earnedShards += 0.005;
     // Long dry streaks gradually improve Shard drip; a rarity record resets this pressure.
-    earnedShards += Math.min(0.01, Math.floor(Math.max(0, s.rollsSinceBest ?? 0) / 100) * runeAbilityEffects.dryStreakRefineryRate);
+    earnedShards += Math.min(0.005, Math.floor(Math.max(0, s.rollsSinceBest ?? 0) / 100) * runeAbilityEffects.dryStreakRefineryRate);
 
     // Shard Chance upgrade + Mastery + Guild perk proc
     const shardProcChance = Math.min(
