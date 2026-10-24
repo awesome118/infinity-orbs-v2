@@ -64,6 +64,7 @@ import {
   effectiveOfflineTickMs,
   calculateAltarMultipliers,
   roundShardAmount,
+  SHARD_PITY_ROLLS_TO_REWARD,
   calculateCosmicDust,
   calculatePrestigeDust,
   critMultiplier,
@@ -1603,7 +1604,7 @@ debugRouter.post('/state', async (req, res) => {
     const body = req.body || {};
 
     const numericFields = [
-      'coins', 'cosmicDust', 'xp', 'totalRolls', 'totalCrits', 'shardPityRolls',
+      'coins', 'cosmicDust', 'xp', 'totalRolls', 'totalCrits',
       'lifetimeCoins', 'highestRarity', 'collectionValue',
       'lifetimeCollectionValue', 'offlineRolls', 'prestigeCount', 'rollsSinceBest',
       'turboRollUntil', 'onlinePlayers', 'purchasedShards',
@@ -1622,6 +1623,7 @@ debugRouter.post('/state', async (req, res) => {
     for (const field of ['shards', 'lifetimeShards', 'freeShardsEarnedToday']) {
       if (field in body) (s as any)[field] = roundShardAmount(body[field]);
     }
+    if ('shardPityRolls' in body) s.shardPityRolls = Math.min(SHARD_PITY_ROLLS_TO_REWARD - 1, nonNegativeInteger(body.shardPityRolls));
 
     if ('lastRollAt' in body) {
       s.lastRollAt = body.lastRollAt === null ? null : nonNegativeInteger(body.lastRollAt);
