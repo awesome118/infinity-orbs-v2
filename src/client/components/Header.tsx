@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { formatShardAmount, Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star, Users, MessageSquarePlus, Bell, BellOff, ScrollText, Swords } from 'lucide-react';
+import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star, Users, MessageSquarePlus, Bell, BellOff, ScrollText, Swords } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { LEVEL_MILESTONES, getLevelBenefits, getLevelProgress, onlinePlayerLuckMultiplier } from '../../shared/game.js';
+import { LEVEL_MILESTONES, getLevelBenefits, getLevelProgress, onlinePlayerLuckMultiplier, formatShardAmount } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface HeaderProps {
