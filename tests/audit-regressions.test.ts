@@ -928,6 +928,21 @@ test('rolling Shard grants preserve fractions, repair telemetry, and have no dai
   assert.match(shardHelper, /roundShardAmount\(Math\.min\(Number\.MAX_SAFE_INTEGER, lifetimeShards \+ granted\)\)/);
 });
 
+test('manual Rune sacrifice has a direct donor selector and consumes only the donor while granting XP', () => {
+  const ui = source('src/client/components/RunesSection.tsx');
+  assert.match(ui, /Donor Rune/);
+  assert.match(ui, /Sacrifice selected Rune/);
+  assert.match(ui, /void sacrifice\(strengthenTargetRune\.id,donor\.id\)/);
+  const combat = source('src/server/combat.ts');
+  const start = combat.indexOf('export async function sacrificeCombatRuneInto');
+  assert.ok(start >= 0, 'server sacrifice function must exist');
+  const end = combat.indexOf('\\nexport async function ', start + 10);
+  const sacrifice = combat.slice(start, end > start ? end : start + 1_500);
+  assert.match(sacrifice, /grantRuneSacrificeExperience\(target,donor\)/);
+  assert.match(sacrifice, /s\.runes=s\.runes\.filter\(item=>item\.id!==donor\.id\)/);
+  assert.match(sacrifice, /s\.equippedRunes=s\.equippedRunes\.filter\(id=>id!==donor\.id\)/);
+});
+
 test('roll rewards commit atomically with Guild and community progress', () => {
   const game = source('src/server/game.ts');
   const social = source('src/server/social.ts');
