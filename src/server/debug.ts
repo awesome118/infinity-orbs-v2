@@ -63,6 +63,7 @@ import {
   offlineRollCap,
   effectiveOfflineTickMs,
   calculateAltarMultipliers,
+  roundShardAmount,
   calculateCosmicDust,
   calculatePrestigeDust,
   critMultiplier,
@@ -1602,8 +1603,8 @@ debugRouter.post('/state', async (req, res) => {
     const body = req.body || {};
 
     const numericFields = [
-      'coins', 'shards', 'cosmicDust', 'xp', 'totalRolls', 'totalCrits',
-      'lifetimeCoins', 'lifetimeShards', 'highestRarity', 'collectionValue',
+      'coins', 'cosmicDust', 'xp', 'totalRolls', 'totalCrits',
+      'lifetimeCoins', 'highestRarity', 'collectionValue',
       'lifetimeCollectionValue', 'offlineRolls', 'prestigeCount', 'rollsSinceBest',
       'turboRollUntil', 'onlinePlayers', 'purchasedShards',
       'currentRunRolls', 'questsCompleted', 'guildContribution', 'masteryPoints',
@@ -1611,11 +1612,15 @@ debugRouter.post('/state', async (req, res) => {
       'rollingSessionLastRollAt', 'longestRollingSessionMs',
       'communityRewardClaimedAt', 'communityRewardClaimedTier',
       'chainPatcherNextRarity', 'chainPatcherCooldownUntil',
-      'level', 'levelXpFloor', 'globalBoosterCredits', 'freeShardsEarnedToday',
+      'level', 'levelXpFloor', 'globalBoosterCredits',
     ];
 
     for (const field of numericFields) {
       if (field in body) (s as any)[field] = nonNegativeInteger(body[field]);
+    }
+    // Shards support thousandth-unit precision; admin edits must preserve it too.
+    for (const field of ['shards', 'lifetimeShards', 'freeShardsEarnedToday']) {
+      if (field in body) (s as any)[field] = roundShardAmount(body[field]);
     }
 
     if ('lastRollAt' in body) {
