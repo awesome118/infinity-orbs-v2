@@ -305,6 +305,8 @@ export function App() {
     }
   }, [state?.level, state?.totalRolls, tutorialDismissed, combatTutorialDismissed, combatTutorialStep, combatTutorialStatusLoaded]);
   const combatMode = tab === 'fight' || tab === 'dungeons' || tab === 'gear' || tab === 'forge' || tab === 'skills' || tab === 'arena' || tab === 'runes';
+  const combatModeRef = useRef(combatMode);
+  combatModeRef.current = combatMode;
   const [autoRoll, setAutoRoll] = useState<boolean>(false);
   const [isBeta, setIsBeta] = useState(false);
   const [changelogUnread, setChangelogUnread] = useState(() => {
@@ -718,6 +720,8 @@ export function App() {
       showToast('Wait for the current combat beat to finish before leaving Combat.', 'info');
       return;
     }
+    // Update synchronously so stale interval callbacks cannot roll during a tab transition.
+    combatModeRef.current = targetIsCombatMode;
     if (targetIsCombatMode) {
       setAutoRoll(false);
       if (stateRef.current?.autoRollEnabled === true) {
@@ -750,7 +754,7 @@ export function App() {
   };
 
   const handleToggleAutoRoll = useCallback(async () => {
-    if (combatMode) return;
+    if (combatModeRef.current) return;
     const next = !autoRoll;
     const rollback = beginOptimisticState(current => ({
       ...current,
@@ -1192,7 +1196,7 @@ export function App() {
 
   // Roll action
   const handleRoll = useCallback(async (isAutoRoll = false) => {
-    if (combatMode) return;
+    if (combatModeRef.current) return;
     if (isAutoRoll && !splashEntered) return;
     if (rollActionLockRef.current) return;
     const currentState = stateRef.current;
