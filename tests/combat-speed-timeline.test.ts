@@ -77,6 +77,8 @@ test('Combat mode blocks main-game rolls, queues skills, and uses a stable gear 
   assert.ok(ui.includes('Queued for next beat'));
   assert.ok(ui.includes('createPortal('));
   assert.ok(ui.includes('io-combat-beat-state'));
+  assert.ok(main.includes('io-combat-leaving'));
+  assert.ok(ui.includes('io-combat-leaving'));
 });
 
 test('Auto Fight countdown tracks reconciled server timestamps instead of stale render state', () => {
