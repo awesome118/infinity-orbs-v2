@@ -136,7 +136,9 @@ test('Global Chat comments are submitted as USER and Reddit comment triggers are
   assert.match(social.slice(senderStart, senderEnd), /runAs: 'USER'/);
   assert.match(social, /resolveGlobalGamePostId/);
   assert.match(social, /export async function getGlobalChatStatus/);
-  assert.match(social, /Global Chat is disabled because you're not in the main Game launcher/);
+  assert.match(social, /Every public comment is posted to the main Game/);
+  assert.match(social, /async function requireGlobalChatLauncher\(\): Promise<string>/);
+  assert.doesNotMatch(social, /currentPostId !== destination/, 'embedded entrypoint metadata must not disable Global Chat when all messages route to the registered canonical post.');
 
   const chat = source('src/client/components/GlobalChatWindow.tsx');
   assert.match(chat, /\/api\/chat\/status/);
