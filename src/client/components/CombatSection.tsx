@@ -137,6 +137,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate,onResolvingChange})
   const [enemy,setEnemy]=useState<CombatEnemy|null>(null);
   const [stats,setStats]=useState<CombatStats|null>(null);
   const [actions,setActions]=useState<CombatAction[]>([]);
+  const [queuedAbilityId,setQueuedAbilityId]=useState<CombatSkillId|null>(null);
   const totalDamageThisBeat=actions.reduce((total,action)=>{
     if(action.actor!=='player'||!Number.isFinite(action.damage))return total;
     return Math.min(Number.MAX_SAFE_INTEGER,total+Math.max(0,Math.floor(action.damage??0)));
@@ -281,7 +282,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate,onResolvingChange})
         if(lootPopupTimerRef.current!==null)window.clearTimeout(lootPopupTimerRef.current);
         lootPopupTimerRef.current=window.setTimeout(()=>setLootPopup(null),5000);
       }
-      if(queuedIntent&&runtime.current.pendingIntent&&runtime.current.pendingCommandVersion===queuedCommandVersion){runtime.current.pendingIntent=false;runtime.current.pendingAbilityId=null;runtime.current.intent='strike';setIntent('strike');}
+      if(queuedIntent&&runtime.current.pendingIntent&&runtime.current.pendingCommandVersion===queuedCommandVersion){runtime.current.pendingIntent=false;runtime.current.pendingAbilityId=null;runtime.current.intent='strike';setIntent('strike');setQueuedAbilityId(null);}
       setError('');
     } catch(e) {
       const message=e instanceof Error?e.message:'Combat beat failed.';
@@ -295,7 +296,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate,onResolvingChange})
         }
       } else if(message==='stale combat sequence'||message.includes('changed repeatedly'))await load();
       else {
-        if(queuedIntent&&runtime.current.pendingIntent&&runtime.current.pendingCommandVersion===queuedCommandVersion){runtime.current.pendingIntent=false;runtime.current.pendingAbilityId=null;runtime.current.intent='strike';setIntent('strike');}
+        if(queuedIntent&&runtime.current.pendingIntent&&runtime.current.pendingCommandVersion===queuedCommandVersion){runtime.current.pendingIntent=false;runtime.current.pendingAbilityId=null;runtime.current.intent='strike';setIntent('strike');setQueuedAbilityId(null);}
         setError(message);setAuto(false);
       }
     } finally {
@@ -332,6 +333,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate,onResolvingChange})
     if(runtime.current.mutating||runtime.current.busy)return;
     // Queue the selected ability; the next scheduled/manual beat consumes it.
     runtime.current.pendingCommandVersion+=1;runtime.current.pendingAbilityId=skillId;runtime.current.pendingIntent=true;runtime.current.intent='strike';runtime.current.manual=true;
+    setQueuedAbilityId(skillId);
     setError('');
   };
   const saveAutoScrap=async(enabled:boolean,maxQuality:number)=>{
@@ -490,7 +492,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate,onResolvingChange})
                 <article key={id} className={'io-combat-skill-card ' + rarityClass(skill.rarity)}>
                   <div className="io-combat-skill-card-head">
                     <span>{skill.rarity.toUpperCase()} · RANK {fmt(rank)}</span>
-                    <b>{cooldownLeft > 0 ? 'COOLDOWN ' + cooldownLeft : 'READY'}</b>
+                    <b>{queuedAbilityId===id?'QUEUED · NEXT BEAT':cooldownLeft > 0 ? 'COOLDOWN ' + cooldownLeft : 'READY'}</b>
                   </div>
                   <h3>{skill.name}</h3>
                   <p>{skillValue(skill, rank)}</p>
@@ -501,8 +503,10 @@ export const CombatSection:React.FC<Props>=({page,onNavigate,onResolvingChange})
                     onClick={() => activateAbility(id)}
                   >
                     {processing
-                      ? 'Resolving…'
-                      : beatCooldownMs > 0
+                      ? (queuedAbilityId===id?'Resolving skill…':'Resolving…')
+                      : queuedAbilityId===id
+                        ? 'Queued · next beat'
+                        : beatCooldownMs > 0
                         ? 'Next beat in ' + Math.ceil(beatCooldownMs / 1000) + 's'
                         : cooldownLeft > 0
                           ? 'Ready in ' + cooldownLeft + ' beats'
