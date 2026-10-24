@@ -1928,8 +1928,17 @@ function parsePlayerStateValue(value: unknown, depth = 0): PlayerState | null {
     if (!validCoreState) return null;
     // A corrupt offline vault is recoverable progress data, not a reason to brick
     // the whole account save. Normalize it before any caller can process a batch.
+    const normalizedWalletShards = roundShardAmount(record.shards);
     const normalizedRecord = {
       ...record,
+      shards: normalizedWalletShards,
+      lifetimeShards: roundShardAmount(record.lifetimeShards ?? normalizedWalletShards),
+      freeShardsEarnedToday: roundShardAmount(record.freeShardsEarnedToday ?? 0),
+      shardPityRolls: 0,
+      purchasedShards: Math.min(
+        normalizeSafeInteger(record.purchasedShards, 0),
+        normalizedWalletShards,
+      ),
       offlineRolls: Math.min(
         MAX_OFFLINE_ROLLS,
         finiteNonNegativeInteger(record.offlineRolls, 0),
