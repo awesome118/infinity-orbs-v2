@@ -16,6 +16,7 @@ import {
   AUTO_UNLOCK_COST,
   AUTO_BUYER_COIN_RESERVE,
   SHARD_SYNTHESIS_COST,
+  roundShardAmount,
   PRESTIGE_UPGRADES,
   cooldownMs,
   rollsPerActivation,
@@ -1914,8 +1915,11 @@ function parsePlayerStateValue(value: unknown, depth = 0): PlayerState | null {
       typeof record.coins === 'number' &&
       Number.isFinite(record.coins) &&
       record.coins >= 0 &&
-      Number.isSafeInteger(record.shards) &&
-      Number(record.shards) >= 0 &&
+      typeof record.shards === 'number' &&
+      Number.isFinite(record.shards) &&
+      record.shards >= 0 &&
+      record.shards <= Number.MAX_SAFE_INTEGER &&
+      Math.abs(record.shards * 1_000 - Math.round(record.shards * 1_000)) < 1e-6 &&
       Number.isSafeInteger(record.totalRolls) &&
       Number(record.totalRolls) >= 0 &&
       (
@@ -2446,7 +2450,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
   const cleanParsed = { ...(parsed as PlayerState & Record<string, unknown>) };
   const normalizedPurchasedShards = Math.min(
     normalizeSafeInteger(parsed.purchasedShards, base.purchasedShards ?? 0),
-    normalizeSafeInteger(parsed.shards, base.shards),
+    normalizeSafeInteger(Math.floor(Number(parsed.shards)), base.shards),
   );
   const normalizedGlobalBoosterCredits = normalizeSafeInteger(
     parsed.globalBoosterCredits,
@@ -2520,7 +2524,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     cosmicDust: finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust),
     masteryPoints: finiteNonNegativeInteger(parsed.masteryPoints, base.masteryPoints ?? 0),
     totalCrits: finiteNonNegativeInteger(parsed.totalCrits, base.totalCrits),
-    lifetimeShards: finiteNonNegativeInteger(parsed.lifetimeShards, base.lifetimeShards),
+    lifetimeShards: roundShardAmount(parsed.lifetimeShards ?? base.lifetimeShards),
     rollsSinceBest: finiteNonNegativeInteger(parsed.rollsSinceBest, base.rollsSinceBest),
     aftershockRecord: finiteNonNegativeInteger(parsed.aftershockRecord, base.aftershockRecord ?? 0),
     rollingSessionStartedAt: finiteNonNegativeInteger(parsed.rollingSessionStartedAt, base.rollingSessionStartedAt ?? 0),
@@ -2993,6 +2997,16 @@ export async function save(
   ) {
     throw new Error('Player lifetime roll counter is invalid; no changes were saved.');
   }
+  if (
+    typeof s.shards !== 'number' || !Number.isFinite(s.shards) || s.shards < 0 || s.shards > Number.MAX_SAFE_INTEGER ||
+    Math.abs(s.shards * 1_000 - Math.round(s.shards * 1_000)) >= 1e-6 ||
+    (s.lifetimeShards != null && (typeof s.lifetimeShards !== 'number' || !Number.isFinite(s.lifetimeShards) || s.lifetimeShards < 0 || s.lifetimeShards > Number.MAX_SAFE_INTEGER))
+  ) {
+    throw new Error('Player Shard balance is invalid; no changes were saved.');
+  }
+  s.shards = roundShardAmount(s.shards);
+  s.lifetimeShards = roundShardAmount(s.lifetimeShards ?? s.shards);
+  s.freeShardsEarnedToday = roundShardAmount(s.freeShardsEarnedToday ?? 0);
   if (
     !Number.isFinite(s.coins) || s.coins < 0 ||
     (s.lifetimeCoins != null && (!Number.isFinite(s.lifetimeCoins) || s.lifetimeCoins < 0))
@@ -3581,6 +3595,7 @@ export async function applyRolls(
     return count;
   };
   const echoChance = Math.min(.45, runeAbilityEffects.echoChamberPct / 100);
+  const discoveryOracleChance = Math.min(.20, runeAbilityEffects.discoveryOraclePct / 500);
   const maxEchoChain = runeAbilityEffects.echoChamberMaxChain;
   const paradoxChance = Math.min(.50, runeAbilityEffects.paradoxEnginePct / 100);
   const eventHorizonRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.eventHorizonPct / 100);
@@ -3599,6 +3614,7 @@ export async function applyRolls(
   let temporalLoopTriggered = false;
   let stellarDividendTriggered = false;
   let rarityLadderTriggered = false;
+  let discoveryOracleTriggered = false;
   let previousBatchRarity = 0;
   let risingRarityChain = 0;
   const validCharge = (value: unknown) => Number.isFinite(Number(value)) ? Math.min(1_000_000, Math.max(0, Number(value))) : 0;
@@ -3687,6 +3703,11 @@ export async function applyRolls(
       s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest);
     }
 
+    // Discovery Oracle rewards a new-to-this-player rarity at most once per activation.
+    if (isNew && !discoveryOracleTriggered && !suppressOtherRuneProcs && discoveryOracleChance > 0 && rng() < discoveryOracleChance) {
+      addRuneBonusRolls(runeAbilityEffects.discoveryOracleBonusRolls, { minRarity: Math.max(2, rarity), skipAllProcs: true });
+      discoveryOracleTriggered = true;
+    }
     // Event Horizon fires only on genuine all-time records and its generated burst cannot recurse.
     if (isNewRarityRecord && !suppressOtherRuneProcs && runeAbilityEffects.eventHorizonPct > 0) {
       const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity + 1, Math.ceil(rarity * eventHorizonRarityMultiplier)));
@@ -3752,11 +3773,14 @@ export async function applyRolls(
     const earnedXp = Math.min(Number.MAX_SAFE_INTEGER, Math.round(Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) * xpBonusMul));
 
     // Shards bonus for rare orbs (1,000+)
-    let earnedShards = 0;
-    if (rarity >= 1_000_000) earnedShards = 10;
-    else if (rarity >= 100_000) earnedShards = 5;
-    else if (rarity >= 10_000) earnedShards = 2;
-    else if (rarity >= 1_000) earnedShards = 1;
+    // Fractional baseline drip keeps ordinary play productive without flooding the wallet.
+    let earnedShards = 0.01 + runeAbilityEffects.shardTithePerRoll;
+    if (rarity >= 1_000_000) earnedShards += 1;
+    else if (rarity >= 100_000) earnedShards += 0.25;
+    else if (rarity >= 10_000) earnedShards += 0.10;
+    else if (rarity >= 1_000) earnedShards += 0.05;
+    // Long dry streaks gradually improve Shard drip; a rarity record resets this pressure.
+    earnedShards += Math.min(0.01, Math.floor(Math.max(0, s.rollsSinceBest ?? 0) / 100) * runeAbilityEffects.dryStreakRefineryRate);
 
     // Shard Chance upgrade + Mastery + Guild perk proc
     const shardProcChance = Math.min(
@@ -3769,14 +3793,14 @@ export async function applyRolls(
       Math.min(100, runeBonuses.shardChancePct) / 100
     );
     if (rng() < shardProcChance) {
-      earnedShards += 1;
+      earnedShards += 0.01;
     }
-    // Shard Jackpot only modifies an actual Shard payout, including rarity-based drops.
+    // Shard Jackpot multiplies the full payout, including fractional drip, instead of forcing a whole-Shard minimum.
     if (earnedShards > 0 && !suppressOtherRuneProcs && shardJackpotChance > 0 && rng() < shardJackpotChance) {
-      earnedShards = Math.min(Number.MAX_SAFE_INTEGER, earnedShards + Math.max(1, Math.round(earnedShards * runeAbilityEffects.shardJackpotExtraMultiplier)));
+      earnedShards = Math.round(earnedShards * (1 + runeAbilityEffects.shardJackpotExtraMultiplier) * 1_000) / 1_000;
     }
 
-    shardsGained += earnedShards;
+    shardsGained = Math.round((shardsGained + earnedShards) * 1_000) / 1_000;
     xpGained += earnedXp;
 
     // Shard Constellation retains charge between activations and pays only once per activation.
@@ -3846,7 +3870,7 @@ export async function applyRolls(
     coinsGained += Math.round(lowRarityCoins * (transLevel * 0.15));
     for (let i = 0; i < rollCount; i++) {
       if (rng() < 0.01 * transLevel) {
-        shardsGained += 1;
+        shardsGained += 0.01;
       }
     }
   }
@@ -6796,9 +6820,9 @@ function sampleBinomial(n: number, p: number): number {
 export async function activateTurbo(): Promise<PlayerState> {
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
-  const costShards = 5;
+  const costShards = 50;
   if (s.shards < costShards) {
-    throw new Error('Turbo Roll requires 5 Shards.');
+    throw new Error('Turbo Roll requires 50 Shards.');
   }
   spendShards(s, costShards);
   const durationMs = (s.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 60 * 60 * 1000 : 30 * 60 * 1000;
