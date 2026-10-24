@@ -217,6 +217,8 @@ test('main-game Auto Roll and combat beats cannot overlap, and abilities queue f
   assert.ok(main.includes('Wait for the current combat beat to finish before returning to Orbs.'));
   assert.ok(main.includes("body: JSON.stringify({ enabled: false })"));
   assert.ok(combat.includes('Queue the selected ability; the next scheduled/manual beat consumes it.'));
+  assert.ok(combat.includes("setQueuedAbilityId(skillId)"), 'the chosen skill should visibly remain queued');
+  assert.ok(combat.includes("'Queued · next beat'"));
   assert.ok(!combat.includes("setError('');void beat();"), 'clicking a skill must not trigger a beat immediately');
 });
 
