@@ -1694,9 +1694,10 @@ export function createApp() {
         try {
           const rawSharePostId = String(post.id ?? '').trim();
           const normalizedSharePostId = /^t3_/i.test(rawSharePostId) ? rawSharePostId : 't3_' + rawSharePostId;
-          const bareSharePostId = normalizedSharePostId.replace(/^t3_/i, '');
-          for (const candidate of new Set([rawSharePostId, normalizedSharePostId, bareSharePostId].filter(Boolean))) {
-            await redis.set('io:shared-orb:post:' + candidate, '1');
+          if (normalizedSharePostId.length <= 200 && !/[\\u0000-\\u001f\\u007f]/.test(normalizedSharePostId)) {
+            await redis.set('io:shared-orb:post:' + normalizedSharePostId, '1', {
+              expiration: new Date(Date.now() + 180 * 86_400_000),
+            });
           }
         } catch (registryError) {
           // The share itself is already published. Logging this best-effort
