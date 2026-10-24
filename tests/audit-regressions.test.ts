@@ -32,7 +32,9 @@ test('Rune Strengthen is tooltip-driven and Auto Sacrifice only consumes un-equi
   const combat=source('src/server/combat.ts');
   const api=source('src/server/app.ts');
   assert.ok(ui.includes('>Strengthen</button>'),'Rune tooltip must expose a Strengthen action');
-  assert.ok(ui.includes('handleRuneClick(rune)'),'clicking a Rune must act as the sacrifice donor while Strengthen is active');
+  assert.ok(ui.includes('handleRuneClick(rune)'),'Rune icons must remain active while Strengthen is selected');
+  assert.ok(ui.includes('setSacrificeDonorId(rune.id)'),'clicking a Rune must select it as donor, never sacrifice it implicitly');
+  assert.ok(ui.includes('Sacrifice selected Rune'),'a separate confirmation action must perform the sacrifice');
   assert.ok(combat.includes('!equipped.has(rune.id) && combatRuneRarityAtOrBelow'),'bulk auto-sacrifice must protect equipped donors');
   assert.ok(combat.includes('const target = pick(targets);'),'each donor must select an equipped Rune target at random');
   assert.ok(combat.includes('const qualifiesForAutoSacrifice = s.runeAutoSacrifice.enabled'),'new eligible drops must use the saved auto-sacrifice setting');
@@ -936,11 +938,19 @@ test('manual Rune sacrifice has a direct donor selector and consumes only the do
   const combat = source('src/server/combat.ts');
   const start = combat.indexOf('export async function sacrificeCombatRuneInto');
   assert.ok(start >= 0, 'server sacrifice function must exist');
-  const end = combat.indexOf('\\nexport async function ', start + 10);
+  const end = combat.indexOf('export async function rollCombatSkill', start + 10);
   const sacrifice = combat.slice(start, end > start ? end : start + 1_500);
   assert.match(sacrifice, /grantRuneSacrificeExperience\(target,donor\)/);
   assert.match(sacrifice, /s\.runes=s\.runes\.filter\(item=>item\.id!==donor\.id\)/);
   assert.match(sacrifice, /s\.equippedRunes=s\.equippedRunes\.filter\(id=>id!==donor\.id\)/);
+});
+
+test('fractional Shard wallets survive parsing, save validation, and payment-state normalization', () => {
+  const game = source('src/server/game.ts');
+  assert.match(game, /Math\.abs\(record\.shards \* 1_000 - Math\.round\(record\.shards \* 1_000\)\) < 1e-6/);
+  assert.match(game, /const normalizedWalletShards = roundShardAmount\(record\.shards\)/);
+  assert.match(game, /s\.shards = roundShardAmount\(s\.shards\)/);
+  assert.match(game, /shardPityRolls: Math\.min\(SHARD_PITY_ROLLS_TO_REWARD - 1, finiteNonNegativeInteger\(parsed\.shardPityRolls, 0\)\)/);
 });
 
 test('roll rewards commit atomically with Guild and community progress', () => {
