@@ -616,15 +616,15 @@ test('Frenzy Volley counts each additional multiball at 20% efficiency', () => {
 });
 
 
-test('Shard sinks are pricier, fractional values are formatted, and Global Booster costs ignore tier', () => {
+test('Shard sinks are pricier, whole-number values are formatted, and Global Booster costs ignore tier', () => {
   assert.deepEqual(Object.values(GLOBAL_BOOSTERS).map(booster => booster.costShards), [250, 250, 250]);
   assert.equal(PREMIUM_BOOSTERS.barrage.costShards, 1_000);
   assert.equal(AUTOMATIONS.autoUpgrade.costShards, 15_000);
   assert.equal(SHARD_SYNTHESIS_COST, 100);
   assert.equal(chainPatcherShardCost(900), 100);
-  assert.equal(formatShardAmount(0.005), '0.005');
-  assert.equal(formatShardAmount(3.125), '3.125');
-  assert.equal(roundShardAmount(1.23456), 1.235);
+  assert.equal(formatShardAmount(0.005), '0');
+  assert.equal(formatShardAmount(3.125), '3');
+  assert.equal(roundShardAmount(1.23456), 1);
 });
 
 test('Global Booster bar preserves the real tier of its latest four activation segments', () => {
