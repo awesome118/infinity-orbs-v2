@@ -317,8 +317,8 @@ test('deployment workflow is manual, main-only, and installs only to the develop
     /npx devvit view "infinity-orbs@\$REQUESTED_VERSION" version/,
     'uploaded-version verification must resolve the exact requested release rather than unqualified latest',
   );
-  assert.match(workflow, /paths:\\s*\\n\\s*- \.github\/workflows\/deploy\.yml/);
-  assert.match(workflow, /contains\(github\.event\.head_commit\.message, '\\[deploy-dev:1\.2\.51\\]'\)/);
+  assert.match(workflow, /paths:\s*\n\s*- \.github\/workflows\/deploy\.yml/);
+  assert.match(workflow, /contains\(github\.event\.head_commit\.message, '\[deploy-dev:1\.2\.51\]'\)/);
   assert.match(workflow, /if: steps\.existing-version\.outcome != 'success'/);
   assert.match(workflow, /^\s*npx devvit install r\/infinity_orbs_dev\b/m);
   assert.doesNotMatch(workflow, /^\s*npx devvit install r\/infinityorbs\b/m);

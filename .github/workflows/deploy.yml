@@ -85,6 +85,7 @@ jobs:
               ;;
           esac
 
+      # A previous upload can succeed even when the older verification step fails; reuse exact versions on retry.
       - name: Detect whether the exact version already exists
         id: existing-version
         continue-on-error: true
