@@ -1689,6 +1689,20 @@ export function createApp() {
           userGeneratedContent: { text },
         });
         postId = post.id;
+        // Mark this known shared-Orb post so the moderator's Global Chat repair
+        // action cannot accidentally register it as the canonical Game post.
+        try {
+          const rawSharePostId = String(post.id ?? '').trim();
+          const normalizedSharePostId = /^t3_/i.test(rawSharePostId) ? rawSharePostId : 't3_' + rawSharePostId;
+          const bareSharePostId = normalizedSharePostId.replace(/^t3_/i, '');
+          for (const candidate of new Set([rawSharePostId, normalizedSharePostId, bareSharePostId].filter(Boolean))) {
+            await redis.set('io:shared-orb:post:' + candidate, '1');
+          }
+        } catch (registryError) {
+          // The share itself is already published. Logging this best-effort
+          // safety marker must not turn success into a retryable failure.
+          console.error('[Share] Could not mark shared-Orb post for chat-routing protection.', registryError);
+        }
       }
       // The post and cooldown are already durable. Quest progress is a
       // secondary projection: if it conflicts after Reddit has accepted the
