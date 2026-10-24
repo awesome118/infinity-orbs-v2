@@ -200,11 +200,24 @@ test('Gear and skill tooltips follow the pointer and close when it leaves the ri
   const combat = source('src/client/components/CombatSection.tsx');
   const styles = source('src/client/styles.css');
   assert.match(combat, /onPointerMove=\{event=>\{if\(event\.pointerType==='mouse'\)moveTooltip\(event\.clientX,event\.clientY\);\}\}/);
-  assert.match(combat, /onPointerLeave=\{\(\)=>\{setShowTooltip\(false\);tooltipPointRef\.current=null;\}\}/);
+  assert.ok(combat.includes('createPortal('), 'gear tooltips should render outside overflow and stacking-context ancestors');
+  assert.ok(combat.includes('onPointerLeave={event=>closeTooltipIfOutside(event.relatedTarget)}'));
+  assert.ok(styles.includes('pointer-events:auto;opacity:1;visibility:visible;transform:translateY(0)'));
   assert.match(combat, /setInspectedSkillId\(current=>current===skill\.id\?null:current\)/);
   assert.match(combat, /const closeOutside=\(event:PointerEvent\)/);
   assert.doesNotMatch(styles, /io-combat-gear-icon-wrap:hover \.io-combat-gear-tooltip/);
   assert.doesNotMatch(styles, /io-combat-skill-icon-wrap:focus-within \.io-combat-skill-tooltip/);
+});
+
+test('main-game Auto Roll and combat beats cannot overlap, and abilities queue for the next beat', () => {
+  const main = source('src/client/main.tsx');
+  const combat = source('src/client/components/CombatSection.tsx');
+  assert.ok(main.includes('if (combatModeRef.current || combatBeatInFlightRef.current) return;'));
+  assert.ok(main.includes('rollActionLockRef.current) {'));
+  assert.ok(main.includes('Wait for the current combat beat to finish before returning to Orbs.'));
+  assert.ok(main.includes("body: JSON.stringify({ enabled: false })"));
+  assert.ok(combat.includes('Queue the selected ability; the next scheduled/manual beat consumes it.'));
+  assert.ok(!combat.includes("setError('');void beat();"), 'clicking a skill must not trigger a beat immediately');
 });
 
 test('Skill Codex is sorted by rarity then name, and the Forge no longer repeats the Major Ability guide', () => {
