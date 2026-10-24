@@ -947,12 +947,12 @@ test('manual Rune sacrifice has a direct donor selector and consumes only the do
   assert.match(sacrifice, /s\.equippedRunes=s\.equippedRunes\.filter\(id=>id!==donor\.id\)/);
 });
 
-test('fractional Shard wallets survive parsing, save validation, and payment-state normalization', () => {
+test('whole-number Shard wallets survive parsing, save validation, and payment-state normalization', () => {
   const game = source('src/server/game.ts');
-  assert.match(game, /Math\.abs\(record\.shards \* 1_000 - Math\.round\(record\.shards \* 1_000\)\) < 1e-6/);
+  assert.doesNotMatch(game, /Math\.abs\(record\.shards \* 1_000/);
   assert.match(game, /const normalizedWalletShards = roundShardAmount\(record\.shards\)/);
   assert.match(game, /s\.shards = roundShardAmount\(s\.shards\)/);
-  assert.match(game, /shardPityRolls: Math\.min\(SHARD_PITY_ROLLS_TO_REWARD - 1, finiteNonNegativeInteger\(parsed\.shardPityRolls, 0\)\)/);
+  assert.match(game, /shardPityRolls: 0/);
 });
 
 test('roll rewards commit atomically with Guild and community progress', () => {
