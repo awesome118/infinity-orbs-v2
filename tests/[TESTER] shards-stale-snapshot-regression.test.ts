@@ -15,17 +15,21 @@ import {
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
-test('prediction and authoritative grant both preserve fractional Shards beyond the old daily cap', () => {
+test('prediction and authoritative grant both use whole-number uncapped Shard rewards', () => {
   const now = Date.now();
   const predictedSource = createInitialState(now);
   predictedSource.shards = 0;
-  predictedSource.upgrades.shardChance = 1000; // Test-only setting forces proc chance to 100%.
+  predictedSource.upgrades.shardChance = 1000; // Test-only setting makes each draw use the reduced maximum proc chance.
   predictedSource.lastFreeShardReset = todayKey(now);
   predictedSource.freeShardsEarnedToday = 50;
 
-  const prediction = predictRollActivation(predictedSource, 1337, false, 1);
-
-  assert.ok(prediction.shardsGained >= 0.001);
+  // The proc chance is capped below 100%, so scan deterministic seeds for a successful draw.
+  const prediction = Array.from({ length: 128 }, (_, index) =>
+    predictRollActivation(predictedSource, index + 1, false, 1),
+  ).find(candidate => candidate.shardsGained > 0);
+  assert.ok(prediction, 'at least one deterministic seed should produce a whole-Shard reward');
+  assert.ok(Number.isSafeInteger(prediction.shardsGained));
+  assert.ok(prediction.shardsGained >= 1);
   assert.equal(prediction.state.shards, prediction.shardsGained);
   assert.ok(prediction.state.freeShardsEarnedToday > 50);
 
@@ -39,7 +43,7 @@ test('prediction and authoritative grant both preserve fractional Shards beyond 
   assert.equal(authoritative.shards, prediction.shardsGained);
   assert.ok(authoritative.freeShardsEarnedToday > 50);
 
-  // Both paths must use the same helper so the UI agrees with the uncapped wallet.
+  // Both paths must use the same helper so the UI agrees with the uncapped whole-number wallet.
   const shared = source('src/shared/game.ts');
   const server = source('src/server/game.ts');
   assert.match(shared, /shardsGained = grantRollShards\(s, shardsGained, predictionNow\)/);
