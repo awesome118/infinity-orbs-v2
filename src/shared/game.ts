@@ -1530,7 +1530,7 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
   shardSynthesis: {
     name: 'Dust Synthesis',
-    desc: 'Convert 10 Shards into 1 Cosmic Dust.',
+    desc: 'Convert 100 Shards into 1 Cosmic Dust.',
     category: 'alchemy',
     maxLevel: 1,
     costPerLevel: 4,
