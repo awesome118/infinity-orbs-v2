@@ -1,4 +1,5 @@
 import { context, redis, reddit } from './devvit-mock.js';
+import { combatHighestDepthReached } from '../shared/combat.js';
 import { withPlayerMutationLockFor } from './player-lock.js';
 import type {
   Guild,
@@ -2748,9 +2749,12 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
     ? rawRegistry as Record<string, string>
     : {};
   const userIds = Object.keys(registry);
-  const saves = userIds.length > 0
-    ? await redis.mGet(userIds.map(id => `player:${id}`))
-    : [];
+  const [saves, combatSaves] = userIds.length > 0
+    ? await Promise.all([
+      redis.mGet(userIds.map(id => `player:${id}`)),
+      redis.mGet(userIds.map(id => `infinity-orbs:combat:${id}`)),
+    ])
+    : [[], []];
 
   const eligible: LeaderboardEntry[] = [];
   const legacyRaw = await redis.get(key('leaderboard'));
@@ -2772,6 +2776,7 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
     const registryEntry = parseStoredJson<Partial<PlayerRegistryLeaderboardEntry>>(registry[userId]) ?? {};
     const save = saves[index] ? parseStoredJson<Partial<PlayerState>>(saves[index]) : null;
     if (!save) continue;
+    const combatSave = combatSaves[index] ? parseStoredJson<unknown>(combatSaves[index]) : null;
 
     const sharedAt = Number(save.lastShareAt ?? 0) || 0;
     if (sharedAt <= 0) continue;
@@ -2797,6 +2802,10 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
       currentDryStreak: Math.max(0, Number(save.rollsSinceBest ?? 0) || 0),
       playtimeMs,
       chainLength: highestCodexChain(save.collection),
+      bestDepth: Math.max(
+        combatHighestDepthReached(combatSave),
+        Math.max(0, Number(legacy?.bestDepth ?? 0) || 0),
+      ),
       title: legacy?.title,
       guildTag: legacy?.guildTag,
     });
@@ -2810,6 +2819,10 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
     bestOrb: sortLeaderboard(eligible, entry => entry.highestRarity),
     mostPlaytime: sortLeaderboard(eligible, entry => entry.playtimeMs ?? 0),
     chainLength: sortLeaderboard(eligible, entry => entry.chainLength ?? 0),
+    highestDepthReached: sortLeaderboard(
+      eligible.filter(entry => (entry.bestDepth ?? 0) > 0),
+      entry => entry.bestDepth ?? 0,
+    ),
   };
 }
 

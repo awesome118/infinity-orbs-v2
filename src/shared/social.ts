@@ -125,6 +125,8 @@ export interface LeaderboardEntry {
   currentDryStreak?: number;
   playtimeMs?: number;
   chainLength?: number;
+  /** Best dungeon depth reached, merged across all saved dungeon progress. */
+  bestDepth?: number;
 }
 
 export type LeaderboardId =
@@ -134,7 +136,8 @@ export type LeaderboardId =
   | 'currentDryStreak'
   | 'bestOrb'
   | 'mostPlaytime'
-  | 'chainLength';
+  | 'chainLength'
+  | 'highestDepthReached';
 
 export type LeaderboardBoards = Record<LeaderboardId, LeaderboardEntry[]>;
 

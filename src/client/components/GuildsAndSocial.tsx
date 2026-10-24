@@ -129,6 +129,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     bestOrb: [],
     mostPlaytime: [],
     chainLength: [],
+    highestDepthReached: [],
   };
   const leaderboardMeta: Array<{ id: LeaderboardId; label: string }> = [
     { id: 'collectionValue', label: 'Collection Value' },
@@ -138,6 +139,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     { id: 'bestOrb', label: 'Best Orb' },
     { id: 'mostPlaytime', label: 'Most Playtime' },
     { id: 'chainLength', label: 'Chain Length' },
+    { id: 'highestDepthReached', label: 'Highest Depth Reached' },
   ];
   const displayedLeaderboard = Array.isArray(leaderboardBoards[activeLeaderboard]) ? leaderboardBoards[activeLeaderboard] : [];
   const leaderboardMetric = (entry: LeaderboardEntry): string => {
@@ -157,6 +159,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
         return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
       }
       case 'chainLength': return `${fmt(entry.chainLength ?? 0)} Rarities`;
+      case 'highestDepthReached': return `Depth ${fmt(entry.bestDepth ?? 0)}`;
     }
   };
 

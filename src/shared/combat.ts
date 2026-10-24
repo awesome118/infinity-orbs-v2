@@ -614,6 +614,80 @@ export function combatActionsDue(speedValue: unknown, beatValue: unknown, resolv
   return Math.max(0, Math.min(limit, target - resolved));
 }
 
+
+/** A single scheduled action within the current combat beat. Times are fractions of the beat. */
+export interface CombatActionTimelineEntry {
+  actor: 'player' | 'enemy';
+  /** Zero-based action number for this actor within the current beat. */
+  actionIndex: number;
+  time: number;
+}
+
+/**
+ * Merge actions owed by player and enemy onto the same speed-threshold timeline.
+ * Cumulative counters let a gear swap or old save catch up without resetting Speed progress.
+ * Equal-time actions give the Delver deterministic priority.
+ */
+export function combatActionTimeline(
+  playerSpeedValue: unknown,
+  enemySpeedValue: unknown,
+  beatValue: unknown,
+  playerResolvedValue: unknown,
+  enemyResolvedValue: unknown,
+  playerActionsValue: unknown,
+  enemyActionsValue: unknown,
+): CombatActionTimelineEntry[] {
+  const safeSpeed = (value: unknown): number => {
+    const raw = Number(value);
+    return Number.isFinite(raw) ? Math.max(0, raw) : 0;
+  };
+  const safeCounter = (value: unknown): number => {
+    const raw = Number(value);
+    return Number.isFinite(raw) ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(raw))) : 0;
+  };
+  const safeActions = (value: unknown): number => {
+    const raw = Number(value);
+    return Number.isFinite(raw) ? Math.max(0, Math.min(1000, Math.floor(raw))) : 0;
+  };
+  const beat = Math.max(1, safeCounter(beatValue));
+  const playerSpeed = safeSpeed(playerSpeedValue);
+  const enemySpeed = safeSpeed(enemySpeedValue);
+  const playerResolved = safeCounter(playerResolvedValue);
+  const enemyResolved = safeCounter(enemyResolvedValue);
+  const playerActions = safeActions(playerActionsValue);
+  const enemyActions = safeActions(enemyActionsValue);
+  const timeline: CombatActionTimelineEntry[] = [];
+
+  const append = (
+    actor: CombatActionTimelineEntry['actor'],
+    speed: number,
+    resolved: number,
+    count: number,
+  ) => {
+    if (speed <= 0 || count <= 0) return;
+    for (let actionIndex = 0; actionIndex < count; actionIndex += 1) {
+      const ordinal = Math.min(Number.MAX_SAFE_INTEGER, resolved + actionIndex + 1);
+      const rawTime = (ordinal * 100 / speed) - (beat - 1);
+      timeline.push({
+        actor,
+        actionIndex,
+        time: Number.isFinite(rawTime) ? Math.max(0, rawTime) : 1,
+      });
+    }
+  };
+
+  append('player', playerSpeed, playerResolved, playerActions);
+  append('enemy', enemySpeed, enemyResolved, enemyActions);
+  timeline.sort((a, b) => {
+    const delta = a.time - b.time;
+    if (Math.abs(delta) > 1e-9) return delta;
+    if (a.actor !== b.actor) return a.actor === 'player' ? -1 : 1;
+    return a.actionIndex - b.actionIndex;
+  });
+  return timeline;
+}
+
+
 export function combatSkillEnergyCost(rarity: CombatRarity): number {
   return rarity === 'Common' || rarity === 'Uncommon' ? 2 : rarity === 'Rare' || rarity === 'Epic' ? 3 : 4;
 }
@@ -878,6 +952,30 @@ export interface CombatState {
   coreHighestRarity: number;
   autoTactic: CombatTactic;
 }
+/** Returns the saved all-dungeon peak, ignoring malformed counters and respecting the supported cap. */
+export function combatHighestDepthReached(value: unknown): number {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return 0;
+  const state = value as Record<string, unknown>;
+  const normalize = (candidate: unknown): number => {
+    const raw = Number(candidate);
+    if (!Number.isSafeInteger(raw) || raw < 1) return 0;
+    return Math.min(COMBAT_MAX_DEPTH, raw);
+  };
+  let highest = Math.max(normalize(state.depth), normalize(state.bestDepth));
+  const dungeonDepths = state.dungeonBestDepths;
+  if (dungeonDepths && typeof dungeonDepths === 'object' && !Array.isArray(dungeonDepths)) {
+    const record = dungeonDepths as Record<string, unknown>;
+    highest = Math.max(
+      highest,
+      normalize(record.undercrypt),
+      normalize(record['cinder-vault']),
+      normalize(record['glass-labyrinth']),
+    );
+  }
+  return highest;
+}
+
+
 export interface CombatStats {
   damage: number;
   speed: number;
