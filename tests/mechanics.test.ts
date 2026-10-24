@@ -42,7 +42,6 @@ import {
   grantFreeShards,
   grantRollShards,
   spendShards,
-  FREE_SHARD_DAILY_CAP,
   onlinePlayerLuckMultiplier,
   luckMultiplier,
   frenzyClaimCountForRarity,
@@ -81,11 +80,11 @@ test('Chain Patcher chooses the lowest adjacent rarity and prices 1/900 at 10 Sh
 
   assert.equal(bestCodexChain(collection).length, 898);
   assert.equal(nextCodexChainRarity(collection), 900);
-  assert.equal(chainPatcherShardCost(900), 10);
-  assert.equal(chainPatcherShardCost(999), 10);
-  assert.equal(chainPatcherShardCost(1_000), 11);
+  assert.equal(chainPatcherShardCost(900), 100);
+  assert.equal(chainPatcherShardCost(999), 100);
+  assert.equal(chainPatcherShardCost(1_000), 110);
   assert.equal(nextCodexChainRarity({}), 2);
-  assert.equal(chainPatcherShardCost(2), 1);
+  assert.equal(chainPatcherShardCost(2), 10);
   assert.equal(CHAIN_PATCHER_COOLDOWN_MS, 24 * 60 * 60 * 1_000);
 });
 
@@ -456,21 +455,24 @@ test('Offline Generation Speed cannot be purchased past its 60% hard cap', () =>
   assert.equal(upgradeCost('offlineRate', 8), Infinity);
 });
 
-test('roll Shards respect the hard 50-per-day cap while free reward Shards bypass it', () => {
+test('roll Shards are uncapped, fractional, and tracked without integer rounding', () => {
   const state = createInitialState(NOW);
   state.lastFreeShardReset = new Date(NOW).toISOString().slice(0, 10);
-  state.freeShardsEarnedToday = 49;
+  state.freeShardsEarnedToday = 49.75;
   state.shards = 0;
   state.lifetimeShards = 0;
 
-  assert.equal(grantRollShards(state, 10, NOW), 1);
-  assert.equal(state.shards, 1);
-  assert.equal(state.freeShardsEarnedToday, 50);
-  assert.equal(grantRollShards(state, 10, NOW), 0);
+  assert.equal(grantRollShards(state, 0.125, NOW), 0.125);
+  assert.equal(state.shards, 0.125);
+  assert.equal(state.freeShardsEarnedToday, 49.875);
+  assert.equal(grantRollShards(state, 60.125, NOW), 60.125);
+  assert.equal(state.shards, 60.25);
+  assert.equal(state.freeShardsEarnedToday, 110);
 
-  assert.equal(grantFreeShards(state, 10, NOW), 10);
-  assert.equal(state.shards, 11);
-  assert.equal(state.freeShardsEarnedToday, 50);
+  assert.equal(grantFreeShards(state, 0.005, NOW), 0.005);
+  assert.equal(state.shards, 60.255);
+  assert.equal(state.freeShardsEarnedToday, 110);
+  assert.equal(state.lifetimeShards, 60.255);
 });
 
 test('invalid Shard spend amounts are rejected before touching wallet state', () => {
@@ -503,17 +505,17 @@ test("Shard reward paths do not overflow the persisted balance's safe integer ra
   assert.equal(state.lifetimeShards, Number.MAX_SAFE_INTEGER);
 });
 
-test('malformed daily Shard counter fails closed without producing NaN', () => {
+test('malformed Shard telemetry is repaired without suppressing fractional rewards', () => {
   const state = createInitialState(NOW);
   state.lastFreeShardReset = new Date(NOW).toISOString().slice(0, 10);
   state.freeShardsEarnedToday = 'broken' as unknown as number;
   state.shards = 0;
   state.lifetimeShards = 'broken' as unknown as number;
 
-  assert.equal(grantRollShards(state, 7, NOW), 0);
-  assert.equal(state.freeShardsEarnedToday, FREE_SHARD_DAILY_CAP);
-  assert.equal(state.shards, 0);
-  assert.equal(Number.isFinite(state.lifetimeShards), true);
+  assert.equal(grantRollShards(state, 0.125, NOW), 0.125);
+  assert.equal(state.freeShardsEarnedToday, 0.125);
+  assert.equal(state.shards, 0.125);
+  assert.equal(state.lifetimeShards, 0.125);
 });
 
 test('non-finite roll Shard request grants zero while preserving a valid budget', () => {
