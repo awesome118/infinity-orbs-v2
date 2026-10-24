@@ -136,7 +136,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   const isAutoUnlocked = manualRolls >= 3;
 
   const currentCoinBonusPct = (state.upgrades.coinBonus ?? 0) * 15;
-  const currentShardChancePct = ((state.upgrades.shardChance ?? 0) * 0.15).toFixed(2);
+  const currentShardChancePct = ((state.upgrades.shardChance ?? 0) * 0.075).toFixed(3);
   const currentXpBonusPct = (state.upgrades.xpBonus ?? 0) * 20;
   const currentCritChancePct = (state.upgrades.critChance ?? 0) * 3;
 
