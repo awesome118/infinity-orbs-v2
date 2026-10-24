@@ -53,7 +53,7 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
   const [showTooltip,setShowTooltip]=useState(false);
   const [tooltipPoint,setTooltipPoint]=useState<{x:number;y:number}|null>(null);
   const tooltipPointRef=useRef<{x:number;y:number}|null>(null);
-  const cardRef=useRef<HTMLElement|null>(null);
+  const cardRef=useRef<HTMLArticleElement|null>(null);
   const tooltipRef=useRef<HTMLDivElement|null>(null);
   const lastPointerTypeRef=useRef<string>('mouse');
   const grade=combatGearRarityForQuality(item.quality);
