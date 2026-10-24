@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, Coins, Info, Pause, Play, Sparkles, Swords, Zap, Sword, Shield, Crown, Hand, Footprints, CircleDot, Gem, Hammer, Clock3, Timer, type LucideIcon } from 'lucide-react';
 import { RunesSection } from './RunesSection.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatAutoScrapSettings, CombatCommand, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatOrbRoll, CombatPage, CombatSkillDefinition, CombatSkillId, CombatSnapshot, CombatState, CombatStats, CombatTactic } from '../../shared/combat.js';
 import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatGearRarityForQuality, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, COMBAT_SPEED_PER_ACTION, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
 
-interface Props { page: CombatPage; onNavigate:(page:CombatPage)=>void; }
+interface Props { page: CombatPage; onNavigate:(page:CombatPage)=>void; onResolvingChange?:(active:boolean)=>void; }
 interface SkillRollResult {
   id:string;name:string;rarity:string;rank:number;duplicate:boolean;convertedCoins:number;progress:number;copiesNeeded:number;rankedUp:boolean;
 }
@@ -52,6 +53,8 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
   const [showTooltip,setShowTooltip]=useState(false);
   const [tooltipPoint,setTooltipPoint]=useState<{x:number;y:number}|null>(null);
   const tooltipPointRef=useRef<{x:number;y:number}|null>(null);
+  const cardRef=useRef<HTMLElement|null>(null);
+  const tooltipRef=useRef<HTMLDivElement|null>(null);
   const lastPointerTypeRef=useRef<string>('mouse');
   const grade=combatGearRarityForQuality(item.quality);
   const tooltipId='io-gear-tooltip-'+item.id.replace(/[^A-Za-z0-9_-]/g,'-');
@@ -71,41 +74,65 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     setTooltipPoint(next);
     setShowTooltip(true);
   };
-  return <article className={'io-combat-gear-icon-wrap '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
-    onPointerEnter={event=>{lastPointerTypeRef.current=event.pointerType;if(event.pointerType==='mouse')moveTooltip(event.clientX,event.clientY);}}
-    onPointerMove={event=>{if(event.pointerType==='mouse')moveTooltip(event.clientX,event.clientY);}}
-    onPointerLeave={()=>{setShowTooltip(false);tooltipPointRef.current=null;}}
-    onFocus={event=>{const rect=event.currentTarget.getBoundingClientRect();moveTooltip(rect.right,rect.top);}}
-    onKeyDown={event=>{if(event.key==='Escape'){setShowTooltip(false);tooltipPointRef.current=null;(event.target as HTMLElement).blur();}}}
-    onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null)){setShowTooltip(false);tooltipPointRef.current=null;}}}>
-    <button type="button" className={'io-combat-gear-icon '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
-      aria-label={(isEquipped?'Inspect equipped ':'Inspect ')+item.name}
-      aria-expanded={showTooltip}
-      aria-controls={tooltipId}
-      title={item.name}
-      disabled={busy}
-      onClick={()=>{setShowTooltip(value=>!value);}}>
-      <SlotIcon size={27} strokeWidth={1.8} aria-hidden="true"/>
-      <small>{item.quality.toFixed(0)}%</small>
-      <span className="io-combat-gear-icon-power">{fmt(item.power)}</span>
-      {isEquipped&&<span className="io-combat-gear-equipped">✓</span>}
-    </button>
-    <div id={tooltipId} className={'io-combat-gear-tooltip '+(showTooltip?'is-open':'')}
-      style={{position:'fixed',left:tooltipPoint?.x??12,top:tooltipPoint?.y??12,right:'auto',maxWidth:'min(310px, calc(100vw - 16px))',maxHeight:'min(360px, calc(100vh - 16px))',overflow:'auto'}}
-      role="group" aria-label={item.name+' details'}>
-      <span className="io-combat-eyebrow">{grade.toUpperCase()} ITEM · {item.quality.toFixed(2)}% QUALITY · LEVEL {fmt(item.sourceFloor+1)}</span>
-      <strong>{item.name}</strong><p>{slotLabel(item.slot)} · Power {fmt(item.power)}</p>
-      <div className="io-combat-gear-tooltip-stats">{bonuses.length?bonuses.map(stat=><span className={'io-combat-stat-'+stat.kind} key={stat.label} title={stat.detail}>{stat.label}</span>):<span>No direct stat bonuses</span>}</div>
-      <p>{item.effect}</p><p>Quality effectiveness at this level: {Math.round(gearQualityEffectiveness(item,currentFloor)*100)}%.</p>
-      {item.majorAbility&&<section className={'io-combat-major-ability '+majorAbilityClass(item.majorAbility.id)}><span>✦ MAJOR ABILITY</span><strong>{item.majorAbility.name}</strong><p>{item.majorAbility.description}</p></section>}
-      <div className="io-combat-gear-tooltip-actions">
-        <button type="button" className={isEquipped?'io-combat-button is-equipped':'io-combat-button'} disabled={busy||isEquipped} onClick={onEquip}>{isEquipped?'Equipped':'Equip item'}</button>
-        <button type="button" className="io-combat-button is-secondary" disabled={busy||isEquipped} onClick={onScrap}>Scrap +{fmt(Math.round(combatScrapValue(item)*(1+Math.min(2,scrapBonusPercent))))}</button>
-      </div>
-    </div>
-  </article>;
+  const closeTooltipIfOutside=(target:EventTarget|null)=>{
+    const node=target instanceof Node?target:null;
+    if(node&&(cardRef.current?.contains(node)||tooltipRef.current?.contains(node)))return;
+    setShowTooltip(false);
+    tooltipPointRef.current=null;
+  };
+  const closeOnEscape=(event:React.KeyboardEvent<HTMLElement>)=>{
+    if(event.key==='Escape'){
+      setShowTooltip(false);
+      tooltipPointRef.current=null;
+      (event.target as HTMLElement).blur();
+    }
+  };
+  return <>
+    <article ref={cardRef} className={'io-combat-gear-icon-wrap '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
+      onPointerEnter={event=>{lastPointerTypeRef.current=event.pointerType;if(event.pointerType==='mouse')moveTooltip(event.clientX,event.clientY);}}
+      onPointerMove={event=>{if(event.pointerType==='mouse')moveTooltip(event.clientX,event.clientY);}}
+      onPointerLeave={event=>closeTooltipIfOutside(event.relatedTarget)}
+      onFocus={event=>{const rect=event.currentTarget.getBoundingClientRect();moveTooltip(rect.right,rect.top);}}
+      onKeyDown={closeOnEscape}
+      onBlur={event=>closeTooltipIfOutside(event.relatedTarget)}>
+      <button type="button" className={'io-combat-gear-icon '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
+        aria-label={(isEquipped?'Inspect equipped ':'Inspect ')+item.name}
+        aria-expanded={showTooltip}
+        aria-controls={tooltipId}
+        title={item.name}
+        disabled={busy}
+        onClick={event=>{
+          if(lastPointerTypeRef.current==='touch'){
+            if(showTooltip){setShowTooltip(false);tooltipPointRef.current=null;}
+            else {const rect=event.currentTarget.getBoundingClientRect();moveTooltip(rect.right,rect.top);}
+          }else setShowTooltip(true);
+        }}>
+        <SlotIcon size={27} strokeWidth={1.8} aria-hidden="true"/>
+        <small>{item.quality.toFixed(0)}%</small>
+        <span className="io-combat-gear-icon-power">{fmt(item.power)}</span>
+        {isEquipped&&<span className="io-combat-gear-equipped">✓</span>}
+      </button>
+    </article>
+    {typeof document!=='undefined'&&createPortal(
+      <div ref={tooltipRef} id={tooltipId} className={'io-combat-gear-tooltip '+(showTooltip?'is-open':'')}
+        style={{position:'fixed',left:tooltipPoint?.x??12,top:tooltipPoint?.y??12,right:'auto',zIndex:10000,maxWidth:'min(310px, calc(100vw - 16px))',maxHeight:'min(360px, calc(100vh - 16px))',overflow:'auto'}}
+        role="group" aria-label={item.name+' details'}
+        onPointerLeave={event=>closeTooltipIfOutside(event.relatedTarget)}
+        onKeyDown={closeOnEscape}
+        onBlur={event=>closeTooltipIfOutside(event.relatedTarget)}>
+        <span className="io-combat-eyebrow">{grade.toUpperCase()} ITEM · {item.quality.toFixed(2)}% QUALITY · LEVEL {fmt(item.sourceFloor+1)}</span>
+        <strong>{item.name}</strong><p>{slotLabel(item.slot)} · Power {fmt(item.power)}</p>
+        <div className="io-combat-gear-tooltip-stats">{bonuses.length?bonuses.map(stat=><span className={'io-combat-stat-'+stat.kind} key={stat.label} title={stat.detail}>{stat.label}</span>):<span>No direct stat bonuses</span>}</div>
+        <p>{item.effect}</p><p>Quality effectiveness at this level: {Math.round(gearQualityEffectiveness(item,currentFloor)*100)}%.</p>
+        {item.majorAbility&&<section className={'io-combat-major-ability '+majorAbilityClass(item.majorAbility.id)}><span>✦ MAJOR ABILITY</span><strong>{item.majorAbility.name}</strong><p>{item.majorAbility.description}</p></section>}
+        <div className="io-combat-gear-tooltip-actions">
+          <button type="button" className={isEquipped?'io-combat-button is-equipped':'io-combat-button'} disabled={busy||isEquipped} onClick={onEquip}>{isEquipped?'Equipped':'Equip item'}</button>
+          <button type="button" className="io-combat-button is-secondary" disabled={busy||isEquipped} onClick={onScrap}>Scrap +{fmt(Math.round(combatScrapValue(item)*(1+Math.min(2,scrapBonusPercent))))}</button>
+        </div>
+      </div>,document.body)}
+  </>;
 }
-export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
+export const CombatSection:React.FC<Props>=({page,onNavigate,onResolvingChange})=>{
   const [state,setState]=useState<CombatState|null>(null);
   const [enemy,setEnemy]=useState<CombatEnemy|null>(null);
   const [stats,setStats]=useState<CombatStats|null>(null);
@@ -234,7 +261,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     const queuedCommand=runtime.current.intent;
     const pendingAbilityId=runtime.current.pendingAbilityId;
     const beatIntent:CombatCommand=queuedIntent?(pendingAbilityId?'ability':queuedCommand):(runtime.current.auto&&!runtime.current.manual?'auto':runtime.current.intent);
-    runtime.current.busy=true;setProcessing(true);
+    runtime.current.busy=true;setProcessing(true);onResolvingChange?.(true);
     let releaseBeat!:()=>void;
     const thisBeat=new Promise<void>(resolve=>{releaseBeat=resolve;});
     runtime.current.beatPromise=thisBeat;
@@ -272,11 +299,11 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         setError(message);setAuto(false);
       }
     } finally {
-      runtime.current.busy=false;runtime.current.manual=false;setProcessing(false);
+      runtime.current.busy=false;runtime.current.manual=false;setProcessing(false);onResolvingChange?.(false);
       if(runtime.current.beatPromise===thisBeat)runtime.current.beatPromise=null;
       releaseBeat();
     }
-  },[accept,error,load]);
+  },[accept,error,load,onResolvingChange]);
   useEffect(()=>{
     if(!auto||paused||loading||Boolean(error))return;
     let timer:number|null=null;
@@ -419,14 +446,14 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       </div>
       {(()=>{
         const maxSpeed=Math.max(1,stats.speed,enemy.speed);
-        const nextActionBeat=(resolved:number,speed:number)=>Math.max(state.combatBeats+1,1+Math.ceil(resolved*COMBAT_SPEED_PER_ACTION/Math.max(1,speed)));
+        const nextActionBeat=(resolved:number,speed:number)=>Math.max(state.combatBeats+1,Math.max(1,Math.ceil(resolved*COMBAT_SPEED_PER_ACTION/Math.max(1,speed))));
         const playerNext=nextActionBeat(state.playerActionsResolved,stats.speed);
         const enemyNext=nextActionBeat(state.enemyActionsResolved,enemy.speed);
         const playerCharge=Math.round(stats.speed/maxSpeed*100);
         const enemyCharge=Math.round(enemy.speed/maxSpeed*100);
         const events=[
-          ...Array.from({length:timelineCount+2},(_,i)=>({actor:'player' as const,time:Math.max(state.combatBeats+1,1+Math.ceil((state.playerActionsResolved+i)*COMBAT_SPEED_PER_ACTION/Math.max(1,stats.speed))),step:i,speed:stats.speed})),
-          ...Array.from({length:timelineCount+2},(_,i)=>({actor:'enemy' as const,time:Math.max(state.combatBeats+1,1+Math.ceil((state.enemyActionsResolved+i)*COMBAT_SPEED_PER_ACTION/Math.max(1,enemy.speed))),step:i,speed:enemy.speed})),
+          ...Array.from({length:timelineCount+2},(_,i)=>({actor:'player' as const,time:Math.max(state.combatBeats+1,Math.max(1,Math.ceil((state.playerActionsResolved+i)*COMBAT_SPEED_PER_ACTION/Math.max(1,stats.speed)))),step:i,speed:stats.speed})),
+          ...Array.from({length:timelineCount+2},(_,i)=>({actor:'enemy' as const,time:Math.max(state.combatBeats+1,Math.max(1,Math.ceil((state.enemyActionsResolved+i)*COMBAT_SPEED_PER_ACTION/Math.max(1,enemy.speed)))),step:i,speed:enemy.speed})),
         ].sort((a,b)=>a.time-b.time||(a.actor===b.actor?a.step-b.step:a.actor==='player'?-1:1)).slice(0,timelineCount);
         const nextActor=playerNext<=enemyNext?'player':'enemy';
         return <section className="io-combat-turn-tracker" aria-label="Combat speed and turn order">
