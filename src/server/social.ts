@@ -2295,6 +2295,18 @@ async function isRegisteredFrenzyPost(postId: string): Promise<boolean> {
   return false;
 }
 
+async function isRegisteredOrbSharePost(postId: string): Promise<boolean> {
+  const rawId = String(postId ?? '').trim();
+  const normalizedId = normalizeRedditPostId(rawId);
+  if (!normalizedId) return false;
+  const bareId = normalizedId.replace(/^t3_/i, '');
+  const candidates = [...new Set([rawId, normalizedId, bareId].filter(Boolean))];
+  for (const candidate of candidates) {
+    if (await redis.get('io:shared-orb:post:' + candidate) != null) return true;
+  }
+  return false;
+}
+
 async function resolveGlobalGamePostId(): Promise<string> {
   const saved = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
   if (!saved) {
@@ -2311,6 +2323,7 @@ export async function registerCurrentPostAsGlobalChatDestination(): Promise<{ po
   const postId = normalizeRedditPostId(String(context.postId ?? '').trim());
   if (!postId || postId === 't3_') throw new Error('The current Reddit post ID is unavailable. Open the main Infinity Orbs Game post and retry.');
   if (await isRegisteredFrenzyPost(postId)) throw new Error('A Frenzy post cannot be registered as the Global Chat destination. Open the main Game post and retry.');
+  if (await isRegisteredOrbSharePost(postId)) throw new Error('A shared-Orb post cannot be registered as the Global Chat destination. Open the main Game post and retry.');
   await redis.set(GLOBAL_GAME_POST_KEY, postId);
   return { postId };
 }
