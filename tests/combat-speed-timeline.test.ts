@@ -71,7 +71,7 @@ test('player charge carries into a new encounter while enemy charge restarts', (
   assert.deepEqual(nextEncounter.actors, ['player', 'player', 'enemy']);
 
   const server = readFileSync(resolve(process.cwd(), 'src/server/combat.ts'), 'utf8');
-  const enemyReset = server.split('\\n').find(line => line.includes('s.combatBeats=0;s.enemyActionsResolved=0;'));
+  const enemyReset = server.split('\n').find(line => line.includes('s.combatBeats=0;s.enemyActionsResolved=0;'));
   assert.ok(enemyReset?.includes('s.enemySpeedCharge=0'));
   assert.ok(!enemyReset?.includes('s.playerSpeedCharge=0'), 'player charge must persist across enemy defeats');
   assert.ok(server.includes('s.playerSpeedBeats=0;s.playerSpeedCharge=0;s.enemySpeedCharge=0;s.enemyTurnsToSkip=0;s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0'));
