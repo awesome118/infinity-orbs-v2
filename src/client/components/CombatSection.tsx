@@ -112,7 +112,7 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     </article>
     {showTooltip&&tooltipPoint&&createPortal(
       <div ref={tooltipRef} id={tooltipId} className="io-combat-gear-tooltip is-open"
-        style={{position:'fixed',left:tooltipPoint.x,top:tooltipPoint.y,width:'min(310px, calc(100vw - 16px)',maxWidth:'calc(100vw - 16px)',maxHeight:'min(360px, calc(100vh - 16px))',overflow:'auto',zIndex:9999,pointerEvents:'auto'}}
+        style={{position:'fixed',left:tooltipPoint.x,top:tooltipPoint.y,width:'min(310px, calc(100vw - 16px))',maxWidth:'calc(100vw - 16px)',maxHeight:'min(360px, calc(100vh - 16px))',overflow:'auto',zIndex:9999,pointerEvents:'auto'}}
         role="dialog" aria-label={item.name+' details'} aria-modal="false">
         <span className="io-combat-eyebrow">{grade.toUpperCase()} ITEM · {item.quality.toFixed(2)}% QUALITY · LEVEL {fmt(item.sourceFloor+1)}</span>
         <strong>{item.name}</strong><p>{slotLabel(item.slot)} · Power {fmt(item.power)}</p>
