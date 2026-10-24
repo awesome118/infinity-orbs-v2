@@ -249,3 +249,34 @@ test('Global Chat stays available when embedded launcher context differs, but co
     configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
   }
 });
+
+
+test('trusted admin repairs stale Frenzy destination only from a valid main Game post', async () => {
+  const baseContext = originalContext;
+  const baseRedis = originalRedis;
+  const baseReddit = originalReddit;
+  const suffix = Date.now().toString(36);
+  const mainPostId = 't3_admin-chat-repair-' + suffix;
+  const stalePostId = 't3_admin-stale-frenzy-' + suffix;
+  const gamePostKey = 'io:global-game-post-id';
+  const frenzyKey = 'io:frenzy:post:' + stalePostId;
+  const previousGamePost = await baseRedis.get(gamePostKey);
+  const previousFrenzy = await baseRedis.get(frenzyKey);
+  try {
+    await baseRedis.set(gamePostKey, stalePostId);
+    await baseRedis.set(frenzyKey, JSON.stringify({ ownerId: 'test-owner', createdAt: Date.now() }));
+    configureDevvitRuntime({ redis: baseRedis, context: { ...baseContext, postId: mainPostId, userId: 'trusted-chat-admin-' + suffix, username: 'shadow_fen' }, reddit: baseReddit });
+    assert.deepEqual(await getGlobalChatStatus(), { enabled: true });
+    assert.equal(await baseRedis.get(gamePostKey), mainPostId);
+    await baseRedis.set(gamePostKey, stalePostId);
+    configureDevvitRuntime({ redis: baseRedis, context: { ...baseContext, postId: 't3_ordinary-chat-view-' + suffix, userId: 'ordinary-user-' + suffix, username: 'OrdinaryViewer' }, reddit: baseReddit });
+    assert.equal((await getGlobalChatStatus()).enabled, false);
+    assert.equal(await baseRedis.get(gamePostKey), stalePostId);
+  } finally {
+    await baseRedis.del(frenzyKey);
+    await baseRedis.del(gamePostKey);
+    if (previousGamePost != null) await baseRedis.set(gamePostKey, previousGamePost);
+    if (previousFrenzy != null) await baseRedis.set(frenzyKey, previousFrenzy);
+    configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  }
+});

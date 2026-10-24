@@ -136,6 +136,27 @@ test('impression recording rejects unsupported post types and skips missing post
   }
 });
 
+test('client post ID preserves impressions when Devvit server context lacks post ID', async () => {
+  const baseContext = originalContext;
+  const baseRedis = originalRedis;
+  const baseReddit = originalReddit;
+  const suffix = Date.now().toString(36);
+  const postId = 't3_impression-contextless-' + suffix;
+  configureDevvitRuntime({ redis: baseRedis, context: { ...baseContext, userId: 'impression-contextless-' + suffix, username: 'ContextlessViewer', postId: '' }, reddit: baseReddit });
+  try {
+    const before = await getImpressionDashboard();
+    assert.deepEqual(await recordPostImpression('main-game', 'desktop', postId), { recorded: true });
+    const after = await getImpressionDashboard();
+    assert.equal(after.total, before.total + 1);
+    assert.ok(after.posts.some(post => post.postId === postId && post.postType === 'main-game' && post.impressions === 1));
+    const viewer = after.viewers.find(row => row.username === 'ContextlessViewer');
+    assert.ok(viewer);
+    assert.equal(viewer.uniquePostViews, 1);
+  } finally {
+    configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  }
+});
+
 test('main game, Orb Share, and Frenzy clients report only coarse aggregate impression fields', () => {
   const splash = readFileSync(resolve(process.cwd(), 'src/client/splash.tsx'), 'utf8');
   const frenzy = readFileSync(resolve(process.cwd(), 'src/client/frenzy.tsx'), 'utf8');
@@ -143,10 +164,13 @@ test('main game, Orb Share, and Frenzy clients report only coarse aggregate impr
   const api = readFileSync(resolve(process.cwd(), 'src/server/app.ts'), 'utf8');
   const admin = readFileSync(resolve(process.cwd(), 'src/server/debug.ts'), 'utf8');
 
-  assert.match(splash, /recordPostImpression\(impressionPostType\)/);
+  assert.match(splash, /recordPostImpression\(impressionPostType, context\.postId\)/);
   assert.match(splash, /postData\.type === 'shared-orb' \? 'orb-share' : 'main-game'/);
-  assert.match(frenzy, /recordPostImpression\('frenzy'\)/);
-  assert.match(reporter, /JSON\.stringify\(\{ postType, deviceType: detectDeviceType\(\) \}\)/);
+  assert.match(frenzy, /recordPostImpression\('frenzy', context\.postId\)/);
+  assert.match(reporter, /JSON\.stringify\(\{ postType, deviceType: detectDeviceType\(\), postId \}\)/);
+  assert.match(reporter, /for \(let attempt = 0; attempt < 3; attempt \+= 1\)/);
+  assert.match(reporter, /if \(!response\.ok\)/);
+  assert.doesNotMatch(reporter, /username\s*:|userId\s*:|userAgent\s*:/i);
   assert.doesNotMatch(reporter, /username\s*:|userId\s*:|userAgent\s*:/i);
   assert.match(api, /app\.post\('\/api\/impressions'/);
   assert.match(api, /req\.path === '\/impressions'/);

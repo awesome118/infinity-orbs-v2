@@ -5,7 +5,7 @@ import {
   Ban, UserX, CheckCircle2, RefreshCw, Flame,
   Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy, ClipboardCheck, Gift, Eye,
 } from 'lucide-react';
-import { PRESTIGE_UPGRADES, CONTINUUM_TIERS, getOrbInfo, visibleContinuumTiers, formatRarity, formatNumber, frenzyOrbCountForRarity } from '../../shared/game.js';
+import { PRESTIGE_UPGRADES, PREMIUM_BOOSTERS, AUTOMATIONS, CONTINUUM_TIERS, getOrbInfo, visibleContinuumTiers, formatRarity, formatNumber, frenzyOrbCountForRarity } from '../../shared/game.js';
 import type { RollResponse } from '../../shared/game.js';
 import { APP_VERSION } from '../../shared/version.js';
 import { sound } from '../sound.js';
@@ -1679,19 +1679,26 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       );
 
       await step(
-        'Seed premium Booster currency',
-        () => request('/api/dev/state', { shards: 100 }),
-        () => 'shards=100',
-      );
-      await step(
-        'Activate Prosperity booster',
-        () => request<{ state: any }>('/api/boosters/activate', { id: 'prosperity' }),
-        result => `prosperity active · ${stateSummary(result)}`,
+        'Mechanic · Premium Booster Catalog',
+        async () => {
+          const activated: string[] = [];
+          for (const id of Object.keys(PREMIUM_BOOSTERS) as Array<keyof typeof PREMIUM_BOOSTERS>) {
+            await request('/api/dev/state', { shards: 10_000, activeBoosters: {} });
+            const result = await request<{ state: any }>('/api/boosters/activate', { id });
+            const state = recordValue(result.state);
+            const activeUntil = Number(state.activeBoosters?.[id] ?? 0);
+            if (activeUntil < Date.now() + PREMIUM_BOOSTERS[id].durationMs - 5_000) throw new Error(id + ' did not activate for its configured duration.');
+            if (Number(state.shards) !== 10_000 - PREMIUM_BOOSTERS[id].costShards) throw new Error(id + ' spent the wrong Shard cost: ' + state.shards + ' remaining.');
+            activated.push(id);
+          }
+          return activated;
+        },
+        ids => 'activated and cost-checked ' + ids.length + '/' + Object.keys(PREMIUM_BOOSTERS).length + ' premium boosters',
       );
 
       await step(
-        'Set 100 Shards',
-        () => request('/api/dev/state', { shards: 100, lastSeenAt: Date.now() }),
+        'Set 1,000 Shards',
+        () => request('/api/dev/state', { shards: 1_000, lastSeenAt: Date.now() }),
         () => 'shards=100',
       );
       await step(
@@ -1700,8 +1707,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         (result: any) => `global luck tier=${shortNumber(result.state?.globalBoosters?.luck?.tier, 0)} · ${stateSummary(result)}`,
       );
       await step(
-        'Set 100 Shards',
-        () => request('/api/dev/state', { shards: 100, lastSeenAt: Date.now() }),
+        'Set 1,000 Shards',
+        () => request('/api/dev/state', { shards: 1_000, lastSeenAt: Date.now() }),
         () => 'shards=25',
       );
       await step(
@@ -1710,14 +1717,30 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         (result: any) => `global speed tier=${shortNumber(result.state?.globalBoosters?.speed?.tier, 0)} · ${stateSummary(result)}`,
       );
       await step(
-        'Set 100 Shards',
-        () => request('/api/dev/state', { shards: 100, lastSeenAt: Date.now() }),
+        'Set 1,000 Shards',
+        () => request('/api/dev/state', { shards: 1_000, lastSeenAt: Date.now() }),
         () => 'shards=25',
       );
       await step(
         'Activate Global Crit',
         () => request<{ state: any }>('/api/global-boosters/activate', { id: 'crit' }),
         (result: any) => `global crit tier=${shortNumber(result.state?.globalBoosters?.crit?.tier, 0)} · ${stateSummary(result)}`,
+      );
+
+      await step(
+        'Mechanic · Automation Catalog',
+        async () => {
+          await request('/api/dev/state', { shards: 100_000, automations: {} });
+          const unlocked: string[] = [];
+          for (const id of Object.keys(AUTOMATIONS) as Array<keyof typeof AUTOMATIONS>) {
+            const result = await request<{ state: any }>('/api/automation/buy', { id });
+            const state = recordValue(result.state);
+            if (state.automations?.[id] !== true) throw new Error('Automation ' + id + ' was not persisted as unlocked.');
+            unlocked.push(id);
+          }
+          return unlocked;
+        },
+        ids => 'purchased and verified ' + ids.length + '/' + Object.keys(AUTOMATIONS).length + ' automations',
       );
 
       await step(
@@ -1771,7 +1794,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
 
         const zeroMastery = {
           continuumLuck: 0, prosperity: 0, shardAttunement: 0, critMastery: 0,
-          chronoFlow: 0, infiniteVault: 0, cosmicAttunement: 0, celestialSurge: 0,
+          aftershock: 0, chronoFlow: 0, infiniteVault: 0, cosmicAttunement: 0, celestialSurge: 0,
           pityAccelerant: 0, apexFortune: 0, celestialVolley: 0,
         };
 
@@ -1797,6 +1820,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             currentRunRolls: 0,
             rollsSinceBest: 0,
             lastRollAt: 0,
+            // Pin session records so the test outcome never depends on the admin's real save.
+            aftershockRecord: 0,
+            longestRollingSessionMs: 0,
+            rollingSessionStartedAt: 0,
+            rollingSessionLastRollAt: 0,
             lastSeenAt: Date.now(),
             // Reset the rolling Shard budget for independent mechanic cases.
             lastFreeShardReset: '2020-01-01',
@@ -1841,6 +1869,77 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           },
           (result: any) => 'luck=' + shortNumber(result.luckMultiplier) + ' · cooldown=' + shortNumber(result.cooldownMs, 0) + 'ms',
         );
+
+        await step('Mechanic · Mastery · Continuum Luck', async () => {
+          await setMechanicState(); const before = await readMechanics();
+          await setMechanicState({}, { masterySkills: { ...zeroMastery, continuumLuck: 1 } }); const after = await readMechanics();
+          if (!(Number(after.luckMultiplier) > Number(before.luckMultiplier))) throw new Error('Continuum Luck did not increase Luck.');
+          return { before, after };
+        }, r => 'Luck ' + shortNumber(r.before.luckMultiplier, 3) + ' → ' + shortNumber(r.after.luckMultiplier, 3));
+        await step('Mechanic · Mastery · Prosperity', async () => {
+          await setMechanicState({}, { masterySkills: { ...zeroMastery, prosperity: 0 } });
+          const before = await request<any>('/api/dev/force-roll', { rarity: 100, randomValue: 0.999999 });
+          await setMechanicState({}, { masterySkills: { ...zeroMastery, prosperity: 10 } });
+          const after = await request<any>('/api/dev/force-roll', { rarity: 100, randomValue: 0.999999 });
+          if (!(Number(after.coinsGained) > Number(before.coinsGained))) throw new Error('Prosperity did not increase Coin rewards.');
+          return { before, after };
+        }, r => 'Coins +' + shortNumber(r.before.coinsGained, 0) + ' → +' + shortNumber(r.after.coinsGained, 0));
+        await step('Mechanic · Mastery · Shard Attunement', async () => {
+          await setMechanicState({}, { masterySkills: { ...zeroMastery, shardAttunement: 0 } }); const before = await readMechanics();
+          await setMechanicState({}, { masterySkills: { ...zeroMastery, shardAttunement: 10 } }); const after = await readMechanics();
+          if (!(Number(after.shardProcChance) > Number(before.shardProcChance))) throw new Error('Shard Attunement did not increase Shard chance.');
+          return { before, after };
+        }, r => 'Shard chance ' + shortNumber(r.before.shardProcChance * 100, 3) + '% → ' + shortNumber(r.after.shardProcChance * 100, 3) + '%');
+        await step('Mechanic · Mastery · Critical Mastery', async () => {
+          await setMechanicState({}, { masterySkills: { ...zeroMastery, critMastery: 0 } }); const before = await readMechanics();
+          await setMechanicState({}, { masterySkills: { ...zeroMastery, critMastery: 1 } }); const after = await readMechanics();
+          if (!(Number(after.critMultiplier) > Number(before.critMultiplier) && Number(after.effectiveCritChance) > Number(before.effectiveCritChance))) throw new Error('Critical Mastery did not improve critical strength and chance.');
+          return { before, after };
+        }, r => 'Critical multiplier ' + shortNumber(r.before.critMultiplier, 2) + '× → ' + shortNumber(r.after.critMultiplier, 2) + '×');
+        await step('Mechanic · Mastery · Chrono Flow', async () => {
+          await setMechanicState({}, { masterySkills: { ...zeroMastery, chronoFlow: 0 } }); const before = await readMechanics();
+          await setMechanicState({}, { masterySkills: { ...zeroMastery, chronoFlow: 1 } }); const after = await readMechanics();
+          if (!(Number(after.cooldownMs) < Number(before.cooldownMs))) throw new Error('Chrono Flow did not reduce cooldown.');
+          return { before, after };
+        }, r => 'Cooldown ' + shortNumber(r.before.cooldownMs, 0) + 'ms → ' + shortNumber(r.after.cooldownMs, 0) + 'ms');
+        await step('Mechanic · Mastery · Infinite Vault', async () => {
+          await setMechanicState({}, { masterySkills: { ...zeroMastery, infiniteVault: 0 } }); const before = await readMechanics();
+          await setMechanicState({}, { masterySkills: { ...zeroMastery, infiniteVault: 1 } }); const after = await readMechanics();
+          if (Number(after.offlineRollCap) !== Number(before.offlineRollCap) + 200) throw new Error('Infinite Vault did not add 200 offline rolls.');
+          return { before, after };
+        }, r => 'Offline cap ' + shortNumber(r.before.offlineRollCap, 0) + ' → ' + shortNumber(r.after.offlineRollCap, 0));
+        await step('Mechanic · Mastery · Cosmic Attunement', async () => {
+          await setMechanicState({}, { collectionValue: 20_000_000, cosmicDust: 0, masterySkills: { ...zeroMastery, cosmicAttunement: 0 } }); const before = await readMechanics();
+          await setMechanicState({}, { collectionValue: 20_000_000, cosmicDust: 0, masterySkills: { ...zeroMastery, cosmicAttunement: 1 } }); const after = await readMechanics();
+          if (!(Number(after.prestigeDust) > Number(before.prestigeDust))) throw new Error('Cosmic Attunement did not increase pending Dust.');
+          return { before, after };
+        }, r => 'Pending Dust ' + shortNumber(r.before.prestigeDust, 0) + ' → ' + shortNumber(r.after.prestigeDust, 0));
+        await step('Mechanic · Mastery · Celestial Surge', async () => {
+          const collection = { '2': 1, '3': 1, '4': 1, '5': 1, '6': 1 };
+          await setMechanicState({}, { collection, masterySkills: { ...zeroMastery, celestialSurge: 0 } }); const before = await readMechanics();
+          await setMechanicState({}, { collection, masterySkills: { ...zeroMastery, celestialSurge: 1 } }); const after = await readMechanics();
+          if (!(Number(after.luckMultiplier) > Number(before.luckMultiplier))) throw new Error('Celestial Surge did not boost Codex-chain Luck.');
+          return { before, after };
+        }, r => 'Codex Luck ' + shortNumber(r.before.luckMultiplier, 3) + ' → ' + shortNumber(r.after.luckMultiplier, 3));
+        await step('Mechanic · Mastery · Pity Accelerant', async () => {
+          const prestigeUpgrades = { ...zeroPrestige, resonanceMeter: 1 };
+          await setMechanicState({}, { rollsSinceBest: 16, prestigeUpgrades, masterySkills: { ...zeroMastery, pityAccelerant: 0 } }); const before = await readMechanics();
+          await setMechanicState({}, { rollsSinceBest: 16, prestigeUpgrades, masterySkills: { ...zeroMastery, pityAccelerant: 1 } }); const after = await readMechanics();
+          if (!(Number(after.luckMultiplier) > Number(before.luckMultiplier))) throw new Error('Pity Accelerant did not start Dry Streak Luck earlier.');
+          return { before, after };
+        }, r => 'Dry-streak Luck ' + shortNumber(r.before.luckMultiplier, 3) + ' → ' + shortNumber(r.after.luckMultiplier, 3));
+        await step('Mechanic · Mastery · Apex Fortune', async () => {
+          await setMechanicState({}, { masterySkills: { ...zeroMastery, apexFortune: 0 } }); const before = await readMechanics();
+          await setMechanicState({}, { masterySkills: { ...zeroMastery, apexFortune: 15 } }); const after = await readMechanics();
+          if (!(Number(after.apexFortuneChance) > Number(before.apexFortuneChance) && Number(after.apexFortuneChance) === 0.45)) throw new Error('Apex Fortune did not reach its configured 45% cap.');
+          return { before, after };
+        }, r => 'Double-Luck chance ' + shortNumber(r.before.apexFortuneChance * 100, 0) + '% → ' + shortNumber(r.after.apexFortuneChance * 100, 0) + '%');
+        await step('Mechanic · Mastery · Celestial Volley', async () => {
+          await setMechanicState({}, { masterySkills: { ...zeroMastery, celestialVolley: 0 } }); const before = await readMechanics();
+          await setMechanicState({}, { masterySkills: { ...zeroMastery, celestialVolley: 1 } }); const after = await readMechanics();
+          if (Number(after.rollsPerActivation) !== Number(before.rollsPerActivation) + 1) throw new Error('Celestial Volley did not add an orb per activation.');
+          return { before, after };
+        }, r => 'Orbs per activation ' + shortNumber(r.before.rollsPerActivation, 0) + ' → ' + shortNumber(r.after.rollsPerActivation, 0));
 
         await step(
           'Mechanic · Permanent Luck',
@@ -1887,20 +1986,16 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         );
 
         await step(
-          'Mechanic · Cosmic Dust Bounty',
+          'Mechanic · Cosmic Reserve',
           async () => {
-            await setMechanicState({ dustBounty: 0 }, { collectionValue: 100_000_000 });
+            await setMechanicState({ cosmicReserve: 0 }, { cosmicDust: 20 });
             const before = await readMechanics();
-            await setMechanicState({ dustBounty: 1 }, { collectionValue: 100_000_000 });
+            await setMechanicState({ cosmicReserve: 1 }, { cosmicDust: 20 });
             const after = await readMechanics();
-            const baseDust = Math.max(0, Math.floor(Number(before.prestigeDust) || 0));
-            const expectedWithBounty = Math.floor(baseDust * 1.15);
-            if (baseDust <= 0 || Number(after.prestigeDust) !== expectedWithBounty) {
-              throw new Error('Cosmic Dust Bounty expected ' + baseDust + ' → ' + expectedWithBounty + ', got ' + before.prestigeDust + ' → ' + after.prestigeDust + '.');
-            }
+            if (!(Number(after.luckMultiplier) > Number(before.luckMultiplier))) throw new Error('Cosmic Reserve did not increase Luck from unspent Dust: ' + before.luckMultiplier + ' → ' + after.luckMultiplier + '.');
             return { before, after };
           },
-          result => 'Prestige Dust ' + shortNumber(result.before.prestigeDust, 0) + ' → ' + shortNumber(result.after.prestigeDust, 0),
+          result => 'Luck ' + shortNumber(result.before.luckMultiplier, 3) + ' → ' + shortNumber(result.after.luckMultiplier, 3) + ' with unspent Dust',
         );
 
         await step(
@@ -2110,13 +2205,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         await step(
           'Mechanic · Turbo Duration',
           async () => {
-            await setMechanicState({ chronoOverdrive: 0 }, { shards: 10 });
+            await setMechanicState({ chronoOverdrive: 0 }, { shards: 1_000 });
             const beforeNormal = recordValue(await request<any>('/api/me'));
             if (Number(beforeNormal.level) < 2) {
               throw new Error('Turbo test fixture was not unlocked before activation (level=' + beforeNormal.level + ', xp=' + beforeNormal.xp + ').');
             }
             const normal = await request<any>('/api/turbo/activate', {});
-            await setMechanicState({ chronoOverdrive: 1 }, { shards: 10 });
+            await setMechanicState({ chronoOverdrive: 1 }, { shards: 1_000 });
             const beforeUpgraded = recordValue(await request<any>('/api/me'));
             if (Number(beforeUpgraded.level) < 2) {
               throw new Error('Upgraded Turbo fixture was not unlocked before activation (level=' + beforeUpgraded.level + ', xp=' + beforeUpgraded.xp + ').');
@@ -2217,8 +2312,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               { totalRolls: 10, upgrades: { ...zeroUpgrades, critChance: 20 } },
             );
             const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValue: 0 });
-            if (Number(result.orb?.rarity) !== 45 || !result.orb?.isCrit) {
-              throw new Error('Supernova expected 1/45 with deterministic crit, got 1/' + result.orb?.rarity + ', crit=' + result.orb?.isCrit + '.');
+            if (Number(result.orb?.rarity) <= 45 || !result.orb?.isCrit) {
+              throw new Error('Supernova should magnify deterministic critical strength beyond 1/45, got 1/' + result.orb?.rarity + ', crit=' + result.orb?.isCrit + '.');
             }
             return result;
           },
@@ -2254,33 +2349,6 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             return { base, boosted };
           },
           result => 'Offline tick ' + shortNumber(result.base.effectiveOfflineTickMs, 0) + 'ms → ' + shortNumber(result.boosted.effectiveOfflineTickMs, 0) + 'ms',
-        );
-
-        await step(
-          'Mechanic · Singularity Tithe',
-          async () => {
-            await setMechanicState(
-              { singularityTithe: 1 },
-              { totalRolls: 17, singularityTitheSingleRolls: 199, highestRarity: 1_000_000_000, rollsSinceBest: 17, cosmicDust: 0 },
-            );
-            const result = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
-            const state = recordValue(result.state);
-            if (Number(state.singularityTitheSingleRolls) !== 200 || Number(state.cosmicDust) < 1) {
-              throw new Error('Tithe failed at 200 processed rolls: counter=' + state.singularityTitheSingleRolls + ', dust=' + state.cosmicDust + '.');
-            }
-
-            await setMechanicState(
-              { singularityTithe: 1 },
-              { totalRolls: 18, singularityTitheSingleRolls: 198, cosmicDust: 0, upgrades: { ...zeroUpgrades, multi: 1 } },
-            );
-            const multi = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
-            const multiState = recordValue(multi.state);
-            if (Number(multiState.singularityTitheSingleRolls) !== 200 || Number(multiState.cosmicDust) < 1) {
-              throw new Error('Multi-roll did not advance Tithe to 200: counter=' + multiState.singularityTitheSingleRolls + ', dust=' + multiState.cosmicDust + '.');
-            }
-            return { result, multi };
-          },
-          result => '200-roll boundary passed · multi-roll counted (counter=' + shortNumber(result.multi.state?.singularityTitheSingleRolls, 0) + ')',
         );
 
         await step(
@@ -2324,32 +2392,47 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         );
 
         await step(
+          'Mechanic · Auto Scrap',
+          async () => {
+            await setMechanicState({ autoScrap: 1 });
+            await request('/api/dev/state', { level: 8 });
+            try {
+              const result = await request<any>('/api/combat/auto-scrap', { enabled: true, maxQuality: 55 });
+              const me = await request<any>('/api/me');
+              if (result.settings?.enabled !== true || Number(result.settings?.maxQuality) !== 55 ||
+                  me.combatAutoScrap?.enabled !== true || Number(me.combatAutoScrap?.maxQuality) !== 55) throw new Error('Auto Scrap did not persist enabled state and quality threshold.');
+              return result.settings;
+            } finally {
+              await request('/api/combat/auto-scrap', { enabled: false, maxQuality: 55 }).catch(() => undefined);
+            }
+          },
+          settings => 'enabled=' + String(settings.enabled) + ' · quality threshold=' + shortNumber(settings.maxQuality, 2) + '%',
+        );
+
+        await step(
           'Mechanic · Aftershock',
           async () => {
-            await setMechanicState({}, { aftershockRecord: 80_000 });
-            const result = await readMechanics();
-            const multiplier = Number(result.critMultiplier);
-            if (Math.abs(multiplier - 2.02) > 1e-8) {
-              throw new Error('Aftershock expected a 2.02× critical multiplier for an 80,000-roll record, got ' + multiplier + '.');
-            }
-            return result;
+            await setMechanicState({}, { aftershockRecord: 80_000, masterySkills: { ...zeroMastery, aftershock: 0 } });
+            const before = await readMechanics();
+            await setMechanicState({}, { aftershockRecord: 80_000, masterySkills: { ...zeroMastery, aftershock: 1 } });
+            const after = await readMechanics();
+            if (!(Number(after.critMultiplier) > Number(before.critMultiplier))) throw new Error('Aftershock did not add Critical Luck after purchase: ' + before.critMultiplier + ' → ' + after.critMultiplier + '.');
+            return { before, after };
           },
-          result => '80,000-roll record · critical multiplier=' + shortNumber(result.critMultiplier, 3) + '×',
+          result => 'Critical multiplier ' + shortNumber(result.before.critMultiplier, 3) + '× → ' + shortNumber(result.after.critMultiplier, 3) + '×',
         );
 
         await step(
           'Mechanic · Unbroken Momentum',
           async () => {
-            await setMechanicState();
+            await setMechanicState({ unbrokenMomentum: 0 });
             const before = await readMechanics();
-            await setMechanicState({}, { longestRollingSessionMs: 30 * 60_000 });
+            await setMechanicState({ unbrokenMomentum: 1 }, { longestRollingSessionMs: 48 * 60 * 60_000 });
             const after = await readMechanics();
-            if (!(Number(after.cooldownMs) < Number(before.cooldownMs))) {
-              throw new Error('A 30-minute Momentum record should reduce cooldown: ' + before.cooldownMs + ' → ' + after.cooldownMs + '.');
-            }
+            if (!(Number(after.cooldownMs) < Number(before.cooldownMs))) throw new Error('Purchased Unbroken Momentum should apply its 48-hour Speed bonus: ' + before.cooldownMs + ' → ' + after.cooldownMs + '.');
             return { before, after };
           },
-          result => 'Cooldown ' + shortNumber(result.before.cooldownMs, 0) + 'ms → ' + shortNumber(result.after.cooldownMs, 0) + 'ms at +6% Speed',
+          result => 'Cooldown ' + shortNumber(result.before.cooldownMs, 0) + 'ms → ' + shortNumber(result.after.cooldownMs, 0) + 'ms at +20% Speed',
         );
 
         await step(
@@ -2622,6 +2705,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           // This comprehensive suite runs in the main Game launcher. Explicitly
           // perform its registration handshake so report tests never depend on
           // the floating widget's startup timing.
+          // The status check now repairs a stale Frenzy/share target only for shadow_fen
+          // when the active post is a valid main Game post.
           const chatStatus = await request<any>('/api/chat/status?launcher=main');
           if (chatStatus.enabled !== true) {
             throw new Error(chatStatus.reason || 'Main launcher did not register Global Chat.');
@@ -3121,6 +3206,52 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       );
 
       await step(
+        'API · Combat Lab validates gear, runes, and scaling',
+        async () => {
+          const result = await request<any>('/api/dev/combat-lab/state');
+          const checks = Array.isArray(result.balance?.checks) ? result.balance.checks : [];
+          const required = [
+            'Gear quality is within 0–100',
+            'Equipped gear references are valid',
+            'Equipped Rune references are valid',
+            'High gear grades are genuinely rare',
+            'High-quality gear owns a larger stat budget',
+            'Late-game Speed reaches millions',
+            'Late-game HP reaches millions',
+            'Late-game high-orb crit damage reaches millions',
+            'Rune Major Ability data is valid',
+          ];
+          for (const label of required) {
+            const check = checks.find((entry: any) => entry.label === label);
+            if (!check || typeof check.passed !== 'boolean') throw new Error('Combat Lab diagnostic is missing or malformed: ' + label + '.');
+            if (!check.passed) throw new Error('Combat Lab balance check failed: ' + label + ' — ' + String(check.detail || 'No diagnostic detail.'));
+          }
+          return { state: result.state, checks };
+        },
+        result => result.checks.length + ' Combat Lab invariants passed · depth=' + shortNumber(result.state?.depth, 0) + ' · gear=' + shortNumber(result.state?.inventory?.length, 0) + ' · runes=' + shortNumber(result.state?.runes?.length, 0),
+      );
+
+      await step(
+        'API · Impressions reach admin analytics',
+        async () => {
+          const session = await request<any>('/api/dev/context');
+          const postId = String(session.postId ?? '').trim();
+          if (!postId) throw new Error('The active Reddit post ID is unavailable for impression tracking.');
+          const before = await request<any>('/api/dev/impressions');
+          const response = await request<any>('/api/impressions', { postType: 'main-game', deviceType: 'unknown', postId });
+          if (typeof response.recorded !== 'boolean') throw new Error('Impression endpoint did not return a deduplication result.');
+          const after = await request<any>('/api/dev/impressions');
+          if (!Number.isSafeInteger(after.total) || !Number.isSafeInteger(after.uniqueUsers) || !Array.isArray(after.viewers) ||
+              !Array.isArray(after.posts) || !Array.isArray(after.last24Hours) || !Array.isArray(after.last30Days)) throw new Error('Impressions dashboard response is incomplete.');
+          if (response.recorded && Number(after.total) <= Number(before.total)) throw new Error('A new impression did not increment the dashboard total.');
+          const normalizedPostId = postId.startsWith('t3_') ? postId : 't3_' + postId;
+          if (!after.posts.some((post: any) => post.postId === normalizedPostId)) throw new Error('The active post is not listed in admin impression analytics.');
+          return { before, after, response };
+        },
+        r => 'post view ' + (r.response.recorded ? 'recorded' : 'already counted') + ' · views=' + shortNumber(r.after.total, 0) + ' · accounts=' + shortNumber(r.after.uniqueUsers, 0),
+      );
+
+      await step(
         "API · Dev status reports a healthy admin session",
         async () => {
           const result = await request<any>('/api/dev/status');
@@ -3224,7 +3355,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Global Booster debug log records activations",
         async () => {
-          await request<any>('/api/dev/state', { shards: 50 });
+          await request<any>('/api/dev/state', { shards: 1_000 });
           await request<any>('/api/global-boosters/activate', { id: 'luck' });
           const result = await request<any>('/api/dev/global-booster-logs');
           const logs = Array.isArray(result) ? result : result.logs;
@@ -3247,7 +3378,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Global Luck can stack repeatedly",
         async () => {
-          await request<any>('/api/dev/state', { shards: 200, lastSeenAt: Date.now() });
+          await request<any>('/api/dev/state', { shards: 1_000, lastSeenAt: Date.now() });
           for (let i = 0; i < 3; i += 1) {
             await request<any>('/api/global-boosters/activate', { id: 'luck' });
           }
@@ -3264,7 +3395,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         "API · Global Speed activation reduces cooldown",
         async () => {
           await request<any>('/api/dev/global-booster', { id: 'speed', tier: 0, minutes: 1 });
-          await request<any>('/api/dev/state', { shards: 50 });
+          await request<any>('/api/dev/state', { shards: 1_000 });
           const before = await request<any>('/api/dev/mechanics');
           await request<any>('/api/global-boosters/activate', { id: 'speed' });
           const after = await request<any>('/api/dev/mechanics');
@@ -3280,7 +3411,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         "API · Global Crit activation returns a valid crit layer",
         async () => {
           await request<any>('/api/dev/global-booster', { id: 'crit', tier: 0, minutes: 1 });
-          await request<any>('/api/dev/state', { shards: 50 });
+          await request<any>('/api/dev/state', { shards: 1_000 });
           const before = await request<any>('/api/dev/mechanics');
           await request<any>('/api/global-boosters/activate', { id: 'crit' });
           const after = await request<any>('/api/dev/mechanics');
@@ -3468,7 +3599,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           await request('/api/dev/reset-all', {});
           return request('/api/dev/state', {
             coins: 100_000,
-            shards: 10,
+            shards: 1_000,
             xp: 32_000,
             prestigeUpgrades: { shardSynthesis: 1 },
             lastRollAt: 0,

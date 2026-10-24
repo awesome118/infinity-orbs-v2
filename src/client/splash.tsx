@@ -179,7 +179,7 @@ function Splash() {
   useEffect(() => {
     if (impressionRecordedRef.current) return;
     impressionRecordedRef.current = true;
-    void recordPostImpression(impressionPostType);
+    void recordPostImpression(impressionPostType, context.postId);
   }, [impressionPostType]);
 
   if (postData.type === 'shared-orb') {

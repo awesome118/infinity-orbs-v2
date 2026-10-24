@@ -1569,6 +1569,25 @@ debugRouter.get('/mechanics', async (_req, res) => {
         offlineRollCap: offlineRollCap(s),
         effectiveOfflineTickMs: effectiveOfflineTickMs(s),
         critMultiplier: critMultiplier(s),
+        effectiveCritChance: Math.min(
+          0.40,
+          (s.upgrades.critChance ?? 0) * 0.03 +
+            (s.masterySkills?.critMastery ?? 0) * 0.03 +
+            (s.guildPerks?.critRank ?? 0) * 0.015 +
+            globalBoosterCritChanceBonus(s.globalBoosters?.crit) +
+            guildComboCritChanceBonus(s.guildCombo),
+        ),
+        shardProcChance: Math.min(
+          0.5,
+          (
+            (s.upgrades.shardChance ?? 0) * 0.0015 +
+            (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
+            (s.guildPerks?.shardRank ?? 0) * 0.0005 +
+            (s.prestigeUpgrades?.shardResonator ?? 0) * 0.0025 +
+            getLevelBenefits(Math.max(1, s.level || 1)).shardChance
+          ) * 0.5,
+        ),
+        apexFortuneChance: Math.min(0.45, Math.max(0, Number(s.masterySkills?.apexFortune ?? 0)) * 0.03),
         altar: calculateAltarMultipliers(s),
         basePrestigeDust: calculatePrestigeDust(s.collectionValue ?? 0),
         prestigeDust: calculateCosmicDust(s),
@@ -1612,7 +1631,7 @@ debugRouter.post('/state', async (req, res) => {
       'lifetimeCollectionValue', 'offlineRolls', 'prestigeCount', 'rollsSinceBest',
       'turboRollUntil', 'onlinePlayers', 'purchasedShards',
       'currentRunRolls', 'questsCompleted', 'guildContribution', 'masteryPoints',
-      'singularityTitheSingleRolls', 'aftershockRecord', 'rollingSessionStartedAt',
+      'aftershockRecord', 'rollingSessionStartedAt',
       'rollingSessionLastRollAt', 'longestRollingSessionMs',
       'communityRewardClaimedAt', 'communityRewardClaimedTier',
       'chainPatcherNextRarity', 'chainPatcherCooldownUntil',

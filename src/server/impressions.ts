@@ -310,12 +310,18 @@ async function pruneViewerIndex(now: number): Promise<void> {
 export async function recordPostImpression(
   postTypeValue: unknown,
   deviceTypeValue: unknown,
+  postIdValue?: unknown,
 ): Promise<{ recorded: boolean }> {
   let postType = normalizePostType(postTypeValue);
   const deviceType = normalizeDeviceType(deviceTypeValue);
-  const rawPostId = String(context.postId ?? '').trim();
-  const postId = normalizeRedditPostId(rawPostId);
-  const userId = String(context.userId ?? '').trim();
+  // Prefer authenticated Devvit context. Some embedded preview requests omit postId;
+  // fall back to the post ID included by our own preview bundle.
+  const contextPostId = normalizeRedditPostId(String(context.postId ?? '').trim());
+  const suppliedPostId = normalizeRedditPostId(postIdValue);
+  const postId = contextPostId || suppliedPostId;
+  const contextUserId = String(context.userId ?? '').trim();
+  const username = String(context.username ?? '').trim().replace(/^u\//i, '').toLowerCase();
+  const userId = contextUserId && contextUserId !== 'unknown' ? contextUserId : (username ? 'username:' + username : '');
 
   if (!postId || postId.length > 200 || /[\u0000-\u001f\u007f]/.test(postId) ||
       !userId || userId === 'unknown') {

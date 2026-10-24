@@ -2309,11 +2309,20 @@ async function isRegisteredOrbSharePost(postId: string): Promise<boolean> {
 
 async function resolveGlobalGamePostId(): Promise<string> {
   const saved = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
-  if (!saved) {
-    throw new Error('Global Chat is disabled because the main Game post was not registered by the official post-creation flow.');
-  }
-  if (await isRegisteredFrenzyPost(saved)) {
-    throw new Error('Global Chat is disabled because the registered Game destination is an invalid Frenzy post. Create a new main Game post.');
+  const savedIsFrenzy = saved ? await isRegisteredFrenzyPost(saved) : false;
+  const savedIsShare = saved ? await isRegisteredOrbSharePost(saved) : false;
+  if (!saved || savedIsFrenzy || savedIsShare) {
+    // Only the trusted admin can repair a stale destination, and the current post
+    // must pass the same validation as the explicit moderator repair endpoint.
+    const username = String(context.username ?? '').trim().replace(/^u\//i, '').toLowerCase();
+    if (username === 'shadow_fen') {
+      try { return (await registerCurrentPostAsGlobalChatDestination()).postId; } catch {
+        // Fall through to the actionable disabled state if current post is not a valid main Game post.
+      }
+    }
+    if (!saved) throw new Error('Global Chat is disabled because the main Game post was not registered by the official post-creation flow.');
+    if (savedIsFrenzy) throw new Error('Global Chat is disabled because the registered Game destination is an invalid Frenzy post. Create a new main Game post.');
+    throw new Error('Global Chat is disabled because the registered Game destination is an invalid shared-Orb post. Create a new main Game post.');
   }
   return saved;
 }

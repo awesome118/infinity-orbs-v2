@@ -1208,7 +1208,7 @@ export function createApp() {
   // Public post-preview analytics are aggregate-only and never register player activity.
   app.post('/api/impressions', async (req, res) => {
     try {
-      res.json(await recordPostImpression(req.body?.postType, req.body?.deviceType));
+      res.json(await recordPostImpression(req.body?.postType, req.body?.deviceType, req.body?.postId));
     } catch (error) {
       // Impression analytics must never turn a preview into an online player or
       // block the public post from rendering if analytics is unavailable.

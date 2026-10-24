@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { requestExpandedMode } from '@devvit/web/client';
+import { context, requestExpandedMode } from '@devvit/web/client';
 import { ArrowRight, Flame, Users } from 'lucide-react';
 import './styles.css';
 import { formatRarity, getOrbInfo, FRENZY_POST_LIFETIME_MS, MAX_ORB_RARITY } from '../shared/game.js';
@@ -148,7 +148,7 @@ function FrenzyPost() {
   useEffect(() => {
     if (impressionRecordedRef.current) return;
     impressionRecordedRef.current = true;
-    void recordPostImpression('frenzy');
+    void recordPostImpression('frenzy', context.postId);
   }, []);
 
   useEffect(() => {
