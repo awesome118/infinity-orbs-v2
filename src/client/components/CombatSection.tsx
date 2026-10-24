@@ -132,7 +132,7 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
       window.removeEventListener('keydown',closeEscape);
       cancelTooltipClose();
     };
-  },[showTooltip]);
+  },[showTooltip,cancelTooltipClose]);
   return <>
     <article className={'io-combat-gear-icon-wrap '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
       onPointerEnter={event=>{lastPointerTypeRef.current=event.pointerType;if(event.pointerType==='mouse')openTooltip();}}
