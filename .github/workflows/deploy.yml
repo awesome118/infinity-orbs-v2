@@ -90,6 +90,7 @@ jobs:
         id: existing-version
         continue-on-error: true
         env:
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
           REQUESTED_VERSION: ${{ steps.requested-version.outputs.version }}
         run: |
           set -euo pipefail
@@ -111,6 +112,7 @@ jobs:
       - name: Verify uploaded version
         id: uploaded-version
         env:
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
           REQUESTED_VERSION: ${{ steps.requested-version.outputs.version }}
         run: |
           set -euo pipefail

@@ -319,6 +319,16 @@ test('deployment workflow is manual, main-only, and installs only to the develop
   );
   assert.match(workflow, /paths:\s*\n\s*- \.github\/workflows\/deploy\.yml/);
   assert.match(workflow, /contains\(github\.event\.head_commit\.message, '\[deploy-dev:1\.2\.51\]'\)/);
+  assert.match(
+    workflow,
+    /Detect whether the exact version already exists[\\s\\S]*?DEVVIT_AUTH_TOKEN: \\$\\{\\{ secrets\\.DEVVIT_TOKEN \\}\\}/,
+    'the exact-version lookup must use the authenticated Devvit account',
+  );
+  assert.match(
+    workflow,
+    /Verify uploaded version[\\s\\S]*?DEVVIT_AUTH_TOKEN: \\$\\{\\{ secrets\\.DEVVIT_TOKEN \\}\\}/,
+    'uploaded-version verification must use the authenticated Devvit account',
+  );
   assert.match(workflow, /if: steps\.existing-version\.outcome != 'success'/);
   assert.match(workflow, /^\s*npx devvit install r\/infinity_orbs_dev\b/m);
   assert.doesNotMatch(workflow, /^\s*npx devvit install r\/infinityorbs\b/m);
