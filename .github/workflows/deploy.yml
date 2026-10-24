@@ -1,7 +1,6 @@
 name: Deploy Devvit
 
 # Normally manual. A version-specific push marker is available only as a recovery path after a failed dispatch.
-# It is limited to edits of this workflow and one exact release version; the job still runs preflight and targets dev only.
 # This workflow uploads and installs to the development subreddit only. Production install is a separate post-approval workflow.
 on:
   workflow_dispatch:
@@ -24,7 +23,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:1.2.51]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:1.2.52]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
