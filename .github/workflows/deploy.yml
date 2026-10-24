@@ -85,7 +85,8 @@ jobs:
               ;;
           esac
 
-      # A previous upload can succeed even when the older verification step fails; reuse exact versions on retry.
+      # Authenticate these reads: private/unpublished AppVersions are not visible in an anonymous lookup.
+      # A previous upload can succeed even when later verification fails; reuse exact versions on retry.
       - name: Detect whether the exact version already exists
         id: existing-version
         continue-on-error: true
