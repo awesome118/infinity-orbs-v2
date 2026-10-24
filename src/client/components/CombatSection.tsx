@@ -371,7 +371,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       window.dispatchEvent(new CustomEvent('io-combat-beat-state',{detail:{active:false}}));
       releaseBeat();
     }
-  },[accept,error,load]);
+  },[accept,error,load,enemy.speed]);
   useEffect(()=>{
     if(!auto||paused||loading||Boolean(error))return;
     let timer:number|null=null;
