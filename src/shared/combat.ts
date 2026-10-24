@@ -602,7 +602,10 @@ export function combatEnergyAfterRegen(energyValue: unknown, maxEnergyValue: unk
   const energy = Number.isFinite(rawEnergy) ? Math.max(0, Math.min(maxEnergy, Math.floor(rawEnergy))) : 0;
   return Math.min(maxEnergy, energy + 1);
 }
-/** Actions owed at a cumulative speed threshold; shared by resolution and tests. */
+/** Speed required to earn another action after the opening action. */
+export const COMBAT_SPEED_PER_ACTION = 400;
+
+/** Actions owed at a cumulative speed threshold; the opening action starts ready. */
 export function combatActionsDue(speedValue: unknown, beatValue: unknown, resolvedValue: unknown, maxActionsValue = 100): number {
   const speedRaw = Number(speedValue), beatRaw = Number(beatValue), resolvedRaw = Number(resolvedValue);
   const speed = Number.isFinite(speedRaw) ? Math.max(0, speedRaw) : 0;
@@ -610,7 +613,13 @@ export function combatActionsDue(speedValue: unknown, beatValue: unknown, resolv
   const resolved = Number.isFinite(resolvedRaw) ? Math.max(0, Math.floor(resolvedRaw)) : 0;
   const rawLimit = Number(maxActionsValue);
   const limit = Number.isFinite(rawLimit) ? Math.max(0, Math.min(1000, Math.floor(rawLimit))) : 100;
-  const target = Math.floor(Math.min(Number.MAX_SAFE_INTEGER, beats * speed / 100));
+  const earnedAfterOpening = Math.floor(Math.min(
+    Number.MAX_SAFE_INTEGER,
+    Math.max(0, (beats - 1) * speed / COMBAT_SPEED_PER_ACTION),
+  ));
+  const target = speed > 0 && beats > 0
+    ? Math.min(Number.MAX_SAFE_INTEGER, 1 + earnedAfterOpening)
+    : 0;
   return Math.max(0, Math.min(limit, target - resolved));
 }
 
@@ -624,9 +633,9 @@ export interface CombatActionTimelineEntry {
 }
 
 /**
- * Merge actions owed by player and enemy onto the same speed-threshold timeline.
- * Cumulative counters let a gear swap or old save catch up without resetting Speed progress.
- * Equal-time actions give the Delver deterministic priority.
+ * Merge actions owed by player and enemy onto the same Speed threshold timeline.
+ * The first action is ready at the encounter opening; subsequent actions recharge at
+ * COMBAT_SPEED_PER_ACTION Speed per beat. Equal-time actions give the Delver priority.
  */
 export function combatActionTimeline(
   playerSpeedValue: unknown,
@@ -667,11 +676,13 @@ export function combatActionTimeline(
     if (speed <= 0 || count <= 0) return;
     for (let actionIndex = 0; actionIndex < count; actionIndex += 1) {
       const ordinal = Math.min(Number.MAX_SAFE_INTEGER, resolved + actionIndex + 1);
-      const rawTime = (ordinal * 100 / speed) - (beat - 1);
+      const rawTime = ordinal <= 1
+        ? Math.min(1, COMBAT_SPEED_PER_ACTION / speed)
+        : ((ordinal - 1) * COMBAT_SPEED_PER_ACTION / speed) - (beat - 2);
       timeline.push({
         actor,
         actionIndex,
-        time: Number.isFinite(rawTime) ? Math.max(0, rawTime) : 1,
+        time: Number.isFinite(rawTime) ? Math.max(0, Math.min(1, rawTime)) : 1,
       });
     }
   };
@@ -1305,6 +1316,24 @@ export function getEnemyForDepth(depthValue: number): CombatEnemy {
     {id:'crypt-hound',name:'Crypt Hound',kind:'common' as const,hp:.96,damage:1.2,speed:215,room:'Hunt Hall',emoji:'🐺'},
     {id:'bell-knight',name:'Bell Knight',kind:'elite' as const,hp:1.55,damage:.98,speed:90,room:'Bell Nave',emoji:'🛡️'},
     {id:'ash-executioner',name:'Ash Executioner',kind:'elite' as const,hp:1.22,damage:1.3,speed:130,room:'Execution Yard',emoji:'🪓'},
+    {id:'silt-revenant',name:'Silt Revenant',kind:'common' as const,hp:1.08,damage:1.05,speed:115,room:'The Drowned Steps',emoji:'🧟'},
+    {id:'lantern-wraith',name:'Lantern Wraith',kind:'common' as const,hp:.8,damage:.9,speed:225,room:'Lantern Ossuary',emoji:'🏮'},
+    {id:'hollow-arbalist',name:'Hollow Arbalist',kind:'elite' as const,hp:1.3,damage:1.16,speed:155,room:'Arrow Crypt',emoji:'🏹'},
+    {id:'graveglass-mantis',name:'Graveglass Mantis',kind:'common' as const,hp:.74,damage:1.28,speed:240,room:'Shattered Conservatory',emoji:'🦗'},
+    {id:'mirebound-oracle',name:'Mirebound Oracle',kind:'elite' as const,hp:1.18,damage:1.15,speed:105,room:"Oracle's Mire",emoji:'🔮'},
+    {id:'tomb-sapper',name:'Tomb Sapper',kind:'common' as const,hp:1.1,damage:1.05,speed:90,room:'Collapsed Causeway',emoji:'⛏️'},
+    {id:'boneweaver',name:'Boneweaver',kind:'elite' as const,hp:1.4,damage:.94,speed:80,room:'The Ossuary Loom',emoji:'🕸️'},
+    {id:'carrion-drake',name:'Carrion Drake',kind:'elite' as const,hp:1.6,damage:1.55,speed:145,room:'Ribcage Aerie',emoji:'🐉'},
+    {id:'pallid-duelist',name:'Pallid Duelist',kind:'common' as const,hp:.82,damage:1.25,speed:195,room:'Marrow Court',emoji:'🤺'},
+    {id:'gloom-stalker',name:'Gloom Stalker',kind:'elite' as const,hp:1.05,damage:1.35,speed:260,room:'The Lightless Gallery',emoji:'🌑'},
+    {id:'ashen-abbot',name:'Ashen Abbot',kind:'elite' as const,hp:1.35,damage:1.1,speed:95,room:'Cinder Reliquary',emoji:'🕯️'},
+    {id:'shardback-brute',name:'Shardback Brute',kind:'common' as const,hp:1.8,damage:.85,speed:70,room:'Glass Quarry',emoji:'🪨'},
+    {id:'dusk-harrier',name:'Dusk Harrier',kind:'common' as const,hp:.9,damage:1.22,speed:230,room:'Twilight Rampart',emoji:'🦅'},
+    {id:'sepulcher-guard',name:'Sepulcher Guard',kind:'elite' as const,hp:1.7,damage:.92,speed:85,room:'Kings Below',emoji:'🪦'},
+    {id:'wailing-curator',name:'Wailing Curator',kind:'elite' as const,hp:1.12,damage:1.28,speed:175,room:'The Memory Vault',emoji:'📜'},
+    {id:'vault-parasite',name:'Vault Parasite',kind:'common' as const,hp:.68,damage:1.1,speed:210,room:'Coin-Eater Tunnels',emoji:'🪱'},
+    {id:'rift-touched-husk',name:'Rift-Touched Husk',kind:'common' as const,hp:1.05,damage:1.2,speed:130,room:'The Fracture Walk',emoji:'🌀'},
+    {id:'blackglass-sentinel',name:'Blackglass Sentinel',kind:'elite' as const,hp:1.55,damage:1.05,speed:120,room:'Blackglass Gate',emoji:'🗿'},
   ];
   const safeDepth=Math.max(1,Math.min(COMBAT_MAX_DEPTH,Math.floor(Number(depth)||1)));
   const floor=safeDepth-1;

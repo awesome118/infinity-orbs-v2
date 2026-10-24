@@ -1,6 +1,6 @@
 import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
-import { getOrbInfo, luckMultiplier, rollContinuum } from '../shared/game.js';
+import { getOrbInfo, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatSkillDefinition, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneAutoSacrificeSettings, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
 import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatActionsDue, combatActionTimeline, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, combatGearSpeedBonus, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, COMBAT_RUNE_RARITIES, DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS, shouldAutoSacrificeRune, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
 
@@ -558,9 +558,6 @@ export async function markCombatTutorialSeen():Promise<void>{
 }
 
 export async function performCombatBeat(sequence:number,intent:CombatCommand,skillIdValue?:unknown,adminSkipCooldown=false):Promise<CombatSnapshot&{actions:CombatAction[];defeated:boolean;died:boolean;item?:CombatGear;orbRoll:CombatOrbRoll;abilityCast?:{id:CombatSkillId;rank:number;cooldown:number}}> {
-  let orbLuck=1;
-  try { orbLuck=luckMultiplier(await loadRaw()); }
-  catch(error) { console.error('[Combat] Could not refresh Luck for the beat orb; using baseline Luck.',error); }
   return mutate(s=>{
     if(sequence!==s.sequence+1)throw new Error('stale combat sequence');
     if(s.depthCapCleared && s.depth>=COMBAT_MAX_DEPTH)throw new Error('Maximum supported depth reached. Switch dungeons to begin a new descent.');
@@ -607,7 +604,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
      if(genesisRegenPercent>0&&s.health>0){const heal=Math.min(s.maxHealth-s.health,Math.max(0,Math.round(s.maxHealth*genesisRegenPercent)));if(heal>0){s.health+=heal;actions.push({actor:'player',kind:'ability',text:'Genesis Core regenerates '+heal.toLocaleString()+' HP.'});}}
 
     // Each accepted beat receives its own server-side cryptographic orb roll; rarity drives all attacks that beat.
-    const rawOrbRarity=rollContinuum(orbLuck,secureRandom);
+    const rawOrbRarity=rollContinuum(1,secureRandom);
     const isInfinity=rawOrbRarity===Number.POSITIVE_INFINITY || rawOrbRarity>Number.MAX_VALUE;
     const orbRarity=Number.isFinite(rawOrbRarity)?Math.min(Number.MAX_VALUE,rawOrbRarity):Number.MAX_VALUE;
     const orbInfo=getOrbInfo(orbRarity,isInfinity),damageMultiplier=combatOrbDamageMultiplier(orbRarity);
@@ -624,7 +621,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     let enemyHp=Math.max(1,s.enemyHp||enemy.maxHp),heavy=false,consumed=false,defeated=false,died=false;
     if(s.skillRuntime.burnTicks>0&&s.skillRuntime.burnDamage>0&&enemyHp>1){
       const burn=Math.min(enemyHp-1,s.skillRuntime.burnDamage);enemyHp-=burn;s.skillRuntime.burnTicks=Math.max(0,s.skillRuntime.burnTicks-1);
-      actions.push({actor:'player',kind:'ability',text:'Burn deals '+burn.toLocaleString()+' damage ('+s.skillRuntime.burnTicks+' ticks left).'});
+      actions.push({actor:'player',kind:'ability',damage:burn,text:'Burn deals '+burn.toLocaleString()+' damage ('+s.skillRuntime.burnTicks+' ticks left).'});
     }else if(s.skillRuntime.burnTicks>0)s.skillRuntime.burnTicks=Math.max(0,s.skillRuntime.burnTicks-1);
 
     let item:CombatGear|undefined;

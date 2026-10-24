@@ -45,7 +45,7 @@ test('every tenth Undercrypt depth has a boss', () => {
 });
 test('enemy speed scales continuously with depth and increases actions owed',()=>{
   const opening=getEnemyForDepth(1);
-  const deeperSameEnemy=getEnemyForDepth(19);
+  const deeperSameEnemy=getEnemyForDepth(28);
   assert.equal(opening.id,deeperSameEnemy.id,'comparison uses the same enemy archetype');
   assert.ok(deeperSameEnemy.speed>opening.speed*1.25,'enemy Speed should rise visibly before the 15-floor mark');
   assert.ok(combatActionsDue(deeperSameEnemy.speed,10,0)>combatActionsDue(opening.speed,10,0),'scaled Speed must translate into more actions');

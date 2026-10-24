@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Coins, Info, Pause, Play, Sparkles, Swords, Zap, Sword, Shield, Crown, Hand, Footprints, CircleDot, Gem, Hammer, Clock3, Timer, type LucideIcon } from 'lucide-react';
 import { RunesSection } from './RunesSection.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatAutoScrapSettings, CombatCommand, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatOrbRoll, CombatPage, CombatSkillDefinition, CombatSkillId, CombatSnapshot, CombatState, CombatStats, CombatTactic } from '../../shared/combat.js';
-import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatGearRarityForQuality, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
+import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatGearRarityForQuality, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, COMBAT_SPEED_PER_ACTION, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
 
 interface Props { page: CombatPage; onNavigate:(page:CombatPage)=>void; }
 interface SkillRollResult {
@@ -33,6 +33,10 @@ async function request<T>(url:string,method='GET',body?:unknown):Promise<T> {
   } finally { window.clearTimeout(timeout); }
 }
 const fmt=(n:number)=>Number.isFinite(n)&&n>0?Math.floor(n).toLocaleString():'0';
+const totalDamageThisBeat=actions.reduce((total,action)=>{
+  if(action.actor!=='player'||!Number.isFinite(action.damage))return total;
+  return Math.min(Number.MAX_SAFE_INTEGER,total+Math.max(0,Math.floor(action.damage??0)));
+},0);
 const MAJOR_OFFENSE_IDS=new Set(['void-edge','starfall','executioner','emberwake','critical-mass','orb-conduit','bossbreaker','echo-fang','blood-moon','deep-roots','glass-cannon','fortune-engine','full-moon','unstable-singularity']);
 const MAJOR_DEFENSE_IDS=new Set(['second-dawn','aegis-ward','titan-heart','blood-drinker','mirrorplate','last-bastion','phase-shift','frostbrand','aegis-pulse','unending-ward','genesis-core']);
 const majorAbilityClass=(id:string)=>MAJOR_OFFENSE_IDS.has(id)?'io-combat-major-offense':MAJOR_DEFENSE_IDS.has(id)?'io-combat-major-defense':['mark-harvest','salvagers-touch','rune-savant'].includes(id)?'io-combat-major-economy':'';
@@ -406,18 +410,19 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       </div>
       <div className={'io-combat-orb-panel '+(lastOrb?'has-orb':'')} aria-live="polite" aria-busy={processing||mutating}>
         <div className="io-combat-orb-art"><span>✦</span></div>
-        <div className="io-combat-orb-copy"><span className="io-combat-eyebrow">{processing?(lastOrb?'LATEST RESOLVED ORB · NEXT BEAT IN PROGRESS':'ROLLING FIRST BEAT'):'LATEST BEAT ORB'} {lastOrb?'· '+lastOrb.tier.toUpperCase():'· AWAITING FIRST ROLL'}</span><h2>{lastOrb?lastOrb.name:'Every beat rolls an orb'}</h2><p>{lastOrb?'Rarity 1 / '+fmt(lastOrb.rarity)+' · Damage multiplier ×'+lastOrb.damageMultiplier.toFixed(2):'Orb rarity directly multiplies every attack resolved this beat.'}</p></div>
-        <div className="io-combat-orb-damage"><span>ORB BASE DAMAGE</span><strong>{lastOrb?fmt(lastOrb.baseDamage):'—'}</strong><small>{lastOrb?'before critical hits and active abilities':'awaiting first beat'}</small></div>
+        <div className="io-combat-orb-copy"><span className="io-combat-eyebrow">{processing?(lastOrb?'LATEST RESOLVED ORB · NEXT BEAT IN PROGRESS':'ROLLING FIRST BEAT'):'LATEST BEAT ORB'} {lastOrb?'· '+lastOrb.tier.toUpperCase():'· AWAITING FIRST ROLL'}</span><h2>{lastOrb?lastOrb.name:'Every beat rolls an orb'}</h2><p>{lastOrb?'Rarity 1 / '+fmt(lastOrb.rarity)+' · Damage multiplier ×'+lastOrb.damageMultiplier.toFixed(2):'Orb rarity multiplies the attacks that land this beat.'}<span className="io-combat-orb-luck-note">Combat Orb rolls use neutral 1× Luck; main-game Luck does not affect their rarity.</span></p></div>
+        <div className="io-combat-orb-damage"><div className="io-combat-orb-damage-metric"><span>ORB BASE DAMAGE</span><strong>{lastOrb?fmt(lastOrb.baseDamage):'—'}</strong><small>{lastOrb?'per hit, before criticals and abilities':'awaiting first beat'}</small></div><div className="io-combat-orb-damage-metric"><span>TOTAL DAMAGE</span><strong>{fmt(totalDamageThisBeat)}</strong><small>all player hits this beat</small></div></div>
       </div>
       {(()=>{
         const maxSpeed=Math.max(1,stats.speed,enemy.speed);
-        const playerNext=(state.playerActionsResolved+1)*100/Math.max(1,stats.speed);
-        const enemyNext=(state.enemyActionsResolved+1)*100/Math.max(1,enemy.speed);
+        const nextActionBeat=(resolved:number,speed:number)=>Math.max(state.combatBeats+1,1+Math.ceil(resolved*COMBAT_SPEED_PER_ACTION/Math.max(1,speed)));
+        const playerNext=nextActionBeat(state.playerActionsResolved,stats.speed);
+        const enemyNext=nextActionBeat(state.enemyActionsResolved,enemy.speed);
         const playerCharge=Math.round(stats.speed/maxSpeed*100);
         const enemyCharge=Math.round(enemy.speed/maxSpeed*100);
         const events=[
-          ...Array.from({length:timelineCount+2},(_,i)=>({actor:'player' as const,time:Math.max(state.combatBeats+1,Math.ceil((state.playerActionsResolved+i+1)*100/Math.max(1,stats.speed))),step:i,speed:stats.speed})),
-          ...Array.from({length:timelineCount+2},(_,i)=>({actor:'enemy' as const,time:Math.max(state.combatBeats+1,Math.ceil((state.enemyActionsResolved+i+1)*100/Math.max(1,enemy.speed))),step:i,speed:enemy.speed})),
+          ...Array.from({length:timelineCount+2},(_,i)=>({actor:'player' as const,time:Math.max(state.combatBeats+1,1+Math.ceil((state.playerActionsResolved+i)*COMBAT_SPEED_PER_ACTION/Math.max(1,stats.speed))),step:i,speed:stats.speed})),
+          ...Array.from({length:timelineCount+2},(_,i)=>({actor:'enemy' as const,time:Math.max(state.combatBeats+1,1+Math.ceil((state.enemyActionsResolved+i)*COMBAT_SPEED_PER_ACTION/Math.max(1,enemy.speed))),step:i,speed:enemy.speed})),
         ].sort((a,b)=>a.time-b.time||(a.actor===b.actor?a.step-b.step:a.actor==='player'?-1:1)).slice(0,timelineCount);
         const nextActor=playerNext<=enemyNext?'player':'enemy';
         return <section className="io-combat-turn-tracker" aria-label="Combat speed and turn order">

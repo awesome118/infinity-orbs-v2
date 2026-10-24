@@ -1158,25 +1158,25 @@ export function getOrbTier(rarity: number): RarityTierName {
   return 'Common';
 }
 
-const TIER_NAMES: Record<RarityTierName, string[]> = {
-  Common: ['Spark Orb', 'Mist Orb', 'Pebble Orb', 'Ember Orb', 'Dew Orb', 'Echo Orb'],
-  Uncommon: ['Tide Orb', 'Vapor Orb', 'Gale Orb', 'Frost Orb', 'Amethyst Orb', 'Verdant Orb'],
-  Rare: ['Chrono Orb', 'Prism Orb', 'Thunder Orb', 'Aurora Orb', 'Plasma Orb', 'Quartz Orb'],
-  Epic: ['Aether Orb', 'Solaris Orb', 'Eclipse Orb', 'Radiant Orb', 'Abyssal Orb', 'Inferno Orb'],
-  Legendary: ['Nova Orb', 'Starlight Orb', 'Quasar Orb', 'Vortex Orb', 'Nebula Orb', 'Supernova Orb'],
-  Mythic: ['Singularity Orb', 'Cosmic Core Orb', 'Hypernova Orb', 'Dark Star Orb', 'Astral Rift Orb'],
-  Relic: ['Infinite Relic', 'Omega Fragment', 'Primordial Core', 'Eternal Horizon', 'Void Monolith'],
-  Divine: ['Divine Eternity', 'Celestial Pantheon', 'Omnipresent Eye', 'Seraphic Sphere'],
-  Transcendent: ['The Absolute Zero', 'Infinity Point', 'Cosmic Monolith', 'Genesis Void'],
-  Ascendant: ['Redshift Orb', 'Pulsar Orb', 'Neutron Orb', 'Quasar Prime'],
-  Eternal: ['Eventide Orb', 'Worldline Orb', 'Stellar Crown', 'Eternal Core'],
-  Celestial: ['Heavenfall Orb', 'Solar Flare Orb', 'Astral Crown', 'Celestial Engine'],
-  Infinite: ['Infinite Horizon', 'Endless Core', 'Void Singularity', 'Infinity Seed'],
-  Absolute: ['Absolute Orb', 'First Principle', 'Origin Point', 'Final Horizon'],
-  Omniversal: ['Omniversal Eye', 'Totality Core', 'Everything Orb', 'The Last Constant'],
-  Paradox: ['Paradox Orb', 'Contradiction Core', 'Broken Loop', 'Null Point'],
-  Beyond: ['Beyond Orb', 'Outer Core', 'Far Point', 'Unknown Edge'],
-  Endless: ['Endless Orb', 'Final Loop', 'Last Horizon', 'Zero Point'],
+export const ORB_TIER_NAMES: Record<RarityTierName, string[]> = {
+  Common: ['Spark Orb', 'Mist Orb', 'Pebble Orb', 'Ember Orb', 'Dew Orb', 'Echo Orb', 'Flint Orb', 'Haze Orb', 'Moss Orb', 'Ripple Orb', 'Cinder Orb', 'Drift Orb', 'Brook Orb', 'Cloud Orb', 'Ash Orb', 'Glimmer Orb'],
+  Uncommon: ['Tide Orb', 'Vapor Orb', 'Gale Orb', 'Frost Orb', 'Amethyst Orb', 'Verdant Orb', 'Moonstone Orb', 'Tempest Orb', 'Glacier Orb', 'Jade Orb', 'Zephyr Orb', 'Coral Orb', 'Shimmer Orb', 'Thunderhead Orb', 'Aquamarine Orb', 'Wildwood Orb'],
+  Rare: ['Chrono Orb', 'Prism Orb', 'Thunder Orb', 'Aurora Orb', 'Plasma Orb', 'Quartz Orb', 'Stormglass Orb', 'Runebound Orb', 'Luminous Orb', 'Obsidian Orb', 'Comet Orb', 'Arcane Orb', 'Voidlight Orb', 'Starforge Orb', 'Sapphire Orb', 'Rift Orb'],
+  Epic: ['Aether Orb', 'Solaris Orb', 'Eclipse Orb', 'Radiant Orb', 'Abyssal Orb', 'Inferno Orb', 'Celestial Forge', 'Dreadnova Orb', 'Crimson Zenith', 'Moonfall Orb', 'Astral Flame', 'Stormcaller Orb', 'Sunshard Orb', 'Voidfire Orb', 'Argent Dawn', 'Etherstorm Orb'],
+  Legendary: ['Nova Orb', 'Starlight Orb', 'Quasar Orb', 'Vortex Orb', 'Nebula Orb', 'Supernova Orb', 'Titanfall Orb', 'Event Horizon Orb', 'Cosmic Tempest', 'Star Eater Orb', 'Dawnbringer Orb', 'Void Emperor', 'Galactic Crown', 'Solar Requiem', 'Worldshaper Orb', 'Red Giant Orb'],
+  Mythic: ['Singularity Orb', 'Cosmic Core Orb', 'Hypernova Orb', 'Dark Star Orb', 'Astral Rift Orb', 'Void Titan', 'Primordial Star', 'Reality Breaker', 'Entropy Heart', 'Godparticle Orb', 'Black Sun Orb', 'Celestial Maw', 'Dream of Worlds', 'Omega Flare', 'Unwritten Sky'],
+  Relic: ['Infinite Relic', 'Omega Fragment', 'Primordial Core', 'Eternal Horizon', 'Void Monolith', 'Astral Archive', 'Forgotten Axis', 'Timeworn Crown', 'Worldroot', 'Dead Star Reliquary', 'Chrono Relic', 'Hollow Genesis', 'First Ember', 'Last Artifact', 'Shattered Continuum'],
+  Divine: ['Divine Eternity', 'Celestial Pantheon', 'Omnipresent Eye', 'Seraphic Sphere', 'Halo of Creation', 'Throne of Light', 'Archon Prism', 'Sacred Singularity', 'Choir of Suns', 'Grace Eternal', 'Oracle’s Heart', 'Empyrean Seal', 'Elysian Gate', 'Dawn of All'],
+  Transcendent: ['The Absolute Zero', 'Infinity Point', 'Cosmic Monolith', 'Genesis Void', 'Beyond the First', 'Uncaused Flame', 'Unbound Equation', 'Transfinite Crown', 'Outside Time', 'The Unmaking', 'Apex of Being', 'Lawless Origin', 'Ever-Ascending', 'Inconceivable End'],
+  Ascendant: ['Redshift Orb', 'Pulsar Orb', 'Neutron Orb', 'Quasar Prime', 'Blazar Core', 'Magnetar Orb', 'Zenith Star', 'Ascension Gate', 'Radiant Climb', 'Solar Apex', 'Blue Giant Orb', 'Dawnflare Orb', 'Crowned Pulsar', 'Helios Engine'],
+  Eternal: ['Eventide Orb', 'Worldline Orb', 'Stellar Crown', 'Eternal Core', 'Ageglass Heart', 'Timeless Beacon', 'Unending Dawn', 'Aeon Pearl', 'Evernight Star', 'Perennial Nova', 'Century Flame', 'Ageless Tide', 'Infinity Clock', 'Constant Flame'],
+  Celestial: ['Heavenfall Orb', 'Solar Flare Orb', 'Astral Crown', 'Celestial Engine', 'Moon Choir', 'Star Cathedral', 'Orion’s Halo', 'Skyvault Orb', 'Zodiac Heart', 'Comet Basilica', 'Heaven’s Compass', 'Seraph Star', 'Constellation Seed', 'Firmament Core'],
+  Infinite: ['Infinite Horizon', 'Endless Core', 'Void Singularity', 'Infinity Seed', 'Unbounded Sea', 'Infinite Bloom', 'Limitless Star', 'Evermore Engine', 'Endless Expanse', 'Horizon Beyond', 'Infinite Mirror', 'Boundless Eye', 'Uncapped Flame', 'Neverending Axis'],
+  Absolute: ['Absolute Orb', 'First Principle', 'Origin Point', 'Final Horizon', 'Zero Beyond Zero', 'Prime Law', 'Unconditioned Core', 'Absolute Dawn', 'The Necessary', 'Pure Existence', 'Perfect Null', 'First and Last', 'Unbroken Axiom', 'Root of Everything'],
+  Omniversal: ['Omniversal Eye', 'Totality Core', 'Everything Orb', 'The Last Constant', 'All-Reality Seed', 'Grand Ensemble', 'Everywhen Core', 'Multitude Crown', 'The Sum of Worlds', 'Totality Engine', 'Omni-Origin', 'The Whole Beyond', 'Allspace Pearl', 'Full Spectrum'],
+  Paradox: ['Paradox Orb', 'Contradiction Core', 'Broken Loop', 'Null Point', 'Impossible Horizon', 'Causal Knot', 'Self-Undoing Star', 'Schrödinger’s Crown', 'False Origin', 'Two-Truth Engine', 'The Unresolved', 'Logicbreaker Orb', 'Ever-Now Shard', 'Loop Without End'],
+  Beyond: ['Beyond Orb', 'Outer Core', 'Far Point', 'Unknown Edge', 'Unseen Boundary', 'Outside the Map', 'The Further', 'Elsewhere Engine', 'The Unreached', 'Distant Outside', 'Untouchable Horizon', 'Outer Silence', 'Uncharted Constant', 'Not-Here Star'],
+  Endless: ['Endless Orb', 'Final Loop', 'Last Horizon', 'Zero Point', 'Penultimate Dawn', 'Everturn Core', 'Loop Eternal', 'After the End', 'Final Finality', 'Closing Star', 'The Last Orbit', 'One More World', 'End That Waits', 'Final Continuation'],
 };
 
 const TIER_COLORS: Record<RarityTierName, { color: string; bgGradient: string }> = {
@@ -1287,14 +1287,28 @@ function rarityRangeLabel(minRarity: number, maxRarity: number): string {
   return `1 / ${formatRarity(minRarity)} - 1 / ${formatRarity(maxRarity)}`;
 }
 
+function orbNameIndex(rarityValue: number, nameCount: number): number {
+  const rarity = Number.isFinite(rarityValue) ? Math.max(0, rarityValue) : 2;
+  if (rarity <= Number.MAX_SAFE_INTEGER) return Math.floor(rarity) % nameCount;
+  // Above 2^53, integer remainders collapse for many representable values.
+  // Hash scientific notation so the expanded names remain usable at finite extremes.
+  const encoded = rarity.toExponential(15);
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < encoded.length; index += 1) {
+    hash ^= encoded.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0) % nameCount;
+}
+
 export function getOrbInfo(rarity: number, isInfinity = false): RarityTierInfo {
   if (isInfinity) {
     const { color, bgGradient } = { color: '#ffffff', bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #c084fc 25%, #22d3ee 55%, #020617 100%)' };
     return { rarity, name: 'Infinity Orb', tier: 'Infinity', approxChance: '1 / Infinity', color, bgGradient };
   }
   const tier = getOrbTier(rarity);
-  const names = TIER_NAMES[tier];
-  const name = names[Math.abs(Math.floor(rarity)) % names.length];
+  const names = ORB_TIER_NAMES[tier];
+  const name = names[orbNameIndex(rarity, names.length)];
   const { color, bgGradient } = TIER_COLORS[tier];
 
   return {
