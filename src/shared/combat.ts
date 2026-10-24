@@ -255,9 +255,9 @@ export function combatRuneMajorAbilitySummary(ability:CombatRuneMajorAbility,lev
     case 'stellar-dividend':return 'Every '+Math.max(20,Math.floor(100/(1+power/100)))+' lifetime rolls triggers '+rolls+' bonus roll'+(rolls===1?'':'s')+'.';
     case 'shard-jackpot':return pct(Math.min(50,power))+' chance to multiply a Shard payout by up to '+(1+Math.min(5,power/25)).toFixed(2)+'×.';
     case 'milestone-engine':return 'Each time your all-time rarity crosses a new power of ten, gain '+(1+Math.min(9,Math.floor(power/20)))+' bonus Shards and '+rolls+' rarity-floored bonus roll'+(rolls===1?'':'s')+'.';
-    case 'shard-tithe':return 'Adds +'+Math.min(.005,power/20000).toFixed(4)+' fractional Shards to every main-game roll.';
+    case 'shard-tithe':return Math.min(.25,power/400).toFixed(2)+'% chance to grant +1 whole Shard on each main-game roll.';
     case 'discovery-oracle':return pct(Math.min(20,power/5))+' chance for a first-time rarity discovery to grant '+rolls+' extra roll'+(rolls===1?'':'s')+' with the same rarity floor.';
-    case 'dry-streak-refinery':return 'Each 100 rolls since your best rarity adds +'+Math.min(.005,power/200000).toFixed(4)+' Shards to every roll, up to +0.005 Shards per roll.';
+    case 'dry-streak-refinery':return 'Each 100 rolls since your best rarity adds up to '+Math.min(.25,power/4000).toFixed(3)+'% chance per roll to grant +1 whole Shard.';
   }
 }
 export function combatRuneMajorAbilityEffects(runesValue:unknown,equippedValue:unknown):CombatRuneMajorAbilityEffects {
@@ -753,11 +753,10 @@ export function combatUpgradeCost(state: Pick<CombatState, 'combatUpgrades'>, id
 }
 
 /** Deterministic rarity helper keeps weighted odds and pity boundaries testable. */
-export function resolveCombatSkillRarity(randomValue: number, gachaRankValue: number, pityEpic: number, pityMythic: number): CombatRarity {
+export function resolveCombatSkillRarity(randomValue: number, gachaRankValue: number, _legacyPityEpic = 0, _legacyPityMythic = 0): CombatRarity {
   const chance = Number.isFinite(randomValue) ? Math.max(0, Math.min(.999999999, randomValue)) : 0;
   const rank = Number.isFinite(gachaRankValue) ? Math.max(1, Math.min(SKILL_GACHA_RANK_MAX, Math.floor(gachaRankValue))) : 1;
-  if (rank >= 20 && pityMythic >= 39) return 'Mythic';
-  if (rank >= 10 && pityEpic >= 9) return chance < .5 ? 'Epic' : 'Mythic';
+  // Skill Gacha has no pity system: every pull uses the visible rank-weighted odds.
   const odds = combatSkillRarityOdds(rank);
   let threshold = 0;
   for (const rarity of ['Common', 'Uncommon', 'Rare', 'Epic', 'Mythic'] as const) {
@@ -1004,8 +1003,14 @@ export function normalizeCombatAutoScrapSettings(value: unknown): CombatAutoScra
 }
 
 export const SKILL_PULL_BASE_COST = 75;
-export function skillPullCost(_skillRolls: number): number {
-  return SKILL_PULL_BASE_COST;
+/** Pulls become progressively more expensive at higher Gacha ranks; lifetime pulls add a small further increase. */
+export function skillPullCost(skillRollsValue: number, gachaRankValue: unknown = 1): number {
+  const rollsRaw = Number(skillRollsValue);
+  const rolls = Number.isFinite(rollsRaw) ? Math.max(0, Math.floor(rollsRaw)) : 0;
+  const rankRaw = Number(gachaRankValue);
+  const rank = Number.isFinite(rankRaw) ? Math.max(1, Math.min(SKILL_GACHA_RANK_MAX, Math.floor(rankRaw))) : 1;
+  const lifetimeFactor = 1 + Math.min(.25, rolls / 10_000);
+  return Math.max(1, Math.round(SKILL_PULL_BASE_COST * Math.pow(rank, 1.25) * lifetimeFactor));
 }
 export function createCombatState(): CombatState {
   const starter = createCombatStarterGear();
@@ -1078,7 +1083,8 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const flatDamage = 50 + (Math.max(1,state.level)-1)*4 + effectiveDamageBonus + Math.round(floor*10);
   const flatHealth = 1000 + (Math.max(1,state.level)-1)*30 + effectiveHealthBonus + Math.round(floor*20);
   const maxHealth = Math.max(1,Math.round(flatHealth*(1+healthPct)*(1+coreProgressionBonus)*(1+orbFocusBonus*.65)*(1+majorHealthPercent)));
-  const depthSpeedMultiplier = 1 + Math.pow(floor/100,1.4);
+  // Scale player action frequency with the same depth curve used for enemies.
+  const depthSpeedMultiplier = Math.pow(1 + floor / 100, 1.4);
   let speed = Math.round((310 + effectiveSpeedBonus + speedFlat + dungeonSpeedBonus) * (1 + majorSpeedPercent) * depthSpeedMultiplier);
   if (traitEffectiveness('desperation')>0 && state.health>0 && state.health<=maxHealth*.4) speed+=Math.round(20*traitEffectiveness('desperation'));
   if (traitEffectiveness('keen')>0) critChance+=.04*traitEffectiveness('keen');
@@ -1180,7 +1186,9 @@ export function getEnemyForDepth(depthValue: number): CombatEnemy {
   const scaledHp=Math.min(1e15,Math.round(130*Math.pow(1+floor/100,2.2)*base.hp));
   const maxHp=boss?Math.round(scaledHp*1.15*4.6):scaledHp;
   const damage=Math.min(1e12,Math.max(1,Math.round((20+floor*1.55)*Math.pow(1+floor/100,.35)*base.damage*(boss?2.2*1.15:1))));
-  const speed=Math.min(10_000_000,Math.round(base.speed*Math.pow(1+floor/100,1.4)+floor*.8+(boss?55:0)));
+  // Enemy Speed scales with depth using the same exponent as player Speed; it must not remain a flat encounter stat.
+  const depthSpeedMultiplier = Math.pow(1 + floor / 100, 1.4);
+  const speed=Math.min(10_000_000,Math.round(base.speed*depthSpeedMultiplier+floor*1.2+(boss?55:0)));
   return {id:boss?'crypt-warden':base.id,name:boss?'Crypt Warden':base.name,kind:boss?'boss':base.kind,hp:maxHp,maxHp,damage,speed,room:boss?'Warden Throne':base.room,emoji:boss?'👹':base.emoji,boss};
 }
 

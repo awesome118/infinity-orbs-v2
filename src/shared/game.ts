@@ -182,44 +182,29 @@ export function normalizeAutomations(value: unknown): Partial<Record<AutomationI
   ) as Partial<Record<AutomationId, boolean>>;
 }
 
-/** Shard wallet precision and anti-drought pity tuning. */
-export const SHARD_DECIMAL_PLACES = 3;
-export const SHARD_PRECISION = 10 ** SHARD_DECIMAL_PLACES;
-/** A small guaranteed bonus protects players from indefinitely dry Shard-proc streaks. */
-export const SHARD_PITY_ROLLS_TO_REWARD = 100;
-export const SHARD_PROC_REWARD = 0.001;
-export const SHARD_PITY_REWARD = 0.01;
+/** Shards are whole-number currency. Legacy pity exports stay inert so older saves and tests remain readable. */
+export const SHARD_DECIMAL_PLACES = 0;
+export const SHARD_PRECISION = 1;
+export const SHARD_PITY_ROLLS_TO_REWARD = 0;
+export const SHARD_PROC_REWARD = 1;
+export const SHARD_PITY_REWARD = 0;
 
-/** Round currency to the supported thousandth-Shard precision without producing NaN/Infinity. */
+/** Normalize the whole-Shard wallet, discarding fractional legacy balances rather than minting currency. */
 export function roundShardAmount(value: unknown): number {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return 0;
-  return Math.min(Number.MAX_SAFE_INTEGER, Math.round((n + Number.EPSILON) * SHARD_PRECISION) / SHARD_PRECISION);
+  return Math.min(Number.MAX_SAFE_INTEGER, Math.floor(n));
 }
 
-/** A compact display that preserves fractional Shard drops without trailing zeroes. */
+/** Display whole Shards only. */
 export function formatShardAmount(value: unknown): string {
-  return roundShardAmount(value).toLocaleString('en-US', { maximumFractionDigits: SHARD_DECIMAL_PLACES });
+  return roundShardAmount(value).toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
-/** Returns the bonus for this roll and persists/reset the consecutive-miss counter. */
+/** Legacy export retained for save compatibility; there is no Shard pity counter or guaranteed payout. */
 export function resolveShardPityReward(state: Pick<PlayerState, 'shardPityRolls'>, procTriggered: boolean): number {
-  const rawMisses = state.shardPityRolls;
-  const safeMisses = typeof rawMisses === 'number' && Number.isSafeInteger(rawMisses) && rawMisses >= 0
-    ? rawMisses
-    : 0;
-  const misses = Math.min(SHARD_PITY_ROLLS_TO_REWARD - 1, safeMisses);
-  if (procTriggered) {
-    state.shardPityRolls = 0;
-    return SHARD_PROC_REWARD;
-  }
-  const nextMisses = misses + 1;
-  if (nextMisses >= SHARD_PITY_ROLLS_TO_REWARD) {
-    state.shardPityRolls = 0;
-    return SHARD_PITY_REWARD;
-  }
-  state.shardPityRolls = nextMisses;
-  return 0;
+  state.shardPityRolls = 0;
+  return procTriggered ? SHARD_PROC_REWARD : 0;
 }
 
 export function todayKey(now = Date.now()): string {
@@ -321,7 +306,7 @@ function addShardsWithinSafeIntegerLimit(s: PlayerState, requested: number): num
 }
 
 export function grantFreeShards(s: PlayerState, requested: number, _now = Date.now()): number {
-  // Free rewards use the same fractional precision and numeric safety as roll rewards.
+  // Free rewards use the same whole-Shard normalization and numeric safety as roll rewards.
   return addShardsWithinSafeIntegerLimit(s, requested);
 }
 
@@ -346,6 +331,8 @@ export function spendShards(s: PlayerState, requested: number): number {
   const shardBalance = typeof s.shards === 'number' && Number.isFinite(s.shards) && s.shards >= 0 && s.shards <= Number.MAX_SAFE_INTEGER
     ? roundShardAmount(s.shards)
     : 0;
+  // Normalize legacy fractional saves even when this request rounds down to a zero-cost no-op.
+  s.shards = shardBalance;
   if (shardBalance < amount) throw new Error('Not enough Shards.');
   if (amount <= 0) return 0;
 
@@ -356,8 +343,7 @@ export function spendShards(s: PlayerState, requested: number): number {
     Math.floor(shardBalance),
   );
   const freeBalance = Math.max(0, shardBalance - purchasedBalance);
-  // Whole-number purchases consume whole free Shards first and preserve any
-  // fractional remainder in the wallet; purchased entitlement lots remain integers.
+  // Purchases consume whole free Shards first; purchased entitlement lots remain integers.
   const wholeFreeBalance = Math.floor(freeBalance + 1e-9);
   const purchasedToSpend = Math.max(0, amount - Math.min(amount, wholeFreeBalance));
   s.shards = roundShardAmount(shardBalance - amount);
@@ -479,7 +465,7 @@ export function grantFrenzyOwnerShards(
   s: PlayerState,
   requested = FRENZY_OWNER_SHARD_REWARD,
 ): number {
-  // Frenzy owner rewards share the wallet's fractional precision and numeric bounds.
+  // Frenzy owner rewards share the wallet's whole-number precision and numeric bounds.
   return addShardsWithinSafeIntegerLimit(s, Number(requested));
 }
 
@@ -2309,7 +2295,7 @@ export function nextCodexChainRarity(
 }
 
 /**
- * Shard cost scales in 100-rarity bands and is tuned 10× for the fractional-Shard economy.
+ * Shard cost scales in 100-rarity bands under the whole-number Shard economy.
  * A guaranteed 1/900 orb costs 100 Shards; global Booster costs remain flat by booster type.
  */
 export function chainPatcherShardCost(targetRarity: number): number {
@@ -2561,18 +2547,18 @@ export function predictRollActivation(
       s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest);
     }
 
-    let earnedShards = 0.001;
-    if (rarity >= 1_000_000) earnedShards += 0.25;
-    else if (rarity >= 100_000) earnedShards += 0.05;
-    else if (rarity >= 10_000) earnedShards += 0.01;
-    else if (rarity >= 1_000) earnedShards += 0.005;
+    let earnedShards = 0;
+    if (rarity >= 1_000_000) earnedShards += 5;
+    else if (rarity >= 100_000) earnedShards += 3;
+    else if (rarity >= 10_000) earnedShards += 2;
+    else if (rarity >= 1_000) earnedShards += 1;
 
     const shardProcChance = Math.min(
-      1,
-      (s.upgrades.shardChance ?? 0) * 0.0015 +
+      0.5,
+      ((s.upgrades.shardChance ?? 0) * 0.0015 +
       (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
       (s.guildPerks?.shardRank ?? 0) * 0.0005 +
-      levelBenefits.shardChance,
+      levelBenefits.shardChance) * 0.5,
     );
     const shardProcTriggered = rng() < shardProcChance;
     earnedShards += resolveShardPityReward(s, shardProcTriggered);
@@ -2627,7 +2613,7 @@ export function predictRollActivation(
   if (transLevel > 0) {
     coinsGained += Math.round(lowRarityCoins * (transLevel * 0.15));
     for (let i = 0; i < rollCount; i++) {
-      if (rng() < 0.01 * transLevel) shardsGained = roundShardAmount(shardsGained + 0.001);
+      if (rng() < 0.005 * transLevel) shardsGained = roundShardAmount(shardsGained + 1);
     }
   }
 
@@ -2636,7 +2622,7 @@ export function predictRollActivation(
   }
   s.coins += coinsGained;
   s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
-  // Match the authoritative uncapped fractional wallet and overflow handling in predictions.
+  // Match the authoritative uncapped whole-number wallet and overflow handling in predictions.
   shardsGained = grantRollShards(s, shardsGained, predictionNow);
   s.xp += xpGained;
 

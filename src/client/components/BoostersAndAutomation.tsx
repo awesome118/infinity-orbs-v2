@@ -230,7 +230,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
         <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
           <div>
             <span className="font-black text-cyan-300">Roll-earned Shards today: {formatShardAmount(freeShards)}</span>
-            <span className="text-slate-500 ml-2">No daily cap. Roll drops accumulate in fractional amounts.</span>
+            <span className="text-slate-500 ml-2">No daily cap. Shard rewards are whole numbers; proc chance has been reduced.</span>
           </div>
           <div className="text-slate-400">
             {formatShardAmount(walletShards)} Shards available

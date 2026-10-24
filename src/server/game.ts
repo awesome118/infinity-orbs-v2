@@ -18,7 +18,6 @@ import {
   SHARD_SYNTHESIS_COST,
   roundShardAmount,
   resolveShardPityReward,
-  SHARD_PITY_ROLLS_TO_REWARD,
   PRESTIGE_UPGRADES,
   cooldownMs,
   rollsPerActivation,
@@ -1920,7 +1919,6 @@ function parsePlayerStateValue(value: unknown, depth = 0): PlayerState | null {
       Number.isFinite(record.shards) &&
       record.shards >= 0 &&
       record.shards <= Number.MAX_SAFE_INTEGER &&
-      Math.abs(record.shards * 1_000 - Math.round(record.shards * 1_000)) < 1e-6 &&
       Number.isSafeInteger(record.totalRolls) &&
       Number(record.totalRolls) >= 0 &&
       (
@@ -1930,8 +1928,17 @@ function parsePlayerStateValue(value: unknown, depth = 0): PlayerState | null {
     if (!validCoreState) return null;
     // A corrupt offline vault is recoverable progress data, not a reason to brick
     // the whole account save. Normalize it before any caller can process a batch.
+    const normalizedWalletShards = roundShardAmount(record.shards);
     const normalizedRecord = {
       ...record,
+      shards: normalizedWalletShards,
+      lifetimeShards: roundShardAmount(record.lifetimeShards ?? normalizedWalletShards),
+      freeShardsEarnedToday: roundShardAmount(record.freeShardsEarnedToday ?? 0),
+      shardPityRolls: 0,
+      purchasedShards: Math.min(
+        normalizeSafeInteger(record.purchasedShards, 0),
+        normalizedWalletShards,
+      ),
       offlineRolls: Math.min(
         MAX_OFFLINE_ROLLS,
         finiteNonNegativeInteger(record.offlineRolls, 0),
@@ -1999,7 +2006,7 @@ function parsePaymentPlayerState(raw: unknown): PlayerState {
         ...base,
         ...validatedState,
         shards: normalizedWalletShards,
-        shardPityRolls: Math.min(SHARD_PITY_ROLLS_TO_REWARD - 1, finiteNonNegativeInteger(record.shardPityRolls, 0)),
+        shardPityRolls: 0,
         purchasedShards: normalizedPurchasedShards,
         purchasedShardLots: normalizeEntitlementLots(
           record.purchasedShardLots,
@@ -2531,7 +2538,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     longestRollingSessionMs: finiteNonNegativeInteger(parsed.longestRollingSessionMs, base.longestRollingSessionMs ?? 0),
     highestDryStreak: finiteNonNegativeInteger(parsed.highestDryStreak, base.highestDryStreak ?? 0),
     freeRolls: finiteNonNegativeInteger(parsed.freeRolls, base.freeRolls ?? 0),
-    shardPityRolls: Math.min(SHARD_PITY_ROLLS_TO_REWARD - 1, finiteNonNegativeInteger(parsed.shardPityRolls, 0)),
+    shardPityRolls: 0,
     currentRunRolls: finiteNonNegativeInteger(parsed.currentRunRolls, base.currentRunRolls ?? 0),
     prestigeCount: finiteNonNegativeInteger(parsed.prestigeCount, base.prestigeCount),
     collectionValue: finiteNonNegativeNumber(parsed.collectionValue, base.collectionValue),
@@ -3600,7 +3607,7 @@ export async function applyRolls(
   const maxEchoChain = runeAbilityEffects.echoChamberMaxChain;
   const paradoxChance = Math.min(.50, runeAbilityEffects.paradoxEnginePct / 100);
   const eventHorizonRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.eventHorizonPct / 100);
-  const shardConstellationThreshold = Math.max(3, Math.floor(12 / (1 + runeAbilityEffects.shardConstellationPct / 100)));
+  const shardConstellationThreshold = Math.max(6, Math.floor(24 / (1 + runeAbilityEffects.shardConstellationPct / 100)));
   const temporalMomentumPerRoll = runeAbilityEffects.temporalLoopMomentumPerRoll;
   const prismaticForkChance = Math.min(.45, runeAbilityEffects.prismaticForkPct / 100);
   const prismaticForkRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.prismaticForkPct / 100);
@@ -3774,33 +3781,36 @@ export async function applyRolls(
     const earnedXp = Math.min(Number.MAX_SAFE_INTEGER, Math.round(Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) * xpBonusMul));
 
     // Shards bonus for rare orbs (1,000+)
-    // Fractional baseline drip keeps ordinary play productive without flooding the wallet.
-    let earnedShards = 0.001 + runeAbilityEffects.shardTithePerRoll;
-    if (rarity >= 1_000_000) earnedShards += 0.25;
-    else if (rarity >= 100_000) earnedShards += 0.05;
-    else if (rarity >= 10_000) earnedShards += 0.01;
-    else if (rarity >= 1_000) earnedShards += 0.005;
-    // Long dry streaks gradually improve Shard drip; a rarity record resets this pressure.
-    earnedShards += Math.min(0.005, Math.floor(Math.max(0, s.rollsSinceBest ?? 0) / 100) * runeAbilityEffects.dryStreakRefineryRate);
+    // Shards are indivisible. High-rarity finds grant integer bonuses; Rune drip abilities now roll for a whole-Shard payout.
+    let earnedShards = 0;
+    if (rarity >= 1_000_000) earnedShards += 5;
+    else if (rarity >= 100_000) earnedShards += 3;
+    else if (rarity >= 10_000) earnedShards += 2;
+    else if (rarity >= 1_000) earnedShards += 1;
+    const shardTitheChance = Math.min(0.0025, Math.max(0, runeAbilityEffects.shardTithePerRoll) * 0.5);
+    if (!suppressOtherRuneProcs && shardTitheChance > 0 && rng() < shardTitheChance) earnedShards += 1;
+    // Dry-Streak Refinery converts its former fractional drip into a reduced chance for one whole Shard.
+    const dryRefineryChance = Math.min(0.0025, Math.floor(Math.max(0, s.rollsSinceBest ?? 0) / 100) * Math.max(0, runeAbilityEffects.dryStreakRefineryRate) * 0.5);
+    if (!suppressOtherRuneProcs && dryRefineryChance > 0 && rng() < dryRefineryChance) earnedShards += 1;
 
     // Shard Chance upgrade + Mastery + Guild perk proc
     const shardProcChance = Math.min(
-      1,
-      (s.upgrades.shardChance ?? 0) * 0.0015 +
+      0.5,
+      ((s.upgrades.shardChance ?? 0) * 0.0015 +
       (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
       (s.guildPerks?.shardRank ?? 0) * 0.0005 +
       (s.prestigeUpgrades?.shardResonator ?? 0) * 0.0025 +
       levelBenefits.shardChance +
-      Math.min(100, runeBonuses.shardChancePct) / 100
+      Math.min(100, runeBonuses.shardChancePct) / 100) * 0.5
     );
     const shardProcTriggered = rng() < shardProcChance;
     earnedShards += resolveShardPityReward(s, shardProcTriggered);
-    // Shard Jackpot multiplies the full payout, including fractional drip, instead of forcing a whole-Shard minimum.
-    if (earnedShards > 0 && !suppressOtherRuneProcs && shardJackpotChance > 0 && rng() < shardJackpotChance) {
-      earnedShards = Math.round(earnedShards * (1 + runeAbilityEffects.shardJackpotExtraMultiplier) * 1_000) / 1_000;
+    // Shard Jackpot doubles or multiplies an integer payout; no fractional minimum is applied.
+    if (earnedShards > 0 && !suppressOtherRuneProcs && shardJackpotChance > 0 && rng() < shardJackpotChance * 0.5) {
+      earnedShards = Math.round(earnedShards * (1 + runeAbilityEffects.shardJackpotExtraMultiplier));
     }
 
-    shardsGained = Math.round((shardsGained + earnedShards) * 1_000) / 1_000;
+    shardsGained = Math.round(shardsGained + earnedShards);
     xpGained += earnedXp;
 
     // Shard Constellation retains charge between activations and pays only once per activation.

@@ -176,7 +176,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
               ? ''
               : typeof payload.reason === 'string' && payload.reason.trim()
                 ? payload.reason
-                : "Global Chat is available only in the registered main Game or a registered Frenzy post.");
+                : "Global Chat is waiting for the canonical main Game post to be registered.");
           }
           return;
         } catch {
@@ -184,7 +184,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           if (attempt === 2) {
             if (!cancelled) {
               setChatAvailable(false);
-              setChatUnavailableReason("Global Chat is available only in the registered main Game or a registered Frenzy post.");
+              setChatUnavailableReason("Global Chat is waiting for the canonical main Game post to be registered.");
             }
             return;
           }
@@ -319,7 +319,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           setOpen(true);
         }}
         className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-2xl border border-indigo-500/30 bg-slate-900/95 px-4 py-3 text-xs font-black text-white shadow-2xl backdrop-blur-md hover:bg-slate-800 transition-all"
-        title={chatAvailable === true ? 'Open global chat' : 'Global Chat is disabled outside registered Game and Frenzy posts'}
+        title={chatAvailable === true ? 'Open global chat' : 'Global Chat requires a registered main Game post'}
       >
         <MessageCircle className="w-4 h-4 text-indigo-300" />
         <span>Global Chat</span>
@@ -365,7 +365,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
       {chatAvailable !== true && (
         <div role="status" className="border-b border-amber-500/20 bg-amber-950/30 px-3 py-2.5 text-[11px] leading-relaxed text-amber-200">
           {chatAvailable === null ? 'Checking Global Chat availability…' : chatUnavailableReason || "Global Chat is available only in the registered main Game or a registered Frenzy post."}
-          <div className="mt-1 text-[10px] text-amber-200/60">Messages remain visible; open the main Game post or a registered Frenzy post to post.</div>
+          <div className="mt-1 text-[10px] text-amber-200/60">Messages remain visible; public comments are always routed to the registered main Game post.</div>
         </div>
       )}
 

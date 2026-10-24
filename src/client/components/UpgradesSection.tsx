@@ -52,12 +52,21 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   const [upgradingAll, setUpgradingAll] = useState(false);
   const [upgradingId, setUpgradingId] = useState<UpgradeId | null>(null);
   const [activatingTurbo, setActivatingTurbo] = useState(false);
+  const [autoBuyEnabled, setAutoBuyEnabled] = useState(() => {
+    try { return window.localStorage.getItem('io-auto-buy-upgrades') === 'true'; }
+    catch { return false; }
+  });
+  const autoBuyInFlightRef = useRef(false);
   const activatingTurboRef = useRef(false);
   const upgradeActionLockRef = useRef(false);
   const recentUpgradeTimerRef = useRef<number | null>(null);
   useEffect(() => () => {
     if (recentUpgradeTimerRef.current !== null) window.clearTimeout(recentUpgradeTimerRef.current);
   }, []);
+  useEffect(() => {
+    try { window.localStorage.setItem('io-auto-buy-upgrades', String(autoBuyEnabled)); }
+    catch { /* Storage is optional inside embedded webviews. */ }
+  }, [autoBuyEnabled]);
   const allowMotionEffects = () =>
     typeof window === 'undefined' || !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const reducedMotion = !allowMotionEffects();
@@ -65,7 +74,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   const standardUpgradeMaxLevels: Partial<Record<UpgradeId, number>> = { speed: 20, offlineRate: 8 };
 
   const handleUpgradeClick = async (u: (typeof upgradesData)[0]) => {
-    if (busy || upgradeActionLockRef.current) return;
+    if (busy || upgradeActionLockRef.current || autoBuyInFlightRef.current) return;
     upgradeActionLockRef.current = true;
     setUpgradingId(u.id);
     sound.playLevelUpFanfare();
@@ -95,7 +104,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   };
 
   const handleUpgradeAllClick = async () => {
-    if (busy || upgradeActionLockRef.current) return;
+    if (busy || upgradeActionLockRef.current || autoBuyInFlightRef.current) return;
     upgradeActionLockRef.current = true;
     setUpgradingAll(true);
     sound.playLevelUpFanfare();
@@ -127,7 +136,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   const isAutoUnlocked = manualRolls >= 3;
 
   const currentCoinBonusPct = (state.upgrades.coinBonus ?? 0) * 15;
-  const currentShardChancePct = ((state.upgrades.shardChance ?? 0) * 0.15).toFixed(2);
+  const currentShardChancePct = ((state.upgrades.shardChance ?? 0) * 0.075).toFixed(3);
   const currentXpBonusPct = (state.upgrades.xpBonus ?? 0) * 20;
   const currentCritChancePct = (state.upgrades.critChance ?? 0) * 3;
 
@@ -227,8 +236,8 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       icon: <Gem className="w-5 h-5 text-cyan-400" />,
       level: state.upgrades.shardChance ?? 0,
       currentVal: `${currentShardChancePct}%`,
-      nextVal: `${(((state.upgrades.shardChance ?? 0) + 1) * 0.15).toFixed(2)}%`,
-      desc: '+0.15 percentage points of Shard proc chance per level, before other bonuses. The 50-Shard daily roll cap still applies.',
+      nextVal: `${(((state.upgrades.shardChance ?? 0) + 1) * 0.075).toFixed(3)}%`,
+      desc: '+0.075 percentage points of Shard proc chance per level, before other reduced bonuses.',
       cost: upgradeCost('shardChance', state.upgrades.shardChance ?? 0),
     },
     {
@@ -284,6 +293,21 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   ];
 
   const affordableCount = upgradesData.filter(u => !u.locked && Number.isFinite(u.cost) && state.coins >= u.cost).length;
+  useEffect(() => {
+    if (!autoBuyEnabled || busy || upgradingAll || upgradingId !== null || autoBuyInFlightRef.current) return;
+    const candidate = upgradesData
+      .filter(u => {
+        const maxLevel = standardUpgradeMaxLevels[u.id];
+        return !u.locked && Number.isFinite(u.cost) && state.coins >= u.cost &&
+          (maxLevel === undefined || u.level < maxLevel);
+      })
+      .sort((a, b) => a.cost - b.cost || a.id.localeCompare(b.id))[0];
+    if (!candidate) return;
+    autoBuyInFlightRef.current = true;
+    void onBuyUpgrade(candidate.id)
+      .catch(() => { /* A failed purchase leaves Auto-buy enabled but retries only after the next state change. */ })
+      .finally(() => { autoBuyInFlightRef.current = false; });
+  }, [autoBuyEnabled, busy, upgradingAll, upgradingId, state.coins, state.upgrades, onBuyUpgrade]);
   const turboNow = Date.now();
   const turboRemainingMs = Math.max(0, (state.turboRollUntil ?? 0) - turboNow);
   const isTurboActive = turboRemainingMs > 0;
@@ -311,6 +335,17 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            <label className="flex items-center gap-2 rounded-xl border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-xs font-bold text-slate-200">
+              <input
+                type="checkbox"
+                checked={autoBuyEnabled}
+                disabled={busy || upgradingAll}
+                onChange={event => setAutoBuyEnabled(event.target.checked)}
+                aria-label="Automatically buy affordable upgrades"
+                className="accent-cyan-400"
+              />
+              <span>Auto-buy {autoBuyEnabled ? 'On' : 'Off'}</span>
+            </label>
             {/* Upgrade All Button */}
             <button
               type="button"

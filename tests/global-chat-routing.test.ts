@@ -131,3 +131,47 @@ test('a stale Frenzy destination fails closed until an official post creation re
     configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
   }
 });
+
+
+test('Global Chat stays available when embedded launcher context differs, but comments always target the canonical Game post', async () => {
+  const baseContext = originalContext;
+  const baseRedis = originalRedis;
+  const baseReddit = originalReddit;
+  const suffix = Date.now().toString(36);
+  const mainPostId = 't3_canonical-main-' + suffix;
+  const currentPostId = 't3_embedded-launcher-' + suffix;
+  const userId = 'chat-canonical-route-' + suffix;
+  const gamePostKey = 'io:global-game-post-id';
+  const chatKey = 'io:global-chat:v1';
+  const cooldownKey = 'io:chat-cooldown:v1:global:' + userId;
+  const previousGamePost = await baseRedis.get(gamePostKey);
+  const previousChat = await baseRedis.get(chatKey);
+  const previousCooldown = await baseRedis.get(cooldownKey);
+  let submittedTo = '';
+  const reddit = {
+    ...baseReddit,
+    submitComment: async (options: { id: string; text: string; runAs?: string }) => {
+      submittedTo = options.id;
+      return { id: 'canonical' + suffix.replace(/[^a-z0-9]/gi, '') };
+    },
+  };
+  configureDevvitRuntime({
+    redis: baseRedis,
+    context: { ...baseContext, postId: currentPostId, userId, username: 'ChatCanonicalTest' },
+    reddit,
+  });
+  try {
+    await baseRedis.set(gamePostKey, mainPostId);
+    assert.deepEqual(await getGlobalChatStatus(), { enabled: true });
+    await postGlobalChatMessage('This message must remain on the canonical Game post.');
+    assert.equal(submittedTo, mainPostId, 'context.postId must never retarget public chat comments');
+  } finally {
+    await baseRedis.del(cooldownKey);
+    await baseRedis.del(chatKey);
+    await baseRedis.del(gamePostKey);
+    if (previousCooldown != null) await baseRedis.set(cooldownKey, previousCooldown);
+    if (previousChat != null) await baseRedis.set(chatKey, previousChat);
+    if (previousGamePost != null) await baseRedis.set(gamePostKey, previousGamePost);
+    configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  }
+});

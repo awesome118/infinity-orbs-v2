@@ -72,14 +72,14 @@ test('combat upgrade prices increase by rank',()=>{
   state.combatUpgrades[upgrade.id]=1;
   assert.ok(combatUpgradeCost(state,upgrade.id)>first);
 });
-test('rolled orb raises combat stats and Gacha pity works at its new milestones',()=>{
+test('rolled orb raises combat stats and Gacha has independent rank-weighted draws without pity',()=>{
   const state=createCombatState(),baseline=combatStatsFor(state);
   state.orbFocusRarity=1_000_000;state.orbFocusName='Astral Orb';
   const attuned=combatStatsFor(state);
   assert.ok(attuned.damage>baseline.damage);assert.ok(attuned.maxHealth>baseline.maxHealth);
-  assert.equal(resolveCombatSkillRarity(.1,10,9,0),'Epic');
-  assert.equal(resolveCombatSkillRarity(.99,10,9,0),'Mythic');
-  assert.equal(resolveCombatSkillRarity(.1,20,0,39),'Mythic');
+  for(const rank of [1,10,20,30]){
+    assert.equal(resolveCombatSkillRarity(.1,rank,0,0),resolveCombatSkillRarity(.1,rank,9,39));
+  }
   assert.equal(COMBAT_SKILLS.length,35);
   assert.equal(skillRarityUnlocked('Mythic',4),true);
   assert.equal(skillRarityUnlocked('Mythic',5),true);

@@ -956,16 +956,51 @@ export async function sacrificeCombatRuneInto(targetIdValue:unknown,donorIdValue
   });
 }
 
-export async function rollCombatSkill():Promise<CombatSnapshot&{skillRoll:{id:CombatSkillId;name:string;rarity:CombatRarity;rank:number;duplicate:boolean;convertedCoins:number;pityEpic:number;pityMythic:number;progress:number;copiesNeeded:number;rankedUp:boolean};cost:number}> {
-  return mutate(s=>{
-    const cost=skillPullCost(s.skillRolls);if(s.combatMarks<cost)throw new Error('Not enough Combat Marks.');
-    s.combatMarks-=cost;s.skillRolls+=1;
-    const rarity=resolveCombatSkillRarity(secureRandom(),s.skillGachaRank,s.skillPityEpic,s.skillPityMythic);
-    s.skillPityEpic=(s.skillGachaRank>=10&&(rarity==='Epic'||rarity==='Mythic'))?0:s.skillGachaRank>=10?Math.min(9,s.skillPityEpic+1):0;
-    s.skillPityMythic=(s.skillGachaRank>=20&&rarity==='Mythic')?0:s.skillGachaRank>=20?Math.min(39,s.skillPityMythic+1):0;
-    const pool=COMBAT_SKILLS.filter(skill=>skill.rarity===rarity&&skillRarityUnlocked(skill.rarity,s.skillGachaRank)),skill=pick(pool);if(!skill)throw new Error('Skill pool is unavailable.');
-    const applied=applyCombatSkillCopy(s,skill.id,cost);
-    return {...snapshot(s),skillRoll:{id:skill.id,name:skill.name,rarity,rank:applied.rank,duplicate:applied.duplicate,convertedCoins:applied.coinsRefunded,pityEpic:s.skillPityEpic,pityMythic:s.skillPityMythic,progress:applied.progress,copiesNeeded:applied.copiesNeeded,rankedUp:applied.rankedUp},cost};
+export interface CombatSkillRollResult {
+  id: CombatSkillId;
+  name: string;
+  rarity: CombatRarity;
+  rank: number;
+  duplicate: boolean;
+  convertedCoins: number;
+  progress: number;
+  copiesNeeded: number;
+  rankedUp: boolean;
+}
+export async function rollCombatSkill(countValue: unknown = 1): Promise<CombatSnapshot & { skillRoll: CombatSkillRollResult; skillRolls: CombatSkillRollResult[]; cost: number }> {
+  const requested = Number(countValue);
+  const pullCount = requested === 10 ? 10 : 1;
+  return mutate(s => {
+    const totalCost = Array.from({ length: pullCount }, (_, index) => skillPullCost(s.skillRolls + index, s.skillGachaRank))
+      .reduce((sum, amount) => Math.min(Number.MAX_SAFE_INTEGER, sum + amount), 0);
+    if (s.combatMarks < totalCost) throw new Error('Not enough Combat Marks for ' + pullCount + (pullCount === 1 ? ' skill pull.' : ' skill pulls.'));
+    const results: CombatSkillRollResult[] = [];
+    for (let index = 0; index < pullCount; index += 1) {
+      const cost = skillPullCost(s.skillRolls, s.skillGachaRank);
+      s.combatMarks -= cost;
+      s.skillRolls += 1;
+      // Pity was removed: each draw is independent and uses only the visible Gacha-rank odds.
+      const rarity = resolveCombatSkillRarity(secureRandom(), s.skillGachaRank);
+      s.skillPityEpic = 0;
+      s.skillPityMythic = 0;
+      const pool = COMBAT_SKILLS.filter(skill => skill.rarity === rarity && skillRarityUnlocked(skill.rarity, s.skillGachaRank));
+      const skill = pick(pool);
+      if (!skill) throw new Error('Skill pool is unavailable.');
+      const applied = applyCombatSkillCopy(s, skill.id, cost);
+      results.push({
+        id: skill.id,
+        name: skill.name,
+        rarity,
+        rank: applied.rank,
+        duplicate: applied.duplicate,
+        convertedCoins: applied.coinsRefunded,
+        progress: applied.progress,
+        copiesNeeded: applied.copiesNeeded,
+        rankedUp: applied.rankedUp,
+      });
+    }
+    const last = results[results.length - 1]!;
+    return { ...snapshot(s), skillRoll: last, skillRolls: results, cost: totalCost };
   });
 }
 

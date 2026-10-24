@@ -809,9 +809,7 @@ export function createApp() {
         title: 'Infinity Orbs',
         entry: 'default',
       });
-      await redis.set('io:global-game-post-id', post.id).catch((error: unknown) => {
-        console.error('[Global Chat] Could not register the new Game post:', error);
-      });
+      await redis.set('io:global-game-post-id', post.id);
       res.json({ navigateTo: `https://reddit.com/r/${subredditName}/comments/${post.id}` });
     } catch (e) {
       console.error('Failed to create Infinity Orbs post:', e);
@@ -827,9 +825,7 @@ export function createApp() {
         title: 'Infinity Orbs',
         entry: 'default',
       });
-      await redis.set('io:global-game-post-id', post.id).catch((error: unknown) => {
-        console.error('[Global Chat] Could not register the new Game post:', error);
-      });
+      await redis.set('io:global-game-post-id', post.id);
       res.json({ status: 'success', message: `Created Infinity Orbs post ${post.id} in r/${subredditName}.` });
     } catch (e) {
       console.error('Failed to create install post:', e);
@@ -978,9 +974,10 @@ export function createApp() {
       res.setHeader('Cache-Control','no-store');res.json({settings});
     } catch(e:any) { const message=e?.message||'Could not update Auto Scrap settings.';const status=message==='Auto Scrap Prestige upgrade is required.'||message==='Auto Scrap quality threshold must be between 0 and 100.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:503;res.status(status).json({error:message}); }
   });
-  app.post('/api/combat/skills/roll', async (_req,res) => {
-    try{res.setHeader('Cache-Control','no-store');res.json(await rollCombatSkill());}
-    catch(e:any){const message=e?.message||'Skill roll failed.';const status=message==='Not enough Combat Marks.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
+  app.post('/api/combat/skills/roll', async (req,res) => {
+    const count = req.body?.count === 10 ? 10 : 1;
+    try{res.setHeader('Cache-Control','no-store');res.json(await rollCombatSkill(count));}
+    catch(e:any){const message=e?.message||'Skill roll failed.';const status=message.startsWith('Not enough Combat Marks')?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
   });
   app.post('/api/combat/skills/equip', async (req,res) => {
     const skillId=req.body?.skillId;
