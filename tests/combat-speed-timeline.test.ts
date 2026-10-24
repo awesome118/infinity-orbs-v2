@@ -11,12 +11,13 @@ import {
 } from '../src/shared/combat.js';
 import { ORB_TIER_NAMES, getOrbInfo } from '../src/shared/game.js';
 
-test('Speed recharge means a base-speed Delver does not attack on every beat', () => {
+test('every combatant gets a base action each beat and Speed earns extra attacks', () => {
   assert.equal(COMBAT_SPEED_PER_ACTION, 400);
   assert.equal(combatActionsDue(310, 1, 0), 1, 'the encounter begins with one action ready');
-  assert.equal(combatActionsDue(310, 2, 1), 0, '310 Speed has not recharged 400 Speed by the next beat');
-  assert.equal(combatActionsDue(310, 3, 1), 1, 'accumulated Speed earns the next action');
-  assert.equal(combatActionsDue(800, 2, 1), 2, 'higher Speed earns multiple actions in the same beat');
+  assert.equal(combatActionsDue(310, 2, 1), 1, 'the next beat always grants a base action');
+  assert.equal(combatActionsDue(310, 3, 2), 2, '310 Speed crosses a bonus threshold by beat 3');
+  assert.equal(combatActionsDue(100, 3, 2), 1, '100 Speed gets its base action but no bonus threshold');
+  assert.equal(combatActionsDue(800, 2, 1), 3, '800 Speed grants a base action and two bonus attacks');
 });
 
 test('player and enemy actions interleave according to their Speed thresholds', () => {
@@ -24,9 +25,8 @@ test('player and enemy actions interleave according to their Speed thresholds', 
   const enemyActions = combatActionsDue(650, 2, 1);
   const timeline = combatActionTimeline(900, 650, 2, 1, 1, playerActions, enemyActions);
 
-  assert.deepEqual(timeline.map(action => action.actor), ['player', 'enemy', 'player']);
-  assert.ok(timeline[0]!.time < timeline[1]!.time);
-  assert.ok(timeline[1]!.time < timeline[2]!.time);
+  assert.deepEqual(timeline.map(action => action.actor), ['player', 'enemy', 'player', 'enemy', 'player']);
+  assert.ok(timeline.every((action,index)=>index===0||timeline[index-1]!.time<action.time));
 });
 
 test('opening initiative follows the actual Speed values instead of always favoring the Delver', () => {
@@ -38,14 +38,15 @@ test('opening initiative follows the actual Speed values instead of always favor
   assert.ok(enemyFirst[0]!.time < enemyFirst[1]!.time);
 });
 
-test('a fast enemy can act while a slower Delver is still recharging', () => {
+test('a faster enemy earns bonus actions and moves ahead of the slower Delver', () => {
   const playerActions = combatActionsDue(310, 2, 1);
   const enemyActions = combatActionsDue(800, 2, 1);
   const timeline = combatActionTimeline(310, 800, 2, 1, 1, playerActions, enemyActions);
 
-  assert.equal(playerActions, 0);
-  assert.deepEqual(timeline.map(action => action.actor), ['enemy', 'enemy']);
-  assert.ok(timeline[0]!.time < timeline[1]!.time);
+  assert.equal(playerActions, 1, 'the Delver keeps a base action');
+  assert.equal(enemyActions, 3, 'the 800-Speed enemy earns two additional actions');
+  assert.deepEqual(timeline.map(action => action.actor), ['enemy', 'enemy', 'player', 'enemy']);
+  assert.ok(timeline.every((action,index)=>index===0||timeline[index-1]!.time<action.time));
 });
 
 test('every orb rarity has an expanded, duplicate-free name pool', () => {
