@@ -567,7 +567,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
             <div className="roll-reward-values">
               <span className="roll-reward-value coins"><Coins className="w-3.5 h-3.5" /> +{formatNumber(batchSummary.coins)} Coins</span>
               <span className="roll-reward-value xp"><Sparkles className="w-3.5 h-3.5" /> +{formatNumber(batchSummary.xp)} XP</span>
-              <span className="roll-reward-value shards"><Zap className="w-3.5 h-3.5" /> +{formatNumber(batchSummary.shards)} Shards</span>
+              <span className="roll-reward-value shards"><Zap className="w-3.5 h-3.5" /> +{formatShardAmount(batchSummary.shards)} Shards</span>
               <span className="roll-reward-value value"><Award className="w-3.5 h-3.5" /> +{formatNumber(batchSummary.totalVal)} Value</span>
             </div>
           </div>
@@ -870,7 +870,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
             </div>
             <div className="rounded-xl bg-slate-950/50 border border-slate-800 px-2 py-2">
               <div className="text-[10px] uppercase font-bold text-slate-500">Shards</div>
-              <div className="text-sm font-black text-cyan-300">+{formatNumber(batchSummary.shards)}</div>
+              <div className="text-sm font-black text-cyan-300">+{formatShardAmount(batchSummary.shards)}</div>
             </div>
           </div>
         </div>
