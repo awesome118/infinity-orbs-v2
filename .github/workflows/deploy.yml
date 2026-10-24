@@ -1,6 +1,7 @@
 name: Deploy Devvit
 
 # Normally manual. A version-specific push marker is a one-commit recovery path when dispatch is unavailable.
+# If a run fails in preflight, no version was uploaded; retry the same version marker after fixing the blocker.
 # This workflow uploads and installs to the development subreddit only. Production install is a separate post-approval workflow.
 on:
   workflow_dispatch:
