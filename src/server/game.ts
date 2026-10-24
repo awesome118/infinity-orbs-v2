@@ -2019,9 +2019,8 @@ function parsePaymentPlayerState(raw: unknown): PlayerState {
         claimedAchievements: Array.isArray(record.claimedAchievements)
           ? record.claimedAchievements as string[]
           : base.claimedAchievements,
-        unlockedCosmetics: Array.isArray(record.unlockedCosmetics)
-          ? record.unlockedCosmetics as string[]
-          : base.unlockedCosmetics,
+        activeCosmetic: 'default',
+        unlockedCosmetics: ['default'],
         dailyQuests: Array.isArray(record.dailyQuests)
           ? record.dailyQuests as PlayerState['dailyQuests']
           : base.dailyQuests,
@@ -2553,9 +2552,10 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     // Corrupt quest entries must not make every later roll throw while advancing progress.
     dailyQuests: isValidQuestList(parsed.dailyQuests) ? parsed.dailyQuests : base.dailyQuests,
     weeklyQuests: isValidQuestList(parsed.weeklyQuests) ? parsed.weeklyQuests : base.weeklyQuests,
-    unlockedCosmetics: isStringList(parsed.unlockedCosmetics) && parsed.unlockedCosmetics.length
-      ? parsed.unlockedCosmetics
-      : base.unlockedCosmetics,
+    // Cosmetics were removed from the game. Keep legacy save compatibility but
+    // force every returning account onto the single default appearance.
+    activeCosmetic: 'default',
+    unlockedCosmetics: ['default'],
     sacrifices: {
       coinsSacrificed: finiteNonNegativeInteger(parsed.sacrifices?.coinsSacrificed, base.sacrifices!.coinsSacrificed),
       shardsSacrificed: finiteNonNegativeInteger(parsed.sacrifices?.shardsSacrificed, base.sacrifices!.shardsSacrificed),
