@@ -1685,7 +1685,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           for (const id of Object.keys(PREMIUM_BOOSTERS) as Array<keyof typeof PREMIUM_BOOSTERS>) {
             await request('/api/dev/state', { shards: 10_000, activeBoosters: {} });
             const result = await request<{ state: any }>('/api/boosters/activate', { id });
-            const state = recordValue(result.state);
+            const state = recordValue(result.state) as Record<string, any>;
             const activeUntil = Number(state.activeBoosters?.[id] ?? 0);
             if (activeUntil < Date.now() + PREMIUM_BOOSTERS[id].durationMs - 5_000) throw new Error(id + ' did not activate for its configured duration.');
             if (Number(state.shards) !== 10_000 - PREMIUM_BOOSTERS[id].costShards) throw new Error(id + ' spent the wrong Shard cost: ' + state.shards + ' remaining.');
@@ -1699,7 +1699,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'Set 1,000 Shards',
         () => request('/api/dev/state', { shards: 1_000, lastSeenAt: Date.now() }),
-        () => 'shards=100',
+        () => 'shards=1,000',
       );
       await step(
         'Activate Global Luck',
@@ -1709,7 +1709,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'Set 1,000 Shards',
         () => request('/api/dev/state', { shards: 1_000, lastSeenAt: Date.now() }),
-        () => 'shards=25',
+        () => 'shards=1,000',
       );
       await step(
         'Activate Global Speed',
@@ -1719,7 +1719,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'Set 1,000 Shards',
         () => request('/api/dev/state', { shards: 1_000, lastSeenAt: Date.now() }),
-        () => 'shards=25',
+        () => 'shards=1,000',
       );
       await step(
         'Activate Global Crit',
@@ -1734,7 +1734,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           const unlocked: string[] = [];
           for (const id of Object.keys(AUTOMATIONS) as Array<keyof typeof AUTOMATIONS>) {
             const result = await request<{ state: any }>('/api/automation/buy', { id });
-            const state = recordValue(result.state);
+            const state = recordValue(result.state) as Record<string, any>;
             if (state.automations?.[id] !== true) throw new Error('Automation ' + id + ' was not persisted as unlocked.');
             unlocked.push(id);
           }
