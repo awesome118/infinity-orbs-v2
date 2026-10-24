@@ -50,11 +50,12 @@ test('enemy speed scales continuously with depth and increases actions owed',()=
   assert.ok(deeperSameEnemy.speed>opening.speed*1.25,'enemy Speed should rise visibly before the 15-floor mark');
   assert.ok(combatActionsDue(deeperSameEnemy.speed,10,0)>combatActionsDue(opening.speed,10,0),'scaled Speed must translate into more actions');
 });
-test('skill pull pricing stays fixed regardless of how many skills have been rolled', () => {
-  assert.equal(skillPullCost(0),75);
-  for(const pulls of [1,2,40,41,400,Number.MAX_SAFE_INTEGER]) {
-    assert.equal(skillPullCost(pulls),75);
-  }
+test('skill pull prices rise with Gacha rank and lifetime pulls', () => {
+  assert.equal(skillPullCost(0,1),75);
+  assert.ok(skillPullCost(0,2)>skillPullCost(0,1));
+  assert.ok(skillPullCost(0,30)>skillPullCost(0,20));
+  assert.ok(skillPullCost(10_000,2)>skillPullCost(0,2));
+  assert.ok(Number.isSafeInteger(skillPullCost(Number.MAX_SAFE_INTEGER,30)));
 });
 
 test('quality curve stays anchored to run best after current depth resets',()=>{
@@ -120,16 +121,23 @@ test('skill copies are active ability types rather than passive stat modifiers',
   assert.equal(combatAbilityType(bounty),'bounty');
 });
 
-test('ranked Gacha steadily raises rarity odds through Rank 30',()=>{
+test('ranked Gacha raises rare-skill odds without pity overrides',()=>{
   assert.equal(skillRarityUnlocked('Common',1),true);
   assert.equal(skillRarityUnlocked('Uncommon',1),true);
   assert.equal(skillRarityUnlocked('Mythic',1),true);
-  assert.equal(resolveCombatSkillRarity(.9,1,0,0),'Common');
-  assert.equal(resolveCombatSkillRarity(.99,2,0,0),'Rare');
-  assert.equal(resolveCombatSkillRarity(.99,3,0,0),'Epic');
-  assert.equal(resolveCombatSkillRarity(.1,10,9,0),'Epic');
-  assert.equal(resolveCombatSkillRarity(.1,20,0,39),'Mythic');
-  assert.equal(resolveCombatSkillRarity(.999,30,0,0),'Mythic');
+  const rankOne=combatSkillRarityOdds(1);
+  const rankTen=combatSkillRarityOdds(10);
+  const rankThirty=combatSkillRarityOdds(30);
+  assert.equal(rankOne.Common,1);
+  assert.equal(rankOne.Mythic,0);
+  assert.ok(rankThirty.Mythic>rankTen.Mythic);
+  assert.ok(rankTen.Mythic>rankOne.Mythic);
+  assert.ok(rankThirty.Epic>rankTen.Epic);
+  for (const rank of [1,10,20,30]) {
+    for (const roll of [0,.1,.5,.9,.999]) {
+      assert.equal(resolveCombatSkillRarity(roll,rank,0,0),resolveCombatSkillRarity(roll,rank,39,9));
+    }
+  }
   assert.deepEqual(skillGachaRankRequirement(1),{rank:2,requiredPulls:3,requiredMarks:25,unlocks:'Improved higher-rarity odds'});
   assert.ok(skillGachaRankRequirement(5));
   assert.equal(skillGachaRankRequirement(30),null);
