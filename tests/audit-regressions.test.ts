@@ -153,7 +153,7 @@ test('Chain Patcher is server-authoritative, arms exactly one guaranteed rarity,
   const shared = source('src/shared/game.ts');
   assert.match(shared, /CHAIN_PATCHER_COOLDOWN_MS = 24 \* 60 \* 60 \* 1_000/);
   assert.match(shared, /nextCodexChainRarity/);
-  assert.match(shared, /Math\.floor\(targetRarity \/ 100\) \+ 1/);
+  assert.match(shared, /10 \* \(Math\.floor\(targetRarity \/ 100\) \+ 1\)/);
 
   const game = source('src/server/game.ts');
   assert.match(game, /export async function buyChainPatcher/);
@@ -546,8 +546,8 @@ test('comprehensive admin tests atomically reset cooldown, issue a roll ticket, 
   assert.match(modal.slice(mechanicStart, mechanicEnd), /xp: 600/);
   assert.match(modal.slice(mechanicStart, mechanicEnd), /level: 4,\s*levelXpFloor: 533/);
   assert.match(modal.slice(mechanicStart, mechanicEnd), /freeShardsEarnedToday: 0/);
-  assert.match(debug, /'globalBoosterCredits', 'freeShardsEarnedToday'/);
-  assert.match(modal, /shardSynthesis: 1 \}, \{ shards: 10, xp: 32_000, level: 20, levelXpFloor: 0 \}/);
+  assert.match(debug, /for \(const field of \['shards', 'lifetimeShards', 'freeShardsEarnedToday'\]\)/);
+  assert.match(modal, /shardSynthesis: 1 \}, \{ shards: 100, xp: 32_000, level: 20, levelXpFloor: 0 \}/);
   assert.match(modal.slice(mechanicStart, mechanicEnd), /lastFreeShardReset: '2020-01-01'/);
   assert.match(modal, /await new Promise\(resolve => setTimeout\(resolve, 5_200\)\)/);
   assert.match(modal, /collection endpoint/);
@@ -910,23 +910,22 @@ test('Daily Streak reward and community tier commit atomically with player state
 });
 
 
-test('rolling Shard grants fail closed on malformed daily counters and requests', () => {
+test('rolling Shard grants preserve fractions, repair telemetry, and have no daily cap', () => {
   const shared = source('src/shared/game.ts');
   const start = shared.indexOf('export function grantRollShards');
   const end = shared.indexOf('export function spendShards', start);
   assert.ok(start >= 0 && end > start);
   const grant = shared.slice(start, end);
-  assert.match(grant, /Number\.isFinite\(requested\)/);
-  assert.match(grant, /Number\.isSafeInteger\(rawEarnedToday\)/);
-  assert.match(grant, /: FREE_SHARD_DAILY_CAP/);
-  assert.match(grant, /Math\.max\(0, FREE_SHARD_DAILY_CAP - earnedToday\)/);
-  assert.match(grant, /s\.freeShardsEarnedToday = earnedToday \+ granted/);
+  assert.match(grant, /Number\.isFinite\(rawEarnedToday\)/);
+  assert.match(grant, /const granted = addShardsWithinSafeIntegerLimit\(s, requested\)/);
+  assert.doesNotMatch(grant, /FREE_SHARD_DAILY_CAP/);
+  assert.match(grant, /s\.freeShardsEarnedToday = roundShardAmount\(earnedToday \+ granted\)/);
   const shardHelperStart = shared.indexOf('function addShardsWithinSafeIntegerLimit');
   const shardHelperEnd = shared.indexOf('\nexport function grantFreeShards', shardHelperStart);
   assert.ok(shardHelperStart >= 0 && shardHelperEnd > shardHelperStart);
   const shardHelper = shared.slice(shardHelperStart, shardHelperEnd);
-  assert.match(shardHelper, /Number\.isSafeInteger\(rawLifetimeShards\)/);
-  assert.match(shardHelper, /Math\.min\(Number\.MAX_SAFE_INTEGER, lifetimeShards \+ granted\)/);
+  assert.match(shardHelper, /Number\.isFinite\(rawLifetimeShards\)/);
+  assert.match(shardHelper, /roundShardAmount\(Math\.min\(Number\.MAX_SAFE_INTEGER, lifetimeShards \+ granted\)\)/);
 });
 
 test('roll rewards commit atomically with Guild and community progress', () => {
