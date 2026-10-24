@@ -51,7 +51,7 @@ test('Rune UI serializes mutations and exposes search, filters, progress, and de
 
 test('combat UI avoids per-pixel tooltip rerenders and waits for active beats before settings writes', () => {
   const combat = source('src/client/components/CombatSection.tsx');
-  assert.doesNotMatch(combat, /onPointerMove=\{event=>/);
+  assert.match(combat, /onPointerMove=\{event=>/);\n  assert.match(combat, /Math\.abs\(previous\.x-next\.x\)<2/);
   assert.match(combat, /onPointerEnter=\{event=>/);
   assert.match(combat, /const activeBeat=runtime\.current\.beatPromise;/);
   assert.match(combat, /role="alert"/);
@@ -61,7 +61,7 @@ test('single upgrades, bulk upgrades, and Turbo cannot overlap', () => {
   const upgrades = source('src/client/components/UpgradesSection.tsx');
   assert.match(upgrades, /upgradeActionLockRef/);
   assert.match(upgrades, /upgradingId !== null/);
-  assert.match(upgrades, /if \(busy \|\| upgradeActionLockRef\.current\) return/);
+  assert.match(upgrades, /if \(busy \|\| upgradeActionLockRef\.current \|\| autoBuyInFlightRef\.current\) return/);
 });
 
 test('daily streak preview resets after a missed day and quest bars are guarded and accessible', () => {
