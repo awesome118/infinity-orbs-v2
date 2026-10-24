@@ -3773,11 +3773,11 @@ export async function applyRolls(
 
     // Shards bonus for rare orbs (1,000+)
     // Fractional baseline drip keeps ordinary play productive without flooding the wallet.
-    let earnedShards = 0.01 + runeAbilityEffects.shardTithePerRoll;
-    if (rarity >= 1_000_000) earnedShards += 1;
-    else if (rarity >= 100_000) earnedShards += 0.25;
-    else if (rarity >= 10_000) earnedShards += 0.10;
-    else if (rarity >= 1_000) earnedShards += 0.05;
+    let earnedShards = 0.001 + runeAbilityEffects.shardTithePerRoll;
+    if (rarity >= 1_000_000) earnedShards += 0.25;
+    else if (rarity >= 100_000) earnedShards += 0.05;
+    else if (rarity >= 10_000) earnedShards += 0.01;
+    else if (rarity >= 1_000) earnedShards += 0.005;
     // Long dry streaks gradually improve Shard drip; a rarity record resets this pressure.
     earnedShards += Math.min(0.01, Math.floor(Math.max(0, s.rollsSinceBest ?? 0) / 100) * runeAbilityEffects.dryStreakRefineryRate);
 
@@ -3792,7 +3792,7 @@ export async function applyRolls(
       Math.min(100, runeBonuses.shardChancePct) / 100
     );
     if (rng() < shardProcChance) {
-      earnedShards += 0.01;
+      earnedShards += 0.001;
     }
     // Shard Jackpot multiplies the full payout, including fractional drip, instead of forcing a whole-Shard minimum.
     if (earnedShards > 0 && !suppressOtherRuneProcs && shardJackpotChance > 0 && rng() < shardJackpotChance) {
@@ -3869,7 +3869,7 @@ export async function applyRolls(
     coinsGained += Math.round(lowRarityCoins * (transLevel * 0.15));
     for (let i = 0; i < rollCount; i++) {
       if (rng() < 0.01 * transLevel) {
-        shardsGained += 0.01;
+        shardsGained += 0.001;
       }
     }
   }
