@@ -1,0 +1,3 @@
+One-time deployment marker for infinity-orbs@1.2.55 to r/infinity_orbs_dev.
+Includes the latest combat fixes: queued skills for the next beat, reduced Scrap rewards, revised gear tooltip positioning, Speed-based initiative/action scheduling, and mutual exclusion between Combat and main-game Auto Roll.
+The Dev-only deployment workflow runs the full Node 24 preflight before uploading, verifies the uploaded version, and installs only to r/infinity_orbs_dev.
