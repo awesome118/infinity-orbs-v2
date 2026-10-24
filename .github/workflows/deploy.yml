@@ -1,6 +1,7 @@
 name: Deploy Devvit
 
-# Deliberately manual: pushes should not repeatedly trigger costly deployment attempts.
+# Normally manual. A version-specific push marker is available only as a recovery path after a failed dispatch.
+# It is limited to edits of this workflow and one exact release version; the job still runs preflight and targets dev only.
 # This workflow uploads and installs to the development subreddit only. Production install is a separate post-approval workflow.
 on:
   workflow_dispatch:
@@ -15,9 +16,15 @@ on:
         type: boolean
         default: false
 
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/deploy.yml
+
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:1.2.51]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -44,16 +51,19 @@ jobs:
         run: npm ci
 
       - name: Verify requested version
+        id: requested-version
         env:
           REQUESTED_VERSION: ${{ inputs.release_version }}
         run: |
           set -euo pipefail
+          REQUESTED_VERSION="${REQUESTED_VERSION:-$(node -p "require('./package.json').version")}"
           VERSION="$(node -p "require('./package.json').version")"
           test "$VERSION" = "$REQUESTED_VERSION" || {
             echo "Version mismatch: package.json is $VERSION but requested $REQUESTED_VERSION."
             exit 1
           }
           echo "Preparing infinity-orbs@$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Deployment preflight
         run: npm run preflight
@@ -75,17 +85,32 @@ jobs:
               ;;
           esac
 
+      - name: Detect whether the exact version already exists
+        id: existing-version
+        continue-on-error: true
+        env:
+          REQUESTED_VERSION: ${{ steps.requested-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          VERSION="$(npx devvit view "infinity-orbs@$REQUESTED_VERSION" version)"
+          test "$VERSION" = "$REQUESTED_VERSION" || {
+            echo "Devvit resolved $VERSION rather than the requested $REQUESTED_VERSION."
+            exit 1
+          }
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+
       - name: Upload exact requested version to Devvit
+        if: steps.existing-version.outcome != 'success'
         env:
           CI: true
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
-          REQUESTED_VERSION: ${{ inputs.release_version }}
+          REQUESTED_VERSION: ${{ steps.requested-version.outputs.version }}
         timeout-minutes: 10
         run: timeout --signal=TERM --kill-after=30s 9m npx devvit upload --version "$REQUESTED_VERSION"
       - name: Verify uploaded version
         id: uploaded-version
         env:
-          REQUESTED_VERSION: ${{ inputs.release_version }}
+          REQUESTED_VERSION: ${{ steps.requested-version.outputs.version }}
         run: |
           set -euo pipefail
           VERSION="$(npx devvit view "infinity-orbs@$REQUESTED_VERSION" version)"
