@@ -3774,33 +3774,36 @@ export async function applyRolls(
     const earnedXp = Math.min(Number.MAX_SAFE_INTEGER, Math.round(Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) * xpBonusMul));
 
     // Shards bonus for rare orbs (1,000+)
-    // Fractional baseline drip keeps ordinary play productive without flooding the wallet.
-    let earnedShards = 0.001 + runeAbilityEffects.shardTithePerRoll;
-    if (rarity >= 1_000_000) earnedShards += 0.25;
-    else if (rarity >= 100_000) earnedShards += 0.05;
-    else if (rarity >= 10_000) earnedShards += 0.01;
-    else if (rarity >= 1_000) earnedShards += 0.005;
-    // Long dry streaks gradually improve Shard drip; a rarity record resets this pressure.
-    earnedShards += Math.min(0.005, Math.floor(Math.max(0, s.rollsSinceBest ?? 0) / 100) * runeAbilityEffects.dryStreakRefineryRate);
+    // Shards are indivisible. High-rarity finds grant integer bonuses; Rune drip abilities now roll for a whole-Shard payout.
+    let earnedShards = 0;
+    if (rarity >= 1_000_000) earnedShards += 5;
+    else if (rarity >= 100_000) earnedShards += 3;
+    else if (rarity >= 10_000) earnedShards += 2;
+    else if (rarity >= 1_000) earnedShards += 1;
+    const shardTitheChance = Math.min(0.0025, Math.max(0, runeAbilityEffects.shardTithePerRoll) * 0.5);
+    if (!suppressOtherRuneProcs && shardTitheChance > 0 && rng() < shardTitheChance) earnedShards += 1;
+    // Dry-Streak Refinery converts its former fractional drip into a reduced chance for one whole Shard.
+    const dryRefineryChance = Math.min(0.0025, Math.floor(Math.max(0, s.rollsSinceBest ?? 0) / 100) * Math.max(0, runeAbilityEffects.dryStreakRefineryRate) * 0.5);
+    if (!suppressOtherRuneProcs && dryRefineryChance > 0 && rng() < dryRefineryChance) earnedShards += 1;
 
     // Shard Chance upgrade + Mastery + Guild perk proc
     const shardProcChance = Math.min(
-      1,
-      (s.upgrades.shardChance ?? 0) * 0.0015 +
+      0.5,
+      ((s.upgrades.shardChance ?? 0) * 0.0015 +
       (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
       (s.guildPerks?.shardRank ?? 0) * 0.0005 +
       (s.prestigeUpgrades?.shardResonator ?? 0) * 0.0025 +
       levelBenefits.shardChance +
-      Math.min(100, runeBonuses.shardChancePct) / 100
+      Math.min(100, runeBonuses.shardChancePct) / 100) * 0.5
     );
     const shardProcTriggered = rng() < shardProcChance;
     earnedShards += resolveShardPityReward(s, shardProcTriggered);
     // Shard Jackpot multiplies the full payout, including fractional drip, instead of forcing a whole-Shard minimum.
-    if (earnedShards > 0 && !suppressOtherRuneProcs && shardJackpotChance > 0 && rng() < shardJackpotChance) {
-      earnedShards = Math.round(earnedShards * (1 + runeAbilityEffects.shardJackpotExtraMultiplier) * 1_000) / 1_000;
+    if (earnedShards > 0 && !suppressOtherRuneProcs && shardJackpotChance > 0 && rng() < shardJackpotChance * 0.5) {
+      earnedShards = Math.round(earnedShards * (1 + runeAbilityEffects.shardJackpotExtraMultiplier));
     }
 
-    shardsGained = Math.round((shardsGained + earnedShards) * 1_000) / 1_000;
+    shardsGained = Math.round(shardsGained + earnedShards);
     xpGained += earnedXp;
 
     // Shard Constellation retains charge between activations and pays only once per activation.
