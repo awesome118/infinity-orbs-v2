@@ -720,6 +720,7 @@ export function App() {
       showToast('Wait for the current combat beat to finish before leaving Combat.', 'info');
       return;
     }
+    if (combatMode && !targetIsCombatMode) window.dispatchEvent(new CustomEvent('io-combat-leaving'));
     // Update synchronously so stale interval callbacks cannot roll during a tab transition.
     combatModeRef.current = targetIsCombatMode;
     if (targetIsCombatMode) {
