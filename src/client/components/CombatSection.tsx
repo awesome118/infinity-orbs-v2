@@ -536,7 +536,6 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
           enemyResolved+=enemyActions;
         }
         const events=projected.sort((a,b)=>a.time-b.time||(a.actor===b.actor?a.step-b.step:a.actor==='player'?-1:1)).slice(0,timelineCount);
-        const nextActor=events[0]?.actor??(stats.speed>=enemy.speed?'player':'enemy');
         return <section className="io-combat-turn-tracker" aria-label="Combat speed and turn order">
           <div className="io-combat-turn-head"><div><span className="io-combat-eyebrow">SPEED & INITIATIVE</span><h2>Turn order</h2><p>One beat resolves about every 30 seconds.</p></div><strong>{beatCooldownMs>0?'NEXT BEAT '+Math.ceil(beatCooldownMs/1000)+'s':'BEAT READY'}</strong></div>
           <div className="io-combat-beat-track" role="progressbar" aria-label="Time until the next combat beat" aria-valuemin={0} aria-valuemax={100} aria-valuenow={beatProgressPct}><span style={{width:beatProgressPct+'%'}}/></div>
