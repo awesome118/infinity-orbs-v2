@@ -1983,10 +1983,10 @@ function parsePaymentPlayerState(raw: unknown): PlayerState {
       const prestigeUpgrades = record.prestigeUpgrades && typeof record.prestigeUpgrades === 'object' && !Array.isArray(record.prestigeUpgrades)
         ? record.prestigeUpgrades as Record<string, unknown>
         : {};
-      const normalizedWalletShards = normalizeSafeInteger(record.shards, base.shards);
+      const normalizedWalletShards = roundShardAmount(record.shards);
       const normalizedPurchasedShards = Math.min(
         normalizeSafeInteger(record.purchasedShards, base.purchasedShards ?? 0),
-        normalizedWalletShards,
+        Math.floor(normalizedWalletShards),
       );
       const normalizedGlobalBoosterCredits = normalizeSafeInteger(
         record.globalBoosterCredits,
