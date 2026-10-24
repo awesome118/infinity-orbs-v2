@@ -3697,7 +3697,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                   <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
                     Per-account view counts · top {impressionStats.viewers.length.toLocaleString()}
                   </div>
-                  <p className="mt-1 text-[9px] text-slate-600">Public Reddit usernames and unique post views among the 2,000 most recently active accounts in the last 180 days, ranked by view count. Repeat previews of the same post by the same account count once. Raw Reddit user IDs are not exposed.</p>
+                  <p className="mt-1 text-[9px] text-slate-600">Public Reddit usernames and cumulative unique post-view counts for the 2,000 most recently active accounts. Viewer records expire 180 days after the last new unique post view. Repeat previews of the same post by the same account count once. Raw Reddit user IDs are not exposed.</p>
                 </div>
                 {impressionStats.viewers.length ? (
                   <div className="max-h-64 overflow-auto">
