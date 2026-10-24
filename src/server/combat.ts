@@ -623,8 +623,6 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     actions.push({actor:'player',kind:'ability',text:'Orb roll: '+orbInfo.name+' · 1 / '+(isInfinity?'Infinity':orbRarity.toLocaleString())+' · ×'+damageMultiplier.toFixed(2)+' damage.'});
     const resolvedIntent:CombatIntent=scheduledActor!=='player'?'strike':activeSkill?'strike':intent==='auto'?chooseAutoCombatIntent(s):intent==='ability'?'strike':intent;
     const beatNumber=s.combatBeats;
-    const playerActionsResolvedBefore=s.playerActionsResolved;
-    const enemyActionsResolvedBefore=s.enemyActionsResolved;
     const playerActions=scheduledActor==='player'?1:0;
     let enemyActions=scheduledActor==='enemy'?1:0;
     if(activeSkill&&playerActions<1)throw new Error('No player action is ready for this ability.');
