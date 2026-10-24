@@ -105,7 +105,7 @@ test('upgrade page groups choices and accurately reports Shard, Crit and Turbo v
   for (const group of ['Roll controls', 'Rarity and criticals', 'Rewards and value', 'Offline progress']) {
     assert.ok(upgrades.includes(group), 'missing group ' + group);
   }
-  assert.match(upgrades, /shardChance \?\? 0\) \* 0\.15/);
+  assert.match(upgrades, /shardChance \?\? 0\) \* 0\.075/);
   assert.match(upgrades, /Critical Rarity Multiplier/);
   assert.match(upgrades, /Auto Roll Unlocked Automatically/);
   assert.match(upgrades, /Buy All Affordable/);
