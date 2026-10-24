@@ -2,7 +2,7 @@ import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import { getOrbInfo, luckMultiplier, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatSkillDefinition, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneAutoSacrificeSettings, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatActionsDue, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, COMBAT_RUNE_RARITIES, DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS, combatRuneRarityAtOrBelow, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatActionsDue, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, COMBAT_RUNE_RARITIES, DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS, shouldAutoSacrificeRune, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -365,6 +365,11 @@ function normalizeState(raw:string|null|undefined):CombatState {
     maxRarity: COMBAT_RUNE_RARITIES.includes(rawRuneAutoSacrifice?.maxRarity as CombatRuneRarity)
       ? rawRuneAutoSacrifice!.maxRarity as CombatRuneRarity
       : DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS.maxRarity,
+    targetRuneId: typeof rawRuneAutoSacrifice?.targetRuneId === 'string' &&
+      s.equippedRunes.includes(rawRuneAutoSacrifice.targetRuneId)
+      ? rawRuneAutoSacrifice.targetRuneId
+      : null,
+    preserveSpecialEffects: rawRuneAutoSacrifice?.preserveSpecialEffects !== false,
   };
   synchronizeCombatStats(s);
   // Legacy gear removal or malformed saves must not leave HP above the newly calculated max.
@@ -735,9 +740,14 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         if(secureRandom()<runeDropChance){
           const rune=createCombatRune(Math.max(0,s.depth-1),s.dungeonId,s.totalKills,s.sequence);
           const qualifiesForAutoSacrifice = s.runeAutoSacrifice.enabled &&
-            combatRuneRarityAtOrBelow(rune.rarity, s.runeAutoSacrifice.maxRarity);
+            shouldAutoSacrificeRune(rune, s.runeAutoSacrifice.maxRarity, s.runeAutoSacrifice.preserveSpecialEffects);
           const targets = qualifiesForAutoSacrifice ? getEquippedRuneTargets(s) : [];
-          const target = targets.length ? pick(targets) : null;
+          const configuredTarget = typeof s.runeAutoSacrifice.targetRuneId === 'string'
+            ? targets.find(targetRune => targetRune.id === s.runeAutoSacrifice.targetRuneId)
+            : undefined;
+          const target = targets.length
+            ? configuredTarget ?? targets.find(targetRune => /insight/i.test(targetRune.name)) ?? targets[0]!
+            : null;
           if(target){
             const result = grantRuneSacrificeExperience(target, rune);
             actions.push({actor:'player',kind:'loot',text:'Auto-strengthened '+target.name+' with '+rune.name+': +'+result.gainedXp.toLocaleString()+' Rune XP (Level '+(result.level)+').'});
@@ -893,29 +903,60 @@ function getEquippedRuneTargets(s: CombatState): CombatRune[] {
 }
 function processAutoSacrificeForCurrentInventory(s: CombatState): { runesSacrificed: number; totalXp: number } {
   const targets = getEquippedRuneTargets(s);
-  if (!targets.length) throw new Error('Equip at least one Rune before auto-sacrifice can strengthen a target.');
+  // No equipped target means nothing is consumed. This also protects the first
+  // Rune drop for a new player when Auto Sacrifice is enabled by preference.
+  if (!targets.length) return { runesSacrificed: 0, totalXp: 0 };
   const equipped = new Set(s.equippedRunes);
+  const configuredTarget = typeof s.runeAutoSacrifice.targetRuneId === 'string'
+    ? targets.find(rune => rune.id === s.runeAutoSacrifice.targetRuneId)
+    : undefined;
+  const target = configuredTarget ?? targets.find(rune => /insight/i.test(rune.name)) ?? targets[0]!;
   const donors = s.runes.filter(rune =>
-    !equipped.has(rune.id) && combatRuneRarityAtOrBelow(rune.rarity, s.runeAutoSacrifice.maxRarity));
+    !equipped.has(rune.id) &&
+    shouldAutoSacrificeRune(rune, s.runeAutoSacrifice.maxRarity, s.runeAutoSacrifice.preserveSpecialEffects));
   const donorIds = new Set(donors.map(rune => rune.id));
   let totalXp = 0;
   for (const donor of donors) {
-    // Pick an equipped Rune uniformly for every donor so the loadout receives the XP.
-    const target = pick(targets);
     const result = grantRuneSacrificeExperience(target, donor);
     totalXp = Math.min(Number.MAX_SAFE_INTEGER, totalXp + result.gainedXp);
   }
   s.runes = s.runes.filter(rune => !donorIds.has(rune.id));
   return { runesSacrificed: donors.length, totalXp };
 }
-export async function updateCombatRuneAutoSacrificeSettings(enabledValue: unknown, maxRarityValue: unknown): Promise<CombatSnapshot> {
+export async function updateCombatRuneAutoSacrificeSettings(
+  enabledValue: unknown,
+  maxRarityValue: unknown,
+  targetRuneIdValue?: unknown,
+  preserveSpecialEffectsValue?: unknown,
+): Promise<CombatSnapshot> {
   if (typeof enabledValue !== 'boolean' ||
       typeof maxRarityValue !== 'string' ||
-      !COMBAT_RUNE_RARITIES.includes(maxRarityValue as CombatRuneRarity)) {
+      !COMBAT_RUNE_RARITIES.includes(maxRarityValue as CombatRuneRarity) ||
+      (targetRuneIdValue !== undefined && targetRuneIdValue !== null &&
+        (typeof targetRuneIdValue !== 'string' || targetRuneIdValue.trim().length > 160)) ||
+      (preserveSpecialEffectsValue !== undefined && typeof preserveSpecialEffectsValue !== 'boolean')) {
     throw new Error('Auto-sacrifice settings are invalid.');
   }
   return mutate(s => {
-    s.runeAutoSacrifice = { enabled: enabledValue, maxRarity: maxRarityValue as CombatRuneRarity };
+    const targetRuneId = targetRuneIdValue === undefined
+      ? s.runeAutoSacrifice.targetRuneId
+      : typeof targetRuneIdValue === 'string' && targetRuneIdValue.trim()
+        ? targetRuneIdValue.trim()
+        : null;
+    if (targetRuneId && !s.runes.some(rune => rune.id === targetRuneId)) {
+      throw new Error('Auto-sacrifice target Rune is not in your inventory.');
+    }
+    if (targetRuneId && !s.equippedRunes.includes(targetRuneId)) {
+      throw new Error('Auto-sacrifice target Rune must be equipped.');
+    }
+    s.runeAutoSacrifice = {
+      enabled: enabledValue,
+      maxRarity: maxRarityValue as CombatRuneRarity,
+      targetRuneId,
+      preserveSpecialEffects: typeof preserveSpecialEffectsValue === 'boolean'
+        ? preserveSpecialEffectsValue
+        : s.runeAutoSacrifice.preserveSpecialEffects,
+    };
     return snapshot(s);
   });
 }

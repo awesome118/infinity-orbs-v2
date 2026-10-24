@@ -35,8 +35,16 @@ test('Rune Strengthen is tooltip-driven and Auto Sacrifice only consumes un-equi
   assert.ok(ui.includes('handleRuneClick(rune)'),'Rune icons must remain active while Strengthen is selected');
   assert.ok(ui.includes('setSacrificeDonorId(rune.id)'),'clicking a Rune must select it as donor, never sacrifice it implicitly');
   assert.ok(ui.includes('Sacrifice selected Rune'),'a separate confirmation action must perform the sacrifice');
-  assert.ok(combat.includes('!equipped.has(rune.id) && combatRuneRarityAtOrBelow'),'bulk auto-sacrifice must protect equipped donors');
-  assert.ok(combat.includes('const target = pick(targets);'),'each donor must select an equipped Rune target at random');
+  assert.ok(
+    combat.includes('!equipped.has(rune.id) &&') &&
+      combat.includes('shouldAutoSacrificeRune(rune, s.runeAutoSacrifice.maxRarity, s.runeAutoSacrifice.preserveSpecialEffects)'),
+    'bulk auto-sacrifice must protect equipped donors and preserve special-effect Runes',
+  );
+  assert.ok(
+    combat.includes('const configuredTarget = typeof s.runeAutoSacrifice.targetRuneId') &&
+      combat.includes("targets.find(targetRune => /insight/i.test(targetRune.name))"),
+    'automatic Rune drops should feed the selected target or prefer an equipped Insight Rune',
+  );
   assert.ok(combat.includes('const qualifiesForAutoSacrifice = s.runeAutoSacrifice.enabled'),'new eligible drops must use the saved auto-sacrifice setting');
   assert.ok(api.includes("app.post('/api/combat/runes/auto-sacrifice/settings'"));
   assert.ok(api.includes("app.post('/api/combat/runes/auto-sacrifice/run'"));

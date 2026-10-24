@@ -36,6 +36,10 @@ const ATTRIBUTION_WINDOW_MS = 7 * DAY_MS;
 const UNIQUE_DAY_RETENTION_MS = 35 * DAY_MS;
 const INDEX_PRUNE_EVERY = 100;
 const MAX_INDEXED_POSTS = 2_000;
+const MAX_INDEXED_VIEWERS = 2_000;
+const VIEWER_INDEX_KEY = ANALYTICS_PREFIX + 'viewer-index';
+const VIEWER_RECORD_PREFIX = ANALYTICS_PREFIX + 'viewer:';
+const VIEWER_RECORD_RETENTION_MS = 180 * 86_400_000;
 const MAX_COUNTER_COMMIT_ATTEMPTS = 24;
 
 function normalizePostType(value: unknown): ImpressionPostType {
@@ -196,6 +200,113 @@ async function incrementCounterOnce(markerKey: string, counterKey: string): Prom
  * contain a one-way hash, not the raw Reddit ID. This function never registers
  * online-player activity.
  */
+function normalizeViewerUsername(value: unknown): string {
+  const candidate = String(value ?? '').trim().replace(/^u\//i, '');
+  return /^[A-Za-z0-9_-]{1,20}$/.test(candidate) ? candidate : 'Redditor';
+}
+
+function normalizeViewerRow(value: unknown): ImpressionViewerRow | null {
+  try {
+    const row = JSON.parse(String(value ?? 'null')) as Partial<ImpressionViewerRow> | null;
+    if (!row || typeof row !== 'object') return null;
+    const firstSeenAt = Number(row.firstSeenAt);
+    const lastSeenAt = Number(row.lastSeenAt);
+    if (!Number.isSafeInteger(firstSeenAt) || firstSeenAt < 0 ||
+        !Number.isSafeInteger(lastSeenAt) || lastSeenAt < firstSeenAt) return null;
+    const rawByType = row.byType && typeof row.byType === 'object' ? row.byType : {};
+    return {
+      username: normalizeViewerUsername(row.username),
+      uniquePostViews: normalizeCount(row.uniquePostViews),
+      byType: {
+        'main-game': normalizeCount((rawByType as Record<string, unknown>)['main-game']),
+        'orb-share': normalizeCount((rawByType as Record<string, unknown>)['orb-share']),
+        frenzy: normalizeCount((rawByType as Record<string, unknown>).frenzy),
+      },
+      firstSeenAt,
+      lastSeenAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Increment a user's unique-post view tally after the canonical counters commit. */
+async function recordViewerPostView(userHash: string, usernameValue: unknown, postType: ImpressionPostType, now: number): Promise<void> {
+  const recordKey = VIEWER_RECORD_PREFIX + userHash;
+  const username = normalizeViewerUsername(usernameValue);
+  for (let attempt = 0; attempt < MAX_COUNTER_COMMIT_ATTEMPTS; attempt += 1) {
+    const txn = await redis.watch(recordKey);
+    let transactionClosed = false;
+    try {
+      const previous = normalizeViewerRow(await redis.get(recordKey));
+      const currentCount = previous?.uniquePostViews ?? 0;
+      const typeCount = previous?.byType[postType] ?? 0;
+      if (currentCount >= Number.MAX_SAFE_INTEGER || typeCount >= Number.MAX_SAFE_INTEGER) {
+        throw new Error('Per-user impression counter exceeded the safe integer limit.');
+      }
+      const next: ImpressionViewerRow = {
+        username,
+        uniquePostViews: currentCount + 1,
+        byType: {
+          'main-game': previous?.byType['main-game'] ?? 0,
+          'orb-share': previous?.byType['orb-share'] ?? 0,
+          frenzy: previous?.byType.frenzy ?? 0,
+        },
+        firstSeenAt: previous?.firstSeenAt ?? now,
+        lastSeenAt: Math.max(previous?.lastSeenAt ?? 0, now),
+      };
+      next.byType[postType] = typeCount + 1;
+      await txn.multi();
+      await txn.set(recordKey, JSON.stringify(next), { expiration: new Date(now + VIEWER_RECORD_RETENTION_MS) });
+      const result = await txn.exec();
+      transactionClosed = true;
+      if (result !== null) {
+        await redis.hSet(VIEWER_INDEX_KEY, { [userHash]: '1' });
+        return;
+      }
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+    }
+    await new Promise(resolve => setTimeout(resolve, Math.min(2 * (attempt + 1), 16)));
+  }
+  throw new Error('Per-user impression stats changed repeatedly; retry on a later event.');
+}
+
+/** Keep the admin viewer table bounded and discard index fields whose 180-day rows expired. */
+async function pruneViewerIndex(now: number): Promise<void> {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const txn = await redis.watch(VIEWER_INDEX_KEY);
+    let transactionClosed = false;
+    try {
+      const index = await redis.hGetAll(VIEWER_INDEX_KEY);
+      const userHashes = Object.keys(index ?? {});
+      const viewerValues = await redis.mGet(userHashes.map(userHash => VIEWER_RECORD_PREFIX + userHash));
+      const rows = userHashes.map((userHash, index) => ({
+        userHash,
+        row: normalizeViewerRow(viewerValues[index]),
+      }));
+      const cutoff = now - VIEWER_RECORD_RETENTION_MS;
+      const valid = rows
+        .filter(entry => entry.row && entry.row.lastSeenAt >= cutoff)
+        .sort((a, b) => (b.row?.lastSeenAt ?? 0) - (a.row?.lastSeenAt ?? 0));
+      const keep = new Set(valid.slice(0, MAX_INDEXED_VIEWERS).map(entry => entry.userHash));
+      const remove = rows.filter(entry => !keep.has(entry.userHash));
+      if (remove.length === 0) {
+        await txn.unwatch();
+        transactionClosed = true;
+        return;
+      }
+      await txn.multi();
+      for (const entry of remove) await txn.hDel(VIEWER_INDEX_KEY, entry.userHash);
+      const result = await txn.exec();
+      transactionClosed = true;
+      if (result !== null) return;
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+    }
+  }
+}
+
 export async function recordPostImpression(
   postTypeValue: unknown,
   deviceTypeValue: unknown,
@@ -365,9 +476,19 @@ export async function recordPostImpression(
   }
 
   if (!committed) throw new Error('Impression counters changed repeatedly. Please retry.');
+  try {
+    await recordViewerPostView(userHash, context.username, postType, now);
+  } catch (error) {
+    // Viewer details are an admin-only secondary projection. Never let it turn
+    // an already-committed public-post impression into a retryable failure.
+    console.error('[Impressions] Per-user viewer stats could not be updated.', error);
+  }
   if (pruneSequence % INDEX_PRUNE_EVERY === 0) {
     try { await prunePostIndex(now); } catch (error) {
       console.error('[Impressions] Index pruning failed after impression commit.', error);
+    }
+    try { await pruneViewerIndex(now); } catch (error) {
+      console.error('[Impressions] Viewer-index pruning failed after impression commit.', error);
     }
   }
   return { recorded: true };
@@ -413,6 +534,15 @@ export interface ImpressionPostRow {
   impressions: number;
 }
 
+/** Public Reddit username plus unique post previews, indexed by a one-way user hash. */
+export interface ImpressionViewerRow {
+  username: string;
+  uniquePostViews: number;
+  byType: Record<ImpressionPostType, number>;
+  firstSeenAt: number;
+  lastSeenAt: number;
+}
+
 export interface ImpressionTimePoint {
   bucket: string;
   total: number;
@@ -440,6 +570,8 @@ export interface ImpressionDashboard {
   day1Retention: ImpressionRetentionMetric;
   day3Retention: ImpressionRetentionMetric;
   conversion: Record<'orb-share' | 'frenzy', ImpressionConversionMetric>;
+  /** Highest unique post-view counts; Reddit usernames are shown only in the admin dashboard. */
+  viewers: ImpressionViewerRow[];
   trackedPostCount: number;
   byType: Record<ImpressionPostType, number>;
   byDevice: Record<ImpressionDeviceType, number>;
@@ -460,12 +592,13 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
     ? Math.floor(requestedNow)
     : Date.now();
   const currentDay = Math.floor(dashboardNow / DAY_MS);
-  const [total, postIndex, uniqueUsers, uniqueToday, playerRegistry] = await Promise.all([
+  const [total, postIndex, uniqueUsers, uniqueToday, playerRegistry, viewerIndex] = await Promise.all([
     readCount(TOTAL_KEY),
     redis.hGetAll(POST_INDEX_KEY),
     readCount(UNIQUE_USER_COUNT_KEY),
     readCount(UNIQUE_TODAY_COUNT_PREFIX + currentDay),
     redis.hGetAll(PLAYER_REGISTRY_KEY),
+    redis.hGetAll(VIEWER_INDEX_KEY),
   ]);
 
   const uniqueByType = Object.fromEntries(await Promise.all(
@@ -607,6 +740,18 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
     return readTimePoint(bucket, DAY_PREFIX, new Date(bucket * 86_400_000).toISOString().slice(0, 10));
   }));
 
+  const viewerHashes = Object.keys(viewerIndex ?? {}).slice(0, MAX_INDEXED_VIEWERS);
+  const viewerValues = await redis.mGet(viewerHashes.map(userHash => VIEWER_RECORD_PREFIX + userHash));
+  const viewerRows = viewerHashes.map((userHash, index) => ({
+    userHash,
+    row: normalizeViewerRow(viewerValues[index]),
+  }));
+  const viewers = viewerRows
+    .map(entry => entry.row)
+    .filter((row): row is ImpressionViewerRow => Boolean(row) && row!.lastSeenAt >= dashboardNow - VIEWER_RECORD_RETENTION_MS)
+    .sort((a, b) => b.uniquePostViews - a.uniquePostViews || b.lastSeenAt - a.lastSeenAt)
+    .slice(0, 100);
+
   return {
     generatedAt: dashboardNow,
     total,
@@ -617,6 +762,7 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
     day1Retention,
     day3Retention,
     conversion,
+    viewers,
     trackedPostCount,
     byType,
     byDevice,

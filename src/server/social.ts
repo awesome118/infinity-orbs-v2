@@ -2295,6 +2295,18 @@ async function isRegisteredFrenzyPost(postId: string): Promise<boolean> {
   return false;
 }
 
+async function isRegisteredOrbSharePost(postId: string): Promise<boolean> {
+  const rawId = String(postId ?? '').trim();
+  const normalizedId = normalizeRedditPostId(rawId);
+  if (!normalizedId) return false;
+  const bareId = normalizedId.replace(/^t3_/i, '');
+  const candidates = [...new Set([rawId, normalizedId, bareId].filter(Boolean))];
+  for (const candidate of candidates) {
+    if (await redis.get('io:shared-orb:post:' + candidate) != null) return true;
+  }
+  return false;
+}
+
 async function resolveGlobalGamePostId(): Promise<string> {
   const saved = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
   if (!saved) {
@@ -2304,6 +2316,22 @@ async function resolveGlobalGamePostId(): Promise<string> {
     throw new Error('Global Chat is disabled because the registered Game destination is an invalid Frenzy post. Create a new main Game post.');
   }
   return saved;
+}
+
+/** Repairs a missing/stale registration when the moderator is viewing the real main Game post. */
+export async function registerCurrentPostAsGlobalChatDestination(): Promise<{ postId: string }> {
+  const postId = normalizeRedditPostId(String(context.postId ?? '').trim());
+  if (!postId || postId === 't3_') throw new Error('The current Reddit post ID is unavailable. Open the main Infinity Orbs Game post and retry.');
+  if (await isRegisteredFrenzyPost(postId)) throw new Error('A Frenzy post cannot be registered as the Global Chat destination. Open the main Game post and retry.');
+  if (await isRegisteredOrbSharePost(postId)) throw new Error('A shared-Orb post cannot be registered as the Global Chat destination. Open the main Game post and retry.');
+  const existing = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
+  if (existing && existing !== postId &&
+      !(await isRegisteredFrenzyPost(existing)) &&
+      !(await isRegisteredOrbSharePost(existing))) {
+    throw new Error('A valid main Game post is already registered. Use the official post-creation flow to replace it.');
+  }
+  await redis.set(GLOBAL_GAME_POST_KEY, postId);
+  return { postId };
 }
 
 async function requireGlobalChatLauncher(): Promise<string> {

@@ -54,6 +54,13 @@ test('post impressions count aggregate metrics without registering online-player
     assert.equal(after.byDevice.mobile - before.byDevice.mobile, 1);
     assert.ok(after.posts.some(post => post.postId === mainPostId && post.postType === 'main-game' && post.impressions === 1));
     assert.ok(after.posts.some(post => post.postId === sharePostId && post.postType === 'orb-share' && post.impressions === 1));
+    const viewer = after.viewers.find(row => row.username === 'ImpressionViewer');
+    assert.ok(viewer, 'admin analytics should expose the public username for the account');
+    assert.equal(viewer.uniquePostViews, 2, 'per-user view count should count each unique post once');
+    assert.equal(viewer.byType['main-game'], 1);
+    assert.equal(viewer.byType['orb-share'], 1);
+    assert.equal(viewer.byType.frenzy, 0);
+    assert.equal('userId' in viewer, false, 'dashboard viewer rows must not expose raw Reddit user IDs');
 
     assert.equal(presenceAfter, presenceBefore, 'impressions must not touch the online-player sorted set');
     assert.deepEqual(registryAfter, registryBefore, 'impressions must not register player activity');

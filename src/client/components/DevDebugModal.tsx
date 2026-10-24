@@ -83,6 +83,13 @@ type ImpressionDashboardData = {
   day1Retention: { cohortDay: string; cohortSize: number; retained: number; rate: number | null };
   day3Retention: { cohortDay: string; cohortSize: number; retained: number; rate: number | null };
   conversion: Record<'orb-share' | 'frenzy', { eligibleViewers: number; conversions: number; rate: number | null }>;
+  viewers: Array<{
+    username: string;
+    uniquePostViews: number;
+    byType: Record<ImpressionPostType, number>;
+    firstSeenAt: number;
+    lastSeenAt: number;
+  }>;
   trackedPostCount: number;
   byType: Record<ImpressionPostType, number>;
   byDevice: Record<ImpressionDeviceType, number>;
@@ -397,6 +404,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [contextInfo, setContextInfo] = useState<AdminContext | null>(null);
+  const [globalChatRegistrationBusy, setGlobalChatRegistrationBusy] = useState(false);
 
   const [targetUser, setTargetUser] = useState('');
   const [pendingWipe, setPendingWipe] = useState<{ action: 'wipe-game' | 'wipe-and-ban' | 'wipe-and-unban'; username: string } | null>(null);
@@ -631,7 +639,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           !Number.isSafeInteger(data.uniqueToday) || Number(data.uniqueToday) < 0 ||
           !Number.isSafeInteger(data.newPlayersToday) || Number(data.newPlayersToday) < 0 ||
           !data.day1Retention || !data.day3Retention || !data.conversion || !data.uniqueByType ||
-          !Array.isArray(data.posts) || !Array.isArray(data.last24Hours) || !Array.isArray(data.last30Days) ||
+          !Array.isArray(data.viewers) || !Array.isArray(data.posts) || !Array.isArray(data.last24Hours) || !Array.isArray(data.last30Days) ||
           !data.byType || !data.byDevice || !data.byTypeAndDevice) {
         throw new Error('Impression analytics returned an incomplete dashboard. Refresh and retry.');
       }
@@ -924,6 +932,31 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     const interval = window.setInterval(() => void loadChatReports(true), 5000);
     return () => window.clearInterval(interval);
   }, []);
+
+  const registerCurrentPostForGlobalChat = async () => {
+    if (globalChatRegistrationBusy) return;
+    const confirmed = window.confirm(
+      'Register the CURRENT Reddit post as the main Infinity Orbs Game destination for Global Chat? Only confirm while the actual main Game post is open. Never run this on a Frenzy or shared-Orb post.'
+    );
+    if (!confirmed) return;
+    setGlobalChatRegistrationBusy(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/dev/chat/register-current-post', {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not register the current post.');
+      setMessage('Registered ' + String(data.postId ?? 'the current post') + ' for Global Chat. Reload the main Game post to refresh chat availability.');
+    } catch (error) {
+      setMessage('Global Chat registration failed: ' + (error instanceof Error ? error.message : 'Unknown error.'));
+    } finally {
+      setGlobalChatRegistrationBusy(false);
+    }
+  };
 
   const loadGuildChatSpy = async (quiet = false) => {
     if (!quiet) setGuildChatSpyLoading(true);
@@ -3532,6 +3565,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
           <div className="flex items-center gap-2">
             <button type="button"
+              title="Repair the canonical Global Chat destination while the main Game post is open."
+              disabled={globalChatRegistrationBusy}
+              onClick={() => void registerCurrentPostForGlobalChat()}
+              className={buttonBase + ' bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-200 px-3 py-2'}
+            >
+              {globalChatRegistrationBusy ? 'Registering…' : 'Repair Global Chat'}
+            </button>
+            <button type="button"
               title="Jump to aggregate Impressions analytics."
               onClick={() => {
                 document.getElementById('io-impressions-tab')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -3554,7 +3595,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 <Eye className="w-4 h-4" /> Impressions
               </div>
               <p className="mt-1 text-[10px] text-slate-500">
-                Unique account/post previews for main-game, Orb Share, and Frenzy. Repeated loads of the same post count once per account for 180 days. Raw IDs and usernames are not stored. Reddit feed views are not exposed.
+                Unique account/post previews for main-game, Orb Share, and Frenzy. Repeated loads of the same post count once per account for 180 days. Raw Reddit user IDs are not stored. Public usernames and per-account unique-view counts are visible only in this admin dashboard. Reddit feed views are not exposed.
               </p>
             </div>
             <button type="button"
@@ -3649,6 +3690,43 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                     </tbody>
                   </table>
                 </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-800 overflow-hidden">
+                <div className="px-3 py-2 border-b border-slate-800">
+                  <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
+                    Per-account view counts · top {impressionStats.viewers.length.toLocaleString()}
+                  </div>
+                  <p className="mt-1 text-[9px] text-slate-600">Public Reddit usernames and cumulative unique post-view counts for the 2,000 most recently active accounts. Viewer records expire 180 days after the last new unique post view. Repeat previews of the same post by the same account count once. Raw Reddit user IDs are not exposed.</p>
+                </div>
+                {impressionStats.viewers.length ? (
+                  <div className="max-h-64 overflow-auto">
+                    <table className="w-full text-left text-[10px]">
+                      <thead className="sticky top-0 bg-slate-900 text-slate-500"><tr>
+                        <th className="px-3 py-2">Username</th>
+                        <th className="px-3 py-2 text-right">Unique views</th>
+                        <th className="px-3 py-2 text-right">Main</th>
+                        <th className="px-3 py-2 text-right">Share</th>
+                        <th className="px-3 py-2 text-right">Frenzy</th>
+                        <th className="px-3 py-2">Last seen</th>
+                      </tr></thead>
+                      <tbody>
+                        {impressionStats.viewers.map(viewer => (
+                          <tr key={viewer.username + ':' + viewer.lastSeenAt} className="border-t border-slate-800/70">
+                            <td className="px-3 py-2 font-semibold text-slate-200">u/{viewer.username}</td>
+                            <td className="px-3 py-2 text-right font-mono font-bold text-cyan-200">{viewer.uniquePostViews.toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right font-mono text-emerald-200">{viewer.byType['main-game'].toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right font-mono text-violet-200">{viewer.byType['orb-share'].toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right font-mono text-orange-200">{viewer.byType.frenzy.toLocaleString()}</td>
+                            <td className="px-3 py-2 text-slate-500">{new Date(viewer.lastSeenAt).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="p-4 text-xs text-slate-500 text-center">No account-level impression details are available yet.</div>
+                )}
               </div>
 
               <div className="rounded-xl border border-slate-800 overflow-hidden">

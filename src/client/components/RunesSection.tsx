@@ -4,6 +4,7 @@ import type { CombatRune, CombatRuneRarity, CombatRuneStat, CombatSnapshot } fro
 import {
   combatRuneBonuses,
   combatRuneEffectText,
+  shouldAutoSacrificeRune,
   combatRuneRarityAtOrBelow,
   combatRuneExperienceForLevel,
   combatRuneMajorAbilitySummary,
@@ -110,10 +111,16 @@ export const RunesSection:React.FC=()=>{
   const equippedRunes=state?(state.equippedRunes.map(id=>state.runes.find(rune=>rune.id===id)).filter((rune):rune is CombatRune=>Boolean(rune))):[];
 
   const strengthenTargetRune=runes.find(rune=>rune.id===strengthenTargetId);
-  const rawAutoSacrificeSettings=state?.runeAutoSacrifice??{enabled:false,maxRarity:'Common' as CombatRuneRarity};
-  const autoSacrificeSettings={enabled:rawAutoSacrificeSettings.enabled===true,maxRarity:RUNE_RARITIES.includes(rawAutoSacrificeSettings.maxRarity)?rawAutoSacrificeSettings.maxRarity:'Common' as CombatRuneRarity};
+  const rawAutoSacrificeSettings=state?.runeAutoSacrifice??{enabled:false,maxRarity:'Rare' as CombatRuneRarity,targetRuneId:null,preserveSpecialEffects:true};
+  const autoSacrificeSettings={
+    enabled:rawAutoSacrificeSettings.enabled===true,
+    maxRarity:RUNE_RARITIES.includes(rawAutoSacrificeSettings.maxRarity)?rawAutoSacrificeSettings.maxRarity:'Rare' as CombatRuneRarity,
+    targetRuneId:typeof rawAutoSacrificeSettings.targetRuneId==='string'?rawAutoSacrificeSettings.targetRuneId:null,
+    preserveSpecialEffects:rawAutoSacrificeSettings.preserveSpecialEffects!==false,
+  };
+  const autoSacrificeTarget=equippedRunes.find(rune=>rune.id===autoSacrificeSettings.targetRuneId)??equippedRunes.find(rune=>/insight/i.test(rune.name))??equippedRunes[0]??null;
   const autoSacrificeEligibleCount=state?runes.filter(rune=>
-    !state.equippedRunes.includes(rune.id)&&combatRuneRarityAtOrBelow(rune.rarity,autoSacrificeSettings.maxRarity)
+    !state.equippedRunes.includes(rune.id)&&shouldAutoSacrificeRune(rune,autoSacrificeSettings.maxRarity,autoSacrificeSettings.preserveSpecialEffects)
   ).length:0;
   const statCards=[
     {label:'Orb Luck',value:pct(bonuses.luckPct),icon:<Sparkles size={16}/>},
@@ -153,12 +160,19 @@ export const RunesSection:React.FC=()=>{
     }
     setError('');setInspectedRuneId(current=>current===rune.id?'':rune.id);
   };
-  const saveAutoSacrificeSettings=async(enabled:boolean,maxRarity:CombatRuneRarity)=>{
+  const saveAutoSacrificeSettings=async(
+    enabled:boolean,
+    maxRarity:CombatRuneRarity,
+    targetRuneId:string|null=autoSacrificeSettings.targetRuneId,
+    preserveSpecialEffects:boolean=autoSacrificeSettings.preserveSpecialEffects,
+  )=>{
     if(!beginAction())return;
     setAutoSacrificeBusy(true);setError('');setNotice('');
     try{
-      const result=await request<CombatSnapshot>('/api/combat/runes/auto-sacrifice/settings','POST',{enabled,maxRarity});
-      snapshotRequestSequenceRef.current+=1;setSnapshot(result);setNotice(enabled?'Auto Sacrifice enabled. New Runes at or below '+maxRarity+' will strengthen a random equipped Rune.':'Auto Sacrifice disabled.');
+      const result=await request<CombatSnapshot>('/api/combat/runes/auto-sacrifice/settings','POST',{enabled,maxRarity,targetRuneId,preserveSpecialEffects});
+      snapshotRequestSequenceRef.current+=1;setSnapshot(result);
+      const targetName=equippedRunes.find(rune=>rune.id===targetRuneId)?.name??(equippedRunes.find(rune=>/insight/i.test(rune.name))??equippedRunes[0])?.name??'your first equipped Rune';
+      setNotice(enabled?'Auto Sacrifice enabled: Runes at or below '+maxRarity+' feed '+targetName+'. '+(preserveSpecialEffects?'Runes with Major Abilities are protected.':'Special-effect Runes may also be sacrificed.'):'Auto Sacrifice disabled.');
     }catch(e){setError(e instanceof Error?e.message:'Auto Sacrifice settings could not be saved.');}
     finally{setAutoSacrificeBusy(false);endAction();}
   };
@@ -170,7 +184,7 @@ export const RunesSection:React.FC=()=>{
       snapshotRequestSequenceRef.current+=1;setSnapshot(result);
       const summary=result.runeAutoSacrificeResult;
       setNotice(summary
-        ?'Auto Sacrifice consumed '+fmt(summary.runesSacrificed)+' Runes and granted '+fmt(summary.totalXp)+' Rune XP across random equipped targets.'
+        ?'Auto Sacrifice consumed '+fmt(summary.runesSacrificed)+' Runes and granted '+fmt(summary.totalXp)+' Rune XP to '+(autoSacrificeTarget?.name??'the preferred equipped Rune')+'.'
         :'Auto Sacrifice completed.');
       setStrengthenTargetId('');
     }catch(e){setError(e instanceof Error?e.message:'Auto Sacrifice could not run.');}
@@ -214,19 +228,33 @@ export const RunesSection:React.FC=()=>{
           <div className="io-runes-auto-sacrifice-heading"><strong>Auto Sacrifice</strong><span>Turn low-rarity drops into XP for your equipped loadout.</span></div>
           <label className="io-runes-auto-toggle">
             <input type="checkbox" checked={autoSacrificeSettings.enabled} disabled={operationPending||autoSacrificeBusy} onChange={event=>void saveAutoSacrificeSettings(event.target.checked,autoSacrificeSettings.maxRarity)}/>
-            <span>Automatically strengthen an equipped Rune with new drops</span>
+            <span>Automatically strengthen a chosen equipped Rune with new drops</span>
           </label>
           <label className="io-runes-auto-rarity">Sacrifice rarity
             <select value={autoSacrificeSettings.maxRarity} disabled={operationPending||autoSacrificeBusy} onChange={event=>void saveAutoSacrificeSettings(autoSacrificeSettings.enabled,event.target.value as CombatRuneRarity)}>
               {RUNE_RARITIES.map(rarity=><option key={rarity} value={rarity}>{rarity} and below</option>)}
             </select>
           </label>
+          <label className="io-runes-auto-rarity">Strengthen target
+            <select
+              value={autoSacrificeSettings.targetRuneId&&equippedRunes.some(rune=>rune.id===autoSacrificeSettings.targetRuneId)?autoSacrificeSettings.targetRuneId:''}
+              disabled={operationPending||autoSacrificeBusy||equippedRunes.length===0}
+              onChange={event=>void saveAutoSacrificeSettings(autoSacrificeSettings.enabled,autoSacrificeSettings.maxRarity,event.target.value||null)}
+            >
+              <option value="">Prefer Insight Rune, otherwise first equipped</option>
+              {equippedRunes.map(rune=><option key={rune.id} value={rune.id}>{rune.name}</option>)}
+            </select>
+          </label>
+          <label className="io-runes-auto-toggle">
+            <input type="checkbox" checked={autoSacrificeSettings.preserveSpecialEffects} disabled={operationPending||autoSacrificeBusy} onChange={event=>void saveAutoSacrificeSettings(autoSacrificeSettings.enabled,autoSacrificeSettings.maxRarity,autoSacrificeSettings.targetRuneId,event.target.checked)}/>
+            <span>Preserve Runes with Major Abilities</span>
+          </label>
           <button type="button" className="io-runes-button io-runes-process-button" disabled={operationPending||autoSacrificeBusy||equippedRunes.length===0||autoSacrificeEligibleCount===0} onClick={()=>void processAutoSacrifice()}>
             {autoSacrificeBusy?'Processing…':'Sacrifice '+fmt(autoSacrificeEligibleCount)+' eligible Runes now'}
           </button>
-          {autoSacrificeSettings.enabled&&equippedRunes.length===0&&<p className="io-runes-auto-warning" role="status">Auto Sacrifice is enabled, but no Runes are equipped. New eligible drops will be kept until you equip a Rune target.</p>}
-          <p>When enabled, new Runes at or below the selected rarity are sacrificed into a random equipped Rune. The button processes existing eligible Runes too. Equipped Runes are protected from auto-sacrifice; manual Strengthen can consume any other Rune and will ask before consuming an equipped Rune.</p>
-          {equippedRunes.length===0&&<p className="io-runes-muted" role="note">Equip at least one Rune before enabling Auto Sacrifice, so every consumed Rune has a valid strengthening target.</p>}
+          {autoSacrificeSettings.enabled&&equippedRunes.length===0&&<p className="io-runes-auto-warning" role="status">Auto Sacrifice is enabled, but no Runes are equipped. New eligible drops are kept until you equip a target.</p>}
+          <p>When enabled, eligible un-equipped Runes at or below the selected rarity feed the selected target. With no explicit target, an equipped Insight Rune is preferred, then the first equipped Rune. When preservation is on, Runes with Major Abilities are never auto-sacrificed. The button processes existing eligible Runes too; manual Strengthen can still consume other Runes and warns before consuming an equipped Rune.</p>
+          {equippedRunes.length===0&&<p className="io-runes-muted" role="note">Equip at least one Rune before Auto Sacrifice can consume drops. Existing eligible Runes will be kept until a target is equipped.</p>}
         </div>
         <div className="io-runes-inventory-tools">
           <label className="io-runes-search">Search Rune inventory by name, rarity, stat, or Major Ability

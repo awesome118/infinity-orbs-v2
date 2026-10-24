@@ -73,6 +73,7 @@ import {
   getCommunityEvent,
   getGlobalChat,
   getGlobalChatStatus,
+  registerCurrentPostAsGlobalChatDestination,
   postGlobalChatMessage,
   recordGlobalChatComment,
   reportGlobalChatMessage,
@@ -901,9 +902,20 @@ export function createApp() {
   });
   app.post('/api/combat/runes/auto-sacrifice/settings', async (req,res) => {
     const enabled=req.body?.enabled, maxRarity=req.body?.maxRarity;
-    if(typeof enabled!=='boolean'||typeof maxRarity!=='string')return res.status(400).json({error:'Auto-sacrifice settings are invalid.'});
-    try{res.setHeader('Cache-Control','no-store');res.json(await updateCombatRuneAutoSacrificeSettings(enabled,maxRarity));}
-    catch(e:any){const message=e?.message||'Could not update Auto Sacrifice settings.';const status=message==='Auto-sacrifice settings are invalid.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
+    const targetRuneId=req.body?.targetRuneId, preserveSpecialEffects=req.body?.preserveSpecialEffects;
+    if(typeof enabled!=='boolean'||typeof maxRarity!=='string'||
+       (targetRuneId!==undefined&&targetRuneId!==null&&typeof targetRuneId!=='string')||
+       (preserveSpecialEffects!==undefined&&typeof preserveSpecialEffects!=='boolean')) {
+      return res.status(400).json({error:'Auto-sacrifice settings are invalid.'});
+    }
+    try{
+      res.setHeader('Cache-Control','no-store');
+      res.json(await updateCombatRuneAutoSacrificeSettings(enabled,maxRarity,targetRuneId,preserveSpecialEffects));
+    } catch(e:any) {
+      const message=e?.message||'Could not update Auto Sacrifice settings.';
+      const status=message==='Auto-sacrifice settings are invalid.'||message==='Auto-sacrifice target Rune is not in your inventory.'||message==='Auto-sacrifice target Rune must be equipped.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;
+      res.status(status).json({error:message});
+    }
   });
   app.post('/api/combat/runes/auto-sacrifice/run', async (_req,res) => {
     try{res.setHeader('Cache-Control','no-store');res.json(await processCombatRuneAutoSacrifice());}
@@ -1067,6 +1079,18 @@ export function createApp() {
       res.status(transientContentionError(e) ? 503 : 500).json({
         error: transientContentionError(e) ? 'Leaderboards are busy updating. Please retry.' : e?.message || 'Failed to fetch leaderboards.',
       });
+    }
+  });
+
+  app.post('/api/dev/chat/register-current-post', async (_req, res) => {
+    if (!isDebugUser()) return res.status(403).json({ error: 'Admin access required.' });
+    try {
+      const result = await registerCurrentPostAsGlobalChatDestination();
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ success: true, ...result });
+    } catch (e: any) {
+      const message = e?.message || 'Could not register the main Game post for Global Chat.';
+      res.status(400).json({ error: message });
     }
   });
 
@@ -1665,6 +1689,21 @@ export function createApp() {
           userGeneratedContent: { text },
         });
         postId = post.id;
+        // Mark this known shared-Orb post so the moderator's Global Chat repair
+        // action cannot accidentally register it as the canonical Game post.
+        try {
+          const rawSharePostId = String(post.id ?? '').trim();
+          const normalizedSharePostId = /^t3_/i.test(rawSharePostId) ? rawSharePostId : 't3_' + rawSharePostId;
+          if (normalizedSharePostId.length <= 200) {
+            await redis.set('io:shared-orb:post:' + normalizedSharePostId, '1', {
+              expiration: new Date(Date.now() + 180 * 86_400_000),
+            });
+          }
+        } catch (registryError) {
+          // The share itself is already published. Logging this best-effort
+          // safety marker must not turn success into a retryable failure.
+          console.error('[Share] Could not mark shared-Orb post for chat-routing protection.', registryError);
+        }
       }
       // The post and cooldown are already durable. Quest progress is a
       // secondary projection: if it conflicts after Reddit has accepted the
