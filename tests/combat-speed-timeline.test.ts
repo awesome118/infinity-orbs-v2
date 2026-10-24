@@ -71,7 +71,7 @@ test('combat Orb rolls ignore main-game Luck and the orb panel explains Luck and
 test('Combat mode blocks main-game rolls, queues skills, and uses a stable gear inspector', () => {
   const main = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
   const ui = readFileSync(resolve(process.cwd(), 'src/client/components/CombatSection.tsx'), 'utf8');
-  assert.ok(main.includes('if (combatMode) return;'));
+  assert.ok(main.includes('if (combatModeRef.current) return;'));
   assert.ok(main.includes('!splashEntered || combatMode || !autoRoll'));
   assert.ok(ui.includes('const queueAbility='));
   assert.ok(ui.includes('Queued for next beat'));
