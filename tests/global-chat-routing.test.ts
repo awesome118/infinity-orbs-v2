@@ -68,6 +68,26 @@ test('moderator repair helper registers an existing main post and rejects a regi
       /A Frenzy post cannot be registered/,
     );
     assert.equal(await baseRedis.get(gamePostKey), mainPostId, 'a Frenzy attempt must not overwrite the canonical target');
+
+    const sharePostId = 't3_shared-orb-repair-' + suffix;
+    const shareKey = 'io:shared-orb:post:' + sharePostId;
+    const previousShare = await baseRedis.get(shareKey);
+    try {
+      await baseRedis.set(shareKey, '1');
+      configureDevvitRuntime({
+        redis: baseRedis,
+        context: { ...baseContext, postId: sharePostId, userId: 'chat-repair-test', username: 'shadow_fen' },
+        reddit: baseReddit,
+      });
+      await assert.rejects(
+        () => registerCurrentPostAsGlobalChatDestination(),
+        /A shared-Orb post cannot be registered/,
+      );
+      assert.equal(await baseRedis.get(gamePostKey), mainPostId, 'a shared-Orb attempt must not overwrite the canonical target');
+    } finally {
+      await baseRedis.del(shareKey);
+      if (previousShare != null) await baseRedis.set(shareKey, previousShare);
+    }
   } finally {
     await baseRedis.del(gamePostKey);
     await baseRedis.del(frenzyKey);
