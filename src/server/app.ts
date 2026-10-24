@@ -825,9 +825,7 @@ export function createApp() {
         title: 'Infinity Orbs',
         entry: 'default',
       });
-      await redis.set('io:global-game-post-id', post.id).catch((error: unknown) => {
-        console.error('[Global Chat] Could not register the new Game post:', error);
-      });
+      await redis.set('io:global-game-post-id', post.id);
       res.json({ status: 'success', message: `Created Infinity Orbs post ${post.id} in r/${subredditName}.` });
     } catch (e) {
       console.error('Failed to create install post:', e);
