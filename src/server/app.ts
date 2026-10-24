@@ -1694,7 +1694,7 @@ export function createApp() {
         try {
           const rawSharePostId = String(post.id ?? '').trim();
           const normalizedSharePostId = /^t3_/i.test(rawSharePostId) ? rawSharePostId : 't3_' + rawSharePostId;
-          if (normalizedSharePostId.length <= 200 && !/[\\u0000-\\u001f\\u007f]/.test(normalizedSharePostId)) {
+          if (normalizedSharePostId.length <= 200) {
             await redis.set('io:shared-orb:post:' + normalizedSharePostId, '1', {
               expiration: new Date(Date.now() + 180 * 86_400_000),
             });
