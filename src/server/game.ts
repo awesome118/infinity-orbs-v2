@@ -3600,7 +3600,7 @@ export async function applyRolls(
   const maxEchoChain = runeAbilityEffects.echoChamberMaxChain;
   const paradoxChance = Math.min(.50, runeAbilityEffects.paradoxEnginePct / 100);
   const eventHorizonRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.eventHorizonPct / 100);
-  const shardConstellationThreshold = Math.max(3, Math.floor(12 / (1 + runeAbilityEffects.shardConstellationPct / 100)));
+  const shardConstellationThreshold = Math.max(6, Math.floor(24 / (1 + runeAbilityEffects.shardConstellationPct / 100)));
   const temporalMomentumPerRoll = runeAbilityEffects.temporalLoopMomentumPerRoll;
   const prismaticForkChance = Math.min(.45, runeAbilityEffects.prismaticForkPct / 100);
   const prismaticForkRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.prismaticForkPct / 100);
