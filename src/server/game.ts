@@ -2214,7 +2214,7 @@ return withPlayerMutationLockFor(userId, async () => {
       normalizeSafeInteger(state.globalBoosterCreditLots[orderId], 0) + pack.globalBoosterCredits;
 
     state.stateRevision = currentRevision + 1;
-    state.shards = currentShardBalance + pack.shards;
+    state.shards = roundShardAmount(currentShardBalance + pack.shards);
     state.purchasedShards = existingPurchasedShards + pack.shards;
     // Lifetime Shards are telemetry, not a spendable balance. Saturate the
     // counter rather than allowing an unsafe integer into persisted state.
