@@ -605,7 +605,7 @@ export function combatEnergyAfterRegen(energyValue: unknown, maxEnergyValue: unk
 /** Speed required to earn another action after the opening action. */
 export const COMBAT_SPEED_PER_ACTION = 400;
 
-/** Actions owed at a cumulative speed threshold; the opening action starts ready. */
+/** Every beat grants one action; Speed adds extra actions at cumulative thresholds. */
 export function combatActionsDue(speedValue: unknown, beatValue: unknown, resolvedValue: unknown, maxActionsValue = 100): number {
   const speedRaw = Number(speedValue), beatRaw = Number(beatValue), resolvedRaw = Number(resolvedValue);
   const speed = Number.isFinite(speedRaw) ? Math.max(0, speedRaw) : 0;
@@ -613,12 +613,12 @@ export function combatActionsDue(speedValue: unknown, beatValue: unknown, resolv
   const resolved = Number.isFinite(resolvedRaw) ? Math.max(0, Math.floor(resolvedRaw)) : 0;
   const rawLimit = Number(maxActionsValue);
   const limit = Number.isFinite(rawLimit) ? Math.max(0, Math.min(1000, Math.floor(rawLimit))) : 100;
-  const earnedAfterOpening = Math.floor(Math.min(
+  const earnedBonusActions = Math.floor(Math.min(
     Number.MAX_SAFE_INTEGER,
     Math.max(0, (beats - 1) * speed / COMBAT_SPEED_PER_ACTION),
   ));
   const target = speed > 0 && beats > 0
-    ? Math.min(Number.MAX_SAFE_INTEGER, 1 + earnedAfterOpening)
+    ? Math.min(Number.MAX_SAFE_INTEGER, beats + earnedBonusActions)
     : 0;
   return Math.max(0, Math.min(limit, target - resolved));
 }
@@ -671,15 +671,18 @@ export function combatActionTimeline(
   const append = (
     actor: CombatActionTimelineEntry['actor'],
     speed: number,
-    resolved: number,
+    _resolved: number,
     count: number,
   ) => {
     if (speed <= 0 || count <= 0) return;
+    const progressBeforeBeat = Math.max(0, beat - 2) * speed;
+    const thresholdsAlreadyCrossed = Math.floor(progressBeforeBeat / COMBAT_SPEED_PER_ACTION);
     for (let actionIndex = 0; actionIndex < count; actionIndex += 1) {
-      const ordinal = Math.min(Number.MAX_SAFE_INTEGER, resolved + actionIndex + 1);
-      const rawTime = ordinal <= 1
+      // One normal action occurs every beat. Additional actions fire at the exact
+      // Speed threshold crossed during this beat, instead of being clamped to its end.
+      const rawTime = actionIndex === 0
         ? 1 - speed / Math.max(1, maxSpeed)
-        : ((ordinal - 1) * COMBAT_SPEED_PER_ACTION / speed) - (beat - 2);
+        : ((thresholdsAlreadyCrossed + actionIndex) * COMBAT_SPEED_PER_ACTION - progressBeforeBeat) / speed;
       timeline.push({
         actor,
         actionIndex,
