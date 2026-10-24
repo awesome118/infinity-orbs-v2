@@ -634,8 +634,8 @@ export interface CombatActionTimelineEntry {
 
 /**
  * Merge actions owed by player and enemy onto the same Speed threshold timeline.
- * The first action is ready at the encounter opening; subsequent actions recharge at
- * COMBAT_SPEED_PER_ACTION Speed per beat. Equal-time actions give the Delver priority.
+ * Opening actions use a speed-weighted initiative window so faster combatants act first;
+ * later actions recharge at COMBAT_SPEED_PER_ACTION Speed per beat. Exact ties favor the Delver.
  */
 export function combatActionTimeline(
   playerSpeedValue: unknown,
@@ -665,6 +665,7 @@ export function combatActionTimeline(
   const enemyResolved = safeCounter(enemyResolvedValue);
   const playerActions = safeActions(playerActionsValue);
   const enemyActions = safeActions(enemyActionsValue);
+  const maxSpeed = Math.max(playerSpeed, enemySpeed);
   const timeline: CombatActionTimelineEntry[] = [];
 
   const append = (
@@ -677,7 +678,7 @@ export function combatActionTimeline(
     for (let actionIndex = 0; actionIndex < count; actionIndex += 1) {
       const ordinal = Math.min(Number.MAX_SAFE_INTEGER, resolved + actionIndex + 1);
       const rawTime = ordinal <= 1
-        ? Math.min(1, COMBAT_SPEED_PER_ACTION / speed)
+        ? 1 - speed / Math.max(1, maxSpeed)
         : ((ordinal - 1) * COMBAT_SPEED_PER_ACTION / speed) - (beat - 2);
       timeline.push({
         actor,
@@ -1113,10 +1114,10 @@ export function combatScrapValue(item: Pick<CombatGear,'power'|'quality'|'source
   const power = Number.isFinite(Number(item.power)) ? Math.max(1, Math.min(1_000_000, Number(item.power))) : 1;
   const quality = Number.isFinite(Number(item.quality)) ? Math.max(0, Math.min(100, Number(item.quality))) : 0;
   const floor = Number.isFinite(Number(item.sourceFloor)) ? Math.max(0, Math.min(COMBAT_MAX_DEPTH, Number(item.sourceFloor))) : 0;
-  // Make even ordinary drops contribute to forging; deeper, stronger gear pays substantially more.
+  // Scrap is intentionally a slower economy than gear progression: halve the previous payout curve.
   const depthMultiplier = 1 + Math.min(4, Math.sqrt(floor / 250));
   const rawValue = (20 + power * 1.1 + quality * 0.75 + Math.log10(floor + 1) * 8) * depthMultiplier;
-  return Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.round(rawValue)));
+  return Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.round(rawValue * 0.5)));
 }
 
 export function combatForgeCost(floorValue: unknown): number {
