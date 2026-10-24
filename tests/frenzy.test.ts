@@ -47,7 +47,7 @@ test('Frenzy claim size is capped safely', () => {
   );
 });
 
-test('Frenzy owner reward bypasses the normal 50-Shard daily cap', () => {
+test('Frenzy owner rewards remain separate from roll-earned Shard telemetry', () => {
   const state = createInitialState(NOW);
   state.shards = 50;
   state.lifetimeShards = 50;
