@@ -1169,7 +1169,7 @@ test('admin Global Booster credit grants unwrap and validate player saves before
   assert.match(parser, /if \(depth > 6 \|\| value == null\) return null/);
   assert.match(parser, /return unwrap\(JSON\.parse\(value\), depth \+ 1\)/);
   assert.match(parser, /'coins' in record &&\s*'shards' in record &&\s*'totalRolls' in record/);
-  assert.match(parser, /typeof record\.coins === 'number'[\s\S]*?Number\.isFinite\(record\.coins\)[\s\S]*?Number\.isSafeInteger\(record\.shards\)[\s\S]*?Number\.isSafeInteger\(record\.totalRolls\)/);
+  assert.match(parser, /typeof record\.coins === 'number'[\s\S]*?Number\.isFinite\(record\.coins\)[\s\S]*?Number\.isFinite\(record\.shards\)[\s\S]*?Math\.abs\(record\.shards \* 1_000 - Math\.round\(record\.shards \* 1_000\)\) < 1e-6[\s\S]*?Number\.isSafeInteger\(record\.totalRolls\)/);
   assert.match(parser, /record\.stateRevision == null[\s\S]*?Number\.isSafeInteger\(record\.stateRevision\)/);
   assert.match(parser, /for \(const key of \['value', 'state', 'player', 'data', 'payload', 'result'\]\)/);
   assert.match(parser, /const nested = unwrap\(record\[key\], depth \+ 1\)/);
