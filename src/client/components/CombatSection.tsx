@@ -65,19 +65,17 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
   ].filter(Boolean) as {label:string;detail:string;kind:'offense'|'defense'}[];
   const moveTooltip=(x:number,y:number)=>{
     const next={x:Math.max(8,Math.min(Math.max(8,window.innerWidth-326),x+16)),y:Math.max(8,Math.min(Math.max(8,window.innerHeight-376),y+16))};
-    const previous=tooltipPointRef.current;
-    // Ignore high-frequency pointer jitter to avoid re-rendering the entire gear grid per pixel.
-    if(previous&&Math.abs(previous.x-next.x)<8&&Math.abs(previous.y-next.y)<8){setShowTooltip(true);return;}
     tooltipPointRef.current=next;
     setTooltipPoint(next);
     setShowTooltip(true);
   };
   return <article className={'io-combat-gear-icon-wrap '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
     onPointerEnter={event=>{lastPointerTypeRef.current=event.pointerType;if(event.pointerType==='mouse')moveTooltip(event.clientX,event.clientY);}}
-    onPointerLeave={()=>{if(lastPointerTypeRef.current==='mouse')setShowTooltip(false);}}
+    onPointerMove={event=>{if(event.pointerType==='mouse')moveTooltip(event.clientX,event.clientY);}}
+    onPointerLeave={()=>{setShowTooltip(false);tooltipPointRef.current=null;}}
     onFocus={event=>{const rect=event.currentTarget.getBoundingClientRect();moveTooltip(rect.right,rect.top);}}
-    onKeyDown={event=>{if(event.key==='Escape'){setShowTooltip(false);(event.target as HTMLElement).blur();}}}
-    onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))setShowTooltip(false);}}>
+    onKeyDown={event=>{if(event.key==='Escape'){setShowTooltip(false);tooltipPointRef.current=null;(event.target as HTMLElement).blur();}}}
+    onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null)){setShowTooltip(false);tooltipPointRef.current=null;}}}>
     <button type="button" className={'io-combat-gear-icon '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
       aria-label={(isEquipped?'Inspect equipped ':'Inspect ')+item.name}
       aria-expanded={showTooltip}
@@ -118,7 +116,13 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const [skillSearch,setSkillSearch]=useState('');
   useEffect(()=>{try{window.localStorage.setItem('io-combat-auto',String(auto));}catch{/* Embedded webviews can disable storage. */}},[auto]);
   useEffect(()=>{try{window.localStorage.setItem('io-combat-paused',String(paused));}catch{/* Embedded webviews can disable storage. */}},[paused]);
-  useEffect(()=>{const closeDetails=(event:KeyboardEvent)=>{if(event.key!=='Escape')return;setInspectedSkillId(null);const target=event.target;if(target instanceof HTMLElement&&target.closest('.io-combat-skill-icon-wrap.is-inspected'))target.blur();};window.addEventListener('keydown',closeDetails);return()=>window.removeEventListener('keydown',closeDetails);},[]);
+  const lastSkillPointerTypeRef=useRef<string>('mouse');
+  useEffect(()=>{
+    const closeDetails=(event:KeyboardEvent)=>{if(event.key!=='Escape')return;setInspectedSkillId(null);const target=event.target;if(target instanceof HTMLElement&&target.closest('.io-combat-skill-icon-wrap.is-inspected'))target.blur();};
+    const closeOutside=(event:PointerEvent)=>{const target=event.target;if(!(target instanceof Element)||!target.closest('.io-combat-skill-icon-wrap'))setInspectedSkillId(null);};
+    window.addEventListener('keydown',closeDetails);document.addEventListener('pointerdown',closeOutside);
+    return()=>{window.removeEventListener('keydown',closeDetails);document.removeEventListener('pointerdown',closeOutside);};
+  },[]);
   const [visibleGearCount,setVisibleGearCount]=useState(60);
   const [gearSearch,setGearSearch]=useState('');
   const [gearSlotFilter,setGearSlotFilter]=useState<'all'|CombatGearSlot>('all');
@@ -551,8 +555,10 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         const rarityUnlockRank=({Common:1,Uncommon:2,Rare:3,Epic:4,Mythic:5} as const)[skill.rarity],slotsFull=state.equippedAbilities.length>=COMBAT_ABILITY_SLOTS;
         const glyph=skill.stat==='damagePct'?'⚔':skill.stat==='speedFlat'?'⏱':skill.stat==='healthPct'?'♥':skill.stat==='critChance'?'✧':'◈';const copyProgressPct=Math.max(0,Math.min(100,Math.round(copies/Math.max(1,needed)*100)));
         const actionLabel=!unlocked?'Unlock at Gacha Rank '+rarityUnlockRank:rank===0?'Roll to discover':isEquipped?'Unequip ability':slotsFull?'Ability slots full':'Equip ability';
-        return <article key={skill.id} className={'io-combat-skill-icon-wrap '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')+(inspectedSkillId===skill.id?' is-inspected':'')}>
-          <button type="button" className={'io-combat-skill-icon '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')} aria-label={'Inspect '+skill.name} aria-expanded={inspectedSkillId===skill.id} title={skill.name} disabled={mutating} onClick={()=>setInspectedSkillId(current=>current===skill.id?null:skill.id)}>
+        return <article key={skill.id} className={'io-combat-skill-icon-wrap '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')+(inspectedSkillId===skill.id?' is-inspected':'')}
+          onPointerEnter={event=>{lastSkillPointerTypeRef.current=event.pointerType;if(event.pointerType==='mouse')setInspectedSkillId(skill.id);}}
+          onPointerLeave={()=>{if(lastSkillPointerTypeRef.current==='mouse')setInspectedSkillId(current=>current===skill.id?null:current);}}>
+          <button type="button" className={'io-combat-skill-icon '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')} aria-label={'Inspect '+skill.name} aria-expanded={inspectedSkillId===skill.id} title={skill.name} disabled={mutating} onClick={()=>{if(lastSkillPointerTypeRef.current!=='mouse')setInspectedSkillId(current=>current===skill.id?null:skill.id);}}>
             <span>{glyph}</span><small>{rank>0?'R'+fmt(rank):'—'}</small>{isEquipped&&<b>✓</b>}
           </button>
           <div className="io-combat-skill-tooltip" role="group" aria-label={skill.name+' details and actions'}>
@@ -568,7 +574,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     {page==='arena'&&<>
       <div className="io-combat-arena-head"><div><span className="io-combat-eyebrow">ASYNC PVP · SERVER-RESOLVED</span><h2>Build vs. build</h2><p>Challenge a real player's saved loadout. Both ratings update after the battle; PvE health and dungeon progress are untouched.</p></div>
         <div className="io-combat-arena-rating"><span>YOUR ARENA RATING</span><strong>{fmt(arenaSelf?.rating??state.arenaRating)}</strong><small>{fmt(arenaSelf?.wins??state.arenaWins)} W · {fmt(arenaSelf?.losses??state.arenaLosses)} L</small></div></div>
-      {arenaResult&&<section className={'io-combat-arena-result '+(arenaResult.winner==='you'?'is-win':'is-loss')}><div className="io-combat-arena-result-head"><span className="io-combat-eyebrow">{arenaResult.winner==='you'?'VICTORY':'DEFEAT'}</span><strong>{arenaResult.ratingChange>0?'+':''}{arenaResult.ratingChange} Rating</strong><small>vs. {arenaResult.opponent.username} · {fmt(arenaResult.rounds)} rounds</small></div><div className="io-combat-arena-result-log" aria-label="Battle turn-by-turn log">{arenaResult.log.map((line,index)=>{const roundLabel=line.match(/^Round (\d+)/)?.[0].toUpperCase()??'RESULT';const isFoe=/\bOpponent:/i.test(line);const isResult=roundLabel==='RESULT';return <div key={index} className={'io-combat-arena-turn '+(isResult?'is-result':isFoe?'is-foe':'is-player')}><span>{roundLabel}</span><p>{line.replace(/^Round \d+ · (?:You|Opponent): /,'')}</p></div>;})}</div></section>}
+      {arenaResult&&<section className={'io-combat-arena-result '+(arenaResult.winner==='you'?'is-win':'is-loss')}><div className="io-combat-arena-result-head"><span className="io-combat-eyebrow">{arenaResult.winner==='you'?'VICTORY':'DEFEAT'}</span><strong>{arenaResult.ratingChange>0?'+':''}{arenaResult.ratingChange} Rating</strong><small>vs. {arenaResult.opponent.username} · {fmt(arenaResult.rounds)} rounds</small></div><div className="io-combat-arena-showdown" aria-label="PvP combatants"><div className="io-combat-arena-side is-player"><div className="io-combat-arena-avatar"><Sword size={23}/></div><div className="io-combat-arena-combatant"><small>CHALLENGER</small><strong>You</strong><span>{fmt(stats.damage)} DMG · {fmt(stats.maxHealth)} HP</span><span>{fmt(stats.speed)} SPD · {percent(stats.critChance)} CRIT</span></div><b className="io-combat-arena-status">{arenaResult.winner==='you'?'WINNER':'FALLEN'}</b></div><div className="io-combat-arena-vs" aria-hidden="true"><span>VS</span><i>⚔</i></div><div className="io-combat-arena-side is-opponent"><div className="io-combat-arena-avatar"><Shield size={23}/></div><div className="io-combat-arena-combatant"><small>OPPONENT</small><strong>{arenaResult.opponent.username}</strong><span>{fmt(arenaResult.opponent.damage)} DMG · {fmt(arenaResult.opponent.maxHealth)} HP</span><span>{fmt(arenaResult.opponent.speed)} SPD · {percent(arenaResult.opponent.critChance)} CRIT</span></div><b className="io-combat-arena-status">{arenaResult.winner==='you'?'FALLEN':'WINNER'}</b></div></div><div className="io-combat-arena-result-log" aria-label="Battle turn-by-turn log">{arenaResult.log.map((line,index)=>{const roundLabel=line.match(/^Round (\d+)/)?.[0].toUpperCase()??'RESULT';const isFoe=/\bOpponent:/i.test(line);const isResult=roundLabel==='RESULT';return <div key={index} style={{animationDelay:Math.min(index*75,1500)+'ms'}} className={'io-combat-arena-turn '+(isResult?'is-result':isFoe?'is-foe':'is-player')}><span>{roundLabel}</span><p>{line.replace(/^Round \d+ · (?:You|Opponent): /,'')}</p></div>;})}</div></section>}
       <div className="io-combat-arena-toolbar"><div><span className="io-combat-eyebrow">RECENT DELVERS</span><h3>{arenaOpponents.length} opponents available</h3></div><button type="button" className="io-combat-button is-secondary" disabled={arenaLoading} onClick={()=>void loadArena()}>{arenaLoading?'Refreshing…':'Refresh list'}</button></div>
       <div className="io-combat-arena-filters">
         <label>Find opponent<input type="search" value={arenaSearch} onChange={event=>setArenaSearch(event.target.value)} placeholder="Username, build, rating…" aria-label="Search Arena opponents"/></label>
