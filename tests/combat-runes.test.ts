@@ -4,6 +4,7 @@ import {
   COMBAT_RUNE_EFFECT_MULTIPLIER_CAP,
   COMBAT_RUNE_RARITIES,
   DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS,
+  shouldAutoSacrificeRune,
   combatRuneRarityAtOrBelow,
   combatRuneBonuses,
   combatRuneMajorAbilityEffects,
@@ -26,15 +27,22 @@ const runes:CombatRune[]=[
   {id:'prism-1',name:'Radiant Prism Rune',rarity:'Rare',stat:'shardChancePct',value:.08,level:100,sourceDepth:20,sourceDungeon:'undercrypt'},
   {id:'insight-1',name:'Runed Insight Rune',rarity:'Epic',stat:'xpGainPct',value:4.2,sourceDepth:30,sourceDungeon:'glass-labyrinth'},
 ];
-test('Rune Auto Sacrifice threshold is inclusive, ordered by rarity, and disabled by default',()=>{
+test('Rune Auto Sacrifice defaults to Rare threshold and protects special effects',()=>{
   assert.deepEqual(COMBAT_RUNE_RARITIES,['Common','Uncommon','Rare','Epic','Legendary','Mythic','Cosmic']);
-  assert.deepEqual(DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS,{enabled:false,maxRarity:'Common'});
-  assert.deepEqual(createCombatState().runeAutoSacrifice,{enabled:false,maxRarity:'Common'});
+  assert.deepEqual(DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS,{enabled:false,maxRarity:'Rare',targetRuneId:null,preserveSpecialEffects:true});
+  assert.deepEqual(createCombatState().runeAutoSacrifice,{enabled:false,maxRarity:'Rare',targetRuneId:null,preserveSpecialEffects:true});
   assert.equal(combatRuneRarityAtOrBelow('Common','Common'),true);
   assert.equal(combatRuneRarityAtOrBelow('Rare','Rare'),true);
   assert.equal(combatRuneRarityAtOrBelow('Uncommon','Rare'),true);
   assert.equal(combatRuneRarityAtOrBelow('Epic','Rare'),false);
   assert.equal(combatRuneRarityAtOrBelow('Cosmic','Mythic'),false);
+});
+test('Auto Sacrifice preserves Major Ability Runes unless preservation is disabled',()=>{
+  const special:CombatRune={...runes[1]!,majorAbility:{id:'memory-well',name:'Memory Well',valuePct:10,description:'Improves XP gain.'}};
+  assert.equal(shouldAutoSacrificeRune(runes[1]!, 'Rare', true),true);
+  assert.equal(shouldAutoSacrificeRune(special, 'Rare', true),false);
+  assert.equal(shouldAutoSacrificeRune(special, 'Rare', false),true);
+  assert.equal(shouldAutoSacrificeRune(runes[3]!, 'Rare', false),false);
 });
 test('Rune bonuses only count Runes in the equipped loadout',()=>{
   assert.deepEqual(combatRuneBonuses(runes,['fate-1','insight-1']),{luckPct:1.4,coinGainPct:0,shardChancePct:0,xpGainPct:4.2});
