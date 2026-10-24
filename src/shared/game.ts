@@ -2612,7 +2612,7 @@ export function predictRollActivation(
   if (transLevel > 0) {
     coinsGained += Math.round(lowRarityCoins * (transLevel * 0.15));
     for (let i = 0; i < rollCount; i++) {
-      if (rng() < 0.01 * transLevel) shardsGained = roundShardAmount(shardsGained + 0.001);
+      if (rng() < 0.005 * transLevel) shardsGained = roundShardAmount(shardsGained + 1);
     }
   }
 
