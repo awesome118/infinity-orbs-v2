@@ -81,15 +81,15 @@ test('Guard remains active through a slow enemy wind-up and mitigates its next a
     const initial = await getCombatSnapshot();
     const state = initial.state;
     state.dungeonId = 'undercrypt';
-    state.depth = 4; // Ironbound has 80 Speed and takes two beats to act.
+    state.depth = 4; // Ironbound has 80 Speed and a long recharge between attacks.
     state.bestDepth = 4;
     state.dungeonBestDepths.undercrypt = 4;
     state.equipment.weapon = null;
     state.enemyHp = getEnemyForDungeonDepth('undercrypt', 4).maxHp;
     state.sequence = 0;
-    state.combatBeats = 0;
-    state.playerActionsResolved = 2; // Leave exactly one scheduled player action for Guard; avoid defeating the enemy during its wind-up.
-    state.enemyActionsResolved = 0;
+    state.combatBeats = 1; // Start on beat two, after the enemy's opening action.
+    state.playerActionsResolved = 0; // The Delver has a ready action to spend on Guard.
+    state.enemyActionsResolved = 1; // The Ironbound's opening action was already resolved.
     state.guardBeats = 0;
     state.lastAcceptedBeatAtMs = 0;
     await redis.set(key, JSON.stringify(state));
@@ -98,14 +98,20 @@ test('Guard remains active through a slow enemy wind-up and mitigates its next a
     assert.equal(first.actions.some(action => action.actor === 'enemy' && action.kind === 'attack'), false);
     assert.equal(first.state.guardBeats, 1, 'Guard must not expire when the enemy has no action ready');
 
-    const saved = JSON.parse((await redis.get(key))!) as { lastAcceptedBeatAtMs: number; playerActionsResolved: number };
+    const saved = JSON.parse((await redis.get(key))!) as {
+      lastAcceptedBeatAtMs: number;
+      playerActionsResolved: number;
+      combatBeats: number;
+      enemyActionsResolved: number;
+    };
     saved.lastAcceptedBeatAtMs = Date.now() - COMBAT_BEAT_INTERVAL_MS - 1; // Advance the persisted cooldown clock past the full 30-second cadence.
+    saved.combatBeats = 5; // The Ironbound's 80 Speed recharges its next action on beat six.
     saved.playerActionsResolved = 6; // Isolate the enemy action in this beat.
     await redis.set(key, JSON.stringify({ ...first.state, ...saved }));
 
     const second = await performCombatBeat(2, 'strike');
     const incoming = second.actions.find(action => action.actor === 'enemy' && action.kind === 'attack');
-    assert.ok(incoming, 'the slow enemy should attack on the second beat');
+    assert.ok(incoming, 'the slow enemy should attack when its Speed has recharged');
     assert.ok((incoming.damage ?? Number.POSITIVE_INFINITY) < getEnemyForDungeonDepth('undercrypt', 4).damage);
     assert.equal(second.state.guardBeats, 0, 'Guard is consumed after mitigating a real enemy attack');
   });
