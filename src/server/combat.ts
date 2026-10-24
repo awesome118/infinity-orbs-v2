@@ -2,7 +2,7 @@ import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import { getOrbInfo, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatSkillDefinition, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneAutoSacrificeSettings, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatActionsDue, combatActionTimeline, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, combatGearSpeedBonus, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, COMBAT_RUNE_RARITIES, DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS, shouldAutoSacrificeRune, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatTurnStep, combatActionTimeline, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, combatGearSpeedBonus, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, COMBAT_RUNE_RARITIES, DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS, shouldAutoSacrificeRune, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -252,6 +252,9 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.autoTactic=(['balanced','aggressive','defensive','recovery'] as unknown[]).includes(s.autoTactic)?s.autoTactic:'balanced';
   s.scrap=finiteInt(s.scrap,0,0,Number.MAX_SAFE_INTEGER);s.autoScrapUnlocked=s.autoScrapUnlocked===true;s.autoScrapSettings=normalizeCombatAutoScrapSettings(s.autoScrapSettings);s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillGachaRank=finiteInt(storedGachaRank,legacyUnlockedRank,1,SKILL_GACHA_RANK_MAX);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,Number.MAX_VALUE);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=Math.min(finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER),Date.now());s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
   s.playerSpeedBeats=Object.prototype.hasOwnProperty.call(p,'playerSpeedBeats')?finiteInt(s.playerSpeedBeats,s.combatBeats,0,Number.MAX_SAFE_INTEGER):s.combatBeats;
+  const normalizeSpeedCharge=(value:unknown):number=>{const raw=Number(value);return Number.isFinite(raw)?Math.max(0,Math.min(1,raw)):0;};
+  s.playerSpeedCharge=normalizeSpeedCharge(p.playerSpeedCharge);s.enemySpeedCharge=normalizeSpeedCharge(p.enemySpeedCharge);
+  s.enemyTurnsToSkip=finiteInt(s.enemyTurnsToSkip,0,0,10);
   s.playerActionsResolved=finiteInt(s.playerActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.enemyActionsResolved=finiteInt(s.enemyActionsResolved,0,0,Number.MAX_SAFE_INTEGER);s.playerTurnsCompleted=finiteInt(s.playerTurnsCompleted,0,0,Number.MAX_SAFE_INTEGER);
   s.strategyGuideRank=finiteInt(s.strategyGuideRank,0,0,STRATEGY_GUIDE_RANKS.length);
   s.tacticianManuals=finiteInt(s.tacticianManuals,0,0,1);
@@ -564,10 +567,16 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     if(s.depthCapCleared && s.depth>=COMBAT_MAX_DEPTH)throw new Error('Maximum supported depth reached. Switch dungeons to begin a new descent.');
     const manualSkillId=typeof skillIdValue==='string'&&COMBAT_SKILLS.some(skill=>skill.id===skillIdValue)?skillIdValue as CombatSkillId:null;
     const guideEnemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);
-    const predictedPlayerActions=combatActionsDue(s.speed,Number(s.playerSpeedBeats??s.combatBeats)+1,s.playerActionsResolved);
-    const activeSkillId=intent==='ability'?manualSkillId:intent==='auto'&&predictedPlayerActions>0?chooseGuidedSkillId(s,guideEnemy):null;
+    const playerSpeedChargeBefore=Number(s.playerSpeedCharge)||0;
+    const enemySpeedChargeBefore=Number(s.enemySpeedCharge)||0;
+    const scheduledTurn=combatTurnStep(combatStatsFor(s).speed,guideEnemy.speed,playerSpeedChargeBefore,enemySpeedChargeBefore);
+    const scheduledActor=scheduledTurn.actor;
+    const isPlayerTurn=scheduledActor==='player';
+    const activeSkillId=isPlayerTurn
+      ? intent==='ability'?manualSkillId:intent==='auto'?chooseGuidedSkillId(s,guideEnemy):null
+      : null;
     const activeSkill=activeSkillId?COMBAT_SKILLS.find(skill=>skill.id===activeSkillId):null;
-    if(intent==='ability'&&!activeSkill)throw new Error('Choose a valid equipped ability.');
+    if(intent==='ability'&&isPlayerTurn&&!activeSkill)throw new Error('Choose a valid equipped ability.');
     if(activeSkill){
       if(!s.equippedAbilities.includes(activeSkill.id)||(s.skillLevels[activeSkill.id]??0)<1)throw new Error('Ability is not equipped.');
       if((s.abilityCooldowns[activeSkill.id]??0)>s.sequence)throw new Error('Ability is on cooldown.');
@@ -578,6 +587,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     const elapsed=s.lastAcceptedBeatAtMs>0?Math.max(0,now-s.lastAcceptedBeatAtMs):Number.POSITIVE_INFINITY;
     if(!adminSkipCooldown&&elapsed<COMBAT_BEAT_INTERVAL_MS)throw new Error('COMBAT_BEAT_TOO_SOON:'+Math.max(1,COMBAT_BEAT_INTERVAL_MS-elapsed));
     s.lastAcceptedBeatAtMs=now;
+    s.playerSpeedCharge=scheduledTurn.playerSpeedCharge;s.enemySpeedCharge=scheduledTurn.enemySpeedCharge;
     const actions:CombatAction[]=[];synchronizeCombatStats(s);s.sequence+=1;s.combatBeats+=1;s.playerSpeedBeats=Math.min(Number.MAX_SAFE_INTEGER,Number(s.playerSpeedBeats??s.combatBeats)+1);s.energy=combatEnergyAfterRegen(s.energy,s.maxEnergy);
     if(s.pendingHealAmount>0){
       const heal=Math.min(s.pendingHealAmount,Math.max(0,s.maxHealth-s.health));s.pendingHealAmount=0;
@@ -611,15 +621,13 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     const orbInfo=getOrbInfo(orbRarity,isInfinity),damageMultiplier=combatOrbDamageMultiplier(orbRarity);
     const orbRoll:CombatOrbRoll={rarity:orbRarity,tier:String(orbInfo.tier),name:orbInfo.name,isInfinity,damageMultiplier,baseDamage:Math.max(1,Math.round(stats.damage*damageMultiplier*(1+orbConduitBonus)))};
     actions.push({actor:'player',kind:'ability',text:'Orb roll: '+orbInfo.name+' · 1 / '+(isInfinity?'Infinity':orbRarity.toLocaleString())+' · ×'+damageMultiplier.toFixed(2)+' damage.'});
-    const resolvedIntent:CombatIntent=activeSkill?'strike':intent==='auto'?chooseAutoCombatIntent(s):intent==='ability'?'strike':intent;
+    const resolvedIntent:CombatIntent=scheduledActor!=='player'?'strike':activeSkill?'strike':intent==='auto'?chooseAutoCombatIntent(s):intent==='ability'?'strike':intent;
     const beatNumber=s.combatBeats;
-    const playerBeatNumber=Number(s.playerSpeedBeats??s.combatBeats);
-    const playerActionsResolvedBefore=s.playerActionsResolved;
-    const enemyActionsResolvedBefore=s.enemyActionsResolved;
-    const playerActions=combatActionsDue(stats.speed,playerBeatNumber,playerActionsResolvedBefore);
-    let enemyActions=combatActionsDue(enemy.speed,beatNumber,enemyActionsResolvedBefore);
+    const playerActions=scheduledActor==='player'?1:0;
+    let enemyActions=scheduledActor==='enemy'?1:0;
     if(activeSkill&&playerActions<1)throw new Error('No player action is ready for this ability.');
-    s.playerActionsResolved+=playerActions;s.enemyActionsResolved+=enemyActions;
+    s.playerActionsResolved=Math.min(Number.MAX_SAFE_INTEGER,s.playerActionsResolved+playerActions);
+    s.enemyActionsResolved=Math.min(Number.MAX_SAFE_INTEGER,s.enemyActionsResolved+enemyActions);
     let enemyHp=Math.max(1,s.enemyHp||enemy.maxHp),heavy=false,consumed=false,defeated=false,died=false;
     if(s.skillRuntime.burnTicks>0&&s.skillRuntime.burnDamage>0&&enemyHp>1){
       const burn=Math.min(enemyHp-1,s.skillRuntime.burnDamage);enemyHp-=burn;s.skillRuntime.burnTicks=Math.max(0,s.skillRuntime.burnTicks-1);
@@ -655,7 +663,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         case 'fracture-math':if(s.skillRuntime.armorBreakBeats>0){activeGuaranteedCrit=true;activeDamageMultiplier=1.65+Math.min(.7,rankScale*.08);}else activeDamageMultiplier=1.25+Math.min(.35,rankScale*.04);actions.push({actor:'player',kind:'ability',text:activeSkill.name+(s.skillRuntime.armorBreakBeats>0?' exploits fractured armor for a guaranteed critical strike.':' primes a precision hit; armor break would amplify it.')});break;
         case 'gilded-kill':activeCritMarkBonus=Math.min(.5,.12+rankScale*.025);activeDamageMultiplier=1.12;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' converts critical hits into bonus Combat Marks.'});break;
         case 'singularity-edge':{const stored=s.skillRuntime.storedDamage;activeDamageMultiplier=1.25+Math.min(2.5,stored/Math.max(1,orbRoll.baseDamage));s.skillRuntime.storedDamage=0;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' releases '+Math.round(stored).toLocaleString()+' stored damage.'});break;}
-        case 'time-shear':if(enemyActions>0){enemyActions-=1;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' cancels one enemy action.'});}for(const id of Object.keys(s.abilityCooldowns) as CombatSkillId[])if(id!==activeSkill.id)s.abilityCooldowns[id]=Math.max(s.sequence,Math.max(0,(s.abilityCooldowns[id]??0)-2));activeDamageMultiplier=1.15+Math.min(.25,rankScale*.025);break;
+        case 'time-shear':s.enemyTurnsToSkip=Math.min(10,Math.max(0,Number(s.enemyTurnsToSkip)||0)+1);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' queues a cancellation for the enemy’s next turn.'});for(const id of Object.keys(s.abilityCooldowns) as CombatSkillId[])if(id!==activeSkill.id)s.abilityCooldowns[id]=Math.max(s.sequence,Math.max(0,(s.abilityCooldowns[id]??0)-2));activeDamageMultiplier=1.15+Math.min(.25,rankScale*.025);break;
         case 'starforged-core':{const before=s.skillRuntime.shield;addShield(s.maxHealth*(.08+Math.min(.15,rankScale*.025)),.5);activeThorns=Math.min(.5,.12+rankScale*.025);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' forms a retaliating shield ('+(s.skillRuntime.shield-before).toLocaleString()+').'});break;}
         case 'apex-instinct':if(orbRarity>=1000){activeGuaranteedCrit=true;activeDamageMultiplier=1.6+Math.min(.8,rankScale*.08);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' resonates with the high-rarity Orb for an empowered critical.'});}else{activeDamageMultiplier=1.18+Math.min(.25,rankScale*.025);actions.push({actor:'player',kind:'ability',text:activeSkill.name+' sharpens the strike; a 1-in-1,000 Orb threshold grants its full power.'});}break;
         case 'royal-tithe':s.skillRuntime.royalTitheKills=Math.max(s.skillRuntime.royalTitheKills,3+Math.min(3,Math.floor(rankScale/2)));activeDamageMultiplier=1.12;actions.push({actor:'player',kind:'ability',text:activeSkill.name+' empowers Combat Mark rewards from your next kills.'});break;
@@ -781,7 +789,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         s.bestDepth=Math.max(s.bestDepth,s.depth);
         s.dungeonBestDepths[s.dungeonId]=Math.max(s.dungeonBestDepths[s.dungeonId],s.bestDepth);
         s.skillRuntime.burnTicks=0;s.skillRuntime.burnDamage=0;s.skillRuntime.armorBreakBeats=0;s.skillRuntime.shield=0;s.skillRuntime.delayedDamage=0;s.skillRuntime.delayedDamageReadyAtSequence=0;s.skillRuntime.executeMarked=false;s.skillRuntime.evadeNext=false;s.skillRuntime.phoenixReady=false;s.skillRuntime.phoenixUsed=false;s.skillRuntime.storedDamage=0;
-        s.combatBeats=0;s.enemyActionsResolved=0;s.guardBeats=0;s.encounterFirstStrikeUsed=false;
+        s.combatBeats=0;s.enemyActionsResolved=0;s.enemySpeedCharge=0;s.enemyTurnsToSkip=0;s.guardBeats=0;s.encounterFirstStrikeUsed=false;
         if(s.depth>=COMBAT_MAX_DEPTH){
           // The last supported boss can be cleared once. Keep the displayed depth
           // at its real cap, then require a dungeon switch before any further beats.
@@ -827,14 +835,14 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         actions.push({actor:'player',kind:'ability',text:defensiveAbility.name+' triggered: '+Math.round(defensiveAbility.healPercent*100)+'% Max HP healing queued for your next turn.'});
       }
       if(s.health<=0&&s.skillRuntime.phoenixReady&&!s.skillRuntime.phoenixUsed){s.health=1;s.skillRuntime.phoenixReady=false;s.skillRuntime.phoenixUsed=true;actions.push({actor:'player',kind:'ability',text:'Phoenix Engine prevents a lethal blow and leaves you at 1 HP.'});}
-      if(s.health<=0){died=true;s.pendingHealAmount=0;actions.push({actor:'enemy',kind:'death',text:'Run '+s.runId+' ended at Depth '+s.depth+'. Permanent progress retained.'});s.runId+=1;s.depth=1;resetCombatRunCarry(s);s.skillRuntime.burnTicks=0;s.skillRuntime.burnDamage=0;s.skillRuntime.armorBreakBeats=0;s.skillRuntime.shield=0;s.skillRuntime.delayedDamage=0;s.skillRuntime.delayedDamageReadyAtSequence=0;s.skillRuntime.executeMarked=false;s.skillRuntime.evadeNext=false;s.skillRuntime.phoenixReady=false;s.skillRuntime.phoenixUsed=false;s.skillRuntime.bountyStreak=0;s.skillRuntime.storedDamage=0;s.skillRuntime.lastAttackDamage=0;s.skillRuntime.nextKillMarkBonus=0;s.skillRuntime.nextKillXpBonus=0;s.skillRuntime.nextRuneDropBonus=0;s.skillRuntime.royalTitheKills=0;s.playerSpeedBeats=0;s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,3);s.guardBeats=0;s.encounterFirstStrikeUsed=false;s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;synchronizeCombatStats(s);s.health=s.maxHealth;actions.push({actor:'player',kind:'advance',text:'A new descent begins automatically at Depth 1.'});return;}
+      if(s.health<=0){died=true;s.pendingHealAmount=0;actions.push({actor:'enemy',kind:'death',text:'Run '+s.runId+' ended at Depth '+s.depth+'. Permanent progress retained.'});s.runId+=1;s.depth=1;resetCombatRunCarry(s);s.skillRuntime.burnTicks=0;s.skillRuntime.burnDamage=0;s.skillRuntime.armorBreakBeats=0;s.skillRuntime.shield=0;s.skillRuntime.delayedDamage=0;s.skillRuntime.delayedDamageReadyAtSequence=0;s.skillRuntime.executeMarked=false;s.skillRuntime.evadeNext=false;s.skillRuntime.phoenixReady=false;s.skillRuntime.phoenixUsed=false;s.skillRuntime.bountyStreak=0;s.skillRuntime.storedDamage=0;s.skillRuntime.lastAttackDamage=0;s.skillRuntime.nextKillMarkBonus=0;s.skillRuntime.nextKillXpBonus=0;s.skillRuntime.nextRuneDropBonus=0;s.skillRuntime.royalTitheKills=0;s.playerSpeedBeats=0;s.playerSpeedCharge=0;s.enemySpeedCharge=0;s.enemyTurnsToSkip=0;s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.energy=Math.min(s.maxEnergy,3);s.guardBeats=0;s.encounterFirstStrikeUsed=false;s.enemyHp=getEnemyForDungeonDepth(s.dungeonId,1).maxHp;synchronizeCombatStats(s);s.health=s.maxHealth;actions.push({actor:'player',kind:'advance',text:'A new descent begins automatically at Depth 1.'});return;}
     };
     const orderedCombatActions = combatActionTimeline(
       stats.speed,
       enemy.speed,
-      playerBeatNumber,
-      playerActionsResolvedBefore,
-      enemyActionsResolvedBefore,
+      beatNumber,
+      playerSpeedChargeBefore,
+      enemySpeedChargeBefore,
       playerActions,
       enemyActions,
       beatNumber,
@@ -855,8 +863,12 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     });
     for(const event of orderedCombatActions){
       if(defeated||died)break;
-      if(event.actor==='enemy')resolveEnemyAttack();
-      else if(event.actionIndex>=0)resolvePlayerAttack(event.actionIndex);
+      if(event.actor==='enemy'){
+        if(s.enemyTurnsToSkip>0){
+          s.enemyTurnsToSkip=Math.max(0,s.enemyTurnsToSkip-1);
+          actions.push({actor:'player',kind:'ability',text:'Time-Shear cancels the enemy’s turn.'});
+        }else resolveEnemyAttack();
+      }else if(event.actionIndex>=0)resolvePlayerAttack(event.actionIndex);
     }
     // Persist surviving enemy damage, including Burn and thorns contributions.
     if(!defeated&&!died)s.enemyHp=Math.max(1,enemyHp);

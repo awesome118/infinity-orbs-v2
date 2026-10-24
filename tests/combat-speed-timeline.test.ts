@@ -4,64 +4,77 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   COMBAT_MAX_DEPTH,
-  COMBAT_SPEED_PER_ACTION,
-  combatActionsDue,
   combatActionTimeline,
+  combatNextActor,
+  combatTurnStep,
   combatHighestDepthReached,
 } from '../src/shared/combat.js';
 import { ORB_TIER_NAMES, getOrbInfo } from '../src/shared/game.js';
 
-test('every combatant gets a base action each beat and Speed earns extra attacks', () => {
-  assert.equal(COMBAT_SPEED_PER_ACTION, 400);
-  assert.equal(combatActionsDue(310, 1, 0), 1, 'the encounter begins with one action ready');
-  assert.equal(combatActionsDue(310, 2, 1), 1, 'the next beat always grants a base action');
-  assert.equal(combatActionsDue(310, 3, 2), 2, '310 Speed crosses a bonus threshold by beat 3');
-  assert.equal(combatActionsDue(100, 3, 2), 1, '100 Speed gets its base action but no bonus threshold');
-  assert.equal(combatActionsDue(800, 2, 1), 3, '800 Speed grants a base action and two bonus attacks');
+function simulateTurns(
+  playerSpeed: number,
+  enemySpeed: number,
+  count: number,
+  initialPlayerCharge = 0,
+  initialEnemyCharge = 0,
+): { actors: Array<'player' | 'enemy'>; playerCharge: number; enemyCharge: number } {
+  let playerCharge = initialPlayerCharge;
+  let enemyCharge = initialEnemyCharge;
+  const actors: Array<'player' | 'enemy'> = [];
+  for (let turn = 0; turn < count; turn += 1) {
+    const step = combatTurnStep(playerSpeed, enemySpeed, playerCharge, enemyCharge);
+    actors.push(step.actor);
+    playerCharge = step.playerSpeedCharge;
+    enemyCharge = step.enemySpeedCharge;
+  }
+  return { actors, playerCharge, enemyCharge };
+}
+
+test('300 player Speed versus 100 enemy Speed resolves player, player, player, enemy', () => {
+  assert.deepEqual(simulateTurns(300, 100, 8).actors, [
+    'player', 'player', 'player', 'enemy',
+    'player', 'player', 'player', 'enemy',
+  ]);
 });
 
-test('player and enemy actions interleave according to their Speed thresholds', () => {
-  const playerActions = combatActionsDue(900, 2, 1);
-  const enemyActions = combatActionsDue(650, 2, 1);
-  const timeline = combatActionTimeline(900, 650, 2, 1, 1, playerActions, enemyActions);
+test('each combat beat projects exactly one action in a whole-number slot', () => {
+  const first = combatTurnStep(900, 650, 0, 0);
+  assert.equal(first.actor, 'player');
+  assert.deepEqual(combatActionTimeline(900, 650, 1, 0, 0, 1, 1), [
+    { actor: 'player', actionIndex: 0, time: 0 },
+  ]);
 
-  assert.deepEqual(timeline.map(action => action.actor), ['player', 'enemy', 'player', 'enemy', 'player']);
-  assert.ok(timeline.every((action,index)=>index===0||timeline[index-1]!.time<action.time));
+  const second = combatTurnStep(900, 650, first.playerSpeedCharge, first.enemySpeedCharge);
+  assert.equal(second.actor, 'enemy');
+  assert.deepEqual(combatActionTimeline(900, 650, 2, first.playerSpeedCharge, first.enemySpeedCharge, 1, 1), [
+    { actor: 'enemy', actionIndex: 0, time: 0 },
+  ]);
 });
 
-test('opening initiative follows the actual Speed values instead of always favoring the Delver', () => {
-  const playerFirst = combatActionTimeline(300, 200, 1, 0, 0, 1, 1);
-  const enemyFirst = combatActionTimeline(200, 300, 1, 0, 0, 1, 1);
-
-  assert.deepEqual(playerFirst.map(action => action.actor), ['player', 'enemy']);
-  assert.deepEqual(enemyFirst.map(action => action.actor), ['enemy', 'player']);
-  assert.ok(enemyFirst[0]!.time < enemyFirst[1]!.time);
+test('opening initiative follows the faster Speed value; ties favor the Delver', () => {
+  assert.equal(combatNextActor(300, 200, 0, 0), 'player');
+  assert.equal(combatNextActor(200, 300, 0, 0), 'enemy');
+  assert.equal(combatNextActor(100, 100, 0, 0), 'player');
 });
 
-test('a faster enemy earns bonus actions and moves ahead of the slower Delver', () => {
-  const playerActions = combatActionsDue(310, 2, 1);
-  const enemyActions = combatActionsDue(800, 2, 1);
-  const timeline = combatActionTimeline(310, 800, 2, 1, 1, playerActions, enemyActions);
-
-  assert.equal(playerActions, 1, 'the Delver keeps a base action');
-  assert.equal(enemyActions, 3, 'the 800-Speed enemy earns two additional actions');
-  assert.deepEqual(timeline.map(action => action.actor), ['enemy', 'enemy', 'player', 'enemy']);
-  assert.ok(timeline.every((action,index)=>index===0||timeline[index-1]!.time<action.time));
+test('a faster enemy receives the corresponding number of discrete turns', () => {
+  assert.deepEqual(simulateTurns(310, 800, 4).actors, ['enemy', 'enemy', 'player', 'enemy']);
 });
 
-test('player Speed charge carries into a new encounter while enemy cadence restarts', () => {
-  const playerActions = combatActionsDue(310, 3, 2);
-  const enemyActions = combatActionsDue(100, 1, 0);
-  const timeline = combatActionTimeline(310, 100, 3, 2, 0, playerActions, enemyActions, 1);
+test('player charge carries into a new encounter while enemy charge restarts', () => {
+  const firstEncounter = simulateTurns(310, 100, 3);
+  assert.deepEqual(firstEncounter.actors, ['player', 'player', 'player']);
+  assert.ok(firstEncounter.enemyCharge > 0.9, 'the enemy was nearly ready when the third player action landed');
 
-  assert.equal(playerActions, 2, 'the cumulative player clock crosses a bonus threshold');
-  assert.equal(enemyActions, 1, 'a new enemy gets its opening action');
-  assert.deepEqual(timeline.map(action => action.actor), ['player', 'player', 'enemy']);
-  assert.ok(timeline.every((action,index)=>index===0||timeline[index-1]!.time<action.time));
+  // A defeated enemy loses its accumulated charge; the player's charge is retained.
+  const nextEncounter = simulateTurns(310, 150, 3, firstEncounter.playerCharge, 0);
+  assert.deepEqual(nextEncounter.actors, ['player', 'player', 'enemy']);
 
   const server = readFileSync(resolve(process.cwd(), 'src/server/combat.ts'), 'utf8');
-  assert.ok(server.includes('s.combatBeats=0;s.enemyActionsResolved=0;s.guardBeats=0'));
-  assert.ok(server.includes('s.playerSpeedBeats=0;s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0'));
+  const enemyReset = server.split('\n').find(line => line.includes('s.combatBeats=0;s.enemyActionsResolved=0;'));
+  assert.ok(enemyReset?.includes('s.enemySpeedCharge=0'));
+  assert.ok(!enemyReset?.includes('s.playerSpeedCharge=0'), 'player charge must persist across enemy defeats');
+  assert.ok(server.includes('s.playerSpeedBeats=0;s.playerSpeedCharge=0;s.enemySpeedCharge=0;s.enemyTurnsToSkip=0;s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0'));
 });
 
 test('every orb rarity has an expanded, duplicate-free name pool', () => {

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Check, Coins, Info, Pause, Play, Sparkles, Swords, Zap, Sword, Shield, Crown, Hand, Footprints, CircleDot, Gem, Hammer, Clock3, Timer, type LucideIcon } from 'lucide-react';
 import { RunesSection } from './RunesSection.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatAutoScrapSettings, CombatCommand, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatOrbRoll, CombatPage, CombatSkillDefinition, CombatSkillId, CombatSnapshot, CombatState, CombatStats, CombatTactic } from '../../shared/combat.js';
-import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatGearRarityForQuality, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, combatActionsDue, combatActionTimeline, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
+import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatGearRarityForQuality, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, combatNextActor, combatTurnStep, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
 
 interface Props { page: CombatPage; onNavigate:(page:CombatPage)=>void; }
 interface SkillRollResult {
@@ -304,16 +304,18 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     const queuedCommand=runtime.current.intent;
     const pendingAbilityId=runtime.current.pendingAbilityId;
     const pendingSkill=pendingAbilityId?COMBAT_SKILLS.find(skill=>skill.id===pendingAbilityId):undefined;
+    const isPlayerTurn=combatNextActor(current.speed,enemy.speed,current.playerSpeedCharge??0,current.enemySpeedCharge??0)==='player';
     const queuedAbilityReady=Boolean(
+      isPlayerTurn&&
       pendingSkill&&
       current.equippedAbilities.includes(pendingSkill.id)&&
       (current.skillLevels[pendingSkill.id]??0)>0&&
       (current.abilityCooldowns[pendingSkill.id]??0)<=current.sequence&&
-      combatEnergyAfterRegen(current.energy,current.maxEnergy)>=combatSkillEnergyCost(pendingSkill.rarity)&&
-      combatActionsDue(current.speed,current.combatBeats+1,current.playerActionsResolved)>0
+      combatEnergyAfterRegen(current.energy,current.maxEnergy)>=combatSkillEnergyCost(pendingSkill.rarity)
     );
     const queuedAbilityForBeat=queuedAbilityReady?pendingAbilityId:null;
-    const queuedIntent=runtime.current.pendingIntent&&!pendingAbilityId;
+    // Keep queued commands intact through enemy turns; only a player action can consume them.
+    const queuedIntent=isPlayerTurn&&runtime.current.pendingIntent&&!pendingAbilityId;
     const beatIntent:CombatCommand=queuedAbilityForBeat?'ability':queuedIntent?queuedCommand:(runtime.current.auto&&!runtime.current.manual?'auto':runtime.current.intent);
     runtime.current.busy=true;setProcessing(true);
     window.dispatchEvent(new CustomEvent('io-combat-beat-state',{detail:{active:true}}));
@@ -369,7 +371,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       window.dispatchEvent(new CustomEvent('io-combat-beat-state',{detail:{active:false}}));
       releaseBeat();
     }
-  },[accept,error,load]);
+  },[accept,error,load,enemy.speed]);
   useEffect(()=>{
     if(!auto||paused||loading||Boolean(error))return;
     let timer:number|null=null;
@@ -514,38 +516,31 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       </div>
       {(()=>{
         const maxSpeed=Math.max(1,stats.speed,enemy.speed);
-        const playerCharge=Math.round(stats.speed/maxSpeed*100);
-        const enemyCharge=Math.round(enemy.speed/maxSpeed*100);
+        const playerPace=Math.round(stats.speed/maxSpeed*100);
+        const enemyPace=Math.round(enemy.speed/maxSpeed*100);
         const projected:{actor:'player'|'enemy';time:number;step:number;speed:number}[]=[];
-        let playerResolved=state.playerActionsResolved;
-        let enemyResolved=state.enemyActionsResolved;
-        const savedPlayerSpeedBeats=Math.max(0,Math.floor(Number(state.playerSpeedBeats??state.combatBeats)||0));
-        const lastPreviewBeat=state.combatBeats+Math.max(8,timelineCount*2+4);
-        for(let beatNumber=state.combatBeats+1;beatNumber<=lastPreviewBeat;beatNumber++){
-          const playerBeatNumber=savedPlayerSpeedBeats+(beatNumber-state.combatBeats);
-          const playerActions=combatActionsDue(stats.speed,playerBeatNumber,playerResolved);
-          const enemyActions=combatActionsDue(enemy.speed,beatNumber,enemyResolved);
-          const beatEvents=combatActionTimeline(
-            stats.speed,enemy.speed,playerBeatNumber,playerResolved,enemyResolved,playerActions,enemyActions,beatNumber,
-          );
-          projected.push(...beatEvents.map(event=>({
-            actor:event.actor,
-            time:beatNumber+event.time,
-            step:event.actionIndex,
-            speed:event.actor==='player'?stats.speed:enemy.speed,
-          })));
-          playerResolved+=playerActions;
-          enemyResolved+=enemyActions;
+        let playerCharge=Math.max(0,Math.min(1,Number(state.playerSpeedCharge)||0));
+        let enemyCharge=Math.max(0,Math.min(1,Number(state.enemySpeedCharge)||0));
+        for(let turnNumber=1;turnNumber<=timelineCount;turnNumber+=1){
+          const turn=combatTurnStep(stats.speed,enemy.speed,playerCharge,enemyCharge);
+          projected.push({
+            actor:turn.actor,
+            time:turnNumber,
+            step:turnNumber,
+            speed:turn.actor==='player'?stats.speed:enemy.speed,
+          });
+          playerCharge=turn.playerSpeedCharge;
+          enemyCharge=turn.enemySpeedCharge;
         }
-        const events=projected.sort((a,b)=>a.time-b.time||(a.actor===b.actor?a.step-b.step:a.actor==='player'?-1:1)).slice(0,timelineCount);
+        const events=projected;
         return <section className="io-combat-turn-tracker" aria-label="Combat speed and turn order">
           <div className="io-combat-turn-head"><div><span className="io-combat-eyebrow">SPEED & INITIATIVE</span><h2>Turn order</h2><p>One beat resolves about every 30 seconds.</p></div><strong>{beatCooldownMs>0?'NEXT BEAT '+Math.ceil(beatCooldownMs/1000)+'s':'BEAT READY'}</strong></div>
           <div className="io-combat-beat-track" role="progressbar" aria-label="Time until the next combat beat" aria-valuemin={0} aria-valuemax={100} aria-valuenow={beatProgressPct}><span style={{width:beatProgressPct+'%'}}/></div>
            <div className="io-combat-speed-bars">
-            <div className="io-combat-speed-row"><span>∞ DELVER <b>{fmt(stats.speed)} SPD</b></span><div className="io-combat-speed-track"><span className="is-player" style={{width:playerCharge+'%'}}/></div><strong>{playerCharge}% pace</strong></div>
-            <div className="io-combat-speed-row"><span>{enemy.emoji} {enemy.name.toUpperCase()} <b>{fmt(enemy.speed)} SPD</b></span><div className="io-combat-speed-track"><span className="is-enemy" style={{width:enemyCharge+'%'}}/></div><strong>{enemyCharge}% pace</strong></div>
+            <div className="io-combat-speed-row"><span>∞ DELVER <b>{fmt(stats.speed)} SPD</b></span><div className="io-combat-speed-track"><span className="is-player" style={{width:playerPace+'%'}}/></div><strong>{playerPace}% pace</strong></div>
+            <div className="io-combat-speed-row"><span>{enemy.emoji} {enemy.name.toUpperCase()} <b>{fmt(enemy.speed)} SPD</b></span><div className="io-combat-speed-track"><span className="is-enemy" style={{width:enemyPace+'%'}}/></div><strong>{enemyPace}% pace</strong></div>
           </div>
-          <div className="io-combat-turn-sequence" ref={turnSequenceRef}><div className="io-combat-turn-track" key={state.sequence}>{events.map((event,index)=><div key={event.actor+'-'+event.time+'-'+event.step} className={'io-combat-turn-chip '+(index===0?'is-next':'')+(event.actor==='enemy'?' is-foe':'')}><small>{index===0?'NEXT':index===1?'THEN':'TURN '+(index+1)}</small><strong>{event.actor==='player'?'DELVER':enemy.name}</strong><span>Beat {event.time.toFixed(2)} · {fmt(event.speed)} SPD</span></div>)}</div></div>
+          <div className="io-combat-turn-sequence" ref={turnSequenceRef}><div className="io-combat-turn-track" key={state.sequence}>{events.map((event,index)=><div key={event.actor+'-'+event.time+'-'+event.step} className={'io-combat-turn-chip '+(index===0?'is-next':'')+(event.actor==='enemy'?' is-foe':'')}><small>{index===0?'NEXT':index===1?'THEN':'TURN '+(index+1)}</small><strong>{event.actor==='player'?'DELVER':enemy.name}</strong><span>Turn {event.time} · {fmt(event.speed)} SPD</span></div>)}</div></div>
         </section>;
       })()}
       <div className="io-combat-tactic-row"><label htmlFor="io-combat-auto-tactic"><span className="io-combat-eyebrow">AUTO TACTIC</span><strong>{state.autoTactic==='balanced'?'Balanced':state.autoTactic==='aggressive'?'Aggressive':state.autoTactic==='defensive'?'Defensive':'Recovery'}</strong></label><select id="io-combat-auto-tactic" value={state.autoTactic} disabled={mutating} onChange={event=>void mutate('/api/combat/tactics',{tactic:event.target.value as CombatTactic})}><option value="balanced">Balanced — heal low, otherwise strike hard</option><option value="aggressive">Aggressive — spend energy on Heavy</option><option value="defensive">Defensive — heal and guard earlier</option><option value="recovery">Recovery — prioritize staying healthy</option></select></div>

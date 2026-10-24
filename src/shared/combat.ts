@@ -602,10 +602,10 @@ export function combatEnergyAfterRegen(energyValue: unknown, maxEnergyValue: unk
   const energy = Number.isFinite(rawEnergy) ? Math.max(0, Math.min(maxEnergy, Math.floor(rawEnergy))) : 0;
   return Math.min(maxEnergy, energy + 1);
 }
-/** Speed required to earn another action after the opening action. */
+/** Legacy threshold constant retained for older saved/test compatibility; live combat uses Speed charge. */
 export const COMBAT_SPEED_PER_ACTION = 400;
 
-/** Every beat grants one action; Speed adds extra actions at cumulative thresholds. */
+/** Legacy fixed-threshold action helper; live combat uses combatTurnStep for one action per beat. */
 export function combatActionsDue(speedValue: unknown, beatValue: unknown, resolvedValue: unknown, maxActionsValue = 100): number {
   const speedRaw = Number(speedValue), beatRaw = Number(beatValue), resolvedRaw = Number(resolvedValue);
   const speed = Number.isFinite(speedRaw) ? Math.max(0, speedRaw) : 0;
@@ -624,85 +624,101 @@ export function combatActionsDue(speedValue: unknown, beatValue: unknown, resolv
 }
 
 
-/** A single scheduled action within the current combat beat. Times are fractions of the beat. */
+/** A single scheduled action. Each accepted combat beat resolves one turn slot. */
 export interface CombatActionTimelineEntry {
   actor: 'player' | 'enemy';
-  /** Zero-based action number for this actor within the current beat. */
+  /** Zero-based action number for this actor within the accepted combat beat. */
   actionIndex: number;
+  /** Whole-number slot offset; the scheduled turn itself starts at 0. */
   time: number;
 }
 
+export interface CombatTurnStep {
+  actor: 'player' | 'enemy';
+  /** Progress toward the next player action, normalized to 0..1. */
+  playerSpeedCharge: number;
+  /** Progress toward the next enemy action, normalized to 0..1. */
+  enemySpeedCharge: number;
+}
+
 /**
- * Merge actions owed by player and enemy onto the same Speed threshold timeline.
- * Each beat has a base action ordered by Speed; bonus actions land at cumulative Speed thresholds.
- * Player and enemy clocks can differ because the player's Speed charge persists between encounters.
- * Exact ties favor the Delver.
+ * Advance both Speed clocks to the next ready action, then consume exactly that action.
+ * Charge is carried between beats. A tie favors the Delver, so 300 Speed versus 100 Speed
+ * produces player, player, player, enemy. Enemy charge is reset when a foe is replaced;
+ * player charge is preserved so a kill never grants a free extra turn.
+ */
+export function combatTurnStep(
+  playerSpeedValue: unknown,
+  enemySpeedValue: unknown,
+  playerChargeValue: unknown,
+  enemyChargeValue: unknown,
+): CombatTurnStep {
+  const safeSpeed = (value: unknown): number => {
+    const raw = Number(value);
+    return Number.isFinite(raw) ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(raw))) : 0;
+  };
+  const safeCharge = (value: unknown): number => {
+    const raw = Number(value);
+    return Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 0;
+  };
+  const playerSpeed = safeSpeed(playerSpeedValue);
+  const enemySpeed = safeSpeed(enemySpeedValue);
+  let playerCharge = safeCharge(playerChargeValue);
+  let enemyCharge = safeCharge(enemyChargeValue);
+
+  if (playerSpeed <= 0 && enemySpeed <= 0) {
+    return { actor: 'player', playerSpeedCharge: 0, enemySpeedCharge: 0 };
+  }
+
+  const playerTime = playerSpeed > 0 ? Math.max(0, 1 - playerCharge) / playerSpeed : Number.POSITIVE_INFINITY;
+  const enemyTime = enemySpeed > 0 ? Math.max(0, 1 - enemyCharge) / enemySpeed : Number.POSITIVE_INFINITY;
+  const elapsed = Math.min(playerTime, enemyTime);
+  if (Number.isFinite(elapsed)) {
+    playerCharge = Math.min(1, playerCharge + elapsed * playerSpeed);
+    enemyCharge = Math.min(1, enemyCharge + elapsed * enemySpeed);
+  }
+
+  // Charge may reach 1 for both actors at the same instant. Consume the player's turn
+  // first and leave the enemy ready for the following whole-number combat beat.
+  const playerReady = playerSpeed > 0 && playerCharge >= 1 - 1e-9;
+  const enemyReady = enemySpeed > 0 && enemyCharge >= 1 - 1e-9;
+  const actor: CombatTurnStep['actor'] = playerReady ? 'player' : enemyReady ? 'enemy' : playerSpeed > 0 ? 'player' : 'enemy';
+  if (actor === 'player' && playerReady) playerCharge = Math.max(0, playerCharge - 1);
+  else if (actor === 'enemy' && enemyReady) enemyCharge = Math.max(0, enemyCharge - 1);
+  return { actor, playerSpeedCharge: playerCharge, enemySpeedCharge: enemyCharge };
+}
+
+/** Convenience helper when only the next actor, not the updated charge, is needed. */
+export function combatNextActor(
+  playerSpeedValue: unknown,
+  enemySpeedValue: unknown,
+  playerChargeValue: unknown,
+  enemyChargeValue: unknown,
+): CombatTurnStep['actor'] {
+  return combatTurnStep(playerSpeedValue, enemySpeedValue, playerChargeValue, enemyChargeValue).actor;
+}
+
+/**
+ * Compatibility wrapper for turn previews. `time` is always an integer slot (zero here);
+ * it is not a fractional beat. Action counts indicate which actor slots are available.
  */
 export function combatActionTimeline(
   playerSpeedValue: unknown,
   enemySpeedValue: unknown,
-  beatValue: unknown,
-  _playerResolvedValue: unknown,
-  _enemyResolvedValue: unknown,
+  _turnValue: unknown,
+  playerChargeValue: unknown,
+  enemyChargeValue: unknown,
   playerActionsValue: unknown,
   enemyActionsValue: unknown,
-  enemyBeatValue: unknown = beatValue,
+  _enemyTurnValue: unknown = _turnValue,
 ): CombatActionTimelineEntry[] {
-  const safeSpeed = (value: unknown): number => {
-    const raw = Number(value);
-    return Number.isFinite(raw) ? Math.max(0, raw) : 0;
-  };
-  const safeCounter = (value: unknown): number => {
-    const raw = Number(value);
-    return Number.isFinite(raw) ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(raw))) : 0;
-  };
-  const safeActions = (value: unknown): number => {
-    const raw = Number(value);
-    return Number.isFinite(raw) ? Math.max(0, Math.min(1000, Math.floor(raw))) : 0;
-  };
-  const beat = Math.max(1, safeCounter(beatValue));
-  const enemyBeat = Math.max(1, safeCounter(enemyBeatValue));
-  const playerSpeed = safeSpeed(playerSpeedValue);
-  const enemySpeed = safeSpeed(enemySpeedValue);
-  const playerActions = safeActions(playerActionsValue);
-  const enemyActions = safeActions(enemyActionsValue);
-  const maxSpeed = Math.max(playerSpeed, enemySpeed);
-  const timeline: CombatActionTimelineEntry[] = [];
-
-  const append = (
-    actor: CombatActionTimelineEntry['actor'],
-    speed: number,
-    actorBeat: number,
-    count: number,
-  ) => {
-    if (speed <= 0 || count <= 0) return;
-    const progressBeforeBeat = Math.max(0, actorBeat - 2) * speed;
-    const thresholdsAlreadyCrossed = Math.floor(progressBeforeBeat / COMBAT_SPEED_PER_ACTION);
-    for (let actionIndex = 0; actionIndex < count; actionIndex += 1) {
-      // One normal action occurs every beat. Additional actions fire at the exact
-      // Speed threshold crossed during this beat, instead of being clamped to its end.
-      const rawTime = actionIndex === 0
-        ? 1 - speed / Math.max(1, maxSpeed)
-        : ((thresholdsAlreadyCrossed + actionIndex) * COMBAT_SPEED_PER_ACTION - progressBeforeBeat) / speed;
-      timeline.push({
-        actor,
-        actionIndex,
-        time: Number.isFinite(rawTime) ? Math.max(0, Math.min(1, rawTime)) : 1,
-      });
-    }
-  };
-
-  append('player', playerSpeed, beat, playerActions);
-  append('enemy', enemySpeed, enemyBeat, enemyActions);
-  timeline.sort((a, b) => {
-    const delta = a.time - b.time;
-    if (Math.abs(delta) > 1e-9) return delta;
-    if (a.actor !== b.actor) return a.actor === 'player' ? -1 : 1;
-    return a.actionIndex - b.actionIndex;
-  });
-  return timeline;
+  const hasPlayerAction = Number.isFinite(Number(playerActionsValue)) && Number(playerActionsValue) > 0;
+  const hasEnemyAction = Number.isFinite(Number(enemyActionsValue)) && Number(enemyActionsValue) > 0;
+  if (!hasPlayerAction && !hasEnemyAction) return [];
+  const actor = combatNextActor(playerSpeedValue, enemySpeedValue, playerChargeValue, enemyChargeValue);
+  if (actor === 'player' ? !hasPlayerAction : !hasEnemyAction) return [];
+  return [{ actor, actionIndex: 0, time: 0 }];
 }
-
 
 export function combatSkillEnergyCost(rarity: CombatRarity): number {
   return rarity === 'Common' || rarity === 'Uncommon' ? 2 : rarity === 'Rare' || rarity === 'Epic' ? 3 : 4;
@@ -941,6 +957,12 @@ export interface CombatState {
   lastAcceptedBeatAtMs: number;
   /** Cumulative accepted beats for player Speed; persists when an enemy is defeated. */
   playerSpeedBeats?: number;
+  /** Fractional progress toward the next player action; carried between enemies. */
+  playerSpeedCharge?: number;
+  /** Fractional progress toward the current enemy's next action. */
+  enemySpeedCharge?: number;
+  /** One-shot enemy-turn cancellation queued by Time-Shear. */
+  enemyTurnsToSkip?: number;
   combatBeats: number;
   playerActionsResolved: number;
   enemyActionsResolved: number;
@@ -1165,7 +1187,7 @@ export function createCombatState(): CombatState {
     version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1, depthCapCleared:false,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
     baseDamage:54, coins:0, scrap:0, combatMarks:250, runes:[], equippedRunes:[], runeAutoSacrifice:{...DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS}, combatTutorialSeen:false, combatUpgrades:{}, totalKills:0, skillRolls:0, skillRuntime:createCombatSkillRuntime(), strategyGuideRank:0, tacticianManuals:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
-    playerSpeedBeats:0, combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0, playerTurnsCompleted:0,
+    playerSpeedBeats:0, playerSpeedCharge:0, enemySpeedCharge:0, enemyTurnsToSkip:0, combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0, playerTurnsCompleted:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
     encounterFirstStrikeUsed:false, pendingHealAmount:0, inventory:starter.inventory,
     equipment:starter.equipment, runInventoryIds:[],
