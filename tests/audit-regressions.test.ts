@@ -2886,7 +2886,7 @@ test('UI-only action buttons declare type=button to avoid accidental form submis
 
   const profile = source('src/client/components/ProfileAndPrestige.tsx');
   assert.ok(profile.includes('<button\n                  type="button"\n                  onClick={() => {\n                    sound.playClick();\n                    void onBuyPrestigeUpgrade(id);'));
-  assert.equal((profile.match(/type="button"\s+onClick=\{\(\) => \{\s+sound\.playClick\(\);\s+void onBuyCosmetic\(cosmetic\.id\);/g) ?? []).length, 2);
+  assert.doesNotMatch(profile, /onBuyCosmetic|Cosmetics & Customization/);
 
   const rarity = source('src/client/components/RarityTableModal.tsx');
   assert.equal((rarity.match(/<button\s+type="button"\s+onClick=\{onClose\}/g) ?? []).length, 2);
