@@ -65,6 +65,8 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
   ].filter(Boolean) as {label:string;detail:string;kind:'offense'|'defense'}[];
   const moveTooltip=(x:number,y:number)=>{
     const next={x:Math.max(8,Math.min(Math.max(8,window.innerWidth-326),x+16)),y:Math.max(8,Math.min(Math.max(8,window.innerHeight-376),y+16))};
+    const previous=tooltipPointRef.current;
+    if(previous&&Math.abs(previous.x-next.x)<2&&Math.abs(previous.y-next.y)<2){setShowTooltip(true);return;}
     tooltipPointRef.current=next;
     setTooltipPoint(next);
     setShowTooltip(true);
@@ -558,7 +560,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         return <article key={skill.id} className={'io-combat-skill-icon-wrap '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')+(inspectedSkillId===skill.id?' is-inspected':'')}
           onPointerEnter={event=>{lastSkillPointerTypeRef.current=event.pointerType;if(event.pointerType==='mouse')setInspectedSkillId(skill.id);}}
           onPointerLeave={()=>{if(lastSkillPointerTypeRef.current==='mouse')setInspectedSkillId(current=>current===skill.id?null:current);}}>
-          <button type="button" className={'io-combat-skill-icon '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')} aria-label={'Inspect '+skill.name} aria-expanded={inspectedSkillId===skill.id} title={skill.name} disabled={mutating} onFocus={()=>setInspectedSkillId(skill.id)} onBlur={()=>setInspectedSkillId(current=>current===skill.id?null:current)} onClick={()=>{if(lastSkillPointerTypeRef.current!=='mouse')setInspectedSkillId(current=>current===skill.id?null:skill.id);}}>
+          <button type="button" className={'io-combat-skill-icon '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')} aria-label={'Inspect '+skill.name} aria-expanded={inspectedSkillId===skill.id} title={skill.name} disabled={mutating} onFocus={()=>setInspectedSkillId(skill.id)} onBlur={event=>{if(!event.currentTarget.parentElement?.contains(event.relatedTarget as Node|null))setInspectedSkillId(current=>current===skill.id?null:current);}} onClick={()=>{if(lastSkillPointerTypeRef.current!=='mouse')setInspectedSkillId(current=>current===skill.id?null:skill.id);}}>
             <span>{glyph}</span><small>{rank>0?'R'+fmt(rank):'—'}</small>{isEquipped&&<b>✓</b>}
           </button>
           <div className="io-combat-skill-tooltip" role="group" aria-label={skill.name+' details and actions'}>
