@@ -196,11 +196,13 @@ test('Roll menu is centered, redundant Pity Luck tier text is absent, and Shards
   assert.match(shared, /formatShardAmount\(value: unknown\): string/);
 });
 
-test('Gear and skill tooltips follow the pointer and close when it leaves the right icon', () => {
+test('Gear inspector opens on hover and remains accessible across its portal', () => {
   const combat = source('src/client/components/CombatSection.tsx');
   const styles = source('src/client/styles.css');
-  assert.match(combat, /onPointerMove=\{event=>\{if\(event\.pointerType==='mouse'\)moveTooltip\(event\.clientX,event\.clientY\);\}\}/);
-  assert.match(combat, /onPointerLeave=\{\(\)=>\{setShowTooltip\(false\);tooltipPointRef\.current=null;\}\}/);
+  assert.match(combat, /onPointerEnter=\{event=>\{lastPointerTypeRef\.current=event\.pointerType;if\(event\.pointerType==='mouse'\)openTooltip\(\);\}\}/);
+  assert.match(combat, /onPointerLeave=\{event=>\{if\(event\.pointerType==='mouse'\)closeIfPointerLeaves\(event\.relatedTarget\);\}\}/);
+  assert.ok(combat.includes('onPointerDown={event=>{lastPointerTypeRef.current=event.pointerType;}}'));
+  assert.ok(combat.includes('createPortal('));
   assert.match(combat, /setInspectedSkillId\(current=>current===skill\.id\?null:current\)/);
   assert.match(combat, /const closeOutside=\(event:PointerEvent\)/);
   assert.doesNotMatch(styles, /io-combat-gear-icon-wrap:hover \.io-combat-gear-tooltip/);
