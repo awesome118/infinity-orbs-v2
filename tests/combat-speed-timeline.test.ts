@@ -59,6 +59,18 @@ test('combat Orb rolls ignore main-game Luck and the orb panel explains Luck and
   assert.ok(ui.includes('TOTAL DAMAGE'));
 });
 
+test('Auto Fight countdown tracks reconciled server timestamps instead of stale render state', () => {
+  const ui = readFileSync(resolve(process.cwd(), 'src/client/components/CombatSection.tsx'), 'utf8');
+  assert.ok(
+    ui.includes('Date.now()-(Number(stateRef.current?.lastAcceptedBeatAtMs)||0)'),
+    'the countdown must read the same mutable timestamp the retry scheduler reconciles',
+  );
+  assert.ok(
+    ui.includes('stateRef.current={...current,lastAcceptedBeatAtMs:Math.max(0,Date.now()+Math.max(0,remaining)-COMBAT_BEAT_INTERVAL_MS)}'),
+    'an early server rejection must reconcile the timestamp consumed by the countdown',
+  );
+});
+
 test('the leaderboard depth metric uses the best saved depth across every dungeon', () => {
   assert.equal(combatHighestDepthReached({
     depth: 4,
