@@ -146,6 +146,7 @@ test('ranked Gacha raises rare-skill odds without pity overrides',()=>{
 test('Scrap rewards and Forge costs scale with gear/floor progression',()=>{
   const low={power:5,quality:20,sourceFloor:0};
   const high={power:500,quality:90,sourceFloor:100};
+  assert.equal(combatScrapValue(low),20,'Scrap payouts use the reduced 50% curve');
   assert.ok(combatScrapValue(high)>combatScrapValue(low));
   assert.equal(combatForgeCost(0),10);
   assert.ok(combatForgeCost(50)>combatForgeCost(0));
