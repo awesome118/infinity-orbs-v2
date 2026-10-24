@@ -1782,8 +1782,10 @@ test('persisted PlayerState parser rejects malformed wallet and roll-counter cor
   assert.match(parser, /typeof record\.coins === 'number'/);
   assert.match(parser, /Number\.isFinite\(record\.coins\)/);
   assert.match(parser, /record\.coins >= 0/);
-  assert.match(parser, /Number\.isSafeInteger\(record\.shards\)/);
-  assert.match(parser, /Number\(record\.shards\) >= 0/);
+  assert.match(parser, /typeof record\.shards === 'number'/);
+  assert.match(parser, /Number\.isFinite\(record\.shards\)/);
+  assert.match(parser, /record\.shards >= 0/);
+  assert.match(parser, /Math\.abs\(record\.shards \* 1_000 - Math\.round\(record\.shards \* 1_000\)\) < 1e-6/);
   assert.match(parser, /Number\.isSafeInteger\(record\.totalRolls\)/);
   assert.match(parser, /if \(!validCoreState\) return null/);
 });
