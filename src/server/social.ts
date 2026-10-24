@@ -2307,17 +2307,11 @@ async function resolveGlobalGamePostId(): Promise<string> {
 }
 
 async function requireGlobalChatLauncher(): Promise<string> {
-  const destination = await resolveGlobalGamePostId();
-  const currentPostId = normalizeRedditPostId(String(context.postId ?? '').trim());
-  const isFrenzyLauncher = currentPostId ? await isRegisteredFrenzyPost(currentPostId) : false;
-  // Some Devvit web-view requests omit context.postId even while opened from the
-  // canonical Game post. Reject an explicitly different, unregistered post, but
-  // do not disable the main launcher merely because that optional context is absent.
-  if (currentPostId && currentPostId !== destination && !isFrenzyLauncher) {
-    throw new Error("Global Chat is disabled because you're not in the main Game launcher.");
-  }
-  // Every chat read/write still targets the registered canonical Game post, including Frenzy launchers.
-  return destination;
+  // Global Chat may be opened from the main Game or a Frenzy web view, and
+  // Devvit's context.postId can vary across embedded entrypoints. The canonical
+  // ID is always server-registered; the current launcher never chooses or
+  // changes the destination. Every public comment is posted to the main Game.
+  return resolveGlobalGamePostId();
 }
 
 export async function getGlobalChatStatus(): Promise<{ enabled: boolean; reason?: string }> {
