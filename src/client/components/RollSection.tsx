@@ -30,6 +30,7 @@ import {
   formatRarity,
   visibleContinuumTiers,
   formatNumber,
+  formatShardAmount,
   frenzyCooldownRemaining,
 } from '../../shared/game.js';
 
@@ -494,7 +495,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
                 </div>
                 <div className="reward-chip reward-chip-shards">
                   <Zap className="w-4 h-4" />
-                  <strong>+{formatNumber(batchSummary.shards)}</strong>
+                  <strong>+{formatShardAmount(batchSummary.shards)}</strong>
                   <span>Shards</span>
                 </div>
                 <div className="reward-chip reward-chip-value">
@@ -894,7 +895,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               </span>
               {batchSummary.shards > 0 && (
                 <span className="text-xs font-semibold text-cyan-400">
-                  +{batchSummary.shards} Shards
+                  +{formatShardAmount(batchSummary.shards)} Shards
                 </span>
               )}
               <button
