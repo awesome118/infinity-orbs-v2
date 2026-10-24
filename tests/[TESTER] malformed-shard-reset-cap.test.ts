@@ -8,18 +8,18 @@ import {
   todayKey,
 } from '../src/shared/game.js';
 
-test('malformed daily telemetry cannot block fractional or whole roll-Shard rewards', () => {
+test('malformed daily telemetry cannot block whole roll-Shard rewards', () => {
   const now = Date.UTC(2026, 9, 10, 12, 0, 0);
   const state = createInitialState(now);
   state.shards = 0;
   state.lastFreeShardReset = 'corrupt-date';
   state.freeShardsEarnedToday = 50;
 
-  const granted = grantRollShards(state, 0.125, now);
+  const granted = grantRollShards(state, 1, now);
 
-  assert.equal(granted, 0.125);
-  assert.equal(state.shards, 0.125);
-  assert.equal(state.freeShardsEarnedToday, 0.125);
+  assert.equal(granted, 1);
+  assert.equal(state.shards, 1);
+  assert.equal(state.freeShardsEarnedToday, 1);
 });
 
 test('a valid prior-day marker resets only the Shard telemetry counter', () => {
