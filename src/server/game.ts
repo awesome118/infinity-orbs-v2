@@ -3796,7 +3796,7 @@ export async function applyRolls(
     );
     const shardProcTriggered = rng() < shardProcChance;
     earnedShards += resolveShardPityReward(s, shardProcTriggered);
-    // Shard Jackpot multiplies the full payout, including fractional drip, instead of forcing a whole-Shard minimum.
+    // Shard Jackpot doubles or multiplies an integer payout; no fractional minimum is applied.
     if (earnedShards > 0 && !suppressOtherRuneProcs && shardJackpotChance > 0 && rng() < shardJackpotChance * 0.5) {
       earnedShards = Math.round(earnedShards * (1 + runeAbilityEffects.shardJackpotExtraMultiplier));
     }
