@@ -354,7 +354,7 @@ export function App() {
     }).finally(() => {
       autoRollDisableForCombatRef.current = false;
     });
-  }, [combatMode]);
+  }, [combatMode, state?.autoRollEnabled]);
 
   const [isRolling, setIsRolling] = useState<boolean>(false);
   const [busy, setBusy] = useState<boolean>(false);
