@@ -2171,7 +2171,7 @@ return withPlayerMutationLockFor(userId, async () => {
       return false;
     }
 
-    const currentShardBalance = normalizeSafeInteger(state.shards, 0);
+    const currentShardBalance = roundShardAmount(state.shards);
     const currentBoosterCreditBalance = normalizeSafeInteger(state.globalBoosterCredits, 0);
     if (pack.shards > Number.MAX_SAFE_INTEGER - currentShardBalance) {
       await txn.unwatch();
@@ -2191,7 +2191,7 @@ return withPlayerMutationLockFor(userId, async () => {
 
     const existingPurchasedShards = Math.min(
       normalizeSafeInteger(state.purchasedShards, 0),
-      currentShardBalance,
+      Math.floor(currentShardBalance),
     );
     state.purchasedShards = existingPurchasedShards;
     state.shards = currentShardBalance;
@@ -2218,10 +2218,8 @@ return withPlayerMutationLockFor(userId, async () => {
     state.purchasedShards = existingPurchasedShards + pack.shards;
     // Lifetime Shards are telemetry, not a spendable balance. Saturate the
     // counter rather than allowing an unsafe integer into persisted state.
-    const lifetimeShards = normalizeSafeInteger(state.lifetimeShards, currentShardBalance);
-    state.lifetimeShards = lifetimeShards > Number.MAX_SAFE_INTEGER - pack.shards
-      ? Number.MAX_SAFE_INTEGER
-      : lifetimeShards + pack.shards;
+    const lifetimeShards = roundShardAmount(state.lifetimeShards ?? currentShardBalance);
+    state.lifetimeShards = roundShardAmount(Math.min(Number.MAX_SAFE_INTEGER, lifetimeShards + pack.shards));
     state.globalBoosterCredits = currentBoosterCreditBalance + pack.globalBoosterCredits;
     const receipt: PaymentReceipt = {
       status: 'fulfilled',
@@ -6083,7 +6081,7 @@ export async function startOrbFrenzy(options: {
       `u/${ownerUsername} got a 1/${formatRarity(rarity, isInfinity)} Orb in their Frenzy.\n\n` +
       `Click below to claim it! You can only claim one every 23 hours.\n\n` +
       `When someone claims your Frenzy, you receive +${FRENZY_OWNER_SHARD_REWARD} Shards. ` +
-      `This reward bypasses the 50 Shard daily cap.\n\n` +
+      `This owner reward is granted separately from roll-earned Shards.\n\n` +
       `If you claim this Frenzy, please consider upvoting the post to thank its owner.`;
     const post = await reddit.submitCustomPost({
       runAs: 'USER',
