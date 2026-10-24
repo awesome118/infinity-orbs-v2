@@ -182,44 +182,29 @@ export function normalizeAutomations(value: unknown): Partial<Record<AutomationI
   ) as Partial<Record<AutomationId, boolean>>;
 }
 
-/** Shard wallet precision and anti-drought pity tuning. */
-export const SHARD_DECIMAL_PLACES = 3;
-export const SHARD_PRECISION = 10 ** SHARD_DECIMAL_PLACES;
-/** A small guaranteed bonus protects players from indefinitely dry Shard-proc streaks. */
-export const SHARD_PITY_ROLLS_TO_REWARD = 100;
-export const SHARD_PROC_REWARD = 0.001;
-export const SHARD_PITY_REWARD = 0.01;
+/** Shards are whole-number currency. Legacy pity exports stay inert so older saves and tests remain readable. */
+export const SHARD_DECIMAL_PLACES = 0;
+export const SHARD_PRECISION = 1;
+export const SHARD_PITY_ROLLS_TO_REWARD = 0;
+export const SHARD_PROC_REWARD = 1;
+export const SHARD_PITY_REWARD = 0;
 
-/** Round currency to the supported thousandth-Shard precision without producing NaN/Infinity. */
+/** Normalize the whole-Shard wallet, discarding fractional legacy balances rather than minting currency. */
 export function roundShardAmount(value: unknown): number {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return 0;
-  return Math.min(Number.MAX_SAFE_INTEGER, Math.round((n + Number.EPSILON) * SHARD_PRECISION) / SHARD_PRECISION);
+  return Math.min(Number.MAX_SAFE_INTEGER, Math.floor(n));
 }
 
-/** A compact display that preserves fractional Shard drops without trailing zeroes. */
+/** Display whole Shards only. */
 export function formatShardAmount(value: unknown): string {
-  return roundShardAmount(value).toLocaleString('en-US', { maximumFractionDigits: SHARD_DECIMAL_PLACES });
+  return roundShardAmount(value).toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
-/** Returns the bonus for this roll and persists/reset the consecutive-miss counter. */
+/** Legacy export retained for save compatibility; there is no Shard pity counter or guaranteed payout. */
 export function resolveShardPityReward(state: Pick<PlayerState, 'shardPityRolls'>, procTriggered: boolean): number {
-  const rawMisses = state.shardPityRolls;
-  const safeMisses = typeof rawMisses === 'number' && Number.isSafeInteger(rawMisses) && rawMisses >= 0
-    ? rawMisses
-    : 0;
-  const misses = Math.min(SHARD_PITY_ROLLS_TO_REWARD - 1, safeMisses);
-  if (procTriggered) {
-    state.shardPityRolls = 0;
-    return SHARD_PROC_REWARD;
-  }
-  const nextMisses = misses + 1;
-  if (nextMisses >= SHARD_PITY_ROLLS_TO_REWARD) {
-    state.shardPityRolls = 0;
-    return SHARD_PITY_REWARD;
-  }
-  state.shardPityRolls = nextMisses;
-  return 0;
+  state.shardPityRolls = 0;
+  return procTriggered ? SHARD_PROC_REWARD : 0;
 }
 
 export function todayKey(now = Date.now()): string {
