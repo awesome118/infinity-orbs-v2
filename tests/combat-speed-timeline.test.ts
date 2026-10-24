@@ -48,6 +48,23 @@ test('a fast enemy can act while a slower Delver is still recharging', () => {
   assert.ok(timeline[0]!.time < timeline[1]!.time);
 });
 
+test('player Speed charge carries into a new encounter while enemy cadence restarts', () => {
+  const playerActions = combatActionsDue(310, 3, 1);
+  const enemyActions = combatActionsDue(100, 1, 0);
+  const timeline = combatActionTimeline(310, 100, 3, 1, 0, playerActions, enemyActions, 1);
+
+  assert.equal(playerActions, 1, 'accumulated player Speed earns the action');
+  assert.equal(enemyActions, 1, 'each new enemy receives its opening action');
+  assert.deepEqual(timeline.map(action => action.actor), ['player', 'enemy']);
+  assert.ok(timeline[0]!.time < timeline[1]!.time, 'room reset does not reset the player clock');
+});
+
+test('player Speed counter survives enemy kills in server state', () => {
+  const server = readFileSync(resolve(process.cwd(), 'src/server/combat.ts'), 'utf8');
+  assert.match(server, /s\\.combatBeats=0;s\\.enemyActionsResolved=0;s\\.guardBeats=0/);
+  assert.doesNotMatch(server, /s\\.combatBeats=0;s\\.playerActionsResolved=0;s\\.enemyActionsResolved=0;s\\.guardBeats=0/);
+});
+
 test('every orb rarity has an expanded, duplicate-free name pool', () => {
   for (const [tier, names] of Object.entries(ORB_TIER_NAMES)) {
     assert.ok(names.length >= 14, `${tier} should have at least fourteen names`);

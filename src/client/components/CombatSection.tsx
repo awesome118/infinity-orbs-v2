@@ -264,7 +264,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       (current.skillLevels[pendingSkill.id]??0)>0&&
       (current.abilityCooldowns[pendingSkill.id]??0)<=current.sequence&&
       combatEnergyAfterRegen(current.energy,current.maxEnergy)>=combatSkillEnergyCost(pendingSkill.rarity)&&
-      combatActionsDue(current.speed,current.combatBeats+1,current.playerActionsResolved)>0
+      combatActionsDue(current.speed,(current.playerSpeedBeats??current.combatBeats)+1,current.playerActionsResolved)>0
     );
     const queuedAbilityForBeat=queuedAbilityReady?pendingAbilityId:null;
     const queuedIntent=runtime.current.pendingIntent&&!pendingAbilityId;
