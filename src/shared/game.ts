@@ -273,22 +273,10 @@ export function createInitialDailyStreakCommunity(now = Date.now()): DailyStreak
 
 export function resetFreeShardBudgetIfNeeded(s: PlayerState, now = Date.now()): void {
   const today = todayKey(now);
-  const resetMarker = s.lastFreeShardReset;
-  if (resetMarker === today) return;
-
-  // Only a valid earlier UTC day proves the daily budget should reset. Corrupt
-  // or future markers fail closed for the rest of today instead of reopening it.
-  const isValidDateKey =
-    typeof resetMarker === 'string' &&
-    /^\d{4}-\d{2}-\d{2}$/.test(resetMarker) &&
-    Number.isFinite(Date.parse(`${resetMarker}T00:00:00.000Z`)) &&
-    new Date(`${resetMarker}T00:00:00.000Z`).toISOString().slice(0, 10) === resetMarker;
-
-  if (!isValidDateKey || resetMarker > today) {
-    s.lastFreeShardReset = today;
-    return;
-  }
-
+  if (s.lastFreeShardReset === today) return;
+  // This value is reporting-only after the daily earning cap was removed.
+  // Always repair stale/corrupt markers and reset the display counter; it can
+  // never grant or deny spendable Shards.
   s.lastFreeShardReset = today;
   s.freeShardsEarnedToday = 0;
 }
