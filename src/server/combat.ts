@@ -156,7 +156,7 @@ function equippedMajorAbilityTotal(state:CombatState,abilityId:CombatMajorAbilit
   return total;
 }
 
-const COMBAT_RUNE_MAJOR_ABILITY_IDS = ['fateweaver','midas-engine','memory-well','echo-chamber','paradox-engine','event-horizon','shard-constellation','temporal-loop','prismatic-fork','critical-convergence','rarity-ladder','stellar-dividend','shard-jackpot','milestone-engine'] as const;
+const COMBAT_RUNE_MAJOR_ABILITY_IDS = ['fateweaver','midas-engine','memory-well','echo-chamber','paradox-engine','event-horizon','shard-constellation','temporal-loop','prismatic-fork','critical-convergence','rarity-ladder','stellar-dividend','shard-jackpot','milestone-engine','shard-tithe','discovery-oracle','dry-streak-refinery'] as const;
 type CombatRuneMajorAbilityId = NonNullable<CombatRune['majorAbility']>['id'];
 function createRuneMajorAbility(qualityValue:number,requestedAbilityId?:CombatRuneMajorAbilityId):NonNullable<CombatRune['majorAbility']> {
   const quality=Math.max(0,Math.min(100,Number(qualityValue)||0));
@@ -177,6 +177,9 @@ function createRuneMajorAbility(qualityValue:number,requestedAbilityId?:CombatRu
     'stellar-dividend':{name:'Stellar Dividend',description:'Lifetime roll milestones trigger extra rolls.'},
     'shard-jackpot':{name:'Shard Jackpot',description:'Shard payouts can trigger a scaled Shard multiplier.'},
     'milestone-engine':{name:'Milestone Engine',description:'Crossing a new all-time rarity decade grants bonus Shards and rolls.'},
+    'shard-tithe':{name:'Shard Tithe',description:'Adds fractional Shards to every main-game roll.'},
+    'discovery-oracle':{name:'Discovery Oracle',description:'First-time rarity discoveries can trigger rarity-matched bonus rolls.'},
+    'dry-streak-refinery':{name:'Dry-Streak Refinery',description:'Long gaps between rarity records gradually add fractional Shards per roll.'},
   };
   const definition=definitions[id];
   return {id,name:definition.name,valuePct,description:definition.description};
