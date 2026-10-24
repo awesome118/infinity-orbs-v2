@@ -33,10 +33,6 @@ async function request<T>(url:string,method='GET',body?:unknown):Promise<T> {
   } finally { window.clearTimeout(timeout); }
 }
 const fmt=(n:number)=>Number.isFinite(n)&&n>0?Math.floor(n).toLocaleString():'0';
-const totalDamageThisBeat=actions.reduce((total,action)=>{
-  if(action.actor!=='player'||!Number.isFinite(action.damage))return total;
-  return Math.min(Number.MAX_SAFE_INTEGER,total+Math.max(0,Math.floor(action.damage??0)));
-},0);
 const MAJOR_OFFENSE_IDS=new Set(['void-edge','starfall','executioner','emberwake','critical-mass','orb-conduit','bossbreaker','echo-fang','blood-moon','deep-roots','glass-cannon','fortune-engine','full-moon','unstable-singularity']);
 const MAJOR_DEFENSE_IDS=new Set(['second-dawn','aegis-ward','titan-heart','blood-drinker','mirrorplate','last-bastion','phase-shift','frostbrand','aegis-pulse','unending-ward','genesis-core']);
 const majorAbilityClass=(id:string)=>MAJOR_OFFENSE_IDS.has(id)?'io-combat-major-offense':MAJOR_DEFENSE_IDS.has(id)?'io-combat-major-defense':['mark-harvest','salvagers-touch','rune-savant'].includes(id)?'io-combat-major-economy':'';
@@ -114,6 +110,10 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const [enemy,setEnemy]=useState<CombatEnemy|null>(null);
   const [stats,setStats]=useState<CombatStats|null>(null);
   const [actions,setActions]=useState<CombatAction[]>([]);
+  const totalDamageThisBeat=actions.reduce((total,action)=>{
+    if(action.actor!=='player'||!Number.isFinite(action.damage))return total;
+    return Math.min(Number.MAX_SAFE_INTEGER,total+Math.max(0,Math.floor(action.damage??0)));
+  },0);
   const [lastOrb,setLastOrb]=useState<CombatOrbRoll|null>(null);
   const [loading,setLoading]=useState(true),[processing,setProcessing]=useState(false),[mutating,setMutating]=useState(false);
   const [auto,setAuto]=useState(()=>{try{return window.localStorage.getItem('io-combat-auto')!=='false';}catch{return true;}}),[paused,setPaused]=useState(()=>{try{return window.localStorage.getItem('io-combat-paused')==='true';}catch{return false;}}),[intent,setIntent]=useState<CombatIntent>('strike');
