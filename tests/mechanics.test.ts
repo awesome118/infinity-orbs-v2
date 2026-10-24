@@ -485,6 +485,18 @@ test('roll Shards are uncapped, fractional, and tracked without integer rounding
   assert.equal(state.lifetimeShards, 60.255);
 });
 
+test('whole-number Shard sinks preserve fractional remainder and purchased provenance', () => {
+  const state = createInitialState(NOW);
+  state.shards = 250.75;
+  state.purchasedShards = 100;
+  state.purchasedShardLots = { orderA: 100 };
+
+  assert.equal(spendShards(state, 250), 250);
+  assert.equal(state.shards, 0.75);
+  assert.equal(state.purchasedShards, 0);
+  assert.deepEqual(state.purchasedShardLots, {});
+});
+
 test('invalid Shard spend amounts are rejected before touching wallet state', () => {
   const state = createInitialState(NOW);
   state.shards = 8;
@@ -541,7 +553,7 @@ test('Shard proc pity rewards a fractional bonus after 100 misses and resets on 
   assert.equal(state.shardPityRolls, 0);
 });
 
-test('non-finite roll Shard request grants zero while preserving a valid budget', () => {
+test('non-finite roll Shard requests grant zero while preserving reporting telemetry', () => {
   const state = createInitialState(NOW);
   state.lastFreeShardReset = new Date(NOW).toISOString().slice(0, 10);
   state.freeShardsEarnedToday = 12;
