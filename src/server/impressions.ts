@@ -279,7 +279,7 @@ async function pruneViewerIndex(now: number): Promise<void> {
     let transactionClosed = false;
     try {
       const index = await redis.hGetAll(VIEWER_INDEX_KEY);
-      const userHashes = Object.keys(index ?? {}).slice(0, MAX_INDEXED_VIEWERS + 1);
+      const userHashes = Object.keys(index ?? {});
       const viewerValues = await redis.mGet(userHashes.map(userHash => VIEWER_RECORD_PREFIX + userHash));
       const rows = userHashes.map((userHash, index) => ({
         userHash,
