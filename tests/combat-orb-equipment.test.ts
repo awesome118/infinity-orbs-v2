@@ -31,7 +31,7 @@ test('gear affixes from multiple equipment slots contribute to the combat build'
   const after = combatStatsFor(state);
 
   assert.ok(after.damage > before.damage);
-  assert.equal(after.speed, before.speed, 'ordinary speed affixes must not increase turn speed');
+  assert.equal(after.speed, before.speed + ring.speedBonus, 'ordinary gear Speed affixes must increase turn speed');
   assert.equal(after.armor, before.armor + helmet.armorBonus);
   assert.ok(after.critChance > before.critChance);
   state.equipment.ring = null;

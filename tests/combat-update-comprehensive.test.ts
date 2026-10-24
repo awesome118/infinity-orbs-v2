@@ -191,7 +191,8 @@ test('Roll menu is centered, redundant Pity Luck tier text is absent, and Shards
   const shared = source('src/shared/game.ts');
   assert.doesNotMatch(roll, /Pity Luck · Tier/);
   assert.match(roll, /totalLuckMultiplier\.toFixed\(2\)/);
-  assert.match(styles, /grid-template-columns: minmax\(0, 760px\) !important/);
+  assert.match(styles, /grid-template-columns: minmax\(0, 1fr\) 272px/);
+  assert.doesNotMatch(styles, /grid-template-columns: minmax\(0, 760px\) !important/);
   assert.match(shared, /formatShardAmount\(value: unknown\): string/);
 });
 

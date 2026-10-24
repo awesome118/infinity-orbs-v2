@@ -585,8 +585,10 @@ test('comprehensive admin tests atomically reset cooldown, issue a roll ticket, 
   const frenzyVolleyEnd = modal.indexOf("'Mechanic · Astral Reserve'", frenzyVolleyStart);
   assert.ok(frenzyVolleyStart >= 0 && frenzyVolleyEnd > frenzyVolleyStart);
   const frenzyVolley = modal.slice(frenzyVolleyStart, frenzyVolleyEnd);
-  assert.ok(frenzyVolley.includes('frenzyOrbCountForRarity(normalRarity) * 2'));
-  assert.ok(frenzyVolley.includes('frenzyOrbCountForRarity(volleyRarity) * 1.20'));
+  assert.ok(frenzyVolley.includes('normalRollsPerActivation = Number((await readMechanics()).rollsPerActivation ?? 1)'));
+  assert.ok(frenzyVolley.includes('volleyRollsPerActivation = Number((await readMechanics()).rollsPerActivation ?? 1)'));
+  assert.ok(frenzyVolley.includes('frenzyOrbCountForRarity(normalRarity) * Math.max(1, normalRollsPerActivation)'));
+  assert.ok(frenzyVolley.includes('frenzyOrbCountForRarity(volleyRarity) * (1 + Math.max(0, Math.max(1, volleyRollsPerActivation) - 1) * 0.20)'));
 
   const adminFrenzyStart = modal.indexOf('"API · Frenzy admin start creates a dedicated post record"');
   const adminFrenzyEnd = modal.indexOf('"API · Frenzy admin claim returns the authoritative volley and owner reward"', adminFrenzyStart);

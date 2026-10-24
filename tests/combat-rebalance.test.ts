@@ -99,8 +99,10 @@ test('Expanded Reserves increases the actual Energy cap',()=>{
 test('late-game player stats and enemy progression reach large numbers without overflow',()=>{
   const state=createCombatState();state.level=60;state.depth=COMBAT_MAX_DEPTH;
   const stats=combatStatsFor(state);
+  const shallowStats=combatStatsFor({...state,depth:1});
   const enemy=getEnemyForDungeonDepth('undercrypt',COMBAT_MAX_DEPTH);
-  assert.ok(stats.speed>=1_000_000);
+  assert.equal(stats.speed,shallowStats.speed,'player Speed must not multiply with dungeon depth');
+  assert.ok(Number.isFinite(stats.speed)&&stats.speed>=310&&stats.speed<1_000_000);
   assert.ok(stats.maxHealth>=1_000_000);
   assert.ok(stats.damage*10>=1_000_000);
   assert.ok(enemy.maxHp>1_000_000&&enemy.maxHp<1e15);
