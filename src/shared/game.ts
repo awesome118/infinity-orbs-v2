@@ -342,7 +342,7 @@ export function spendShards(s: PlayerState, requested: number): number {
     Number.isSafeInteger(s.purchasedShards) && (s.purchasedShards ?? 0) >= 0
       ? (s.purchasedShards ?? 0)
       : 0,
-    shardBalance,
+    Math.floor(shardBalance),
   );
   const freeBalance = Math.max(0, shardBalance - purchasedBalance);
   // Whole-number purchases consume whole free Shards first and preserve any
