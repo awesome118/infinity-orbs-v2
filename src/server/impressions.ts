@@ -201,7 +201,7 @@ async function incrementCounterOnce(markerKey: string, counterKey: string): Prom
  * online-player activity.
  */
 function normalizeViewerUsername(value: unknown): string {
-  const candidate = String(value ?? '').trim().replace(/^u\\//i, '');
+  const candidate = String(value ?? '').trim().replace(/^u\//i, '');
   return /^[A-Za-z0-9_-]{1,20}$/.test(candidate) ? candidate : 'Redditor';
 }
 
