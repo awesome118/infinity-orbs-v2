@@ -19,7 +19,7 @@ test('malformed daily telemetry cannot block fractional or whole roll-Shard rewa
 
   assert.equal(granted, 0.125);
   assert.equal(state.shards, 0.125);
-  assert.equal(state.freeShardsEarnedToday, 50.125);
+  assert.equal(state.freeShardsEarnedToday, 0.125);
 });
 
 test('a valid prior-day marker resets only the Shard telemetry counter', () => {
