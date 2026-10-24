@@ -564,7 +564,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     if(s.depthCapCleared && s.depth>=COMBAT_MAX_DEPTH)throw new Error('Maximum supported depth reached. Switch dungeons to begin a new descent.');
     const manualSkillId=typeof skillIdValue==='string'&&COMBAT_SKILLS.some(skill=>skill.id===skillIdValue)?skillIdValue as CombatSkillId:null;
     const guideEnemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);
-    const predictedPlayerActions=combatActionsDue(s.speed,s.playerSpeedBeats+1,s.playerActionsResolved);
+    const predictedPlayerActions=combatActionsDue(s.speed,Number(s.playerSpeedBeats??s.combatBeats)+1,s.playerActionsResolved);
     const activeSkillId=intent==='ability'?manualSkillId:intent==='auto'&&predictedPlayerActions>0?chooseGuidedSkillId(s,guideEnemy):null;
     const activeSkill=activeSkillId?COMBAT_SKILLS.find(skill=>skill.id===activeSkillId):null;
     if(intent==='ability'&&!activeSkill)throw new Error('Choose a valid equipped ability.');
@@ -578,7 +578,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     const elapsed=s.lastAcceptedBeatAtMs>0?Math.max(0,now-s.lastAcceptedBeatAtMs):Number.POSITIVE_INFINITY;
     if(!adminSkipCooldown&&elapsed<COMBAT_BEAT_INTERVAL_MS)throw new Error('COMBAT_BEAT_TOO_SOON:'+Math.max(1,COMBAT_BEAT_INTERVAL_MS-elapsed));
     s.lastAcceptedBeatAtMs=now;
-    const actions:CombatAction[]=[];synchronizeCombatStats(s);s.sequence+=1;s.combatBeats+=1;s.playerSpeedBeats=Math.min(Number.MAX_SAFE_INTEGER,s.playerSpeedBeats+1);s.energy=combatEnergyAfterRegen(s.energy,s.maxEnergy);
+    const actions:CombatAction[]=[];synchronizeCombatStats(s);s.sequence+=1;s.combatBeats+=1;s.playerSpeedBeats=Math.min(Number.MAX_SAFE_INTEGER,Number(s.playerSpeedBeats??s.combatBeats)+1);s.energy=combatEnergyAfterRegen(s.energy,s.maxEnergy);
     if(s.pendingHealAmount>0){
       const heal=Math.min(s.pendingHealAmount,Math.max(0,s.maxHealth-s.health));s.pendingHealAmount=0;
       if(heal>0){s.health=Math.min(s.maxHealth,s.health+heal);actions.push({actor:'player',kind:'ability',text:'Second Dawn restored '+heal.toLocaleString()+' HP from its delayed heal.'});}
@@ -613,7 +613,7 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     actions.push({actor:'player',kind:'ability',text:'Orb roll: '+orbInfo.name+' · 1 / '+(isInfinity?'Infinity':orbRarity.toLocaleString())+' · ×'+damageMultiplier.toFixed(2)+' damage.'});
     const resolvedIntent:CombatIntent=activeSkill?'strike':intent==='auto'?chooseAutoCombatIntent(s):intent==='ability'?'strike':intent;
     const beatNumber=s.combatBeats;
-    const playerBeatNumber=s.playerSpeedBeats;
+    const playerBeatNumber=Number(s.playerSpeedBeats??s.combatBeats);
     const playerActionsResolvedBefore=s.playerActionsResolved;
     const enemyActionsResolvedBefore=s.enemyActionsResolved;
     const playerActions=combatActionsDue(stats.speed,playerBeatNumber,playerActionsResolvedBefore);
