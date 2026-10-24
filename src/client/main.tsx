@@ -305,6 +305,10 @@ export function App() {
     }
   }, [state?.level, state?.totalRolls, tutorialDismissed, combatTutorialDismissed, combatTutorialStep, combatTutorialStatusLoaded]);
   const combatMode = tab === 'fight' || tab === 'dungeons' || tab === 'gear' || tab === 'forge' || tab === 'skills' || tab === 'arena' || tab === 'runes';
+  const combatModeRef = useRef(combatMode);
+  combatModeRef.current = combatMode;
+  const combatBeatInFlightRef = useRef(false);
+  const autoRollDisableInFlightRef = useRef(false);
   const [autoRoll, setAutoRoll] = useState<boolean>(false);
   const [isBeta, setIsBeta] = useState(false);
   const [changelogUnread, setChangelogUnread] = useState(() => {
@@ -314,12 +318,16 @@ export function App() {
   // Auto Roll is stored in the player save so it survives new sessions,
   // different browsers, and Reddit's embedded webview storage boundaries.
   useEffect(() => {
+    if (combatMode) {
+      setAutoRoll(false);
+      return;
+    }
     setAutoRoll(Boolean(
       state &&
       (state.upgrades.auto ?? 0) > 0 &&
       state.autoRollEnabled === true,
     ));
-  }, [state?.autoRollEnabled, state?.upgrades.auto]);
+  }, [combatMode, state?.autoRollEnabled, state?.upgrades.auto]);
 
   const [isRolling, setIsRolling] = useState<boolean>(false);
   const [busy, setBusy] = useState<boolean>(false);
@@ -672,7 +680,18 @@ export function App() {
       );
       return;
     }
+    const nextCombatMode = nextTab === 'fight' || nextTab === 'dungeons' || nextTab === 'gear' || nextTab === 'forge' || nextTab === 'skills' || nextTab === 'arena' || nextTab === 'runes';
+    if (nextCombatMode && !combatModeRef.current && rollActionLockRef.current) {
+      showToast('Wait for the current orb roll to finish before entering Combat.', 'info');
+      return;
+    }
+    if (!nextCombatMode && combatModeRef.current && combatBeatInFlightRef.current) {
+      showToast('Wait for the current combat beat to finish before returning to Orbs.', 'info');
+      return;
+    }
     sound.playClick();
+    combatModeRef.current = nextCombatMode;
+    if (nextCombatMode) setAutoRoll(false);
     setTab(nextTab);
   };
 
@@ -685,6 +704,10 @@ export function App() {
       toastTimerRef.current = null;
     }, 4000);
   };
+
+  const handleCombatBeatResolvingChange = useCallback((active: boolean) => {
+    combatBeatInFlightRef.current = active;
+  }, []);
 
   const handleToggleAutoRoll = useCallback(async () => {
     const next = !autoRoll;
@@ -709,6 +732,26 @@ export function App() {
       showToast('Could not save Auto Roll preference.', 'warn');
     }
   }, [applyPlayerState, autoRoll, beginOptimisticState, enqueueMutation, showToast]);
+
+  // Entering any Combat page permanently turns the saved Auto Roll preference off.
+  // The local guard is immediate; this request keeps the saved preference in sync.
+  useEffect(() => {
+    if (!combatMode || state?.autoRollEnabled !== true || autoRollDisableInFlightRef.current) return;
+    autoRollDisableInFlightRef.current = true;
+    void enqueueMutation(() => getJson<{ state: PlayerState }>('/api/auto-roll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: false }),
+    })).then(result => {
+      applyPlayerState(result.state);
+      setAutoRoll(false);
+    }).catch(() => {
+      setAutoRoll(false);
+      showToast('Auto Roll is stopped in Combat, but the saved preference could not be updated.', 'warn');
+    }).finally(() => {
+      autoRollDisableInFlightRef.current = false;
+    });
+  }, [combatMode, state?.autoRollEnabled]);
 
   const refreshLeaderboards = useCallback(async () => {
     const [lb, lbs] = await Promise.all([
@@ -1129,6 +1172,7 @@ export function App() {
   // Roll action
   const handleRoll = useCallback(async (isAutoRoll = false) => {
     if (isAutoRoll && !splashEntered) return;
+    if (combatModeRef.current || combatBeatInFlightRef.current) return;
     if (rollActionLockRef.current) return;
     const currentState = stateRef.current;
     if (!currentState) return;
@@ -1250,14 +1294,14 @@ export function App() {
 
   // Auto roll watcher (paced steadily)
   useEffect(() => {
-    if (!splashEntered || !autoRoll || !state || state.upgrades.auto === 0) return;
+    if (!splashEntered || combatMode || !autoRoll || !state || state.upgrades.auto === 0) return;
     const interval = setInterval(() => {
       if (Date.now() >= readyAt && !isRolling) {
         void handleRoll(true);
       }
     }, 300);
     return () => clearInterval(interval);
-  }, [autoRoll, state, readyAt, isRolling, handleRoll, splashEntered]);
+  }, [autoRoll, state, readyAt, isRolling, handleRoll, splashEntered, combatMode]);
 
   // Standard upgrades are applied optimistically, queued for a short burst
   // window, and validated together by one authoritative server mutation.
@@ -2757,7 +2801,7 @@ export function App() {
           </section>
         )}
         {combatMode ? (
-          <CombatSection page={tab as CombatPage} onNavigate={changeTab} />
+          <CombatSection page={tab as CombatPage} onNavigate={changeTab} onResolvingChange={handleCombatBeatResolvingChange} />
         ) : (
           <>
         {tab === 'roll' && (
