@@ -190,7 +190,10 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   },[page,Boolean(state)]);
   useEffect(()=>{
     if(page!=='fight')return;
-    const update=()=>setBeatCooldownMs(Math.max(0,COMBAT_BEAT_INTERVAL_MS-(Date.now()-(state?.lastAcceptedBeatAtMs??0))));
+    // Read the mutable authoritative timestamp: a COMBAT_BEAT_TOO_SOON response can
+    // reconcile stateRef before React receives a fresh snapshot. Reading captured state
+    // here leaves the visible countdown at 0s even while Auto Fight is retrying.
+    const update=()=>setBeatCooldownMs(Math.max(0,COMBAT_BEAT_INTERVAL_MS-(Date.now()-(Number(stateRef.current?.lastAcceptedBeatAtMs)||0))));
     update();const timer=window.setInterval(update,1000);return()=>window.clearInterval(timer);
   },[page,state?.lastAcceptedBeatAtMs]);
   useEffect(()=>{if(state)setAutoScrapQuality(state.autoScrapSettings.maxQuality);},[state?.autoScrapSettings.maxQuality]);
