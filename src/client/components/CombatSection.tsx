@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Check, Coins, Info, Pause, Play, Sparkles, Swords, Zap, Sword, Shield, Crown, Hand, Footprints, CircleDot, Gem, Hammer, Clock3, Timer, type LucideIcon } from 'lucide-react';
 import { RunesSection } from './RunesSection.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatAutoScrapSettings, CombatCommand, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatOrbRoll, CombatPage, CombatSkillDefinition, CombatSkillId, CombatSnapshot, CombatState, CombatStats, CombatTactic } from '../../shared/combat.js';
-import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatGearRarityForQuality, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, COMBAT_SPEED_PER_ACTION, combatActionsDue, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
+import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatGearRarityForQuality, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, combatActionsDue, combatActionTimeline, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
 
 interface Props { page: CombatPage; onNavigate:(page:CombatPage)=>void; }
 interface SkillRollResult {
@@ -53,6 +53,8 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
   const [showTooltip,setShowTooltip]=useState(false);
   const [tooltipPoint,setTooltipPoint]=useState<{x:number;y:number}|null>(null);
   const triggerRef=useRef<HTMLButtonElement|null>(null);
+  const lastPointerTypeRef=useRef<string>('mouse');
+  const tooltipCloseTimerRef=useRef<number|null>(null);
   const tooltipRef=useRef<HTMLDivElement|null>(null);
   const grade=combatGearRarityForQuality(item.quality);
   const tooltipId='io-gear-tooltip-'+item.id.replace(/[^A-Za-z0-9_-]/g,'-');
@@ -64,27 +66,60 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     item.armorBonus>0?{label:'+'+fmt(item.armorBonus)+' ARMOR',detail:'Reduces incoming damage',kind:'defense' as const}:null,
     item.critChanceBonus>0?{label:'+'+(item.critChanceBonus*100).toFixed(1)+'% CRIT',detail:'Adds critical-hit chance',kind:'offense' as const}:null,
   ].filter(Boolean) as {label:string;detail:string;kind:'offense'|'defense'}[];
-  const toggleTooltip=()=>{
-    if(showTooltip){setShowTooltip(false);return;}
+  const cancelTooltipClose=useCallback(()=>{
+    if(tooltipCloseTimerRef.current!==null){
+      window.clearTimeout(tooltipCloseTimerRef.current);
+      tooltipCloseTimerRef.current=null;
+    }
+  },[]);
+  const openTooltip=()=>{
+    cancelTooltipClose();
     const rect=triggerRef.current?.getBoundingClientRect();
     if(!rect)return;
     const width=Math.min(310,Math.max(0,window.innerWidth-16));
     const height=Math.min(360,Math.max(0,window.innerHeight-16));
     const x=Math.max(8,Math.min(Math.max(8,window.innerWidth-width-8),rect.left+(rect.width-width)/2));
     const roomBelow=window.innerHeight-rect.bottom-8;
-    const y=roomBelow>=height?rect.bottom+8:Math.max(8,rect.top-height-8);
+    const y=roomBelow>=height?rect.bottom:Math.max(8,rect.top-height);
     setTooltipPoint({x,y});
     setShowTooltip(true);
   };
+  const toggleTooltip=()=>{if(showTooltip){cancelTooltipClose();setShowTooltip(false);}else openTooltip();};
+  const closeIfPointerLeaves=(target:EventTarget|null)=>{
+    if(target instanceof Node&&(triggerRef.current?.contains(target)||tooltipRef.current?.contains(target))){
+      cancelTooltipClose();
+      return;
+    }
+    cancelTooltipClose();
+    tooltipCloseTimerRef.current=window.setTimeout(()=>{
+      setShowTooltip(false);
+      tooltipCloseTimerRef.current=null;
+    },180);
+  };
+  useEffect(()=>{
+    if(!showTooltip||!tooltipPoint)return;
+    const trigger=triggerRef.current;
+    const tooltip=tooltipRef.current;
+    if(!trigger||!tooltip)return;
+    const triggerRect=trigger.getBoundingClientRect();
+    const tooltipRect=tooltip.getBoundingClientRect();
+    const margin=8;
+    const x=Math.max(margin,Math.min(Math.max(margin,window.innerWidth-tooltipRect.width-margin),triggerRect.left+(triggerRect.width-tooltipRect.width)/2));
+    const roomBelow=window.innerHeight-triggerRect.bottom-margin;
+    const y=roomBelow>=tooltipRect.height?triggerRect.bottom:Math.max(margin,triggerRect.top-tooltipRect.height);
+    setTooltipPoint(current=>current&&Math.abs(current.x-x)<1&&Math.abs(current.y-y)<1?current:{x,y});
+  },[showTooltip,tooltipPoint,item.id]);
   useEffect(()=>{
     if(!showTooltip)return;
     const closeOutside=(event:PointerEvent)=>{
       const target=event.target;
       if(target instanceof Node&&(triggerRef.current?.contains(target)||tooltipRef.current?.contains(target)))return;
+      cancelTooltipClose();
       setShowTooltip(false);
     };
     const closeEscape=(event:KeyboardEvent)=>{
       if(event.key!=='Escape')return;
+      cancelTooltipClose();
       setShowTooltip(false);
       triggerRef.current?.focus();
     };
@@ -93,17 +128,21 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     return()=>{
       document.removeEventListener('pointerdown',closeOutside);
       window.removeEventListener('keydown',closeEscape);
+      cancelTooltipClose();
     };
-  },[showTooltip]);
+  },[showTooltip,cancelTooltipClose]);
   return <>
-    <article className={'io-combat-gear-icon-wrap '+rarityClass(grade)+(isEquipped?' is-equipped':'')}>
+    <article className={'io-combat-gear-icon-wrap '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
+      onPointerEnter={event=>{lastPointerTypeRef.current=event.pointerType;if(event.pointerType==='mouse')openTooltip();}}
+      onPointerLeave={event=>{if(event.pointerType==='mouse')closeIfPointerLeaves(event.relatedTarget);}}>
       <button ref={triggerRef} type="button" className={'io-combat-gear-icon '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
         aria-label={'Inspect '+(isEquipped?'equipped ':'')+item.name}
         aria-expanded={showTooltip}
         aria-controls={tooltipId}
         title={'Inspect '+item.name}
         disabled={busy}
-        onClick={toggleTooltip}>
+        onPointerDown={event=>{lastPointerTypeRef.current=event.pointerType;}}
+        onClick={()=>{if(lastPointerTypeRef.current==='touch')toggleTooltip();else openTooltip();}}>
         <SlotIcon size={27} strokeWidth={1.8} aria-hidden="true"/>
         <small>{item.quality.toFixed(0)}%</small>
         <span className="io-combat-gear-icon-power">{fmt(item.power)}</span>
@@ -113,7 +152,9 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     {showTooltip&&tooltipPoint&&createPortal(
       <div ref={tooltipRef} id={tooltipId} className="io-combat-gear-tooltip is-open"
         style={{position:'fixed',left:tooltipPoint.x,top:tooltipPoint.y,width:'min(310px, calc(100vw - 16px))',maxWidth:'calc(100vw - 16px)',maxHeight:'min(360px, calc(100vh - 16px))',overflow:'auto',zIndex:9999,pointerEvents:'auto'}}
-        role="dialog" aria-label={item.name+' details'} aria-modal="false">
+        role="dialog" aria-label={item.name+' details'} aria-modal="false"
+        onPointerEnter={()=>cancelTooltipClose()}
+        onPointerLeave={event=>{if(event.pointerType==='mouse')closeIfPointerLeaves(event.relatedTarget);}}>
         <span className="io-combat-eyebrow">{grade.toUpperCase()} ITEM · {item.quality.toFixed(2)}% QUALITY · LEVEL {fmt(item.sourceFloor+1)}</span>
         <strong>{item.name}</strong><p>{slotLabel(item.slot)} · Power {fmt(item.power)}</p>
         <div className="io-combat-gear-tooltip-stats">{bonuses.length?bonuses.map(stat=><span className={'io-combat-stat-'+stat.kind} key={stat.label} title={stat.detail}>{stat.label}</span>):<span>No direct stat bonuses</span>}</div>
@@ -473,22 +514,28 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       </div>
       {(()=>{
         const maxSpeed=Math.max(1,stats.speed,enemy.speed);
-        const nextActionBeat=(resolved:number,speed:number,offset=0)=>{
-          if(speed<=0)return Number.POSITIVE_INFINITY;
-          const ordinal=resolved+offset+1;
-          const nextBeat=state.combatBeats+1;
-          if(ordinal<=1)return nextBeat+(1-speed/maxSpeed);
-          return Math.max(nextBeat+.001,2+(ordinal-1)*COMBAT_SPEED_PER_ACTION/speed);
-        };
-        const playerNext=nextActionBeat(state.playerActionsResolved,stats.speed);
-        const enemyNext=nextActionBeat(state.enemyActionsResolved,enemy.speed);
         const playerCharge=Math.round(stats.speed/maxSpeed*100);
         const enemyCharge=Math.round(enemy.speed/maxSpeed*100);
-        const events=[
-          ...Array.from({length:timelineCount+2},(_,i)=>({actor:'player' as const,time:nextActionBeat(state.playerActionsResolved,stats.speed,i),step:i,speed:stats.speed})),
-          ...Array.from({length:timelineCount+2},(_,i)=>({actor:'enemy' as const,time:nextActionBeat(state.enemyActionsResolved,enemy.speed,i),step:i,speed:enemy.speed})),
-        ].sort((a,b)=>a.time-b.time||(a.actor===b.actor?a.step-b.step:a.actor==='player'?-1:1)).slice(0,timelineCount);
-        const nextActor=playerNext<=enemyNext?'player':'enemy';
+        const projected:{actor:'player'|'enemy';time:number;step:number;speed:number}[]=[];
+        let playerResolved=state.playerActionsResolved;
+        let enemyResolved=state.enemyActionsResolved;
+        const lastPreviewBeat=state.combatBeats+Math.max(8,timelineCount*2+4);
+        for(let beatNumber=state.combatBeats+1;beatNumber<=lastPreviewBeat;beatNumber++){
+          const playerActions=combatActionsDue(stats.speed,beatNumber,playerResolved);
+          const enemyActions=combatActionsDue(enemy.speed,beatNumber,enemyResolved);
+          const beatEvents=combatActionTimeline(
+            stats.speed,enemy.speed,beatNumber,playerResolved,enemyResolved,playerActions,enemyActions,
+          );
+          projected.push(...beatEvents.map(event=>({
+            actor:event.actor,
+            time:beatNumber+event.time,
+            step:event.actionIndex,
+            speed:event.actor==='player'?stats.speed:enemy.speed,
+          })));
+          playerResolved+=playerActions;
+          enemyResolved+=enemyActions;
+        }
+        const events=projected.sort((a,b)=>a.time-b.time||(a.actor===b.actor?a.step-b.step:a.actor==='player'?-1:1)).slice(0,timelineCount);
         return <section className="io-combat-turn-tracker" aria-label="Combat speed and turn order">
           <div className="io-combat-turn-head"><div><span className="io-combat-eyebrow">SPEED & INITIATIVE</span><h2>Turn order</h2><p>One beat resolves about every 30 seconds.</p></div><strong>{beatCooldownMs>0?'NEXT BEAT '+Math.ceil(beatCooldownMs/1000)+'s':'BEAT READY'}</strong></div>
           <div className="io-combat-beat-track" role="progressbar" aria-label="Time until the next combat beat" aria-valuemin={0} aria-valuemax={100} aria-valuenow={beatProgressPct}><span style={{width:beatProgressPct+'%'}}/></div>
@@ -496,7 +543,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
             <div className="io-combat-speed-row"><span>∞ DELVER <b>{fmt(stats.speed)} SPD</b></span><div className="io-combat-speed-track"><span className="is-player" style={{width:playerCharge+'%'}}/></div><strong>{playerCharge}% pace</strong></div>
             <div className="io-combat-speed-row"><span>{enemy.emoji} {enemy.name.toUpperCase()} <b>{fmt(enemy.speed)} SPD</b></span><div className="io-combat-speed-track"><span className="is-enemy" style={{width:enemyCharge+'%'}}/></div><strong>{enemyCharge}% pace</strong></div>
           </div>
-          <div className="io-combat-turn-sequence" ref={turnSequenceRef}><div className="io-combat-turn-track" key={state.sequence}>{events.map((event,index)=><div key={event.actor+'-'+event.step} className={'io-combat-turn-chip '+(index===0?'is-next':'')+(event.actor==='enemy'?' is-foe':'')}><small>{index===0?'NEXT':index===1?'THEN':'TURN '+(index+1)}</small><strong>{event.actor==='player'?'DELVER':enemy.name}</strong><span>Beat {event.time.toFixed(2)} · {fmt(event.speed)} SPD</span></div>)}</div></div>
+          <div className="io-combat-turn-sequence" ref={turnSequenceRef}><div className="io-combat-turn-track" key={state.sequence}>{events.map((event,index)=><div key={event.actor+'-'+event.time+'-'+event.step} className={'io-combat-turn-chip '+(index===0?'is-next':'')+(event.actor==='enemy'?' is-foe':'')}><small>{index===0?'NEXT':index===1?'THEN':'TURN '+(index+1)}</small><strong>{event.actor==='player'?'DELVER':enemy.name}</strong><span>Beat {event.time.toFixed(2)} · {fmt(event.speed)} SPD</span></div>)}</div></div>
         </section>;
       })()}
       <div className="io-combat-tactic-row"><label htmlFor="io-combat-auto-tactic"><span className="io-combat-eyebrow">AUTO TACTIC</span><strong>{state.autoTactic==='balanced'?'Balanced':state.autoTactic==='aggressive'?'Aggressive':state.autoTactic==='defensive'?'Defensive':'Recovery'}</strong></label><select id="io-combat-auto-tactic" value={state.autoTactic} disabled={mutating} onChange={event=>void mutate('/api/combat/tactics',{tactic:event.target.value as CombatTactic})}><option value="balanced">Balanced — heal low, otherwise strike hard</option><option value="aggressive">Aggressive — spend energy on Heavy</option><option value="defensive">Defensive — heal and guard earlier</option><option value="recovery">Recovery — prioritize staying healthy</option></select></div>
