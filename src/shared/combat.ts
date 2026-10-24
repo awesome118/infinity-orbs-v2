@@ -641,8 +641,8 @@ export function combatActionTimeline(
   playerSpeedValue: unknown,
   enemySpeedValue: unknown,
   beatValue: unknown,
-  playerResolvedValue: unknown,
-  enemyResolvedValue: unknown,
+  _playerResolvedValue: unknown,
+  _enemyResolvedValue: unknown,
   playerActionsValue: unknown,
   enemyActionsValue: unknown,
 ): CombatActionTimelineEntry[] {
