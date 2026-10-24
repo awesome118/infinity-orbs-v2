@@ -913,7 +913,7 @@ export function createApp() {
       res.json(await updateCombatRuneAutoSacrificeSettings(enabled,maxRarity,targetRuneId,preserveSpecialEffects));
     } catch(e:any) {
       const message=e?.message||'Could not update Auto Sacrifice settings.';
-      const status=message==='Auto-sacrifice settings are invalid.'||message==='Auto-sacrifice target Rune is not in your inventory.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;
+      const status=message==='Auto-sacrifice settings are invalid.'||message==='Auto-sacrifice target Rune is not in your inventory.'||message==='Auto-sacrifice target Rune must be equipped.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;
       res.status(status).json({error:message});
     }
   });
