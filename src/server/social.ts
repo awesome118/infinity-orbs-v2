@@ -2324,6 +2324,12 @@ export async function registerCurrentPostAsGlobalChatDestination(): Promise<{ po
   if (!postId || postId === 't3_') throw new Error('The current Reddit post ID is unavailable. Open the main Infinity Orbs Game post and retry.');
   if (await isRegisteredFrenzyPost(postId)) throw new Error('A Frenzy post cannot be registered as the Global Chat destination. Open the main Game post and retry.');
   if (await isRegisteredOrbSharePost(postId)) throw new Error('A shared-Orb post cannot be registered as the Global Chat destination. Open the main Game post and retry.');
+  const existing = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
+  if (existing && existing !== postId &&
+      !(await isRegisteredFrenzyPost(existing)) &&
+      !(await isRegisteredOrbSharePost(existing))) {
+    throw new Error('A valid main Game post is already registered. Use the official post-creation flow to replace it.');
+  }
   await redis.set(GLOBAL_GAME_POST_KEY, postId);
   return { postId };
 }
