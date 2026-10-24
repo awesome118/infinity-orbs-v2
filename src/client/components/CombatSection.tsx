@@ -66,12 +66,12 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     item.armorBonus>0?{label:'+'+fmt(item.armorBonus)+' ARMOR',detail:'Reduces incoming damage',kind:'defense' as const}:null,
     item.critChanceBonus>0?{label:'+'+(item.critChanceBonus*100).toFixed(1)+'% CRIT',detail:'Adds critical-hit chance',kind:'offense' as const}:null,
   ].filter(Boolean) as {label:string;detail:string;kind:'offense'|'defense'}[];
-  const cancelTooltipClose=()=>{
+  const cancelTooltipClose=useCallback(()=>{
     if(tooltipCloseTimerRef.current!==null){
       window.clearTimeout(tooltipCloseTimerRef.current);
       tooltipCloseTimerRef.current=null;
     }
-  };
+  },[]);
   const openTooltip=()=>{
     cancelTooltipClose();
     const rect=triggerRef.current?.getBoundingClientRect();
@@ -110,7 +110,7 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     const roomBelow=window.innerHeight-triggerRect.bottom-margin;
     const y=roomBelow>=tooltipRect.height?triggerRect.bottom:Math.max(margin,triggerRect.top-tooltipRect.height);
     setTooltipPoint(current=>current&&Math.abs(current.x-x)<1&&Math.abs(current.y-y)<1?current:{x,y});
-  },[showTooltip,item.id]);
+  },[showTooltip,tooltipPoint,item.id]);
   useEffect(()=>{
     if(!showTooltip)return;
     const closeOutside=(event:PointerEvent)=>{
