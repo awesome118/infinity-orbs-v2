@@ -29,6 +29,15 @@ test('player and enemy actions interleave according to their Speed thresholds', 
   assert.ok(timeline[1]!.time < timeline[2]!.time);
 });
 
+test('opening initiative follows the actual Speed values instead of always favoring the Delver', () => {
+  const playerFirst = combatActionTimeline(300, 200, 1, 0, 0, 1, 1);
+  const enemyFirst = combatActionTimeline(200, 300, 1, 0, 0, 1, 1);
+
+  assert.deepEqual(playerFirst.map(action => action.actor), ['player', 'enemy']);
+  assert.deepEqual(enemyFirst.map(action => action.actor), ['enemy', 'player']);
+  assert.ok(enemyFirst[0]!.time < enemyFirst[1]!.time);
+});
+
 test('a fast enemy can act while a slower Delver is still recharging', () => {
   const playerActions = combatActionsDue(310, 2, 1);
   const enemyActions = combatActionsDue(800, 2, 1);
@@ -57,6 +66,17 @@ test('combat Orb rolls ignore main-game Luck and the orb panel explains Luck and
   assert.ok(ui.includes('Combat Orb rolls use neutral 1× Luck'));
   assert.ok(ui.includes('totalDamageThisBeat'));
   assert.ok(ui.includes('TOTAL DAMAGE'));
+});
+
+test('Combat mode blocks main-game rolls, queues skills, and uses a stable gear inspector', () => {
+  const main = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
+  const ui = readFileSync(resolve(process.cwd(), 'src/client/components/CombatSection.tsx'), 'utf8');
+  assert.ok(main.includes('if (combatMode) return;'));
+  assert.ok(main.includes('!splashEntered || combatMode || !autoRoll'));
+  assert.ok(ui.includes('const queueAbility='));
+  assert.ok(ui.includes('Queued for next beat'));
+  assert.ok(ui.includes('createPortal('));
+  assert.ok(ui.includes('io-combat-beat-state'));
 });
 
 test('Auto Fight countdown tracks reconciled server timestamps instead of stale render state', () => {
