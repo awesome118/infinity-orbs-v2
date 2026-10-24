@@ -319,7 +319,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           setOpen(true);
         }}
         className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-2xl border border-indigo-500/30 bg-slate-900/95 px-4 py-3 text-xs font-black text-white shadow-2xl backdrop-blur-md hover:bg-slate-800 transition-all"
-        title={chatAvailable === true ? 'Open global chat' : 'Global Chat is disabled outside registered Game and Frenzy posts'}
+        title={chatAvailable === true ? 'Open global chat' : 'Global Chat requires a registered main Game post'}
       >
         <MessageCircle className="w-4 h-4 text-indigo-300" />
         <span>Global Chat</span>
