@@ -27,10 +27,12 @@ test('higher gear quality purchases a substantially larger stat budget',()=>{
   assert.ok(combatGearStatBudgetMultiplier(100)>=5);
 });
 
-test('Scrap is easier to obtain and scales further with depth and power',()=>{
+test('Scrap yields stay at one quarter of the original curve while scaling with depth and power',()=>{
   const starter={power:10,quality:10,sourceFloor:0};
-  const previousFormula=Math.round(4+starter.power*.6+starter.quality*.1);
-  assert.ok(combatScrapValue(starter)>=previousFormula*3);
+  const originalCurve=Math.round(20+starter.power*1.1+starter.quality*.75);
+  assert.ok(combatScrapValue(starter)<=Math.round(originalCurve*.25));
+  assert.ok(combatScrapValue(starter)<Math.round(originalCurve*.5));
+  assert.ok(combatScrapValue(starter)>=1);
   assert.ok(combatScrapValue({power:100,quality:40,sourceFloor:100})>combatScrapValue(starter));
 });
 
