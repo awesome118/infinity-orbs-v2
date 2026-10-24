@@ -5,9 +5,12 @@ import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatAutoScr
 import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatGearRarityForQuality, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
 
 interface Props { page: CombatPage; onNavigate:(page:CombatPage)=>void; }
+interface SkillRollResult {
+  id:string;name:string;rarity:string;rank:number;duplicate:boolean;convertedCoins:number;progress:number;copiesNeeded:number;rankedUp:boolean;
+}
 interface ApiResponse extends CombatSnapshot {
   actions?:CombatAction[]; defeated?:boolean; died?:boolean; item?:CombatGear; orbRoll?:CombatOrbRoll;
-  skillRoll?:{id:string;name:string;rarity:string;rank:number;duplicate:boolean;convertedCoins:number;pityEpic:number;pityMythic:number;progress:number;copiesNeeded:number;rankedUp:boolean}; cost?:number;
+  skillRoll?:SkillRollResult; skillRolls?:SkillRollResult[]; cost?:number;
   scrapResult?:{itemName:string;gained:number;total:number};
   forgeResult?:{item:CombatGear;cost:number;remainingScrap:number};
   arenaResult?:CombatArenaResult;
@@ -121,7 +124,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const [gearSlotFilter,setGearSlotFilter]=useState<'all'|CombatGearSlot>('all');
   const [gearOwnershipFilter,setGearOwnershipFilter]=useState<'all'|'equipped'|'spare'>('all');
   const [gearSort,setGearSort]=useState<'newest'|'power'|'quality'|'level'>('newest');
-  const [lastSkill,setLastSkill]=useState<ApiResponse['skillRoll']|null>(null);
+  const [lastSkills,setLastSkills]=useState<SkillRollResult[]>([]);
   const [error,setError]=useState('');
   const [arenaOpponents,setArenaOpponents]=useState<CombatArenaProfile[]>([]);
   const [arenaSearch,setArenaSearch]=useState('');
@@ -308,7 +311,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     try {
       const activeBeat=runtime.current.beatPromise;
       if(activeBeat)await activeBeat;
-      const result=await request<ApiResponse>(url,'POST',body);accept(result);if(result.skillRoll)setLastSkill(result.skillRoll);if(result.actions?.length)setActions(old=>[...result.actions!,...old].slice(0,30));if(result.scrapResult)setActions(old=>[{actor:'player' as const,kind:'loot' as const,text:'Scrapped '+result.scrapResult!.itemName+' for '+result.scrapResult!.gained+' Scrap.'},...old].slice(0,30));if(result.forgeResult)setActions(old=>[{actor:'player' as const,kind:'loot' as const,text:'Forged '+result.forgeResult!.item.name+' for '+fmt(result.forgeResult!.cost)+' Scrap.'},...old].slice(0,30));setError('');
+      const result=await request<ApiResponse>(url,'POST',body);accept(result);if(Array.isArray(result.skillRolls)&&result.skillRolls.length)setLastSkills(result.skillRolls);else if(result.skillRoll)setLastSkills([result.skillRoll]);if(result.actions?.length)setActions(old=>[...result.actions!,...old].slice(0,30));if(result.scrapResult)setActions(old=>[{actor:'player' as const,kind:'loot' as const,text:'Scrapped '+result.scrapResult!.itemName+' for '+result.scrapResult!.gained+' Scrap.'},...old].slice(0,30));if(result.forgeResult)setActions(old=>[{actor:'player' as const,kind:'loot' as const,text:'Forged '+result.forgeResult!.item.name+' for '+fmt(result.forgeResult!.cost)+' Scrap.'},...old].slice(0,30));setError('');
     }
     catch(e){setError(e instanceof Error?e.message:'Combat action failed.');}
     finally{runtime.current.mutating=false;setMutating(false);}
@@ -322,7 +325,8 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const undercryptBestDepth=state.dungeonBestDepths.undercrypt;
   const wardensDefeated=undercryptWardensDefeated(undercryptBestDepth);
   const orbLuckBonusPct=Math.round((undercryptOrbLuckMultiplier(undercryptBestDepth)-1)*100);
-  const pullCost=skillPullCost(state.skillRolls);
+  const pullCost=skillPullCost(state.skillRolls,state.skillGachaRank);
+  const pullCost10x=Array.from({length:10},(_,index)=>skillPullCost(state.skillRolls+index,state.skillGachaRank)).reduce((sum,cost)=>sum+cost,0);
   const gachaRequirement=skillGachaRankRequirement(state.skillGachaRank);
   const gachaOdds=combatSkillRarityOdds(state.skillGachaRank);
   const currentFloor=Math.max(0,state.depth-1);
@@ -360,7 +364,10 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     if(arenaSort==='depth')return b.bestDepth-a.bestDepth||b.rating-a.rating;
     return b.rating-a.rating||b.bestDepth-a.bestDepth;
   });
-  const visibleSkills=COMBAT_SKILLS.filter(skill=>(showAllSkills||rankOf(state,skill.id)>0)&&[skill.name,skill.rarity,skill.stat].some(value=>String(value).toLowerCase().includes(skillSearch.trim().toLowerCase())));
+  const skillRarityOrder:Record<string,number>={Common:0,Uncommon:1,Rare:2,Epic:3,Mythic:4};
+  const visibleSkills=COMBAT_SKILLS
+    .filter(skill=>(showAllSkills||rankOf(state,skill.id)>0)&&[skill.name,skill.rarity,skill.stat,skill.effect].some(value=>String(value).toLowerCase().includes(skillSearch.trim().toLowerCase())))
+    .sort((a,b)=>(skillRarityOrder[a.rarity]??99)-(skillRarityOrder[b.rarity]??99)||a.name.localeCompare(b.name));
   const nextStrategyGuide=STRATEGY_GUIDE_RANKS.find(entry=>entry.rank===state.strategyGuideRank+1)??null;
   if(page==='runes')return <RunesSection/>;
   const hpPct=Math.max(0,Math.min(100,state.health/Math.max(1,state.maxHealth)*100));
@@ -518,13 +525,10 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
           <div className="io-combat-quality-save-row"><span role="status">{autoScrapQuality===state.autoScrapSettings.maxQuality?'Settings saved':'Unsaved quality change'}</span><button type="button" className="io-combat-button is-primary" disabled={mutating||autoScrapQuality===state.autoScrapSettings.maxQuality} onClick={()=>void saveAutoScrap(state.autoScrapSettings.enabled,autoScrapQuality)}>{mutating?'Saving…':'Save Auto Scrap settings'}</button></div>
         </>:<p className="io-combat-resonance-note">Unlock the Auto Scrap Prestige upgrade in the main game first. Once unlocked, enable it and choose the maximum quality to automatically salvage.</p>}
       </section>
-      <section className="io-combat-panel io-combat-major-info">
-        <div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">RARE EQUIPMENT TRAITS</span><h2><Sparkles size={18}/> Major Abilities</h2><p>Major Abilities add powerful special effects to equipped gear. Offensive and defensive bonuses use different colors for quick comparison.</p></div></div>
-        <div className="io-combat-major-examples"><article><Timer size={21}/><div><strong>Chrono Surge</strong><p>Passively increases action frequency while the item is equipped.</p></div></article><article><Sparkles size={21}/><div><strong>Second Dawn</strong><p>After taking damage, heals a portion of Max HP at the start of your next turn.</p></div></article><article className="io-combat-major-offense"><Sword size={21}/><div><strong>Void Edge</strong><p>Increases outgoing damage while the item is equipped.</p></div></article><article className="io-combat-major-defense"><Shield size={21}/><div><strong>Aegis Ward</strong><p>Reduces incoming damage while the item is equipped.</p></div></article><article className="io-combat-major-offense"><Sparkles size={21}/><div><strong>Starfall</strong><p>Adds critical-hit chance while the item is equipped.</p></div></article><article className="io-combat-major-economy"><Coins size={21}/><div><strong>Mark Harvest</strong><p>Increases Combat Marks from kills while the item is equipped.</p></div></article></div>
-      </section>
+      
     </>}
     {page==='skills'&&<>
-      <div className="io-combat-skill-banner"><div><span className="io-combat-eyebrow">SKILL GACHA · RANK {state.skillGachaRank}/{SKILL_GACHA_RANK_MAX}</span><h2>Improve rarity odds through Gacha ranks</h2><p>All rarities are in the pool from Rank 1; each rank shifts probability away from Common. At Rank 30, Mythic is 0.50% base chance and Common, Uncommon, Rare, and Epic each have 24.875% base chance (pity can override a roll).</p><div className="io-combat-skill-progress"><span style={{width:(state.skillGachaRank/SKILL_GACHA_RANK_MAX*100)+'%'}}/></div></div><div className="io-combat-pull-box"><span><Swords size={15}/> {fmt(state.combatMarks)} COMBAT MARKS</span><button type="button" className="io-combat-button is-primary" disabled={mutating||state.combatMarks<pullCost} onClick={()=>void mutate('/api/combat/skills/roll')}>{mutating?'Rolling…':'Roll Skill · '+fmt(pullCost)+' Marks'}</button><small>Base odds · Common {(gachaOdds.Common*100).toFixed(3)}% · Uncommon {(gachaOdds.Uncommon*100).toFixed(3)}% · Rare {(gachaOdds.Rare*100).toFixed(3)}% · Epic {(gachaOdds.Epic*100).toFixed(3)}% · Mythic {(gachaOdds.Mythic*100).toFixed(3)}%. Pulls {fmt(state.skillRolls)}. Epic pity {state.skillPityEpic}/9 · Mythic pity {state.skillPityMythic}/39.</small></div></div>
+      <div className="io-combat-skill-banner"><div><span className="io-combat-eyebrow">SKILL GACHA · RANK {state.skillGachaRank}/{SKILL_GACHA_RANK_MAX}</span><h2>Improve rarity odds through Gacha ranks</h2><p>All rarities are available from Rank 1; higher Gacha ranks shift the weighted odds toward rarer skills. Each pull is an independent roll with no pity.</p><div className="io-combat-skill-progress"><span style={{width:(state.skillGachaRank/SKILL_GACHA_RANK_MAX*100)+'%'}}/></div></div><div className="io-combat-pull-box"><span><Swords size={15}/> {fmt(state.combatMarks)} COMBAT MARKS</span><div className="io-combat-gacha-actions"><button type="button" className="io-combat-button is-primary" disabled={mutating||state.combatMarks<pullCost} onClick={()=>void mutate('/api/combat/skills/roll',{count:1})}>{mutating?'Rolling…':'Roll 1x · '+fmt(pullCost)+' Marks'}</button><button type="button" className="io-combat-button is-secondary" disabled={mutating||state.combatMarks<pullCost10x} onClick={()=>void mutate('/api/combat/skills/roll',{count:10})}>{mutating?'Rolling…':'Roll 10x · '+fmt(pullCost10x)+' Marks'}</button></div><small>Base odds · Common {(gachaOdds.Common*100).toFixed(3)}% · Uncommon {(gachaOdds.Uncommon*100).toFixed(3)}% · Rare {(gachaOdds.Rare*100).toFixed(3)}% · Epic {(gachaOdds.Epic*100).toFixed(3)}% · Mythic {(gachaOdds.Mythic*100).toFixed(3)}%. Pulls {fmt(state.skillRolls)}. No pity; rank-weighted odds apply to every draw.</small></div></div>
       <section className="io-combat-panel" style={{marginBottom:20}}>
         <div className="io-combat-panel-head">
           <div><span className="io-combat-eyebrow">BOSS PROGRESSION</span><h2>Strategy Guide · Rank {state.strategyGuideRank}/5</h2>
@@ -537,7 +541,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         </div>
         {nextStrategyGuide&&<small>Next rank cost: {nextStrategyGuide.manualCost} Tactician's Manual · {fmt(nextStrategyGuide.markCost)} Combat Marks. {state.tacticianManuals?'You can hold only one Manual; bosses will not drop another until you spend it.':'Current boss drop chance: '+(tacticianManualDropChance(state.strategyGuideRank)*100).toFixed(1)+'%. The chance decreases with each Strategy Guide rank; there is no fixed pity guarantee.'}</small>}
       </section>
-      {lastSkill&&<div className={'io-combat-skill-result '+rarityClass(lastSkill.rarity)}><Sparkles size={18}/><div><strong>{lastSkill.name}</strong><p>{lastSkill.duplicate?(lastSkill.rankedUp?'Ranked up to Rank '+fmt(lastSkill.rank)+'.':'Duplicate progress '+fmt(lastSkill.progress)+'/'+fmt(lastSkill.copiesNeeded)+' toward Rank '+fmt(lastSkill.rank+1)+'. Higher ranks require more duplicate copies.'):'Unlocked as a new Rank 1 active ability.'}</p></div><span>{lastSkill.rarity.toUpperCase()}</span></div>}
+      {lastSkills.length>0&&<div className="io-combat-skill-results" aria-label="Latest Skill Gacha results">{lastSkills.map((lastSkill,index)=><div key={lastSkill.id+'-'+index} className={'io-combat-skill-result '+rarityClass(lastSkill.rarity)} style={{animationDelay:Math.min(index*70,700)+'ms'}}><Sparkles size={18}/><div><strong>{lastSkill.name}</strong><p>{lastSkill.duplicate?(lastSkill.rankedUp?'Ranked up to Rank '+fmt(lastSkill.rank)+'.':'Duplicate progress '+fmt(lastSkill.progress)+'/'+fmt(lastSkill.copiesNeeded)+' toward Rank '+fmt(lastSkill.rank+1)+'. Higher ranks require more duplicate copies.'):'Unlocked as a new Rank 1 active ability.'}</p></div><span>{lastSkill.rarity.toUpperCase()}</span></div>)}</div>}
       {gachaRequirement&&<section className="io-combat-panel" style={{marginBottom:20}}><div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">GACHA PROGRESSION</span><h2>Rank Up to {gachaRequirement.rank} · {gachaRequirement.unlocks}</h2><p>Requires {fmt(gachaRequirement.requiredPulls)} lifetime skill pulls and {fmt(gachaRequirement.requiredMarks)} Combat Marks. Current progress: {fmt(state.skillRolls)} pulls and {fmt(state.combatMarks)} Marks.</p></div><button type="button" className="io-combat-button is-primary" disabled={mutating||state.skillRolls<gachaRequirement.requiredPulls||state.combatMarks<gachaRequirement.requiredMarks} onClick={()=>void mutate('/api/combat/skills/rank-up')}>{state.skillRolls<gachaRequirement.requiredPulls?'Need '+fmt(gachaRequirement.requiredPulls-state.skillRolls)+' pulls':state.combatMarks<gachaRequirement.requiredMarks?'Need '+fmt(gachaRequirement.requiredMarks-state.combatMarks)+' Marks':'Rank Up Gacha'}</button></div></section>}
       <div className="io-combat-codex-toolbar"><div><span className="io-combat-eyebrow">SKILL CODEX</span><h2>{ownedSkills.length} / {COMBAT_SKILLS.length} discovered · {state.equippedAbilities.length}/{COMBAT_ABILITY_SLOTS} equipped</h2></div><button type="button" className="io-combat-button is-secondary" onClick={()=>{setInspectedSkillId(null);setShowAllSkills(!showAllSkills);}}>{showAllSkills?'Owned only':'Show all skills'}</button></div>
       <div className="io-combat-skill-search"><label htmlFor="io-combat-skill-search">Find a skill</label><input id="io-combat-skill-search" type="search" value={skillSearch} onChange={event=>setSkillSearch(event.target.value)} placeholder="Name, rarity, or effect…" /><span>{visibleSkills.length} shown</span></div>
