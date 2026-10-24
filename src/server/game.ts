@@ -17,6 +17,8 @@ import {
   AUTO_BUYER_COIN_RESERVE,
   SHARD_SYNTHESIS_COST,
   roundShardAmount,
+  resolveShardPityReward,
+  SHARD_PITY_ROLLS_TO_REWARD,
   PRESTIGE_UPGRADES,
   cooldownMs,
   rollsPerActivation,
@@ -2531,6 +2533,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     longestRollingSessionMs: finiteNonNegativeInteger(parsed.longestRollingSessionMs, base.longestRollingSessionMs ?? 0),
     highestDryStreak: finiteNonNegativeInteger(parsed.highestDryStreak, base.highestDryStreak ?? 0),
     freeRolls: finiteNonNegativeInteger(parsed.freeRolls, base.freeRolls ?? 0),
+    shardPityRolls: Math.min(SHARD_PITY_ROLLS_TO_REWARD - 1, finiteNonNegativeInteger(parsed.shardPityRolls, 0)),
     currentRunRolls: finiteNonNegativeInteger(parsed.currentRunRolls, base.currentRunRolls ?? 0),
     prestigeCount: finiteNonNegativeInteger(parsed.prestigeCount, base.prestigeCount),
     collectionValue: finiteNonNegativeNumber(parsed.collectionValue, base.collectionValue),
@@ -3791,9 +3794,8 @@ export async function applyRolls(
       levelBenefits.shardChance +
       Math.min(100, runeBonuses.shardChancePct) / 100
     );
-    if (rng() < shardProcChance) {
-      earnedShards += 0.001;
-    }
+    const shardProcTriggered = rng() < shardProcChance;
+    earnedShards += resolveShardPityReward(s, shardProcTriggered);
     // Shard Jackpot multiplies the full payout, including fractional drip, instead of forcing a whole-Shard minimum.
     if (earnedShards > 0 && !suppressOtherRuneProcs && shardJackpotChance > 0 && rng() < shardJackpotChance) {
       earnedShards = Math.round(earnedShards * (1 + runeAbilityEffects.shardJackpotExtraMultiplier) * 1_000) / 1_000;
