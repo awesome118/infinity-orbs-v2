@@ -602,10 +602,10 @@ export function combatEnergyAfterRegen(energyValue: unknown, maxEnergyValue: unk
   const energy = Number.isFinite(rawEnergy) ? Math.max(0, Math.min(maxEnergy, Math.floor(rawEnergy))) : 0;
   return Math.min(maxEnergy, energy + 1);
 }
-/** Speed required to earn another action after the opening action. */
+/** Legacy threshold constant retained for older saved/test compatibility; live combat uses Speed charge. */
 export const COMBAT_SPEED_PER_ACTION = 400;
 
-/** Every beat grants one action; Speed adds extra actions at cumulative thresholds. */
+/** Legacy fixed-threshold action helper; live combat uses combatTurnStep for one action per beat. */
 export function combatActionsDue(speedValue: unknown, beatValue: unknown, resolvedValue: unknown, maxActionsValue = 100): number {
   const speedRaw = Number(speedValue), beatRaw = Number(beatValue), resolvedRaw = Number(resolvedValue);
   const speed = Number.isFinite(speedRaw) ? Math.max(0, speedRaw) : 0;
@@ -961,7 +961,7 @@ export interface CombatState {
   playerSpeedCharge?: number;
   /** Fractional progress toward the current enemy's next action. */
   enemySpeedCharge?: number;
-  /** Number of upcoming enemy turns canceled by a queued combat ability. */
+  /** One-shot enemy-turn cancellation queued by Time-Shear. */
   enemyTurnsToSkip?: number;
   combatBeats: number;
   playerActionsResolved: number;
