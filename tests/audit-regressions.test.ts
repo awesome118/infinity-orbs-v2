@@ -940,7 +940,7 @@ test('manual Rune sacrifice has a direct donor selector and consumes only the do
   assert.ok(start >= 0, 'server sacrifice function must exist');
   const end = combat.indexOf('export async function rollCombatSkill', start + 10);
   const sacrifice = combat.slice(start, end > start ? end : start + 1_500);
-  assert.match(sacrifice, /grantRuneSacrificeExperience\(target,donor\)/);
+  assert.match(sacrifice, /grantRuneSacrificeExperience\(target,\s*donor\)/);
   assert.match(sacrifice, /s\.runes=s\.runes\.filter\(item=>item\.id!==donor\.id\)/);
   assert.match(sacrifice, /s\.equippedRunes=s\.equippedRunes\.filter\(id=>id!==donor\.id\)/);
 });
