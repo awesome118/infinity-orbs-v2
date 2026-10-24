@@ -2636,3 +2636,9 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
   .io-combat-arena-vs i,
   .io-combat-arena-turn { animation: none !important; }
 }
+
+
+/* Gear inspector is rendered into document.body so scroll/overflow containers cannot clip it. */
+.io-combat-gear-tooltip.is-open{display:block;pointer-events:auto;opacity:1;visibility:visible;transform:translateY(0)}
+.io-combat-tooltip-close{display:block;margin:9px 0 0 auto;padding:5px 8px;border:1px solid #514358;border-radius:5px;background:#1b1522;color:#cfc0db;font:800 9px ui-monospace,monospace;cursor:pointer}
+.io-combat-tooltip-close:hover{border-color:#b99ada;color:#f0deff}
