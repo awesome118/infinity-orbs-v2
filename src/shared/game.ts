@@ -317,7 +317,7 @@ function addShardsWithinSafeIntegerLimit(s: PlayerState, requested: number): num
 }
 
 export function grantFreeShards(s: PlayerState, requested: number, _now = Date.now()): number {
-  // Free rewards intentionally bypass the rolling daily cap, not numeric safety.
+  // Free rewards use the same fractional precision and numeric safety as roll rewards.
   return addShardsWithinSafeIntegerLimit(s, requested);
 }
 
@@ -475,7 +475,7 @@ export function grantFrenzyOwnerShards(
   s: PlayerState,
   requested = FRENZY_OWNER_SHARD_REWARD,
 ): number {
-  // Frenzy owner rewards bypass the daily cap but share the wallet's numeric bounds.
+  // Frenzy owner rewards share the wallet's fractional precision and numeric bounds.
   return addShardsWithinSafeIntegerLimit(s, Number(requested));
 }
 
