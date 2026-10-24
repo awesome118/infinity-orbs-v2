@@ -519,12 +519,14 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         const projected:{actor:'player'|'enemy';time:number;step:number;speed:number}[]=[];
         let playerResolved=state.playerActionsResolved;
         let enemyResolved=state.enemyActionsResolved;
+        const savedPlayerSpeedBeats=Math.max(0,Math.floor(Number(state.playerSpeedBeats??state.combatBeats)||0));
         const lastPreviewBeat=state.combatBeats+Math.max(8,timelineCount*2+4);
         for(let beatNumber=state.combatBeats+1;beatNumber<=lastPreviewBeat;beatNumber++){
-          const playerActions=combatActionsDue(stats.speed,beatNumber,playerResolved);
+          const playerBeatNumber=savedPlayerSpeedBeats+(beatNumber-state.combatBeats);
+          const playerActions=combatActionsDue(stats.speed,playerBeatNumber,playerResolved);
           const enemyActions=combatActionsDue(enemy.speed,beatNumber,enemyResolved);
           const beatEvents=combatActionTimeline(
-            stats.speed,enemy.speed,beatNumber,playerResolved,enemyResolved,playerActions,enemyActions,
+            stats.speed,enemy.speed,playerBeatNumber,playerResolved,enemyResolved,playerActions,enemyActions,beatNumber,
           );
           projected.push(...beatEvents.map(event=>({
             actor:event.actor,
