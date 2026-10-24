@@ -54,6 +54,7 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
   const [tooltipPoint,setTooltipPoint]=useState<{x:number;y:number}|null>(null);
   const triggerRef=useRef<HTMLButtonElement|null>(null);
   const lastPointerTypeRef=useRef<string>('mouse');
+  const tooltipCloseTimerRef=useRef<number|null>(null);
   const tooltipRef=useRef<HTMLDivElement|null>(null);
   const grade=combatGearRarityForQuality(item.quality);
   const tooltipId='io-gear-tooltip-'+item.id.replace(/[^A-Za-z0-9_-]/g,'-');
@@ -65,31 +66,49 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     item.armorBonus>0?{label:'+'+fmt(item.armorBonus)+' ARMOR',detail:'Reduces incoming damage',kind:'defense' as const}:null,
     item.critChanceBonus>0?{label:'+'+(item.critChanceBonus*100).toFixed(1)+'% CRIT',detail:'Adds critical-hit chance',kind:'offense' as const}:null,
   ].filter(Boolean) as {label:string;detail:string;kind:'offense'|'defense'}[];
+  const cancelTooltipClose=()=>{
+    if(tooltipCloseTimerRef.current!==null){
+      window.clearTimeout(tooltipCloseTimerRef.current);
+      tooltipCloseTimerRef.current=null;
+    }
+  };
   const openTooltip=()=>{
+    cancelTooltipClose();
     const rect=triggerRef.current?.getBoundingClientRect();
     if(!rect)return;
     const width=Math.min(310,Math.max(0,window.innerWidth-16));
     const height=Math.min(360,Math.max(0,window.innerHeight-16));
     const x=Math.max(8,Math.min(Math.max(8,window.innerWidth-width-8),rect.left+(rect.width-width)/2));
     const roomBelow=window.innerHeight-rect.bottom-8;
-    const y=roomBelow>=height?rect.bottom+8:Math.max(8,rect.top-height-8);
+    const y=roomBelow>=height?rect.bottom:Math.max(8,rect.top-height);
     setTooltipPoint({x,y});
     setShowTooltip(true);
   };
-  const toggleTooltip=()=>{if(showTooltip)setShowTooltip(false);else openTooltip();};
+  const toggleTooltip=()=>{if(showTooltip){cancelTooltipClose();setShowTooltip(false);}else openTooltip();};
   const closeIfPointerLeaves=(target:EventTarget|null)=>{
-    if(target instanceof Node&&(triggerRef.current?.contains(target)||tooltipRef.current?.contains(target)))return;
-    setShowTooltip(false);
+    if(target instanceof Node&&(triggerRef.current?.contains(target)||tooltipRef.current?.contains(target))){
+      cancelTooltipClose();
+      return;
+    }
+    cancelTooltipClose();
+    // The inspector lives in a portal. Give the pointer time to cross the
+    // trigger-to-portal gap without the tooltip unmounting underneath it.
+    tooltipCloseTimerRef.current=window.setTimeout(()=>{
+      setShowTooltip(false);
+      tooltipCloseTimerRef.current=null;
+    },180);
   };
   useEffect(()=>{
     if(!showTooltip)return;
     const closeOutside=(event:PointerEvent)=>{
       const target=event.target;
       if(target instanceof Node&&(triggerRef.current?.contains(target)||tooltipRef.current?.contains(target)))return;
+      cancelTooltipClose();
       setShowTooltip(false);
     };
     const closeEscape=(event:KeyboardEvent)=>{
       if(event.key!=='Escape')return;
+      cancelTooltipClose();
       setShowTooltip(false);
       triggerRef.current?.focus();
     };
@@ -98,6 +117,7 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     return()=>{
       document.removeEventListener('pointerdown',closeOutside);
       window.removeEventListener('keydown',closeEscape);
+      cancelTooltipClose();
     };
   },[showTooltip]);
   return <>
@@ -122,6 +142,7 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
       <div ref={tooltipRef} id={tooltipId} className="io-combat-gear-tooltip is-open"
         style={{position:'fixed',left:tooltipPoint.x,top:tooltipPoint.y,width:'min(310px, calc(100vw - 16px))',maxWidth:'calc(100vw - 16px)',maxHeight:'min(360px, calc(100vh - 16px))',overflow:'auto',zIndex:9999,pointerEvents:'auto'}}
         role="dialog" aria-label={item.name+' details'} aria-modal="false"
+        onPointerEnter={()=>cancelTooltipClose()}
         onPointerLeave={event=>{if(event.pointerType==='mouse')closeIfPointerLeaves(event.relatedTarget);}}>
         <span className="io-combat-eyebrow">{grade.toUpperCase()} ITEM · {item.quality.toFixed(2)}% QUALITY · LEVEL {fmt(item.sourceFloor+1)}</span>
         <strong>{item.name}</strong><p>{slotLabel(item.slot)} · Power {fmt(item.power)}</p>
