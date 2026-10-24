@@ -605,7 +605,7 @@ export function combatEnergyAfterRegen(energyValue: unknown, maxEnergyValue: unk
 /** Speed required to earn another action after the opening action. */
 export const COMBAT_SPEED_PER_ACTION = 400;
 
-/** Actions owed at a cumulative speed threshold; the opening action starts ready. */
+/** Every beat grants one action; Speed adds extra actions at cumulative thresholds. */
 export function combatActionsDue(speedValue: unknown, beatValue: unknown, resolvedValue: unknown, maxActionsValue = 100): number {
   const speedRaw = Number(speedValue), beatRaw = Number(beatValue), resolvedRaw = Number(resolvedValue);
   const speed = Number.isFinite(speedRaw) ? Math.max(0, speedRaw) : 0;
@@ -613,12 +613,12 @@ export function combatActionsDue(speedValue: unknown, beatValue: unknown, resolv
   const resolved = Number.isFinite(resolvedRaw) ? Math.max(0, Math.floor(resolvedRaw)) : 0;
   const rawLimit = Number(maxActionsValue);
   const limit = Number.isFinite(rawLimit) ? Math.max(0, Math.min(1000, Math.floor(rawLimit))) : 100;
-  const earnedAfterOpening = Math.floor(Math.min(
+  const earnedBonusActions = Math.floor(Math.min(
     Number.MAX_SAFE_INTEGER,
     Math.max(0, (beats - 1) * speed / COMBAT_SPEED_PER_ACTION),
   ));
   const target = speed > 0 && beats > 0
-    ? Math.min(Number.MAX_SAFE_INTEGER, 1 + earnedAfterOpening)
+    ? Math.min(Number.MAX_SAFE_INTEGER, beats + earnedBonusActions)
     : 0;
   return Math.max(0, Math.min(limit, target - resolved));
 }
@@ -634,15 +634,15 @@ export interface CombatActionTimelineEntry {
 
 /**
  * Merge actions owed by player and enemy onto the same Speed threshold timeline.
- * Opening actions use a speed-weighted initiative window so faster combatants act first;
- * later actions recharge at COMBAT_SPEED_PER_ACTION Speed per beat. Exact ties favor the Delver.
+ * Each beat has a base action ordered by Speed; bonus actions land at cumulative Speed thresholds.
+ * Exact ties favor the Delver.
  */
 export function combatActionTimeline(
   playerSpeedValue: unknown,
   enemySpeedValue: unknown,
   beatValue: unknown,
-  playerResolvedValue: unknown,
-  enemyResolvedValue: unknown,
+  _playerResolvedValue: unknown,
+  _enemyResolvedValue: unknown,
   playerActionsValue: unknown,
   enemyActionsValue: unknown,
 ): CombatActionTimelineEntry[] {
@@ -661,8 +661,6 @@ export function combatActionTimeline(
   const beat = Math.max(1, safeCounter(beatValue));
   const playerSpeed = safeSpeed(playerSpeedValue);
   const enemySpeed = safeSpeed(enemySpeedValue);
-  const playerResolved = safeCounter(playerResolvedValue);
-  const enemyResolved = safeCounter(enemyResolvedValue);
   const playerActions = safeActions(playerActionsValue);
   const enemyActions = safeActions(enemyActionsValue);
   const maxSpeed = Math.max(playerSpeed, enemySpeed);
@@ -671,15 +669,17 @@ export function combatActionTimeline(
   const append = (
     actor: CombatActionTimelineEntry['actor'],
     speed: number,
-    resolved: number,
     count: number,
   ) => {
     if (speed <= 0 || count <= 0) return;
+    const progressBeforeBeat = Math.max(0, beat - 2) * speed;
+    const thresholdsAlreadyCrossed = Math.floor(progressBeforeBeat / COMBAT_SPEED_PER_ACTION);
     for (let actionIndex = 0; actionIndex < count; actionIndex += 1) {
-      const ordinal = Math.min(Number.MAX_SAFE_INTEGER, resolved + actionIndex + 1);
-      const rawTime = ordinal <= 1
+      // One normal action occurs every beat. Additional actions fire at the exact
+      // Speed threshold crossed during this beat, instead of being clamped to its end.
+      const rawTime = actionIndex === 0
         ? 1 - speed / Math.max(1, maxSpeed)
-        : ((ordinal - 1) * COMBAT_SPEED_PER_ACTION / speed) - (beat - 2);
+        : ((thresholdsAlreadyCrossed + actionIndex) * COMBAT_SPEED_PER_ACTION - progressBeforeBeat) / speed;
       timeline.push({
         actor,
         actionIndex,
@@ -688,8 +688,8 @@ export function combatActionTimeline(
     }
   };
 
-  append('player', playerSpeed, playerResolved, playerActions);
-  append('enemy', enemySpeed, enemyResolved, enemyActions);
+  append('player', playerSpeed, playerActions);
+  append('enemy', enemySpeed, enemyActions);
   timeline.sort((a, b) => {
     const delta = a.time - b.time;
     if (Math.abs(delta) > 1e-9) return delta;
