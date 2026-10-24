@@ -47,6 +47,10 @@ import {
   GUILD_COMBO_MAX_TIER,
   grantFreeShards,
   grantRollShards,
+  resolveShardPityReward,
+  SHARD_PITY_ROLLS_TO_REWARD,
+  SHARD_PITY_REWARD,
+  SHARD_PROC_REWARD,
   spendShards,
   onlinePlayerLuckMultiplier,
   luckMultiplier,
@@ -522,6 +526,19 @@ test('malformed Shard telemetry is repaired without suppressing fractional rewar
   assert.equal(state.freeShardsEarnedToday, 0.125);
   assert.equal(state.shards, 0.125);
   assert.equal(state.lifetimeShards, 0.125);
+});
+
+test('Shard proc pity rewards a fractional bonus after 100 misses and resets on proc', () => {
+  const state = createInitialState(NOW);
+  assert.equal(state.shardPityRolls, 0);
+  for (let i = 0; i < SHARD_PITY_ROLLS_TO_REWARD - 1; i += 1) {
+    assert.equal(resolveShardPityReward(state, false), 0);
+  }
+  assert.equal(state.shardPityRolls, SHARD_PITY_ROLLS_TO_REWARD - 1);
+  assert.equal(resolveShardPityReward(state, false), SHARD_PITY_REWARD);
+  assert.equal(state.shardPityRolls, 0);
+  assert.equal(resolveShardPityReward(state, true), SHARD_PROC_REWARD);
+  assert.equal(state.shardPityRolls, 0);
 });
 
 test('non-finite roll Shard request grants zero while preserving a valid budget', () => {
