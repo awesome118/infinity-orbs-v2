@@ -18,11 +18,32 @@ export type CombatRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Mythic';
 export type CombatRuneRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Legendary' | 'Mythic' | 'Cosmic';
 export type CombatRuneStat = 'luckPct' | 'coinGainPct' | 'shardChancePct' | 'xpGainPct';
 export const COMBAT_RUNE_RARITIES: CombatRuneRarity[] = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Mythic', 'Cosmic'];
-export interface CombatRuneAutoSacrificeSettings { enabled: boolean; maxRarity: CombatRuneRarity; }
-export const DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS: CombatRuneAutoSacrificeSettings = { enabled: false, maxRarity: 'Common' };
+export interface CombatRuneAutoSacrificeSettings {
+  enabled: boolean;
+  maxRarity: CombatRuneRarity;
+  /** A preferred equipped Rune to strengthen; null prefers an equipped Insight Rune, then the first equipped Rune. */
+  targetRuneId: string | null;
+  /** Keep donor Runes that have a Major Ability rather than sacrificing their special effect. */
+  preserveSpecialEffects: boolean;
+}
+export const DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS: CombatRuneAutoSacrificeSettings = {
+  enabled: false,
+  maxRarity: 'Rare',
+  targetRuneId: null,
+  preserveSpecialEffects: true,
+};
 export function combatRuneRarityAtOrBelow(rarity: CombatRuneRarity, maxRarity: CombatRuneRarity): boolean {
   return COMBAT_RUNE_RARITIES.indexOf(rarity) >= 0 &&
     COMBAT_RUNE_RARITIES.indexOf(rarity) <= COMBAT_RUNE_RARITIES.indexOf(maxRarity);
+}
+/** Shared donor eligibility rule: preserve special-effect Runes by default. */
+export function shouldAutoSacrificeRune(
+  rune: Pick<CombatRune, 'rarity' | 'majorAbility'>,
+  maxRarity: CombatRuneRarity,
+  preserveSpecialEffects: boolean,
+): boolean {
+  return combatRuneRarityAtOrBelow(rune.rarity, maxRarity) &&
+    !(preserveSpecialEffects && Boolean(rune.majorAbility));
 }
 export type CombatRuneMajorAbilityId =
   | 'fateweaver'
