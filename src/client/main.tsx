@@ -63,7 +63,6 @@ import {
   masterySkillCost,
   PREMIUM_BOOSTERS,
   AUTOMATIONS,
-  COSMETICS_LIST,
   FEATURE_UNLOCK_LEVELS,
 
 } from '../shared/game.js';
@@ -2039,40 +2038,6 @@ export function App() {
     }
   };
 
-  // Cosmetics
-  const handleBuyCosmetic = async (id: string) => {
-    setBusy(true);
-    const rollback = beginOptimisticState(current => {
-      const cosmetic = COSMETICS_LIST.find(item => item.id === id);
-      if (!cosmetic) return current;
-      if (current.unlockedCosmetics.includes(id)) return { ...current, activeCosmetic: id };
-      if (current.coins < cosmetic.costCoins || (current.shards ?? 0) < cosmetic.costShards) return current;
-      const purchased = current.purchasedShards ?? 0;
-      return {
-        ...current,
-        coins: current.coins - cosmetic.costCoins,
-        shards: current.shards - cosmetic.costShards,
-        purchasedShards: Math.max(0, purchased - Math.min(cosmetic.costShards, purchased)),
-        unlockedCosmetics: [...current.unlockedCosmetics, id],
-        activeCosmetic: id,
-      };
-    });
-    try {
-      const res = await getJson<{ state: PlayerState }>('/api/cosmetics/buy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
-      applyPlayerState(res.state);
-      sound.playChime(523.25, 'sine', 0.2);
-      showToast('Cosmetic equipped!', 'success');
-    } catch (e: any) {
-      rollback?.();
-      showToast(e.message || 'Cosmetic purchase failed', 'warn');
-    } finally {
-      setBusy(false);
-    }
-  };
 
   // Guilds
   const handleCreateGuild = async (name: string, tag: string): Promise<boolean> => {
@@ -2890,7 +2855,6 @@ export function App() {
             onPrestige={handlePrestige}
             onBuyPrestigeUpgrade={handleBuyPrestigeUpgrade}
             onSynthesizeDust={handleSynthesizeDust}
-            onBuyCosmetic={handleBuyCosmetic}
             busy={false}
           />
         )}
