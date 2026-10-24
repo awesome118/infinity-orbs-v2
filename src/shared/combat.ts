@@ -661,8 +661,6 @@ export function combatActionTimeline(
   const beat = Math.max(1, safeCounter(beatValue));
   const playerSpeed = safeSpeed(playerSpeedValue);
   const enemySpeed = safeSpeed(enemySpeedValue);
-  const playerResolved = safeCounter(playerResolvedValue);
-  const enemyResolved = safeCounter(enemyResolvedValue);
   const playerActions = safeActions(playerActionsValue);
   const enemyActions = safeActions(enemyActionsValue);
   const maxSpeed = Math.max(playerSpeed, enemySpeed);
@@ -671,7 +669,6 @@ export function combatActionTimeline(
   const append = (
     actor: CombatActionTimelineEntry['actor'],
     speed: number,
-    _resolved: number,
     count: number,
   ) => {
     if (speed <= 0 || count <= 0) return;
@@ -691,8 +688,8 @@ export function combatActionTimeline(
     }
   };
 
-  append('player', playerSpeed, playerResolved, playerActions);
-  append('enemy', enemySpeed, enemyResolved, enemyActions);
+  append('player', playerSpeed, playerActions);
+  append('enemy', enemySpeed, enemyActions);
   timeline.sort((a, b) => {
     const delta = a.time - b.time;
     if (Math.abs(delta) > 1e-9) return delta;
