@@ -5648,7 +5648,7 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
   const previousPity = sacrifices.altarPity ?? 0;
 
   s.coins -= numCoins;
-  s.shards = (s.shards ?? 0) - numShards;
+  if (numShards > 0) spendShards(s, numShards);
 
   sacrifices.coinsSacrificed = (sacrifices.coinsSacrificed ?? 0) + numCoins;
   sacrifices.shardsSacrificed = (sacrifices.shardsSacrificed ?? 0) + numShards;
