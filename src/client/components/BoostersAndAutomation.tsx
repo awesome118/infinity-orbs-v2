@@ -233,7 +233,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
             <span className="text-slate-500 ml-2">No daily cap. Roll drops accumulate in fractional amounts.</span>
           </div>
           <div className="text-slate-400">
-            {formatNumber(walletShards)} Shards available
+            {formatShardAmount(walletShards)} Shards available
           </div>
         </div>
       </section>
