@@ -204,7 +204,11 @@ export function formatShardAmount(value: unknown): string {
 
 /** Returns the bonus for this roll and persists/reset the consecutive-miss counter. */
 export function resolveShardPityReward(state: Pick<PlayerState, 'shardPityRolls'>, procTriggered: boolean): number {
-  const misses = Math.min(SHARD_PITY_ROLLS_TO_REWARD - 1, finiteNonNegativeInteger(state.shardPityRolls, 0));
+  const rawMisses = state.shardPityRolls;
+  const safeMisses = typeof rawMisses === 'number' && Number.isSafeInteger(rawMisses) && rawMisses >= 0
+    ? rawMisses
+    : 0;
+  const misses = Math.min(SHARD_PITY_ROLLS_TO_REWARD - 1, safeMisses);
   if (procTriggered) {
     state.shardPityRolls = 0;
     return SHARD_PROC_REWARD;
