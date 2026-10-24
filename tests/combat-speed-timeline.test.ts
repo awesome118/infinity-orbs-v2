@@ -51,6 +51,14 @@ test('each combat beat projects exactly one action in a whole-number slot', () =
   ]);
 });
 
+test('turn order uses integer slots without fractional beat labels or microbeat timestamps', () => {
+  const server = readFileSync(resolve(process.cwd(), 'src/server/combat.ts'), 'utf8');
+  const ui = readFileSync(resolve(process.cwd(), 'src/client/components/CombatSection.tsx'), 'utf8');
+  assert.ok(!server.includes('1e-6'), 'bonus strikes must not be sorted with fractional micro-beats');
+  assert.ok(!ui.includes('event.time.toFixed(2)'), 'the turn visualizer must not show decimal beat times');
+  assert.ok(ui.includes('Turn {event.time}'), 'the visualizer labels whole-number turns');
+});
+
 test('opening initiative follows the faster Speed value; ties favor the Delver', () => {
   assert.equal(combatNextActor(300, 200, 0, 0), 'player');
   assert.equal(combatNextActor(200, 300, 0, 0), 'enemy');
