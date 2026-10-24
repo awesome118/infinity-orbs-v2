@@ -88,7 +88,7 @@ jobs:
           REQUESTED_VERSION: ${{ inputs.release_version }}
         run: |
           set -euo pipefail
-          VERSION="$(npx devvit view infinity-orbs version)"
+          VERSION="$(npx devvit view "infinity-orbs@$REQUESTED_VERSION" version)"
           test "$VERSION" = "$REQUESTED_VERSION" || {
             echo "Uploaded Devvit version $VERSION does not match requested $REQUESTED_VERSION."
             exit 1

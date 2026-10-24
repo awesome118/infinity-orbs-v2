@@ -312,6 +312,11 @@ test('deployment workflow is manual, main-only, and installs only to the develop
     /run:\s*timeout --signal=TERM --kill-after=30s 9m npx devvit upload --version "\$REQUESTED_VERSION"/,
     'the exact version-pinned upload must be bounded by a timeout',
   );
+  assert.match(
+    workflow,
+    /npx devvit view "infinity-orbs@\$REQUESTED_VERSION" version/,
+    'uploaded-version verification must resolve the exact requested release rather than unqualified latest',
+  );
   assert.match(workflow, /^\s*npx devvit install r\/infinity_orbs_dev\b/m);
   assert.doesNotMatch(workflow, /^\s*npx devvit install r\/infinityorbs\b/m);
   assert.doesNotMatch(workflow, /^\s*npx devvit publish\b/m);
