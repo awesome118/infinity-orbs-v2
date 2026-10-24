@@ -77,9 +77,9 @@ test('Rune Major Abilities are main-game-only and do not change combat stats',()
 });
 test('combat Speed controls recharge cadence and fast enemies can earn multiple actions',()=>{
   assert.equal(combatActionsDue(100,1,0),1, 'the opening action is ready');
-  assert.equal(combatActionsDue(100,2,1),0, '100 Speed is not enough to recharge next beat');
-  assert.equal(combatActionsDue(400,2,1),1, '400 Speed earns one action per later beat');
-  assert.equal(combatActionsDue(700,2,1),1, '700 Speed earns one extra action after the opener');
+  assert.equal(combatActionsDue(100,2,1),1, '100 Speed still gets its base action each beat');
+  assert.equal(combatActionsDue(400,2,1),2, '400 Speed earns one bonus action after the base action');
+  assert.equal(combatActionsDue(700,2,1),2, '700 Speed crosses one bonus threshold after the opener');
   assert.equal(combatActionsDue(80_000,2,1),100, 'large action bursts remain capped');
   assert.ok(getEnemyForDungeonDepth('undercrypt',100).speed>getEnemyForDungeonDepth('undercrypt',1).speed);
 });
