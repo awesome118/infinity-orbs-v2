@@ -472,7 +472,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
           if(speed<=0)return Number.POSITIVE_INFINITY;
           const ordinal=resolved+offset+1;
           const nextBeat=state.combatBeats+1;
-          if(ordinal<=1)return nextBeat+(1-speed/maxSpeed)*.5;
+          if(ordinal<=1)return nextBeat+(1-speed/maxSpeed);
           return Math.max(nextBeat+.001,2+(ordinal-1)*COMBAT_SPEED_PER_ACTION/speed);
         };
         const playerNext=nextActionBeat(state.playerActionsResolved,stats.speed);
