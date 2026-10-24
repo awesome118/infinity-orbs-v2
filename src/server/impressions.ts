@@ -279,10 +279,12 @@ async function pruneViewerIndex(now: number): Promise<void> {
     let transactionClosed = false;
     try {
       const index = await redis.hGetAll(VIEWER_INDEX_KEY);
-      const rows = await Promise.all(Object.keys(index ?? {}).map(async userHash => ({
+      const userHashes = Object.keys(index ?? {}).slice(0, MAX_INDEXED_VIEWERS + 1);
+      const viewerValues = await redis.mGet(userHashes.map(userHash => VIEWER_RECORD_PREFIX + userHash));
+      const rows = userHashes.map((userHash, index) => ({
         userHash,
-        row: normalizeViewerRow(await redis.get(VIEWER_RECORD_PREFIX + userHash)),
-      })));
+        row: normalizeViewerRow(viewerValues[index]),
+      }));
       const cutoff = now - VIEWER_RECORD_RETENTION_MS;
       const valid = rows
         .filter(entry => entry.row && entry.row.lastSeenAt >= cutoff)
@@ -738,10 +740,12 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
     return readTimePoint(bucket, DAY_PREFIX, new Date(bucket * 86_400_000).toISOString().slice(0, 10));
   }));
 
-  const viewerRows = await Promise.all(Object.keys(viewerIndex ?? {}).map(async userHash => ({
+  const viewerHashes = Object.keys(viewerIndex ?? {}).slice(0, MAX_INDEXED_VIEWERS);
+  const viewerValues = await redis.mGet(viewerHashes.map(userHash => VIEWER_RECORD_PREFIX + userHash));
+  const viewerRows = viewerHashes.map((userHash, index) => ({
     userHash,
-    row: normalizeViewerRow(await redis.get(VIEWER_RECORD_PREFIX + userHash)),
-  })));
+    row: normalizeViewerRow(viewerValues[index]),
+  }));
   const viewers = viewerRows
     .map(entry => entry.row)
     .filter((row): row is ImpressionViewerRow => Boolean(row) && row!.lastSeenAt >= dashboardNow - VIEWER_RECORD_RETENTION_MS)
