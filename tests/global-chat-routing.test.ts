@@ -6,7 +6,7 @@ import {
   redis as originalRedis,
   reddit as originalReddit,
 } from '../src/server/devvit-mock.js';
-import { getGlobalChatStatus, postGlobalChatMessage } from '../src/server/social.js';
+import { getGlobalChatStatus, postGlobalChatMessage, registerCurrentPostAsGlobalChatDestination } from '../src/server/social.js';
 
 test('no unregistered ordinary post can become Global Chat destination via launcher=main', async () => {
   const baseContext = originalContext;
@@ -34,6 +34,48 @@ test('no unregistered ordinary post can become Global Chat destination via launc
   }
 });
 
+
+test('moderator repair helper registers an existing main post and rejects a registered Frenzy', async () => {
+  const baseContext = originalContext;
+  const baseRedis = originalRedis;
+  const baseReddit = originalReddit;
+  const suffix = Date.now().toString(36);
+  const mainPostId = 't3_existing-main-repair-' + suffix;
+  const frenzyPostId = 't3_frenzy-repair-' + suffix;
+  const gamePostKey = 'io:global-game-post-id';
+  const frenzyKey = 'io:frenzy:post:' + frenzyPostId;
+  const previousGamePost = await baseRedis.get(gamePostKey);
+  const previousFrenzy = await baseRedis.get(frenzyKey);
+  configureDevvitRuntime({
+    redis: baseRedis,
+    context: { ...baseContext, postId: mainPostId, userId: 'chat-repair-test', username: 'shadow_fen' },
+    reddit: baseReddit,
+  });
+  try {
+    await baseRedis.del(gamePostKey);
+    const result = await registerCurrentPostAsGlobalChatDestination();
+    assert.equal(result.postId, mainPostId);
+    assert.equal(await baseRedis.get(gamePostKey), mainPostId);
+
+    await baseRedis.set(frenzyKey, JSON.stringify({ ownerId: 'test-owner', createdAt: Date.now() }));
+    configureDevvitRuntime({
+      redis: baseRedis,
+      context: { ...baseContext, postId: frenzyPostId, userId: 'chat-repair-test', username: 'shadow_fen' },
+      reddit: baseReddit,
+    });
+    await assert.rejects(
+      () => registerCurrentPostAsGlobalChatDestination(),
+      /A Frenzy post cannot be registered/,
+    );
+    assert.equal(await baseRedis.get(gamePostKey), mainPostId, 'a Frenzy attempt must not overwrite the canonical target');
+  } finally {
+    await baseRedis.del(gamePostKey);
+    await baseRedis.del(frenzyKey);
+    if (previousGamePost != null) await baseRedis.set(gamePostKey, previousGamePost);
+    if (previousFrenzy != null) await baseRedis.set(frenzyKey, previousFrenzy);
+    configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  }
+});
 
 test('registered Frenzy Global Chat routes public comments to the canonical main Game post', async () => {
   const baseContext = originalContext;
