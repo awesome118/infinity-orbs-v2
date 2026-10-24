@@ -74,7 +74,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   const standardUpgradeMaxLevels: Partial<Record<UpgradeId, number>> = { speed: 20, offlineRate: 8 };
 
   const handleUpgradeClick = async (u: (typeof upgradesData)[0]) => {
-    if (busy || upgradeActionLockRef.current) return;
+    if (busy || upgradeActionLockRef.current || autoBuyInFlightRef.current) return;
     upgradeActionLockRef.current = true;
     setUpgradingId(u.id);
     sound.playLevelUpFanfare();
@@ -104,7 +104,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   };
 
   const handleUpgradeAllClick = async () => {
-    if (busy || upgradeActionLockRef.current) return;
+    if (busy || upgradeActionLockRef.current || autoBuyInFlightRef.current) return;
     upgradeActionLockRef.current = true;
     setUpgradingAll(true);
     sound.playLevelUpFanfare();
