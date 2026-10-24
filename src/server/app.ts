@@ -73,6 +73,7 @@ import {
   getCommunityEvent,
   getGlobalChat,
   getGlobalChatStatus,
+  registerCurrentPostAsGlobalChatDestination,
   postGlobalChatMessage,
   recordGlobalChatComment,
   reportGlobalChatMessage,
@@ -1067,6 +1068,18 @@ export function createApp() {
       res.status(transientContentionError(e) ? 503 : 500).json({
         error: transientContentionError(e) ? 'Leaderboards are busy updating. Please retry.' : e?.message || 'Failed to fetch leaderboards.',
       });
+    }
+  });
+
+  app.post('/api/dev/chat/register-current-post', async (_req, res) => {
+    if (!isDebugUser()) return res.status(403).json({ error: 'Admin access required.' });
+    try {
+      const result = await registerCurrentPostAsGlobalChatDestination();
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ success: true, ...result });
+    } catch (e: any) {
+      const message = e?.message || 'Could not register the main Game post for Global Chat.';
+      res.status(400).json({ error: message });
     }
   });
 
