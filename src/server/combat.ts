@@ -88,7 +88,7 @@ function normalizeGear(value:unknown,fallbackFloor=0):CombatGear|null {
 }
 function normalizeRuneMajorAbility(raw:Record<string,unknown>|null,stat:CombatRuneStat):CombatRune['majorAbility'] {
   if(!raw)return undefined;
-  const validIds=['fateweaver','midas-engine','memory-well','echo-chamber','paradox-engine','event-horizon','shard-constellation','temporal-loop','prismatic-fork','critical-convergence','rarity-ladder','stellar-dividend','shard-jackpot','milestone-engine'];
+  const validIds=['fateweaver','midas-engine','memory-well','echo-chamber','paradox-engine','event-horizon','shard-constellation','temporal-loop','prismatic-fork','critical-convergence','rarity-ladder','stellar-dividend','shard-jackpot','milestone-engine','shard-tithe','discovery-oracle','dry-streak-refinery'];
   const valid=validIds.includes(String(raw.id));
   const id:NonNullable<CombatRune['majorAbility']>['id']=valid
     ?raw.id as NonNullable<CombatRune['majorAbility']>['id']
@@ -98,7 +98,7 @@ function normalizeRuneMajorAbility(raw:Record<string,unknown>|null,stat:CombatRu
     'echo-chamber':'Echo Chamber','paradox-engine':'Paradox Engine','event-horizon':'Event Horizon',
     'shard-constellation':'Shard Constellation','temporal-loop':'Temporal Loop','prismatic-fork':'Prismatic Fork',
     'critical-convergence':'Critical Convergence','rarity-ladder':'Rarity Ladder','stellar-dividend':'Stellar Dividend',
-    'shard-jackpot':'Shard Jackpot','milestone-engine':'Milestone Engine',
+    'shard-jackpot':'Shard Jackpot','milestone-engine':'Milestone Engine','shard-tithe':'Shard Tithe','discovery-oracle':'Discovery Oracle','dry-streak-refinery':'Dry-Streak Refinery',
   };
   const descriptions={
     fateweaver:'Adds effective Luck to main-game Infinity Orb rolls.',
@@ -115,6 +115,9 @@ function normalizeRuneMajorAbility(raw:Record<string,unknown>|null,stat:CombatRu
     'stellar-dividend':'Lifetime roll milestones trigger extra rolls.',
     'shard-jackpot':'Shard payouts can trigger a scaled Shard multiplier.',
     'milestone-engine':'Crossing a new all-time rarity decade grants bonus Shards and rolls.',
+    'shard-tithe':'Adds fractional Shards to every main-game roll.',
+    'discovery-oracle':'First-time rarity discoveries can trigger rarity-matched bonus rolls.',
+    'dry-streak-refinery':'Long gaps between rarity records gradually add fractional Shards per roll.',
   };
   const rawValue=Number(raw.valuePct);
   const valuePct=Number.isFinite(rawValue)?Math.max(0,Math.min(Number.MAX_VALUE,rawValue)):10;
