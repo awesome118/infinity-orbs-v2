@@ -635,6 +635,7 @@ export interface CombatActionTimelineEntry {
 /**
  * Merge actions owed by player and enemy onto the same Speed threshold timeline.
  * Each beat has a base action ordered by Speed; bonus actions land at cumulative Speed thresholds.
+ * Player and enemy clocks can differ because the player's Speed charge persists between encounters.
  * Exact ties favor the Delver.
  */
 export function combatActionTimeline(
@@ -645,6 +646,7 @@ export function combatActionTimeline(
   _enemyResolvedValue: unknown,
   playerActionsValue: unknown,
   enemyActionsValue: unknown,
+  enemyBeatValue: unknown = beatValue,
 ): CombatActionTimelineEntry[] {
   const safeSpeed = (value: unknown): number => {
     const raw = Number(value);
@@ -659,6 +661,7 @@ export function combatActionTimeline(
     return Number.isFinite(raw) ? Math.max(0, Math.min(1000, Math.floor(raw))) : 0;
   };
   const beat = Math.max(1, safeCounter(beatValue));
+  const enemyBeat = Math.max(1, safeCounter(enemyBeatValue));
   const playerSpeed = safeSpeed(playerSpeedValue);
   const enemySpeed = safeSpeed(enemySpeedValue);
   const playerActions = safeActions(playerActionsValue);
@@ -669,10 +672,11 @@ export function combatActionTimeline(
   const append = (
     actor: CombatActionTimelineEntry['actor'],
     speed: number,
+    actorBeat: number,
     count: number,
   ) => {
     if (speed <= 0 || count <= 0) return;
-    const progressBeforeBeat = Math.max(0, beat - 2) * speed;
+    const progressBeforeBeat = Math.max(0, actorBeat - 2) * speed;
     const thresholdsAlreadyCrossed = Math.floor(progressBeforeBeat / COMBAT_SPEED_PER_ACTION);
     for (let actionIndex = 0; actionIndex < count; actionIndex += 1) {
       // One normal action occurs every beat. Additional actions fire at the exact
@@ -688,8 +692,8 @@ export function combatActionTimeline(
     }
   };
 
-  append('player', playerSpeed, playerActions);
-  append('enemy', enemySpeed, enemyActions);
+  append('player', playerSpeed, beat, playerActions);
+  append('enemy', enemySpeed, enemyBeat, enemyActions);
   timeline.sort((a, b) => {
     const delta = a.time - b.time;
     if (Math.abs(delta) > 1e-9) return delta;
@@ -935,6 +939,8 @@ export interface CombatState {
   sequence: number;
   /** Timestamp of the last accepted server combat beat; used to enforce cadence. */
   lastAcceptedBeatAtMs: number;
+  /** Cumulative accepted beats for player Speed; persists when an enemy is defeated. */
+  playerSpeedBeats?: number;
   combatBeats: number;
   playerActionsResolved: number;
   enemyActionsResolved: number;
@@ -1114,10 +1120,10 @@ export function combatScrapValue(item: Pick<CombatGear,'power'|'quality'|'source
   const power = Number.isFinite(Number(item.power)) ? Math.max(1, Math.min(1_000_000, Number(item.power))) : 1;
   const quality = Number.isFinite(Number(item.quality)) ? Math.max(0, Math.min(100, Number(item.quality))) : 0;
   const floor = Number.isFinite(Number(item.sourceFloor)) ? Math.max(0, Math.min(COMBAT_MAX_DEPTH, Number(item.sourceFloor))) : 0;
-  // Scrap is intentionally a slower economy than gear progression: halve the previous payout curve.
+  // Keep salvage at one quarter of the original payout curve so gear drops do not flood the Forge.
   const depthMultiplier = 1 + Math.min(4, Math.sqrt(floor / 250));
   const rawValue = (20 + power * 1.1 + quality * 0.75 + Math.log10(floor + 1) * 8) * depthMultiplier;
-  return Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.round(rawValue * 0.5)));
+  return Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.round(rawValue * 0.25)));
 }
 
 export function combatForgeCost(floorValue: unknown): number {
@@ -1159,7 +1165,7 @@ export function createCombatState(): CombatState {
     version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1, depthCapCleared:false,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
     baseDamage:54, coins:0, scrap:0, combatMarks:250, runes:[], equippedRunes:[], runeAutoSacrifice:{...DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS}, combatTutorialSeen:false, combatUpgrades:{}, totalKills:0, skillRolls:0, skillRuntime:createCombatSkillRuntime(), strategyGuideRank:0, tacticianManuals:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
-    combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0, playerTurnsCompleted:0,
+    playerSpeedBeats:0, combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0, playerTurnsCompleted:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
     encounterFirstStrikeUsed:false, pendingHealAmount:0, inventory:starter.inventory,
     equipment:starter.equipment, runInventoryIds:[],
