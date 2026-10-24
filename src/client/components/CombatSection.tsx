@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Check, Coins, Info, Pause, Play, Sparkles, Swords, Zap, Sword, Shield, Crown, Hand, Footprints, CircleDot, Gem, Hammer, Clock3, Timer, type LucideIcon } from 'lucide-react';
 import { RunesSection } from './RunesSection.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatAutoScrapSettings, CombatCommand, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatOrbRoll, CombatPage, CombatSkillDefinition, CombatSkillId, CombatSnapshot, CombatState, CombatStats, CombatTactic } from '../../shared/combat.js';
-import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatGearRarityForQuality, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, combatNextActor, combatActionTimeline, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
+import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatGearRarityForQuality, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, combatNextActor, combatTurnStep, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
 
 interface Props { page: CombatPage; onNavigate:(page:CombatPage)=>void; }
 interface SkillRollResult {
@@ -304,7 +304,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     const queuedCommand=runtime.current.intent;
     const pendingAbilityId=runtime.current.pendingAbilityId;
     const pendingSkill=pendingAbilityId?COMBAT_SKILLS.find(skill=>skill.id===pendingAbilityId):undefined;
-    const isPlayerTurn=combatNextActor(current.speed,enemy.speed,current.playerActionsResolved,current.enemyActionsResolved)==='player';
+    const isPlayerTurn=combatNextActor(current.speed,enemy.speed,current.playerSpeedCharge??0,current.enemySpeedCharge??0)==='player';
     const queuedAbilityReady=Boolean(
       isPlayerTurn&&
       pendingSkill&&
@@ -519,21 +519,18 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         const playerCharge=Math.round(stats.speed/maxSpeed*100);
         const enemyCharge=Math.round(enemy.speed/maxSpeed*100);
         const projected:{actor:'player'|'enemy';time:number;step:number;speed:number}[]=[];
-        let playerResolved=state.playerActionsResolved;
-        let enemyResolved=state.enemyActionsResolved;
+        let playerCharge=Math.max(0,Math.min(1,Number(state.playerSpeedCharge)||0));
+        let enemyCharge=Math.max(0,Math.min(1,Number(state.enemySpeedCharge)||0));
         for(let turnNumber=1;turnNumber<=timelineCount;turnNumber+=1){
-          const event=combatActionTimeline(
-            stats.speed,enemy.speed,turnNumber,playerResolved,enemyResolved,1,1,turnNumber,
-          )[0];
-          if(!event)break;
+          const turn=combatTurnStep(stats.speed,enemy.speed,playerCharge,enemyCharge);
           projected.push({
-            actor:event.actor,
+            actor:turn.actor,
             time:turnNumber,
-            step:event.actor==='player'?playerResolved:enemyResolved,
-            speed:event.actor==='player'?stats.speed:enemy.speed,
+            step:turnNumber,
+            speed:turn.actor==='player'?stats.speed:enemy.speed,
           });
-          if(event.actor==='player')playerResolved=Math.min(Number.MAX_SAFE_INTEGER,playerResolved+1);
-          else enemyResolved=Math.min(Number.MAX_SAFE_INTEGER,enemyResolved+1);
+          playerCharge=turn.playerSpeedCharge;
+          enemyCharge=turn.enemySpeedCharge;
         }
         const events=projected;
         return <section className="io-combat-turn-tracker" aria-label="Combat speed and turn order">
