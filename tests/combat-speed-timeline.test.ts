@@ -61,8 +61,8 @@ test('player Speed charge carries into a new encounter while enemy cadence resta
 
 test('player Speed counter survives enemy kills in server state', () => {
   const server = readFileSync(resolve(process.cwd(), 'src/server/combat.ts'), 'utf8');
-  assert.match(server, /s\\.combatBeats=0;s\\.enemyActionsResolved=0;s\\.guardBeats=0/);
-  assert.doesNotMatch(server, /s\\.combatBeats=0;s\\.playerActionsResolved=0;s\\.enemyActionsResolved=0;s\\.guardBeats=0/);
+  assert.ok(server.includes('s.combatBeats=0;s.enemyActionsResolved=0;s.guardBeats=0'));
+  assert.ok(!server.includes('s.combatBeats=0;s.playerActionsResolved=0;s.enemyActionsResolved=0;s.guardBeats=0'));
 });
 
 test('every orb rarity has an expanded, duplicate-free name pool', () => {

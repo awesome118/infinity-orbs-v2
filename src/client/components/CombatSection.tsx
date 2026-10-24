@@ -468,20 +468,21 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       </div>
       {(()=>{
         const maxSpeed=Math.max(1,stats.speed,enemy.speed);
-        const nextActionBeat=(resolved:number,speed:number,offset=0)=>{
+        const playerBeat=state.playerSpeedBeats??state.combatBeats;
+        const enemyGlobalOffset=playerBeat-state.combatBeats;
+        const nextActionBeat=(resolved:number,speed:number,offset=0,clockOffset=0)=>{
           if(speed<=0)return Number.POSITIVE_INFINITY;
           const ordinal=resolved+offset+1;
-          const nextBeat=state.combatBeats+1;
-          if(ordinal<=1)return nextBeat+(1-speed/maxSpeed)*.5;
-          return Math.max(nextBeat+.001,2+(ordinal-1)*COMBAT_SPEED_PER_ACTION/speed);
+          const actionBeat=1+Math.ceil((ordinal-1)*COMBAT_SPEED_PER_ACTION/speed);
+          return Math.max(playerBeat,clockOffset+actionBeat-1+(1-speed/maxSpeed)*.5);
         };
         const playerNext=nextActionBeat(state.playerActionsResolved,stats.speed);
-        const enemyNext=nextActionBeat(state.enemyActionsResolved,enemy.speed);
+        const enemyNext=nextActionBeat(state.enemyActionsResolved,enemy.speed,0,enemyGlobalOffset);
         const playerCharge=Math.round(stats.speed/maxSpeed*100);
         const enemyCharge=Math.round(enemy.speed/maxSpeed*100);
         const events=[
           ...Array.from({length:timelineCount+2},(_,i)=>({actor:'player' as const,time:nextActionBeat(state.playerActionsResolved,stats.speed,i),step:i,speed:stats.speed})),
-          ...Array.from({length:timelineCount+2},(_,i)=>({actor:'enemy' as const,time:nextActionBeat(state.enemyActionsResolved,enemy.speed,i),step:i,speed:enemy.speed})),
+          ...Array.from({length:timelineCount+2},(_,i)=>({actor:'enemy' as const,time:nextActionBeat(state.enemyActionsResolved,enemy.speed,i,enemyGlobalOffset),step:i,speed:enemy.speed})),
         ].sort((a,b)=>a.time-b.time||(a.actor===b.actor?a.step-b.step:a.actor==='player'?-1:1)).slice(0,timelineCount);
         const nextActor=playerNext<=enemyNext?'player':'enemy';
         return <section className="io-combat-turn-tracker" aria-label="Combat speed and turn order">
