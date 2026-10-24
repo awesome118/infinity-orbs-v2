@@ -740,9 +740,14 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
         if(secureRandom()<runeDropChance){
           const rune=createCombatRune(Math.max(0,s.depth-1),s.dungeonId,s.totalKills,s.sequence);
           const qualifiesForAutoSacrifice = s.runeAutoSacrifice.enabled &&
-            combatRuneRarityAtOrBelow(rune.rarity, s.runeAutoSacrifice.maxRarity);
+            shouldAutoSacrificeRune(rune, s.runeAutoSacrifice.maxRarity, s.runeAutoSacrifice.preserveSpecialEffects);
           const targets = qualifiesForAutoSacrifice ? getEquippedRuneTargets(s) : [];
-          const target = targets.length ? pick(targets) : null;
+          const configuredTarget = typeof s.runeAutoSacrifice.targetRuneId === 'string'
+            ? targets.find(targetRune => targetRune.id === s.runeAutoSacrifice.targetRuneId)
+            : undefined;
+          const target = targets.length
+            ? configuredTarget ?? targets.find(targetRune => /insight/i.test(targetRune.name)) ?? targets[0]!
+            : null;
           if(target){
             const result = grantRuneSacrificeExperience(target, rune);
             actions.push({actor:'player',kind:'loot',text:'Auto-strengthened '+target.name+' with '+rune.name+': +'+result.gainedXp.toLocaleString()+' Rune XP (Level '+(result.level)+').'});
