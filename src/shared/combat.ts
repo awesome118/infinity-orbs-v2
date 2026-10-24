@@ -633,64 +633,92 @@ export interface CombatActionTimelineEntry {
   time: number;
 }
 
+export interface CombatTurnStep {
+  actor: 'player' | 'enemy';
+  /** Progress toward the next player action, normalized to 0..1. */
+  playerSpeedCharge: number;
+  /** Progress toward the next enemy action, normalized to 0..1. */
+  enemySpeedCharge: number;
+}
+
 /**
- * Choose whose next action occurs first by comparing the next action interval for each side.
- * The player and enemy each have an independent action count. Comparing (actions + 1) / speed
- * makes turn frequency proportional to Speed without fractional displayed beats or fixed thresholds.
- * Exact ties favor the Delver, so 300 Speed versus 100 Speed yields player, player, player, enemy.
+ * Advance both Speed clocks to the next ready action, then consume exactly that action.
+ * Charge is carried between beats. A tie favors the Delver, so 300 Speed versus 100 Speed
+ * produces player, player, player, enemy. Enemy charge is reset when a foe is replaced;
+ * player charge is preserved so a kill never grants a free extra turn.
  */
-export function combatNextActor(
+export function combatTurnStep(
   playerSpeedValue: unknown,
   enemySpeedValue: unknown,
-  playerResolvedValue: unknown,
-  enemyResolvedValue: unknown,
-): CombatActionTimelineEntry['actor'] {
+  playerChargeValue: unknown,
+  enemyChargeValue: unknown,
+): CombatTurnStep {
   const safeSpeed = (value: unknown): number => {
     const raw = Number(value);
     return Number.isFinite(raw) ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(raw))) : 0;
   };
-  const safeCounter = (value: unknown): number => {
+  const safeCharge = (value: unknown): number => {
     const raw = Number(value);
-    return Number.isFinite(raw)
-      ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER - 1, Math.floor(raw)))
-      : 0;
+    return Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 0;
   };
   const playerSpeed = safeSpeed(playerSpeedValue);
   const enemySpeed = safeSpeed(enemySpeedValue);
-  if (playerSpeed <= 0 && enemySpeed <= 0) return 'player';
-  if (playerSpeed <= 0) return 'enemy';
-  if (enemySpeed <= 0) return 'player';
+  let playerCharge = safeCharge(playerChargeValue);
+  let enemyCharge = safeCharge(enemyChargeValue);
 
-  // BigInt cross-products avoid floating point precision issues at high action counts.
-  const playerNext = BigInt(safeCounter(playerResolvedValue) + 1) * BigInt(enemySpeed);
-  const enemyNext = BigInt(safeCounter(enemyResolvedValue) + 1) * BigInt(playerSpeed);
-  return playerNext <= enemyNext ? 'player' : 'enemy';
+  if (playerSpeed <= 0 && enemySpeed <= 0) {
+    return { actor: 'player', playerSpeedCharge: 0, enemySpeedCharge: 0 };
+  }
+
+  const playerTime = playerSpeed > 0 ? Math.max(0, 1 - playerCharge) / playerSpeed : Number.POSITIVE_INFINITY;
+  const enemyTime = enemySpeed > 0 ? Math.max(0, 1 - enemyCharge) / enemySpeed : Number.POSITIVE_INFINITY;
+  const elapsed = Math.min(playerTime, enemyTime);
+  if (Number.isFinite(elapsed)) {
+    playerCharge = Math.min(1, playerCharge + elapsed * playerSpeed);
+    enemyCharge = Math.min(1, enemyCharge + elapsed * enemySpeed);
+  }
+
+  // Charge may reach 1 for both actors at the same instant. Consume the player's turn
+  // first and leave the enemy ready for the following whole-number combat beat.
+  const playerReady = playerSpeed > 0 && playerCharge >= 1 - 1e-9;
+  const enemyReady = enemySpeed > 0 && enemyCharge >= 1 - 1e-9;
+  const actor: CombatTurnStep['actor'] = playerReady ? 'player' : enemyReady ? 'enemy' : playerSpeed > 0 ? 'player' : 'enemy';
+  if (actor === 'player' && playerReady) playerCharge = Math.max(0, playerCharge - 1);
+  else if (actor === 'enemy' && enemyReady) enemyCharge = Math.max(0, enemyCharge - 1);
+  return { actor, playerSpeedCharge: playerCharge, enemySpeedCharge: enemyCharge };
+}
+
+/** Convenience helper when only the next actor, not the updated charge, is needed. */
+export function combatNextActor(
+  playerSpeedValue: unknown,
+  enemySpeedValue: unknown,
+  playerChargeValue: unknown,
+  enemyChargeValue: unknown,
+): CombatTurnStep['actor'] {
+  return combatTurnStep(playerSpeedValue, enemySpeedValue, playerChargeValue, enemyChargeValue).actor;
 }
 
 /**
- * Return the single action slot due next. The action counts only indicate whether this
- * caller is projecting a live beat; Speed ordering comes from the independent resolved counts.
+ * Compatibility wrapper for turn previews. `time` is always an integer slot (zero here);
+ * it is not a fractional beat. Action counts indicate which actor slots are available.
  */
 export function combatActionTimeline(
   playerSpeedValue: unknown,
   enemySpeedValue: unknown,
-  _beatValue: unknown,
-  playerResolvedValue: unknown,
-  enemyResolvedValue: unknown,
+  _turnValue: unknown,
+  playerChargeValue: unknown,
+  enemyChargeValue: unknown,
   playerActionsValue: unknown,
   enemyActionsValue: unknown,
-  _enemyBeatValue: unknown = _beatValue,
+  _enemyTurnValue: unknown = _turnValue,
 ): CombatActionTimelineEntry[] {
   const hasPlayerAction = Number.isFinite(Number(playerActionsValue)) && Number(playerActionsValue) > 0;
   const hasEnemyAction = Number.isFinite(Number(enemyActionsValue)) && Number(enemyActionsValue) > 0;
   if (!hasPlayerAction && !hasEnemyAction) return [];
-  return [{
-    actor: combatNextActor(playerSpeedValue, enemySpeedValue, playerResolvedValue, enemyResolvedValue),
-    actionIndex: 0,
-    time: 0,
-  }];
+  const actor = combatNextActor(playerSpeedValue, enemySpeedValue, playerChargeValue, enemyChargeValue);
+  if (actor === 'player' ? !hasPlayerAction : !hasEnemyAction) return [];
+  return [{ actor, actionIndex: 0, time: 0 }];
 }
-
 
 export function combatSkillEnergyCost(rarity: CombatRarity): number {
   return rarity === 'Common' || rarity === 'Uncommon' ? 2 : rarity === 'Rare' || rarity === 'Epic' ? 3 : 4;
@@ -929,6 +957,10 @@ export interface CombatState {
   lastAcceptedBeatAtMs: number;
   /** Cumulative accepted beats for player Speed; persists when an enemy is defeated. */
   playerSpeedBeats?: number;
+  /** Fractional progress toward the next player action; carried between enemies. */
+  playerSpeedCharge?: number;
+  /** Fractional progress toward the current enemy's next action. */
+  enemySpeedCharge?: number;
   combatBeats: number;
   playerActionsResolved: number;
   enemyActionsResolved: number;
@@ -1153,7 +1185,7 @@ export function createCombatState(): CombatState {
     version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1, depthCapCleared:false,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
     baseDamage:54, coins:0, scrap:0, combatMarks:250, runes:[], equippedRunes:[], runeAutoSacrifice:{...DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS}, combatTutorialSeen:false, combatUpgrades:{}, totalKills:0, skillRolls:0, skillRuntime:createCombatSkillRuntime(), strategyGuideRank:0, tacticianManuals:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
-    playerSpeedBeats:0, combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0, playerTurnsCompleted:0,
+    playerSpeedBeats:0, playerSpeedCharge:0, enemySpeedCharge:0, combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0, playerTurnsCompleted:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
     encounterFirstStrikeUsed:false, pendingHealAmount:0, inventory:starter.inventory,
     equipment:starter.equipment, runInventoryIds:[],
