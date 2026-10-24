@@ -446,8 +446,11 @@ function parseAdminPlayerSave(raw: unknown): Record<string, any> {
         typeof record.coins === 'number' &&
         Number.isFinite(record.coins) &&
         record.coins >= 0 &&
-        Number.isSafeInteger(record.shards) &&
-        Number(record.shards) >= 0 &&
+        typeof record.shards === 'number' &&
+        Number.isFinite(record.shards) &&
+        record.shards >= 0 &&
+        record.shards <= Number.MAX_SAFE_INTEGER &&
+        Math.abs(record.shards * 1_000 - Math.round(record.shards * 1_000)) < 1e-6 &&
         Number.isSafeInteger(record.totalRolls) &&
         Number(record.totalRolls) >= 0 &&
         (
@@ -1333,7 +1336,7 @@ function buildStatSpyStats(
       label: 'Bonus Shard Chance',
       total: shardChance,
       unit: 'chance',
-      detail: 'Proc chance for +1 bonus Shard, capped at 100%.',
+      detail: 'Proc chance for +0.001 bonus Shard; guarantees +0.01 after 100 consecutive misses; capped at 100%.',
       sources: [
         statSource('Shard Chance upgrade', Number(upgrades.shardChance ?? 0) * 0.15, 'pct', 'add', { level: Number(upgrades.shardChance ?? 0), detail: '+0.15 percentage points per level' }),
         statSource('Shard Resonance', Number(mastery.shardAttunement ?? 0) * 0.10, 'pct', 'add', { level: Number(mastery.shardAttunement ?? 0), detail: '+0.10 percentage points per level' }),
