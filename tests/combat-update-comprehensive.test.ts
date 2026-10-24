@@ -79,16 +79,46 @@ test('all Rune Major Abilities have a runtime path; main-game Rune abilities sti
     assert.ok(shared.includes("'" + id + "'"), 'shared combat contract must include ' + id);
     assert.ok(server.includes("'" + id + "'"), 'server combat must handle ' + id);
   }
-  const runeAbilityIds = [
+  const combatRuneAbilityIds = [
     'echo-chamber', 'paradox-engine', 'event-horizon', 'shard-constellation',
     'temporal-loop', 'prismatic-fork', 'critical-convergence', 'rarity-ladder',
     'stellar-dividend', 'shard-jackpot', 'milestone-engine', 'shard-tithe',
-    'discovery-oracle', 'dry-streak-refinery', 'fateweaver', 'midas-engine', 'memory-well',
+    'discovery-oracle', 'dry-streak-refinery',
   ];
-  for (const id of runeAbilityIds) {
+  for (const id of combatRuneAbilityIds) {
     assert.ok(shared.includes("'" + id + "'"), 'shared Rune Major Ability must include ' + id);
     assert.ok(server.includes("'" + id + "'") || effects.includes("'" + id + "'"), 'server-side Rune Major Ability path must include ' + id);
+    const rune = {
+      id: 'ability-test-' + id, name: id, rarity: 'Cosmic' as const, stat: 'luckPct' as const,
+      value: 1, level: 1, sourceDepth: 1, sourceDungeon: 'undercrypt' as const,
+      majorAbility: { id, name: id, valuePct: 25, description: id },
+    } as unknown as CombatRune;
+    assert.notDeepEqual(
+      combatRuneMajorAbilityEffects([rune], [rune.id]),
+      combatRuneMajorAbilityEffects([], []),
+      id + ' must resolve to a non-empty major ability effect',
+    );
   }
+  for (const id of ['fateweaver', 'midas-engine', 'memory-well']) {
+    assert.ok(shared.includes("'" + id + "'"), 'main-game Rune Major Ability must include ' + id);
+    assert.ok(server.includes("'" + id + "'") || effects.includes("'" + id + "'"), 'main-game Rune Major Ability path must include ' + id);
+  }
+  const fateweaver: CombatRune = {
+    id: 'fateweaver-luck-test', name: 'Fateweaver', rarity: 'Mythic', stat: 'luckPct',
+    value: 1, level: 1, sourceDepth: 1, sourceDungeon: 'undercrypt',
+    majorAbility: { id: 'fateweaver', name: 'Fateweaver', valuePct: 25, description: 'Luck test' },
+  };
+  const midas: CombatRune = {
+    ...fateweaver, id: 'midas-coin-test', stat: 'coinGainPct',
+    majorAbility: { id: 'midas-engine', name: 'Midas Engine', valuePct: 25, description: 'Coin test' },
+  };
+  const memory: CombatRune = {
+    ...fateweaver, id: 'memory-xp-test', stat: 'xpGainPct',
+    majorAbility: { id: 'memory-well', name: 'Memory Well', valuePct: 25, description: 'XP test' },
+  };
+  assert.ok(combatRuneBonuses([fateweaver], [fateweaver.id]).luckPct > combatRuneBonuses([], []).luckPct);
+  assert.ok(combatRuneBonuses([midas], [midas.id]).coinGainPct > 0);
+  assert.ok(combatRuneBonuses([memory], [memory.id]).xpGainPct > 0);
   assert.ok(effects.includes('addRuneBonusRolls'));
   assert.ok(effects.includes('eventHorizonRarityMultiplier'));
   assert.ok(effects.includes('shardProcChance'));
@@ -101,7 +131,7 @@ test('all roll-earned Shard chance sources are reduced and all Shard additions a
   const ui = source('src/client/components/BoostersAndAutomation.tsx');
   assert.match(game, /const shardProcChance = Math\.min\([\s\S]*?\) \* 0\.5\s*\);/);
   assert.match(game, /shardJackpotChance \* 0\.5/);
-  assert.match(game, /0\.005 \* transLevel/);
+  assert.match(shared, /0\.005 \* transLevel/);
   assert.match(shared, /SHARD_DECIMAL_PLACES = 0/);
   assert.match(shared, /Math\.floor\(n\)/);
   assert.doesNotMatch(shared, /shardsGained\s*\+\s*0\.001/);
