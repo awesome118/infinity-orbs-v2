@@ -72,7 +72,7 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     const height=Math.min(360,Math.max(0,window.innerHeight-16));
     const x=Math.max(8,Math.min(Math.max(8,window.innerWidth-width-8),rect.left+(rect.width-width)/2));
     const roomBelow=window.innerHeight-rect.bottom-8;
-    const y=roomBelow>=Math.min(260,height)?rect.bottom+8:Math.max(8,rect.top-height-8);
+    const y=roomBelow>=height?rect.bottom+8:Math.max(8,rect.top-height-8);
     setTooltipPoint({x,y});
     setShowTooltip(true);
   };
