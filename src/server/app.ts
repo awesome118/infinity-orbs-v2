@@ -809,9 +809,7 @@ export function createApp() {
         title: 'Infinity Orbs',
         entry: 'default',
       });
-      await redis.set('io:global-game-post-id', post.id).catch((error: unknown) => {
-        console.error('[Global Chat] Could not register the new Game post:', error);
-      });
+      await redis.set('io:global-game-post-id', post.id);
       res.json({ navigateTo: `https://reddit.com/r/${subredditName}/comments/${post.id}` });
     } catch (e) {
       console.error('Failed to create Infinity Orbs post:', e);
