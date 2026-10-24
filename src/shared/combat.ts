@@ -613,12 +613,16 @@ export function combatActionsDue(speedValue: unknown, beatValue: unknown, resolv
   const resolved = Number.isFinite(resolvedRaw) ? Math.max(0, Math.floor(resolvedRaw)) : 0;
   const rawLimit = Number(maxActionsValue);
   const limit = Number.isFinite(rawLimit) ? Math.max(0, Math.min(1000, Math.floor(rawLimit))) : 100;
-  const earnedAfterOpening = Math.floor(Math.min(
+  // Every beat contributes Speed toward the next action threshold. The first
+  // action is free at encounter start; later actions are earned from cumulative
+  // Speed, so a 310-Speed Delver earns action two during beat 2 and a 100-Speed
+  // enemy earns it during beat 4.
+  const earnedBonusActions = Math.floor(Math.min(
     Number.MAX_SAFE_INTEGER,
-    Math.max(0, (beats - 1) * speed / COMBAT_SPEED_PER_ACTION),
+    Math.max(0, beats * speed / COMBAT_SPEED_PER_ACTION),
   ));
   const target = speed > 0 && beats > 0
-    ? Math.min(Number.MAX_SAFE_INTEGER, 1 + earnedAfterOpening)
+    ? Math.min(Number.MAX_SAFE_INTEGER, 1 + earnedBonusActions)
     : 0;
   return Math.max(0, Math.min(limit, target - resolved));
 }
