@@ -2548,7 +2548,7 @@ test('Combat is level-gated, guided, and reset with the rest of the player save'
   assert.ok(debug.includes('const combatStateKey = `infinity-orbs:combat:${userId}`'));
   assert.ok(debug.includes('redis.watch(generationKey, playerKey, combatStateKey)'));
   assert.ok(debug.includes('await txn.del(combatStateKey)'));
-  assert.ok(combat.includes('window.innerHeight-376'));
+  assert.ok(combat.includes('window.innerHeight-16'));
   assert.ok(combat.includes("maxHeight:'min(360px, calc(100vh - 16px))'"));
 });
 
@@ -2747,7 +2747,7 @@ test('passive player snapshots and the Play splash do not register active sessio
   // Saved Auto Roll and resource prefetches must also wait for explicit entry.
   assert.match(client, /if \(!splashEntered \|\| !stateRef\.current\) return;/);
   assert.match(client, /if \(isAutoRoll && !splashEntered\) return;/);
-  assert.match(client, /if \(!splashEntered \|\| !autoRoll \|\| !state \|\| state\.upgrades\.auto === 0\) return;/);
+  assert.match(client, /if \(!splashEntered \|\| combatMode \|\| !autoRoll \|\| !state \|\| state\.upgrades\.auto === 0\) return;/);
 
   const promptStart = client.lastIndexOf('useEffect(() =>', client.indexOf('const checkPrompt = () =>'));
   const promptEnd = client.indexOf('}, [splashEntered]);', promptStart);
