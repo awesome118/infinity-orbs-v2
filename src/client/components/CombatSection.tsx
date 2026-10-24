@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, Coins, Info, Pause, Play, Sparkles, Swords, Zap, Sword, Shield, Crown, Hand, Footprints, CircleDot, Gem, Hammer, Clock3, Timer, type LucideIcon } from 'lucide-react';
 import { RunesSection } from './RunesSection.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatAutoScrapSettings, CombatCommand, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatOrbRoll, CombatPage, CombatSkillDefinition, CombatSkillId, CombatSnapshot, CombatState, CombatStats, CombatTactic } from '../../shared/combat.js';
-import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatGearRarityForQuality, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, COMBAT_SPEED_PER_ACTION, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
+import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatGearRarityForQuality, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, COMBAT_SPEED_PER_ACTION, combatActionsDue, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, undercryptOrbLuckMultiplier, undercryptWardensDefeated } from '../../shared/combat.js';
 
 interface Props { page: CombatPage; onNavigate:(page:CombatPage)=>void; }
 interface SkillRollResult {
@@ -51,8 +52,8 @@ function skillValue(skill:CombatSkillDefinition,rank:number,_speed=300):string {
 function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusPercent}:{item:CombatGear;isEquipped:boolean;onEquip:()=>void;onScrap:()=>void;busy:boolean;currentFloor:number;scrapBonusPercent:number}) {
   const [showTooltip,setShowTooltip]=useState(false);
   const [tooltipPoint,setTooltipPoint]=useState<{x:number;y:number}|null>(null);
-  const tooltipPointRef=useRef<{x:number;y:number}|null>(null);
-  const lastPointerTypeRef=useRef<string>('mouse');
+  const triggerRef=useRef<HTMLButtonElement|null>(null);
+  const tooltipRef=useRef<HTMLDivElement|null>(null);
   const grade=combatGearRarityForQuality(item.quality);
   const tooltipId='io-gear-tooltip-'+item.id.replace(/[^A-Za-z0-9_-]/g,'-');
   const SlotIcon=GEAR_SLOTS.find(entry=>entry.slot===item.slot)?.Icon??Gem;
@@ -63,47 +64,70 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
     item.armorBonus>0?{label:'+'+fmt(item.armorBonus)+' ARMOR',detail:'Reduces incoming damage',kind:'defense' as const}:null,
     item.critChanceBonus>0?{label:'+'+(item.critChanceBonus*100).toFixed(1)+'% CRIT',detail:'Adds critical-hit chance',kind:'offense' as const}:null,
   ].filter(Boolean) as {label:string;detail:string;kind:'offense'|'defense'}[];
-  const moveTooltip=(x:number,y:number)=>{
-    const next={x:Math.max(8,Math.min(Math.max(8,window.innerWidth-326),x+16)),y:Math.max(8,Math.min(Math.max(8,window.innerHeight-376),y+16))};
-    const previous=tooltipPointRef.current;
-    if(previous&&Math.abs(previous.x-next.x)<2&&Math.abs(previous.y-next.y)<2){setShowTooltip(true);return;}
-    tooltipPointRef.current=next;
-    setTooltipPoint(next);
+  const toggleTooltip=()=>{
+    if(showTooltip){setShowTooltip(false);return;}
+    const rect=triggerRef.current?.getBoundingClientRect();
+    if(!rect)return;
+    const width=Math.min(310,Math.max(0,window.innerWidth-16));
+    const height=Math.min(360,Math.max(0,window.innerHeight-16));
+    const x=Math.max(8,Math.min(Math.max(8,window.innerWidth-width-8),rect.left+(rect.width-width)/2));
+    const roomBelow=window.innerHeight-rect.bottom-8;
+    const y=roomBelow>=Math.min(260,height)?rect.bottom+8:Math.max(8,rect.top-height-8);
+    setTooltipPoint({x,y});
     setShowTooltip(true);
   };
-  return <article className={'io-combat-gear-icon-wrap '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
-    onPointerEnter={event=>{lastPointerTypeRef.current=event.pointerType;if(event.pointerType==='mouse')moveTooltip(event.clientX,event.clientY);}}
-    onPointerMove={event=>{if(event.pointerType==='mouse')moveTooltip(event.clientX,event.clientY);}}
-    onPointerLeave={()=>{setShowTooltip(false);tooltipPointRef.current=null;}}
-    onFocus={event=>{const rect=event.currentTarget.getBoundingClientRect();moveTooltip(rect.right,rect.top);}}
-    onKeyDown={event=>{if(event.key==='Escape'){setShowTooltip(false);tooltipPointRef.current=null;(event.target as HTMLElement).blur();}}}
-    onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null)){setShowTooltip(false);tooltipPointRef.current=null;}}}>
-    <button type="button" className={'io-combat-gear-icon '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
-      aria-label={(isEquipped?'Inspect equipped ':'Inspect ')+item.name}
-      aria-expanded={showTooltip}
-      aria-controls={tooltipId}
-      title={item.name}
-      disabled={busy}
-      onClick={()=>{if(lastPointerTypeRef.current==='touch')setShowTooltip(value=>!value);else if(!isEquipped)onEquip();else setShowTooltip(value=>!value);}}>
-      <SlotIcon size={27} strokeWidth={1.8} aria-hidden="true"/>
-      <small>{item.quality.toFixed(0)}%</small>
-      <span className="io-combat-gear-icon-power">{fmt(item.power)}</span>
-      {isEquipped&&<span className="io-combat-gear-equipped">✓</span>}
-    </button>
-    <div id={tooltipId} className={'io-combat-gear-tooltip '+(showTooltip?'is-open':'')}
-      style={{position:'fixed',left:tooltipPoint?.x??12,top:tooltipPoint?.y??12,right:'auto',maxWidth:'min(310px, calc(100vw - 16px))',maxHeight:'min(360px, calc(100vh - 16px))',overflow:'auto'}}
-      role="group" aria-label={item.name+' details'}>
-      <span className="io-combat-eyebrow">{grade.toUpperCase()} ITEM · {item.quality.toFixed(2)}% QUALITY · LEVEL {fmt(item.sourceFloor+1)}</span>
-      <strong>{item.name}</strong><p>{slotLabel(item.slot)} · Power {fmt(item.power)}</p>
-      <div className="io-combat-gear-tooltip-stats">{bonuses.length?bonuses.map(stat=><span className={'io-combat-stat-'+stat.kind} key={stat.label} title={stat.detail}>{stat.label}</span>):<span>No direct stat bonuses</span>}</div>
-      <p>{item.effect}</p><p>Quality effectiveness at this level: {Math.round(gearQualityEffectiveness(item,currentFloor)*100)}%.</p>
-      {item.majorAbility&&<section className={'io-combat-major-ability '+majorAbilityClass(item.majorAbility.id)}><span>✦ MAJOR ABILITY</span><strong>{item.majorAbility.name}</strong><p>{item.majorAbility.description}</p></section>}
-      <div className="io-combat-gear-tooltip-actions">
-        <button type="button" className={isEquipped?'io-combat-button is-equipped':'io-combat-button'} disabled={busy||isEquipped} onClick={onEquip}>{isEquipped?'Equipped':'Equip item'}</button>
-        <button type="button" className="io-combat-button is-secondary" disabled={busy||isEquipped} onClick={onScrap}>Scrap +{fmt(Math.round(combatScrapValue(item)*(1+Math.min(2,scrapBonusPercent))))}</button>
-      </div>
-    </div>
-  </article>;
+  useEffect(()=>{
+    if(!showTooltip)return;
+    const closeOutside=(event:PointerEvent)=>{
+      const target=event.target;
+      if(target instanceof Node&&(triggerRef.current?.contains(target)||tooltipRef.current?.contains(target)))return;
+      setShowTooltip(false);
+    };
+    const closeEscape=(event:KeyboardEvent)=>{
+      if(event.key!=='Escape')return;
+      setShowTooltip(false);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener('pointerdown',closeOutside);
+    window.addEventListener('keydown',closeEscape);
+    return()=>{
+      document.removeEventListener('pointerdown',closeOutside);
+      window.removeEventListener('keydown',closeEscape);
+    };
+  },[showTooltip]);
+  return <>
+    <article className={'io-combat-gear-icon-wrap '+rarityClass(grade)+(isEquipped?' is-equipped':'')}>
+      <button ref={triggerRef} type="button" className={'io-combat-gear-icon '+rarityClass(grade)+(isEquipped?' is-equipped':'')}
+        aria-label={'Inspect '+(isEquipped?'equipped ':'')+item.name}
+        aria-expanded={showTooltip}
+        aria-controls={tooltipId}
+        title={'Inspect '+item.name}
+        disabled={busy}
+        onClick={toggleTooltip}>
+        <SlotIcon size={27} strokeWidth={1.8} aria-hidden="true"/>
+        <small>{item.quality.toFixed(0)}%</small>
+        <span className="io-combat-gear-icon-power">{fmt(item.power)}</span>
+        {isEquipped&&<span className="io-combat-gear-equipped">✓</span>}
+      </button>
+    </article>
+    {showTooltip&&tooltipPoint&&createPortal(
+      <div ref={tooltipRef} id={tooltipId} className="io-combat-gear-tooltip is-open"
+        style={{position:'fixed',left:tooltipPoint.x,top:tooltipPoint.y,width:'min(310px, calc(100vw - 16px)',maxWidth:'calc(100vw - 16px)',maxHeight:'min(360px, calc(100vh - 16px))',overflow:'auto',zIndex:9999,pointerEvents:'auto'}}
+        role="dialog" aria-label={item.name+' details'} aria-modal="false">
+        <span className="io-combat-eyebrow">{grade.toUpperCase()} ITEM · {item.quality.toFixed(2)}% QUALITY · LEVEL {fmt(item.sourceFloor+1)}</span>
+        <strong>{item.name}</strong><p>{slotLabel(item.slot)} · Power {fmt(item.power)}</p>
+        <div className="io-combat-gear-tooltip-stats">{bonuses.length?bonuses.map(stat=><span className={'io-combat-stat-'+stat.kind} key={stat.label} title={stat.detail}>{stat.label}</span>):<span>No direct stat bonuses</span>}</div>
+        <p>{item.effect}</p><p>Quality effectiveness at this level: {Math.round(gearQualityEffectiveness(item,currentFloor)*100)}%.</p>
+        {item.majorAbility&&<section className={'io-combat-major-ability '+majorAbilityClass(item.majorAbility.id)}><span>✦ MAJOR ABILITY</span><strong>{item.majorAbility.name}</strong><p>{item.majorAbility.description}</p></section>}
+        <div className="io-combat-gear-tooltip-actions">
+          <button type="button" className={isEquipped?'io-combat-button is-equipped':'io-combat-button'} disabled={busy||isEquipped} onClick={onEquip}>{isEquipped?'Equipped':'Equip item'}</button>
+          <button type="button" className="io-combat-button is-secondary" disabled={busy||isEquipped} onClick={onScrap}>Scrap +{fmt(Math.round(combatScrapValue(item)*(1+Math.min(2,scrapBonusPercent))))}</button>
+        </div>
+        <button type="button" className="io-combat-tooltip-close" onClick={()=>setShowTooltip(false)}>Close details</button>
+      </div>,
+      document.body,
+    )}
+  </>;
 }
 export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const [state,setState]=useState<CombatState|null>(null);
@@ -119,6 +143,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const [auto,setAuto]=useState(()=>{try{return window.localStorage.getItem('io-combat-auto')!=='false';}catch{return true;}}),[paused,setPaused]=useState(()=>{try{return window.localStorage.getItem('io-combat-paused')==='true';}catch{return false;}}),[intent,setIntent]=useState<CombatIntent>('strike');
   const [showAllSkills,setShowAllSkills]=useState(true);
   const [inspectedSkillId,setInspectedSkillId]=useState<string|null>(null);
+  const [queuedSkillId,setQueuedSkillId]=useState<CombatSkillId|null>(null);
   const [skillSearch,setSkillSearch]=useState('');
   useEffect(()=>{try{window.localStorage.setItem('io-combat-auto',String(auto));}catch{/* Embedded webviews can disable storage. */}},[auto]);
   useEffect(()=>{try{window.localStorage.setItem('io-combat-paused',String(paused));}catch{/* Embedded webviews can disable storage. */}},[paused]);
@@ -229,17 +254,28 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const beat=useCallback(async()=>{
     const current=stateRef.current;
     if(!current||runtime.current.busy||runtime.current.mutating||(!runtime.current.manual&&(!runtime.current.auto||runtime.current.paused||Boolean(error))))return;
-    const queuedIntent=runtime.current.pendingIntent;
     const queuedCommandVersion=runtime.current.pendingCommandVersion;
     const queuedCommand=runtime.current.intent;
     const pendingAbilityId=runtime.current.pendingAbilityId;
-    const beatIntent:CombatCommand=queuedIntent?(pendingAbilityId?'ability':queuedCommand):(runtime.current.auto&&!runtime.current.manual?'auto':runtime.current.intent);
+    const pendingSkill=pendingAbilityId?COMBAT_SKILLS.find(skill=>skill.id===pendingAbilityId):undefined;
+    const queuedAbilityReady=Boolean(
+      pendingSkill&&
+      current.equippedAbilities.includes(pendingSkill.id)&&
+      (current.skillLevels[pendingSkill.id]??0)>0&&
+      (current.abilityCooldowns[pendingSkill.id]??0)<=current.sequence&&
+      combatEnergyAfterRegen(current.energy,current.maxEnergy)>=combatSkillEnergyCost(pendingSkill.rarity)&&
+      combatActionsDue(current.speed,current.combatBeats+1,current.playerActionsResolved)>0
+    );
+    const queuedAbilityForBeat=queuedAbilityReady?pendingAbilityId:null;
+    const queuedIntent=runtime.current.pendingIntent&&!pendingAbilityId;
+    const beatIntent:CombatCommand=queuedAbilityForBeat?'ability':queuedIntent?queuedCommand:(runtime.current.auto&&!runtime.current.manual?'auto':runtime.current.intent);
     runtime.current.busy=true;setProcessing(true);
+    window.dispatchEvent(new CustomEvent('io-combat-beat-state',{detail:{active:true}}));
     let releaseBeat!:()=>void;
     const thisBeat=new Promise<void>(resolve=>{releaseBeat=resolve;});
     runtime.current.beatPromise=thisBeat;
     try {
-      const result=await request<ApiResponse>('/api/combat/beat','POST',{sequence:current.sequence+1,intent:beatIntent,...(pendingAbilityId?{skillId:pendingAbilityId}:{})});
+      const result=await request<ApiResponse>('/api/combat/beat','POST',{sequence:current.sequence+1,intent:beatIntent,...(queuedAbilityForBeat?{skillId:queuedAbilityForBeat}:{})});
       accept(result);
       if(result.orbRoll)setLastOrb(result.orbRoll);
       const resolvedActions=result.actions??[];
@@ -254,7 +290,12 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         if(lootPopupTimerRef.current!==null)window.clearTimeout(lootPopupTimerRef.current);
         lootPopupTimerRef.current=window.setTimeout(()=>setLootPopup(null),5000);
       }
-      if(queuedIntent&&runtime.current.pendingIntent&&runtime.current.pendingCommandVersion===queuedCommandVersion){runtime.current.pendingIntent=false;runtime.current.pendingAbilityId=null;runtime.current.intent='strike';setIntent('strike');}
+      if(queuedAbilityForBeat&&runtime.current.pendingAbilityId===queuedAbilityForBeat&&runtime.current.pendingCommandVersion===queuedCommandVersion){
+        runtime.current.pendingAbilityId=null;setQueuedSkillId(null);
+      }
+      if(queuedIntent&&runtime.current.pendingIntent&&runtime.current.pendingCommandVersion===queuedCommandVersion){
+        runtime.current.pendingIntent=false;runtime.current.intent='strike';setIntent('strike');
+      }
       setError('');
     } catch(e) {
       const message=e instanceof Error?e.message:'Combat beat failed.';
@@ -268,12 +309,18 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         }
       } else if(message==='stale combat sequence'||message.includes('changed repeatedly'))await load();
       else {
-        if(queuedIntent&&runtime.current.pendingIntent&&runtime.current.pendingCommandVersion===queuedCommandVersion){runtime.current.pendingIntent=false;runtime.current.pendingAbilityId=null;runtime.current.intent='strike';setIntent('strike');}
+        if(queuedAbilityForBeat&&runtime.current.pendingAbilityId===queuedAbilityForBeat&&runtime.current.pendingCommandVersion===queuedCommandVersion){
+          runtime.current.pendingAbilityId=null;setQueuedSkillId(null);
+        }
+        if(queuedIntent&&runtime.current.pendingIntent&&runtime.current.pendingCommandVersion===queuedCommandVersion){
+          runtime.current.pendingIntent=false;runtime.current.intent='strike';setIntent('strike');
+        }
         setError(message);setAuto(false);
       }
     } finally {
       runtime.current.busy=false;runtime.current.manual=false;setProcessing(false);
       if(runtime.current.beatPromise===thisBeat)runtime.current.beatPromise=null;
+      window.dispatchEvent(new CustomEvent('io-combat-beat-state',{detail:{active:false}}));
       releaseBeat();
     }
   },[accept,error,load]);
@@ -301,10 +348,13 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     };
   },[auto,paused,loading,error,beat]);
   const manualBeat=()=>{if(runtime.current.mutating||runtime.current.busy)return;setError('');runtime.current.manual=true;void beat();};
-  const activateAbility=(skillId:CombatSkillId)=>{
-    if(runtime.current.mutating||runtime.current.busy)return;
-    runtime.current.pendingCommandVersion+=1;runtime.current.pendingAbilityId=skillId;runtime.current.pendingIntent=true;runtime.current.intent='strike';runtime.current.manual=true;
-    setError('');void beat();
+  const queueAbility=(skillId:CombatSkillId)=>{
+    if(runtime.current.mutating||!stateRef.current)return;
+    runtime.current.pendingCommandVersion+=1;
+    runtime.current.pendingAbilityId=skillId;
+    runtime.current.pendingIntent=false;
+    setQueuedSkillId(skillId);
+    setError('');
   };
   const saveAutoScrap=async(enabled:boolean,maxQuality:number)=>{
     if(runtime.current.mutating)return;
@@ -418,14 +468,20 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       </div>
       {(()=>{
         const maxSpeed=Math.max(1,stats.speed,enemy.speed);
-        const nextActionBeat=(resolved:number,speed:number)=>Math.max(state.combatBeats+1,1+Math.ceil(resolved*COMBAT_SPEED_PER_ACTION/Math.max(1,speed)));
+        const nextActionBeat=(resolved:number,speed:number,offset=0)=>{
+          if(speed<=0)return Number.POSITIVE_INFINITY;
+          const ordinal=resolved+offset+1;
+          const nextBeat=state.combatBeats+1;
+          if(ordinal<=1)return nextBeat+(1-speed/maxSpeed)*.5;
+          return Math.max(nextBeat+.001,2+(ordinal-1)*COMBAT_SPEED_PER_ACTION/speed);
+        };
         const playerNext=nextActionBeat(state.playerActionsResolved,stats.speed);
         const enemyNext=nextActionBeat(state.enemyActionsResolved,enemy.speed);
         const playerCharge=Math.round(stats.speed/maxSpeed*100);
         const enemyCharge=Math.round(enemy.speed/maxSpeed*100);
         const events=[
-          ...Array.from({length:timelineCount+2},(_,i)=>({actor:'player' as const,time:Math.max(state.combatBeats+1,1+Math.ceil((state.playerActionsResolved+i)*COMBAT_SPEED_PER_ACTION/Math.max(1,stats.speed))),step:i,speed:stats.speed})),
-          ...Array.from({length:timelineCount+2},(_,i)=>({actor:'enemy' as const,time:Math.max(state.combatBeats+1,1+Math.ceil((state.enemyActionsResolved+i)*COMBAT_SPEED_PER_ACTION/Math.max(1,enemy.speed))),step:i,speed:enemy.speed})),
+          ...Array.from({length:timelineCount+2},(_,i)=>({actor:'player' as const,time:nextActionBeat(state.playerActionsResolved,stats.speed,i),step:i,speed:stats.speed})),
+          ...Array.from({length:timelineCount+2},(_,i)=>({actor:'enemy' as const,time:nextActionBeat(state.enemyActionsResolved,enemy.speed,i),step:i,speed:enemy.speed})),
         ].sort((a,b)=>a.time-b.time||(a.actor===b.actor?a.step-b.step:a.actor==='player'?-1:1)).slice(0,timelineCount);
         const nextActor=playerNext<=enemyNext?'player':'enemy';
         return <section className="io-combat-turn-tracker" aria-label="Combat speed and turn order">
@@ -435,11 +491,11 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
             <div className="io-combat-speed-row"><span>∞ DELVER <b>{fmt(stats.speed)} SPD</b></span><div className="io-combat-speed-track"><span className="is-player" style={{width:playerCharge+'%'}}/></div><strong>{playerCharge}% pace</strong></div>
             <div className="io-combat-speed-row"><span>{enemy.emoji} {enemy.name.toUpperCase()} <b>{fmt(enemy.speed)} SPD</b></span><div className="io-combat-speed-track"><span className="is-enemy" style={{width:enemyCharge+'%'}}/></div><strong>{enemyCharge}% pace</strong></div>
           </div>
-          <div className="io-combat-turn-sequence" ref={turnSequenceRef}><div className="io-combat-turn-track" key={state.sequence}>{events.map((event,index)=><div key={event.actor+'-'+event.step} className={'io-combat-turn-chip '+(index===0?'is-next':'')+(event.actor==='enemy'?' is-foe':'')}><small>{index===0?'NEXT':index===1?'THEN':'TURN '+(index+1)}</small><strong>{event.actor==='player'?'DELVER':enemy.name}</strong><span>Beat {event.time} · {fmt(event.speed)} SPD</span></div>)}</div></div>
+          <div className="io-combat-turn-sequence" ref={turnSequenceRef}><div className="io-combat-turn-track" key={state.sequence}>{events.map((event,index)=><div key={event.actor+'-'+event.step} className={'io-combat-turn-chip '+(index===0?'is-next':'')+(event.actor==='enemy'?' is-foe':'')}><small>{index===0?'NEXT':index===1?'THEN':'TURN '+(index+1)}</small><strong>{event.actor==='player'?'DELVER':enemy.name}</strong><span>Beat {event.time.toFixed(2)} · {fmt(event.speed)} SPD</span></div>)}</div></div>
         </section>;
       })()}
       <div className="io-combat-tactic-row"><label htmlFor="io-combat-auto-tactic"><span className="io-combat-eyebrow">AUTO TACTIC</span><strong>{state.autoTactic==='balanced'?'Balanced':state.autoTactic==='aggressive'?'Aggressive':state.autoTactic==='defensive'?'Defensive':'Recovery'}</strong></label><select id="io-combat-auto-tactic" value={state.autoTactic} disabled={mutating} onChange={event=>void mutate('/api/combat/tactics',{tactic:event.target.value as CombatTactic})}><option value="balanced">Balanced — heal low, otherwise strike hard</option><option value="aggressive">Aggressive — spend energy on Heavy</option><option value="defensive">Defensive — heal and guard earlier</option><option value="recovery">Recovery — prioritize staying healthy</option></select></div>
-      <div className="io-combat-control-row"><div className="io-combat-command-group">{(['strike','heavy','guard','mend'] as CombatIntent[]).map(cmd=><button key={cmd} type="button" aria-pressed={intent===cmd} onClick={()=>{runtime.current.pendingCommandVersion+=1;runtime.current.intent=cmd;runtime.current.pendingIntent=true;runtime.current.pendingAbilityId=null;setIntent(cmd);}} className={intent===cmd?'io-combat-command is-selected':'io-combat-command'}><span>{cmd==='strike'?'Strike':cmd==='heavy'?'Heavy':cmd==='guard'?'Guard':'Mend'}</span><small>{cmd==='strike'?'FREE':cmd==='heavy'?'3 EN':cmd==='guard'?'2 EN':'4 EN'}</small></button>)}</div><div className="io-combat-run-controls"><button type="button" aria-pressed={paused} className="io-combat-button" onClick={()=>setPaused(!paused)}>{paused?<Play size={14}/>:<Pause size={14}/>} {paused?'Resume':'Pause'}</button><button type="button" aria-pressed={auto} className="io-combat-button" onClick={()=>setAuto(!auto)}>Auto: {auto?'ON':'OFF'}</button><button type="button" disabled={processing||mutating||beatCooldownMs>0} className="io-combat-button is-secondary" onClick={manualBeat}>{processing?'Resolving…':beatCooldownMs>0?'Next beat in '+Math.ceil(beatCooldownMs/1000)+'s':'Next Beat'}</button></div></div>
+      <div className="io-combat-control-row"><div className="io-combat-command-group">{(['strike','heavy','guard','mend'] as CombatIntent[]).map(cmd=><button key={cmd} type="button" aria-pressed={intent===cmd} onClick={()=>{runtime.current.pendingCommandVersion+=1;runtime.current.intent=cmd;runtime.current.pendingIntent=true;runtime.current.pendingAbilityId=null;setQueuedSkillId(null);setIntent(cmd);}} className={intent===cmd?'io-combat-command is-selected':'io-combat-command'}><span>{cmd==='strike'?'Strike':cmd==='heavy'?'Heavy':cmd==='guard'?'Guard':'Mend'}</span><small>{cmd==='strike'?'FREE':cmd==='heavy'?'3 EN':cmd==='guard'?'2 EN':'4 EN'}</small></button>)}</div><div className="io-combat-run-controls"><button type="button" aria-pressed={paused} className="io-combat-button" onClick={()=>setPaused(!paused)}>{paused?<Play size={14}/>:<Pause size={14}/>} {paused?'Resume':'Pause'}</button><button type="button" aria-pressed={auto} className="io-combat-button" onClick={()=>setAuto(!auto)}>Auto: {auto?'ON':'OFF'}</button><button type="button" disabled={processing||mutating||beatCooldownMs>0} className="io-combat-button is-secondary" onClick={manualBeat}>{processing?'Resolving…':beatCooldownMs>0?'Next beat in '+Math.ceil(beatCooldownMs/1000)+'s':'Next Beat'}</button></div></div>
       <section className="io-combat-panel" style={{ marginTop: 16 }}>
         <div className="io-combat-panel-head">
           <div>
@@ -469,18 +525,10 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
                   <button
                     type="button"
                     className="io-combat-button is-primary"
-                    disabled={processing || mutating || beatCooldownMs > 0 || cooldownLeft > 0 || combatEnergyAfterRegen(state.energy, state.maxEnergy) < energyCost}
-                    onClick={() => activateAbility(id)}
+                    disabled={mutating}
+                    onClick={() => queueAbility(id)}
                   >
-                    {processing
-                      ? 'Resolving…'
-                      : beatCooldownMs > 0
-                        ? 'Next beat in ' + Math.ceil(beatCooldownMs / 1000) + 's'
-                        : cooldownLeft > 0
-                          ? 'Ready in ' + cooldownLeft + ' beats'
-                          : combatEnergyAfterRegen(state.energy, state.maxEnergy) < energyCost
-                            ? 'Need ' + energyCost + ' energy'
-                            : 'Cast · ' + energyCost + ' Energy'}
+                    {queuedSkillId===id?'Queued for next beat':cooldownLeft>0?'Queue · cooldown '+cooldownLeft:combatEnergyAfterRegen(state.energy,state.maxEnergy)<energyCost?'Queue · need '+energyCost+' Energy':'Queue for next beat'}
                   </button>
                 </article>
               );
