@@ -2202,7 +2202,7 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-combat-skill-icon:hover,.io-combat-skill-icon:focus-visible{transform:translateY(-2px);box-shadow:0 0 0 2px rgba(201,255,50,.15);outline:none}
 .io-combat-skill-icon.io-rarity-common{border-color:#4a414f}.io-combat-skill-icon.io-rarity-uncommon{border-color:#588a71}.io-combat-skill-icon.io-rarity-rare{border-color:#5882b6}.io-combat-skill-icon.io-rarity-epic{border-color:#9d70c7}.io-combat-skill-icon.io-rarity-mythic{border-color:#dc9d48}
 .io-combat-skill-tooltip{display:none;position:absolute;z-index:80;left:50%;bottom:calc(100% + 9px);transform:translateX(-50%);width:min(300px,calc(100vw - 28px));max-height:min(420px,calc(100vh - 32px));overflow:auto;padding:12px;border:1px solid #65536c;border-radius:10px;background:#0e0b12;box-shadow:0 16px 42px rgba(0,0,0,.65);text-align:left}
-.io-combat-skill-icon-wrap:hover .io-combat-skill-tooltip,.io-combat-skill-icon-wrap:focus-within .io-combat-skill-tooltip{display:block}
+.io-combat-skill-icon-wrap:hover .io-combat-skill-tooltip,.io-combat-skill-icon-wrap.is-inspected .io-combat-skill-tooltip{display:block}
 .io-combat-skill-icon-wrap.is-inspected .io-combat-skill-tooltip{display:block}
 .io-combat-skill-search{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap;margin:.45rem 0 .7rem;padding:.55rem .65rem;border:1px solid rgba(148,163,184,.16);border-radius:.65rem;background:rgba(15,23,42,.45)}.io-combat-skill-search label{color:#cbd5e1;font-size:.7rem;font-weight:900;white-space:nowrap}.io-combat-skill-search input{flex:1 1 180px;min-width:0;padding:.5rem .6rem;border:1px solid rgba(148,163,184,.25);border-radius:.5rem;background:#080d17;color:#f8fafc;font-size:.72rem;outline:none}.io-combat-skill-search input:focus-visible{border-color:#a78bfa;box-shadow:0 0 0 2px rgba(167,139,250,.2)}.io-combat-skill-search>span{color:#94a3b8;font-size:.65rem;font-weight:800}
 .io-combat-skill-icon-wrap:nth-child(6n) .io-combat-skill-tooltip,.io-combat-skill-icon-wrap:nth-child(6n - 1) .io-combat-skill-tooltip{left:auto;right:0;transform:none}
@@ -2225,7 +2225,7 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-combat-gear-icon.io-rarity-common{border-color:#4a414f}.io-combat-gear-icon.io-rarity-uncommon{border-color:#588a71}.io-combat-gear-icon.io-rarity-rare{border-color:#5882b6}.io-combat-gear-icon.io-rarity-epic{border-color:#9d70c7}.io-combat-gear-icon.io-rarity-mythic{border-color:#dc9d48}
 .io-combat-gear-equipped{position:absolute;top:2px;right:4px;color:#d5ff85;font-size:11px;font-weight:950}
 .io-combat-gear-icon-wrap .io-combat-gear-tooltip{display:none;z-index:90;padding:12px;border:1px solid #514358;border-radius:10px;background:#0e0b12;box-shadow:0 16px 42px rgba(0,0,0,.7);text-align:left}
-.io-combat-gear-icon-wrap .io-combat-gear-tooltip.is-open,.io-combat-gear-icon-wrap:hover .io-combat-gear-tooltip,.io-combat-gear-icon-wrap:focus-within .io-combat-gear-tooltip{display:block}
+.io-combat-gear-icon-wrap .io-combat-gear-tooltip.is-open{display:block}
 .io-combat-gear-icon-wrap .io-combat-gear-tooltip>strong{display:block;margin:5px 0;font-size:13px;overflow-wrap:anywhere}
 .io-combat-gear-tooltip-stats{display:flex;flex-wrap:wrap;gap:5px}
 .io-combat-gear-tooltip-stats>span{font-size:9px}
@@ -2519,3 +2519,139 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
   margin-top: 12px;
 }
 #root.io-inline-post .io-frenzy-success-card .io-public-note-link { margin-top: 9px; }
+
+
+/* Balance update: keep the primary roll experience centered at desktop widths. */
+@media (min-width: 681px) {
+  .roll-layout {
+    grid-template-columns: minmax(0, 760px) !important;
+    justify-content: center;
+    max-width: 1180px;
+  }
+  .roll-main {
+    width: 100%;
+    max-width: 760px;
+    margin-inline: auto;
+  }
+  .roll-sidebar {
+    display: grid;
+    width: min(100%, 760px);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-inline: auto;
+  }
+  .roll-sidebar .field-card:last-child { grid-column: auto; }
+}
+.io-combat-gacha-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+.io-combat-gacha-actions > button { min-width: 0; }
+.io-combat-skill-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.io-combat-skill-results .io-combat-skill-result {
+  min-width: 0;
+  animation: io-gacha-result-in .28s ease both;
+}
+@keyframes io-gacha-result-in {
+  from { opacity: 0; transform: translateY(8px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Arena results now get a PvE-style combat stage as well as a turn-by-turn log. */
+.io-combat-arena-showdown {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+  margin: 16px 0;
+  perspective: 700px;
+}
+.io-combat-arena-side {
+  position: relative;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-content: start;
+  gap: 10px;
+  padding: 13px;
+  overflow: hidden;
+  border: 1px solid rgba(196, 174, 219, .27);
+  border-radius: 13px;
+  background: linear-gradient(145deg, rgba(48, 32, 57, .76), rgba(16, 14, 24, .92));
+  animation: io-arena-combatant-in .42s cubic-bezier(.2,.75,.2,1) both;
+}
+.io-combat-arena-side.is-player {
+  border-color: rgba(255, 172, 137, .4);
+  background: linear-gradient(145deg, rgba(87, 47, 37, .52), rgba(18, 14, 22, .94));
+}
+.io-combat-arena-side.is-opponent {
+  border-color: rgba(119, 203, 255, .38);
+  background: linear-gradient(145deg, rgba(27, 63, 89, .52), rgba(12, 16, 25, .94));
+  animation-delay: .08s;
+}
+.io-combat-arena-avatar {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgba(255, 213, 171, .35);
+  border-radius: 12px;
+  color: #ffd3ad;
+  background: radial-gradient(circle at 28% 20%, rgba(255,255,255,.23), rgba(149,72,55,.28) 53%, rgba(15,15,23,.96));
+  box-shadow: 0 0 22px rgba(255, 155, 111, .12), inset 0 1px rgba(255,255,255,.15);
+}
+.io-combat-arena-side.is-opponent .io-combat-arena-avatar {
+  color: #a6e2ff;
+  border-color: rgba(137, 211, 255, .35);
+  background: radial-gradient(circle at 28% 20%, rgba(255,255,255,.23), rgba(47,111,160,.32) 53%, rgba(15,15,23,.96));
+  box-shadow: 0 0 22px rgba(91, 186, 245, .12), inset 0 1px rgba(255,255,255,.15);
+}
+.io-combat-arena-combatant { display: grid; min-width: 0; gap: 3px; align-content: center; }
+.io-combat-arena-combatant small { color: #bba7ce; font-size: 8px; font-weight: 900; letter-spacing: .13em; }
+.io-combat-arena-combatant strong { overflow-wrap: anywhere; color: #f5effa; font-size: 13px; }
+.io-combat-arena-combatant span { color: #adb2bf; font-size: 9px; font-variant-numeric: tabular-nums; }
+.io-combat-arena-side.is-player .io-combat-arena-status { color: #ffb79a; }
+.io-combat-arena-side.is-opponent .io-combat-arena-status { color: #9bdbff; }
+.io-combat-arena-status {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: .14em;
+}
+.io-combat-arena-vs { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: #f6d88e; }
+.io-combat-arena-vs span { font: 950 11px ui-monospace, monospace; letter-spacing: .2em; text-shadow: 0 0 15px rgba(255, 205, 112, .5); }
+.io-combat-arena-vs i { font-size: 28px; font-style: normal; animation: io-arena-clash .8s cubic-bezier(.2,.7,.2,1) both; filter: drop-shadow(0 0 14px rgba(255, 206, 116, .35)); }
+.io-combat-arena-turn { animation: io-arena-turn-in .24s ease both; }
+@keyframes io-arena-combatant-in {
+  from { opacity: 0; transform: translateY(10px) rotateY(-4deg) scale(.98); }
+  to { opacity: 1; transform: translateY(0) rotateY(0) scale(1); }
+}
+@keyframes io-arena-clash {
+  0% { opacity: 0; transform: scale(.45) rotate(-35deg); }
+  55% { opacity: 1; transform: scale(1.2) rotate(8deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+@keyframes io-arena-turn-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 540px) {
+  .io-combat-gacha-actions { grid-template-columns: 1fr; }
+  .io-combat-arena-showdown { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .io-combat-arena-vs { flex-direction: row; }
+  .io-combat-arena-vs i { font-size: 22px; }
+  .io-combat-arena-side { grid-template-columns: 36px minmax(0, 1fr); padding: 10px; }
+  .io-combat-arena-avatar { width: 36px; height: 36px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .io-combat-skill-results .io-combat-skill-result,
+  .io-combat-arena-side,
+  .io-combat-arena-vs i,
+  .io-combat-arena-turn { animation: none !important; }
+}
