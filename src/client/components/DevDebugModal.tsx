@@ -3595,7 +3595,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 <Eye className="w-4 h-4" /> Impressions
               </div>
               <p className="mt-1 text-[10px] text-slate-500">
-                Unique account/post previews for main-game, Orb Share, and Frenzy. Repeated loads of the same post count once per account for 180 days. Raw IDs and usernames are not stored. Reddit feed views are not exposed.
+                Unique account/post previews for main-game, Orb Share, and Frenzy. Repeated loads of the same post count once per account for 180 days. Raw Reddit user IDs are not stored. Public usernames and per-account unique-view counts are visible only in this admin dashboard. Reddit feed views are not exposed.
               </p>
             </div>
             <button type="button"
