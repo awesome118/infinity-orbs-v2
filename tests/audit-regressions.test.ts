@@ -2114,7 +2114,7 @@ test('malformed nested player-save shapes fall back before reaching gameplay cod
   assert.match(game, /collection: isValidCollection\(parsed\.collection\) \? parsed\.collection : base\.collection/);
   assert.match(game, /claimedAchievements: isStringList\(parsed\.claimedAchievements\) \? parsed\.claimedAchievements : base\.claimedAchievements/);
   assert.match(game, /streak: normalizePlayerStreak\(parsed\.streak, base\.streak\)/);
-  assert.match(game, /unlockedCosmetics: isStringList\(parsed\.unlockedCosmetics\)/);
+  assert.match(game, /activeCosmetic: 'default'/);\n  assert.match(game, /unlockedCosmetics: \['default'\]/);
 });
 
 
