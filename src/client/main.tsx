@@ -2894,8 +2894,7 @@ export function App() {
             <div className="io-frenzy-prompt-reward">
               <div className="text-3xl font-black text-fuchsia-200">+{FRENZY_OWNER_SHARD_REWARD} Shards</div>
               <div className="mt-1 text-xs leading-relaxed text-slate-400">
-                When someone claims your Frenzy, you receive these Shards. The reward
-                <strong className="text-slate-200"> bypasses the 50 Shard daily cap</strong>.
+                When someone claims your Frenzy, you receive these Shards. This is a separate bonus and does not count toward your roll-earned Shard total.
               </div>
             </div>
             <div className="io-modal-actions">
