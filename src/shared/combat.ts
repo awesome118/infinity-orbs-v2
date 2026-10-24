@@ -634,8 +634,8 @@ export interface CombatActionTimelineEntry {
 
 /**
  * Merge actions owed by player and enemy onto the same Speed threshold timeline.
- * Opening actions use a speed-weighted initiative window so faster combatants act first;
- * later actions recharge at COMBAT_SPEED_PER_ACTION Speed per beat. Exact ties favor the Delver.
+ * Each beat has a base action ordered by Speed; bonus actions land at cumulative Speed thresholds.
+ * Exact ties favor the Delver.
  */
 export function combatActionTimeline(
   playerSpeedValue: unknown,
