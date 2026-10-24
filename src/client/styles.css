@@ -2225,7 +2225,7 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 .io-combat-gear-icon.io-rarity-common{border-color:#4a414f}.io-combat-gear-icon.io-rarity-uncommon{border-color:#588a71}.io-combat-gear-icon.io-rarity-rare{border-color:#5882b6}.io-combat-gear-icon.io-rarity-epic{border-color:#9d70c7}.io-combat-gear-icon.io-rarity-mythic{border-color:#dc9d48}
 .io-combat-gear-equipped{position:absolute;top:2px;right:4px;color:#d5ff85;font-size:11px;font-weight:950}
 .io-combat-gear-icon-wrap .io-combat-gear-tooltip{display:none;z-index:90;padding:12px;border:1px solid #514358;border-radius:10px;background:#0e0b12;box-shadow:0 16px 42px rgba(0,0,0,.7);text-align:left}
-.io-combat-gear-icon-wrap .io-combat-gear-tooltip.is-open{display:block}
+.io-combat-gear-icon-wrap .io-combat-gear-tooltip.is-open{display:block;pointer-events:auto;opacity:1;visibility:visible;transform:translateY(0)}
 .io-combat-gear-icon-wrap .io-combat-gear-tooltip>strong{display:block;margin:5px 0;font-size:13px;overflow-wrap:anywhere}
 .io-combat-gear-tooltip-stats{display:flex;flex-wrap:wrap;gap:5px}
 .io-combat-gear-tooltip-stats>span{font-size:9px}
