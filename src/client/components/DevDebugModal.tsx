@@ -83,6 +83,13 @@ type ImpressionDashboardData = {
   day1Retention: { cohortDay: string; cohortSize: number; retained: number; rate: number | null };
   day3Retention: { cohortDay: string; cohortSize: number; retained: number; rate: number | null };
   conversion: Record<'orb-share' | 'frenzy', { eligibleViewers: number; conversions: number; rate: number | null }>;
+  viewers: Array<{
+    username: string;
+    uniquePostViews: number;
+    byType: Record<ImpressionPostType, number>;
+    firstSeenAt: number;
+    lastSeenAt: number;
+  }>;
   trackedPostCount: number;
   byType: Record<ImpressionPostType, number>;
   byDevice: Record<ImpressionDeviceType, number>;
@@ -632,7 +639,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           !Number.isSafeInteger(data.uniqueToday) || Number(data.uniqueToday) < 0 ||
           !Number.isSafeInteger(data.newPlayersToday) || Number(data.newPlayersToday) < 0 ||
           !data.day1Retention || !data.day3Retention || !data.conversion || !data.uniqueByType ||
-          !Array.isArray(data.posts) || !Array.isArray(data.last24Hours) || !Array.isArray(data.last30Days) ||
+          !Array.isArray(data.viewers) || !Array.isArray(data.posts) || !Array.isArray(data.last24Hours) || !Array.isArray(data.last30Days) ||
           !data.byType || !data.byDevice || !data.byTypeAndDevice) {
         throw new Error('Impression analytics returned an incomplete dashboard. Refresh and retry.');
       }
@@ -3683,6 +3690,43 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                     </tbody>
                   </table>
                 </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-800 overflow-hidden">
+                <div className="px-3 py-2 border-b border-slate-800">
+                  <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
+                    Per-account view counts · top {impressionStats.viewers.length.toLocaleString()}
+                  </div>
+                  <p className="mt-1 text-[9px] text-slate-600">Public Reddit usernames and unique post views over the last 180 days. Repeat previews of the same post by the same account count once. Raw Reddit user IDs are not exposed.</p>
+                </div>
+                {impressionStats.viewers.length ? (
+                  <div className="max-h-64 overflow-auto">
+                    <table className="w-full text-left text-[10px]">
+                      <thead className="sticky top-0 bg-slate-900 text-slate-500"><tr>
+                        <th className="px-3 py-2">Username</th>
+                        <th className="px-3 py-2 text-right">Unique views</th>
+                        <th className="px-3 py-2 text-right">Main</th>
+                        <th className="px-3 py-2 text-right">Share</th>
+                        <th className="px-3 py-2 text-right">Frenzy</th>
+                        <th className="px-3 py-2">Last seen</th>
+                      </tr></thead>
+                      <tbody>
+                        {impressionStats.viewers.map(viewer => (
+                          <tr key={viewer.username + ':' + viewer.lastSeenAt} className="border-t border-slate-800/70">
+                            <td className="px-3 py-2 font-semibold text-slate-200">u/{viewer.username}</td>
+                            <td className="px-3 py-2 text-right font-mono font-bold text-cyan-200">{viewer.uniquePostViews.toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right font-mono text-emerald-200">{viewer.byType['main-game'].toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right font-mono text-violet-200">{viewer.byType['orb-share'].toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right font-mono text-orange-200">{viewer.byType.frenzy.toLocaleString()}</td>
+                            <td className="px-3 py-2 text-slate-500">{new Date(viewer.lastSeenAt).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="p-4 text-xs text-slate-500 text-center">No account-level impression details are available yet.</div>
+                )}
               </div>
 
               <div className="rounded-xl border border-slate-800 overflow-hidden">
