@@ -33,6 +33,7 @@ import {
   formatShardAmount,
   frenzyCooldownRemaining,
 } from '../../shared/game.js';
+import { combatRuneBonuses, combatRuneLuckMultiplier, undercryptOrbLuckMultiplier } from '../../shared/combat.js';
 
 import { sound } from '../sound.js';
 import { OrbOrbit } from './OrbOrbit.js';
@@ -232,6 +233,27 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const cooldownProgressPct = cooldownProgress ? 100 : cd > 0 ? Math.max(0, Math.min(100, ((cd - remain) / cd) * 100)) : 0;
   const multi = rollsPerActivation(state);
   const luck = luckMultiplier(state);
+  const [runeLuckPct, setRuneLuckPct] = useState(0);
+  const [undercryptLuck, setUndercryptLuck] = useState(1);
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    void fetch('/api/combat/state', { cache: 'no-store', signal: controller.signal })
+      .then(response => response.ok ? response.json() as Promise<{ state?: { runes?: unknown; equippedRunes?: unknown; dungeonBestDepths?: { undercrypt?: number }; bestDepth?: number } }> : null)
+      .then(payload => {
+        if (!active || !payload?.state) return;
+        const combatState = payload.state;
+        setRuneLuckPct(combatRuneBonuses(combatState.runes, combatState.equippedRunes).luckPct);
+        setUndercryptLuck(undercryptOrbLuckMultiplier(combatState.dungeonBestDepths?.undercrypt ?? combatState.bestDepth ?? 1));
+      })
+      .catch(() => {
+        if (!active) return;
+        setRuneLuckPct(0);
+        setUndercryptLuck(1);
+      });
+    return () => { active = false; controller.abort(); };
+  }, []);
+  const totalLuckMultiplier = luck * undercryptLuck * combatRuneLuckMultiplier(runeLuckPct);
   const isAutoUnlocked = (state.upgrades.auto ?? 0) > 0;
   const isTurbo = Boolean(state.turboRollUntil && state.turboRollUntil > now);
   const turboReductionPercent = (state.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 35 : 25;
@@ -590,7 +612,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           {hasResonanceUpgrade && (
             <div className="pity-meter mt-3 w-48">
               <div className="flex items-center justify-between gap-2 text-[10px] text-slate-400">
-                <span>Pity Luck · Tier {pityTier}</span>
+                
                 <span>{pityRollsIntoTier} / {pityInterval} rolls to next stack</span>
               </div>
               <div role="progressbar" aria-label="Pity Luck progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pityProgressPct} className="h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1">
@@ -971,8 +993,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
           <span className="font-bold text-slate-200">×{multi}</span>
         </div>
         <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-2.5">
-          <span className="text-slate-500 block text-[10px] font-semibold uppercase">Luck Bonus</span>
-          <span className="font-bold text-cyan-300">+{Math.round((luck - 1) * 100)}%</span>
+          <span className="text-slate-500 block text-[10px] font-semibold uppercase">Total Luck</span>
+          <span className="font-bold text-cyan-300">{totalLuckMultiplier.toFixed(2)}x</span>
         </div>
         <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-2.5">
           <span className="text-slate-500 block text-[10px] font-semibold uppercase">Level Bonus</span>
