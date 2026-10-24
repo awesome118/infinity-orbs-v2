@@ -902,9 +902,20 @@ export function createApp() {
   });
   app.post('/api/combat/runes/auto-sacrifice/settings', async (req,res) => {
     const enabled=req.body?.enabled, maxRarity=req.body?.maxRarity;
-    if(typeof enabled!=='boolean'||typeof maxRarity!=='string')return res.status(400).json({error:'Auto-sacrifice settings are invalid.'});
-    try{res.setHeader('Cache-Control','no-store');res.json(await updateCombatRuneAutoSacrificeSettings(enabled,maxRarity));}
-    catch(e:any){const message=e?.message||'Could not update Auto Sacrifice settings.';const status=message==='Auto-sacrifice settings are invalid.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;res.status(status).json({error:message});}
+    const targetRuneId=req.body?.targetRuneId, preserveSpecialEffects=req.body?.preserveSpecialEffects;
+    if(typeof enabled!=='boolean'||typeof maxRarity!=='string'||
+       (targetRuneId!==undefined&&targetRuneId!==null&&typeof targetRuneId!=='string')||
+       (preserveSpecialEffects!==undefined&&typeof preserveSpecialEffects!=='boolean')) {
+      return res.status(400).json({error:'Auto-sacrifice settings are invalid.'});
+    }
+    try{
+      res.setHeader('Cache-Control','no-store');
+      res.json(await updateCombatRuneAutoSacrificeSettings(enabled,maxRarity,targetRuneId,preserveSpecialEffects));
+    } catch(e:any) {
+      const message=e?.message||'Could not update Auto Sacrifice settings.';
+      const status=message==='Auto-sacrifice settings are invalid.'||message==='Auto-sacrifice target Rune is not in your inventory.'?400:message==='REDDIT_LOGIN_REQUIRED'?401:message==='Combat state changed repeatedly. Please retry.'?503:500;
+      res.status(status).json({error:message});
+    }
   });
   app.post('/api/combat/runes/auto-sacrifice/run', async (_req,res) => {
     try{res.setHeader('Cache-Control','no-store');res.json(await processCombatRuneAutoSacrifice());}
