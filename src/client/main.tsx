@@ -751,7 +751,7 @@ export function App() {
     }).finally(() => {
       autoRollDisableInFlightRef.current = false;
     });
-  }, [combatMode, state?.autoRollEnabled]);
+  }, [combatMode, state?.autoRollEnabled, applyPlayerState, enqueueMutation]);
 
   const refreshLeaderboards = useCallback(async () => {
     const [lb, lbs] = await Promise.all([
