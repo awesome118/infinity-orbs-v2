@@ -2547,11 +2547,11 @@ export function predictRollActivation(
       s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest);
     }
 
-    let earnedShards = 0;
-    if (rarity >= 1_000_000) earnedShards = 10;
-    else if (rarity >= 100_000) earnedShards = 5;
-    else if (rarity >= 10_000) earnedShards = 2;
-    else if (rarity >= 1_000) earnedShards = 1;
+    let earnedShards = 0.001;
+    if (rarity >= 1_000_000) earnedShards += 0.25;
+    else if (rarity >= 100_000) earnedShards += 0.05;
+    else if (rarity >= 10_000) earnedShards += 0.01;
+    else if (rarity >= 1_000) earnedShards += 0.005;
 
     const shardProcChance = Math.min(
       1,
@@ -2560,9 +2560,9 @@ export function predictRollActivation(
       (s.guildPerks?.shardRank ?? 0) * 0.0005 +
       levelBenefits.shardChance,
     );
-    if (rng() < shardProcChance) earnedShards += 1;
+    if (rng() < shardProcChance) earnedShards += 0.001;
 
-    shardsGained += earnedShards;
+    shardsGained = roundShardAmount(shardsGained + earnedShards);
     const earnedXp = Math.round(
       Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) *
       (1 + (s.upgrades.xpBonus ?? 0) * 0.20) *
@@ -2612,7 +2612,7 @@ export function predictRollActivation(
   if (transLevel > 0) {
     coinsGained += Math.round(lowRarityCoins * (transLevel * 0.15));
     for (let i = 0; i < rollCount; i++) {
-      if (rng() < 0.01 * transLevel) shardsGained += 1;
+      if (rng() < 0.01 * transLevel) shardsGained = roundShardAmount(shardsGained + 0.001);
     }
   }
 
@@ -2621,7 +2621,7 @@ export function predictRollActivation(
   }
   s.coins += coinsGained;
   s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
-  // Match the authoritative cap and wallet overflow handling in predictions.
+  // Match the authoritative uncapped fractional wallet and overflow handling in predictions.
   shardsGained = grantRollShards(s, shardsGained, predictionNow);
   s.xp += xpGained;
 
