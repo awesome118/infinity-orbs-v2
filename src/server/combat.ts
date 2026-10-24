@@ -850,10 +850,8 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
       ? { ...event, actionIndex: event.actionIndex - (consumed ? 1 : 0) }
       : event);
     const basePlayerAttackCount=Math.max(0,playerActions-(consumed?1:0));
-    let lastPlayerActionTime=0;
-    for(const event of orderedCombatActions)if(event.actor==='player')lastPlayerActionTime=event.time;
     for(let extra=0;extra<activeExtraAttacks&&playerActions>0;extra++){
-      orderedCombatActions.push({actor:'player',actionIndex:basePlayerAttackCount+extra,time:lastPlayerActionTime+(extra+1)*1e-6});
+      orderedCombatActions.push({actor:'player',actionIndex:basePlayerAttackCount+extra,time:0});
     }
     orderedCombatActions.sort((a,b)=>{
       const delta=a.time-b.time;
