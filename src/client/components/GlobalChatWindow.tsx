@@ -176,7 +176,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
               ? ''
               : typeof payload.reason === 'string' && payload.reason.trim()
                 ? payload.reason
-                : "Global Chat is available only in the registered main Game or a registered Frenzy post.");
+                : "Global Chat is waiting for the canonical main Game post to be registered.");
           }
           return;
         } catch {
