@@ -676,8 +676,8 @@ test('Unbroken Momentum uses the requested logarithmic Speed curve', () => {
 });
 
 
-test('primary roll Shard proc chance has a strict 0.5% per-Orb ceiling', () => {
-  assert.equal(ROLL_SHARD_PROC_CHANCE_CAP, 0.005);
+test('primary roll Shard proc chance has a strict 0.25% per-Orb ceiling', () => {
+  assert.equal(ROLL_SHARD_PROC_CHANCE_CAP, 0.0025);
 });
 
 test('repeatable Guild Boss Shard rewards are capped at three per clear', () => {

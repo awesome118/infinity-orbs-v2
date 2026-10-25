@@ -3599,7 +3599,7 @@ export async function applyRolls(
   const criticalConvergenceRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.criticalConvergencePct / 100);
   const rarityLadderRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.rarityLadderPct / 100);
   const stellarDividendInterval = Math.max(20, Math.floor(100 / (1 + runeAbilityEffects.stellarDividendPct / 100)));
-  const shardJackpotChance = Math.min(.01, runeAbilityEffects.shardJackpotPct / 10000);
+  const shardJackpotChance = Math.min(.005, runeAbilityEffects.shardJackpotPct / 20000);
   const milestoneRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.milestoneEnginePct / 100);
   let paradoxTriggered = false;
   let constellationTriggered = false;
@@ -3709,7 +3709,7 @@ export async function applyRolls(
     if (isNewRarityRecord && previousAllTimeRarity > 0 && !suppressOtherRuneProcs && runeAbilityEffects.milestoneEnginePct > 0) {
       const decadesCrossed = Math.min(5, Math.max(0, Math.floor(Math.log10(rarity)) - Math.floor(Math.log10(previousAllTimeRarity))));
       if (decadesCrossed > 0) {
-        const milestoneShardChance = Math.min(.005, runeAbilityEffects.milestoneEnginePct / 20000);
+        const milestoneShardChance = Math.min(.0025, runeAbilityEffects.milestoneEnginePct / 40000);
         if (rng() < milestoneShardChance) {
           shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + 1);
         }
@@ -3769,10 +3769,10 @@ export async function applyRolls(
 
     // High rarity is not a guaranteed Shard source. All repeatable Orb earnings are proc-based.
     let earnedShards = 0;
-    const shardTitheChance = Math.min(0.00025, Math.max(0, runeAbilityEffects.shardTithePerRoll) * 0.5);
+    const shardTitheChance = Math.min(0.000125, Math.max(0, runeAbilityEffects.shardTithePerRoll) * 0.5);
     if (!suppressOtherRuneProcs && shardTitheChance > 0 && rng() < shardTitheChance) earnedShards += 1;
     // Dry-Streak Refinery converts its former fractional drip into a reduced chance for one whole Shard.
-    const dryRefineryChance = Math.min(0.00025, Math.floor(Math.max(0, s.rollsSinceBest ?? 0) / 100) * Math.max(0, runeAbilityEffects.dryStreakRefineryRate) * 0.5);
+    const dryRefineryChance = Math.min(0.000125, Math.floor(Math.max(0, s.rollsSinceBest ?? 0) / 100) * Math.max(0, runeAbilityEffects.dryStreakRefineryRate) * 0.5);
     if (!suppressOtherRuneProcs && dryRefineryChance > 0 && rng() < dryRefineryChance) earnedShards += 1;
 
     // Shard Chance upgrade + Mastery + Guild perk proc
@@ -3783,7 +3783,7 @@ export async function applyRolls(
       (s.guildPerks?.shardRank ?? 0) * 0.0005 +
       (s.prestigeUpgrades?.shardResonator ?? 0) * 0.0025 +
       levelBenefits.shardChance +
-      Math.min(100, runeBonuses.shardChancePct) / 100) * 0.05
+      Math.min(100, runeBonuses.shardChancePct) / 100) * 0.025
     );
     const shardProcTriggered = rng() < shardProcChance;
     earnedShards += resolveShardPityReward(s, shardProcTriggered);
@@ -3863,7 +3863,7 @@ export async function applyRolls(
   if (transLevel > 0) {
     coinsGained += Math.round(lowRarityCoins * (transLevel * 0.15));
     for (let i = 0; i < rollCount; i++) {
-      if (rng() < 0.0005 * transLevel) {
+      if (rng() < 0.00025 * transLevel) {
         shardsGained += 1;
       }
     }
@@ -6487,26 +6487,20 @@ export async function claimOrbFrenzy(options: {
     groups.reduce((sum, group) => sum + group.count * xpForRarity(group.rarity), 0),
   );
 
+  // Offline claims use the same rare primary proc as live rolls. Orb rarity never guarantees Shards.
   const shardChance = Math.min(
-    1,
-    (s.upgrades.shardChance ?? 0) * 0.0015 +
+    ROLL_SHARD_PROC_CHANCE_CAP,
+    ((s.upgrades.shardChance ?? 0) * 0.0015 +
     (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
     (s.guildPerks?.shardRank ?? 0) * 0.0005 +
     (s.prestigeUpgrades?.shardResonator ?? 0) * 0.0025 +
-    levelBenefits.shardChance,
+    levelBenefits.shardChance) * 0.025,
   );
   const procShards = sampleBinomial(count, shardChance);
   const transmutationShardProcs = transmutationLevel > 0
-    ? sampleBinomial(count, Math.min(1, 0.01 * transmutationLevel))
+    ? sampleBinomial(count, Math.min(1, 0.00025 * transmutationLevel))
     : 0;
-  const rarityShards = groups.reduce((sum, group) => {
-    if (group.rarity >= 1_000_000) return sum + group.count * 10;
-    if (group.rarity >= 100_000) return sum + group.count * 5;
-    if (group.rarity >= 10_000) return sum + group.count * 2;
-    if (group.rarity >= 1_000) return sum + group.count;
-    return sum;
-  }, 0);
-  const shardsGained = grantRollShards(s, rarityShards + procShards + transmutationShardProcs);
+  const shardsGained = grantRollShards(s, procShards + transmutationShardProcs);
 
   const previousHighest = s.highestRarity;
   const bestRarity = topRarity;

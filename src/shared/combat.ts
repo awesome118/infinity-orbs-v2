@@ -274,11 +274,11 @@ export function combatRuneMajorAbilitySummary(ability:CombatRuneMajorAbility,lev
     case 'critical-convergence':return 'Critical rolls have a '+pct(Math.min(35,power))+' chance to create '+rolls+' extra roll'+(rolls===1?'':'s')+' with a rarity floor based on the critical result.';
     case 'rarity-ladder':return 'Three rising rarities in one activation trigger '+rolls+' bonus roll'+(rolls===1?'':'s')+' with a '+(1+Math.min(2,power/100)).toFixed(2)+'× rarity floor.';
     case 'stellar-dividend':return 'Every '+Math.max(20,Math.floor(100/(1+power/100)))+' lifetime rolls triggers '+rolls+' bonus roll'+(rolls===1?'':'s')+'.';
-    case 'shard-jackpot':return pct(Math.min(1,power/100))+' chance to double a Shard payout (maximum 2 Shards per Orb).';
-    case 'milestone-engine':return 'A new all-time rarity milestone at a power of ten has a '+pct(Math.min(.5,power/200))+' chance to grant 1 bonus Shard and adds up to '+Math.min(2,rolls)+' rarity-floored bonus roll'+(Math.min(2,rolls)===1?'':'s')+'.';
-    case 'shard-tithe':return Math.min(.025,power/4000).toFixed(3)+'% chance to grant +1 whole Shard on each main-game roll.';
+    case 'shard-jackpot':return pct(Math.min(.5,power/200))+' chance to double a Shard payout (maximum 2 Shards per Orb).';
+    case 'milestone-engine':return 'A new all-time rarity milestone at a power of ten has a '+pct(Math.min(.25,power/400))+' chance to grant 1 bonus Shard and adds up to '+Math.min(2,rolls)+' rarity-floored bonus roll'+(Math.min(2,rolls)===1?'':'s')+'.';
+    case 'shard-tithe':return Math.min(.0125,power/8000).toFixed(4)+'% chance to grant +1 whole Shard on each main-game roll.';
     case 'discovery-oracle':return pct(Math.min(20,power/5))+' chance for a first-time rarity discovery to grant '+rolls+' extra roll'+(rolls===1?'':'s')+' with the same rarity floor.';
-    case 'dry-streak-refinery':return 'Each 100 rolls since your best rarity adds up to '+Math.min(.025,power/40000).toFixed(4)+'% chance per roll to grant +1 whole Shard.';
+    case 'dry-streak-refinery':return 'Each 100 rolls since your best rarity adds up to '+Math.min(.0125,power/80000).toFixed(4)+'% chance per roll to grant +1 whole Shard.';
   }
 }
 export function combatRuneMajorAbilityEffects(runesValue:unknown,equippedValue:unknown):CombatRuneMajorAbilityEffects {
@@ -353,14 +353,14 @@ export function combatRuneMajorAbilityEffects(runesValue:unknown,equippedValue:u
         effects.milestoneEngineBonusShards=1;
         break;
       case 'shard-tithe':
-        effects.shardTithePerRoll=Math.min(.002,effects.shardTithePerRoll+Math.min(.0005,power/200000));
+        effects.shardTithePerRoll=Math.min(.001,effects.shardTithePerRoll+Math.min(.00025,power/400000));
         break;
       case 'discovery-oracle':
         effects.discoveryOraclePct=add(effects.discoveryOraclePct,power);
         effects.discoveryOracleBonusRolls=Math.max(effects.discoveryOracleBonusRolls,runeMajorBonusRollCount(power,level));
         break;
       case 'dry-streak-refinery':
-        effects.dryStreakRefineryRate=Math.min(.0005,effects.dryStreakRefineryRate+Math.min(.0005,power/2000000));
+        effects.dryStreakRefineryRate=Math.min(.00025,effects.dryStreakRefineryRate+Math.min(.00025,power/4000000));
         break;
     }
   }
@@ -389,7 +389,7 @@ export function combatRuneBonuses(runesValue: unknown, equippedValue: unknown): 
       else if (ability.id === 'memory-well') bonuses.xpGainPct = safeAdd(bonuses.xpGainPct, abilityValue);
     }
   }
-  // Rune Shard chance contributes before the shared 0.5% primary-proc cap per Orb.
+  // Rune Shard chance contributes before the shared 0.25% primary-proc cap per Orb.
   bonuses.shardChancePct = Math.min(100, bonuses.shardChancePct);
   return bonuses;
 }
