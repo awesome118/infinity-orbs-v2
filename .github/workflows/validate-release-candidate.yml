@@ -1,14 +1,7 @@
 name: Validate Infinity Orbs
 
+# Manual diagnostic only. Deploy workflows run npm run preflight before side effects.
 on:
-  push:
-    branches:
-      - main
-      - release/1.2.14-candidate-20261013
-  pull_request:
-    branches:
-      - main
-      - release/1.2.14-candidate-20261013
   workflow_dispatch:
 
 permissions:
