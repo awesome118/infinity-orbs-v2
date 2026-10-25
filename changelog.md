@@ -13,11 +13,13 @@
 
 ### Combat Changes:
 
+- New Delvers begin without gear, relying on modest base damage, health, and Speed until they earn equipment.
+- Increased the base costs of permanent Combat upgrade ranks while preserving their scaling between ranks.
 - Gear now displays its obtained level instead of a dropped-floor label.
 - Higher gear qualities provide substantially more power; top quality grades are rarer, and 100% quality gear has five times the depth baseline stat budget.
 - Scrap rewards scale with gear power and dungeon depth, making salvaging a useful path toward forging stronger equipment.
 - Added Rune Major Abilities that can modify Rune effects or trigger bonus rolls, record rewards, Shards, and other effects in the main game.
-- Clearing a Crypt Warden permanently adds 1% effective Luck to core Orb rolls, up to 25%.
+- Boss clears across all three dungeons grant a permanent core-game Luck bonus of (1.01^n − 1); it self-stacks across total boss clears, adds to other Luck sources, and is uncapped.
 - Undercrypt, Cinder Vault, and Glass Labyrinth now have distinct combat profiles and reward bonuses.
 
 ### Core Game Changes:

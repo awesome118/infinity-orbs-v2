@@ -854,13 +854,13 @@ export interface CombatUpgradeDefinition {
 }
 export const COMBAT_UPGRADE_RANK_CAP = 10;
 export const COMBAT_UPGRADES: CombatUpgradeDefinition[] = [
-  { id:'edge-training', name:'Edge Training', description:'+4% damage per rank', stat:'damagePct', value:.04, baseCost:18, costMultiplier:1.55, maxRank:10 },
-  { id:'vitality', name:'Delver Vitality', description:'+5% maximum HP per rank', stat:'healthPct', value:.05, baseCost:18, costMultiplier:1.55, maxRank:10 },
-  { id:'precision', name:'Critical Calibration', description:'+1 percentage point critical chance per rank', stat:'critChance', value:.01, baseCost:25, costMultiplier:1.60, maxRank:10 },
-  { id:'scavenger', name:'Battle Scavenger', description:'+8% Combat Marks from kills per rank', stat:'markBonus', value:.08, baseCost:28, costMultiplier:1.62, maxRank:10 },
-  { id:'orb-resonance', name:'Orb Resonance', description:'+1.5% focused-orb combat power per rank', stat:'orbFocusPct', value:.015, baseCost:32, costMultiplier:1.65, maxRank:10 },
-  { id:'mark-magnet', name:'Mark Magnet', description:'+10% Combat Marks from kills per rank', stat:'markBonus', value:.10, baseCost:48, costMultiplier:1.68, maxRank:10 },
-  { id:'ward-training', name:'Warding Doctrine', description:'+1.5 percentage points damage reduction per rank', stat:'damageReduction', value:.015, baseCost:42, costMultiplier:1.65, maxRank:10 },
+  { id:'edge-training', name:'Edge Training', description:'+4% damage per rank', stat:'damagePct', value:.04, baseCost:23, costMultiplier:1.55, maxRank:10 },
+  { id:'vitality', name:'Delver Vitality', description:'+5% maximum HP per rank', stat:'healthPct', value:.05, baseCost:23, costMultiplier:1.55, maxRank:10 },
+  { id:'precision', name:'Critical Calibration', description:'+1 percentage point critical chance per rank', stat:'critChance', value:.01, baseCost:32, costMultiplier:1.60, maxRank:10 },
+  { id:'scavenger', name:'Battle Scavenger', description:'+8% Combat Marks from kills per rank', stat:'markBonus', value:.08, baseCost:35, costMultiplier:1.62, maxRank:10 },
+  { id:'orb-resonance', name:'Orb Resonance', description:'+1.5% focused-orb combat power per rank', stat:'orbFocusPct', value:.015, baseCost:40, costMultiplier:1.65, maxRank:10 },
+  { id:'mark-magnet', name:'Mark Magnet', description:'+10% Combat Marks from kills per rank', stat:'markBonus', value:.10, baseCost:60, costMultiplier:1.68, maxRank:10 },
+  { id:'ward-training', name:'Warding Doctrine', description:'+1.5 percentage points damage reduction per rank', stat:'damageReduction', value:.015, baseCost:52, costMultiplier:1.65, maxRank:10 },
 ];
 export type CombatUpgradeLevels = Partial<Record<CombatUpgradeId, number>>;
 
@@ -1143,12 +1143,6 @@ export function combatOrbDamageMultiplier(rarity:number):number {
 export const SKILL_RANK_CAP = Number.MAX_SAFE_INTEGER;
 export const COMBAT_INVENTORY_CAP = 30;
 
-function createCombatStarterGear(): { inventory: CombatGear[]; equipment: CombatState['equipment'] } {
-  const weapon: CombatGear = { id:'starter-weapon', name:'Delver Knife', slot:'weapon', quality:35, sourceFloor:0, power:8, effect:'Adds +4 damage. Critical chance +4 percentage points.', trait:'keen', damageBonus:4, speedBonus:0, maxHealthBonus:0, armorBonus:0, critChanceBonus:0 };
-  const armor: CombatGear = { id:'starter-armor', name:'Worn Leathers', slot:'armor', quality:28, sourceFloor:0, power:5, effect:'Adds +40 max HP and reduces incoming damage by 4%.', trait:'bulwark', damageBonus:0, speedBonus:0, maxHealthBonus:40, armorBonus:0, critChanceBonus:0 };
-  return { inventory:[weapon,armor], equipment:{weapon:weapon.id,armor:armor.id,helmet:null,gloves:null,boots:null,ring:null,amulet:null} };
-}
-
 /** Each run can carry up to 30 newly acquired pieces; the owned inventory persists between runs. */
 export function addCombatGearToInventory(state: CombatState, item: CombatGear, maxItems = COMBAT_INVENTORY_CAP): void {
   // Retried loot grants must not replace an owned item or count it twice.
@@ -1241,15 +1235,14 @@ export function skillPullCost(skillRollsValue: number, gachaRankValue: unknown =
   return Math.max(1, Math.round(SKILL_PULL_BASE_COST * Math.pow(rank, 1.25) * lifetimeFactor));
 }
 export function createCombatState(): CombatState {
-  const starter = createCombatStarterGear();
   const state: CombatState = {
     version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, dungeonBossesBeaten:{undercrypt:0,'cinder-vault':0,'glass-labyrinth':0}, depth:1, bestDepth:1, depthCapCleared:false,
-    level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
-    baseDamage:54, coins:0, scrap:0, combatMarks:250, runes:[], equippedRunes:[], runeAutoSacrifice:{...DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS}, combatTutorialSeen:false, combatUpgrades:{}, totalKills:0, skillRolls:0, skillRuntime:createCombatSkillRuntime(), strategyGuideRank:0, tacticianManuals:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
+    level:1, xp:0, xpToNext:100, health:500, maxHealth:500, speed:150,
+    baseDamage:30, coins:0, scrap:0, combatMarks:250, runes:[], equippedRunes:[], runeAutoSacrifice:{...DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS}, combatTutorialSeen:false, combatUpgrades:{}, totalKills:0, skillRolls:0, skillRuntime:createCombatSkillRuntime(), strategyGuideRank:0, tacticianManuals:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
     playerSpeedBeats:0, playerSpeedCharge:0, enemySpeedCharge:0, enemyTurnsToSkip:0, combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0, playerTurnsCompleted:0,
     energy:3, maxEnergy:5, guardBeats:0, enemyHp:130,
-    encounterFirstStrikeUsed:false, pendingHealAmount:0, inventory:starter.inventory,
-    equipment:starter.equipment, runInventoryIds:[],
+    encounterFirstStrikeUsed:false, pendingHealAmount:0, inventory:[],
+    equipment:{weapon:null,armor:null,helmet:null,gloves:null,boots:null,ring:null,amulet:null}, runInventoryIds:[],
     autoScrapUnlocked:false,autoScrapSettings:{...DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS},skillLevels:{},
     arenaRating:1000, arenaWins:0, arenaLosses:0, arenaLastChallengeAt:0, arenaLastMatchAt:0,
     coreLevel:1, coreHighestRarity:2, autoTactic:'balanced',
@@ -1308,11 +1301,12 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const dungeonDamageBonus = state.dungeonId === 'cinder-vault' ? 0.10 : 0;
   const dungeonSpeedBonus = state.dungeonId === 'glass-labyrinth' ? 35 : 0;
   const dungeonCritBonus = state.dungeonId === 'glass-labyrinth' ? 0.05 : 0;
-  const flatDamage = 50 + (Math.max(1,state.level)-1)*4 + effectiveDamageBonus + Math.round(floor*10);
-  const flatHealth = 1000 + (Math.max(1,state.level)-1)*30 + effectiveHealthBonus + Math.round(floor*20);
+  // Ungeared Delvers start with modest baseline damage; gear is intended to be a meaningful early drop.
+  const flatDamage = 30 + (Math.max(1,state.level)-1)*4 + effectiveDamageBonus + Math.round(floor*10);
+  const flatHealth = 500 + (Math.max(1,state.level)-1)*30 + effectiveHealthBonus + Math.round(floor*20);
   const maxHealth = Math.max(1,Math.round(flatHealth*(1+healthPct)*(1+coreProgressionBonus)*(1+orbFocusBonus*.65)*(1+majorHealthPercent)));
   // Player Speed comes from gear and explicit bonuses, never dungeon depth.
-  let speed = Math.round((310 + effectiveSpeedBonus + speedFlat + dungeonSpeedBonus) * (1 + majorSpeedPercent));
+  let speed = Math.round((150 + effectiveSpeedBonus + speedFlat + dungeonSpeedBonus) * (1 + majorSpeedPercent));
   if (traitEffectiveness('desperation')>0 && state.health>0 && state.health<=maxHealth*.4) speed+=Math.round(20*traitEffectiveness('desperation'));
   if (traitEffectiveness('keen')>0) critChance+=.04*traitEffectiveness('keen');
   critChance += effectiveCritBonus + majorCritBonus + dungeonCritBonus;
