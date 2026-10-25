@@ -19,7 +19,7 @@
 - Higher gear qualities provide substantially more power; top quality grades are rarer, and 100% quality gear has five times the depth baseline stat budget.
 - Scrap rewards scale with gear power and dungeon depth, making salvaging a useful path toward forging stronger equipment.
 - Added Rune Major Abilities that can modify Rune effects or trigger bonus rolls, record rewards, Shards, and other effects in the main game.
-- Boss clears across all three dungeons grant a permanent core-game Luck bonus of (1.01^n − 1); it self-stacks across total boss clears, adds to other Luck sources, and is uncapped.
+- Boss clears across all three dungeons grant a permanent core-game Luck bonus of (1.01^n − 1); it self-stacks across total boss clears and adds to other Luck sources, with no fixed 25-boss cap (subject to maximum dungeon depth).
 - Undercrypt, Cinder Vault, and Glass Labyrinth now have distinct combat profiles and reward bonuses.
 
 ### Core Game Changes:

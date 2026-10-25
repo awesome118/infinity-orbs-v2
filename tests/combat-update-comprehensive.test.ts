@@ -189,6 +189,9 @@ test('Luck display combines equipped Rune and Undercrypt multipliers and uses x 
   assert.ok(combatBossLuckBonus(21) > combatBossLuckBonus(1));
   assert.ok(Math.abs(combatBossLuckBonus(2) - 0.0201) < 1e-12);
   const roll = source('src/client/components/RollSection.tsx');
+  const combatSection = source('src/client/components/CombatSection.tsx');
+  assert.match(combatSection, /no fixed \+25% cap/i);
+  assert.doesNotMatch(combatSection, /capped at \+25%/);
   assert.match(roll, /combatRuneLuckMultiplier\(runeLuckPct\)/);
   assert.match(roll, /combatTotalBossesBeaten/);
   assert.match(roll, /combatBossLuckBonus/);
