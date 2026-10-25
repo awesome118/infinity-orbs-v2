@@ -52,7 +52,7 @@ export interface GuildPerks {
   luckRank: number; // +2% luck per rank
   speedRank: number; // -40ms roll cooldown per rank
   vaultRank: number; // +100 offline capacity per rank
-  shardRank?: number; // +0.2% shard drop chance per rank
+  shardRank?: number; // +0.0025% shard drop chance per rank before the shared cap
   critRank?: number; // +1.5% critical roll chance per rank
   coinRank?: number; // +10% coins earned per rank
   memberCapacityRank?: number; // +1 maximum member per rank, max 40

@@ -48,7 +48,7 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   },
   shardAttunement: {
     name: 'Shard Resonance',
-    desc: '+0.1% shard drop chance on rolls per level.',
+    desc: '+0.005% Shard drop chance per level (0.5% primary-proc cap per Orb).',
     maxLevel: 25,
     costMultiplier: 2,
   },
@@ -182,8 +182,8 @@ export function normalizeAutomations(value: unknown): Partial<Record<AutomationI
   ) as Partial<Record<AutomationId, boolean>>;
 }
 
-/** Shards are whole-number currency. Roll income is chance-based and capped to a 15% proc per Orb. */
-export const ROLL_SHARD_PROC_CHANCE_CAP = 0.15;
+/** Shards are whole-number currency. The primary roll proc is capped at 0.5% per Orb. */
+export const ROLL_SHARD_PROC_CHANCE_CAP = 0.005;
 export const SHARD_DECIMAL_PLACES = 0;
 export const SHARD_PRECISION = 1;
 export const SHARD_PITY_ROLLS_TO_REWARD = 0;
@@ -1524,7 +1524,7 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
   transmutation: {
     name: 'Transmutation',
-    desc: '+15% coins and 1% shard chance on low rarity rolls per level.',
+    desc: '+15% Coins from low-rarity rolls and +0.05% Shard chance per level.',
     category: 'alchemy',
     maxLevel: 5,
     costPerLevel: 3,
@@ -1645,7 +1645,7 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
   shardResonator: {
     name: 'Shard Resonator',
-    desc: '+0.25% bonus Shard chance per level.',
+    desc: '+0.0125% bonus Shard chance per level (0.5% primary-proc cap per Orb).',
     category: 'alchemy',
     maxLevel: 8,
     costPerLevel: 4,
@@ -2570,7 +2570,7 @@ export function predictRollActivation(
       ((s.upgrades.shardChance ?? 0) * 0.0015 +
       (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
       (s.guildPerks?.shardRank ?? 0) * 0.0005 +
-      levelBenefits.shardChance) * 0.5,
+      levelBenefits.shardChance) * 0.05,
     );
     const shardProcTriggered = rng() < shardProcChance;
     earnedShards += resolveShardPityReward(s, shardProcTriggered);
@@ -2625,7 +2625,7 @@ export function predictRollActivation(
   if (transLevel > 0) {
     coinsGained += Math.round(lowRarityCoins * (transLevel * 0.15));
     for (let i = 0; i < rollCount; i++) {
-      if (rng() < 0.005 * transLevel) shardsGained = roundShardAmount(shardsGained + 1);
+      if (rng() < 0.0005 * transLevel) shardsGained = roundShardAmount(shardsGained + 1);
     }
   }
 

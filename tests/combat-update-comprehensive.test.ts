@@ -133,16 +133,26 @@ test('all Rune Major Abilities have a runtime path; main-game Rune abilities sti
 test('all roll-earned Shard chance sources are reduced and all Shard additions are integer-only', () => {
   const game = source('src/server/game.ts');
   const shared = source('src/shared/game.ts');
+  const combat = source('src/shared/combat.ts');
   const ui = source('src/client/components/BoostersAndAutomation.tsx');
   assert.match(game, /const shardProcChance = Math\.min\(\s*ROLL_SHARD_PROC_CHANCE_CAP,/);
   assert.match(game, /earnedShards = Math\.min\(1, earnedShards\)/);
   assert.match(game, /shardJackpotChance > 0 && rng\(\) < shardJackpotChance/);
   assert.match(game, /earnedShards = Math\.min\(2,/);
-  assert.match(shared, /ROLL_SHARD_PROC_CHANCE_CAP = 0\.15/);
-  assert.match(shared, /0\.005 \* transLevel/);
+  assert.match(shared, /ROLL_SHARD_PROC_CHANCE_CAP = 0\.005/);
+  assert.match(shared, /\) \* 0\.05,/);
+  assert.match(shared, /0\.0005 \* transLevel/);
+  assert.match(game, /const shardTitheChance = Math\.min\(0\.00025,/);
+  assert.match(game, /const dryRefineryChance = Math\.min\(0\.00025,/);
+  assert.match(game, /const shardJackpotChance = Math\.min\(\.01, runeAbilityEffects\.shardJackpotPct \/ 10000\)/);
+  assert.match(game, /const milestoneShardChance = Math\.min\(\.005, runeAbilityEffects\.milestoneEnginePct \/ 20000\)/);
+  assert.match(game, /rng\(\) < 0\.0005 \* transLevel/);
+  assert.match(combat, /Math\.min\(1,power\/100\)/);
+  assert.match(combat, /Math\.min\(\.5,power\/200\)/);
   assert.match(shared, /SHARD_DECIMAL_PLACES = 0/);
   assert.match(shared, /Math\.floor\(n\)/);
   assert.doesNotMatch(shared, /shardsGained\s*\+\s*0\.001/);
+  assert.doesNotMatch(game, /shardsGained\s*\+\s*0\.001/);
   assert.doesNotMatch(ui, /fractional amounts/);
 });
 

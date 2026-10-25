@@ -3599,7 +3599,7 @@ export async function applyRolls(
   const criticalConvergenceRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.criticalConvergencePct / 100);
   const rarityLadderRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.rarityLadderPct / 100);
   const stellarDividendInterval = Math.max(20, Math.floor(100 / (1 + runeAbilityEffects.stellarDividendPct / 100)));
-  const shardJackpotChance = Math.min(.10, runeAbilityEffects.shardJackpotPct / 1000);
+  const shardJackpotChance = Math.min(.01, runeAbilityEffects.shardJackpotPct / 10000);
   const milestoneRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.milestoneEnginePct / 100);
   let paradoxTriggered = false;
   let constellationTriggered = false;
@@ -3709,7 +3709,7 @@ export async function applyRolls(
     if (isNewRarityRecord && previousAllTimeRarity > 0 && !suppressOtherRuneProcs && runeAbilityEffects.milestoneEnginePct > 0) {
       const decadesCrossed = Math.min(5, Math.max(0, Math.floor(Math.log10(rarity)) - Math.floor(Math.log10(previousAllTimeRarity))));
       if (decadesCrossed > 0) {
-        const milestoneShardChance = Math.min(.05, runeAbilityEffects.milestoneEnginePct / 2000);
+        const milestoneShardChance = Math.min(.005, runeAbilityEffects.milestoneEnginePct / 20000);
         if (rng() < milestoneShardChance) {
           shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + 1);
         }
@@ -3769,10 +3769,10 @@ export async function applyRolls(
 
     // High rarity is not a guaranteed Shard source. All repeatable Orb earnings are proc-based.
     let earnedShards = 0;
-    const shardTitheChance = Math.min(0.0025, Math.max(0, runeAbilityEffects.shardTithePerRoll) * 0.5);
+    const shardTitheChance = Math.min(0.00025, Math.max(0, runeAbilityEffects.shardTithePerRoll) * 0.5);
     if (!suppressOtherRuneProcs && shardTitheChance > 0 && rng() < shardTitheChance) earnedShards += 1;
     // Dry-Streak Refinery converts its former fractional drip into a reduced chance for one whole Shard.
-    const dryRefineryChance = Math.min(0.0025, Math.floor(Math.max(0, s.rollsSinceBest ?? 0) / 100) * Math.max(0, runeAbilityEffects.dryStreakRefineryRate) * 0.5);
+    const dryRefineryChance = Math.min(0.00025, Math.floor(Math.max(0, s.rollsSinceBest ?? 0) / 100) * Math.max(0, runeAbilityEffects.dryStreakRefineryRate) * 0.5);
     if (!suppressOtherRuneProcs && dryRefineryChance > 0 && rng() < dryRefineryChance) earnedShards += 1;
 
     // Shard Chance upgrade + Mastery + Guild perk proc
@@ -3783,7 +3783,7 @@ export async function applyRolls(
       (s.guildPerks?.shardRank ?? 0) * 0.0005 +
       (s.prestigeUpgrades?.shardResonator ?? 0) * 0.0025 +
       levelBenefits.shardChance +
-      Math.min(100, runeBonuses.shardChancePct) / 100) * 0.5
+      Math.min(100, runeBonuses.shardChancePct) / 100) * 0.05
     );
     const shardProcTriggered = rng() < shardProcChance;
     earnedShards += resolveShardPityReward(s, shardProcTriggered);
@@ -3858,13 +3858,13 @@ export async function applyRolls(
     coinsGained += Math.round(lowRarityCoins * 0.25);
   }
 
-  // Alchemical Transmutation: bonus low-rarity coins & shard procs only.
+  // Alchemical Transmutation: bonus low-rarity Coins and a small whole-Shard proc per Orb.
   const transLevel = s.prestigeUpgrades?.transmutation ?? 0;
   if (transLevel > 0) {
     coinsGained += Math.round(lowRarityCoins * (transLevel * 0.15));
     for (let i = 0; i < rollCount; i++) {
-      if (rng() < 0.01 * transLevel) {
-        shardsGained += 0.001;
+      if (rng() < 0.0005 * transLevel) {
+        shardsGained += 1;
       }
     }
   }
