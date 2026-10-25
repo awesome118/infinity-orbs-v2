@@ -139,6 +139,10 @@ function combatLabReport(state:CombatState) {
   const rarityOdds=combatGearRarityOdds();
   const statBudgets=Object.fromEntries([0,15,40,70,90,100].map(quality=>[String(quality),combatGearStatBudgetMultiplier(quality)]));
   const end=projections[projections.length-1]!;
+  const speedProbeState={...state,inventory:[],equipment:Object.fromEntries(Object.keys(state.equipment).map(slot=>[slot,null])) as CombatState['equipment']};
+  const speedAtDepthOne=combatStatsFor({...speedProbeState,depth:1}).speed;
+  const speedAtMaxDepth=combatStatsFor({...speedProbeState,depth:COMBAT_MAX_DEPTH}).speed;
+  const playerSpeedDepthInvariant=speedAtDepthOne===speedAtMaxDepth;
   const qualityValid=state.inventory.every(item=>Number.isFinite(item.quality)&&item.quality>=0&&item.quality<=100);
   const equipmentValid=Object.entries(state.equipment).every(([slot,id])=>!id||state.inventory.some(item=>item.id===id&&item.slot===slot));
   const runeRefsValid=(state.equippedRunes??[]).every(id=>state.runes.some(rune=>rune.id===id));
@@ -148,7 +152,7 @@ function combatLabReport(state:CombatState) {
     {label:'Equipped Rune references are valid',passed:runeRefsValid,detail:runeRefsValid?'Every equipped Rune exists in inventory.':'A Rune slot references a missing Rune.'},
     {label:'High gear grades are genuinely rare',passed:rarityOdds.Common>.85&&rarityOdds.Mythic<.01,detail:'Common '+(rarityOdds.Common*100).toFixed(2)+'% · Mythic '+(rarityOdds.Mythic*100).toFixed(2)+'% theoretical natural-drop odds.'},
     {label:'High-quality gear owns a larger stat budget',passed:combatGearStatBudgetMultiplier(90)>combatGearStatBudgetMultiplier(15)*5,detail:'90% quality is '+(combatGearStatBudgetMultiplier(90)/combatGearStatBudgetMultiplier(15)).toFixed(1)+'× the budget of 15% quality.'},
-    {label:'Late-game Speed reaches millions',passed:end.speed>=1_000_000,detail:'Depth 50,000 projection: '+Math.round(end.speed).toLocaleString()+' Speed.'},
+    {label:'Player Speed is independent of dungeon depth',passed:playerSpeedDepthInvariant,detail:'No-gear baseline: depth 1 '+Math.round(speedAtDepthOne).toLocaleString()+' → depth '+COMBAT_MAX_DEPTH.toLocaleString()+' '+Math.round(speedAtMaxDepth).toLocaleString()+' Speed.'},
     {label:'Late-game HP reaches millions',passed:end.maxHealth>=1_000_000,detail:'Depth 50,000 projection: '+Math.round(end.maxHealth).toLocaleString()+' maximum HP.'},
     {label:'Late-game high-orb crit damage reaches millions',passed:end.maxOrbCritDamage>=1_000_000,detail:'Depth 50,000 projection: '+Math.round(end.maxOrbCritDamage).toLocaleString()+' critical damage.'},
     {label:'Rune Major Ability data is valid',passed:state.runes.every(rune=>!rune.majorAbility||(typeof rune.majorAbility.name==='string'&&typeof rune.majorAbility.description==='string')),detail:state.runes.filter(rune=>rune.majorAbility).length+' Runes currently have Major Abilities.'},

@@ -65,6 +65,10 @@ test('admin Full Test directly covers each current Prestige Upgrade and Mastery 
   assert.ok(source.includes("'Upgrade All'"), 'standard upgrades must stay covered by the upgrade-all test');
   assert.ok(source.includes("'API · Impressions reach admin analytics'"), 'the Full Test must round-trip preview impressions into the dashboard');
   assert.ok(source.includes("'API · Combat Lab validates gear, runes, and scaling'"), 'the Full Test must exercise Combat Lab diagnostics');
+  assert.ok(source.includes("activeBoosters: {},\n            automations: {\n              autoQuestClaim: false,\n              autoStreakClaim: false,\n              autoCommunityClaim: false,\n              autoOfflineClaim: false,\n              autoUpgrade: false,\n            },"), 'mechanic fixtures must disable automations to prevent cross-test currency changes');
+  const combatLabSource = readFileSync(resolve(process.cwd(), 'src/server/debug.ts'), 'utf8');
+  assert.ok(combatLabSource.includes("label:'Player Speed is independent of dungeon depth'"), 'Combat Lab must verify the intended player Speed invariant');
+  assert.ok(!combatLabSource.includes("label:'Late-game Speed reaches millions'"), 'Combat Lab must not require depth-scaled player Speed');
   assert.ok(!source.includes("'Mechanic · Singularity Tithe'"), 'retired mechanics must not remain as failing tests');
 });
 

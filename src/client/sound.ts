@@ -5,6 +5,7 @@ class SoundFX {
   public enabled = true;
   public sonarMode = false;
   public sonarThreshold = 100;
+  private sonarModeListeners = new Set<(active: boolean) => void>();
 
   constructor() {
     try {
@@ -122,11 +123,21 @@ class SoundFX {
     return this.enabled;
   }
 
+  public subscribeSonarMode(listener: (active: boolean) => void): () => void {
+    this.sonarModeListeners.add(listener);
+    return () => {
+      this.sonarModeListeners.delete(listener);
+    };
+  }
+
   public setSonarMode(active: boolean) {
     this.sonarMode = active;
     try {
       localStorage.setItem('orbs_sonar_mode', String(active));
     } catch {}
+    for (const listener of this.sonarModeListeners) {
+      try { listener(active); } catch {}
+    }
     if (active) this.playSonarPing(this.sonarThreshold);
   }
 

@@ -149,6 +149,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
     if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
   }, []);
   const [sonarActive, setSonarActive] = useState(() => sound.sonarMode);
+  useEffect(() => sound.subscribeSonarMode(setSonarActive), []);
   const [sonarThreshold, setSonarThresholdState] = useState(() => sound.sonarThreshold);
   const [sonarPinging, setSonarPinging] = useState(false);
   const [instantRevealActive, setInstantRevealActive] = useState(() => {

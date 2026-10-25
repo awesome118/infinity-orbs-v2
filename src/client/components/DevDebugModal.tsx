@@ -1835,6 +1835,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             prestigeUpgrades: { ...zeroPrestige, ...prestigeOverrides },
             masterySkills: zeroMastery,
             activeBoosters: {},
+            automations: {
+              autoQuestClaim: false,
+              autoStreakClaim: false,
+              autoCommunityClaim: false,
+              autoOfflineClaim: false,
+              autoUpgrade: false,
+            },
             sacrifices: {
               coinsSacrificed: 0,
               shardsSacrificed: 0,
@@ -3231,7 +3238,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             'Equipped Rune references are valid',
             'High gear grades are genuinely rare',
             'High-quality gear owns a larger stat budget',
-            'Late-game Speed reaches millions',
+            'Player Speed is independent of dungeon depth',
             'Late-game HP reaches millions',
             'Late-game high-orb crit damage reaches millions',
             'Rune Major Ability data is valid',
