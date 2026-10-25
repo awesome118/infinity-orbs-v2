@@ -50,7 +50,7 @@ test('new Rune Major Abilities add whole-Shard chance and rarity-floored discove
   assert.equal(effects.shardTithePerRoll,0.00005);
   assert.equal(effects.discoveryOraclePct,20);
   assert.ok(effects.discoveryOracleBonusRolls>=1);
-  assert.equal(effects.dryStreakRefineryRate,0.00005);
+  assert.equal(effects.dryStreakRefineryRate,0.000005);
   assert.match(combatRuneMajorAbilitySummary(shardTithe.majorAbility!,1),/whole Shard/);
   assert.match(combatRuneMajorAbilitySummary(discovery.majorAbility!,1),/first-time rarity discovery/i);
   assert.match(combatRuneMajorAbilitySummary(refinery.majorAbility!,1),/100 rolls since your best rarity/i);
