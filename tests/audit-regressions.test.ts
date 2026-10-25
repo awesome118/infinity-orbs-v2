@@ -2336,8 +2336,10 @@ test('Frenzy uses the same critical chance and conditional coin/Shard modifiers 
   assert.match(frenzy, /const lowRarityCoins = groups[\s\S]*?group\.rarity < 100/);
   assert.match(frenzy, /autoFilter[\s\S]*?Math\.round\(lowRarityCoins \* 0\.25\)/);
   assert.match(frenzy, /transmutationLevel[\s\S]*?Math\.round\(lowRarityCoins \* \(transmutationLevel \* 0\.15\)\)/);
-  assert.match(frenzy, /sampleBinomial\(count, Math\.min\(1, 0\.01 \* transmutationLevel\)\)/);
-  assert.match(frenzy, /grantRollShards\(s, rarityShards \+ procShards \+ transmutationShardProcs\)/);
+  assert.match(frenzy, /const shardChance = Math\.min\([\s\S]*?ROLL_SHARD_PROC_CHANCE_CAP/);
+  assert.match(frenzy, /sampleBinomial\(count, Math\.min\(1, 0\.00025 \* transmutationLevel\)\)/);
+  assert.match(frenzy, /grantRollShards\(s, procShards \+ transmutationShardProcs\)/);
+  assert.doesNotMatch(frenzy, /const rarityShards = groups\.reduce/);
   assert.match(frenzy, /s\.highestDryStreak = Math\.max\(s\.highestDryStreak \?\? 0, s\.rollsSinceBest\)/);
 });
 
