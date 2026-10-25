@@ -178,7 +178,7 @@ test('10x Skill Gacha is costed before mutation and returns every result', () =>
   assert.doesNotMatch(ui, /Mythic pity \{state\.skillPityMythic/);
 });
 
-test('Luck display combines equipped Rune and Undercrypt multipliers and uses x notation', () => {
+test('Luck display combines equipped Rune bonuses with all-dungeon boss Luck and uses x notation', () => {
   const rune: CombatRune = {
     id: 'luck-display-test', name: 'Luck Test Rune', rarity: 'Mythic',
     stat: 'luckPct', value: 100, level: 1, sourceDepth: 1,
@@ -191,6 +191,7 @@ test('Luck display combines equipped Rune and Undercrypt multipliers and uses x 
   const roll = source('src/client/components/RollSection.tsx');
   const combatSection = source('src/client/components/CombatSection.tsx');
   assert.match(combatSection, /no fixed \+25% cap/i);
+  assert.match(combatSection, /growth is bounded by maximum dungeon depth/i);
   assert.doesNotMatch(combatSection, /capped at \+25%/);
   assert.match(roll, /combatRuneLuckMultiplier\(runeLuckPct\)/);
   assert.match(roll, /combatTotalBossesBeaten/);
