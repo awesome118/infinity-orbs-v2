@@ -2,7 +2,7 @@ name: Deploy Devvit
 
 # Normally manual. A version-specific push marker is a one-commit recovery path when dispatch is unavailable.
 # If preflight stops before upload, retry the same version marker after fixing the blocker. DEV 1.2.58 retry after correcting the Frenzy shard regression expectation.
-# Deploy 1.2.58 after the October 25 Full Test fixes: Silent Mode synchronization, automation fixture isolation, and the Combat Lab Speed invariant.
+# Deploy 1.2.59 after the October 25 Full Test fixes: Silent Mode synchronization, automation fixture isolation, and the Combat Lab Speed invariant.
 # This workflow uploads and installs to the development subreddit only. Production install is a separate post-approval workflow.
 on:
   workflow_dispatch:
@@ -25,7 +25,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:1.2.58]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:1.2.59]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
