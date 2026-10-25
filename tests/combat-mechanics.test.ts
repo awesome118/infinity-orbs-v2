@@ -170,6 +170,9 @@ test('run-haul overflow never evicts equipped gear acquired during the current r
 test('the newest run pickup survives overflow even when its quality is lower than the old haul',()=>{
   const state=createCombatState();
   for(let index=0;index<COMBAT_INVENTORY_CAP;index++)addCombatGearToInventory(state,{id:'old-quality-'+index,name:'Old quality '+index,slot:index%2===0?'weapon':'armor',quality:90,sourceFloor:index+1,power:10,effect:'test',trait:index%2===0?'keen':'bulwark',damageBonus:0,speedBonus:0,maxHealthBonus:0});
+  // Ensure the test's oldest item is not protected as equipped gear; the first natural drop auto-equips.
+  state.equipment.weapon=null;
+  state.equipment.armor=null;
   const newest:CombatGear={id:'fresh-low-quality',name:'Fresh low quality',slot:'weapon',quality:0,sourceFloor:0,power:1,effect:'test',trait:'keen',damageBonus:0,speedBonus:0,maxHealthBonus:0};
   addCombatGearToInventory(state,newest);
   assert.equal(state.runInventoryIds.length,COMBAT_INVENTORY_CAP);

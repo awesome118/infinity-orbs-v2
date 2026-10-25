@@ -48,6 +48,8 @@ test('30-item carrying cap applies to each run while old inventory persists',()=
   for(let i=0;i<COMBAT_INVENTORY_CAP;i++)addCombatGearToInventory(state,gear('run-'+i,i+1,i===1?'armor':'weapon',80));
   assert.equal(state.runInventoryIds.length,COMBAT_INVENTORY_CAP);
   assert.equal(state.inventory.length,COMBAT_INVENTORY_CAP+starterIds.length);
+  // The first earned weapon is auto-equipped; switch away from it so the cap test can prune it.
+  state.equipment.weapon='pre-existing-stash-weapon';
   addCombatGearToInventory(state,gear('run-new-best',50,'weapon',95));
   assert.equal(state.runInventoryIds.length,COMBAT_INVENTORY_CAP);
   assert.ok(!state.inventory.some(item=>item.id==='run-0'));

@@ -75,7 +75,7 @@ test('admin Full Test directly covers each current Prestige Upgrade and Mastery 
 test('Combat regression suite covers the catalog, progression, gear, runes, tactics, and economy', () => {
   const source = readFileSync(resolve(process.cwd(), 'tests/combat-mechanics.test.ts'), 'utf8');
   const testNames = [
-  "starter combat build carries the Auto-Dungeons baseline",
+  "new Delvers start without gear and rely on modest baseline stats",
   "every combat rarity has seven active abilities",
   "skill catalog descriptions are distinct and Manual drops get rarer with Strategy Guide ranks",
   "equipped gear changes derived stats",
