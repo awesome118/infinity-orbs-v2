@@ -275,7 +275,7 @@ export function combatRuneMajorAbilitySummary(ability:CombatRuneMajorAbility,lev
     case 'rarity-ladder':return 'Three rising rarities in one activation trigger '+rolls+' bonus roll'+(rolls===1?'':'s')+' with a '+(1+Math.min(2,power/100)).toFixed(2)+'× rarity floor.';
     case 'stellar-dividend':return 'Every '+Math.max(20,Math.floor(100/(1+power/100)))+' lifetime rolls triggers '+rolls+' bonus roll'+(rolls===1?'':'s')+'.';
     case 'shard-jackpot':return pct(Math.min(10,power/10))+' chance to double a Shard payout (maximum 2 Shards per Orb).';
-    case 'milestone-engine':return 'A new all-time power-of-ten rarity milestone has a '+pct(Math.min(5,power/20))+' chance to grant 1 bonus Shard and adds up to '+Math.min(2,rolls)+' rarity-floored bonus roll'+(Math.min(2,rolls)===1?'':'s')+'.';
+    case 'milestone-engine':return 'A new all-time rarity milestone at a power of ten has a '+pct(Math.min(5,power/20))+' chance to grant 1 bonus Shard and adds up to '+Math.min(2,rolls)+' rarity-floored bonus roll'+(Math.min(2,rolls)===1?'':'s')+'.';
     case 'shard-tithe':return Math.min(.25,power/400).toFixed(2)+'% chance to grant +1 whole Shard on each main-game roll.';
     case 'discovery-oracle':return pct(Math.min(20,power/5))+' chance for a first-time rarity discovery to grant '+rolls+' extra roll'+(rolls===1?'':'s')+' with the same rarity floor.';
     case 'dry-streak-refinery':return 'Each 100 rolls since your best rarity adds up to '+Math.min(.25,power/4000).toFixed(3)+'% chance per roll to grant +1 whole Shard.';

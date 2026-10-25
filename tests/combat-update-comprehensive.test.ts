@@ -134,8 +134,11 @@ test('all roll-earned Shard chance sources are reduced and all Shard additions a
   const game = source('src/server/game.ts');
   const shared = source('src/shared/game.ts');
   const ui = source('src/client/components/BoostersAndAutomation.tsx');
-  assert.match(game, /const shardProcChance = Math\.min\([\s\S]*?\) \* 0\.5\s*\);/);
-  assert.match(game, /shardJackpotChance \* 0\.5/);
+  assert.match(game, /const shardProcChance = Math\.min\(\s*ROLL_SHARD_PROC_CHANCE_CAP,/);
+  assert.match(game, /earnedShards = Math\.min\(1, earnedShards\)/);
+  assert.match(game, /shardJackpotChance > 0 && rng\(\) < shardJackpotChance/);
+  assert.match(game, /earnedShards = Math\.min\(2,/);
+  assert.match(shared, /ROLL_SHARD_PROC_CHANCE_CAP = 0\.15/);
   assert.match(shared, /0\.005 \* transLevel/);
   assert.match(shared, /SHARD_DECIMAL_PLACES = 0/);
   assert.match(shared, /Math\.floor\(n\)/);
