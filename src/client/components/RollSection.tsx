@@ -33,7 +33,7 @@ import {
   formatShardAmount,
   frenzyCooldownRemaining,
 } from '../../shared/game.js';
-import { combatRuneBonuses, combatRuneLuckMultiplier, undercryptOrbLuckMultiplier } from '../../shared/combat.js';
+import { combatBossLuckBonus, combatRuneBonuses, combatRuneLuckMultiplier, combatTotalBossesBeaten, type CombatState } from '../../shared/combat.js';
 
 import { sound } from '../sound.js';
 import { OrbOrbit } from './OrbOrbit.js';
@@ -235,26 +235,27 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const multi = rollsPerActivation(state);
   const luck = luckMultiplier(state);
   const [runeLuckPct, setRuneLuckPct] = useState(0);
-  const [undercryptLuck, setUndercryptLuck] = useState(1);
+  const [bossLuckBonus, setBossLuckBonus] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
     void fetch('/api/combat/state', { cache: 'no-store', signal: controller.signal })
-      .then(response => response.ok ? response.json() as Promise<{ state?: { runes?: unknown; equippedRunes?: unknown; dungeonBestDepths?: { undercrypt?: number }; bestDepth?: number } }> : null)
+      .then(response => response.ok ? response.json() as Promise<{ state?: Pick<CombatState, 'runes' | 'equippedRunes' | 'dungeonId' | 'depth' | 'bestDepth' | 'depthCapCleared' | 'dungeonBestDepths' | 'dungeonBossesBeaten'> }> : null)
       .then(payload => {
         if (!active || !payload?.state) return;
         const combatState = payload.state;
         setRuneLuckPct(combatRuneBonuses(combatState.runes, combatState.equippedRunes).luckPct);
-        setUndercryptLuck(undercryptOrbLuckMultiplier(combatState.dungeonBestDepths?.undercrypt ?? combatState.bestDepth ?? 1));
+        setBossLuckBonus(combatBossLuckBonus(combatTotalBossesBeaten(combatState)));
       })
       .catch(() => {
         if (!active) return;
         setRuneLuckPct(0);
-        setUndercryptLuck(1);
+        setBossLuckBonus(0);
       });
     return () => { active = false; controller.abort(); };
   }, []);
-  const totalLuckMultiplier = luck * undercryptLuck * combatRuneLuckMultiplier(runeLuckPct);
+  // Boss-clear Luck adds to other core-game Luck bonuses; Rune Luck remains its own multiplier.
+  const totalLuckMultiplier = (luck + bossLuckBonus) * combatRuneLuckMultiplier(runeLuckPct);
   const isAutoUnlocked = (state.upgrades.auto ?? 0) > 0;
   const isTurbo = Boolean(state.turboRollUntil && state.turboRollUntil > now);
   const turboReductionPercent = (state.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 35 : 25;

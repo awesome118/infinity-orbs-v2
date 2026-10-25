@@ -4,7 +4,7 @@ import {
   COMBAT_MAX_DEPTH, combatGearQualityFromRoll, combatGearRarityForQuality, combatGearRarityOdds,
   combatActionsDue, combatTurnsCrossedThree, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, combatRuneMajorAbilityChance,
   combatRuneMajorAbilityMultiplier, combatRuneMajorAbilityEffects, combatRuneMajorAbilitySummary, combatScrapValue, combatStatsFor, createCombatState,
-  getEnemyForDungeonDepth, type CombatRune,
+  getEnemyForDungeonDepth, type CombatGear, type CombatRune,
 } from '../src/shared/combat.js';
 
 test('natural gear odds make high grades much rarer',()=>{
@@ -93,8 +93,9 @@ test('Third-Beat Recharge triggers only when completed player turns cross a mult
 });
 test('Expanded Reserves increases the actual Energy cap',()=>{
   const state=createCombatState();
-  const weapon=state.inventory.find(item=>item.slot==='weapon')!;
-  weapon.quality=100;
+  const weapon:CombatGear={id:'test-expanded-reserves-weapon',name:'Test Expanded Reserves',slot:'weapon',quality:100,sourceFloor:0,power:1,effect:'More Energy.',trait:'keen',damageBonus:0,speedBonus:0,maxHealthBonus:0,armorBonus:0,critChanceBonus:0};
+  state.inventory.push(weapon);
+  state.equipment.weapon=weapon.id;
   weapon.majorAbility={id:'expanded-reserves',name:'Expanded Reserves',trigger:'passive',maxEnergyFlat:5,description:'More Energy.'};
   assert.equal(combatStatsFor(state).maxEnergy,10);
 });
@@ -105,7 +106,7 @@ test('late-game player stats and enemy progression reach large numbers without o
   const shallowStats=combatStatsFor({...state,depth:1});
   const enemy=getEnemyForDungeonDepth('undercrypt',COMBAT_MAX_DEPTH);
   assert.equal(stats.speed,shallowStats.speed,'player Speed must not multiply with dungeon depth');
-  assert.ok(Number.isFinite(stats.speed)&&stats.speed>=310&&stats.speed<1_000_000);
+  assert.ok(Number.isFinite(stats.speed)&&stats.speed>=150&&stats.speed<1_000_000);
   assert.ok(stats.maxHealth>=1_000_000);
   assert.ok(stats.damage*10>=1_000_000);
   assert.ok(enemy.maxHp>1_000_000&&enemy.maxHp<1e15);

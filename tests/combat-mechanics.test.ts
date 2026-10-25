@@ -2,13 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { combatMarkMultiplier, addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatActionsDue, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatGearSpeedBonus, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatSkillRarityOdds, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatBossLuckBonus, combatBossesBeatenByDepth, combatTotalBossesBeaten, type CombatGear } from '../src/shared/combat.js';
 
-test('starter combat build carries the Auto-Dungeons baseline', () => {
+test('new Delvers start without gear and rely on modest baseline stats', () => {
   const state=createCombatState();
   const stats=combatStatsFor(state);
-  assert.equal(stats.damage,54);
-  assert.equal(stats.speed,310);
-  assert.equal(stats.maxHealth,1040);
-  assert.equal(state.inventory.length,2);
+  assert.equal(stats.damage,30);
+  assert.equal(stats.speed,150);
+  assert.equal(stats.maxHealth,500);
+  assert.equal(state.inventory.length,0);
+  assert.deepEqual(state.equipment,{weapon:null,armor:null,helmet:null,gloves:null,boots:null,ring:null,amulet:null});
   assert.equal(state.arenaRating,1000);
   assert.equal(state.arenaWins,0);
   assert.equal(state.arenaLosses,0);
@@ -30,9 +31,11 @@ test('skill catalog descriptions are distinct and Manual drops get rarer with St
   assert.equal(createCombatSkillRuntime().shield,0);
 });
 test('equipped gear changes derived stats', () => {
-  const state=createCombatState(), before=combatStatsFor(state);
-  const weapon=state.inventory.find(item=>item.slot==='weapon');
-  assert.ok(weapon);
+  const state=createCombatState();
+  const weapon:CombatGear={id:'test-stat-weapon',name:'Test Stat Weapon',slot:'weapon',quality:100,sourceFloor:0,power:1,effect:'test gear',trait:'keen',damageBonus:0,speedBonus:0,maxHealthBonus:0,armorBonus:0,critChanceBonus:0};
+  state.inventory.push(weapon);
+  state.equipment.weapon=weapon.id;
+  const before=combatStatsFor(state);
   weapon.damageBonus+=10; weapon.speedBonus+=25;
   const after=combatStatsFor(state);
   assert.equal(after.damage,before.damage+10);
@@ -176,7 +179,8 @@ test('the newest run pickup survives overflow even when its quality is lower tha
 
 test('duplicate loot grants are idempotent and do not consume haul slots',()=>{
   const state=createCombatState();
-  const original=state.inventory[0]!;
+  const original:CombatGear={id:'duplicate-loot-test',name:'Original test gear',slot:'weapon',quality:10,sourceFloor:0,power:10,effect:'Test item',trait:'keen',damageBonus:0,speedBonus:0,maxHealthBonus:0,armorBonus:0,critChanceBonus:0};
+  state.inventory.push(original);
   const inventoryLength=state.inventory.length;
   addCombatGearToInventory(state,{...original,name:'duplicate copy'});
   assert.equal(state.inventory.length,inventoryLength);
@@ -186,8 +190,13 @@ test('duplicate loot grants are idempotent and do not consume haul slots',()=>{
 
 test('run haul pruning preserves owned equipment and newest loot', () => {
   const state = createCombatState();
-  const equippedWeaponId = state.equipment.weapon;
-  const equippedArmorId = state.equipment.armor;
+  const ownedWeapon:CombatGear={id:'owned-weapon',name:'Owned Weapon',slot:'weapon',quality:50,sourceFloor:0,power:10,effect:'Owned gear',trait:'keen',damageBonus:1,speedBonus:0,maxHealthBonus:0,armorBonus:0,critChanceBonus:0};
+  const ownedArmor:CombatGear={id:'owned-armor',name:'Owned Armor',slot:'armor',quality:50,sourceFloor:0,power:10,effect:'Owned gear',trait:'bulwark',damageBonus:0,speedBonus:0,maxHealthBonus:10,armorBonus:0,critChanceBonus:0};
+  state.inventory.push(ownedWeapon,ownedArmor);
+  state.equipment.weapon=ownedWeapon.id;
+  state.equipment.armor=ownedArmor.id;
+  const equippedWeaponId = ownedWeapon.id;
+  const equippedArmorId = ownedArmor.id;
   for (let index = 0; index < 30; index += 1) {
     addCombatGearToInventory(state, {
       id: 'old-loot-' + index,
@@ -220,7 +229,7 @@ test('run haul pruning preserves owned equipment and newest loot', () => {
   addCombatGearToInventory(state, newest);
 
   assert.equal(state.runInventoryIds.length, 30, 'only the current run haul is capped');
-  assert.equal(state.inventory.length, 32, 'the permanent stash also keeps the two starting items');
+  assert.equal(state.inventory.length, 32, 'the permanent stash also keeps the two pre-existing items');
   assert.equal(state.inventory[0]?.id, newest.id);
   assert.ok(state.inventory.some(item => item.id === equippedWeaponId), 'equipped weapon must remain in inventory');
   assert.ok(state.inventory.some(item => item.id === equippedArmorId), 'equipped armor must remain in inventory');
@@ -357,14 +366,14 @@ test('Warding Doctrine adds permanent damage reduction', () => {
 
 test('Starfall and Mark Harvest Major Abilities apply equipped bonuses', () => {
   const state = createCombatState();
-  const weapon = state.inventory.find(item => item.slot === 'weapon');
-  assert.ok(weapon, 'starter weapon exists');
-  state.equipment.weapon = weapon!.id;
+  const weapon:CombatGear={id:'major-ability-test-weapon',name:'Major Ability Test Weapon',slot:'weapon',quality:100,sourceFloor:0,power:10,effect:'Test gear',trait:'keen',damageBonus:0,speedBonus:0,maxHealthBonus:0,armorBonus:0,critChanceBonus:0};
+  state.inventory.push(weapon);
+  state.equipment.weapon=weapon.id;
   const baseCrit = combatStatsFor(state).critChance;
-  weapon!.majorAbility = { id:'starfall', name:'Starfall', trigger:'passive', critChanceBonus:.08, description:'Adds critical-hit chance while equipped.' };
+  weapon.majorAbility = { id:'starfall', name:'Starfall', trigger:'passive', critChanceBonus:.08, description:'Adds critical-hit chance while equipped.' };
   assert.ok(combatStatsFor(state).critChance >= baseCrit + .08 - 1e-9);
   const baseMarks = combatMarkMultiplier(state);
-  weapon!.majorAbility = { id:'mark-harvest', name:'Mark Harvest', trigger:'passive', markBonusPercent:.25, description:'Increases Combat Marks earned from kills while equipped.' };
+  weapon.majorAbility = { id:'mark-harvest', name:'Mark Harvest', trigger:'passive', markBonusPercent:.25, description:'Increases Combat Marks earned from kills while equipped.' };
   assert.ok(combatMarkMultiplier(state) >= baseMarks + .25 - 1e-9);
 });
 

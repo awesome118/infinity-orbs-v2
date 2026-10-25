@@ -25,7 +25,10 @@ test('gear effectiveness follows the current floor target',()=>{
 });
 test('gear inventory and equipped loadout persist when a new run starts',()=>{
   const state=createCombatState();
-  const firstRunWeapon=state.equipment.weapon;
+  const oldWeapon=gear('pre-existing-weapon',0,'weapon',60);
+  state.inventory.push(oldWeapon);
+  state.equipment.weapon=oldWeapon.id;
+  const firstRunWeapon=oldWeapon.id;
   addCombatGearToInventory(state,gear('run-one-only',20,'weapon',75));
   state.equipment.weapon='run-one-only';
 
@@ -39,6 +42,8 @@ test('gear inventory and equipped loadout persist when a new run starts',()=>{
 
 test('30-item carrying cap applies to each run while old inventory persists',()=>{
   const state=createCombatState();
+  const oldInventoryGear=gear('pre-existing-stash-weapon',0,'weapon',60);
+  state.inventory.push(oldInventoryGear);
   const starterIds=state.inventory.map(item=>item.id);
   for(let i=0;i<COMBAT_INVENTORY_CAP;i++)addCombatGearToInventory(state,gear('run-'+i,i+1,i===1?'armor':'weapon',80));
   assert.equal(state.runInventoryIds.length,COMBAT_INVENTORY_CAP);
@@ -66,9 +71,11 @@ test('Auto Scrap settings are configurable and safely bounded',()=>{
   assert.deepEqual(normalizeCombatAutoScrapSettings({enabled:'yes',maxQuality:-20}),{enabled:false,maxQuality:0});
 });
 
-test('combat upgrade prices increase by rank',()=>{
+test('combat upgrade ranks have higher entry costs and increase further by rank',()=>{
+  assert.deepEqual(COMBAT_UPGRADES.map(upgrade=>upgrade.baseCost),[23,23,32,35,40,60,52]);
   const state=createCombatState(),upgrade=COMBAT_UPGRADES[0]!;
   const first=combatUpgradeCost(state,upgrade.id);
+  assert.equal(first,23);
   state.combatUpgrades[upgrade.id]=1;
   assert.ok(combatUpgradeCost(state,upgrade.id)>first);
 });

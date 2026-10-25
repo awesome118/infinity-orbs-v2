@@ -38,17 +38,14 @@ test('gear affixes from multiple equipment slots contribute to the combat build'
   assert.ok(combatStatsFor(state).critChance < after.critChance);
 });
 
-test('legacy weapon and armor starter equipment remains valid alongside the new slots', () => {
+test('new Delvers start with empty inventory and all gear slots unequipped', () => {
   const state = createCombatState();
-  const weapon = state.inventory.find(item => item.id === state.equipment.weapon);
-  const armor = state.inventory.find(item => item.id === state.equipment.armor);
-  assert.equal(weapon?.slot, 'weapon');
-  assert.equal(armor?.slot, 'armor');
-  assert.equal(state.equipment.helmet, null);
-  assert.equal(state.equipment.gloves, null);
-  assert.equal(state.equipment.boots, null);
-  assert.equal(state.equipment.ring, null);
-  assert.equal(state.equipment.amulet, null);
+  assert.deepEqual(state.inventory, []);
+  assert.deepEqual(state.equipment, { weapon:null, armor:null, helmet:null, gloves:null, boots:null, ring:null, amulet:null });
+  const stats = combatStatsFor(state);
+  assert.equal(stats.damage, 30);
+  assert.equal(stats.maxHealth, 500);
+  assert.equal(stats.speed, 150);
 });
 
 test('major ability odds increase with item rarity but are never guaranteed', () => {

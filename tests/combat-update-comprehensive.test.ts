@@ -8,11 +8,13 @@ import {
   combatRuneLuckMultiplier,
   combatRuneMajorAbilityEffects,
   combatStatsFor,
+  combatBossLuckBonus,
+  combatTotalBossesBeaten,
   createCombatState,
   getEnemyForDungeonDepth,
   resolveCombatSkillRarity,
   skillPullCost,
-  undercryptOrbLuckMultiplier,
+  type CombatGear,
   type CombatRune,
 } from '../src/shared/combat.js';
 import {
@@ -26,11 +28,12 @@ const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf
 
 test('player Speed comes from gear and stays depth-independent while enemy Speed scales', () => {
   const player = createCombatState();
+  const weapon:CombatGear={id:'speed-test-weapon',name:'Speed Test Weapon',slot:'weapon',quality:100,sourceFloor:0,power:1,effect:'Test gear',trait:'keen',damageBonus:0,speedBonus:0,maxHealthBonus:0,armorBonus:0,critChanceBonus:0};
+  player.inventory.push(weapon);
+  player.equipment.weapon=weapon.id;
   const basePlayerSpeed = combatStatsFor({ ...player, depth: 1 }).speed;
   const deepPlayerSpeed = combatStatsFor({ ...player, depth: 100 }).speed;
   assert.equal(deepPlayerSpeed, basePlayerSpeed, 'same loadout must grant the same player Speed at all depths');
-  const weapon = player.inventory.find(item => item.slot === 'weapon');
-  assert.ok(weapon);
   weapon.speedBonus = 35;
   assert.equal(combatStatsFor({ ...player, depth: 1 }).speed, basePlayerSpeed + 35);
   assert.equal(combatStatsFor({ ...player, depth: 100 }).speed, basePlayerSpeed + 35);
@@ -183,10 +186,12 @@ test('Luck display combines equipped Rune and Undercrypt multipliers and uses x 
   };
   const bonuses = combatRuneBonuses([rune], [rune.id]);
   assert.ok(combatRuneLuckMultiplier(bonuses.luckPct) > 1);
-  assert.ok(undercryptOrbLuckMultiplier(21) > undercryptOrbLuckMultiplier(1));
+  assert.ok(combatBossLuckBonus(21) > combatBossLuckBonus(1));
+  assert.ok(Math.abs(combatBossLuckBonus(2) - 0.0201) < 1e-12);
   const roll = source('src/client/components/RollSection.tsx');
   assert.match(roll, /combatRuneLuckMultiplier\(runeLuckPct\)/);
-  assert.match(roll, /undercryptOrbLuckMultiplier/);
+  assert.match(roll, /combatTotalBossesBeaten/);
+  assert.match(roll, /combatBossLuckBonus/);
   assert.match(roll, /Total Luck/);
   assert.match(roll, /\{totalLuckMultiplier\.toFixed\(2\)\}x/);
   assert.doesNotMatch(roll, /Math\.round\(\(luck - 1\) \* 100\)\}%/);
