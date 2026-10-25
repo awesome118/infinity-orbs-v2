@@ -81,7 +81,7 @@ test('Guard is applied before a slower enemy attack and mitigates that attack', 
     const initial = await getCombatSnapshot();
     const state = initial.state;
     state.dungeonId = 'undercrypt';
-    state.depth = 4; // Ironbound has low Speed; each combatant still receives a base action every beat.
+    state.depth = 4; // Ironbound has low Speed; each beat resolves exactly one scheduled actor.
     state.bestDepth = 4;
     state.dungeonBestDepths.undercrypt = 4;
     state.equipment.weapon = null;
@@ -89,6 +89,9 @@ test('Guard is applied before a slower enemy attack and mitigates that attack', 
     state.sequence = 0;
     state.combatBeats = 1;
     state.playerSpeedBeats = 1;
+    // Both actors are ready: ties resolve for the player, then the enemy acts on the following beat.
+    state.playerSpeedCharge = 1;
+    state.enemySpeedCharge = 1;
     state.playerActionsResolved = 1;
     state.enemyActionsResolved = 1;
     state.guardBeats = 0;
@@ -96,13 +99,23 @@ test('Guard is applied before a slower enemy attack and mitigates that attack', 
     await redis.set(key, JSON.stringify(state));
 
     const guarded = await performCombatBeat(1, 'guard');
-    const incoming = guarded.actions.find(action => action.actor === 'enemy' && action.kind === 'attack');
-    assert.ok(incoming, 'the slower enemy still takes its base action this beat');
+    assert.equal(
+      guarded.actions.some(action => action.actor === 'enemy' && action.kind === 'attack'),
+      false,
+      'a whole-number beat resolves only the scheduled player action',
+    );
+    assert.equal(guarded.state.guardBeats, 1, 'Guard persists until the enemy receives its turn');
+
+    // Skip only the wall-clock cooldown so this regression tests the scheduled turn order.
+    await redis.set(key, JSON.stringify({...guarded.state,lastAcceptedBeatAtMs:0}));
+    const attacked = await performCombatBeat(2, 'strike');
+    const incoming = attacked.actions.find(action => action.actor === 'enemy' && action.kind === 'attack');
+    assert.ok(incoming, 'the enemy resolves its scheduled turn on the following beat');
     assert.ok(
       (incoming.damage ?? Number.POSITIVE_INFINITY) < getEnemyForDungeonDepth('undercrypt', 4).damage,
-      'Guard must soften the incoming attack regardless of its Speed timing',
+      'Guard must soften the incoming attack when the enemy turn arrives',
     );
-    assert.equal(guarded.state.guardBeats, 0, 'Guard is consumed only after mitigating a real enemy attack');
+    assert.equal(attacked.state.guardBeats, 0, 'Guard is consumed only after mitigating a real enemy attack');
   });
 });
 
@@ -202,6 +215,8 @@ test('death clears pending kill rewards and run-bound modifiers',async()=>{
     state.combatBeats=1;
     state.playerActionsResolved=100;
     state.enemyActionsResolved=0;
+    state.playerSpeedCharge=0;
+    state.enemySpeedCharge=1; // Arrange the enemy's attack now; this test targets death-state cleanup.
     state.guardBeats=0;
     state.lastAcceptedBeatAtMs=0;
     state.skillRuntime.nextKillMarkBonus=123;
