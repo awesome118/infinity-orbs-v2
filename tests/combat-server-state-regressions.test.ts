@@ -122,6 +122,13 @@ test('death resets the run while retaining permanent combat progress', async () 
     state.playerSpeedCharge = 0;
     state.enemySpeedCharge = 1; // Arrange the enemy's attack now; this test targets persistence after death.
     state.skillLevels = { 'surefoot': 2 };
+    // Seed one pre-existing item explicitly: new Delvers no longer receive free starter gear.
+    state.inventory = [{
+      id:'starter-weapon', name:'Delver Knife', slot:'weapon', quality:35, sourceFloor:0, power:8,
+      effect:'Adds +4 damage. Critical chance +4 percentage points.', trait:'keen',
+      damageBonus:4, speedBonus:0, maxHealthBonus:0, armorBonus:0, critChanceBonus:0,
+    }];
+    state.equipment.weapon='starter-weapon';
     state.enemyHp = getEnemyForDepth(10).maxHp;
 
     await redis.set(key, JSON.stringify(state));

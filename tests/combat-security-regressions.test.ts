@@ -160,10 +160,15 @@ test('an intentionally empty gear inventory stays empty after normalization',asy
   });
 });
 
-test('explicitly unequipped starter gear is not silently re-equipped on reload',async()=>{
+test('explicitly unequipped legacy gear is not silently re-equipped on reload',async()=>{
   await withPlayer('combat-unequipped-gear-regression-player',async key=>{
     const initial=await getCombatSnapshot();
     const state=initial.state;
+    // Simulate an existing save that owns its old starter pieces but intentionally unequips them.
+    state.inventory=[
+      {id:'starter-weapon',name:'Delver Knife',slot:'weapon',quality:35,sourceFloor:0,power:8,effect:'Adds +4 damage. Critical chance +4 percentage points.',trait:'keen',damageBonus:4,speedBonus:0,maxHealthBonus:0,armorBonus:0,critChanceBonus:0},
+      {id:'starter-armor',name:'Worn Leathers',slot:'armor',quality:28,sourceFloor:0,power:5,effect:'Adds +40 max HP and reduces incoming damage by 4%.',trait:'bulwark',damageBonus:0,speedBonus:0,maxHealthBonus:40,armorBonus:0,critChanceBonus:0},
+    ];
     state.equipment.weapon=null;
     state.equipment.armor=null;
     await redis.set(key,JSON.stringify(state));
