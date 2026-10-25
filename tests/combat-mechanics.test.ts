@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { combatMarkMultiplier, addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatActionsDue, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatGearSpeedBonus, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatSkillRarityOdds, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, undercryptOrbLuckMultiplier, undercryptWardensDefeated, type CombatGear } from '../src/shared/combat.js';
+import { combatMarkMultiplier, addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatActionsDue, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatGearSpeedBonus, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatSkillRarityOdds, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatBossLuckBonus, combatBossesBeatenByDepth, combatTotalBossesBeaten, type CombatGear } from '../src/shared/combat.js';
 
 test('starter combat build carries the Auto-Dungeons baseline', () => {
   const state=createCombatState();
@@ -228,18 +228,36 @@ test('run haul pruning preserves owned equipment and newest loot', () => {
 });
 
 
-test('Crypt Warden clears grant a permanent effective Luck multiplier with a hard cap', () => {
-  assert.equal(undercryptWardensDefeated(1), 0);
-  assert.equal(undercryptWardensDefeated(10), 0, 'reaching the boss depth does not count as a clear');
-  assert.equal(undercryptWardensDefeated(11), 1, 'clearing the Depth 10 boss unlocks one stack');
-  assert.equal(undercryptWardensDefeated(101), 10);
-  assert.equal(undercryptWardensDefeated(251), 25);
-  assert.equal(undercryptWardensDefeated(50000), 25);
-  assert.equal(undercryptOrbLuckMultiplier(1), 1);
-  assert.equal(undercryptOrbLuckMultiplier(11), 1.01);
-  assert.equal(undercryptOrbLuckMultiplier(251), 1.25);
-  assert.equal(undercryptOrbLuckMultiplier(50000), 1.25);
-  assert.equal(undercryptOrbLuckMultiplier(Number.NaN), 1);
+test('boss clears across all three dungeons grant additive Luck with 1.01^n self-stacking', () => {
+  assert.equal(combatBossesBeatenByDepth(1), 0);
+  assert.equal(combatBossesBeatenByDepth(10), 0, 'entering a boss depth does not count as a clear');
+  assert.equal(combatBossesBeatenByDepth(11), 1);
+  assert.equal(combatBossesBeatenByDepth(101), 10);
+  assert.equal(combatBossesBeatenByDepth(COMBAT_MAX_DEPTH), Math.floor(COMBAT_MAX_DEPTH / 10) - 1);
+  assert.equal(combatBossesBeatenByDepth(COMBAT_MAX_DEPTH, true), Math.floor(COMBAT_MAX_DEPTH / 10));
+
+  assert.equal(combatBossLuckBonus(0), 0);
+  assert.ok(Math.abs(combatBossLuckBonus(1) - 0.01) < 1e-12);
+  assert.ok(Math.abs(combatBossLuckBonus(2) - 0.0201) < 1e-12);
+  assert.ok(Math.abs((2 + combatBossLuckBonus(2)) - 2.0201) < 1e-12,
+    'the boss bonus adds to other Luck sources rather than multiplying them');
+
+  assert.equal(combatTotalBossesBeaten({
+    dungeonId: 'undercrypt',
+    bestDepth: 1,
+    dungeonBestDepths: { undercrypt: 21, 'cinder-vault': 31, 'glass-labyrinth': 51 },
+    dungeonBossesBeaten: { undercrypt: 1, 'cinder-vault': 1, 'glass-labyrinth': 1 },
+  }), 10, 'the maximum cleared depth in each dungeon backfills old saves');
+
+  assert.equal(combatTotalBossesBeaten({ version: 1, depth: 1, bestDepth: 251 }), 25,
+    'legacy saves keep their Undercrypt progress');
+
+  assert.equal(combatTotalBossesBeaten({
+    dungeonId: 'cinder-vault',
+    depthCapCleared: false,
+    dungeonBestDepths: { undercrypt: COMBAT_MAX_DEPTH, 'cinder-vault': 31, 'glass-labyrinth': 21 },
+    dungeonBossesBeaten: { undercrypt: 5000, 'cinder-vault': 1, 'glass-labyrinth': 1 },
+  }), 5005, 'a completed final boss in a previously cleared dungeon stays counted after switching');
 });
 
 

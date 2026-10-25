@@ -4,7 +4,7 @@ import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
-import { combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityEffects, undercryptOrbLuckMultiplier } from '../shared/combat.js';
+import { combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityEffects, combatTotalBossesBeaten, combatBossLuckBonus } from '../shared/combat.js';
 import {
   createInitialState,
   type PlayerState,
@@ -3527,46 +3527,29 @@ export async function applyRolls(
   s.globalBoosters = freshGlobalBoosters;
   const globalBoosters = s.globalBoosters;
   const communityLuck = worldEvent?.buffMultiplier ?? 1;
-  let combatBestDepth = 1;
+  let combatBossesBeaten = 0;
   let runeBonuses = combatRuneBonuses([], []);
   let runeAbilityEffects = combatRuneMajorAbilityEffects([], []);
   if (typeof combatStateRaw === 'string') {
     try {
-      const parsed = JSON.parse(combatStateRaw) as { bestDepth?: unknown; dungeonId?: unknown; dungeonBestDepths?: { undercrypt?: unknown }; runes?: unknown; equippedRunes?: unknown };
-      const savedUndercryptDepth = Number(parsed?.dungeonBestDepths?.undercrypt);
-      const legacyBestDepth = Number(parsed?.bestDepth);
-      if (Number.isSafeInteger(savedUndercryptDepth) && savedUndercryptDepth > 0) {
-        combatBestDepth = savedUndercryptDepth;
-      } else if (
-        parsed?.dungeonId === 'undercrypt' ||
-        parsed?.dungeonId == null
-      ) {
-        // Legacy saves without dungeonId/dungeonBestDepths represented Undercrypt progress
-        // using bestDepth. Accept only a safe positive integer; malformed JSON stays neutral.
-        combatBestDepth = Number.isSafeInteger(legacyBestDepth) && legacyBestDepth > 0
-          ? legacyBestDepth
-          : 1;
-      } else {
-        combatBestDepth = 1;
-      }
+      const parsed = JSON.parse(combatStateRaw) as { bestDepth?: unknown; depth?: unknown; dungeonId?: unknown; depthCapCleared?: unknown; dungeonBestDepths?: unknown; dungeonBossesBeaten?: unknown; runes?: unknown; equippedRunes?: unknown };
+      combatBossesBeaten = combatTotalBossesBeaten(parsed);
       runeBonuses = combatRuneBonuses(parsed?.runes, parsed?.equippedRunes);
       runeAbilityEffects = combatRuneMajorAbilityEffects(parsed?.runes, parsed?.equippedRunes);
     } catch {
       // Ignore invalid optional combat state and preserve ordinary orb luck.
     }
   }
-  const undercryptLuck = undercryptOrbLuckMultiplier(combatBestDepth);
+  const bossLuckBonus = combatBossLuckBonus(combatBossesBeaten);
 
   // Fake CCU is an admin testing offset applied only to this player's luck calculation.
   // The underlying CCU metric and historical peaks always remain based on real players.
   const luckCcu = Math.max(1, Math.floor((s.onlinePlayers ?? 1) + fakeCcuBonus));
   const luckState = luckCcu === (s.onlinePlayers ?? 1) ? s : { ...s, onlinePlayers: luckCcu };
-  // Community Luck is another additive source, kept transient rather than persisted.
-  // Cleared Crypt Wardens permanently improve main-game orb Luck without
-  // touching the core player save: 1% per boss, capped at a 25% multiplier.
-  // Ordinary game Luck continues to use the normal distribution curve. Rune Luck is an explicit
-  // rarity multiplier so a 10x Rune really does multiply the rolled rarity by about 10.
-  const baseLuckCandidate = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1)) * undercryptLuck;
+  // Community and boss-clear Luck are additive sources. Boss clears stack only with
+  // themselves (1.01^n), and their bonus is added to ordinary Luck rather than multiplying it.
+  // Rune Luck remains an explicit rarity multiplier, so a 10x Rune still multiplies rolled rarity.
+  const baseLuckCandidate = luckMultiplier(luckState) + Math.max(0, communityLuck - 1) + bossLuckBonus;
   const baseLuck = Number.isFinite(baseLuckCandidate) ? Math.max(1, baseLuckCandidate) : Number.MAX_VALUE;
   const runeLuckMultiplier = combatRuneLuckMultiplier(runeBonuses.luckPct);
 

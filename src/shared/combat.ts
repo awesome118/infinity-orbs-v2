@@ -908,6 +908,8 @@ export interface CombatState {
   runId: number;
   dungeonId: CombatDungeonId;
   dungeonBestDepths: Record<CombatDungeonId, number>;
+  /** Lifetime boss clears per dungeon; survives deaths and dungeon switches. */
+  dungeonBossesBeaten: Record<CombatDungeonId, number>;
   depth: number;
   bestDepth: number;
   /** True when the final supported depth has been cleared; prevents repeat farming. */
@@ -1013,6 +1015,63 @@ export function combatHighestDepthReached(value: unknown): number {
     );
   }
   return highest;
+}
+
+/** Bosses appear every ten depths in each of the three dungeons. */
+export function combatBossesBeatenByDepth(bestDepthValue: unknown, finalBossCleared = false): number {
+  const rawDepth = Number(bestDepthValue);
+  const depth = Number.isFinite(rawDepth)
+    ? Math.max(1, Math.min(COMBAT_MAX_DEPTH, Math.floor(rawDepth)))
+    : 1;
+  let beaten = Math.floor((depth - 1) / 10);
+  if (finalBossCleared && depth === COMBAT_MAX_DEPTH && COMBAT_MAX_DEPTH % 10 === 0) beaten += 1;
+  return Math.max(0, Math.min(Math.floor(COMBAT_MAX_DEPTH / 10), beaten));
+}
+
+/** Reads lifetime boss clears while backfilling older saves from their best depth in each dungeon. */
+export function combatTotalBossesBeaten(value: unknown): number {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return 0;
+  const state = value as Record<string, unknown>;
+  const dungeonIds: CombatDungeonId[] = ['undercrypt', 'cinder-vault', 'glass-labyrinth'];
+  const activeDungeon: CombatDungeonId = dungeonIds.includes(state.dungeonId as CombatDungeonId)
+    ? state.dungeonId as CombatDungeonId
+    : 'undercrypt';
+  const rawDepths = state.dungeonBestDepths;
+  const depths = rawDepths && typeof rawDepths === 'object' && !Array.isArray(rawDepths)
+    ? rawDepths as Record<string, unknown>
+    : {};
+  const rawCounts = state.dungeonBossesBeaten;
+  const counts = rawCounts && typeof rawCounts === 'object' && !Array.isArray(rawCounts)
+    ? rawCounts as Record<string, unknown>
+    : {};
+  const maxPerDungeon = Math.floor(COMBAT_MAX_DEPTH / 10);
+  let total = 0;
+
+  for (const dungeon of dungeonIds) {
+    const storedDepth = depths[dungeon];
+    const hasStoredDepth = storedDepth !== undefined && storedDepth !== null &&
+      Number.isFinite(Number(storedDepth)) && Number(storedDepth) >= 1;
+    const legacyDepth = state.bestDepth ?? state.depth ?? 1;
+    const depth = hasStoredDepth ? storedDepth : dungeon === activeDungeon ? legacyDepth : 1;
+    const inferred = combatBossesBeatenByDepth(
+      depth,
+      dungeon === activeDungeon && state.depthCapCleared === true,
+    );
+    const rawCount = Number(counts[dungeon]);
+    const saved = Number.isFinite(rawCount)
+      ? Math.max(0, Math.min(maxPerDungeon, Math.floor(rawCount)))
+      : 0;
+    total += Math.max(inferred, saved);
+  }
+  return total;
+}
+
+/** The boss-clear bonus stacks as 1.01^n with itself, then adds to other Luck sources. */
+export function combatBossLuckBonus(bossesBeatenValue: unknown): number {
+  const raw = Number(bossesBeatenValue);
+  const maxTotal = Math.floor(COMBAT_MAX_DEPTH / 10) * 3;
+  const count = Number.isFinite(raw) ? Math.max(0, Math.min(maxTotal, Math.floor(raw))) : 0;
+  return Math.pow(1.01, count) - 1;
 }
 
 
@@ -1184,7 +1243,7 @@ export function skillPullCost(skillRollsValue: number, gachaRankValue: unknown =
 export function createCombatState(): CombatState {
   const starter = createCombatStarterGear();
   const state: CombatState = {
-    version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, depth:1, bestDepth:1, depthCapCleared:false,
+    version:1, runId:1, dungeonId:'undercrypt', dungeonBestDepths:{undercrypt:1,'cinder-vault':1,'glass-labyrinth':1}, dungeonBossesBeaten:{undercrypt:0,'cinder-vault':0,'glass-labyrinth':0}, depth:1, bestDepth:1, depthCapCleared:false,
     level:1, xp:0, xpToNext:100, health:1040, maxHealth:1040, speed:310,
     baseDamage:54, coins:0, scrap:0, combatMarks:250, runes:[], equippedRunes:[], runeAutoSacrifice:{...DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS}, combatTutorialSeen:false, combatUpgrades:{}, totalKills:0, skillRolls:0, skillRuntime:createCombatSkillRuntime(), strategyGuideRank:0, tacticianManuals:0, skillGachaRank:1, skillPityEpic:0, skillPityMythic:0, skillCopyProgress:{}, equippedAbilities:[], abilityCooldowns:{}, orbFocusRarity:2, orbFocusName:'Common Orb', sequence:0, lastAcceptedBeatAtMs:0,
     playerSpeedBeats:0, playerSpeedCharge:0, enemySpeedCharge:0, enemyTurnsToSkip:0, combatBeats:0, playerActionsResolved:0, enemyActionsResolved:0, playerTurnsCompleted:0,
@@ -1379,21 +1438,14 @@ export function getEnemyForDepth(depthValue: number): CombatEnemy {
 }
 
 
-/** Each defeated Crypt Warden grants +1% effective Luck for main-game orb rolls, capped at +25%. */
-export const UNDERCRYPT_ORB_LUCK_PER_WARDEN = 0.01;
-export const UNDERCRYPT_ORB_LUCK_BONUS_CAP = 0.25;
-
+/** @deprecated Boss Luck now tracks clear counts across all three dungeons. */
 export function undercryptWardensDefeated(bestDepthValue: unknown): number {
-  const rawDepth = Number(bestDepthValue);
-  const bestDepth = Number.isFinite(rawDepth) ? Math.max(1, Math.min(COMBAT_MAX_DEPTH, Math.floor(rawDepth))) : 1;
-  return Math.min(
-    Math.floor(UNDERCRYPT_ORB_LUCK_BONUS_CAP / UNDERCRYPT_ORB_LUCK_PER_WARDEN),
-    Math.floor((bestDepth - 1) / 10),
-  );
+  return combatBossesBeatenByDepth(bestDepthValue);
 }
 
+/** @deprecated Use combatBossLuckBonus with the lifetime boss count. */
 export function undercryptOrbLuckMultiplier(bestDepthValue: unknown): number {
-  return 1 + undercryptWardensDefeated(bestDepthValue) * UNDERCRYPT_ORB_LUCK_PER_WARDEN;
+  return 1 + combatBossLuckBonus(combatBossesBeatenByDepth(bestDepthValue));
 }
 
 

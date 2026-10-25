@@ -2,7 +2,7 @@ import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import { getOrbInfo, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatSkillDefinition, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneAutoSacrificeSettings, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatTurnStep, combatActionTimeline, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, combatGearSpeedBonus, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, COMBAT_RUNE_RARITIES, DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS, shouldAutoSacrificeRune, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
+import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatTurnStep, combatActionTimeline, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatHighestDepthReached, combatBossesBeatenByDepth, combatBossLuckBonus, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, combatGearSpeedBonus, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, COMBAT_RUNE_RARITIES, DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS, shouldAutoSacrificeRune, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -239,6 +239,13 @@ function normalizeState(raw:string|null|undefined):CombatState {
   };
   s.dungeonBestDepths[s.dungeonId]=Math.max(s.dungeonBestDepths[s.dungeonId],s.bestDepth);
   s.bestDepth=Math.max(s.depth,s.dungeonBestDepths[s.dungeonId]);
+  const savedBossCounts=(s.dungeonBossesBeaten&&typeof s.dungeonBossesBeaten==='object'?s.dungeonBossesBeaten:{}) as Partial<Record<CombatDungeonId,number>>;
+  const maxBossesPerDungeon=Math.floor(COMBAT_MAX_DEPTH/10);
+  s.dungeonBossesBeaten={
+    undercrypt:Math.max(finiteInt(savedBossCounts.undercrypt,0,0,maxBossesPerDungeon),combatBossesBeatenByDepth(s.dungeonBestDepths.undercrypt,s.dungeonId==='undercrypt'&&s.depthCapCleared)),
+    'cinder-vault':Math.max(finiteInt(savedBossCounts['cinder-vault'],0,0,maxBossesPerDungeon),combatBossesBeatenByDepth(s.dungeonBestDepths['cinder-vault'],s.dungeonId==='cinder-vault'&&s.depthCapCleared)),
+    'glass-labyrinth':Math.max(finiteInt(savedBossCounts['glass-labyrinth'],0,0,maxBossesPerDungeon),combatBossesBeatenByDepth(s.dungeonBestDepths['glass-labyrinth'],s.dungeonId==='glass-labyrinth'&&s.depthCapCleared)),
+  };
   s.level=finiteInt(s.level,1,1,60);s.xp=finiteInt(s.xp,0,0,Number.MAX_SAFE_INTEGER);
   s.xpToNext=finiteInt(s.xpToNext,100,1,1_000_000_000);
   // Migrate legacy Delver Coins and Combat Marks into one saved balance.
@@ -732,7 +739,15 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
       if(activeSkill?.id!=='singularity-edge')s.skillRuntime.storedDamage=Math.min(Math.round(s.maxHealth*2),s.skillRuntime.storedDamage+Math.round(appliedDamage*.04));
       actions.push({actor:'player',kind:'attack',damage:appliedDamage,text:(crit?'Critical hit for ':'Strike for ')+appliedDamage+' damage.'});
       if(enemyHp<=0){
-        defeated=true;actions.push({actor:'player',kind:'death',text:'The '+enemy.name+' falls.'});s.totalKills=Math.min(Number.MAX_SAFE_INTEGER,s.totalKills+1);
+        defeated=true;actions.push({actor:'player',kind:'death',text:'The '+enemy.name+' falls.'});
+        if(enemy.boss){
+          const maxBossesPerDungeon=Math.floor(COMBAT_MAX_DEPTH/10);
+          const knownBosses=Math.max(s.dungeonBossesBeaten[s.dungeonId],combatBossesBeatenByDepth(s.dungeonBestDepths[s.dungeonId]));
+          s.dungeonBossesBeaten[s.dungeonId]=Math.min(maxBossesPerDungeon,knownBosses+1);
+          const totalBosses=s.dungeonBossesBeaten.undercrypt+s.dungeonBossesBeaten['cinder-vault']+s.dungeonBossesBeaten['glass-labyrinth'];
+          actions.push({actor:'player',kind:'loot',text:'Permanent Infinity Orb Luck bonus: +'+(combatBossLuckBonus(totalBosses)*100).toFixed(2)+'% from '+totalBosses.toLocaleString()+' boss clears across all dungeons.'});
+        }
+        s.totalKills=Math.min(Number.MAX_SAFE_INTEGER,s.totalKills+1);
         if(soulHarvestPercent>0){const healed=Math.min(s.maxHealth-s.health,Math.max(0,Math.round(s.maxHealth*soulHarvestPercent)));if(healed>0){s.health+=healed;actions.push({actor:'player',kind:'ability',text:'Soul Harvest restores '+healed.toLocaleString()+' HP.'});}}
         if(unendingWardPercent>0){const before=s.skillRuntime.shield;s.skillRuntime.shield=Math.min(Math.round(s.maxHealth*.75),s.skillRuntime.shield+Math.max(1,Math.round(s.maxHealth*unendingWardPercent)));actions.push({actor:'player',kind:'ability',text:'Unending Ward adds '+(s.skillRuntime.shield-before).toLocaleString()+' shield.'});}
         const coins=Math.max(1,Math.round((12+s.depth*2.4)*stats.coinMultiplier*(s.dungeonId==='cinder-vault'?1.4:1)));
@@ -907,10 +922,11 @@ export async function forgeCombatGear(slotValue:unknown,qualityValue?:unknown):P
   }
   return mutate(state=>{
     const floor=Math.max(0,state.depth-1);
+    const itemFloor=Math.max(0,combatHighestDepthReached(state)-1);
     const cost=requestedQuality===undefined?combatForgeCost(floor):combatForgeQualityCost(floor,requestedQuality);
     if(state.scrap<cost)throw new Error('Not enough Scrap to forge this item.');
     state.scrap-=cost;
-    const item=createGear(floor,requestedSlot,requestedQuality);
+    const item=createGear(itemFloor,requestedSlot,requestedQuality);
     addCombatGearToInventory(state,item);
     return {...snapshot(state),forgeResult:{item,cost,remainingScrap:state.scrap}};
   });

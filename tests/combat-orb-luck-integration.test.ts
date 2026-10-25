@@ -19,7 +19,7 @@ async function rollOnceWithCurrentCombatSave() {
   return applyRolls(state, 1, undefined, 'online', 1, fixedLuckSample());
 }
 
-test('cleared Undercrypt Wardens increase real orb-roll Luck; invalid combat saves fail neutral', async () => {
+test('boss clears across all three dungeons increase real orb-roll Luck; invalid saves fail neutral', async () => {
   const userId = `combat-orb-luck-${process.pid}-${Date.now()}`;
   const previousUserId = context.userId;
   const combatKey = `infinity-orbs:combat:${userId}`;
@@ -32,8 +32,15 @@ test('cleared Undercrypt Wardens increase real orb-roll Luck; invalid combat sav
     await redis.set(combatKey, '{not valid JSON');
     const withMalformedCombatSave = await rollOnceWithCurrentCombatSave();
 
-    await redis.set(combatKey, JSON.stringify({ version: 1, depth: 1, bestDepth: 251 }));
-    const afterClearingWardens = await rollOnceWithCurrentCombatSave();
+    await redis.set(combatKey, JSON.stringify({
+      version: 1,
+      dungeonId: 'glass-labyrinth',
+      depth: 1,
+      bestDepth: 1,
+      dungeonBestDepths: { undercrypt: 51, 'cinder-vault': 101, 'glass-labyrinth': 101 },
+      dungeonBossesBeaten: { undercrypt: 5, 'cinder-vault': 10, 'glass-labyrinth': 10 },
+    }));
+    const afterClearingBosses = await rollOnceWithCurrentCombatSave();
 
     assert.equal(
       withMalformedCombatSave.bestOrb.rarity,
@@ -41,8 +48,8 @@ test('cleared Undercrypt Wardens increase real orb-roll Luck; invalid combat sav
       'missing or corrupt combat state must not fabricate a Luck bonus',
     );
     assert.ok(
-      afterClearingWardens.bestOrb.rarity > withoutCombatSave.bestOrb.rarity,
-      'the maximum permanent Undercrypt reward should affect the central roll calculation',
+      afterClearingBosses.bestOrb.rarity > withoutCombatSave.bestOrb.rarity,
+      'boss clear counts from all three dungeons should affect the central roll calculation',
     );
   } finally {
     context.userId = previousUserId;
