@@ -89,7 +89,7 @@ test('Combat regression suite covers the catalog, progression, gear, runes, tact
   "the newest run pickup survives overflow even when its quality is lower than the old haul",
   "duplicate loot grants are idempotent and do not consume haul slots",
   "run haul pruning preserves owned equipment and newest loot",
-  "Crypt Warden clears grant a permanent effective Luck multiplier with a hard cap",
+  "boss clears across all three dungeons grant additive Luck with 1.01^n self-stacking",
   "Arena rating uses bounded Elo-style updates",
   "core-game level and highest-orb rarity improve combat without changing baseline builds",
   "auto combat tactics choose safe, valid intents from health and energy",
