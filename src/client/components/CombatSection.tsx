@@ -299,7 +299,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   };
   const beat=useCallback(async()=>{
     const current=stateRef.current;
-    if(!current||runtime.current.busy||runtime.current.mutating||(!runtime.current.manual&&(!runtime.current.auto||runtime.current.paused||Boolean(error))))return;
+    if(!current||!enemy||runtime.current.busy||runtime.current.mutating||(!runtime.current.manual&&(!runtime.current.auto||runtime.current.paused||Boolean(error))))return;
     const queuedCommandVersion=runtime.current.pendingCommandVersion;
     const queuedCommand=runtime.current.intent;
     const pendingAbilityId=runtime.current.pendingAbilityId;
@@ -371,7 +371,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       window.dispatchEvent(new CustomEvent('io-combat-beat-state',{detail:{active:false}}));
       releaseBeat();
     }
-  },[accept,error,load,enemy.speed]);
+  },[accept,error,load,enemy?.speed]);
   useEffect(()=>{
     if(!auto||paused||loading||Boolean(error))return;
     let timer:number|null=null;

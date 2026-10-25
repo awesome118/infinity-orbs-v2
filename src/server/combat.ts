@@ -862,8 +862,8 @@ export async function performCombatBeat(sequence:number,intent:CombatCommand,ski
     for(const event of orderedCombatActions){
       if(defeated||died)break;
       if(event.actor==='enemy'){
-        if(s.enemyTurnsToSkip>0){
-          s.enemyTurnsToSkip=Math.max(0,s.enemyTurnsToSkip-1);
+        if((s.enemyTurnsToSkip??0)>0){
+          s.enemyTurnsToSkip=Math.max(0,(s.enemyTurnsToSkip??0)-1);
           actions.push({actor:'player',kind:'ability',text:'Time-Shear cancels the enemy’s turn.'});
         }else resolveEnemyAttack();
       }else if(event.actionIndex>=0)resolvePlayerAttack(event.actionIndex);
