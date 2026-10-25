@@ -2694,7 +2694,9 @@ export function upgradeCost(id: UpgradeId, level: number): number {
     valueBonus: { base: 80, mult: 1.50 },
   };
   const { base, mult } = configs[id];
-  return Math.floor(base * Math.pow(mult, level));
+  // Unlimited repeatable upgrades have a modest price premium; capped speed upgrades keep their original curve.
+  const repeatableCostPremium = id === 'speed' || id === 'offlineRate' ? 1 : 1.15;
+  return Math.floor(base * Math.pow(mult, level) * repeatableCostPremium);
 }
 
 /**

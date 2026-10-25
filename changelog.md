@@ -37,6 +37,7 @@
 
 ### Balance Changes:
 
+- Unlimited repeatable core-game upgrades cost 15% more; capped Roll Speed and Offline Generation Speed keep their existing cost curves.
 - Supernova now multiplies the normal critical multiplier instead of replacing it, so it remains powerful as Critical upgrades grow.
 - Removed Mastery Engine.
 

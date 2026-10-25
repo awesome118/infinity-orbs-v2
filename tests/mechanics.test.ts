@@ -226,6 +226,16 @@ test('Cosmic Reserve multiplies Luck from unspent Cosmic Dust only', () => {
   assert.equal(luckMultiplier(state), withoutReserve);
 });
 
+test('repeatable core-game upgrades cost 15% more while capped upgrades keep their original curve', () => {
+  assert.equal(upgradeCost('luck', 0), 86);
+  assert.equal(upgradeCost('luck', 1), 133);
+  assert.equal(upgradeCost('multi', 0), 138);
+  assert.equal(upgradeCost('speed', 0), 45, 'capped Roll Speed keeps its original cost curve');
+  assert.equal(upgradeCost('offlineRate', 0), 90, 'capped Offline Generation Speed keeps its original cost curve');
+  assert.equal(upgradeCost('speed', 20), Infinity);
+  assert.equal(upgradeCost('offlineRate', 8), Infinity);
+});
+
 test('Offline Generation Speed reaches its 60% reduction cap at level 8', () => {
   const state = createInitialState(NOW);
   const baseInterval = effectiveOfflineTickMs(state);
