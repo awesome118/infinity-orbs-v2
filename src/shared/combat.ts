@@ -268,14 +268,14 @@ export function combatRuneMajorAbilitySummary(ability:CombatRuneMajorAbility,lev
     case 'echo-chamber':return pct(Math.min(45,power))+' chance per roll to echo; each echo can chain again at half the previous chance, up to '+Math.min(8,1+Math.floor(Math.log2(level)/4)+Math.floor(power/20))+' echoes.';
     case 'paradox-engine':return pct(Math.min(50,power))+' chance on a multi-roll activation to add '+rolls+' extra roll'+(rolls===1?'':'s')+'.';
     case 'event-horizon':return 'Every new all-time rarity record triggers a '+rolls+'-roll burst with a '+(1+Math.min(2,power/100)).toFixed(2)+'× minimum-rarity floor.';
-    case 'shard-constellation':return 'Every '+Math.max(3,Math.floor(12/(1+power/100)))+' Shards found grants '+(1+Math.min(9,Math.floor(power/20)))+' bonus Shards and '+rolls+' bonus roll'+(rolls===1?'':'s')+'.';
+    case 'shard-constellation':return 'Every '+Math.max(100,Math.floor(200/(1+power/100)))+' Shards found grants 1 bonus Shard and up to '+Math.min(2,rolls)+' bonus roll'+(Math.min(2,rolls)===1?'':'s')+'.';
     case 'temporal-loop':return 'Each roll adds '+(1+Math.min(9,power/10)).toFixed(2)+' Momentum, and long dry streaks accelerate charge; every 100 Momentum grants '+rolls+' bonus roll'+(rolls===1?'':'s')+'.';
     case 'prismatic-fork':return 'At rarity 1,000+, '+pct(Math.min(45,power))+' chance to fork a bonus roll with a '+(1+Math.min(2,power/100)).toFixed(2)+'× minimum-rarity floor.';
     case 'critical-convergence':return 'Critical rolls have a '+pct(Math.min(35,power))+' chance to create '+rolls+' extra roll'+(rolls===1?'':'s')+' with a rarity floor based on the critical result.';
     case 'rarity-ladder':return 'Three rising rarities in one activation trigger '+rolls+' bonus roll'+(rolls===1?'':'s')+' with a '+(1+Math.min(2,power/100)).toFixed(2)+'× rarity floor.';
     case 'stellar-dividend':return 'Every '+Math.max(20,Math.floor(100/(1+power/100)))+' lifetime rolls triggers '+rolls+' bonus roll'+(rolls===1?'':'s')+'.';
-    case 'shard-jackpot':return pct(Math.min(50,power))+' chance to multiply a Shard payout by up to '+(1+Math.min(5,power/25)).toFixed(2)+'×.';
-    case 'milestone-engine':return 'Each time your all-time rarity crosses a new power of ten, gain '+(1+Math.min(9,Math.floor(power/20)))+' bonus Shards and '+rolls+' rarity-floored bonus roll'+(rolls===1?'':'s')+'.';
+    case 'shard-jackpot':return pct(Math.min(10,power/10))+' chance to double a Shard payout (maximum 2 Shards per Orb).';
+    case 'milestone-engine':return 'A new all-time power-of-ten rarity milestone has a '+pct(Math.min(5,power/20))+' chance to grant 1 bonus Shard and adds up to '+Math.min(2,rolls)+' rarity-floored bonus roll'+(Math.min(2,rolls)===1?'':'s')+'.';
     case 'shard-tithe':return Math.min(.25,power/400).toFixed(2)+'% chance to grant +1 whole Shard on each main-game roll.';
     case 'discovery-oracle':return pct(Math.min(20,power/5))+' chance for a first-time rarity discovery to grant '+rolls+' extra roll'+(rolls===1?'':'s')+' with the same rarity floor.';
     case 'dry-streak-refinery':return 'Each 100 rolls since your best rarity adds up to '+Math.min(.25,power/4000).toFixed(3)+'% chance per roll to grant +1 whole Shard.';
@@ -321,8 +321,8 @@ export function combatRuneMajorAbilityEffects(runesValue:unknown,equippedValue:u
         break;
       case 'shard-constellation':
         effects.shardConstellationPct=add(effects.shardConstellationPct,power);
-        effects.shardConstellationBonusRolls=Math.max(effects.shardConstellationBonusRolls,runeMajorBonusRollCount(power,level));
-        effects.shardConstellationBonusShards=Math.max(effects.shardConstellationBonusShards,1+Math.min(9,Math.floor(power/20)));
+        effects.shardConstellationBonusRolls=Math.max(effects.shardConstellationBonusRolls,Math.min(2,runeMajorBonusRollCount(power,level)));
+        effects.shardConstellationBonusShards=1;
         break;
       case 'temporal-loop':
         effects.temporalLoopPct=add(effects.temporalLoopPct,power);
@@ -345,12 +345,12 @@ export function combatRuneMajorAbilityEffects(runesValue:unknown,equippedValue:u
         break;
       case 'shard-jackpot':
         effects.shardJackpotPct=add(effects.shardJackpotPct,power);
-        effects.shardJackpotExtraMultiplier=Math.max(effects.shardJackpotExtraMultiplier,Math.min(5,power/25));
+        effects.shardJackpotExtraMultiplier=1;
         break;
       case 'milestone-engine':
         effects.milestoneEnginePct=add(effects.milestoneEnginePct,power);
-        effects.milestoneEngineBonusRolls=Math.max(effects.milestoneEngineBonusRolls,runeMajorBonusRollCount(power,level));
-        effects.milestoneEngineBonusShards=Math.max(effects.milestoneEngineBonusShards,1+Math.min(9,Math.floor(power/20)));
+        effects.milestoneEngineBonusRolls=Math.max(effects.milestoneEngineBonusRolls,Math.min(2,runeMajorBonusRollCount(power,level)));
+        effects.milestoneEngineBonusShards=1;
         break;
       case 'shard-tithe':
         effects.shardTithePerRoll=Math.min(.02,effects.shardTithePerRoll+Math.min(.005,power/20000));

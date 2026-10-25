@@ -28,6 +28,7 @@ import {
   PREMIUM_BOOSTERS,
   AUTOMATIONS,
   SHARD_SYNTHESIS_COST,
+  ROLL_SHARD_PROC_CHANCE_CAP,
   formatShardAmount,
   roundShardAmount,
   activateGlobalBoosterStack,
@@ -67,6 +68,7 @@ import {
 import {
   createGuildTask,
   createInitialGuildTasks,
+  createInitialGuildBoss,
 } from '../src/shared/social.js';
 
 const NOW = 1_800_000_000_000;
@@ -671,4 +673,16 @@ test('Unbroken Momentum uses the requested logarithmic Speed curve', () => {
     '72 hours should grant approximately 25% permanent Speed');
   assert.equal(unbrokenMomentumSpeedBonus(1000 * hour), 0.30,
     'long sessions should respect the 30% cap');
+});
+
+
+test('roll Shard proc chance has a strict 15% per-Orb ceiling', () => {
+  assert.equal(ROLL_SHARD_PROC_CHANCE_CAP, 0.15);
+});
+
+test('repeatable Guild Boss Shard rewards are capped at three per clear', () => {
+  assert.equal(createInitialGuildBoss(1).rewardShards, 1);
+  assert.equal(createInitialGuildBoss(2).rewardShards, 2);
+  assert.equal(createInitialGuildBoss(3).rewardShards, 3);
+  assert.equal(createInitialGuildBoss(100).rewardShards, 3);
 });

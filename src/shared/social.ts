@@ -287,7 +287,8 @@ export function createInitialGuildBoss(tier = 1): GuildBoss {
     maxHp,
     currentHp: maxHp,
     rewardTokens: 0,
-    rewardShards: 10 * tier,
+    // Guild Bosses stay rewarding without scaling into hundreds of repeatable Shards.
+    rewardShards: Math.min(3, Math.max(1, Math.floor(Number.isFinite(tier) ? tier : 1))),
     rewardGuildXp: 250 * tier,
     defeated: false,
     contributors: {},

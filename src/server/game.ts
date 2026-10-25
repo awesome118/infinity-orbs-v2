@@ -16,6 +16,7 @@ import {
   AUTO_UNLOCK_COST,
   AUTO_BUYER_COIN_RESERVE,
   SHARD_SYNTHESIS_COST,
+  ROLL_SHARD_PROC_CHANCE_CAP,
   roundShardAmount,
   resolveShardPityReward,
   PRESTIGE_UPGRADES,
@@ -3590,7 +3591,7 @@ export async function applyRolls(
   const maxEchoChain = runeAbilityEffects.echoChamberMaxChain;
   const paradoxChance = Math.min(.50, runeAbilityEffects.paradoxEnginePct / 100);
   const eventHorizonRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.eventHorizonPct / 100);
-  const shardConstellationThreshold = Math.max(6, Math.floor(24 / (1 + runeAbilityEffects.shardConstellationPct / 100)));
+  const shardConstellationThreshold = Math.max(100, Math.floor(200 / (1 + runeAbilityEffects.shardConstellationPct / 100)));
   const temporalMomentumPerRoll = runeAbilityEffects.temporalLoopMomentumPerRoll;
   const prismaticForkChance = Math.min(.45, runeAbilityEffects.prismaticForkPct / 100);
   const prismaticForkRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.prismaticForkPct / 100);
@@ -3598,7 +3599,7 @@ export async function applyRolls(
   const criticalConvergenceRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.criticalConvergencePct / 100);
   const rarityLadderRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.rarityLadderPct / 100);
   const stellarDividendInterval = Math.max(20, Math.floor(100 / (1 + runeAbilityEffects.stellarDividendPct / 100)));
-  const shardJackpotChance = Math.min(.50, runeAbilityEffects.shardJackpotPct / 100);
+  const shardJackpotChance = Math.min(.10, runeAbilityEffects.shardJackpotPct / 1000);
   const milestoneRarityMultiplier = 1 + Math.min(2, runeAbilityEffects.milestoneEnginePct / 100);
   let paradoxTriggered = false;
   let constellationTriggered = false;
@@ -3704,13 +3705,16 @@ export async function applyRolls(
       const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity + 1, Math.ceil(rarity * eventHorizonRarityMultiplier)));
       addRuneBonusRolls(runeAbilityEffects.eventHorizonBonusRolls, { minRarity: floor, skipAllProcs: true });
     }
-    // Milestone Engine pays for each new order-of-magnitude reached by the all-time record.
+    // Milestone Engine has a small bonus-Shard chance and a tightly bounded roll burst.
     if (isNewRarityRecord && previousAllTimeRarity > 0 && !suppressOtherRuneProcs && runeAbilityEffects.milestoneEnginePct > 0) {
       const decadesCrossed = Math.min(5, Math.max(0, Math.floor(Math.log10(rarity)) - Math.floor(Math.log10(previousAllTimeRarity))));
       if (decadesCrossed > 0) {
-        shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + runeAbilityEffects.milestoneEngineBonusShards * decadesCrossed);
+        const milestoneShardChance = Math.min(.05, runeAbilityEffects.milestoneEnginePct / 2000);
+        if (rng() < milestoneShardChance) {
+          shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + 1);
+        }
         const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity + 1, Math.ceil(rarity * milestoneRarityMultiplier)));
-        addRuneBonusRolls(runeAbilityEffects.milestoneEngineBonusRolls * decadesCrossed, { minRarity: floor, skipAllProcs: true });
+        addRuneBonusRolls(Math.min(2, runeAbilityEffects.milestoneEngineBonusRolls), { minRarity: floor, skipAllProcs: true });
       }
     }
     // Critical Convergence converts a critical hit into a chance for a non-recursive, rarity-floored bonus.
@@ -3763,13 +3767,8 @@ export async function applyRolls(
       (1 + runeBonuses.xpGainPct / 100);
     const earnedXp = Math.min(Number.MAX_SAFE_INTEGER, Math.round(Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) * xpBonusMul));
 
-    // Shards bonus for rare orbs (1,000+)
-    // Shards are indivisible. High-rarity finds grant integer bonuses; Rune drip abilities now roll for a whole-Shard payout.
+    // High rarity is not a guaranteed Shard source. All repeatable Orb earnings are proc-based.
     let earnedShards = 0;
-    if (rarity >= 1_000_000) earnedShards += 5;
-    else if (rarity >= 100_000) earnedShards += 3;
-    else if (rarity >= 10_000) earnedShards += 2;
-    else if (rarity >= 1_000) earnedShards += 1;
     const shardTitheChance = Math.min(0.0025, Math.max(0, runeAbilityEffects.shardTithePerRoll) * 0.5);
     if (!suppressOtherRuneProcs && shardTitheChance > 0 && rng() < shardTitheChance) earnedShards += 1;
     // Dry-Streak Refinery converts its former fractional drip into a reduced chance for one whole Shard.
@@ -3778,7 +3777,7 @@ export async function applyRolls(
 
     // Shard Chance upgrade + Mastery + Guild perk proc
     const shardProcChance = Math.min(
-      0.5,
+      ROLL_SHARD_PROC_CHANCE_CAP,
       ((s.upgrades.shardChance ?? 0) * 0.0015 +
       (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
       (s.guildPerks?.shardRank ?? 0) * 0.0005 +
@@ -3788,9 +3787,11 @@ export async function applyRolls(
     );
     const shardProcTriggered = rng() < shardProcChance;
     earnedShards += resolveShardPityReward(s, shardProcTriggered);
-    // Shard Jackpot doubles or multiplies an integer payout; no fractional minimum is applied.
-    if (earnedShards > 0 && !suppressOtherRuneProcs && shardJackpotChance > 0 && rng() < shardJackpotChance * 0.5) {
-      earnedShards = Math.round(earnedShards * (1 + runeAbilityEffects.shardJackpotExtraMultiplier));
+    // Multiple low-probability effects cannot stack into a large per-Orb payout.
+    // Jackpot is the one exception: a successful proc may turn one Shard into two.
+    earnedShards = Math.min(1, earnedShards);
+    if (earnedShards > 0 && !suppressOtherRuneProcs && shardJackpotChance > 0 && rng() < shardJackpotChance) {
+      earnedShards = Math.min(2, Math.round(earnedShards * (1 + runeAbilityEffects.shardJackpotExtraMultiplier)));
     }
 
     shardsGained = Math.round(shardsGained + earnedShards);

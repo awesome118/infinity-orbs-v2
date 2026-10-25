@@ -56,3 +56,33 @@ test('boss clears across all three dungeons increase real orb-roll Luck; invalid
     await redis.del(combatKey);
   }
 });
+
+
+test('high-rarity Orb rolls do not guarantee Shards; successful procs pay one whole Shard', async () => {
+  const userId = `shard-economy-roll-${process.pid}-${Date.now()}`;
+  const previousUserId = context.userId;
+  const combatKey = `infinity-orbs:combat:${userId}`;
+  context.userId = userId;
+
+  try {
+    await redis.del(combatKey);
+    const missState = createInitialState(Date.now());
+    missState.totalRolls = 100;
+    missState.level = 1000;
+    missState.highestRarity = 1_000_000;
+    const miss = await applyRolls(missState, 1, 1_000_000, 'online', 1, () => 0.99, true);
+    assert.equal(miss.bestOrb.rarity, 1_000_000);
+    assert.equal(miss.shardsGained, 0, 'a high-rarity Orb does not automatically mint Shards');
+
+    const procState = createInitialState(Date.now());
+    procState.totalRolls = 100;
+    procState.level = 1000;
+    procState.highestRarity = 1_000_000;
+    const proc = await applyRolls(procState, 1, 1_000_000, 'online', 1, () => 0, true);
+    assert.equal(proc.bestOrb.rarity, 1_000_000);
+    assert.equal(proc.shardsGained, 1, 'a normal proc grants one whole Shard');
+  } finally {
+    context.userId = previousUserId;
+    await redis.del(combatKey);
+  }
+});

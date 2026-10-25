@@ -182,7 +182,8 @@ export function normalizeAutomations(value: unknown): Partial<Record<AutomationI
   ) as Partial<Record<AutomationId, boolean>>;
 }
 
-/** Shards are whole-number currency. Legacy pity exports stay inert so older saves and tests remain readable. */
+/** Shards are whole-number currency. Roll income is chance-based and capped to a 15% proc per Orb. */
+export const ROLL_SHARD_PROC_CHANCE_CAP = 0.15;
 export const SHARD_DECIMAL_PLACES = 0;
 export const SHARD_PRECISION = 1;
 export const SHARD_PITY_ROLLS_TO_REWARD = 0;
@@ -2561,14 +2562,11 @@ export function predictRollActivation(
       s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest);
     }
 
+    // High rarity no longer guarantees currency: an Orb can only pay on a Shard proc.
     let earnedShards = 0;
-    if (rarity >= 1_000_000) earnedShards += 5;
-    else if (rarity >= 100_000) earnedShards += 3;
-    else if (rarity >= 10_000) earnedShards += 2;
-    else if (rarity >= 1_000) earnedShards += 1;
 
     const shardProcChance = Math.min(
-      0.5,
+      ROLL_SHARD_PROC_CHANCE_CAP,
       ((s.upgrades.shardChance ?? 0) * 0.0015 +
       (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
       (s.guildPerks?.shardRank ?? 0) * 0.0005 +
