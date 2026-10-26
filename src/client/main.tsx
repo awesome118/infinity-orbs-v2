@@ -2671,6 +2671,11 @@ export function App() {
             aria-labelledby="io-notification-prompt-title"
             data-testid="notification-prompt"
           >
+            {notificationPromptPreview && (
+              <div className="mb-3 rounded-lg border border-teal-400/30 bg-teal-400/10 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-teal-200">
+                Admin Preview · Notification settings will not change
+              </div>
+            )}
             <div className="io-notification-prompt-kicker">
               <Bell className="w-4 h-4" />
               Push Notifications
