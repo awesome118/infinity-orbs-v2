@@ -111,6 +111,7 @@ function AnimatedRarity({ rarity, color, isInfinity = false }: { rarity: number;
 
 function FrenzyPost() {
   const [info, setInfo] = useState<FrenzyInfo | null>(null);
+  const [playedBefore, setPlayedBefore] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [claimed, setClaimed] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -144,6 +145,15 @@ function FrenzyPost() {
   };
 
   useEffect(() => { void load(); }, []);
+
+  useEffect(() => {
+    let active = true;
+    void fetchWithTimeout('/api/player/experience')
+      .then(response => response.ok ? response.json() as Promise<{ playedBefore?: unknown }> : null)
+      .then(result => { if (active && typeof result?.playedBefore === 'boolean') setPlayedBefore(result.playedBefore); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   // Viewing a Frenzy post is an impression, not a live-player heartbeat.
   useEffect(() => {
@@ -271,7 +281,7 @@ function FrenzyPost() {
           <section className="io-public-card io-frenzy-card io-frenzy-success-card">
             <div className="io-public-eyebrow io-public-eyebrow-success">Frenzy claimed</div>
             <h1 className="io-frenzy-success-title">You found a 1/{formatRarity(inlineClaimedRarity, inlineClaimedIsInfinity)} Orb.</h1>
-            <p className="io-frenzy-success-copy">Your reward is saved. Continue in the full game for more rolls.</p>
+            <p className="io-frenzy-success-copy">{playedBefore === true ? 'Your reward is saved. Keep rolling to beat your best.' : 'Your reward is saved. Continue in the full game to start your Codex.'}</p>
             <button
               type="button"
               className="io-public-button io-public-button-primary io-frenzy-success-button"
@@ -357,7 +367,7 @@ function FrenzyPost() {
             </p>
             {canClaim && (
               <p className="io-frenzy-instruction">
-                Click below to claim it. Your Multi Roll multiplies the Frenzy size.
+                {playedBefore === true ? 'Claim it for a burst of Orbs, then push for your next best find.' : playedBefore === false ? 'Claim this reward to collect your first Orbs, then start building your Codex.' : 'Claim it to collect Orbs; Multi Roll scales the Frenzy size.'}
               </p>
             )}
           </div>
@@ -375,14 +385,14 @@ function FrenzyPost() {
           {!openedGame && (
             <div className="io-cta-caption">
               <span aria-hidden="true" />
-              {canClaim ? 'CLAIM THE FRENZY · PLAY NOW' : 'START YOUR OWN CODEX'}
+              {canClaim ? playedBefore === true ? 'CLAIM THE FRENZY · CHASE YOUR NEXT RECORD' : playedBefore === false ? 'CLAIM YOUR FIRST FRENZY · GET STARTED' : 'CLAIM THE FRENZY · PLAY NOW' : playedBefore === true ? 'YOUR CODEX IS WAITING' : 'START YOUR OWN CODEX'}
             </div>
           )}
           {openedGame ? (
             <div className="io-public-result io-frenzy-opened">
               <div className="io-public-eyebrow io-public-eyebrow-success">Opening game</div>
-              <strong>Your Frenzy is loading in Infinity Orbs.</strong>
-              <p>The full claim result appears in the game.</p>
+              <strong>{playedBefore === true ? 'Your next run is loading.' : 'Your first reward is loading.'}</strong>
+              <p>{playedBefore === true ? 'Pick up your Codex and chase a new record.' : 'The full claim result appears in the game.'}</p>
             </div>
           ) : canClaim ? (
             <button
@@ -399,7 +409,7 @@ function FrenzyPost() {
                 ? 'Opening Game…'
                 : info.selfClaimTest
                   ? 'Claim Your Frenzy · Test'
-                  : 'Claim Frenzy · Open Game'}
+                  : playedBefore === true ? 'Claim Frenzy · Continue run' : playedBefore === false ? 'Claim your first Frenzy' : 'Claim Frenzy · Open Game'}
             </button>
           ) : (
             <button
@@ -416,7 +426,7 @@ function FrenzyPost() {
               }}
             >
               <ArrowRight className="w-4 h-4" />
-              Play Infinity Orbs
+              {playedBefore === true ? 'Continue your run' : playedBefore === false ? 'Play Infinity Orbs' : 'Open Infinity Orbs'}
             </button>
           )}
 

@@ -88,7 +88,7 @@ function PublicShell({ children, compact = false }: { children: ReactNode; compa
   );
 }
 
-function SharedOrbPost({ data }: { data: SharedOrbPostData }) {
+function SharedOrbPost({ data, playedBefore }: { data: SharedOrbPostData; playedBefore: boolean | null }) {
   const rarity = Number.isInteger(data.rarity) && Number(data.rarity) > 0 && Number(data.rarity) <= MAX_ORB_RARITY
     ? Number(data.rarity)
     : 0;
@@ -116,7 +116,7 @@ function SharedOrbPost({ data }: { data: SharedOrbPostData }) {
         <div className="io-share-heading">
           <div>
             <h1><span>u/{username}</span> found an Orb</h1>
-            <p>One roll. One discovery. Logged to the Codex.</p>
+            <p>{playedBefore === true ? 'Your Codex is saved. Roll again and chase something rarer.' : playedBefore === false ? 'One roll. One discovery. Logged to the Codex.' : 'A rare find could be one roll away.'}</p>
           </div>
           <div
             className="io-public-tier"
@@ -169,10 +169,11 @@ function SharedOrbPost({ data }: { data: SharedOrbPostData }) {
         </div>
 
         <div className="io-public-actions io-post-conversion">
-          <div className="io-cta-caption"><span aria-hidden="true" /> YOUR CODEX STARTS WITH ONE ROLL</div>
+          <div className="io-cta-caption"><span aria-hidden="true" /> {playedBefore === true ? 'YOUR NEXT DISCOVERY IS WAITING' : playedBefore === false ? 'YOUR CODEX STARTS WITH ONE ROLL' : 'ONE TAP TO YOUR NEXT ORB'}</div>
           <PlayGameButton
             className="io-public-button io-public-button-primary"
             leadingIcon={<Orbit className="w-4 h-4" />}
+            label={playedBefore === true ? 'Find a rarer Orb' : playedBefore === false ? 'Play Infinity Orbs' : 'Open Infinity Orbs'}
           />
           <p className="io-cta-footnote">Free to play. Tap in and chase your own impossible Orb.</p>
         </div>
@@ -182,6 +183,15 @@ function SharedOrbPost({ data }: { data: SharedOrbPostData }) {
 }
 
 function Splash() {
+  const [playedBefore, setPlayedBefore] = useState<boolean | null>(null);
+  useEffect(() => {
+    let active = true;
+    void fetch('/api/player/experience', { cache: 'no-store' })
+      .then(response => response.ok ? response.json() as Promise<{ playedBefore?: unknown }> : null)
+      .then(result => { if (active && typeof result?.playedBefore === 'boolean') setPlayedBefore(result.playedBefore); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
   const postData = (context.postData ?? {}) as SharedOrbPostData;
   const impressionPostType: ImpressionPostType = postData.type === 'shared-orb' ? 'orb-share' : 'main-game';
   const impressionRecordedRef = useRef(false);
@@ -198,7 +208,7 @@ function Splash() {
       Number(postData.rarity) > 0 &&
       Number(postData.rarity) <= MAX_ORB_RARITY
     ) {
-      return <SharedOrbPost data={postData} />;
+      return <SharedOrbPost data={postData} playedBefore={playedBefore} />;
     }
     // Bad metadata should not masquerade as a normal main-game post.
     return (
@@ -207,7 +217,7 @@ function Splash() {
           <div className="io-public-eyebrow">Community discovery</div>
           <h1>Orb preview unavailable</h1>
           <p>This shared Orb has missing or outdated post data. You can still open Infinity Orbs and keep rolling.</p>
-          <PlayGameButton />
+          <PlayGameButton label={playedBefore === true ? 'Continue playing' : playedBefore === false ? 'Play Infinity Orbs' : 'Open Infinity Orbs'} />
         </section>
       </PublicShell>
     );
@@ -220,8 +230,8 @@ function Splash() {
 
         <div className="io-launch-title-row">
           <div>
-            <h1>Find the next impossible Orb.</h1>
-            <p>Roll for rarity, spend Coins on upgrades, and build a Codex of increasingly absurd discoveries.</p>
+            <h1>{playedBefore === true ? 'Your next impossible Orb is waiting.' : 'Find the next impossible Orb.'}</h1>
+            <p>{playedBefore === true ? 'Pick up where you left off: chase a rarer Orb, beat your best, and keep your Codex growing.' : 'Roll for rarity, spend Coins on upgrades, and build a Codex of increasingly absurd discoveries.'}</p>
           </div>
           <div className="io-launch-mark" aria-hidden="true">
             <span>∞</span>
@@ -256,9 +266,9 @@ function Splash() {
         </div>
 
         <div className="io-post-conversion io-main-cta">
-          <div className="io-cta-caption"><span aria-hidden="true" /> YOUR FIRST ORB IS ONE TAP AWAY</div>
-          <PlayGameButton className="io-public-button io-public-button-primary io-launch-button" trackMainGameConversion />
-          <p className="io-cta-footnote">Free to play · No download · Your progress saves on Reddit</p>
+          <div className="io-cta-caption"><span aria-hidden="true" /> {playedBefore === true ? 'YOUR NEXT RECORD IS ONE TAP AWAY' : playedBefore === false ? 'YOUR FIRST ORB IS ONE TAP AWAY' : 'YOUR NEXT ORB IS ONE TAP AWAY'}</div>
+          <PlayGameButton className="io-public-button io-public-button-primary io-launch-button" label={playedBefore === true ? 'Continue playing' : playedBefore === false ? 'Play Infinity Orbs' : 'Open Infinity Orbs'} trackMainGameConversion />
+          <p className="io-cta-footnote">{playedBefore === true ? 'Your Codex and upgrades are saved on Reddit' : 'Free to play · No download · Your progress saves on Reddit'}</p>
         </div>
 
         <div className="io-launch-footer">

@@ -874,6 +874,18 @@ export function createApp() {
     res.json({ isBeta: subredditName === 'infinity_orbs_dev' });
   });
 
+  // Public post previews personalize their CTA without recording a player visit.
+  app.get('/api/player/experience', async (_req, res) => {
+    try {
+      const player = await loadRaw({ registerActivity: false });
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ playedBefore: Number(player.totalRolls) > 0 || Number(player.level) > 1 || Number(player.collectionValue) > 0 });
+    } catch (error: any) {
+      const message = error?.message || 'Could not read player experience.';
+      res.status(message === 'REDDIT_LOGIN_REQUIRED' ? 401 : 503).json({ error: message });
+    }
+  });
+
   app.get('/api/combat/marks', async (_req, res) => {
     try { res.setHeader('Cache-Control','no-store'); res.json({combatMarks: await getCombatMarksBalance()}); }
     catch (e:any) { const message=e?.message||'Could not load Combat Marks.';res.status(message==='REDDIT_LOGIN_REQUIRED'?401:503).json({error:message}); }

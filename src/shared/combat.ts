@@ -985,6 +985,7 @@ export interface CombatState {
   autoScrapUnlocked: boolean;
   autoScrapSettings: CombatAutoScrapSettings;
   skillLevels: CombatSkillLevels;
+  /** Legacy field retained for older saves; Arena no longer uses rating points. */
   arenaRating: number;
   arenaWins: number;
   arenaLosses: number;
@@ -1105,7 +1106,6 @@ export interface CombatArenaProfile {
   username: string;
   level: number;
   bestDepth: number;
-  rating: number;
   wins: number;
   losses: number;
   updatedAt: number;
@@ -1123,10 +1123,6 @@ export interface CombatArenaResult {
   winner: 'you' | 'opponent';
   rounds: number;
   log: string[];
-  ratingChange: number;
-  opponentRatingChange: number;
-  ratingAfter: number;
-  opponentRatingAfter: number;
 }
 /** Quality is the item's rarity proxy. Even Mythic items only have a chance to roll a major ability. */
 export function combatMajorAbilityChance(qualityValue:number):number {

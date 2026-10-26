@@ -2,7 +2,7 @@ import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import { getOrbInfo, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatSkillDefinition, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneAutoSacrificeSettings, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
-import { calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatTurnStep, combatActionTimeline, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatHighestDepthReached, combatBossesBeatenByDepth, combatBossLuckBonus, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, combatGearSpeedBonus, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, COMBAT_RUNE_RARITIES, DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS, shouldAutoSacrificeRune, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
+import { chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatTurnStep, combatActionTimeline, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatHighestDepthReached, combatBossesBeatenByDepth, combatBossLuckBonus, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, combatGearSpeedBonus, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, COMBAT_RUNE_RARITIES, DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS, shouldAutoSacrificeRune, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -1145,9 +1145,9 @@ function arenaCooldownRemaining(lastAtValue: unknown, now = Date.now()): number 
 
 /** Synthetic opponents are explicitly labelled practice bots and never written to player storage. */
 const ARENA_TEST_BOTS = [
-  { id:'testbot:rookie-sentinel', username:'Practice Bot · Rookie', level:3, bestDepth:5, rating:720, wins:8, losses:17, upgradeRank:0, skillId:'ember-lung' as CombatSkillId },
-  { id:'testbot:ashen-vanguard', username:'Practice Bot · Vanguard', level:16, bestDepth:30, rating:1050, wins:41, losses:34, upgradeRank:3, skillId:'rift-hammer' as CombatSkillId },
-  { id:'testbot:rift-champion', username:'Practice Bot · Champion', level:34, bestDepth:90, rating:1500, wins:126, losses:28, upgradeRank:7, skillId:'singularity-edge' as CombatSkillId },
+  { id:'testbot:rookie-sentinel', username:'Practice Bot · Rookie', level:5, bestDepth:5, wins:8, losses:17, upgradeRank:2, skillId:'ember-lung' as CombatSkillId, weaponDamage:18, bonusHealth:120, speedBonus:10, armorBonus:15, critBonus:.04, weaponName:'Reinforced Practice Blade', armorName:'Padded Training Coat' },
+  { id:'testbot:ashen-vanguard', username:'Practice Bot · Vanguard', level:22, bestDepth:50, wins:41, losses:34, upgradeRank:6, skillId:'rift-hammer' as CombatSkillId, weaponDamage:80, bonusHealth:750, speedBonus:45, armorBonus:80, critBonus:.10, weaponName:'Tempered Vanguard Edge', armorName:'Vanguard Plate' },
+  { id:'testbot:rift-champion', username:'Practice Bot · Champion', level:40, bestDepth:150, wins:126, losses:28, upgradeRank:10, skillId:'singularity-edge' as CombatSkillId, weaponDamage:180, bonusHealth:1800, speedBonus:100, armorBonus:180, critBonus:.18, weaponName:'Riftforged Champion Blade', armorName:'Riftforged Aegis' },
 ] as const;
 
 function combatKeyFor(userId: string): string {
@@ -1187,7 +1187,6 @@ function createArenaProfile(userId: string, username: string, state: CombatState
     username: arenaName(username),
     level: state.level,
     bestDepth: state.bestDepth,
-    rating: state.arenaRating,
     wins: state.arenaWins,
     losses: state.arenaLosses,
     updatedAt,
@@ -1207,17 +1206,26 @@ function createArenaTestState(bot: typeof ARENA_TEST_BOTS[number]): CombatState 
   state.bestDepth=bot.bestDepth;
   state.depth=bot.bestDepth;
   state.dungeonBestDepths.undercrypt=bot.bestDepth;
-  state.arenaRating=bot.rating;
   state.combatUpgrades={
     'edge-training':bot.upgradeRank,
-    vitality:Math.floor(bot.upgradeRank*.65),
-    precision:Math.floor(bot.upgradeRank*.5),
-    scavenger:Math.floor(bot.upgradeRank*.35),
-    'orb-resonance':Math.floor(bot.upgradeRank*.5),
+    vitality:Math.min(10,Math.floor(bot.upgradeRank*.65)),
+    precision:Math.min(10,Math.floor(bot.upgradeRank*.5)),
+    scavenger:Math.min(10,Math.floor(bot.upgradeRank*.35)),
+    'orb-resonance':Math.min(10,Math.floor(bot.upgradeRank*.5)),
+    'ward-training':Math.min(10,Math.floor(bot.upgradeRank*.6)),
   };
   state.skillGachaRank=SKILL_GACHA_RANK_MAX;
-  state.skillLevels[bot.skillId]=Math.max(1,bot.upgradeRank+1);
+  state.skillLevels[bot.skillId]=Math.max(1,bot.upgradeRank+2);
   state.equippedAbilities=[bot.skillId];
+  const weaponId='practice-gear:'+bot.id+':weapon';
+  const armorId='practice-gear:'+bot.id+':armor';
+  const bootsId='practice-gear:'+bot.id+':boots';
+  state.inventory=[
+    {id:weaponId,name:bot.weaponName,slot:'weapon',quality:100,sourceFloor:Math.max(0,bot.bestDepth-1),power:bot.weaponDamage,effect:'Synthetic training weapon',trait:'keen',damageBonus:bot.weaponDamage,speedBonus:0,maxHealthBonus:0,armorBonus:0,critChanceBonus:bot.critBonus},
+    {id:armorId,name:bot.armorName,slot:'armor',quality:100,sourceFloor:Math.max(0,bot.bestDepth-1),power:bot.armorBonus,effect:'Synthetic training armor',trait:'bulwark',damageBonus:0,speedBonus:0,maxHealthBonus:bot.bonusHealth,armorBonus:bot.armorBonus,critChanceBonus:0},
+    {id:bootsId,name:'Practice Greaves',slot:'boots',quality:100,sourceFloor:Math.max(0,bot.bestDepth-1),power:bot.speedBonus,effect:'Synthetic speed training',trait:'keen',damageBonus:0,speedBonus:bot.speedBonus,maxHealthBonus:0,armorBonus:0,critChanceBonus:0},
+  ];
+  state.equipment={...state.equipment,weapon:weaponId,armor:armorId,boots:bootsId};
   synchronizeCombatStats(state);
   state.health=state.maxHealth;
   return state;
@@ -1234,14 +1242,13 @@ function parseArenaProfile(userId: string, raw: unknown): CombatArenaProfile | n
   try {
     const p = JSON.parse(raw) as Partial<CombatArenaProfile>;
     if (!p || p.userId !== userId || typeof p.username !== 'string') return null;
-    const updatedAt = Number(p.updatedAt), rating = Number(p.rating);
-    if (!Number.isFinite(updatedAt) || !Number.isFinite(rating)) return null;
+    const updatedAt = Number(p.updatedAt);
+    if (!Number.isFinite(updatedAt)) return null;
     return {
       userId,
       username: arenaName(p.username),
       level: finiteInt(p.level, 1, 1, 60),
       bestDepth: finiteInt(p.bestDepth, 1, 1, COMBAT_MAX_DEPTH),
-      rating: finiteInt(rating, 1000, 100, 10000),
       wins: finiteInt(p.wins, 0, 0, Number.MAX_SAFE_INTEGER),
       losses: finiteInt(p.losses, 0, 0, Number.MAX_SAFE_INTEGER),
       updatedAt: finiteInt(updatedAt, 0, 0, Number.MAX_SAFE_INTEGER),
@@ -1412,9 +1419,9 @@ export async function getCombatArenaOpponents(): Promise<{
       return 0;
     }),
   ));
-  opponents.sort((a, b) => b.rating - a.rating || b.bestDepth - a.bestDepth);
-  // Keep 4 slots available for live players and always append the synthetic practice roster.
-  const visibleOpponents=[...opponents.slice(0,16),...ARENA_TEST_BOTS.map(bot=>createArenaTestProfile(bot,now))];
+  opponents.sort((a, b) => b.bestDepth - a.bestDepth || b.level - a.level || b.updatedAt - a.updatedAt);
+  // Training bots are returned first so they remain visible even in a small roster.
+  const visibleOpponents=[...ARENA_TEST_BOTS.map(bot=>createArenaTestProfile(bot,now)),...opponents.slice(0,16)];
   return {
     self,
     opponents:visibleOpponents,
@@ -1422,7 +1429,7 @@ export async function getCombatArenaOpponents(): Promise<{
   };
 }
 
-/** Challenge a recently active player's saved build. Both rating changes commit atomically. */
+/** Resolve a practice or player duel and update only the participants' win/loss records. */
 export async function challengeCombatArena(opponentIdValue: string): Promise<CombatSnapshot & { arenaResult: CombatArenaResult }> {
   const userId = String(context.userId ?? '').trim();
   const opponentId = String(opponentIdValue ?? '').trim();
@@ -1439,8 +1446,6 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
       if(remaining>0)throw new Error('ARENA_COOLDOWN:'+remaining);
       const opponentState=createArenaTestState(bot);
       const duel=resolveArenaDuel(ownState,opponentState);
-      const ratingUpdate=calculateCombatArenaRatingUpdate(ownState.arenaRating,bot.rating,duel.winner==='challenger');
-      ownState.arenaRating=ratingUpdate.playerRating;
       if(duel.winner==='challenger')ownState.arenaWins+=1;else ownState.arenaLosses+=1;
       ownState.arenaLastChallengeAt=now;
       const opponent=createArenaTestProfile(bot,now);
@@ -1448,11 +1453,7 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
         opponent,
         winner:duel.winner==='challenger'?'you':'opponent',
         rounds:duel.rounds,
-        log:[...duel.log,'Practice match: the bot roster is synthetic and its rating does not change.'].slice(-10),
-        ratingChange:ratingUpdate.playerChange,
-        opponentRatingChange:0,
-        ratingAfter:ratingUpdate.playerRating,
-        opponentRatingAfter:bot.rating,
+        log:[...duel.log,'Practice match: this is a synthetic training opponent; your win/loss record is updated.'].slice(-10),
       };
       return {...snapshot(ownState),arenaResult};
     });
@@ -1510,18 +1511,6 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
       }
 
       const duel = resolveArenaDuel(ownState, opponentState);
-      const ratingUpdate = calculateCombatArenaRatingUpdate(
-        ownState.arenaRating,
-        opponentState.arenaRating,
-        duel.winner === 'challenger',
-      );
-      const ownAfter = ratingUpdate.playerRating;
-      const opponentAfter = ratingUpdate.opponentRating;
-      const ownChange = ratingUpdate.playerChange;
-      const opponentChange = ratingUpdate.opponentChange;
-
-      ownState.arenaRating = ownAfter;
-      opponentState.arenaRating = opponentAfter;
       if (duel.winner === 'challenger') {
         ownState.arenaWins += 1;
         opponentState.arenaLosses += 1;
@@ -1554,10 +1543,6 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
         winner: duel.winner === 'challenger' ? 'you' : 'opponent',
         rounds: duel.rounds,
         log: duel.log,
-        ratingChange: ownChange,
-        opponentRatingChange: opponentChange,
-        ratingAfter: ownAfter,
-        opponentRatingAfter: opponentAfter,
       };
       return { ...snapshot(ownState), arenaResult };
     } finally {
