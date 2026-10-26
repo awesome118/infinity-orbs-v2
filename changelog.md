@@ -46,4 +46,5 @@
 - Fixed Silent Alert Mode's toggle becoming out of sync with the active sound mode.
 - Fixed encounter effects carrying into a new run.
 - Fixed shared Orb previews rejecting valid large rarity values.
+- Kept older shared-Orb leaderboard entries visible when legacy records are missing account IDs.
 - Fixed Rune controls so Equip, Strengthen, and Auto Sacrifice actions no longer conflict when used in quick succession.
