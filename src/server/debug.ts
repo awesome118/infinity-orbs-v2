@@ -1106,7 +1106,6 @@ debugRouter.get('/leaderboard-diagnostics', async (_req, res) => {
     };
   }
 
-  let legacyEntries: Array<Record<string, unknown>> = [];
   try {
     const raw = await redis.get('io:leaderboard');
     const parsed = parseStoredValue(raw);
@@ -1160,7 +1159,6 @@ debugRouter.get('/leaderboard-diagnostics', async (_req, res) => {
           hasSharedAt: Number(entry.sharedAt) > 0,
           value: Number.isFinite(Number(entry.value)) ? Number(entry.value) : null,
         });
-        if (userId && !legacyEntries.some(item => item.userId === userId)) legacyEntries.push(entry);
       }
       let savedAccounts = 0;
       let saveReadError: string | null = null;
