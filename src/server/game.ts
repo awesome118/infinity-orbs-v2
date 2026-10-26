@@ -1,4 +1,5 @@
 import { redis, context, reddit } from './devvit-mock.js';
+import { readInBatches } from './redis-batches.js';
 import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import * as notificationsModule from '@devvit/notifications';
 
@@ -1747,7 +1748,7 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
   }
 
   const now = Date.now();
-  const saves = await redis.mGet(userIds.map(id => playerKeyFor(id)));
+  const saves = await readInBatches(userIds.map(id => playerKeyFor(id)), keys => redis.mGet(keys));
   const players = userIds.map((userId, index): PlayerListEntry | null => {
     const hasRegistryEntry = Object.prototype.hasOwnProperty.call(records, userId);
     const registry = parseStoredJson<Partial<PlayerRegistryEntry>>(records[userId]) ?? {};
