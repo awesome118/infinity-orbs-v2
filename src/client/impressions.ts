@@ -53,3 +53,27 @@ export async function recordPostImpression(postType: ImpressionPostType, postIdV
   console.warn('[Impressions] Preview analytics failed after retries.', lastError);
   return false;
 }
+
+/**
+ * Best-effort conversion event for the explicit Play CTA on the main-game post.
+ * Only a coarse device category and the post ID are sent; never send account IDs
+ * or usernames. It intentionally does not await before the game expands.
+ */
+export function recordMainGamePostConversion(postIdValue: unknown): void {
+  const postId = normalizePostId(postIdValue);
+  if (!postId) return;
+  const body = JSON.stringify({ postId, deviceType: detectDeviceType() });
+  void fetch('/api/impressions/conversion', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store',
+    keepalive: true,
+    body,
+  }).then(async response => {
+    if (!response.ok) {
+      console.warn('[Impressions] Main-game conversion event was not recorded.', response.status);
+    }
+  }).catch(error => {
+    console.warn('[Impressions] Main-game conversion analytics unavailable.', error);
+  });
+}
