@@ -1697,6 +1697,8 @@ export interface PlayerListEntry {
   shards: number;
   clientVersion: string | null;
   isLatestVersion: boolean;
+  /** True when this entry was recovered from the legacy leaderboard index. */
+  registryRecovered?: boolean;
 }
 
 export async function listPlayers(): Promise<PlayerListEntry[]> {
@@ -1760,6 +1762,7 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
         : 0;
     return {
       userId,
+      registryRecovered: !hasRegistryEntry,
       username: String(registry.username ?? save?.username ?? legacy?.username ?? ('user-' + userId.slice(-8))).trim().slice(0, 100),
       firstSeenAt: validPastTimestamp(registry.firstSeenAt, now),
       lastSeenAt,
