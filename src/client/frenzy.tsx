@@ -305,6 +305,7 @@ function FrenzyPost() {
                 background: 'radial-gradient(ellipse at center, ' + rewardOrb.color + '30, rgba(5, 11, 19, .96) 70%)',
                 borderColor: rewardOrb.color + '55',
               }}
+              role="img"
               aria-label={rewardOrb.name + ' reward reveal'}
             >
               <div className="io-frenzy-success-stage-grid" aria-hidden="true" />
