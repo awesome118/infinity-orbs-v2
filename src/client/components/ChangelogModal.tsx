@@ -142,7 +142,7 @@ const sections: Array<{
       },
       {
         title: 'Frenzy Claims & Post Performance',
-        description: 'Fixed Frenzy claims to target the post you are viewing, centered Orb reveals, reduced animation lag, and kept skill details open long enough to equip abilities.',
+        description: 'Fixed Frenzy claims so the main game consumes the armed handoff and plays the reward-batch reveal; centered orbit rings, smoothed their rotation, reduced shared-Orb glow, and kept skill details open long enough to equip abilities.',
       },
       {
         title: 'Rune Controls',
