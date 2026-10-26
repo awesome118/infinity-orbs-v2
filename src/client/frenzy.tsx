@@ -187,32 +187,40 @@ function FrenzyPost() {
     };
   }, []);
 
-  const claim = async () => {
+  const claim = async (event: React.MouseEvent<HTMLButtonElement>) => {
     if (!info?.canClaim || loading) return;
     setLoading(true);
     setError(null);
+
+    let expansion: Promise<unknown>;
     try {
-      // Claim on the Frenzy post itself. Do not rely on opening another entrypoint
-      // to finish the reward; the server commits the full volley before success is shown.
-      const res = await fetchWithTimeout('/api/frenzy/claim', { method: 'POST' }, 25_000);
-      const data = await res.json() as {
-        error?: unknown;
-        orb?: { rarity?: unknown; isInfinity?: unknown };
-        frenzyCount?: unknown;
-      };
-      if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not claim Frenzy.');
-      const resultRarity = Number(data.orb?.rarity);
-      const validResult = Number.isInteger(resultRarity) && resultRarity >= 2 && resultRarity <= MAX_ORB_RARITY;
-      const claimedCount = Number(data.frenzyCount);
-      setInlineClaimedRarity(validResult ? resultRarity : info.rarity);
-      setInlineClaimedIsInfinity(validResult ? data.orb?.isInfinity === true : info.isInfinity === true);
-      setInlineClaimedCount(Number.isSafeInteger(claimedCount) && claimedCount > 0 ? claimedCount : 1);
-      setInlineClaimedAt(Date.now());
-      setError(null);
-      setClaimed(true);
-      // The claim response is authoritative; do not block the reward reveal on a second info request.
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Could not claim Frenzy.');
+      // Reddit requires expanded mode to be requested directly from the trusted click.
+      expansion = Promise.resolve(requestExpandedMode(event.nativeEvent, 'game'));
+    } catch (error: unknown) {
+      setLoading(false);
+      setError(error instanceof Error ? error.message : 'Could not open Infinity Orbs.');
+      return;
+    }
+
+    setOpenedGame(true);
+    void expansion.catch((error: unknown) => {
+      setOpenedGame(false);
+      setError(error instanceof Error ? error.message : 'Could not open Infinity Orbs.');
+    });
+
+    try {
+      // Arm the post without consuming its reward in this preview. The game
+      // entrypoint reads the handoff and performs the single authoritative claim
+      // while animating the reward batch in the normal roll UI.
+      const res = await fetchWithTimeout('/api/frenzy/arm', { method: 'POST' }, 10_000);
+      const data = await res.json() as { error?: unknown; armed?: unknown };
+      if (!res.ok) {
+        throw new Error(typeof data.error === 'string' ? data.error : 'Could not prepare Frenzy.');
+      }
+      if (data.armed !== true) throw new Error('Could not prepare this Frenzy for the main game.');
+    } catch (error: unknown) {
+      setOpenedGame(false);
+      setError(error instanceof Error ? error.message : 'Could not prepare Frenzy.');
     } finally {
       setLoading(false);
     }
@@ -480,7 +488,7 @@ function FrenzyPost() {
             </div>
           ) : canClaim ? (
             <button
-              onClick={() => void claim()}
+              onClick={(event) => void claim(event)}
               disabled={loading}
               className="io-public-button io-public-button-primary io-frenzy-button io-post-cta"
               style={{
