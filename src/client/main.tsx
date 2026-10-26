@@ -91,6 +91,7 @@ import { ChangelogModal } from './components/ChangelogModal.js';
 import { SplashScreen } from './components/SplashScreen.js';
 import { APP_VERSION } from '../shared/version.js';
 import './styles.css';
+import './ui-polish.css';
 
 function optimisticShardSpend(
   state: PlayerState,
