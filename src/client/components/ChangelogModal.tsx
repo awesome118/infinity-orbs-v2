@@ -117,6 +117,10 @@ const sections: Array<{
     title: 'Bug Fixes & Improvements',
     entries: [
       {
+        title: 'Notification Prompt',
+        description: 'Fixed the one-time push prompt for returning players and added safe Frenzy and notification popup previews to the admin console.',
+      },
+      {
         title: 'Silent Alert Mode',
         description: 'Fixed Silent Alert Mode’s toggle becoming out of sync with the active sound mode.',
       },
