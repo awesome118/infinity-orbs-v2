@@ -136,7 +136,7 @@ function SharedOrbPost({ data, playedBefore }: { data: SharedOrbPostData; played
             style={{
               background: info.bgGradient,
               borderColor: `${info.color}66`,
-              boxShadow: `0 0 34px ${info.color}22, inset 0 1px rgba(255,255,255,.32)`,
+              boxShadow: `0 0 16px ${info.color}18, inset 0 1px rgba(255,255,255,.22)`,
             }}
             aria-label={`1/${formatRarity(rarity, isInfinity)} ${info.tier} Orb`}
           >
