@@ -124,10 +124,17 @@ test('skill copies are active ability types rather than passive stat modifiers',
   assert.equal(combatAbilityType(bounty),'bounty');
 });
 
-test('ranked Gacha raises rare-skill odds without pity overrides',()=>{
+test('ranked Gacha raises higher-rarity odds without pity overrides',()=>{
   assert.equal(skillRarityUnlocked('Common',1),true);
-  assert.equal(skillRarityUnlocked('Uncommon',1),true);
-  assert.equal(skillRarityUnlocked('Mythic',1),true);
+  assert.equal(skillRarityUnlocked('Uncommon',1),false);
+  assert.equal(skillRarityUnlocked('Uncommon',2),true);
+  assert.equal(skillRarityUnlocked('Rare',2),false);
+  assert.equal(skillRarityUnlocked('Rare',3),true);
+  assert.equal(skillRarityUnlocked('Epic',5),false);
+  assert.equal(skillRarityUnlocked('Epic',6),true);
+  assert.equal(skillRarityUnlocked('Mythic',1),false);
+  assert.equal(skillRarityUnlocked('Mythic',8),false);
+  assert.equal(skillRarityUnlocked('Mythic',9),true);
   const rankOne=combatSkillRarityOdds(1);
   const rankTen=combatSkillRarityOdds(10);
   const rankThirty=combatSkillRarityOdds(30);
