@@ -1,0 +1,331 @@
+/* Infinity Orbs UI polish
+   Visual-only layer: no copy, game rules, rewards, or navigation behavior changed. */
+.io-ui {
+  --ui-line: rgba(166, 190, 193, .15);
+  --ui-line-strong: rgba(166, 190, 193, .25);
+  --ui-surface: rgba(16, 26, 32, .94);
+  --ui-surface-raised: rgba(22, 34, 40, .96);
+  --ui-focus: rgba(116, 221, 202, .94);
+  min-width: 0;
+}
+
+.io-ui .app-header {
+  padding-block: 11px;
+  border-bottom-color: rgba(166, 190, 193, .17);
+  background: linear-gradient(180deg, rgba(8, 13, 18, .96), rgba(8, 13, 18, .88));
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .18), inset 0 1px rgba(255, 255, 255, .025);
+}
+
+.io-ui .header-inner,
+.io-ui .nav-shell {
+  max-width: 1320px;
+}
+
+.io-ui .brand-mark {
+  border-color: rgba(116, 221, 202, .42);
+  border-radius: 13px;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .1), 0 5px 20px rgba(50, 166, 148, .09);
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.io-ui .brand-lockup:hover .brand-mark {
+  transform: translateY(-1px);
+  border-color: rgba(151, 255, 224, .72);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .14), 0 7px 24px rgba(50, 166, 148, .17);
+}
+
+.io-ui .brand-title {
+  letter-spacing: -.015em;
+}
+
+.io-ui .resource-chip {
+  border-color: rgba(166, 190, 193, .14);
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(21, 33, 39, .9), rgba(12, 21, 27, .88));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .035);
+}
+
+.io-ui .header-icon-button {
+  border-color: transparent;
+  border-radius: 10px;
+}
+
+.io-ui .header-icon-button:focus-visible {
+  border-color: var(--ui-line-strong);
+}
+
+.io-ui .app-nav {
+  padding-block: 8px;
+  border-bottom-color: rgba(166, 190, 193, .12);
+  background: rgba(9, 15, 20, .9);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .09);
+}
+
+.io-ui .nav-list {
+  gap: 5px;
+  scroll-padding-inline: 12px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.io-ui .nav-tab {
+  position: relative;
+  min-height: 39px;
+  border-radius: 10px;
+  color: #8e9da0;
+  transition: color .16s ease, background-color .16s ease, border-color .16s ease;
+}
+
+.io-ui .nav-tab:hover {
+  border-color: rgba(166, 190, 193, .12);
+  color: #f0f3ec;
+  background: rgba(36, 51, 57, .58);
+}
+
+.io-ui .nav-tab.is-active {
+  border-color: rgba(116, 221, 202, .25);
+  color: #d0fff2;
+  background: linear-gradient(135deg, rgba(44, 114, 108, .28), rgba(30, 63, 79, .34));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .065), 0 3px 12px rgba(0, 0, 0, .08);
+}
+
+.io-ui .nav-tab.is-active::after {
+  position: absolute;
+  right: 13px;
+  bottom: -9px;
+  left: 13px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(116, 221, 202, .9), transparent);
+  content: "";
+  pointer-events: none;
+}
+
+.io-ui .app-main {
+  max-width: 1360px;
+  padding-top: clamp(20px, 2.5vw, 34px);
+  padding-bottom: clamp(34px, 4vw, 58px);
+}
+
+/* One consistent surface treatment for the utility-class progression cards. */
+.io-ui .app-main :is(div, section, article, form)[class*="bg-slate-900"][class*="border-slate-800"][class*="rounded-2xl"] {
+  border-color: rgba(166, 190, 193, .15);
+  background-image: linear-gradient(155deg, rgba(255, 255, 255, .018), transparent 58%);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .035), 0 10px 28px rgba(0, 0, 0, .11);
+}
+
+/* Inputs read as controls, not flat text boxes. */
+.io-ui .app-main :is(input, select, textarea) {
+  border-color: rgba(166, 190, 193, .2);
+  border-radius: 10px;
+  color: #edf0e9;
+  background-color: rgba(8, 14, 19, .82);
+  transition: border-color .16s ease, box-shadow .16s ease, background-color .16s ease;
+}
+
+.io-ui .app-main :is(input, select, textarea)::placeholder {
+  color: #708186;
+}
+
+.io-ui .app-main :is(input, select, textarea):focus {
+  border-color: rgba(116, 221, 202, .65);
+  background-color: rgba(10, 18, 23, .98);
+  box-shadow: 0 0 0 3px rgba(116, 221, 202, .09);
+}
+
+.io-ui :is(button, a, [role="button"], input, select, textarea):focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 3px;
+}
+
+.io-ui .app-main button {
+  -webkit-tap-highlight-color: transparent;
+  transition-property: color, background-color, border-color, box-shadow, filter, transform;
+  transition-duration: .16s;
+  transition-timing-function: ease;
+}
+
+.io-ui .app-main button:not(:disabled):not(.nav-tab):hover {
+  filter: brightness(1.045);
+}
+
+.io-ui .app-main button:disabled {
+  cursor: not-allowed;
+}
+
+/* The roll surface remains the visual center of the game. */
+.io-ui .roll-stage {
+  border-color: rgba(155, 213, 202, .2);
+  box-shadow: 0 26px 80px rgba(0, 0, 0, .3), 0 0 35px rgba(67, 151, 139, .04), inset 0 1px rgba(255, 255, 255, .06);
+}
+
+.io-ui .roll-stage::before {
+  opacity: .78;
+}
+
+.io-ui .roll-stage .rounded-full.border.border-dashed {
+  border-color: rgba(159, 214, 201, .28);
+}
+
+.io-ui .roll-button.is-ready:not(.frenzy-supercharged):not(:disabled) {
+  animation: io-ui-roll-ready 3.8s ease-in-out infinite;
+}
+
+.io-ui .field-card {
+  border-color: rgba(166, 190, 193, .16);
+  background: linear-gradient(150deg, rgba(20, 33, 39, .96), rgba(11, 19, 25, .96));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .04), 0 12px 30px rgba(0, 0, 0, .12);
+}
+
+.io-ui .field-card-header {
+  min-height: 19px;
+}
+
+.io-ui .field-stat-row {
+  border-top-color: rgba(166, 190, 193, .1);
+}
+
+.io-ui .latest-orb-mark {
+  border-color: rgba(190, 229, 218, .3);
+  box-shadow: 0 0 18px rgba(116, 221, 202, .1), inset 0 1px rgba(255, 255, 255, .24);
+}
+
+/* Combat pages: sharpen panel hierarchy and make selectable rewards feel tactile. */
+.io-ui .io-combat-screen {
+  min-width: 0;
+}
+
+.io-ui .io-combat-page-head {
+  margin-bottom: 20px;
+}
+
+.io-ui .io-combat-page-head h1 {
+  letter-spacing: -.035em;
+}
+
+.io-ui .io-combat-page-head p {
+  max-width: 64ch;
+  line-height: 1.65;
+}
+
+.io-ui .io-combat-stage {
+  border-color: rgba(166, 190, 193, .19);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .24), inset 0 1px rgba(255, 255, 255, .05);
+}
+
+.io-ui .io-combat-panel,
+.io-ui .io-runes-panel {
+  border-color: rgba(166, 190, 193, .16);
+  background-image: linear-gradient(155deg, rgba(255, 255, 255, .018), transparent 62%);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .13), inset 0 1px rgba(255, 255, 255, .035);
+}
+
+.io-ui .io-combat-panel-head,
+.io-ui .io-combat-inventory-head,
+.io-ui .io-combat-codex-toolbar {
+  border-bottom-color: rgba(166, 190, 193, .12);
+}
+
+.io-ui .io-combat-panel-head h2,
+.io-ui .io-combat-inventory-head h2,
+.io-ui .io-combat-codex-toolbar h2 {
+  letter-spacing: -.018em;
+}
+
+.io-ui .io-combat-stat-strip > div {
+  border-color: rgba(166, 190, 193, .12);
+  background: linear-gradient(145deg, rgba(23, 36, 42, .86), rgba(11, 20, 25, .82));
+}
+
+.io-ui :is(.io-combat-gear-card, .io-combat-skill-card, .io-combat-opponent-card, .io-combat-dungeon-choice, .io-runes-major-card) {
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, filter .18s ease;
+}
+
+.io-ui :is(.io-combat-gear-card, .io-combat-skill-card, .io-combat-opponent-card, .io-combat-dungeon-choice, .io-runes-major-card):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .2), inset 0 1px rgba(255, 255, 255, .045);
+}
+
+.io-ui :is(.io-combat-gear-card, .io-combat-skill-card, .io-combat-opponent-card, .io-combat-dungeon-choice, .io-runes-major-card):focus-within {
+  border-color: rgba(116, 221, 202, .46);
+}
+
+.io-ui .io-combat-button,
+.io-ui .io-runes-button {
+  min-height: 38px;
+  border-radius: 10px;
+  letter-spacing: .015em;
+}
+
+.io-ui .io-combat-button.is-primary {
+  box-shadow: 0 6px 18px rgba(116, 221, 202, .12), inset 0 1px rgba(255, 255, 255, .12);
+}
+
+.io-ui .io-combat-button.is-primary:hover:not(:disabled) {
+  box-shadow: 0 8px 22px rgba(116, 221, 202, .19), inset 0 1px rgba(255, 255, 255, .16);
+}
+
+.io-ui .io-combat-error,
+.io-ui .io-combat-arena-result {
+  border-radius: 13px;
+}
+
+.io-ui .io-combat-skill-result {
+  box-shadow: inset 0 1px rgba(255, 255, 255, .06), 0 12px 30px rgba(0, 0, 0, .2);
+}
+
+.io-ui .io-combat-gear-icon,
+.io-ui .io-combat-skill-icon {
+  transition: transform .16s ease, box-shadow .16s ease, filter .16s ease;
+}
+
+.io-ui .io-combat-gear-icon:hover:not(:disabled),
+.io-ui .io-combat-skill-icon:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: brightness(1.08);
+}
+
+/* Shared modal and toast edges use the same quiet depth as the rest of the UI. */
+.io-ui .io-modal-card,
+.io-ui .toast-card {
+  border-color: rgba(166, 190, 193, .2);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .4), inset 0 1px rgba(255, 255, 255, .045);
+}
+
+@keyframes io-ui-roll-ready {
+  0%, 100% { box-shadow: 0 9px 26px rgba(80, 196, 173, .13), inset 0 1px rgba(255, 255, 255, .48); }
+  50% { box-shadow: 0 12px 32px rgba(80, 196, 173, .23), 0 0 18px rgba(116, 221, 202, .08), inset 0 1px rgba(255, 255, 255, .6); }
+}
+
+@media (max-width: 920px) {
+  .io-ui .app-main { padding-top: 22px; }
+  .io-ui .nav-tab.is-active::after { bottom: -8px; }
+}
+
+@media (max-width: 680px) {
+  .io-ui .app-main { padding-top: 17px; }
+  .io-ui .app-nav { padding-block: 7px; }
+  .io-ui .nav-tab { min-height: 36px; }
+  .io-ui .nav-tab.is-active::after { bottom: -8px; }
+  .io-ui .io-combat-page-head { margin-bottom: 15px; }
+  .io-ui .io-combat-panel,
+  .io-ui .io-runes-panel { box-shadow: 0 8px 22px rgba(0, 0, 0, .14), inset 0 1px rgba(255, 255, 255, .035); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .io-ui .brand-mark,
+  .io-ui .header-icon-button,
+  .io-ui .nav-tab,
+  .io-ui .app-main button,
+  .io-ui :is(.io-combat-gear-card, .io-combat-skill-card, .io-combat-opponent-card, .io-combat-dungeon-choice, .io-runes-major-card),
+  .io-ui .io-combat-gear-icon,
+  .io-ui .io-combat-skill-icon {
+    transition: none !important;
+  }
+  .io-ui .brand-lockup:hover .brand-mark,
+  .io-ui :is(.io-combat-gear-card, .io-combat-skill-card, .io-combat-opponent-card, .io-combat-dungeon-choice, .io-runes-major-card):hover {
+    transform: none;
+  }
+  .io-ui .roll-button.is-ready:not(.frenzy-supercharged):not(:disabled) {
+    animation: none !important;
+  }
+}
