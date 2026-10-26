@@ -748,7 +748,7 @@ export const SKILL_GACHA_RANK_REQUIREMENTS: SkillGachaRankRequirement[] = Array.
       rank,
       requiredPulls: Math.round(3 * Math.pow(rank - 1, 1.55)),
       requiredMarks: Math.round(25 * Math.pow(rank - 1, 1.45)),
-      unlocks: rank === SKILL_GACHA_RANK_MAX ? 'Mythic 0.50%; each other rarity 24.875%' : 'Improved higher-rarity odds',
+      unlocks: rank === SKILL_GACHA_RANK_MAX ? 'Common 18%; Uncommon 25%; Rare 23%; Epic 26%; Mythic 8%' : 'Improved higher-rarity odds',
     };
   },
 );
@@ -759,24 +759,65 @@ export function skillGachaRankRequirement(currentRankValue: unknown): SkillGacha
 }
 
 export interface CombatSkillRarityOdds { Common: number; Uncommon: number; Rare: number; Epic: number; Mythic: number; }
-/** Rank 1 is all Common. At Rank 30, Mythic is 0.5% and each other tier is 24.875%. */
+
+/**
+ * The Gacha starts with Common-only draws, then gradually introduces each
+ * rarity tier. Between these anchor ranks, odds interpolate smoothly. Every
+ * row sums to 100%, and higher ranks steadily increase the higher tiers.
+ */
+const SKILL_GACHA_ODDS_ANCHORS: Array<{ rank: number; odds: CombatSkillRarityOdds }> = [
+  { rank: 1, odds: { Common: 1, Uncommon: 0, Rare: 0, Epic: 0, Mythic: 0 } },
+  { rank: 2, odds: { Common: 0.98, Uncommon: 0.02, Rare: 0, Epic: 0, Mythic: 0 } },
+  { rank: 3, odds: { Common: 0.93, Uncommon: 0.065, Rare: 0.005, Epic: 0, Mythic: 0 } },
+  { rank: 5, odds: { Common: 0.82, Uncommon: 0.16, Rare: 0.02, Epic: 0, Mythic: 0 } },
+  { rank: 8, odds: { Common: 0.66, Uncommon: 0.22, Rare: 0.10, Epic: 0.02, Mythic: 0 } },
+  { rank: 12, odds: { Common: 0.50, Uncommon: 0.24, Rare: 0.16, Epic: 0.09, Mythic: 0.01 } },
+  { rank: 18, odds: { Common: 0.36, Uncommon: 0.25, Rare: 0.19, Epic: 0.17, Mythic: 0.03 } },
+  { rank: 24, odds: { Common: 0.25, Uncommon: 0.25, Rare: 0.22, Epic: 0.23, Mythic: 0.05 } },
+  { rank: 30, odds: { Common: 0.18, Uncommon: 0.25, Rare: 0.23, Epic: 0.26, Mythic: 0.08 } },
+];
+
 export function combatSkillRarityOdds(gachaRankValue: unknown): CombatSkillRarityOdds {
   const raw = Number(gachaRankValue);
-  const rank = Number.isFinite(raw) ? Math.max(1, Math.min(SKILL_GACHA_RANK_MAX, Math.floor(raw))) : 1;
-  const progress = (rank - 1) / (SKILL_GACHA_RANK_MAX - 1);
-  const sharedTierOdds = 0.24875 * progress;
-  return {
-    Common: 1 - 0.75125 * progress,
-    Uncommon: sharedTierOdds,
-    Rare: sharedTierOdds,
-    Epic: sharedTierOdds,
-    Mythic: 0.005 * progress,
-  };
+  const rank = Number.isFinite(raw)
+    ? Math.max(1, Math.min(SKILL_GACHA_RANK_MAX, Math.floor(raw)))
+    : 1;
+
+  const finalAnchor = SKILL_GACHA_ODDS_ANCHORS[SKILL_GACHA_ODDS_ANCHORS.length - 1]!;
+  if (rank >= finalAnchor.rank) return { ...finalAnchor.odds };
+
+  for (let index = 1; index < SKILL_GACHA_ODDS_ANCHORS.length; index += 1) {
+    const upper = SKILL_GACHA_ODDS_ANCHORS[index]!;
+    if (rank > upper.rank) continue;
+    const lower = SKILL_GACHA_ODDS_ANCHORS[index - 1]!;
+    const progress = (rank - lower.rank) / (upper.rank - lower.rank);
+    const interpolate = (rarity: keyof CombatSkillRarityOdds) =>
+      lower.odds[rarity] + (upper.odds[rarity] - lower.odds[rarity]) * progress;
+    return {
+      Common: interpolate('Common'),
+      Uncommon: interpolate('Uncommon'),
+      Rare: interpolate('Rare'),
+      Epic: interpolate('Epic'),
+      Mythic: interpolate('Mythic'),
+    };
+  }
+
+  return { ...finalAnchor.odds };
 }
 
-export function skillRarityUnlocked(_rarity: CombatRarity, _gachaRankValue: unknown): boolean {
-  // All rarities exist in the pool from Rank 1; rank controls their probabilities.
-  return true;
+export function skillRarityUnlocked(rarity: CombatRarity, gachaRankValue: unknown): boolean {
+  const raw = Number(gachaRankValue);
+  const rank = Number.isFinite(raw)
+    ? Math.max(1, Math.min(SKILL_GACHA_RANK_MAX, Math.floor(raw)))
+    : 1;
+  const unlockRank: Record<CombatRarity, number> = {
+    Common: 1,
+    Uncommon: 2,
+    Rare: 3,
+    Epic: 6,
+    Mythic: 9,
+  };
+  return rank >= unlockRank[rarity];
 }
 export const COMBAT_SKILLS: CombatSkillDefinition[] = [
   { id:'ember-lung', name:'Ember Lung', rarity:'Common', stat:'damagePct', value:.025, effect:"Applies Burn for several beats; each tick deals rank-scaled damage before your next attack." },
