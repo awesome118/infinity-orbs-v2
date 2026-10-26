@@ -105,12 +105,12 @@ const sections: Array<{
       },
       {
         title: 'Mastery Engine Removed',
-        description: 'Removed Mastery Engine.',
+        description: 'Mastery Engine has been removed for balancing purposes.',
       },
     ],
   },
   {
-    title: 'Bug Fixes',
+    title: 'Bug Fixes & Improvements',
     entries: [
       {
         title: 'Silent Alert Mode',
