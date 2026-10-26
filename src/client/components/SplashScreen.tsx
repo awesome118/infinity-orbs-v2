@@ -1,4 +1,5 @@
 import '../post-revamp.css';
+import { APP_VERSION } from '../../shared/version.js';
 
 type SplashScreenProps = {
   ready: boolean;
@@ -37,6 +38,9 @@ export function SplashScreen({
         </h1>
         <p className="mt-3 text-xs font-bold uppercase tracking-[0.24em] text-cyan-200/80">
           roll, collect, go further
+        </p>
+        <p className="mt-2 text-[10px] font-mono font-medium tracking-wide text-slate-500" aria-label={`App version ${APP_VERSION}`}>
+          v{APP_VERSION}
         </p>
 
         {ready && hasProgress && (
