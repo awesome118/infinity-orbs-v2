@@ -24,6 +24,7 @@
 
 ### Core Game Changes:
 
+- Added a one-time push notification opt-in prompt. Notifications remain off until enabled, and the prompt explains the limited alerts and how to change the setting later.
 - Added a first-roll tutorial that introduces rolling an Orb, the result screen, Upgrades, and the Codex. It can be skipped at any time.
 - Added Aftershock, a Mastery skill that provides Critical Luck based on the best dry interval between successive all-time rarity records.
 - Added Unbroken Momentum, a Prestige upgrade that grants permanent roll Speed based on the longest uninterrupted online rolling session.
