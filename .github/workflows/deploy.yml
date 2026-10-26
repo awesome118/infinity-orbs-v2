@@ -1,7 +1,7 @@
 name: Deploy Devvit
 
 # Normally manual. The version-specific push marker is reserved for an explicitly requested deployment.
-# Explicit deployment request: Correct popup regression selectors and validate one-time notifications prompt in 2.0.7 on r/infinity_orbs_dev.
+# Explicit deployment request: Fix notification prompt triggering and add admin-console popup previews in 2.0.8 on r/infinity_orbs_dev.
 # CI auth uses the stored token and session files; preflight guards these credentials and release contracts before upload.
 # This workflow uploads and installs to the development subreddit only. Production install is a separate post-approval workflow.
 on:
@@ -25,7 +25,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.0.7]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.0.8]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
