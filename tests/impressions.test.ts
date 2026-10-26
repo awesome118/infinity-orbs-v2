@@ -163,6 +163,7 @@ test('main game, Orb Share, and Frenzy clients report only coarse aggregate impr
   const reporter = readFileSync(resolve(process.cwd(), 'src/client/impressions.ts'), 'utf8');
   const api = readFileSync(resolve(process.cwd(), 'src/server/app.ts'), 'utf8');
   const admin = readFileSync(resolve(process.cwd(), 'src/server/debug.ts'), 'utf8');
+  const adminUi = readFileSync(resolve(process.cwd(), 'src/client/components/DevDebugModal.tsx'), 'utf8');
 
   assert.match(splash, /recordPostImpression\(impressionPostType, context\.postId\)/);
   assert.match(splash, /postData\.type === 'shared-orb' \? 'orb-share' : 'main-game'/);
@@ -174,6 +175,10 @@ test('main game, Orb Share, and Frenzy clients report only coarse aggregate impr
   assert.doesNotMatch(reporter, /username\s*:|userId\s*:|userAgent\s*:/i);
   assert.match(api, /app\.post\('\/api\/impressions'/);
   assert.match(api, /req\.path === '\/impressions'/);
+  assert.ok(api.includes("app.post('/api/impressions/conversion'"));
+  assert.ok(reporter.includes("fetch('/api/impressions/conversion'"));
+  assert.ok(splash.includes('trackMainGameConversion'));
+  assert.ok(adminUi.includes('conversionByDevice'));
   assert.match(admin, /debugRouter\.get\('\/impressions'/);
 });
 
