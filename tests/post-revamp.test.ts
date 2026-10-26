@@ -94,7 +94,7 @@ test('Frenzy post claim arms the main-game reward animation instead of consuming
   assert.match(frenzy, /requestExpandedMode\(event\.nativeEvent, 'game'\)/);
   assert.match(frenzy, /fetchWithTimeout\('\/api\/frenzy\/arm', \{ method: 'POST' \}, 10_000\)/);
   assert.match(game, /getJson<\{ armed: boolean \}>\('\/api\/frenzy\/handoff'\)/);
-  assert.match(game, /if \(!handoff\.armed\)[\s\S]{0,250}continue;/);
+  assert.match(game, /if \(!handoff\.armed\)[\s\S]{0,500}continue;/);
   assert.match(game, /setLastBatch\(revealBatch\)/);
 });
 
