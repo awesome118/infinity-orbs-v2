@@ -30,6 +30,19 @@ test('Skill Gacha starts Common-only and progressively introduces rarity tiers',
   assert.deepEqual(combatSkillRarityOdds(5), {
     Common: 0.82, Uncommon: 0.16, Rare: 0.02, Epic: 0, Mythic: 0,
   });
+  assert.deepEqual(combatSkillRarityOdds(12), {
+    Common: 0.5, Uncommon: 0.24, Rare: 0.16, Epic: 0.0995, Mythic: 0.0005,
+  });
+  assert.deepEqual(combatSkillRarityOdds(18), {
+    Common: 0.36, Uncommon: 0.25, Rare: 0.19, Epic: 0.198, Mythic: 0.002,
+  });
+  assert.deepEqual(combatSkillRarityOdds(24), {
+    Common: 0.25, Uncommon: 0.25, Rare: 0.22, Epic: 0.277, Mythic: 0.003,
+  });
+  assert.deepEqual(combatSkillRarityOdds(30), {
+    Common: 0.18, Uncommon: 0.25, Rare: 0.23, Epic: 0.335, Mythic: 0.005,
+  });
+  assert.equal(combatSkillRarityOdds(30).Mythic, 0.005, 'Mythic caps at 0.5% at maximum rank');
   assert.equal(skillRarityUnlocked('Uncommon', 1), false);
   assert.equal(skillRarityUnlocked('Uncommon', 2), true);
   assert.equal(skillRarityUnlocked('Rare', 2), false);
