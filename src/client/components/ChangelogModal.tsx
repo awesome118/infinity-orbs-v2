@@ -141,6 +141,10 @@ const sections: Array<{
         description: 'Kept older shared-Orb leaderboard entries visible when legacy records are missing account IDs.',
       },
       {
+        title: 'Frenzy Claims & Post Performance',
+        description: 'Fixed Frenzy claims to target the post you are viewing, centered Orb reveals, reduced animation lag, and kept skill details open long enough to equip abilities.',
+      },
+      {
         title: 'Rune Controls',
         description: 'Fixed Rune controls so Equip, Strengthen, and Auto Sacrifice actions no longer conflict when used in quick succession.',
       },
