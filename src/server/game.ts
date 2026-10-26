@@ -1235,6 +1235,7 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
   if (!postId) throw new Error('This is not an Orb Frenzy post.');
 
   return withPlayerMutationLock(async () => {
+    const viewerId = currentUserId();
     const raw = await redis.get(FRENZY_POST_PREFIX + postId);
     if (!raw) throw new Error('This is not an Orb Frenzy post.');
     const data = parseFrenzyPostRecord(raw);
@@ -1256,7 +1257,7 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
     }
 
     const handoffExpiresAt = Date.now() + FRENZY_HANDOFF_TTL_MS;
-    await redis.set(frenzyHandoffKey(currentUserId()), JSON.stringify({
+    await redis.set(frenzyHandoffKey(viewerId), JSON.stringify({
       postId,
       expiresAt: handoffExpiresAt,
     }), { expiration: new Date(handoffExpiresAt) });
