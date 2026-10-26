@@ -2748,18 +2748,11 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
   const registry = rawRegistry && typeof rawRegistry === 'object'
     ? rawRegistry as Record<string, string>
     : {};
-  const userIds = Object.keys(registry);
-  const [saves, combatSaves] = userIds.length > 0
-    ? await Promise.all([
-      redis.mGet(userIds.map(id => `player:${id}`)),
-      redis.mGet(userIds.map(id => `infinity-orbs:combat:${id}`)),
-    ])
-    : [[], []];
 
-  const eligible: LeaderboardEntry[] = [];
   const legacyRaw = await redis.get(key('leaderboard'));
-  // Legacy entries are only a fallback for the read projection. A corrupted
-  // board must not make the entire player-derived leaderboard unavailable.
+  // The legacy projection is retained as a read-only recovery index. If registry
+  // fields are missing, its user IDs let us rebuild the visible boards from the
+  // durable player saves instead of returning empty leaderboards.
   let legacyBoard: LeaderboardEntry[] = [];
   try {
     legacyBoard = parseLeaderboardList(legacyRaw);
@@ -2771,17 +2764,40 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
     if (entry.userId) legacyById.set(entry.userId, entry);
   }
 
+  const userIds = Array.from(new Set([...Object.keys(registry), ...legacyById.keys()]));
+  const [saves, combatSaves] = userIds.length > 0
+    ? await Promise.all([
+      redis.mGet(userIds.map(id => `player:${id}`)),
+      redis.mGet(userIds.map(id => `infinity-orbs:combat:${id}`)),
+    ])
+    : [[], []];
+
+  const missingRegistryCount = userIds.filter(userId =>
+    !Object.prototype.hasOwnProperty.call(registry, userId),
+  ).length;
+  if (missingRegistryCount > 0) {
+    console.warn(
+      '[Leaderboard] Recovering ' + missingRegistryCount +
+      ' account IDs from the legacy projection because the player registry is missing entries.',
+    );
+  }
+
+  const eligible: LeaderboardEntry[] = [];
   for (let index = 0; index < userIds.length; index += 1) {
     const userId = userIds[index];
     const registryEntry = parseStoredJson<Partial<PlayerRegistryLeaderboardEntry>>(registry[userId]) ?? {};
     const save = saves[index] ? parseStoredJson<Partial<PlayerState>>(saves[index]) : null;
     if (!save) continue;
     const combatSave = combatSaves[index] ? parseStoredJson<unknown>(combatSaves[index]) : null;
+    const legacy = legacyById.get(userId);
 
-    const sharedAt = Number(save.lastShareAt ?? 0) || 0;
+    // Prefer the authoritative save. Older saves lacking lastShareAt may use
+    // the last durable projection value; an explicit zero still means ineligible.
+    const sharedAt = Number(
+      save.lastShareAt ?? legacy?.sharedAt ?? 0,
+    ) || 0;
     if (sharedAt <= 0) continue;
 
-    const legacy = legacyById.get(userId);
     const playtimeMs = Math.max(
       0,
       Number(registryEntry.playtimeMs ?? legacy?.playtimeMs ?? 0) || 0,

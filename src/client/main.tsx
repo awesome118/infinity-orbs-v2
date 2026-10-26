@@ -781,8 +781,8 @@ export function App() {
 
   const refreshLeaderboards = useCallback(async () => {
     const [lb, lbs] = await Promise.all([
-      getJson<LeaderboardEntry[]>('/api/leaderboard'),
-      getJson<LeaderboardBoards>('/api/leaderboards'),
+      getJson<LeaderboardEntry[]>('/api/leaderboard', { cache: 'no-store' }),
+      getJson<LeaderboardBoards>('/api/leaderboards', { cache: 'no-store' }),
     ]);
     setLeaderboardData(lb);
     setLeaderboards(lbs);

@@ -1697,19 +1697,60 @@ export interface PlayerListEntry {
   shards: number;
   clientVersion: string | null;
   isLatestVersion: boolean;
+  /** True when this entry was recovered from the legacy leaderboard index. */
+  registryRecovered?: boolean;
 }
 
 export async function listPlayers(): Promise<PlayerListEntry[]> {
   const rawRegistry = await redis.hGetAll(PLAYER_REGISTRY_KEY);
   const records = rawRegistry && typeof rawRegistry === 'object' ? rawRegistry as Record<string, string> : {};
-  const userIds = Object.keys(records);
+
+  // The player registry is the primary index. The legacy leaderboard is a
+  // second, older index of players who have shared an Orb. If the registry
+  // loses individual fields (or is unexpectedly empty), use those IDs as a
+  // recovery source rather than silently rendering an entirely empty list.
+  const legacyRaw = await redis.get('io:leaderboard');
+  const parsedLegacy = parseStoredJson<unknown>(legacyRaw);
+  const legacyById = new Map<string, { username?: unknown; playtimeMs?: unknown }>();
+  if (Array.isArray(parsedLegacy)) {
+    for (const value of parsedLegacy) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+      const entry = value as Record<string, unknown>;
+      const userId = typeof entry.userId === 'string' ? entry.userId.trim() : '';
+      if (!userId) continue;
+      legacyById.set(userId, {
+        username: entry.username,
+        playtimeMs: entry.playtimeMs,
+      });
+    }
+  }
+
+  const userIds = Array.from(new Set([...Object.keys(records), ...legacyById.keys()]));
   if (userIds.length === 0) return [];
+
+  const missingRegistryCount = userIds.filter(userId =>
+    !Object.prototype.hasOwnProperty.call(records, userId),
+  ).length;
+  if (missingRegistryCount > 0) {
+    console.warn(
+      '[Player List] Recovering ' + missingRegistryCount +
+      ' account IDs from the legacy leaderboard because the player registry is missing entries.',
+    );
+  }
 
   const now = Date.now();
   const saves = await redis.mGet(userIds.map(id => playerKeyFor(id)));
-  const players = userIds.map((userId, index) => {
+  const players = userIds.map((userId, index): PlayerListEntry | null => {
+    const hasRegistryEntry = Object.prototype.hasOwnProperty.call(records, userId);
     const registry = parseStoredJson<Partial<PlayerRegistryEntry>>(records[userId]) ?? {};
+    const legacy = legacyById.get(userId);
     const save = saves[index] ? parseStoredJson<Partial<PlayerState>>(saves[index]) : null;
+
+    // Do not resurrect a wiped account from a stale leaderboard projection.
+    // Registry-backed accounts remain visible as before; fallback-only entries
+    // require a real durable player save.
+    if (!hasRegistryEntry && !save) return null;
+
     const lastSeenAt = Math.max(
       validPastTimestamp(registry.lastSeenAt, now),
       validPastTimestamp(save?.lastSeenAt, now),
@@ -1721,13 +1762,14 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
         : 0;
     return {
       userId,
-      username: String(registry.username ?? save?.username ?? ('user-' + userId.slice(-8))).trim().slice(0, 100),
+      registryRecovered: !hasRegistryEntry,
+      username: String(registry.username ?? save?.username ?? legacy?.username ?? ('user-' + userId.slice(-8))).trim().slice(0, 100),
       firstSeenAt: validPastTimestamp(registry.firstSeenAt, now),
       lastSeenAt,
       active: lastSeenAt >= now - PLAYER_ACTIVE_WINDOW_MS,
       level: Math.max(1, Number(save?.level ?? 1) || 1),
       xp: Math.max(0, Number(save?.xp ?? 0) || 0),
-      playtimeMs: Math.max(0, Number(registry.playtimeMs ?? 0) || 0),
+      playtimeMs: Math.max(0, Number(registry.playtimeMs ?? legacy?.playtimeMs ?? 0) || 0),
       currentSessionMs,
       totalRolls: Math.max(0, Number(save?.totalRolls ?? 0) || 0),
       highestRarity: Math.max(0, Number(save?.highestRarity ?? 0) || 0),
@@ -1742,8 +1784,9 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
         validPastTimestamp(registry.clientVersionAt, now) > now - 45_000,
     } satisfies PlayerListEntry;
   });
-  players.sort((a, b) => Number(b.active) - Number(a.active) || b.lastSeenAt - a.lastSeenAt || a.username.localeCompare(b.username));
-  return players;
+  const visiblePlayers = players.filter((player): player is PlayerListEntry => player !== null);
+  visiblePlayers.sort((a, b) => Number(b.active) - Number(a.active) || b.lastSeenAt - a.lastSeenAt || a.username.localeCompare(b.username));
+  return visiblePlayers;
 }
 
 export async function getPlayerActivityStats(now = Date.now()): Promise<{
