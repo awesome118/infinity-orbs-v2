@@ -189,12 +189,42 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   useEffect(()=>{try{window.localStorage.setItem('io-combat-auto',String(auto));}catch{/* Embedded webviews can disable storage. */}},[auto]);
   useEffect(()=>{try{window.localStorage.setItem('io-combat-paused',String(paused));}catch{/* Embedded webviews can disable storage. */}},[paused]);
   const lastSkillPointerTypeRef=useRef<string>('mouse');
-  useEffect(()=>{
-    const closeDetails=(event:KeyboardEvent)=>{if(event.key!=='Escape')return;setInspectedSkillId(null);const target=event.target;if(target instanceof HTMLElement&&target.closest('.io-combat-skill-icon-wrap.is-inspected'))target.blur();};
-    const closeOutside=(event:PointerEvent)=>{const target=event.target;if(!(target instanceof Element)||!target.closest('.io-combat-skill-icon-wrap'))setInspectedSkillId(null);};
-    window.addEventListener('keydown',closeDetails);document.addEventListener('pointerdown',closeOutside);
-    return()=>{window.removeEventListener('keydown',closeDetails);document.removeEventListener('pointerdown',closeOutside);};
+  const skillTooltipCloseTimerRef=useRef<number|null>(null);
+  const cancelSkillTooltipClose=useCallback(()=>{
+    if(skillTooltipCloseTimerRef.current!==null){
+      window.clearTimeout(skillTooltipCloseTimerRef.current);
+      skillTooltipCloseTimerRef.current=null;
+    }
   },[]);
+  const scheduleSkillTooltipClose=useCallback((skillId:CombatSkillId)=>{
+    cancelSkillTooltipClose();
+    skillTooltipCloseTimerRef.current=window.setTimeout(()=>{
+      setInspectedSkillId(current=>current===skillId?null:current);
+      skillTooltipCloseTimerRef.current=null;
+    },450);
+  },[cancelSkillTooltipClose]);
+  useEffect(()=>{
+    const closeDetails=(event:KeyboardEvent)=>{
+      if(event.key!=='Escape')return;
+      cancelSkillTooltipClose();
+      setInspectedSkillId(null);
+      const target=event.target;
+      if(target instanceof HTMLElement&&target.closest('.io-combat-skill-icon-wrap.is-inspected'))target.blur();
+    };
+    const closeOutside=(event:PointerEvent)=>{
+      const target=event.target;
+      if(target instanceof Element&&target.closest('.io-combat-skill-icon-wrap'))return;
+      cancelSkillTooltipClose();
+      setInspectedSkillId(null);
+    };
+    window.addEventListener('keydown',closeDetails);
+    document.addEventListener('pointerdown',closeOutside);
+    return()=>{
+      window.removeEventListener('keydown',closeDetails);
+      document.removeEventListener('pointerdown',closeOutside);
+      cancelSkillTooltipClose();
+    };
+  },[cancelSkillTooltipClose]);
   const [visibleGearCount,setVisibleGearCount]=useState(60);
   const [gearSearch,setGearSearch]=useState('');
   const [gearSlotFilter,setGearSlotFilter]=useState<'all'|CombatGearSlot>('all');
@@ -710,12 +740,14 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         const glyph=skill.stat==='damagePct'?'⚔':skill.stat==='speedFlat'?'⏱':skill.stat==='healthPct'?'♥':skill.stat==='critChance'?'✧':'◈';const copyProgressPct=Math.max(0,Math.min(100,Math.round(copies/Math.max(1,needed)*100)));
         const actionLabel=!unlocked?'Unlock at Gacha Rank '+rarityUnlockRank:rank===0?'Roll to discover':isEquipped?'Unequip ability':slotsFull?'Ability slots full':'Equip ability';
         return <article key={skill.id} className={'io-combat-skill-icon-wrap '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')+(inspectedSkillId===skill.id?' is-inspected':'')}
-          onPointerEnter={event=>{lastSkillPointerTypeRef.current=event.pointerType;if(event.pointerType==='mouse')setInspectedSkillId(skill.id);}}
-          onPointerLeave={()=>{if(lastSkillPointerTypeRef.current==='mouse')setInspectedSkillId(current=>current===skill.id?null:current);}}>
+          onPointerEnter={event=>{lastSkillPointerTypeRef.current=event.pointerType;cancelSkillTooltipClose();if(event.pointerType==='mouse')setInspectedSkillId(skill.id);}}
+          onPointerLeave={event=>{if(event.pointerType==='mouse')scheduleSkillTooltipClose(skill.id);}}>
           <button type="button" className={'io-combat-skill-icon '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')} aria-label={'Inspect '+skill.name} aria-expanded={inspectedSkillId===skill.id} title={skill.name} disabled={mutating} onFocus={()=>setInspectedSkillId(skill.id)} onBlur={event=>{if(!event.currentTarget.parentElement?.contains(event.relatedTarget as Node|null))setInspectedSkillId(current=>current===skill.id?null:current);}} onClick={()=>{if(lastSkillPointerTypeRef.current!=='mouse')setInspectedSkillId(current=>current===skill.id?null:skill.id);}}>
             <span>{glyph}</span><small>{rank>0?'R'+fmt(rank):'—'}</small>{isEquipped&&<b>✓</b>}
           </button>
-          <div className="io-combat-skill-tooltip" role="group" aria-label={skill.name+' details and actions'}>
+          <div className="io-combat-skill-tooltip" role="group" aria-label={skill.name+' details and actions'}
+            onPointerEnter={cancelSkillTooltipClose}
+            onPointerLeave={event=>{if(event.pointerType==='mouse')scheduleSkillTooltipClose(skill.id);}}>
             <span className="io-combat-eyebrow">{skill.rarity.toUpperCase()} · {!unlocked?'GACHA RANK '+rarityUnlockRank:rank?'RANK '+fmt(rank):'NOT OWNED'}</span>
             <strong>{skill.name}</strong><p>{skillValue(skill,Math.max(1,rank),stats.speed)}</p>
             {rank>0&&<><small>{fmt(copies)} / {fmt(needed)} copies toward Rank {fmt(rank+1)}</small><div className="io-combat-skill-progress" role="progressbar" aria-label={skill.name+' duplicate progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={copyProgressPct}><span style={{width:copyProgressPct+'%'}}/></div></>}
