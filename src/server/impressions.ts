@@ -547,13 +547,13 @@ export async function recordMainGamePostConversion(
   const deviceType = normalizeDeviceType(deviceTypeValue);
   const contextPostId = normalizeRedditPostId(String(context.postId ?? '').trim());
   const suppliedPostId = normalizeRedditPostId(postIdValue);
-  if (!suppliedPostId || suppliedPostId.length > 200 || /[\\u0000-\\u001f\\u007f]/.test(suppliedPostId)) {
+  if (!suppliedPostId || suppliedPostId.length > 200 || /[\u0000-\u001f\u007f]/.test(suppliedPostId)) {
     return { recorded: false };
   }
   if (contextPostId && contextPostId !== suppliedPostId) return { recorded: false };
   const postId = contextPostId || suppliedPostId;
   const userId = String(context.userId ?? '').trim();
-  const username = String(context.username ?? '').trim().replace(/^u\\//i, '');
+  const username = String(context.username ?? '').trim().replace(/^u\//i, '');
   const identity = userId && userId !== 'unknown'
     ? userId
     : username ? 'username:' + username.toLowerCase() : '';
