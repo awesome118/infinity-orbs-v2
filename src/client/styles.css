@@ -1484,6 +1484,59 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
   background: rgba(112, 46, 125, .09);
 }
 
+.io-notification-prompt {
+  position: relative;
+  border-color: rgba(116, 221, 202, .27);
+  box-shadow:
+    0 22px 80px rgba(0, 0, 0, .46),
+    0 0 50px rgba(73, 239, 199, .075),
+    inset 0 1px rgba(255, 255, 255, .04);
+  animation: io-post-rise .32s cubic-bezier(.16, .78, .28, 1) both;
+}
+
+.io-notification-prompt-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #9debdc;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+
+.io-notification-prompt-note {
+  margin-top: 18px;
+  padding: 13px 15px;
+  border: 1px solid rgba(116, 221, 202, .18);
+  border-radius: 15px;
+  background: linear-gradient(140deg, rgba(34, 104, 96, .14), rgba(10, 25, 30, .28));
+}
+
+.io-notification-prompt .io-modal-actions {
+  margin-top: 17px;
+}
+
+.io-notification-prompt .io-modal-actions .io-public-button {
+  min-height: 46px;
+}
+
+.io-notification-backdrop {
+  animation: io-notification-backdrop-in .18s ease-out both;
+}
+
+@keyframes io-notification-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .io-notification-backdrop,
+  .io-notification-prompt {
+    animation: none;
+  }
+}
+
 @keyframes io-frenzy-number-roll {
   0% {
     transform: translateY(.42em);
