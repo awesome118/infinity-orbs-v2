@@ -1130,7 +1130,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                 <div className="flex items-center gap-3">
                   <span className={`w-6 text-center font-black text-sm ${idx===0?'text-amber-400':idx===1?'text-slate-300':idx===2?'text-amber-600':'text-slate-500'}`}>#{idx+1}</span>
                   <div>
-                    <div className="flex items-center gap-1.5"><span className="font-bold text-white text-sm">{entry.username}</span>{entry.title && <span className="text-[10px] text-slate-400 font-medium">• {entry.title}</span>}</div>
+                    <div className="flex items-center gap-1.5"><span className="font-bold text-white text-sm">{entry.username}</span>{entry.legacyOnly && <span className="text-[8px] uppercase tracking-wide text-slate-400 border border-slate-700 rounded px-1">Legacy</span>}{entry.title && <span className="text-[10px] text-slate-400 font-medium">• {entry.title}</span>}</div>
                     <span className="text-slate-400 text-[11px]">{formatNumber(entry.totalRolls)} rolls • Best: 1/{formatRarity(entry.highestRarity)}</span>
                   </div>
                 </div>
