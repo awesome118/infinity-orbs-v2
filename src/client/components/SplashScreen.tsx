@@ -1,3 +1,5 @@
+import '../post-revamp.css';
+
 type SplashScreenProps = {
   ready: boolean;
   hasProgress: boolean;
@@ -62,7 +64,7 @@ export function SplashScreen({
           type="button"
           onClick={onEnter}
           disabled={!ready}
-          className="mt-9 min-h-12 w-full rounded-xl border border-cyan-200/25 bg-cyan-500 px-6 py-3 text-sm font-black uppercase tracking-[0.14em] text-slate-950 transition-colors hover:bg-cyan-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-200 disabled:cursor-wait disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-400"
+          className="io-immersive-play-cta mt-9 min-h-14 w-full rounded-xl border border-cyan-100/60 bg-gradient-to-r from-lime-300 via-emerald-200 to-cyan-200 px-6 py-4 text-sm font-black uppercase tracking-[0.14em] text-slate-950 transition-colors hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-100 disabled:cursor-wait disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-400"
         >
           {ready ? (hasProgress ? 'Continue' : 'Play') : 'Loading'}
         </button>
