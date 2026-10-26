@@ -51,6 +51,10 @@ const sections: Array<{
     title: 'Core Game Changes',
     entries: [
       {
+        title: 'Push Notification Opt-In',
+        description: 'Added a one-time push notification prompt. Notifications stay off unless enabled, and the prompt explains the limited alerts and the bell control for changing the setting later.',
+      },
+      {
         title: 'First-Roll Tutorial',
         description: 'Added a first-roll tutorial that introduces rolling an Orb, the result screen, Upgrades, and the Codex. It can be skipped at any time.',
       },
