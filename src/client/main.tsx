@@ -12,6 +12,7 @@ import {
   Dices,
   RefreshCw,
   Flame,
+  Bell,
   Shield,
   Swords,
   DoorOpen,
@@ -2351,6 +2352,17 @@ export function App() {
     }
   };
 
+  const dismissNotificationPrompt = () => {
+    // Mark the one-time prompt as consumed whether the player enables or declines.
+    setNotificationPromptShown(true);
+    setShowNotificationPrompt(false);
+    try {
+      window.localStorage.setItem('io-notification-prompt-shown', '1');
+    } catch {
+      // In-memory state still prevents repeat prompts during this session.
+    }
+  };
+
   const maybePromptForNotifications = (previousRolls: number, nextRolls: number) => {
     if (notificationsEnabled || notificationPromptShown || previousRolls >= 5 || nextRolls < 5) return;
     setNotificationPromptShown(true);
@@ -2620,39 +2632,53 @@ export function App() {
       )}
 
       {showNotificationPrompt && !notificationsEnabled && (
-        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-3xl border border-fuchsia-500/30 bg-slate-900 p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-[10px] uppercase tracking-wider font-black text-fuchsia-300">Notification Setup</div>
-                <h2 className="mt-1 text-xl font-black text-white">Keep your Orb alerts coming</h2>
-                <p className="mt-2 text-sm text-slate-400">
-                  Enable Reddit notifications to get alerts when your offline Orb storage fills up.
-                </p>
-              </div>
-              <button type="button"
-                onClick={() => setShowNotificationPrompt(false)}
-                className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800"
-                aria-label="Close notification prompt"
-              >
-                <X className="w-5 h-5" />
-              </button>
+        <div className="fixed inset-0 z-[70] io-modal-backdrop io-notification-backdrop flex items-center justify-center p-4" data-testid="notification-prompt-backdrop">
+          <section
+            className="io-modal-card io-notification-prompt w-full max-w-md bg-slate-950/95"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="io-notification-prompt-title"
+            data-testid="notification-prompt"
+          >
+            <div className="io-notification-prompt-kicker">
+              <Bell className="w-4 h-4" />
+              Push Notifications
             </div>
-            <div className="mt-5 flex gap-2">
-              <button type="button"
+            <h2 id="io-notification-prompt-title" className="mt-2 text-2xl font-black text-white">
+              Allow push notifications?
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-400">
+              We’ll only send notifications when your idle rewards are ready to claim or an Infinity Orbs update is ready.
+            </p>
+            <div className="io-notification-prompt-note">
+              <div className="text-[10px] uppercase tracking-widest font-black text-teal-200">Notifications are off by default</div>
+              <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                This prompt will only appear once. You can change your choice later with the bell icon.
+              </p>
+            </div>
+            <div className="io-modal-actions">
+              <button
+                type="button"
                 onClick={() => void handleEnableNotificationsFromPrompt()}
-                className="flex-1 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 px-4 py-2.5 text-xs font-black text-white"
+                className="io-public-button io-public-button-primary"
+                data-testid="notification-prompt-enable"
               >
-                Enable Notifications
+                <Bell className="w-4 h-4" />
+                Allow Notifications
               </button>
-              <button type="button"
-                onClick={() => setShowNotificationPrompt(false)}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300"
+              <button
+                type="button"
+                onClick={dismissNotificationPrompt}
+                className="io-public-button io-public-button-secondary"
+                data-testid="notification-prompt-dismiss"
               >
-                Not Now
+                Not now
               </button>
             </div>
-          </div>
+            <button type="button" onClick={dismissNotificationPrompt} className="io-modal-close" aria-label="Close notification prompt">
+              <X className="w-4 h-4" />
+            </button>
+          </section>
         </div>
       )}
 
