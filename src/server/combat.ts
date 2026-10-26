@@ -1381,7 +1381,7 @@ function resolveArenaDuel(challengerState: CombatState, opponentState: CombatSta
   const winner=challengerHealthRatio===opponentHealthRatio
     ?(secureRandom()<.5?'challenger':'opponent')
     :challengerHealthRatio>opponentHealthRatio?'challenger':'opponent';
-  log.push(winner==='challenger'?'Victory. Arena rating updated.':'Defeat. Arena rating updated.');
+  log.push(winner==='challenger'?'Victory. Arena record updated.':'Defeat. Arena record updated.');
   if (log.length > 201) log.shift();
   return {winner,rounds:Math.min(rounds,100),log};
 }

@@ -1,4 +1,5 @@
 import express from 'express';
+import { createTelemetryRouter } from '@devvit/analytics/server/reddit';
 import { debugRouter, isDebugUser } from './debug.js';
 import { recordPostImpression, recordPlayerActivityForImpressions, recordMainGamePostConversion } from './impressions.js';
 import {
@@ -272,6 +273,7 @@ async function resolvePaymentBuyerId(
 export function createApp() {
   const app = express();
   app.use(express.json({ limit: '16kb' }));
+  app.use(createTelemetryRouter());
 
   // Keep the enormous Codex collection out of ordinary client-state payloads.
   // The collection itself remains server-side and is fetched through /api/collection

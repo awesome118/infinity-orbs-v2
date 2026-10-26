@@ -41,6 +41,7 @@
     "build": "vite build"
   },
   "permissions": {
+    "journeys": true,
     "redis": true,
     "payments": false,
     "reddit": {

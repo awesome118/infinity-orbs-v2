@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getWebViewMode, requestExpandedMode } from '@devvit/web/client';
+import { telemetry } from '@devvit/analytics/client/reddit';
 import {
   Sparkles,
   Zap,
@@ -111,6 +112,10 @@ function optimisticShardSpend(
   }
 }
 
+function swallowJourneyEvent(task: () => Promise<unknown> | unknown): void {
+  try { void Promise.resolve(task()).catch(() => undefined); } catch { /* Journeys telemetry must never interrupt gameplay. */ }
+}
+
 type ActiveTab =
   | 'roll'
   | 'upgrades'
@@ -218,6 +223,49 @@ async function getJsonWithTimeout<T>(url: string, timeoutMs = 10_000, options?: 
 
 export function App() {
   const [state, setState] = useState<PlayerState | null>(null);
+  const journeyStartPromiseRef = useRef<Promise<void> | null>(null);
+  const journeyReadyReportedRef = useRef(false);
+  const journeyEndedRef = useRef(false);
+  const journeyProgressRef = useRef(0);
+  const journeySessionRollsRef = useRef(0);
+  const journeyFirstUpgradeTrackedRef = useRef(false);
+  const ensureJourneyStarted = useCallback((): Promise<void> => {
+    if (!journeyStartPromiseRef.current) {
+      journeyStartPromiseRef.current = Promise.resolve()
+        .then(() => telemetry.startJourney())
+        .then(() => undefined)
+        .catch(() => undefined);
+    }
+    return journeyStartPromiseRef.current;
+  }, []);
+  const reportJourneyProgress = useCallback((progress: number, action: string) => {
+    void ensureJourneyStarted().then(() => {
+      if (progress <= journeyProgressRef.current) return;
+      journeyProgressRef.current = progress;
+      swallowJourneyEvent(() => telemetry.progress({ progress, action }));
+    });
+  }, [ensureJourneyStarted]);
+  const reportJourneyInteraction = useCallback((action: string, actionDetails?: string) => {
+    void ensureJourneyStarted().then(() => {
+      swallowJourneyEvent(() => telemetry.interaction({ action, ...(actionDetails ? { actionDetails } : {}) }));
+    });
+  }, [ensureJourneyStarted]);
+  useEffect(() => {
+    if (!state || journeyReadyReportedRef.current) return;
+    journeyReadyReportedRef.current = true;
+    swallowJourneyEvent(() => telemetry.appReady());
+  }, [state]);
+  useEffect(() => {
+    const finishJourney = () => {
+      if (!journeyStartPromiseRef.current || journeyEndedRef.current) return;
+      journeyEndedRef.current = true;
+      void journeyStartPromiseRef.current.then(() => {
+        swallowJourneyEvent(() => telemetry.endJourney({ complete: journeyProgressRef.current >= 0.35 }));
+      });
+    };
+    window.addEventListener('pagehide', finishJourney);
+    return () => window.removeEventListener('pagehide', finishJourney);
+  }, []);
   const [authRequired, setAuthRequired] = useState(false);
   const [startupError, setStartupError] = useState<string | null>(null);
   const [splashEntered, setSplashEntered] = useState(false);
@@ -742,6 +790,8 @@ export function App() {
     }
     sound.playClick();
     setTab(nextTab);
+    reportJourneyInteraction('tab_opened', nextTab);
+    if (targetIsCombatMode) reportJourneyProgress(0.65, 'combat_opened');
   };
 
   const showToast = (msg: string, type: 'info' | 'success' | 'warn' = 'info') => {
@@ -1296,6 +1346,15 @@ export function App() {
       setReadyAt(Date.now() + res.rollsRemainingUntilNext);
       mutationResyncNeededRef.current = false;
       maybePromptForNotifications(currentState.totalRolls, res.state.totalRolls);
+          const acceptedRolls = Math.max(1, Math.min(1_000, Math.floor((Number(res.state.totalRolls) || 0) - (Number(currentState.totalRolls) || 0))));
+          journeySessionRollsRef.current += acceptedRolls;
+          if (!isAutoRoll) reportJourneyInteraction('roll_committed', acceptedRolls > 1 ? 'multi_roll' : 'single_roll');
+          const sessionRolls = journeySessionRollsRef.current;
+          if (sessionRolls >= 25) reportJourneyProgress(0.60, 'twenty_five_rolls');
+          else if (sessionRolls >= 10) reportJourneyProgress(0.50, 'ten_rolls');
+          else if (sessionRolls >= 5) reportJourneyProgress(0.35, 'five_rolls');
+          else reportJourneyProgress(0.15, 'first_roll');
+          if (!isAutoRoll && res.orb.rarity > previousBest && res.orb.rarity >= latestBest) reportJourneyInteraction('personal_best_found', 'new_rarity');
     } catch (error: any) {
       rollTicketRef.current = null;
       setFrenzyArmed(false);
@@ -1363,6 +1422,11 @@ export function App() {
             applyPlayerState(res.state);
             mutationResyncNeededRef.current = false;
             if (res.purchased.length > 0) {
+              for (const purchase of res.purchased) reportJourneyInteraction('upgrade_purchased', purchase.id);
+              if (!journeyFirstUpgradeTrackedRef.current) {
+                journeyFirstUpgradeTrackedRef.current = true;
+                reportJourneyProgress(0.75, 'first_upgrade');
+              }
               showToast(`Upgraded ${res.purchased.length} level${res.purchased.length === 1 ? '' : 's'} · ${formatNumber(res.totalSpent)} Coins spent.`, 'success');
             }
             if (res.stoppedReason && res.purchased.length < ids.length) {
@@ -2446,7 +2510,11 @@ export function App() {
         hasProgress={(state.totalRolls ?? 0) > 0}
         highestRarity={state.highestRarity ?? 2}
         totalRolls={state.totalRolls ?? 0}
-        onEnter={() => setSplashEntered(true)}
+        onEnter={() => {
+          setSplashEntered(true);
+          // Start only after the player explicitly enters the game, never on preview or app load.
+          swallowJourneyEvent(ensureJourneyStarted);
+        }}
       />
     );
   }
