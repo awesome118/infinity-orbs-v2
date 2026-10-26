@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import { ArrowRight, BookOpen, Orbit, Share2, Trophy } from 'lucide-react';
 import { getOrbInfo, formatNumber, formatRarity, MAX_ORB_RARITY } from '../shared/game.js';
-import { recordPostImpression, type ImpressionPostType } from './impressions.js';
+import { recordPostImpression, recordMainGamePostConversion, type ImpressionPostType } from './impressions.js';
 import './styles.css';
 import './post-revamp.css';
 
@@ -29,10 +29,12 @@ function PlayGameButton({
   label = 'Play Infinity Orbs',
   className = 'io-public-button io-public-button-primary',
   leadingIcon,
+  trackMainGameConversion = false,
 }: {
   label?: string;
   className?: string;
   leadingIcon?: ReactNode;
+  trackMainGameConversion?: boolean;
 }) {
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState('');
@@ -40,6 +42,7 @@ function PlayGameButton({
     if (opening) return;
     setOpening(true);
     setError('');
+    if (trackMainGameConversion) recordMainGamePostConversion(context.postId);
     const failed = () => {
       setError("Reddit couldn't open the game from this preview. Try reloading the post and opening it again.");
       setOpening(false);
@@ -250,7 +253,7 @@ function Splash() {
 
         <div className="io-post-conversion io-main-cta">
           <div className="io-cta-caption"><span aria-hidden="true" /> YOUR FIRST ORB IS ONE TAP AWAY</div>
-          <PlayGameButton className="io-public-button io-public-button-primary io-launch-button" />
+          <PlayGameButton className="io-public-button io-public-button-primary io-launch-button" trackMainGameConversion />
           <p className="io-cta-footnote">Free to play · No download · Your progress saves on Reddit</p>
         </div>
 
