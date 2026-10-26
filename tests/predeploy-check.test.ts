@@ -319,8 +319,12 @@ test('deployment workflow is manual, main-only, and installs only to the develop
   );
   assert.match(workflow, /paths:\s*\n\s*- \.github\/workflows\/deploy\.yml/);
   assert.match(workflow, /contains\(github\.event\.head_commit\.message, '\[deploy-dev:\d+\.\d+\.\d+\]'\)/);
-  assert.ok(workflow.includes('      - name: Detect whether the exact version already exists\n        id: existing-version\n        continue-on-error: true\n        env:\n          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}'));
-  assert.ok(workflow.includes('      - name: Verify uploaded version\n        id: uploaded-version\n        env:\n          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}'));
+  assert.ok(workflow.includes('      - name: Configure Devvit authentication\n        env:\n          DEVVIT_TOKEN: ${{ secrets.DEVVIT_TOKEN }}\n          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}'));
+  assert.match(workflow, /printf '%s' "\$DEVVIT_TOKEN" > "\$HOME\/\.devvit\/token"/);
+  assert.match(workflow, /printf '%s' "\$DEVVIT_SESSION_ID" > "\$HOME\/\.devvit\/session-id"/);
+  assert.match(workflow, /run: npx devvit whoami/);
+  assert.ok(workflow.includes('      - name: Detect whether the exact version already exists\n        id: existing-version\n        continue-on-error: true\n        env:\n          REQUESTED_VERSION: ${{ steps.requested-version.outputs.version }}'));
+  assert.ok(workflow.includes('      - name: Verify uploaded version\n        id: uploaded-version\n        env:\n          REQUESTED_VERSION: ${{ steps.requested-version.outputs.version }}'));
   assert.match(workflow, /if: steps\.existing-version\.outcome != 'success'/);
   assert.match(workflow, /^\s*npx devvit install r\/infinity_orbs_dev\b/m);
   assert.doesNotMatch(workflow, /^\s*npx devvit install r\/infinityorbs\b/m);
