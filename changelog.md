@@ -45,7 +45,8 @@
 
 ### Bug Fixes:
 
-- Fixed Frenzy claims selecting a stale handoff instead of the post being viewed; reduced post-animation lag, centered the Orb reveal, and kept skill details open long enough to equip an ability.
+- Fixed Frenzy post claims bypassing the main-game reward animation and made expanded-game Frenzy lookups follow the armed handoff when post context changes.
+- Centered Orb rings using their full transforms, restored smooth motion to all three main-game-post rings, and softened the shared-Orb glow.
 
 - Fixed the one-time push notification prompt for returning players and added safe Frenzy and notification popup previews to the admin console.
 - Fixed Silent Alert Mode's toggle becoming out of sync with the active sound mode.
