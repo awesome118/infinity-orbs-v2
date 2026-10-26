@@ -434,3 +434,15 @@ test('Frenzy preview, arm, and claim checks honor the stored expiration timestam
   assert.match(source.slice(armStart, handoffStart), /isFrenzyPostRecordExpired\(data, now\)/);
   assert.match(source.slice(claimStart, claimStart + 8000), /isFrenzyPostRecordExpired\(data, now\)/);
 });
+
+test('claiming from a Frenzy post takes precedence over a stale game handoff', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  const start = source.indexOf('export async function claimOrbFrenzy');
+  const claim = source.slice(start, start + 1900);
+
+  assert.ok(start >= 0);
+  assert.match(claim, /const contextPostId = String\(context\.postId \?\? ''\)\.trim\(\)/);
+  assert.match(claim, /parseFrenzyPostRecord\(contextPostRaw\)/);
+  assert.match(claim, /const handoff = options\.postId \|\| isDirectFrenzyPost \? null : await readFrenzyHandoff\(claimantId\)/);
+  assert.match(claim, /isDirectFrenzyPost \? contextPostId : handoff\?\.postId \?\? contextPostId/);
+});
