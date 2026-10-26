@@ -1097,13 +1097,9 @@ export function App() {
       for (let attempt = 0; attempt < 12; attempt++) {
         try {
           const handoff = await getJson<{ armed: boolean }>('/api/frenzy/handoff');
-          // Expanded Mode can mount before the Frenzy post's arm request finishes.
-          // Keep polling the read-only handoff endpoint rather than abandoning the
-          // claim the first time it is not yet visible.
-          if (!handoff.armed) {
-            if (attempt < 11) await new Promise(resolve => window.setTimeout(resolve, 150));
-            continue;
-          }
+          // Only an explicitly armed post claim may auto-claim. If no handoff
+          // exists, leave ordinary game launches untouched and avoid polling.
+          if (!handoff.armed) return;
 
           const info = await getJson<{
             rarity: number;
