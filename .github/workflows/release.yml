@@ -1,7 +1,7 @@
 name: Submit Infinity Orbs for Reddit Review
 
 on:
-  # Review submission is version-specific; a new published version must be created for Reddit review.
+  # Review submission is version-specific; 2.0.3 includes the legacy leaderboard/player-list recovery fix.
   workflow_run:
     workflows: ["Deploy Devvit"]
     types: [completed]
