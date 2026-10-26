@@ -2338,7 +2338,7 @@ export function App() {
         nextEnabled ? 'Reddit notifications enabled.' : 'Reddit notifications disabled.',
         'success',
       );
-      return true;
+      return nextEnabled === enabled;
     } catch (e: any) {
       showToast(e.message || 'Could not update Reddit notification settings.', 'warn');
       return false;
