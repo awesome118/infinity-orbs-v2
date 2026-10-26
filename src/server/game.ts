@@ -1699,6 +1699,8 @@ export interface PlayerListEntry {
   isLatestVersion: boolean;
   /** True when this entry was recovered from the legacy leaderboard index. */
   registryRecovered?: boolean;
+  /** Old leaderboard-only entry with no account ID; safe to display but never target for admin actions. */
+  legacyOnly?: boolean;
 }
 
 export async function listPlayers(): Promise<PlayerListEntry[]> {
@@ -1712,21 +1714,27 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
   const legacyRaw = await redis.get('io:leaderboard');
   const parsedLegacy = parseStoredJson<unknown>(legacyRaw);
   const legacyById = new Map<string, { username?: unknown; playtimeMs?: unknown }>();
+  const legacyWithoutId: Array<Record<string, unknown>> = [];
   if (Array.isArray(parsedLegacy)) {
     for (const value of parsedLegacy) {
       if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
       const entry = value as Record<string, unknown>;
       const userId = typeof entry.userId === 'string' ? entry.userId.trim() : '';
-      if (!userId) continue;
-      legacyById.set(userId, {
-        username: entry.username,
-        playtimeMs: entry.playtimeMs,
-      });
+      if (userId) {
+        legacyById.set(userId, {
+          username: entry.username,
+          playtimeMs: entry.playtimeMs,
+        });
+      } else if (typeof entry.username === 'string' && entry.username.trim()) {
+        // Legacy entries without IDs can be shown transparently, but are never
+        // treated as real account IDs or included in moderation/action targets.
+        legacyWithoutId.push(entry);
+      }
     }
   }
 
   const userIds = Array.from(new Set([...Object.keys(records), ...legacyById.keys()]));
-  if (userIds.length === 0) return [];
+  if (userIds.length === 0 && legacyWithoutId.length === 0) return [];
 
   const missingRegistryCount = userIds.filter(userId =>
     !Object.prototype.hasOwnProperty.call(records, userId),
@@ -1785,6 +1793,36 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
     } satisfies PlayerListEntry;
   });
   const visiblePlayers = players.filter((player): player is PlayerListEntry => player !== null);
+  const knownNames = new Set(visiblePlayers.map(player =>
+    player.username.trim().replace(/^u\\//i, '').toLowerCase(),
+  ));
+  const legacyOnlyPlayers: PlayerListEntry[] = legacyWithoutId
+    .filter(entry => {
+      const username = String(entry.username ?? '').trim().replace(/^u\\//i, '').slice(0, 100);
+      const normalized = username.toLowerCase();
+      if (!normalized || knownNames.has(normalized)) return false;
+      knownNames.add(normalized);
+      return true;
+    })
+    .map(entry => ({
+      userId: '',
+      username: String(entry.username ?? '').trim().replace(/^u\\//i, '').slice(0, 100),
+      firstSeenAt: 0,
+      lastSeenAt: 0,
+      active: false,
+      level: Math.max(1, Number(entry.level ?? 1) || 1),
+      xp: 0,
+      playtimeMs: Math.max(0, Number(entry.playtimeMs ?? 0) || 0),
+      currentSessionMs: 0,
+      totalRolls: Math.max(0, Number(entry.totalRolls ?? 0) || 0),
+      highestRarity: Math.max(0, Number(entry.highestRarity ?? 0) || 0),
+      coins: 0,
+      shards: 0,
+      clientVersion: null,
+      isLatestVersion: false,
+      legacyOnly: true,
+    }));
+  visiblePlayers.push(...legacyOnlyPlayers);
   visiblePlayers.sort((a, b) => Number(b.active) - Number(a.active) || b.lastSeenAt - a.lastSeenAt || a.username.localeCompare(b.username));
   return visiblePlayers;
 }
