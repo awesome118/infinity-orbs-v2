@@ -87,7 +87,7 @@ test('Combat regression suite covers the catalog, progression, gear, runes, tact
   "flurry and bounty outputs scale with ability value and rank",
   "duplicate copies advance uncapped skill ranks with an increasing copy requirement",
   "skill copies are active ability types rather than passive stat modifiers",
-  "ranked Gacha raises rare-skill odds without pity overrides",
+  "ranked Gacha raises higher-rarity odds without pity overrides",
   "Scrap rewards and Forge costs scale with gear/floor progression",
   "run-haul overflow never evicts equipped gear acquired during the current run",
   "the newest run pickup survives overflow even when its quality is lower than the old haul",
