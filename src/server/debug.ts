@@ -50,6 +50,7 @@ import {
   getPlayerGuildPerks,
   getPlayerGuildCombo,
   getCommunityEvent,
+  leaderboards,
 } from './social.js';
 import {
   cooldownMs,
@@ -86,6 +87,7 @@ import {
 } from '../shared/game.js';
 import { recordLeaderboard } from './social.js';
 import { getImpressionDashboard } from './impressions.js';
+import { APP_VERSION } from '../shared/version.js';
 
 const DEBUG_USERS = new Set([
   'shadow_fen',
@@ -1004,6 +1006,247 @@ debugRouter.get('/players', async (_req, res) => {
   } catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to load player list.' });
   }
+});
+/**
+ * Read-only diagnostic snapshot for the leaderboard and admin player list.
+ * Includes counts and a few redacted examples, never raw Redis values or full IDs.
+ * This route is behind the server-side shadow_fen admin guard above.
+ */
+debugRouter.get('/leaderboard-diagnostics', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  const generatedAt = Date.now();
+  const parseStoredValue = (raw: unknown): unknown => {
+    let value = raw;
+    for (let depth = 0; depth < 4; depth += 1) {
+      if (typeof value !== 'string') {
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          const record = value as Record<string, unknown>;
+          if ('value' in record) { value = record.value; continue; }
+          if ('data' in record) { value = record.data; continue; }
+        }
+        return value;
+      }
+      try { value = JSON.parse(value); }
+      catch { return { __invalidJson: true }; }
+    }
+    return value;
+  };
+  const errorMessage = (error: unknown) =>
+    error instanceof Error ? error.message : String(error ?? 'Unknown error');
+  const redactId = (value: unknown) => {
+    const id = typeof value === 'string' ? value : '';
+    return id ? '…' + id.slice(-8) : null;
+  };
+
+  const report: Record<string, unknown> = {
+    generatedAt,
+    appVersion: APP_VERSION,
+    runningContext: {
+      username: context.username ?? null,
+      subredditName: context.subredditName ?? context.subreddit?.name ?? null,
+      postId: context.postId ?? null,
+    },
+    storage: {},
+    computed: {},
+  };
+
+  let registry: Record<string, string> = {};
+  try {
+    const raw = await redis.hGetAll('io:player-registry');
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      report.storage = {
+        ...(report.storage as object),
+        registry: { key: 'io:player-registry', readOk: true, shape: 'not-a-hash-object', fieldCount: 0 },
+      };
+    } else {
+      registry = raw as Record<string, string>;
+      let parseableEntries = 0;
+      let malformedEntries = 0;
+      let missingUsername = 0;
+      let missingLastSeenAt = 0;
+      const samples: Array<{ idSuffix: string; username: string | null; validEntry: boolean }> = [];
+      for (const [userId, stored] of Object.entries(registry)) {
+        const value = parseStoredValue(stored);
+        const valid = value !== null && typeof value === 'object' &&
+          !Array.isArray(value) && !('__invalidJson' in (value as Record<string, unknown>));
+        if (valid) {
+          parseableEntries += 1;
+          const entry = value as Record<string, unknown>;
+          if (typeof entry.username !== 'string' || !entry.username.trim()) missingUsername += 1;
+          if (!Number.isFinite(Number(entry.lastSeenAt)) || Number(entry.lastSeenAt) <= 0) missingLastSeenAt += 1;
+          if (samples.length < 5) samples.push({
+            idSuffix: redactId(userId) ?? '',
+            username: typeof entry.username === 'string' ? entry.username.slice(0, 50) : null,
+            validEntry: true,
+          });
+        } else {
+          malformedEntries += 1;
+          if (samples.length < 5) samples.push({ idSuffix: redactId(userId) ?? '', username: null, validEntry: false });
+        }
+      }
+      report.storage = {
+        ...(report.storage as object),
+        registry: {
+          key: 'io:player-registry',
+          readOk: true,
+          shape: 'hash',
+          fieldCount: Object.keys(registry).length,
+          parseableEntries,
+          malformedEntries,
+          missingUsername,
+          missingLastSeenAt,
+          sampleEntries: samples,
+        },
+      };
+    }
+  } catch (error) {
+    report.storage = {
+      ...(report.storage as object),
+      registry: { key: 'io:player-registry', readOk: false, error: errorMessage(error) },
+    };
+  }
+
+  let legacyEntries: Array<Record<string, unknown>> = [];
+  try {
+    const raw = await redis.get('io:leaderboard');
+    const parsed = parseStoredValue(raw);
+    if (raw == null) {
+      report.storage = {
+        ...(report.storage as object),
+        legacyLeaderboard: { key: 'io:leaderboard', readOk: true, exists: false, shape: 'missing', entryCount: 0 },
+      };
+    } else if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && '__invalidJson' in parsed) {
+      report.storage = {
+        ...(report.storage as object),
+        legacyLeaderboard: { key: 'io:leaderboard', readOk: true, exists: true, shape: 'invalid-json', entryCount: 0 },
+      };
+    } else if (Array.isArray(parsed)) {
+      let withId = 0;
+      let withoutId = 0;
+      let invalidRecords = 0;
+      let invalidMetrics = 0;
+      let withSharedAt = 0;
+      const ids = new Set<string>();
+      const usernames = new Set<string>();
+      let duplicateIds = 0;
+      let duplicateUsernames = 0;
+      const samples: Array<{ username: string | null; idSuffix: string | null; hasSharedAt: boolean; value: number | null }> = [];
+      for (const candidate of parsed) {
+        if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+          invalidRecords += 1;
+          continue;
+        }
+        const entry = candidate as Record<string, unknown>;
+        const username = typeof entry.username === 'string' ? entry.username.trim() : '';
+        const userId = typeof entry.userId === 'string' ? entry.userId.trim() : '';
+        if (!username) invalidRecords += 1;
+        if (userId) {
+          withId += 1;
+          if (ids.has(userId)) duplicateIds += 1;
+          ids.add(userId);
+        } else withoutId += 1;
+        if (username) {
+          const normalized = username.replace(/^u\//i, '').toLowerCase();
+          if (usernames.has(normalized)) duplicateUsernames += 1;
+          usernames.add(normalized);
+        }
+        if (!Number.isFinite(Number(entry.value)) ||
+            !Number.isFinite(Number(entry.highestRarity)) ||
+            !Number.isFinite(Number(entry.totalRolls))) invalidMetrics += 1;
+        if (Number(entry.sharedAt) > 0) withSharedAt += 1;
+        if (samples.length < 8) samples.push({
+          username: username ? username.slice(0, 50) : null,
+          idSuffix: redactId(userId),
+          hasSharedAt: Number(entry.sharedAt) > 0,
+          value: Number.isFinite(Number(entry.value)) ? Number(entry.value) : null,
+        });
+        if (userId && !legacyEntries.some(item => item.userId === userId)) legacyEntries.push(entry);
+      }
+      let savedAccounts = 0;
+      let saveReadError: string | null = null;
+      const idsToCheck = Array.from(ids).slice(0, 1000);
+      if (idsToCheck.length > 0) {
+        try {
+          const saves = await redis.mGet(idsToCheck.map(id => 'player:' + id));
+          savedAccounts = saves.filter(value => value != null).length;
+        } catch (error) {
+          saveReadError = errorMessage(error);
+        }
+      }
+      report.storage = {
+        ...(report.storage as object),
+        legacyLeaderboard: {
+          key: 'io:leaderboard',
+          readOk: true,
+          exists: true,
+          shape: 'array',
+          entryCount: parsed.length,
+          entriesWithUserId: withId,
+          entriesWithoutUserId: withoutId,
+          malformedRecords: invalidRecords,
+          recordsWithInvalidMetrics: invalidMetrics,
+          entriesWithSharedAt: withSharedAt,
+          duplicateUserIds: duplicateIds,
+          duplicateUsernames,
+          uniqueUserIdsWithSaveChecked: idsToCheck.length,
+          matchingPlayerSaves: savedAccounts,
+          saveReadError,
+          sampleEntries: samples,
+        },
+      };
+    } else {
+      report.storage = {
+        ...(report.storage as object),
+        legacyLeaderboard: {
+          key: 'io:leaderboard',
+          readOk: true,
+          exists: true,
+          shape: parsed === null ? 'unrecognized' : typeof parsed,
+          entryCount: 0,
+        },
+      };
+    }
+  } catch (error) {
+    report.storage = {
+      ...(report.storage as object),
+      legacyLeaderboard: { key: 'io:leaderboard', readOk: false, error: errorMessage(error) },
+    };
+  }
+
+  const [playerResult, boardsResult] = await Promise.all([
+    listPlayers().then(players => ({
+      ok: true,
+      count: players.length,
+      activeCount: players.filter(player => player.active).length,
+      registryRecoveredCount: players.filter(player => player.registryRecovered === true).length,
+      legacyOnlyCount: players.filter(player => player.legacyOnly === true).length,
+      samplePlayers: players.slice(0, 8).map(player => ({
+        username: player.username,
+        idSuffix: redactId(player.userId),
+        active: player.active,
+        legacyOnly: player.legacyOnly === true,
+        registryRecovered: player.registryRecovered === true,
+      })),
+    })).catch(error => ({ ok: false, error: errorMessage(error) })),
+    leaderboards().then(boards => ({
+      ok: true,
+      counts: Object.fromEntries(Object.entries(boards).map(([name, entries]) => [name, Array.isArray(entries) ? entries.length : null])),
+      sampleEntries: Object.fromEntries(Object.entries(boards).map(([name, entries]) => [
+        name,
+        Array.isArray(entries) ? entries.slice(0, 3).map(entry => ({
+          username: entry.username,
+          idSuffix: redactId(entry.userId),
+          legacyOnly: entry.legacyOnly === true,
+          value: entry.value,
+          totalRolls: entry.totalRolls,
+          highestRarity: entry.highestRarity,
+          sharedAt: entry.sharedAt ?? null,
+        })) : [],
+      ])),
+    })).catch(error => ({ ok: false, error: errorMessage(error) })),
+  ]);
+  report.computed = { playerList: playerResult, leaderboards: boardsResult };
+  res.json(report);
 });
 
 
