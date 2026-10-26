@@ -1,7 +1,7 @@
 name: Submit Infinity Orbs for Reddit Review
 
 on:
-  # Retry 2.0.5 diagnostic release preflight after fixing TypeScript in the Redis save-count callback.
+  # Combined 2.0.5 release: bounded Redis reads, post conversion analytics, and animated post redesign.
   workflow_run:
     workflows: ["Deploy Devvit"]
     types: [completed]
