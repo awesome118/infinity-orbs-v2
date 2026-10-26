@@ -500,6 +500,11 @@
   border-radius: 50%;
   animation: io-launch-sphere-float 2.6s ease-in-out infinite, io-launch-sphere-charge 1.9s ease-in-out infinite;
 }
+.io-frenzy-success-particle { animation: io-launch-spark-drift 2.5s ease-in-out infinite; }
+.io-frenzy-success-particle-a { top: 22%; left: 24%; }
+.io-frenzy-success-particle-b { top: 29%; right: 23%; animation-delay: -.6s; }
+.io-frenzy-success-particle-c { bottom: 23%; left: 31%; animation-delay: -1.3s; }
+.io-frenzy-success-particle-d { bottom: 27%; right: 30%; animation-delay: -1.9s; }
 .io-frenzy-success-orb-tier {
   position: absolute;
   z-index: 3;
