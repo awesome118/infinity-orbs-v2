@@ -1244,7 +1244,7 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
     const now = Date.now();
     if (isFrenzyPostRecordExpired(data, now)) throw new Error('This Frenzy has expired.');
     const claimCooldown = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
-    const isOwner = data.ownerId === currentUserId();
+    const isOwner = data.ownerId === viewerId;
     const selfClaimTest =
       isOwner &&
       data.adminTest === true &&
@@ -6346,19 +6346,28 @@ export async function getOrbFrenzyInfo(): Promise<{
   postId: string;
   inGame?: boolean;
 }> {
-  const postId = context.postId;
+  const contextPostId = String(context.postId ?? '').trim();
+  const viewerId = currentUserId();
+  const contextPostRaw = contextPostId
+    ? await redis.get(FRENZY_POST_PREFIX + contextPostId)
+    : null;
+  const contextPostData = parseFrenzyPostRecord(contextPostRaw);
+  // Keep the post the viewer is actually looking at authoritative. When the
+  // expanded game has a different post context, resolve only this viewer's
+  // short-lived, explicitly armed handoff instead of failing to find the Frenzy.
+  const handoff = contextPostData ? null : await readFrenzyHandoff(viewerId);
+  const postId = contextPostData ? contextPostId : handoff?.postId ?? contextPostId;
   if (!postId) throw new Error('This is not an Orb Frenzy post.');
 
-  const raw = await redis.get(FRENZY_POST_PREFIX + postId);
+  const raw = contextPostData ? contextPostRaw : await redis.get(FRENZY_POST_PREFIX + postId);
   if (!raw) throw new Error('Orb Frenzy post data was not found.');
 
-  const data = parseFrenzyPostRecord(raw);
+  const data = contextPostData ?? parseFrenzyPostRecord(raw);
   if (!data) throw new Error('Orb Frenzy data is corrupted.');
 
   const now = Date.now();
   const expiresAt = Number(data.expiresAt ?? frenzyPostExpiresAt(data.createdAt));
   const expired = isFrenzyPostRecordExpired(data, now);
-  const viewerId = currentUserId();
   const claimedReceipt = await redis.get(frenzyClaimReceiptKey(postId, viewerId));
   const alreadyClaimedByViewer = claimedReceipt != null || data.consumedBy === viewerId;
   // Preview rendering must not invoke the ordinary player-state read, which touches online presence.
