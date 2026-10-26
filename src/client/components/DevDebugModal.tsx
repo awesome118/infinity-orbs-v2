@@ -82,7 +82,8 @@ type ImpressionDashboardData = {
   newPlayersToday: number;
   day1Retention: { cohortDay: string; cohortSize: number; retained: number; rate: number | null };
   day3Retention: { cohortDay: string; cohortSize: number; retained: number; rate: number | null };
-  conversion: Record<'orb-share' | 'frenzy', { eligibleViewers: number; conversions: number; rate: number | null }>;
+  conversion: Record<'main-game' | 'orb-share' | 'frenzy', { eligibleViewers: number; conversions: number; rate: number | null }>;
+  conversionByDevice: Record<ImpressionDeviceType, { eligibleViewers: number; conversions: number; rate: number | null }>;
   viewers: Array<{
     username: string;
     uniquePostViews: number;
@@ -3854,15 +3855,19 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                     <div className="mt-1 text-[9px] text-slate-500">{metric.retained.toLocaleString()} / {metric.cohortSize.toLocaleString()} returned on {metric.cohortDay}</div>
                   </div>
                 ))}
-                {(['orb-share', 'frenzy'] as const).map(type => {
+                {(['main-game', 'orb-share', 'frenzy'] as const).map(type => {
                   const metric = impressionStats.conversion[type];
+                  const label = type === 'main-game' ? 'Main game post conversion' : type === 'orb-share' ? 'Orb Share conversion' : 'Frenzy conversion';
+                  const detail = type === 'main-game'
+                    ? 'unique main-post viewers clicked Play'
+                    : 'unique viewers played for the first time';
                   return (
                     <div key={type} className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-3">
-                      <div className="text-[10px] uppercase font-bold text-slate-500">{type === 'orb-share' ? 'Orb Share conversion' : 'Frenzy conversion'}</div>
+                      <div className="text-[10px] uppercase font-bold text-slate-500">{label}</div>
                       <div className="text-2xl font-black font-mono mt-1 text-emerald-200">
                         {metric.rate === null ? '—' : (metric.rate * 100).toFixed(1) + '%'}
                       </div>
-                      <div className="mt-1 text-[9px] text-slate-500">{metric.conversions.toLocaleString()} / {metric.eligibleViewers.toLocaleString()} unique viewers played for the first time</div>
+                      <div className="mt-1 text-[9px] text-slate-500">{metric.conversions.toLocaleString()} / {metric.eligibleViewers.toLocaleString()} {detail}</div>
                     </div>
                   );
                 })}
@@ -3875,6 +3880,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                     <div key={device} className="rounded-lg bg-black/20 border border-slate-800 p-2">
                       <div className="text-[10px] uppercase text-slate-500">{device}</div>
                       <div className="text-lg font-bold font-mono text-slate-100">{impressionStats.byDevice[device].toLocaleString()}</div>
+                      <div className="mt-1 text-[9px] text-slate-500">Main-game conversion</div>
+                      <div className="text-sm font-bold font-mono text-emerald-200">
+                        {impressionStats.conversionByDevice[device].rate === null ? '—' : (impressionStats.conversionByDevice[device].rate! * 100).toFixed(1) + '%'}
+                      </div>
+                      <div className="text-[9px] text-slate-500">{impressionStats.conversionByDevice[device].conversions.toLocaleString()} Play clicks</div>
                     </div>
                   ))}
                 </div>
@@ -3896,6 +3906,30 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                           ))}
                         </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="overflow-x-auto border-t border-slate-800 pt-3">
+                  <div className="mb-2 text-[10px] uppercase tracking-wider font-bold text-slate-400">Main game Play conversion rate by device</div>
+                  <table className="w-full text-left text-[10px]">
+                    <thead><tr className="text-slate-500 border-b border-slate-800">
+                      <th className="py-2 pr-3">Device</th>
+                      <th className="py-2 px-2">Main post views</th>
+                      <th className="py-2 px-2">Play conversions</th>
+                      <th className="py-2 px-2">Conversion rate</th>
+                    </tr></thead>
+                    <tbody>
+                      {(['mobile', 'tablet', 'desktop', 'unknown'] as ImpressionDeviceType[]).map(device => {
+                        const metric = impressionStats.conversionByDevice[device];
+                        return (
+                          <tr key={device} className="border-b border-slate-800/70 text-slate-300">
+                            <td className="py-2 pr-3 font-semibold capitalize">{device}</td>
+                            <td className="py-2 px-2 font-mono">{impressionStats.byTypeAndDevice['main-game'][device].toLocaleString()}</td>
+                            <td className="py-2 px-2 font-mono">{metric.conversions.toLocaleString()}</td>
+                            <td className="py-2 px-2 font-mono font-bold text-emerald-200">{metric.rate === null ? '—' : (metric.rate * 100).toFixed(1) + '%'}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
