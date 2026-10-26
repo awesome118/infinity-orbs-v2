@@ -69,22 +69,27 @@ jobs:
       - name: Deployment preflight
         run: npm run preflight
 
-      - name: Validate Devvit CI token
+      - name: Configure Devvit authentication
         env:
-          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
         run: |
           set -euo pipefail
-          test -n "$DEVVIT_AUTH_TOKEN" || {
+          test -n "$DEVVIT_TOKEN" || {
             echo "DEVVIT_TOKEN GitHub secret is missing."
             exit 1
           }
-          case "$DEVVIT_AUTH_TOKEN" in
-            \{*) ;;
-            *)
-              echo "DEVVIT_TOKEN must contain the complete JSON blob from ~/.devvit/token, not just the token string."
-              exit 1
-              ;;
-          esac
+          test -n "$DEVVIT_SESSION_ID" || {
+            echo "DEVVIT_SESSION_ID GitHub secret is missing."
+            exit 1
+          }
+          mkdir -p "$HOME/.devvit"
+          printf '%s' "$DEVVIT_TOKEN" > "$HOME/.devvit/token"
+          printf '%s' "$DEVVIT_SESSION_ID" > "$HOME/.devvit/session-id"
+          chmod 600 "$HOME/.devvit/token" "$HOME/.devvit/session-id"
+
+      - name: Verify Devvit authentication
+        run: npx devvit whoami
 
       # Authenticate these reads: private/unpublished AppVersions are not visible in an anonymous lookup.
       # A previous upload can succeed even when later verification fails; reuse exact versions on retry.
@@ -92,7 +97,6 @@ jobs:
         id: existing-version
         continue-on-error: true
         env:
-          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
           REQUESTED_VERSION: ${{ steps.requested-version.outputs.version }}
         run: |
           set -euo pipefail
@@ -107,14 +111,12 @@ jobs:
         if: steps.existing-version.outcome != 'success'
         env:
           CI: true
-          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
           REQUESTED_VERSION: ${{ steps.requested-version.outputs.version }}
         timeout-minutes: 10
         run: timeout --signal=TERM --kill-after=30s 9m npx devvit upload --version "$REQUESTED_VERSION"
       - name: Verify uploaded version
         id: uploaded-version
         env:
-          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
           REQUESTED_VERSION: ${{ steps.requested-version.outputs.version }}
         run: |
           set -euo pipefail
@@ -127,7 +129,6 @@ jobs:
 
       - name: Install candidate to development subreddit only (r/infinity_orbs_dev)
         env:
-          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
           VERSION: ${{ steps.uploaded-version.outputs.version }}
         run: |
           set -euo pipefail
