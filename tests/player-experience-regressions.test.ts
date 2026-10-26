@@ -257,3 +257,30 @@ test('leaderboard and admin player-list reads explicitly bypass HTTP/browser cac
   assert.match(app, /app\.get\('\/api\/leaderboards',[\s\S]{0,120}Cache-Control', 'no-store, max-age=0'/);
   assert.match(debug, /debugRouter\.get\('\/players',[\s\S]{0,100}Cache-Control', 'no-store, max-age=0'/);
 });
+
+
+test('admin leaderboard diagnostics report live storage shape and computed endpoint outcomes', () => {
+  const debug = source('src/server/debug.ts');
+  const social = source('src/server/social.ts');
+  const game = source('src/server/game.ts');
+  const ui = source('src/client/components/DevDebugModal.tsx');
+
+  assert.match(debug, /debugRouter\.get\('\/leaderboard-diagnostics'/);
+  assert.match(debug, /APP_VERSION/);
+  assert.match(debug, /context\.subredditName/);
+  assert.match(debug, /'io:player-registry'/);
+  assert.match(debug, /'io:leaderboard'/);
+  assert.match(debug, /entriesWithoutUserId/);
+  assert.match(debug, /malformedEntries/);
+  assert.match(debug, /matchingPlayerSaves/);
+  assert.match(debug, /listPlayers\(\)\.then/);
+  assert.match(debug, /leaderboards\(\)\.then/);
+  assert.match(debug, /idSuffix: redactId/);
+  assert.match(debug, /Cache-Control', 'no-store, max-age=0'/);
+  assert.match(social, /export async function leaderboards/);
+  assert.match(game, /export async function listPlayers/);
+  assert.match(ui, /Leaderboard & Player List Diagnostics/);
+  assert.match(ui, /\/api\/dev\/leaderboard-diagnostics/);
+  assert.match(ui, /Run Diagnostics/);
+  assert.match(ui, /Copy JSON/);
+});
