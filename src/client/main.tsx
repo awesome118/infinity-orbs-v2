@@ -807,8 +807,8 @@ export function App() {
       setIsAdmin(adminStatus.isAdmin === true);
       if (me.gameBan?.active) return;
       const [lb, lbs, gd, we, announcement, notificationState] = await Promise.all([
-        getJson<LeaderboardEntry[]>('/api/leaderboard').catch(() => []),
-        getJson<LeaderboardBoards>('/api/leaderboards').catch(() => null),
+        getJson<LeaderboardEntry[]>('/api/leaderboard', { cache: 'no-store' }).catch(() => []),
+        getJson<LeaderboardBoards>('/api/leaderboards', { cache: 'no-store' }).catch(() => null),
         getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds').catch(() => ({ guilds: [], mine: null })),
         getJson<WorldEvent | null>('/api/world-event').catch(() => null),
         getJson<{ message: string; updatedAt: number; updatedBy: string } | null>('/api/developer-announcement').catch(() => null),
