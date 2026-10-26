@@ -213,17 +213,18 @@ test('Frenzy auto-claim requires an explicit server-side handoff', () => {
   assert.match(source, /if \(!handoff\.armed\) return/);
 });
 
-test('Frenzy claim directly commits a reward and displays the confirmed volley', () => {
+test('Frenzy post arms the handoff and opens the main game without claiming in the preview', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/client/frenzy.tsx'), 'utf8');
-  const claimStart = source.indexOf('const claim = async () =>');
+  const claimStart = source.indexOf('const claim = async (event: React.MouseEvent<HTMLButtonElement>) =>');
   const claimEnd = source.indexOf('\n  };', claimStart);
   assert.ok(claimStart >= 0 && claimEnd > claimStart);
   const claim = source.slice(claimStart, claimEnd);
-  assert.match(claim, /fetchWithTimeout\('\/api\/frenzy\/claim', \{ method: 'POST' \}, 25_000\)/);
-  assert.match(claim, /setInlineClaimedCount/);
-  assert.doesNotMatch(claim, /\/api\/frenzy\/arm/);
+  assert.match(claim, /requestExpandedMode\(event\.nativeEvent, 'game'\)/);
+  assert.match(claim, /fetchWithTimeout\('\/api\/frenzy\/arm', \{ method: 'POST' \}, 10_000\)/);
+  assert.match(claim, /setOpenedGame\(true\)/);
+  assert.doesNotMatch(claim, /\/api\/frenzy\/claim/);
   assert.match(source, /Orbs were rolled and saved to your account/);
-  assert.match(source, /Claiming Frenzy…/);
+  assert.match(source, /Opening game/);
 });
 
 test('Frenzy auto-claim always releases the game loading state', () => {
@@ -366,7 +367,8 @@ test('arming a Frenzy serializes offline settlement with normal player mutations
   const arm = source.slice(start, end);
   assert.match(arm, /return withPlayerMutationLock\(async \(\) => \{/);
   assert.match(arm, /await settleOffline\(await loadRaw\(\)\)/);
-  assert.match(arm, /frenzyHandoffKey\(currentUserId\(\)\)/);
+  assert.match(arm, /const viewerId = currentUserId\(\)/);
+  assert.match(arm, /frenzyHandoffKey\(viewerId\)/);
 });
 
 
