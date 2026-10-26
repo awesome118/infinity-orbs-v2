@@ -300,3 +300,399 @@
   }
   .io-post-reveal { opacity: 1; transform: none; }
 }
+
+
+
+/* High-energy post heroes: animated Orb chamber, orbiting particles, and reward reveal. */
+.io-launch-orb-stage {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  width: min(100%, 760px);
+  height: clamp(116px, 22vw, 208px);
+  margin: 16px auto 4px;
+  overflow: hidden;
+  border: 1px solid rgba(120, 241, 216, .18);
+  border-radius: 20px;
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(74, 228, 197, .13), transparent 37%),
+    linear-gradient(120deg, rgba(8, 25, 32, .82), rgba(15, 13, 35, .74) 48%, rgba(8, 25, 32, .82));
+  box-shadow: inset 0 1px rgba(255,255,255,.035), 0 0 35px rgba(59, 228, 194, .07);
+}
+.io-launch-orb-aura {
+  position: absolute;
+  width: 42%;
+  height: 65%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(122, 255, 223, .28), rgba(114, 95, 255, .1) 44%, transparent 72%);
+  filter: blur(9px);
+  animation: io-launch-aura-burst 3.4s ease-in-out infinite;
+}
+.io-launch-orb-ring {
+  position: absolute;
+  width: min(54%, 390px);
+  height: 52%;
+  border: 1px solid rgba(137, 250, 224, .28);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.io-launch-orb-ring-a { transform: rotate(-18deg); animation: io-post-ring-turn 8s linear infinite; }
+.io-launch-orb-ring-b { width: min(47%, 340px); height: 72%; border-color: rgba(175, 127, 255, .27); transform: rotate(58deg); animation: io-launch-ring-counter 12s linear infinite; }
+.io-launch-orb-ring-c { width: min(67%, 475px); height: 35%; border-style: dashed; border-color: rgba(104, 220, 255, .22); transform: rotate(8deg); animation: io-post-ring-turn 18s linear infinite; }
+.io-launch-orb-sphere {
+  position: relative;
+  display: grid;
+  width: clamp(64px, 10vw, 100px);
+  aspect-ratio: 1;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(214, 255, 247, .82);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 30% 23%, rgba(255,255,255,.92), transparent 13%),
+    radial-gradient(circle at 32% 25%, #cafff0 0%, #56e6d6 17%, #4c86dc 48%, #322c72 76%, #0a0c1c 100%);
+  box-shadow: 0 0 20px rgba(97, 248, 222, .7), 0 0 62px rgba(105, 120, 255, .32), inset -13px -17px 19px rgba(0,0,0,.45), inset 9px 10px 17px rgba(255,255,255,.26);
+  animation: io-launch-sphere-float 3.6s ease-in-out infinite, io-launch-sphere-charge 2.5s ease-in-out infinite;
+}
+.io-launch-orb-sphere > span:last-child {
+  position: relative;
+  z-index: 2;
+  color: rgba(255,255,255,.94);
+  font-family: Georgia, serif;
+  font-size: clamp(30px, 5vw, 52px);
+  line-height: 1;
+  text-shadow: 0 0 20px rgba(255,255,255,.82);
+}
+.io-launch-orb-sphere-shine {
+  position: absolute;
+  inset: 8% 12% auto;
+  height: 37%;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(255,255,255,.6), transparent);
+  filter: blur(3px);
+}
+.io-launch-orb-spark,
+.io-share-orb-spark,
+.io-frenzy-success-particle {
+  position: absolute;
+  z-index: 2;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #e3fff9;
+  box-shadow: 0 0 10px 3px rgba(126, 255, 224, .55);
+  pointer-events: none;
+}
+.io-launch-orb-spark { animation: io-launch-spark-drift 3.8s ease-in-out infinite; }
+.io-launch-orb-spark-a { top: 22%; left: 26%; }
+.io-launch-orb-spark-b { top: 30%; right: 26%; animation-delay: -.8s; }
+.io-launch-orb-spark-c { bottom: 24%; left: 35%; animation-delay: -1.7s; }
+.io-launch-orb-spark-d { bottom: 29%; right: 34%; animation-delay: -2.4s; }
+.io-share-orb-ring-secondary { width: 88%; height: 42%; border-color: rgba(255,255,255,.24); }
+.io-share-orb-ring-tertiary { width: 48%; height: 88%; border-color: rgba(255,255,255,.22); transform: rotate(53deg); animation-duration: 7s; }
+.io-share-orb-spark { width: 3px; height: 3px; animation: io-launch-spark-drift 2.7s ease-in-out infinite; }
+.io-share-orb-spark-a { top: 24%; left: 21%; }
+.io-share-orb-spark-b { top: 36%; right: 17%; animation-delay: -.9s; }
+.io-share-orb-spark-c { bottom: 21%; left: 31%; animation-delay: -1.6s; }
+
+.io-launch-steps > div {
+  animation: io-post-step-arrive .52s cubic-bezier(.16,.78,.28,1) both;
+  transition: transform .2s ease, border-color .2s ease, background-color .2s ease;
+}
+.io-launch-steps > div:nth-child(2) { animation-delay: .09s; }
+.io-launch-steps > div:nth-child(3) { animation-delay: .18s; }
+.io-launch-steps > div:hover {
+  transform: translateY(-3px);
+  border-color: rgba(119, 239, 207, .28);
+  background-color: rgba(16, 41, 44, .52);
+}
+.io-share-card .io-public-stats > div {
+  animation: io-post-step-arrive .55s cubic-bezier(.16,.78,.28,1) both;
+}
+.io-share-card .io-public-stats > div:nth-child(2) { animation-delay: .08s; }
+.io-share-card .io-public-stats > div:nth-child(3) { animation-delay: .16s; }
+.io-share-card .io-share-orb {
+  filter: saturate(1.12);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.05), 0 0 34px currentColor;
+}
+
+.io-frenzy-orb-visual { position: relative; isolation: isolate; }
+.io-frenzy-orbit-arc {
+  position: absolute;
+  z-index: 2;
+  width: 142%;
+  height: 40%;
+  border: 1px solid rgba(255,255,255,.38);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.io-frenzy-orbit-arc-a { transform: rotate(-30deg); animation: io-post-ring-turn 7.5s linear infinite; }
+.io-frenzy-orbit-arc-b { width: 123%; height: 54%; border-color: rgba(255,255,255,.17); transform: rotate(52deg); animation: io-launch-ring-counter 11s linear infinite; }
+
+.io-frenzy-success-card {
+  border-color: rgba(255, 195, 99, .36);
+  background:
+    radial-gradient(ellipse at 50% 7%, rgba(249, 154, 65, .09), transparent 44%),
+    linear-gradient(155deg, rgba(15, 17, 28, .98), rgba(6, 10, 19, .99));
+  box-shadow: 0 24px 90px rgba(0,0,0,.48), 0 0 55px rgba(255, 173, 70, .1), inset 0 1px rgba(255,255,255,.07);
+}
+.io-frenzy-success-glow { opacity: .92; }
+.io-frenzy-success-title {
+  margin: 8px 0 0;
+  color: #fff4d5;
+  font-family: Georgia, serif;
+  font-size: clamp(28px, 6vw, 48px);
+  font-weight: 700;
+  letter-spacing: -.04em;
+  line-height: 1;
+  text-align: center;
+  text-shadow: 0 0 26px rgba(255, 191, 83, .24);
+}
+.io-frenzy-success-copy {
+  max-width: 530px;
+  margin: 12px auto 0;
+  color: #b8c3c9;
+  font-size: 12px;
+  line-height: 1.65;
+  text-align: center;
+}
+.io-frenzy-success-stage {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  min-height: clamp(180px, 33vw, 276px);
+  margin-top: 19px;
+  overflow: hidden;
+  border: 1px solid;
+  border-radius: 20px;
+  box-shadow: inset 0 1px rgba(255,255,255,.04), 0 0 45px rgba(255,180,65,.05);
+}
+.io-frenzy-success-stage-grid {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(ellipse at center, black 0%, transparent 76%);
+  animation: io-post-grid-drift 14s linear infinite;
+}
+.io-frenzy-success-orbit {
+  position: absolute;
+  width: min(74%, 470px);
+  height: 35%;
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.io-frenzy-success-orbit-a { transform: rotate(-22deg); animation: io-post-ring-turn 6.8s linear infinite; }
+.io-frenzy-success-orbit-b { width: min(65%, 415px); height: 66%; border-color: rgba(255,255,255,.17); transform: rotate(55deg); animation: io-launch-ring-counter 9.5s linear infinite; }
+.io-frenzy-success-orbit-c { width: min(86%, 520px); height: 28%; border-style: dashed; border-color: rgba(255, 217, 142, .2); animation: io-post-ring-turn 17s linear infinite; }
+.io-frenzy-success-orb {
+  position: relative;
+  display: grid;
+  width: clamp(84px, 19vw, 142px);
+  aspect-ratio: 1;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid;
+  border-radius: 50%;
+  animation: io-launch-sphere-float 2.6s ease-in-out infinite, io-launch-sphere-charge 1.9s ease-in-out infinite;
+}
+.io-frenzy-success-orb-tier {
+  position: absolute;
+  z-index: 3;
+  bottom: 22%;
+  color: rgba(255,255,255,.84);
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 7px rgba(0,0,0,.6);
+}
+.io-frenzy-success-rarity { margin-top: 10px; }
+.io-frenzy-success-rarity .io-frenzy-rarity-lockup { min-height: 52px; margin: 0; }
+.io-frenzy-success-rarity .io-frenzy-rarity-prefix { font-size: clamp(14px, 2.6vw, 23px); }
+.io-frenzy-success-rarity .io-frenzy-rarity-number { font-size: clamp(28px, 7vw, 56px) !important; }
+.io-frenzy-success-meta { margin-top: 6px; padding-top: 9px; }
+.io-frenzy-success-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+.io-frenzy-success-stats > div {
+  min-width: 0;
+  padding: 11px 8px;
+  border: 1px solid rgba(255, 205, 123, .16);
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(255, 187, 77, .07), rgba(12, 16, 26, .7));
+  text-align: center;
+}
+.io-frenzy-success-stats span {
+  display: block;
+  color: #8e9da7;
+  font-size: 7px;
+  font-weight: 950;
+  letter-spacing: .09em;
+}
+.io-frenzy-success-stats strong {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  color: #fff1c9;
+  font-family: ui-monospace, monospace;
+  font-size: clamp(10px, 2.4vw, 14px);
+  font-weight: 900;
+  line-height: 1.25;
+}
+.io-frenzy-timer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 9px;
+  margin-top: 16px;
+}
+.io-frenzy-expiry-timer,
+.io-frenzy-cooldown-mini {
+  min-width: 0;
+  padding: 13px 15px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 13px;
+  background: rgba(3, 8, 15, .72);
+  text-align: center;
+}
+.io-frenzy-timer-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: #8e9da7;
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
+.io-frenzy-timer-value {
+  margin-top: 5px;
+  color: #f4f5ea;
+  font-family: ui-monospace, monospace;
+  font-size: clamp(18px, 4vw, 26px);
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+}
+.io-frenzy-cooldown-mini {
+  border-color: rgba(255, 185, 81, .28);
+  background: linear-gradient(135deg, rgba(122, 66, 24, .22), rgba(3, 8, 15, .84));
+}
+.io-frenzy-cooldown-mini .io-frenzy-timer-label { color: #f7ca8d; }
+.io-frenzy-cooldown-mini .io-frenzy-timer-value { color: #ffe0a5; }
+.io-frenzy-cooldown-mini p {
+  margin: 5px 0 0;
+  color: #a3afb6;
+  font-size: 9px;
+  line-height: 1.45;
+}
+.io-frenzy-cooldown-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 13px;
+  border: 1px solid rgba(255, 180, 81, .28);
+  border-radius: 13px;
+  background: linear-gradient(105deg, rgba(123, 68, 28, .19), rgba(8, 13, 22, .82));
+}
+.io-frenzy-cooldown-panel.is-active { animation: io-frenzy-cooldown-glow 2.8s ease-in-out infinite; }
+.io-frenzy-cooldown-icon {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(255, 204, 118, .24);
+  border-radius: 9px;
+  color: #ffd78e;
+  background: rgba(255, 188, 84, .09);
+}
+.io-frenzy-cooldown-copy { display: grid; min-width: 0; flex: 1; gap: 3px; }
+.io-frenzy-cooldown-copy strong { color: #ffe1ad; font-size: 10px; font-weight: 950; }
+.io-frenzy-cooldown-copy span { color: #9caab0; font-size: 9px; line-height: 1.4; }
+.io-frenzy-cooldown-value {
+  flex: 0 0 auto;
+  color: #ffe7ba;
+  font-family: ui-monospace, monospace;
+  font-size: clamp(10px, 2.3vw, 13px);
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+}
+.io-frenzy-success-conversion { margin-top: 19px; }
+.io-frenzy-success-button.io-post-cta { width: min(560px, 100%); min-height: 64px; margin-top: 0; }
+.io-frenzy-success-conversion .io-public-note-link { display: inline-flex; margin-top: 12px; }
+.io-frenzy-success-card .io-public-eyebrow-success {
+  color: #ffe4a3;
+  text-shadow: 0 0 18px rgba(255, 194, 77, .25);
+}
+.io-frenzy-success-card .io-public-eyebrow-success svg { filter: drop-shadow(0 0 8px rgba(255,194,77,.55)); }
+
+@keyframes io-launch-ring-counter {
+  from { rotate: 360deg; }
+  to { rotate: 0deg; }
+}
+@keyframes io-launch-aura-burst {
+  0%, 100% { opacity: .56; scale: .88; }
+  50% { opacity: 1; scale: 1.16; }
+}
+@keyframes io-launch-sphere-float {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -7px; }
+}
+@keyframes io-launch-sphere-charge {
+  0%, 100% { filter: brightness(.96) saturate(1.04); }
+  50% { filter: brightness(1.22) saturate(1.34); }
+}
+@keyframes io-launch-spark-drift {
+  0%, 100% { opacity: .45; transform: translate3d(0, 4px, 0) scale(.7); }
+  50% { opacity: 1; transform: translate3d(4px, -7px, 0) scale(1.45); }
+}
+@keyframes io-post-step-arrive {
+  from { opacity: .2; transform: translateY(9px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes io-frenzy-cooldown-glow {
+  0%, 100% { border-color: rgba(255, 180, 81, .2); box-shadow: 0 0 0 rgba(255,180,81,0); }
+  50% { border-color: rgba(255, 203, 127, .44); box-shadow: 0 0 22px rgba(255,180,81,.07); }
+}
+
+@media (max-width: 680px) {
+  .io-launch-orb-stage { height: 132px; margin-top: 12px; border-radius: 15px; }
+  .io-launch-orb-ring-a { width: 64%; }
+  .io-launch-orb-ring-b { width: 54%; }
+  .io-launch-orb-ring-c { width: 78%; }
+  .io-frenzy-success-stage { min-height: 185px; }
+  .io-frenzy-success-stats { gap: 5px; }
+  .io-frenzy-success-stats > div { padding: 9px 5px; }
+  .io-frenzy-success-stats span { font-size: 6px; letter-spacing: .04em; }
+  .io-frenzy-cooldown-panel { flex-wrap: wrap; }
+  .io-frenzy-cooldown-value { margin-left: 41px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .io-launch-orb-aura,
+  .io-launch-orb-ring,
+  .io-launch-orb-sphere,
+  .io-launch-orb-spark,
+  .io-share-orb-spark,
+  .io-share-orb-ring-secondary,
+  .io-share-orb-ring-tertiary,
+  .io-launch-steps > div,
+  .io-share-card .io-public-stats > div,
+  .io-frenzy-orbit-arc,
+  .io-frenzy-success-stage-grid,
+  .io-frenzy-success-orbit,
+  .io-frenzy-success-orb,
+  .io-frenzy-success-particle,
+  .io-frenzy-cooldown-panel.is-active {
+    animation: none !important;
+    transition: none !important;
+  }
+}
