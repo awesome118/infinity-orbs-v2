@@ -544,7 +544,7 @@ export async function recordPlayerActivityForImpressions(userIdValue: unknown): 
 
 /**
  * Counts one explicit Play-button conversion from the canonical main-game post.
- * The user is hashed, and each account counts once globally for this event.
+ * The user is hashed, and each account/post combination counts once for this event.
  */
 export async function recordMainGamePostConversion(
   postIdValue: unknown,
@@ -577,7 +577,7 @@ export async function recordMainGamePostConversion(
   if (registeredMainPost && registeredMainPost !== postId) return { recorded: false };
 
   const userHash = await hashUserIdentity(identity);
-  const markerKey = CONVERSION_MARKER_PREFIX + MAIN_GAME_POST_CONVERSION_ID + ':' + userHash;
+  const markerKey = CONVERSION_MARKER_PREFIX + MAIN_GAME_POST_CONVERSION_ID + ':' + encodeURIComponent(postId) + ':' + userHash;
   const countKey = CONVERSION_COUNT_PREFIX + MAIN_GAME_POST_CONVERSION_ID;
   const deviceCountKey = CONVERSION_DEVICE_COUNT_PREFIX + MAIN_GAME_POST_CONVERSION_ID + ':' + deviceType;
 
@@ -702,13 +702,16 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
       rate: eligibleViewers > 0 ? Math.min(1, conversions / eligibleViewers) : null,
     }] as const;
   }));
-  const mainGameConversions = await readCount(CONVERSION_COUNT_PREFIX + MAIN_GAME_POST_CONVERSION_ID);
+  const [mainGameConversions, mainGameEligibleViews] = await Promise.all([
+    readCount(CONVERSION_COUNT_PREFIX + MAIN_GAME_POST_CONVERSION_ID),
+    readCount(TYPE_PREFIX + 'main-game'),
+  ]);
   const conversion = {
     'main-game': {
-      eligibleViewers: uniqueByType['main-game'],
+      eligibleViewers: mainGameEligibleViews,
       conversions: mainGameConversions,
-      rate: uniqueByType['main-game'] > 0
-        ? Math.min(1, mainGameConversions / uniqueByType['main-game'])
+      rate: mainGameEligibleViews > 0
+        ? Math.min(1, mainGameConversions / mainGameEligibleViews)
         : null,
     },
     ...Object.fromEntries(sourceConversionEntries),
