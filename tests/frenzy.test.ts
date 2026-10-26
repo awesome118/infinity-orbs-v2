@@ -219,7 +219,7 @@ test('Frenzy claim directly commits a reward and displays the confirmed volley',
   const claimEnd = source.indexOf('\n  };', claimStart);
   assert.ok(claimStart >= 0 && claimEnd > claimStart);
   const claim = source.slice(claimStart, claimEnd);
-  assert.match(claim, /fetchWithTimeout\('\/api\/frenzy\/claim', \{ method: 'POST' \}\)/);
+  assert.match(claim, /fetchWithTimeout\('\/api\/frenzy\/claim', \{ method: 'POST' \}, 25_000\)/);
   assert.match(claim, /setInlineClaimedCount/);
   assert.doesNotMatch(claim, /\/api\/frenzy\/arm/);
   assert.match(source, /Orbs were rolled and saved to your account/);
