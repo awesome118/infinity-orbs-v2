@@ -375,7 +375,7 @@ function FrenzyPost() {
                 }}
               >
                 <ArrowRight className="w-4 h-4" />
-                {playedBefore === true ? 'Continue Playing' : 'Play Infinity Orbs'}
+                {playedBefore === true ? 'Continue in Infinity Orbs' : 'Play Infinity Orbs'}
               </button>
               <a href={`https://www.reddit.com/comments/${info.postId.replace(/^t3_/, '')}/`} target="_blank" rel="noreferrer" className="io-public-note-link">Upvote the Frenzy post</a>
             </div>
