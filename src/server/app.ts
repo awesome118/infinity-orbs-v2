@@ -1,5 +1,13 @@
 import express from 'express';
-import { createTelemetryRouter } from '@devvit/analytics/server/reddit';
+import * as analyticsServer from '@devvit/analytics/server/reddit';
+
+// The analytics runtime exposes this adapter, but the published subpath typings omit it.
+// The deployment preflight separately verifies the runtime export before upload.
+const createTelemetryRouter = (
+  analyticsServer as typeof analyticsServer & {
+    createTelemetryRouter: () => ReturnType<typeof express.Router>;
+  }
+).createTelemetryRouter;
 import { debugRouter, isDebugUser } from './debug.js';
 import { recordPostImpression, recordPlayerActivityForImpressions, recordMainGamePostConversion } from './impressions.js';
 import {
