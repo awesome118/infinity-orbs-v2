@@ -1061,6 +1061,7 @@ export function createApp() {
   });
 
   app.get('/api/leaderboard', async (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
     try {
       res.json(await leaderboard());
     } catch (e: any) {
@@ -1072,6 +1073,7 @@ export function createApp() {
   });
 
   app.get('/api/leaderboards', async (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
     try {
       res.json(await leaderboards());
     } catch (e: any) {
