@@ -2,6 +2,7 @@ name: Deploy Devvit
 
 # Normally manual. The version-specific push marker is reserved for an explicitly requested deployment.
 # Explicit deployment request: Ship corrected main-game/Frenzy ring animations, reduced Orb-share glow, and Frenzy-to-main-game reward handoff in 2.0.11 to r/infinity_orbs_dev.
+# Preflight retry: fix the undefined viewerId in armOrbFrenzyClaim and show APP_VERSION on splash/header.
 # Release is pinned to the corrected package-lock.json on main.
 # CI auth uses the stored token and session files; preflight guards these credentials and release contracts before upload.
 # This workflow uploads and installs to the development subreddit only. Production install is a separate post-approval workflow.
