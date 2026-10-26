@@ -45,6 +45,8 @@
 
 ### Bug Fixes:
 
+- Fixed Frenzy claims selecting a stale handoff instead of the post being viewed; reduced post-animation lag, centered the Orb reveal, and kept skill details open long enough to equip an ability.
+
 - Fixed the one-time push notification prompt for returning players and added safe Frenzy and notification popup previews to the admin console.
 - Fixed Silent Alert Mode's toggle becoming out of sync with the active sound mode.
 - Fixed encounter effects carrying into a new run.
