@@ -32,13 +32,13 @@
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "vite": "^8.3.0",
-    "@devvit/analytics": "0.14.6",
-    "@devvit/start": "0.14.6",
-    "@devvit/web": "0.14.6",
-    "devvit": "0.14.6",
-    "@devvit/payments": "0.14.6",
-    "@devvit/notifications": "0.14.6",
-    "@devvit/scheduler": "0.14.6"
+    "@devvit/analytics": "0.14.7",
+    "@devvit/start": "0.14.7",
+    "@devvit/web": "0.14.7",
+    "devvit": "0.14.7",
+    "@devvit/payments": "0.14.7",
+    "@devvit/notifications": "0.14.7",
+    "@devvit/scheduler": "0.14.7"
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.9.0",
