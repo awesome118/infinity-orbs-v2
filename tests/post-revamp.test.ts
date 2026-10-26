@@ -83,3 +83,20 @@ test('in-game start screen shares the same animated play emphasis', () => {
   assert.ok(splashScreen.includes('ready ? (hasProgress ? \'Continue\' : \'Play\')'));
   assert.match(styles, /\.io-immersive-play-cta/);
 });
+
+test('post animations are low-paint, Frenzy orbits are centered, and skill Equip remains reachable', () => {
+  const styles = source('src/client/post-revamp.css');
+  const globalStyles = source('src/client/styles.css');
+  const frenzy = source('src/client/frenzy.tsx');
+  const combat = source('src/client/components/CombatSection.tsx');
+
+  assert.match(styles, /Performance pass: low-paint post animations and centered Frenzy orbits/);
+  assert.match(styles, /\.io-frenzy-orbit-arc\s*\{[^}]*top:\s*50%[^}]*left:\s*50%/s);
+  assert.match(styles, /#root\.io-inline-post[\s\S]*?io-frenzy-success-particle[\s\S]*?animation:\s*none !important/);
+  assert.match(frenzy, /now - lastUpdateAt >= 100/);
+  assert.match(frenzy, /fetchWithTimeout\('\/api\/frenzy\/claim', \{ method: 'POST' \}, 25_000\)/);
+  assert.match(globalStyles, /bottom:calc\(100% \+ 2px\)/);
+  assert.match(combat, /skillTooltipCloseTimerRef/);
+  assert.match(combat, /onPointerEnter=\{cancelSkillTooltipClose\}/);
+  assert.match(combat, /scheduleSkillTooltipClose\(skill\.id\)/);
+});
