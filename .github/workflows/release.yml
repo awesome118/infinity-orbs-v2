@@ -7,6 +7,12 @@ on:
     types: [completed]
     branches: [main]
 
+  # Explicitly submit only when a commit is marked for the requested review release.
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/release.yml
+
   workflow_dispatch:
     inputs:
       release_version:
@@ -21,7 +27,7 @@ on:
 
 jobs:
   release:
-    if: ${{ inputs.confirm_publish || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && contains(github.event.workflow_run.head_commit.message, '[submit-review:2.0.0]')) }}
+    if: ${{ inputs.confirm_publish || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && contains(github.event.workflow_run.head_commit.message, '[submit-review:2.0.1]')) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.0.1]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -63,24 +69,9 @@ jobs:
       - name: Release preflight
         run: npm run preflight
 
-      - name: Configure Devvit authentication
-        env:
-          DEVVIT_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
-          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
-        run: |
-          set -euo pipefail
-          test -n "$DEVVIT_TOKEN"
-          test -n "$DEVVIT_SESSION_ID"
-          mkdir -p "$HOME/.devvit"
-          printf '%s' "$DEVVIT_TOKEN" > "$HOME/.devvit/token"
-          printf '%s' "$DEVVIT_SESSION_ID" > "$HOME/.devvit/session-id"
-          chmod 600 "$HOME/.devvit/token" "$HOME/.devvit/session-id"
-
-      - name: Verify Devvit authentication
-        run: npx devvit whoami
-
       - name: Submit version for Reddit review
         env:
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
           CI: true
           DEVVIT_ALLOW_SOURCE_UPLOAD: 1
           REQUESTED_VERSION: ${{ inputs.release_version }}
