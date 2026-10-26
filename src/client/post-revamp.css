@@ -701,3 +701,143 @@
     transition: none !important;
   }
 }
+
+
+/* Performance pass: low-paint post animations and centered Frenzy orbits. */
+.io-public-grid,
+.io-frenzy-success-stage-grid {
+  animation: none !important;
+}
+.io-public-glow {
+  filter: none;
+  animation: none;
+}
+.io-post-reveal {
+  animation: io-post-rise .4s ease-out both;
+}
+.io-launch-mark {
+  animation: none;
+}
+.io-share-orb {
+  filter: none;
+  animation: io-post-orb-float 5.5s ease-in-out infinite;
+}
+.io-share-card .io-share-orb {
+  filter: none;
+  box-shadow: 0 0 18px currentColor;
+}
+.io-post-cta,
+.io-immersive-play-cta {
+  animation: none;
+  transition: transform .16s ease, filter .16s ease;
+}
+.io-post-cta::before,
+.io-immersive-play-cta::before {
+  display: none;
+  animation: none;
+}
+.io-frenzy-orb-visual {
+  filter: none;
+  animation: io-post-orb-float 5s ease-in-out infinite;
+}
+.io-frenzy-rarity-number {
+  animation: io-rarity-count-in .4s ease-out both;
+}
+.io-frenzy-success-card {
+  box-shadow: 0 14px 42px rgba(0,0,0,.34), inset 0 1px rgba(255,255,255,.05);
+}
+.io-frenzy-success-stage {
+  box-shadow: inset 0 1px rgba(255,255,255,.035);
+}
+.io-frenzy-orbit-arc {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.io-frenzy-orbit-arc-a {
+  transform: translate(-50%, -50%) rotate(-30deg);
+  animation: io-post-ring-turn 18s linear infinite;
+}
+.io-frenzy-orbit-arc-b {
+  transform: translate(-50%, -50%) rotate(52deg);
+  animation: none;
+}
+.io-frenzy-success-orbit {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.io-frenzy-success-orbit-a {
+  transform: translate(-50%, -50%) rotate(-22deg);
+  animation: io-post-ring-turn 18s linear infinite;
+}
+.io-frenzy-success-orbit-b {
+  transform: translate(-50%, -50%) rotate(55deg);
+  animation: none;
+}
+.io-frenzy-success-orbit-c {
+  transform: translate(-50%, -50%);
+  animation: none;
+}
+.io-launch-orb-ring {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.io-launch-orb-ring-a {
+  transform: translate(-50%, -50%) rotate(-18deg);
+  animation: io-post-ring-turn 18s linear infinite;
+}
+.io-launch-orb-ring-b {
+  transform: translate(-50%, -50%) rotate(58deg);
+  animation: none;
+}
+.io-launch-orb-ring-c {
+  transform: translate(-50%, -50%) rotate(8deg);
+  animation: none;
+}
+.io-launch-orb-aura {
+  filter: none;
+  animation: io-launch-aura-burst 5s ease-in-out infinite;
+}
+.io-launch-orb-sphere {
+  filter: none;
+  animation: io-launch-sphere-float 5s ease-in-out infinite;
+}
+.io-frenzy-success-orb {
+  filter: none;
+  animation: io-launch-sphere-float 5s ease-in-out infinite;
+}
+.io-frenzy-success-particle {
+  animation-duration: 4.2s;
+}
+.io-frenzy-cooldown-panel.is-active {
+  animation: none;
+}
+@keyframes io-rarity-count-in {
+  from { opacity: .45; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Inline posts get one restrained orbit and Orb float; decorative layers stay static. */
+#root.io-inline-post .io-launch-orb-ring-a,
+#root.io-inline-post .io-frenzy-success-orbit-a {
+  animation-duration: 24s;
+}
+#root.io-inline-post .io-launch-orb-aura,
+#root.io-inline-post .io-launch-orb-ring-b,
+#root.io-inline-post .io-launch-orb-ring-c,
+#root.io-inline-post .io-launch-orb-spark,
+#root.io-inline-post .io-share-orb-ring-secondary,
+#root.io-inline-post .io-share-orb-ring-tertiary,
+#root.io-inline-post .io-share-orb-spark,
+#root.io-inline-post .io-frenzy-orbit-arc,
+#root.io-inline-post .io-frenzy-success-orbit-b,
+#root.io-inline-post .io-frenzy-success-orbit-c,
+#root.io-inline-post .io-frenzy-success-particle,
+#root.io-inline-post .io-frenzy-cooldown-panel.is-active {
+  animation: none !important;
+}
+#root.io-inline-post .io-frenzy-success-orb {
+  animation: io-launch-sphere-float 6s ease-in-out infinite;
+}
