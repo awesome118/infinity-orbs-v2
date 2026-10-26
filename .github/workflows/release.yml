@@ -1,7 +1,7 @@
 name: Submit Infinity Orbs for Reddit Review
 
 on:
-  # Review submission is version-specific; 2.0.3 includes the legacy leaderboard/player-list recovery fix.
+  # Retry 2.0.3 release preflight after updating legacy leaderboard regression coverage.
   workflow_run:
     workflows: ["Deploy Devvit"]
     types: [completed]
