@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   X, Wrench, Coins, Gem, Sparkles, Zap, RotateCcw, Play, Shield, Megaphone,
-  Users, BellRing, Crown, UserCheck,
+  Users, Bell, BellRing, Crown, UserCheck,
   Ban, UserX, CheckCircle2, RefreshCw, Flame,
   Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy, ClipboardCheck, Gift, Eye,
 } from 'lucide-react';
@@ -41,6 +41,7 @@ interface DevDebugModalProps {
   onRefresh: () => Promise<void>;
   onForceRollResult?: (res: RollResponse) => void;
   onForceFrenzyPopup?: () => void;
+  onForceNotificationPopup?: () => void;
 }
 
 type GlobalBoosterGrantOperation = {
@@ -400,6 +401,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   onRefresh,
   onForceRollResult,
   onForceFrenzyPopup,
+  onForceNotificationPopup,
 }) => {
   const [customRarity, setCustomRarity] = useState('100000');
   const [loading, setLoading] = useState(false);
@@ -4785,17 +4787,6 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </div>
           )}
           <div className="flex flex-wrap gap-2">
-            <button type="button"
-              title="Open the Daily Frenzy popup immediately in the game so its interaction can be tested."
-              disabled={loading}
-              onClick={() => {
-                sound.playClick();
-                onForceFrenzyPopup?.();
-              }}
-              className={`${buttonBase} bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/30 text-purple-300 px-3 py-2`}
-            >
-              <BellRing className="inline w-3.5 h-3.5 mr-1" /> Force Frenzy Popup
-            </button>
             <button type="button" title="Clear Frenzy flags so another Frenzy test can run immediately." disabled={loading} onClick={() => void sendAdminAction('/api/dev/frenzy/reset')} className={`${buttonBase} bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2`}>
               <RotateCcw className="inline w-3.5 h-3.5 mr-1" /> Reset Frenzy Flags
             </button>
@@ -4804,6 +4795,41 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 1/{v.toLocaleString()}
               </button>
             ))}
+          </div>
+        </section>
+
+        <section className={`${panelBase} border border-teal-500/30`}>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-200">
+            <Bell className="w-4 h-4" /> Popup Testing
+          </div>
+          <p className="text-[11px] leading-relaxed text-slate-400">
+            Preview the actual game popups here. Notification preview never opts you in or consumes the one-time prompt.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              title="Open the Daily Frenzy popup in-game so its visual and interaction can be checked."
+              disabled={loading}
+              onClick={() => {
+                sound.playClick();
+                onForceFrenzyPopup?.();
+              }}
+              className={`${buttonBase} bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/30 text-purple-300 px-3 py-2`}
+            >
+              <Flame className="inline w-3.5 h-3.5 mr-1" /> Force Frenzy Popup
+            </button>
+            <button
+              type="button"
+              title="Preview the notification opt-in popup without changing notification settings or its one-time flag."
+              disabled={loading}
+              onClick={() => {
+                sound.playClick();
+                onForceNotificationPopup?.();
+              }}
+              className={`${buttonBase} bg-teal-500/10 hover:bg-teal-500/20 border-teal-500/30 text-teal-200 px-3 py-2`}
+            >
+              <Bell className="inline w-3.5 h-3.5 mr-1" /> Preview Notification Popup
+            </button>
           </div>
         </section>
 
