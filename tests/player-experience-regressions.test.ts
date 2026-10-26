@@ -225,3 +225,35 @@ test('Community tier labels are safe when a saved event tier is malformed', () =
   assert.match(quests, /safeCommunityTier/);
   assert.match(quests, /Tier \{fmt\(safeCommunityTier\)\}/);
 });
+
+
+test('legacy username-only leaderboard records stay visible without fabricating account IDs', () => {
+  const social = source('src/server/social.ts');
+  const game = source('src/server/game.ts');
+  const debug = source('src/server/debug.ts');
+  const adminUi = source('src/client/components/DevDebugModal.tsx');
+  const socialUi = source('src/client/components/GuildsAndSocial.tsx');
+
+  assert.match(social, /legacyOnlyEntries/);
+  assert.match(social, /authoritativeNames\.has\(normalizeBoardUsername\(entry\.username\)\)/);
+  assert.match(social, /sharedAt: Number\(entry\.sharedAt\) > 0 \? Number\(entry\.sharedAt\) : 1/);
+  assert.match(game, /legacyWithoutId/);
+  assert.match(game, /userId: ''/);
+  assert.match(game, /legacyOnly: true/);
+  assert.match(debug, /filter\(player => !player\.legacyOnly && Boolean\(player\.userId\)\)/);
+  assert.match(adminUi, /Legacy · ID unavailable/);
+  assert.match(adminUi, /player\.userId \|\| 'legacy:'/);
+  assert.match(socialUi, /entry\.legacyOnly &&/);
+});
+
+test('leaderboard and admin player-list reads explicitly bypass HTTP/browser caches', () => {
+  const main = source('src/client/main.tsx');
+  const app = source('src/server/app.ts');
+  const debug = source('src/server/debug.ts');
+
+  assert.match(main, /getJson<LeaderboardEntry\[]>\('\/api\/leaderboard', \{ cache: 'no-store' \}\)/);
+  assert.match(main, /getJson<LeaderboardBoards>\('\/api\/leaderboards', \{ cache: 'no-store' \}\)/);
+  assert.match(app, /app\.get\('\/api\/leaderboard',[\s\S]{0,120}Cache-Control', 'no-store, max-age=0'/);
+  assert.match(app, /app\.get\('\/api\/leaderboards',[\s\S]{0,120}Cache-Control', 'no-store, max-age=0'/);
+  assert.match(debug, /debugRouter\.get\('\/players',[\s\S]{0,100}Cache-Control', 'no-store, max-age=0'/);
+});
