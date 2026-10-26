@@ -380,6 +380,7 @@ test('main-game Play CTA records one unique conversion and attributes the rate t
 
     const after = await getImpressionDashboard();
     assert.equal(after.conversion['main-game'].conversions, before.conversion['main-game'].conversions + 1);
+    assert.equal(after.conversion['main-game'].eligibleViewers, after.byType['main-game']);
     assert.equal(after.conversionByDevice.desktop.conversions, before.conversionByDevice.desktop.conversions + 1);
     assert.equal(after.conversionByDevice.desktop.eligibleViewers,
       after.byTypeAndDevice['main-game'].desktop);
