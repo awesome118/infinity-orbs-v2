@@ -1,7 +1,7 @@
 name: Submit Infinity Orbs for Reddit Review
 
 on:
-  # Retry 2.0.3 release preflight after updating legacy leaderboard regression coverage.
+  # Retry 2.0.3 release preflight after aligning both legacy-board source assertions.
   workflow_run:
     workflows: ["Deploy Devvit"]
     types: [completed]
