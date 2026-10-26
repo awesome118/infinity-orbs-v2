@@ -703,11 +703,13 @@ async function appendGlobalBoosterCreditGrantLog(
 
 async function listRegisteredPlayerIds(): Promise<Array<{ userId: string; username: string; active: boolean }>> {
   const players = await listPlayers();
-  return players.map(player => ({
-    userId: player.userId,
-    username: player.username,
-    active: player.active,
-  }));
+  return players
+    .filter(player => !player.legacyOnly && Boolean(player.userId))
+    .map(player => ({
+      userId: player.userId,
+      username: player.username,
+      active: player.active,
+    }));
 }
 
 
