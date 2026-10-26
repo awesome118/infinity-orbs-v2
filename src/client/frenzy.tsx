@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { context, requestExpandedMode } from '@devvit/web/client';
-import { ArrowRight, Flame, Users } from 'lucide-react';
+import { ArrowRight, Flame, Users, Sparkles, Zap } from 'lucide-react';
 import './styles.css';
 import './post-revamp.css';
-import { formatNumber, formatRarity, getOrbInfo, FRENZY_POST_LIFETIME_MS, MAX_ORB_RARITY } from '../shared/game.js';
+import { formatNumber, formatRarity, getOrbInfo, FRENZY_POST_LIFETIME_MS, FRENZY_CLAIM_COOLDOWN_MS, MAX_ORB_RARITY } from '../shared/game.js';
 import { recordPostImpression } from './impressions.js';
 
 async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 10_000): Promise<Response> {
@@ -122,6 +122,7 @@ function FrenzyPost() {
   const [inlineClaimedRarity, setInlineClaimedRarity] = useState<number | null>(null);
   const [inlineClaimedCount, setInlineClaimedCount] = useState(0);
   const [inlineClaimedIsInfinity, setInlineClaimedIsInfinity] = useState(false);
+  const [inlineClaimedAt, setInlineClaimedAt] = useState(0);
   const [now, setNow] = useState(() => Date.now());
 
   const load = async () => {
@@ -202,6 +203,7 @@ function FrenzyPost() {
       setInlineClaimedRarity(validResult ? resultRarity : info.rarity);
       setInlineClaimedIsInfinity(validResult ? data.orb?.isInfinity === true : info.isInfinity === true);
       setInlineClaimedCount(Number.isSafeInteger(claimedCount) && claimedCount > 0 ? claimedCount : 1);
+      setInlineClaimedAt(Date.now());
       setError(null);
       setClaimed(true);
       await load();
@@ -253,37 +255,6 @@ function FrenzyPost() {
     );
   }
 
-  if (inlineClaimedRarity !== null) {
-    return (
-      <main className="io-public">
-        <div className="io-public-grid" aria-hidden="true" />
-        <div className="io-public-frame">
-          <PublicBrand />
-          <section className="io-public-card io-frenzy-card io-frenzy-success-card">
-            <div className="io-public-eyebrow io-public-eyebrow-success">Frenzy claimed</div>
-            <h1 className="io-frenzy-success-title">You found a 1/{formatRarity(inlineClaimedRarity, inlineClaimedIsInfinity)} Orb.</h1>
-            <p className="io-frenzy-success-copy">{formatNumber(inlineClaimedCount)} Orbs were rolled and saved to your account. {playedBefore === true ? 'Continue your run and chase a new best.' : 'Continue in the full game to start your Codex.'}</p>
-            <button
-              type="button"
-              className="io-public-button io-public-button-primary io-frenzy-success-button"
-              onClick={(event) => {
-                try {
-                  void Promise.resolve(requestExpandedMode(event.nativeEvent, 'game')).catch(error => setError(error instanceof Error ? error.message : 'Could not open the full game.'));
-                } catch (error) {
-                  setError(error instanceof Error ? error.message : 'Could not open the full game.');
-                }
-              }}
-            >
-              Continue in Infinity Orbs
-            </button>
-            <a href={`https://www.reddit.com/comments/${info.postId.replace(/^t3_/, '')}/`} target="_blank" rel="noreferrer" className="io-public-note-link">Upvote the Frenzy post</a>
-            {error && <p className="io-public-inline-error" role="alert">{error}</p>}
-          </section>
-        </div>
-      </main>
-    );
-  }
-
   const orb = getOrbInfo(info.rarity, info.isInfinity);
   const expiresAt = info.expiresAt || info.createdAt + FRENZY_POST_LIFETIME_MS;
   const expiresIn = Math.max(0, expiresAt - now);
@@ -292,13 +263,129 @@ function FrenzyPost() {
   const expiryMinutes = Math.floor((totalExpirySeconds % 3600) / 60);
   const expirySeconds = totalExpirySeconds % 60;
   const expiryLabel = expiresIn <= 0 ? 'EXPIRED' : expiryHours + ':' + String(expiryMinutes).padStart(2, '0') + ':' + String(expirySeconds).padStart(2, '0');
-  const claimCooldownIn = Math.max(0, info.claimCooldownEndsAt - now);
+  const effectiveClaimCooldownEndsAt = Math.max(
+    Number(info.claimCooldownEndsAt) || 0,
+    inlineClaimedAt > 0 ? inlineClaimedAt + FRENZY_CLAIM_COOLDOWN_MS : 0,
+  );
+  const claimCooldownIn = Math.max(0, effectiveClaimCooldownEndsAt - now);
   const claimTotalSeconds = Math.ceil(claimCooldownIn / 1000);
   const claimHours = Math.floor(claimTotalSeconds / 3600);
   const claimMinutes = Math.floor((claimTotalSeconds % 3600) / 60);
   const claimSeconds = claimTotalSeconds % 60;
   const claimCooldownLabel = claimCooldownIn > 0 ? claimHours + ':' + String(claimMinutes).padStart(2, '0') + ':' + String(claimSeconds).padStart(2, '0') : '';
   const canClaim = info.canClaim && !openedGame && expiresIn > 0 && claimCooldownIn <= 0;
+
+  if (inlineClaimedRarity !== null) {
+    const rewardOrb = getOrbInfo(inlineClaimedRarity, inlineClaimedIsInfinity);
+    const cooldownStatus = claimCooldownIn > 0 ? claimCooldownLabel : 'Claimed today';
+    return (
+      <main className="io-public io-frenzy-success-shell">
+        <div className="io-public-grid" aria-hidden="true" />
+        <div
+          className="io-public-glow io-frenzy-success-glow"
+          aria-hidden="true"
+          style={{ background: 'radial-gradient(ellipse at center, ' + rewardOrb.color + '30, transparent 68%)' }}
+        />
+        <div className="io-public-frame">
+          <PublicBrand />
+          <section className="io-public-card io-frenzy-card io-frenzy-success-card io-post-reveal">
+            <div className="io-public-eyebrow io-public-eyebrow-success">
+              <Sparkles className="w-3.5 h-3.5" />
+              FRENZY REWARD CONFIRMED
+            </div>
+            <h1 className="io-frenzy-success-title">FRENZY CLAIMED</h1>
+            <p className="io-frenzy-success-copy">
+              {formatNumber(inlineClaimedCount)} Orbs rolled. Your reward is saved.
+              {playedBefore === true ? ' Carry the momentum into your next run.' : ' Keep rolling to start building your Codex.'}
+            </p>
+
+            <div
+              className="io-frenzy-success-stage"
+              style={{
+                background: 'radial-gradient(ellipse at center, ' + rewardOrb.color + '30, rgba(5, 11, 19, .96) 70%)',
+                borderColor: rewardOrb.color + '55',
+              }}
+              aria-label={rewardOrb.name + ' reward reveal'}
+            >
+              <div className="io-frenzy-success-stage-grid" aria-hidden="true" />
+              <span className="io-frenzy-success-orbit io-frenzy-success-orbit-a" aria-hidden="true" />
+              <span className="io-frenzy-success-orbit io-frenzy-success-orbit-b" aria-hidden="true" />
+              <span className="io-frenzy-success-orbit io-frenzy-success-orbit-c" aria-hidden="true" />
+              <span className="io-frenzy-success-particle io-frenzy-success-particle-a" aria-hidden="true" />
+              <span className="io-frenzy-success-particle io-frenzy-success-particle-b" aria-hidden="true" />
+              <span className="io-frenzy-success-particle io-frenzy-success-particle-c" aria-hidden="true" />
+              <span className="io-frenzy-success-particle io-frenzy-success-particle-d" aria-hidden="true" />
+              <div
+                className="io-frenzy-success-orb"
+                style={{
+                  background: rewardOrb.bgGradient,
+                  borderColor: rewardOrb.color + 'aa',
+                  boxShadow: '0 0 38px ' + rewardOrb.color + '77, 0 0 90px ' + rewardOrb.color + '25, inset -12px -14px 22px rgba(0,0,0,.3), inset 10px 10px 18px rgba(255,255,255,.22)',
+                }}
+              >
+                <div className="io-frenzy-orb-highlight" />
+                <div className="io-frenzy-orb-core" style={{ background: rewardOrb.color }} />
+                <span className="io-frenzy-success-orb-tier">{rewardOrb.tier}</span>
+              </div>
+            </div>
+            <div className="io-frenzy-success-rarity">
+              <AnimatedRarity rarity={inlineClaimedRarity} color={rewardOrb.color} isInfinity={inlineClaimedIsInfinity} />
+            </div>
+            <div className="io-frenzy-meta io-frenzy-success-meta" style={{ borderColor: rewardOrb.color + '44' }}>
+              <span>{rewardOrb.tier}</span>
+              <span>{rewardOrb.name}</span>
+            </div>
+
+            <div className="io-frenzy-success-stats">
+              <div>
+                <span>ORBS ROLLED</span>
+                <strong>{formatNumber(inlineClaimedCount)}</strong>
+              </div>
+              <div>
+                <span>PERSONAL COOLDOWN</span>
+                <strong>{cooldownStatus}</strong>
+              </div>
+              <div>
+                <span>POST EXPIRES IN</span>
+                <strong>{expiryLabel}</strong>
+              </div>
+            </div>
+
+            <div className="io-frenzy-cooldown-panel is-active" role="status">
+              <div className="io-frenzy-cooldown-icon"><Zap className="w-4 h-4" /></div>
+              <div className="io-frenzy-cooldown-copy">
+                <strong>{claimCooldownIn > 0 ? 'Your next Frenzy claim' : 'You have used today’s Frenzy claim'}</strong>
+                <span>{claimCooldownIn > 0 ? 'Available again in ' + claimCooldownLabel : 'The claim cooldown is still personal to you.'}</span>
+              </div>
+              <span className="io-frenzy-cooldown-value">{cooldownStatus}</span>
+            </div>
+
+            <div className="io-post-conversion io-frenzy-success-conversion">
+              <div className="io-cta-caption"><span aria-hidden="true" /> {playedBefore === true ? 'YOUR NEXT RECORD IS ONE TAP AWAY' : 'KEEP THE FRENZY GOING'}</div>
+              <button
+                type="button"
+                className="io-public-button io-public-button-primary io-frenzy-success-button io-post-cta"
+                onClick={(event) => {
+                  try {
+                    void Promise.resolve(requestExpandedMode(event.nativeEvent, 'game')).catch(error => setError(error instanceof Error ? error.message : 'Could not open the full game.'));
+                  } catch (error) {
+                    setError(error instanceof Error ? error.message : 'Could not open the full game.');
+                  }
+                }}
+              >
+                <ArrowRight className="w-4 h-4" />
+                {playedBefore === true ? 'Continue Playing' : 'Play Infinity Orbs'}
+              </button>
+              <a href={`https://www.reddit.com/comments/${info.postId.replace(/^t3_/, '')}/`} target="_blank" rel="noreferrer" className="io-public-note-link">Upvote the Frenzy post</a>
+            </div>
+            {error && <p className="io-public-inline-error" role="alert">{error}</p>}
+          </section>
+        </div>
+      </main>
+    );
+  }
+
+
 
   return (
     <main className="io-public">
@@ -334,6 +421,8 @@ function FrenzyPost() {
                 boxShadow: '0 0 28px ' + orb.color + '44, inset -12px -14px 22px rgba(0,0,0,.28), inset 10px 10px 18px rgba(255,255,255,.2)',
               }}
             >
+              <span className="io-frenzy-orbit-arc io-frenzy-orbit-arc-a" aria-hidden="true" />
+              <span className="io-frenzy-orbit-arc io-frenzy-orbit-arc-b" aria-hidden="true" />
               <div className="io-frenzy-orb-highlight" />
               <div className="io-frenzy-orb-core" style={{ background: orb.color }} />
             </div>
@@ -353,9 +442,18 @@ function FrenzyPost() {
             )}
           </div>
 
-          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-center" style={{ borderColor: orb.color + '33' }}>
-            <div className="text-[10px] uppercase tracking-widest font-black text-slate-500">Frenzy expires in</div>
-            <div className="mt-1 text-2xl font-black tabular-nums" style={{ color: expiresIn > 0 ? orb.color : '#94a3b8' }}>{expiryLabel}</div>
+          <div className="io-frenzy-timer-grid">
+            <div className="io-frenzy-expiry-timer" style={{ borderColor: orb.color + '33' }}>
+              <div className="io-frenzy-timer-label">Frenzy expires in</div>
+              <div className="io-frenzy-timer-value" style={{ color: expiresIn > 0 ? orb.color : '#94a3b8' }}>{expiryLabel}</div>
+            </div>
+            {(info.claimedToday || claimCooldownIn > 0) && (
+              <div className="io-frenzy-cooldown-mini" role="status">
+                <div className="io-frenzy-timer-label"><Zap className="w-3 h-3" /> Your claim cooldown</div>
+                <div className="io-frenzy-timer-value">{claimCooldownIn > 0 ? claimCooldownLabel : 'Claimed today'}</div>
+                <p>You can still play while this timer runs.</p>
+              </div>
+            )}
           </div>
 
           <div className="io-frenzy-meta" style={{ borderColor: orb.color + '22' }}>
