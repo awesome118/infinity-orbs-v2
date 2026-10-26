@@ -697,7 +697,7 @@ test('Current Dry Streak and Cosmic Reserve are included in the gameplay UI and 
   const profile = source('src/client/components/ProfileAndPrestige.tsx');
   const debugModal = source('src/client/components/DevDebugModal.tsx');
   assert.match(social, /currentDryStreak: Math\.max\(0, Number\(save\.rollsSinceBest/);
-  assert.match(social, /currentDryStreak: sortLeaderboard\(eligible, entry => entry\.currentDryStreak/);
+  assert.match(social, /currentDryStreak: sortLeaderboard\(boardsWithHistoricalMetric\('currentDryStreak'\), entry => entry\.currentDryStreak/);
   assert.match(socialTypes, /currentDryStreak\?: number/);
   assert.match(leaderboardUi, /label: 'Current Dry Streak'/);
   assert.match(shared, /cosmicReserveMultiplier = 1 \+ unspentCosmicDust \* cosmicReserveLevel \* 0\.01/);
