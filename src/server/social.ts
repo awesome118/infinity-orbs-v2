@@ -2827,16 +2827,44 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
     });
   }
 
+  // Older projections may predate userId/sharedAt fields. They cannot be
+  // joined back to a saved player, but they are still valid display records
+  // for the three original boards and must not make the entire leaderboard blank.
+  const normalizeBoardUsername = (value: unknown): string =>
+    String(value ?? '').trim().replace(/^u\\//i, '').toLowerCase();
+  const authoritativeNames = new Set(eligible.map(entry => normalizeBoardUsername(entry.username)));
+  const legacyOnlyEntries: LeaderboardEntry[] = legacyBoard
+    .filter(entry =>
+      !entry.userId &&
+      normalizeBoardUsername(entry.username).length > 0 &&
+      !authoritativeNames.has(normalizeBoardUsername(entry.username)),
+    )
+    .map(entry => ({
+      ...entry,
+      username: String(entry.username).trim().replace(/^u\\//i, '').slice(0, 100),
+      value: Math.max(0, Number.isFinite(Number(entry.value)) ? Number(entry.value) : 0),
+      highestRarity: Math.max(0, Number.isFinite(Number(entry.highestRarity)) ? Number(entry.highestRarity) : 0),
+      totalRolls: Math.max(0, Number.isFinite(Number(entry.totalRolls)) ? Number(entry.totalRolls) : 0),
+      // Presence in the legacy shared-orb leaderboard proves historical eligibility.
+      sharedAt: Number(entry.sharedAt) > 0 ? Number(entry.sharedAt) : 1,
+      legacyOnly: true,
+    }));
+  const primaryBoards = [...eligible, ...legacyOnlyEntries];
+  const boardsWithHistoricalMetric = (field: keyof LeaderboardEntry) => [
+    ...eligible,
+    ...legacyOnlyEntries.filter(entry => entry[field] !== undefined),
+  ];
+
   return {
-    collectionValue: sortLeaderboard(eligible, entry => entry.value),
-    mostRolls: sortLeaderboard(eligible, entry => entry.totalRolls),
-    highestDryStreak: sortLeaderboard(eligible, entry => entry.highestDryStreak ?? 0),
-    currentDryStreak: sortLeaderboard(eligible, entry => entry.currentDryStreak ?? 0),
-    bestOrb: sortLeaderboard(eligible, entry => entry.highestRarity),
-    mostPlaytime: sortLeaderboard(eligible, entry => entry.playtimeMs ?? 0),
-    chainLength: sortLeaderboard(eligible, entry => entry.chainLength ?? 0),
+    collectionValue: sortLeaderboard(primaryBoards, entry => entry.value),
+    mostRolls: sortLeaderboard(primaryBoards, entry => entry.totalRolls),
+    highestDryStreak: sortLeaderboard(boardsWithHistoricalMetric('highestDryStreak'), entry => entry.highestDryStreak ?? 0),
+    currentDryStreak: sortLeaderboard(boardsWithHistoricalMetric('currentDryStreak'), entry => entry.currentDryStreak ?? 0),
+    bestOrb: sortLeaderboard(primaryBoards, entry => entry.highestRarity),
+    mostPlaytime: sortLeaderboard(boardsWithHistoricalMetric('playtimeMs'), entry => entry.playtimeMs ?? 0),
+    chainLength: sortLeaderboard(boardsWithHistoricalMetric('chainLength'), entry => entry.chainLength ?? 0),
     highestDepthReached: sortLeaderboard(
-      eligible.filter(entry => (entry.bestDepth ?? 0) > 0),
+      boardsWithHistoricalMetric('bestDepth').filter(entry => (entry.bestDepth ?? 0) > 0),
       entry => entry.bestDepth ?? 0,
     ),
   };
