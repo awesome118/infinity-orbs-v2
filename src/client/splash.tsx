@@ -140,6 +140,11 @@ function SharedOrbPost({ data, playedBefore }: { data: SharedOrbPostData; played
             }}
             aria-label={`1/${formatRarity(rarity, isInfinity)} ${info.tier} Orb`}
           >
+            <span className="io-public-orb-ring io-public-orb-ring-secondary" aria-hidden="true" />
+            <span className="io-public-orb-ring io-public-orb-ring-tertiary" aria-hidden="true" />
+            <span className="io-share-orb-spark io-share-orb-spark-a" aria-hidden="true" />
+            <span className="io-share-orb-spark io-share-orb-spark-b" aria-hidden="true" />
+            <span className="io-share-orb-spark io-share-orb-spark-c" aria-hidden="true" />
             <span className="io-public-orb-ring" />
             <span className="io-public-orb-tier">{info.tier}</span>
             <strong>1/{formatRarity(rarity, isInfinity)}</strong>
@@ -234,6 +239,21 @@ function Splash() {
             <p>{playedBefore === true ? 'Pick up where you left off: chase a rarer Orb, beat your best, and keep your Codex growing.' : 'Roll for rarity, spend Coins on upgrades, and build a Codex of increasingly absurd discoveries.'}</p>
           </div>
           <div className="io-launch-mark" aria-hidden="true">
+            <span>∞</span>
+          </div>
+        </div>
+
+        <div className="io-launch-orb-stage" aria-hidden="true">
+          <div className="io-launch-orb-aura" />
+          <span className="io-launch-orb-ring io-launch-orb-ring-a" />
+          <span className="io-launch-orb-ring io-launch-orb-ring-b" />
+          <span className="io-launch-orb-ring io-launch-orb-ring-c" />
+          <span className="io-launch-orb-spark io-launch-orb-spark-a" />
+          <span className="io-launch-orb-spark io-launch-orb-spark-b" />
+          <span className="io-launch-orb-spark io-launch-orb-spark-c" />
+          <span className="io-launch-orb-spark io-launch-orb-spark-d" />
+          <div className="io-launch-orb-sphere">
+            <span className="io-launch-orb-sphere-shine" />
             <span>∞</span>
           </div>
         </div>
