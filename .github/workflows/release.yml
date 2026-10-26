@@ -1,7 +1,7 @@
 name: Submit Infinity Orbs for Reddit Review
 
 on:
-  # Retry 2.0.4 diagnostic release preflight after fixing TypeScript in the Redis save-count callback.
+  # Retry 2.0.5 diagnostic release preflight after fixing TypeScript in the Redis save-count callback.
   workflow_run:
     workflows: ["Deploy Devvit"]
     types: [completed]
@@ -27,7 +27,7 @@ on:
 
 jobs:
   release:
-    if: ${{ inputs.confirm_publish || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && contains(github.event.workflow_run.head_commit.message, '[submit-review:2.0.4]')) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.0.4]')) }}
+    if: ${{ inputs.confirm_publish || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && contains(github.event.workflow_run.head_commit.message, '[submit-review:2.0.5]')) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.0.5]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
