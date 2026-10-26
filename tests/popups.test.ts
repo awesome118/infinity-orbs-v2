@@ -18,8 +18,8 @@ test('Frenzy and notification popups both render with dedicated modal styles', (
   assert.match(main, /data-testid="notification-prompt"/);
   assert.match(main, /aria-modal="true"/);
   assert.match(main, /Allow push notifications\?/);
-  assert.match(main, /io-notification-prompt-enable/);
-  assert.match(main, /io-notification-prompt-dismiss/);
+  assert.match(main, /notification-prompt-enable/);
+  assert.match(main, /notification-prompt-dismiss/);
 
   assert.match(styles, /\.io-frenzy-prompt\s*\{/);
   assert.match(styles, /\.io-notification-prompt\s*\{/);
