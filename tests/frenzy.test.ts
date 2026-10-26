@@ -461,3 +461,24 @@ test('Frenzy info follows the viewer handoff when expanded-game post context dif
   assert.match(info, /frenzyClaimReceiptKey\(postId, viewerId\)/);
 });
 
+
+
+test('arming a Frenzy uses the current viewer for ownership and handoff', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  const start = source.indexOf('export async function armOrbFrenzyClaim');
+  const end = source.indexOf('export async function getOrbFrenzyHandoff', start);
+  assert.ok(start >= 0 && end > start);
+  const arm = source.slice(start, end);
+  assert.match(arm, /const viewerId = currentUserId\(\);/);
+  assert.match(arm, /data\.ownerId === viewerId/);
+  assert.match(arm, /frenzyHandoffKey\(viewerId\)/);
+});
+
+test('current app version is visible on the main game splash and header', () => {
+  const splash = readFileSync(resolve(process.cwd(), 'src/client/components/SplashScreen.tsx'), 'utf8');
+  const header = readFileSync(resolve(process.cwd(), 'src/client/components/Header.tsx'), 'utf8');
+  assert.match(splash, /import \{ APP_VERSION \} from '\.\.\/\.\.\/shared\/version\.js'/);
+  assert.match(splash, /v\{APP_VERSION\}/);
+  assert.match(header, /import \{ APP_VERSION \} from '\.\.\/\.\.\/shared\/version\.js'/);
+  assert.match(header, /v\{APP_VERSION\}/);
+});
