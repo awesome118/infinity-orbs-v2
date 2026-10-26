@@ -2767,8 +2767,8 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
   const userIds = Array.from(new Set([...Object.keys(registry), ...legacyById.keys()]));
   const [saves, combatSaves] = userIds.length > 0
     ? await Promise.all([
-      redis.mGet(userIds.map(id => \`player:\${id}\`)),
-      redis.mGet(userIds.map(id => \`infinity-orbs:combat:\${id}\`)),
+      redis.mGet(userIds.map(id => `player:${id}`)),
+      redis.mGet(userIds.map(id => `infinity-orbs:combat:${id}`)),
     ])
     : [[], []];
 
@@ -2804,7 +2804,7 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
     );
 
     eligible.push({
-      username: String(registryEntry.username ?? save.username ?? legacy?.username ?? \`user-\${userId.slice(-8)}\`).trim(),
+      username: String(registryEntry.username ?? save.username ?? legacy?.username ?? `user-${userId.slice(-8)}`).trim(),
       userId,
       value: Math.max(0, Number(save.collectionValue ?? legacy?.value ?? 0) || 0),
       highestRarity: Math.max(0, Number(save.highestRarity ?? legacy?.highestRarity ?? 0) || 0),
