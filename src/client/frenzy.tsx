@@ -4,7 +4,7 @@ import { context, requestExpandedMode } from '@devvit/web/client';
 import { ArrowRight, Flame, Users } from 'lucide-react';
 import './styles.css';
 import './post-revamp.css';
-import { formatRarity, getOrbInfo, FRENZY_POST_LIFETIME_MS, MAX_ORB_RARITY } from '../shared/game.js';
+import { formatNumber, formatRarity, getOrbInfo, FRENZY_POST_LIFETIME_MS, MAX_ORB_RARITY } from '../shared/game.js';
 import { recordPostImpression } from './impressions.js';
 
 async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 10_000): Promise<Response> {
