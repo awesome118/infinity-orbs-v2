@@ -6599,36 +6599,7 @@ export async function claimOrbFrenzy(options: {
     });
   }
 
-  const rolledAt = Date.now();
-  const visibleBatch: Orb[] = [];
-  for (const group of groups) {
-    const groupInfo = getOrbInfo(group.rarity, group.isInfinity);
-    const groupIsNew = newRarityKeys.some(item => item.rarity === group.rarity && Boolean(item.isInfinity) === Boolean(group.isInfinity));
-    const visibleCount = Math.min(group.count, Math.max(0, 8 - visibleBatch.length));
-    for (let i = 0; i < visibleCount; i += 1) {
-      visibleBatch.push({
-        rarity: group.rarity,
-        rolledAt,
-        tier: groupInfo.tier,
-        name: groupInfo.name,
-        isInfinity: group.isInfinity,
-        isNew: groupIsNew,
-        isCrit: group.isCrit,
-      });
-    }
-  }
 
-  const orbInfo = getOrbInfo(bestRarity, bestIsInfinity);
-  const bestOrb: Orb = {
-    rarity: bestRarity,
-    rolledAt,
-    tier: orbInfo.tier,
-    name: orbInfo.name,
-    isInfinity: bestIsInfinity,
-    isNew: newRarityKeys.some(group => group.rarity === bestRarity && Boolean(group.isInfinity) === bestIsInfinity),
-    isCrit: bestIsCrit,
-  };
-  if (visibleBatch.length === 0) visibleBatch.push(bestOrb);
 
   return {
     orb: bestOrb,
@@ -6641,7 +6612,7 @@ export async function claimOrbFrenzy(options: {
     state: s,
     rollsRemainingUntilNext: cooldownMs(s),
     dramaticReveal: bestRarity >= 100,
-    frenzyCount: count,
+    frenzyCount: processedCount,
   };
 
   };
