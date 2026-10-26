@@ -55,7 +55,7 @@ test('claiming a Frenzy uses the animated main-game-style reward reveal', () => 
   assert.ok(frenzy.includes('ORBS ROLLED'));
   assert.ok(frenzy.includes('PERSONAL COOLDOWN'));
   assert.ok(frenzy.includes('POST EXPIRES IN'));
-  assert.ok(frenzy.includes('Continue Playing'));
+  assert.ok(frenzy.includes('Continue in Infinity Orbs'));
   assert.match(styles, /@keyframes io-launch-sphere-float/);
   assert.match(styles, /@keyframes io-frenzy-cooldown-glow/);
   assert.match(styles, /\.io-frenzy-success-orb/);
