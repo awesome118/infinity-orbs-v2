@@ -372,6 +372,12 @@ function FrenzyPost() {
             <span>{orb.name}</span>
           </div>
 
+          {!openedGame && (
+            <div className="io-cta-caption">
+              <span aria-hidden="true" />
+              {canClaim ? 'CLAIM THE FRENZY · PLAY NOW' : 'START YOUR OWN CODEX'}
+            </div>
+          )}
           {openedGame ? (
             <div className="io-public-result io-frenzy-opened">
               <div className="io-public-eyebrow io-public-eyebrow-success">Opening game</div>
