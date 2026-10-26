@@ -450,6 +450,10 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [impressionsLoading, setImpressionsLoading] = useState(false);
   const [impressionsError, setImpressionsError] = useState('');
   const impressionsLoadLockRef = useRef(false);
+  const [leaderboardDiagnostics, setLeaderboardDiagnostics] = useState<Record<string, any> | null>(null);
+  const [leaderboardDiagnosticsLoading, setLeaderboardDiagnosticsLoading] = useState(false);
+  const [leaderboardDiagnosticsError, setLeaderboardDiagnosticsError] = useState('');
+  const [leaderboardDiagnosticsCopied, setLeaderboardDiagnosticsCopied] = useState(false);
   const [fakeCcuInput, setFakeCcuInput] = useState('0');
   const [pushTestLoading, setPushTestLoading] = useState(false);
 
@@ -614,6 +618,42 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       setMessage('Error: ' + (e?.message || 'Could not load CCU statistics.'));
     } finally {
       setCcuLoading(false);
+    }
+  };
+
+  const loadLeaderboardDiagnostics = async () => {
+    setLeaderboardDiagnosticsLoading(true);
+    setLeaderboardDiagnosticsError('');
+    setLeaderboardDiagnosticsCopied(false);
+    try {
+      const res = await fetch('/api/dev/leaderboard-diagnostics', { cache: 'no-store' });
+      const data: unknown = await res.json().catch(() => null);
+      if (!res.ok) {
+        const message = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+          ? data.error
+          : 'Could not load leaderboard diagnostics.';
+        throw new Error(message);
+      }
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        throw new Error('Diagnostics returned an invalid response.');
+      }
+      setLeaderboardDiagnostics(data as Record<string, any>);
+      setMessage('Leaderboard/player-list diagnostic snapshot collected from this running installation.');
+    } catch (error) {
+      setLeaderboardDiagnosticsError(error instanceof Error ? error.message : 'Could not load leaderboard diagnostics.');
+    } finally {
+      setLeaderboardDiagnosticsLoading(false);
+    }
+  };
+
+  const copyLeaderboardDiagnostics = async () => {
+    if (!leaderboardDiagnostics) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(leaderboardDiagnostics, null, 2));
+      setLeaderboardDiagnosticsCopied(true);
+      setMessage('Diagnostic JSON copied. It contains usernames and redacted account-ID suffixes.');
+    } catch {
+      setLeaderboardDiagnosticsError('Clipboard access was blocked. The JSON report remains visible below for manual copying.');
     }
   };
 
@@ -4769,6 +4809,95 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <span>Players & Moderation</span><span className="text-[10px] text-slate-600">Expand</span>
           </summary>
           <div className="mt-3 space-y-3">
+
+        <section className={`${panelBase} border border-amber-500/30`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-300">
+                <Database className="w-4 h-4" /> Leaderboard & Player List Diagnostics
+              </div>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Read-only snapshot from this exact running subreddit installation. Use it to distinguish missing Redis data, legacy records without IDs, malformed registry entries, API errors, and stale-version/context issues.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button"
+                disabled={leaderboardDiagnosticsLoading}
+                onClick={() => void loadLeaderboardDiagnostics()}
+                className={`${buttonBase} bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-200 px-3 py-2`}
+                title="Read the live registry, legacy leaderboard, player-list output, and all leaderboard outputs from this installation."
+              >
+                <RefreshCw className={`inline w-3.5 h-3.5 mr-1 ${leaderboardDiagnosticsLoading ? 'animate-spin' : ''}`} />
+                {leaderboardDiagnosticsLoading ? 'Collecting…' : 'Run Diagnostics'}
+              </button>
+              <button type="button"
+                disabled={!leaderboardDiagnostics}
+                onClick={() => void copyLeaderboardDiagnostics()}
+                className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-200 px-3 py-2`}
+                title="Copy the diagnostic report as JSON for analysis."
+              >
+                <Copy className="inline w-3.5 h-3.5 mr-1" />
+                {leaderboardDiagnosticsCopied ? 'Copied' : 'Copy JSON'}
+              </button>
+            </div>
+          </div>
+
+          {leaderboardDiagnosticsError && (
+            <div role="alert" className="mt-3 rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-xs text-rose-200">
+              {leaderboardDiagnosticsError}
+            </div>
+          )}
+
+          {leaderboardDiagnostics ? (
+            <div className="mt-3 space-y-3">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                {[
+                  ['Running version', String(leaderboardDiagnostics.appVersion ?? 'unknown')],
+                  ['Subreddit context', String((leaderboardDiagnostics.runningContext as any)?.subredditName ?? 'not provided')],
+                  ['Registry fields', String((leaderboardDiagnostics.storage as any)?.registry?.fieldCount ?? 'unavailable')],
+                  ['Legacy board rows', String((leaderboardDiagnostics.storage as any)?.legacyLeaderboard?.entryCount ?? 'unavailable')],
+                  ['List output', (leaderboardDiagnostics.computed as any)?.playerList?.ok === true ? String((leaderboardDiagnostics.computed as any).playerList.count) + ' players' : 'ERROR'],
+                  ['Active players', (leaderboardDiagnostics.computed as any)?.playerList?.ok === true ? String((leaderboardDiagnostics.computed as any).playerList.activeCount) : 'unavailable'],
+                  ['Legacy rows without IDs', String((leaderboardDiagnostics.storage as any)?.legacyLeaderboard?.entriesWithoutUserId ?? 'unavailable')],
+                  ['Registry parse errors', String((leaderboardDiagnostics.storage as any)?.registry?.malformedEntries ?? 'unavailable')],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl border border-slate-800 bg-slate-900/80 p-2.5">
+                    <div className="text-[8px] font-black uppercase tracking-wider text-slate-500">{label}</div>
+                    <div className="mt-1 break-words text-xs font-mono font-bold text-slate-100">{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+                <div className="text-[10px] font-black uppercase tracking-wider text-slate-300">Leaderboard endpoint output</div>
+                {(leaderboardDiagnostics.computed as any)?.leaderboards?.ok === true ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {Object.entries((leaderboardDiagnostics.computed as any).leaderboards.counts ?? {}).map(([name, count]) => (
+                      <span key={name} className={`rounded-lg border px-2 py-1 text-[10px] font-mono ${Number(count) > 0 ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' : 'border-rose-500/30 bg-rose-500/10 text-rose-200'}`}>
+                        {name}: {String(count)}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-rose-300">
+                    {String((leaderboardDiagnostics.computed as any)?.leaderboards?.error ?? 'Leaderboard calculation failed; inspect the JSON report below.')}
+                  </p>
+                )}
+                {(leaderboardDiagnostics.computed as any)?.playerList?.ok !== true && (
+                  <p className="mt-2 text-xs text-rose-300">Player list error: {String((leaderboardDiagnostics.computed as any)?.playerList?.error ?? 'unknown error')}</p>
+                )}
+              </div>
+
+              <details className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
+                <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wider text-slate-300">Full Diagnostic JSON</summary>
+                <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words text-[10px] leading-relaxed text-slate-300">{JSON.stringify(leaderboardDiagnostics, null, 2)}</pre>
+              </details>
+              <p className="text-[9px] text-slate-600">The report never includes full account IDs or raw player saves. It does include sample usernames and the last 8 characters of IDs; review those before sharing the report.</p>
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-slate-500">Run diagnostics to collect a live snapshot. It does not alter Redis data or repair records.</p>
+          )}
+        </section>
 
         <section className={`${panelBase} border border-rose-500/30`}>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-300">
