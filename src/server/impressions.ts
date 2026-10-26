@@ -1,4 +1,5 @@
 import { context, redis } from './devvit-mock.js';
+import { readInBatches } from './redis-batches.js';
 
 export type ImpressionPostType = 'main-game' | 'orb-share' | 'frenzy';
 export type ImpressionDeviceType = 'mobile' | 'tablet' | 'desktop' | 'unknown';
@@ -282,7 +283,12 @@ async function pruneViewerIndex(now: number): Promise<void> {
     try {
       const index = await redis.hGetAll(VIEWER_INDEX_KEY);
       const userHashes = Object.keys(index ?? {});
-      const viewerValues = await redis.mGet(userHashes.map(userHash => VIEWER_RECORD_PREFIX + userHash));
+      const viewerValues = await readInBatches(
+        userHashes.map(userHash => VIEWER_RECORD_PREFIX + userHash),
+        keys => redis.mGet(keys),
+        64,
+        4,
+      );
       const rows = userHashes.map((userHash, index) => ({
         userHash,
         row: normalizeViewerRow(viewerValues[index]),
