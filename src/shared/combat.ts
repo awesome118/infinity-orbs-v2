@@ -748,7 +748,7 @@ export const SKILL_GACHA_RANK_REQUIREMENTS: SkillGachaRankRequirement[] = Array.
       rank,
       requiredPulls: Math.round(3 * Math.pow(rank - 1, 1.55)),
       requiredMarks: Math.round(25 * Math.pow(rank - 1, 1.45)),
-      unlocks: rank === SKILL_GACHA_RANK_MAX ? 'Common 18%; Uncommon 25%; Rare 23%; Epic 26%; Mythic 8%' : 'Improved higher-rarity odds',
+      unlocks: rank === SKILL_GACHA_RANK_MAX ? 'Common 18%; Uncommon 25%; Rare 23%; Epic 33.5%; Mythic 0.5%' : 'Improved higher-rarity odds',
     };
   },
 );
@@ -762,8 +762,8 @@ export interface CombatSkillRarityOdds { Common: number; Uncommon: number; Rare:
 
 /**
  * The Gacha starts with Common-only draws, then gradually introduces each
- * rarity tier. Between these anchor ranks, odds interpolate smoothly. Every
- * row sums to 100%, and higher ranks steadily increase the higher tiers.
+ * rarity tier. Mythic remains rare, capped at 0.5% even at max rank. Between
+ * anchor ranks, odds interpolate smoothly and every row sums to 100%.
  */
 const SKILL_GACHA_ODDS_ANCHORS: Array<{ rank: number; odds: CombatSkillRarityOdds }> = [
   { rank: 1, odds: { Common: 1, Uncommon: 0, Rare: 0, Epic: 0, Mythic: 0 } },
@@ -771,10 +771,10 @@ const SKILL_GACHA_ODDS_ANCHORS: Array<{ rank: number; odds: CombatSkillRarityOdd
   { rank: 3, odds: { Common: 0.93, Uncommon: 0.065, Rare: 0.005, Epic: 0, Mythic: 0 } },
   { rank: 5, odds: { Common: 0.82, Uncommon: 0.16, Rare: 0.02, Epic: 0, Mythic: 0 } },
   { rank: 8, odds: { Common: 0.66, Uncommon: 0.22, Rare: 0.10, Epic: 0.02, Mythic: 0 } },
-  { rank: 12, odds: { Common: 0.50, Uncommon: 0.24, Rare: 0.16, Epic: 0.09, Mythic: 0.01 } },
-  { rank: 18, odds: { Common: 0.36, Uncommon: 0.25, Rare: 0.19, Epic: 0.17, Mythic: 0.03 } },
-  { rank: 24, odds: { Common: 0.25, Uncommon: 0.25, Rare: 0.22, Epic: 0.23, Mythic: 0.05 } },
-  { rank: 30, odds: { Common: 0.18, Uncommon: 0.25, Rare: 0.23, Epic: 0.26, Mythic: 0.08 } },
+  { rank: 12, odds: { Common: 0.50, Uncommon: 0.24, Rare: 0.16, Epic: 0.0995, Mythic: 0.0005 } },
+  { rank: 18, odds: { Common: 0.36, Uncommon: 0.25, Rare: 0.19, Epic: 0.198, Mythic: 0.002 } },
+  { rank: 24, odds: { Common: 0.25, Uncommon: 0.25, Rare: 0.22, Epic: 0.277, Mythic: 0.003 } },
+  { rank: 30, odds: { Common: 0.18, Uncommon: 0.25, Rare: 0.23, Epic: 0.335, Mythic: 0.005 } },
 ];
 
 export function combatSkillRarityOdds(gachaRankValue: unknown): CombatSkillRarityOdds {
