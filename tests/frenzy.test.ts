@@ -79,7 +79,7 @@ test('Frenzy cooldowns and expiry use precise timestamps', () => {
 test('posted Frenzy opens the actual game entrypoint from the claim button', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/client/frenzy.tsx'), 'utf8');
   assert.match(source, /requestExpandedMode\(event\.nativeEvent, ['"]game['"]\)/);
-  assert.match(source, /Click below to claim it/);
+  assert.match(source, /Claim it for a burst of Orbs/);
   assert.match(source, /Frenzy expires in/);
   assert.match(source, /setInterval\(\(\) => setNow\(Date\.now\(\)\), 1000\)/);
   assert.match(source, /io-frenzy-rarity-number/);
@@ -213,10 +213,16 @@ test('Frenzy auto-claim requires an explicit server-side handoff', () => {
   assert.match(source, /if \(!handoff\.armed\) return/);
 });
 
-test('Frenzy claim button arms the server-side handoff before opening the game', () => {
+test('Frenzy claim directly commits a reward and displays the confirmed volley', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/client/frenzy.tsx'), 'utf8');
-  assert.match(source, /\/api\/frenzy\/arm/);
-  assert.match(source, /requestExpandedMode\(event\.nativeEvent, 'game'\)/);
+  const claimStart = source.indexOf('const claim = async () =>');
+  const claimEnd = source.indexOf('\n  };', claimStart);
+  assert.ok(claimStart >= 0 && claimEnd > claimStart);
+  const claim = source.slice(claimStart, claimEnd);
+  assert.match(claim, /fetchWithTimeout\('\/api\/frenzy\/claim', \{ method: 'POST' \}\)/);
+  assert.match(claim, /setInlineClaimedCount/);
+  assert.doesNotMatch(claim, /\/api\/frenzy\/arm/);
+  assert.match(source, /Orbs were rolled and saved to your account/);
 });
 
 test('Frenzy auto-claim always releases the game loading state', () => {

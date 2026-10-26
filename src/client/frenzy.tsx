@@ -120,6 +120,7 @@ function FrenzyPost() {
   const impressionRecordedRef = useRef(false);
   const [openedGame, setOpenedGame] = useState(false);
   const [inlineClaimedRarity, setInlineClaimedRarity] = useState<number | null>(null);
+  const [inlineClaimedCount, setInlineClaimedCount] = useState(0);
   const [inlineClaimedIsInfinity, setInlineClaimedIsInfinity] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
@@ -181,46 +182,26 @@ function FrenzyPost() {
     };
   }, []);
 
-  const claim = async (event: React.MouseEvent<HTMLButtonElement>) => {
+  const claim = async () => {
     if (!info?.canClaim || loading) return;
     setLoading(true);
     setError(null);
-
-    // Expanded mode must be requested synchronously in the trusted click turn.
-    // Start the handoff request concurrently; the expanded game retries its
-    // read-only preflight while this request finishes.
-    let expansionPromise: Promise<void>;
     try {
-      expansionPromise = Promise.resolve(requestExpandedMode(event.nativeEvent, 'game'));
-    } catch (error) {
-      expansionPromise = Promise.reject(error);
-    }
-    const armPromise = fetchWithTimeout('/api/frenzy/arm', { method: 'POST' }).then(async arm => {
-      const armData = await arm.json().catch(() => ({}));
-      if (!arm.ok) throw new Error(armData.error || 'Could not arm Frenzy.');
-    });
-    const [expansionResult, armResult] = await Promise.allSettled([expansionPromise, armPromise]);
-
-    if (expansionResult.status === 'fulfilled') {
-      if (armResult.status === 'fulfilled') {
-        setOpenedGame(true);
-      } else {
-        setError(armResult.reason instanceof Error ? armResult.reason.message : 'Could not arm Frenzy. Return to the post and retry.');
-        setLoading(false);
-      }
-      return;
-    }
-
-    // Some previews cannot expand. Finish the claim on this screen instead.
-    // The claim endpoint is called exactly once, regardless of arm outcome.
-    try {
-      const res = await fetch('/api/frenzy/claim', { method: 'POST' });
-      const data = await res.json() as { error?: unknown; orb?: { rarity?: unknown; isInfinity?: unknown } };
+      // Claim on the Frenzy post itself. Do not rely on opening another entrypoint
+      // to finish the reward; the server commits the full volley before success is shown.
+      const res = await fetchWithTimeout('/api/frenzy/claim', { method: 'POST' });
+      const data = await res.json() as {
+        error?: unknown;
+        orb?: { rarity?: unknown; isInfinity?: unknown };
+        frenzyCount?: unknown;
+      };
       if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not claim Frenzy.');
       const resultRarity = Number(data.orb?.rarity);
       const validResult = Number.isInteger(resultRarity) && resultRarity >= 2 && resultRarity <= MAX_ORB_RARITY;
+      const claimedCount = Number(data.frenzyCount);
       setInlineClaimedRarity(validResult ? resultRarity : info.rarity);
       setInlineClaimedIsInfinity(validResult ? data.orb?.isInfinity === true : info.isInfinity === true);
+      setInlineClaimedCount(Number.isSafeInteger(claimedCount) && claimedCount > 0 ? claimedCount : 1);
       setError(null);
       setClaimed(true);
       await load();
@@ -281,7 +262,7 @@ function FrenzyPost() {
           <section className="io-public-card io-frenzy-card io-frenzy-success-card">
             <div className="io-public-eyebrow io-public-eyebrow-success">Frenzy claimed</div>
             <h1 className="io-frenzy-success-title">You found a 1/{formatRarity(inlineClaimedRarity, inlineClaimedIsInfinity)} Orb.</h1>
-            <p className="io-frenzy-success-copy">{playedBefore === true ? 'Your reward is saved. Keep rolling to beat your best.' : 'Your reward is saved. Continue in the full game to start your Codex.'}</p>
+            <p className="io-frenzy-success-copy">{formatNumber(inlineClaimedCount)} Orbs were rolled and saved to your account. {playedBefore === true ? 'Continue your run and chase a new best.' : 'Continue in the full game to start your Codex.'}</p>
             <button
               type="button"
               className="io-public-button io-public-button-primary io-frenzy-success-button"
@@ -396,7 +377,7 @@ function FrenzyPost() {
             </div>
           ) : canClaim ? (
             <button
-              onClick={(event) => void claim(event)}
+              onClick={() => void claim()}
               disabled={loading}
               className="io-public-button io-public-button-primary io-frenzy-button io-post-cta"
               style={{
