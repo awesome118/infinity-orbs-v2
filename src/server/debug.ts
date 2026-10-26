@@ -994,6 +994,7 @@ debugRouter.post('/guild-chat/unmute', async (req, res) => {
 });
 
 debugRouter.get('/players', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
   try {
     const [players, activity] = await Promise.all([
       listPlayers(),
