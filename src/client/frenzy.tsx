@@ -295,7 +295,7 @@ function FrenzyPost() {
             </div>
             <h1 className="io-frenzy-success-title">FRENZY CLAIMED</h1>
             <p className="io-frenzy-success-copy">
-              {formatNumber(inlineClaimedCount)} Orbs rolled. Your reward is saved.
+              {formatNumber(inlineClaimedCount)} Orbs were rolled and saved to your account.
               {playedBefore === true ? ' Carry the momentum into your next run.' : ' Keep rolling to start building your Codex.'}
             </p>
 
