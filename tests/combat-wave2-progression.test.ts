@@ -90,8 +90,9 @@ test('rolled orb raises combat stats and Gacha has independent rank-weighted dra
     assert.equal(resolveCombatSkillRarity(.1,rank,0,0),resolveCombatSkillRarity(.1,rank,9,39));
   }
   assert.equal(COMBAT_SKILLS.length,35);
-  assert.equal(skillRarityUnlocked('Mythic',4),true);
-  assert.equal(skillRarityUnlocked('Mythic',5),true);
+  assert.equal(skillRarityUnlocked('Mythic',4),false);
+  assert.equal(skillRarityUnlocked('Mythic',5),false);
+  assert.equal(skillRarityUnlocked('Mythic',9),true);
   assert.equal(skillGachaRankRequirement(1)?.requiredPulls,3);
   assert.equal(skillGachaRankRequirement(30),null);
   assert.equal(combatSkillCopiesForNextRank(20)>combatSkillCopiesForNextRank(10),true);
