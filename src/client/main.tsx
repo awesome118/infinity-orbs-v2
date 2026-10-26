@@ -517,10 +517,13 @@ export function App() {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(sound.enabled);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [notificationSettingsLoaded, setNotificationSettingsLoaded] = useState(false);
   const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
+  const [notificationPromptPreview, setNotificationPromptPreview] = useState(false);
   const [notificationPromptShown, setNotificationPromptShown] = useState<boolean>(() => {
     try {
-      return window.localStorage.getItem('io-notification-prompt-shown') === '1';
+      // v2 deliberately recovers from the original prompt's broken one-time trigger.
+      return window.localStorage.getItem('io-notification-prompt-shown-v2') === '1';
     } catch {
       return false;
     }
@@ -874,6 +877,7 @@ export function App() {
       setWorldEvent(we);
       setDeveloperAnnouncement(announcement?.message ? announcement : null);
       setNotificationsEnabled(notificationState.enabled === true);
+      setNotificationSettingsLoaded(true);
     } catch (e: any) {
       // Do not let a late error from an older request clear a newer session or
       // overwrite a newer successful refresh with a stale network error.
@@ -1347,7 +1351,6 @@ export function App() {
       });
       setReadyAt(Date.now() + res.rollsRemainingUntilNext);
       mutationResyncNeededRef.current = false;
-      maybePromptForNotifications(currentState.totalRolls, res.state.totalRolls);
           const acceptedRolls = Math.max(1, Math.min(1_000, Math.floor((Number(res.state.totalRolls) || 0) - (Number(currentState.totalRolls) || 0))));
           journeySessionRollsRef.current += acceptedRolls;
           if (!isAutoRoll) reportJourneyInteraction('roll_committed', acceptedRolls > 1 ? 'multi_roll' : 'single_roll');
@@ -2346,33 +2349,61 @@ export function App() {
   };
 
   const handleEnableNotificationsFromPrompt = async () => {
+    if (notificationPromptPreview) {
+      setShowNotificationPrompt(false);
+      setNotificationPromptPreview(false);
+      showToast('Preview closed; your notification setting was not changed.', 'info');
+      return;
+    }
     const enabled = await handleToggleNotifications();
     if (enabled) {
       setShowNotificationPrompt(false);
+      setNotificationPromptPreview(false);
     }
   };
 
   const dismissNotificationPrompt = () => {
-    // Mark the one-time prompt as consumed whether the player enables or declines.
-    setNotificationPromptShown(true);
     setShowNotificationPrompt(false);
+    if (notificationPromptPreview) {
+      // Admin previews must not consume the player's one-time prompt.
+      setNotificationPromptPreview(false);
+      return;
+    }
+    setNotificationPromptShown(true);
     try {
-      window.localStorage.setItem('io-notification-prompt-shown', '1');
+      window.localStorage.setItem('io-notification-prompt-shown-v2', '1');
     } catch {
       // In-memory state still prevents repeat prompts during this session.
     }
   };
 
-  const maybePromptForNotifications = (previousRolls: number, nextRolls: number) => {
-    if (notificationsEnabled || notificationPromptShown || previousRolls >= 5 || nextRolls < 5) return;
+  // Show at five total rolls even when a returning player's save was already
+  // above that threshold. Wait for the server's opt-in state so an existing
+  // subscriber never sees a redundant prompt.
+  useEffect(() => {
+    if (
+      !splashEntered ||
+      !notificationSettingsLoaded ||
+      !state ||
+      notificationsEnabled ||
+      notificationPromptShown ||
+      Math.max(0, Number(state.totalRolls) || 0) < 5
+    ) return;
+
     setNotificationPromptShown(true);
     setShowNotificationPrompt(true);
     try {
-      window.localStorage.setItem('io-notification-prompt-shown', '1');
+      window.localStorage.setItem('io-notification-prompt-shown-v2', '1');
     } catch {
-      // Local storage is optional in embedded webviews.
+      // Embedded webview storage is optional; React state still enforces once per session.
     }
-  };
+  }, [
+    splashEntered,
+    notificationSettingsLoaded,
+    state?.totalRolls,
+    notificationsEnabled,
+    notificationPromptShown,
+  ]);
 
   const dismissDeveloperAnnouncement = () => {
     const updatedAt = developerAnnouncement?.updatedAt ?? 0;
@@ -2631,7 +2662,7 @@ export function App() {
         </div>
       )}
 
-      {showNotificationPrompt && !notificationsEnabled && (
+      {showNotificationPrompt && (notificationPromptPreview || !notificationsEnabled) && (
         <div className="fixed inset-0 z-[70] io-modal-backdrop io-notification-backdrop flex items-center justify-center p-4" data-testid="notification-prompt-backdrop">
           <section
             className="io-modal-card io-notification-prompt w-full max-w-md bg-slate-950/95"
@@ -3191,6 +3222,10 @@ export function App() {
           onRefresh={refreshAll}
           onForceFrenzyPopup={() => {
             setShowFrenzyPrompt(true);
+          }}
+          onForceNotificationPopup={() => {
+            setNotificationPromptPreview(true);
+            setShowNotificationPrompt(true);
           }}
           onForceRollResult={res => {
             changeTab('roll');
