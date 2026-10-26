@@ -1166,7 +1166,7 @@ debugRouter.get('/leaderboard-diagnostics', async (_req, res) => {
       if (idsToCheck.length > 0) {
         try {
           const saves = await redis.mGet(idsToCheck.map(id => 'player:' + id));
-          savedAccounts = saves.filter(value => value != null).length;
+          savedAccounts = saves.filter((value: unknown) => value != null).length;
         } catch (error) {
           saveReadError = errorMessage(error);
         }
