@@ -6611,7 +6611,7 @@ export async function claimOrbFrenzy(options: {
     xpGained,
     state: s,
     rollsRemainingUntilNext: cooldownMs(s),
-    dramaticReveal: bestRarity >= 100,
+    dramaticReveal: bestOrb.rarity >= 100,
     frenzyCount: processedCount,
   };
 
