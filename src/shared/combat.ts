@@ -748,7 +748,7 @@ export const SKILL_GACHA_RANK_REQUIREMENTS: SkillGachaRankRequirement[] = Array.
       rank,
       requiredPulls: Math.round(3 * Math.pow(rank - 1, 1.55)),
       requiredMarks: Math.round(25 * Math.pow(rank - 1, 1.45)),
-      unlocks: rank === SKILL_GACHA_RANK_MAX ? 'Common 18%; Uncommon 25%; Rare 23%; Epic 33.5%; Mythic 0.5%' : 'Improved higher-rarity odds',
+      unlocks: rank === SKILL_GACHA_RANK_MAX ? 'Common 50%; Uncommon 30%; Rare 14.5%; Epic 5%; Mythic 0.5%' : 'Improved higher-rarity odds',
     };
   },
 );
@@ -770,11 +770,11 @@ const SKILL_GACHA_ODDS_ANCHORS: Array<{ rank: number; odds: CombatSkillRarityOdd
   { rank: 2, odds: { Common: 0.98, Uncommon: 0.02, Rare: 0, Epic: 0, Mythic: 0 } },
   { rank: 3, odds: { Common: 0.93, Uncommon: 0.065, Rare: 0.005, Epic: 0, Mythic: 0 } },
   { rank: 5, odds: { Common: 0.82, Uncommon: 0.16, Rare: 0.02, Epic: 0, Mythic: 0 } },
-  { rank: 8, odds: { Common: 0.66, Uncommon: 0.22, Rare: 0.10, Epic: 0.02, Mythic: 0 } },
-  { rank: 12, odds: { Common: 0.50, Uncommon: 0.24, Rare: 0.16, Epic: 0.0995, Mythic: 0.0005 } },
-  { rank: 18, odds: { Common: 0.36, Uncommon: 0.25, Rare: 0.19, Epic: 0.198, Mythic: 0.002 } },
-  { rank: 24, odds: { Common: 0.25, Uncommon: 0.25, Rare: 0.22, Epic: 0.277, Mythic: 0.003 } },
-  { rank: 30, odds: { Common: 0.18, Uncommon: 0.25, Rare: 0.23, Epic: 0.335, Mythic: 0.005 } },
+  { rank: 8, odds: { Common: 0.70, Uncommon: 0.22, Rare: 0.07, Epic: 0.01, Mythic: 0 } },
+  { rank: 12, odds: { Common: 0.60, Uncommon: 0.28, Rare: 0.10, Epic: 0.0195, Mythic: 0.0005 } },
+  { rank: 18, odds: { Common: 0.55, Uncommon: 0.28, Rare: 0.14, Epic: 0.0285, Mythic: 0.0015 } },
+  { rank: 24, odds: { Common: 0.52, Uncommon: 0.29, Rare: 0.145, Epic: 0.042, Mythic: 0.003 } },
+  { rank: 30, odds: { Common: 0.50, Uncommon: 0.30, Rare: 0.145, Epic: 0.05, Mythic: 0.005 } },
 ];
 
 export function combatSkillRarityOdds(gachaRankValue: unknown): CombatSkillRarityOdds {
