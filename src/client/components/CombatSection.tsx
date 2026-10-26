@@ -216,6 +216,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const [sonicBlasts,setSonicBlasts]=useState<{id:string;actor:'player'|'enemy'}[]>([]);
   const lootPopupTimerRef=useRef<number|null>(null);
   const [forgeQuality,setForgeQuality]=useState(20);
+  const [forgeFeedback,setForgeFeedback]=useState<NonNullable<ApiResponse['forgeResult']>|null>(null);
   const [autoScrapQuality,setAutoScrapQuality]=useState(20);
   const turnSequenceRef=useRef<HTMLDivElement|null>(null);
   const stateRef=useRef<CombatState|null>(null);
@@ -422,7 +423,18 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     try {
       const activeBeat=runtime.current.beatPromise;
       if(activeBeat)await activeBeat;
-      const result=await request<ApiResponse>(url,'POST',body);accept(result);if(Array.isArray(result.skillRolls)&&result.skillRolls.length)setLastSkills(result.skillRolls);else if(result.skillRoll)setLastSkills([result.skillRoll]);if(result.actions?.length)setActions(old=>[...result.actions!,...old].slice(0,30));if(result.scrapResult)setActions(old=>[{actor:'player' as const,kind:'loot' as const,text:'Scrapped '+result.scrapResult!.itemName+' for '+result.scrapResult!.gained+' Scrap.'},...old].slice(0,30));if(result.forgeResult)setActions(old=>[{actor:'player' as const,kind:'loot' as const,text:'Forged '+result.forgeResult!.item.name+' for '+fmt(result.forgeResult!.cost)+' Scrap.'},...old].slice(0,30));setError('');
+      if(url==='/api/combat/forge')setForgeFeedback(null);
+      const result=await request<ApiResponse>(url,'POST',body);
+      accept(result);
+      if(Array.isArray(result.skillRolls)&&result.skillRolls.length)setLastSkills(result.skillRolls);
+      else if(result.skillRoll)setLastSkills([result.skillRoll]);
+      if(result.actions?.length)setActions(old=>[...result.actions!,...old].slice(0,30));
+      if(result.scrapResult)setActions(old=>[{actor:'player' as const,kind:'loot' as const,text:'Scrapped '+result.scrapResult!.itemName+' for '+fmt(result.scrapResult!.gained)+' Scrap. Total Scrap: '+fmt(result.scrapResult!.total)+'.'},...old].slice(0,30));
+      if(result.forgeResult){
+        setForgeFeedback(result.forgeResult);
+        setActions(old=>[{actor:'player' as const,kind:'loot' as const,text:'Forged '+result.forgeResult!.item.name+' ('+result.forgeResult!.item.quality.toFixed(2)+'% quality, Power '+fmt(result.forgeResult!.item.power)+') for '+fmt(result.forgeResult!.cost)+' Scrap.'},...old].slice(0,30));
+      }
+      setError('');
     }
     catch(e){setError(e instanceof Error?e.message:'Combat action failed.');}
     finally{runtime.current.mutating=false;setMutating(false);}
@@ -587,7 +599,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
           </div>
         )}
       </section>
-      <div className="io-combat-stat-strip"><div><span>COMBAT MARKS</span><strong>{fmt(state.combatMarks)}</strong></div><div><span>SCRAP</span><strong>{fmt(state.scrap)}</strong></div><div><span>RUN HAUL</span><strong>{state.runInventoryIds.length}/30</strong></div><div><span>SKILL RANKS</span><strong>{ownedSkills.reduce((n,[,v])=>n+Number(v),0)}</strong></div><div><span>KILLS</span><strong>{fmt(state.totalKills)}</strong></div></div>
+      <div className="io-combat-stat-strip"><div><span>COMBAT MARKS</span><strong>{fmt(state.combatMarks)}</strong></div><div className="io-combat-scrap-balance"><span><Hammer size={12} aria-hidden="true"/> SCRAP</span><strong>{fmt(state.scrap)}</strong><small>Available</small></div><div><span>RUN HAUL</span><strong>{state.runInventoryIds.length}/30</strong></div><div><span>SKILL RANKS</span><strong>{ownedSkills.reduce((n,[,v])=>n+Number(v),0)}</strong></div><div><span>KILLS</span><strong>{fmt(state.totalKills)}</strong></div></div>
       <div className="io-combat-columns"><section className="io-combat-panel"><div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">FIELD NOTES</span><h2>Combat log</h2></div><span>{processing?'RESOLVING':paused?'PAUSED':auto?'AUTO-RUN':'MANUAL'}</span></div><div className="io-combat-log" aria-live="polite">{actions.length?actions.map((a,i)=><p key={state.sequence+'-'+i} className={'io-log-'+a.actor+' io-log-'+a.kind}>{a.text}</p>):<p>The Delver readies a weapon. The first beat is imminent.</p>}</div></section>
         <section className="io-combat-panel"><div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">YOUR LOADOUT</span><h2>Equipped</h2></div><button className="io-combat-text-link" type="button" onClick={()=>onNavigate('gear')}>Armory →</button></div><div className="io-combat-equipped-lines">{GEAR_SLOTS.map(({slot,label,Icon})=>{const item=equipped(state,slot);return <div className="io-combat-equipped-line" key={slot}><span><Icon size={13} aria-hidden="true"/> {label.toUpperCase()}</span><strong>{item?.name||'Empty slot'}</strong><small>{item?item.effect:'No item equipped'}</small></div>;})}</div><button className="io-combat-button is-primary" type="button" onClick={()=>onNavigate('skills')}>Open Skill Gacha</button></section></div>
     </>}
@@ -606,7 +618,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     </>}
 
     {page==='gear'&&<>
-      <div className="io-combat-stat-strip io-combat-gear-stat-strip"><div><span>SCRAP</span><strong>{fmt(state.scrap)}</strong></div><div><span className="io-combat-stat-offense">BASE DAMAGE</span><strong className="io-combat-stat-offense">{fmt(stats.damage)}</strong></div><div><span className="io-combat-stat-offense">SPEED</span><strong className="io-combat-stat-offense">{fmt(stats.speed)}</strong></div><div><span className="io-combat-stat-defense">ARMOR</span><strong className="io-combat-stat-defense">{fmt(stats.armor)}</strong></div><div><span className="io-combat-stat-defense">DAMAGE MITIGATION</span><strong className="io-combat-stat-defense">{percent(stats.damageReduction)}</strong></div></div>
+      <div className="io-combat-stat-strip io-combat-gear-stat-strip"><div className="io-combat-scrap-balance"><span><Hammer size={12} aria-hidden="true"/> SCRAP</span><strong>{fmt(state.scrap)}</strong><small>Available</small></div><div><span className="io-combat-stat-offense">BASE DAMAGE</span><strong className="io-combat-stat-offense">{fmt(stats.damage)}</strong></div><div><span className="io-combat-stat-offense">SPEED</span><strong className="io-combat-stat-offense">{fmt(stats.speed)}</strong></div><div><span className="io-combat-stat-defense">ARMOR</span><strong className="io-combat-stat-defense">{fmt(stats.armor)}</strong></div><div><span className="io-combat-stat-defense">DAMAGE MITIGATION</span><strong className="io-combat-stat-defense">{percent(stats.damageReduction)}</strong></div></div>
       <div className="io-combat-panel"><div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">ACTIVE BUILD</span><h2>Seven equipment slots</h2></div></div><div className="io-combat-equipped-grid io-combat-equipment-slot-grid">{GEAR_SLOTS.map(({slot,label,Icon})=>{const item=equipped(state,slot);return <div className="io-combat-equipped-card" key={slot}><span><Icon size={15} strokeWidth={1.8} aria-hidden="true"/> {label.toUpperCase()}</span><strong>{item?.name||'Empty slot'}</strong><p>{item?.effect||'No item equipped.'}</p><small>{item?['+'+fmt(item.damageBonus)+' DAMAGE','+'+fmt(item.speedBonus)+' SPEED','+'+fmt(item.maxHealthBonus)+' HP','+'+fmt(item.armorBonus)+' ARMOR','+'+(item.critChanceBonus*100).toFixed(1)+'% CRIT'].join(' · '):'Find gear on your descent or forge it from the Forge menu.'}</small>{item?.majorAbility&&<p className="io-combat-major-inline">✦ {item.majorAbility.name}: {item.majorAbility.description}</p>}</div>;})}</div></div>
       <div className="io-combat-inventory-head"><div><span className="io-combat-eyebrow">YOUR INVENTORY</span><h2>Collected gear</h2></div><span>{state.inventory.length} owned · {state.runInventoryIds.length}/30 picked up this run</span></div>
       <div className="io-combat-gear-filters">
@@ -623,11 +635,34 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
 
     {page==='forge'&&<>
       <div className="io-combat-stat-strip io-combat-gear-stat-strip">
-        <div><span>AVAILABLE SCRAP</span><strong>{fmt(state.scrap)}</strong></div>
+        <div className="io-combat-scrap-balance"><span><Hammer size={12} aria-hidden="true"/> AVAILABLE SCRAP</span><strong>{fmt(state.scrap)}</strong><small>Ready to spend</small></div>
         <div><span>SELECTED QUALITY</span><strong>{forgeQuality.toFixed(2)}%</strong></div>
         <div><span>CRAFT COST</span><strong>{fmt(forgeQualityCost)}</strong></div>
         <div><span>FLOOR</span><strong>{fmt(currentFloor)}</strong></div>
       </div>
+      {forgeFeedback&&<section className={'io-combat-panel io-combat-forge-success '+rarityClass(combatGearRarityForQuality(forgeFeedback.item.quality))} role="status" aria-live="polite">
+        <div className="io-combat-forge-success-head">
+          <div className="io-combat-forge-success-mark"><Check size={22} strokeWidth={3} aria-hidden="true"/></div>
+          <div className="io-combat-forge-success-copy">
+            <span className="io-combat-eyebrow">FORGE SUCCESSFUL · {combatGearRarityForQuality(forgeFeedback.item.quality).toUpperCase()}</span>
+            <h2>{forgeFeedback.item.name}</h2>
+            <p>{slotLabel(forgeFeedback.item.slot)} · {forgeFeedback.item.quality.toFixed(2)}% quality · Level {fmt(forgeFeedback.item.sourceFloor+1)} · Power {fmt(forgeFeedback.item.power)}</p>
+          </div>
+          <button type="button" className="io-combat-forge-dismiss" aria-label="Dismiss forge result" onClick={()=>setForgeFeedback(null)}>×</button>
+        </div>
+        <div className="io-combat-forge-result-stats">
+          {[
+            {label:'DAMAGE',value:'+'+fmt(forgeFeedback.item.damageBonus),active:forgeFeedback.item.damageBonus>0},
+            {label:'SPEED',value:'+'+fmt(forgeFeedback.item.speedBonus),active:forgeFeedback.item.speedBonus>0},
+            {label:'MAX HP',value:'+'+fmt(forgeFeedback.item.maxHealthBonus),active:forgeFeedback.item.maxHealthBonus>0},
+            {label:'ARMOR',value:'+'+fmt(forgeFeedback.item.armorBonus),active:forgeFeedback.item.armorBonus>0},
+            {label:'CRIT',value:'+'+(forgeFeedback.item.critChanceBonus*100).toFixed(1)+'%',active:forgeFeedback.item.critChanceBonus>0},
+          ].map(stat=><span key={stat.label} className={stat.active?'is-active':'is-zero'}>{stat.value} {stat.label}</span>)}
+        </div>
+        <p className="io-combat-forge-item-effect">{forgeFeedback.item.effect}</p>
+        {forgeFeedback.item.majorAbility&&<div className={'io-combat-major-ability '+majorAbilityClass(forgeFeedback.item.majorAbility.id)}><span>✦ MAJOR ABILITY</span><strong>{forgeFeedback.item.majorAbility.name}</strong><p>{forgeFeedback.item.majorAbility.description}</p></div>}
+        <div className="io-combat-forge-scrap-summary"><span>Spent <strong>{fmt(forgeFeedback.cost)} Scrap</strong></span><span>Remaining <strong>{fmt(forgeFeedback.remainingScrap)} Scrap</strong></span></div>
+      </section>}
       <section className="io-combat-panel io-combat-forge-panel">
         <div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">SCRAP-POWERED CRAFTING</span><h2>Precision Forge</h2><p>Select an equipment slot and quality. Higher quality is exponentially more expensive; a guaranteed 100.00% item costs exactly 5,000,000 Scrap before the floor minimum.</p></div><strong><Hammer size={19}/> {fmt(state.scrap)} SCRAP</strong></div>
         <div className="io-combat-quality-picker">
@@ -651,7 +686,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       
     </>}
     {page==='skills'&&<>
-      <div className="io-combat-skill-banner"><div><span className="io-combat-eyebrow">SKILL GACHA · RANK {state.skillGachaRank}/{SKILL_GACHA_RANK_MAX}</span><h2>Improve rarity odds through Gacha ranks</h2><p>All rarities are available from Rank 1; higher Gacha ranks shift the weighted odds toward rarer skills. Each pull is an independent roll with no pity.</p><div className="io-combat-skill-progress"><span style={{width:(state.skillGachaRank/SKILL_GACHA_RANK_MAX*100)+'%'}}/></div></div><div className="io-combat-pull-box"><span><Swords size={15}/> {fmt(state.combatMarks)} COMBAT MARKS</span><div className="io-combat-gacha-actions"><button type="button" className="io-combat-button is-primary" disabled={mutating||state.combatMarks<pullCost} onClick={()=>void mutate('/api/combat/skills/roll',{count:1})}>{mutating?'Rolling…':'Roll 1x · '+fmt(pullCost)+' Marks'}</button><button type="button" className="io-combat-button is-secondary" disabled={mutating||state.combatMarks<pullCost10x} onClick={()=>void mutate('/api/combat/skills/roll',{count:10})}>{mutating?'Rolling…':'Roll 10x · '+fmt(pullCost10x)+' Marks'}</button></div><small>Base odds · Common {(gachaOdds.Common*100).toFixed(3)}% · Uncommon {(gachaOdds.Uncommon*100).toFixed(3)}% · Rare {(gachaOdds.Rare*100).toFixed(3)}% · Epic {(gachaOdds.Epic*100).toFixed(3)}% · Mythic {(gachaOdds.Mythic*100).toFixed(3)}%. Pulls {fmt(state.skillRolls)}. No pity; rank-weighted odds apply to every draw.</small></div></div>
+      <div className="io-combat-skill-banner"><div><span className="io-combat-eyebrow">SKILL GACHA · RANK {state.skillGachaRank}/{SKILL_GACHA_RANK_MAX}</span><h2>Improve rarity odds through Gacha ranks</h2><p>Rarity tiers enter the roll pool gradually as you rank up. Each pull is independent, and there is no pity system.</p><div className="io-combat-skill-progress"><span style={{width:(state.skillGachaRank/SKILL_GACHA_RANK_MAX*100)+'%'}}/></div></div><div className="io-combat-pull-box"><span><Swords size={15}/> {fmt(state.combatMarks)} COMBAT MARKS</span><div className="io-combat-gacha-actions"><button type="button" className="io-combat-button is-primary" disabled={mutating||state.combatMarks<pullCost} onClick={()=>void mutate('/api/combat/skills/roll',{count:1})}>{mutating?'Rolling…':'Roll 1x · '+fmt(pullCost)+' Marks'}</button><button type="button" className="io-combat-button is-secondary" disabled={mutating||state.combatMarks<pullCost10x} onClick={()=>void mutate('/api/combat/skills/roll',{count:10})}>{mutating?'Rolling…':'Roll 10x · '+fmt(pullCost10x)+' Marks'}</button></div><small>Current rank odds · Common {(gachaOdds.Common*100).toFixed(3)}% · Uncommon {(gachaOdds.Uncommon*100).toFixed(3)}% · Rare {(gachaOdds.Rare*100).toFixed(3)}% · Epic {(gachaOdds.Epic*100).toFixed(3)}% · Mythic {(gachaOdds.Mythic*100).toFixed(3)}%. Pulls {fmt(state.skillRolls)}. No pity; rank-weighted odds apply to every draw.</small></div></div>
       <section className="io-combat-panel" style={{marginBottom:20}}>
         <div className="io-combat-panel-head">
           <div><span className="io-combat-eyebrow">BOSS PROGRESSION</span><h2>Strategy Guide · Rank {state.strategyGuideRank}/5</h2>
