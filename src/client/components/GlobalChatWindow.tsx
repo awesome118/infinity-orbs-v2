@@ -434,11 +434,16 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
         <div ref={endRef} />
       </div>
 
-      <form aria-label="Post a public chat comment" onSubmit={sendMessage} className="border-t border-slate-800 bg-slate-900/95 p-3">
+      <form aria-label="Post a public chat comment" autoComplete="off" onSubmit={sendMessage} className="border-t border-slate-800 bg-slate-900/95 p-3">
         <div className="flex items-center gap-2">
           <label htmlFor="io-global-chat-input" className="sr-only">Public chat comment</label>
           <input
             id="io-global-chat-input"
+            name="io-global-chat-message"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
             value={input}
             onChange={e => setInput(e.target.value.slice(0, 200))}
             aria-label="Write a public Global Chat message"
