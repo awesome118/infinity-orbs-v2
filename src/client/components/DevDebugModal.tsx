@@ -3859,7 +3859,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                   const metric = impressionStats.conversion[type];
                   const label = type === 'main-game' ? 'Main game post conversion' : type === 'orb-share' ? 'Orb Share conversion' : 'Frenzy conversion';
                   const detail = type === 'main-game'
-                    ? 'unique main-post viewers clicked Play'
+                    ? 'unique main-post views clicked Play'
                     : 'unique viewers played for the first time';
                   return (
                     <div key={type} className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-3">
