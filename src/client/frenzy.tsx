@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { context, requestExpandedMode } from '@devvit/web/client';
 import { ArrowRight, Flame, Users } from 'lucide-react';
 import './styles.css';
+import './post-revamp.css';
 import { formatRarity, getOrbInfo, FRENZY_POST_LIFETIME_MS, MAX_ORB_RARITY } from '../shared/game.js';
 import { recordPostImpression } from './impressions.js';
 
@@ -320,7 +321,7 @@ function FrenzyPost() {
       <div className="io-public-frame">
         <PublicBrand />
 
-        <section className="io-public-card io-frenzy-card">
+        <section className="io-public-card io-frenzy-card io-post-reveal">
           <div className="io-public-eyebrow io-public-eyebrow-frenzy">
             <Flame className="w-3.5 h-3.5" />
             Posted Frenzy
@@ -377,30 +378,39 @@ function FrenzyPost() {
               <strong>Your Frenzy is loading in Infinity Orbs.</strong>
               <p>The full claim result appears in the game.</p>
             </div>
-          ) : (
+          ) : canClaim ? (
             <button
               onClick={(event) => void claim(event)}
-              disabled={!canClaim || loading}
-              className="io-public-button io-public-button-primary io-frenzy-button"
-              style={canClaim ? {
-                borderColor: orb.color + '66',
-                boxShadow: '0 10px 34px ' + orb.color + '18',
-              } : undefined}
+              disabled={loading}
+              className="io-public-button io-public-button-primary io-frenzy-button io-post-cta"
+              style={{
+                borderColor: orb.color + '88',
+                boxShadow: '0 10px 34px ' + orb.color + '35',
+              }}
             >
               <ArrowRight className="w-4 h-4" />
               {loading
                 ? 'Opening Game…'
-                : info.consumed
-                  ? 'Frenzy Already Claimed'
-                  : info.selfClaimTest
-                    ? 'Claim Your Frenzy · Test'
-                    : claimed && claimCooldownIn > 0
-                    ? 'Claim Cooldown · ' + claimCooldownLabel
-                    : info.isOwner
-                      ? 'Your Frenzy'
-                      : expiresIn <= 0
-                        ? 'Frenzy Expired'
-                        : 'Claim Frenzy · Open Game'}
+                : info.selfClaimTest
+                  ? 'Claim Your Frenzy · Test'
+                  : 'Claim Frenzy · Open Game'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="io-public-button io-public-button-primary io-frenzy-button io-post-cta"
+              onClick={(event) => {
+                try {
+                  void Promise.resolve(requestExpandedMode(event.nativeEvent, 'game')).catch(error => {
+                    setError(error instanceof Error ? error.message : 'Could not open Infinity Orbs.');
+                  });
+                } catch (error) {
+                  setError(error instanceof Error ? error.message : 'Could not open Infinity Orbs.');
+                }
+              }}
+            >
+              <ArrowRight className="w-4 h-4" />
+              Play Infinity Orbs
             </button>
           )}
 
