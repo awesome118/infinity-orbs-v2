@@ -37,6 +37,9 @@ interface FrenzyInfo {
   canClaim: boolean;
   selfClaimTest: boolean;
   postId: string;
+  baseOrbCount: number;
+  multiRolls: number;
+  rewardOrbCount: number;
   inGame?: boolean;
 }
 
@@ -441,6 +444,27 @@ function FrenzyPost() {
             </div>
 
             <p className="io-frenzy-orb-label">orb in their Frenzy</p>
+
+            <section
+              className="io-frenzy-payout"
+              aria-label={`Your Frenzy payout: ${formatNumber(info.rewardOrbCount)} Orb rolls`}
+            >
+              <div className="io-frenzy-payout-heading">
+                <span><Sparkles className="w-3.5 h-3.5" /> YOUR FRENZY PAYOUT <Sparkles className="w-3.5 h-3.5" /></span>
+                <span className="io-frenzy-payout-live">CALCULATED FOR YOU</span>
+              </div>
+              <div className="io-frenzy-payout-total">
+                <strong className="io-frenzy-payout-number">{formatNumber(info.rewardOrbCount)}</strong>
+                <span className="io-frenzy-payout-unit">ORB ROLLS</span>
+              </div>
+              <div className="io-frenzy-payout-details">
+                <span className="io-frenzy-payout-base">{formatNumber(info.baseOrbCount)} base rolls</span>
+                <span className="io-frenzy-payout-multiball"><Zap className="w-3 h-3" /> MULTIBALL ×{formatNumber(info.multiRolls)}</span>
+              </div>
+              <p className="io-frenzy-payout-note">
+                Includes your Multiball and Frenzy Volley. The posted Orb sets payout size—not the rarity of your results.
+              </p>
+            </section>
             <p className="io-frenzy-instruction">
               {info.consumed
                 ? 'You have already claimed this Frenzy.'

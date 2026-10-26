@@ -124,3 +124,20 @@ test('post animations are low-paint, Frenzy orbits are centered, and skill Equip
   assert.match(combat, /onPointerEnter=\{cancelSkillTooltipClose\}/);
   assert.match(combat, /scheduleSkillTooltipClose\(skill\.id\)/);
 });
+
+
+test('Frenzy post makes the exact normal-roll payout visually prominent', () => {
+  const frenzy = source('src/client/frenzy.tsx');
+  const styles = source('src/client/post-revamp.css');
+  assert.ok(frenzy.includes('info.rewardOrbCount'));
+  assert.ok(frenzy.includes('info.baseOrbCount'));
+  assert.ok(frenzy.includes('MULTIBALL ×'));
+  assert.ok(frenzy.includes('io-frenzy-payout-number'));
+  assert.ok(frenzy.includes('not the rarity of your results'));
+  assert.match(styles, /\.io-frenzy-payout\s*\{/);
+  assert.match(styles, /@keyframes io-frenzy-payout-sheen/);
+  assert.match(styles, /@keyframes io-frenzy-payout-pulse/);
+  assert.match(styles, /@keyframes io-frenzy-payout-number-pop/);
+  assert.match(styles, /\.io-frenzy-payout-number\s*\{[^}]*font-size:/);
+  assert.match(styles, /prefers-reduced-motion: reduce/);
+});

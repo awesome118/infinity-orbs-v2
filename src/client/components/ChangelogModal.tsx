@@ -95,6 +95,10 @@ const sections: Array<{
         description: 'Reworked Frenzy rewards into a full animated Orb reveal with orbiting effects, visible personal claim cooldowns, post-expiry timer, and a persistent Play button. Main-game and shared-Orb posts now feature animated Orb energy effects.',
       },
       {
+        title: 'Frenzy Roll Payouts',
+        description: 'Frenzies now grant ordinary randomly generated Orb rolls instead of guaranteeing the posted Orb rarity. The post shows your exact roll count based on the posted Orb, your Multiball, and Frenzy Volley.',
+      },
+      {
         title: 'Infinity Overflow',
         description: 'Rolls whose calculated rarity exceeds JavaScript’s largest finite number now display as 1/Infinity. The finite 1.797693e308 rarity remains a numeric rarity.',
       },

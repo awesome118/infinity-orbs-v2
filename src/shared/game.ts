@@ -429,7 +429,7 @@ export const FRENZY_PROMPT_DELAY_MS = 3 * 60_000;
 export const FRENZY_POST_COOLDOWN_MS = 23 * 60 * 60 * 1000;
 export const FRENZY_CLAIM_COOLDOWN_MS = 23 * 60 * 60 * 1000;
 export const FRENZY_POST_LIFETIME_MS = 24 * 60 * 60 * 1000;
-export const FRENZY_CLAIM_MAX_ORBS = 50_000_000;
+export const FRENZY_CLAIM_MAX_ORBS = 50_000;
 
 export function frenzyOrbCountForRarity(rarity: number): number {
   const safeRarity = Math.max(1, Number(rarity) || 1);

@@ -57,6 +57,7 @@ import {
   activateGlobalBoosterStack,
   globalBoosterCritChanceBonus,
   guildComboCritChanceBonus,
+  frenzyOrbCountForRarity,
   frenzyClaimCountForRarity,
   grantFrenzyOwnerShards,
   FRENZY_OWNER_SHARD_REWARD,
@@ -3531,7 +3532,7 @@ export async function applyRolls(
   s: PlayerState,
   activationCount = 1,
   forcedRarity?: number,
-  source: 'online' | 'offline' = 'online',
+  source: 'online' | 'offline' | 'frenzy' = 'online',
   rollCountOverride?: number,
   randomOverride?: () => number,
   exactRarity = false,
@@ -3567,7 +3568,7 @@ export async function applyRolls(
 
   // Astral Magnetism proc: chance for multi-rolls to pull 2 bonus orbs
   const magnetLevel = s.prestigeUpgrades?.stellarMagnet ?? 0;
-  if (rollCount > 1 && magnetLevel > 0 && rng() < 0.10 * magnetLevel) {
+  if (source !== 'frenzy' && rollCount > 1 && magnetLevel > 0 && rng() < 0.10 * magnetLevel) {
     rollCount += 2;
   }
   const baseBatchRollCount = rollCount;
@@ -3583,7 +3584,9 @@ export async function applyRolls(
   ) {
     throw new Error('Roll counter would exceed the safe integer range; no rolls were processed.');
   }
-  const maxSupportedRollCount = offlineRollCap(s) * rollsPerActivation(s) + 2;
+  const maxSupportedRollCount = source === 'frenzy'
+    ? 5_000
+    : offlineRollCap(s) * rollsPerActivation(s) + 2;
   if (!Number.isSafeInteger(maxSupportedRollCount) || rollCount > maxSupportedRollCount) {
     throw new Error('Roll batch exceeds the supported processing cap; no rolls were processed.');
   }
@@ -3651,11 +3654,13 @@ export async function applyRolls(
 
   const effectiveCritChance = effectiveRollCritChance(s, globalBoosters);
   // Rune bonus rolls are bounded per activation and never exceed the existing server batch cap.
-  const runeBonusRollBudget = Math.max(0, Math.min(
-    50,
-    maxSupportedRollCount - baseBatchRollCount,
-    Number.MAX_SAFE_INTEGER - s.totalRolls - baseBatchRollCount,
-  ));
+  const runeBonusRollBudget = source === 'frenzy'
+    ? 0
+    : Math.max(0, Math.min(
+      50,
+      maxSupportedRollCount - baseBatchRollCount,
+      Number.MAX_SAFE_INTEGER - s.totalRolls - baseBatchRollCount,
+    ));
   let runeBonusRollsUsed = 0;
   const runeBonusRollSpecs: { minRarity?: number; echoDepth?: number; echoOnly?: boolean; skipAllProcs?: boolean }[] = [];
   const addRuneBonusRolls = (
@@ -3883,7 +3888,7 @@ export async function applyRolls(
     // Shard Constellation retains charge between activations and pays only once per activation.
     if (runeAbilityEffects.shardConstellationPct > 0) {
       s.runeConstellationCharge = Math.min(1_000_000, validCharge(s.runeConstellationCharge) + earnedShards);
-      if (!constellationTriggered && !suppressOtherRuneProcs && s.runeConstellationCharge >= shardConstellationThreshold) {
+      if (source !== 'frenzy' && !constellationTriggered && !suppressOtherRuneProcs && s.runeConstellationCharge >= shardConstellationThreshold) {
         s.runeConstellationCharge -= shardConstellationThreshold;
         shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + runeAbilityEffects.shardConstellationBonusShards);
         addRuneBonusRolls(runeAbilityEffects.shardConstellationBonusRolls, { skipAllProcs: true });
@@ -3895,7 +3900,7 @@ export async function applyRolls(
     if (temporalMomentumPerRoll > 0) {
       const dryStreakMomentum = Math.min(5, Math.log2(Math.max(1, s.rollsSinceBest + 1)) * .25);
       s.runeTemporalMomentum = Math.min(1_000_000, validCharge(s.runeTemporalMomentum) + temporalMomentumPerRoll + dryStreakMomentum);
-      if (!temporalLoopTriggered && !suppressOtherRuneProcs && s.runeTemporalMomentum >= 100) {
+      if (source !== 'frenzy' && !temporalLoopTriggered && !suppressOtherRuneProcs && s.runeTemporalMomentum >= 100) {
         s.runeTemporalMomentum -= 100;
         addRuneBonusRolls(runeAbilityEffects.temporalLoopBonusRolls, { skipAllProcs: true });
         temporalLoopTriggered = true;
@@ -4002,7 +4007,7 @@ export async function applyRolls(
 
   // Count only successfully processed online roll batches as an active session;
   // offline-vault rolls don't fabricate a continuous play session.
-  if (source === 'online' && rollCount > 0) recordRollingSessionActivity(s, now);
+  if ((source === 'online' || source === 'frenzy') && rollCount > 0) recordRollingSessionActivity(s, now);
 
   // Coin earnings and their lifetime statistic are capped independently at the safe-integer ceiling.
 
@@ -6342,6 +6347,9 @@ export async function getOrbFrenzyInfo(): Promise<{
   claimCooldownRemainingMs: number;
   claimCooldownEndsAt: number;
   isOwner: boolean;
+  baseOrbCount: number;
+  multiRolls: number;
+  rewardOrbCount: number;
   canClaim: boolean;
   selfClaimTest: boolean;
   postId: string;
@@ -6382,9 +6390,20 @@ export async function getOrbFrenzyInfo(): Promise<{
     data.adminTest === true &&
     isFrenzyTestAdmin(s.username);
 
+  const baseOrbCount = frenzyOrbCountForRarity(data.rarity);
+  const multiRolls = rollsPerActivation(s);
+  const rewardOrbCount = frenzyClaimCountForRarity(
+    data.rarity,
+    multiRolls,
+    s.prestigeUpgrades?.frenzyVolley ?? 0,
+  );
+
   return {
     rarity: data.rarity,
     isInfinity: data.isInfinity === true,
+    baseOrbCount,
+    multiRolls,
+    rewardOrbCount,
     ownerUsername: data.ownerUsername,
     createdAt: data.createdAt,
     expiresAt,
@@ -6486,215 +6505,56 @@ export async function claimOrbFrenzy(options: {
     s.prestigeUpgrades?.frenzyVolley ?? 0,
   );
 
-  // This path writes totalRolls directly instead of going through applyRolls().
-  // Reject an overflowing batch before reward mutation, shared Guild/community
-  // staging, Shard grants, or marking the Frenzy post consumed.
+  // The post's Orb determines payout size only, never a guaranteed result rarity.
   if (
     !Number.isSafeInteger(s.totalRolls) ||
     s.totalRolls < 0 ||
     !Number.isSafeInteger(count) ||
-    count < 0 ||
+    count < 1 ||
     count > Number.MAX_SAFE_INTEGER - s.totalRolls
   ) {
     throw new Error('Frenzy roll counter would exceed the safe integer range; claim was not processed.');
   }
 
-  const critChance = effectiveRollCritChance(s, s.globalBoosters);
-  const critCount = sampleBinomial(count, critChance);
+  let bestOrb: Orb | null = null;
+  const visibleBatch: Orb[] = [];
+  let finalValue = 0;
+  let coinsGained = 0;
+  let shardsGained = 0;
+  let xpGained = 0;
+  let processedCount = 0;
+  let remainingCount = count;
 
-  const supernovaLevel = s.prestigeUpgrades?.supernova ?? 0;
-  const supernovaCount = supernovaLevel > 0
-    ? sampleBinomial(critCount, Math.min(1, supernovaLevel * 0.10))
-    : 0;
-
-  const normalCritCount = Math.max(0, critCount - supernovaCount);
-  const baseIsInfinity = data.isInfinity === true;
-  const rawNormalCritRarity = Math.round(data.rarity * critMultiplier(s));
-  const rawSupernovaRarity = Math.round(data.rarity * critMultiplier(s) * 5);
-  const normalCritIsInfinity = baseIsInfinity || !Number.isFinite(rawNormalCritRarity) || rawNormalCritRarity > MAX_ORB_RARITY;
-  const supernovaIsInfinity = baseIsInfinity || !Number.isFinite(rawSupernovaRarity) || rawSupernovaRarity > MAX_ORB_RARITY;
-  const normalCritRarity = Math.min(MAX_ORB_RARITY, Number.isFinite(rawNormalCritRarity) ? rawNormalCritRarity : MAX_ORB_RARITY);
-  const supernovaRarity = Math.min(MAX_ORB_RARITY, Number.isFinite(rawSupernovaRarity) ? rawSupernovaRarity : MAX_ORB_RARITY);
-
-  const groups = [
-    { count: count - critCount, rarity: data.rarity, isInfinity: baseIsInfinity, isCrit: false },
-    { count: normalCritCount, rarity: normalCritRarity, isInfinity: normalCritIsInfinity, isCrit: true },
-    { count: supernovaCount, rarity: supernovaRarity, isInfinity: supernovaIsInfinity, isCrit: true },
-  ].filter(group => group.count > 0);
-
-  const valueMul =
-    1 +
-    (s.upgrades.valueBonus ?? 0) * 0.10 +
-    (s.prestigeUpgrades?.cosmicValuation ?? 0) * 0.05;
-  const maxSafe = Number.MAX_SAFE_INTEGER;
-  const safeMultiplyAdd = (sum: number, count: number, value: number): number => {
-    if (sum >= maxSafe || count <= 0 || value <= 0) return Math.min(maxSafe, sum);
-    if (count > Math.floor((maxSafe - sum) / value)) return maxSafe;
-    return sum + count * value;
-  };
-  const rawValue = groups.reduce(
-    (sum, group) => safeMultiplyAdd(sum, group.count, group.rarity),
-    0,
-  );
-  const finalValue = rawValue >= maxSafe / valueMul
-    ? maxSafe
-    : Math.min(maxSafe, Math.round(rawValue * valueMul));
-
-  const coinTotals = groups.reduce(
-    (sum, group) => sum + group.count * Math.max(1, Math.round(coinsForRarity(group.rarity))),
-    0,
-  );
-  const topRarity = Math.max(...groups.map(group => group.rarity));
-  const topCoin = Math.max(1, Math.round(coinsForRarity(topRarity)));
-  let coinsGained = Math.max(
-    1,
-    Math.round(topCoin + Math.max(0, coinTotals - topCoin) * 0.20),
-  );
-
-  const levelBenefits = getLevelBenefits(s.level || 1);
-  coinsGained = Math.round(
-    coinsGained *
-    levelBenefits.coinsMultiplier *
-    (1 + (s.upgrades.coinBonus ?? 0) * 0.15) *
-    (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
-    (1 + (s.guildPerks?.coinRank ?? 0) * 0.10) *
-    (isPremiumBoosterActive(s, 'prosperity') ? 10 : 1),
-  );
-
-  const lowRarityCoins = groups
-    .filter(group => group.rarity < 100)
-    .reduce(
-      (sum, group) => sum + group.count * Math.max(1, Math.round(coinsForRarity(group.rarity))),
-      0,
-    );
-  if ((s.prestigeUpgrades?.autoFilter ?? 0) > 0 && lowRarityCoins > 0) {
-    coinsGained += Math.round(lowRarityCoins * 0.25);
-  }
-  const transmutationLevel = s.prestigeUpgrades?.transmutation ?? 0;
-  if (transmutationLevel > 0 && lowRarityCoins > 0) {
-    coinsGained += Math.round(lowRarityCoins * (transmutationLevel * 0.15));
+  // Keep each normal RNG batch bounded. Frenzy's displayed payout is exact,
+  // so effects that add extra Orbs are disabled for this source.
+  while (remainingCount > 0) {
+    const chunkCount = Math.min(5_000, remainingCount);
+    const result = await applyRolls(s, 1, undefined, 'frenzy', chunkCount);
+    const candidate = result.bestOrb;
+    if (
+      !bestOrb ||
+      (candidate.isInfinity && !bestOrb.isInfinity) ||
+      (Boolean(candidate.isInfinity) === Boolean(bestOrb.isInfinity) && candidate.rarity > bestOrb.rarity)
+    ) {
+      bestOrb = candidate;
+    }
+    if (visibleBatch.length < 8) {
+      visibleBatch.push(...result.batch.slice(0, 8 - visibleBatch.length));
+    }
+    finalValue = Math.min(Number.MAX_SAFE_INTEGER, finalValue + result.totalVal);
+    coinsGained = Math.min(Number.MAX_SAFE_INTEGER, coinsGained + result.coinsGained);
+    shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + result.shardsGained);
+    xpGained = Math.min(Number.MAX_SAFE_INTEGER, xpGained + result.xpGained);
+    processedCount = Math.min(Number.MAX_SAFE_INTEGER, processedCount + result.rollCount);
+    remainingCount -= chunkCount;
   }
 
-  const xpForRarity = (rarity: number) =>
-    Math.round(
-      Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) *
-      (1 + (s.upgrades.xpBonus ?? 0) * 0.20) *
-      levelBenefits.xpMultiplier *
-      (isPremiumBoosterActive(s, 'ascension') ? 10 : 1),
-    );
-  const xpGained = Math.min(
-    Number.MAX_SAFE_INTEGER,
-    groups.reduce((sum, group) => sum + group.count * xpForRarity(group.rarity), 0),
-  );
-
-  // Offline claims use the same rare primary proc as live rolls. Orb rarity never guarantees Shards.
-  const shardChance = Math.min(
-    ROLL_SHARD_PROC_CHANCE_CAP,
-    ((s.upgrades.shardChance ?? 0) * 0.0015 +
-    (s.masterySkills?.shardAttunement ?? 0) * 0.001 +
-    (s.guildPerks?.shardRank ?? 0) * 0.0005 +
-    (s.prestigeUpgrades?.shardResonator ?? 0) * 0.0025 +
-    levelBenefits.shardChance) * 0.025,
-  );
-  const procShards = sampleBinomial(count, shardChance);
-  const transmutationShardProcs = transmutationLevel > 0
-    ? sampleBinomial(count, Math.min(1, 0.00025 * transmutationLevel))
-    : 0;
-  const shardsGained = grantRollShards(s, procShards + transmutationShardProcs);
-
-  const previousHighest = s.highestRarity;
-  const bestRarity = topRarity;
-  s.totalRolls += count;
-  s.currentRunRolls = (s.currentRunRolls ?? 0) + count;
-  s.collectionValue = addCollectionValue(s.collectionValue, finalValue);
-  s.lifetimeCollectionValue = addCollectionValue(s.lifetimeCollectionValue, finalValue);
-  s.totalCrits = (s.totalCrits ?? 0) + critCount;
-
-  // Stage Guild taxes/contribution in the same save as this claim. A failed
-  // player save must not leave a consumed Guild tax, task credit, or roll count.
-  const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
-  let guildEffects: Awaited<ReturnType<typeof prepareGuildRollEffects>>;
-  try {
-    guildEffects = await prepareGuildRollEffects(
-      coinsGained,
-      finalValue,
-      count,
-      bestRarity,
-      pendingGuildWrite,
-    );
-  } catch (error) {
-    // A broken optional Guild projection must not void a valid Orb Frenzy claim.
-    // Keep the stored Guild untouched and omit its effects for this claim.
-    console.error('[Guild] Could not prepare Frenzy effects; skipping Guild tax/contribution for this claim.', error);
-    guildEffects = { taxedCoins: 0 };
+  if (!bestOrb || processedCount !== count) {
+    throw new Error('Frenzy roll batch could not be completed exactly; claim was not saved.');
   }
-  if (guildEffects.extraWrite) {
-    stageSaveExtraWrite(s, {
-      ...guildEffects.extraWrite,
-      onConflict: () => {
-        if (guildEffects.taxedCoins > 0) addCoins(s, guildEffects.taxedCoins);
-      },
-    });
-  }
-  coinsGained = Math.max(0, coinsGained - guildEffects.taxedCoins);
-  coinsGained = addCoins(s, coinsGained);
+
   s.lastFrenzyClaimDate = new Date(now).toISOString().slice(0, 10);
   s.lastFrenzyClaimAt = now;
-  const newRarityKeys = groups.filter(
-    group => (s.collection[group.isInfinity ? 'Infinity' : String(group.rarity)] ?? 0) <= 0,
-  );
-  const uniqueGained = newRarityKeys.length;
-
-  for (const group of groups) {
-    const keyForRarity = group.isInfinity ? 'Infinity' : String(group.rarity);
-    s.collection[keyForRarity] = (s.collection[keyForRarity] ?? 0) + group.count;
-  }
-  const bestIsInfinity = groups.some(group => group.rarity === bestRarity && group.isInfinity);
-  const bestIsCrit = groups.some(group => group.rarity === bestRarity && group.isCrit);
-  s.highestRarity = Math.max(s.highestRarity, bestRarity);
-  if (bestRarity > previousHighest || (bestIsInfinity && !s.highestRarityIsInfinity)) {
-    s.highestRarity = bestRarity;
-    s.highestRarityIsInfinity = bestIsInfinity;
-    const previousDryRolls = Math.max(0, Math.floor(Number(s.rollsSinceBest ?? 0) || 0));
-    if (previousHighest > 0) {
-      s.aftershockRecord = Math.max(
-        Math.max(0, Math.floor(Number(s.aftershockRecord ?? 0) || 0)),
-        previousDryRolls,
-      );
-    }
-    s.rollsSinceBest = 0;
-  } else {
-    s.rollsSinceBest = (s.rollsSinceBest ?? 0) + count;
-    s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest);
-  }
-
-  s.xp += xpGained;
-  applyLevelProgress(s, 1);
-
-  // Claiming a Frenzy is active online rolling activity for Unbroken Momentum.
-  if (count > 0) recordRollingSessionActivity(s, now);
-
-  advanceQuestProgress(s, 'roll', count);
-  advanceQuestProgress(s, 'rare', bestRarity);
-  advanceQuestProgress(s, 'value', finalValue);
-  advanceQuestProgress(s, 'unique', uniqueGained);
-
-  const pendingCommunityWrite = getPendingSaveExtraWrite(s, 'io:community_event');
-  try {
-    const communityUpdate = await prepareCommunityRolls(count, pendingCommunityWrite);
-    stageSaveExtraWrite(s, {
-      key: communityUpdate.key,
-      expectedValue: communityUpdate.expectedValue,
-      nextValue: communityUpdate.nextValue,
-      conflictMessage: 'Community event changed before the Frenzy claim saved. Please retry.',
-      optional: true,
-    });
-  } catch (error) {
-    // World Event progress is an optional projection, not a prerequisite for a
-    // valid Frenzy reward. Preserve corrupt shared data and still commit the
-    // claimant's reward, Guild effects, consumed post and owner reward atomically.
-    console.error('[Community Event] Frenzy progress not recorded; preserving shared data.', error);
-  }
 
   let ownerRewardShards = 0;
   let ownerRewardWrites: SaveExtraWrite[] = [];

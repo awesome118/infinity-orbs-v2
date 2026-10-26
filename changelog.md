@@ -35,6 +35,7 @@
 - Improved Global Chat status messaging when posting is unavailable and added active-session length to the player list.
 - Updated the in-feed Game, shared-Orb, and Frenzy previews to fit Reddit's inline view; longer interactions open in Expanded Mode.
 - Reworked Frenzy rewards into a full animated Orb reveal with orbiting effects, personal claim cooldowns, post-expiry timer, and a persistent Play button. Main-game and shared-Orb posts now feature animated Orb energy effects.
+- Frenzies now grant a viewer-specific batch of ordinary random Orb rolls, scaled by the posted Orb, Multiball, and Frenzy Volley; the post prominently shows the exact payout count (capped at 50,000 rolls for safe processing).
 - Rolls whose calculated rarity exceeds JavaScript's largest finite number now display as **1/Infinity**. The finite `1.797693e308` rarity remains a numeric rarity.
 
 ### Balance Changes:

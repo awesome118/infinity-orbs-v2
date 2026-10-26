@@ -484,3 +484,38 @@ test('current app version is visible on the main game splash and header', () => 
   assert.match(header, /import \{ APP_VERSION \} from '\.\.\/\.\.\/shared\/version\.js'/);
   assert.match(header, /v\{APP_VERSION\}/);
 });
+
+
+test('Frenzy payout preview and claim use the same Multiball-scaled count', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  const infoStart = source.indexOf('export async function getOrbFrenzyInfo');
+  const claimStart = source.indexOf('export async function claimOrbFrenzy');
+  const claimEnd = source.indexOf('export async function postFrenzyThankYouComment', claimStart);
+  assert.ok(infoStart >= 0 && claimStart > infoStart && claimEnd > claimStart);
+
+  const info = source.slice(infoStart, claimStart);
+  const claim = source.slice(claimStart, claimEnd);
+  assert.match(info, /const baseOrbCount = frenzyOrbCountForRarity\(data\.rarity\)/);
+  assert.match(info, /const multiRolls = rollsPerActivation\(s\)/);
+  assert.match(info, /const rewardOrbCount = frenzyClaimCountForRarity\(/);
+  assert.match(info, /rewardOrbCount,/);
+  assert.match(claim, /const count = frenzyClaimCountForRarity\(\s*data\.rarity,\s*rollsPerActivation\(s\)/);
+  assert.match(claim, /applyRolls\(s, 1, undefined, 'frenzy', chunkCount\)/);
+  assert.match(claim, /frenzyCount: processedCount/);
+  assert.doesNotMatch(claim, /data\.rarity \* critMultiplier\(s\)/);
+});
+
+test('Frenzy batches use ordinary RNG without hidden extra Orb rolls', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  const start = source.indexOf('export async function applyRolls');
+  const end = source.indexOf('async function commitOfflineNotificationMarkerIfUnchanged', start);
+  assert.ok(start >= 0 && end > start);
+  const apply = source.slice(start, end);
+  assert.match(apply, /source: 'online' \| 'offline' \| 'frenzy'/);
+  assert.match(apply, /source === 'frenzy'\s*\?\s*5_000/);
+  assert.match(apply, /source === 'frenzy'\s*\?\s*0\s*:\s*Math\.max/);
+  assert.match(apply, /source !== 'frenzy' && rollCount > 1 && magnetLevel > 0/);
+  assert.match(apply, /source !== 'frenzy' && !constellationTriggered/);
+  assert.match(apply, /source !== 'frenzy' && !temporalLoopTriggered/);
+  assert.match(apply, /source === 'online' \|\| source === 'frenzy'/);
+});

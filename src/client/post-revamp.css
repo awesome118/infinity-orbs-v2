@@ -925,3 +925,169 @@
   from { transform: translate(-50%, -50%) rotate(-22deg); }
   to { transform: translate(-50%, -50%) rotate(338deg); }
 }
+
+
+/* Frenzy payout: make the viewer-specific roll count the dominant callout. */
+.io-frenzy-payout {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  margin: 20px auto 12px;
+  padding: 17px 16px 14px;
+  border: 1px solid rgba(253, 224, 71, .68);
+  border-radius: 19px;
+  background:
+    radial-gradient(ellipse at 50% -12%, rgba(250, 204, 21, .27), transparent 58%),
+    radial-gradient(ellipse at 8% 110%, rgba(168, 85, 247, .2), transparent 48%),
+    linear-gradient(128deg, rgba(32, 23, 51, .97), rgba(6, 25, 34, .98) 53%, rgba(15, 42, 49, .96));
+  box-shadow:
+    0 0 0 1px rgba(251, 191, 36, .12),
+    0 0 29px rgba(245, 158, 11, .2),
+    0 14px 38px rgba(0, 0, 0, .32),
+    inset 0 1px rgba(255, 255, 255, .1);
+  animation: io-frenzy-payout-pulse 2.2s ease-in-out infinite;
+}
+.io-frenzy-payout::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: -15% -70%;
+  pointer-events: none;
+  background: linear-gradient(112deg, transparent 41%, rgba(255, 255, 255, .04) 46%, rgba(255, 246, 196, .24) 50%, rgba(255, 255, 255, .05) 54%, transparent 60%);
+  transform: translateX(-38%);
+  animation: io-frenzy-payout-sheen 3.1s ease-in-out infinite;
+}
+.io-frenzy-payout::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 4px;
+  border: 1px solid rgba(255, 235, 156, .26);
+  border-radius: 14px;
+  box-shadow: inset 0 0 21px rgba(250, 204, 21, .055);
+  pointer-events: none;
+}
+.io-frenzy-payout > * {
+  position: relative;
+  z-index: 1;
+}
+.io-frenzy-payout-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 7px;
+  color: #fff0a6;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: .13em;
+}
+.io-frenzy-payout-heading > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-shadow: 0 0 12px rgba(250, 204, 21, .55);
+}
+.io-frenzy-payout-heading svg {
+  filter: drop-shadow(0 0 7px rgba(255, 221, 84, .8));
+}
+.io-frenzy-payout-live {
+  padding: 4px 6px;
+  border: 1px solid rgba(167, 243, 208, .27);
+  border-radius: 999px;
+  background: rgba(16, 185, 129, .09);
+  color: #a7f3d0;
+  font-size: 7px;
+  letter-spacing: .09em;
+}
+.io-frenzy-payout-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 6px 0 3px;
+  text-align: center;
+}
+.io-frenzy-payout-number {
+  display: inline-block;
+  color: #fff8d6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: clamp(42px, 10vw, 70px);
+  font-weight: 1000;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.075em;
+  line-height: .98;
+  text-shadow: 0 0 9px rgba(255, 255, 220, .7), 0 0 25px rgba(250, 204, 21, .62), 0 0 54px rgba(249, 115, 22, .25);
+  animation: io-frenzy-payout-number-pop 1.7s ease-in-out infinite;
+}
+.io-frenzy-payout-unit {
+  color: #ffd778;
+  font-size: clamp(12px, 2.5vw, 16px);
+  font-weight: 1000;
+  letter-spacing: .14em;
+  text-shadow: 0 0 13px rgba(250, 204, 21, .55);
+}
+.io-frenzy-payout-details {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.io-frenzy-payout-base {
+  color: #c9d7df;
+  font-size: 9px;
+  font-weight: 800;
+}
+.io-frenzy-payout-multiball {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border: 1px solid rgba(103, 232, 249, .42);
+  border-radius: 999px;
+  background: linear-gradient(110deg, rgba(6, 182, 212, .19), rgba(59, 130, 246, .13));
+  box-shadow: 0 0 16px rgba(34, 211, 238, .11), inset 0 1px rgba(255, 255, 255, .09);
+  color: #a5f3fc;
+  font-size: 8px;
+  font-weight: 1000;
+  letter-spacing: .09em;
+  text-shadow: 0 0 8px rgba(34, 211, 238, .28);
+}
+.io-frenzy-payout-note {
+  max-width: 440px;
+  margin: 11px auto 0;
+  color: #aebdc9;
+  font-size: 9px;
+  line-height: 1.5;
+  text-align: center;
+}
+@keyframes io-frenzy-payout-sheen {
+  0%, 15% { transform: translateX(-44%); opacity: .35; }
+  70%, 100% { transform: translateX(44%); opacity: .8; }
+}
+@keyframes io-frenzy-payout-pulse {
+  0%, 100% {
+    border-color: rgba(253, 224, 71, .52);
+    box-shadow: 0 0 0 1px rgba(251, 191, 36, .08), 0 0 20px rgba(245, 158, 11, .14), 0 14px 38px rgba(0, 0, 0, .32), inset 0 1px rgba(255, 255, 255, .08);
+  }
+  50% {
+    border-color: rgba(255, 244, 153, .94);
+    box-shadow: 0 0 0 2px rgba(251, 191, 36, .16), 0 0 37px rgba(245, 158, 11, .28), 0 14px 38px rgba(0, 0, 0, .32), inset 0 1px rgba(255, 255, 255, .12);
+  }
+}
+@keyframes io-frenzy-payout-number-pop {
+  0%, 100% { transform: translateY(0) scale(1); filter: brightness(1); }
+  50% { transform: translateY(-1px) scale(1.025); filter: brightness(1.15); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .io-frenzy-payout,
+  .io-frenzy-payout::before,
+  .io-frenzy-payout-number {
+    animation: none !important;
+    transition: none !important;
+  }
+  .io-frenzy-payout-number { filter: none; }
+}
