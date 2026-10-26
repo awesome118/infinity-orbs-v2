@@ -1794,11 +1794,11 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
   });
   const visiblePlayers = players.filter((player): player is PlayerListEntry => player !== null);
   const knownNames = new Set(visiblePlayers.map(player =>
-    player.username.trim().replace(/^u\\//i, '').toLowerCase(),
+    player.username.trim().replace(/^u\//i, '').toLowerCase(),
   ));
   const legacyOnlyPlayers: PlayerListEntry[] = legacyWithoutId
     .filter(entry => {
-      const username = String(entry.username ?? '').trim().replace(/^u\\//i, '').slice(0, 100);
+      const username = String(entry.username ?? '').trim().replace(/^u\//i, '').slice(0, 100);
       const normalized = username.toLowerCase();
       if (!normalized || knownNames.has(normalized)) return false;
       knownNames.add(normalized);
@@ -1806,7 +1806,7 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
     })
     .map(entry => ({
       userId: '',
-      username: String(entry.username ?? '').trim().replace(/^u\\//i, '').slice(0, 100),
+      username: String(entry.username ?? '').trim().replace(/^u\//i, '').slice(0, 100),
       firstSeenAt: 0,
       lastSeenAt: 0,
       active: false,
