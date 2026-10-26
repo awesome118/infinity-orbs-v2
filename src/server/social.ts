@@ -2831,7 +2831,7 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
   // joined back to a saved player, but they are still valid display records
   // for the three original boards and must not make the entire leaderboard blank.
   const normalizeBoardUsername = (value: unknown): string =>
-    String(value ?? '').trim().replace(/^u\\//i, '').toLowerCase();
+    String(value ?? '').trim().replace(/^u\//i, '').toLowerCase();
   const authoritativeNames = new Set(eligible.map(entry => normalizeBoardUsername(entry.username)));
   const legacyOnlyEntries: LeaderboardEntry[] = legacyBoard
     .filter(entry =>
@@ -2841,7 +2841,7 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
     )
     .map(entry => ({
       ...entry,
-      username: String(entry.username).trim().replace(/^u\\//i, '').slice(0, 100),
+      username: String(entry.username).trim().replace(/^u\//i, '').slice(0, 100),
       value: Math.max(0, Number.isFinite(Number(entry.value)) ? Number(entry.value) : 0),
       highestRarity: Math.max(0, Number.isFinite(Number(entry.highestRarity)) ? Number(entry.highestRarity) : 0),
       totalRolls: Math.max(0, Number.isFinite(Number(entry.totalRolls)) ? Number(entry.totalRolls) : 0),
