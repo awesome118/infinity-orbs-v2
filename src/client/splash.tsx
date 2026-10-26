@@ -53,7 +53,7 @@ function PlayGameButton({
   };
   return (
     <>
-      <button type="button" className={className} onClick={openGame} disabled={opening} aria-busy={opening}>
+      <button type="button" className={`${className} io-post-cta`} onClick={openGame} disabled={opening} aria-busy={opening}>
         {opening ? 'Opening Infinity Orbs…' : <>{leadingIcon}{label}<ArrowRight className="w-4 h-4" /></>}
       </button>
       {error && <p className="io-public-inline-error" role="alert" aria-live="assertive">{error}</p>}
@@ -99,7 +99,7 @@ function SharedOrbPost({ data }: { data: SharedOrbPostData }) {
 
   return (
     <PublicShell compact>
-      <section className="io-public-card io-share-card">
+      <section className="io-public-card io-share-card io-post-reveal">
         <div className="io-public-eyebrow">
           <Share2 className="w-3.5 h-3.5" />
           Community discovery
@@ -160,11 +160,13 @@ function SharedOrbPost({ data }: { data: SharedOrbPostData }) {
           </div>
         </div>
 
-        <div className="io-public-actions">
+        <div className="io-public-actions io-post-conversion">
+          <div className="io-cta-caption"><span aria-hidden="true" /> YOUR CODEX STARTS WITH ONE ROLL</div>
           <PlayGameButton
             className="io-public-button io-public-button-primary"
             leadingIcon={<Orbit className="w-4 h-4" />}
           />
+          <p className="io-cta-footnote">Free to play. Tap in and chase your own impossible Orb.</p>
         </div>
       </section>
     </PublicShell>
@@ -193,7 +195,7 @@ function Splash() {
     // Bad metadata should not masquerade as a normal main-game post.
     return (
       <PublicShell compact>
-        <section className="io-public-card io-share-card">
+        <section className="io-public-card io-share-card io-post-reveal">
           <div className="io-public-eyebrow">Community discovery</div>
           <h1>Orb preview unavailable</h1>
           <p>This shared Orb has missing or outdated post data. You can still open Infinity Orbs and keep rolling.</p>
@@ -205,7 +207,7 @@ function Splash() {
 
   return (
     <PublicShell>
-      <section className="io-public-card io-launch-card">
+      <section className="io-public-card io-launch-card io-post-reveal">
         <div className="io-launch-kicker">A REDDIT-NATIVE RNG GAME</div>
 
         <div className="io-launch-title-row">
@@ -245,7 +247,11 @@ function Splash() {
           </div>
         </div>
 
-        <PlayGameButton className="io-public-button io-public-button-primary io-launch-button" />
+        <div className="io-post-conversion io-main-cta">
+          <div className="io-cta-caption"><span aria-hidden="true" /> YOUR FIRST ORB IS ONE TAP AWAY</div>
+          <PlayGameButton className="io-public-button io-public-button-primary io-launch-button" />
+          <p className="io-cta-footnote">Free to play · No download · Your progress saves on Reddit</p>
+        </div>
 
         <div className="io-launch-footer">
           <span>Persistent Reddit save</span>
