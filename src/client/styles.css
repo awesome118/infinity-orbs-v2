@@ -2642,3 +2642,50 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 .io-combat-gear-tooltip.is-open{display:block;pointer-events:auto;opacity:1;visibility:visible;transform:translateY(0)}
 .io-combat-tooltip-close{display:block;margin:9px 0 0 auto;padding:5px 8px;border:1px solid #514358;border-radius:5px;background:#1b1522;color:#cfc0db;font:800 9px ui-monospace,monospace;cursor:pointer}
 .io-combat-tooltip-close:hover{border-color:#b99ada;color:#f0deff}
+
+
+/* Skill Gacha/Forge polish: make Scrap legible and confirm crafting in-place. */
+.io-combat-stat-strip .io-combat-scrap-balance{
+  border-color:rgba(198,154,234,.48);
+  background:radial-gradient(ellipse at 100% 0,rgba(174,119,225,.16),transparent 62%),linear-gradient(145deg,#282033,#1b171f 75%);
+  box-shadow:inset 0 1px rgba(244,226,255,.035),0 0 16px rgba(174,119,225,.06);
+}
+.io-combat-stat-strip .io-combat-scrap-balance>span{
+  display:flex;
+  align-items:center;
+  gap:5px;
+  color:#d8b7f3;
+}
+.io-combat-stat-strip .io-combat-scrap-balance>span svg{flex:none;color:#d8b7f3}
+.io-combat-stat-strip .io-combat-scrap-balance>strong{
+  color:#f3e3ff;
+  font-size:clamp(20px,2.2vw,25px);
+  overflow-wrap:anywhere;
+  text-shadow:0 0 13px rgba(196,151,232,.18);
+}
+.io-combat-stat-strip .io-combat-scrap-balance>small{color:#bda0d3;font-size:9px;line-height:1.25}
+.io-combat-forge-success{
+  position:relative;
+  margin:0 0 14px;
+  border-color:rgba(132,216,130,.62);
+  background:radial-gradient(ellipse at 0 0,rgba(124,220,127,.12),transparent 54%),linear-gradient(145deg,rgba(24,39,31,.94),rgba(26,22,31,.94));
+  box-shadow:0 0 26px rgba(110,230,120,.11),inset 0 1px rgba(220,255,216,.04);
+  animation:io-forge-success-in .32s cubic-bezier(.2,.8,.2,1) both;
+}
+.io-combat-forge-success-head{display:flex;align-items:center;gap:12px;min-width:0}
+.io-combat-forge-success-mark{width:42px;height:42px;display:grid;place-items:center;flex:0 0 auto;border:1px solid rgba(148,229,142,.6);border-radius:12px;background:rgba(113,210,111,.14);color:#a6f49e;box-shadow:0 0 17px rgba(114,220,115,.12)}
+.io-combat-forge-success-copy{flex:1;min-width:0}
+.io-combat-forge-success-copy>.io-combat-eyebrow{color:#a6f49e}
+.io-combat-forge-success-copy h2{margin:4px 0 3px;font-size:clamp(16px,2.4vw,22px);line-height:1.25;font-weight:950;overflow-wrap:anywhere;color:#f4fff1}
+.io-combat-forge-success-copy p{margin:0;color:#bdd4b9;font-size:10px;line-height:1.5}
+.io-combat-forge-dismiss{width:28px;height:28px;flex:0 0 auto;border:1px solid rgba(180,225,174,.24);border-radius:7px;color:#c7dec4;font-size:22px;line-height:1}
+.io-combat-forge-result-stats{display:flex;flex-wrap:wrap;gap:6px;margin-top:15px}
+.io-combat-forge-result-stats span{padding:5px 7px;border:1px solid rgba(140,212,128,.24);border-radius:6px;background:rgba(126,206,110,.09);color:#d7f2d1;font:850 9px ui-monospace,monospace}
+.io-combat-forge-result-stats span.is-zero{border-color:#3a323f;background:rgba(255,255,255,.018);color:#827887}
+.io-combat-forge-result-stats span.is-active{box-shadow:inset 0 0 10px rgba(114,220,115,.04)}
+.io-combat-forge-item-effect{margin:12px 0 0;color:#c0c8bd;font-size:11px;line-height:1.55}
+.io-combat-forge-success .io-combat-major-ability{margin-top:12px}
+.io-combat-forge-scrap-summary{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:14px;padding-top:11px;border-top:1px solid rgba(157,203,148,.2);color:#aabca5;font:850 9px ui-monospace,monospace}
+.io-combat-forge-scrap-summary strong{color:#e0ffd9}
+@keyframes io-forge-success-in{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(prefers-reduced-motion:reduce){.io-combat-forge-success{animation:none}}
