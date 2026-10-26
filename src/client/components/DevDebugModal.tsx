@@ -1216,7 +1216,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     setLoading(true);
     setMessage('');
     try {
-      const res = await fetch('/api/dev/players');
+      const res = await fetch('/api/dev/players', { cache: 'no-store' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Could not load player list.');
       const players = Array.isArray(data.players) ? data.players : [];
@@ -1228,7 +1228,17 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         monthlyActiveUsers: Math.max(0, Number(activity.monthlyActiveUsers ?? 0) || 0),
       });
       const activeCount = players.filter((player: { active?: boolean }) => player.active).length;
-      setMessage('Loaded ' + players.length + ' player accounts (' + activeCount + ' active now).');
+      const recoveredCount = players.filter(
+        (player: { registryRecovered?: boolean }) => player.registryRecovered === true,
+      ).length;
+      const loadedMessage = 'Loaded ' + players.length + ' player accounts (' + activeCount + ' active now).';
+      if (recoveredCount > 0) {
+        setMessage(loadedMessage + ' Recovered ' + recoveredCount + ' shared account(s) from the legacy leaderboard; the full list may still be incomplete.');
+      } else if (players.length === 0) {
+        setMessage(loadedMessage + ' If this installation had players before, the registry and its fallback data may be missing; refreshing cannot recreate lost records.');
+      } else {
+        setMessage(loadedMessage);
+      }
     } catch (e: any) {
       setMessage('Error: ' + (e?.message || 'Could not load player list.'));
     } finally {
