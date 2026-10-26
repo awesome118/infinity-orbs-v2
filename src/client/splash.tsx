@@ -42,7 +42,9 @@ function PlayGameButton({
     if (opening) return;
     setOpening(true);
     setError('');
-    if (trackMainGameConversion) recordMainGamePostConversion(context.postId);
+    const trackConversion = () => {
+      if (trackMainGameConversion) recordMainGamePostConversion(context.postId);
+    };
     const failed = () => {
       setError("Reddit couldn't open the game from this preview. Try reloading the post and opening it again.");
       setOpening(false);
@@ -50,8 +52,10 @@ function PlayGameButton({
     try {
       // This API must be invoked synchronously inside the trusted click turn.
       const request = requestExpandedMode(e.nativeEvent, 'game');
+      trackConversion();
       void Promise.resolve(request).catch(failed);
     } catch {
+      trackConversion();
       failed();
     }
   };
