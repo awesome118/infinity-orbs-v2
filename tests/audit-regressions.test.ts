@@ -210,7 +210,7 @@ test('Chain Patcher is server-authoritative, arms exactly one guaranteed rarity,
 
   const social = source('src/server/social.ts');
   assert.match(social, /chainLength: highestCodexChain\(save\.collection\)/);
-  assert.match(social, /chainLength: sortLeaderboard\(eligible, entry => entry\.chainLength \?\? 0\)/);
+  assert.match(social, /chainLength: sortLeaderboard\(boardsWithHistoricalMetric\('chainLength'\), entry => entry\.chainLength \?\? 0\)/);
 
   const leaderboardUi = source('src/client/components/GuildsAndSocial.tsx');
   assert.match(leaderboardUi, /label: 'Chain Length'/);
