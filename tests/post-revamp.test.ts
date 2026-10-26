@@ -75,6 +75,28 @@ test('main-game and shared-Orb posts use animated Orb hero elements', () => {
   assert.match(styles, /\.io-launch-steps > div:hover/);
 });
 
+test('post rings stay centered, all main-post rings rotate smoothly, and shared Orb glow is restrained', () => {
+  const styles = source('src/client/post-revamp.css');
+  const splash = source('src/client/splash.tsx');
+  assert.ok(styles.includes('.io-public-orb-ring-secondary'));
+  assert.ok(styles.includes('.io-public-orb-ring-tertiary'));
+  assert.ok(styles.includes('animation: io-launch-ring-a-spin 18s linear infinite'));
+  assert.ok(styles.includes('animation: io-launch-ring-b-spin 23s linear infinite'));
+  assert.ok(styles.includes('animation: io-launch-ring-c-spin 32s linear infinite'));
+  assert.ok(styles.includes('@keyframes io-frenzy-arc-a-spin'));
+  assert.ok(styles.includes('@keyframes io-frenzy-arc-b-spin'));
+  assert.ok(splash.includes('0 0 16px \u0024{info.color}18'));
+});
+
+test('Frenzy post claim arms the main-game reward animation instead of consuming it in preview', () => {
+  const frenzy = source('src/client/frenzy.tsx');
+  const game = source('src/client/main.tsx');
+  assert.match(frenzy, /requestExpandedMode\(event\.nativeEvent, 'game'\)/);
+  assert.match(frenzy, /fetchWithTimeout\('\/api\/frenzy\/arm', \{ method: 'POST' \}, 10_000\)/);
+  assert.match(game, /getJson<\{ armed: boolean \}>\('\/api\/frenzy\/handoff'\)/);
+  assert.match(game, /setLastBatch\(revealBatch\)/);
+});
+
 test('in-game start screen shares the same animated play emphasis', () => {
   const splashScreen = source('src/client/components/SplashScreen.tsx');
   const styles = source('src/client/post-revamp.css');
@@ -94,7 +116,8 @@ test('post animations are low-paint, Frenzy orbits are centered, and skill Equip
   assert.match(styles, /\.io-frenzy-orbit-arc\s*\{[^}]*top:\s*50%[^}]*left:\s*50%/s);
   assert.match(styles, /#root\.io-inline-post[\s\S]*?io-frenzy-success-particle[\s\S]*?animation:\s*none !important/);
   assert.match(frenzy, /now - lastUpdateAt >= 100/);
-  assert.match(frenzy, /fetchWithTimeout\('\/api\/frenzy\/claim', \{ method: 'POST' \}, 25_000\)/);
+  assert.match(frenzy, /fetchWithTimeout\('\/api\/frenzy\/arm', \{ method: 'POST' \}, 10_000\)/);
+  assert.doesNotMatch(frenzy, /fetchWithTimeout\('\/api\/frenzy\/claim'/);
   assert.match(globalStyles, /bottom:calc\(100% \+ 2px\)/);
   assert.match(combat, /skillTooltipCloseTimerRef/);
   assert.match(combat, /onPointerEnter=\{cancelSkillTooltipClose\}/);
