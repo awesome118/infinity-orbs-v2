@@ -1,7 +1,7 @@
 name: Deploy Devvit
 
 # Normally manual. The version-specific push marker is reserved for an explicitly requested deployment.
-# Explicit deployment request: Skill Gacha/UI polish and Frenzy fix with Devvit Journeys SDK 0.15.0 as 2.0.6 to r/infinity_orbs_dev.
+# Explicit deployment request: Skill Gacha/UI polish and Frenzy fix; synchronize and validate Devvit Journeys SDK 0.15.0 as 2.0.6 to r/infinity_orbs_dev.
 # CI auth uses the stored token and session files; preflight guards these credentials and release contracts before upload.
 # This workflow uploads and installs to the development subreddit only. Production install is a separate post-approval workflow.
 on:
@@ -28,7 +28,7 @@ jobs:
     if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.0.6]')) }}
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
 
     steps:
       - name: Check out repository
@@ -48,8 +48,22 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Regenerate lockfile for the pinned SDK
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Persist synchronized lockfile
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- package-lock.json; then
+            git add package-lock.json
+            git commit -m "chore: sync npm lockfile for Devvit 0.15.0 [skip ci]"
+            git push origin HEAD:main
+          fi
 
       - name: Verify requested version
         id: requested-version
