@@ -1,4 +1,5 @@
 import { context, redis, reddit } from './devvit-mock.js';
+import { readInBatches } from './redis-batches.js';
 import { combatHighestDepthReached } from '../shared/combat.js';
 import { withPlayerMutationLockFor } from './player-lock.js';
 import type {
@@ -2767,8 +2768,8 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
   const userIds = Array.from(new Set([...Object.keys(registry), ...legacyById.keys()]));
   const [saves, combatSaves] = userIds.length > 0
     ? await Promise.all([
-      redis.mGet(userIds.map(id => `player:${id}`)),
-      redis.mGet(userIds.map(id => `infinity-orbs:combat:${id}`)),
+      readInBatches(userIds.map(id => `player:${id}`), keys => redis.mGet(keys)),
+      readInBatches(userIds.map(id => `infinity-orbs:combat:${id}`), keys => redis.mGet(keys)),
     ])
     : [[], []];
 
