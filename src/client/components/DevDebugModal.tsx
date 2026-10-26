@@ -578,6 +578,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     currentSessionMs: number;
     clientVersion: string | null;
     isLatestVersion: boolean;
+    legacyOnly?: boolean;
   }>>([]);
   const [playerActivity, setPlayerActivity] = useState({
     dailyActiveUsers: 0,
@@ -1231,8 +1232,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       const recoveredCount = players.filter(
         (player: { registryRecovered?: boolean }) => player.registryRecovered === true,
       ).length;
+      const legacyOnlyCount = players.filter(
+        (player: { legacyOnly?: boolean }) => player.legacyOnly === true,
+      ).length;
       const loadedMessage = 'Loaded ' + players.length + ' player accounts (' + activeCount + ' active now).';
-      if (recoveredCount > 0) {
+      if (legacyOnlyCount > 0) {
+        setMessage(loadedMessage + ' Showing ' + legacyOnlyCount + ' historical leaderboard account(s) without stored account IDs; these entries cannot be targeted for admin actions.');
+      } else if (recoveredCount > 0) {
         setMessage(loadedMessage + ' Recovered ' + recoveredCount + ' shared account(s) from the legacy leaderboard; the full list may still be incomplete.');
       } else if (players.length === 0) {
         setMessage(loadedMessage + ' If this installation had players before, the registry and its fallback data may be missing; refreshing cannot recreate lost records.');
@@ -4986,20 +4992,22 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           {playerList.length > 0 ? (
             <div className="max-h-80 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/80 divide-y divide-slate-800">
               {playerList.map(player => (
-                <div key={player.userId} className="px-3 py-2.5 flex items-center justify-between gap-3">
+                <div key={player.userId || 'legacy:' + player.username.toLowerCase()} className="px-3 py-2.5 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-mono text-slate-200 truncate">u/{player.username}</span>
                       {player.active && <span className="text-[9px] font-black uppercase text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-1.5 py-0.5">Active</span>}
-                      {player.isLatestVersion
-                        ? <span className="text-[9px] font-black text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-1.5 py-0.5">v{player.clientVersion} · Latest</span>
-                        : <span className="text-[9px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-full px-1.5 py-0.5">v{player.clientVersion ?? 'unknown'}</span>}
+                      {player.legacyOnly
+                        ? <span className="text-[9px] font-bold text-slate-300 bg-slate-700/50 border border-slate-600 rounded-full px-1.5 py-0.5">Legacy · ID unavailable</span>
+                        : player.isLatestVersion
+                          ? <span className="text-[9px] font-black text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-1.5 py-0.5">v{player.clientVersion} · Latest</span>
+                          : <span className="text-[9px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-full px-1.5 py-0.5">v{player.clientVersion ?? 'unknown'}</span>}
                     </div>
                     <div className="text-[10px] text-slate-500 mt-0.5">Level {player.level} · {formatNumber(player.totalRolls)} rolls · Session {formatPlaytime(player.currentSessionMs)} · Playtime {formatPlaytime(player.playtimeMs)} · Best 1/{formatRarity(Math.max(1, player.highestRarity))}</div>
                   </div>
                   <div className="shrink-0 text-right">
                     <div className="text-[10px] text-slate-400">{player.active ? 'Online now' : player.lastSeenAt ? new Date(player.lastSeenAt).toLocaleString() : 'No recent activity'}</div>
-                    <div className="text-[9px] text-slate-600 font-mono">ID {player.userId.slice(-8)}</div>
+                    <div className="text-[9px] text-slate-600 font-mono">{player.userId ? 'ID ' + player.userId.slice(-8) : 'Legacy projection · no account ID'}</div>
                   </div>
                 </div>
               ))}
