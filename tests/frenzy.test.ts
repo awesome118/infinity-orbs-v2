@@ -223,6 +223,7 @@ test('Frenzy claim directly commits a reward and displays the confirmed volley',
   assert.match(claim, /setInlineClaimedCount/);
   assert.doesNotMatch(claim, /\/api\/frenzy\/arm/);
   assert.match(source, /Orbs were rolled and saved to your account/);
+  assert.match(source, /Claiming Frenzy…/);
 });
 
 test('Frenzy auto-claim always releases the game loading state', () => {

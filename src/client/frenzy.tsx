@@ -387,7 +387,7 @@ function FrenzyPost() {
             >
               <ArrowRight className="w-4 h-4" />
               {loading
-                ? 'Opening Game…'
+                ? 'Claiming Frenzy…'
                 : info.selfClaimTest
                   ? 'Claim Your Frenzy · Test'
                   : playedBefore === true ? 'Claim Frenzy · Continue run' : playedBefore === false ? 'Claim your first Frenzy' : 'Claim Frenzy · Open Game'}
