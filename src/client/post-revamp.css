@@ -1,0 +1,302 @@
+/* First-visit conversion polish for the main game, shared Orbs, and Frenzies. */
+.io-public-grid {
+  animation: io-post-grid-drift 30s linear infinite;
+}
+
+.io-public-glow {
+  animation: io-post-aura-breathe 4.6s ease-in-out infinite;
+}
+
+.io-post-reveal {
+  position: relative;
+  isolation: isolate;
+  border-color: rgba(116, 221, 202, .28);
+  box-shadow:
+    0 22px 70px rgba(0, 0, 0, .34),
+    0 0 42px rgba(73, 239, 199, .07),
+    inset 0 1px rgba(255, 255, 255, .055);
+  animation:
+    io-post-rise .72s cubic-bezier(.16, .78, .28, 1) both,
+    io-post-card-aura 4.8s ease-in-out .72s infinite;
+}
+
+.io-launch-mark {
+  animation: io-brand-mark-pulse 3.2s ease-in-out infinite;
+}
+
+.io-share-orb {
+  transform-origin: center;
+  animation:
+    io-post-orb-float 4.8s ease-in-out infinite,
+    io-post-orb-aura 3.2s ease-in-out infinite;
+}
+
+.io-public-orb-ring {
+  animation: io-post-ring-turn 10s linear infinite;
+}
+
+.io-post-conversion {
+  position: relative;
+  margin-top: 22px;
+  text-align: center;
+}
+
+.io-cta-caption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  color: #c9fbe5;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: .16em;
+  line-height: 1.4;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.io-cta-caption > span {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #caff6a;
+  box-shadow: 0 0 12px rgba(202, 255, 106, .9);
+  animation: io-post-dot-beat 1.5s ease-in-out infinite;
+}
+
+.io-cta-footnote {
+  margin: 10px 0 0;
+  color: #8da39c;
+  font-size: 10px;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.io-post-cta {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 62px;
+  border: 1px solid rgba(225, 255, 174, .92);
+  border-radius: 15px;
+  color: #07130b;
+  background: linear-gradient(105deg, #d7ff70 0%, #a9ffd0 48%, #7cf1d5 100%);
+  box-shadow:
+    0 0 0 1px rgba(196, 255, 137, .25),
+    0 12px 35px rgba(102, 255, 188, .25),
+    inset 0 1px rgba(255, 255, 255, .78);
+  font-size: clamp(12px, 1.6vw, 15px);
+  font-weight: 950;
+  letter-spacing: .075em;
+  text-transform: uppercase;
+  animation: io-post-cta-pulse 2.25s ease-in-out infinite;
+  transition: transform .18s ease, filter .18s ease, box-shadow .18s ease;
+}
+
+.io-post-cta::before,
+.io-immersive-play-cta::before {
+  position: absolute;
+  z-index: -1;
+  inset: -70% -45%;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    transparent 38%,
+    rgba(255, 255, 255, .72) 49%,
+    rgba(255, 255, 255, .12) 56%,
+    transparent 65%
+  );
+  transform: translateX(-62%) rotate(0deg);
+  animation: io-post-cta-sheen 3.5s ease-in-out infinite;
+}
+
+.io-post-cta > *,
+.io-immersive-play-cta > * {
+  position: relative;
+  z-index: 1;
+}
+
+.io-post-cta:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.012);
+  filter: brightness(1.08) saturate(1.1);
+  box-shadow:
+    0 0 0 2px rgba(216, 255, 165, .38),
+    0 15px 45px rgba(102, 255, 188, .34),
+    inset 0 1px rgba(255, 255, 255, .9);
+}
+
+.io-post-cta:active:not(:disabled) {
+  transform: translateY(1px) scale(.995);
+}
+
+.io-post-cta:focus-visible,
+.io-immersive-play-cta:focus-visible {
+  outline: 3px solid #f3ffd0;
+  outline-offset: 4px;
+}
+
+.io-post-cta:disabled {
+  animation: none;
+}
+
+.io-post-cta:disabled::before {
+  animation: none;
+}
+
+.io-launch-button {
+  min-height: 68px;
+  margin-top: 0;
+}
+
+.io-public-actions.io-post-conversion {
+  margin-top: 24px;
+}
+
+.io-frenzy-card.io-post-reveal {
+  border-color: rgba(255, 202, 110, .28);
+  box-shadow:
+    0 22px 70px rgba(0, 0, 0, .36),
+    0 0 48px rgba(248, 168, 58, .08),
+    inset 0 1px rgba(255, 255, 255, .055);
+}
+
+.io-frenzy-card .io-cta-caption {
+  color: #ffe0a4;
+}
+
+.io-frenzy-orb-visual {
+  animation:
+    io-post-orb-float 4.2s ease-in-out infinite,
+    io-post-orb-aura 2.7s ease-in-out infinite;
+}
+
+.io-frenzy-rarity-number {
+  animation:
+    io-frenzy-number-roll .9s cubic-bezier(.18, .75, .24, 1) both,
+    io-post-rarity-glow 2.8s ease-in-out .9s infinite;
+}
+
+.io-frenzy-button.io-post-cta {
+  width: min(560px, 100%);
+  min-height: 68px;
+  margin-top: 22px;
+  font-size: clamp(13px, 1.8vw, 16px);
+}
+
+.io-frenzy-note,
+.io-public-note {
+  line-height: 1.7;
+}
+
+.io-immersive-play-cta {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  animation: io-post-cta-pulse 2.25s ease-in-out infinite;
+  box-shadow:
+    0 0 0 1px rgba(196, 255, 137, .26),
+    0 12px 34px rgba(102, 255, 188, .22),
+    inset 0 1px rgba(255, 255, 255, .45);
+}
+
+@keyframes io-post-rise {
+  from { opacity: 0; transform: translateY(16px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes io-post-card-aura {
+  0%, 100% { border-color: rgba(116, 221, 202, .22); }
+  50% { border-color: rgba(151, 255, 220, .42); }
+}
+
+@keyframes io-post-grid-drift {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 40px 40px, -40px 40px; }
+}
+
+@keyframes io-post-aura-breathe {
+  0%, 100% { opacity: .68; filter: blur(28px); }
+  50% { opacity: 1; filter: blur(35px); }
+}
+
+@keyframes io-brand-mark-pulse {
+  0%, 100% { box-shadow: inset 0 1px rgba(255,255,255,.05), 0 0 30px rgba(116,221,202,.08); }
+  50% { box-shadow: inset 0 1px rgba(255,255,255,.1), 0 0 44px rgba(116,221,202,.21); }
+}
+
+@keyframes io-post-orb-float {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -6px; }
+}
+
+@keyframes io-post-orb-aura {
+  0%, 100% { filter: saturate(1); }
+  50% { filter: saturate(1.18) brightness(1.06); }
+}
+
+@keyframes io-post-ring-turn {
+  from { rotate: 0deg; }
+  to { rotate: 360deg; }
+}
+
+@keyframes io-post-dot-beat {
+  0%, 100% { opacity: .72; transform: scale(.86); }
+  50% { opacity: 1; transform: scale(1.24); }
+}
+
+@keyframes io-post-cta-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px rgba(196, 255, 137, .22),
+      0 10px 30px rgba(102, 255, 188, .20),
+      inset 0 1px rgba(255, 255, 255, .72);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px rgba(196, 255, 137, .12),
+      0 14px 42px rgba(102, 255, 188, .36),
+      0 0 34px rgba(145, 255, 196, .18),
+      inset 0 1px rgba(255, 255, 255, .86);
+  }
+}
+
+@keyframes io-post-cta-sheen {
+  0%, 16% { transform: translateX(-62%) rotate(0deg); }
+  62%, 100% { transform: translateX(62%) rotate(0deg); }
+}
+
+@keyframes io-post-rarity-glow {
+  0%, 100% { text-shadow: 0 0 18px currentColor; }
+  50% { text-shadow: 0 0 36px currentColor, 0 0 62px currentColor; }
+}
+
+@media (max-width: 680px) {
+  .io-post-conversion { margin-top: 19px; }
+  .io-cta-caption { font-size: 8px; letter-spacing: .12em; }
+  .io-post-cta { min-height: 60px; font-size: 12px; }
+  .io-launch-button { min-height: 66px; }
+  .io-frenzy-button.io-post-cta { min-height: 64px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .io-public-grid,
+  .io-public-glow,
+  .io-post-reveal,
+  .io-launch-mark,
+  .io-share-orb,
+  .io-public-orb-ring,
+  .io-cta-caption > span,
+  .io-post-cta,
+  .io-post-cta::before,
+  .io-frenzy-orb-visual,
+  .io-frenzy-rarity-number,
+  .io-immersive-play-cta,
+  .io-immersive-play-cta::before {
+    animation: none !important;
+    transition: none !important;
+  }
+  .io-post-reveal { opacity: 1; transform: none; }
+}
