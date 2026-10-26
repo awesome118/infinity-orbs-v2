@@ -83,8 +83,8 @@ const sections: Array<{
         description: 'Improved Global Chat status messaging when posting is unavailable and added active-session length to the player list.',
       },
       {
-        title: 'Inline Post Previews',
-        description: 'Updated in-feed Game, shared-Orb, and Frenzy previews to fit Reddit’s inline view; longer interactions open in Expanded Mode.',
+        title: 'Post Previews & Play CTA',
+        description: 'Revamped main-game, shared-Orb, and Frenzy previews with animated Orb visuals and a glowing, pulsing Play button that makes starting the game unmistakable.',
       },
       {
         title: 'Infinity Overflow',
