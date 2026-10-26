@@ -83,7 +83,7 @@ test('posted Frenzy opens the actual game entrypoint from the claim button', () 
   assert.match(source, /Frenzy expires in/);
   assert.match(source, /setInterval\(\(\) => setNow\(Date\.now\(\)\), 1000\)/);
   assert.match(source, /io-frenzy-rarity-number/);
-  assert.match(source, /Your Multi Roll multiplies the Frenzy size/);
+  assert.match(source, /Multi Roll scales (?:the Frenzy size|your reward)/);
   assert.doesNotMatch(source, /When someone claims this Frenzy/);
   assert.doesNotMatch(source, /That \+5 Shard reward bypasses/);
   assert.doesNotMatch(source, /Self-claim is enabled for admin testing/);
