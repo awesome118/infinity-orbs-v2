@@ -125,6 +125,10 @@ const sections: Array<{
         description: 'Fixed shared Orb previews rejecting valid large rarity values.',
       },
       {
+        title: 'Leaderboard Recovery',
+        description: 'Kept older shared-Orb leaderboard entries visible when legacy records are missing account IDs.',
+      },
+      {
         title: 'Rune Controls',
         description: 'Fixed Rune controls so Equip, Strengthen, and Auto Sacrifice actions no longer conflict when used in quick succession.',
       },
