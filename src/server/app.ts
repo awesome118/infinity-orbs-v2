@@ -1,6 +1,6 @@
 import express from 'express';
 import { debugRouter, isDebugUser } from './debug.js';
-import { recordPostImpression, recordPlayerActivityForImpressions } from './impressions.js';
+import { recordPostImpression, recordPlayerActivityForImpressions, recordMainGamePostConversion } from './impressions.js';
 import {
   getMe,
   getRollTicket,
@@ -1216,6 +1216,17 @@ export function createApp() {
       // block the public post from rendering if analytics is unavailable.
       console.error('[API /api/impressions] Failed:', error);
       res.status(400).json({ error: 'Could not record this impression.' });
+    }
+  });
+
+  app.post('/api/impressions/conversion', async (req, res) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      res.json(await recordMainGamePostConversion(req.body?.postId, req.body?.deviceType));
+    } catch (error) {
+      // Conversion analytics are best-effort and never block the Play action.
+      console.error('[API /api/impressions/conversion] Failed:', error);
+      res.status(400).json({ recorded: false, error: 'Could not record this conversion.' });
     }
   });
 
