@@ -3,6 +3,7 @@ import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star, 
 import type { PlayerState } from '../../shared/game.js';
 import { LEVEL_MILESTONES, getLevelBenefits, getLevelProgress, onlinePlayerLuckMultiplier, formatShardAmount } from '../../shared/game.js';
 import { sound } from '../sound.js';
+import { APP_VERSION } from '../../shared/version.js';
 
 interface HeaderProps {
   state: PlayerState;
@@ -84,6 +85,12 @@ export const Header: React.FC<HeaderProps> = ({
               <h1 className="font-extrabold text-base sm:text-lg tracking-tight text-white flex items-center gap-1.5">
                 Infinity Orbs
               </h1>
+              <span
+                aria-label={`App version ${APP_VERSION}`}
+                className="rounded border border-slate-700/70 px-1.5 py-0.5 text-[9px] font-mono font-semibold text-slate-500"
+              >
+                v{APP_VERSION}
+              </span>
               {/* Level Badge with click to view perks */}
               <button
                 type="button"
