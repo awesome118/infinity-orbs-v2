@@ -6,6 +6,7 @@ import { ArrowRight, BookOpen, Orbit, Share2, Trophy } from 'lucide-react';
 import { getOrbInfo, formatNumber, formatRarity, MAX_ORB_RARITY } from '../shared/game.js';
 import { recordPostImpression, type ImpressionPostType } from './impressions.js';
 import './styles.css';
+import './post-revamp.css';
 
 type SharedOrbPostData = {
   type?: string;
