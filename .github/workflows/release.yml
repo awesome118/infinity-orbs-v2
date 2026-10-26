@@ -1,6 +1,12 @@
 name: Submit Infinity Orbs for Reddit Review
 
 on:
+  # After the explicitly requested development deploy completes successfully, submit the same release for Reddit review.
+  workflow_run:
+    workflows: ["Deploy Devvit"]
+    types: [completed]
+    branches: [main]
+
   workflow_dispatch:
     inputs:
       release_version:
@@ -15,7 +21,7 @@ on:
 
 jobs:
   release:
-    if: ${{ inputs.confirm_publish }}
+    if: ${{ inputs.confirm_publish || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && contains(github.event.workflow_run.head_commit.message, '[submit-review:2.0.0]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -47,6 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./package.json').version")"
+          REQUESTED_VERSION="${REQUESTED_VERSION:-$VERSION}"
           test "$VERSION" = "$REQUESTED_VERSION" || {
             echo "Version mismatch: package.json is $VERSION but requested $REQUESTED_VERSION."
             exit 1
@@ -81,6 +88,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./package.json').version")"
+          REQUESTED_VERSION="${REQUESTED_VERSION:-$VERSION}"
           test "$VERSION" = "$REQUESTED_VERSION"
           npx devvit publish --version "$VERSION"
 

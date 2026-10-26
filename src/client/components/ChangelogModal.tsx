@@ -6,69 +6,129 @@ interface ChangelogModalProps {
   onClose: () => void;
 }
 
-const entries: Array<{
+const sections: Array<{
   title: string;
-  description: string;
+  entries: Array<{ title: string; description: string }>;
 }> = [
   {
-    title: 'Infinity Overflow',
-    description: 'When a roll’s calculated rarity exceeds the largest finite number JavaScript can represent, it displays as 1/Infinity. The finite 1.797693e308 rarity remains numeric; Infinity is a separate overflow result.',
+    title: 'Major New Features',
+    entries: [
+      {
+        title: 'Combat Mode',
+        description: 'Added Combat as a separate game mode, unlocked at Core Level 8, with a guided introduction and its own progression.',
+      },
+      {
+        title: 'Three Expeditions',
+        description: 'Added Undercrypt, Cinder Vault, and Glass Labyrinth. Each dungeon tracks its own best depth and has a boss every tenth depth.',
+      },
+      {
+        title: 'Dungeon Runs',
+        description: 'Added automatic dungeon runs, selectable combat tactics, manual actions, persistent health between encounters, and new-run resets.',
+      },
+      {
+        title: 'Gear, Forge & Abilities',
+        description: 'Added seven gear slots, randomized gear stats and traits, quality rolls, nonlinear gear power, the Forge, Scrap, and 30 Gear Major Abilities.',
+      },
+      {
+        title: 'Combat Skill Gacha',
+        description: 'Added 35 active skills. Duplicate skills increase ranks, making repeated pulls useful.',
+      },
+      {
+        title: 'Arena',
+        description: 'Added asynchronous player-build battles against recently active players, with rating and win/loss records.',
+      },
+      {
+        title: 'Rune System',
+        description: 'Added seven Rune rarities, from Common through Cosmic. Monsters drop Runes; bosses always drop one and elites have improved drop odds.',
+      },
+      {
+        title: 'Rune Loadouts',
+        description: 'Rune loadouts improve core-game Orb Luck, Coins, Shard chance, and XP. Unlock more Rune slots through Delver levels and dungeon depth, then strengthen Runes by sacrificing duplicates or enabling Auto Sacrifice.',
+      },
+    ],
   },
   {
-    title: 'Supernova Critical Scaling',
-    description: 'Supernova now multiplies your normal critical rarity by 5×, so it scales with Critical Power instead of replacing it.',
+    title: 'Core Game Changes',
+    entries: [
+      {
+        title: 'First-Roll Tutorial',
+        description: 'Added a first-roll tutorial that introduces rolling an Orb, the result screen, Upgrades, and the Codex. It can be skipped at any time.',
+      },
+      {
+        title: 'Aftershock',
+        description: 'Added Aftershock, a Mastery skill that provides Critical Luck based on the best dry interval between successive all-time rarity records.',
+      },
+      {
+        title: 'Unbroken Momentum',
+        description: 'Added Unbroken Momentum, a Prestige upgrade that grants permanent roll Speed based on the longest uninterrupted online rolling session.',
+      },
+      {
+        title: 'Codex Devotion',
+        description: 'Updated Codex Devotion to show its current Luck bonus and the bonus from the next level.',
+      },
+      {
+        title: 'Chain Patcher',
+        description: 'Added Chain Patcher to the Codex. It guarantees the cheapest missing rarity adjacent to the longest consecutive Codex chain on the next accepted roll, for a Shard cost and with a 24-hour purchase cooldown.',
+      },
+      {
+        title: 'Shared Orb Frenzies',
+        description: 'Shared Orb Frenzies can be claimed by multiple different players during the post’s lifetime. Each player still has their own claim cooldown.',
+      },
+      {
+        title: 'Rune Inventory Improvements',
+        description: 'Added Rune inventory search, equipped filters, level and XP progress, capacity warnings, and clearer Strengthen and Auto Sacrifice controls.',
+      },
+      {
+        title: 'Global Chat & Player Sessions',
+        description: 'Improved Global Chat status messaging when posting is unavailable and added active-session length to the player list.',
+      },
+      {
+        title: 'Inline Post Previews',
+        description: 'Updated in-feed Game, shared-Orb, and Frenzy previews to fit Reddit’s inline view; longer interactions open in Expanded Mode.',
+      },
+      {
+        title: 'Infinity Overflow',
+        description: 'Rolls whose calculated rarity exceeds JavaScript’s largest finite number now display as 1/Infinity. The finite 1.797693e308 rarity remains a numeric rarity.',
+      },
+    ],
   },
   {
-    title: 'Inline Post Scroll Compliance',
-    description: 'Inline launch and Orb Frenzy posts now use bounded, non-scrollable preview surfaces that allow vertical feed gestures to pass through to Reddit. The in-post Global Chat scroller and oversized fallback dialog were removed from Frenzy; full chat and long interactions stay in Expanded Mode.',
+    title: 'Balance Changes',
+    entries: [
+      {
+        title: 'Repeatable Upgrade Costs',
+        description: 'Unlimited repeatable core-game upgrades cost 15% more; capped Roll Speed and Offline Generation Speed keep their existing cost curves.',
+      },
+      {
+        title: 'Supernova Critical Scaling',
+        description: 'Supernova now multiplies the normal critical multiplier instead of replacing it, so it remains powerful as Critical upgrades grow.',
+      },
+      {
+        title: 'Mastery Engine Removed',
+        description: 'Removed Mastery Engine.',
+      },
+    ],
   },
   {
-    title: 'Combat Reliability & Rune Inventory',
-    description: 'Combat saves now fail safely instead of silently resetting, empty gear inventories stay empty, and encounter effects clear when a new run begins. Rune inventory adds search, equipped filters, level progress, capacity warnings, safer Strengthen actions, and serialized requests. Upgrade purchases, Global Chat requests, quest progress, and daily-streak previews have additional reliability and accessibility fixes.',
-  },
-  {
-    title: 'Rune Major Abilities & Auto Sacrifice',
-    description: 'Rune tooltips now explain fourteen scalable Major Abilities: Fateweaver improves Orb Luck, Midas Engine boosts Coins, Memory Well improves XP, Echo Chamber chains extra rolls, Paradox Engine expands multi-rolls, Event Horizon rewards record rarities, Shard Constellation and Temporal Loop build persistent meters, Prismatic Fork boosts rare outcomes, Critical Convergence reacts to crits, Rarity Ladder rewards rising sequences, Stellar Dividend pays roll milestones, Shard Jackpot boosts Shard payouts, and Milestone Engine rewards new rarity decades. Strengthen a chosen Rune by clicking a donor, or auto-sacrifice eligible drops into a random equipped Rune.',
-  },
-  {
-    title: 'Combat Unlock & Mark Shop',
-    description: 'Combat unlocks at Level 8 with a guided introduction. Coins are shown in the core game, while Combat Marks are shown in Combat. Mark Magnet and Warding Doctrine add new permanent upgrades, and Starfall and Mark Harvest expand possible gear Major Abilities.',
-  },
-  {
-    title: 'Shared Orb Frenzies',
-    description: 'An Orb Frenzy can now be claimed by multiple different players during its lifetime. Per-player receipts prevent duplicate claims, and the existing individual claim cooldown remains in force.',
-  },
-  {
-    title: 'Combat Reset & Readability',
-    description: 'Full player wipes now clear the separate Combat save. Combat echo waves last longer, and item Details tooltips use viewport-aware positioning on narrow screens.',
-  },
-  {
-    title: 'Runes · Combat Loot for the Main Game',
-    description: 'Monsters can now drop seven Rune rarities. Equip Runes in the new Runes menu to improve Orb Luck, Coins, Shard chance, or XP in the core game. Bosses always drop a Rune; elites have better odds. Earn more Rune slots through Delver levels and depth, then sacrifice spare Runes into the ones you want to strengthen.',
-  },
-  {
-    title: 'First Steps Tutorial',
-    description: 'New players are guided through their first orb roll, the result, Upgrades, and the Codex. The tutorial respects feature unlock levels and can be skipped at any time.',
-  },
-  {
-    title: 'New Skills · Aftershock & Unbroken Momentum',
-    description: 'Aftershock is now a Mastery skill that activates Critical Luck from your best dry interval between successive all-time rarity records. Unbroken Momentum is now a Prestige upgrade that unlocks logarithmic session-based Speed: +20% at 48 hours, about +25% at 72 hours, capped at +30%. Their live bonuses are shown in their purchase menus.',
-  },
-  {
-    title: 'Codex Devotion',
-    description: 'The Mastery upgrade now displays both its current Luck bonus and the bonus after the next level, calculated from your longest consecutive Codex rarity chain.',
-  },
-  {
-    title: 'Balancing',
-    description: 'Mastery Engine has been removed for balancing purposes.',
-  },
-  {
-    title: 'Chain Patcher',
-    description: 'Chain Patcher is now located in the Codex. Its pre-purchase preview correctly shows the next rarity and Shard cost using your full server-side Codex. It targets the cheapest missing rarity adjacent to your longest consecutive chain, guarantees exactly one orb of that rarity on your next accepted roll, and has a 24-hour purchase cooldown.',
-  },
-  {
-    title: 'Bug Fixes & Improvements',
-    description: 'Global Chat remains visible when posting is unavailable and explains why. The player list includes each active player’s current session length. Session-based bonuses now activate only after purchase, and the release includes regression fixes for Codex placement, chat availability, and logarithmic Momentum scaling.',
+    title: 'Bug Fixes',
+    entries: [
+      {
+        title: 'Silent Alert Mode',
+        description: 'Fixed Silent Alert Mode’s toggle becoming out of sync with the active sound mode.',
+      },
+      {
+        title: 'Combat Encounter Effects',
+        description: 'Fixed encounter effects carrying into a new run.',
+      },
+      {
+        title: 'Shared Orb Previews',
+        description: 'Fixed shared Orb previews rejecting valid large rarity values.',
+      },
+      {
+        title: 'Rune Controls',
+        description: 'Fixed Rune controls so Equip, Strengthen, and Auto Sacrifice actions no longer conflict when used in quick succession.',
+      },
+    ],
   },
 ];
 
@@ -103,15 +163,22 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ onClose }) => {
           </button>
         </div>
 
-        <div className="mt-5 max-h-[60vh] overflow-y-auto pr-1 space-y-2">
-          {entries.map(({ title, description }) => (
-            <div
-              key={title}
-              className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"
-            >
-              <div className="text-sm font-black text-white">{title}</div>
-              <div className="mt-1 text-xs leading-relaxed text-slate-400">{description}</div>
-            </div>
+        <div className="mt-5 max-h-[60vh] overflow-y-auto pr-1 space-y-5">
+          {sections.map(section => (
+            <section key={section.title} className="space-y-2">
+              <h3 className="px-1 text-[10px] uppercase tracking-[0.16em] font-black text-purple-300">
+                {section.title}
+              </h3>
+              {section.entries.map(({ title, description }) => (
+                <div
+                  key={title}
+                  className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"
+                >
+                  <div className="text-sm font-black text-white">{title}</div>
+                  <div className="mt-1 text-xs leading-relaxed text-slate-400">{description}</div>
+                </div>
+              ))}
+            </section>
           ))}
         </div>
 
