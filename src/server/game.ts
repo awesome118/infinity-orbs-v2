@@ -6402,8 +6402,16 @@ export async function claimOrbFrenzy(options: {
   }
 
   const claimantId = currentUserId();
-  const handoff = options.postId ? null : await readFrenzyHandoff(claimantId);
-  const postId = options.postId ?? handoff?.postId ?? context.postId;
+  const contextPostId = String(context.postId ?? '').trim();
+  const contextPostRaw = !options.postId && contextPostId
+    ? await redis.get(FRENZY_POST_PREFIX + contextPostId)
+    : null;
+  const contextPostData = parseFrenzyPostRecord(contextPostRaw);
+  const isDirectFrenzyPost = contextPostData !== null;
+  // A claim clicked on a Frenzy post belongs to that post. A stale handoff may
+  // only be used from the main game, where there is no current Frenzy record.
+  const handoff = options.postId || isDirectFrenzyPost ? null : await readFrenzyHandoff(claimantId);
+  const postId = options.postId ?? (isDirectFrenzyPost ? contextPostId : handoff?.postId ?? contextPostId);
   if (!postId) throw new Error('This is not an Orb Frenzy post.');
 
   const postKey = FRENZY_POST_PREFIX + postId;
