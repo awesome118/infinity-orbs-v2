@@ -682,7 +682,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           !Number.isSafeInteger(data.newPlayersToday) || Number(data.newPlayersToday) < 0 ||
           !data.day1Retention || !data.day3Retention || !data.conversion || !data.uniqueByType ||
           !Array.isArray(data.viewers) || !Array.isArray(data.posts) || !Array.isArray(data.last24Hours) || !Array.isArray(data.last30Days) ||
-          !data.byType || !data.byDevice || !data.byTypeAndDevice) {
+          !data.byType || !data.byDevice || !data.byTypeAndDevice || !data.conversionByDevice) {
         throw new Error('Impression analytics returned an incomplete dashboard. Refresh and retry.');
       }
       setImpressionStats(data as ImpressionDashboardData);
