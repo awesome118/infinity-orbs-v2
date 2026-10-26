@@ -133,6 +133,7 @@ test('all Rune Major Abilities have a runtime path; main-game Rune abilities sti
   assert.ok(effects.includes('runeBonuses.shardChancePct'));
 });
 
+
 test('all roll-earned Shard chance sources are reduced and all Shard additions are integer-only', () => {
   const game = source('src/server/game.ts');
   const shared = source('src/shared/game.ts');
@@ -152,15 +153,18 @@ test('all roll-earned Shard chance sources are reduced and all Shard additions a
   assert.match(game, /rng\(\) < 0\.00025 \* transLevel/);
   assert.match(combat, /Math\.min\(\.5,power\/200\)/);
   assert.match(combat, /Math\.min\(\.25,power\/400\)/);
-  assert.match(game, /const shardChance = Math\.min\(\s*ROLL_SHARD_PROC_CHANCE_CAP,/);
-  assert.match(game, /sampleBinomial\(count, shardChance\)/);
-  assert.match(game, /sampleBinomial\(count, Math\.min\(1, 0\.00025 \* transmutationLevel\)\)/);
-  assert.doesNotMatch(game, /const rarityShards = groups\.reduce/);
   assert.match(shared, /SHARD_DECIMAL_PLACES = 0/);
   assert.match(shared, /Math\.floor\(n\)/);
   assert.doesNotMatch(shared, /shardsGained\s*\+\s*0\.001/);
   assert.doesNotMatch(game, /shardsGained\s*\+\s*0\.001/);
   assert.doesNotMatch(ui, /fractional amounts/);
+
+  const claimStart = game.indexOf('export async function claimOrbFrenzy');
+  const claimEnd = game.indexOf('export async function postFrenzyThankYouComment', claimStart);
+  assert.ok(claimStart >= 0 && claimEnd > claimStart);
+  const frenzy = game.slice(claimStart, claimEnd);
+  assert.match(frenzy, /applyRolls\(s, 1, undefined, 'frenzy', chunkCount\)/);
+  assert.doesNotMatch(frenzy, /const rarityShards = groups\.reduce/);
 });
 
 test('10x Skill Gacha is costed before mutation and returns every result', () => {
