@@ -9,7 +9,7 @@ import {
   context as originalContext,
   reddit as originalReddit,
 } from '../src/server/devvit-mock.js';
-import { getImpressionDashboard, recordPostImpression } from '../src/server/impressions.js';
+import { getImpressionDashboard, recordPostImpression, recordMainGamePostConversion } from '../src/server/impressions.js';
 
 test('post impressions count aggregate metrics without registering online-player activity', async () => {
   const baseRedis = originalRedis;
@@ -348,3 +348,48 @@ test('impression counters commit together instead of leaving partial counts on f
     configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
   }
 });
+
+
+test('main-game Play CTA records one unique conversion and attributes the rate to device type', async () => {
+  const baseRedis = originalRedis;
+  const baseContext = originalContext;
+  const baseReddit = originalReddit;
+  const suffix = Date.now().toString(36);
+  const postId = 't3_main-game-conversion-' + suffix;
+  const canonicalPostKey = 'io:global-game-post-id';
+  const previousCanonicalPostId = await baseRedis.get(canonicalPostKey);
+  const userId = 'main-game-conversion-viewer-' + suffix;
+
+  await baseRedis.set(canonicalPostKey, postId);
+  configureDevvitRuntime({
+    redis: baseRedis,
+    context: { ...baseContext, userId, username: 'MainGameConversionViewer', postId },
+    reddit: baseReddit,
+  });
+
+  try {
+    const before = await getImpressionDashboard();
+    assert.deepEqual(await recordPostImpression('main-game', 'desktop'), { recorded: true });
+    assert.deepEqual(await recordMainGamePostConversion(postId, 'desktop'), { recorded: true });
+    assert.deepEqual(await recordMainGamePostConversion(postId, 'desktop'), { recorded: false });
+
+    const after = await getImpressionDashboard();
+    assert.equal(after.conversion['main-game'].conversions, before.conversion['main-game'].conversions + 1);
+    assert.equal(after.conversionByDevice.desktop.conversions, before.conversionByDevice.desktop.conversions + 1);
+    assert.equal(after.conversionByDevice.desktop.eligibleViewers,
+      after.byTypeAndDevice['main-game'].desktop);
+    assert.ok(after.conversionByDevice.desktop.rate !== null);
+    assert.ok(after.conversionByDevice.desktop.rate! >= 0 && after.conversionByDevice.desktop.rate! <= 1);
+
+    const client = readFileSync(resolve(process.cwd(), 'src/client/splash.tsx'), 'utf8');
+    const api = readFileSync(resolve(process.cwd(), 'src/server/app.ts'), 'utf8');
+    assert.match(client, /trackMainGameConversion/);
+    assert.match(client, /recordMainGamePostConversion\(context\.postId\)/);
+    assert.match(api, /app\.post\('\/api\/impressions\/conversion'/);
+  } finally {
+    if (previousCanonicalPostId == null) await baseRedis.del(canonicalPostKey);
+    else await baseRedis.set(canonicalPostKey, previousCanonicalPostId);
+    configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  }
+});
+
