@@ -389,8 +389,8 @@
 .io-launch-orb-spark-b { top: 30%; right: 26%; animation-delay: -.8s; }
 .io-launch-orb-spark-c { bottom: 24%; left: 35%; animation-delay: -1.7s; }
 .io-launch-orb-spark-d { bottom: 29%; right: 34%; animation-delay: -2.4s; }
-.io-share-orb-ring-secondary { width: 88%; height: 42%; border-color: rgba(255,255,255,.24); }
-.io-share-orb-ring-tertiary { width: 48%; height: 88%; border-color: rgba(255,255,255,.22); transform: rotate(53deg); animation-duration: 7s; }
+.io-public-orb-ring-secondary { width: 88%; height: 42%; border-color: rgba(255,255,255,.24); }
+.io-public-orb-ring-tertiary { width: 48%; height: 88%; border-color: rgba(255,255,255,.22); transform: rotate(53deg); animation-duration: 7s; }
 .io-share-orb-spark { width: 3px; height: 3px; animation: io-launch-spark-drift 2.7s ease-in-out infinite; }
 .io-share-orb-spark-a { top: 24%; left: 21%; }
 .io-share-orb-spark-b { top: 36%; right: 17%; animation-delay: -.9s; }
@@ -687,8 +687,8 @@
   .io-launch-orb-sphere,
   .io-launch-orb-spark,
   .io-share-orb-spark,
-  .io-share-orb-ring-secondary,
-  .io-share-orb-ring-tertiary,
+  .io-public-orb-ring-secondary,
+  .io-public-orb-ring-tertiary,
   .io-launch-steps > div,
   .io-share-card .io-public-stats > div,
   .io-frenzy-orbit-arc,
@@ -824,14 +824,15 @@
 #root.io-inline-post .io-frenzy-success-orbit-a {
   animation-duration: 24s;
 }
+#root.io-inline-post .io-launch-orb-ring-b { animation-duration: 30s; }
+#root.io-inline-post .io-launch-orb-ring-c { animation-duration: 38s; }
+#root.io-inline-post .io-frenzy-orbit-arc-a { animation-duration: 22s; }
+#root.io-inline-post .io-frenzy-orbit-arc-b { animation-duration: 30s; }
 #root.io-inline-post .io-launch-orb-aura,
-#root.io-inline-post .io-launch-orb-ring-b,
-#root.io-inline-post .io-launch-orb-ring-c,
 #root.io-inline-post .io-launch-orb-spark,
-#root.io-inline-post .io-share-orb-ring-secondary,
-#root.io-inline-post .io-share-orb-ring-tertiary,
+#root.io-inline-post .io-public-orb-ring-secondary,
+#root.io-inline-post .io-public-orb-ring-tertiary,
 #root.io-inline-post .io-share-orb-spark,
-#root.io-inline-post .io-frenzy-orbit-arc,
 #root.io-inline-post .io-frenzy-success-orbit-b,
 #root.io-inline-post .io-frenzy-success-orbit-c,
 #root.io-inline-post .io-frenzy-success-particle,
@@ -840,4 +841,87 @@
 }
 #root.io-inline-post .io-frenzy-success-orb {
   animation: io-launch-sphere-float 6s ease-in-out infinite;
+}
+
+
+/* Center each ring from its own box, then animate the full transform so its orbit stays centered. */
+.io-public-orb-ring,
+.io-launch-orb-ring,
+.io-frenzy-orbit-arc,
+.io-frenzy-success-orbit {
+  top: 50%;
+  left: 50%;
+  transform-origin: 50% 50%;
+}
+.io-public-orb-ring {
+  transform: translate(-50%, -50%) rotate(-32deg);
+}
+.io-public-orb-ring-secondary {
+  width: 88%;
+  height: 42%;
+  border-color: rgba(255,255,255,.13);
+  transform: translate(-50%, -50%) rotate(0deg);
+}
+.io-public-orb-ring-tertiary {
+  width: 48%;
+  height: 88%;
+  border-color: rgba(255,255,255,.11);
+  transform: translate(-50%, -50%) rotate(53deg);
+}
+.io-share-card .io-share-orb {
+  box-shadow: 0 0 12px rgba(255,255,255,.035);
+}
+.io-share-orb-spark {
+  box-shadow: 0 0 5px 1px rgba(126,255,224,.28);
+}
+.io-frenzy-orbit-arc {
+  transform: translate(-50%, -50%);
+}
+.io-frenzy-orbit-arc-a {
+  transform: translate(-50%, -50%) rotate(-30deg);
+  animation: io-frenzy-arc-a-spin 18s linear infinite;
+}
+.io-frenzy-orbit-arc-b {
+  transform: translate(-50%, -50%) rotate(52deg);
+  animation: io-frenzy-arc-b-spin 24s linear infinite;
+}
+.io-frenzy-success-orbit-a {
+  transform: translate(-50%, -50%) rotate(-22deg);
+  animation: io-frenzy-success-orbit-a-spin 18s linear infinite;
+}
+.io-launch-orb-ring-a {
+  transform: translate(-50%, -50%) rotate(-18deg);
+  animation: io-launch-ring-a-spin 18s linear infinite;
+}
+.io-launch-orb-ring-b {
+  transform: translate(-50%, -50%) rotate(58deg);
+  animation: io-launch-ring-b-spin 23s linear infinite;
+}
+.io-launch-orb-ring-c {
+  transform: translate(-50%, -50%) rotate(8deg);
+  animation: io-launch-ring-c-spin 32s linear infinite;
+}
+@keyframes io-launch-ring-a-spin {
+  from { transform: translate(-50%, -50%) rotate(-18deg); }
+  to { transform: translate(-50%, -50%) rotate(342deg); }
+}
+@keyframes io-launch-ring-b-spin {
+  from { transform: translate(-50%, -50%) rotate(58deg); }
+  to { transform: translate(-50%, -50%) rotate(-302deg); }
+}
+@keyframes io-launch-ring-c-spin {
+  from { transform: translate(-50%, -50%) rotate(8deg); }
+  to { transform: translate(-50%, -50%) rotate(368deg); }
+}
+@keyframes io-frenzy-arc-a-spin {
+  from { transform: translate(-50%, -50%) rotate(-30deg); }
+  to { transform: translate(-50%, -50%) rotate(330deg); }
+}
+@keyframes io-frenzy-arc-b-spin {
+  from { transform: translate(-50%, -50%) rotate(52deg); }
+  to { transform: translate(-50%, -50%) rotate(-308deg); }
+}
+@keyframes io-frenzy-success-orbit-a-spin {
+  from { transform: translate(-50%, -50%) rotate(-22deg); }
+  to { transform: translate(-50%, -50%) rotate(338deg); }
 }
