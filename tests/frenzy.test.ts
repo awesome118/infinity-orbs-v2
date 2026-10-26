@@ -446,3 +446,18 @@ test('claiming from a Frenzy post takes precedence over a stale game handoff', (
   assert.match(claim, /const handoff = options\.postId \|\| isDirectFrenzyPost \? null : await readFrenzyHandoff\(claimantId\)/);
   assert.match(claim, /isDirectFrenzyPost \? contextPostId : handoff\?\.postId \?\? contextPostId/);
 });
+
+
+test('Frenzy info follows the viewer handoff when expanded-game post context differs', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  const start = source.indexOf('export async function getOrbFrenzyInfo');
+  const end = source.indexOf('\nexport async function claimOrbFrenzy', start);
+  assert.ok(start >= 0 && end > start);
+  const info = source.slice(start, end);
+  assert.match(info, /const contextPostId = String\(context\.postId \?\? ''\)\.trim\(\)/);
+  assert.match(info, /const contextPostData = parseFrenzyPostRecord\(contextPostRaw\)/);
+  assert.match(info, /const handoff = contextPostData \? null : await readFrenzyHandoff\(viewerId\)/);
+  assert.match(info, /const postId = contextPostData \? contextPostId : handoff\?\.postId \?\? contextPostId/);
+  assert.match(info, /frenzyClaimReceiptKey\(postId, viewerId\)/);
+});
+
