@@ -29,6 +29,8 @@ const SOURCE_ELIGIBLE_MARKER_PREFIX = ANALYTICS_PREFIX + 'source-eligible-user:'
 const SOURCE_TOUCH_PREFIX = ANALYTICS_PREFIX + 'source-touch:';
 const CONVERSION_COUNT_PREFIX = ANALYTICS_PREFIX + 'conversion-count:';
 const CONVERSION_MARKER_PREFIX = ANALYTICS_PREFIX + 'converted-user:';
+const CONVERSION_DEVICE_COUNT_PREFIX = ANALYTICS_PREFIX + 'conversion-device-count:';
+const MAIN_GAME_POST_CONVERSION_ID = 'main-game-post';
 const PLAYER_REGISTRY_KEY = 'io:player-registry';
 const GLOBAL_GAME_POST_KEY = 'io:global-game-post-id';
 const DAY_MS = 86_400_000;
@@ -534,6 +536,78 @@ export async function recordPlayerActivityForImpressions(userIdValue: unknown): 
   }
 }
 
+/**
+ * Counts one explicit Play-button conversion from the canonical main-game post.
+ * The user is hashed, and each account counts once globally for this event.
+ */
+export async function recordMainGamePostConversion(
+  postIdValue: unknown,
+  deviceTypeValue: unknown,
+): Promise<{ recorded: boolean }> {
+  const deviceType = normalizeDeviceType(deviceTypeValue);
+  const contextPostId = normalizeRedditPostId(String(context.postId ?? '').trim());
+  const suppliedPostId = normalizeRedditPostId(postIdValue);
+  if (!suppliedPostId || suppliedPostId.length > 200 || /[\\u0000-\\u001f\\u007f]/.test(suppliedPostId)) {
+    return { recorded: false };
+  }
+  if (contextPostId && contextPostId !== suppliedPostId) return { recorded: false };
+  const postId = contextPostId || suppliedPostId;
+  const userId = String(context.userId ?? '').trim();
+  const username = String(context.username ?? '').trim().replace(/^u\\//i, '');
+  const identity = userId && userId !== 'unknown'
+    ? userId
+    : username ? 'username:' + username.toLowerCase() : '';
+  if (!identity || identity === 'unknown') return { recorded: false };
+
+  // Do not misattribute an Orb Share or Frenzy button click to the main-game
+  // acquisition funnel. Also reject an old main-post context if the canonical
+  // destination has since been replaced.
+  if (await isRegisteredFrenzyPost(postId)) return { recorded: false };
+  const bareId = postId.replace(/^t3_/i, '');
+  for (const candidate of [...new Set([postId, bareId])]) {
+    if (await redis.get('io:shared-orb:post:' + candidate) != null) return { recorded: false };
+  }
+  const registeredMainPost = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
+  if (registeredMainPost && registeredMainPost !== postId) return { recorded: false };
+
+  const userHash = await hashUserIdentity(identity);
+  const markerKey = CONVERSION_MARKER_PREFIX + MAIN_GAME_POST_CONVERSION_ID + ':' + userHash;
+  const countKey = CONVERSION_COUNT_PREFIX + MAIN_GAME_POST_CONVERSION_ID;
+  const deviceCountKey = CONVERSION_DEVICE_COUNT_PREFIX + MAIN_GAME_POST_CONVERSION_ID + ':' + deviceType;
+
+  for (let attempt = 0; attempt < MAX_COUNTER_COMMIT_ATTEMPTS; attempt += 1) {
+    const txn = await redis.watch(markerKey, countKey, deviceCountKey);
+    let transactionClosed = false;
+    try {
+      if (await redis.get(markerKey) != null) {
+        await txn.unwatch();
+        transactionClosed = true;
+        return { recorded: false };
+      }
+      const [rawCount, rawDeviceCount] = await Promise.all([
+        redis.get(countKey),
+        redis.get(deviceCountKey),
+      ]);
+      const count = normalizeCount(rawCount);
+      const deviceCount = normalizeCount(rawDeviceCount);
+      if (count >= Number.MAX_SAFE_INTEGER || deviceCount >= Number.MAX_SAFE_INTEGER) {
+        throw new Error('Main-game conversion counter exceeded the safe integer limit.');
+      }
+      await txn.multi();
+      await txn.set(markerKey, '1');
+      await txn.set(countKey, String(count + 1));
+      await txn.set(deviceCountKey, String(deviceCount + 1));
+      const result = await txn.exec();
+      transactionClosed = true;
+      if (result !== null) return { recorded: true };
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+    }
+    await new Promise(resolve => setTimeout(resolve, Math.min(2 * (attempt + 1), 16)));
+  }
+  throw new Error('Main-game conversion changed repeatedly. Please retry.');
+}
+
 export interface ImpressionPostRow {
   postType: ImpressionPostType;
   postId: string;
@@ -575,7 +649,8 @@ export interface ImpressionDashboard {
   newPlayersToday: number;
   day1Retention: ImpressionRetentionMetric;
   day3Retention: ImpressionRetentionMetric;
-  conversion: Record<'orb-share' | 'frenzy', ImpressionConversionMetric>;
+  conversion: Record<'main-game' | 'orb-share' | 'frenzy', ImpressionConversionMetric>;
+  conversionByDevice: Record<ImpressionDeviceType, ImpressionConversionMetric>;
   /** Highest unique post-view counts; Reddit usernames are shown only in the admin dashboard. */
   viewers: ImpressionViewerRow[];
   trackedPostCount: number;
@@ -610,7 +685,7 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
   const uniqueByType = Object.fromEntries(await Promise.all(
     POST_TYPES.map(async type => [type, await readCount(UNIQUE_TYPE_COUNT_PREFIX + type)] as const),
   )) as Record<ImpressionPostType, number>;
-  const conversionEntries = await Promise.all(SOURCE_TYPES.map(async type => {
+  const sourceConversionEntries = await Promise.all(SOURCE_TYPES.map(async type => {
     const [eligibleViewers, conversions] = await Promise.all([
       readCount(SOURCE_ELIGIBLE_COUNT_PREFIX + type),
       readCount(CONVERSION_COUNT_PREFIX + type),
@@ -621,7 +696,17 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
       rate: eligibleViewers > 0 ? Math.min(1, conversions / eligibleViewers) : null,
     }] as const;
   }));
-  const conversion = Object.fromEntries(conversionEntries) as Record<'orb-share' | 'frenzy', ImpressionConversionMetric>;
+  const mainGameConversions = await readCount(CONVERSION_COUNT_PREFIX + MAIN_GAME_POST_CONVERSION_ID);
+  const conversion = {
+    'main-game': {
+      eligibleViewers: uniqueByType['main-game'],
+      conversions: mainGameConversions,
+      rate: uniqueByType['main-game'] > 0
+        ? Math.min(1, mainGameConversions / uniqueByType['main-game'])
+        : null,
+    },
+    ...Object.fromEntries(sourceConversionEntries),
+  } as Record<'main-game' | 'orb-share' | 'frenzy', ImpressionConversionMetric>;
 
   let newPlayersToday = 0;
   let day1CohortSize = 0;
@@ -678,6 +763,19 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
     ImpressionPostType,
     Record<ImpressionDeviceType, number>
   >;
+  const conversionByDeviceEntries = await Promise.all(DEVICE_TYPES.map(async device => {
+    const [eligibleViewers, conversions] = await Promise.all([
+      Promise.resolve(byTypeAndDevice['main-game'][device]),
+      readCount(CONVERSION_DEVICE_COUNT_PREFIX + MAIN_GAME_POST_CONVERSION_ID + ':' + device),
+    ]);
+    return [device, {
+      eligibleViewers,
+      conversions,
+      rate: eligibleViewers > 0 ? Math.min(1, conversions / eligibleViewers) : null,
+    }] as const;
+  }));
+  const conversionByDevice = Object.fromEntries(conversionByDeviceEntries) as
+    Record<ImpressionDeviceType, ImpressionConversionMetric>;
 
   // Keep dashboard reads bounded and consistent with the per-post counter TTL.
   // Stale/corrupt rows are excluded immediately and lazily deleted even during
@@ -768,6 +866,7 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
     day1Retention,
     day3Retention,
     conversion,
+    conversionByDevice,
     viewers,
     trackedPostCount,
     byType,
