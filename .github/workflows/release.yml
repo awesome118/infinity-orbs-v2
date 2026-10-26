@@ -1,7 +1,7 @@
 name: Submit Infinity Orbs for Reddit Review
 
 on:
-  # Retry 2.0.3 release preflight after aligning both legacy-board source assertions.
+  # Retry 2.0.4 diagnostic release preflight after fixing TypeScript in the Redis save-count callback.
   workflow_run:
     workflows: ["Deploy Devvit"]
     types: [completed]
