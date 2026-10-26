@@ -76,11 +76,15 @@ function AnimatedRarity({ rarity, color, isInfinity = false }: { rarity: number;
 
     const started = performance.now();
     const duration = 1200;
+    let lastUpdateAt = started - 100;
     const animate = (now: number) => {
       const progress = Math.min(1, (now - started) / duration);
       const eased = 1 - Math.pow(1 - progress, 3);
       const value = progress >= 1 ? rarity : Math.floor(rarity * eased);
-      setDisplay(value);
+      if (progress >= 1 || now - lastUpdateAt >= 100) {
+        setDisplay(value);
+        lastUpdateAt = now;
+      }
       if (progress < 1) frame = window.requestAnimationFrame(animate);
     };
     setDisplay(0);
@@ -190,7 +194,7 @@ function FrenzyPost() {
     try {
       // Claim on the Frenzy post itself. Do not rely on opening another entrypoint
       // to finish the reward; the server commits the full volley before success is shown.
-      const res = await fetchWithTimeout('/api/frenzy/claim', { method: 'POST' });
+      const res = await fetchWithTimeout('/api/frenzy/claim', { method: 'POST' }, 25_000);
       const data = await res.json() as {
         error?: unknown;
         orb?: { rarity?: unknown; isInfinity?: unknown };
@@ -206,7 +210,7 @@ function FrenzyPost() {
       setInlineClaimedAt(Date.now());
       setError(null);
       setClaimed(true);
-      await load();
+      // The claim response is authoritative; do not block the reward reveal on a second info request.
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not claim Frenzy.');
     } finally {
