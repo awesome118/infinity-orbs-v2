@@ -3,7 +3,7 @@ import {
   X, Wrench, Coins, Gem, Sparkles, Zap, RotateCcw, Play, Shield, Megaphone,
   Users, Bell, BellRing, Crown, UserCheck,
   Ban, UserX, CheckCircle2, RefreshCw, Flame,
-  Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy, ClipboardCheck, Gift, Eye,
+  Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy, ClipboardCheck, Gift, Eye, Search,
 } from 'lucide-react';
 import { PRESTIGE_UPGRADES, PREMIUM_BOOSTERS, AUTOMATIONS, CONTINUUM_TIERS, getOrbInfo, visibleContinuumTiers, formatRarity, formatNumber, frenzyOrbCountForRarity } from '../../shared/game.js';
 import type { RollResponse } from '../../shared/game.js';
@@ -198,6 +198,44 @@ type StatSpyData = {
   };
 };
 
+type AdminConsoleTool = { id: string; label: string; target: string };
+type AdminConsoleSection = { id: string; label: string; target: string; tools: AdminConsoleTool[] };
+
+const ADMIN_CONSOLE_SECTIONS: AdminConsoleSection[] = [
+  { id: 'monitoring', label: 'Monitoring', target: 'io-server-monitor', tools: [
+    { id: 'server-monitor', label: 'Server Monitor', target: 'io-server-monitor' },
+  ] },
+  { id: 'impressions', label: 'Impressions', target: 'io-impressions-tab', tools: [
+    { id: 'impressions-dashboard', label: 'Impressions Dashboard', target: 'io-impressions-tab' },
+  ] },
+  { id: 'diagnostics', label: 'Diagnostics', target: 'io-diagnostics-group', tools: [
+    { id: 'e2e-test', label: 'End-to-End Test', target: 'io-tool-e2e-test' },
+    { id: 'ccu-load', label: 'CCU & Load Testing', target: 'io-tool-ccu-load' },
+    { id: 'payment-logs', label: 'Payment Logs', target: 'io-tool-payment-logs' },
+  ] },
+  { id: 'simulation', label: 'Simulation', target: 'io-simulation-group', tools: [
+    { id: 'global-boosters', label: 'Global Booster Operations', target: 'io-tool-global-boosters' },
+    { id: 'save-logs', label: 'Save & Booster Logs', target: 'io-tool-save-booster-logs' },
+    { id: 'notifications-presets', label: 'Notifications & Test Presets', target: 'io-tool-notifications-presets' },
+    { id: 'roll-resources', label: 'Roll & Resource Tools', target: 'io-tool-roll-resources' },
+    { id: 'state-overrides', label: 'Fine State Control', target: 'io-tool-state-overrides' },
+    { id: 'community-events', label: 'Frenzy, Popup & Community Events', target: 'io-tool-community-events' },
+  ] },
+  { id: 'players', label: 'Players', target: 'io-moderation-group', tools: [
+    { id: 'leaderboard-diagnostics', label: 'Leaderboard Diagnostics', target: 'io-tool-leaderboard-diagnostics' },
+    { id: 'player-moderation', label: 'Game Moderation', target: 'io-tool-player-moderation' },
+    { id: 'player-list', label: 'Player List', target: 'io-tool-player-list' },
+    { id: 'stat-spy', label: 'Stat Spy', target: 'io-tool-stat-spy' },
+    { id: 'player-spy', label: 'Player Spy', target: 'io-tool-player-spy' },
+    { id: 'guild-chat', label: 'Guild Administration & Chat', target: 'io-tool-guild-chat' },
+  ] },
+  { id: 'combat', label: 'Combat', target: 'io-combat-tools', tools: [
+    { id: 'combat-tools', label: 'Combat Admin Tools', target: 'io-combat-tools' },
+  ] },
+  { id: 'destructive', label: 'Destructive Testing', target: 'io-destructive-group', tools: [
+    { id: 'destructive-tools', label: 'Destructive Testing', target: 'io-destructive-group' },
+  ] },
+];
 const buttonBase =
   'rounded-xl border text-xs font-bold transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed';
 const panelBase = 'bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3';
@@ -458,6 +496,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [message, setMessage] = useState('');
   const [contextInfo, setContextInfo] = useState<AdminContext | null>(null);
   const [globalChatRegistrationBusy, setGlobalChatRegistrationBusy] = useState(false);
+  const [activeAdminSection, setActiveAdminSection] = useState('monitoring');
+  const [activeAdminTool, setActiveAdminTool] = useState('server-monitor');
+  const [adminToolSearch, setAdminToolSearch] = useState('');
 
   const [targetUser, setTargetUser] = useState('');
   const [pendingWipe, setPendingWipe] = useState<{ action: 'wipe-game' | 'wipe-and-ban' | 'wipe-and-unban'; username: string } | null>(null);
@@ -719,6 +760,59 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     } finally {
       setCcuLoading(false);
     }
+  };
+
+  const matchesAdminSearch = (section: AdminConsoleSection, tool: AdminConsoleTool) => {
+    const query = adminToolSearch.trim().toLocaleLowerCase();
+    return !query || section.label.toLocaleLowerCase().includes(query) || tool.label.toLocaleLowerCase().includes(query);
+  };
+
+  const visibleAdminSections = ADMIN_CONSOLE_SECTIONS
+    .map(section => ({ ...section, tools: section.tools.filter(tool => matchesAdminSearch(section, tool)) }))
+    .filter(section => section.tools.length > 0);
+
+  const selectAdminTool = (sectionId: string, tool: AdminConsoleTool) => {
+    setActiveAdminSection(sectionId);
+    setActiveAdminTool(tool.id);
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(tool.target);
+      let parent: HTMLElement | null = target;
+      while (parent) {
+        if (parent instanceof HTMLDetailsElement) parent.open = true;
+        parent = parent.parentElement;
+      }
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  const renderAdminToolBar = (sectionId: string) => {
+    const section = ADMIN_CONSOLE_SECTIONS.find(item => item.id === sectionId);
+    if (!section) return null;
+    const tools = section.tools.filter(tool => matchesAdminSearch(section, tool));
+    return (
+      <div className="my-3 rounded-xl border border-slate-800 bg-black/20 p-2 space-y-2">
+        <div className="text-[9px] font-black uppercase tracking-wider text-slate-500">{section.label} tools</div>
+        <div className="flex flex-wrap gap-1.5">
+          {tools.map(tool => {
+            const selected = activeAdminSection === section.id && activeAdminTool === tool.id;
+            return (
+              <button
+                key={tool.id}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => selectAdminTool(section.id, tool)}
+                className={buttonBase + ' px-2.5 py-1.5 ' + (selected
+                  ? 'bg-emerald-500/15 border-emerald-400/50 text-emerald-200 ring-1 ring-emerald-400/15'
+                  : 'bg-slate-900 border-slate-700 hover:border-emerald-500/40 hover:bg-slate-800 text-slate-300')}
+              >
+                {tool.label}
+              </button>
+            );
+          })}
+          {tools.length === 0 && <span className="text-[10px] text-slate-600">No matching tools.</span>}
+        </div>
+      </div>
+    );
   };
 
   const loadLeaderboardDiagnostics = async () => {
@@ -3933,29 +4027,41 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
         </div>
 
-        <nav aria-label="Admin console sections" className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">
-          <span className="mr-1 text-[9px] font-black uppercase tracking-wider text-slate-600">Jump to</span>
-          {[
-            ['Monitoring', 'io-server-monitor'],
-            ['Impressions', 'io-impressions-tab'],
-            ['Diagnostics', 'io-diagnostics-group'],
-            ['Simulation', 'io-simulation-group'],
-            ['Players', 'io-moderation-group'],
-            ['Combat', 'io-combat-tools'],
-            ['Destructive', 'io-destructive-group'],
-          ].map(([label, id]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-              className={buttonBase + ' bg-slate-950/80 border-slate-700 hover:border-emerald-500/40 hover:bg-slate-800 text-slate-300 px-2.5 py-1.5'}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
+        <div className="space-y-2 border-b border-slate-800 pb-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <input
+              type="search"
+              value={adminToolSearch}
+              onChange={event => setAdminToolSearch(event.target.value)}
+              aria-label="Search admin tools"
+              placeholder="Search tools by name or section…" 
+              className="w-full rounded-xl border border-slate-700 bg-slate-950/80 py-2.5 pl-9 pr-3 text-xs text-white placeholder:text-slate-600 focus:border-emerald-500/60 focus:outline-none"
+            />
+          </div>
+          <nav aria-label="Admin console sections" className="flex flex-wrap items-center gap-2">
+            {visibleAdminSections.map(section => (
+              <button
+                key={section.id}
+                type="button"
+                aria-pressed={activeAdminSection === section.id}
+                onClick={() => selectAdminTool(section.id, section.tools[0])}
+                className={buttonBase + ' px-2.5 py-1.5 ' + (activeAdminSection === section.id
+                  ? 'bg-emerald-500/15 border-emerald-400/50 text-emerald-200'
+                  : 'bg-slate-950/80 border-slate-700 hover:border-emerald-500/40 hover:bg-slate-800 text-slate-300')}
+              >
+                {section.label}
+                <span className="ml-1.5 text-[9px] opacity-60">{section.tools.length}</span>
+              </button>
+            ))}
+          </nav>
+          <div className="text-[9px] text-slate-600">
+            {visibleAdminSections.reduce((count, section) => count + section.tools.length, 0)} tools across {visibleAdminSections.length} sections
+          </div>
+        </div>
 
-        <section id="io-server-monitor" className={panelBase + ' border border-emerald-500/30 scroll-mt-4'}>
+        <section id="io-server-monitor" hidden={activeAdminSection !== 'monitoring'} className={panelBase + ' border border-emerald-500/30 scroll-mt-4'}>
+          {renderAdminToolBar('monitoring')}
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-300">
@@ -4145,7 +4251,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
         </section>
 
-        <section id="io-impressions-tab" className={panelBase + ' border border-cyan-500/30 scroll-mt-4'}>
+        <section id="io-impressions-tab" hidden={activeAdminSection !== 'impressions'} className={panelBase + ' border border-cyan-500/30 scroll-mt-4'}>
+          {renderAdminToolBar('impressions')}
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-200">
@@ -4463,12 +4570,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </section>
         )}
 
-        <details id="io-diagnostics-group" className="scroll-mt-4 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
+        <details id="io-diagnostics-group" open={activeAdminSection === 'diagnostics'} hidden={activeAdminSection !== 'diagnostics'} className="scroll-mt-4 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-slate-300">
             <span>Diagnostics & Analytics</span><span className="text-[10px] text-slate-600">Expand</span>
           </summary>
+          {renderAdminToolBar('diagnostics')}
           <div className="mt-3 space-y-3">
-        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+        <details id="io-tool-e2e-test" hidden={activeAdminTool !== 'e2e-test'} open={activeAdminTool === 'e2e-test'} className="rounded-xl border border-slate-800 bg-black/10 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
             <span>Full End-to-End Test · rewrites admin save</span><span className="text-slate-600">Expand</span>
           </summary>
@@ -4556,7 +4664,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         </section>
           </div>
         </details>
-        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+        <details id="io-tool-ccu-load" hidden={activeAdminTool !== 'ccu-load'} open={activeAdminTool === 'ccu-load'} className="rounded-xl border border-slate-800 bg-black/10 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
             <span>CCU & Load Testing</span><span className="text-slate-600">Expand</span>
           </summary>
@@ -4664,7 +4772,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
         </details>
 
-        <section className={panelBase}>
+        <section id="io-tool-payment-logs" hidden={activeAdminTool !== 'payment-logs'} className={panelBase}>
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-300">
@@ -4714,13 +4822,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         </div>
         </details>
 
-        <details id="io-simulation-group" className="scroll-mt-4 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
+        <details id="io-simulation-group" open={activeAdminSection === 'simulation'} hidden={activeAdminSection !== 'simulation'} className="scroll-mt-4 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-slate-300">
             <span>Controls & Simulation</span><span className="text-[10px] text-slate-600">Expand</span>
           </summary>
+          {renderAdminToolBar('simulation')}
           <div className="mt-3 space-y-3">
 
-        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+        <details id="io-tool-global-boosters" hidden={activeAdminTool !== 'global-boosters'} open={activeAdminTool === 'global-boosters'} className="rounded-xl border border-slate-800 bg-black/10 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
             <span>Global Booster Operations</span><span className="text-slate-600">Expand</span>
           </summary>
@@ -4806,7 +4915,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
         </details>
 
-        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+        <details id="io-tool-save-booster-logs" hidden={activeAdminTool !== 'save-logs'} open={activeAdminTool === 'save-logs'} className="rounded-xl border border-slate-800 bg-black/10 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
             <span>Save & Booster Logs</span><span className="text-slate-600">Expand</span>
           </summary>
@@ -4934,7 +5043,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
         </details>
 
-        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+        <details id="io-tool-notifications-presets" hidden={activeAdminTool !== 'notifications-presets'} open={activeAdminTool === 'notifications-presets'} className="rounded-xl border border-slate-800 bg-black/10 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
             <span>Notifications & Test Presets</span><span className="text-slate-600">Expand</span>
           </summary>
@@ -5032,7 +5141,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
         </details>
 
-        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+        <details id="io-tool-roll-resources" hidden={activeAdminTool !== 'roll-resources'} open={activeAdminTool === 'roll-resources'} className="rounded-xl border border-slate-800 bg-black/10 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
             <span>Roll & Resource Tools</span><span className="text-slate-600">Expand</span>
           </summary>
@@ -5085,7 +5194,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
         </details>
 
-        <section className={panelBase}>
+        <section id="io-tool-state-overrides" hidden={activeAdminTool !== 'state-overrides'} className={panelBase}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-purple-300">
               <Database className="w-4 h-4" /> Fine State Control
@@ -5124,7 +5233,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
         </section>
 
-        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+        <details id="io-tool-community-events" hidden={activeAdminTool !== 'community-events'} open={activeAdminTool === 'community-events'} className="rounded-xl border border-slate-800 bg-black/10 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
             <span>Frenzy, Popup & Community Events</span><span className="text-slate-600">Expand</span>
           </summary>
@@ -5258,13 +5367,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         </div>
         </details>
 
-        <details id="io-moderation-group" className="scroll-mt-4 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
+        <details id="io-moderation-group" open={activeAdminSection === 'players'} hidden={activeAdminSection !== 'players'} className="scroll-mt-4 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-slate-300">
             <span>Players & Moderation</span><span className="text-[10px] text-slate-600">Expand</span>
           </summary>
+          {renderAdminToolBar('players')}
           <div className="mt-3 space-y-3">
 
-        <section className={`${panelBase} border border-amber-500/30`}>
+        <section id="io-tool-leaderboard-diagnostics" hidden={activeAdminTool !== 'leaderboard-diagnostics'} className={`${panelBase} border border-amber-500/30`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-300">
@@ -5353,7 +5463,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           )}
         </section>
 
-        <section className={`${panelBase} border border-rose-500/30`}>
+        <section id="io-tool-player-moderation" hidden={activeAdminTool !== 'player-moderation'} className={`${panelBase} border border-rose-500/30`}>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-300">
             <Shield className="w-4 h-4" /> Game Moderation
           </div>
@@ -5544,12 +5654,12 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           )}
         </section>
 
-        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+        <details hidden={!(['player-list', 'stat-spy', 'player-spy'].includes(activeAdminTool))} open={(['player-list', 'stat-spy', 'player-spy'].includes(activeAdminTool))} className="rounded-xl border border-slate-800 bg-black/10 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
             <span>Player Lookup & Analysis</span><span className="text-slate-600">Expand</span>
           </summary>
           <div className="mt-3 space-y-3">
-        <section className={`${panelBase} border border-cyan-500/30`}>
+        <section id="io-tool-player-list" hidden={activeAdminTool !== 'player-list'} className={`${panelBase} border border-cyan-500/30`}>
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-300">
               <Users className="w-4 h-4" /> Player List
@@ -5605,7 +5715,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           )}
         </section>
 
-        <section className={panelBase + ' border border-cyan-500/30'}>
+        <section id="io-tool-stat-spy" hidden={activeAdminTool !== 'stat-spy'} className={panelBase + ' border border-cyan-500/30'}>
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-300">
@@ -5728,7 +5838,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           )}
         </section>
 
-        <section className={panelBase + ' border border-fuchsia-500/30'}>
+        <section id="io-tool-player-spy" hidden={activeAdminTool !== 'player-spy'} className={panelBase + ' border border-fuchsia-500/30'}>
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fuchsia-300">
@@ -5808,7 +5918,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
         </details>
 
-        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+        <details id="io-tool-guild-chat" hidden={activeAdminTool !== 'guild-chat'} open={activeAdminTool === 'guild-chat'} className="rounded-xl border border-slate-800 bg-black/10 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
             <span>Guild Administration & Chat</span><span className="text-slate-600">Expand</span>
           </summary>
@@ -6023,19 +6133,23 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                   </div>
         </details>
 
-        <details id="io-combat-tools" className="scroll-mt-4 rounded-2xl border border-amber-500/30 bg-slate-950/50 p-3">
+        <details id="io-combat-tools" open={activeAdminSection === 'combat'} hidden={activeAdminSection !== 'combat'} className="scroll-mt-4 rounded-2xl border border-amber-500/30 bg-slate-950/50 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-amber-200">
             <span>Combat Admin Tools</span><span className="text-[10px] text-slate-600">Expand</span>
           </summary>
+          {renderAdminToolBar('combat')}
+          {renderAdminToolBar('combat')}
           <div className="mt-3">
             <CombatAdminTools />
           </div>
         </details>
 
-        <details id="io-destructive-group" className="scroll-mt-4 rounded-2xl border border-rose-500/40 bg-rose-950/10 p-3">
+        <details id="io-destructive-group" open={activeAdminSection === 'destructive'} hidden={activeAdminSection !== 'destructive'} className="scroll-mt-4 rounded-2xl border border-rose-500/40 bg-rose-950/10 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-rose-300">
             <span>Destructive Testing</span><span className="text-[10px] text-rose-400/60">Expand</span>
           </summary>
+          {renderAdminToolBar('destructive')}
+          {renderAdminToolBar('destructive')}
           <div className="mt-3 space-y-3">
         <section className="bg-rose-950/20 border border-rose-500/40 rounded-2xl p-4 space-y-2">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-300">
