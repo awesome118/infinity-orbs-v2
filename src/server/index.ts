@@ -2,6 +2,7 @@ import { context, createServer, getServerPort, redis, reddit } from '@devvit/web
 import { createApp } from './app.js';
 import { configureDevvitRuntime } from './devvit-mock.js';
 import { mGetInChunks } from './redis-batch.js';
+import { instrumentRedisClient } from './server-monitor.js';
 
 // Devvit Redis MGet can exceed its RPC response-size cap when the subreddit
 // has hundreds of player saves. Proxy only this method; all other Redis methods
@@ -16,7 +17,7 @@ const boundedRedis = new Proxy(redis, {
   },
 });
 
-configureDevvitRuntime({ redis: boundedRedis, context, reddit });
+configureDevvitRuntime({ redis: instrumentRedisClient(boundedRedis), context, reddit });
 
 const app = createApp();
 const server = createServer(app);
