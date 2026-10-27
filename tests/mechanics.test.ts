@@ -577,12 +577,13 @@ test('non-finite roll Shard requests grant zero while preserving reporting telem
   assert.equal(state.lifetimeShards, 20);
 });
 
-test('Orb Frenzy batch size follows logarithmic rarity scaling', () => {
+test('Orb Frenzy batch size follows the strengthened logarithmic rarity scaling', () => {
   assert.equal(frenzyOrbCountForRarity(1), 1);
   assert.equal(frenzyOrbCountForRarity(2), Math.floor(Math.log(2) / Math.log(FRENZY_LOG_BASE)));
   assert.ok(frenzyOrbCountForRarity(1_000) > frenzyOrbCountForRarity(100));
   assert.ok(frenzyOrbCountForRarity(1_000_000) < 1_000_000);
-  assert.ok(frenzyOrbCountForRarity(1e15) < 1_000);
+  assert.equal(frenzyOrbCountForRarity(1e15), Math.floor(Math.log(1e15) / Math.log(FRENZY_LOG_BASE)));
+  assert.ok(frenzyOrbCountForRarity(1e15) > 1_000);
 });
 
 test('Codex Devotion reports the best consecutive rarity chain', () => {
@@ -620,11 +621,12 @@ test('Astral Reserve adds exactly 2% Luck per level', () => {
   assert.equal(luckMultiplier(state), 1.10);
 });
 
-test('Frenzy Volley counts each additional multiball at 20% efficiency', () => {
+test('Frenzy Volley adds 20% on top of the full Multiball payout', () => {
   const base = frenzyOrbCountForRarity(100);
   assert.equal(frenzyClaimCountForRarity(100, 1, 0), base);
-  assert.equal(frenzyClaimCountForRarity(100, 2, 1), Math.floor(base * 1.20));
-  assert.equal(frenzyClaimCountForRarity(100, 3, 1), Math.floor(base * 1.40));
+  assert.equal(frenzyClaimCountForRarity(100, 2, 0), base * 2);
+  assert.equal(frenzyClaimCountForRarity(100, 2, 1), Math.floor(base * 2 * 1.20));
+  assert.equal(frenzyClaimCountForRarity(100, 3, 1), Math.floor(base * 3 * 1.20));
 });
 
 
