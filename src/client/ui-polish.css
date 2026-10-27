@@ -491,3 +491,153 @@
     transition: none !important;
   }
 }
+
+/* Second-pass player UX: legibility, touch targets, and clearer progress. */
+.io-ui .app-main :is(p, li) {
+  line-height: 1.55;
+}
+
+.io-ui .app-main :is(h2, h3, h4) {
+  text-wrap: balance;
+  line-height: 1.2;
+}
+
+.io-ui .app-main :is(button, select) {
+  min-height: 36px;
+}
+
+.io-ui .app-main button[aria-pressed="true"] {
+  filter: brightness(1.08);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .08);
+}
+
+.io-ui .app-main button:disabled {
+  cursor: not-allowed;
+  filter: saturate(.78);
+}
+
+.io-ui .app-main input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #74ddca;
+}
+
+.io-ui .app-main [role="progressbar"] {
+  isolation: isolate;
+  border-radius: 999px;
+}
+
+.io-ui .app-main [role="alert"],
+.io-ui .app-main [role="status"] {
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.io-ui .io-tutorial-guide {
+  width: min(100% - 24px, 760px);
+  margin-inline: auto;
+}
+
+.io-ui .io-tutorial-guide h2 {
+  max-width: 26ch;
+  line-height: 1.12;
+  letter-spacing: -.025em;
+  text-wrap: balance;
+}
+
+.io-ui .io-tutorial-guide p {
+  max-width: 68ch;
+  line-height: 1.65;
+}
+
+.io-ui .io-tutorial-primary {
+  min-height: 42px;
+  padding-inline: 16px;
+}
+
+.io-ui .nav-shell {
+  scroll-padding-inline: 12px;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.io-ui .nav-tab {
+  flex-shrink: 0;
+  min-height: 40px;
+}
+
+.io-ui .roll-action-hint {
+  max-width: 42rem;
+  padding-inline: 8px;
+  color: #b9c9cc;
+  font-size: 12px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.io-ui .roll-reward-summary {
+  width: min(100%, 44rem);
+  font-variant-numeric: tabular-nums;
+}
+
+.io-ui .field-empty {
+  max-width: 34ch;
+  color: #b9c5c8;
+  line-height: 1.55;
+}
+
+.io-ui .field-label {
+  letter-spacing: .06em;
+}
+
+.io-ui .app-main :is(input, select, textarea):focus-visible {
+  outline: 2px solid rgba(116, 221, 202, .9);
+  outline-offset: 2px;
+}
+
+.io-ui .app-main :is(button, select, input, textarea) {
+  scroll-margin-block: 96px;
+}
+
+.io-ui .app-main button:not(:disabled):active {
+  filter: brightness(.97);
+}
+
+@media (max-width: 680px) {
+  .io-ui .app-main {
+    padding-inline: 12px;
+  }
+
+  .io-ui .nav-tab {
+    min-height: 42px;
+    padding-inline: 11px;
+  }
+
+  .io-ui .header-resource-row {
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .io-ui .io-tutorial-guide {
+    width: 100%;
+  }
+
+  .io-ui .roll-action-hint {
+    font-size: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .io-ui .io-tutorial-guide,
+  .io-ui .reward-burst,
+  .io-ui .latest-orb-mark.is-new-discovery {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .io-ui .app-main button:not(:disabled):active {
+    transform: none !important;
+  }
+}
+
