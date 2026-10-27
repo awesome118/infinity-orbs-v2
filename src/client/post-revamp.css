@@ -1091,3 +1091,77 @@
   }
   .io-frenzy-payout-number { filter: none; }
 }
+
+
+/* Inline Frenzy posts have a fixed-height viewport. Keep the flashy payout compact
+   there so the primary action stays inside the card and remains easy to tap. */
+#root.io-inline-post .io-frenzy-card {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+#root.io-inline-post .io-frenzy-payout {
+  margin: 7px auto 5px;
+  padding: 7px 9px 6px;
+  border-radius: 12px;
+  animation: none;
+}
+#root.io-inline-post .io-frenzy-payout::after {
+  inset: 3px;
+  border-radius: 8px;
+}
+#root.io-inline-post .io-frenzy-payout-heading {
+  gap: 4px;
+  font-size: 7px;
+  letter-spacing: .07em;
+}
+#root.io-inline-post .io-frenzy-payout-heading > span:first-child { gap: 3px; }
+#root.io-inline-post .io-frenzy-payout-live {
+  padding: 2px 4px;
+  font-size: 6px;
+  letter-spacing: .04em;
+}
+#root.io-inline-post .io-frenzy-payout-total {
+  gap: 5px;
+  margin: 3px 0 1px;
+}
+#root.io-inline-post .io-frenzy-payout-number {
+  font-size: clamp(25px, 5vw, 38px);
+  line-height: .98;
+  animation: none;
+}
+#root.io-inline-post .io-frenzy-payout-unit {
+  font-size: 8px;
+  letter-spacing: .07em;
+}
+#root.io-inline-post .io-frenzy-payout-details {
+  gap: 5px;
+  margin-top: 3px;
+}
+#root.io-inline-post .io-frenzy-payout-base { font-size: 7px; }
+#root.io-inline-post .io-frenzy-payout-multiball {
+  gap: 3px;
+  padding: 3px 5px;
+  font-size: 7px;
+}
+#root.io-inline-post .io-frenzy-payout-note { display: none; }
+#root.io-inline-post .io-frenzy-button.io-post-cta {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  margin: 7px auto 0;
+  padding: 0 10px;
+  position: relative;
+  z-index: 5;
+  white-space: normal;
+  line-height: 1.25;
+  text-align: center;
+}
+@media (max-width: 680px) {
+  #root.io-inline-post .io-frenzy-payout { margin-top: 5px; padding: 6px 7px; }
+  #root.io-inline-post .io-frenzy-payout-number { font-size: clamp(23px, 6vw, 32px); }
+  #root.io-inline-post .io-frenzy-button.io-post-cta { min-height: 42px; margin-top: 5px; }
+}
