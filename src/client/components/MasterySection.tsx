@@ -242,6 +242,7 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
             return (
               <div
                 key={skillId}
+                role="group"
                 aria-label={`${skill.name}, level ${currentLevel} of ${skill.maxLevel}`}
                 className={`bg-slate-950/70 border rounded-2xl p-5 flex flex-col justify-between space-y-4 transition-all duration-300 ${
                   isHighlighted
