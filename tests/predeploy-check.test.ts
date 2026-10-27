@@ -331,13 +331,14 @@ test('deployment workflow is manual, main-only, and installs only to the develop
 });
 
 
-test('review submission workflow never installs to a subreddit', () => {
+test('review workflow publishes a version before installing only to development', () => {
   const workflow = readFileSync(resolve(process.cwd(), '.github/workflows/release.yml'), 'utf8');
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /confirm_publish:[\s\S]*?default:\s*false/);
   assert.match(workflow, /test "\$GITHUB_REF" = "refs\/heads\/main"/);
-  assert.match(workflow, /^\s*npx devvit publish --version\b/m);
-  assert.doesNotMatch(workflow, /^\s*npx devvit install\b/m);
+  assert.ok(workflow.includes('npx devvit publish --version'));
+  assert.ok(workflow.includes('npx devvit install r/infinity_orbs_dev'));
+  assert.equal(workflow.includes('npx devvit install r/infinityorbs'), false);
 });
 
 test('production workflow requires explicit post-approval confirmation and only installs production', () => {

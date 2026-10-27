@@ -1,11 +1,11 @@
 name: Submit Infinity Orbs for Reddit Review
 
 on:
-  # v2.1.0 review submission runs only after its tagged dev deployment finishes successfully.
-  workflow_run:
-    workflows: ["Deploy Devvit"]
-    types: [completed]
+  # v2.1.1 is published before its dev install so the immutable version is both review-ready and playable.
+  push:
     branches: [main]
+    paths:
+      - .github/workflows/release.yml
 
   workflow_dispatch:
     inputs:
@@ -14,14 +14,14 @@ on:
         required: true
         type: string
       confirm_publish:
-        description: "Explicitly authorize submission of this version for Reddit review only. This workflow does not install to any subreddit."
+        description: "Explicitly authorize submission for Reddit review and installation to r/infinity_orbs_dev only."
         required: true
         type: boolean
         default: false
 
 jobs:
   release:
-    if: ${{ inputs.confirm_publish || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && contains(github.event.workflow_run.head_commit.message, '[submit-review:2.1.0]')) }}
+    if: ${{ inputs.confirm_publish || (github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.1.1]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -76,4 +76,12 @@ jobs:
           REQUESTED_VERSION="${REQUESTED_VERSION:-$VERSION}"
           test "$VERSION" = "$REQUESTED_VERSION"
           npx devvit publish --version "$VERSION"
+      - name: Install published candidate to development subreddit only (r/infinity_orbs_dev)
+        env:
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          npx devvit install r/infinity_orbs_dev "infinity-orbs@$VERSION"
+          npx devvit list installs r/infinity_orbs_dev
 
