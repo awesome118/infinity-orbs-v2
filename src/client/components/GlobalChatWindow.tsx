@@ -342,7 +342,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           <MessageCircle className="w-4 h-4 text-indigo-300" />
           <div>
             <h3 className="text-sm font-black text-white">Global Chat</h3>
-            <p className="text-[9px] text-slate-500">Messages are public Reddit comments on the main Game post. When you send one, Reddit submits it as you. Comments made directly on that post also appear here.</p>
+            <p className="text-[9px] text-slate-500">Messages are public Reddit comments on the main Game post, submitted as your account. Comments posted there also appear here.</p>
           </div>
         </div>
         <button
@@ -381,18 +381,18 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           shouldFollowMessagesRef.current =
             element.scrollHeight - element.scrollTop - element.clientHeight < 48;
         }}
-        className="h-72 overflow-y-auto px-3 py-3 space-y-2"
+        className="h-72 max-h-[45vh] min-h-40 overflow-y-auto px-3 py-3 space-y-2"
       >
         {messages.length === 0 ? (
           <div className="flex h-full items-center justify-center text-center text-xs text-slate-600">
             <div>
               <MessageCircle className="mx-auto mb-2 h-6 w-6" />
-              No messages yet.
+              No messages yet. Send a message to start the conversation.
             </div>
           </div>
         ) : (
           messages.map(message => (
-            <div key={message.id} className="rounded-xl border border-slate-800/80 bg-slate-900/70 px-3 py-2">
+            <article key={message.id} aria-label={`Message from ${message.username}`} className="rounded-xl border border-slate-800/80 bg-slate-900/70 px-3 py-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-1.5 min-w-0">
                   <span className={(message.isAdmin === true)
@@ -406,7 +406,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
                     <span className="rounded border border-red-500/40 bg-red-500/10 px-1 py-0.5 text-[8px] font-black tracking-wider text-red-300">ADMIN</span>
                   )}
                 </span>
-                <span className="text-[9px] text-slate-600">
+                <span className="text-[9px] text-slate-600" aria-label={`Sent at ${new Date(message.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`}>
                   {new Date(message.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                 </span>
               </div>
@@ -428,7 +428,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
                   <span>{reportedIds.has(message.id) ? 'Sent' : reportingId === message.id ? 'Sending…' : 'Report'}</span>
                 </button>
               </div>
-            </div>
+            </article>
           ))
         )}
         <div ref={endRef} />
@@ -458,12 +458,12 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
             aria-busy={sending}
             disabled={chatAvailable !== true || sending || !input.trim()}
             className="rounded-xl bg-indigo-600 px-3 py-2.5 text-white transition-all hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600"
-            title="Post public comment"
+            title={sending ? "Sending public comment…" : "Post public comment"}
           >
             {sending ? <X className="w-4 h-4 animate-pulse" /> : <Send className="w-4 h-4" />}
           </button>
         </div>
-        <div role="status" aria-live="polite" className="mt-1 text-right text-[9px] text-slate-600">{input.length} / 200 characters</div>
+        <div role="status" aria-live="polite" aria-label={`${input.length} of 200 characters used`} className="mt-1 text-right text-[9px] text-slate-600">{input.length} / 200 characters</div>
       </form>
     </section>
   );
