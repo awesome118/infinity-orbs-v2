@@ -138,7 +138,8 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Live player count / social luck */}
           <div
             className="hidden sm:flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-2.5 py-1.5 text-[10px] font-black text-indigo-200"
-            title="Players currently active in this Reddit game installation. More players give everyone a logarithmic Luck bonus."
+            aria-label={`Online players: ${fmt(onlineCount)}; community Luck multiplier ${onlinePlayerLuckMultiplier(onlineCount).toFixed(2)} times.`}
+            title="Players currently active in this game installation. More players increase everyone’s Luck bonus."
           >
             <Users className="w-3.5 h-3.5 text-indigo-300" />
             <span>{fmt(onlineCount)} Online</span>
@@ -146,10 +147,10 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Currencies */}
-          <div className="header-resource-row resource-chip flex items-center gap-2 bg-slate-950/70 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-semibold">
+          <div role="group" aria-label={combatMode ? "Combat resources" : "Player resources"} className="header-resource-row resource-chip flex items-center gap-2 bg-slate-950/70 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-semibold">
             {/* Core-game Coins stay hidden while in Combat. */}
             {!combatMode && <>
-              <div className="flex items-center gap-1 text-amber-400" title="Coins (Coins = Orb Rarity)">
+              <div className="flex items-center gap-1 text-amber-400" aria-label={`${fmt(state.coins)} Coins`} title="Coins: spend them on upgrades to improve your rolls.">
                 <Coins className="w-3.5 h-3.5" />
                 <span>{fmt(state.coins)}</span>
               </div>
@@ -166,7 +167,7 @@ export const Header: React.FC<HeaderProps> = ({
             </>}
 
             {/* Shards */}
-            <div className="flex items-center gap-1 text-cyan-400" title="Shards">
+            <div className="flex items-center gap-1 text-cyan-400" aria-label={`${formatShardAmount(state.shards ?? 0)} Shards`} title="Shards: used for special tools and boosters.">
               <Gem className="w-3.5 h-3.5" />
               <span>{formatShardAmount(state.shards ?? 0)}</span>
             </div>
@@ -175,7 +176,7 @@ export const Header: React.FC<HeaderProps> = ({
             {(state.cosmicDust > 0 || state.prestigeCount > 0) && (
               <>
                 <div className="w-[1px] h-3.5 bg-slate-800" />
-                <div className="flex items-center gap-1 text-fuchsia-400" title="Cosmic Dust">
+                <div className="flex items-center gap-1 text-fuchsia-400" aria-label={`${fmt(state.cosmicDust)} Cosmic Dust`} title="Cosmic Dust: used for permanent Prestige upgrades.">
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>{fmt(state.cosmicDust)}</span>
                 </div>
@@ -190,10 +191,10 @@ export const Header: React.FC<HeaderProps> = ({
               aria-label={`Claim ${fmt(state.offlineRolls)} offline rolls`}
               onClick={onClaimOffline}
               className="offline-button flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3 py-1.5 rounded-xl shadow-md transition-all"
-              title="Claim rolls accumulated while away"
+              title="Claim the rolls accumulated while you were away. They are added to your Free Rolls."
             >
               <Zap className="w-3.5 h-3.5" />
-              <span>+{fmt(state.offlineRolls)} Offline</span>
+              <span>Claim +{fmt(state.offlineRolls)} Rolls</span>
             </button>
           )}
 
