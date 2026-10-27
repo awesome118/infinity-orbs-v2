@@ -1,7 +1,7 @@
 name: Deploy Devvit
 
 # Normally manual. The version-specific push marker is reserved for an explicitly requested deployment.
-# Explicit deployment request: ship the 2.0.20 UI/accessibility pass to r/infinity_orbs_dev.
+# Explicit deployment request: ship 2.0.20 after aligning regression checks with the current UI to r/infinity_orbs_dev.
 # Release includes standard RNG payout batches, exact advertised roll counts, and high-visibility Frenzy payout UI.
 # Corrected preflight: Frenzy mechanics assertions now match the 1.004 curve and full Multiball plus Frenzy Volley bonus.
 # Release is pinned to the corrected package-lock.json on main.
