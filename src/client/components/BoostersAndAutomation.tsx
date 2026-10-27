@@ -9,6 +9,7 @@ import {
   Star,
   TrendingUp,
   Users,
+  Gem,
   Zap,
 } from 'lucide-react';
 import type {
@@ -230,7 +231,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
         <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
           <div>
             <span className="font-black text-cyan-300">Roll-earned Shards today: {formatShardAmount(freeShards)}</span>
-            <span className="text-slate-500 ml-2">No daily cap. Shard rewards are whole numbers; proc chance has been reduced.</span>
+            <span className="text-slate-500 ml-2">Roll-earned Shards count toward the daily cap. Free reward Shards bypass it.</span>
           </div>
           <div className="text-slate-400">
             {formatShardAmount(walletShards)} Shards available
@@ -391,8 +392,8 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                       <p className="text-[11px] text-slate-400 mt-0.5">{info.desc}</p>
                     </div>
                   </div>
-                  <span className="text-[10px] font-black text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 rounded-full px-2 py-1">
-                    {info.costShards} 💎
+                  <span className="inline-flex items-center gap-1 text-[10px] font-black text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 rounded-full px-2 py-1">
+                    {info.costShards} <Gem className="h-3 w-3" aria-hidden="true" />
                   </span>
                 </div>
 
@@ -483,10 +484,12 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
       </section>
 
       <section className="space-y-3">
-        <div className="flex items-center gap-2 px-1">
-          <Bot className="w-4 h-4 text-cyan-300" />
-          <h3 className="text-sm font-black text-white uppercase tracking-wide">Permanent Automation</h3>
-          <p className="text-xs text-slate-500">One-time Shard purchases. Once unlocked, these run automatically without an expiry timer.</p>
+        <div className="flex items-start gap-2 px-1">
+          <Bot className="w-4 h-4 text-cyan-300 shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <h3 className="text-sm font-black text-white uppercase tracking-wide">Permanent Automation</h3>
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">One-time Shard purchases. Once unlocked, these run automatically without an expiry timer.</p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -516,8 +519,8 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
                       UNLOCKED
                     </span>
                   ) : (
-                    <span className="text-[10px] font-black text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 rounded-full px-2 py-1">
-                      {info.costShards} 💎
+                    <span className="inline-flex items-center gap-1 text-[10px] font-black text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 rounded-full px-2 py-1">
+                      {info.costShards} <Gem className="h-3 w-3" aria-hidden="true" />
                     </span>
                   )}
                 </div>
