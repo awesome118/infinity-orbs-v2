@@ -1027,7 +1027,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           </div>
           {displayOrb ? (
             <div className="latest-orb">
-              <div className={`latest-orb-mark ${displayOrb?.isNew ? 'is-new-discovery' : ''}`}><Award className="h-5 w-5" /></div>
+              <div key={`${displayOrb.rarity}:${displayOrb.isInfinity ? 1 : 0}`} className={`latest-orb-mark ${displayOrb?.isNew ? 'is-new-discovery' : ''}`}><Award className="h-5 w-5" /></div>
               <div className="min-w-0">
                 <div className="latest-orb-name">{displayOrb.name}</div>
                 <div className="latest-orb-rarity">1 / {formatRarity(displayOrb.rarity, displayOrb.isInfinity)}</div>
