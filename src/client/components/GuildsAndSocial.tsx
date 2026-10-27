@@ -344,6 +344,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                   </div>
 
                   <button
+                    type="button"
                     onClick={() => {
                       sound.playClick();
                       void onLeaveGuild();
@@ -389,7 +390,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                             </span>
                           </div>
                           <p className="text-xs font-bold text-white mt-2">{task.label}</p>
-                          <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800 mt-2" role="progressbar" aria-label={task.label+' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)}>
+                          <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800 mt-2" role="progressbar" aria-label={task.label+' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)} aria-valuetext={fmt(progress)+' of '+fmt(target)+' complete'}>
                             <div
                               className="h-full bg-gradient-to-r from-purple-500 to-amber-400 transition-all"
                               style={{ width: `${percent}%` }}
@@ -1006,6 +1007,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
               <div className="space-y-3">
                 <h3 className="text-sm font-bold text-white">Active Guild Directory</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {guilds.length === 0 && <p className="col-span-full rounded-2xl border border-slate-800 bg-slate-950/50 p-5 text-center text-xs text-slate-400">No guilds are listed yet. You can create one and invite other players.</p>}
                   {guilds.map(g => (
                     <div
                       key={g.id}
@@ -1018,12 +1020,14 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                         <div>
                           <h4 className="text-sm font-bold text-white">{g.name}</h4>
                           <span className="text-xs text-slate-400">
-                            Lv {g.level} • {g.members.length}/50 Members
+                            Lv {g.level} • {g.members.length}/{10 + Math.min(40, g.perks?.memberCapacityRank ?? 0)} Members
                           </span>
                         </div>
                       </div>
 
                       <button
+                        type="button"
+                        aria-label={g.members.length >= 10 + Math.min(40, g.perks?.memberCapacityRank ?? 0) ? `${g.name} is full` : `Join guild ${g.name}`}
                         onClick={() => {
                           sound.playClick();
                           void onJoinGuild(g.id);
@@ -1126,7 +1130,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
           {displayedLeaderboard.length === 0 && <div role="status" className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-500">No entries for {leaderboardMeta.find(item => item.id === activeLeaderboard)?.label ?? 'this leaderboard'} yet. Eligible players appear after sharing an Orb post.</div>}
           <div className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-800/60">
             {displayedLeaderboard.map((entry, idx) => (
-              <div key={entry.username} className="flex items-center justify-between p-3 sm:px-4 text-xs hover:bg-slate-800/40 transition-colors">
+              <div key={entry.username} aria-label={`Rank ${idx+1}: ${entry.username}, ${leaderboardMetric(entry)}`} className="flex items-center justify-between p-3 sm:px-4 text-xs hover:bg-slate-800/40 transition-colors">
                 <div className="flex items-center gap-3">
                   <span className={`w-6 text-center font-black text-sm ${idx===0?'text-amber-400':idx===1?'text-slate-300':idx===2?'text-amber-600':'text-slate-500'}`}>#{idx+1}</span>
                   <div>
