@@ -733,7 +733,8 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
   const registryEntries = playerRegistry && typeof playerRegistry === 'object' ? Object.values(playerRegistry) : [];
   for (const raw of registryEntries) {
     try {
-      const entry = JSON.parse(String(raw)) as { firstSeenAt?: unknown; lastSeenAt?: unknown };
+      const entry = JSON.parse(String(raw)) as { username?: unknown; firstSeenAt?: unknown; lastSeenAt?: unknown };
+      if (isExcludedImpressionUsername(entry.username)) continue;
       const firstSeenAt = safeTimestamp(entry.firstSeenAt);
       const lastSeenAt = safeTimestamp(entry.lastSeenAt);
       if (!firstSeenAt || !lastSeenAt) continue;
@@ -869,7 +870,9 @@ export async function getImpressionDashboard(now = Date.now()): Promise<Impressi
   }));
   const viewers = viewerRows
     .map(entry => entry.row)
-    .filter((row): row is ImpressionViewerRow => Boolean(row) && row!.lastSeenAt >= dashboardNow - VIEWER_RECORD_RETENTION_MS)
+    .filter((row): row is ImpressionViewerRow => Boolean(row) &&
+      !isExcludedImpressionUsername(row!.username) &&
+      row!.lastSeenAt >= dashboardNow - VIEWER_RECORD_RETENTION_MS)
     .sort((a, b) => b.uniquePostViews - a.uniquePostViews || b.lastSeenAt - a.lastSeenAt)
     .slice(0, 100);
 

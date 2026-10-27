@@ -443,3 +443,50 @@ test('shadow_fen is excluded from all post impression and main-game conversion t
     configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
   }
 });
+
+
+test('impression dashboard hides existing shadow_fen viewer and retention records', async () => {
+  const baseContext = originalContext;
+  const baseRedis = originalRedis;
+  const baseReddit = originalReddit;
+  const suffix = Date.now().toString(36);
+  const now = Date.now();
+  const day1Start = (Math.floor(now / 86_400_000) - 1) * 86_400_000 + 1_000;
+  const viewerIndexKey = 'io:impressions:unique-v2:viewer-index';
+  const viewerHash = 'synthetic-shadow-fen-viewer-' + suffix;
+  const viewerRecordKey = 'io:impressions:unique-v2:viewer:' + viewerHash;
+  const registryKey = 'io:player-registry';
+  const registryField = 'synthetic-shadow-fen-retention-' + suffix;
+  const previousViewerIndexValue = await baseRedis.hGet(viewerIndexKey, viewerHash);
+  const previousViewerRecord = await baseRedis.get(viewerRecordKey);
+  const previousRegistryRecord = await baseRedis.hGet(registryKey, registryField);
+  configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  try {
+    const before = await getImpressionDashboard(now);
+    await baseRedis.hSet(viewerIndexKey, { [viewerHash]: '1' });
+    await baseRedis.set(viewerRecordKey, JSON.stringify({
+      username: 'shadow_fen',
+      uniquePostViews: 7,
+      byType: { 'main-game': 3, 'orb-share': 2, frenzy: 2 },
+      firstSeenAt: day1Start,
+      lastSeenAt: now,
+    }));
+    await baseRedis.hSet(registryKey, {
+      [registryField]: JSON.stringify({ username: 'shadow_fen', firstSeenAt: day1Start, lastSeenAt: now }),
+    });
+
+    const after = await getImpressionDashboard(now);
+    assert.equal(after.viewers.some(row => row.username.toLowerCase() === 'shadow_fen'), false);
+    assert.equal(after.newPlayersToday, before.newPlayersToday);
+    assert.equal(after.day1Retention.cohortSize, before.day1Retention.cohortSize);
+    assert.equal(after.day1Retention.retained, before.day1Retention.retained);
+  } finally {
+    if (previousViewerIndexValue == null) await baseRedis.hDel(viewerIndexKey, viewerHash);
+    else await baseRedis.hSet(viewerIndexKey, { [viewerHash]: previousViewerIndexValue });
+    if (previousViewerRecord == null) await baseRedis.del(viewerRecordKey);
+    else await baseRedis.set(viewerRecordKey, previousViewerRecord);
+    if (previousRegistryRecord == null) await baseRedis.hDel(registryKey, registryField);
+    else await baseRedis.hSet(registryKey, { [registryField]: previousRegistryRecord });
+    configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  }
+});
