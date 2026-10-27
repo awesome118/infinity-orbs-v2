@@ -31,13 +31,13 @@ test('Frenzy claim size is multiplied by Multi Roll', () => {
   assert.equal(frenzyClaimCountForRarity(1_000_000, 0), base);
 });
 
-test('Frenzy Volley keeps its existing bonus on top of the Multi Roll multiplier', () => {
-  const base = frenzyOrbCountForRarity(10_000);
+test('Frenzy payout always applies full Multiball and Frenzy Volley adds 20%', () => {
+  const rarity = 10_000;
+  const base = frenzyOrbCountForRarity(rarity);
   const multi = 5;
-  assert.equal(
-    frenzyClaimCountForRarity(10_000, multi, 1),
-    Math.floor(base * 1.8),
-  );
+  assert.equal(frenzyClaimCountForRarity(rarity, multi), base * multi);
+  assert.equal(frenzyClaimCountForRarity(rarity, multi, 1), Math.floor(base * multi * 1.2));
+  assert.equal(frenzyClaimCountForRarity(rarity, multi, 1), Math.floor(base * 6));
 });
 
 test('Frenzy payout scaling uses log base 1.004 and exceeds the old 50k limit', () => {
