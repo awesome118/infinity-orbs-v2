@@ -34,6 +34,7 @@
 - Added Rune inventory search, equipped filters, level and XP progress, capacity warnings, and clearer Strengthen and Auto Sacrifice controls.
 - Improved Global Chat status messaging when posting is unavailable and added active-session length to the player list.
 - Updated the in-feed Game, shared-Orb, and Frenzy previews to fit Reddit's inline view; longer interactions open in Expanded Mode.
+- Added a restrained early-game spotlight: a brighter Orb stage, a clear first-roll action, a gently pulsing Roll button, and a brief highlight when a new Orb is discovered. Reduced-motion settings are respected.
 - Reworked Frenzy rewards into a full animated Orb reveal with orbiting effects, personal claim cooldowns, post-expiry timer, and a persistent Play button. Main-game and shared-Orb posts now feature animated Orb energy effects.
 - Frenzies now grant a viewer-specific batch of ordinary random Orb rolls. Payouts use the full Multiball multiplier, with Frenzy Volley adding a separate +20% bonus; the post shows the exact personal payout count without the former 50,000-roll cap.
 - Rolls whose calculated rarity exceeds JavaScript's largest finite number now display as **1/Infinity**. The finite `1.797693e308` rarity remains a numeric rarity.
