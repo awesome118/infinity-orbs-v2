@@ -40,6 +40,7 @@ interface FrenzyInfo {
   baseOrbCount: number;
   multiRolls: number;
   rewardOrbCount: number;
+  frenzyVolleyBonus: boolean;
   inGame?: boolean;
 }
 
@@ -460,6 +461,9 @@ function FrenzyPost() {
               <div className="io-frenzy-payout-details">
                 <span className="io-frenzy-payout-base">{formatNumber(info.baseOrbCount)} base rolls</span>
                 <span className="io-frenzy-payout-multiball"><Zap className="w-3 h-3" /> MULTIBALL ×{formatNumber(info.multiRolls)}</span>
+                {info.frenzyVolleyBonus && (
+                  <span className="io-frenzy-payout-volley"><Sparkles className="w-3 h-3" /> FRENZY VOLLEY +20%</span>
+                )}
               </div>
               <p className="io-frenzy-payout-note">
                 Includes your Multiball and Frenzy Volley. The posted Orb sets payout size—not the rarity of your results.
