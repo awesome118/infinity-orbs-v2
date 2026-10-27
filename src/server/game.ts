@@ -6350,6 +6350,7 @@ export async function getOrbFrenzyInfo(): Promise<{
   baseOrbCount: number;
   multiRolls: number;
   rewardOrbCount: number;
+  frenzyVolleyBonus: boolean;
   canClaim: boolean;
   selfClaimTest: boolean;
   postId: string;
@@ -6404,6 +6405,7 @@ export async function getOrbFrenzyInfo(): Promise<{
     baseOrbCount,
     multiRolls,
     rewardOrbCount,
+    frenzyVolleyBonus: (s.prestigeUpgrades?.frenzyVolley ?? 0) > 0,
     ownerUsername: data.ownerUsername,
     createdAt: data.createdAt,
     expiresAt,
