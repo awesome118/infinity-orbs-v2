@@ -383,6 +383,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
     }
   };
 
+  const totalRollCount = Math.max(0, Number(state.totalRolls ?? 0));
+  const isFirstSession = totalRollCount < 12 && (state.prestigeCount ?? 0) === 0;
+  const isFirstRoll = isFirstSession && totalRollCount === 0 && (state.manualRolls ?? 0) === 0;
   const primaryActionLabel = busy
     ? 'ROLL IN PROGRESS'
     : frenzyArmed
@@ -393,7 +396,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
           ? `ROLL ALL ${freeRolls} FREE ROLLS`
           : remain > 0
             ? `WAIT ${(remain / 1000).toFixed(1)}s`
-            : `ROLL ${multi > 1 ? '×' + multi : ''}`;
+            : isFirstRoll
+              ? 'ROLL YOUR FIRST ORB'
+              : `ROLL ${multi > 1 ? '×' + multi : ''}`;
   const actionHint = busy
     ? 'Resolving your roll. The result appears after the server confirms it.'
     : frenzyArmed
@@ -407,7 +412,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
         : freeRolls > 0
           ? `One press uses all ${freeRolls} Free Rolls.`
           : canRoll
-            ? 'Your next roll is ready.'
+            ? isFirstRoll
+              ? 'Tap the Orb or use the button to make your first roll.'
+              : 'Your next roll is ready.'
             : `Next roll available in ${(remain / 1000).toFixed(1)} seconds.`;
   const hasMultipleOrbs = lastBatch.length > 1;
   const orbitRadius = typeof window !== 'undefined' && window.innerWidth < 400 ? 118 : 152;
@@ -454,7 +461,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       )}
 
       {/* Main Celestial Orb Stage (Orbits & Main Orb are concentric and centered together) */}
-      <div className={`roll-stage relative w-full flex items-center justify-center select-none ${busy ? 'is-rolling' : ''} ${isShaking ? 'animate-screen-shake' : ''}`}>
+      <div className={`roll-stage relative w-full flex items-center justify-center select-none ${isFirstSession ? 'is-first-session' : ''} ${busy ? 'is-rolling' : ''} ${isShaking ? 'animate-screen-shake' : ''}`}>
         {/* Ambient Glow Background centered on orb */}
         <div
           className="absolute w-64 h-64 rounded-full blur-3xl opacity-20 pointer-events-none transition-colors duration-700"
@@ -462,6 +469,13 @@ export const RollSection: React.FC<RollSectionProps> = ({
             backgroundColor: orbInfo ? orbInfo.color : '#6366f1',
           }}
         />
+
+        {isFirstRoll && (
+          <div className="io-first-roll-label" aria-hidden="true">
+            <span className="io-first-roll-dot" />
+            YOUR FIRST ORB
+          </div>
+        )}
 
         {/* Orbiting Satellite Orbs Container (Concentric with central orb) */}
         {hasMultipleOrbs && <OrbOrbit orbs={lastBatch} radius={orbitRadius} />}
@@ -487,7 +501,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               handleRollClick();
             }
           }}
-          className={`relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 ${cosmeticEffectClass} ${
+          className={`io-main-orb relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 ${cosmeticEffectClass} ${
             isRevealing ? 'scale-105 ring-4 ring-white/60' : 'hover:scale-102'
           }`}
           style={{
@@ -643,7 +657,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           disabled={busy}
           aria-busy={busy}
           onClick={handleRollClick}
-          className={'roll-button ' + (busy ? 'is-waiting' : frenzyReady ? 'frenzy-supercharged' : canRoll ? 'is-ready' : 'is-waiting') + ' w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ' +
+          className={'roll-button ' + (isFirstSession ? 'is-first-session-cta ' : '') + (busy ? 'is-waiting' : frenzyReady ? 'frenzy-supercharged' : canRoll ? 'is-ready' : 'is-waiting') + ' w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ' +
             (frenzyArmed
               ? 'bg-fuchsia-700 hover:bg-fuchsia-600 text-white border border-fuchsia-300/40 shadow-[0_0_36px_rgba(217,70,239,0.38)]'
               : canRoll
@@ -1013,7 +1027,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           </div>
           {displayOrb ? (
             <div className="latest-orb">
-              <div className="latest-orb-mark"><Award className="h-5 w-5" /></div>
+              <div className={`latest-orb-mark ${displayOrb?.isNew ? 'is-new-discovery' : ''}`}><Award className="h-5 w-5" /></div>
               <div className="min-w-0">
                 <div className="latest-orb-name">{displayOrb.name}</div>
                 <div className="latest-orb-rarity">1 / {formatRarity(displayOrb.rarity, displayOrb.isInfinity)}</div>
