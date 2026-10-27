@@ -1218,3 +1218,23 @@
   #root.io-inline-post .io-frenzy-rarity-number { font-size: clamp(34px, 8vw, 52px); }
   #root.io-inline-post .io-frenzy-orb-visual { width: 52px; height: 52px; }
 }
+
+.io-frenzy-payout-volley {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border: 1px solid rgba(196, 181, 253, .4);
+  border-radius: 999px;
+  background: linear-gradient(110deg, rgba(139, 92, 246, .18), rgba(236, 72, 153, .1));
+  color: #ddd6fe;
+  font-size: 8px;
+  font-weight: 1000;
+  letter-spacing: .08em;
+  box-shadow: 0 0 13px rgba(167, 139, 250, .12);
+}
+#root.io-inline-post .io-frenzy-payout-volley {
+  gap: 3px;
+  padding: 3px 5px;
+  font-size: 7px;
+}
