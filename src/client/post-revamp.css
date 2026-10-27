@@ -1104,7 +1104,6 @@
   margin: 7px auto 5px;
   padding: 7px 9px 6px;
   border-radius: 12px;
-  animation: none;
 }
 #root.io-inline-post .io-frenzy-payout::after {
   inset: 3px;
@@ -1128,7 +1127,6 @@
 #root.io-inline-post .io-frenzy-payout-number {
   font-size: clamp(25px, 5vw, 38px);
   line-height: .98;
-  animation: none;
 }
 #root.io-inline-post .io-frenzy-payout-unit {
   font-size: 8px;
