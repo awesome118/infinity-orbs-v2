@@ -62,9 +62,7 @@ export const RedditShareModal: React.FC<RedditShareModalProps> = ({
         if (event.key === 'Escape' && !busy) onClose();
       }}
     >
-      <div
-        role="dialog"
-        aria-modal="true"
+      <div role="dialog" aria-modal="true"
         aria-labelledby="io-share-dialog-title"
         aria-describedby="io-share-dialog-description io-share-status"
         aria-busy={busy}

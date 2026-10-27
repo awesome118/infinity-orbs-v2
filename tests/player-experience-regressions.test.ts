@@ -81,7 +81,7 @@ test('streak preview follows the server reward schedule and resets after a misse
   assert.match(quests, /\{ day: 7, coins: 700, shards: 5 \}/);
   assert.match(quests, /const reward = streakReward/);
   assert.match(quests, /lastClaimDate === yesterday/);
-  assert.match(quests, /preview now shows tomorrow's reward/);
+  assert.match(quests, /The preview below shows the next reward/);
   assert.match(game, /const rewardCoins = day \* 100/);
   assert.match(game, /s\.streak\.lastClaimDate === yesterday \? previousCount \+ 1 : 1/);
 });
@@ -95,7 +95,7 @@ test('navigation omits category labels while selected tabs remain exposed', () =
   assert.doesNotMatch(nav, /io-nav-group-label[^>]*>(?:PLAY|GROW|DISCOVER|COMMUNITY|LONG-TERM)</i);
   assert.match(nav, /aria-current=\{tab === 'roll' \? 'page' : undefined\}/);
   assert.match(nav, /aria-current=\{tab === 'runes' \? 'page' : undefined\}/);
-  assert.match(nav, /io-combat-soon">PVP/);
+  assert.match(nav, /<span>Arena<\/span><span className="io-combat-soon">NEXT<\/span>/);
   assert.doesNotMatch(nav, /sound\.playClick\(\);\s*changeTab\('/);
 });
 

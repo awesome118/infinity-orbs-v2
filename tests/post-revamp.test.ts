@@ -103,7 +103,7 @@ test('in-game start screen shares the same animated play emphasis', () => {
   const styles = source('src/client/post-revamp.css');
 
   assert.ok(splashScreen.includes('io-immersive-play-cta'));
-  assert.ok(splashScreen.includes('ready ? (hasProgress ? \'Continue\' : \'Play\')'));
+  assert.ok(splashScreen.includes("ready ? (hasProgress ? 'Continue Rolling' : 'Start Rolling')"));
   assert.match(styles, /\.io-immersive-play-cta/);
 });
 
@@ -155,7 +155,9 @@ test('main game spotlights first rolls and makes new Orb discoveries pop', () =>
   assert.match(polish, /\.roll-button\.is-first-session-cta\.is-ready/);
   assert.match(polish, /@keyframes io-first-roll-sheen/);
   assert.match(polish, /@keyframes io-latest-discovery-pop/);
-  const reducedMotion = polish.slice(polish.lastIndexOf('@media (prefers-reduced-motion: reduce)'));
+  const firstRollCta = polish.indexOf('.io-ui .roll-button.is-first-session-cta.is-ready');
+  const reducedMotionStart = polish.indexOf('@media (prefers-reduced-motion: reduce)', firstRollCta);
+  const reducedMotion = polish.slice(reducedMotionStart);
   assert.match(reducedMotion, /roll-button\.is-first-session-cta\.is-ready/);
   assert.match(reducedMotion, /latest-orb-mark\.is-new-discovery/);
 });

@@ -1693,7 +1693,7 @@ test('Aftershock and Unbroken Momentum are persisted, purchase-gated, and shown 
   assert.match(game, /s\.aftershockRecord = Math\.max\(/);
   assert.match(game, /recordRollingSessionActivity\(s, now\)/);
   assert.doesNotMatch(game, /masteryEngineLevel|prestigeUpgrades\?\.masteryEngine/);
-  assert.match(mastery, /Best Aftershock record/);
+  assert.match(mastery, /Longest dry interval record/);
   assert.match(profile, /id === 'unbrokenMomentum'/);
   assert.doesNotMatch(profile, /Aftershock Record/);
   assert.doesNotMatch(profile, /case 'masteryEngine'/);
@@ -2525,7 +2525,7 @@ test('Aftershock and Unbroken Momentum are unlocked through their purchase menus
   assert.match(shared, /unbrokenMomentum: \{[\s\S]*?name: 'Unbroken Momentum'[\s\S]*?maxLevel: 1/);
 
   const mastery = source('src/client/components/MasterySection.tsx');
-  assert.match(mastery, /Best Aftershock record/);
+  assert.match(mastery, /Longest dry interval record/);
   assert.match(mastery, /aftershockCriticalLuckBonus/);
   assert.match(mastery, /After next level/);
 
@@ -3096,7 +3096,7 @@ test('Chain Patcher takes priority over Free Roll cooldown bypass in the roll UI
   assert.ok(roll.includes('Chain Patcher is charged; wait'));
   assert.ok(roll.includes('preserves ${freeRolls} stored Free Rolls.'));
   const quests = source('src/client/components/QuestsAndStreaks.tsx');
-  assert.ok(quests.includes('Manual Free Rolls bypass normal cooldown; Frenzy and Chain Patcher take priority'));
+  assert.ok(quests.includes('Manual Free Rolls skip normal cooldown. Frenzy and Chain Patcher are used first.'));
 });
 
 test('armed Frenzy readiness and Pity Luck meter use the actual gameplay thresholds', () => {
