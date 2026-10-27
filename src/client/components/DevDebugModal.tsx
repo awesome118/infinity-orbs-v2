@@ -25,6 +25,14 @@ function createClientOperationId(prefix: string): string {
   return prefix + '-' + Date.now().toString(36) + '-' + clientOperationSequence.toString(36);
 }
 
+function formatServerBytes(value: number): string {
+  const bytes = Math.max(0, Number(value) || 0);
+  if (bytes < 1_000) return Math.round(bytes) + ' B';
+  if (bytes < 1_000_000) return (bytes / 1_000).toFixed(1) + ' KB';
+  if (bytes < 1_000_000_000) return (bytes / 1_000_000).toFixed(2) + ' MB';
+  return (bytes / 1_000_000_000).toFixed(3) + ' GB';
+}
+
 function formatPlaytime(ms: number): string {
   const totalMinutes = Math.max(0, Math.floor(Number(ms) / 60_000));
   if (totalMinutes < 60) return totalMinutes + 'm';
@@ -68,6 +76,48 @@ type AdminContext = {
 };
 
 type ImpressionPostType = 'main-game' | 'orb-share' | 'frenzy';
+type ServerMonitorEvent = {
+  id: number;
+  timestamp: number;
+  severity: 'info' | 'warn' | 'error';
+  actor: string;
+  method: string;
+  path: string;
+  status: number;
+  durationMs: number;
+  message: string;
+};
+type ServerMonitorSnapshot = {
+  generatedAt: number;
+  scope: string;
+  metrics: {
+    requestsLastMinute: number;
+    requestsPerSecond: number;
+    peakRequestsPerSecond: number;
+    activeRequests: number;
+    averageLatencyMs: number;
+    clientErrorsLastMinute: number;
+    serverErrorsLastMinute: number;
+    redisOperationsPerSecond: number;
+    peakRedisOperationsPerSecond: number;
+    redisCapacityPercent: number;
+  };
+  limits: { redisCommandsPerSecond: number; redisStorageBytes: number; httpRequestsPerSecond: number | null };
+  events: ServerMonitorEvent[];
+};
+type ServerStorageEstimate = {
+  generatedAt: number;
+  storageLimitBytes: number;
+  knownBytes: number;
+  knownPercent: number;
+  playerCount: number;
+  keysCounted: number;
+  recordsCounted: number;
+  groups: Array<{ label: string; bytes: number; keys: number; records: number }>;
+  partial: boolean;
+  note: string;
+  errors: string[];
+};
 type ImpressionDeviceType = 'mobile' | 'tablet' | 'desktop' | 'unknown';
 type ImpressionTimePoint = {
   bucket: string;
@@ -453,6 +503,17 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [impressionsLoading, setImpressionsLoading] = useState(false);
   const [impressionsError, setImpressionsError] = useState('');
   const impressionsLoadLockRef = useRef(false);
+  const [serverMonitor, setServerMonitor] = useState<ServerMonitorSnapshot | null>(null);
+  const [serverMonitorLoading, setServerMonitorLoading] = useState(false);
+  const [serverMonitorError, setServerMonitorError] = useState('');
+  const [serverMonitorPaused, setServerMonitorPaused] = useState(false);
+  const [serverMonitorAutoScroll, setServerMonitorAutoScroll] = useState(true);
+  const [serverStorage, setServerStorage] = useState<ServerStorageEstimate | null>(null);
+  const [serverStorageLoading, setServerStorageLoading] = useState(false);
+  const [serverStorageError, setServerStorageError] = useState('');
+  const serverLogFeedRef = useRef<HTMLDivElement | null>(null);
+  const serverMonitorPollLockRef = useRef(false);
+  const serverStoragePollLockRef = useRef(false);
   const [leaderboardDiagnostics, setLeaderboardDiagnostics] = useState<Record<string, any> | null>(null);
   const [leaderboardDiagnosticsLoading, setLeaderboardDiagnosticsLoading] = useState(false);
   const [leaderboardDiagnosticsError, setLeaderboardDiagnosticsError] = useState('');
@@ -608,6 +669,42 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [playerSpyUserId, setPlayerSpyUserId] = useState('');
   const [playerSpyLoading, setPlayerSpyLoading] = useState(false);
   const [playerSpyShortened, setPlayerSpyShortened] = useState(false);
+
+  const loadServerMonitor = async (showLoading = false) => {
+    if (serverMonitorPollLockRef.current) return;
+    serverMonitorPollLockRef.current = true;
+    if (showLoading) setServerMonitorLoading(true);
+    try {
+      const res = await fetch('/api/dev/server-monitor', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load server monitor.');
+      setServerMonitor(data as ServerMonitorSnapshot);
+      setServerMonitorError('');
+    } catch (error: unknown) {
+      setServerMonitorError(error instanceof Error ? error.message : 'Could not load server monitor.');
+    } finally {
+      serverMonitorPollLockRef.current = false;
+      if (showLoading) setServerMonitorLoading(false);
+    }
+  };
+
+  const loadServerStorage = async (showLoading = false) => {
+    if (serverStoragePollLockRef.current) return;
+    serverStoragePollLockRef.current = true;
+    if (showLoading) setServerStorageLoading(true);
+    try {
+      const res = await fetch('/api/dev/server-monitor/storage', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not estimate Redis storage.');
+      setServerStorage(data as ServerStorageEstimate);
+      setServerStorageError('');
+    } catch (error: unknown) {
+      setServerStorageError(error instanceof Error ? error.message : 'Could not estimate Redis storage.');
+    } finally {
+      serverStoragePollLockRef.current = false;
+      if (showLoading) setServerStorageLoading(false);
+    }
+  };
 
   const loadCcuStats = async () => {
     setCcuLoading(true);
@@ -3761,6 +3858,42 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   };
 
 
+  useEffect(() => {
+    if (serverMonitorPaused) return;
+    let cancelled = false;
+    const poll = async () => {
+      if (cancelled || document.visibilityState === 'hidden') return;
+      await loadServerMonitor(false);
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 2_500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [serverMonitorPaused]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      if (cancelled || document.visibilityState === 'hidden') return;
+      await loadServerStorage(false);
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!serverMonitorAutoScroll) return;
+    const feed = serverLogFeedRef.current;
+    if (feed) feed.scrollTop = feed.scrollHeight;
+  }, [serverMonitor?.events, serverMonitorAutoScroll]);
+
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
       <div className="bg-slate-900 border border-emerald-500/50 rounded-3xl p-4 sm:p-6 max-w-5xl w-full space-y-4 shadow-2xl relative max-h-[94vh] overflow-y-auto">
@@ -3799,6 +3932,196 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </button>
           </div>
         </div>
+
+        <section id="io-server-monitor" className={panelBase + ' border border-emerald-500/30 scroll-mt-4'}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-300">
+                <Gauge className="w-4 h-4" /> Server Monitor
+                <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] text-emerald-200 normal-case">
+                  {serverMonitorPaused ? 'Paused' : 'Live'}
+                </span>
+              </div>
+              <p className="mt-1 text-[10px] text-slate-500">
+                {serverMonitor?.scope ?? 'This server process'} · request feed refreshes every 2.5 seconds. Values are process-local.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" disabled={serverMonitorLoading}
+                onClick={() => void loadServerMonitor(true)}
+                className={buttonBase + ' bg-slate-900 border-slate-700 text-slate-200 px-3 py-2'}>
+                <RefreshCw className={'inline w-3.5 h-3.5 mr-1 ' + (serverMonitorLoading ? 'animate-spin' : '')} />
+                {serverMonitorLoading ? 'Refreshing…' : 'Refresh'}
+              </button>
+              <button type="button" onClick={() => setServerMonitorPaused(value => !value)}
+                className={buttonBase + ' bg-slate-900 border-slate-700 text-slate-200 px-3 py-2'}>
+                {serverMonitorPaused ? 'Resume Feed' : 'Pause Feed'}
+              </button>
+              <button type="button" onClick={() => setServerMonitorAutoScroll(value => !value)}
+                className={buttonBase + ' bg-slate-900 border-slate-700 text-slate-200 px-3 py-2'}>
+                Auto-scroll {serverMonitorAutoScroll ? 'On' : 'Off'}
+              </button>
+            </div>
+          </div>
+
+          {serverMonitorError && (
+            <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-3 text-xs text-rose-200">
+              Server monitor error: {serverMonitorError}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
+            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+              <div className="text-[10px] uppercase font-bold text-slate-500">HTTP requests / sec</div>
+              <div className="mt-1 text-2xl font-black font-mono text-emerald-200">
+                {(serverMonitor?.metrics.requestsPerSecond ?? 0).toFixed(2)}
+              </div>
+              <div className="text-[9px] text-slate-500">10-second rolling average</div>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+              <div className="text-[10px] uppercase font-bold text-slate-500">Peak requests / sec</div>
+              <div className="mt-1 text-2xl font-black font-mono text-cyan-200">
+                {(serverMonitor?.metrics.peakRequestsPerSecond ?? 0).toLocaleString()}
+              </div>
+              <div className="text-[9px] text-slate-500">Highest 1-second bucket in the last minute</div>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+              <div className="text-[10px] uppercase font-bold text-slate-500">Redis operations / sec</div>
+              <div className="mt-1 text-2xl font-black font-mono text-violet-200">
+                {(serverMonitor?.metrics.redisOperationsPerSecond ?? 0).toFixed(1)}
+              </div>
+              <div className="text-[9px] text-slate-500">Instrumented app-issued operations</div>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+              <div className="text-[10px] uppercase font-bold text-slate-500">Redis throughput used</div>
+              <div className="mt-1 text-2xl font-black font-mono text-amber-200">
+                {(serverMonitor?.metrics.redisCapacityPercent ?? 0).toFixed(4)}%
+              </div>
+              <div className="text-[9px] text-slate-500">
+                Reference ceiling: {(serverMonitor?.limits.redisCommandsPerSecond ?? 40_000).toLocaleString()} commands/sec
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-black/20 p-3 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[10px]">
+              <span className="font-bold uppercase tracking-wider text-slate-400">Redis throughput reference</span>
+              <span className="font-mono text-slate-300">
+                {(serverMonitor?.metrics.redisOperationsPerSecond ?? 0).toFixed(1)} / {(serverMonitor?.limits.redisCommandsPerSecond ?? 40_000).toLocaleString()} ops/sec
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+              <div className="h-full rounded-full bg-emerald-400 transition-all"
+                style={{ width: Math.min(100, Math.max(0, serverMonitor?.metrics.redisCapacityPercent ?? 0)) + '%' }} />
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
+              <div><span className="text-slate-500">Requests last minute</span><div className="text-slate-200 font-mono">{(serverMonitor?.metrics.requestsLastMinute ?? 0).toLocaleString()}</div></div>
+              <div><span className="text-slate-500">Requests in flight</span><div className="text-slate-200 font-mono">{(serverMonitor?.metrics.activeRequests ?? 0).toLocaleString()}</div></div>
+              <div><span className="text-slate-500">Average latency</span><div className="text-slate-200 font-mono">{(serverMonitor?.metrics.averageLatencyMs ?? 0).toFixed(1)} ms</div></div>
+              <div><span className="text-slate-500">HTTP errors · 4xx / 5xx</span><div className="text-slate-200 font-mono">{(serverMonitor?.metrics.clientErrorsLastMinute ?? 0).toLocaleString()} / {(serverMonitor?.metrics.serverErrorsLastMinute ?? 0).toLocaleString()}</div></div>
+            </div>
+            <p className="text-[9px] leading-4 text-slate-500">
+              Devvit publishes a Redis command-throughput limit, not a universal HTTP requests/sec limit. The percentage above compares measured Redis operations with that documented reference; it is an operational estimate, not a provider-side capacity reading.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-black/20 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-200">
+                  <Activity className="w-4 h-4 text-emerald-300" /> Live event feed
+                </div>
+                <p className="mt-1 text-[9px] text-slate-500">Successful writes and all failed requests · newest events appear at the bottom · max 250 recent events in this process.</p>
+              </div>
+              <span className="text-[10px] font-mono text-slate-500">{serverMonitor?.events.length ?? 0} events</span>
+            </div>
+            <div ref={serverLogFeedRef} className="max-h-72 min-h-28 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/80">
+              {serverMonitor?.events.length ? serverMonitor.events.map(event => (
+                <div key={event.id} className="grid grid-cols-[auto_minmax(0,1fr)] gap-2 border-b border-slate-900 px-2.5 py-2 last:border-0">
+                  <span className="pt-0.5 text-[9px] font-mono text-slate-600">{new Date(event.timestamp).toLocaleTimeString()}</span>
+                  <div className="min-w-0">
+                    <div className={'text-[10px] leading-4 break-words ' + (event.severity === 'error' ? 'text-rose-300' : event.severity === 'warn' ? 'text-amber-200' : 'text-slate-200')}>
+                      {event.message}
+                    </div>
+                    <div className="mt-0.5 text-[9px] text-slate-600 font-mono">{event.method} {event.path}</div>
+                  </div>
+                </div>
+              )) : (
+                <div className="p-4 text-center text-[10px] text-slate-500">
+                  {serverMonitorPaused ? 'Feed paused. Resume or refresh to load new activity.' : 'Waiting for server activity. Successful GET polling is intentionally omitted.'}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-black/20 p-3 space-y-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-200">
+                  <Database className="w-4 h-4" /> Redis storage
+                </div>
+                <p className="mt-1 text-[10px] text-slate-500">
+                  Devvit limit: {formatServerBytes(serverStorage?.storageLimitBytes ?? serverMonitor?.limits.redisStorageBytes ?? 5_000_000_000)} per installation · tracked payload estimate only.
+                </p>
+              </div>
+              <button type="button" disabled={serverStorageLoading}
+                onClick={() => void loadServerStorage(true)}
+                className={buttonBase + ' bg-slate-900 border-slate-700 text-slate-200 px-3 py-2'}>
+                <RefreshCw className={'inline w-3.5 h-3.5 mr-1 ' + (serverStorageLoading ? 'animate-spin' : '')} />
+                {serverStorageLoading ? 'Estimating…' : 'Refresh storage'}
+              </button>
+            </div>
+            {serverStorageError && (
+              <div className="rounded-lg border border-rose-500/30 bg-rose-500/5 p-2 text-[10px] text-rose-200">{serverStorageError}</div>
+            )}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
+                <div className="text-[9px] uppercase text-slate-500">Tracked payload</div>
+                <div className="mt-1 text-base font-black font-mono text-cyan-200">{formatServerBytes(serverStorage?.knownBytes ?? 0)}</div>
+              </div>
+              <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
+                <div className="text-[9px] uppercase text-slate-500">Estimated limit share</div>
+                <div className="mt-1 text-base font-black font-mono text-amber-200">{(serverStorage?.knownPercent ?? 0).toFixed(5)}%</div>
+              </div>
+              <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
+                <div className="text-[9px] uppercase text-slate-500">Indexed players</div>
+                <div className="mt-1 text-base font-black font-mono text-slate-100">{(serverStorage?.playerCount ?? 0).toLocaleString()}</div>
+              </div>
+              <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
+                <div className="text-[9px] uppercase text-slate-500">Keys counted</div>
+                <div className="mt-1 text-base font-black font-mono text-slate-100">{(serverStorage?.keysCounted ?? 0).toLocaleString()}</div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {(serverStorage?.groups ?? []).map(group => {
+                const share = serverStorage && serverStorage.knownBytes > 0 ? group.bytes / serverStorage.knownBytes * 100 : 0;
+                return (
+                  <div key={group.label} className="rounded-lg border border-slate-800 bg-slate-900/50 p-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold text-slate-200">{group.label}</span>
+                      <span className="text-[10px] font-mono text-cyan-200">{formatServerBytes(group.bytes)}</span>
+                    </div>
+                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-800">
+                      <div className="h-full rounded-full bg-cyan-400" style={{ width: Math.min(100, Math.max(0, share)) + '%' }} />
+                    </div>
+                    <div className="mt-1 text-[9px] text-slate-500">{group.keys.toLocaleString()} keys · {group.records.toLocaleString()} tracked records · {share.toFixed(1)}% of tracked payload</div>
+                  </div>
+                );
+              })}
+            </div>
+            {serverStorage && (
+              <>
+                <p className="text-[9px] leading-4 text-slate-500">{serverStorage.note}</p>
+                {serverStorage.errors.length > 0 && (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2 text-[9px] text-amber-200">
+                    Partial estimate: {serverStorage.errors.join(' ')}
+                  </div>
+                )}
+                <div className="text-[9px] text-slate-600">Last storage scan: {new Date(serverStorage.generatedAt).toLocaleTimeString()}</div>
+              </>
+            )}
+          </div>
+        </section>
 
         <section id="io-impressions-tab" className={panelBase + ' border border-cyan-500/30 scroll-mt-4'}>
           <div className="flex items-center justify-between gap-3">
