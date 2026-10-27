@@ -299,7 +299,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                     <div className="flex items-center gap-2 text-xs font-bold shrink-0">
                       <span className="text-amber-400">+{fmt(q.rewardCoins)} 🪙</span>
                       {q.rewardShards && (
-                        <span className="text-cyan-400">+{q.rewardShards} 💎</span>
+                        <span className="inline-flex items-center gap-1 text-cyan-400">+{fmt(q.rewardShards)} <Gem className="h-3 w-3" aria-hidden="true" /></span>
                       )}
                       {q.rewardTokens && (
                         <span className="inline-flex items-center gap-1 text-purple-400">+{fmt(q.rewardTokens)} <Award className="h-3 w-3" aria-hidden="true" /></span>
