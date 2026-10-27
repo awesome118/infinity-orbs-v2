@@ -4029,7 +4029,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
               <div>
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-200">
-                  <Activity className="w-4 h-4 text-emerald-300" /> Live event feed
+                  <Gauge className="w-4 h-4 text-emerald-300" /> Live event feed
                 </div>
                 <p className="mt-1 text-[9px] text-slate-500">Successful writes and all failed requests · newest events appear at the bottom · max 250 recent events in this process.</p>
               </div>
