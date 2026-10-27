@@ -68,7 +68,10 @@ function pushEvent(event: Omit<ServerMonitorEvent, 'id'>): void {
 }
 
 function normalizedActor(value: unknown): string {
-  const username = String(value ?? '').trim().replace(/^\\/?u\\//i, '').replace(/^\\/+/, '');
+  let username = String(value ?? '').trim();
+  if (username.toLowerCase().startsWith('/u/')) username = username.slice(3);
+  else if (username.toLowerCase().startsWith('u/')) username = username.slice(2);
+  while (username.startsWith('/')) username = username.slice(1);
   return username ? 'u/' + username.slice(0, 100) : 'an unknown user';
 }
 
