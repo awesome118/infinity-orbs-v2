@@ -87,6 +87,7 @@ import {
 } from '../shared/game.js';
 import { recordLeaderboard } from './social.js';
 import { getImpressionDashboard } from './impressions.js';
+import { estimateKnownRedisStorage, getServerMonitorSnapshot } from './server-monitor.js';
 import { APP_VERSION } from '../shared/version.js';
 
 const DEBUG_USERS = new Set([
@@ -117,6 +118,20 @@ export const debugRouter = Router();
 debugRouter.use((_req, res, next) => {
   if (!isDebugUser()) return res.status(404).json({ error: 'Not found.' });
   next();
+});
+
+debugRouter.get('/server-monitor', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  res.json(getServerMonitorSnapshot());
+});
+
+debugRouter.get('/server-monitor/storage', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  try {
+    res.json(await estimateKnownRedisStorage(redis));
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Could not estimate Redis storage usage.' });
+  }
 });
 
 debugRouter.get('/impressions', async (_req, res) => {
