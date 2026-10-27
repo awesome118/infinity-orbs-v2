@@ -141,3 +141,19 @@ test('Frenzy post makes the exact normal-roll payout visually prominent', () => 
   assert.match(styles, /\.io-frenzy-payout-number\s*\{[^}]*font-size:/);
   assert.match(styles, /prefers-reduced-motion: reduce/);
 });
+
+test('main game spotlights first rolls and makes new Orb discoveries pop', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  const polish = source('src/client/ui-polish.css');
+
+  assert.match(roll, /const isFirstSession = totalRollCount < 12/);
+  assert.match(roll, /ROLL YOUR FIRST ORB/);
+  assert.match(roll, /io-first-roll-label/);
+  assert.match(roll, /io-main-orb/);
+  assert.match(roll, /is-new-discovery/);
+  assert.match(polish, /\.roll-stage\.is-first-session::after/);
+  assert.match(polish, /\.roll-button\.is-first-session-cta\.is-ready/);
+  assert.match(polish, /@keyframes io-first-roll-sheen/);
+  assert.match(polish, /@keyframes io-latest-discovery-pop/);
+  assert.match(polish, /prefers-reduced-motion: reduce[\s\S]*io-first-roll-cta/);
+});
