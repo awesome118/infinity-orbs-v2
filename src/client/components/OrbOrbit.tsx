@@ -11,7 +11,7 @@ export function OrbOrbit({ orbs, radius = 152 }: Props) {
   if (orbs.length <= 1) return null;
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+    <div aria-hidden="true" className="absolute inset-0 flex items-center justify-center pointer-events-none">
       <div
         className="absolute rounded-full border border-dashed border-slate-700/50"
         style={{ width: radius * 2, height: radius * 2 }}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { BookOpen, X } from 'lucide-react';
 import { APP_VERSION } from '../../shared/version.js';
 
@@ -161,6 +161,22 @@ const sections: Array<{
 ];
 
 export const ChangelogModal: React.FC<ChangelogModalProps> = ({ onClose }) => {
+  const [search, setSearch] = useState('');
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredSections = useMemo(
+    () => sections
+      .map(section => ({
+        ...section,
+        entries: section.entries.filter(entry =>
+          `${entry.title} ${entry.description}`.toLowerCase().includes(normalizedSearch),
+        ),
+      }))
+      .filter(section => section.entries.length > 0),
+    [normalizedSearch],
+  );
+  const matchCount = filteredSections.reduce((total, section) => total + section.entries.length, 0);
+
   return (
     <div
       className="fixed inset-0 z-[80] io-modal-backdrop flex items-center justify-center p-4"
@@ -169,6 +185,9 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ onClose }) => {
       aria-labelledby="io-changelog-title"
       onMouseDown={event => {
         if (event.target === event.currentTarget) onClose();
+      }}
+      onKeyDown={event => {
+        if (event.key === 'Escape') onClose();
       }}
     >
       <section className="io-modal-card w-full max-w-lg bg-slate-950/95 border border-purple-500/30 shadow-2xl shadow-purple-950/30">
@@ -183,36 +202,87 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ onClose }) => {
             </h2>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
-            aria-label="Close Changelog"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
+            aria-label="Close changelog"
+            title="Close changelog"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="mt-5 max-h-[60vh] overflow-y-auto pr-1 space-y-5">
-          {sections.map(section => (
-            <section key={section.title} className="space-y-2">
-              <h3 className="px-1 text-[10px] uppercase tracking-[0.16em] font-black text-purple-300">
-                {section.title}
-              </h3>
-              {section.entries.map(({ title, description }) => (
-                <div
-                  key={title}
-                  className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"
+        <div className="mt-4 space-y-2">
+          <label htmlFor="io-changelog-search" className="sr-only">Search update notes</label>
+          <div className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/80 px-3 focus-within:border-purple-400/70">
+            <input
+              id="io-changelog-search"
+              type="search"
+              value={search}
+              onChange={event => setSearch(event.target.value)}
+              placeholder="Search features, balance changes, fixes…"
+              aria-describedby="io-changelog-match-count"
+              className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-white placeholder:text-slate-500 outline-none"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                aria-label="Clear changelog search"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          <p id="io-changelog-match-count" role="status" aria-live="polite" className="px-1 text-[10px] text-slate-500">
+            {matchCount} update note{matchCount === 1 ? '' : 's'}{normalizedSearch ? ' match your search.' : ' in this version.'}
+          </p>
+        </div>
+
+        <div className="mt-3 max-h-[60dvh] overflow-y-auto overscroll-contain pr-1 space-y-5">
+          {filteredSections.length === 0 && (
+            <p role="status" className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-400">
+              No update notes match “{search.trim()}”. Try a shorter search.
+            </p>
+          )}
+          {filteredSections.map((section, index) => {
+            const isCollapsed = !normalizedSearch && Boolean(collapsedSections[section.title]);
+            return (
+              <section key={section.title} className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setCollapsedSections(current => ({ ...current, [section.title]: !current[section.title] }))}
+                  aria-expanded={!isCollapsed}
+                  aria-controls={`io-changelog-section-${index}`}
+                  className="flex min-h-10 w-full items-center justify-between gap-3 rounded-lg px-2 text-left text-[10px] uppercase tracking-[0.16em] font-black text-purple-300 transition-colors hover:bg-purple-500/5 hover:text-purple-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-300"
                 >
-                  <div className="text-sm font-black text-white">{title}</div>
-                  <div className="mt-1 text-xs leading-relaxed text-slate-400">{description}</div>
+                  <span>{section.title}</span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="rounded-full border border-purple-400/20 bg-purple-400/10 px-2 py-0.5 text-[9px] normal-case tracking-normal">{section.entries.length}</span>
+                    <span aria-hidden="true" className="text-sm">{isCollapsed ? '+' : '−'}</span>
+                  </span>
+                </button>
+                <div id={`io-changelog-section-${index}`} hidden={isCollapsed} className="space-y-2">
+                  {section.entries.map(({ title, description }) => (
+                    <article
+                      key={title}
+                      className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"
+                    >
+                      <h4 className="text-sm font-black text-white">{title}</h4>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-400">{description}</p>
+                    </article>
+                  ))}
                 </div>
-              ))}
-            </section>
-          ))}
+              </section>
+            );
+          })}
         </div>
 
         <button
+          type="button"
           onClick={onClose}
-          className="mt-5 w-full rounded-xl bg-slate-800 hover:bg-slate-700 px-4 py-2.5 text-xs font-black text-slate-200 transition-colors"
+          className="mt-5 min-h-11 w-full rounded-xl bg-slate-800 hover:bg-slate-700 px-4 py-2.5 text-xs font-black text-slate-200 transition-colors"
         >
           Close
         </button>

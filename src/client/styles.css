@@ -2742,3 +2742,63 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 .io-combat-forge-scrap-summary strong{color:#e0ffd9}
 @keyframes io-forge-success-in{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(prefers-reduced-motion:reduce){.io-combat-forge-success{animation:none}}
+
+
+/* Accessibility and compact-screen finishing pass (2.0.20). */
+.io-ui :is(.font-mono, [data-numeric="true"]),
+.io-public-rarity,
+.io-share-preview-stats b {
+  font-variant-numeric: tabular-nums;
+}
+
+.io-ui .app-main :is(.break-words, .break-all),
+.io-share-preview :is(h4, p, strong) {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  .io-ui .app-header {
+    padding-inline: 12px;
+  }
+
+  .io-ui .app-main {
+    padding-inline: 12px;
+  }
+
+  .io-ui .nav-tab {
+    min-height: 40px;
+  }
+
+  .io-ui .app-main :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    font-size: 16px;
+  }
+
+  .io-modal-backdrop {
+    padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .io-ui *,
+  .io-public *,
+  .io-post-reveal,
+  .io-post-cta,
+  .io-immersive-play-cta,
+  .io-public-glow,
+  .io-public-grid,
+  .io-share-orb,
+  .io-public-orb-ring {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .io-ui :is(button, a, input, select, textarea):focus-visible,
+  .io-modal-backdrop :is(button, a, input, select, textarea):focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 3px;
+  }
+}
