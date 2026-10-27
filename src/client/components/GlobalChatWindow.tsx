@@ -447,6 +447,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
             value={input}
             onChange={e => setInput(e.target.value.slice(0, 200))}
             aria-label="Write a public Global Chat message"
+            aria-describedby="io-global-chat-length"
             maxLength={200}
             placeholder={chatAvailable === true ? 'Write a public Reddit comment...' : 'Open a registered Game or Frenzy post to chat'}
             disabled={sending || chatAvailable !== true}
@@ -463,7 +464,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
             {sending ? <X className="w-4 h-4 animate-pulse" /> : <Send className="w-4 h-4" />}
           </button>
         </div>
-        <div role="status" aria-live="polite" aria-label={`${input.length} of 200 characters used`} className="mt-1 text-right text-[9px] text-slate-600">{input.length} / 200 characters</div>
+        <div id="io-global-chat-length" role="status" aria-live="polite" aria-label={`${input.length} of 200 characters used`} className="mt-1 text-right text-[9px] text-slate-600">{input.length} / 200 characters</div>
       </form>
     </section>
   );
