@@ -1,17 +1,11 @@
 name: Submit Infinity Orbs for Reddit Review
 
 on:
-  # Combined 2.0.5 release: bounded Redis reads, post conversion analytics, and animated post redesign.
+  # v2.1.0 review submission runs only after its tagged dev deployment finishes successfully.
   workflow_run:
     workflows: ["Deploy Devvit"]
     types: [completed]
     branches: [main]
-
-  # Explicitly submit only when a commit is marked for the requested review release.
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/release.yml
 
   workflow_dispatch:
     inputs:
@@ -27,7 +21,7 @@ on:
 
 jobs:
   release:
-    if: ${{ inputs.confirm_publish || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && contains(github.event.workflow_run.head_commit.message, '[submit-review:2.0.5]')) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.0.5]')) }}
+    if: ${{ inputs.confirm_publish || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && contains(github.event.workflow_run.head_commit.message, '[submit-review:2.1.0]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
