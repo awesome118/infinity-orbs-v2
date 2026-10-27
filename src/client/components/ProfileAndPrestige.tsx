@@ -398,7 +398,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Resets current-run Collection Value and base upgrades, plus offline rolls and run counters. Cosmic Inheritance determines Coins retained (minimum 50). 
+                Resets current-run Collection Value, base upgrades, offline rolls, and rolls-since-best. Shards and permanent Prestige upgrades stay; Cosmic Inheritance determines Coins retained (minimum 50). 
               </p>
             </div>
           </div>
@@ -408,7 +408,8 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
               <div role="status" className="rounded-xl border border-fuchsia-500/30 bg-fuchsia-950/25 p-3 text-xs leading-relaxed text-slate-300">
                 <strong className="block text-fuchsia-200 mb-1">Before you prestige</strong>
                 <p>Reset: current-run Collection Value, base upgrades, offline rolls, and rolls-since-best counters.</p>
-                <p className="mt-1"> Coins retained depend on Cosmic Inheritance (minimum 50).</p>
+                <p className="mt-1">Coins retained depend on Cosmic Inheritance (minimum 50).</p>
+                 <p className="mt-1">Keep: Shards, Cosmic Dust, permanent Prestige upgrades, and your Codex discoveries.</p>
                 <p className="mt-1">Gain: +{pendingDust} Cosmic Dust and +3 Mastery Points.</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
