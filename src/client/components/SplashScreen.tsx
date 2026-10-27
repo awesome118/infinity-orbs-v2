@@ -1,10 +1,12 @@
 import '../post-revamp.css';
 import { APP_VERSION } from '../../shared/version.js';
+import { formatNumber, formatRarity } from '../../shared/game.js';
 
 type SplashScreenProps = {
   ready: boolean;
   hasProgress: boolean;
   highestRarity?: number;
+  highestRarityIsInfinity?: boolean;
   totalRolls?: number;
   onEnter: () => void;
 };
@@ -13,6 +15,7 @@ export function SplashScreen({
   ready,
   hasProgress,
   highestRarity = 2,
+  highestRarityIsInfinity = false,
   totalRolls = 0,
   onEnter,
 }: SplashScreenProps) {
@@ -39,6 +42,11 @@ export function SplashScreen({
         <p className="mt-3 text-xs font-bold uppercase tracking-[0.24em] text-cyan-200/80">
           roll, collect, go further
         </p>
+        <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-slate-300">
+          {hasProgress
+            ? 'Continue your saved collection and keep finding rarer Orbs.'
+            : 'Roll Orbs to earn Coins and XP. Spend Coins to improve your odds.'}
+        </p>
         <p className="mt-2 text-[10px] font-mono font-medium tracking-wide text-slate-500" aria-label={`App version ${APP_VERSION}`}>
           v{APP_VERSION}
         </p>
@@ -50,7 +58,7 @@ export function SplashScreen({
                 Best orb
               </div>
               <div className="mt-1 text-sm font-black text-white">
-                1 / {highestRarity.toLocaleString()}
+                1 / {formatRarity(highestRarity, highestRarityIsInfinity)}
               </div>
             </div>
             <div className="px-2">
@@ -58,7 +66,7 @@ export function SplashScreen({
                 Rolls
               </div>
               <div className="mt-1 text-sm font-black text-white">
-                {totalRolls.toLocaleString()}
+                {formatNumber(totalRolls)}
               </div>
             </div>
           </div>
@@ -68,12 +76,14 @@ export function SplashScreen({
           type="button"
           onClick={onEnter}
           disabled={!ready}
+          aria-busy={!ready}
+          aria-describedby="io-splash-hint"
           className="io-immersive-play-cta mt-9 min-h-14 w-full rounded-xl border border-cyan-100/60 bg-gradient-to-r from-lime-300 via-emerald-200 to-cyan-200 px-6 py-4 text-sm font-black uppercase tracking-[0.14em] text-slate-950 transition-colors hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-100 disabled:cursor-wait disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-400"
         >
-          {ready ? (hasProgress ? 'Continue' : 'Play') : 'Loading'}
+          {ready ? (hasProgress ? 'Continue Rolling' : 'Start Rolling') : 'Loading'}
         </button>
 
-        <p className="mt-4 min-h-5 text-xs text-slate-500" aria-live="polite">
+        <p id="io-splash-hint" className="mt-4 min-h-5 text-xs text-slate-400" aria-live="polite">
           {ready ? 'Your next discovery is one roll away.' : 'Preparing your save…'}
         </p>
       </section>
