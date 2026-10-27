@@ -134,7 +134,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Currencies & Global Actions */}
-        <div className="header-actions flex items-center gap-2 sm:gap-4 ml-auto">
+        <div className="header-actions flex flex-wrap items-center justify-end gap-2 sm:gap-4 ml-auto">
           {/* Live player count / social luck */}
           <div
             className="hidden sm:flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-2.5 py-1.5 text-[10px] font-black text-indigo-200"
