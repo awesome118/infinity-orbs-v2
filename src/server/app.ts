@@ -90,6 +90,7 @@ import {
 } from './social.js';
 import { context, reddit, redis } from './devvit-mock.js';
 import { withPlayerMutationLock } from './player-lock.js';
+import { beginServerRequest } from './server-monitor.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
@@ -282,6 +283,18 @@ export function createApp() {
   const app = express();
   app.use(express.json({ limit: '16kb' }));
   app.use(createTelemetryRouter());
+
+  // Track requests in memory only; never persist a per-request log to Redis.
+  app.use((req, res, next) => {
+    beginServerRequest(
+      req.method,
+      req.path,
+      context.username,
+      () => res.statusCode,
+      (event, callback) => res.once(event, callback),
+    );
+    next();
+  });
 
   // Keep the enormous Codex collection out of ordinary client-state payloads.
   // The collection itself remains server-side and is fetched through /api/collection
