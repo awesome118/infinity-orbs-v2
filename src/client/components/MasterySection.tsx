@@ -153,7 +153,7 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
               Skill Tree
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Spend Mastery Points on permanent passive skills.
+              Spend Mastery Points on permanent passive bonuses for your normal Orb game.
             </p>
           </div>
 
@@ -242,6 +242,7 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
             return (
               <div
                 key={skillId}
+                aria-label={`${skill.name}, level ${currentLevel} of ${skill.maxLevel}`}
                 className={`bg-slate-950/70 border rounded-2xl p-5 flex flex-col justify-between space-y-4 transition-all duration-300 ${
                   isHighlighted
                     ? 'border-amber-400 ring-2 ring-amber-400/50 scale-[1.02] shadow-[0_0_25px_rgba(251,191,36,0.3)]'
@@ -306,7 +307,7 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
                     <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 space-y-2">
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-[10px] uppercase tracking-wide font-black text-amber-300">
-                          Best Aftershock record
+                          Longest dry interval record
                         </span>
                         <span className="text-sm font-black font-mono text-white">
                           {fmt(aftershockRecord)} rolls
@@ -326,7 +327,7 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
 
                   {/* 10-Pip Progress Bar that changes color on wrap-around */}
                   <div className="space-y-1 pt-1">
-                    <div className="flex gap-1 overflow-hidden">
+                    <div className="flex gap-1 overflow-hidden" role="group" aria-label={`${skill.name} mastery ranks: ${currentLevel} of ${skill.maxLevel}`}>
                       {Array.from({ length: 10 }).map((_, idx) => {
                         let pipClass = 'bg-slate-800';
                         if (isMax) {
@@ -356,7 +357,7 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
                 <div className="flex items-center justify-between pt-2 border-t border-slate-900">
                   <div className="text-xs font-mono text-slate-400">
                     {!isMax ? (
-                      <span className="text-amber-300 font-bold">Cost: {cost} MP</span>
+                      <span className="text-amber-300 font-bold">Next rank: {cost} MP</span>
                     ) : (
                       <span className="text-emerald-400 font-bold flex items-center gap-1">
                         <Check className="w-3.5 h-3.5" /> Maxed Out
@@ -379,7 +380,7 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
                     }`}
                   >
                     <Sparkles className="w-3.5 h-3.5" />
-                    <span>{isMax ? 'Maxed' : `Upgrade (${cost} MP)`}</span>
+                    <span>{isMax ? 'Maxed' : canAfford ? `Upgrade (${cost} MP)` : `Need ${fmt(cost - (state.masteryPoints ?? 0))} more MP`}</span>
                   </button>
                 </div>
               </div>
