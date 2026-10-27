@@ -199,7 +199,7 @@ export const RunesSection:React.FC=()=>{
     {notice&&!error&&<div className="io-runes-muted" role="status" aria-live="polite">{notice}</div>}
     {operationPending&&<div className="io-runes-muted" role="status" aria-live="polite">Saving Rune changes…</div>}
     {loading&&!state?<div className="io-runes-loading">Loading Rune inventory…</div>:state&&<>
-      <section className="io-runes-panel">
+      <section className="io-runes-panel" aria-label="Equipped Rune loadout">
         <div className="io-runes-panel-head"><h2>Equipped loadout</h2><span className="io-runes-muted" aria-live="polite">{equippedRunes.length} / {slots} slots used · Delver Lv. {fmt(state.level)} · Best depth {fmt(bestRuneDepth)}</span></div>
         <div className="io-runes-loadout">{Array.from({length:slots},(_,index)=>{
           const rune=equippedRunes[index];
@@ -212,9 +212,9 @@ export const RunesSection:React.FC=()=>{
         <p className="io-runes-muted" style={{marginTop:'.75rem'}}>Slot milestones: start with 2; unlock a third at Delver Level 10, a fourth at Level 25, and a fifth at best Depth 50. Rune bonuses affect main-game online and offline orb-roll rewards, never dungeon combat.</p>
       </section>
       <section className="io-runes-panel">
-        <div className="io-runes-panel-head"><h2>Rune inventory</h2><span className="io-runes-muted">{state.runes.length} / 200 · {visibleRunes.length} shown</span>{state.runes.length>=200&&<span className="io-runes-capacity-warning" role="status">Inventory full — new Rune drops need an open slot.</span>}</div>
+        <div className="io-runes-panel-head"><h2>Rune inventory</h2><span className="io-runes-muted">{state.runes.length} / 200 · {Math.max(0,200-state.runes.length)} slots free · {visibleRunes.length} shown</span>{state.runes.length>=200&&<span className="io-runes-capacity-warning" role="status">Inventory full — new Rune drops need an open slot.</span>}</div>
         {strengthenTargetRune&&<div className="io-runes-strengthen-mode" role="status">
-          <div><strong>Strengthen: {strengthenTargetRune.name}</strong><span>Select a donor below and confirm. The donor Rune is permanently consumed for XP.</span></div>
+          <div><strong>Strengthen: {strengthenTargetRune.name}</strong><span>Select a donor and confirm. It is permanently consumed for XP; an equipped donor also removes its loadout bonus.</span></div>
           <label className="io-runes-auto-rarity">Donor Rune
             <select className="io-runes-button" value={sacrificeDonorId} disabled={operationPending||sacrificing||autoSacrificeBusy} onChange={event=>setSacrificeDonorId(event.target.value)} aria-label="Rune to sacrifice">
               <option value="">Choose a Rune to consume…</option>
@@ -231,12 +231,13 @@ export const RunesSection:React.FC=()=>{
             <span>Automatically strengthen a chosen equipped Rune with new drops</span>
           </label>
           <label className="io-runes-auto-rarity">Sacrifice rarity
-            <select value={autoSacrificeSettings.maxRarity} disabled={operationPending||autoSacrificeBusy} onChange={event=>void saveAutoSacrificeSettings(autoSacrificeSettings.enabled,event.target.value as CombatRuneRarity)}>
+            <select aria-label="Maximum Rune rarity to sacrifice automatically" value={autoSacrificeSettings.maxRarity} disabled={operationPending||autoSacrificeBusy} onChange={event=>void saveAutoSacrificeSettings(autoSacrificeSettings.enabled,event.target.value as CombatRuneRarity)}>
               {RUNE_RARITIES.map(rarity=><option key={rarity} value={rarity}>{rarity} and below</option>)}
             </select>
           </label>
           <label className="io-runes-auto-rarity">Strengthen target
             <select
+              aria-label="Equipped Rune to strengthen automatically"
               value={autoSacrificeSettings.targetRuneId&&equippedRunes.some(rune=>rune.id===autoSacrificeSettings.targetRuneId)?autoSacrificeSettings.targetRuneId:''}
               disabled={operationPending||autoSacrificeBusy||equippedRunes.length===0}
               onChange={event=>void saveAutoSacrificeSettings(autoSacrificeSettings.enabled,autoSacrificeSettings.maxRarity,event.target.value||null)}
@@ -263,11 +264,11 @@ export const RunesSection:React.FC=()=>{
           <div role="group" aria-label="Filter Rune inventory" className="io-runes-filter-group">
             {([{id:'all',label:'All'},{id:'equipped',label:'Equipped'},{id:'unequipped',label:'Unequipped'},{id:'auto',label:'Auto-sacrifice eligible'}] as const).map(option=><button key={option.id} type="button" aria-pressed={runeFilter===option.id} disabled={operationPending} onClick={()=>setRuneFilter(option.id)}>{option.label}</button>)}
           </div>
-          <p className="io-runes-muted" role="status" aria-live="polite">Showing {fmt(visibleRunes.length)} of {fmt(runes.length)} Runes · {fmt(equippedRunes.length)} equipped · Inventory limit 200</p>
+          <p className="io-runes-muted" role="status" aria-live="polite">Showing {fmt(visibleRunes.length)} of {fmt(runes.length)} Runes · {fmt(equippedRunes.length)} equipped · {Math.max(0,200-runes.length)} slots free</p>
         </div>
         {!runes.length?<div className="io-runes-empty"><Gem size={22} style={{margin:'0 auto .5rem',color:'#a78bfa'}}/><strong style={{display:'block',color:'#e2e8f0'}}>No Runes found yet</strong>Defeat monsters in Combat. Common monsters can drop a Rune, elite enemies have a higher chance, and bosses always drop one.</div>:
           <>
-          {visibleRunes.length===0?<div className="io-runes-empty">No matching Runes. Clear filters to see your full inventory.</div>:
+          {visibleRunes.length===0?<div className="io-runes-empty">No matching Runes. Choose All, clear the search, or change the rarity/stat filter.</div>:
           <div className="io-runes-inventory">{visibleRunes.map(rune=>{
             const isEquipped=state.equippedRunes.includes(rune.id);
             const canEquip=isEquipped||state.equippedRunes.length<slots;
@@ -285,7 +286,7 @@ export const RunesSection:React.FC=()=>{
               <div id={'io-rune-tooltip-'+encodeURIComponent(rune.id)} className="io-runes-tooltip" role="tooltip">
                 <span className={'io-runes-tooltip-rarity '+rarityClass(rune.rarity)}>{rune.rarity.toUpperCase()} · {STAT_LABEL[rune.stat].toUpperCase()}</span>
                 <strong>{rune.name}</strong><span className="io-runes-tooltip-level">Level {fmt(level)} · Rune XP {fmt(levelXp)} / {fmt(nextXp)} · Found at depth {rune.sourceDepth+1}</span>
-                <div className="io-runes-xp-track" role="progressbar" aria-label={rune.name+' progress toward level '+fmt(level+1)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(xpProgress)}><span style={{width:xpProgress+'%'}}/></div>
+                <div className="io-runes-xp-track" role="progressbar" aria-label={rune.name+' progress toward level '+fmt(level+1)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(xpProgress)} aria-valuetext={Math.round(xpProgress)+' percent toward level '+fmt(level+1)}><span style={{width:xpProgress+'%'}}/></div>
                 <p className="io-runes-tooltip-value">{combatRuneEffectText(rune)}</p>
                 <p>{rune.stat==='luckPct'?'Improves rarity odds on normal orb rolls.':rune.stat==='coinGainPct'?'Increases Coins earned from normal orb rolls.':rune.stat==='shardChancePct'?'Adds its existing percentage-point chance to find a Shard; Rune levels do not alter this stat.':'Increases XP earned from normal orb rolls.'}</p>
                 {rune.majorAbility&&<div className="io-runes-major-card"><span>✦ MAIN-GAME MAJOR ABILITY</span><strong>{rune.majorAbility.name} · LEVEL-SCALING EFFECT</strong><p>{combatRuneMajorAbilitySummary(rune.majorAbility,level)}</p></div>}
