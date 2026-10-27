@@ -2572,7 +2572,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               throw new Error('Frenzy start returned an invalid rarity: normal=' + normalRarity + ', volley=' + volleyRarity + '.');
             }
             const expectedNormal = frenzyOrbCountForRarity(normalRarity) * Math.max(1, normalRollsPerActivation);
-            const expectedVolley = Math.floor(frenzyOrbCountForRarity(volleyRarity) * (1 + Math.max(0, Math.max(1, volleyRollsPerActivation) - 1) * 0.20));
+            const expectedVolley = Math.floor(frenzyOrbCountForRarity(volleyRarity) * Math.max(1, volleyRollsPerActivation) * 1.20);
             const normalVisible = Array.isArray(normalClaim.batch) ? normalClaim.batch.length : 0;
             const volleyVisible = Array.isArray(volleyClaim.batch) ? volleyClaim.batch.length : 0;
             if (normalCount !== expectedNormal || volleyCount !== expectedVolley) {
