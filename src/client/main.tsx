@@ -2555,6 +2555,7 @@ export function App() {
         ready={true}
         hasProgress={(state.totalRolls ?? 0) > 0}
         highestRarity={state.highestRarity ?? 2}
+        highestRarityIsInfinity={state.highestRarityIsInfinity}
         totalRolls={state.totalRolls ?? 0}
         onEnter={() => {
           setSplashEntered(true);
@@ -2870,7 +2871,7 @@ export function App() {
             }`}
           >
             <Users className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Guilds & Social</span>
+            <span>Community</span>
             {featureForTab('social' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('social' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
           </button>
 
@@ -2895,7 +2896,6 @@ export function App() {
           </button>
           </>}
           {combatMode && <>
-            <span className="io-combat-soon">PVP</span>
             <button type="button" aria-current={tab === 'fight' ? 'page' : undefined} onClick={() => changeTab('fight')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (tab === 'fight' ? " is-active" : "")}><Flame className="w-3.5 h-3.5" /><span>Fight</span></button>
             <button type="button" aria-current={tab === 'dungeons' ? 'page' : undefined} onClick={() => changeTab('dungeons')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'dungeons' ? " is-active" : "")}><DoorOpen className="w-3.5 h-3.5" /><span>Dungeons</span></button>
             <button type="button" aria-current={tab === 'gear' ? 'page' : undefined} onClick={() => changeTab('gear')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'gear' ? " is-active" : "")}><Package className="w-3.5 h-3.5" /><span>Gear</span></button>
@@ -2932,15 +2932,15 @@ export function App() {
       <main className="app-main flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8">
 
         {!combatMode && state && tutorialStatusLoaded && !tutorialDismissed && (state.totalRolls <= 3 || tutorialStep > 0) && (
-          <section className="io-tutorial-guide" aria-live="polite" aria-label="First steps tutorial">
+          <section className="io-tutorial-guide" aria-live="polite" aria-label={`First steps tutorial, step ${Math.min(4, tutorialStep + 1)} of 4`}>
             <div className="io-tutorial-topline"><span>FIRST STEPS</span><span>STEP {Math.min(4, tutorialStep + 1)} / 4</span><button type="button" onClick={finishTutorial} aria-label="Skip tutorial">Skip</button></div>
             {tutorialStep === 0 && <>
               <h2>Roll your first orb</h2>
-              <p>Every roll can reveal a rarer orb. The orb’s rarity drives its value, while rolls also earn coins, XP, and sometimes Shards. Start with one roll to see the core loop.</p>
+              <p>Every roll can reveal a rarer Orb. Rarity determines its Coin value; rolls also earn XP and sometimes Shards. Start with one roll to see the core loop.</p>
               <button type="button" className="io-tutorial-primary" disabled={isRolling || busy} onClick={() => { void handleRoll(false); }}><Sparkles size={15} /> Roll my first orb</button>
             </>}
             {tutorialStep === 1 && <>
-              <h2>Read the result</h2>
+              <h2>Turn the result into progress</h2>
               <p>{lastOrb ? `You found ${lastOrb.name} (1 / ${formatNumber(lastOrb.rarity)}). ` : ''}Rarer orbs are worth more. Keep rolling to earn XP; Level 2 unlocks Upgrades. Buy Auto Roll there, then switch it on from the Roll screen to repeat rolls as cooldowns allow.</p>
               {state.level >= 2
                 ? <button type="button" className="io-tutorial-primary" onClick={() => { setTutorialStep(2); changeTab('upgrades'); }}>Explore Upgrades <Zap size={15} /></button>
@@ -2954,9 +2954,9 @@ export function App() {
                 : <button type="button" className="io-tutorial-primary" disabled={isRolling || busy} onClick={() => { void handleRoll(false); }}>Roll toward Level 4 <Sparkles size={15} /></button>}
             </>}
             {tutorialStep >= 3 && <>
-              <h2>Your journey is tracked</h2>
-              <p>The Codex tracks the rarities you’ve discovered. Later, defeat monsters in Combat to earn Runes. Open Combat → Runes and equip them to improve your normal orb rolls.</p>
-              <button type="button" className="io-tutorial-primary" onClick={() => { finishTutorial(); changeTab('roll'); }}>Finish &amp; keep rolling <Sparkles size={15} /></button>
+              <h2>Grow beyond rolling</h2>
+              <p>Your discoveries stay in the Codex. When Combat unlocks, monster drops include Runes that can improve your normal-roll Luck. You can return to rolling at any time.</p>
+              <button type="button" className="io-tutorial-primary" onClick={() => { finishTutorial(); changeTab('roll'); }}>Back to rolling <Sparkles size={15} /></button>
             </>}
           </section>
         )}
