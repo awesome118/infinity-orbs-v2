@@ -221,7 +221,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
                   {codexChain > 0 ? `Best chain: ${codexChain}` : 'No chain yet'}
                 </div>
                 <div className="text-[10px] font-bold text-emerald-300 mt-0.5">
-                  {codexChain} {codexChain === 1 ? 'rarity' : 'rarities'} in chain
+                  Find the next adjacent rarity to extend it.
                 </div>
               </div>
             </div>
@@ -253,7 +253,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
           <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
             <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Target Rarity</div>
             <div className="mt-1 text-lg font-black text-white">
-              {patcherTarget == null ? 'Chain complete' : `1/${formatRarity(patcherTarget)}`}
+              {patcherTarget == null ? 'Chain complete' : `1 / ${formatRarity(patcherTarget)}`}
             </div>
             <div className="mt-1 text-[10px] text-slate-500">
               {patcherCharged ? 'Guarantee already purchased' : 'Lowest-cost adjacent extension'}
@@ -265,7 +265,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
               <Gem className="h-4 w-4" />
               {patcherCharged ? 'Paid' : patcherTarget == null ? '—' : fmt(patcherCost)}
             </div>
-            <div className="mt-1 text-[10px] text-slate-500">⌊rarity / 100⌋ + 1 · 1/900 costs 10</div>
+            <div className="mt-1 text-[10px] text-slate-500">Cost scales with target rarity; 1/900 costs 10 Shards</div>
           </div>
           <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
             <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Purchase Cooldown</div>
@@ -404,13 +404,13 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
         <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-10 text-center space-y-2">
           <BookOpen className="w-8 h-8 text-slate-600 mx-auto" />
           <p className="text-sm font-bold text-slate-400">{selectedTier === 'all' ? 'No Orbs discovered yet' : 'No discoveries in this tier yet'}</p>
-          <p className="text-xs text-slate-500">{selectedTier === 'all' ? 'Your first roll will start your Codex.' : 'Try All tiers to see your other discoveries, or keep rolling to find this tier.'}</p>
+          <p className="text-xs text-slate-500">{selectedTier === 'all' ? 'Roll once to discover your first Orb; it will be recorded here.' : 'Try All tiers to see your other discoveries, or keep rolling to find this tier.'}</p>
         </div>
       ) : (
         <>
           <div className="flex items-center justify-between text-xs text-slate-500 px-1" aria-live="polite">
             <span>Showing {fmt(pageStart)}–{fmt(pageEnd)} of {fmt(total)}</span>
-            <span>Page {safePage + 1} / {totalPages}</span>
+            <span>Page {safePage + 1} of {totalPages}</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
