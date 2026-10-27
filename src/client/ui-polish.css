@@ -333,7 +333,7 @@
 
 /* Main-game visual lift: a quiet ambient halo for every player, with a clearer
    first-roll spotlight for the first dozen rolls. Keep it below Frenzy intensity. */
-.io-ui .roll-stage:not(.is-first-session)::after {
+.io-ui .roll-stage:not(.is-first-session):not(.is-rolling)::after {
   animation: io-main-stage-aura 8s ease-in-out infinite;
 }
 .io-ui .roll-stage.is-first-session {
@@ -354,7 +354,7 @@
   background-size: 38px 38px;
   animation: io-first-roll-grid 24s linear infinite;
 }
-.io-ui .roll-stage.is-first-session::after {
+.io-ui .roll-stage.is-first-session:not(.is-rolling)::after {
   width: 390px;
   height: 390px;
   border-color: rgba(116, 221, 202, .22);
@@ -477,7 +477,7 @@
 }
 @media (max-width: 680px) {
   .io-ui .io-first-roll-label { top: 12px; }
-  .io-ui .roll-stage.is-first-session::after { width: 300px; height: 300px; }
+  .io-ui .roll-stage.is-first-session:not(.is-rolling)::after { width: 300px; height: 300px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .io-ui .roll-stage::after,
