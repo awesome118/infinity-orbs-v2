@@ -1032,10 +1032,10 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                           sound.playClick();
                           void onJoinGuild(g.id);
                         }}
-                        disabled={busy || g.members.length >= 50}
+                        disabled={busy || g.members.length >= 10 + Math.min(40, g.perks?.memberCapacityRank ?? 0)}
                         className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer disabled:cursor-not-allowed"
                       >
-                        {g.members.length >= 50 ? 'Full' : 'Join'}
+                        {g.members.length >= 10 + Math.min(40, g.perks?.memberCapacityRank ?? 0) ? 'Full' : 'Join'}
                       </button>
                     </div>
                   ))}
