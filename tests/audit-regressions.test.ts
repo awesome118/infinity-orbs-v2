@@ -2821,7 +2821,7 @@ test('rolling disables both roll affordances and gives the orb keyboard semantic
   assert.match(roll, /<button[\s\S]{0,250}disabled=\{busy\}[\s\S]{0,250}aria-busy=\{busy\}/);
   assert.match(roll, /aria-label=\{busy \? 'Rolling orbs'/);
   assert.match(roll, /const primaryActionLabel = busy[\s\S]*?\? 'ROLL IN PROGRESS'/);
-  assert.match(roll, /className=\{'roll-button ' \+ \(busy \? 'is-waiting'/);
+  assert.match(roll, /className=\{'roll-button ' \+ \(isFirstSession \? 'is-first-session-cta ' : ''\) \+ \(busy \? 'is-waiting'/);
   const css = source('src/client/styles.css');
   assert.match(css, /\.roll-button:hover:disabled \{[^}]*transform: none !important;[^}]*cursor: wait !important;/);
 });
