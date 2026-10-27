@@ -4014,7 +4014,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <button type="button"
               title="Jump to aggregate Impressions analytics."
               onClick={() => {
-                document.getElementById('io-impressions-tab')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                const section = ADMIN_CONSOLE_SECTIONS.find(item => item.id === 'impressions');
+                if (section?.tools[0]) selectAdminTool('impressions', section.tools[0]);
                 void loadImpressions();
               }}
               className={buttonBase + ' bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-200 px-3 py-2'}
