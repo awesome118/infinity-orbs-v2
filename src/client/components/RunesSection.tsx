@@ -209,7 +209,7 @@ export const RunesSection:React.FC=()=>{
           </div>;
         })}</div>
         <div className="io-runes-stat-grid">{statCards.map(card=><div className="io-runes-stat" key={card.label}><span>{card.icon} {card.label}</span><strong>{card.value}</strong></div>)}</div>
-        <p className="io-runes-muted" style={{marginTop:'.75rem'}}>Slot milestones: start with 2; unlock a third at Delver Level 10, a fourth at Level 25, and a fifth at best Depth 50. Rune bonuses affect main-game online and offline orb-roll rewards, never dungeon combat.</p>
+        <p className="io-runes-muted" style={{marginTop:'.75rem'}}>Start with 2 Rune slots. Unlock slot 3 at Delver Level 10, slot 4 at Level 25, and slot 5 at Best Depth 50. Equipped Rune bonuses affect normal Orb-roll rewards, including offline rewards, not dungeon combat.</p>
       </section>
       <section className="io-runes-panel">
         <div className="io-runes-panel-head"><h2>Rune inventory</h2><span className="io-runes-muted">{state.runes.length} / 200 · {Math.max(0,200-state.runes.length)} slots free · {visibleRunes.length} shown</span>{state.runes.length>=200&&<span className="io-runes-capacity-warning" role="status">Inventory full — new Rune drops need an open slot.</span>}</div>
