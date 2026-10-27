@@ -221,7 +221,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
                   {codexChain > 0 ? `Best chain: ${codexChain}` : 'No chain yet'}
                 </div>
                 <div className="text-[10px] font-bold text-emerald-300 mt-0.5">
-                  Find the next adjacent rarity to extend it.
+                  {codexChain > 0 ? 'Find the next adjacent rarity to extend it.' : 'Discover your first rare Orb to start a chain.'}
                 </div>
               </div>
             </div>
