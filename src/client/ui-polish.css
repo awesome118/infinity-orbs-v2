@@ -329,3 +329,165 @@
     animation: none !important;
   }
 }
+
+
+/* Main-game visual lift: a quiet ambient halo for every player, with a clearer
+   first-roll spotlight for the first dozen rolls. Keep it below Frenzy intensity. */
+.io-ui .roll-stage:not(.is-first-session)::after {
+  animation: io-main-stage-aura 8s ease-in-out infinite;
+}
+.io-ui .roll-stage.is-first-session {
+  border-color: rgba(116, 221, 202, .38);
+  background:
+    radial-gradient(ellipse at 50% 43%, rgba(66, 211, 183, .23), transparent 40%),
+    radial-gradient(ellipse at 50% 100%, rgba(76, 98, 190, .2), transparent 65%),
+    linear-gradient(150deg, rgba(18, 34, 40, .98), rgba(10, 18, 27, .98));
+  box-shadow:
+    0 26px 80px rgba(0, 0, 0, .31),
+    0 0 32px rgba(74, 222, 191, .08),
+    inset 0 1px rgba(255, 255, 255, .07);
+}
+.io-ui .roll-stage.is-first-session::before {
+  background-image:
+    linear-gradient(rgba(161, 235, 218, .065) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(161, 235, 218, .065) 1px, transparent 1px);
+  background-size: 38px 38px;
+  animation: io-first-roll-grid 24s linear infinite;
+}
+.io-ui .roll-stage.is-first-session::after {
+  width: 390px;
+  height: 390px;
+  border-color: rgba(116, 221, 202, .22);
+  box-shadow:
+    0 0 0 20px rgba(112, 220, 196, .035),
+    0 0 0 48px rgba(112, 220, 196, .024),
+    0 0 46px rgba(80, 196, 173, .08);
+  animation: io-first-roll-halo 5.8s ease-in-out infinite;
+}
+.io-ui .roll-stage.is-first-session .io-main-orb {
+  box-shadow:
+    0 0 25px rgba(99, 102, 241, .24),
+    0 0 46px rgba(116, 221, 202, .25),
+    0 0 78px rgba(116, 221, 202, .12),
+    inset 0 1px rgba(255, 255, 255, .22);
+  animation: io-first-roll-orb-glow 3.4s ease-in-out infinite;
+}
+.io-ui .io-first-roll-label {
+  position: absolute;
+  z-index: 20;
+  top: 15px;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  max-width: calc(100% - 28px);
+  padding: 7px 12px;
+  border: 1px solid rgba(167, 243, 208, .3);
+  border-radius: 999px;
+  color: #d9fff0;
+  background: linear-gradient(105deg, rgba(9, 44, 40, .9), rgba(14, 31, 49, .9));
+  box-shadow: 0 0 20px rgba(74, 222, 191, .1), inset 0 1px rgba(255, 255, 255, .08);
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: .18em;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  animation: io-first-roll-label 2.8s ease-in-out infinite;
+}
+.io-ui .io-first-roll-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #9cffcf;
+  box-shadow: 0 0 9px rgba(156, 255, 207, .8);
+}
+.io-ui .roll-button.is-first-session-cta.is-ready:not(:disabled) {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(206, 255, 226, .9) !important;
+  background: linear-gradient(105deg, #b8ff9d 0%, #91ffd0 49%, #8be9ef 100%) !important;
+  box-shadow:
+    0 10px 28px rgba(70, 218, 171, .25),
+    0 0 0 1px rgba(186, 255, 216, .2),
+    inset 0 1px rgba(255, 255, 255, .8) !important;
+  animation: io-first-roll-cta 3.1s ease-in-out infinite;
+}
+.io-ui .roll-button.is-first-session-cta.is-ready:not(:disabled)::after {
+  position: absolute;
+  z-index: 0;
+  top: -70%;
+  bottom: -70%;
+  left: -70%;
+  width: 42%;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .42), transparent);
+  transform: skewX(-18deg);
+  animation: io-first-roll-sheen 4.4s ease-in-out infinite;
+}
+.io-ui .roll-button.is-first-session-cta.is-ready:not(:disabled) > * {
+  position: relative;
+  z-index: 1;
+}
+.io-ui .latest-orb-mark.is-new-discovery {
+  border-color: rgba(255, 220, 140, .65);
+  color: #fff0b3;
+  box-shadow:
+    0 0 0 1px rgba(255, 220, 140, .09),
+    0 0 22px rgba(255, 202, 110, .23),
+    inset 0 1px rgba(255, 255, 255, .32);
+  animation: io-latest-discovery-pop .7s cubic-bezier(.18, .75, .24, 1) 2;
+}
+@keyframes io-main-stage-aura {
+  0%, 100% { border-color: rgba(112, 176, 167, .12); box-shadow: 0 0 0 22px rgba(112,176,167,.025), 0 0 0 54px rgba(112,176,167,.018); }
+  50% { border-color: rgba(116, 221, 202, .2); box-shadow: 0 0 0 22px rgba(112,176,167,.04), 0 0 0 54px rgba(112,176,167,.025), 0 0 28px rgba(80,196,173,.06); }
+}
+@keyframes io-first-roll-grid {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 38px 38px, -38px 38px; }
+}
+@keyframes io-first-roll-halo {
+  0%, 100% { opacity: .65; box-shadow: 0 0 0 20px rgba(112, 220, 196, .028), 0 0 0 48px rgba(112, 220, 196, .018), 0 0 34px rgba(80, 196, 173, .05); }
+  50% { opacity: 1; box-shadow: 0 0 0 20px rgba(112, 220, 196, .045), 0 0 0 48px rgba(112, 220, 196, .03), 0 0 50px rgba(80, 196, 173, .11); }
+}
+@keyframes io-first-roll-orb-glow {
+  0%, 100% { filter: brightness(1) saturate(1); }
+  50% { filter: brightness(1.075) saturate(1.12); }
+}
+@keyframes io-first-roll-label {
+  0%, 100% { box-shadow: 0 0 16px rgba(74, 222, 191, .08), inset 0 1px rgba(255, 255, 255, .08); }
+  50% { box-shadow: 0 0 23px rgba(74, 222, 191, .18), inset 0 1px rgba(255, 255, 255, .11); }
+}
+@keyframes io-first-roll-cta {
+  0%, 100% { box-shadow: 0 10px 28px rgba(70, 218, 171, .2), 0 0 0 1px rgba(186, 255, 216, .16), inset 0 1px rgba(255, 255, 255, .8); }
+  50% { box-shadow: 0 13px 34px rgba(70, 218, 171, .31), 0 0 0 3px rgba(186, 255, 216, .12), 0 0 24px rgba(116, 221, 202, .1), inset 0 1px rgba(255, 255, 255, .9); }
+}
+@keyframes io-first-roll-sheen {
+  0%, 18% { left: -70%; opacity: 0; }
+  36% { opacity: .9; }
+  58%, 100% { left: 130%; opacity: 0; }
+}
+@keyframes io-latest-discovery-pop {
+  0% { transform: scale(.92); }
+  65% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+@media (max-width: 680px) {
+  .io-ui .io-first-roll-label { top: 12px; }
+  .io-ui .roll-stage.is-first-session::after { width: 300px; height: 300px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .io-ui .roll-stage::after,
+  .io-ui .roll-stage.is-first-session::before,
+  .io-ui .roll-stage.is-first-session .io-main-orb,
+  .io-ui .io-first-roll-label,
+  .io-ui .roll-button.is-first-session-cta.is-ready:not(:disabled),
+  .io-ui .roll-button.is-first-session-cta.is-ready:not(:disabled)::after,
+  .io-ui .latest-orb-mark.is-new-discovery {
+    animation: none !important;
+    transition: none !important;
+  }
+}
