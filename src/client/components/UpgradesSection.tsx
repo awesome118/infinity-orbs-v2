@@ -330,12 +330,12 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
               <Star className="w-4 h-4 text-amber-400 fill-current animate-spin" style={{ animationDuration: '16s' }} />
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Spend Coins on upgrades. Each card shows its current value, next value and cost. Buy All Affordable purchases as many eligible levels as possible.
+              Spend Coins on upgrades. Each card shows its current value, next value, and cost. Buy All Affordable buys as many upgrade levels as your Coins allow.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            <label className="flex items-center gap-2 rounded-xl border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-xs font-bold text-slate-200">
+            <label title="When enabled, the game automatically buys affordable standard upgrades as you roll." className="flex items-center gap-2 rounded-xl border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-xs font-bold text-slate-200">
               <input
                 type="checkbox"
                 checked={autoBuyEnabled}
@@ -385,7 +385,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
 
           <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3">
             <span className="text-[10px] uppercase font-bold text-slate-500 block mb-0.5">
-              Multi-Ball Total
+              Orbs per roll
             </span>
             <span className="text-sm font-black text-purple-300 font-mono">
               {currentMulti} Orbs / roll
@@ -437,7 +437,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
                 isUpgraded
                   ? 'border-amber-400 ring-2 ring-amber-400/60 shadow-[0_0_30px_rgba(251,191,36,0.35)] scale-[1.02] animate-upgrade-burst'
                   : isMaxed
-                    ? 'border-slate-800 opacity-70 grayscale-[0.35]'
+                    ? 'border-slate-700/80 opacity-90 grayscale-[0.15]'
                     : 'border-slate-800 hover:border-slate-700/80'
               }`}
             >
@@ -507,7 +507,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
                   className="w-full bg-slate-900 border border-slate-800 text-slate-500 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-not-allowed"
                   >
                     <Check className="w-3.5 h-3.5 text-slate-500" />
-                    <span>MAX LEVEL</span>
+                    <span>Fully Upgraded</span>
                   </button>
                 ) : (
                   <button
@@ -524,7 +524,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
                     }`}
                   >
                     <Coins className="w-3.5 h-3.5" />
-                    <span>Upgrade ({fmt(u.cost)} Coins)</span>
+                    <span>{canAfford ? `Upgrade (${fmt(u.cost)} Coins)` : `Need ${fmt(Math.max(0, u.cost - state.coins))} more Coins`}</span>
                   </button>
                 )}
               </div>
@@ -555,6 +555,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
 
           <button
             type="button"
+            title="Spend 5 Shards to reduce roll cooldown; the duration and strength depend on your upgrades."
             aria-busy={activatingTurbo}
             onClick={async () => {
               if (activatingTurboRef.current || busy || upgradingAll || upgradeActionLockRef.current) return;
