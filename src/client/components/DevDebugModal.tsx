@@ -3933,6 +3933,28 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
         </div>
 
+        <nav aria-label="Admin console sections" className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">
+          <span className="mr-1 text-[9px] font-black uppercase tracking-wider text-slate-600">Jump to</span>
+          {[
+            ['Monitoring', 'io-server-monitor'],
+            ['Impressions', 'io-impressions-tab'],
+            ['Diagnostics', 'io-diagnostics-group'],
+            ['Simulation', 'io-simulation-group'],
+            ['Players', 'io-moderation-group'],
+            ['Combat', 'io-combat-tools'],
+            ['Destructive', 'io-destructive-group'],
+          ].map(([label, id]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className={buttonBase + ' bg-slate-950/80 border-slate-700 hover:border-emerald-500/40 hover:bg-slate-800 text-slate-300 px-2.5 py-1.5'}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+
         <section id="io-server-monitor" className={panelBase + ' border border-emerald-500/30 scroll-mt-4'}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -4441,9 +4463,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </section>
         )}
 
-        <details className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
+        <details id="io-diagnostics-group" className="scroll-mt-4 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-slate-300">
-            <span>Diagnostics</span><span className="text-[10px] text-slate-600">Expand</span>
+            <span>Diagnostics & Analytics</span><span className="text-[10px] text-slate-600">Expand</span>
+          </summary>
+          <div className="mt-3 space-y-3">
+        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+          <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
+            <span>Full End-to-End Test · rewrites admin save</span><span className="text-slate-600">Expand</span>
           </summary>
           <div className="mt-3 space-y-3">
 <section className={panelBase + ' border border-emerald-500/30'}>
@@ -4527,6 +4554,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </div>
           )}
         </section>
+          </div>
+        </details>
+        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+          <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
+            <span>CCU & Load Testing</span><span className="text-slate-600">Expand</span>
+          </summary>
+          <div className="mt-3 space-y-3">
         <section className={panelBase + ' border border-fuchsia-500/30'}>
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -4627,6 +4661,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             ))}
           </div>
         </section>
+          </div>
+        </details>
 
         <section className={panelBase}>
           <div className="flex items-center justify-between gap-3">
@@ -4678,12 +4714,17 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         </div>
         </details>
 
-        <details className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
+        <details id="io-simulation-group" className="scroll-mt-4 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-slate-300">
             <span>Controls & Simulation</span><span className="text-[10px] text-slate-600">Expand</span>
           </summary>
           <div className="mt-3 space-y-3">
 
+        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+          <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
+            <span>Global Booster Operations</span><span className="text-slate-600">Expand</span>
+          </summary>
+          <div className="mt-3 space-y-3">
         <section className={panelBase}>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fuchsia-300">
             <Power className="w-4 h-4" /> Global Booster Control
@@ -4762,7 +4803,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </button>
           </div>
         </section>
+          </div>
+        </details>
 
+        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+          <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
+            <span>Save & Booster Logs</span><span className="text-slate-600">Expand</span>
+          </summary>
+          <div className="mt-3 space-y-3">
         <section className={panelBase + ' border border-rose-500/30'}>
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -4883,7 +4931,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             onFocus={e => e.currentTarget.select()}
           />
         </section>
+          </div>
+        </details>
 
+        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+          <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
+            <span>Notifications & Test Presets</span><span className="text-slate-600">Expand</span>
+          </summary>
+          <div className="mt-3 space-y-3">
         <section className={panelBase + ' border border-fuchsia-500/30'}>
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -4974,7 +5029,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </button>
           </div>
         </section>
+          </div>
+        </details>
 
+        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+          <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
+            <span>Roll & Resource Tools</span><span className="text-slate-600">Expand</span>
+          </summary>
+          <div className="mt-3 space-y-3">
         <section className={panelBase}>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-300">
             <Play className="w-4 h-4" /> Force Exact Roll
@@ -5020,6 +5082,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             ))}
           </div>
         </section>
+          </div>
+        </details>
 
         <section className={panelBase}>
           <div className="flex items-center justify-between">
@@ -5060,6 +5124,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           </div>
         </section>
 
+        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+          <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
+            <span>Frenzy, Popup & Community Events</span><span className="text-slate-600">Expand</span>
+          </summary>
+          <div className="mt-3 space-y-3">
         <section className={`${panelBase} border border-fuchsia-500/30`}>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fuchsia-300">
             <Flame className="w-4 h-4" /> Orb Frenzy Testing
@@ -5183,11 +5252,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </button>
           </div>
         </section>
+          </div>
+        </details>
 
         </div>
         </details>
 
-        <details className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
+        <details id="io-moderation-group" className="scroll-mt-4 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-slate-300">
             <span>Players & Moderation</span><span className="text-[10px] text-slate-600">Expand</span>
           </summary>
@@ -5473,6 +5544,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           )}
         </section>
 
+        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+          <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
+            <span>Player Lookup & Analysis</span><span className="text-slate-600">Expand</span>
+          </summary>
+          <div className="mt-3 space-y-3">
         <section className={`${panelBase} border border-cyan-500/30`}>
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-300">
@@ -5729,7 +5805,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             onFocus={e => e.currentTarget.select()}
           />
         </section>
+          </div>
+        </details>
 
+        <details className="rounded-xl border border-slate-800 bg-black/10 p-3">
+          <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
+            <span>Guild Administration & Chat</span><span className="text-slate-600">Expand</span>
+          </summary>
+          <div className="mt-3 space-y-3">
         <section className={panelBase + ' border border-violet-500/30'}>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-violet-300">
             <Users className="w-4 h-4" /> Admin Guild Authority
@@ -5934,13 +6017,22 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </div>
           )}
         </section>
+          </div>
+        </details>
 
                   </div>
         </details>
 
-        <CombatAdminTools />
+        <details id="io-combat-tools" className="scroll-mt-4 rounded-2xl border border-amber-500/30 bg-slate-950/50 p-3">
+          <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-amber-200">
+            <span>Combat Admin Tools</span><span className="text-[10px] text-slate-600">Expand</span>
+          </summary>
+          <div className="mt-3">
+            <CombatAdminTools />
+          </div>
+        </details>
 
-        <details className="rounded-2xl border border-rose-500/40 bg-rose-950/10 p-3">
+        <details id="io-destructive-group" className="scroll-mt-4 rounded-2xl border border-rose-500/40 bg-rose-950/10 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-rose-300">
             <span>Destructive Testing</span><span className="text-[10px] text-rose-400/60">Expand</span>
           </summary>
