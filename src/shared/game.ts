@@ -445,13 +445,10 @@ export function frenzyClaimCountForRarity(
   const baseCount = frenzyOrbCountForRarity(rarity);
   const safeMultiRolls = Math.max(1, Math.floor(Number(multiRolls) || 1));
   const safeVolleyLevel = Math.max(0, Math.floor(Number(frenzyVolleyLevel) || 0));
-  // Without Volley, every Multi Roll contributes one full share.
-  // With Volley, the first share is full value and every additional
-  // multiball contributes at 20% efficiency.
-  const effectiveRolls = safeVolleyLevel > 0
-    ? 1 + Math.max(0, safeMultiRolls - 1) * 0.20
-    : safeMultiRolls;
-  return Math.max(1, Math.floor(baseCount * effectiveRolls));
+  // Frenzy always applies the full Multiball multiplier. Frenzy Volley is a
+  // bonus, never a penalty: its one level adds 20% on top of that full payout.
+  const volleyMultiplier = safeVolleyLevel > 0 ? 1.20 : 1;
+  return Math.max(1, Math.floor(baseCount * safeMultiRolls * volleyMultiplier));
 }
 
 export function grantFrenzyOwnerShards(
@@ -1606,7 +1603,7 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
   frenzyVolley: {
     name: 'Frenzy Volley',
-    desc: 'Very high-tier upgrade: every additional multiball counts at 20% efficiency during Orb Frenzy.',
+    desc: '+20% Orb Frenzy rolls after the full Multiball multiplier is applied.',
     category: 'core',
     maxLevel: 1,
     costPerLevel: 25,
