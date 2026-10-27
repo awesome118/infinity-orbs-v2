@@ -96,7 +96,7 @@ const sections: Array<{
       },
       {
         title: 'Frenzy Roll Payouts',
-        description: 'Frenzies now grant ordinary randomly generated Orb rolls instead of guaranteeing the posted Orb rarity. The post shows your exact roll count based on the posted Orb, your Multiball, and Frenzy Volley.',
+        description: 'Frenzies now grant ordinary random Orb rolls instead of guaranteeing the posted Orb rarity. Payouts use the full Multiball multiplier, with Frenzy Volley adding a separate +20% bonus; the post shows your exact personal roll count.',
       },
       {
         title: 'Infinity Overflow',
