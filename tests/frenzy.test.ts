@@ -10,7 +10,7 @@ import {
   grantFrenzyOwnerShards,
   FRENZY_OWNER_SHARD_REWARD,
   FRENZY_PROMPT_DELAY_MS,
-  FRENZY_CLAIM_MAX_ORBS,
+  FRENZY_LOG_BASE,
   FRENZY_POST_COOLDOWN_MS,
   FRENZY_CLAIM_COOLDOWN_MS,
   FRENZY_POST_LIFETIME_MS,
@@ -40,11 +40,18 @@ test('Frenzy Volley keeps its existing bonus on top of the Multi Roll multiplier
   );
 });
 
-test('Frenzy claim size is capped safely', () => {
-  assert.equal(
-    frenzyClaimCountForRarity(1e100, 1e100),
-    FRENZY_CLAIM_MAX_ORBS,
-  );
+test('Frenzy payout scaling uses log base 1.004 and exceeds the old 50k limit', () => {
+  assert.equal(FRENZY_LOG_BASE, 1.004);
+  const base = frenzyOrbCountForRarity(1e100);
+  assert.equal(base, Math.floor(Math.log(1e100) / Math.log(1.004)));
+  assert.ok(base > 50_000);
+});
+
+test('Frenzy claims have no arbitrary 50k cap and still scale with Multi Roll', () => {
+  const base = frenzyOrbCountForRarity(1e100);
+  assert.equal(frenzyClaimCountForRarity(1e100, 1), base);
+  assert.equal(frenzyClaimCountForRarity(1e100, 2), base * 2);
+  assert.ok(frenzyClaimCountForRarity(1e100, 2) > 50_000);
 });
 
 test('Frenzy owner rewards remain separate from roll-earned Shard telemetry', () => {
