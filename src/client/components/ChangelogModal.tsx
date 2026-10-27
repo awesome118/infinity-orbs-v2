@@ -87,6 +87,10 @@ const sections: Array<{
         description: 'Improved Global Chat status messaging when posting is unavailable and added active-session length to the player list.',
       },
       {
+        title: 'Main-Game Visual Feedback',
+        description: 'Made the first dozen rolls easier to spot with a brighter Orb stage, a clear first-roll action, and a restrained pulsing Roll button. Newly discovered Orbs receive a short visual highlight; reduced-motion preferences are respected.',
+      },
+      {
         title: 'Post Previews & Play CTA',
         description: 'Revamped main-game, shared-Orb, and Frenzy previews with animated Orb visuals and a glowing, pulsing Play button that makes starting the game unmistakable.',
       },
