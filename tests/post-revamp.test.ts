@@ -155,5 +155,7 @@ test('main game spotlights first rolls and makes new Orb discoveries pop', () =>
   assert.match(polish, /\.roll-button\.is-first-session-cta\.is-ready/);
   assert.match(polish, /@keyframes io-first-roll-sheen/);
   assert.match(polish, /@keyframes io-latest-discovery-pop/);
-  assert.match(polish, /prefers-reduced-motion: reduce[\s\S]*io-first-roll-cta/);
+  const reducedMotion = polish.slice(polish.lastIndexOf('@media (prefers-reduced-motion: reduce)'));
+  assert.match(reducedMotion, /roll-button\.is-first-session-cta\.is-ready/);
+  assert.match(reducedMotion, /latest-orb-mark\.is-new-discovery/);
 });
