@@ -6138,7 +6138,6 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <span>Combat Admin Tools</span><span className="text-[10px] text-slate-600">Expand</span>
           </summary>
           {renderAdminToolBar('combat')}
-          {renderAdminToolBar('combat')}
           <div className="mt-3">
             <CombatAdminTools />
           </div>
@@ -6148,7 +6147,6 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-rose-300">
             <span>Destructive Testing</span><span className="text-[10px] text-rose-400/60">Expand</span>
           </summary>
-          {renderAdminToolBar('destructive')}
           {renderAdminToolBar('destructive')}
           <div className="mt-3 space-y-3">
         <section className="bg-rose-950/20 border border-rose-500/40 rounded-2xl p-4 space-y-2">
