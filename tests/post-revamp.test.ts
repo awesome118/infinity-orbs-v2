@@ -151,7 +151,7 @@ test('main game spotlights first rolls and makes new Orb discoveries pop', () =>
   assert.match(roll, /io-first-roll-label/);
   assert.match(roll, /io-main-orb/);
   assert.match(roll, /is-new-discovery/);
-  assert.match(polish, /\.roll-stage\.is-first-session::after/);
+  assert.match(polish, /\.roll-stage\.is-first-session:not\(\.is-rolling\)::after/);
   assert.match(polish, /\.roll-button\.is-first-session-cta\.is-ready/);
   assert.match(polish, /@keyframes io-first-roll-sheen/);
   assert.match(polish, /@keyframes io-latest-discovery-pop/);
