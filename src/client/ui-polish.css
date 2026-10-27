@@ -534,7 +534,8 @@
 }
 
 .io-ui .io-tutorial-guide {
-  width: min(100% - 24px, 760px);
+  width: calc(100% - 24px);
+  max-width: 760px;
   margin-inline: auto;
 }
 
