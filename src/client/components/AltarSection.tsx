@@ -139,7 +139,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
               <span>Devotion Altar</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Offer Coins for a chance to increase Altar Rank. Each rank compounds Coin Devotion by 1.05×, while the minimum Coin offering grows by 1.5× per rank. Larger offerings improve the odds; failed attempts increase pity. Shards add permanent luck and extend the temporary Surge.
+              Sacrifice Coins to attempt a Rank increase. Larger offers improve the odds, and failed attempts build pity. Each Rank multiplies Coin Devotion by 1.05× and raises the minimum offer by 1.5×. Shards add permanent Luck and extend the temporary Surge.
             </p>
           </div>
 
@@ -152,7 +152,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
               <div className="text-[10px] font-bold uppercase tracking-wider text-orange-300">
                 Altar Luck
               </div>
-              <div className="text-2xl font-black text-white font-mono">
+              <div className="text-2xl font-black text-white font-mono" aria-label={`Total Altar Luck multiplier ${totalAltarMultiplier.toFixed(2)} times`}>
                 {totalAltarMultiplier.toFixed(2)}×
               </div>
               <div className="text-[10px] text-emerald-400 font-medium">
@@ -301,6 +301,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
               max={state.coins}
               step={Math.max(1, Math.floor(state.coins / 100))}
               value={selectedCoinOffer}
+              aria-valuetext={`${fmt(selectedCoinOffer)} Coins offered`}
               onChange={e => setSelectedCoinOffer(Number(e.target.value))}
               className="w-full accent-amber-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
             />
@@ -318,6 +319,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
                 <button
                   type="button"
                   key={btn.label}
+                  aria-pressed={selectedCoinOffer === Math.min(state.coins, btn.val)}
                   onClick={() => setSelectedCoinOffer(Math.min(state.coins, btn.val))}
                   className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-amber-500/20 hover:text-amber-300 text-[10px] font-bold text-slate-400 transition-colors"
                 >
@@ -349,6 +351,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
               max={state.shards ?? 0}
               step={1}
               value={selectedShardOffer}
+              aria-valuetext={`${fmt(selectedShardOffer)} Shards offered`}
               onChange={e => setSelectedShardOffer(Number(e.target.value))}
               className="w-full accent-cyan-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
             />
@@ -364,6 +367,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
                 <button
                   type="button"
                   key={btn.label}
+                  aria-pressed={selectedShardOffer === Math.min(state.shards ?? 0, btn.val)}
                   onClick={() => setSelectedShardOffer(Math.min(state.shards ?? 0, btn.val))}
                   className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-cyan-500/20 hover:text-cyan-300 text-[10px] font-bold text-slate-400 transition-colors"
                 >
