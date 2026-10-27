@@ -516,7 +516,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
               key={rewardBurstKeyRef.current}
               className="reward-burst"
               aria-live="polite"
-              aria-label="Roll rewards"
+              role="group"
+              aria-label="Rewards from the latest roll"
             >
               <div className="reward-burst-ring" />
               <div className="reward-burst-title">REWARD</div>
@@ -561,14 +562,14 @@ export const RollSection: React.FC<RollSectionProps> = ({
             <div className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow-md font-mono">
               {displayOrb
                 ? `1 / ${formatRarity(displayOrb.rarity, displayOrb.isInfinity)}`
-                : '1 / ∞'}
+                : '—'}
             </div>
 
             <div className="text-xs font-semibold text-white/90 mt-1 drop-shadow">
               {orbInfo ? orbInfo.name : 'Tap to Roll'}
             </div>
             <div className="mt-2 text-[10px] text-slate-300/80" aria-label={`Personal best rarity 1 in ${formatRarity(state.highestRarity, state.highestRarityIsInfinity)}`}>
-              Personal best · 1/{formatRarity(state.highestRarity, state.highestRarityIsInfinity)}
+              Personal best · 1 / {formatRarity(state.highestRarity, state.highestRarityIsInfinity)}
             </div>
           </div>
 
@@ -594,14 +595,14 @@ export const RollSection: React.FC<RollSectionProps> = ({
         {hasMultipleOrbs && (
           <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-300 bg-slate-900/80 border border-slate-800 px-3 py-1 rounded-full shadow-sm">
             <Layers className="w-3.5 h-3.5 text-purple-400" />
-            <span>Showing best of {lastBatch.length} circling orbs</span>
+            <span>Best of {lastBatch.length} Orbs this roll</span>
           </div>
         )}
 
         {/* Persistent exact reward readout, including all bonuses. */}
         {batchSummary && (
           <div className="roll-reward-summary" aria-live="polite">
-            <div className="roll-reward-label">Last Roll Reward</div>
+            <div className="roll-reward-label">Last Roll</div>
             <div className="roll-reward-values">
               <span className="roll-reward-value coins"><Coins className="w-3.5 h-3.5" /> +{formatNumber(batchSummary.coins)} Coins</span>
               <span className="roll-reward-value xp"><Sparkles className="w-3.5 h-3.5" /> +{formatNumber(batchSummary.xp)} XP</span>
@@ -617,7 +618,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
             {canRoll ? 'READY TO ROLL' : `COOLDOWN: ${(remain / 1000).toFixed(1)}s`}
           </div>
           {/* Progress Bar */}
-          <div role="progressbar" aria-label="Roll cooldown progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(cooldownProgressPct)} className="w-48 h-1.5 bg-slate-800 rounded-full mx-auto mt-2 overflow-hidden">
+          <div role="progressbar" aria-label="Roll cooldown progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(cooldownProgressPct)} aria-valuetext={canRoll ? "Ready to roll" : `${(remain / 1000).toFixed(1)} seconds remaining`} className="w-48 h-1.5 bg-slate-800 rounded-full mx-auto mt-2 overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-200"
               style={{
@@ -1034,7 +1035,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               </div>
             </div>
           ) : (
-            <p className="field-empty">The first signal is waiting. Roll to record your opening discovery.</p>
+            <p className="field-empty">Your first Orb will appear here after you roll.</p>
           )}
           {displayOrb && orbInfo && <div className="field-stat-row mt-3 !border-t-0 !pt-0"><span>Continuum class</span><strong style={{ color: orbInfo.color }}>{orbInfo.tier}</strong></div>}
         </section>
