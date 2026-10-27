@@ -60,6 +60,11 @@ function normalizeDeviceType(value: unknown): ImpressionDeviceType {
     : 'unknown';
 }
 
+/** Internal developer traffic must never affect public acquisition/engagement analytics. */
+function isExcludedImpressionUsername(value: unknown): boolean {
+  return String(value ?? '').trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen';
+}
+
 function normalizeCount(value: unknown): number {
   const raw = value === null || value === undefined || value === '' ? '0' : value;
   const count = typeof raw === 'number' ? raw : Number(String(raw).trim());
@@ -329,6 +334,7 @@ export async function recordPostImpression(
   const postId = contextPostId || suppliedPostId;
   const contextUserId = String(context.userId ?? '').trim();
   const username = String(context.username ?? '').trim().replace(/^u\//i, '').toLowerCase();
+  if (isExcludedImpressionUsername(username)) return { recorded: false };
   const userId = contextUserId && contextUserId !== 'unknown' ? contextUserId : (username ? 'username:' + username : '');
 
   if (!postId || postId.length > 200 || /[\u0000-\u001f\u007f]/.test(postId) ||
@@ -510,6 +516,7 @@ export async function recordPostImpression(
 
 /** Records an Orb Share/Frenzy -> first-play conversion after the first heartbeat. */
 export async function recordPlayerActivityForImpressions(userIdValue: unknown): Promise<void> {
+  if (isExcludedImpressionUsername(context.username)) return;
   const userId = String(userIdValue ?? '').trim();
   if (!userId || userId === 'unknown') return;
   const userHash = await hashUserIdentity(userId);
@@ -560,6 +567,7 @@ export async function recordMainGamePostConversion(
   const postId = contextPostId || suppliedPostId;
   const userId = String(context.userId ?? '').trim();
   const username = String(context.username ?? '').trim().replace(/^u\//i, '');
+  if (isExcludedImpressionUsername(username)) return { recorded: false };
   const identity = userId && userId !== 'unknown'
     ? userId
     : username ? 'username:' + username.toLowerCase() : '';

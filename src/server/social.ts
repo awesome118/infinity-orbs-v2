@@ -2365,6 +2365,34 @@ export async function getGlobalChatStatus(): Promise<{ enabled: boolean; reason?
   }
 }
 
+/** Resolve the commenter identity from the onCommentCreate event payload.
+ *
+ * CommentV2.author is the comment author's username. The top-level author is
+ * normally the same account, but in embedded trigger deliveries it can reflect
+ * the app account; never let that mismatch overwrite the visible commenter.
+ */
+export function resolveGlobalChatCommentAuthor(eventValue: unknown): { username: string; userId?: string } {
+  const event = isRecordValue(eventValue) ? eventValue : {};
+  const comment = isRecordValue(event.comment) ? event.comment : {};
+  const authorValue = event.author;
+  const author = isRecordValue(authorValue) ? authorValue : {};
+  const normalizeName = (value: unknown): string => typeof value === 'string'
+    ? value.trim().replace(/^u\//i, '').trim()
+    : '';
+  const commentName = normalizeName(comment.author ?? comment.authorName);
+  const topLevelName = normalizeName(author.name ?? author.username ?? (typeof authorValue === 'string' ? authorValue : ''));
+  const alternateName = normalizeName(event.authorName);
+  const names = [commentName, alternateName, topLevelName].filter(Boolean);
+  // Prefer a real commenter when trigger metadata disagrees and identifies the
+  // app itself. If every available source says infinity-orbs, keep that author.
+  const username = names.find(name => name.toLowerCase() !== 'infinity-orbs') ?? names[0] ?? '';
+  const authorId = String(author.id ?? '').trim();
+  return {
+    username,
+    ...(authorId && topLevelName.toLowerCase() === username.toLowerCase() ? { userId: authorId } : {}),
+  };
+}
+
 export async function recordGlobalChatComment(input: {
   postId: string;
   commentId: string;

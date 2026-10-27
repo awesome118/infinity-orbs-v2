@@ -6,7 +6,7 @@ import {
   redis as originalRedis,
   reddit as originalReddit,
 } from '../src/server/devvit-mock.js';
-import { getGlobalChatStatus, postGlobalChatMessage, registerCurrentPostAsGlobalChatDestination } from '../src/server/social.js';
+import { getGlobalChatStatus, postGlobalChatMessage, registerCurrentPostAsGlobalChatDestination, resolveGlobalChatCommentAuthor } from '../src/server/social.js';
 
 test('no unregistered ordinary post can become Global Chat destination via launcher=main', async () => {
   const baseContext = originalContext;
@@ -279,4 +279,21 @@ test('trusted admin repairs stale Frenzy destination only from a valid main Game
     if (previousFrenzy != null) await baseRedis.set(frenzyKey, previousFrenzy);
     configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
   }
+});
+
+
+test('Global Chat comment trigger prefers the actual comment author over mismatched app trigger metadata', () => {
+  const resolved = resolveGlobalChatCommentAuthor({
+    comment: { author: 'ActualCommenter' },
+    author: { id: 't2_infinity_orbs_app', name: 'infinity-orbs', username: 'infinity-orbs' },
+  });
+  assert.deepEqual(resolved, { username: 'ActualCommenter' });
+});
+
+test('Global Chat comment trigger retains user ID when top-level author matches comment author', () => {
+  const resolved = resolveGlobalChatCommentAuthor({
+    comment: { author: 'u/ActualCommenter' },
+    author: { id: 't2_actual_commenter', name: 'ActualCommenter' },
+  });
+  assert.deepEqual(resolved, { username: 'ActualCommenter', userId: 't2_actual_commenter' });
 });

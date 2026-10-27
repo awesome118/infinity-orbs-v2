@@ -399,3 +399,47 @@ test('main-game Play CTA records one unique conversion and attributes the rate t
   }
 });
 
+
+test('shadow_fen is excluded from all post impression and main-game conversion tracking', async () => {
+  const baseContext = originalContext;
+  const baseRedis = originalRedis;
+  const baseReddit = originalReddit;
+  const suffix = Date.now().toString(36);
+  const types = ['main-game', 'orb-share', 'frenzy'] as const;
+  const postIds = types.map(type => 't3_excluded-shadow-fen-' + type + '-' + suffix);
+  configureDevvitRuntime({
+    redis: baseRedis,
+    context: { ...baseContext, userId: 'excluded-admin-' + suffix, username: 'u/Shadow_Fen', postId: postIds[0] },
+    reddit: baseReddit,
+  });
+  try {
+    const before = await getImpressionDashboard();
+    for (let index = 0; index < types.length; index += 1) {
+      configureDevvitRuntime({
+        redis: baseRedis,
+        context: { ...baseContext, userId: 'excluded-admin-' + suffix, username: 'u/Shadow_Fen', postId: postIds[index] },
+        reddit: baseReddit,
+      });
+      assert.deepEqual(await recordPostImpression(types[index], 'desktop', postIds[index]), { recorded: false });
+    }
+    configureDevvitRuntime({
+      redis: baseRedis,
+      context: { ...baseContext, userId: 'excluded-admin-' + suffix, username: 'u/Shadow_Fen', postId: postIds[0] },
+      reddit: baseReddit,
+    });
+    assert.deepEqual(await recordMainGamePostConversion(postIds[0], 'desktop'), { recorded: false });
+
+    const after = await getImpressionDashboard();
+    assert.equal(after.total, before.total);
+    assert.equal(after.uniqueUsers, before.uniqueUsers);
+    assert.equal(after.uniqueToday, before.uniqueToday);
+    assert.deepEqual(after.uniqueByType, before.uniqueByType);
+    assert.deepEqual(after.byType, before.byType);
+    assert.deepEqual(after.byDevice, before.byDevice);
+    assert.deepEqual(after.byTypeAndDevice, before.byTypeAndDevice);
+    assert.equal(after.trackedPostCount, before.trackedPostCount);
+    assert.equal(after.posts.some(post => postIds.includes(post.postId)), false);
+  } finally {
+    configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  }
+});

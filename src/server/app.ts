@@ -85,6 +85,7 @@ import {
   registerCurrentPostAsGlobalChatDestination,
   postGlobalChatMessage,
   recordGlobalChatComment,
+  resolveGlobalChatCommentAuthor,
   reportGlobalChatMessage,
   reportGuildChatMessage,
 } from './social.js';
@@ -1165,13 +1166,13 @@ export function createApp() {
     try {
       const event = req.body ?? {};
       const comment = event.comment ?? {};
-      const author = event.author ?? {};
+      const resolvedAuthor = resolveGlobalChatCommentAuthor(event);
       const post = event.post ?? {};
       const rawPostId = String(post.id ?? comment.postId ?? '').trim();
       const commentId = String(comment.id ?? '').trim();
       const text = String(comment.body ?? comment.text ?? '').trim();
-      const authorName = String(author.name ?? author.username ?? '').trim().replace(/^u\//i, '');
-      const authorId = String(author.id ?? '').trim();
+      const authorName = resolvedAuthor.username;
+      const authorId = resolvedAuthor.userId ?? '';
       const rawCreatedAt = comment.createdAt ?? comment.created;
       const parsedCreatedAt = typeof rawCreatedAt === 'number'
         ? (rawCreatedAt > 0 && rawCreatedAt < 1_000_000_000_000 ? rawCreatedAt * 1000 : rawCreatedAt)
