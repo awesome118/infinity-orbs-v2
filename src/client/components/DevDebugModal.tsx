@@ -3577,12 +3577,21 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           const result = await request<any>('/api/dev/stat-spy?username=' + encodeURIComponent(context.username));
           if (!Array.isArray(result.stats) || result.stats.length === 0) throw new Error('Stat Spy returned no stats.');
           if (!result.allocations || !result.summary) throw new Error('Stat Spy omitted summary or allocations.');
+          if (!result.playerSave || !result.calculatedPlayerState) throw new Error('Stat Spy omitted the saved or calculated player state.');
+          if (!result.combat || !result.combat.state || !Array.isArray(result.combat.gear) ||
+              !Array.isArray(result.combat.equippedSkills) || !Array.isArray(result.combat.equippedRunes)) {
+            throw new Error('Stat Spy omitted Combat state or equipped loadout details.');
+          }
+          const statIds = new Set(result.stats.map((stat: { id: string }) => stat.id));
+          for (const required of ['luck', 'runeLuck', 'apexFortune', 'supernova', 'critPower', 'shardChance']) {
+            if (!statIds.has(required)) throw new Error('Stat Spy omitted expected stat breakdown: ' + required);
+          }
           for (const stat of result.stats) {
             if (!Array.isArray(stat.sources)) throw new Error('Stat Spy stat lacked source breakdown: ' + stat.label);
           }
           return result;
         },
-        result => 'stats=' + result.stats.length + ' · sources broken down',
+        result => 'stats=' + result.stats.length + ' · combat snapshot + full saves + Rune Luck sources',
       );
 
       await step(
