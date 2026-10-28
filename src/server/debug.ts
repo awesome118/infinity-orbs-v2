@@ -1442,7 +1442,10 @@ function buildStatSpyStats(
   // Match the production base-Luck calculation. This includes Daily Streak Community,
   // all current multipliers, and every source already handled by luckMultiplier().
   // World-event and combat-boss Luck are separate additive bonuses in applyRolls.
-  const finalLuck = Math.max(1, luckMultiplier(s) + communityLuckBonus + combatBossBonus);
+  const finalLuckCandidate = luckMultiplier(s) + communityLuckBonus + combatBossBonus;
+  const finalLuck = Number.isFinite(finalLuckCandidate)
+    ? Math.max(1, finalLuckCandidate)
+    : Number.MAX_VALUE;
   const apexFortuneLevel = Math.max(0, Number(mastery.apexFortune ?? 0));
   const apexFortuneChance = Math.min(0.45, apexFortuneLevel * 0.03);
   const runeLuckMultiplier = combatRuneLuckMultiplier(runeBonuses.luckPct);
