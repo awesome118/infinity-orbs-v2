@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Orb } from '../../shared/game.js';
 import { getOrbInfo } from '../../shared/game.js';
+import { GameSprite, getOrbSpriteName } from './GameSprite.js';
 
 interface Props {
   orbs: Orb[];
@@ -29,9 +30,10 @@ export function OrbOrbit({ orbs, radius = 152 }: Props) {
                 top: Math.sin(angle) * radius,
               }}
             >
-              <div
-                className="animate-orbit-counter w-8 h-8 rounded-full border border-white/20 shadow-md flex items-center justify-center"
-                style={{ background: info.bgGradient }}
+              <GameSprite
+                name={getOrbSpriteName(info.tier, orb.isInfinity)}
+                size={36}
+                className="io-orbit-sprite animate-orbit-counter"
               />
             </div>
           );
