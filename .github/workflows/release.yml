@@ -1,7 +1,7 @@
 name: Submit Infinity Orbs for Reddit Review
 
 on:
-  # v2.1.2 review submission: publish the already-deployed candidate, then install the published version to r/infinity_orbs_dev only.
+  # v2.1.3 review submission: publish the patch release, then install it to r/infinity_orbs_dev only.
   push:
     branches: [main]
     paths:
@@ -21,7 +21,7 @@ on:
 
 jobs:
   release:
-    if: ${{ inputs.confirm_publish || (github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.1.2]')) }}
+    if: ${{ inputs.confirm_publish || (github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.1.3]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
