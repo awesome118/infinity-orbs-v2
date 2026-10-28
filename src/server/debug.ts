@@ -1695,9 +1695,13 @@ function buildStatSpyStats(
         statSource('Guild Shard', Number(guild.shardRank ?? 0) * 0.0005 * 0.025 * 100, 'pct', 'add', { level: Number(guild.shardRank ?? 0), detail: '+0.05 points to the pre-scale factor per rank; effective chance is then ×2.5%' }),
         statSource('Shard Resonator', Number(prestige.shardResonator ?? 0) * 0.0025 * 0.025 * 100, 'pct', 'add', { level: Number(prestige.shardResonator ?? 0), detail: '+0.25 points to the pre-scale factor per level; effective chance is then ×2.5%' }),
         statSource('Level shard chance', levelBenefits.shardChance * 0.025 * 100, 'pct', 'add', { level, detail: 'Unlocked level contribution, then scaled by 2.5%' }),
-        ...equippedRuneStatSources(combatState, 'shardChancePct').map(source => ({ ...source, value: source.value * 0.025 })),
-        statSource('Combat Rune Shard Chance', Math.min(100, runeBonuses.shardChancePct) * 0.025, 'pct', 'special', { active: runeBonuses.shardChancePct > 0, detail: 'Rune contribution is deliberately not level-scaled; included before the 0.25% per-Orb cap' }),
-        statSource('Final cap', ROLL_SHARD_PROC_CHANCE_CAP, 'chance', 'special', { detail: 'Maximum final primary-proc chance is 0.25% per Orb' }),
+        ...equippedRuneStatSources(combatState, 'shardChancePct').map(source => ({
+          ...source,
+          value: source.value * 0.025,
+          detail: (source.detail ?? '') + ' · Rune contribution is not level-scaled; per-rune values contribute to a combined 100% cap before ×2.5% scaling',
+        })),
+        statSource('Combined equipped Rune Shard chance', Math.min(100, runeBonuses.shardChancePct) * 0.025, 'pct', 'special', { active: runeBonuses.shardChancePct > 0, detail: 'All equipped Rune Shard stats are combined (capped at 100%) before the ×2.5% conversion' }),
+        statSource('Final cap', ROLL_SHARD_PROC_CHANCE_CAP * 100, 'pct', 'special', { detail: 'Maximum final primary-proc chance is 0.25% per Orb' }),
       ],
     },
     {
