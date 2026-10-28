@@ -1340,17 +1340,32 @@ export function luckRarityExponent(_luck: number): number {
 // overflow is clamped here and displayed to players as Infinity.
 export const MAX_ORB_RARITY = Number.MAX_VALUE;
 
-export function rollContinuum(luck: number, random: () => number = Math.random): number {
+export function rollContinuum(
+  luck: number,
+  random: () => number = Math.random,
+  rarityMultiplier = 1,
+  minimumRarity = 2,
+): number {
   const sample = Number(random());
   const u = Number.isFinite(sample)
     ? Math.min(1 - Number.EPSILON, Math.max(Number.MIN_VALUE, sample))
     : 0.5;
-  const rawRarity = (1 / u) * luckRarityFactor(luck);
+  // Apply all rarity multipliers to the continuous sample before flooring it.
+  // Flooring first and multiplying later collapses many distinct RNG samples
+  // onto the same sparse set of high-rarity values for heavily boosted players.
+  const requestedMultiplier = Number(rarityMultiplier);
+  const safeMultiplier = Number.isNaN(requestedMultiplier) || requestedMultiplier <= 0
+    ? 1
+    : requestedMultiplier;
+  const rawRarity = (1 / u) * luckRarityFactor(luck) * safeMultiplier;
   // Values beyond Number.MAX_VALUE cannot be stored as finite rarity values.
   // Return Infinity as a transient sentinel; callers persist MAX_ORB_RARITY
   // and set Orb.isInfinity instead of serializing a non-finite number.
   if (!Number.isFinite(rawRarity) || rawRarity > MAX_ORB_RARITY) return Number.POSITIVE_INFINITY;
-  return Math.max(2, Math.min(MAX_ORB_RARITY, Math.floor(rawRarity)));
+  const requestedFloor = Number(minimumRarity);
+  const safeFloor = Number.isNaN(requestedFloor) ? 2 : Math.max(2, Math.floor(requestedFloor));
+  if (!Number.isFinite(safeFloor)) return Number.POSITIVE_INFINITY;
+  return Math.max(safeFloor, Math.min(MAX_ORB_RARITY, Math.floor(rawRarity)));
 }
 
 export interface ContinuumTierMilestone {
