@@ -3579,8 +3579,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           if (!result.allocations || !result.summary) throw new Error('Stat Spy omitted summary or allocations.');
           if (!result.playerSave || !result.calculatedPlayerState) throw new Error('Stat Spy omitted the saved or calculated player state.');
           if (!result.combat || !result.combat.state || !Array.isArray(result.combat.gear) ||
-              !Array.isArray(result.combat.equippedSkills) || !Array.isArray(result.combat.equippedRunes)) {
-            throw new Error('Stat Spy omitted Combat state or equipped loadout details.');
+              !Array.isArray(result.combat.equippedSkills) || !Array.isArray(result.combat.equippedRunes) ||
+              typeof result.combat.inCombat !== 'boolean' || typeof result.combat.playerHp !== 'number' ||
+              typeof result.combat.enemy?.hp !== 'number' || typeof result.combat.enemy?.maxHp !== 'number' ||
+              !result.combat.runeBonuses || !result.combat.statusNote) {
+            throw new Error('Stat Spy omitted Combat HP/status or equipped loadout details.');
           }
           const statIds = new Set(result.stats.map((stat: { id: string }) => stat.id));
           for (const required of ['luck', 'luckTail', 'runeLuck', 'apexFortune', 'supernova', 'critPower', 'shardChance']) {
