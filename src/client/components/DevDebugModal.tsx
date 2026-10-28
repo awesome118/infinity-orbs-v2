@@ -3583,7 +3583,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             throw new Error('Stat Spy omitted Combat state or equipped loadout details.');
           }
           const statIds = new Set(result.stats.map((stat: { id: string }) => stat.id));
-          for (const required of ['luck', 'runeLuck', 'apexFortune', 'supernova', 'critPower', 'shardChance']) {
+          for (const required of ['luck', 'luckTail', 'runeLuck', 'apexFortune', 'supernova', 'critPower', 'shardChance']) {
             if (!statIds.has(required)) throw new Error('Stat Spy omitted expected stat breakdown: ' + required);
           }
           for (const stat of result.stats) {
