@@ -1569,6 +1569,17 @@ function buildStatSpyStats(
       sources: luckSources,
     },
     {
+      id: 'luckTail',
+      label: 'Luck Rarity-Tail Factor',
+      total: Math.min(25, Math.pow(finalLuck, 0.08)),
+      unit: 'mult',
+      detail: 'The actual factor applied by the Continuum rarity distribution from Effective Luck. It changes rarity odds rather than multiplying the final Orb rarity; hard-capped at 25×.',
+      sources: [
+        statSource('Effective base Luck', finalLuck, 'mult', 'special', { detail: 'Input to the Continuum tail function: min(25, Luck^0.08)' }),
+        statSource('Rarity-tail hard cap', 25, 'mult', 'special', { detail: 'The Continuum factor cannot exceed 25×' }),
+      ],
+    },
+    {
       id: 'runeLuck',
       label: 'Combat Rune Rarity Multiplier',
       total: runeLuckMultiplier,
