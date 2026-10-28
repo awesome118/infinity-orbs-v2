@@ -2027,7 +2027,8 @@ test('critical rarity caps match the continuum ceiling and cannot downgrade high
   assert.match(shared, /if \(isInfinity \|\| raw === Number\.POSITIVE_INFINITY\) return 'Infinity'/);
   assert.match(shared, /getOrbInfo\(rarity: number, isInfinity = false\)/);
   assert.doesNotMatch(shared, /Infinity: \['Infinity Orb'\]/);
-  assert.match(shared, /return Math\.max\(2, Math\.min\(MAX_ORB_RARITY, Math\.floor\(rawRarity\)\)\)/);
+  assert.match(shared, /const rawRarity = \(1 \/ u\) \* luckRarityFactor\(luck\) \* safeMultiplier/);
+  assert.match(shared, /return Math\.max\(safeFloor, Math\.min\(MAX_ORB_RARITY, Math\.floor\(rawRarity\)\)\)/);
 
   const game = source('src/server/game.ts');
   const applyStart = game.indexOf('export async function applyRolls');
@@ -2059,7 +2060,9 @@ test('the rarity continuum can sample and display its full finite Infinity ceili
   assert.match(game, /function serverRarityRandom\(\): number/);
   assert.match(game, /new Uint32Array\(34\)/);
   assert.match(game, /bitLength - 1088/);
-  assert.match(game, /rollContinuum\(effectiveLuck, randomOverride \?\? serverRarityRandom\)/);
+  assert.match(game, /rollContinuum\(\s*effectiveLuck,\s*randomOverride \?\? serverRarityRandom,\s*rarityMultiplier,\s*rarityFloor,\s*\)/s);
+  assert.match(game, /const rarityMultiplier = runeLuckMultiplier \* \(isCrit \? effectiveCm : 1\)/);
+  assert.match(game, /const rarityFloor = isCrit \? runeRarityFloor \* effectiveCm : runeRarityFloor/);
 });
 
 
