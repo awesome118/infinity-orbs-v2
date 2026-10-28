@@ -2,7 +2,7 @@ import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
 import { getOrbInfo, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatSkillDefinition, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneAutoSacrificeSettings, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
-import { chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatTurnStep, combatActionTimeline, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatHighestDepthReached, combatBossesBeatenByDepth, combatBossLuckBonus, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, combatGearSpeedBonus, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, COMBAT_RUNE_RARITIES, DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS, shouldAutoSacrificeRune, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
+import { chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatTurnStep, combatActionTimeline, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatHighestDepthReached, combatBossesBeatenByDepth, combatBossLuckBonus, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, combatGearSpeedBonus, combatGearOtherStatMultiplier, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, COMBAT_BEAT_INTERVAL_MS, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, COMBAT_RUNE_RARITIES, DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS, shouldAutoSacrificeRune, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -72,6 +72,12 @@ function normalizeMajorAbility(raw:Record<string,unknown>|null):CombatMajorAbili
   }
 }
 
+function legacyGearSpeedRoll(id:string):number {
+  // Stable FNV-1a roll makes the one-time migration deterministic across reads and retries.
+  let hash=0x811c9dc5;
+  for(let index=0;index<id.length;index+=1){hash^=id.charCodeAt(index);hash=Math.imul(hash,0x01000193);}
+  return (hash>>>0)/0x1_0000_0000;
+}
 function normalizeGear(value:unknown,fallbackFloor=0):CombatGear|null {
   if(!value||typeof value!=='object')return null;
   const x=value as Record<string,unknown>;
@@ -83,8 +89,17 @@ function normalizeGear(value:unknown,fallbackFloor=0):CombatGear|null {
   const trait=traits.includes(x.trait as CombatTrait)?x.trait as CombatTrait:(slot==='weapon'?'keen':'bulwark');
   const rawAbility=x.majorAbility&&typeof x.majorAbility==='object'?x.majorAbility as Record<string,unknown>:null;
   const majorAbility=normalizeMajorAbility(rawAbility);
+  const hasSpeedInvestmentRoll=x.speedInvestmentRoll!==undefined&&x.speedInvestmentRoll!==null&&Number.isFinite(Number(x.speedInvestmentRoll));
+  const speedInvestmentRoll=hasSpeedInvestmentRoll?Math.max(0,Math.min(.999999999,Number(x.speedInvestmentRoll))):legacyGearSpeedRoll(x.id);
+  const migrationMultiplier=hasSpeedInvestmentRoll?1:combatGearOtherStatMultiplier(speedInvestmentRoll);
+  const power=finiteInt(x.power,1,1,1_000_000);
+  const damageBonus=Math.round(finiteInt(x.damageBonus,0,0,1_000_000)*migrationMultiplier);
+  const maxHealthBonus=Math.round(finiteInt(x.maxHealthBonus,0,0,1_000_000)*migrationMultiplier);
+  const armorBonus=Math.round(finiteInt(x.armorBonus,0,0,1_000_000)*migrationMultiplier);
+  const critChanceBonus=Math.max(0,Math.min(.75,(Number.isFinite(Number(x.critChanceBonus))?Number(x.critChanceBonus):0)*migrationMultiplier));
+  const speedBonus=hasSpeedInvestmentRoll?finiteInt(x.speedBonus,1,1,Number.MAX_SAFE_INTEGER):combatGearSpeedBonus(slot,power,speedInvestmentRoll);
 
-  return {id:x.id.slice(0,160),name:x.name.slice(0,100),slot,quality:Math.max(0,Math.min(100,Number.isFinite(Number(x.quality))?Number(x.quality):0)),sourceFloor:finiteInt(x.sourceFloor,fallbackFloor,0,COMBAT_MAX_DEPTH-1),power:finiteInt(x.power,1,1,1_000_000),effect:x.id==='starter-weapon'?'Adds +4 damage. Critical chance +4 percentage points.':typeof x.effect==='string'?x.effect.slice(0,180):traitText(trait),trait,damageBonus:finiteInt(x.damageBonus,0,0,1_000_000),speedBonus:finiteInt(x.speedBonus,0,0,1_000_000),maxHealthBonus:finiteInt(x.maxHealthBonus,0,0,1_000_000),armorBonus:finiteInt(x.armorBonus,0,0,1_000_000),critChanceBonus:Math.max(0,Math.min(.75,Number.isFinite(Number(x.critChanceBonus))?Number(x.critChanceBonus):0)),...(majorAbility?{majorAbility}:{})};
+  return {id:x.id.slice(0,160),name:x.name.slice(0,100),slot,quality:Math.max(0,Math.min(100,Number.isFinite(Number(x.quality))?Number(x.quality):0)),sourceFloor:finiteInt(x.sourceFloor,fallbackFloor,0,COMBAT_MAX_DEPTH-1),power,effect:x.id==='starter-weapon'?'Adds +4 damage. Critical chance +4 percentage points.':typeof x.effect==='string'?x.effect.slice(0,180):traitText(trait),trait,damageBonus,speedBonus,speedInvestmentRoll,maxHealthBonus,armorBonus,critChanceBonus,...(majorAbility?{majorAbility}:{})};
 }
 function normalizeRuneMajorAbility(raw:Record<string,unknown>|null,stat:CombatRuneStat):CombatRune['majorAbility'] {
   if(!raw)return undefined;
@@ -442,18 +457,24 @@ function createGear(sourceFloor:number,requestedSlot?:CombatGearSlot,requestedQu
   const trait=slot==='weapon'?pick(weaponTraits):pick(armorTraits);
   const power=Math.max(1,Math.round(Math.min(1_000_000,scale)*combatGearStatBudgetMultiplier(quality)));
   const isProtective=['helmet','armor','gloves','boots'].includes(slot);
-  // Slots have a natural bias, but random affixes create flexible item builds.
-  const damageBonus=slot==='weapon'?Math.max(1,Math.round(power*.8)):secureRandom()<.45?Math.max(1,Math.round(power*.7)):0;
-  // Speed is a visible flat affix from boots and occasional lighter gear.
-  const speedBonus=combatGearSpeedBonus(slot,power,secureRandom());
-  const maxHealthBonus=slot==='armor'?Math.max(5,Math.round(power*4)):isProtective?Math.max(0,Math.round(power*1.4)):secureRandom()<.2?Math.max(1,Math.round(power*.9)):0;
-  const armorBonus=isProtective?Math.max(1,Math.round(power*(slot==='armor' ? .65 : .55))):secureRandom()<.25?Math.max(1,Math.round(power*.3)):0;
-  const critChanceBonus=slot==='ring'||slot==='amulet'?Math.min(.30,.05+quality*.0025):secureRandom()<.28?Math.min(.30,.06+quality*.0028):0;
+  // Every slot can roll Speed. Higher-Speed gear converts part of its stat budget
+  // away from damage, health, armor, and crit, enabling meaningful loadout choices.
+  const speedInvestmentRoll=secureRandom();
+  const otherStatMultiplier=combatGearOtherStatMultiplier(speedInvestmentRoll);
+  const speedBonus=combatGearSpeedBonus(slot,power,speedInvestmentRoll);
+  const damageBase=slot==='weapon'?Math.max(1,Math.round(power*.8)):secureRandom()<.45?Math.max(1,Math.round(power*.7)):0;
+  const damageBonus=Math.round(damageBase*otherStatMultiplier);
+  const healthBase=slot==='armor'?Math.max(5,Math.round(power*4)):isProtective?Math.max(0,Math.round(power*1.4)):secureRandom()<.2?Math.max(1,Math.round(power*.9)):0;
+  const maxHealthBonus=Math.round(healthBase*otherStatMultiplier);
+  const armorBase=isProtective?Math.max(1,Math.round(power*(slot==='armor' ? .65 : .55))):secureRandom()<.25?Math.max(1,Math.round(power*.3)):0;
+  const armorBonus=Math.round(armorBase*otherStatMultiplier);
+  const critBase=slot==='ring'||slot==='amulet'?Math.min(.30,.05+quality*.0025):secureRandom()<.28?Math.min(.30,.06+quality*.0028):0;
+  const critChanceBonus=critBase*otherStatMultiplier;
   const majorAbilityChance=combatMajorAbilityChance(quality);
   const majorAbility=secureRandom()<majorAbilityChance?createMajorAbility(quality):undefined;
 
   const firstWord=pick(firstWords),secondWord=pick(secondWords.filter(word=>word!==firstWord));
-  return {id:'gear-'+Date.now().toString(36)+'-'+Math.floor(secureRandom()*0x7fffffff).toString(36),name:firstWord+' '+secondWord+' '+pick(nouns[slot]),slot,quality,sourceFloor:floor,power,trait,effect:traitText(trait),damageBonus,speedBonus,maxHealthBonus,armorBonus,critChanceBonus,...(majorAbility?{majorAbility}:{})};
+  return {id:'gear-'+Date.now().toString(36)+'-'+Math.floor(secureRandom()*0x7fffffff).toString(36),name:firstWord+' '+secondWord+' '+pick(nouns[slot]),slot,quality,sourceFloor:floor,power,trait,effect:traitText(trait),damageBonus,speedBonus,speedInvestmentRoll,maxHealthBonus,armorBonus,critChanceBonus,...(majorAbility?{majorAbility}:{})};
 }
 function enemySnapshot(s:CombatState):CombatEnemy { const e=getEnemyForDungeonDepth(s.dungeonId,s.depth); const rawHp=Number(s.enemyHp); const hp=Number.isFinite(rawHp)?Math.max(0,Math.min(e.maxHp,rawHp)):e.maxHp; return {...e,hp}; }
 function snapshot(s:CombatState):CombatSnapshot { return {state:s,enemy:enemySnapshot(s),stats:synchronizeCombatStats(s)}; }

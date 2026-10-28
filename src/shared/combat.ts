@@ -480,6 +480,8 @@ export interface CombatGear {
   trait: CombatTrait;
   damageBonus: number;
   speedBonus: number;
+  /** Roll used to trade other stat budget for Speed; absent on pre-update saves. */
+  speedInvestmentRoll?: number;
   maxHealthBonus: number;
   armorBonus: number;
   critChanceBonus: number;
@@ -508,14 +510,22 @@ export function combatGearStatBudgetMultiplier(qualityValue: unknown): number {
   const quality = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) / 100 : 0;
   return 0.35 + 4.65 * Math.pow(quality, 2.4);
 }
-/** Speed is a flat gear stat. Boots always grant it; lighter slots can roll it too. */
-export function combatGearSpeedBonus(slot: CombatGearSlot, powerValue: unknown, rollValue: unknown): number {
-  const p = Number(powerValue), rawRoll = Number(rollValue);
-  const power = Number.isFinite(p) ? Math.max(1, Math.min(1_000_000, Math.round(p))) : 1;
-  const roll = Number.isFinite(rawRoll) ? Math.max(0, Math.min(0.999999999, rawRoll)) : 0.999999999;
-  if (slot === 'boots') return Math.max(1, Math.round(power * 0.65));
-  if ((slot === 'gloves' || slot === 'ring' || slot === 'amulet') && roll < 0.20) return Math.max(1, Math.round(power * 0.30));
-  return 0;
+/** Every slot can invest 8%-40% of its power budget in Speed. */
+function normalizedCombatGearSpeedRoll(rollValue: unknown): number {
+  const raw = Number(rollValue);
+  return Number.isFinite(raw) ? Math.max(0, Math.min(0.999999999, raw)) : 0;
+}
+export function combatGearSpeedShare(rollValue: unknown): number {
+  return 0.08 + 0.32 * normalizedCombatGearSpeedRoll(rollValue);
+}
+/** High-Speed rolls spend up to 30% of the item's other stat budget on Speed. */
+export function combatGearOtherStatMultiplier(rollValue: unknown): number {
+  return 1 - normalizedCombatGearSpeedRoll(rollValue) * 0.30;
+}
+export function combatGearSpeedBonus(_slot: CombatGearSlot, powerValue: unknown, rollValue: unknown): number {
+  const p = Number(powerValue);
+  const power = Number.isFinite(p) ? Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.round(p))) : 1;
+  return Math.max(1, Math.round(power * combatGearSpeedShare(rollValue)));
 }
 
 export function combatNextBeatDelayMs(nowValue: unknown, lastAcceptedValue: unknown, bufferMs = 150): number {
@@ -1350,7 +1360,7 @@ export function combatStatsFor(state: CombatState): CombatStats {
   const damageReduction = Math.max(-.50,Math.min(.80,effectiveArmorBonus/250 + .04*traitEffectiveness('bulwark') + majorDamageReduction + majorLastStand + majorFrostbrandReduction + damageReductionPct - majorGlassCannonTaken));
   return {
     damage:Math.max(1,Math.round(flatDamage*(1+damagePct)*(1+majorDamagePercent)*(1+coreProgressionBonus)*(1+dungeonDamageBonus)*(1+orbFocusBonus))),
-    speed:Math.min(10_000_000,speed), maxHealth, maxEnergy, armor:effectiveArmorBonus,
+    speed, maxHealth, maxEnergy, armor:effectiveArmorBonus,
     critChance:Math.min(.75,Math.max(0,critChance)),
     damageReduction,
     coinMultiplier:1+coinBonus, coreProgressionBonus, orbFocusBonus, gearQualityRequirement,
@@ -1463,8 +1473,10 @@ export function getEnemyForDepth(depthValue: number): CombatEnemy {
   const maxHp=boss?Math.round(scaledHp*1.15*4.6):scaledHp;
   const damage=Math.min(1e12,Math.max(1,Math.round((20+floor*1.55)*Math.pow(1+floor/100,.35)*base.damage*(boss?2.2*1.15:1))));
   // Enemy Speed deliberately scales with depth; player Speed does not.
-  const depthSpeedMultiplier = Math.pow(1 + floor / 100, 1.4);
-  const speed=Math.min(10_000_000,Math.round(base.speed*depthSpeedMultiplier+floor*1.2+(boss?55:0)));
+  // Gear power grows linearly with depth, so enemy Speed does too. Superlinear scaling
+  // eventually made even dedicated high-Speed builds unable to keep up.
+  const depthSpeedMultiplier = 1 + floor / 100;
+  const speed=Math.round(base.speed*depthSpeedMultiplier+floor*1.2+(boss?55:0));
   return {id:boss?'crypt-warden':base.id,name:boss?'Crypt Warden':base.name,kind:boss?'boss':base.kind,hp:maxHp,maxHp,damage,speed,room:boss?'Warden Throne':base.room,emoji:boss?'👹':base.emoji,boss};
 }
 
@@ -1565,7 +1577,7 @@ export function getEnemyForDungeonDepth(dungeonValue: unknown, depth: number): C
       hp: maxHp,
       maxHp,
       damage: Math.max(1, Math.round(base.damage * 1.25)),
-      speed: Math.min(500, Math.round(base.speed * 1.08)),
+      speed: Math.round(base.speed * 1.08),
       room: base.boss ? 'The Furnace Crown' : 'Cinder ' + base.room,
       emoji: base.boss ? '🌋' : base.emoji,
     };
@@ -1578,7 +1590,7 @@ export function getEnemyForDungeonDepth(dungeonValue: unknown, depth: number): C
     hp: maxHp,
     maxHp,
     damage: Math.max(1, Math.round(base.damage * 1.12)),
-    speed: Math.min(600, Math.round(base.speed * 1.35)),
+    speed: Math.round(base.speed * 1.35),
     room: base.boss ? 'Hall of Infinite Reflections' : 'Mirror ' + base.room,
     emoji: base.boss ? '🔮' : base.emoji,
   };

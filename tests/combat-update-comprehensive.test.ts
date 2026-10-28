@@ -11,7 +11,11 @@ import {
   combatBossLuckBonus,
   combatTotalBossesBeaten,
   createCombatState,
+  getEnemyForDepth,
   getEnemyForDungeonDepth,
+  combatGearSpeedBonus,
+  combatGearOtherStatMultiplier,
+  COMBAT_MAX_DEPTH,
   resolveCombatSkillRarity,
   skillPullCost,
   type CombatGear,
@@ -26,7 +30,7 @@ import {
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
-test('player Speed comes from gear and stays depth-independent while enemy Speed scales', () => {
+test('player Speed comes from gear and stays depth-independent while uncapped enemy Speed scales', () => {
   const player = createCombatState();
   const weapon:CombatGear={id:'speed-test-weapon',name:'Speed Test Weapon',slot:'weapon',quality:100,sourceFloor:0,power:1,effect:'Test gear',trait:'keen',damageBonus:0,speedBonus:0,maxHealthBonus:0,armorBonus:0,critChanceBonus:0};
   player.inventory.push(weapon);
@@ -40,8 +44,24 @@ test('player Speed comes from gear and stays depth-independent while enemy Speed
   const baseEnemySpeed = getEnemyForDungeonDepth('undercrypt', 1).speed;
   const deepEnemySpeed = getEnemyForDungeonDepth('undercrypt', 100).speed;
   assert.ok(deepEnemySpeed > baseEnemySpeed, 'enemy Speed must increase with depth');
+  assert.ok(getEnemyForDungeonDepth('cinder-vault', 1700).speed > 500);
+  assert.ok(getEnemyForDungeonDepth('glass-labyrinth', 1700).speed > 600);
+  assert.ok(getEnemyForDepth(COMBAT_MAX_DEPTH).speed > getEnemyForDepth(1700).speed);
   assert.ok(Number.isFinite(combatStatsFor({ ...player, depth: 50_000 }).speed));
   assert.ok(Number.isFinite(getEnemyForDungeonDepth('undercrypt', 50_000).speed));
+});
+
+test('every slot rolls Speed and the fastest rolls spend other stats', () => {
+  for (const slot of ['weapon','armor','helmet','gloves','boots','ring','amulet'] as const) {
+    assert.ok(combatGearSpeedBonus(slot, 1000, 0) > 0);
+    assert.ok(combatGearSpeedBonus(slot, 1000, .99) > combatGearSpeedBonus(slot, 1000, 0));
+  }
+  assert.equal(combatGearOtherStatMultiplier(0), 1);
+  assert.ok(combatGearOtherStatMultiplier(.99) < .71);
+  const server = source('src/server/combat.ts');
+  assert.match(server, /speedInvestmentRoll=secureRandom\(\)/);
+  assert.match(server, /combatGearOtherStatMultiplier\(speedInvestmentRoll\)/);
+  assert.match(server, /speedBonus,speedInvestmentRoll/);
 });
 
 test('Skill Gacha pull cost rises with Gacha rank and lifetime pulls', () => {

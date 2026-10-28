@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { combatMarkMultiplier, addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatActionsDue, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatGearSpeedBonus, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatSkillRarityOdds, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatBossLuckBonus, combatBossesBeatenByDepth, combatTotalBossesBeaten, type CombatGear } from '../src/shared/combat.js';
+import { combatMarkMultiplier, addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatActionsDue, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatGearSpeedBonus, combatGearOtherStatMultiplier, combatGearSpeedShare, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatSkillRarityOdds, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatBossLuckBonus, combatBossesBeatenByDepth, combatTotalBossesBeaten, type CombatGear } from '../src/shared/combat.js';
 
 test('new Delvers start without gear and rely on modest baseline stats', () => {
   const state=createCombatState();
@@ -388,9 +388,35 @@ test('Starfall and Mark Harvest Major Abilities apply equipped bonuses', () => {
 });
 
 
-test('gear Speed affix is guaranteed on boots and can roll on lighter slots', () => {
-  assert.equal(combatGearSpeedBonus('boots', 100, 0.99), 65);
-  assert.equal(combatGearSpeedBonus('ring', 100, 0.10), 30);
-  assert.equal(combatGearSpeedBonus('ring', 100, 0.99), 0);
-  assert.equal(combatGearSpeedBonus('armor', 100, 0.01), 0);
+test('every gear slot can roll Speed, with higher Speed trading away other stats', () => {
+  const slots = ['weapon','armor','helmet','gloves','boots','ring','amulet'] as const;
+  for (const slot of slots) {
+    assert.ok(combatGearSpeedBonus(slot, 100, 0) > 0, slot + ' must grant Speed on a low-Speed roll');
+    assert.ok(combatGearSpeedBonus(slot, 100, 0.99) > combatGearSpeedBonus(slot, 100, 0), slot + ' must support a high-Speed build');
+  }
+  assert.equal(combatGearSpeedBonus('weapon', 100, 0), 8);
+  assert.equal(combatGearSpeedBonus('armor', 100, 0.99), 40);
+  assert.equal(combatGearSpeedShare(0), 0.08);
+  assert.ok(combatGearSpeedShare(0.99) > combatGearSpeedShare(0));
+  assert.equal(combatGearOtherStatMultiplier(0), 1);
+  assert.ok(combatGearOtherStatMultiplier(0.99) < 0.71, 'near-max-Speed gear should give up roughly 30% of other stats');
+});
+
+test('endgame enemy Speed keeps scaling in every dungeon without artificial ceilings', () => {
+  const cinder = getEnemyForDungeonDepth('cinder-vault', 1700);
+  const glass = getEnemyForDungeonDepth('glass-labyrinth', 1700);
+  assert.ok(cinder.speed > 500, 'Cinder Vault must not clamp enemies to 500 Speed');
+  assert.ok(glass.speed > 600, 'Glass Labyrinth must not clamp enemies to 600 Speed');
+  assert.ok(getEnemyForDepth(COMBAT_MAX_DEPTH).speed > getEnemyForDepth(1700).speed, 'base enemy Speed must keep scaling through endgame');
+});
+
+test('player Speed has no artificial 10-million ceiling', () => {
+  const state = createCombatState();
+  const slots = ['weapon','armor','helmet','gloves','boots','ring','amulet'] as const;
+  for (const slot of slots) {
+    const id = 'uncapped-speed-' + slot;
+    state.inventory.push({id,name:'Uncapped Speed Test',slot,quality:100,sourceFloor:0,power:1,effect:'Test',trait:slot==='weapon'?'keen':'bulwark',damageBonus:0,speedBonus:2_000_000,speedInvestmentRoll:0.99,maxHealthBonus:0,armorBonus:0,critChanceBonus:0});
+    state.equipment[slot] = id;
+  }
+  assert.equal(combatStatsFor(state).speed, 14_000_150);
 });
