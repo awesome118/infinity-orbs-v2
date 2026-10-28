@@ -2,7 +2,7 @@ name: Deploy Devvit
 
 # Normally manual. The version-specific push marker is reserved for an explicitly requested deployment.
 # Explicit deployment request (2026-10-28): ship v2.1.2 to r/infinity_orbs_dev only; do not submit for review or install to production.
-# Release includes precision-preserving rarity scaling, exact advertised roll counts, and high-visibility Frenzy payout UI.
+# Release includes pre-floor Rune and critical rarity scaling, plus regression coverage for the revised roll pipeline.
 # Corrected preflight: Frenzy mechanics assertions now match the 1.004 curve and full Multiball plus Frenzy Volley bonus.
 # Release is pinned to the corrected package-lock.json on main.
 # CI auth uses the stored token and session files; preflight guards these credentials and release contracts before upload.
