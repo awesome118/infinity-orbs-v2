@@ -36,8 +36,8 @@ import {
   getRollTicket,
 } from './game.js';
 import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
-import { adminCombatLabAction, getCombatSnapshot, performCombatBeat } from './combat.js';
-import { COMBAT_MAX_DEPTH, combatGearRarityOdds, combatGearStatBudgetMultiplier, combatOrbDamageMultiplier, combatStatsFor, getEnemyForDungeonDepth, type CombatState } from '../shared/combat.js';
+import { adminCombatLabAction, getCombatSnapshot, getCombatSnapshotForUser, performCombatBeat } from './combat.js';
+import { COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatBossLuckBonus, combatGearRarityOdds, combatGearStatBudgetMultiplier, combatOrbDamageMultiplier, combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityStrengthPct, combatRuneScaledValue, combatStatsFor, combatTotalBossesBeaten, getEnemyForDungeonDepth, type CombatRuneBonuses, type CombatState } from '../shared/combat.js';
 import { context, redis, reddit } from './devvit-mock.js';
 import {
   setCommunityEventConfig,
@@ -68,7 +68,9 @@ import {
   SHARD_PITY_ROLLS_TO_REWARD,
   calculateCosmicDust,
   calculatePrestigeDust,
+  aftershockCriticalLuckBonus,
   critMultiplier,
+  ROLL_SHARD_PROC_CHANCE_CAP,
   autoUnlocked,
   getLevelBenefits,
   LEVEL_MILESTONES,
@@ -1332,11 +1334,61 @@ function statSource(
   return { label, value, unit, kind, ...options };
 }
 
+function equippedRuneStatSources(
+  combat: CombatState,
+  stat: keyof CombatRuneBonuses,
+): StatSpySource[] {
+  const equippedIds = new Set(Array.isArray(combat.equippedRunes) ? combat.equippedRunes : []);
+  const sources: StatSpySource[] = [];
+  const runes = Array.isArray(combat.runes) ? combat.runes : [];
+  for (const rune of runes) {
+    if (!rune || typeof rune.id !== 'string' || !equippedIds.has(rune.id)) continue;
+    if (rune.stat === stat) {
+      const value = combatRuneScaledValue(rune);
+      if (value > 0) {
+        sources.push(statSource(
+          String(rune.name || rune.id) + ' · ' + String(rune.rarity || 'Rune'),
+          value,
+          'pct',
+          'special',
+          { level: Number(rune.level) || 1, detail: 'Equipped Rune main stat · ' + String(rune.stat) + ' · ' + String(rune.sourceDungeon || 'unknown dungeon') + ' depth ' + Number(rune.sourceDepth || 0) },
+        ));
+      }
+    }
+    const ability = rune.majorAbility;
+    const abilityStat = ability?.id === 'fateweaver'
+      ? 'luckPct'
+      : ability?.id === 'midas-engine'
+        ? 'coinGainPct'
+        : ability?.id === 'memory-well'
+          ? 'xpGainPct'
+          : null;
+    if (ability && abilityStat === stat && Number(ability.valuePct) > 0) {
+      const value = combatRuneMajorAbilityStrengthPct(ability, rune.level);
+      if (value > 0) {
+        sources.push(statSource(
+          String(ability.name || ability.id) + ' · ' + String(rune.name || rune.id),
+          value,
+          'pct',
+          'special',
+          { level: Number(rune.level) || 1, detail: 'Equipped Rune Major Ability · ' + String(ability.description || ability.id) },
+        ));
+      }
+    }
+  }
+  return sources.length
+    ? sources
+    : [statSource('No equipped Rune source', 0, 'pct', 'special', { active: false, detail: 'No equipped Rune contributes to this stat.' })];
+}
+
 function buildStatSpyStats(
   s: PlayerState,
   currentCcu: number,
   fakeCcuBonus: number,
   communityLuckBonus: number,
+  runeBonuses: CombatRuneBonuses,
+  combatBossBonus: number,
+  combatState: CombatState,
 ): StatSpyStat[] {
   const level = Math.max(1, Math.floor(Number(s.level) || 1));
   const levelBenefits = getLevelBenefits(level);
@@ -1401,9 +1453,15 @@ function buildStatSpyStats(
     (astralReservePct / 100);
 
   const permanentLuckFactor = Math.pow(1.05, Math.max(0, Number(prestige.permLuck ?? 0)));
-  const finalLuck = Math.round(
-    ((additiveBaseLuck * permanentLuckFactor * altar.totalAltarMultiplier * cosmicReserveMultiplier) + communityLuckBonus) * 100,
-  ) / 100;
+  // Match the production base-Luck calculation. This includes Daily Streak Community,
+  // all current multipliers, and every source already handled by luckMultiplier().
+  // World-event and combat-boss Luck are separate additive bonuses in applyRolls.
+  const finalLuck = Math.max(1, luckMultiplier(s) + communityLuckBonus + combatBossBonus);
+  const apexFortuneLevel = Math.max(0, Number(mastery.apexFortune ?? 0));
+  const apexFortuneChance = Math.min(0.45, apexFortuneLevel * 0.03);
+  const runeLuckMultiplier = combatRuneLuckMultiplier(runeBonuses.luckPct);
+  const runeCoinMultiplier = 1 + runeBonuses.coinGainPct / 100;
+  const runeXpMultiplier = 1 + runeBonuses.xpGainPct / 100;
 
   const luckSources: StatSpySource[] = [
     statSource('Base', 1, 'mult', 'base'),
@@ -1422,7 +1480,9 @@ function buildStatSpyStats(
     statSource('Cosmic Reserve', cosmicReserveMultiplier, 'mult', 'multiply', { level: cosmicReserveLevel, active: cosmicReserveLevel > 0 && unspentCosmicDust > 0, detail: '×(1 + ' + unspentCosmicDust.toLocaleString() + ' unspent Dust × ' + cosmicReserveLevel + '%). Spent Dust removes its bonus.' }),
     statSource('Permanent Luck layer', permanentLuckFactor, 'mult', 'multiply', { level: Number(prestige.permLuck ?? 0), detail: '×1.05 per prestige level' }),
     statSource('Altar layer', altar.totalAltarMultiplier, 'mult', 'multiply', { detail: 'Coin sacrifice × Shard infusion × Luck Surge' }),
-    statSource('Community Luck', communityLuckBonus * 100, 'pct', 'add', { detail: 'Current community event bonus, applied to roll Luck after normal Luck calculation' }),
+    statSource('Daily Streak Community', Math.max(0, Number(s.dailyStreakCommunity?.luckMultiplier ?? 1) - 1) * 100, 'pct', 'add', { active: Number(s.dailyStreakCommunity?.luckMultiplier ?? 1) > 1, detail: 'Player-specific Daily Streak community bonus included in the base Luck formula' }),
+    statSource('World Event Luck', communityLuckBonus * 100, 'pct', 'add', { active: communityLuckBonus > 0, detail: 'Current world/community event bonus added after normal Luck' }),
+    statSource('Combat Boss Records', combatBossBonus * 100, 'pct', 'add', { active: combatBossBonus > 0, detail: 'Persistent Luck bonus from total bosses beaten across Combat dungeons' }),
   ];
 
   const manualCooldown = cooldownMs(s, false);
@@ -1466,25 +1526,30 @@ function buildStatSpyStats(
     levelBenefits.coinsMultiplier *
     (1 + Number(upgrades.coinBonus ?? 0) * 0.15) *
     (1 + Number(mastery.prosperity ?? 0) * 0.12) *
-    (1 + Number(guild.coinRank ?? 0) * 0.10);
+    (1 + Number(guild.coinRank ?? 0) * 0.10) *
+    runeCoinMultiplier;
 
   const offlineCoinMultiplier =
     (1 + Number(prestige.offlineFortune ?? 0) * 0.25) *
     (1 + Number(prestige.offlineOverdrive ?? 0) * 0.50);
 
   const shardChance = Math.min(
-    1,
-    Number(upgrades.shardChance ?? 0) * 0.0015 +
-    Number(mastery.shardAttunement ?? 0) * 0.001 +
-    Number(guild.shardRank ?? 0) * 0.0005 +
-    Number(prestige.shardResonator ?? 0) * 0.0025 +
-    levelBenefits.shardChance,
+    ROLL_SHARD_PROC_CHANCE_CAP,
+    (
+      Number(upgrades.shardChance ?? 0) * 0.0015 +
+      Number(mastery.shardAttunement ?? 0) * 0.001 +
+      Number(guild.shardRank ?? 0) * 0.0005 +
+      Number(prestige.shardResonator ?? 0) * 0.0025 +
+      levelBenefits.shardChance +
+      Math.min(100, runeBonuses.shardChancePct) / 100
+    ) * 0.025,
   );
 
   const xpMultiplier =
     (1 + Number(upgrades.xpBonus ?? 0) * 0.20) *
     levelBenefits.xpMultiplier *
-    (isPremiumBoosterActive(s, 'ascension') ? 10 : 1);
+    (isPremiumBoosterActive(s, 'ascension') ? 10 : 1) *
+    runeXpMultiplier;
 
   const valueMultiplier =
     1 +
@@ -1511,8 +1576,30 @@ function buildStatSpyStats(
       label: 'Effective Luck',
       total: finalLuck,
       unit: 'mult',
-      detail: 'Final roll Luck before Apex Fortune. Permanent Luck and Altar are multiplicative layers.',
+      detail: 'Production base Luck before the per-activation Apex Fortune proc and before the separate direct Combat Rune rarity multiplier.',
       sources: luckSources,
+    },
+    {
+      id: 'runeLuck',
+      label: 'Combat Rune Rarity Multiplier',
+      total: runeLuckMultiplier,
+      unit: 'mult',
+      detail: 'Applied directly to the continuous rarity sample before its integer floor. This is separate from Luck-shaped tail odds.',
+      sources: [
+        ...equippedRuneStatSources(combatState, 'luckPct'),
+        statSource('Total equipped Rune Luck', runeLuckMultiplier, 'mult', 'special', { active: runeBonuses.luckPct > 0, detail: '+' + runeBonuses.luckPct.toLocaleString() + '% effective Rune Luck, including Fateweaver abilities' }),
+      ],
+    },
+    {
+      id: 'apexFortune',
+      label: 'Apex Fortune Proc Chance',
+      total: apexFortuneChance,
+      unit: 'chance',
+      detail: 'Only on multi-roll activations; a successful proc doubles Luck for that activation. It is not permanently baked into the base Luck total.',
+      sources: [
+        statSource('Apex Fortune mastery', apexFortuneLevel * 3, 'pct', 'special', { level: apexFortuneLevel, active: apexFortuneChance > 0, detail: '+3 percentage points per level; capped at 45%' }),
+        statSource('Luck on successful proc', 2, 'mult', 'special', { active: apexFortuneChance > 0, detail: 'Doubles base Luck for that activation' }),
+      ],
     },
     {
       id: 'cooldown',
@@ -1563,8 +1650,20 @@ function buildStatSpyStats(
         statSource('Base critical', 2, 'mult', 'base'),
         statSource('Crit Power upgrade', Number(upgrades.critPower ?? 0) * 0.25, 'mult', 'add', { level: Number(upgrades.critPower ?? 0), detail: '+0.25× per level' }),
         statSource('Critical Overdrive', Number(mastery.critMastery ?? 0) * 0.30, 'mult', 'add', { level: Number(mastery.critMastery ?? 0), detail: '+0.30× per level' }),
+        statSource('Aftershock', Number(mastery.aftershock ?? 0) > 0 ? aftershockCriticalLuckBonus(s.aftershockRecord) : 0, 'mult', 'add', { level: Number(mastery.aftershock ?? 0), active: Number(mastery.aftershock ?? 0) > 0, detail: 'Permanent Critical Luck from the best dry interval between all-time rarity records' }),
         statSource('Global Crit', globalCritPower, 'mult', 'add', { level: Number(s.globalBoosters?.crit?.tier ?? 0), active: globalCritPower > 0, detail: '+0.10× per active tier' }),
         statSource('Guild Combo Crit', comboCritPower, 'mult', 'add', { level: Number(s.guildCombo?.tier ?? 0), active: comboCritPower > 0, detail: '+0.05× per active combo tier' }),
+      ],
+    },
+    {
+      id: 'supernova',
+      label: 'Supernova Critical Amplification Chance',
+      total: Math.min(1, Math.max(0, Number(prestige.supernova ?? 0)) * 0.10),
+      unit: 'chance',
+      detail: 'When a critical roll is selected, this chance multiplies its full critical strength by 5×.',
+      sources: [
+        statSource('Supernova upgrade', Number(prestige.supernova ?? 0) * 10, 'pct', 'special', { level: Number(prestige.supernova ?? 0), active: Number(prestige.supernova ?? 0) > 0, detail: '+10 percentage points per upgrade level, up to 100%' }),
+        statSource('Critical strength when triggered', 5, 'mult', 'special', { active: Number(prestige.supernova ?? 0) > 0, detail: 'Multiplies the full normal critical multiplier by 5' }),
       ],
     },
     {
@@ -1579,6 +1678,8 @@ function buildStatSpyStats(
         statSource('Coin Bonus upgrade', 1 + Number(upgrades.coinBonus ?? 0) * 0.15, 'mult', 'multiply', { level: Number(upgrades.coinBonus ?? 0), detail: '+15% per level' }),
         statSource('Midas Touch', 1 + Number(mastery.prosperity ?? 0) * 0.12, 'mult', 'multiply', { level: Number(mastery.prosperity ?? 0), detail: '+12% per level' }),
         statSource('Guild Coin', 1 + Number(guild.coinRank ?? 0) * 0.10, 'mult', 'multiply', { level: Number(guild.coinRank ?? 0), detail: '+10% per rank' }),
+        ...equippedRuneStatSources(combatState, 'coinGainPct'),
+        statSource('Equipped Rune Coin Multiplier', runeCoinMultiplier, 'mult', 'multiply', { active: runeBonuses.coinGainPct > 0, detail: '+' + runeBonuses.coinGainPct.toLocaleString() + '% from equipped Rune stats and Midas Engine abilities' }),
         statSource('Offline coin layer', offlineCoinMultiplier, 'mult', 'multiply', { detail: 'Only applies to offline roll rewards' }),
       ],
     },
@@ -1592,6 +1693,8 @@ function buildStatSpyStats(
         statSource('XP Bonus upgrade', 1 + Number(upgrades.xpBonus ?? 0) * 0.20, 'mult', 'multiply', { level: Number(upgrades.xpBonus ?? 0), detail: '+20% per level' }),
         statSource('Level XP', levelBenefits.xpMultiplier, 'mult', 'multiply', { level, detail: 'Unlocked milestone multipliers' }),
         statSource('Ascension', 10, 'mult', 'multiply', { active: isPremiumBoosterActive(s, 'ascension'), detail: '×10 while active' }),
+        ...equippedRuneStatSources(combatState, 'xpGainPct'),
+        statSource('Equipped Rune XP Multiplier', runeXpMultiplier, 'mult', 'multiply', { active: runeBonuses.xpGainPct > 0, detail: '+' + runeBonuses.xpGainPct.toLocaleString() + '% from equipped Rune stats and Memory Well abilities' }),
       ],
     },
     {
@@ -1599,13 +1702,16 @@ function buildStatSpyStats(
       label: 'Bonus Shard Chance',
       total: shardChance,
       unit: 'chance',
-      detail: 'Proc chance for +0.001 bonus Shard; guarantees +0.01 after 100 consecutive misses; capped at 100%.',
+      detail: 'Actual primary Shard-proc probability per Orb after the 2.5% conversion factor; hard-capped at 0.25% per Orb. There is no Shard pity.',
       sources: [
-        statSource('Shard Chance upgrade', Number(upgrades.shardChance ?? 0) * 0.15, 'pct', 'add', { level: Number(upgrades.shardChance ?? 0), detail: '+0.15 percentage points per level' }),
-        statSource('Shard Resonance', Number(mastery.shardAttunement ?? 0) * 0.10, 'pct', 'add', { level: Number(mastery.shardAttunement ?? 0), detail: '+0.10 percentage points per level' }),
-        statSource('Guild Shard', Number(guild.shardRank ?? 0) * 0.05, 'pct', 'add', { level: Number(guild.shardRank ?? 0), detail: '+0.05 percentage points per rank' }),
-        statSource('Shard Resonator', Number(prestige.shardResonator ?? 0) * 0.25, 'pct', 'add', { level: Number(prestige.shardResonator ?? 0), detail: '+0.25 percentage points per level' }),
-        statSource('Level shard chance', levelBenefits.shardChance * 100, 'pct', 'add', { level, detail: 'From unlocked level milestones' }),
+        statSource('Shard Chance upgrade', Number(upgrades.shardChance ?? 0) * 0.0015 * 0.025 * 100, 'pct', 'add', { level: Number(upgrades.shardChance ?? 0), detail: '+0.15 points to the pre-scale factor per level; effective chance is then ×2.5%' }),
+        statSource('Shard Resonance', Number(mastery.shardAttunement ?? 0) * 0.001 * 0.025 * 100, 'pct', 'add', { level: Number(mastery.shardAttunement ?? 0), detail: '+0.10 points to the pre-scale factor per level; effective chance is then ×2.5%' }),
+        statSource('Guild Shard', Number(guild.shardRank ?? 0) * 0.0005 * 0.025 * 100, 'pct', 'add', { level: Number(guild.shardRank ?? 0), detail: '+0.05 points to the pre-scale factor per rank; effective chance is then ×2.5%' }),
+        statSource('Shard Resonator', Number(prestige.shardResonator ?? 0) * 0.0025 * 0.025 * 100, 'pct', 'add', { level: Number(prestige.shardResonator ?? 0), detail: '+0.25 points to the pre-scale factor per level; effective chance is then ×2.5%' }),
+        statSource('Level shard chance', levelBenefits.shardChance * 0.025 * 100, 'pct', 'add', { level, detail: 'Unlocked level contribution, then scaled by 2.5%' }),
+        ...equippedRuneStatSources(combatState, 'shardChancePct').map(source => ({ ...source, value: source.value * 0.025 })),
+        statSource('Combat Rune Shard Chance', Math.min(100, runeBonuses.shardChancePct) * 0.025, 'pct', 'special', { active: runeBonuses.shardChancePct > 0, detail: 'Rune contribution is deliberately not level-scaled; included before the 0.25% per-Orb cap' }),
+        statSource('Final cap', ROLL_SHARD_PROC_CHANCE_CAP, 'chance', 'special', { detail: 'Maximum final primary-proc chance is 0.25% per Orb' }),
       ],
     },
     {
@@ -1679,16 +1785,57 @@ debugRouter.get('/stat-spy', async (req, res) => {
   try {
     const username = targetUsername(req.query?.username);
     const userId = await resolveUserId(username);
-    const [state, currentCcu, fakeCcuBonus, communityEvent] = await Promise.all([
+    const [state, currentCcu, fakeCcuBonus, communityEvent, combatSnapshot, rawPlayerSave] = await Promise.all([
       loadPlayerForStatSpy(userId, username),
       getOnlinePlayers(),
       getFakeCcuBonus(userId),
       getCommunityEvent(),
+      getCombatSnapshotForUser(userId),
+      redis.get('player:' + userId),
     ]);
-    const communityLuckBonus = Math.max(0, Number(communityEvent?.buffMultiplier ?? 1.15) - 1);
+    // No active event means neutral ×1 Luck, not the old fallback +15%.
+    const communityLuckBonus = Math.max(0, Number(communityEvent?.buffMultiplier ?? 1) - 1);
     state.onlinePlayers = Math.max(1, Math.floor(currentCcu + fakeCcuBonus));
+    const runeBonuses = combatRuneBonuses(combatSnapshot.state.runes, combatSnapshot.state.equippedRunes);
+    const combatBossBonus = combatBossLuckBonus(combatTotalBossesBeaten(combatSnapshot.state));
+    const stats = buildStatSpyStats(state, currentCcu, fakeCcuBonus, communityLuckBonus, runeBonuses, combatBossBonus, combatSnapshot.state);
+    let storedPlayerSave: unknown = null;
+    if (typeof rawPlayerSave === 'string' && rawPlayerSave.trim()) {
+      try {
+        storedPlayerSave = JSON.parse(rawPlayerSave) as unknown;
+      } catch {
+        storedPlayerSave = { error: 'Could not parse the stored player save.' };
+      }
+    }
 
-    const stats = buildStatSpyStats(state, currentCcu, fakeCcuBonus, communityLuckBonus);
+    const combatState = combatSnapshot.state;
+    const enemy = combatSnapshot.enemy;
+    const gear = Object.entries(combatState.equipment).map(([slot, itemId]) => ({
+      slot,
+      itemId: itemId ?? null,
+      item: itemId ? combatState.inventory.find(item => item.id === itemId && item.slot === slot) ?? null : null,
+    }));
+    const equippedSkills = (Array.isArray(combatState.equippedAbilities) ? combatState.equippedAbilities : []).map(id => {
+      const definition = COMBAT_SKILLS.find(skill => skill.id === id);
+      return {
+        id,
+        name: definition?.name ?? id,
+        rarity: definition?.rarity ?? 'Unknown',
+        rank: Number(combatState.skillLevels?.[id] ?? 0),
+        cooldownUntilSequence: combatState.abilityCooldowns?.[id] ?? null,
+      };
+    });
+    const equippedRuneIds = new Set(Array.isArray(combatState.equippedRunes) ? combatState.equippedRunes : []);
+    const equippedRunes = (Array.isArray(combatState.runes) ? combatState.runes : [])
+      .filter(rune => equippedRuneIds.has(rune.id));
+    const inCombat = combatSnapshot.saveExists && Number(combatState.health) > 0 && Number(enemy.hp) > 0;
+    const combatStatus = !combatSnapshot.saveExists
+      ? 'No saved Combat state'
+      : Number(combatState.health) <= 0
+        ? 'Player defeated'
+        : Number(enemy.hp) <= 0
+          ? 'Enemy defeated / transition pending'
+          : 'Live encounter saved';
     res.json({
       username,
       userId,
@@ -1707,6 +1854,10 @@ debugRouter.get('/stat-spy', async (req, res) => {
         effectiveCcu: Math.max(1, Math.floor(currentCcu + fakeCcuBonus)),
       },
       stats,
+      // Full persisted save plus the hydrated calculation state, which also
+      // includes live guild/global-buff data needed to explain current stats.
+      playerSave: storedPlayerSave,
+      calculatedPlayerState: state,
       allocations: {
         upgrades: state.upgrades,
         prestigeUpgrades: state.prestigeUpgrades,
@@ -1714,6 +1865,37 @@ debugRouter.get('/stat-spy', async (req, res) => {
         guildPerks: state.guildPerks,
         globalBoosters: state.globalBoosters,
         activeBoosters: state.activeBoosters ?? {},
+      },
+      combat: {
+        saveExists: combatSnapshot.saveExists,
+        inCombat,
+        status: combatStatus,
+        statusNote: 'In-combat status is inferred from saved player/enemy HP. The server does not persist whether the Combat UI tab is currently open.',
+        dungeonId: combatState.dungeonId,
+        depth: combatState.depth,
+        bestDepth: combatState.bestDepth,
+        dungeonBestDepths: combatState.dungeonBestDepths,
+        playerHp: combatState.health,
+        playerMaxHp: combatState.maxHealth,
+        enemy: {
+          name: enemy.name,
+          kind: enemy.kind,
+          boss: enemy.boss,
+          room: enemy.room,
+          hp: enemy.hp,
+          maxHp: enemy.maxHp,
+          damage: enemy.damage,
+          speed: enemy.speed,
+        },
+        stats: combatSnapshot.stats,
+        gear,
+        equippedSkills,
+        equippedRunes,
+        runeBonuses,
+        runeLuckMultiplier: combatRuneLuckMultiplier(runeBonuses.luckPct),
+        lastAcceptedBeatAtMs: combatState.lastAcceptedBeatAtMs,
+        state: combatState,
+        save: combatSnapshot.persistedSave,
       },
     });
   } catch (e: any) {
