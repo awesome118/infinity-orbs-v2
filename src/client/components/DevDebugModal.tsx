@@ -196,6 +196,30 @@ type StatSpyData = {
     globalBoosters: Record<string, { tier?: number; endsAt?: number; activationProgress?: number }>;
     activeBoosters: Record<string, number>;
   };
+  playerSave: unknown;
+  calculatedPlayerState: Record<string, any>;
+  combat: {
+    saveExists: boolean;
+    inCombat: boolean;
+    status: string;
+    statusNote: string;
+    dungeonId: string;
+    depth: number;
+    bestDepth: number;
+    dungeonBestDepths: Record<string, number>;
+    playerHp: number;
+    playerMaxHp: number;
+    enemy: { name: string; kind: string; boss: boolean; room: string; hp: number; maxHp: number; damage: number; speed: number };
+    stats: Record<string, number>;
+    gear: Array<{ slot: string; itemId: string | null; item: Record<string, any> | null }>;
+    equippedSkills: Array<{ id: string; name: string; rarity: string; rank: number; cooldownUntilSequence: number | null }>;
+    equippedRunes: Array<Record<string, any>>;
+    runeBonuses: { luckPct: number; coinGainPct: number; shardChancePct: number; xpGainPct: number };
+    runeLuckMultiplier: number;
+    lastAcceptedBeatAtMs: number;
+    state: Record<string, any>;
+    save: unknown;
+  };
 };
 
 type AdminConsoleTool = { id: string; label: string; target: string };
@@ -5771,6 +5795,118 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 ))}
               </div>
 
+              <section className="rounded-xl border border-violet-500/30 bg-slate-950/60 p-3 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[11px] font-black uppercase tracking-wider text-violet-200">Combat Save &amp; Live Encounter</div>
+                  <span className={"rounded-lg border px-2 py-1 text-[9px] font-black " + (
+                    !statSpy.combat.saveExists ? 'border-slate-700 text-slate-500' :
+                    statSpy.combat.inCombat ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' :
+                    'border-amber-500/40 bg-amber-500/10 text-amber-200'
+                  )}>
+                    {statSpy.combat.saveExists ? (statSpy.combat.inCombat ? 'ENCOUNTER LIVE' : statSpy.combat.status.toUpperCase()) : 'NO COMBAT SAVE'}
+                  </span>
+                </div>
+                <p className="text-[9px] leading-4 text-slate-500">{statSpy.combat.statusNote}</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    ['Dungeon', statSpy.combat.dungeonId],
+                    ['Current depth', formatNumber(statSpy.combat.depth)],
+                    ['Best depth', formatNumber(statSpy.combat.bestDepth)],
+                    ['Boss status', statSpy.combat.enemy.boss ? 'Boss' : statSpy.combat.enemy.kind],
+                    ['Player HP', formatNumber(statSpy.combat.playerHp) + ' / ' + formatNumber(statSpy.combat.playerMaxHp)],
+                    ['Enemy HP', formatNumber(statSpy.combat.enemy.hp) + ' / ' + formatNumber(statSpy.combat.enemy.maxHp)],
+                    ['Enemy', statSpy.combat.enemy.name],
+                    ['Room', statSpy.combat.enemy.room],
+                    ['Damage', formatNumber(Number(statSpy.combat.stats.damage ?? 0))],
+                    ['Speed', formatNumber(Number(statSpy.combat.stats.speed ?? 0))],
+                    ['Armor', formatNumber(Number(statSpy.combat.stats.armor ?? 0))],
+                    ['Crit chance', (Number(statSpy.combat.stats.critChance ?? 0) * 100).toFixed(2) + '%'],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-lg border border-slate-800 bg-slate-900/70 p-2 min-w-0">
+                      <div className="text-[8px] font-black uppercase tracking-wider text-slate-500">{label}</div>
+                      <div className="mt-1 text-[10px] font-mono font-bold text-slate-200 break-words">{value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div>
+                  <div className="mb-2 text-[9px] font-black uppercase tracking-wider text-slate-400">Currently equipped gear</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {statSpy.combat.gear.map(({ slot, item, itemId }) => (
+                      <div key={slot} className="rounded-lg border border-slate-800 bg-slate-900/50 p-2.5 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">{slot}</span>
+                          <span className="text-[8px] font-mono text-slate-600">{itemId ? String(itemId).slice(0, 12) : 'empty slot'}</span>
+                        </div>
+                        {item ? (
+                          <>
+                            <div className="mt-1 text-[10px] font-bold text-slate-100 break-words">{String(item.name ?? item.id)}</div>
+                            <div className="mt-1 text-[9px] text-slate-400">
+                              {String(item.rarity ?? 'Gear')} · Quality {formatNumber(Number(item.quality ?? 0))} · Power {formatNumber(Number(item.power ?? 0))} · Obtained depth {formatNumber(Number(item.sourceFloor ?? 0))}
+                            </div>
+                            <div className="mt-1 text-[8px] leading-3.5 text-slate-500">
+                              Damage +{formatNumber(Number(item.damageBonus ?? 0))} · Speed +{formatNumber(Number(item.speedBonus ?? 0))} · HP +{formatNumber(Number(item.maxHealthBonus ?? 0))} · Armor +{formatNumber(Number(item.armorBonus ?? 0))} · Crit +{(Number(item.critChanceBonus ?? 0) * 100).toFixed(2)}%
+                            </div>
+                            {item.majorAbility && (
+                              <div className="mt-1 rounded border border-violet-500/20 bg-violet-500/5 p-1.5 text-[8px] text-violet-200">
+                                {String(item.majorAbility.name ?? item.majorAbility.id)}{item.majorAbility.description ? ' · ' + String(item.majorAbility.description) : ''}
+                              </div>
+                            )}
+                            {item.trait && <div className="mt-1 text-[8px] text-slate-500">Trait: {String(item.trait)}{item.effect ? ' · ' + String(item.effect) : ''}</div>}
+                          </>
+                        ) : <div className="mt-1 text-[9px] text-slate-600">No item equipped</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <div className="mb-2 text-[9px] font-black uppercase tracking-wider text-slate-400">Equipped skills / abilities</div>
+                    {statSpy.combat.equippedSkills.length ? (
+                      <div className="space-y-1.5">
+                        {statSpy.combat.equippedSkills.map(skill => (
+                          <div key={skill.id} className="rounded-lg border border-slate-800 bg-slate-900/50 p-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] font-bold text-slate-200">{skill.name}</span>
+                              <span className="text-[9px] font-mono text-violet-200">{skill.rarity} · Rank {formatNumber(skill.rank)}</span>
+                            </div>
+                            <div className="mt-1 text-[8px] text-slate-600">Ability ID: {skill.id} · Ready sequence: {skill.cooldownUntilSequence == null ? 'not set' : formatNumber(skill.cooldownUntilSequence)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : <div className="text-[9px] text-slate-600">No abilities equipped</div>}
+                  </div>
+                  <div>
+                    <div className="mb-2 text-[9px] font-black uppercase tracking-wider text-slate-400">Equipped Combat Runes</div>
+                    <div className="mb-2 rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-2 text-[9px] text-slate-300">
+                      Rune Luck: <span className="font-mono text-cyan-200">{formatStatSpyTotal(statSpy.combat.runeLuckMultiplier, 'mult')}</span>
+                      {' · '}Coin +{formatNumber(statSpy.combat.runeBonuses.coinGainPct)}%
+                      {' · '}XP +{formatNumber(statSpy.combat.runeBonuses.xpGainPct)}%
+                      {' · '}Shard factor +{formatNumber(statSpy.combat.runeBonuses.shardChancePct)}%
+                    </div>
+                    {statSpy.combat.equippedRunes.length ? (
+                      <div className="space-y-1.5">
+                        {statSpy.combat.equippedRunes.map((rune, index) => (
+                          <div key={String(rune.id ?? index)} className="rounded-lg border border-slate-800 bg-slate-900/50 p-2">
+                            <div className="text-[10px] font-bold text-slate-200">{String(rune.name ?? rune.id)} <span className="text-[8px] font-normal text-slate-500">· {String(rune.rarity ?? 'Rune')} · Lv {formatNumber(Number(rune.level ?? 1))}</span></div>
+                            <div className="mt-1 text-[8px] text-slate-500">{String(rune.stat ?? 'unknown stat')} · value {formatNumber(Number(rune.value ?? 0))} · depth {formatNumber(Number(rune.sourceDepth ?? 0))} · {String(rune.sourceDungeon ?? 'unknown dungeon')}</div>
+                            {rune.majorAbility && <div className="mt-1 text-[8px] text-violet-200">{String(rune.majorAbility.name ?? rune.majorAbility.id)}{rune.majorAbility.description ? ' · ' + String(rune.majorAbility.description) : ''}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    ) : <div className="text-[9px] text-slate-600">No Combat Runes equipped</div>}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[8px] text-slate-500">
+                  <span>Inventory: {formatNumber(statSpy.combat.state.inventory?.length ?? 0)} pieces</span>
+                  <span>Run haul: {formatNumber(statSpy.combat.state.runInventoryIds?.length ?? 0)} items</span>
+                  <span>Total kills: {formatNumber(statSpy.combat.state.totalKills ?? 0)}</span>
+                  <span>Combat level: {formatNumber(statSpy.combat.state.level ?? 1)}</span>
+                  <span>Last accepted beat: {statSpy.combat.lastAcceptedBeatAtMs ? new Date(statSpy.combat.lastAcceptedBeatAtMs).toLocaleString() : 'never'}</span>
+                </div>
+              </section>
+
               <div className="space-y-2">
                 {statSpy.stats.map(stat => (
                   <details key={stat.id} className="rounded-xl border border-slate-800 bg-slate-900/55 overflow-hidden">
@@ -5830,6 +5966,24 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 ))}
               </div>
 
+              <div className="space-y-2">
+                <details className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+                  <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wider text-slate-300">Full persisted player save (JSON)</summary>
+                  <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/35 p-2 text-[8px] leading-3.5 text-slate-400">{JSON.stringify(statSpy.playerSave ?? {}, null, 2)}</pre>
+                </details>
+                <details className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+                  <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wider text-slate-300">Hydrated player state used for Stat Spy</summary>
+                  <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/35 p-2 text-[8px] leading-3.5 text-slate-400">{JSON.stringify(statSpy.calculatedPlayerState ?? {}, null, 2)}</pre>
+                </details>
+                <details className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+                  <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wider text-slate-300">Full persisted Combat save (JSON)</summary>
+                  <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/35 p-2 text-[8px] leading-3.5 text-slate-400">{JSON.stringify(statSpy.combat.save ?? {}, null, 2)}</pre>
+                </details>
+                <details className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+                  <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wider text-slate-300">Normalized current Combat state</summary>
+                  <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/35 p-2 text-[8px] leading-3.5 text-slate-400">{JSON.stringify(statSpy.combat.state ?? {}, null, 2)}</pre>
+                </details>
+              </div>
               <div className="rounded-xl border border-slate-800 bg-slate-900/55 p-3 text-[9px] text-slate-500">
                 Current CCU: <span className="font-mono text-slate-300">{formatNumber(statSpy.summary.currentCcu)}</span>
                 {' · '}Stat Spy test CCU: <span className="font-mono text-slate-300">+{formatNumber(statSpy.summary.fakeCcuBonus)}</span>
