@@ -75,7 +75,7 @@ export function getRuneSpriteName(stat: string): GameSpriteName {
     case 'luckPct': return 'skill-luck';
     case 'coinGainPct': return 'coin';
     case 'shardChancePct': return 'shard';
-    case 'expGainPct': return 'skill-starfall';
+    case 'xpGainPct': return 'skill-starfall';
     default: return 'rune-diamond';
   }
 }
