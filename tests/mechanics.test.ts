@@ -74,6 +74,19 @@ import {
 const NOW = 1_800_000_000_000;
 
 
+test('Continuum keeps high rarity multipliers precise by applying them before flooring', () => {
+  // Both samples floor to 4 without a multiplier. Scaling that integer loses
+  // the distinction; scaling the continuous samples first preserves it.
+  assert.equal(rollContinuum(1, () => 0.25), 4);
+  assert.equal(rollContinuum(1, () => 0.2499999), 4);
+  assert.equal(rollContinuum(1, () => 0.25, 1_000_000), 4_000_000);
+  assert.equal(rollContinuum(1, () => 0.2499999, 1_000_000), 4_000_001);
+
+  // The minimum rarity floor must participate in the same final calculation.
+  assert.equal(rollContinuum(1, () => 0.5, 10, 40), 40);
+  assert.equal(rollContinuum(1, () => 0.25, Number.MAX_VALUE), Number.POSITIVE_INFINITY);
+});
+
 test('the finite rarity ceiling stays numeric while over-cap rolls display as Infinity', () => {
   assert.equal(MAX_ORB_RARITY, Number.MAX_VALUE);
   assert.equal(rollContinuum(1, () => Number.MIN_VALUE), Number.POSITIVE_INFINITY);
