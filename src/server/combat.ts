@@ -511,6 +511,54 @@ export async function getCombatSnapshot():Promise<CombatSnapshot>{
   return snapshot(state);
 }
 
+/** Read another player's saved combat snapshot for the admin-only Stat Spy.
+ * This is deliberately read-only: it normalizes the snapshot in memory and never
+ * writes to the inspected player's combat save or registers an Arena profile.
+ */
+export async function getCombatSnapshotForUser(
+  userIdValue: unknown,
+): Promise<CombatSnapshot & { saveExists: boolean; persistedSave: unknown }> {
+  const userId = String(userIdValue ?? '').trim();
+  if (!userId || userId.length > 256) throw new Error('A valid player ID is required.');
+  const raw = await redis.get('infinity-orbs:combat:' + userId);
+  let persistedSave: unknown = null;
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      persistedSave = JSON.parse(raw) as unknown;
+    } catch {
+      // normalizeState below throws the canonical corrupted-save error.
+    }
+  }
+
+  const state = normalizeState(raw);
+  // Keep the diagnostic stats in sync with the player's latest core-game
+  // attunement without mutating either persisted save.
+  const rawCore = await redis.get('player:' + userId);
+  if (typeof rawCore === 'string' && rawCore.trim()) {
+    try {
+      const parsed: unknown = JSON.parse(rawCore);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const core = parsed as Record<string, unknown>;
+        const rawPrestige = core.prestigeUpgrades;
+        const prestige = rawPrestige && typeof rawPrestige === 'object' && !Array.isArray(rawPrestige)
+          ? rawPrestige as Record<string, unknown>
+          : {};
+        state.coreLevel = finiteInt(core.level, state.coreLevel, 1, 1_000_000);
+        state.coreHighestRarity = finiteInt(core.highestRarity, state.coreHighestRarity, 2, Number.MAX_VALUE);
+        state.autoScrapUnlocked = Number(prestige.autoScrap) > 0;
+        state.autoScrapSettings = normalizeCombatAutoScrapSettings(core.combatAutoScrap);
+        if (!state.autoScrapUnlocked) state.autoScrapSettings.enabled = false;
+      }
+    } catch {
+      // The combat save remains inspectable if the optional core save is damaged.
+    }
+  }
+
+  const stats = synchronizeCombatStats(state);
+  const enemy = enemySnapshot(state);
+  return { state, enemy, stats, saveExists: raw != null, persistedSave };
+}
+
 function grantXp(s:CombatState,amount:number,actions:CombatAction[]):void {
   const safeAmount=finiteInt(amount,0,0,Number.MAX_SAFE_INTEGER);
   s.xp=Math.min(Number.MAX_SAFE_INTEGER,finiteInt(s.xp,0,0,Number.MAX_SAFE_INTEGER)+safeAmount);
