@@ -1811,6 +1811,7 @@ debugRouter.get('/stat-spy', async (req, res) => {
         id,
         name: definition?.name ?? id,
         rarity: definition?.rarity ?? 'Unknown',
+        effect: definition?.effect ?? 'No skill definition found.',
         rank: Number(combatState.skillLevels?.[id] ?? 0),
         cooldownUntilSequence: combatState.abilityCooldowns?.[id] ?? null,
       };
