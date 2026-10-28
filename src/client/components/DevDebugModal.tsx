@@ -212,7 +212,7 @@ type StatSpyData = {
     enemy: { name: string; kind: string; boss: boolean; room: string; hp: number; maxHp: number; damage: number; speed: number };
     stats: Record<string, number>;
     gear: Array<{ slot: string; itemId: string | null; item: Record<string, any> | null }>;
-    equippedSkills: Array<{ id: string; name: string; rarity: string; rank: number; cooldownUntilSequence: number | null }>;
+    equippedSkills: Array<{ id: string; name: string; rarity: string; effect: string; rank: number; cooldownUntilSequence: number | null }>;
     equippedRunes: Array<Record<string, any>>;
     runeBonuses: { luckPct: number; coinGainPct: number; shardChancePct: number; xpGainPct: number };
     runeLuckMultiplier: number;
@@ -5488,7 +5488,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
 
               <details className="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
                 <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wider text-slate-300">Full Diagnostic JSON</summary>
-                <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words text-[10px] leading-relaxed text-slate-300">{JSON.stringify(leaderboardDiagnostics, null, 2)}</pre>
+                <pre className="mt-2 whitespace-pre-wrap break-words text-[10px] leading-relaxed text-slate-300">{JSON.stringify(leaderboardDiagnostics, null, 2)}</pre>
               </details>
               <p className="text-[9px] text-slate-600">The report never includes full account IDs or raw player saves. It does include sample usernames and the last 8 characters of IDs; review those before sharing the report.</p>
             </div>
@@ -5824,6 +5824,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                     ['Boss status', statSpy.combat.enemy.boss ? 'Boss' : statSpy.combat.enemy.kind],
                     ['Player HP', formatNumber(statSpy.combat.playerHp) + ' / ' + formatNumber(statSpy.combat.playerMaxHp)],
                     ['Enemy HP', formatNumber(statSpy.combat.enemy.hp) + ' / ' + formatNumber(statSpy.combat.enemy.maxHp)],
+                    ['Energy', formatNumber(Number(statSpy.combat.state.energy ?? 0)) + ' / ' + formatNumber(Number(statSpy.combat.state.maxEnergy ?? 0))],
+                    ['Combat Marks', formatNumber(Number(statSpy.combat.state.combatMarks ?? 0))],
+                    ['Scrap', formatNumber(Number(statSpy.combat.state.scrap ?? 0))],
                     ['Enemy', statSpy.combat.enemy.name],
                     ['Room', statSpy.combat.enemy.room],
                     ['Damage', formatNumber(Number(statSpy.combat.stats.damage ?? 0))],
@@ -5880,6 +5883,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                               <span className="text-[10px] font-bold text-slate-200">{skill.name}</span>
                               <span className="text-[9px] font-mono text-violet-200">{skill.rarity} · Rank {formatNumber(skill.rank)}</span>
                             </div>
+                            <div className="mt-1 text-[8px] leading-3.5 text-slate-400">{skill.effect}</div>
                             <div className="mt-1 text-[8px] text-slate-600">Ability ID: {skill.id} · Ready sequence: {skill.cooldownUntilSequence == null ? 'not set' : formatNumber(skill.cooldownUntilSequence)}</div>
                           </div>
                         ))}
@@ -5978,19 +5982,19 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               <div className="space-y-2">
                 <details className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
                   <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wider text-slate-300">Full persisted player save (JSON)</summary>
-                  <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/35 p-2 text-[8px] leading-3.5 text-slate-400">{JSON.stringify(statSpy.playerSave ?? {}, null, 2)}</pre>
+                  <pre className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-black/35 p-2 text-[8px] leading-3.5 text-slate-400">{JSON.stringify(statSpy.playerSave ?? {}, null, 2)}</pre>
                 </details>
                 <details className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
                   <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wider text-slate-300">Hydrated player state used for Stat Spy</summary>
-                  <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/35 p-2 text-[8px] leading-3.5 text-slate-400">{JSON.stringify(statSpy.calculatedPlayerState ?? {}, null, 2)}</pre>
+                  <pre className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-black/35 p-2 text-[8px] leading-3.5 text-slate-400">{JSON.stringify(statSpy.calculatedPlayerState ?? {}, null, 2)}</pre>
                 </details>
                 <details className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
                   <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wider text-slate-300">Full persisted Combat save (JSON)</summary>
-                  <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/35 p-2 text-[8px] leading-3.5 text-slate-400">{JSON.stringify(statSpy.combat.save ?? {}, null, 2)}</pre>
+                  <pre className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-black/35 p-2 text-[8px] leading-3.5 text-slate-400">{JSON.stringify(statSpy.combat.save ?? {}, null, 2)}</pre>
                 </details>
                 <details className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
                   <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wider text-slate-300">Normalized current Combat state</summary>
-                  <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/35 p-2 text-[8px] leading-3.5 text-slate-400">{JSON.stringify(statSpy.combat.state ?? {}, null, 2)}</pre>
+                  <pre className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-black/35 p-2 text-[8px] leading-3.5 text-slate-400">{JSON.stringify(statSpy.combat.state ?? {}, null, 2)}</pre>
                 </details>
               </div>
               <div className="rounded-xl border border-slate-800 bg-slate-900/55 p-3 text-[9px] text-slate-500">
