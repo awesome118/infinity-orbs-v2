@@ -1438,20 +1438,6 @@ function buildStatSpyStats(
   const cosmicReserveMultiplier = 1 + unspentCosmicDust * cosmicReserveLevel * 0.01;
 
   // luckMultiplier() applies permanent Luck, the Altar, and Cosmic Reserve as multiplicative layers.
-  const additiveBaseLuck =
-    1 +
-    (Number(upgrades.luck ?? 0) * 0.05) +
-    Math.max(0, levelBenefits.luckMultiplier - 1) +
-    (Number(mastery.continuumLuck ?? 0) * 0.03) +
-    (codexDevotionPct / 100) +
-    (Number(guild.luckRank ?? 0) * 0.03) +
-    ((pityLuckPct) / 100) +
-    ((onlineLuckPct) / 100) +
-    (fortunePct / 100) +
-    ((globalLuckPct) / 100) +
-    ((Math.max(0, comboLuck - 1) * 100) / 100) +
-    (astralReservePct / 100);
-
   const permanentLuckFactor = Math.pow(1.05, Math.max(0, Number(prestige.permLuck ?? 0)));
   // Match the production base-Luck calculation. This includes Daily Streak Community,
   // all current multipliers, and every source already handled by luckMultiplier().
