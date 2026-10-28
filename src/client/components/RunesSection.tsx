@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { GameSprite, getRuneSpriteName } from './GameSprite.js';
 import { BookOpen, Coins, Gem, RefreshCw, Sparkles, Star, ShieldCheck } from 'lucide-react';
 import type { CombatRune, CombatRuneRarity, CombatRuneStat, CombatSnapshot } from '../../shared/combat.js';
 import {
@@ -204,7 +205,7 @@ export const RunesSection:React.FC=()=>{
         <div className="io-runes-loadout">{Array.from({length:slots},(_,index)=>{
           const rune=equippedRunes[index];
           return <div key={index} className={'io-runes-slot'+(rune?' is-filled':'')}>
-            {rune?STAT_ICON[rune.stat]:<Star size={15} color="#475569"/>}
+            {rune?<GameSprite name={getRuneSpriteName(rune.stat)} size={20}/>:<Star size={15} color="#475569"/>}
             {rune?<><strong className={'io-rarity-'+rune.rarity.toLowerCase()}>{rune.name}</strong><span>Lv. {fmt(rune.level??1)} · {combatRuneEffectText(rune)}</span>{rune.majorAbility&&<span className="io-runes-major">✦ {rune.majorAbility.name}</span>}</>:<span>Empty slot {index+1}</span>}
           </div>;
         })}</div>
@@ -281,7 +282,7 @@ export const RunesSection:React.FC=()=>{
             const iconLabel=(isEquipped?'Unequip ':'Equip ')+rune.name;
             return <article key={rune.id} className={'io-runes-icon-wrap '+rarityClass(rune.rarity)+(isEquipped?' is-equipped':'')+(inspectedRuneId===rune.id?' is-inspected':'')}>
               <button type="button" className={'io-runes-icon '+rarityClass(rune.rarity)+(isEquipped?' is-equipped':'')+(strengthenTargetId===rune.id?' is-strengthen-target':'')} disabled={operationPending||sacrificing||(strengthenTargetId?false:busyRune===rune.id||(!isEquipped&&!canEquip))} onClick={()=>handleRuneClick(rune)} aria-describedby={'io-rune-tooltip-'+encodeURIComponent(rune.id)} aria-pressed={strengthenTargetId?strengthenTargetId===rune.id:isEquipped} aria-label={strengthenTargetId?(rune.id===strengthenTargetId?'Cancel Strengthen selection':'Select '+rune.name+' as sacrifice donor'):iconLabel} title={strengthenTargetId?(rune.id===strengthenTargetId?'Cancel Strengthen selection':'Select as donor for '+(strengthenTargetRune?.name??'selected Rune')):iconLabel}>
-                <span className="io-runes-icon-art">{STAT_ICON[rune.stat]}</span><small>Lv. {fmt(level)}</small>{isEquipped&&<span className="io-runes-equipped-mark"><ShieldCheck size={12}/></span>}
+                <span className="io-runes-icon-art"><GameSprite name={getRuneSpriteName(rune.stat)} size={30}/></span><small>Lv. {fmt(level)}</small>{isEquipped&&<span className="io-runes-equipped-mark"><ShieldCheck size={12}/></span>}
               </button>
               <div id={'io-rune-tooltip-'+encodeURIComponent(rune.id)} className="io-runes-tooltip" role="tooltip">
                 <span className={'io-runes-tooltip-rarity '+rarityClass(rune.rarity)}>{rune.rarity.toUpperCase()} · {STAT_LABEL[rune.stat].toUpperCase()}</span>

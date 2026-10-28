@@ -156,6 +156,23 @@
       <path d="M37 8h16v24l4 8-2 8-14-2-7-10z" fill="#573c9c" stroke="#e6b6ff" stroke-width="1.8"/>
       <path d="M13 43l14 2M39 41l14 2" stroke="#fff" stroke-opacity=".75" stroke-width="2"/>
     </symbol>
+    <symbol id="gear-gloves" viewBox="0 0 64 64">
+      <path d="M8 34l2-12c.4-3 4-4 6-1l3 7V12c0-4 6-4 6 0v12-15c0-4 6-4 6 0v15-11c0-4 6-4 6 0v14l4-7c2-4 7-2 5 3l-5 17-9 12H17z" fill="url(#g-armor)" stroke="#baf4ff" stroke-width="1.7" stroke-linejoin="round"/>
+      <path d="M39 35l2-9c1-4 6-3 6 1l1 8 3-5c2-3 6-1 5 2l-5 13-8 9H31l-4-8z" fill="url(#g-epic)" stroke="#efcaff" stroke-width="1.7" stroke-linejoin="round"/>
+      <path d="M16 39h12M36 44h10" stroke="#fff" stroke-opacity=".72" stroke-width="2"/>
+    </symbol>
+    <symbol id="gear-ring" viewBox="0 0 64 64">
+      <circle cx="32" cy="35" r="21" fill="none" stroke="#ffdc7d" stroke-width="8"/>
+      <circle cx="32" cy="35" r="21" fill="none" stroke="#fff1b4" stroke-width="2"/>
+      <path d="M32 4l8 9-8 9-8-9z" fill="url(#g-rare)" stroke="#c8ffff" stroke-width="1.5"/>
+      <path d="M11 35h7M46 35h7" stroke="#fff4be" stroke-width="2"/>
+    </symbol>
+    <symbol id="gear-amulet" viewBox="0 0 64 64">
+      <path d="M17 8c0 17 6 18 15 22 9-4 15-5 15-22" fill="none" stroke="#c8dfff" stroke-width="3"/>
+      <path d="M32 25l17 16-17 18-17-18z" fill="url(#g-epic)" stroke="#f8cfff" stroke-width="2"/>
+      <path d="M32 31l7 10-7 11-7-11z" fill="#e9ceff" fill-opacity=".72" stroke="#fff" stroke-opacity=".8"/>
+      <circle cx="32" cy="41" r="3" fill="#fff"/>
+    </symbol>
     <symbol id="rune-diamond" viewBox="0 0 64 64">
       <path d="M32 4L51 15 51 39 32 60 13 39 13 15z" fill="url(#g-cosmic)" fill-opacity=".76" stroke="#bdfaff" stroke-width="2"/>
       <path d="M32 12l12 8-4 18-8 12-8-12-4-18z" fill="#15224f" fill-opacity=".65" stroke="#efffff" stroke-opacity=".85" stroke-width="1.4"/>

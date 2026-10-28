@@ -5,7 +5,7 @@ import './game-sprites.css';
 export type GameSpriteName =
   | 'orb-common' | 'orb-uncommon' | 'orb-rare' | 'orb-epic' | 'orb-legendary' | 'orb-mythic' | 'orb-cosmic' | 'orb-infinity'
   | 'player-idle' | 'enemy-flame' | 'enemy-crystal' | 'enemy-void' | 'boss-flame' | 'boss-crystal' | 'boss-void'
-  | 'gear-sword' | 'gear-helmet' | 'gear-armor' | 'gear-boots' | 'rune-diamond'
+  | 'gear-sword' | 'gear-helmet' | 'gear-armor' | 'gear-gloves' | 'gear-boots' | 'gear-ring' | 'gear-amulet' | 'rune-diamond'
   | 'skill-slash' | 'skill-starfall' | 'skill-shield' | 'skill-heart' | 'skill-speed' | 'skill-luck'
   | 'portal' | 'chest' | 'shard' | 'coin';
 
@@ -62,11 +62,21 @@ export function getGearSpriteName(slot: string): GameSpriteName {
     case 'helmet': return 'gear-helmet';
     case 'armor': return 'gear-armor';
     case 'boots': return 'gear-boots';
+    case 'gloves': return 'gear-gloves';
+    case 'ring': return 'gear-ring';
+    case 'amulet': return 'gear-amulet';
     case 'weapon':
-    case 'gloves':
-    case 'ring':
-    case 'amulet':
     default: return 'gear-sword';
+  }
+}
+
+export function getRuneSpriteName(stat: string): GameSpriteName {
+  switch (stat) {
+    case 'luckPct': return 'skill-luck';
+    case 'coinGainPct': return 'coin';
+    case 'shardChancePct': return 'shard';
+    case 'expGainPct': return 'skill-starfall';
+    default: return 'rune-diamond';
   }
 }
 

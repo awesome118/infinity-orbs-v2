@@ -61,3 +61,14 @@
 @media (prefers-reduced-motion: reduce) {
   .io-orb-stage-sprite { transition: none; }
 }
+
+.io-runes-icon-art .io-game-sprite {
+  width: 32px;
+  height: 32px;
+  filter: drop-shadow(0 0 7px rgba(108, 185, 255, .42));
+}
+.io-runes-slot .io-game-sprite {
+  width: 20px;
+  height: 20px;
+  filter: drop-shadow(0 0 5px rgba(129, 161, 255, .3));
+}
