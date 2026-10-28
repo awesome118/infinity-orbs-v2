@@ -2035,7 +2035,9 @@ test('critical rarity caps match the continuum ceiling and cannot downgrade high
   const applyEnd = game.indexOf('async function commitOfflineNotificationMarkerIfUnchanged', applyStart);
   assert.ok(applyStart >= 0 && applyEnd > applyStart);
   const apply = game.slice(applyStart, applyEnd);
-  assert.match(apply, /const rawCritRarity = isCrit \? Math\.round\(baseRarity \* effectiveCm\) : baseRarity/);
+  assert.match(apply, /const rarityMultiplier = runeLuckMultiplier \* \(isCrit \? effectiveCm : 1\)/);
+  assert.match(apply, /criticalMultiplierAppliedBeforeFloor = isCrit/);
+  assert.match(apply, /const rawCritRarity = isCrit && !criticalMultiplierAppliedBeforeFloor/);
   assert.match(apply, /if \(isCrit && \(!Number\.isFinite\(rawCritRarity\) \|\| rawCritRarity > MAX_ORB_RARITY\)\) isInfinityOrb = true/);
   assert.match(apply, /effectiveCm = cm \* 5/);
   assert.match(shared, /effectiveCm = cm \* 5/);
