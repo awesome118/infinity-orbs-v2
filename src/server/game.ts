@@ -3731,20 +3731,34 @@ export async function applyRolls(
     const runeRarityFloor = Math.max(minimumRarity, currentRuneSpec?.minRarity ?? minimumRarity);
     let isInfinityOrb = false;
     let rolledRarity: number;
+    let criticalMultiplierAppliedBeforeFloor = false;
     if (isGuaranteedThirdBall) {
       rolledRarity = beginnerRarity;
     } else if (forcedRarity && i === 0) {
       rolledRarity = forcedRarity;
     } else {
-      const rawRolledRarity = Math.round(rollContinuum(effectiveLuck, randomOverride ?? serverRarityRandom) * runeLuckMultiplier);
+      // Combine Rune Luck and critical strength before the final integer floor.
+      // This preserves rarity resolution instead of multiplying an already-
+      // floored baseline integer by potentially enormous late-game bonuses.
+      const rarityMultiplier = runeLuckMultiplier * (isCrit ? effectiveCm : 1);
+      const rarityFloor = isCrit ? runeRarityFloor * effectiveCm : runeRarityFloor;
+      const rawRolledRarity = rollContinuum(
+        effectiveLuck,
+        randomOverride ?? serverRarityRandom,
+        rarityMultiplier,
+        rarityFloor,
+      );
       isInfinityOrb = !Number.isFinite(rawRolledRarity) || rawRolledRarity > MAX_ORB_RARITY;
       rolledRarity = Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY,
         Number.isFinite(rawRolledRarity) ? rawRolledRarity : MAX_ORB_RARITY));
+      criticalMultiplierAppliedBeforeFloor = isCrit;
     }
     const baseRarity = exactRarity && forcedRarity != null && i === 0
       ? forcedRarity
       : Math.max(minimumRarity, isGuaranteedThirdBall ? rolledRarity : runeRarityFloor, rolledRarity);
-    const rawCritRarity = isCrit ? Math.round(baseRarity * effectiveCm) : baseRarity;
+    const rawCritRarity = isCrit && !criticalMultiplierAppliedBeforeFloor
+      ? Math.round(baseRarity * effectiveCm)
+      : baseRarity;
     if (isCrit && (!Number.isFinite(rawCritRarity) || rawCritRarity > MAX_ORB_RARITY)) isInfinityOrb = true;
     const rarity = isCrit
       ? Math.min(MAX_ORB_RARITY, Number.isFinite(rawCritRarity) ? rawCritRarity : MAX_ORB_RARITY)
