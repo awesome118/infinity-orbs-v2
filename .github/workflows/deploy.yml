@@ -1,5 +1,6 @@
 name: Deploy Devvit
 
+# Explicit deployment trigger: user requested deployment to r/infinity_orbs_dev on 2026-10-28.
 # Normally manual. The version-specific push marker is reserved for an explicitly requested deployment.
 # Explicit deployment request (2026-10-28): ship v2.1.2 to r/infinity_orbs_dev only; do not submit for review or install to production.
 # Release includes pre-floor Rune and critical rarity scaling, plus regression coverage for the revised roll pipeline.
