@@ -528,11 +528,20 @@ export function combatGearSpeedBonus(_slot: CombatGearSlot, powerValue: unknown,
   return Math.max(1, Math.round(power * combatGearSpeedShare(rollValue)));
 }
 
-export function combatNextBeatDelayMs(nowValue: unknown, lastAcceptedValue: unknown, bufferMs = 150): number {
+export function combatNextBeatDelayMs(
+  nowValue: unknown,
+  lastAcceptedValue: unknown,
+  bufferMs = 150,
+  intervalMsValue: unknown = COMBAT_BEAT_INTERVAL_MS,
+): number {
   const now = Number(nowValue), lastAccepted = Number(lastAcceptedValue);
   if (!Number.isFinite(now) || now < 0 || !Number.isFinite(lastAccepted) || lastAccepted <= 0) return 0;
   const buffer = Number.isFinite(Number(bufferMs)) ? Math.max(0, Number(bufferMs)) : 150;
-  return Math.max(0, lastAccepted + COMBAT_BEAT_INTERVAL_MS - now + buffer);
+  const rawInterval = Number(intervalMsValue);
+  const interval = Number.isFinite(rawInterval)
+    ? Math.max(1_000, Math.min(COMBAT_BEAT_INTERVAL_MS, Math.floor(rawInterval)))
+    : COMBAT_BEAT_INTERVAL_MS;
+  return Math.max(0, lastAccepted + interval - now + buffer);
 }
 export type CombatSkillId =
   | 'ember-lung' | 'surefoot' | 'ironbark' | 'lucky-fang' | 'penny-hunter'
@@ -1366,6 +1375,30 @@ export function combatStatsFor(state: CombatState): CombatStats {
     coinMultiplier:1+coinBonus, coreProgressionBonus, orbFocusBonus, gearQualityRequirement,
   };
 }
+/**
+ * Chrono Surge accelerates the global combat beat as well as the relative Speed
+ * clock. Keep this derived from equipped, quality-adjusted Major Abilities so
+ * server cooldown validation and the client's countdown share one calculation.
+ */
+export function combatBeatIntervalMsFor(
+  state: Pick<CombatState, 'depth' | 'equipment' | 'inventory'> | null | undefined,
+): number {
+  if (!state) return COMBAT_BEAT_INTERVAL_MS;
+  const floor = Math.max(0, Number(state.depth ?? 1) - 1);
+  const inventory = Array.isArray(state.inventory) ? state.inventory : [];
+  const equipment = state.equipment ?? {};
+  let chronoSpeedPercent = 0;
+  for (const [slot, id] of Object.entries(equipment) as [CombatGearSlot, string | null][]) {
+    if (!id) continue;
+    const item = inventory.find(candidate => candidate.id === id && candidate.slot === slot);
+    if (item?.majorAbility?.id !== 'chrono-surge') continue;
+    const raw = Number(item.majorAbility.speedPercent);
+    if (Number.isFinite(raw) && raw > 0) chronoSpeedPercent += raw * gearQualityEffectiveness(item, floor);
+  }
+  const speedMultiplier = 1 + Math.max(0, chronoSpeedPercent);
+  return Math.max(1_000, Math.round(COMBAT_BEAT_INTERVAL_MS / speedMultiplier));
+}
+
 export function synchronizeCombatStats(state: CombatState): CombatStats {
   const stats=combatStatsFor(state);
   state.baseDamage=stats.damage; state.speed=stats.speed;
