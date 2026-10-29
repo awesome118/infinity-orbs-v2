@@ -2529,7 +2529,7 @@ export function App() {
     ) return;
     const level = Math.max(1, Math.floor(Number(state.level) || 1), calculateLevelFromXp(Number(state.xp) || 0).level);
     if (level < 5) return;
-    if (!notificationsEnabled && !notificationPromptShown && Math.max(0, Number(state.totalRolls) || 0) >= 5) return;
+    if (popupConfig.notification && !notificationsEnabled && !notificationPromptShown && Math.max(0, Number(state.totalRolls) || 0) >= 5) return;
     try {
       const snoozeUntil = Number(window.localStorage.getItem('io-join-subreddit-dismissed-until-v1') ?? 0);
       if (Number.isFinite(snoozeUntil) && snoozeUntil > Date.now()) return;
@@ -2539,7 +2539,7 @@ export function App() {
     setShowJoinSubredditPrompt(true);
     trackPopupEvent('joinSubreddit', 'shown');
   }, [
-    splashEntered, popupConfigLoaded, popupConfig.joinSubreddit, followRewardStatusLoaded,
+    splashEntered, popupConfigLoaded, popupConfig.joinSubreddit, popupConfig.notification, followRewardStatusLoaded,
     state?.level, state?.xp, state?.totalRolls, notificationsEnabled, notificationPromptShown,
     followRewardClaimed, showNotificationPrompt, showFrenzyPrompt, showJoinSubredditPrompt, trackPopupEvent,
   ]);
