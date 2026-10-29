@@ -1,5 +1,11 @@
 # Infinity Orbs Changelog
 
+### Frenzy Calculating Overlay (2.1.16)
+
+- Slow Frenzy claims show a full-screen calculating popup after a brief delay, avoiding a flash for normal fast claims.
+- Animate Orbs spawning in rapid bursts during processing, keep the popup visible briefly after a slow response, and respect reduced-motion preferences.
+- Add regression coverage for the delayed popup, rapid Orb animation, and cleanup path.
+
 ### Coin Display, Guild Loading, and Chrono Surge (2.1.15)
 
 - Display large Coin balances and rewards in exponential notation using the shared number formatter; the stored Coin balance and economy rules are unchanged.
