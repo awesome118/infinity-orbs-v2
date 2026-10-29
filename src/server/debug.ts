@@ -29,6 +29,9 @@ import {
   getPlayerSpyLogs,
   clearPlayerSpyLogs,
   getFollowPromptStats,
+  getPopupConfig,
+  setPopupConfig,
+  getPopupStats,
   getGlobalBoosters,
   getFakeCcuBonus,
   getOnlinePlayers,
@@ -399,6 +402,25 @@ debugRouter.get('/follow-stats', async (_req, res) => {
     res.json(await getFollowPromptStats());
   } catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to load follow statistics.' });
+  }
+});
+
+debugRouter.get('/popups', async (_req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const [config, stats] = await Promise.all([getPopupConfig(), getPopupStats()]);
+    res.json({ config, stats, generatedAt: Date.now() });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to load popup analytics.' });
+  }
+});
+
+debugRouter.post('/popups/config', async (req, res) => {
+  try {
+    const config = await setPopupConfig(req.body && typeof req.body === 'object' ? req.body : {});
+    res.json({ ok: true, config, stats: await getPopupStats() });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to update popup settings.' });
   }
 });
 
