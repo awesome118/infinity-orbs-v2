@@ -323,7 +323,9 @@ test('deployment workflow is manual, main-only, and installs only to the develop
   assert.ok(workflow.includes('      - name: Upload exact requested version to Devvit\n        if: steps.existing-version.outcome != \'success\'\n        env:\n          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}\n          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}\n          CI: true\n          REQUESTED_VERSION: ${{ steps.requested-version.outputs.version }}'));
   assert.ok(workflow.includes('      - name: Verify uploaded version\n        id: uploaded-version\n        env:\n          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}\n          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}\n          REQUESTED_VERSION: ${{ steps.requested-version.outputs.version }}'));
   assert.ok(workflow.includes('      - name: Install candidate to development subreddit only (r/infinity_orbs_dev)\n        env:\n          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}\n          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}\n          VERSION: ${{ steps.uploaded-version.outputs.version }}'));
-  assert.match(workflow, /DEVVIT_SESSION_ID/);\n  assert.match(workflow, /npx devvit whoami/);\n  assert.match(workflow, /Verify Devvit CLI authentication/);
+  assert.match(workflow, /DEVVIT_SESSION_ID/);
+  assert.match(workflow, /npx devvit whoami/);
+  assert.match(workflow, /Verify Devvit CLI authentication/);
   assert.match(workflow, /if: steps\.existing-version\.outcome != 'success'/);
   assert.match(workflow, /^\s*npx devvit install r\/infinity_orbs_dev\b/m);
   assert.doesNotMatch(workflow, /^\s*npx devvit install r\/infinityorbs\b/m);
