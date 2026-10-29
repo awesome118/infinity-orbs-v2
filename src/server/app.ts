@@ -60,6 +60,9 @@ import {
   processOfflineFullNotification,
   getNotificationState,
   setNotificationState,
+  getPopupConfig,
+  recordPopupEvent,
+  getFollowRewardStatus,
   settleOffline,
   recordPlayerHeartbeat,
   hasCompletedFirstRollTutorial,
@@ -872,6 +875,33 @@ export function createApp() {
       res.json({ enabled: await setNotificationState(enabled) });
     } catch (e: any) {
       res.status(400).json({ error: e?.message || 'Could not update notification settings.' });
+    }
+  });
+
+  app.get('/api/popups/config', async (_req, res) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ config: await getPopupConfig() });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Could not load popup settings.' });
+    }
+  });
+
+  app.post('/api/popups/track', async (req, res) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(await recordPopupEvent(req.body?.popup, req.body?.event));
+    } catch (e: any) {
+      res.status(400).json({ error: e?.message || 'Could not record popup activity.' });
+    }
+  });
+
+  app.get('/api/follow-reward/status', async (_req, res) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(await getFollowRewardStatus());
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Could not load subreddit reward status.' });
     }
   });
 
