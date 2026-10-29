@@ -4,6 +4,7 @@
 
 - Added a Level 5 subreddit invitation with a one-time reward of 100 stored Free Rolls.
 - Added admin popup toggles and analytics for notification, Frenzy, and subreddit-invite displays, acceptances, dismissals, and acceptance rate.
+- Fixed popup analytics to refresh while the Admin Console is open, expose tracking/load errors, and exclude u/shadow_fen from player-facing metrics.
 
 
 - Added Combat as a separate game mode, unlocked at Core Level 8, with a guided introduction and its own progression.
