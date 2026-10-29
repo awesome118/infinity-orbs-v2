@@ -66,7 +66,7 @@ test('notification prompt works for returning players and admin preview does not
 });
 
 
-test('popup metrics persist player events but exclude shadow_fen server-side', async () => {
+test('popup metrics persist real popup events for shadow_fen while admin previews remain untracked', async () => {
   const previousUsername = context.username;
   try {
     context.username = 'popup-metrics-test-player';
@@ -76,12 +76,19 @@ test('popup metrics persist player events but exclude shadow_fen server-side', a
     assert.equal(normalResult.recorded, true);
     assert.equal(afterNormal.notification.shown, before.notification.shown + 1);
 
+    // The developer account can validate real events. Only the explicit admin
+    // preview path is excluded; this is separate from post-impression analytics.
     context.username = '/u/shadow_fen';
-    const excludedResult = await recordPopupEvent('notification', 'shown');
-    const afterAdmin = await getPopupStats();
-    assert.equal(excludedResult.recorded, false);
-    assert.equal(excludedResult.excluded, true);
-    assert.equal(afterAdmin.notification.shown, afterNormal.notification.shown);
+    const developerResult = await recordPopupEvent('notification', 'shown');
+    const afterDeveloper = await getPopupStats();
+    assert.equal(developerResult.recorded, true);
+    assert.equal(developerResult.excluded, undefined);
+    assert.equal(afterDeveloper.notification.shown, afterNormal.notification.shown + 1);
+
+    const main = read('src/client/main.tsx');
+    assert.match(main, /if \(notificationPromptPreview\)[\s\S]*?return;[\s\S]*?trackPopupEvent\('notification', 'dismissed'\)/);
+    assert.match(main, /if \(frenzyPromptPreview\)[\s\S]*?return;[\s\S]*?trackPopupEvent\('frenzy', 'dismissed'\)/);
+    assert.match(main, /if \(joinSubredditPreview\)[\s\S]*?return;[\s\S]*?trackPopupEvent\('joinSubreddit', 'dismissed'\)/);
   } finally {
     context.username = previousUsername;
   }
