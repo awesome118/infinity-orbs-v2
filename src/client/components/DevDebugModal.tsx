@@ -5,8 +5,8 @@ import {
   Ban, UserX, CheckCircle2, RefreshCw, Flame,
   Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy, ClipboardCheck, Gift, Eye, Search,
 } from 'lucide-react';
-import { PRESTIGE_UPGRADES, PREMIUM_BOOSTERS, AUTOMATIONS, CONTINUUM_TIERS, getOrbInfo, visibleContinuumTiers, formatRarity, formatNumber, frenzyOrbCountForRarity } from '../../shared/game.js';
-import type { RollResponse } from '../../shared/game.js';
+import { PRESTIGE_UPGRADES, PREMIUM_BOOSTERS, AUTOMATIONS, CONTINUUM_TIERS, getOrbInfo, visibleContinuumTiers, formatRarity, formatNumber, frenzyOrbCountForRarity, DEFAULT_POPUP_CONFIG } from '../../shared/game.js';
+import type { RollResponse, PopupConfig, PopupStats, GamePopupId } from '../../shared/game.js';
 import { APP_VERSION } from '../../shared/version.js';
 import { sound } from '../sound.js';
 import { CombatAdminTools } from './CombatAdminTools.js';
@@ -50,6 +50,7 @@ interface DevDebugModalProps {
   onForceRollResult?: (res: RollResponse) => void;
   onForceFrenzyPopup?: () => void;
   onForceNotificationPopup?: () => void;
+  onForceJoinSubredditPopup?: () => void;
 }
 
 type GlobalBoosterGrantOperation = {
@@ -514,6 +515,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   onForceRollResult,
   onForceFrenzyPopup,
   onForceNotificationPopup,
+  onForceJoinSubredditPopup,
 }) => {
   const [customRarity, setCustomRarity] = useState('100000');
   const [loading, setLoading] = useState(false);
@@ -523,6 +525,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [activeAdminSection, setActiveAdminSection] = useState('monitoring');
   const [activeAdminTool, setActiveAdminTool] = useState('server-monitor');
   const [adminToolSearch, setAdminToolSearch] = useState('');
+  const [popupConfig, setPopupConfig] = useState<PopupConfig>(() => ({ ...DEFAULT_POPUP_CONFIG }));
+  const [popupStats, setPopupStats] = useState<PopupStats | null>(null);
+  const [popupStatsLoading, setPopupStatsLoading] = useState(false);
 
   const [targetUser, setTargetUser] = useState('');
   const [pendingWipe, setPendingWipe] = useState<{ action: 'wipe-game' | 'wipe-and-ban' | 'wipe-and-unban'; username: string } | null>(null);
@@ -677,6 +682,31 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadPopupAnalytics = async (silent = false) => {
+    setPopupStatsLoading(true);
+    try {
+      const res = await fetch('/api/dev/popups', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load popup settings and analytics.');
+      if (!data.config || !data.stats) throw new Error('Popup analytics response is incomplete.');
+      setPopupConfig({ ...DEFAULT_POPUP_CONFIG, ...data.config });
+      setPopupStats(data.stats as PopupStats);
+      if (!silent) setMessage('Loaded popup visibility settings and acceptance metrics.');
+    } catch (error: any) {
+      if (!silent) setMessage('Error: ' + (error?.message || 'Could not load popup analytics.'));
+    } finally {
+      setPopupStatsLoading(false);
+    }
+  };
+
+  const updatePopupSetting = async (id: GamePopupId, enabled: boolean) => {
+    const data = await sendAdminAction('/api/dev/popups/config', { [id]: enabled }, false,
+      (enabled ? 'Enabled ' : 'Disabled ') + (id === 'notification' ? 'notification' : id === 'frenzy' ? 'Frenzy' : 'join subreddit') + ' popup.');
+    if (data?.config) setPopupConfig({ ...DEFAULT_POPUP_CONFIG, ...data.config });
+    if (data?.stats) setPopupStats(data.stats as PopupStats);
+    if (data) await loadPopupAnalytics(true);
   };
 
   const getBannedUsers = async () => {
@@ -913,6 +943,10 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       setImpressionsLoading(false);
     }
   };
+
+  useEffect(() => {
+    void loadPopupAnalytics(true);
+  }, []);
 
   useEffect(() => {
     void loadCcuStats();
@@ -5337,37 +5371,36 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         </section>
 
         <section className={`${panelBase} border border-teal-500/30`}>
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-200">
-            <Bell className="w-4 h-4" /> Popup Testing
-          </div>
-          <p className="text-[11px] leading-relaxed text-slate-400">
-            Preview the actual game popups here. Notification preview never opts you in or consumes the one-time prompt.
-          </p>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-200"><Bell className="w-4 h-4" /> Popup Testing & Analytics</div>
+          <p className="text-[11px] leading-relaxed text-slate-400">Toggle each player-facing popup and track displays, acceptances, dismissals, and acceptance rate. Admin previews are excluded.</p>
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              title="Open the Daily Frenzy popup in-game so its visual and interaction can be checked."
-              disabled={loading}
-              onClick={() => {
-                sound.playClick();
-                onForceFrenzyPopup?.();
-              }}
-              className={`${buttonBase} bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/30 text-purple-300 px-3 py-2`}
-            >
-              <Flame className="inline w-3.5 h-3.5 mr-1" /> Force Frenzy Popup
-            </button>
-            <button
-              type="button"
-              title="Preview the notification opt-in popup without changing notification settings or its one-time flag."
-              disabled={loading}
-              onClick={() => {
-                sound.playClick();
-                onForceNotificationPopup?.();
-              }}
-              className={`${buttonBase} bg-teal-500/10 hover:bg-teal-500/20 border-teal-500/30 text-teal-200 px-3 py-2`}
-            >
-              <Bell className="inline w-3.5 h-3.5 mr-1" /> Preview Notification Popup
-            </button>
+            <button type="button" disabled={loading} onClick={() => { sound.playClick(); onForceFrenzyPopup?.(); }} className={`${buttonBase} bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/30 text-purple-300 px-3 py-2`}><Flame className="inline w-3.5 h-3.5 mr-1" /> Force Frenzy Popup</button>
+            <button type="button" disabled={loading} onClick={() => { sound.playClick(); onForceNotificationPopup?.(); }} className={`${buttonBase} bg-teal-500/10 hover:bg-teal-500/20 border-teal-500/30 text-teal-200 px-3 py-2`}><Bell className="inline w-3.5 h-3.5 mr-1" /> Preview Notification Popup</button>
+            <button type="button" disabled={loading} onClick={() => { sound.playClick(); onForceJoinSubredditPopup?.(); }} className={`${buttonBase} bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-200 px-3 py-2`}><Users className="inline w-3.5 h-3.5 mr-1" /> Preview Join Popup</button>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {([
+              { id: 'notification', label: 'Notification prompt' },
+              { id: 'frenzy', label: 'Daily Frenzy prompt' },
+              { id: 'joinSubreddit', label: 'Join subreddit reward' },
+            ] as const).map(item => {
+              const metric = popupStats?.[item.id];
+              const enabled = popupConfig[item.id];
+              return (
+                <div key={item.id} className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <strong className="text-[11px] text-slate-200">{item.label}</strong>
+                    <button type="button" aria-pressed={enabled} disabled={loading || popupStatsLoading} onClick={() => void updatePopupSetting(item.id, !enabled)} className={`${buttonBase} px-2 py-1 ${enabled ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>{enabled ? 'Enabled' : 'Disabled'}</button>
+                  </div>
+                  <div className="text-[10px] leading-relaxed text-slate-400">Shown <strong className="text-white">{metric ? formatNumber(metric.shown) : '—'}</strong>{' · '}Accepted <strong className="text-emerald-200">{metric ? formatNumber(metric.accepted) : '—'}</strong>{' · '}Dismissed <strong className="text-slate-300">{metric ? formatNumber(metric.dismissed) : '—'}</strong></div>
+                  <div className="text-xs font-bold text-cyan-200">Acceptance rate: {metric ? metric.acceptanceRate.toFixed(1) : '—'}%</div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] text-slate-500">{popupStatsLoading ? 'Refreshing popup metrics…' : 'Acceptance rate = accepted actions ÷ displays.'}</span>
+            <button type="button" disabled={popupStatsLoading} onClick={() => void loadPopupAnalytics()} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-700 px-3 py-1.5 text-slate-300`}><RefreshCw className="inline w-3 h-3 mr-1" /> Refresh metrics</button>
           </div>
         </section>
 
