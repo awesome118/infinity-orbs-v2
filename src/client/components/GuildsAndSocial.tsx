@@ -60,6 +60,8 @@ interface GuildsAndSocialProps {
   playerUsername?: string;
   playerHasShared?: boolean;
   onRefreshLeaderboards?: () => Promise<void>;
+  guildLoadError?: string | null;
+  onRefreshGuildData?: () => Promise<void>;
   busy: boolean;
 }
 
@@ -105,6 +107,8 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   playerUsername = '',
   playerHasShared = false,
   onRefreshLeaderboards,
+  guildLoadError = null,
+  onRefreshGuildData,
   busy,
 }) => {
   const [activeTab, setActiveTab] = useState<'guild' | 'leaderboard' | 'event'>('guild');
@@ -262,6 +266,19 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      {guildLoadError && (
+        <div role="alert" aria-live="assertive" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-xs text-rose-200">
+          <div>
+            <strong>Guild data could not be loaded.</strong>
+            <p className="mt-1">{guildLoadError} Your last loaded guild data has been kept. Retry the request below.</p>
+          </div>
+          {onRefreshGuildData && (
+            <button type="button" disabled={busy} onClick={() => void onRefreshGuildData().catch(() => undefined)} className="shrink-0 rounded-lg border border-rose-400/40 px-3 py-2 font-bold hover:bg-rose-500/10 disabled:opacity-50">
+              Retry loading
+            </button>
+          )}
+        </div>
+      )}
       {(socialError || socialNotice) && <div role={socialError ? 'alert' : 'status'} aria-live={socialError ? 'assertive' : 'polite'} className={socialError ? 'rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-xs text-rose-200' : 'rounded-xl border border-emerald-500/20 bg-emerald-950/10 p-3 text-xs text-emerald-200'}>{socialError || socialNotice}</div>}
       {/* Sub-navigation */}
       <div role="group" aria-label="Guilds and social sections" className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">
