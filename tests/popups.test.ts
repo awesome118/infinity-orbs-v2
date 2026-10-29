@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
-
 import { context } from '../src/server/devvit-mock.js';
 import { getPopupStats, recordPopupEvent } from '../src/server/game.js';
+
+const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
 test('Frenzy and notification popups render with dedicated styling and admin previews', () => {
   const main = read('src/client/main.tsx');
