@@ -2765,10 +2765,21 @@ test('passive player snapshots and the Play splash do not register active sessio
   assert.match(client, /if \(isAutoRoll && !splashEntered\) return;/);
   assert.match(client, /if \(!splashEntered \|\| combatMode \|\| !autoRoll \|\| !state \|\| state\.upgrades\.auto === 0\) return;/);
 
-  const promptStart = client.lastIndexOf('useEffect(() =>', client.indexOf('const checkPrompt = () =>'));
-  const promptEnd = client.indexOf('}, [splashEntered]);', promptStart);
-  assert.ok(promptStart >= 0 && promptEnd > promptStart, 'daily Frenzy prompt delay must start after Play');
-  assert.match(client.slice(promptStart, promptEnd), /if \(!splashEntered\) return;/);
+  const checkPromptStart = client.indexOf('const checkPrompt = () =>');
+  const promptStart = client.lastIndexOf('useEffect(() =>', checkPromptStart);
+  const promptEnd = client.indexOf('}, [splashEntered, popupConfigLoaded', checkPromptStart);
+  assert.ok(
+    promptStart >= 0 && checkPromptStart > promptStart && promptEnd > checkPromptStart,
+    'daily Frenzy prompt effect must start after Play and include its popup settings',
+  );
+  const promptEffect = client.slice(promptStart, promptEnd);
+  assert.match(promptEffect, /if \(!splashEntered \|\| !popupConfigLoaded \|\| !popupConfig\.frenzy\) return;/);
+  assert.match(promptEffect, /const startedAt = Date\.now\(\);/);
+  assert.match(promptEffect, /if \(!current \|\| now - startedAt < FRENZY_PROMPT_DELAY_MS\) return;/);
+  assert.ok(
+    promptEffect.indexOf('if (!splashEntered') < promptEffect.indexOf('const startedAt = Date.now();'),
+    'the Frenzy delay clock must start only after the Play-gated effect is active',
+  );
 });
 
 
