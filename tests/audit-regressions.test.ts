@@ -1105,7 +1105,12 @@ test('Frenzy claim uses normal-roll projections and commits its receipt and owne
   const claim = game.slice(claimStart, claimEnd);
   assert.match(claim, /applyRolls\(s, 1, undefined, 'frenzy', chunkCount\)/);
   assert.match(claim, /prepareFrenzyOwnerRewardWrites\(/);
-  assert.ok(claim.includes('const ownerReward = await prepareFrenzyOwnerRewardWrites(\\n      data.ownerId,\\n      FRENZY_OWNER_SHARD_REWARD,\\n    );'), 'the poster receives the reward');
+  const ownerRewardCallStart = claim.indexOf('const ownerReward = await prepareFrenzyOwnerRewardWrites(');
+  const ownerRewardCallEnd = claim.indexOf(');', ownerRewardCallStart);
+  assert.ok(ownerRewardCallStart >= 0 && ownerRewardCallEnd > ownerRewardCallStart);
+  const ownerRewardCall = claim.slice(ownerRewardCallStart, ownerRewardCallEnd);
+  assert.ok(ownerRewardCall.includes('data.ownerId'), 'the poster receives the reward');
+  assert.ok(ownerRewardCall.includes('FRENZY_OWNER_SHARD_REWARD'), 'the owner-directed grant uses the configured amount');
   assert.ok(claim.includes('ownerRewardWrites = ownerReward.writes;'), 'owner rewards are written to the poster save');
   assert.ok(claim.includes('shardsGained: shardsGained + (isOwner ? ownerRewardShards : 0),'), 'a normal claimant does not receive the poster bonus');
   assert.match(claim, /await save\(s, \[[\s\S]*?FRENZY_POST_PREFIX \+ postId[\s\S]*?\.\.\.ownerRewardWrites/);
