@@ -51,6 +51,7 @@ interface DevDebugModalProps {
   onForceFrenzyPopup?: () => void;
   onForceNotificationPopup?: () => void;
   onForceJoinSubredditPopup?: () => void;
+  onPopupConfigChanged?: (config: PopupConfig) => void;
 }
 
 type GlobalBoosterGrantOperation = {
@@ -516,6 +517,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   onForceFrenzyPopup,
   onForceNotificationPopup,
   onForceJoinSubredditPopup,
+  onPopupConfigChanged,
 }) => {
   const [customRarity, setCustomRarity] = useState('100000');
   const [loading, setLoading] = useState(false);
@@ -704,7 +706,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const updatePopupSetting = async (id: GamePopupId, enabled: boolean) => {
     const data = await sendAdminAction('/api/dev/popups/config', { [id]: enabled }, false,
       (enabled ? 'Enabled ' : 'Disabled ') + (id === 'notification' ? 'notification' : id === 'frenzy' ? 'Frenzy' : 'join subreddit') + ' popup.');
-    if (data?.config) setPopupConfig({ ...DEFAULT_POPUP_CONFIG, ...data.config });
+    if (data?.config) {
+      const nextConfig = { ...DEFAULT_POPUP_CONFIG, ...data.config };
+      setPopupConfig(nextConfig);
+      onPopupConfigChanged?.(nextConfig);
+    }
     if (data?.stats) setPopupStats(data.stats as PopupStats);
     if (data) await loadPopupAnalytics(true);
   };
