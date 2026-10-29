@@ -1167,7 +1167,7 @@ export async function recordPopupEvent(
   // Count real popup interactions for every account, including the developer account.
   // Admin preview controls return before calling trackPopupEvent, so preview-only
   // interactions remain excluded without suppressing real gameplay telemetry.
-  await redis.incr(POPUP_STATS_KEY_PREFIX + popup + ':' + event);
+  await redis.incrBy(POPUP_STATS_KEY_PREFIX + popup + ':' + event, 1);
   return { popup, event, recorded: true };
 }
 
@@ -5184,7 +5184,7 @@ export async function subscribeToSubredditForReward(): Promise<{
     let recordedAction = false;
     if (!alreadyRecorded) {
       await redis.set(actionKey, String(Date.now()));
-      await redis.incr(FOLLOW_ACTION_COUNT_KEY);
+      await redis.incrBy(FOLLOW_ACTION_COUNT_KEY, 1);
       recordedAction = true;
     }
 
@@ -5239,7 +5239,7 @@ export async function subscribeToSubredditFromPrompt(): Promise<{
     const alreadyRecorded = Boolean(await redis.get(userKey));
     if (!alreadyRecorded) {
       await redis.set(userKey, String(Date.now()));
-      await redis.incr(FOLLOW_ACTION_COUNT_KEY);
+      await redis.incrBy(FOLLOW_ACTION_COUNT_KEY, 1);
     }
 
     return {
