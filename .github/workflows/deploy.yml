@@ -5,7 +5,7 @@ name: Deploy Devvit
 # Single retry after updating the Chrono Surge countdown regression to assert the ability-adjusted interval.
 # The version-specific push marker is reserved for explicitly requested development deployments.
 # This workflow never installs to production; production review/install remains separate.
-# CI auth uses the stored token and session files; preflight guards release and credential contracts before upload.
+# CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
 on:
   workflow_dispatch:
     inputs:
@@ -89,15 +89,33 @@ jobs:
       - name: Deployment preflight
         run: npm run preflight
 
-      # Authenticate Devvit CLI operations with the established token environment variable.
-      # Previous releases successfully used DEVVIT_AUTH_TOKEN for version lookup, upload, verification, and install.
-      # Authenticate these reads: private/unpublished AppVersions are not visible in an anonymous lookup.
-      # A previous upload can succeed even when later verification fails; reuse exact versions on retry.
+      # Check credentials before invoking any mutating Devvit command.
+      # DEVVIT_TOKEN must contain the full JSON content of ~/.devvit/token, not just its token field.
+      # DEVVIT_SESSION_ID must contain the UUID from ~/.devvit/session-id.
+      - name: Verify Devvit CLI authentication
+        env:
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
+        run: |
+          set -euo pipefail
+          test -n "${DEVVIT_AUTH_TOKEN:-}" || {
+            echo "::error::Repository secret DEVVIT_TOKEN is missing. Refresh Devvit login and store the full ~/.devvit/token JSON."
+            exit 1
+          }
+          test -n "${DEVVIT_SESSION_ID:-}" || {
+            echo "::error::Repository secret DEVVIT_SESSION_ID is missing. Store the contents of ~/.devvit/session-id."
+            exit 1
+          }
+          npx devvit whoami
+
+      # Authenticate all reads and writes; private/unpublished versions are not visible anonymously.
+      # Reuse exact versions when retrying so a successful upload is not accidentally duplicated.
       - name: Detect whether the exact version already exists
         id: existing-version
         continue-on-error: true
         env:
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
           REQUESTED_VERSION: ${{ steps.requested-version.outputs.version }}
         run: |
           set -euo pipefail
@@ -112,6 +130,7 @@ jobs:
         if: steps.existing-version.outcome != 'success'
         env:
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
           CI: true
           REQUESTED_VERSION: ${{ steps.requested-version.outputs.version }}
         timeout-minutes: 10
@@ -121,6 +140,7 @@ jobs:
         id: uploaded-version
         env:
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
           REQUESTED_VERSION: ${{ steps.requested-version.outputs.version }}
         run: |
           set -euo pipefail
@@ -134,6 +154,7 @@ jobs:
       - name: Install candidate to development subreddit only (r/infinity_orbs_dev)
         env:
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
           VERSION: ${{ steps.uploaded-version.outputs.version }}
         run: |
           set -euo pipefail
