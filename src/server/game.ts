@@ -1164,17 +1164,9 @@ export async function recordPopupEvent(
   const event = String(eventValue ?? '') as GamePopupEvent;
   if (!POPUP_IDS.includes(popup) || !POPUP_EVENTS.includes(event)) throw new Error('INVALID_POPUP_EVENT');
 
-  // Admin playtesting must never skew player-facing popup conversion metrics.
-  const rawUsername = String(context.username ?? '').trim().toLowerCase();
-  const reportingUsername = rawUsername.startsWith('/u/')
-    ? rawUsername.slice(3)
-    : rawUsername.startsWith('u/')
-      ? rawUsername.slice(2)
-      : rawUsername;
-  if (reportingUsername === 'shadow_fen') {
-    return { popup, event, recorded: false, excluded: true };
-  }
-
+  // Count real popup interactions for every account, including the developer account.
+  // Admin preview controls return before calling trackPopupEvent, so preview-only
+  // interactions remain excluded without suppressing real gameplay telemetry.
   await redis.incr(POPUP_STATS_KEY_PREFIX + popup + ':' + event);
   return { popup, event, recorded: true };
 }
