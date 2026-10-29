@@ -227,7 +227,10 @@ async function getJsonWithTimeout<T>(url: string, timeoutMs = 10_000, options?: 
   }
 }
 
-export function App() {
+export const FRENZY_CALCULATING_DELAY_MS = 650;
+const FRENZY_CALCULATING_MIN_VISIBLE_MS = 420;
+
+function App() {
   const [state, setState] = useState<PlayerState | null>(null);
   const journeyStartPromiseRef = useRef<Promise<void> | null>(null);
   const journeyReadyReportedRef = useRef(false);
@@ -533,6 +536,7 @@ export function App() {
   });
   const [newBestModalData, setNewBestModalData] = useState<{ orb: Orb; prevBest: number } | null>(null);
   const [frenzyRunTriggered, setFrenzyRunTriggered] = useState(false);
+  const [showFrenzyCalculating, setShowFrenzyCalculating] = useState(false);
   const [frenzyArmed, setFrenzyArmed] = useState(false);
   const [showFrenzyPrompt, setShowFrenzyPrompt] = useState(false);
   const [frenzyPromptPreview, setFrenzyPromptPreview] = useState(false);
@@ -1168,6 +1172,9 @@ export function App() {
   useEffect(() => {
     if (!state || !splashEntered || frenzyRunTriggered || frenzyClaimActiveRef.current) return;
 
+    let frenzyCalculatingTimeout: number | null = null;
+    let frenzyCalculatingShownAt = 0;
+
     const resolveFrenzy = async () => {
       // Lock before the first await. Effect replay must not run a second
       // handoff preflight before the first request reaches its claim guard.
@@ -1220,6 +1227,14 @@ export function App() {
       setFrenzyRunTriggered(true);
       setBusy(true);
       setIsRolling(true);
+      setShowFrenzyCalculating(false);
+      frenzyCalculatingShownAt = 0;
+      if (frenzyCalculatingTimeout !== null) window.clearTimeout(frenzyCalculatingTimeout);
+      // Delay the full-screen treatment so quick claims keep their current flow.
+      frenzyCalculatingTimeout = window.setTimeout(() => {
+        frenzyCalculatingShownAt = Date.now();
+        if (componentMountedRef.current) setShowFrenzyCalculating(true);
+      }, FRENZY_CALCULATING_DELAY_MS);
 
       // Claim exactly once per attempt. A retry requires a fresh user action
       // because a failed HTTP response cannot prove the server did not commit.
@@ -1228,6 +1243,19 @@ export function App() {
       );
 
       if (!componentMountedRef.current) return;
+
+      if (frenzyCalculatingTimeout !== null) {
+        window.clearTimeout(frenzyCalculatingTimeout);
+        frenzyCalculatingTimeout = null;
+      }
+      if (frenzyCalculatingShownAt > 0) {
+        const remainingVisibleMs = FRENZY_CALCULATING_MIN_VISIBLE_MS - (Date.now() - frenzyCalculatingShownAt);
+        if (remainingVisibleMs > 0) {
+          await new Promise(resolve => window.setTimeout(resolve, remainingVisibleMs));
+        }
+      }
+      if (!componentMountedRef.current) return;
+      setShowFrenzyCalculating(false);
 
       const revealBatch = res.batch?.length ? res.batch : [res.orb];
 
@@ -1277,8 +1305,11 @@ export function App() {
         }
       })
       .finally(() => {
+        if (frenzyCalculatingTimeout !== null) window.clearTimeout(frenzyCalculatingTimeout);
+        frenzyCalculatingTimeout = null;
         frenzyClaimActiveRef.current = false;
         if (!componentMountedRef.current) return;
+        setShowFrenzyCalculating(false);
         setIsRolling(false);
         setBusy(false);
       });
@@ -3399,6 +3430,36 @@ export function App() {
               >
                 Not now
               </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {showFrenzyCalculating && (
+        <div className="fixed inset-0 z-[90] io-modal-backdrop io-frenzy-calculating-backdrop flex items-center justify-center p-4" data-testid="frenzy-calculating-backdrop">
+          <section
+            className="io-modal-card io-frenzy-calculating-card w-full max-w-md bg-slate-950/95"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="frenzy-calculating-title"
+            aria-describedby="frenzy-calculating-description"
+            data-testid="frenzy-calculating-popup"
+          >
+            <div className="io-frenzy-calculating-kicker"><Flame className="w-4 h-4" /> FRENZY SEQUENCE</div>
+            <div className="io-frenzy-calculating-stage" aria-hidden="true">
+              <div className="io-frenzy-calculating-aura" />
+              {Array.from({ length: 12 }, (_, index) => (
+                <span className="io-frenzy-calculating-orb" key={index} />
+              ))}
+              <div className="io-frenzy-calculating-core"><span>∞</span></div>
+            </div>
+            <h2 id="frenzy-calculating-title" className="io-frenzy-calculating-title">Calculating Frenzy</h2>
+            <p id="frenzy-calculating-description" className="io-frenzy-calculating-copy">
+              Rolling your payout at warp speed. Orbs are spawning while we secure your claim…
+            </p>
+            <div className="io-frenzy-calculating-status" role="status" aria-live="polite">
+              <span className="io-frenzy-calculating-status-dot" />
+              Processing your Frenzy reward
             </div>
           </section>
         </div>
