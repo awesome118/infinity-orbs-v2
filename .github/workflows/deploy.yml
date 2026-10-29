@@ -1,14 +1,10 @@
 name: Deploy Devvit
 
-# Explicit deployment trigger: user requested the corrected level-scaled rarity and staged unlock release for r/infinity_orbs_dev on 2026-10-29.
-# Normally manual. The version-specific push marker is reserved for an explicitly requested deployment.
-# Explicit deployment request (2026-10-29): ship v2.1.14 Frenzy poster payout of 100 Shards to r/infinity_orbs_dev only; do not submit for review or install to production.
-# Release restores the prior non-atlas UI assets and adds the Level-5 join-subreddit popup, 100 free-roll reward, and admin popup toggles/analytics.
-# Release is pinned to the aligned package.json/package-lock.json on main.
-# Retry v2.1.14 after simplifying the poster-reward audit assertion.
-# CI auth uses the stored token and session files; preflight guards these credentials and release contracts before upload.
-# One necessary retry follows a test-only correction for legacy assertions about the existing Play-gated Frenzy prompt handler.
-# This workflow uploads and installs to the development subreddit only. Production install is a separate post-approval workflow.
+# Explicit deployment request (2026-10-29): release v2.1.15 to r/infinity_orbs_dev only.
+# Includes exponential Coin display, Guild loading recovery/diagnostics, and Chrono Surge beat-timer acceleration.
+# The version-specific push marker is reserved for explicitly requested development deployments.
+# This workflow never installs to production; production review/install remains separate.
+# CI auth uses the stored token and session files; preflight guards release and credential contracts before upload.
 on:
   workflow_dispatch:
     inputs:
@@ -30,7 +26,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.14]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.15]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
