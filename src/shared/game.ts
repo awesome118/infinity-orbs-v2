@@ -950,6 +950,13 @@ export interface PlayerStreak {
   longestStreak: number;
 }
 
+export type GamePopupId = 'notification' | 'frenzy' | 'joinSubreddit';
+export type GamePopupEvent = 'shown' | 'accepted' | 'dismissed';
+export interface PopupConfig { notification: boolean; frenzy: boolean; joinSubreddit: boolean }
+export interface PopupMetric { shown: number; accepted: number; dismissed: number; acceptanceRate: number }
+export type PopupStats = Record<GamePopupId, PopupMetric>;
+export const DEFAULT_POPUP_CONFIG: PopupConfig = { notification: true, frenzy: true, joinSubreddit: true };
+
 export interface PlayerState {
   username?: string;
   // Monotonic save version used to reject stale full-state writes.
