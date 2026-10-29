@@ -9,6 +9,11 @@ import { combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityEffe
 import {
   createInitialState,
   type PlayerState,
+  type PopupConfig,
+  type GamePopupId,
+  type GamePopupEvent,
+  type PopupStats,
+  DEFAULT_POPUP_CONFIG,
   type QuestItem,
   type RollResponse,
   type UpgradeId,
@@ -275,7 +280,11 @@ const PLAYER_SPY_LOG_LIMIT = 500;
 const FOLLOW_SUBSCRIBED_KEY_PREFIX = 'io:follow-prompt-subscribed:v2:';
 const FOLLOW_REWARD_KEY_PREFIX = 'io:follow-prompt-reward:v1:';
 const FOLLOW_ACTION_COUNT_KEY = 'io:follow-prompt-actions:v2';
-const FOLLOW_REWARD_ROLLS = 200;
+const FOLLOW_REWARD_ROLLS = 100;
+const POPUP_CONFIG_KEY = 'io:popup-config:v1';
+const POPUP_STATS_KEY_PREFIX = 'io:popup-stats:v1:';
+const POPUP_IDS: GamePopupId[] = ['notification', 'frenzy', 'joinSubreddit'];
+const POPUP_EVENTS: GamePopupEvent[] = ['shown', 'accepted', 'dismissed'];
 const FOLLOW_TARGET_SUBREDDIT = 'infinityorbs';
 
 const SAVE_DEBUG_LOG_KEY = 'io:save-debug:v1';
@@ -1120,6 +1129,55 @@ export async function setNotificationState(enabled: boolean): Promise<boolean> {
     await notifications.optOutCurrentUser();
   }
   return notifications.isOptedIn(currentUserId());
+}
+
+function normalizePopupConfig(value: unknown): PopupConfig {
+  let parsed = value;
+  if (typeof parsed === 'string') {
+    try { parsed = JSON.parse(parsed); } catch { parsed = null; }
+  }
+  const record = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  return {
+    notification: typeof record.notification === 'boolean' ? record.notification : DEFAULT_POPUP_CONFIG.notification,
+    frenzy: typeof record.frenzy === 'boolean' ? record.frenzy : DEFAULT_POPUP_CONFIG.frenzy,
+    joinSubreddit: typeof record.joinSubreddit === 'boolean' ? record.joinSubreddit : DEFAULT_POPUP_CONFIG.joinSubreddit,
+  };
+}
+
+export async function getPopupConfig(): Promise<PopupConfig> {
+  return normalizePopupConfig(await redis.get(POPUP_CONFIG_KEY));
+}
+
+export async function setPopupConfig(patch: Partial<PopupConfig>): Promise<PopupConfig> {
+  const current = await getPopupConfig();
+  const next: PopupConfig = { ...current };
+  for (const id of POPUP_IDS) if (typeof patch[id] === 'boolean') next[id] = patch[id] as boolean;
+  await redis.set(POPUP_CONFIG_KEY, JSON.stringify(next));
+  return next;
+}
+
+export async function recordPopupEvent(popupValue: unknown, eventValue: unknown): Promise<{ popup: GamePopupId; event: GamePopupEvent; recorded: true }> {
+  const popup = String(popupValue ?? '') as GamePopupId;
+  const event = String(eventValue ?? '') as GamePopupEvent;
+  if (!POPUP_IDS.includes(popup) || !POPUP_EVENTS.includes(event)) throw new Error('INVALID_POPUP_EVENT');
+  await redis.incr(POPUP_STATS_KEY_PREFIX + popup + ':' + event);
+  return { popup, event, recorded: true };
+}
+
+export async function getPopupStats(): Promise<PopupStats> {
+  const readCount = async (popup: GamePopupId, event: GamePopupEvent): Promise<number> => {
+    const raw = await redis.get(POPUP_STATS_KEY_PREFIX + popup + ':' + event);
+    const count = Number.parseInt(String(raw ?? '0'), 10);
+    return Number.isSafeInteger(count) && count > 0 ? count : 0;
+  };
+  const stats = {} as PopupStats;
+  for (const popup of POPUP_IDS) {
+    const [shown, accepted, dismissed] = await Promise.all([
+      readCount(popup, 'shown'), readCount(popup, 'accepted'), readCount(popup, 'dismissed'),
+    ]);
+    stats[popup] = { shown, accepted, dismissed, acceptanceRate: shown > 0 ? Math.round((accepted / shown) * 1000) / 10 : 0 };
+  }
+  return stats;
 }
 
 export async function getFakeCcuBonus(userId = currentUserId()): Promise<number> {
@@ -5211,9 +5269,17 @@ export async function getFollowPromptStats(): Promise<{
   };
 }
 
+export async function getFollowRewardStatus(): Promise<{ claimed: boolean; subredditName: string }> {
+  const userId = currentUserId();
+  const claimed = Boolean(userId && await redis.get(FOLLOW_REWARD_KEY_PREFIX + userId));
+  return { claimed, subredditName: String(context.subredditName ?? FOLLOW_TARGET_SUBREDDIT).replace(/^r\//i, '') };
+}
+
 export async function claimFollowReward(): Promise<{
   state: PlayerState;
   rollsGranted: number;
+  freeRollsAdded: number;
+  totalFreeRolls: number;
   bestRarity: number;
   coinsGained: number;
   shardsGained: number;
@@ -5223,18 +5289,15 @@ export async function claimFollowReward(): Promise<{
     const userId = currentUserId();
     const subscribedKey = FOLLOW_SUBSCRIBED_KEY_PREFIX + userId;
     const rewardKey = FOLLOW_REWARD_KEY_PREFIX + userId;
+    if (await redis.get(rewardKey)) throw new Error('FOLLOW_REWARD_ALREADY_CLAIMED');
 
-    if (await redis.get(rewardKey)) {
-      throw new Error('FOLLOW_REWARD_ALREADY_CLAIMED');
-    }
+    const s = await settleOffline(await loadRaw());
+    const effectiveLevel = Math.max(1, Math.floor(Number(s.level) || 1), calculateLevelFromXp(Number(s.xp) || 0).level);
+    if (effectiveLevel < 5) throw new Error('FOLLOW_REWARD_LEVEL_REQUIRED');
 
-    // Explicit Reddit user action: the click that hits this endpoint subscribes
-    // the current user to the subreddit where the game is installed.
+    // An explicit Join button click subscribes the player to the current subreddit.
     await reddit.subscribeToCurrentSubreddit();
 
-    // The per-user marker and global aggregate are one idempotent update.
-    // Separate SET then INCR could leave a permanent undercount if the second
-    // command failed after the marker had already made retries skip the count.
     let actionCountRecorded = false;
     for (let attempt = 0; attempt < 8; attempt += 1) {
       const txn = await redis.watch(subscribedKey, FOLLOW_ACTION_COUNT_KEY);
@@ -5244,39 +5307,26 @@ export async function claimFollowReward(): Promise<{
         actionCountRecorded = true;
         break;
       }
-
       const rawCount = await redis.get(FOLLOW_ACTION_COUNT_KEY);
       const currentCount = rawCount == null ? 0 : Number(rawCount);
       if (!Number.isSafeInteger(currentCount) || currentCount < 0 || currentCount >= Number.MAX_SAFE_INTEGER) {
         await txn.unwatch();
         throw new Error('Follow-action counter is corrupted or exhausted; the count was not changed.');
       }
-
       await txn.multi();
       await txn.set(subscribedKey, String(Date.now()));
       await txn.set(FOLLOW_ACTION_COUNT_KEY, String(currentCount + 1));
-      if (await txn.exec() !== null) {
-        actionCountRecorded = true;
-        break;
-      }
+      if (await txn.exec() !== null) { actionCountRecorded = true; break; }
     }
-    if (!actionCountRecorded) {
-      throw new Error('Follow-action count changed repeatedly. Please retry.');
+    if (!actionCountRecorded) throw new Error('Follow-action count changed repeatedly. Please retry.');
+
+    const existingFreeRolls = Math.max(0, Math.floor(Number(s.freeRolls) || 0));
+    if (!Number.isSafeInteger(existingFreeRolls) || existingFreeRolls > Number.MAX_SAFE_INTEGER - FOLLOW_REWARD_ROLLS) {
+      throw new Error('Saved Free Roll balance cannot safely accept the reward.');
     }
-
-    const s = await settleOffline(await loadRaw());
-    const result = await applyRolls(s, 1, undefined, 'online', FOLLOW_REWARD_ROLLS);
-
-    // 200 real server-side rolls, counted as one reward activation for
-    // manual-roll progression and Auto Roll unlocking.
-    s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + 1);
-    if (s.manualRolls >= 3) s.upgrades.auto = 1;
-    s.lastRollAt = Date.now();
+    s.freeRolls = existingFreeRolls + FOLLOW_REWARD_ROLLS;
     s.lastSeenAt = Date.now();
 
-    // Commit the 200-roll reward and its idempotency marker in the same
-    // WATCH/MULTI/EXEC transaction. A marker write failure must never allow a
-    // retry to grant the reward a second time.
     const rewardMarker = secureServerToken('follow-reward');
     await save(s, {
       key: rewardKey,
@@ -5284,32 +5334,24 @@ export async function claimFollowReward(): Promise<{
       nextValue: rewardMarker,
       conflictMessage: 'FOLLOW_REWARD_ALREADY_CLAIMED',
     });
-    // save() deliberately discards mutations invalidated by an admin wipe.
-    // Ensure that path did not report success without committing the marker.
-    if (await redis.get(rewardKey) !== rewardMarker) {
-      throw new Error('FOLLOW_REWARD_SAVE_INVALIDATED');
-    }
-    // The reward and its idempotency marker are already committed. The
-    // leaderboard is only a projection; its failure must not make the API
-    // report a failed claim that cannot be retried by the user.
-    void recordLeaderboard(s).catch(error => {
-      console.error('[Follow Reward] Leaderboard projection failed after reward commit:', error);
-    });
+    if (await redis.get(rewardKey) !== rewardMarker) throw new Error('FOLLOW_REWARD_SAVE_INVALIDATED');
+
+    void recordLeaderboard(s).catch(error => console.error('[Follow Reward] Leaderboard projection failed after reward commit:', error));
     void appendPlayerSpyLog('follow-reward-claim', {
       rollsGranted: FOLLOW_REWARD_ROLLS,
-      bestRarity: result.bestOrb.rarity,
-      coinsGained: result.coinsGained,
-      shardsGained: result.shardsGained,
-      xpGained: result.xpGained,
+      totalFreeRolls: s.freeRolls,
+      subredditName: String(context.subredditName ?? FOLLOW_TARGET_SUBREDDIT),
     }).catch(error => console.error('[Follow Reward] Spy log failed:', error));
 
     return {
       state: s,
       rollsGranted: FOLLOW_REWARD_ROLLS,
-      bestRarity: result.bestOrb.rarity,
-      coinsGained: result.coinsGained,
-      shardsGained: result.shardsGained,
-      xpGained: result.xpGained,
+      freeRollsAdded: FOLLOW_REWARD_ROLLS,
+      totalFreeRolls: s.freeRolls,
+      bestRarity: s.highestRarity ?? 0,
+      coinsGained: 0,
+      shardsGained: 0,
+      xpGained: 0,
     };
   });
 }
