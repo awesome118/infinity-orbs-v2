@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star, Users, MessageSquarePlus, Bell, BellOff, ScrollText, Swords } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { LEVEL_MILESTONES, getLevelBenefits, getLevelProgress, onlinePlayerLuckMultiplier, formatShardAmount } from '../../shared/game.js';
+import { LEVEL_MILESTONES, getLevelBenefits, getLevelProgress, onlinePlayerLuckMultiplier, formatShardAmount, formatNumber } from '../../shared/game.js';
 import { sound } from '../sound.js';
 import { APP_VERSION } from '../../shared/version.js';
 
@@ -150,9 +150,9 @@ export const Header: React.FC<HeaderProps> = ({
           <div role="group" aria-label={combatMode ? "Combat resources" : "Player resources"} className="header-resource-row resource-chip flex items-center gap-2 bg-slate-950/70 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-semibold">
             {/* Core-game Coins stay hidden while in Combat. */}
             {!combatMode && <>
-              <div className="flex items-center gap-1 text-amber-400" aria-label={`${fmt(state.coins)} Coins`} title="Coins: spend them on upgrades to improve your rolls.">
+              <div className="flex items-center gap-1 text-amber-400" aria-label={`${formatNumber(state.coins)} Coins`} title="Coins: spend them on upgrades to improve your rolls.">
                 <Coins className="w-3.5 h-3.5" />
-                <span>{fmt(state.coins)}</span>
+                <span>{formatNumber(state.coins)}</span>
               </div>
               <div className="w-[1px] h-3.5 bg-slate-800" />
             </>}
