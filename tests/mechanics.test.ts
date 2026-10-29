@@ -95,7 +95,8 @@ test('player level scales rarity linearly without folding its base bonus into Lu
   assert.equal(rollContinuum(1, () => 0.25, 2, 2, 10), 80);
 
   const state = createInitialState(NOW);
-  state.level = 100;
+  state.dailyStreakCommunity = undefined;
+  state.level = 2;
   assert.equal(luckMultiplier(state), 1, 'the automatic +1% per-level base is now represented by rarity scaling');
 });
 

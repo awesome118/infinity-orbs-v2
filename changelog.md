@@ -1,5 +1,13 @@
 # Infinity Orbs Changelog
 
+### Level-Scaled Rarity Update (2.1.11)
+
+- Made player level a direct linear multiplier on Orb rarity; Luck remains a separate diminishing-return factor, without counting the old +1% per-level base twice.
+- Added nine endgame rarity tiers from Empyrean through Omega. New tier thresholds jump by 100×, beginning at 1e19.
+- Staged the Codex rarity list: tiers 10–18 appear after discovering a 1/1,000,000 Orb, and the nine new tiers appear after discovering a 1e15 Orb.
+- Added explicit unlock hints and brighter rarity-table/level-scaling UI treatments.
+
+
 ### Major New Features:
 
 - Added a Level 5 subreddit invitation with a one-time reward of 100 stored Free Rolls.
