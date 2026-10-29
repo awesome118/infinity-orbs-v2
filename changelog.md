@@ -1,5 +1,11 @@
 # Infinity Orbs Changelog
 
+### Coin Display, Guild Loading, and Chrono Surge (2.1.15)
+
+- Display large Coin balances and rewards in exponential notation using the shared number formatter; the stored Coin balance and economy rules are unchanged.
+- Fix Guild data refresh so it runs independently of the world-event request, preserves the last successful snapshot on failures, and offers an explicit retry with the server error visible.
+- Make Chrono Surge shorten the actual combat beat timer consistently in the server cooldown check, visible countdown, and Auto Fight scheduler.
+
 ### Frenzy Poster Reward (2.1.14)
 
 - Increased the Frenzy poster reward from 5 to 100 Shards for each successful claim.
