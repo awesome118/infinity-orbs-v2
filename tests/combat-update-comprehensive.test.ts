@@ -221,7 +221,9 @@ test('Luck display combines equipped Rune bonuses with all-dungeon boss Luck and
   assert.match(roll, /combatTotalBossesBeaten/);
   assert.match(roll, /combatBossLuckBonus/);
   assert.match(roll, /Total Luck/);
-  assert.match(roll, /\{totalLuckMultiplier\.toFixed\(2\)\}x/);
+  assert.match(roll, /\{formatNumber\(totalLuckMultiplier\)\}x/);
+  assert.match(roll, /Rarity Scaling/);
+  assert.match(roll, /luckRarityFactor\(totalLuckMultiplier\)/);
   assert.doesNotMatch(roll, /Math\.round\(\(luck - 1\) \* 100\)\}%/);
 });
 
@@ -240,7 +242,7 @@ test('Roll menu is centered, redundant Pity Luck tier text is absent, and Shards
   const styles = source('src/client/styles.css');
   const shared = source('src/shared/game.ts');
   assert.doesNotMatch(roll, /Pity Luck · Tier/);
-  assert.match(roll, /totalLuckMultiplier\.toFixed\(2\)/);
+  assert.match(roll, /formatNumber\(totalLuckMultiplier\)/);
   assert.match(styles, /grid-template-columns: minmax\(0, 1fr\) 272px/);
   assert.doesNotMatch(styles, /grid-template-columns: minmax\(0, 760px\) !important/);
   assert.match(shared, /formatShardAmount\(value: unknown\): string/);

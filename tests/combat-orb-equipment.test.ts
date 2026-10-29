@@ -64,8 +64,8 @@ test('Luck makes average orb rarity improve continuously with diminishing return
   assert.equal(luckRarityFactor(1), 1);
   assert.ok(luckRarityFactor(10) > luckRarityFactor(1));
   assert.ok(luckRarityFactor(1_000_000) > luckRarityFactor(10));
-  assert.ok(luckRarityFactor(1e100) <= 25);
-  assert.equal(luckRarityFactor(1e100), 25);
+  assert.ok(luckRarityFactor(1e100) > 25);
+  assert.equal(luckRarityFactor(1e100), 1e50);
 });
 
 test('combat cadence is 30 seconds and Forge quality has an exponential cost', () => {
