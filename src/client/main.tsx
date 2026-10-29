@@ -555,11 +555,17 @@ export function App() {
   const authSessionEpochRef = useRef(0);
 
   const trackPopupEvent = useCallback((popup: GamePopupId, event: GamePopupEvent) => {
-    void getJson('/api/popups/track', {
+    void getJson<{ recorded?: boolean; excluded?: boolean }>('/api/popups/track', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ popup, event }),
-    }).catch(() => undefined);
+    }).then(result => {
+      if (result.recorded !== true && result.excluded !== true) {
+        console.warn('[Popup Analytics] Server did not confirm the event:', popup, event, result);
+      }
+    }).catch(error => {
+      console.error('[Popup Analytics] Failed to record event:', popup, event, error);
+    });
   }, []);
 
   useEffect(() => {
