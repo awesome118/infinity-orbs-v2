@@ -499,6 +499,7 @@ export function App() {
     guilds: [],
     mine: null,
   });
+  const [guildLoadError, setGuildLoadError] = useState<string | null>(null);
   const [worldEvent, setWorldEvent] = useState<WorldEvent | null>(null);
   const [developerAnnouncement, setDeveloperAnnouncement] = useState<{ message: string; updatedAt: number; updatedBy: string } | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -896,6 +897,17 @@ export function App() {
     setLeaderboards(lbs);
   }, []);
 
+  const refreshGuildData = useCallback(async () => {
+    try {
+      const data = await getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds', { cache: 'no-store' });
+      setGuildData(data);
+      setGuildLoadError(null);
+    } catch (error) {
+      setGuildLoadError(error instanceof Error ? error.message : 'Guild data could not be loaded.');
+      throw error;
+    }
+  }, []);
+
   const refreshAll = useCallback(async () => {
     const refreshSequence = ++refreshSequenceRef.current;
     const revisionAtStart = stateRevisionRef.current;
@@ -917,7 +929,12 @@ export function App() {
       const [lb, lbs, gd, we, announcement, notificationState] = await Promise.all([
         getJson<LeaderboardEntry[]>('/api/leaderboard', { cache: 'no-store' }).catch(() => []),
         getJson<LeaderboardBoards>('/api/leaderboards', { cache: 'no-store' }).catch(() => null),
-        getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds').catch(() => ({ guilds: [], mine: null })),
+        getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds', { cache: 'no-store' })
+          .then(data => ({ data, error: null as string | null }))
+          .catch((error: unknown) => ({
+            data: null,
+            error: error instanceof Error ? error.message : 'Guild data could not be loaded.',
+          })),
         getJson<WorldEvent | null>('/api/world-event').catch(() => null),
         getJson<{ message: string; updatedAt: number; updatedBy: string } | null>('/api/developer-announcement').catch(() => null),
         getJson<{ enabled: boolean }>('/api/notifications').catch(() => ({ enabled: false })),
@@ -926,7 +943,12 @@ export function App() {
       if (refreshSequence !== refreshSequenceRef.current) return;
       setLeaderboardData(lb);
       setLeaderboards(lbs);
-      setGuildData(gd);
+      if (gd.data) {
+        setGuildData(gd.data);
+        setGuildLoadError(null);
+      } else {
+        setGuildLoadError(gd.error);
+      }
       setWorldEvent(we);
       setDeveloperAnnouncement(announcement?.message ? announcement : null);
       setNotificationsEnabled(notificationState.enabled === true);
@@ -1045,15 +1067,25 @@ export function App() {
       if (document.visibilityState === 'hidden') return;
       inFlight = true;
       try {
-        const we = await getJson<WorldEvent | null>('/api/world-event');
+        // World-event failures must never short-circuit Guild loading.
+        const we = await getJson<WorldEvent | null>('/api/world-event').catch(() => null);
         if (cancelled) return;
         setWorldEvent(we);
         if (tab === 'social') {
-          const gd = await getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds');
-          if (!cancelled && gd) setGuildData(gd);
+          try {
+            const gd = await getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds', { cache: 'no-store' });
+            if (!cancelled) {
+              setGuildData(gd);
+              setGuildLoadError(null);
+            }
+          } catch (error) {
+            // Preserve the last successful guild snapshot rather than replacing it with
+            // empty arrays when a transient request or server-side validation fails.
+            if (!cancelled) {
+              setGuildLoadError(error instanceof Error ? error.message : 'Guild data could not be loaded.');
+            }
+          }
         }
-      } catch {
-        // Community panels recover on a later poll without blocking gameplay.
       } finally {
         inFlight = false;
       }
@@ -3197,6 +3229,8 @@ export function App() {
           <GuildsAndSocial
             guilds={guildData.guilds}
             myGuild={guildData.mine}
+            guildLoadError={guildLoadError}
+            onRefreshGuildData={refreshGuildData}
             leaderboard={leaderboardData}
             leaderboards={leaderboards ?? undefined}
             onRefreshLeaderboards={refreshLeaderboards}
