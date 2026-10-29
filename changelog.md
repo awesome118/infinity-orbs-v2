@@ -2,7 +2,9 @@
 
 ### Major New Features:
 
-- Added a reusable Infinity Orbs sprite atlas and integrated rarity-specific Orbs, multi-roll satellites, Delver/enemy/boss portraits, gear, stat Runes, and combat action effects.
+- Added a Level 5 subreddit invitation with a one-time reward of 100 stored Free Rolls.
+- Added admin popup toggles and analytics for notification, Frenzy, and subreddit-invite displays, acceptances, dismissals, and acceptance rate.
+
 
 - Added Combat as a separate game mode, unlocked at Core Level 8, with a guided introduction and its own progression.
 - Added three expeditions: Undercrypt, Cinder Vault, and Glass Labyrinth. Each dungeon tracks its own best depth and has a boss every tenth depth.
