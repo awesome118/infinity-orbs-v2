@@ -2397,6 +2397,12 @@ export function App() {
     }
   };
 
+  useEffect(() => {
+    if (!popupConfig.notification && !notificationPromptPreview) setShowNotificationPrompt(false);
+    if (!popupConfig.frenzy && !frenzyPromptPreview) setShowFrenzyPrompt(false);
+    if (!popupConfig.joinSubreddit && !joinSubredditPreview) setShowJoinSubredditPrompt(false);
+  }, [popupConfig.notification, popupConfig.frenzy, popupConfig.joinSubreddit, notificationPromptPreview, frenzyPromptPreview, joinSubredditPreview]);
+
   const handleEnableNotificationsFromPrompt = async () => {
     if (notificationPromptPreview) {
       setShowNotificationPrompt(false);
@@ -3396,6 +3402,7 @@ export function App() {
             setJoinSubredditPreview(true);
             setShowJoinSubredditPrompt(true);
           }}
+          onPopupConfigChanged={setPopupConfig}
           onForceRollResult={res => {
             changeTab('roll');
             applyPlayerState(res.state);
