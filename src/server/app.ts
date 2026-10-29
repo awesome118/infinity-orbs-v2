@@ -892,7 +892,8 @@ export function createApp() {
       res.setHeader('Cache-Control', 'no-store');
       res.json(await recordPopupEvent(req.body?.popup, req.body?.event));
     } catch (e: any) {
-      res.status(400).json({ error: e?.message || 'Could not record popup activity.' });
+      console.error('[Popup Analytics] Failed to persist popup event:', e);
+      res.status(500).json({ error: e?.message || 'Could not record popup activity.' });
     }
   });
 
