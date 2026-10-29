@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { context } from '../src/server/devvit-mock.js';
+import { context, redis } from '../src/server/devvit-mock.js';
 import { getPopupStats, recordPopupEvent } from '../src/server/game.js';
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
@@ -67,6 +67,9 @@ test('notification prompt works for returning players and admin preview does not
 
 
 test('popup metrics persist real popup events for shadow_fen while admin previews remain untracked', async () => {
+  // The test runtime must not invent Redis methods absent from production Devvit.
+  assert.equal(typeof redis.incrBy, 'function');
+  assert.equal(typeof redis.incr, 'undefined');
   const previousUsername = context.username;
   try {
     context.username = 'popup-metrics-test-player';
