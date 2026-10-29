@@ -1,7 +1,7 @@
 name: Submit Infinity Orbs for Reddit Review
 
 on:
-  # v2.1.9 popup analytics event logging fix review submission: publish the patch release, then install it to r/infinity_orbs_dev. Production install remains gated on Reddit approval.
+  # v2.1.10 Devvit Redis counter API fix review submission: publish the patch release, then install it to r/infinity_orbs_dev. Production install remains gated on Reddit approval.
   push:
     branches: [main]
     paths:
@@ -21,7 +21,7 @@ on:
 
 jobs:
   release:
-    if: ${{ inputs.confirm_publish || (github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.1.9]')) }}
+    if: ${{ inputs.confirm_publish || (github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.1.10]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
