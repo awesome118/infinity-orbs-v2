@@ -49,7 +49,8 @@
       "scope": "moderator",
       "asUser": [
         "SUBMIT_POST",
-        "SUBMIT_COMMENT"
+        "SUBMIT_COMMENT",
+        "SUBSCRIBE_TO_SUBREDDIT"
       ]
     }
   },
