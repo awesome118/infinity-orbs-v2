@@ -1,5 +1,12 @@
 # Infinity Orbs Changelog
 
+### Rarity Release Corrections (2.1.12)
+
+- Updated continuum regression checks for the explicit linear-level argument.
+- Expanded the nine new rarity name pools to fourteen unique names each.
+- Made endgame threshold-ratio tests tolerant of floating-point representation.
+
+
 ### Level-Scaled Rarity Update (2.1.11)
 
 - Made player level a direct linear multiplier on Orb rarity; Luck remains a separate diminishing-return factor, without counting the old +1% per-level base twice.

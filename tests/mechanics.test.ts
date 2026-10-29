@@ -112,7 +112,7 @@ test('rarity tiers unlock in stages and the nine new tiers use 100x threshold ju
     1e19, 1e21, 1e23, 1e25, 1e27, 1e29, 1e31, 1e33, 1e35,
   ]);
   for (let i = 19; i < expanded.length; i += 1) {
-    assert.equal(expanded[i].minRarity / expanded[i - 1].minRarity, 100);
+    assert.ok(Math.abs(expanded[i].minRarity / expanded[i - 1].minRarity - 100) < 1e-10);
   }
 });
 
