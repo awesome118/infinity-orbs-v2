@@ -64,8 +64,8 @@ test('Frenzy owner rewards remain separate from roll-earned Shard telemetry', ()
   const granted = grantFrenzyOwnerShards(state);
 
   assert.equal(granted, FRENZY_OWNER_SHARD_REWARD);
-  assert.equal(state.shards, 55);
-  assert.equal(state.lifetimeShards, 55);
+  assert.equal(state.shards, 150);
+  assert.equal(state.lifetimeShards, 150);
   assert.equal(state.freeShardsEarnedToday, 50);
 });
 
