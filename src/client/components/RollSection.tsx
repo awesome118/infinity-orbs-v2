@@ -32,6 +32,7 @@ import {
   formatNumber,
   formatShardAmount,
   frenzyCooldownRemaining,
+  luckRarityFactor,
 } from '../../shared/game.js';
 import { combatBossLuckBonus, combatRuneBonuses, combatRuneLuckMultiplier, combatTotalBossesBeaten, type CombatState } from '../../shared/combat.js';
 
@@ -1011,11 +1012,12 @@ export const RollSection: React.FC<RollSectionProps> = ({
         </div>
         <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-2.5">
           <span className="text-slate-500 block text-[10px] font-semibold uppercase">Total Luck</span>
-          <span className="font-bold text-cyan-300">{totalLuckMultiplier.toFixed(2)}x</span>
+          <span className="font-bold text-cyan-300">{formatNumber(totalLuckMultiplier)}x</span>
         </div>
         <div className="level-scaling-card rounded-xl border border-violet-300/25 bg-gradient-to-br from-violet-950/80 via-slate-900/80 to-cyan-950/60 p-2.5 shadow-[0_0_22px_rgba(139,92,246,.13)]">
-          <span className="block text-[10px] font-semibold uppercase tracking-wide text-violet-200/80">Level Scaling</span>
-          <span className="font-black text-cyan-100">×{Math.max(1, Math.floor(Number(state.level) || 1)).toLocaleString()} rarity</span>
+          <span className="block text-[10px] font-semibold uppercase tracking-wide text-violet-200/80">Rarity Scaling</span>
+          <span className="font-black text-cyan-100">×{formatNumber(luckRarityFactor(totalLuckMultiplier))}</span>
+          <span className="mt-1 block text-[10px] text-violet-200/75">Luck curve × Level {Math.max(1, Math.floor(Number(state.level) || 1))} = ×{formatNumber(luckRarityFactor(totalLuckMultiplier) * Math.max(1, Math.floor(Number(state.level) || 1)))}</span>
         </div>
       </div>
         </section>

@@ -1,5 +1,11 @@
 # Infinity Orbs Changelog
 
+### Uncapped Luck-to-Rarity Scaling (2.1.13)
+
+- Replaced the 25× capped Luck factor with square-root scaling, so extremely high displayed Luck continues to affect every roll with diminishing returns.
+- Added a dedicated Rarity Scaling readout that shows the effective Luck curve and combined level scaling.
+- Added regression tests for the reported 5.3027e21 Luck range and removal of the hard cap.
+
 ### Rarity Release Corrections (2.1.12)
 
 - Updated continuum regression checks for the explicit linear-level argument.

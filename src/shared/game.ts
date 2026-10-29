@@ -1394,10 +1394,13 @@ export function getOrbInfo(rarity: number, isInfinity = false): RarityTierInfo {
 export function luckRarityFactor(luck: number): number {
   const rawLuck = Number(luck);
   const effectiveLuck = Number.isFinite(rawLuck) ? Math.max(1, rawLuck) : 1;
-  return Math.min(25, Math.pow(effectiveLuck, 0.08));
+  // Square-root scaling keeps Luck on a diminishing-return curve without an
+  // arbitrary ceiling. Even extreme values such as 1e21 Luck remain meaningful.
+  return Math.sqrt(effectiveLuck);
 }
 
-// Kept for compatibility with older callers. The continuum no longer changes its exponent.
+// Compatibility helper for the continuum's unchanged 1/R distribution tail.
+// Luck scaling is applied independently by luckRarityFactor above.
 export function luckRarityExponent(_luck: number): number {
   return 1;
 }

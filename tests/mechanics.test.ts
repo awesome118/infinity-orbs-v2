@@ -55,6 +55,7 @@ import {
   spendShards,
   onlinePlayerLuckMultiplier,
   luckMultiplier,
+  luckRarityFactor,
   frenzyClaimCountForRarity,
   frenzyOrbCountForRarity,
   FRENZY_LOG_BASE,
@@ -86,6 +87,24 @@ test('Continuum keeps high rarity multipliers precise by applying them before fl
   // The minimum rarity floor must participate in the same final calculation.
   assert.equal(rollContinuum(1, () => 0.5, 10, 40), 40);
   assert.equal(rollContinuum(1, () => 0.25, Number.MAX_VALUE), Number.POSITIVE_INFINITY);
+});
+
+test('extreme Luck scales rarity without a hard cap', () => {
+  const luck = 5.302749637842076e21;
+  const scale = Math.sqrt(luck);
+
+  assert.equal(luckRarityFactor(1), 1);
+  assert.equal(luckRarityFactor(25), 5);
+  assert.equal(luckRarityFactor(luck), scale);
+  assert.ok(scale > 70_000_000_000);
+  assert.equal(luckRarityFactor(Number.MAX_VALUE), Math.sqrt(Number.MAX_VALUE));
+
+  // With u = 0.5, this is exactly 2 × sqrt(Luck) at Level 1.
+  assert.equal(
+    rollContinuum(luck, () => 0.5, 1, 2, 1),
+    Math.floor(2 * scale),
+  );
+  assert.ok(rollContinuum(luck, () => 0.5, 1, 2, 1) > 100_000_000_000);
 });
 
 test('player level scales rarity linearly without folding its base bonus into Luck', () => {

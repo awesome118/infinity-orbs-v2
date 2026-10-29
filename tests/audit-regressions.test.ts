@@ -2028,6 +2028,8 @@ test('critical rarity caps match the continuum ceiling and cannot downgrade high
   assert.match(shared, /getOrbInfo\(rarity: number, isInfinity = false\)/);
   assert.doesNotMatch(shared, /Infinity: \['Infinity Orb'\]/);
   assert.match(shared, /const rawRarity = \(1 \/ u\) \* safeLevel \* luckRarityFactor\(luck\) \* safeMultiplier/);
+  assert.match(shared, /return Math\.sqrt\(effectiveLuck\)/);
+  assert.doesNotMatch(shared, /Math\.min\(25, Math\.pow\(effectiveLuck, 0\.08\)\)/);
   assert.match(shared, /return Math\.max\(safeFloor, Math\.min\(MAX_ORB_RARITY, Math\.floor\(rawRarity\)\)\)/);
 
   const game = source('src/server/game.ts');
