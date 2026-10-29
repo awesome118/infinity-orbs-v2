@@ -262,10 +262,13 @@ test('client roll reveal displays the exact authoritative payout', () => {
 
 test('daily Frenzy popup closes when it arms the next manual roll', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
-  assert.match(
-    source,
-    /onClick=\{\(\) => \{[\s\S]*?setShowFrenzyPrompt\(false\);[\s\S]*?void handleStartOrbFrenzy\(\);[\s\S]*?\}\}/,
-  );
+  const acceptStart = source.indexOf('const acceptFrenzyPrompt = () => {');
+  const acceptEnd = source.indexOf('\n  };', acceptStart);
+  assert.ok(acceptStart >= 0 && acceptEnd > acceptStart, 'Frenzy accept handler must exist');
+  const handler = source.slice(acceptStart, acceptEnd);
+  assert.match(handler, /trackPopupEvent\('frenzy', 'accepted'\)/);
+  assert.match(handler, /setShowFrenzyPrompt\(false\)/);
+  assert.match(handler, /void handleStartOrbFrenzy\(\)/);
   assert.match(source, /Charge My Frenzy/);
   assert.match(source, /Your next manual Roll creates the post/);
 });
