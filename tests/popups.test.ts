@@ -5,6 +5,9 @@ import { resolve } from 'node:path';
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
+import { context } from '../src/server/devvit-mock.js';
+import { getPopupStats, recordPopupEvent } from '../src/server/game.js';
+
 test('Frenzy and notification popups render with dedicated styling and admin previews', () => {
   const main = read('src/client/main.tsx');
   const styles = read('src/client/styles.css');
@@ -60,4 +63,36 @@ test('notification prompt works for returning players and admin preview does not
   assert.match(server, /return notifications\.isOptedIn\(id\)/);
   assert.match(server, /await notifications\.optInCurrentUser\(\)/);
   assert.match(server, /await notifications\.optOutCurrentUser\(\)/);
+});
+
+
+test('popup metrics persist player events but exclude shadow_fen server-side', async () => {
+  const previousUsername = context.username;
+  try {
+    context.username = 'popup-metrics-test-player';
+    const before = await getPopupStats();
+    const normalResult = await recordPopupEvent('notification', 'shown');
+    const afterNormal = await getPopupStats();
+    assert.equal(normalResult.recorded, true);
+    assert.equal(afterNormal.notification.shown, before.notification.shown + 1);
+
+    context.username = '/u/shadow_fen';
+    const excludedResult = await recordPopupEvent('notification', 'shown');
+    const afterAdmin = await getPopupStats();
+    assert.equal(excludedResult.recorded, false);
+    assert.equal(excludedResult.excluded, true);
+    assert.equal(afterAdmin.notification.shown, afterNormal.notification.shown);
+  } finally {
+    context.username = previousUsername;
+  }
+});
+
+test('popup analytics dashboard refreshes live and surfaces tracking failures', () => {
+  const admin = read('src/client/components/DevDebugModal.tsx');
+  const main = read('src/client/main.tsx');
+  const app = read('src/server/app.ts');
+  assert.ok(admin.includes('setInterval(() => void loadPopupAnalytics(true), 15_000)'));
+  assert.ok(admin.includes('Popup analytics refresh failed:'));
+  assert.ok(main.includes('[Popup Analytics] Failed to record event:'));
+  assert.ok(app.includes('[Popup Analytics] Failed to persist popup event:'));
 });
