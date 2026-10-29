@@ -1,7 +1,7 @@
 name: Submit Infinity Orbs for Reddit Review
 
 on:
-  # v2.1.4 review submission: publish the patch release, then install it to r/infinity_orbs_dev. Production install remains gated on Reddit approval.
+  # v2.1.7 popup analytics reliability fix review submission: publish the patch release, then install it to r/infinity_orbs_dev. Production install remains gated on Reddit approval.
   push:
     branches: [main]
     paths:
@@ -21,7 +21,7 @@ on:
 
 jobs:
   release:
-    if: ${{ inputs.confirm_publish || (github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.1.4]')) }}
+    if: ${{ inputs.confirm_publish || (github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.1.7]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
