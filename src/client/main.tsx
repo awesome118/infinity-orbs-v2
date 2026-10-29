@@ -2100,7 +2100,7 @@ export function App() {
       applyPlayerState(res.state);
       sound.playChime(784, 'triangle', 0.3);
       showToast(
-        `Streak claimed! +${res.rewardCoins} Coins ${res.rewardShards > 0 ? `+${res.rewardShards} Shards` : ''}`,
+        `Streak claimed! +${formatNumber(res.rewardCoins)} Coins ${res.rewardShards > 0 ? `+${formatNumber(res.rewardShards)} Shards` : ''}`,
         'success'
       );
     } catch (e: any) {
@@ -2150,7 +2150,7 @@ export function App() {
       );
       applyPlayerState(res.state);
       sound.playChime(700, 'sine', 0.25);
-      showToast(`Quest completed! +${res.rewardCoins.toLocaleString()} Coins`, 'success');
+      showToast(`Quest completed! +${formatNumber(res.rewardCoins)} Coins`, 'success');
     } catch (e: any) {
       rollback?.();
       showToast(e.message || 'Could not claim quest', 'warn');
