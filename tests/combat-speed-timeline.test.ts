@@ -121,12 +121,12 @@ test('Combat mode blocks main-game rolls, queues skills, and uses a stable gear 
 test('Auto Fight countdown tracks reconciled server timestamps instead of stale render state', () => {
   const ui = readFileSync(resolve(process.cwd(), 'src/client/components/CombatSection.tsx'), 'utf8');
   assert.ok(
-    ui.includes('Date.now()-(Number(stateRef.current?.lastAcceptedBeatAtMs)||0)'),
+    ui.includes('Date.now()-(Number(current?.lastAcceptedBeatAtMs)||0)'),
     'the countdown must read the same mutable timestamp the retry scheduler reconciles',
   );
   assert.ok(
-    ui.includes('stateRef.current={...current,lastAcceptedBeatAtMs:Math.max(0,Date.now()+Math.max(0,remaining)-COMBAT_BEAT_INTERVAL_MS)}'),
-    'an early server rejection must reconcile the timestamp consumed by the countdown',
+    ui.includes('stateRef.current={...current,lastAcceptedBeatAtMs:Math.max(0,Date.now()+Math.max(0,remaining)-combatBeatIntervalMsFor(current))}'),
+    'an early server rejection must reconcile against the same ability-adjusted interval',
   );
 });
 
