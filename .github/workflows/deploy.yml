@@ -7,6 +7,7 @@ name: Deploy Devvit
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
 # Regression test asserts auth is checked before upload and the session ID reaches every Devvit CLI step.
+# Retry after correcting the authentication regression test's syntax.
 on:
   workflow_dispatch:
     inputs:
