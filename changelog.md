@@ -1,5 +1,11 @@
 # Infinity Orbs Changelog
 
+### Frenzy Poster Reward (2.1.14)
+
+- Increased the Frenzy poster reward from 5 to 100 Shards for each successful claim.
+- The reward is credited to the player who posted the Frenzy, not the claimant, in the same atomic claim settlement.
+- Added regression coverage for the payout amount and the owner-directed reward path.
+
 ### Uncapped Luck-to-Rarity Scaling (2.1.13)
 
 - Replaced the 25× capped Luck factor with square-root scaling, so extremely high displayed Luck continues to affect every roll with diminishing returns.

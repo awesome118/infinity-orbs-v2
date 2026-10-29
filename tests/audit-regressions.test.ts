@@ -1080,6 +1080,8 @@ test('account cleanup never overwrites a concurrent leaderboard update or replac
 
 
 test('Frenzy claim uses normal-roll projections and commits its receipt and owner reward together', () => {
+  const shared = source('src/shared/game.ts');
+  assert.match(shared, /FRENZY_OWNER_SHARD_REWARD = 100/);
   const game = source('src/server/game.ts');
   const rewardStart = game.indexOf('async function prepareFrenzyOwnerRewardWrites');
   const rewardEnd = game.indexOf('function parseGlobalBoosterSnapshot', rewardStart);
@@ -1103,6 +1105,9 @@ test('Frenzy claim uses normal-roll projections and commits its receipt and owne
   const claim = game.slice(claimStart, claimEnd);
   assert.match(claim, /applyRolls\(s, 1, undefined, 'frenzy', chunkCount\)/);
   assert.match(claim, /prepareFrenzyOwnerRewardWrites\(/);
+  assert.match(claim, /prepareFrenzyOwnerRewardWrites\\(\\s*data\\.ownerId,\\s*FRENZY_OWNER_SHARD_REWARD,\\s*\\)/);
+  assert.match(claim, /ownerRewardWrites = ownerReward\\.writes/);
+  assert.match(claim, /shardsGained: shardsGained \\+ \\(isOwner \\? ownerRewardShards : 0\\)/);
   assert.match(claim, /await save\(s, \[[\s\S]*?FRENZY_POST_PREFIX \+ postId[\s\S]*?\.\.\.ownerRewardWrites/);
   assert.doesNotMatch(claim, /await applyGuildTax\(coinsGained\)/);
   assert.doesNotMatch(claim, /await contribute\(finalValue/);

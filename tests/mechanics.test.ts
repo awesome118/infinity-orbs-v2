@@ -58,6 +58,8 @@ import {
   luckRarityFactor,
   frenzyClaimCountForRarity,
   frenzyOrbCountForRarity,
+  FRENZY_OWNER_SHARD_REWARD,
+  grantFrenzyOwnerShards,
   FRENZY_LOG_BASE,
   bestCodexChain,
   nextCodexChainRarity,
@@ -105,6 +107,14 @@ test('extreme Luck scales rarity without a hard cap', () => {
     Math.floor(2 * scale),
   );
   assert.ok(rollContinuum(luck, () => 0.5, 1, 2, 1) > 100_000_000_000);
+});
+
+test('Frenzy poster reward is 100 Shards per successful claim', () => {
+  assert.equal(FRENZY_OWNER_SHARD_REWARD, 100);
+  const state = createInitialState(NOW);
+  const shardsBefore = state.shards;
+  assert.equal(grantFrenzyOwnerShards(state), 100);
+  assert.equal(state.shards, shardsBefore + 100);
 });
 
 test('player level scales rarity linearly without folding its base bonus into Luck', () => {

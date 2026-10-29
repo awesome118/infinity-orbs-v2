@@ -424,7 +424,7 @@ export const GUILD_COMBO_TIMER_ACCELERATION_PER_TIER = 0.25;
 
 export const FRENZY_LOG_BASE = 1.004;
 export const FRENZY_MIN_ORBS = 1;
-export const FRENZY_OWNER_SHARD_REWARD = 5;
+export const FRENZY_OWNER_SHARD_REWARD = 100;
 export const FRENZY_PROMPT_DELAY_MS = 3 * 60_000;
 export const FRENZY_POST_COOLDOWN_MS = 23 * 60 * 60 * 1000;
 export const FRENZY_CLAIM_COOLDOWN_MS = 23 * 60 * 60 * 1000;
