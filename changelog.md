@@ -2,6 +2,8 @@
 
 ### Major New Features:
 
+- Added a reusable Infinity Orbs sprite atlas and integrated rarity-specific Orbs, multi-roll satellites, Delver/enemy/boss portraits, gear, stat Runes, and combat action effects.
+
 - Added Combat as a separate game mode, unlocked at Core Level 8, with a guided introduction and its own progression.
 - Added three expeditions: Undercrypt, Cinder Vault, and Glass Labyrinth. Each dungeon tracks its own best depth and has a boss every tenth depth.
 - Added automatic dungeon runs, selectable combat tactics, manual actions, persistent health between encounters, and new-run resets.
