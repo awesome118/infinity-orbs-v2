@@ -37,7 +37,6 @@ import { combatBossLuckBonus, combatRuneBonuses, combatRuneLuckMultiplier, comba
 
 import { sound } from '../sound.js';
 import { OrbOrbit } from './OrbOrbit.js';
-import { GameSprite, getOrbSpriteName } from './GameSprite.js';
 
 interface RollSectionProps {
   state: PlayerState;
@@ -548,10 +547,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
             </div>
           )}
 
-          {/* Atlas sprite sits below the live roll data, so the text and reward burst stay readable. */}
-          <div className="io-orb-sprite-wrap" aria-hidden="true">
-            <GameSprite name={getOrbSpriteName(orbInfo?.tier, Boolean(displayOrb?.isInfinity))} size={174} className="io-orb-stage-sprite" />
-          </div>
           {/* Subtle Inner Glass Ring */}
           <div className="absolute inset-2 rounded-full border border-white/20 pointer-events-none" />
 
