@@ -3788,8 +3788,8 @@ export async function applyRolls(
       }
     }
 
-    // Continuum RNG generation with effective luck. Luck reshapes the tail;
-    // it does not multiply the final rarity directly.
+    // Player level scales rarity linearly; effective Luck applies a separate
+    // diminishing-return factor to the continuous roll distribution.
     // The third lifetime Orb overrides the random result with a guaranteed beginner drop.
     const minimumRarity = 2 + (s.prestigeUpgrades?.luckyFloor ?? 0);
     const beginnerRarity = 101 + Math.floor(rng() * 20);
@@ -3812,6 +3812,7 @@ export async function applyRolls(
         randomOverride ?? serverRarityRandom,
         rarityMultiplier,
         rarityFloor,
+        Math.max(1, Math.floor(Number(s.level) || 1)),
       );
       isInfinityOrb = !Number.isFinite(rawRolledRarity) || rawRolledRarity > MAX_ORB_RARITY;
       rolledRarity = Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY,

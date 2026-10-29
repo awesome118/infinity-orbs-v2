@@ -1123,7 +1123,16 @@ export type RarityTierName =
   | 'Omniversal'
   | 'Paradox'
   | 'Beyond'
-  | 'Endless';
+  | 'Endless'
+  | 'Empyrean'
+  | 'Hyperversal'
+  | 'Transfinite'
+  | 'Metacosmic'
+  | 'Primordial'
+  | 'Unfathomable'
+  | 'Axiom'
+  | 'Omniscient'
+  | 'Omega';
 
 export interface RarityTierInfo {
   rarity: number;
@@ -1135,22 +1144,31 @@ export interface RarityTierInfo {
 }
 
 export function getOrbTier(rarity: number): RarityTierName {
-  if (rarity >= 100_000_000_000_000_000) return 'Endless';
-  if (rarity >= 10_000_000_000_000_000) return 'Beyond';
-  if (rarity >= 1_000_000_000_000_000) return 'Paradox';
-  if (rarity >= 100_000_000_000_000) return 'Omniversal';
-  if (rarity >= 10_000_000_000_000) return 'Absolute';
-  if (rarity >= 1_000_000_000_000) return 'Infinite';
-  if (rarity >= 100_000_000_000) return 'Celestial';
-  if (rarity >= 10_000_000_000) return 'Eternal';
-  if (rarity >= 1_000_000_000) return 'Ascendant';
-  if (rarity >= 100_000_000) return 'Transcendent';
-  if (rarity >= 10_000_000) return 'Divine';
-  if (rarity >= 1_000_000) return 'Relic';
-  if (rarity >= 100_000) return 'Mythic';
-  if (rarity >= 10_000) return 'Legendary';
-  if (rarity >= 1_000) return 'Epic';
-  if (rarity >= 100) return 'Rare';
+  if (rarity >= 1e35) return 'Omega';
+  if (rarity >= 1e33) return 'Omniscient';
+  if (rarity >= 1e31) return 'Axiom';
+  if (rarity >= 1e29) return 'Unfathomable';
+  if (rarity >= 1e27) return 'Primordial';
+  if (rarity >= 1e25) return 'Metacosmic';
+  if (rarity >= 1e23) return 'Transfinite';
+  if (rarity >= 1e21) return 'Hyperversal';
+  if (rarity >= 1e19) return 'Empyrean';
+  if (rarity >= 1e17) return 'Endless';
+  if (rarity >= 1e16) return 'Beyond';
+  if (rarity >= 1e15) return 'Paradox';
+  if (rarity >= 1e14) return 'Omniversal';
+  if (rarity >= 1e13) return 'Absolute';
+  if (rarity >= 1e12) return 'Infinite';
+  if (rarity >= 1e11) return 'Celestial';
+  if (rarity >= 1e10) return 'Eternal';
+  if (rarity >= 1e9) return 'Ascendant';
+  if (rarity >= 1e8) return 'Transcendent';
+  if (rarity >= 1e7) return 'Divine';
+  if (rarity >= 1e6) return 'Relic';
+  if (rarity >= 1e5) return 'Mythic';
+  if (rarity >= 1e4) return 'Legendary';
+  if (rarity >= 1e3) return 'Epic';
+  if (rarity >= 1e2) return 'Rare';
   if (rarity >= 10) return 'Uncommon';
   return 'Common';
 }
@@ -1174,6 +1192,15 @@ export const ORB_TIER_NAMES: Record<RarityTierName, string[]> = {
   Paradox: ['Paradox Orb', 'Contradiction Core', 'Broken Loop', 'Null Point', 'Impossible Horizon', 'Causal Knot', 'Self-Undoing Star', 'Schrödinger’s Crown', 'False Origin', 'Two-Truth Engine', 'The Unresolved', 'Logicbreaker Orb', 'Ever-Now Shard', 'Loop Without End'],
   Beyond: ['Beyond Orb', 'Outer Core', 'Far Point', 'Unknown Edge', 'Unseen Boundary', 'Outside the Map', 'The Further', 'Elsewhere Engine', 'The Unreached', 'Distant Outside', 'Untouchable Horizon', 'Outer Silence', 'Uncharted Constant', 'Not-Here Star'],
   Endless: ['Endless Orb', 'Final Loop', 'Last Horizon', 'Zero Point', 'Penultimate Dawn', 'Everturn Core', 'Loop Eternal', 'After the End', 'Final Finality', 'Closing Star', 'The Last Orbit', 'One More World', 'End That Waits', 'Final Continuation'],
+  Empyrean: ['Empyrean Orb', 'Heavenforge Core', 'Astral Throne', 'Radiant Apex', 'Crown of Dawn', 'Elysium Engine', 'Skybound Origin', 'Seraphic Horizon'],
+  Hyperversal: ['Hyperversal Orb', 'Beyondspace Heart', 'Grand Infinity', 'Multiverse Loom', 'Reality Crown', 'Paragon Star', 'Omni Horizon', 'Eververse Core'],
+  Transfinite: ['Transfinite Orb', 'Uncountable Flame', 'Aleph Core', 'Beyond Number', 'Infinite Ladder', 'Limitless Axiom', 'Set of All Suns', 'Cardinal Dawn'],
+  Metacosmic: ['Metacosmic Orb', 'Cosmos Above Cosmos', 'Outer Creation', 'Meta-Origin', 'Worldswell Core', 'Outside Everything', 'Allframe Engine', 'Beyondspace Crown'],
+  Primordial: ['Primordial Orb', 'First Silence', 'Genesis Seed', 'Before Time', 'Origin Ember', 'The First Law', 'Dawn Unmade', 'Primordial Axis'],
+  Unfathomable: ['Unfathomable Orb', 'Depth Without End', 'Nameless Beyond', 'Unseen Constant', 'Horizonless Core', 'Unknown Absolute', 'The Unmeasured', 'Dark Before Dawn'],
+  Axiom: ['Axiom Orb', 'First Truth', 'Prime Axiom', 'Proof Eternal', 'The Necessary', 'Root Principle', 'Unbroken Theorem', 'Law of All'],
+  Omniscient: ['Omniscient Orb', 'All-Knowing Star', 'Total Awareness', 'The Witness', 'All-Seen Core', 'Evermind', 'Infinite Archive', 'Knowledge Without End'],
+  Omega: ['Omega Orb', 'Last Beginning', 'Final Axiom', 'End of All Ends', 'Closure Engine', 'Last Truth', 'The Final Constant', 'Omega Horizon'],
 };
 
 const TIER_COLORS: Record<RarityTierName, { color: string; bgGradient: string }> = {
@@ -1249,6 +1276,42 @@ const TIER_COLORS: Record<RarityTierName, { color: string; bgGradient: string }>
     color: '#f1f5f9',
     bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #64748b 35%, #0f172a 80%, #020617 100%)',
   },
+  Empyrean: {
+    color: '#f0abfc',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #fdf4ff, #c026d3 38%, #701a75 72%, #16051d 100%)',
+  },
+  Hyperversal: {
+    color: '#a78bfa',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #ede9fe, #7c3aed 38%, #4c1d95 72%, #10051e 100%)',
+  },
+  Transfinite: {
+    color: '#67e8f9',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #ecfeff, #0891b2 38%, #164e63 72%, #020b14 100%)',
+  },
+  Metacosmic: {
+    color: '#fbbf24',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #fef3c7, #d97706 38%, #78350f 72%, #1c0c03 100%)',
+  },
+  Primordial: {
+    color: '#4ade80',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #dcfce7, #16a34a 38%, #14532d 72%, #02150a 100%)',
+  },
+  Unfathomable: {
+    color: '#fb7185',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #ffe4e6, #e11d48 38%, #881337 72%, #1f050e 100%)',
+  },
+  Axiom: {
+    color: '#c4b5fd',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #f5f3ff, #8b5cf6 38%, #5b21b6 72%, #10051e 100%)',
+  },
+  Omniscient: {
+    color: '#e2e8f0',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #94a3b8 30%, #334155 68%, #020617 100%)',
+  },
+  Omega: {
+    color: '#ffffff',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #f0abfc 23%, #22d3ee 48%, #4c1d95 72%, #020617 100%)',
+  },
 };
 
 export function formatNumber(value: number): string {
@@ -1321,17 +1384,13 @@ export function getOrbInfo(rarity: number, isInfinity = false): RarityTierInfo {
 /**
  * Continuous Rarity Distribution (Continuum RNG)
  *
- * At 1× Luck, the tail matches the displayed "1 / R" rarity model:
+ * At Level 1 and 1× Luck, the tail follows the displayed "1 / R" model:
  * P(Rarity >= R) ≈ 1 / R.
  *
- * Luck increases the tail weight through a diminishing-return shape exponent
- * instead of multiplying the rolled rarity directly. This keeps high Luck
- * valuable without turning ordinary rolls into giant outliers.
+ * Player level scales the rarity distribution linearly. Total Luck contributes a
+ * separate diminishing-return factor, so high levels always matter predictably
+ * without also smuggling level into the Luck multiplier.
  */
-// Luck gently raises the whole orb distribution, so average orb rarity keeps
-// improving as Luck grows instead of hitting the old 5× hard ceiling. The 0.08
-// exponent gives diminishing returns: 10× Luck is only ~1.20× rarity, while
-// 1,000,000× Luck is ~3.02×. The safety ceiling is reached only at extreme values.
 export function luckRarityFactor(luck: number): number {
   const rawLuck = Number(luck);
   const effectiveLuck = Number.isFinite(rawLuck) ? Math.max(1, rawLuck) : 1;
@@ -1352,6 +1411,7 @@ export function rollContinuum(
   random: () => number = Math.random,
   rarityMultiplier = 1,
   minimumRarity = 2,
+  level = 1,
 ): number {
   const sample = Number(random());
   const u = Number.isFinite(sample)
@@ -1364,7 +1424,9 @@ export function rollContinuum(
   const safeMultiplier = Number.isNaN(requestedMultiplier) || requestedMultiplier <= 0
     ? 1
     : requestedMultiplier;
-  const rawRarity = (1 / u) * luckRarityFactor(luck) * safeMultiplier;
+  const requestedLevel = Number(level);
+  const safeLevel = Number.isFinite(requestedLevel) ? Math.max(1, Math.floor(requestedLevel)) : 1;
+  const rawRarity = (1 / u) * safeLevel * luckRarityFactor(luck) * safeMultiplier;
   // Values beyond Number.MAX_VALUE cannot be stored as finite rarity values.
   // Return Infinity as a transient sentinel; callers persist MAX_ORB_RARITY
   // and set Orb.isInfinity instead of serializing a non-finite number.
@@ -1403,14 +1465,32 @@ export const CONTINUUM_TIERS: ContinuumTierMilestone[] = [
   { tier: 'Paradox', minRarity: 1000000000000000, label: rarityRangeLabel(1000000000000000, 9999999999999999), approxChance: '~0.00000000000009%', coinsPerOrb: `${formatNumber(1000000000000000)} - ${formatNumber(9999999999999999)} Coins`, color: '#ef4444' },
   { tier: 'Beyond', minRarity: 10000000000000000, label: rarityRangeLabel(10000000000000000, 99999999999999999), approxChance: '~0.000000000000009%', coinsPerOrb: `${formatNumber(10000000000000000)} - ${formatNumber(99999999999999999)} Coins`, color: '#8b5cf6' },
   { tier: 'Endless', minRarity: 100000000000000000, label: `1 / ${formatRarity(100000000000000000)}+`, approxChance: '~0.0000000000000009%', coinsPerOrb: `${formatNumber(100000000000000000)}+ Coins`, color: '#f1f5f9' },
+  { tier: 'Empyrean', minRarity: 1e19, label: `1 / ${formatRarity(1e19)}+`, approxChance: '~9.9e-18%', coinsPerOrb: `${formatNumber(1e19)}+ Coins`, color: '#f0abfc' },
+  { tier: 'Hyperversal', minRarity: 1e21, label: `1 / ${formatRarity(1e21)}+`, approxChance: '~9.9e-20%', coinsPerOrb: `${formatNumber(1e21)}+ Coins`, color: '#a78bfa' },
+  { tier: 'Transfinite', minRarity: 1e23, label: `1 / ${formatRarity(1e23)}+`, approxChance: '~9.9e-22%', coinsPerOrb: `${formatNumber(1e23)}+ Coins`, color: '#67e8f9' },
+  { tier: 'Metacosmic', minRarity: 1e25, label: `1 / ${formatRarity(1e25)}+`, approxChance: '~9.9e-24%', coinsPerOrb: `${formatNumber(1e25)}+ Coins`, color: '#fbbf24' },
+  { tier: 'Primordial', minRarity: 1e27, label: `1 / ${formatRarity(1e27)}+`, approxChance: '~9.9e-26%', coinsPerOrb: `${formatNumber(1e27)}+ Coins`, color: '#4ade80' },
+  { tier: 'Unfathomable', minRarity: 1e29, label: `1 / ${formatRarity(1e29)}+`, approxChance: '~9.9e-28%', coinsPerOrb: `${formatNumber(1e29)}+ Coins`, color: '#fb7185' },
+  { tier: 'Axiom', minRarity: 1e31, label: `1 / ${formatRarity(1e31)}+`, approxChance: '~9.9e-30%', coinsPerOrb: `${formatNumber(1e31)}+ Coins`, color: '#c4b5fd' },
+  { tier: 'Omniscient', minRarity: 1e33, label: `1 / ${formatRarity(1e33)}+`, approxChance: '~9.9e-32%', coinsPerOrb: `${formatNumber(1e33)}+ Coins`, color: '#e2e8f0' },
+  { tier: 'Omega', minRarity: 1e35, label: `1 / ${formatRarity(1e35)}+`, approxChance: '~9.9e-34%', coinsPerOrb: `${formatNumber(1e35)}+ Coins`, color: '#ffffff' },
 ];
 
-export const CONTINUUM_DISCOVERY_UNLOCK_RARITY = 9;
+export const CONTINUUM_DISCOVERY_UNLOCK_RARITY = 1_000_000;
+export const CONTINUUM_EXPANSION_UNLOCK_RARITY = 1e15;
+export const CONTINUUM_INITIAL_TIER_COUNT = 9;
+export const CONTINUUM_EXISTING_TIER_COUNT = 18;
 
 export function visibleContinuumTiers(highestRarity: number): ContinuumTierMilestone[] {
-  return Number(highestRarity) >= CONTINUUM_DISCOVERY_UNLOCK_RARITY
-    ? CONTINUUM_TIERS
-    : CONTINUUM_TIERS.slice(0, 9);
+  const rawHighest = Number(highestRarity);
+  const safeHighest = Number.isFinite(rawHighest) ? Math.max(0, rawHighest) : 0;
+  return CONTINUUM_TIERS.filter((tier, index) => {
+    if (index < CONTINUUM_INITIAL_TIER_COUNT) return true;
+    if (index < CONTINUUM_EXISTING_TIER_COUNT) {
+      return safeHighest >= CONTINUUM_DISCOVERY_UNLOCK_RARITY;
+    }
+    return safeHighest >= CONTINUUM_EXPANSION_UNLOCK_RARITY;
+  });
 }
 
 export interface CosmeticItem {
@@ -2389,8 +2469,12 @@ export function luckMultiplier(s: PlayerState): number {
   additiveBonus += (s.upgrades.luck ?? 0) * 0.05;
 
   // 2. Level Luck, including milestone bonuses
-  const totalLevelLuck = getLevelBenefits(Math.max(1, s.level || 1)).luckMultiplier;
-  additiveBonus += Math.max(0, totalLevelLuck - 1);
+  const safeLevel = Math.max(1, Math.floor(Number(s.level) || 1));
+  const totalLevelLuck = getLevelBenefits(safeLevel).luckMultiplier;
+  const linearLevelLuckBase = 1 + Math.max(0, safeLevel - 1) * 0.01;
+  // The old +1% per-level base is now the direct linear rarity multiplier below.
+  // Preserve explicit level-milestone Luck perks without counting the base twice.
+  additiveBonus += Math.max(0, totalLevelLuck - linearLevelLuckBase);
 
   // 3. Astral Mastery Luck + Codex Devotion
   additiveBonus += (s.masterySkills?.continuumLuck ?? 0) * 0.03;

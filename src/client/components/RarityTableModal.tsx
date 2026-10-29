@@ -1,6 +1,10 @@
 import React from 'react';
-import { X, ShieldCheck, Coins } from 'lucide-react';
-import { visibleContinuumTiers } from '../../shared/game.js';
+import { X, ShieldCheck, Coins, Sparkles } from 'lucide-react';
+import {
+  visibleContinuumTiers,
+  CONTINUUM_DISCOVERY_UNLOCK_RARITY,
+  CONTINUUM_EXPANSION_UNLOCK_RARITY,
+} from '../../shared/game.js';
 import type { ContinuumTierMilestone } from '../../shared/game.js';
 
 interface RarityTableModalProps {
@@ -26,7 +30,7 @@ export const RarityTableModal: React.FC<RarityTableModalProps> = ({ onClose, hig
         aria-modal="true"
         aria-labelledby="io-rarity-title"
         aria-describedby="io-rarity-description"
-        className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-6 max-w-2xl w-full space-y-4 shadow-2xl relative max-h-[85dvh] overflow-hidden flex flex-col"
+        className="bg-slate-900 border border-cyan-300/20 rounded-3xl p-4 sm:p-6 max-w-2xl w-full space-y-4 shadow-[0_0_70px_rgba(34,211,238,.12)] relative max-h-[85dvh] overflow-hidden flex flex-col"
       >
         <button
           type="button"
@@ -38,9 +42,14 @@ export const RarityTableModal: React.FC<RarityTableModalProps> = ({ onClose, hig
           <X className="w-5 h-5" aria-hidden="true" />
         </button>
 
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="w-5 h-5 text-cyan-400" />
-          <h3 id="io-rarity-title" className="pr-10 text-base sm:text-lg font-black text-white">Rarity Continuum & Drop Odds</h3>
+        <div className="io-rarity-modal-header flex items-center gap-3 rounded-2xl p-3 pr-12">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-cyan-300/20 via-violet-400/20 to-fuchsia-400/20 ring-1 ring-white/10">
+            <ShieldCheck className="w-5 h-5 text-cyan-200" />
+          </div>
+          <div className="min-w-0">
+            <h3 id="io-rarity-title" className="text-base sm:text-lg font-black tracking-tight text-white">Rarity Continuum</h3>
+            <p className="text-[11px] font-semibold tracking-wide text-cyan-100/70">DROP ODDS · LEVEL-SCALED</p>
+          </div>
         </div>
 
         <div id="io-rarity-description" className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 text-xs space-y-2">
@@ -51,19 +60,27 @@ export const RarityTableModal: React.FC<RarityTableModalProps> = ({ onClose, hig
           <p className="text-slate-400">
             Coin rewards scale with rarity using a diminishing-return formula, so higher-rarity orbs are worth more without paying their full rarity number.
           </p>
-          <p className="text-slate-400">
-            Orbs generate continuously: any number <code className="text-cyan-300">R ≥ 2</code> is obtainable. At 1× Luck, the chance of rolling at least R is <code className="text-cyan-300">1 / R</code>. Luck increases the tail weight with diminishing returns instead of multiplying the rolled rarity directly.
+          <p className="text-slate-300">
+            At Level 1 and 1× Luck, the chance of rolling at least rarity <code className="text-cyan-200">R</code> is approximately <code className="text-cyan-200">1 / R</code>. Player level multiplies the rarity distribution linearly; Luck separately contributes a diminishing-return factor of <code className="text-cyan-200">Luck^0.08</code>, capped at <code className="text-cyan-200">25×</code>. Rune and critical multipliers apply before the final rarity floor.
           </p>
-          {highestRarity < 9 && (
-            <p className="text-amber-300">
-              The upper half of the continuum is hidden until you discover a 1/9 orb.
-            </p>
-          )}
+          {highestRarity < CONTINUUM_DISCOVERY_UNLOCK_RARITY ? (
+            <div className="io-rarity-unlock-hint flex items-center gap-2 rounded-xl border border-amber-300/20 px-3 py-2.5 text-xs font-bold text-amber-100">
+              <Sparkles className="h-4 w-4 shrink-0 text-amber-300" />
+              <span>More rarities are unlocked after getting a 1/1m orb.</span>
+            </div>
+          ) : highestRarity < CONTINUUM_EXPANSION_UNLOCK_RARITY ? (
+            <div className="io-rarity-unlock-hint flex items-center gap-2 rounded-xl border border-violet-300/20 px-3 py-2.5 text-xs font-bold text-violet-100">
+              <Sparkles className="h-4 w-4 shrink-0 text-violet-200" />
+              <span>New rarities are unlocked after getting a 1/e15 orb.</span>
+            </div>
+          ) : null}
         </div>
 
         {/* Continuum milestones */}
-        <p className="px-1 text-[10px] text-slate-500" role="status">
-          {visibleTiers.length} discovered continuum tier{visibleTiers.length === 1 ? '' : 's'} shown.
+        <p className="px-1 text-[10px] font-semibold tracking-wide text-slate-400" role="status">
+          {visibleTiers.length} rarity tier{visibleTiers.length === 1 ? '' : 's'} revealed
+          <span className="mx-1.5 text-slate-600">•</span>
+          <span className="text-cyan-200">level scales rarity 1:1</span>
         </p>
         <div
           role="table"
@@ -83,7 +100,8 @@ export const RarityTableModal: React.FC<RarityTableModalProps> = ({ onClose, hig
             <div
               role="row"
               key={tier.tier}
-              className="grid grid-cols-2 sm:grid-cols-4 items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-3 text-xs hover:bg-slate-900/40 transition-colors"
+              className={`io-rarity-tier-row grid grid-cols-2 sm:grid-cols-4 items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-3 text-xs transition-all duration-200 ${tier.minRarity >= 1e19 ? 'io-rarity-new-tier bg-violet-950/15' : 'hover:bg-slate-900/50'}`}
+              style={{ borderLeftColor: tier.color }}
             >
               <div role="cell" aria-label={`${tier.tier} tier`} className="flex min-w-0 items-center gap-2">
                 <div aria-hidden="true" className="w-2.5 h-2.5 shrink-0 rounded-full" style={{ backgroundColor: tier.color }} />

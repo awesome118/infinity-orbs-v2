@@ -642,3 +642,70 @@
   }
 }
 
+
+
+/* Rarity discovery: sharpen unlock cues and make late-game tiers feel earned. */
+.io-ui .io-rarity-modal-header {
+  border: 1px solid rgba(103, 232, 249, .22);
+  background: linear-gradient(115deg, rgba(8, 47, 73, .76), rgba(30, 27, 75, .58) 58%, rgba(88, 28, 135, .3));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .08), 0 8px 28px rgba(34, 211, 238, .06);
+}
+
+.io-ui .io-rarity-unlock-hint {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: linear-gradient(110deg, rgba(120, 53, 15, .2), rgba(30, 27, 75, .36), rgba(8, 47, 73, .22));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .04), 0 0 24px rgba(139, 92, 246, .07);
+  animation: io-rarity-hint-glow 3.6s ease-in-out infinite;
+}
+
+.io-ui .io-rarity-tier-row {
+  border-left: 2px solid transparent;
+}
+
+.io-ui .io-rarity-tier-row:hover {
+  transform: translateX(2px);
+}
+
+.io-ui .io-rarity-new-tier {
+  background-image: linear-gradient(90deg, rgba(139, 92, 246, .13), rgba(34, 211, 238, .025) 72%, transparent);
+  box-shadow: inset 0 0 22px rgba(168, 85, 247, .055);
+}
+
+.io-ui .level-scaling-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.io-ui .level-scaling-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(110deg, transparent, rgba(255, 255, 255, .055), transparent);
+  transform: translateX(-130%);
+  animation: io-level-card-sheen 5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes io-rarity-hint-glow {
+  0%, 100% { box-shadow: inset 0 1px rgba(255, 255, 255, .04), 0 0 14px rgba(139, 92, 246, .05); }
+  50% { box-shadow: inset 0 1px rgba(255, 255, 255, .05), 0 0 25px rgba(34, 211, 238, .13); }
+}
+
+@keyframes io-level-card-sheen {
+  0%, 55% { transform: translateX(-130%); }
+  85%, 100% { transform: translateX(130%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .io-ui .io-rarity-unlock-hint,
+  .io-ui .level-scaling-card::after {
+    animation: none;
+  }
+  .io-ui .io-rarity-tier-row:hover {
+    transform: none;
+  }
+}

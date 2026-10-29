@@ -64,6 +64,7 @@ import {
   CHAIN_PATCHER_COOLDOWN_MS,
   applyLevelProgress,
   xpRequiredForLevel,
+  visibleContinuumTiers,
 } from '../src/shared/game.js';
 import {
   createGuildTask,
@@ -87,10 +88,41 @@ test('Continuum keeps high rarity multipliers precise by applying them before fl
   assert.equal(rollContinuum(1, () => 0.25, Number.MAX_VALUE), Number.POSITIVE_INFINITY);
 });
 
+test('player level scales rarity linearly without folding its base bonus into Luck', () => {
+  assert.equal(rollContinuum(1, () => 0.25, 1, 2, 1), 4);
+  assert.equal(rollContinuum(1, () => 0.25, 1, 2, 10), 40);
+  assert.equal(rollContinuum(1, () => 0.25, 1, 2, 100), 400);
+  assert.equal(rollContinuum(1, () => 0.25, 2, 2, 10), 80);
+
+  const state = createInitialState(NOW);
+  state.level = 100;
+  assert.equal(luckMultiplier(state), 1, 'the automatic +1% per-level base is now represented by rarity scaling');
+});
+
+test('rarity tiers unlock in stages and the nine new tiers use 100x threshold jumps', () => {
+  assert.equal(visibleContinuumTiers(999_999).length, 9);
+  assert.equal(visibleContinuumTiers(1_000_000).length, 18);
+  assert.equal(visibleContinuumTiers(1e15 - 1).length, 18);
+
+  const expanded = visibleContinuumTiers(1e15);
+  assert.equal(expanded.length, 27);
+  assert.equal(expanded[18].minRarity, 1e19);
+  assert.deepEqual(expanded.slice(18).map(tier => tier.minRarity), [
+    1e19, 1e21, 1e23, 1e25, 1e27, 1e29, 1e31, 1e33, 1e35,
+  ]);
+  for (let i = 19; i < expanded.length; i += 1) {
+    assert.equal(expanded[i].minRarity / expanded[i - 1].minRarity, 100);
+  }
+});
+
 test('the finite rarity ceiling stays numeric while over-cap rolls display as Infinity', () => {
   assert.equal(MAX_ORB_RARITY, Number.MAX_VALUE);
   assert.equal(rollContinuum(1, () => Number.MIN_VALUE), Number.POSITIVE_INFINITY);
-  assert.equal(getOrbTier(MAX_ORB_RARITY), 'Endless');
+  assert.equal(getOrbTier(MAX_ORB_RARITY), 'Omega');
+  assert.equal(getOrbTier(1e17), 'Endless');
+  assert.equal(getOrbTier(1e19), 'Empyrean');
+  assert.equal(getOrbTier(1e21), 'Hyperversal');
+  assert.equal(getOrbTier(1e35), 'Omega');
   assert.equal(formatRarity(MAX_ORB_RARITY), '1.797693e308');
   assert.equal(formatRarity(Number.POSITIVE_INFINITY), 'Infinity');
   assert.equal(formatRarity(MAX_ORB_RARITY, true), 'Infinity');

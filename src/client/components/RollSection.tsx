@@ -1013,9 +1013,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
           <span className="text-slate-500 block text-[10px] font-semibold uppercase">Total Luck</span>
           <span className="font-bold text-cyan-300">{totalLuckMultiplier.toFixed(2)}x</span>
         </div>
-        <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-2.5">
-          <span className="text-slate-500 block text-[10px] font-semibold uppercase">Level Bonus</span>
-          <span className="font-bold text-purple-300">+{Math.max(0, state.level - 1)}% Luck</span>
+        <div className="level-scaling-card rounded-xl border border-violet-300/25 bg-gradient-to-br from-violet-950/80 via-slate-900/80 to-cyan-950/60 p-2.5 shadow-[0_0_22px_rgba(139,92,246,.13)]">
+          <span className="block text-[10px] font-semibold uppercase tracking-wide text-violet-200/80">Level Scaling</span>
+          <span className="font-black text-cyan-100">×{Math.max(1, Math.floor(Number(state.level) || 1)).toLocaleString()} rarity</span>
         </div>
       </div>
         </section>
