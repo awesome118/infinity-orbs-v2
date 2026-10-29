@@ -6,6 +6,7 @@ name: Deploy Devvit
 # The version-specific push marker is reserved for explicitly requested development deployments.
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
+# Regression test asserts auth is checked before upload and the session ID reaches every Devvit CLI step.
 on:
   workflow_dispatch:
     inputs:
