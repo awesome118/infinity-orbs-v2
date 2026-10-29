@@ -36,6 +36,9 @@ import type {
   PremiumBoosterId,
   Orb,
   RollResponse,
+  PopupConfig,
+  GamePopupId,
+  GamePopupEvent,
 } from '../shared/game.js';
 import type {
   Guild,
@@ -51,6 +54,7 @@ import {
   calculateCosmicDust,
   MAX_COSMIC_DUST,
   calculateLevelFromXp,
+  DEFAULT_POPUP_CONFIG,
   applyLevelProgress,
   createInitialState,
   grantFreeShards,
@@ -499,8 +503,6 @@ export function App() {
   const [developerAnnouncement, setDeveloperAnnouncement] = useState<{ message: string; updatedAt: number; updatedBy: string } | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState(false);
 
-  // TODO(post-verification): restore the subreddit follow prompt and +200-roll reward
-  // once the Devvit app has completed Reddit verification/approval.
   // Modals
   const [shareRarity, setShareRarity] = useState<number | null>(null);
   const [shareIsInfinity, setShareIsInfinity] = useState(false);
@@ -532,6 +534,17 @@ export function App() {
   const [frenzyRunTriggered, setFrenzyRunTriggered] = useState(false);
   const [frenzyArmed, setFrenzyArmed] = useState(false);
   const [showFrenzyPrompt, setShowFrenzyPrompt] = useState(false);
+  const [frenzyPromptPreview, setFrenzyPromptPreview] = useState(false);
+  const [popupConfig, setPopupConfig] = useState<PopupConfig>(() => ({ ...DEFAULT_POPUP_CONFIG }));
+  const [popupConfigLoaded, setPopupConfigLoaded] = useState(false);
+  const [showJoinSubredditPrompt, setShowJoinSubredditPrompt] = useState(false);
+  const [joinSubredditPreview, setJoinSubredditPreview] = useState(false);
+  const [joinSubredditName, setJoinSubredditName] = useState('infinityorbs');
+  const [followRewardClaimed, setFollowRewardClaimed] = useState(false);
+  const [followRewardStatusLoaded, setFollowRewardStatusLoaded] = useState(false);
+  const [claimingFollowReward, setClaimingFollowReward] = useState(false);
+  const followPromptShownRef = useRef(false);
+  const notificationPromptShownRef = useRef(false);
   const [frenzyThanksPrompt, setFrenzyThanksPrompt] = useState<{ rarity: number; isInfinity?: boolean; ownerUsername: string; postId: string; message: string } | null>(null);
   const [postingFrenzyThanks, setPostingFrenzyThanks] = useState(false);
   const frenzyPromptShownRef = useRef(false);
@@ -540,6 +553,40 @@ export function App() {
   const stateRevisionRef = useRef(0);
   const refreshSequenceRef = useRef(0);
   const authSessionEpochRef = useRef(0);
+
+  const trackPopupEvent = useCallback((popup: GamePopupId, event: GamePopupEvent) => {
+    void getJson('/api/popups/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ popup, event }),
+    }).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!splashEntered) return;
+    let active = true;
+    setPopupConfigLoaded(false);
+    setFollowRewardStatusLoaded(false);
+    void Promise.all([
+      getJson<{ config?: Partial<PopupConfig> }>('/api/popups/config', { cache: 'no-store' })
+        .catch(() => ({ config: { ...DEFAULT_POPUP_CONFIG } })),
+      getJson<{ claimed?: boolean; subredditName?: string }>('/api/follow-reward/status', { cache: 'no-store' })
+        .catch(() => ({ claimed: false, subredditName: 'infinityorbs' })),
+    ]).then(([configResult, rewardStatus]) => {
+      if (!active) return;
+      setPopupConfig({ ...DEFAULT_POPUP_CONFIG, ...(configResult.config ?? {}) });
+      setPopupConfigLoaded(true);
+      setFollowRewardClaimed(rewardStatus.claimed === true);
+      setJoinSubredditName(String(rewardStatus.subredditName ?? 'infinityorbs').replace(/^r\//i, '').trim() || 'infinityorbs');
+      setFollowRewardStatusLoaded(true);
+    }).catch(() => {
+      if (!active) return;
+      setPopupConfig({ ...DEFAULT_POPUP_CONFIG });
+      setPopupConfigLoaded(true);
+      setFollowRewardStatusLoaded(true);
+    });
+    return () => { active = false; };
+  }, [splashEntered]);
 
   useEffect(() => {
     // React Strict Mode replays effects in development. Restore the mounted
@@ -1200,30 +1247,30 @@ export function App() {
   }, [state, splashEntered, frenzyRunTriggered, applyPlayerState, enqueueMutation]);
 
   useEffect(() => {
-    if (!splashEntered) return;
+    if (!splashEntered || !popupConfigLoaded || !popupConfig.frenzy) return;
     const startedAt = Date.now();
     const checkPrompt = () => {
-      if (!splashEntered) return;
+      if (!splashEntered || !popupConfig.frenzy) return;
+      if (showNotificationPrompt || showJoinSubredditPrompt || showFrenzyPrompt) return;
       const now = Date.now();
       const current = stateRef.current;
       if (!current || now - startedAt < FRENZY_PROMPT_DELAY_MS) return;
       if (!canShowDailyFrenzyPrompt(current.lastFrenzyAt ?? current.lastFrenzyDate, now)) return;
       if (frenzyPromptShownRef.current) return;
-      const storageKey = `io-frenzy-prompt-shown-${todayKey(now)}`;
+      const storageKey = 'io-frenzy-prompt-shown-' + todayKey(now);
       try {
         if (window.localStorage.getItem(storageKey) === '1') return;
         window.localStorage.setItem(storageKey, '1');
-      } catch {
-        // Storage can be unavailable in embedded webviews. The in-memory
-        // state still prevents repeated prompts during this session.
-      }
+      } catch { /* local storage is optional */ }
       frenzyPromptShownRef.current = true;
+      setFrenzyPromptPreview(false);
       setShowFrenzyPrompt(true);
+      trackPopupEvent('frenzy', 'shown');
     };
     const interval = window.setInterval(checkPrompt, 15_000);
     checkPrompt();
     return () => window.clearInterval(interval);
-  }, [splashEntered]);
+  }, [splashEntered, popupConfigLoaded, popupConfig.frenzy, showNotificationPrompt, showJoinSubredditPrompt, showFrenzyPrompt, trackPopupEvent]);
 
   // Social quests count only when the player actually opens the social area.
   // Background leaderboard/guild refreshes must not award the visit quest.
@@ -2359,6 +2406,7 @@ export function App() {
     }
     const enabled = await handleToggleNotifications();
     if (enabled) {
+      trackPopupEvent('notification', 'accepted');
       setShowNotificationPrompt(false);
       setNotificationPromptPreview(false);
     }
@@ -2367,44 +2415,133 @@ export function App() {
   const dismissNotificationPrompt = () => {
     setShowNotificationPrompt(false);
     if (notificationPromptPreview) {
-      // Admin previews must not consume the player's one-time prompt.
       setNotificationPromptPreview(false);
       return;
     }
+    trackPopupEvent('notification', 'dismissed');
     setNotificationPromptShown(true);
+    notificationPromptShownRef.current = true;
+    try { window.localStorage.setItem('io-notification-prompt-shown-v2', '1'); } catch { /* storage optional */ }
+  };
+
+  // Notification prompts take priority when both progression thresholds happen at once.
+  useEffect(() => {
+    if (
+      !splashEntered || !popupConfigLoaded || !popupConfig.notification ||
+      !notificationSettingsLoaded || !state || notificationsEnabled ||
+      notificationPromptShown || notificationPromptShownRef.current ||
+      showFrenzyPrompt || showJoinSubredditPrompt ||
+      Math.max(0, Number(state.totalRolls) || 0) < 5
+    ) return;
     try {
+      if (window.localStorage.getItem('io-notification-prompt-shown-v2') === '1') {
+        notificationPromptShownRef.current = true;
+        setNotificationPromptShown(true);
+        return;
+      }
       window.localStorage.setItem('io-notification-prompt-shown-v2', '1');
-    } catch {
-      // In-memory state still prevents repeat prompts during this session.
+    } catch { /* storage optional; in-memory guard still applies */ }
+    notificationPromptShownRef.current = true;
+    setNotificationPromptShown(true);
+    setNotificationPromptPreview(false);
+    setShowNotificationPrompt(true);
+    trackPopupEvent('notification', 'shown');
+  }, [
+    splashEntered, popupConfigLoaded, popupConfig.notification, notificationSettingsLoaded,
+    state?.totalRolls, notificationsEnabled, notificationPromptShown,
+    showFrenzyPrompt, showJoinSubredditPrompt, trackPopupEvent,
+  ]);
+
+  const dismissFrenzyPrompt = () => {
+    setShowFrenzyPrompt(false);
+    if (frenzyPromptPreview) {
+      setFrenzyPromptPreview(false);
+      showToast('Preview closed; no Frenzy was started.', 'info');
+      return;
+    }
+    trackPopupEvent('frenzy', 'dismissed');
+  };
+
+  const acceptFrenzyPrompt = () => {
+    if (frenzyPromptPreview) {
+      setShowFrenzyPrompt(false);
+      setFrenzyPromptPreview(false);
+      showToast('Preview closed; no Frenzy was started.', 'info');
+      return;
+    }
+    trackPopupEvent('frenzy', 'accepted');
+    setShowFrenzyPrompt(false);
+    void handleStartOrbFrenzy();
+  };
+
+  const dismissJoinSubredditPrompt = () => {
+    setShowJoinSubredditPrompt(false);
+    if (joinSubredditPreview) {
+      setJoinSubredditPreview(false);
+      showToast('Preview closed; no subscription or reward was applied.', 'info');
+      return;
+    }
+    trackPopupEvent('joinSubreddit', 'dismissed');
+    try { window.localStorage.setItem('io-join-subreddit-dismissed-until-v1', String(Date.now() + 24 * 60 * 60_000)); } catch { /* storage optional */ }
+  };
+
+  const acceptJoinSubredditPrompt = async () => {
+    if (joinSubredditPreview) {
+      setShowJoinSubredditPrompt(false);
+      setJoinSubredditPreview(false);
+      showToast('Preview closed; no subscription or reward was applied.', 'info');
+      return;
+    }
+    if (claimingFollowReward) return;
+    setClaimingFollowReward(true);
+    try {
+      const result = await getJson<{state: PlayerState; rollsGranted: number; freeRollsAdded: number; totalFreeRolls: number}>(
+        '/api/follow-reward',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) },
+      );
+      applyPlayerState(result.state);
+      trackPopupEvent('joinSubreddit', 'accepted');
+      setFollowRewardClaimed(true);
+      setShowJoinSubredditPrompt(false);
+      setJoinSubredditPreview(false);
+      followPromptShownRef.current = true;
+      showToast('Joined r/' + joinSubredditName + ' — +' + formatNumber(result.freeRollsAdded ?? result.rollsGranted ?? 100) + ' Free Rolls added.', 'success');
+    } catch (error: any) {
+      const raw = String(error?.message ?? '');
+      const message = raw.includes('FOLLOW_REWARD_LEVEL_REQUIRED')
+        ? 'Reach Level 5 to claim the subreddit reward.'
+        : raw.includes('FOLLOW_REWARD_ALREADY_CLAIMED')
+          ? 'This subreddit reward has already been claimed on your account.'
+          : raw || 'Could not join the subreddit or claim Free Rolls. Please retry.';
+      showToast(message, 'warn');
+      if (raw.includes('FOLLOW_REWARD_ALREADY_CLAIMED')) setFollowRewardClaimed(true);
+    } finally {
+      setClaimingFollowReward(false);
     }
   };
 
-  // Show at five total rolls even when a returning player's save was already
-  // above that threshold. Wait for the server's opt-in state so an existing
-  // subscriber never sees a redundant prompt.
   useEffect(() => {
     if (
-      !splashEntered ||
-      !notificationSettingsLoaded ||
-      !state ||
-      notificationsEnabled ||
-      notificationPromptShown ||
-      Math.max(0, Number(state.totalRolls) || 0) < 5
+      !splashEntered || !popupConfigLoaded || !popupConfig.joinSubreddit ||
+      !followRewardStatusLoaded || !state || followRewardClaimed ||
+      showNotificationPrompt || showFrenzyPrompt || showJoinSubredditPrompt ||
+      followPromptShownRef.current
     ) return;
-
-    setNotificationPromptShown(true);
-    setShowNotificationPrompt(true);
+    const level = Math.max(1, Math.floor(Number(state.level) || 1), calculateLevelFromXp(Number(state.xp) || 0).level);
+    if (level < 5) return;
+    if (!notificationsEnabled && !notificationPromptShown && Math.max(0, Number(state.totalRolls) || 0) >= 5) return;
     try {
-      window.localStorage.setItem('io-notification-prompt-shown-v2', '1');
-    } catch {
-      // Embedded webview storage is optional; React state still enforces once per session.
-    }
+      const snoozeUntil = Number(window.localStorage.getItem('io-join-subreddit-dismissed-until-v1') ?? 0);
+      if (Number.isFinite(snoozeUntil) && snoozeUntil > Date.now()) return;
+    } catch { /* storage optional */ }
+    followPromptShownRef.current = true;
+    setJoinSubredditPreview(false);
+    setShowJoinSubredditPrompt(true);
+    trackPopupEvent('joinSubreddit', 'shown');
   }, [
-    splashEntered,
-    notificationSettingsLoaded,
-    state?.totalRolls,
-    notificationsEnabled,
-    notificationPromptShown,
+    splashEntered, popupConfigLoaded, popupConfig.joinSubreddit, followRewardStatusLoaded,
+    state?.level, state?.xp, state?.totalRolls, notificationsEnabled, notificationPromptShown,
+    followRewardClaimed, showNotificationPrompt, showFrenzyPrompt, showJoinSubredditPrompt, trackPopupEvent,
   ]);
 
   const dismissDeveloperAnnouncement = () => {
@@ -3081,6 +3218,7 @@ export function App() {
       {showFrenzyPrompt && (
         <div className="fixed inset-0 z-[70] io-modal-backdrop flex items-center justify-center p-4">
           <section className="io-modal-card io-frenzy-prompt w-full max-w-md bg-slate-950/95">
+            {frenzyPromptPreview && <div className="mb-3 rounded-lg border border-teal-400/30 bg-teal-400/10 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-teal-200">Admin Preview · No metrics or Frenzy action</div>}
             <div className="io-frenzy-prompt-kicker">
               <Flame className="w-4 h-4" />
               Daily Frenzy
@@ -3098,18 +3236,15 @@ export function App() {
             </div>
             <div className="io-modal-actions">
               <button type="button"
-                onClick={() => {
-                  setShowFrenzyPrompt(false);
-                  void handleStartOrbFrenzy();
-                }}
-                disabled={busy}
+                onClick={acceptFrenzyPrompt}
+                disabled={busy || frenzyPromptPreview}
                 className="io-public-button io-public-button-primary"
               >
                 <Flame className="w-4 h-4" />
                 {busy ? 'Charging…' : 'Charge My Frenzy'}
               </button>
               <button type="button"
-                onClick={() => setShowFrenzyPrompt(false)}
+                onClick={dismissFrenzyPrompt}
                 className="io-public-button io-public-button-secondary"
               >
                 Not now
@@ -3118,6 +3253,28 @@ export function App() {
             <div className="mt-3 text-[10px] text-slate-600">
               You can post another Frenzy tomorrow.
             </div>
+          </section>
+        </div>
+      )}
+
+      {showJoinSubredditPrompt && (joinSubredditPreview || popupConfig.joinSubreddit) && !followRewardClaimed && (
+        <div className="fixed inset-0 z-[71] io-modal-backdrop flex items-center justify-center p-4" data-testid="join-subreddit-prompt-backdrop">
+          <section className="io-modal-card io-join-subreddit-prompt w-full max-w-md bg-slate-950/95" role="dialog" aria-modal="true" aria-labelledby="io-join-subreddit-prompt-title" data-testid="join-subreddit-prompt">
+            {joinSubredditPreview && <div className="mb-3 rounded-lg border border-teal-400/30 bg-teal-400/10 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-teal-200">Admin Preview · No subscription, reward, or metrics</div>}
+            <div className="io-join-subreddit-kicker"><Users className="w-4 h-4" /> COMMUNITY REWARD · LEVEL 5</div>
+            <h2 id="io-join-subreddit-prompt-title" className="mt-2 text-2xl font-black text-white">Join r/{joinSubredditName}</h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-400">Join the community where you’re playing to keep up with Infinity Orbs news, discoveries, and updates.</p>
+            <div className="io-join-subreddit-reward">
+              <div className="text-3xl font-black text-cyan-200">+100 FREE ROLLS</div>
+              <div className="mt-1 text-xs leading-relaxed text-slate-400">Join this subreddit to add 100 rolls to your saved Free Rolls balance. This reward can be claimed once per account.</div>
+            </div>
+            <div className="io-modal-actions">
+              <button type="button" onClick={() => void acceptJoinSubredditPrompt()} disabled={claimingFollowReward || joinSubredditPreview} className="io-public-button io-public-button-primary" data-testid="join-subreddit-accept">
+                <Users className="w-4 h-4" /> {claimingFollowReward ? 'Joining…' : 'Join & Claim 100 Free Rolls'}
+              </button>
+              <button type="button" onClick={dismissJoinSubredditPrompt} disabled={claimingFollowReward} className="io-public-button io-public-button-secondary" data-testid="join-subreddit-dismiss">Not now</button>
+            </div>
+            <button type="button" onClick={dismissJoinSubredditPrompt} className="io-modal-close" aria-label="Close join subreddit prompt" disabled={claimingFollowReward}><X className="w-4 h-4" /></button>
           </section>
         </div>
       )}
@@ -3228,11 +3385,16 @@ export function App() {
           onClose={() => setShowDevModal(false)}
           onRefresh={refreshAll}
           onForceFrenzyPopup={() => {
+            setFrenzyPromptPreview(true);
             setShowFrenzyPrompt(true);
           }}
           onForceNotificationPopup={() => {
             setNotificationPromptPreview(true);
             setShowNotificationPrompt(true);
+          }}
+          onForceJoinSubredditPopup={() => {
+            setJoinSubredditPreview(true);
+            setShowJoinSubredditPrompt(true);
           }}
           onForceRollResult={res => {
             changeTab('roll');
