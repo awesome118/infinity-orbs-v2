@@ -529,3 +529,21 @@ test('Frenzy batches use ordinary RNG without hidden extra Orb rolls', () => {
   assert.match(apply, /source !== 'frenzy' && !temporalLoopTriggered/);
   assert.match(apply, /source === 'online' \|\| source === 'frenzy'/);
 });
+
+
+test('slow Frenzy claims show a delayed calculating popup with rapid Orb spawns', () => {
+  const main = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
+  const styles = readFileSync(resolve(process.cwd(), 'src/client/ui-polish.css'), 'utf8');
+
+  assert.match(main, /FRENZY_CALCULATING_DELAY_MS = 650/);
+  assert.match(main, /FRENZY_CALCULATING_MIN_VISIBLE_MS = 420/);
+  assert.match(main, /setTimeout\(\(\) => \{/);
+  assert.match(main, /setShowFrenzyCalculating\(true\)/);
+  assert.match(main, /data-testid="frenzy-calculating-popup"/);
+  assert.match(main, /Calculating Frenzy/);
+  assert.match(main, /Array\.from\(\{ length: 12 \}/);
+  assert.match(main, /setShowFrenzyCalculating\(false\)/);
+  assert.match(styles, /io-frenzy-calc-orb-spawn/);
+  assert.match(styles, /\.io-frenzy-calculating-orb:nth-of-type\(12\)/);
+  assert.match(styles, /prefers-reduced-motion: reduce/);
+});
