@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Check, Coins, Info, Pause, Play, Sparkles, Swords, Zap, Sword, Shield, Crown, Hand, Footprints, CircleDot, Gem, Hammer, Clock3, Timer, type LucideIcon } from 'lucide-react';
 import { RunesSection } from './RunesSection.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatAutoScrapSettings, CombatCommand, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatOrbRoll, CombatPage, CombatSkillDefinition, CombatSkillId, CombatSnapshot, CombatState, CombatStats, CombatTactic } from '../../shared/combat.js';
-import { COMBAT_ABILITY_SLOTS, COMBAT_BEAT_INTERVAL_MS, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatGearRarityForQuality, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, combatNextActor, combatTurnStep, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, combatBossLuckBonus, combatTotalBossesBeaten } from '../../shared/combat.js';
+import { COMBAT_ABILITY_SLOTS, combatBeatIntervalMsFor, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatGearRarityForQuality, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, combatNextActor, combatTurnStep, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, combatBossLuckBonus, combatTotalBossesBeaten } from '../../shared/combat.js';
 
 interface Props { page: CombatPage; onNavigate:(page:CombatPage)=>void; }
 interface SkillRollResult {
@@ -295,9 +295,13 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     // Read the mutable authoritative timestamp: a COMBAT_BEAT_TOO_SOON response can
     // reconcile stateRef before React receives a fresh snapshot. Reading captured state
     // here leaves the visible countdown at 0s even while Auto Fight is retrying.
-    const update=()=>setBeatCooldownMs(Math.max(0,COMBAT_BEAT_INTERVAL_MS-(Date.now()-(Number(stateRef.current?.lastAcceptedBeatAtMs)||0))));
+    const update=()=>{
+      const current=stateRef.current;
+      const intervalMs=combatBeatIntervalMsFor(current);
+      setBeatCooldownMs(Math.max(0,intervalMs-(Date.now()-(Number(current?.lastAcceptedBeatAtMs)||0))));
+    };
     update();const timer=window.setInterval(update,1000);return()=>window.clearInterval(timer);
-  },[page,state?.lastAcceptedBeatAtMs]);
+  },[page,state?.lastAcceptedBeatAtMs,state?.depth,state?.equipment,state?.inventory]);
   useEffect(()=>{if(state)setAutoScrapQuality(state.autoScrapSettings.maxQuality);},[state?.autoScrapSettings.maxQuality]);
   const loadArena=useCallback(async()=>{
     const requestSequence=++arenaLoadSequenceRef.current;
@@ -384,7 +388,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         if(Number.isFinite(remaining)){
           setBeatCooldownMs(Math.max(0,remaining));
           const current=stateRef.current;
-          if(current)stateRef.current={...current,lastAcceptedBeatAtMs:Math.max(0,Date.now()+Math.max(0,remaining)-COMBAT_BEAT_INTERVAL_MS)};
+          if(current)stateRef.current={...current,lastAcceptedBeatAtMs:Math.max(0,Date.now()+Math.max(0,remaining)-combatBeatIntervalMsFor(current))};
         }
       } else if(message==='stale combat sequence'||message.includes('changed repeatedly'))await load();
       else {
@@ -410,7 +414,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     const scheduleNext=(minimumDelay=0)=>{
       if(stopped)return;
       const lastAcceptedAt=Number(stateRef.current?.lastAcceptedBeatAtMs)||0;
-      const delay=Math.max(minimumDelay,combatNextBeatDelayMs(Date.now(),lastAcceptedAt));
+      const delay=Math.max(minimumDelay,combatNextBeatDelayMs(Date.now(),lastAcceptedAt,150,combatBeatIntervalMsFor(stateRef.current)));
       timer=window.setTimeout(async()=>{
         if(stopped)return;
         await beat();
@@ -537,7 +541,8 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const shieldOffset=(Math.min(currentHealth,healthMax)+overhealthAmount)/healthCapacity*100;
   const hpPct=Math.max(0,Math.min(100,(currentHealth+shieldAmount)/healthCapacity*100));
   const enemyPct=Math.max(0,Math.min(100,enemy.hp/Math.max(1,enemy.maxHp)*100));
-  const beatProgressPct=Math.max(0,Math.min(100,Math.round((COMBAT_BEAT_INTERVAL_MS-beatCooldownMs)/COMBAT_BEAT_INTERVAL_MS*100)));
+  const beatIntervalMs=combatBeatIntervalMsFor(state);
+  const beatProgressPct=Math.max(0,Math.min(100,Math.round((beatIntervalMs-beatCooldownMs)/beatIntervalMs*100)));
   return <section className="io-combat-screen">
     <header className="io-combat-page-head"><div><span className="io-combat-eyebrow">INFINITY ORBS · COMBAT EXPANSION</span><h1>{page==='fight'?'Fight':page==='dungeons'?'Dungeons':page==='gear'?'Armory':page==='forge'?'The Forge':page==='skills'?'Skill Gacha':'Arena'}</h1><p>{page==='fight'?'Every accepted beat rolls an orb; its rarity scales base damage before crits and active abilities. Speed determines action frequency and the visible turn order previews who acts next.':page==='dungeons'?'Switching dungeons starts a new run, but your gear inventory and equipped loadout stay with you. Best depth is tracked separately for each dungeon.':page==='gear'?'Your inventory persists between runs and dungeons. The 30-item haul limit resets each run. Gear rolls a mix of offensive and defensive stats, plus rare Major Abilities.':page==='forge'?'Choose the exact quality of new gear. Quality costs rise exponentially, and a guaranteed 100.00% item costs 5,000,000 Scrap. Auto Scrap is configured here.':page==='skills'?'Rank the Gacha to unlock higher rarities, then equip up to three active abilities. Duplicate ranks grow without a hard cap.':'Challenge active delvers with your saved gear and equipped abilities. Ratings update after each duel.'}</p></div><div className="io-combat-run-stamp"><span>RUN {fmt(state.runId)}</span><strong>DEPTH {fmt(state.depth)}</strong><span>BEST {fmt(state.bestDepth)}</span></div></header>
     {error&&<div className="io-combat-error" role="alert">{error} <button className="io-combat-text-link" type="button" onClick={()=>{setError('');if(!state)void load();}}>{state ? "Dismiss" : "Retry loading"}</button></div>}
@@ -578,7 +583,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         }
         const events=projected;
         return <section className="io-combat-turn-tracker" aria-label="Combat speed and turn order">
-          <div className="io-combat-turn-head"><div><span className="io-combat-eyebrow">SPEED & INITIATIVE</span><h2>Turn order</h2><p>One beat resolves about every 30 seconds.</p></div><strong>{beatCooldownMs>0?'NEXT BEAT '+Math.ceil(beatCooldownMs/1000)+'s':'BEAT READY'}</strong></div>
+          <div className="io-combat-turn-head"><div><span className="io-combat-eyebrow">SPEED & INITIATIVE</span><h2>Turn order</h2><p>Chrono Surge shortens the 30-second base beat timer.</p></div><strong>{beatCooldownMs>0?'NEXT BEAT '+Math.ceil(beatCooldownMs/1000)+'s':'BEAT READY'}</strong></div>
           <div className="io-combat-beat-track" role="progressbar" aria-label="Time until the next combat beat" aria-valuemin={0} aria-valuemax={100} aria-valuenow={beatProgressPct} aria-valuetext={beatCooldownMs>0?Math.ceil(beatCooldownMs/1000)+' seconds remaining':'Beat ready'}><span style={{width:beatProgressPct+'%'}}/></div>
            <div className="io-combat-speed-bars">
             <div className="io-combat-speed-row"><span>∞ DELVER <b>{fmt(stats.speed)} SPD</b></span><div className="io-combat-speed-track"><span className="is-player" style={{width:playerPace+'%'}}/></div><strong>{playerPace}% pace</strong></div>
