@@ -2802,3 +2802,11 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
     outline-offset: 3px;
   }
 }
+
+
+.io-join-subreddit-prompt {
+  border-color: rgba(83, 196, 235, .34);
+  box-shadow: 0 22px 80px rgba(0, 0, 0, .48), 0 0 36px rgba(38, 161, 211, .1), inset 0 1px rgba(255, 255, 255, .05);
+}
+.io-join-subreddit-kicker { display: flex; align-items: center; gap: 8px; color: #7de7ff; font-size: 10px; font-weight: 900; letter-spacing: .16em; text-transform: uppercase; }
+.io-join-subreddit-reward { margin-top: 18px; padding: 15px; border: 1px solid rgba(83, 196, 235, .28); border-radius: 16px; background: linear-gradient(140deg, rgba(13, 83, 112, .24), rgba(15, 23, 42, .68)); }
