@@ -197,8 +197,14 @@ const localRedis = {
       },
     };
   },
-  incr: async (key: string): Promise<number> => {
-    const value = Number.parseInt(readStore(key) ?? '0', 10) + 1;
+  incrBy: async (key: string, increment: number): Promise<number> => {
+    const current = Number.parseInt(readStore(key) ?? '0', 10);
+    const amount = Number(increment);
+    if (!Number.isSafeInteger(current) || !Number.isSafeInteger(amount) ||
+        !Number.isSafeInteger(current + amount)) {
+      throw new Error('ERR value is not an integer or out of range');
+    }
+    const value = current + amount;
     writeStore(key, String(value));
     return value;
   },
