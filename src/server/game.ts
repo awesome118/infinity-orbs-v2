@@ -33,6 +33,8 @@ import {
   prestigeUpgradeCost,
   calculatePrestigeDust,
   addCollectionValue,
+  normalizeCoinAmount,
+  addCoinAmount,
   offlineRollCap,
   getOrbInfo,
   formatRarity,
@@ -2659,8 +2661,8 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
   const restored: PlayerState = {
     ...base,
     ...cleanParsed,
-    coins: finiteNonNegativeInteger(parsed.coins),
-    lifetimeCoins: finiteNonNegativeInteger(parsed.lifetimeCoins ?? parsed.coins),
+    coins: normalizeCoinAmount(parsed.coins),
+    lifetimeCoins: normalizeCoinAmount(parsed.lifetimeCoins ?? parsed.coins),
     offlineRolls: Math.min(MAX_OFFLINE_ROLLS, finiteNonNegativeInteger(parsed.offlineRolls, base.offlineRolls)),
     purchasedShards: normalizedPurchasedShards,
     purchasedShardLots: normalizedPurchasedShardLots,
@@ -3171,8 +3173,8 @@ export async function save(
   ) {
     throw new Error('Player Coin balance is invalid; no changes were saved.');
   }
-  s.coins = finiteNonNegativeInteger(s.coins);
-  s.lifetimeCoins = finiteNonNegativeInteger(s.lifetimeCoins ?? s.coins);
+  s.coins = normalizeCoinAmount(s.coins);
+  s.lifetimeCoins = normalizeCoinAmount(s.lifetimeCoins ?? s.coins);
   const explicitWrites = extraWrite
     ? Array.isArray(extraWrite) ? extraWrite : [extraWrite]
     : [];
@@ -3530,12 +3532,12 @@ function addCoins(s: PlayerState, amount: number): number {
   ) {
     throw new Error('Saved lifetime Coin total is invalid; no reward was applied.');
   }
-  const currentCoins = finiteNonNegativeInteger(s.coins);
-  const requestedGain = finiteNonNegativeInteger(amount);
-  const gain = Math.min(requestedGain, Number.MAX_SAFE_INTEGER - currentCoins);
-  s.coins = currentCoins + gain;
-  const lifetimeCoins = finiteNonNegativeInteger(s.lifetimeCoins ?? currentCoins);
-  s.lifetimeCoins = Math.min(Number.MAX_SAFE_INTEGER, lifetimeCoins + gain);
+  const currentCoins = normalizeCoinAmount(s.coins);
+  const requestedGain = normalizeCoinAmount(amount);
+  const gain = Math.min(requestedGain, Number.MAX_VALUE - currentCoins);
+  s.coins = addCoinAmount(currentCoins, gain);
+  const lifetimeCoins = normalizeCoinAmount(s.lifetimeCoins ?? currentCoins);
+  s.lifetimeCoins = addCoinAmount(lifetimeCoins, gain);
   return gain;
 }
 
@@ -4004,8 +4006,11 @@ export async function applyRolls(
   // Balanced Gold progression: top rolled orb gives 100% coins; extra orbs in multi-roll give 20% bonus coins
   rarities.sort((a, b) => b - a);
   const topCoins = Math.round(coinsForRarity(rarities[0]));
-  const extraCoins = rarities.slice(1).reduce((acc, r) => acc + Math.max(1, Math.round(coinsForRarity(r) * 0.20)), 0);
-  coinsGained = topCoins + extraCoins;
+  const extraCoins = rarities.slice(1).reduce(
+    (acc, r) => addCoinAmount(acc, Math.max(1, Math.round(coinsForRarity(r) * 0.20))),
+    0,
+  );
+  coinsGained = addCoinAmount(topCoins, extraCoins);
 
   // Level passives and other coin modifiers stack multiplicatively by source.
   const coinBonusMul =
@@ -4014,7 +4019,7 @@ export async function applyRolls(
     (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
     (1 + (s.guildPerks?.coinRank ?? 0) * 0.10) *
     (1 + runeBonuses.coinGainPct / 100);
-  coinsGained = Math.min(Number.MAX_SAFE_INTEGER, Math.round(coinsGained * coinBonusMul));
+  coinsGained = normalizeCoinAmount(Math.round(coinsGained * coinBonusMul));
 
   const lowRarityCoins = rarities
     .filter(r => r < 100)
@@ -4023,13 +4028,13 @@ export async function applyRolls(
   // Singularity Filter: +25% only to Common/Uncommon coin yield.
   const hasFilter = (s.prestigeUpgrades?.autoFilter ?? 0) > 0;
   if (hasFilter && lowRarityCoins > 0) {
-    coinsGained += Math.round(lowRarityCoins * 0.25);
+    coinsGained = addCoinAmount(coinsGained, Math.round(lowRarityCoins * 0.25));
   }
 
   // Alchemical Transmutation: bonus low-rarity Coins and a small whole-Shard proc per Orb.
   const transLevel = s.prestigeUpgrades?.transmutation ?? 0;
   if (transLevel > 0) {
-    coinsGained += Math.round(lowRarityCoins * (transLevel * 0.15));
+    coinsGained = addCoinAmount(coinsGained, Math.round(lowRarityCoins * (transLevel * 0.15)));
     for (let i = 0; i < rollCount; i++) {
       if (rng() < 0.00025 * transLevel) {
         shardsGained += 1;
@@ -4047,6 +4052,7 @@ export async function applyRolls(
     coinsGained = Math.round(coinsGained * (1 + (s.prestigeUpgrades.offlineOverdrive * 0.50)));
   }
 
+  coinsGained = normalizeCoinAmount(coinsGained);
   const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
   let guildEffects: Awaited<ReturnType<typeof prepareGuildRollEffects>>;
   try {
@@ -4089,7 +4095,7 @@ export async function applyRolls(
   // offline-vault rolls don't fabricate a continuous play session.
   if ((source === 'online' || source === 'frenzy') && rollCount > 0) recordRollingSessionActivity(s, now);
 
-  // Coin earnings and their lifetime statistic are capped independently at the safe-integer ceiling.
+  // Coin earnings and lifetime totals saturate only at the largest finite Number.
 
   // Celestial Auto-Buyer Prestige Upgrade: auto-buy cheapest affordable upgrade
   const autoBuyerLevel = s.prestigeUpgrades?.autoBuyer ?? 0;
@@ -5107,8 +5113,8 @@ export async function roll(
       if (!bestOrb || result.bestOrb.rarity > bestOrb.rarity) bestOrb = result.bestOrb;
       batch.push(...result.batch.slice(-200));
       if (batch.length > 200) batch.splice(0, batch.length - 200);
-      totalVal = Math.min(Number.MAX_SAFE_INTEGER, totalVal + result.totalVal);
-      coinsGained = Math.min(Number.MAX_SAFE_INTEGER, coinsGained + result.coinsGained);
+      totalVal = addCollectionValue(totalVal, result.totalVal);
+      coinsGained = addCoinAmount(coinsGained, result.coinsGained);
       shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + result.shardsGained);
       xpGained = Math.min(Number.MAX_SAFE_INTEGER, xpGained + result.xpGained);
       rollCount = Math.min(Number.MAX_SAFE_INTEGER, rollCount + result.rollCount);
@@ -5766,7 +5772,7 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
 }> {
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
-  const numCoins = finiteNonNegativeInteger(coins);
+  const numCoins = normalizeCoinAmount(coins);
   const numShards = finiteNonNegativeInteger(shards);
 
   const currentAltarLevel = Math.max(0, Math.floor(Number(s.sacrifices?.altarLevel ?? 0) || 0));
@@ -6607,8 +6613,8 @@ export async function claimOrbFrenzy(options: {
     if (visibleBatch.length < 8) {
       visibleBatch.push(...result.batch.slice(0, 8 - visibleBatch.length));
     }
-    finalValue = Math.min(Number.MAX_SAFE_INTEGER, finalValue + result.totalVal);
-    coinsGained = Math.min(Number.MAX_SAFE_INTEGER, coinsGained + result.coinsGained);
+    finalValue = addCollectionValue(finalValue, result.totalVal);
+    coinsGained = addCoinAmount(coinsGained, result.coinsGained);
     shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + result.shardsGained);
     xpGained = Math.min(Number.MAX_SAFE_INTEGER, xpGained + result.xpGained);
     processedCount = Math.min(Number.MAX_SAFE_INTEGER, processedCount + result.rollCount);
