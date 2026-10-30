@@ -1,6 +1,6 @@
 name: Deploy Devvit
 
-# Explicit deployment request (2026-10-30): retry v2.1.18 to r/infinity_orbs_dev after correcting the large-number test source formatting.
+# Explicit deployment request (2026-10-30): retry v2.1.18 to r/infinity_orbs_dev after fixing the large-balance rounding expectation.
 # Includes the delayed Frenzy-calculating overlay and rapid orb-spawn reveal.
 # Includes exponential Coin display, Guild loading recovery/diagnostics, and Chrono Surge beat-timer acceleration.
 # Single retry after updating the Chrono Surge countdown regression to assert the ability-adjusted interval.
