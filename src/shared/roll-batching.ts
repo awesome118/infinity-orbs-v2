@@ -67,6 +67,26 @@ export function sampleBinomialCount(n: number, p: number, random: () => number):
   if (count === 0 || probability === 0) return 0;
   if (probability >= 1) return count;
 
+  // Compressed Orb groups contain at most a handful of effective Orbs.
+  // Use exact inverse-CDF sampling at these sizes instead of a normal
+  // approximation, which can be visibly biased for high crit probabilities.
+  if (count <= 256) {
+    const complement = probability > 0.5;
+    const p = complement ? 1 - probability : probability;
+    const raw = Number(random());
+    const sample = Number.isFinite(raw) ? Math.max(0, Math.min(1 - Number.EPSILON, raw)) : 0.5;
+    let mass = Math.pow(1 - p, count);
+    let cumulative = mass;
+    let successes = 0;
+    while (sample > cumulative && successes < count) {
+      mass *= ((count - successes) / (successes + 1)) * (p / (1 - p));
+      successes += 1;
+      cumulative += mass;
+    }
+    const sampledCount = Math.min(count, successes);
+    return complement ? count - sampledCount : sampledCount;
+  }
+
   const mean = count * probability;
   const variance = mean * (1 - probability);
   if (variance >= 1) {
