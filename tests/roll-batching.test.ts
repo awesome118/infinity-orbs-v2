@@ -50,7 +50,7 @@ test('the first three new-player Orbs stay uncompressed and preserve their exact
   assert.equal(virtualRollOffsetAtSample(plan, 1), 1);
   assert.equal(virtualRollOffsetAtSample(plan, 2), 2);
   assert.equal(virtualRollOffsetAtSample(plan, 3), 3);
-  assert.equal(plan.simulatedBaseCount, 50_003);
+  assert.equal(plan.simulatedBaseCount, 50_003); // 50k weighted samples plus 3 exact starter-guarantee Orbs.
 });
 
 test('offline batches remain uncompressed', () => {
@@ -65,6 +65,10 @@ test('large low-probability proc counts stay within valid binomial bounds', () =
   assert.ok(successes >= 400 && successes <= 600, 'unexpected proc count: ' + successes);
   assert.equal(sampleBinomialCount(500, 0, rng), 0);
   assert.equal(sampleBinomialCount(500, 1, rng), 500);
+  assert.equal(sampleBinomialCount(10, 0.5, () => 0), 0);
+  assert.equal(sampleBinomialCount(10, 0.5, () => 1), 10);
+  assert.equal(sampleBinomialCount(10, 0.9, () => 0), 10);
+  assert.equal(sampleBinomialCount(10, 0.9, () => 1), 0);
 });
 
 test('server uses weighted sample counts for Luck, player totals, XP, Coins, and progress', () => {
@@ -73,9 +77,12 @@ test('server uses weighted sample counts for Luck, player totals, XP, Coins, and
   const apply = server.slice(server.indexOf('export async function applyRolls('), server.indexOf('\nasync function commitOfflineNotificationMarkerIfUnchanged'));
   const frenzy = server.slice(server.indexOf('export async function claimOrbFrenzy'), server.indexOf('export async function postFrenzyThankYouComment'));
 
-  assert.ok(apply.includes('sampleLuck = Math.min(Number.MAX_VALUE, effectiveLuck * sampleWeight * sampleWeight)'));
-  assert.match(apply, /const compressedGroup = sampleWeight > 1/);
-  assert.match(apply, /Math\.floor\(baseRarity \/ sampleWeight\)/);
+  assert.ok(apply.includes('const sampleScale = sampleWeight * averageGroupMultiplier'));
+  assert.ok(apply.includes('effectiveLuck * sampleScale * sampleScale'));
+  assert.match(apply, /const isCompressedGroup = sampleWeight > 1/);
+  assert.match(apply, /Math\.floor\(baseRarity \/ \(sampleWeight \* averageGroupMultiplier\)\)/);
+  assert.match(apply, /const criticalTailWeight = normalCriticalGroupCount \* criticalMultiplier/);
+  assert.match(apply, /const supernovaTailWeight = groupSupernovaCount \* supernovaMultiplier/);
   assert.match(apply, /s\.totalRolls \+= sampleWeight/);
   assert.match(apply, /xpForBaseOrb \* ordinaryGroupCount/);
   assert.match(apply, /xpForCriticalOrb \* normalCriticalGroupCount/);
@@ -84,7 +91,9 @@ test('server uses weighted sample counts for Luck, player totals, XP, Coins, and
   assert.match(apply, /xpForSupernovaOrb \* groupSupernovaCount/);
   assert.match(apply, /extraCoinsEstimate = addCoinAmount/);
   assert.match(apply, /extraCoinsForSupernovaOrbs = Math\.max\(1, Math\.round\(coinsForRarity\(supernovaRewardRarity\) \* 0\.20\)\)/);
-  assert.match(apply, /rarities\.push\(rarity\);\s*rarityWeights\.push\(1\)/);
+  assert.match(apply, /rarities\.push\(rarityValue\);\s*rarityWeights\.push\(count\)/);
+  assert.match(apply, /topBaseFinalValue \+ finalVal/);
+  assert.match(apply, /xpForTopBaseline/);
   assert.match(apply, /lowCoinsForMaximumBaseline/);
   assert.match(apply, /lowRarityCoinsEstimate = addCoinAmount/);
   assert.match(apply, /sampleBinomialCount\(sampleWeight, combinedShardChance, rng\)/);
