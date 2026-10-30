@@ -4091,6 +4091,9 @@ export async function applyRolls(
     // Use the expected pre-record position for Aftershock and dry-streak state.
     const groupDryStreakAtMaximum = groupDryStreakBeforeSample + Math.floor((sampleWeight - 1) / 2);
     const groupDryStreakAverage = groupDryStreakBeforeSample + (sampleWeight + 1) / 2;
+    const dryStreakForBatchProcs = isNewRarityRecord
+      ? Math.floor((sampleWeight - 1) / 2)
+      : Math.floor(groupDryStreakAverage);
     const isNewRarityRecord = rarity > previousAllTimeRarity || (isInfinityOrb && !s.highestRarityIsInfinity);
     if (isNewRarityRecord) {
       // The rolls since the previous record become an Aftershock candidate
@@ -4104,7 +4107,7 @@ export async function applyRolls(
       }
       s.highestRarity = rarity;
       s.highestRarityIsInfinity = isInfinityOrb;
-      s.rollsSinceBest = groupDryStreakAtMaximum;
+      s.rollsSinceBest = Math.floor((sampleWeight - 1) / 2);
     } else {
       s.rollsSinceBest = groupDryStreakBeforeSample + sampleWeight;
       s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest);
@@ -4243,7 +4246,7 @@ export async function applyRolls(
     let earnedShards = 0;
     const shardTitheChance = Math.min(0.000125, Math.max(0, runeAbilityEffects.shardTithePerRoll) * 0.5);
     // Dry-Streak Refinery converts its former fractional drip into a reduced chance for one whole Shard.
-    const dryRefineryChance = Math.min(0.000125, Math.floor(Math.max(0, s.rollsSinceBest ?? 0) / 100) * Math.max(0, runeAbilityEffects.dryStreakRefineryRate) * 0.5);
+    const dryRefineryChance = Math.min(0.000125, Math.floor(Math.max(0, dryStreakForBatchProcs) / 100) * Math.max(0, runeAbilityEffects.dryStreakRefineryRate) * 0.5);
 
     // Shard Chance upgrade + Mastery + Guild perk proc
     const shardProcChance = Math.min(
@@ -4296,7 +4299,7 @@ export async function applyRolls(
 
     // Temporal Loop charges on every real roll, then releases a bounded bonus batch.
     if (temporalMomentumPerRoll > 0) {
-      const dryStreakMomentum = Math.min(5, Math.log2(Math.max(1, s.rollsSinceBest + 1)) * .25);
+      const dryStreakMomentum = Math.min(5, Math.log2(Math.max(1, dryStreakForBatchProcs + 1)) * .25);
       s.runeTemporalMomentum = Math.min(
         1_000_000,
         validCharge(s.runeTemporalMomentum) + sampleWeight * (temporalMomentumPerRoll + dryStreakMomentum),
