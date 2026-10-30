@@ -3886,9 +3886,16 @@ export async function applyRolls(
     throw new Error('Roll counter would exceed the safe integer range; no rolls were processed.');
   }
 
+  // Astral Magnetism adds two real Orbs before compression, so large batches
+  // retain the same proc chance and represented count as ordinary batches.
+  const magnetLevel = s.prestigeUpgrades?.stellarMagnet ?? 0;
+  if (source !== 'frenzy' && requestedRollCount > 1 && magnetLevel > 0 && rng() < 0.10 * magnetLevel) {
+    requestedRollCount += 2;
+  }
+
   // Large requests simulate at most 50,000 representative groups. A group of
   // N orbs uses N² Luck input so sqrt(Luck) produces an N× rarity scale; reward
-  // math then uses the representative unscaled rarity for the N real orbs.
+  // math then weights the representative outcome across the N real orbs.
   const MAX_SAMPLED_ROLLS = 50_000;
   const exactIntroRolls = forcedRarity == null
     ? Math.min(requestedRollCount, Math.max(0, 3 - s.totalRolls))
@@ -3902,15 +3909,6 @@ export async function applyRolls(
     ? Math.ceil(compressibleRolls / compressionFactor)
     : compressibleRolls;
   rollCount = exactIntroRolls + compressedSamples;
-
-  // Astral Magnetism remains an exact bonus on ordinary batches. For compressed
-  // batches its extra-orb chance is folded into the batch approximation instead
-  // of making the sample/true count diverge.
-  const magnetLevel = s.prestigeUpgrades?.stellarMagnet ?? 0;
-  if (compressionFactor === 1 && source !== 'frenzy' && rollCount > 1 && magnetLevel > 0 && rng() < 0.10 * magnetLevel) {
-    requestedRollCount += 2;
-    rollCount += 2;
-  }
   const baseBatchRollCount = rollCount;
 
   if (
@@ -4138,12 +4136,20 @@ export async function applyRolls(
     const weightedValue = Math.min(Number.MAX_VALUE, payoutValue * payoutWeight + bestValue);
 
     totalVal = Math.min(Number.MAX_VALUE, totalVal + weightedValue);
-    if (payoutWeight > 0 && payoutKey !== bestKey) {
-      rarities.push(payoutRarity);
-      rarityWeights.push(payoutWeight);
+    if (payoutWeight > 0 && payoutKey === bestKey) {
+      // When the representative and ordinary group Orbs share one rarity,
+      // merge their weights instead of recording only the representative Orb.
+      rarities.push(rarity);
+      rarityWeights.push(groupWeight);
+    } else {
+      if (payoutWeight > 0) {
+        rarities.push(payoutRarity);
+        rarityWeights.push(payoutWeight);
+      }
+      rarities.push(rarity);
+      rarityWeights.push(1);
     }
-    rarities.push(rarity);
-    rarityWeights.push(1);
+    const previousTotalRolls = s.totalRolls;
     s.totalRolls += groupWeight;
     s.currentRunRolls = (s.currentRunRolls ?? 0) + groupWeight;
     s.collectionValue = addCollectionValue(s.collectionValue, weightedValue);
@@ -4213,8 +4219,13 @@ export async function applyRolls(
       addRuneBonusRolls(runeAbilityEffects.rarityLadderBonusRolls, { minRarity: floor, skipAllProcs: true });
       rarityLadderTriggered = true;
     }
-    // Stellar Dividend pays once per activation when a processed roll hits its lifetime milestone.
-    if (!stellarDividendTriggered && !suppressOtherRuneProcs && runeAbilityEffects.stellarDividendPct > 0 && s.totalRolls % stellarDividendInterval === 0) {
+    // A compressed group can cross one or several lifetime milestones
+    // without landing exactly on the interval. Detect the crossing, not a
+    // modulo match on the group's final represented roll count.
+    const crossedStellarDividendMilestone =
+      Math.floor(s.totalRolls / stellarDividendInterval) >
+      Math.floor(previousTotalRolls / stellarDividendInterval);
+    if (!stellarDividendTriggered && !suppressOtherRuneProcs && runeAbilityEffects.stellarDividendPct > 0 && crossedStellarDividendMilestone) {
       addRuneBonusRolls(runeAbilityEffects.stellarDividendBonusRolls, { skipAllProcs: true });
       stellarDividendTriggered = true;
     }
