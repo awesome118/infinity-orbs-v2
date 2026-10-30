@@ -1,9 +1,8 @@
 name: Deploy Devvit
 
-# Explicit deployment request (2026-10-30): deploy v2.1.20 Guild recovery fixes to r/infinity_orbs_dev only.
-# Includes the production Guild recovery safeguards and independent Guild/world-event polling lanes.
-# Includes exponential Coin display, Guild loading recovery/diagnostics, and Chrono Surge beat-timer acceleration.
-# Single retry after updating the Chrono Surge countdown regression to assert the ability-adjusted interval.
+# Explicit deployment request (2026-10-30): deploy v2.1.21 weighted large-batch roll optimization to r/infinity_orbs_dev only.
+# Includes 50,000 weighted representative groups per 500,000 effective Orbs, sampled critical/Supernova groups,
+# weighted Coin/XP/Shard accounting, exact starter guarantees, and effective-count Frenzy progress.
 # The version-specific push marker is reserved for explicitly requested development deployments.
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
@@ -30,7 +29,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.20]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.21]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
