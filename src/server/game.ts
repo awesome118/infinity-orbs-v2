@@ -3932,8 +3932,14 @@ export async function applyRolls(
     );
 
     totalVal = Math.min(Number.MAX_VALUE, totalVal + weightedFinalValue);
-    rarities.push(rewardRarity);
-    rarityWeights.push(sampleWeight);
+    if (baseGroupCount > 0) {
+      rarities.push(rewardRarity);
+      rarityWeights.push(baseGroupCount);
+    }
+    if (hasDistinctGroupMaximum) {
+      rarities.push(rarity);
+      rarityWeights.push(1);
+    }
     s.totalRolls += sampleWeight;
     s.currentRunRolls = (s.currentRunRolls ?? 0) + sampleWeight;
     s.collectionValue = addCollectionValue(s.collectionValue, weightedFinalValue);
@@ -3941,11 +3947,25 @@ export async function applyRolls(
 
     if (baseIsNew) uniqueGained++;
     if (topIsNew) uniqueGained++;
-    const extraCoinsForGroup = Math.max(1, Math.round(coinsForRarity(rewardRarity) * 0.20));
-    extraCoinsEstimate = addCoinAmount(extraCoinsEstimate, normalizeCoinAmount(extraCoinsForGroup * sampleWeight));
-    if (rewardRarity < 100) {
-      const lowCoinsForGroup = Math.max(1, Math.round(coinsForRarity(rewardRarity)));
-      lowRarityCoinsEstimate = addCoinAmount(lowRarityCoinsEstimate, normalizeCoinAmount(lowCoinsForGroup * sampleWeight));
+    const extraCoinsForBaseOrbs = Math.max(1, Math.round(coinsForRarity(rewardRarity) * 0.20));
+    extraCoinsEstimate = addCoinAmount(
+      extraCoinsEstimate,
+      normalizeCoinAmount(extraCoinsForBaseOrbs * baseGroupCount),
+    );
+    if (hasDistinctGroupMaximum) {
+      const extraCoinsForGroupMaximum = Math.max(1, Math.round(coinsForRarity(rarity) * 0.20));
+      extraCoinsEstimate = addCoinAmount(extraCoinsEstimate, extraCoinsForGroupMaximum);
+    }
+    if (baseGroupCount > 0 && rewardRarity < 100) {
+      const lowCoinsForBaseOrbs = Math.max(1, Math.round(coinsForRarity(rewardRarity)));
+      lowRarityCoinsEstimate = addCoinAmount(
+        lowRarityCoinsEstimate,
+        normalizeCoinAmount(lowCoinsForBaseOrbs * baseGroupCount),
+      );
+    }
+    if (hasDistinctGroupMaximum && rarity < 100) {
+      const lowCoinsForGroupMaximum = Math.max(1, Math.round(coinsForRarity(rarity)));
+      lowRarityCoinsEstimate = addCoinAmount(lowRarityCoinsEstimate, lowCoinsForGroupMaximum);
     }
     const totalRollsBeforeSample = s.totalRolls - sampleWeight;
     const previousAllTimeRarity = s.highestRarity;
@@ -4156,8 +4176,8 @@ export async function applyRolls(
   // Balanced Gold progression: top rolled Orb pays 100%; every other effective
   // Orb contributes 20% of its base-equivalent coin value.
   const topCoins = Math.round(coinsForRarity(bestRarity));
-  const topBaseExtraCoins = Math.max(1, Math.round(coinsForRarity(bestRewardRarity) * 0.20));
-  const extraCoins = Math.max(0, extraCoinsEstimate - topBaseExtraCoins);
+  const topExtraCoins = Math.max(1, Math.round(coinsForRarity(bestRarity) * 0.20));
+  const extraCoins = Math.max(0, extraCoinsEstimate - topExtraCoins);
   coinsGained = addCoinAmount(topCoins, extraCoins);
 
   // Level passives and other coin modifiers stack multiplicatively by source.
