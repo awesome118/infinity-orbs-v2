@@ -54,19 +54,22 @@ export async function preparePlayerStateForRedisWrite(
     ? state.collection
     : {};
 
-  if (
-    metadata.collectionStorageVersion === 1 &&
-    Array.isArray(metadata.collectionPageIds) &&
-    metadata.collectionPageIds.length <= PLAYER_COLLECTION_MAX_PAGES &&
-    metadata.collectionPageIds.every(id => typeof id === 'string' && /^[a-f0-9]{64}$/.test(id)) &&
-    Object.keys(collection).length === 0
-  ) {
-    return {
-      ...state,
-      collection: {},
-      collectionStorageVersion: 1,
-      collectionPageIds: metadata.collectionPageIds,
-    };
+  if (metadata.collectionStorageVersion === 1) {
+    if (
+      !Array.isArray(metadata.collectionPageIds) ||
+      metadata.collectionPageIds.length > PLAYER_COLLECTION_MAX_PAGES ||
+      !metadata.collectionPageIds.every(id => typeof id === 'string' && /^[a-f0-9]{64}$/.test(id))
+    ) {
+      throw new Error('Your Codex page index is invalid. No player changes were written.');
+    }
+    if (Object.keys(collection).length === 0) {
+      return {
+        ...state,
+        collection: {},
+        collectionStorageVersion: 1,
+        collectionPageIds: metadata.collectionPageIds,
+      };
+    }
   }
 
   const pages = serializeCollectionPages(collection);
