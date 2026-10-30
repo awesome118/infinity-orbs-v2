@@ -1074,23 +1074,26 @@ function App() {
       if (document.visibilityState === 'hidden') return;
       inFlight = true;
       try {
-        // World-event failures must never short-circuit Guild loading.
-        const we = await getJson<WorldEvent | null>('/api/world-event').catch(() => null);
+        // Fetch Guilds alongside the event so a slow unrelated endpoint cannot delay them.
+        const worldEventRequest = getJson<WorldEvent | null>('/api/world-event').catch(() => null);
+        const guildRequest = tab === 'social'
+          ? getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds', { cache: 'no-store' })
+              .then(data => ({ data, error: null as string | null }))
+              .catch((error: unknown) => ({
+                data: null,
+                error: error instanceof Error ? error.message : 'Guild data could not be loaded.',
+              }))
+          : Promise.resolve(null);
+        const [we, gd] = await Promise.all([worldEventRequest, guildRequest]);
         if (cancelled) return;
         setWorldEvent(we);
-        if (tab === 'social') {
-          try {
-            const gd = await getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds', { cache: 'no-store' });
-            if (!cancelled) {
-              setGuildData(gd);
-              setGuildLoadError(null);
-            }
-          } catch (error) {
-            // Preserve the last successful guild snapshot rather than replacing it with
-            // empty arrays when a transient request or server-side validation fails.
-            if (!cancelled) {
-              setGuildLoadError(error instanceof Error ? error.message : 'Guild data could not be loaded.');
-            }
+        if (gd) {
+          if (gd.data) {
+            setGuildData(gd.data);
+            setGuildLoadError(null);
+          } else {
+            // Preserve the last successful Guild snapshot while exposing the retryable error.
+            setGuildLoadError(gd.error);
           }
         }
       } finally {
