@@ -1529,8 +1529,8 @@ test('collection value uses the full finite Number range consistently in every r
   const normalEnd = server.indexOf('\nasync function commitOfflineNotificationMarkerIfUnchanged', normalStart);
   assert.ok(normalStart >= 0 && normalEnd > normalStart);
   const normal = server.slice(normalStart, normalEnd);
-  assert.match(normal, /s\.collectionValue = addCollectionValue\(s\.collectionValue, finalVal\)/);
-  assert.match(normal, /s\.lifetimeCollectionValue = addCollectionValue\(s\.lifetimeCollectionValue, finalVal\)/);
+  assert.match(normal, /s\.collectionValue = addCollectionValue\(s\.collectionValue, weightedFinalValue\)/);
+  assert.match(normal, /s\.lifetimeCollectionValue = addCollectionValue\(s\.lifetimeCollectionValue, weightedFinalValue\)/);
 
   const frenzyStart = server.indexOf('export async function claimOrbFrenzy');
   const frenzyEnd = server.indexOf('export async function postFrenzyThankYouComment', frenzyStart);
@@ -2017,7 +2017,7 @@ test('third lifetime Orb guarantee uses an immutable pre-batch roll count', () =
   assert.ok(start >= 0 && end > start);
   const roll = game.slice(start, end);
   assert.match(roll, /const lifetimeRollsBeforeBatch = s\.totalRolls/);
-  assert.match(roll, /forcedRarity == null && lifetimeRollsBeforeBatch \+ i === 2/);
+  assert.match(roll, /forcedRarity == null && lifetimeRollsBeforeBatch \+ virtualRollOffset === 2/);
   assert.doesNotMatch(roll, /s\.totalRolls \+ i === 2/);
 
   const shared = source('src/shared/game.ts');
@@ -2048,11 +2048,11 @@ test('critical rarity caps match the continuum ceiling and cannot downgrade high
   const applyEnd = game.indexOf('async function commitOfflineNotificationMarkerIfUnchanged', applyStart);
   assert.ok(applyStart >= 0 && applyEnd > applyStart);
   const apply = game.slice(applyStart, applyEnd);
-  assert.match(apply, /const rarityMultiplier = runeLuckMultiplier \* \(isCrit \? effectiveCm : 1\)/);
-  assert.match(apply, /criticalMultiplierAppliedBeforeFloor = isCrit/);
+  assert.match(apply, /const rarityMultiplier = runeLuckMultiplier/);
+  assert.match(apply, /criticalMultiplierAppliedBeforeFloor = true/);
   assert.match(apply, /const rawCritRarity = isCrit && !criticalMultiplierAppliedBeforeFloor/);
   assert.match(apply, /if \(isCrit && \(!Number\.isFinite\(rawCritRarity\) \|\| rawCritRarity > MAX_ORB_RARITY\)\) isInfinityOrb = true/);
-  assert.match(apply, /effectiveCm = cm \* 5/);
+  assert.match(apply, /const supernovaMultiplier = criticalMultiplier \* 5/);
   assert.match(shared, /effectiveCm = cm \* 5/);
   assert.doesNotMatch(game, /Math\.min\(1_000_000_000_000_000, Math\.round\((?:baseRarity|data\.rarity)/);
 
@@ -2075,9 +2075,9 @@ test('the rarity continuum can sample and display its full finite Infinity ceili
   assert.match(game, /function serverRarityRandom\(\): number/);
   assert.match(game, /new Uint32Array\(34\)/);
   assert.match(game, /bitLength - 1088/);
-  assert.match(game, /rollContinuum\(\s*effectiveLuck,\s*randomOverride \?\? serverRarityRandom,\s*rarityMultiplier,\s*rarityFloor,\s*Math\.max\(1, Math\.floor\(Number\(s\.level\) \|\| 1\)\),\s*\)/s);
-  assert.match(game, /const rarityMultiplier = runeLuckMultiplier \* \(isCrit \? effectiveCm : 1\)/);
-  assert.match(game, /const rarityFloor = isCrit \? runeRarityFloor \* effectiveCm : runeRarityFloor/);
+  assert.match(game, /rollContinuum\(\s*sampleLuck,\s*randomOverride \?\? serverRarityRandom,\s*rarityMultiplier,\s*rarityFloor/);
+  assert.match(game, /const rarityMultiplier = runeLuckMultiplier/);
+  assert.match(game, /const rarityFloor = runeRarityFloor \* maxCategoryMultiplier/);
 });
 
 
@@ -2220,8 +2220,8 @@ test('applyRolls preflights lifetime roll-counter capacity before shared reads a
 
   const errorIndex = applyRolls.indexOf('Roll counter would exceed the safe integer range');
   const sharedReadsIndex = applyRolls.indexOf('const [freshGlobalBoosters, worldEvent, fakeCcuBonus, combatStateRaw] = await Promise.all([');
-  const loopIndex = applyRolls.indexOf('for (let i = 0; i < rollCount; i++)');
-  const incrementIndex = applyRolls.indexOf('s.totalRolls++');
+  const loopIndex = applyRolls.indexOf('for (let i = 0; i < simulationLoopCount; i++)');
+  const incrementIndex = applyRolls.indexOf('s.totalRolls += sampleWeight');
 
   assert.ok(errorIndex >= 0, 'counter capacity guard must exist');
   assert.ok(sharedReadsIndex > errorIndex, 'guard must run before shared Redis-backed reads');
