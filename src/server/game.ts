@@ -190,15 +190,13 @@ async function loadPlayerCollectionPages(
   userId: string,
   generation: number,
   pageIds: string[],
-): Promise<{ collection: Record<string, number>; pages: string[] }> {
+): Promise<{ collection: Record<string, number>; pages: string[]; pageIds: string[] }> {
   if (!Array.isArray(pageIds) || pageIds.length > PLAYER_COLLECTION_MAX_PAGES ||
       !pageIds.every(id => typeof id === 'string' && /^[a-f0-9]{64}$/.test(id))) {
     throw new Error('Your Codex page index is invalid. No changes were applied.');
   }
   if (pageIds.length === 0) {
-    return { collection: Object.create(null) as Record<string, number>, pages: [], pageIds: [] } as {
-      collection: Record<string, number>; pages: string[];
-    };
+    return { collection: Object.create(null) as Record<string, number>, pages: [], pageIds: [] };
   }
   const keys = pageIds.map(id => playerCollectionPageKey(userId, generation, id));
   const rawPages = await readInBatches(keys, batch => redis.mGet(batch), 16, 4);
@@ -220,7 +218,7 @@ async function loadPlayerCollectionPages(
     }
     pages.push(raw);
   }
-  return { collection, pages };
+  return { collection, pages, pageIds };
 }
 
 function getPendingSaveExtraWrite(s: PlayerState, keyName: string): SaveExtraWrite | undefined {
@@ -2740,7 +2738,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     ? await loadPlayerCollectionPages(
         userId,
         generation,
-        Array.isArray(storedPageIdsValue) ? storedPageIdsValue as string[] : [],
+        storedPageIdsValue as string[],
       )
     : {
         // Legacy saves keep the complete Codex in the player value. The next
