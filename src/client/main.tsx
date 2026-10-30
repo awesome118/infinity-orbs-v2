@@ -537,8 +537,8 @@ function App() {
   const [newBestModalData, setNewBestModalData] = useState<{ orb: Orb; prevBest: number } | null>(null);
   const [frenzyRunTriggered, setFrenzyRunTriggered] = useState(false);
   const [showFrenzyCalculating, setShowFrenzyCalculating] = useState(false);
-  const [frenzyProgress, setFrenzyProgress] = useState<{ active: boolean; processed: number; total: number; percent: number }>({
-    active: false, processed: 0, total: 0, percent: 0,
+  const [frenzyProgress, setFrenzyProgress] = useState<{ active: boolean; processed: number; total: number; percent: number; approximate: boolean }>({
+    active: false, processed: 0, total: 0, percent: 0, approximate: false,
   });
   const [frenzyArmed, setFrenzyArmed] = useState(false);
   const [showFrenzyPrompt, setShowFrenzyPrompt] = useState(false);
@@ -1181,6 +1181,10 @@ function App() {
     let frenzyProgressPollInFlight = false;
     let activeFrenzyPostId: string | null = null;
     let activeFrenzyAttemptId: string | null = null;
+    let frenzyClaimStartedAt = 0;
+    let lastProgressProcessed = 0;
+    let lastProgressUpdatedAt = 0;
+    let estimatedOrbsPerMs = 0;
     const stopFrenzyProgressPolling = () => {
       if (frenzyProgressInterval !== null) {
         window.clearInterval(frenzyProgressInterval);
@@ -1206,12 +1210,49 @@ function App() {
           progress.attemptId !== activeFrenzyAttemptId
         ) return;
         if (componentMountedRef.current) {
-          setFrenzyProgress(current => ({
-            active: progress.active === true,
-            processed: Math.max(current.processed, Math.max(0, Math.floor(Number(progress.processed) || 0))),
-            total: Math.max(current.total, Math.max(0, Math.floor(Number(progress.total) || 0))),
-            percent: Math.max(current.percent, Math.max(0, Math.min(100, Number(progress.percent) || 0))),
-          }));
+          const exactProcessed = Math.max(0, Math.floor(Number(progress.processed) || 0));
+          const exactTotal = Math.max(0, Math.floor(Number(progress.total) || 0));
+          const updatedAt = Math.max(0, Math.floor(Number(progress.updatedAt) || 0));
+          if (updatedAt > lastProgressUpdatedAt && exactProcessed > lastProgressProcessed) {
+            const elapsed = lastProgressUpdatedAt > 0
+              ? updatedAt - lastProgressUpdatedAt
+              : updatedAt - frenzyClaimStartedAt;
+            const gained = lastProgressUpdatedAt > 0
+              ? exactProcessed - lastProgressProcessed
+              : exactProcessed;
+            if (elapsed > 0 && gained > 0) {
+              const measuredRate = gained / elapsed;
+              estimatedOrbsPerMs = estimatedOrbsPerMs > 0
+                ? estimatedOrbsPerMs * 0.35 + measuredRate * 0.65
+                : measuredRate;
+            }
+            lastProgressProcessed = exactProcessed;
+            lastProgressUpdatedAt = updatedAt;
+          }
+          const checkpointWindow = Math.max(1, Math.ceil(exactTotal / 40));
+          const elapsedSinceUpdate = updatedAt > 0 ? Math.max(0, Date.now() - updatedAt) : 0;
+          const estimatedAdvance = estimatedOrbsPerMs > 0
+            ? Math.floor(estimatedOrbsPerMs * elapsedSinceUpdate)
+            : 0;
+          const displayedProcessed = Math.min(
+            exactTotal,
+            exactProcessed + Math.min(checkpointWindow, estimatedAdvance),
+          );
+          const approximate = displayedProcessed > exactProcessed;
+          setFrenzyProgress(current => {
+            const visibleProcessed = Math.max(current.processed, displayedProcessed);
+            return {
+              active: progress.completed !== true,
+              processed: visibleProcessed,
+              total: Math.max(current.total, exactTotal),
+              percent: progress.completed
+                ? 100
+                : Math.max(current.percent, exactTotal > 0
+                  ? Math.min(95, Math.floor((visibleProcessed / exactTotal) * 95))
+                  : Math.max(0, Math.min(95, Number(progress.percent) || 0))),
+              approximate: visibleProcessed > exactProcessed,
+            };
+          });
         }
       } catch {
         // Progress is display-only; keep the claim moving if polling is unavailable.
@@ -1272,20 +1313,18 @@ function App() {
       setFrenzyRunTriggered(true);
       setBusy(true);
       setIsRolling(true);
-      setShowFrenzyCalculating(false);
+      setShowFrenzyCalculating(true);
       activeFrenzyPostId = claimedFrenzyInfo?.postId ?? null;
       activeFrenzyAttemptId = window.crypto?.randomUUID?.()
         ?? `frenzy-${Date.now().toString(36)}-${Math.floor(window.performance.now() * 1000).toString(36)}`;
-      setFrenzyProgress({ active: true, processed: 0, total: 0, percent: 0 });
+      setFrenzyProgress({ active: true, processed: 0, total: 0, percent: 0, approximate: false });
+      frenzyClaimStartedAt = Date.now();
+      lastProgressProcessed = 0;
+      lastProgressUpdatedAt = 0;
+      estimatedOrbsPerMs = 0;
+      frenzyCalculatingShownAt = frenzyClaimStartedAt;
       void refreshFrenzyProgress();
       frenzyProgressInterval = window.setInterval(() => { void refreshFrenzyProgress(); }, 250);
-      frenzyCalculatingShownAt = 0;
-      if (frenzyCalculatingTimeout !== null) window.clearTimeout(frenzyCalculatingTimeout);
-      // Delay the full-screen treatment so quick claims keep their current flow.
-      frenzyCalculatingTimeout = window.setTimeout(() => {
-        frenzyCalculatingShownAt = Date.now();
-        if (componentMountedRef.current) setShowFrenzyCalculating(true);
-      }, FRENZY_CALCULATING_DELAY_MS);
 
       // Claim exactly once per attempt. A retry requires a fresh user action
       // because a failed HTTP response cannot prove the server did not commit.
@@ -1306,6 +1345,7 @@ function App() {
         processed: finalFrenzyCount,
         total: finalFrenzyCount,
         percent: 100,
+        approximate: false,
       });
       if (frenzyCalculatingTimeout !== null) {
         window.clearTimeout(frenzyCalculatingTimeout);
@@ -1375,7 +1415,7 @@ function App() {
         activeFrenzyPostId = null;
         activeFrenzyAttemptId = null;
         if (!componentMountedRef.current) return;
-        setFrenzyProgress({ active: false, processed: 0, total: 0, percent: 0 });
+        setFrenzyProgress({ active: false, processed: 0, total: 0, percent: 0, approximate: false });
         setShowFrenzyCalculating(false);
         setIsRolling(false);
         setBusy(false);
@@ -3528,7 +3568,7 @@ function App() {
               <div className="io-frenzy-progress-meta">
                 <span>
                   {frenzyProgress.total > 0
-                    ? `${formatNumber(frenzyProgress.processed)} / ${formatNumber(frenzyProgress.total)} ORBS`
+                    ? `${frenzyProgress.approximate ? '~' : ''}${formatNumber(frenzyProgress.processed)} / ${formatNumber(frenzyProgress.total)} ORBS`
                     : 'PREPARING ROLLS'}
                 </span>
                 <strong>{Math.round(Math.max(0, Math.min(100, frenzyProgress.percent)))}%</strong>

@@ -2320,6 +2320,25 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
 }
 
 // Multi roll upgrade is strictly LINEAR (+1 ball per level), plus multiple sources of +1 ball!
+export const BULK_ROLL_SAMPLE_TARGET = 50_000;
+export const MAX_BULK_ROLL_SIMULATION_SCALE = 100;
+
+/**
+ * Returns the number of real Orbs represented by each simulated Orb.
+ * A 500,000-Orb batch therefore simulates 50,000 Orbs with a 10x sample scale.
+ */
+export function bulkRollSimulationScale(actualRollCount: number): number {
+  const count = Number(actualRollCount);
+  if (!Number.isFinite(count) || count <= BULK_ROLL_SAMPLE_TARGET) return 1;
+  return Math.max(
+    1,
+    Math.min(
+      MAX_BULK_ROLL_SIMULATION_SCALE,
+      Math.ceil(count / BULK_ROLL_SAMPLE_TARGET),
+    ),
+  );
+}
+
 export function rollsPerActivation(s: PlayerState): number {
   let balls = 1;
   // 1. Standard Multi upgrade: linear +1 ball per level
