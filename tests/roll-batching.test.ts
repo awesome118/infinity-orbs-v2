@@ -25,6 +25,7 @@ test('500,000 effective Orbs are simulated as 50,000 samples at 100x Luck', () =
   assert.equal(plan.simulatedBaseCount, 50_000);
   assert.equal(plan.simulatedBaseCount * plan.compressionWeight, 500_000);
   assert.equal(plan.compressionWeight * plan.compressionWeight, 100);
+  assert.ok(plan.simulatedBaseCount <= MAX_SIMULATED_ROLLS_PER_BATCH);
   assert.equal(MAX_SIMULATED_ROLLS_PER_BATCH, 50_000);
   assert.equal(MAX_EFFECTIVE_ROLLS_PER_BATCH, 500_000);
 });
