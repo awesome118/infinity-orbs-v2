@@ -84,6 +84,7 @@ const PLAYER_REGISTRY_KEY = key('player-registry');
 const GUILD_CHAT_MUTES_KEY = key('guild-chat-mutes:v1');
 const GUILD_TOKEN_RESET_KEY = key('guild-token-reset:v1');
 const GUILD_UPGRADE_RESET_KEY = key('guild-upgrade-reset:v1');
+const GUILD_DOCUMENT_COMPACTION_KEY = key('guild-document-compaction:v1');
 /** Create collision-resistant IDs for guild, chat, and moderation receipts. */
 function createSecureId(): string {
   if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
@@ -810,6 +811,13 @@ async function ensureGuildMigrations(): Promise<void> {
   });
   await applyGuildMigration(GUILD_TOKEN_RESET_KEY, guilds => {
     for (const guild of guilds) guild.tokens = 0;
+  });
+  // Older installations may already have the reset markers but still contain
+  // oversized chat histories. Compact those existing production documents once.
+  // The serializer truncates only chat and preserves members, perks, tasks and boss state.
+  await applyGuildMigration(GUILD_DOCUMENT_COMPACTION_KEY, () => {
+    // serializeGuildsForRedis performs deterministic bounded chat compaction
+    // in the same WATCH/MULTI transaction as this migration marker.
   });
 }
 
@@ -2971,7 +2979,7 @@ export async function recordLeaderboard(s: PlayerState) {
     sharedAt: source.lastShareAt,
     stateRevision: Math.max(0, Math.floor(Number(source.stateRevision ?? 0)) || 0),
     highestDryStreak: Math.max(source.highestDryStreak ?? 0, source.rollsSinceBest ?? 0),
-    chainLength: highestCodexChain(source.collection),
+    chainLength: Math.max(0, Math.floor(Number(source.codexChain ?? highestCodexChain(source.collection)) || 0)),
     playtimeMs: Math.max(0, Number(registry?.playtimeMs ?? 0) || 0),
   };
 
