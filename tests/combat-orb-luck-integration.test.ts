@@ -8,7 +8,7 @@ import { createInitialState } from '../src/shared/game.js';
 function fixedLuckSample(): () => number {
   // No crit; don't trigger the new-player third-orb guarantee; use a sample
   // close enough to a rarity boundary that a modest Luck multiplier is visible.
-  const samples = [0.99, 0.99, 1 / 100.5, 0.99];
+  const samples = [0.99, 0.99, 1 / 2.9, 0.99];
   let index = 0;
   return () => samples[Math.min(index++, samples.length - 1)]!;
 }
