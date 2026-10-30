@@ -65,8 +65,8 @@ test('large low-probability proc counts stay within valid binomial bounds', () =
   assert.ok(successes >= 400 && successes <= 600, 'unexpected proc count: ' + successes);
   assert.equal(sampleBinomialCount(500, 0, rng), 0);
   assert.equal(sampleBinomialCount(500, 1, rng), 500);
-  assert.equal(sampleBinomialCount(10, 0.5, () => 0), 0);
-  assert.equal(sampleBinomialCount(10, 0.5, () => 1), 10);
+  assert.equal(sampleBinomialCount(10, 0.5, () => 0), 10);
+  assert.equal(sampleBinomialCount(10, 0.5, () => 1), 0);
   assert.equal(sampleBinomialCount(10, 0.9, () => 0), 10);
   assert.equal(sampleBinomialCount(10, 0.9, () => 1), 0);
 });
