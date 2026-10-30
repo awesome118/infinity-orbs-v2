@@ -1,5 +1,5 @@
 import { redis, context, reddit } from './devvit-mock.js';
-import { readInBatches } from './redis-batches.js';
+import { readInBatches, serializeJsonArrayWithinByteLimit } from './redis-batches.js';
 import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import { preparePlayerStateForRedisWrite } from './player-collection-storage.js';
 import * as notificationsModule from '@devvit/notifications';
@@ -475,9 +475,14 @@ async function appendSaveDebugLog(
       if (entries.length > SAVE_DEBUG_LOG_LIMIT) {
         entries = entries.slice(-SAVE_DEBUG_LOG_LIMIT);
       }
+      const serialized = serializeJsonArrayWithinByteLimit(entries, 24_000, 'last');
+      if (serialized == null) {
+        await txn.unwatch().catch(() => undefined);
+        return;
+      }
 
       await txn.multi();
-      await txn.set(SAVE_DEBUG_LOG_KEY, JSON.stringify(entries));
+      await txn.set(SAVE_DEBUG_LOG_KEY, serialized);
       const committed = await txn.exec();
       if (committed !== null) return;
     }
@@ -594,9 +599,14 @@ export async function appendPlayerSpyLog(
       if (entries.length > PLAYER_SPY_LOG_LIMIT) {
         entries = entries.slice(-PLAYER_SPY_LOG_LIMIT);
       }
+      const serialized = serializeJsonArrayWithinByteLimit(entries, 24_000, 'last');
+      if (serialized == null) {
+        await txn.unwatch().catch(() => undefined);
+        return;
+      }
 
       await txn.multi();
-      await txn.set(logKey, JSON.stringify(entries));
+      await txn.set(logKey, serialized);
       const committed = await txn.exec();
       if (committed !== null) return;
     }
@@ -672,9 +682,14 @@ export async function appendPaymentDebugLog(stage: string, details: Record<strin
       if (entries.length > PAYMENT_DEBUG_LOG_LIMIT) {
         entries = entries.slice(-PAYMENT_DEBUG_LOG_LIMIT);
       }
+      const serialized = serializeJsonArrayWithinByteLimit(entries, 24_000, 'last');
+      if (serialized == null) {
+        await txn.unwatch().catch(() => undefined);
+        return;
+      }
 
       await txn.multi();
-      await txn.set(PAYMENT_DEBUG_LOG_KEY, JSON.stringify(entries));
+      await txn.set(PAYMENT_DEBUG_LOG_KEY, serialized);
       const committed = await txn.exec();
       if (committed !== null) return;
     }
