@@ -99,15 +99,15 @@ export const DynamicOrbRoll: React.FC<Props> = ({
         aria-disabled={busy}
         onClick={onClick}
         onKeyDown={onKeyDown}
-        className={`io-main-orb relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 ${cosmeticEffectClass} ${busy ? 'is-dynamic-rolling' : isRevealing ? 'scale-105 ring-4 ring-white/60' : 'hover:scale-102'}`}
+        className={`io-main-orb relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 ${cosmeticEffectClass} ${isSpinning ? 'is-dynamic-rolling' : isRevealing ? 'scale-105 ring-4 ring-white/60' : 'hover:scale-102'}`}
         style={{
           background: stageInfo
             ? stageInfo.bgGradient
             : 'radial-gradient(circle at 35% 30%, #6366f1, #312e81 65%, #0f172a)',
-          borderColor: busy && stageInfo ? stageInfo.color : undefined,
+          borderColor: isSpinning && stageInfo ? stageInfo.color : undefined,
         }}
       >
-        {!busy && children}
+        {!isSpinning && children}
 
         {/* Subtle Inner Glass Ring */}
         <div className="absolute inset-2 rounded-full border border-white/20 pointer-events-none" />
