@@ -1314,8 +1314,31 @@ const TIER_COLORS: Record<RarityTierName, { color: string; bgGradient: string }>
   },
 };
 
+export function normalizeCoinAmount(value: unknown, fallback = 0): number {
+  const safeFallback = Number.isFinite(fallback) && fallback >= 0
+    ? Math.min(Number.MAX_VALUE, Math.floor(fallback))
+    : 0;
+  const numeric = Number(value);
+  if (numeric === Number.POSITIVE_INFINITY) return Number.MAX_VALUE;
+  if (!Number.isFinite(numeric) || numeric < 0) return safeFallback;
+  return Math.min(Number.MAX_VALUE, Math.floor(numeric));
+}
+
+/** Add whole Coin amounts while saturating only at the largest finite JS Number. */
+export function addCoinAmount(current: unknown, increment: unknown): number {
+  const balance = normalizeCoinAmount(current);
+  const gain = normalizeCoinAmount(increment);
+  const sum = balance + gain;
+  return Number.isFinite(sum) ? Math.min(Number.MAX_VALUE, sum) : Number.MAX_VALUE;
+}
+
 export function formatNumber(value: number): string {
-  const safe = Math.max(0, Number(value) || 0);
+  const raw = Number(value);
+  const safe = Number.isNaN(raw) || raw < 0
+    ? 0
+    : raw === Number.POSITIVE_INFINITY
+      ? Number.MAX_VALUE
+      : raw;
   if (safe > 100_000_000) {
     const exponent = Math.floor(Math.log10(safe));
     const mantissa = safe / Math.pow(10, exponent);
@@ -2542,8 +2565,12 @@ export function offlineRollCap(s: PlayerState): number {
 export const AUTO_BUYER_COIN_RESERVE = 50;
 
 export function coinsForRarity(rarity: number): number {
-  if (rarity <= 1) return 1;
-  return Math.max(1, Math.round(Math.pow(rarity, 0.68)));
+  const safeRarity = Number(rarity);
+  if (Number.isNaN(safeRarity) || safeRarity <= 1) return 1;
+  if (safeRarity === Number.POSITIVE_INFINITY) return Number.MAX_VALUE;
+  if (!Number.isFinite(safeRarity)) return 1;
+  const value = Math.pow(safeRarity, 0.68);
+  return Number.isFinite(value) ? Math.max(1, Math.round(value)) : Number.MAX_VALUE;
 }
 
 /**
@@ -2700,28 +2727,28 @@ export function predictRollActivation(
   rarities.sort((a, b) => b - a);
   const topCoins = Math.round(coinsForRarity(rarities[0] ?? 2));
   const extraCoins = rarities.slice(1).reduce(
-    (sum, rarity) => sum + Math.max(1, Math.round(coinsForRarity(rarity) * 0.20)),
+    (sum, rarity) => addCoinAmount(sum, Math.max(1, Math.round(coinsForRarity(rarity) * 0.20))),
     0,
   );
-  let coinsGained = Math.round(
-    (topCoins + extraCoins) *
+  let coinsGained = normalizeCoinAmount(Math.round(
+    addCoinAmount(topCoins, extraCoins) *
     levelBenefits.coinsMultiplier *
     (1 + (s.upgrades.coinBonus ?? 0) * 0.15) *
     (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
     (1 + (s.guildPerks?.coinRank ?? 0) * 0.10),
-  );
+  ));
 
   const lowRarityCoins = rarities
     .filter(rarity => rarity < 100)
     .reduce((sum, rarity) => sum + Math.max(1, Math.round(coinsForRarity(rarity))), 0);
 
   if ((s.prestigeUpgrades?.autoFilter ?? 0) > 0 && lowRarityCoins > 0) {
-    coinsGained += Math.round(lowRarityCoins * 0.25);
+    coinsGained = addCoinAmount(coinsGained, Math.round(lowRarityCoins * 0.25));
   }
 
   const transLevel = s.prestigeUpgrades?.transmutation ?? 0;
   if (transLevel > 0) {
-    coinsGained += Math.round(lowRarityCoins * (transLevel * 0.15));
+    coinsGained = addCoinAmount(coinsGained, Math.round(lowRarityCoins * (transLevel * 0.15)));
     for (let i = 0; i < rollCount; i++) {
       if (rng() < 0.00025 * transLevel) shardsGained = roundShardAmount(shardsGained + 1);
     }
@@ -2730,8 +2757,8 @@ export function predictRollActivation(
   if (isPremiumBoosterActive(s, 'ascension')) {
     xpGained *= 10;
   }
-  s.coins += coinsGained;
-  s.lifetimeCoins = (s.lifetimeCoins ?? 0) + coinsGained;
+  s.coins = addCoinAmount(s.coins, coinsGained);
+  s.lifetimeCoins = addCoinAmount(s.lifetimeCoins ?? 0, coinsGained);
   // Match the authoritative uncapped whole-number wallet and overflow handling in predictions.
   shardsGained = grantRollShards(s, shardsGained, predictionNow);
   s.xp += xpGained;
@@ -2798,19 +2825,11 @@ export function upgradeCost(id: UpgradeId, level: number): number {
 }
 
 /**
- * Add collection value without allowing JS Number precision loss to corrupt the
- * player's persisted current-run or lifetime total. Values are monotonic until
- * the current-run total is reset by Prestige; at the safe-integer ceiling they
- * saturate instead of drifting into imprecise or non-finite state.
+ * Collection values share the game's full finite-number range. Saturate only
+ * when IEEE-754 addition would overflow, never at the safe-integer boundary.
  */
 export function addCollectionValue(current: unknown, increment: unknown): number {
-  const bounded = (value: unknown): number => {
-    if (typeof value !== 'number' || Number.isNaN(value) || value < 0) return 0;
-    if (value === Number.POSITIVE_INFINITY) return Number.MAX_SAFE_INTEGER;
-    if (!Number.isFinite(value)) return 0;
-    return Math.min(Number.MAX_SAFE_INTEGER, Math.floor(value));
-  };
-  return Math.min(Number.MAX_SAFE_INTEGER, bounded(current) + bounded(increment));
+  return addCoinAmount(current, increment);
 }
 
 /**
