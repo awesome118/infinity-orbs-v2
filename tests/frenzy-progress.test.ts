@@ -24,3 +24,13 @@ test('Frenzy progress is claimant-scoped and updated after bounded server batche
   assert.match(app, /app\.get\('\/api\/frenzy\/progress'/);
   assert.match(app, /claimOrbFrenzy\(\{ attemptId \}\)/);
 });
+
+
+test('Frenzy progress reports the exact logical Orb count throughout compressed processing', () => {
+  const main = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
+  const server = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  assert.match(main, /formatNumber\(frenzyProgress\.processed\).*formatNumber\(frenzyProgress\.total\).*ORBS/s);
+  assert.match(server, /processedLogicalRolls \+= groupWeight/);
+  assert.match(server, /await onProgress\(Math\.min\(requestedRollCount, processedLogicalRolls\)\)/);
+  assert.match(server, /progressTargetUpdates = Math\.min\(500/);
+});
