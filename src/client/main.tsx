@@ -1179,6 +1179,7 @@ function App() {
     let frenzyCalculatingShownAt = 0;
     let frenzyProgressInterval: number | null = null;
     let frenzyProgressPollInFlight = false;
+    let activeFrenzyPostId: string | null = null;
     const stopFrenzyProgressPolling = () => {
       if (frenzyProgressInterval !== null) {
         window.clearInterval(frenzyProgressInterval);
@@ -1190,12 +1191,14 @@ function App() {
       frenzyProgressPollInFlight = true;
       try {
         const progress = await getJson<{
+          postId: string | null;
           active: boolean;
           processed: number;
           total: number;
           percent: number;
           completed: boolean;
         }>('/api/frenzy/progress');
+        if (progress.postId !== activeFrenzyPostId) return;
         if (componentMountedRef.current) {
           setFrenzyProgress(current => ({
             active: progress.active === true,
@@ -1264,6 +1267,7 @@ function App() {
       setBusy(true);
       setIsRolling(true);
       setShowFrenzyCalculating(false);
+      activeFrenzyPostId = claimedFrenzyInfo?.postId ?? null;
       setFrenzyProgress({ active: true, processed: 0, total: 0, percent: 0 });
       void refreshFrenzyProgress();
       frenzyProgressInterval = window.setInterval(() => { void refreshFrenzyProgress(); }, 250);
@@ -1356,6 +1360,7 @@ function App() {
         if (frenzyCalculatingTimeout !== null) window.clearTimeout(frenzyCalculatingTimeout);
         frenzyCalculatingTimeout = null;
         frenzyClaimActiveRef.current = false;
+        activeFrenzyPostId = null;
         if (!componentMountedRef.current) return;
         setFrenzyProgress({ active: false, processed: 0, total: 0, percent: 0 });
         setShowFrenzyCalculating(false);
