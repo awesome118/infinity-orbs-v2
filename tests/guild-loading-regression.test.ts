@@ -7,9 +7,10 @@ const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf
 
 test('Guild and world-event polling use independent in-flight locks', () => {
   const main = source('src/client/main.tsx');
-  const start = main.indexOf('const refreshCommunityState = () =>');
-  const end = main.indexOf('\n    const onVisibilityChange', start);
-  assert.ok(start >= 0 && end > start, 'community polling effect must exist');
+  const refreshStart = main.indexOf('const refreshCommunityState = () =>');
+  const start = main.lastIndexOf('useEffect(() => {', refreshStart);
+  const end = main.indexOf('\n    const onVisibilityChange', refreshStart);
+  assert.ok(refreshStart >= 0 && start >= 0 && end > refreshStart, 'community polling effect must exist');
   const poll = main.slice(start, end);
   assert.match(poll, /let worldEventInFlight = false/);
   assert.match(poll, /let guildInFlight = false/);
