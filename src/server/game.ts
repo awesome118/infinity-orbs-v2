@@ -3698,7 +3698,7 @@ export async function applyRolls(
   const batchPlan = createRollBatchPlan(
     baseBatchRollCount,
     protectedOpeningCount,
-    source !== 'offline',
+    source !== 'offline' && forcedRarity == null,
   );
   let simulationLoopCount = batchPlan.simulatedBaseCount;
   let processedEffectiveRolls = 0;
