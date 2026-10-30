@@ -3942,9 +3942,7 @@ export async function applyRolls(
     addGroupRarity(String(criticalRewardRarity), criticalOtherCount);
     if (hasDistinctGroupMaximum) addGroupRarity(topRarityKey, 1);
     const newlyDiscoveredGroupRarities = [...groupRarityCounts.keys()].filter(key => !s.collection[key]);
-    const isNew = hasDistinctGroupMaximum
-      ? newlyDiscoveredGroupRarities.includes(topRarityKey)
-      : newlyDiscoveredGroupRarities.includes(String(criticalRewardRarity));
+    const isNew = newlyDiscoveredGroupRarities.includes(topRarityKey);
     const groupNewRarity = newlyDiscoveredGroupRarities.length > 0;
     for (const [key, count] of groupRarityCounts) {
       s.collection[key] = (s.collection[key] ?? 0) + count;
