@@ -6787,11 +6787,28 @@ export async function claimOrbFrenzy(options: {
   let remainingCount = count;
   await writeFrenzyClaimProgress(claimantId, postId, attemptId, count, 0, false);
 
-  // Keep each normal RNG batch bounded. Frenzy's displayed payout is exact,
-  // so effects that add extra Orbs are disabled for this source.
+  // Work in at most 500,000 effective-Orb batches. applyRolls compresses each
+  // batch to at most 50,000 representative samples and reports exact weighted progress.
+  let lastProgressWriteAt = 0;
   while (remainingCount > 0) {
-    const chunkCount = Math.min(5_000, remainingCount);
-    const result = await applyRolls(s, 1, undefined, 'frenzy', chunkCount);
+    const chunkCount = Math.min(MAX_EFFECTIVE_ROLLS_PER_BATCH, remainingCount);
+    const result = await applyRolls(
+      s,
+      1,
+      undefined,
+      'frenzy',
+      chunkCount,
+      undefined,
+      false,
+      async chunkProcessed => {
+        const absoluteProcessed = Math.min(count, processedCount + chunkProcessed);
+        const nowForProgress = Date.now();
+        if (absoluteProcessed >= count || nowForProgress - lastProgressWriteAt >= 100) {
+          lastProgressWriteAt = nowForProgress;
+          await writeFrenzyClaimProgress(claimantId, postId, attemptId, count, absoluteProcessed, false);
+        }
+      },
+    );
     const candidate = result.bestOrb;
     if (
       !bestOrb ||
