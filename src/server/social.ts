@@ -46,6 +46,40 @@ function isAdminUsername(value: unknown): boolean {
 }
 const key = (name: string) => `io:${name}`;
 const GUILDS_KEY = key('guilds');
+const GUILD_DOCUMENT_MAX_CHARS = 48_000;
+
+function serializeGuildsForRedis(guilds: Guild[]): string {
+  // Keep this shared JSON document below the Redis RPC request-size ceiling.
+  // Membership, upgrades, tasks, and boss state are preserved; only chat history
+  // is compacted, oldest-first, when the storage budget requires it.
+  for (const guild of guilds) {
+    const chat = Array.isArray(guild.chat) ? guild.chat : [];
+    guild.chat = chat.slice(-12).map(message => ({
+      ...message,
+      text: String(message.text ?? '').slice(0, 400),
+    }));
+  }
+  let serialized = JSON.stringify(guilds);
+  while (serialized.length > GUILD_DOCUMENT_MAX_CHARS) {
+    let oldestGuild: Guild | null = null;
+    let oldestTimestamp = Number.POSITIVE_INFINITY;
+    for (const guild of guilds) {
+      const first = guild.chat?.[0];
+      const timestamp = Number(first?.timestamp ?? Number.POSITIVE_INFINITY);
+      if (first && timestamp < oldestTimestamp) {
+        oldestTimestamp = timestamp;
+        oldestGuild = guild;
+      }
+    }
+    if (!oldestGuild?.chat?.length) break;
+    oldestGuild.chat.shift();
+    serialized = JSON.stringify(guilds);
+  }
+  if (serialized.length > GUILD_DOCUMENT_MAX_CHARS) {
+    throw new Error('Guild data has exceeded its safe storage size. Guild progression was not changed; contact a moderator to repair the registry.');
+  }
+  return serialized;
+}
 const PLAYER_REGISTRY_KEY = key('player-registry');
 const GUILD_CHAT_MUTES_KEY = key('guild-chat-mutes:v1');
 const GUILD_TOKEN_RESET_KEY = key('guild-token-reset:v1');
@@ -741,7 +775,7 @@ async function applyGuildMigration(
         migrate(guilds);
 
         await txn.multi();
-        await txn.set(GUILDS_KEY, JSON.stringify(guilds));
+        await txn.set(GUILDS_KEY, serializeGuildsForRedis(guilds));
         await txn.set(markerKey, '1');
         const committed = await txn.exec();
         transactionClosed = true;
@@ -793,7 +827,7 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
         const guilds: Guild[] = parseGuildList(raw);
         const result = await mutator(guilds);
         await txn.multi();
-        await txn.set(GUILDS_KEY, JSON.stringify(guilds));
+        await txn.set(GUILDS_KEY, serializeGuildsForRedis(guilds));
         const committed = await txn.exec();
         transactionClosed = true;
         if (committed !== null) return result;
@@ -840,7 +874,7 @@ async function loadGuilds(): Promise<Guild[]> {
     typeof raw === 'string' &&
     Array.isArray(parsedSnapshot)
   ) {
-    const recoveredRaw = JSON.stringify(guilds);
+    const recoveredRaw = serializeGuildsForRedis(guilds);
     if (recoveredRaw !== raw) {
       try {
         await withGuildDataMutationLock(async () => {
@@ -906,7 +940,7 @@ async function loadGuilds(): Promise<Guild[]> {
 
         normalizeGuilds(latest, Date.now());
         await txn.multi();
-        await txn.set(GUILDS_KEY, JSON.stringify(latest));
+        await txn.set(GUILDS_KEY, serializeGuildsForRedis(latest));
         const committed = await txn.exec();
         transactionClosed = true;
         if (committed !== null) return latest;
@@ -2848,7 +2882,7 @@ export async function leaderboards(): Promise<import('../shared/social.js').Lead
       ),
       currentDryStreak: Math.max(0, Number(save.rollsSinceBest ?? 0) || 0),
       playtimeMs,
-      chainLength: highestCodexChain(save.collection),
+      chainLength: Math.max(0, Math.floor(Number(save.codexChain ?? highestCodexChain(save.collection)) || 0)),
       bestDepth: Math.max(
         combatHighestDepthReached(combatSave),
         Math.max(0, Number(legacy?.bestDepth ?? 0) || 0),
