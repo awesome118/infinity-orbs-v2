@@ -4052,8 +4052,6 @@ export async function applyRolls(
     // New-player hype: the third Orb this account ever rolls is guaranteed
     // to land in the 1/101 through 1/120 range. It cannot crit upward, so the
     // guarantee is the exact advertised range.
-    const isGuaranteedThirdBall = forcedRarity == null && lifetimeRollsBeforeBatch + i === 2;
-
     // Chain Patcher guarantees the exact requested rarity, not a critical multiplier.
     const supernovaLevel = s.prestigeUpgrades?.supernova ?? 0;
     const supernovaChancePerCrit = Math.min(1, Math.max(0, supernovaLevel * 0.10));
@@ -4132,8 +4130,8 @@ export async function applyRolls(
         rarityFloor,
         Math.max(1, Math.floor(Number(s.level) || 1)),
       );
-      // A compressed sample represents a group maximum. Avoid promoting the
-      // whole group to Infinity merely because the scaled sample crossed the cap.
+      // The scaled sample represents the group's maximum, so overflow means
+      // the maximum Orb would exceed the finite rarity ceiling.
       isInfinityOrb = !Number.isFinite(rawRolledRarity) || rawRolledRarity > MAX_ORB_RARITY;
       rolledRarity = Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY,
         Number.isFinite(rawRolledRarity) ? rawRolledRarity : MAX_ORB_RARITY));
