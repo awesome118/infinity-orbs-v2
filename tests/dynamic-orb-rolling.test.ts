@@ -42,6 +42,11 @@ test('dynamic reel is cosmetic and only uses the real Orb after the request comp
   assert.doesNotMatch(preview, /Math\.random/);
   assert.match(rollSection, /<DynamicOrbRoll/);
   assert.match(rollSection, /orb=\{displayOrb\}/);
+  const css = source('src/client/styles.css');
+  assert.match(css, /\.io-main-orb\.is-dynamic-rolling/);
+  assert.match(css, /\.io-rolling-orbit/);
+  assert.match(css, /\.io-rolling-orb-counter/);
+  assert.match(css, /\.io-main-orb\.is-dynamic-rolling, \.io-rolling-orbit, \.io-rolling-orb-counter \{ animation: none !important;/);
 });
 
 test('rolling visual does not create a server result or touch roll rewards', () => {
