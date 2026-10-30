@@ -164,6 +164,170 @@ function normalizeRecoverableGuildMemberFields(guild: Record<string, unknown>): 
   });
 }
 
+
+/**
+ * Conservatively recover non-authoritative Guild progress and presentation fields.
+ * Stable Guild IDs, member IDs, and member roles are deliberately untouched and
+ * remain subject to strict validation below. Recovery only reduces malformed
+ * values or regenerates temporary/projection data so one bad nested field cannot
+ * make every Guild unavailable.
+ */
+function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index: number): void {
+  const clampInteger = (value: unknown, minimum: number, maximum: number, fallback: number): number => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+    return Math.min(maximum, Math.max(minimum, Math.floor(value)));
+  };
+  const nonEmptyText = (value: unknown, fallback: string): string =>
+    typeof value === 'string' && value.trim() ? value.trim() : fallback;
+
+  // These are progression counters, not identity or authorization fields.
+  // Invalid values fall back downward; finite values are floored and capped.
+  guild.name = nonEmptyText(guild.name, 'Recovered Guild ' + (index + 1));
+  guild.tag = nonEmptyText(guild.tag, 'REC' + (index + 1));
+  guild.level = clampInteger(guild.level, 1, Number.MAX_SAFE_INTEGER, 1);
+  guild.xp = clampInteger(guild.xp, 0, Number.MAX_SAFE_INTEGER, 0);
+  guild.tokens = clampInteger(guild.tokens, 0, Number.MAX_SAFE_INTEGER, 0);
+  if (!Number.isSafeInteger(guild.createdAt) || Number(guild.createdAt) < 0) {
+    guild.createdAt = Date.now();
+  }
+  if (guild.taskCompletions != null) {
+    guild.taskCompletions = clampInteger(guild.taskCompletions, 0, Number.MAX_SAFE_INTEGER, 0);
+  }
+
+  // A malformed challenge is only a projection of the first task and is rebuilt
+  // from the normalized task list later in normalizeGuilds().
+  if (guild.challenge != null) {
+    const challenge = guild.challenge;
+    if (!isRecordValue(challenge) || !['rolls', 'value', 'rare'].includes(String(challenge.type))) {
+      delete guild.challenge;
+    } else {
+      const target = clampInteger(challenge.target, 1, Number.MAX_SAFE_INTEGER, 1);
+      guild.challenge = {
+        type: challenge.type,
+        target,
+        progress: clampInteger(challenge.progress, 0, target, 0),
+        reward: clampInteger(challenge.reward, 1, Number.MAX_SAFE_INTEGER, 1),
+        label: nonEmptyText(challenge.label, 'Recovered Guild challenge'),
+      };
+    }
+  }
+
+  // Perks are bounded ranks. Bad rank metadata is reset to zero, never increased.
+  const perkCaps: Record<string, number> = {
+    luckRank: 10,
+    speedRank: 10,
+    vaultRank: 10,
+    shardRank: 10,
+    critRank: 10,
+    coinRank: 10,
+    memberCapacityRank: 40,
+    tokenYieldRank: 20,
+    taskBountyRank: 20,
+    comboRank: 10,
+    guildXpRank: 20,
+  };
+  if (guild.perks != null) {
+    if (!isRecordValue(guild.perks)) {
+      delete guild.perks;
+    } else {
+      for (const [rank, cap] of Object.entries(perkCaps)) {
+        if (guild.perks[rank] != null) {
+          guild.perks[rank] = clampInteger(guild.perks[rank], 0, cap, 0);
+        }
+      }
+    }
+  }
+
+  // Combo values are temporary bonuses/timers. Invalid fields safely decay to zero.
+  if (guild.combo != null) {
+    if (!isRecordValue(guild.combo)) {
+      delete guild.combo;
+    } else {
+      guild.combo.tier = clampInteger(guild.combo.tier, 0, GUILD_COMBO_MAX_TIER, 0);
+      guild.combo.activationProgress = clampInteger(guild.combo.activationProgress, 0, 3, 0);
+      guild.combo.endsAt = clampInteger(guild.combo.endsAt, 0, Number.MAX_SAFE_INTEGER, 0);
+      guild.combo.lastTickAt = clampInteger(guild.combo.lastTickAt, 0, Number.MAX_SAFE_INTEGER, 0);
+    }
+  }
+
+  // Tasks are regenerated only where their non-authoritative fields are malformed.
+  // Cap the tier before createGuildTask() so exponential target math stays finite.
+  if (guild.tasks != null) {
+    if (!Array.isArray(guild.tasks)) {
+      delete guild.tasks;
+    } else if (guild.tasks.length >= 3) {
+      guild.tasks = guild.tasks.slice(0, 3).map((value: unknown, taskIndex: number) => {
+        const task = isRecordValue(value) ? value : {};
+        const type: GuildTask['type'] = ['rolls', 'value', 'rare'].includes(String(task.type))
+          ? String(task.type) as GuildTask['type']
+          : generatedFallbackTaskType(taskIndex);
+        const tier = clampInteger(task.tier, 1, 70, 1);
+        const generated = createGuildTask(type, tier, guild.level);
+        const target = clampInteger(task.target, 1, Number.MAX_SAFE_INTEGER, generated.target);
+        return {
+          id: nonEmptyText(task.id, generated.id),
+          type,
+          tier,
+          target,
+          progress: clampInteger(task.progress, 0, Number.MAX_SAFE_INTEGER, 0),
+          reward: clampInteger(task.reward, 1, Number.MAX_SAFE_INTEGER, generated.reward),
+          guildXpReward: clampInteger(task.guildXpReward, 1, Number.MAX_SAFE_INTEGER, generated.guildXpReward),
+          label: nonEmptyText(task.label, generated.label),
+        };
+      });
+    }
+  }
+
+  // Chat is cosmetic/moderation context, not progression or membership state.
+  // Keep valid recent messages and omit malformed optional metadata.
+  if (guild.chat != null) {
+    if (!Array.isArray(guild.chat)) {
+      delete guild.chat;
+    } else {
+      guild.chat = guild.chat
+        .filter((value: unknown): value is Record<string, unknown> =>
+          isRecordValue(value) &&
+          typeof value.id === 'string' && !!value.id.trim() &&
+          typeof value.username === 'string' && !!value.username.trim() &&
+          typeof value.text === 'string' && !!value.text.trim() &&
+          Number.isSafeInteger(value.timestamp) && Number(value.timestamp) >= 0,
+        )
+        .slice(-50)
+        .map((message: Record<string, unknown>) => ({
+          id: message.id,
+          username: message.username,
+          text: message.text,
+          timestamp: message.timestamp,
+          ...(typeof message.userId === 'string' ? { userId: message.userId } : {}),
+          ...(typeof message.isSystem === 'boolean' ? { isSystem: message.isSystem } : {}),
+        }));
+    }
+  }
+
+  // A malformed current-week boss is temporary encounter state. Drop only that
+  // encounter; normalizeGuilds() creates a fresh boss without changing the Guild.
+  if (guild.boss != null && guild.bossWeek === weekKey()) {
+    const boss = guild.boss;
+    const validBoss =
+      isRecordValue(boss) &&
+      typeof boss.id === 'string' && !!boss.id.trim() &&
+      typeof boss.name === 'string' && !!boss.name.trim() &&
+      Number.isSafeInteger(boss.tier) && Number(boss.tier) >= 1 &&
+      typeof boss.maxHp === 'number' && Number.isFinite(boss.maxHp) && boss.maxHp > 0 &&
+      typeof boss.currentHp === 'number' && Number.isFinite(boss.currentHp) &&
+      boss.currentHp >= 0 && boss.currentHp <= boss.maxHp &&
+      typeof boss.defeated === 'boolean' &&
+      isRecordValue(boss.contributors) &&
+      Object.values(boss.contributors).every(value =>
+        typeof value === 'number' && Number.isFinite(value) && value >= 0
+      );
+    if (!validBoss) {
+      delete guild.boss;
+      delete guild.bossWeek;
+    }
+  }
+}
+
 function validateGuildNestedState(guild: Record<string, unknown>): void {
   const invalid = (field = 'unknown nested field') =>
     new Error(`Guild data contains malformed nested state; refusing to replace it. Guild ${String(guild.id ?? 'unknown')} field: ${field}.`);
@@ -475,10 +639,13 @@ function parseGuildListRaw(raw: unknown): Guild[] {
       .filter(isRecordValue)
       .map((item, index) => recoverGuildRecordForPlaytest(item, index));
   }
-  for (const item of parsed) {
-    // Repair only recoverable, non-authoritative member metadata. Identity and
-    // role corruption remains a hard failure in the structural checks below.
-    if (isRecordValue(item)) normalizeRecoverableGuildMemberFields(item);
+  for (const [index, item] of parsed.entries()) {
+    // Repair only non-authoritative member/progression metadata. Stable Guild IDs,
+    // member IDs, and member roles remain strict and are never synthesized.
+    if (isRecordValue(item)) {
+      normalizeRecoverableGuildMemberFields(item);
+      normalizeRecoverableGuildNestedFields(item, index);
+    }
     if (
       !item || typeof item !== 'object' || Array.isArray(item) ||
       typeof (item as any).id !== 'string' ||

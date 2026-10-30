@@ -1,5 +1,11 @@
 # Infinity Orbs Changelog
 
+### Guild Recovery and Polling Reliability (2.1.19)
+
+- Recover malformed non-authoritative Guild task, perk, combo, challenge, chat, and temporary boss data before strict validation. Guild IDs, member IDs, and member roles remain strict.
+- Poll Guild data independently from world-event requests so a slow or unavailable event endpoint cannot block Guild refreshes.
+- Preserve the last valid Guild snapshot on load failures and expose retry diagnostics.
+
 ### Finite-Range Coins and Live Frenzy Progress (2.1.18)
 
 - Removed the safe-integer ceiling from Coin balances, lifetime Coins, Coin rewards, and collection value; these values now use the full finite JavaScript Number range through approximately 1.7977e308.

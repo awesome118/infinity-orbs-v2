@@ -1067,18 +1067,30 @@ function App() {
     if (!splashEntered) return;
     const pollInterval = tab === 'social' ? 3000 : 8000;
     let cancelled = false;
-    let inFlight = false;
-    const refreshCommunityState = async () => {
-      if (!splashEntered) return;
-      if (inFlight) return;
-      if (document.visibilityState === 'hidden') return;
-      inFlight = true;
-      try {
-        // World-event failures must never short-circuit Guild loading.
-        const we = await getJson<WorldEvent | null>('/api/world-event').catch(() => null);
-        if (cancelled) return;
-        setWorldEvent(we);
-        if (tab === 'social') {
+    let worldEventInFlight = false;
+    let guildInFlight = false;
+    const refreshCommunityState = () => {
+      if (!splashEntered || document.visibilityState === 'hidden') return;
+
+      // Keep the two requests on independent polling lanes. A slow or stuck
+      // world-event request must never lock out later Guild refreshes.
+      if (!worldEventInFlight) {
+        worldEventInFlight = true;
+        void (async () => {
+          try {
+            const we = await getJson<WorldEvent | null>('/api/world-event');
+            if (!cancelled) setWorldEvent(we);
+          } catch {
+            if (!cancelled) setWorldEvent(null);
+          } finally {
+            worldEventInFlight = false;
+          }
+        })();
+      }
+
+      if (tab === 'social' && !guildInFlight) {
+        guildInFlight = true;
+        void (async () => {
           try {
             const gd = await getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds', { cache: 'no-store' });
             if (!cancelled) {
@@ -1086,15 +1098,14 @@ function App() {
               setGuildLoadError(null);
             }
           } catch (error) {
-            // Preserve the last successful guild snapshot rather than replacing it with
-            // empty arrays when a transient request or server-side validation fails.
+            // Preserve the last successful Guild snapshot while exposing a retryable error.
             if (!cancelled) {
               setGuildLoadError(error instanceof Error ? error.message : 'Guild data could not be loaded.');
             }
+          } finally {
+            guildInFlight = false;
           }
-        }
-      } finally {
-        inFlight = false;
+        })();
       }
     };
     const onVisibilityChange = () => { if (document.visibilityState === 'visible') void refreshCommunityState(); };
