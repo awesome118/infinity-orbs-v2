@@ -77,7 +77,9 @@ test('server uses weighted sample counts for Luck, player totals, XP, Coins, and
   assert.match(apply, /const compressedGroup = sampleWeight > 1/);
   assert.match(apply, /Math\.floor\(baseRarity \/ sampleWeight\)/);
   assert.match(apply, /s\.totalRolls \+= sampleWeight/);
-  assert.match(apply, /xpForBaseOrb \* sampleWeight/);
+  assert.match(apply, /xpForBaseOrb \* ordinaryGroupCount/);
+  assert.match(apply, /xpForCriticalOrb \* criticalOtherCount/);
+  assert.match(apply, /const criticalOtherCount = Math\.min\(/);
   assert.match(apply, /extraCoinsEstimate = addCoinAmount/);
   assert.match(apply, /extraCoinsForGroupMaximum = Math\.max\(1, Math\.round\(coinsForRarity\(rarity\) \* 0\.20\)\)/);
   assert.match(apply, /rarities\.push\(rarity\);\s*rarityWeights\.push\(1\)/);
