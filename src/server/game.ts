@@ -221,6 +221,22 @@ async function loadPlayerCollectionPages(
   return { collection, pages, pageIds };
 }
 
+async function deleteObsoletePlayerCollectionPages(
+  userId: string,
+  generation: number,
+  previousPageIds: string[],
+  nextPageIds: string[],
+): Promise<void> {
+  const retained = new Set(nextPageIds);
+  const obsolete = previousPageIds
+    .filter(id => !retained.has(id))
+    .map(id => playerCollectionPageKey(userId, generation, id));
+  // DEL payloads are tiny (keys only); keep batches bounded too.
+  for (let index = 0; index < obsolete.length; index += 32) {
+    await redis.del(...obsolete.slice(index, index + 32));
+  }
+}
+
 function getPendingSaveExtraWrite(s: PlayerState, keyName: string): SaveExtraWrite | undefined {
   return pendingSaveExtraWrites.get(s)?.find(item => item.key === keyName);
 }
@@ -1325,7 +1341,7 @@ const FRENZY_POST_RECEIPT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const FRENZY_HANDOFF_PREFIX = 'io:frenzy:handoff:';
 const FRENZY_HANDOFF_TTL_MS = 60_000;
 const FRENZY_CLAIM_PROGRESS_PREFIX = 'io:frenzy:claim-progress:';
-const FRENZY_CLAIM_PROGRESS_TTL_MS = 3 * 60_000;
+const FRENZY_CLAIM_PROGRESS_TTL_MS = 15 * 60_000;
 const FRENZY_THANK_YOU_PREFIX = 'io:frenzy:thank-you:';
 
 function frenzyHandoffKey(userId: string): string {
@@ -2734,19 +2750,29 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
   }
 
   const storedPageIdsValue = (parsed as PlayerState & { collectionPageIds?: unknown }).collectionPageIds;
-  const pagedCollection = storedPageIdsValue != null
-    ? await loadPlayerCollectionPages(
-        userId,
-        generation,
-        storedPageIdsValue as string[],
-      )
-    : {
-        // Legacy saves keep the complete Codex in the player value. The next
-        // successful mutation migrates it to content-addressed bounded pages.
-        collection: isValidCollection(parsed.collection) ? parsed.collection : createInitialState().collection,
-        pages: [] as string[],
-        pageIds: [] as string[],
-      };
+  let pagedCollection: { collection: Record<string, number>; pages: string[]; pageIds: string[] };
+  if (storedPageIdsValue != null) {
+    try {
+      pagedCollection = await loadPlayerCollectionPages(userId, generation, storedPageIdsValue as string[]);
+    } catch (error) {
+      // A concurrent save can switch the main record to new immutable page IDs
+      // while this read is fetching the previous page set. Retry only when the
+      // authoritative player value changed; do not hide genuine missing/corrupt data.
+      const latestRaw = await redis.get(playerKey);
+      if (latestRaw != null && latestRaw !== raw) {
+        return loadRaw({ ...options, registerActivity: false });
+      }
+      throw error;
+    }
+  } else {
+    // Legacy saves keep the complete Codex in the player value. The next
+    // successful mutation migrates it to content-addressed bounded pages.
+    pagedCollection = {
+      collection: isValidCollection(parsed.collection) ? parsed.collection : createInitialState().collection,
+      pages: [] as string[],
+      pageIds: [] as string[],
+    };
+  }
   const base = createInitialState();
   const cleanParsed = { ...(parsed as PlayerState & Record<string, unknown>), collection: pagedCollection.collection };
   const normalizedPurchasedShards = Math.min(
@@ -3558,6 +3584,18 @@ export async function save(
         pageIds: collectionPageIds,
         pages: collectionPages,
       });
+      try {
+        await deleteObsoletePlayerCollectionPages(
+          userId,
+          generation,
+          previousCollectionSnapshot.pageIds,
+          collectionPageIds,
+        );
+      } catch (error) {
+        // Cleanup is best-effort after the new page manifest is durable. A
+        // leftover page is harmless and can be reclaimed on the next save.
+        console.warn('[Player Save] Could not remove obsolete Codex pages:', error);
+      }
 
       // Optional projections are deliberately outside the authoritative player
       // transaction. They can lag briefly or be skipped on conflicts, but they
@@ -3987,7 +4025,7 @@ export async function applyRolls(
   let bestGroupIndex = 0;
   let bestPayoutRarity = 2;
   const progressUpdateEvery = source === 'frenzy' && onProgress
-    ? Math.max(1, Math.floor(baseBatchRollCount / 200))
+    ? Math.max(1, Math.ceil(baseBatchRollCount / 100))
     : Number.MAX_SAFE_INTEGER;
   const validCharge = (value: unknown) => Number.isFinite(Number(value)) ? Math.min(1_000_000, Math.max(0, Number(value))) : 0;
   s.runeConstellationCharge = validCharge(s.runeConstellationCharge);
