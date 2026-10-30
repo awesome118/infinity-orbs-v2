@@ -4180,15 +4180,13 @@ export async function applyRolls(
       (1 + runeBonuses.xpGainPct / 100);
     const earnedXp = Math.min(Number.MAX_SAFE_INTEGER, Math.round(Math.min(300, 12 + Math.floor(Math.log10(payoutRarity + 1) * 12)) * xpBonusMul)) * groupWeight;
 
-    // High rarity is not a guaranteed Shard source. All repeatable Orb earnings are proc-based.
+    // High rarity is not a guaranteed Shard source. Compressed groups use an
+    // unbiased expected-proc sampler so the total payout scales with represented
+    // Orbs rather than with the smaller number of RNG samples.
     let earnedShards = 0;
     const shardTitheChance = Math.min(0.000125, Math.max(0, runeAbilityEffects.shardTithePerRoll) * 0.5);
-    if (!suppressOtherRuneProcs && shardTitheChance > 0 && rng() < shardTitheChance) earnedShards += 1;
     // Dry-Streak Refinery converts its former fractional drip into a reduced chance for one whole Shard.
     const dryRefineryChance = Math.min(0.000125, Math.floor(Math.max(0, s.rollsSinceBest ?? 0) / 100) * Math.max(0, runeAbilityEffects.dryStreakRefineryRate) * 0.5);
-    if (!suppressOtherRuneProcs && dryRefineryChance > 0 && rng() < dryRefineryChance) earnedShards += 1;
-
-    // Shard Chance upgrade + Mastery + Guild perk proc
     const shardProcChance = Math.min(
       ROLL_SHARD_PROC_CHANCE_CAP,
       ((s.upgrades.shardChance ?? 0) * 0.0015 +
@@ -4198,13 +4196,31 @@ export async function applyRolls(
       levelBenefits.shardChance +
       Math.min(100, runeBonuses.shardChancePct) / 100) * 0.025
     );
-    const shardProcTriggered = rng() < shardProcChance;
-    earnedShards += resolveShardPityReward(s, shardProcTriggered);
-    // Multiple low-probability effects cannot stack into a large per-Orb payout.
-    // Jackpot is the one exception: a successful proc may turn one Shard into two.
-    earnedShards = Math.min(1, earnedShards);
-    if (earnedShards > 0 && !suppressOtherRuneProcs && shardJackpotChance > 0 && rng() < shardJackpotChance) {
-      earnedShards = Math.min(2, Math.round(earnedShards * (1 + runeAbilityEffects.shardJackpotExtraMultiplier)));
+    if (groupWeight === 1) {
+      if (!suppressOtherRuneProcs && shardTitheChance > 0 && rng() < shardTitheChance) earnedShards += 1;
+      if (!suppressOtherRuneProcs && dryRefineryChance > 0 && rng() < dryRefineryChance) earnedShards += 1;
+      const shardProcTriggered = rng() < shardProcChance;
+      earnedShards += resolveShardPityReward(s, shardProcTriggered);
+      earnedShards = Math.min(1, earnedShards);
+      if (earnedShards > 0 && !suppressOtherRuneProcs && shardJackpotChance > 0 && rng() < shardJackpotChance) {
+        earnedShards = Math.min(2, Math.round(earnedShards * (1 + runeAbilityEffects.shardJackpotExtraMultiplier)));
+      }
+    } else {
+      if (!suppressOtherRuneProcs) {
+        earnedShards += sampleExpectedEventCount(shardTitheChance, groupWeight, rng);
+        earnedShards += sampleExpectedEventCount(dryRefineryChance, groupWeight, rng);
+      }
+      const shardProcCount = sampleExpectedEventCount(shardProcChance, groupWeight, rng);
+      const pityReward = resolveShardPityReward(s, shardProcCount > 0);
+      earnedShards += Math.max(0, shardProcCount - (shardProcCount > 0 ? 1 : 0)) + pityReward;
+      earnedShards = Math.min(groupWeight, earnedShards);
+      if (earnedShards > 0 && !suppressOtherRuneProcs && shardJackpotChance > 0) {
+        const jackpots = sampleExpectedEventCount(shardJackpotChance, earnedShards, rng);
+        earnedShards = Math.min(
+          groupWeight,
+          earnedShards + Math.round(jackpots * runeAbilityEffects.shardJackpotExtraMultiplier),
+        );
+      }
     }
 
     shardsGained = Math.round(shardsGained + earnedShards);
@@ -4224,7 +4240,7 @@ export async function applyRolls(
     // Temporal Loop charges on every real roll, then releases a bounded bonus batch.
     if (temporalMomentumPerRoll > 0) {
       const dryStreakMomentum = Math.min(5, Math.log2(Math.max(1, s.rollsSinceBest + 1)) * .25);
-      s.runeTemporalMomentum = Math.min(1_000_000, validCharge(s.runeTemporalMomentum) + temporalMomentumPerRoll + dryStreakMomentum);
+      s.runeTemporalMomentum = Math.min(1_000_000, validCharge(s.runeTemporalMomentum) + (temporalMomentumPerRoll + dryStreakMomentum) * groupWeight);
       if (source !== 'frenzy' && !temporalLoopTriggered && !suppressOtherRuneProcs && s.runeTemporalMomentum >= 100) {
         s.runeTemporalMomentum -= 100;
         addRuneBonusRolls(runeAbilityEffects.temporalLoopBonusRolls, { skipAllProcs: true });
@@ -4262,13 +4278,24 @@ export async function applyRolls(
   // true number of Orbs represented, never the reduced sample count.
   rollCount = logicalRollCount;
 
-  // Balanced Gold progression: top rolled orb gives 100% coins; extra orbs in multi-roll give 20% bonus coins
-  rarities.sort((a, b) => b - a);
-  const topCoins = Math.round(coinsForRarity(rarities[0]));
-  const extraCoins = rarities.slice(1).reduce(
-    (acc, r) => addCoinAmount(acc, Math.max(1, Math.round(coinsForRarity(r) * 0.20))),
-    0,
-  );
+  // Balanced Gold progression: one representative best Orb pays 100%; every
+  // other represented Orb contributes its usual 20% Coin share.
+  const topCoins = Math.round(coinsForRarity(bestPayoutRarity));
+  let extraCoins = 0;
+  let lowRarityCoins = 0;
+  for (let index = 0; index < rarities.length; index++) {
+    const rarity = rarities[index];
+    const weight = Math.max(1, rarityWeights[index] ?? 1);
+    const extraCount = Math.max(0, weight - (index === bestGroupIndex ? 1 : 0));
+    if (extraCount > 0) {
+      const perOrbExtra = Math.max(1, Math.round(coinsForRarity(rarity) * 0.20));
+      extraCoins = addCoinAmount(extraCoins, Math.min(Number.MAX_VALUE, perOrbExtra * extraCount));
+    }
+    if (rarity < 100) {
+      const perOrbCoins = Math.max(1, Math.round(coinsForRarity(rarity)));
+      lowRarityCoins = addCoinAmount(lowRarityCoins, Math.min(Number.MAX_VALUE, perOrbCoins * weight));
+    }
+  }
   coinsGained = addCoinAmount(topCoins, extraCoins);
 
   // Level passives and other coin modifiers stack multiplicatively by source.
@@ -4280,10 +4307,6 @@ export async function applyRolls(
     (1 + runeBonuses.coinGainPct / 100);
   coinsGained = normalizeCoinAmount(Math.round(coinsGained * coinBonusMul));
 
-  const lowRarityCoins = rarities
-    .filter(r => r < 100)
-    .reduce((sum, r) => sum + Math.max(1, Math.round(coinsForRarity(r))), 0);
-
   // Singularity Filter: +25% only to Common/Uncommon coin yield.
   const hasFilter = (s.prestigeUpgrades?.autoFilter ?? 0) > 0;
   if (hasFilter && lowRarityCoins > 0) {
@@ -4294,11 +4317,15 @@ export async function applyRolls(
   const transLevel = s.prestigeUpgrades?.transmutation ?? 0;
   if (transLevel > 0) {
     coinsGained = addCoinAmount(coinsGained, Math.round(lowRarityCoins * (transLevel * 0.15)));
-    for (let i = 0; i < rollCount; i++) {
-      if (rng() < 0.00025 * transLevel) {
-        shardsGained += 1;
-      }
-    }
+    shardsGained += compressionFactor === 1
+      ? (() => {
+          let procCount = 0;
+          for (let i = 0; i < rollCount; i++) {
+            if (rng() < 0.00025 * transLevel) procCount += 1;
+          }
+          return procCount;
+        })()
+      : sampleExpectedEventCount(0.00025 * transLevel, rollCount, rng);
   }
 
   // Offline Fortune only modifies rewards generated from the offline vault.
@@ -4348,7 +4375,7 @@ export async function applyRolls(
 
   // Rich EXP Level Progression. Normal roll activations deliberately advance
   // at most one level at a time, while applyXp/quest rewards can catch up safely.
-  applyLevelProgress(s, 1);
+  applyLevelProgress(s, Math.min(1000, Math.max(1, Math.ceil(rollCount / 5_000))));
 
   // Count only successfully processed online roll batches as an active session;
   // offline-vault rolls don't fabricate a continuous play session.
