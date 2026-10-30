@@ -6538,6 +6538,7 @@ export async function getOrbFrenzyInfo(): Promise<{
 }
 
 export async function getOrbFrenzyClaimProgress(): Promise<{
+  postId: string | null;
   active: boolean;
   processed: number;
   total: number;
@@ -6557,7 +6558,7 @@ export async function getOrbFrenzyClaimProgress(): Promise<{
     !Number.isSafeInteger(progress.updatedAt) ||
     progress.updatedAt < 0
   ) {
-    return { active: false, processed: 0, total: 0, percent: 0, completed: false };
+    return { postId: null, active: false, processed: 0, total: 0, percent: 0, completed: false };
   }
   const completed = progress.completed === true;
   const processed = Math.min(progress.total, progress.processed);
@@ -6567,7 +6568,7 @@ export async function getOrbFrenzyClaimProgress(): Promise<{
       ? Math.min(95, Math.floor((processed / progress.total) * 95))
       : 0;
   const active = !completed && Date.now() - progress.updatedAt <= FRENZY_CLAIM_PROGRESS_TTL_MS;
-  return { active, processed, total: progress.total, percent, completed };
+  return { postId: progress.postId, active, processed, total: progress.total, percent, completed };
 }
 
 export async function claimOrbFrenzy(options: {
