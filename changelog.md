@@ -1,5 +1,11 @@
 # Infinity Orbs Changelog
 
+### Large Frenzy Stack-Safety Fix (2.1.23)
+
+- Replace spread-based minimum/maximum calculations over rarity samples with an iterative scan, preventing call-stack errors on large Frenzy claims.
+- Add regression coverage for 100,000 rarity samples and empty input.
+
+
 ### Weighted Large-Batch Rolling (2.1.21)
 
 - Compress large online Multi Roll and Frenzy batches to at most 50,000 weighted representative samples per 500,000 effective Orbs, plus up to three exact starter-guarantee Orbs.
