@@ -58,6 +58,7 @@ import {
 import {
   cooldownMs,
   createInitialState,
+  addCoinAmount,
   calculateLevelFromXp,
   COSMETICS_LIST,
   PRESTIGE_UPGRADES,
@@ -2078,7 +2079,10 @@ debugRouter.post('/currency', async (req, res) => {
       await withPlayerMutationLock(async () => {
     const { coins = 0, shards = 0, dust = 0 } = req.body || {};
     const s = await loadRaw();
-    s.coins = Math.max(0, s.coins + finiteInteger(coins));
+    const coinDelta = finiteInteger(coins);
+    s.coins = coinDelta >= 0
+      ? addCoinAmount(s.coins, coinDelta)
+      : Math.max(0, s.coins + coinDelta);
     s.shards = Math.max(0, (s.shards ?? 0) + finiteInteger(shards));
     s.cosmicDust = Math.max(0, (s.cosmicDust ?? 0) + finiteInteger(dust));
     await save(s);
