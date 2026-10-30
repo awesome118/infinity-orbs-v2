@@ -1180,7 +1180,7 @@ function App() {
     let frenzyProgressInterval: number | null = null;
     let frenzyProgressPollInFlight = false;
     let activeFrenzyPostId: string | null = null;
-    let activeFrenzyClaimStartedAt = 0;
+    let activeFrenzyAttemptId: string | null = null;
     const stopFrenzyProgressPolling = () => {
       if (frenzyProgressInterval !== null) {
         window.clearInterval(frenzyProgressInterval);
@@ -1193,6 +1193,7 @@ function App() {
       try {
         const progress = await getJson<{
           postId: string | null;
+          attemptId: string | null;
           updatedAt: number | null;
           active: boolean;
           processed: number;
@@ -1202,8 +1203,7 @@ function App() {
         }>('/api/frenzy/progress');
         if (
           progress.postId !== activeFrenzyPostId ||
-          progress.updatedAt == null ||
-          progress.updatedAt < activeFrenzyClaimStartedAt
+          progress.attemptId !== activeFrenzyAttemptId
         ) return;
         if (componentMountedRef.current) {
           setFrenzyProgress(current => ({
@@ -1274,7 +1274,8 @@ function App() {
       setIsRolling(true);
       setShowFrenzyCalculating(false);
       activeFrenzyPostId = claimedFrenzyInfo?.postId ?? null;
-      activeFrenzyClaimStartedAt = Date.now();
+      activeFrenzyAttemptId = window.crypto?.randomUUID?.()
+        ?? `frenzy-${Date.now().toString(36)}-${Math.floor(window.performance.now() * 1000).toString(36)}`;
       setFrenzyProgress({ active: true, processed: 0, total: 0, percent: 0 });
       void refreshFrenzyProgress();
       frenzyProgressInterval = window.setInterval(() => { void refreshFrenzyProgress(); }, 250);
@@ -1289,7 +1290,11 @@ function App() {
       // Claim exactly once per attempt. A retry requires a fresh user action
       // because a failed HTTP response cannot prove the server did not commit.
       const res = await enqueueMutation(() =>
-        getJson<RollResponse>('/api/frenzy/claim', { method: 'POST' }),
+        getJson<RollResponse>('/api/frenzy/claim', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ attemptId: activeFrenzyAttemptId }),
+        }),
       );
 
       if (!componentMountedRef.current) return;
@@ -1368,7 +1373,7 @@ function App() {
         frenzyCalculatingTimeout = null;
         frenzyClaimActiveRef.current = false;
         activeFrenzyPostId = null;
-        activeFrenzyClaimStartedAt = 0;
+        activeFrenzyAttemptId = null;
         if (!componentMountedRef.current) return;
         setFrenzyProgress({ active: false, processed: 0, total: 0, percent: 0 });
         setShowFrenzyCalculating(false);
