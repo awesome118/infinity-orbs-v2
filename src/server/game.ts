@@ -150,13 +150,18 @@ const PLAYER_COLLECTION_PAGE_PREFIX = 'io:player-collection:v1:';
 const PLAYER_COLLECTION_PAGE_CHARS = 18_000;
 const PLAYER_COLLECTION_MAX_PAGES = 256;
 interface PlayerCollectionStorageSnapshot {
-  pageCount: number;
+  pageIds: string[];
   pages: string[];
 }
 const playerCollectionStorageSnapshots = new WeakMap<PlayerState, PlayerCollectionStorageSnapshot>();
 
-function playerCollectionPageKey(userId: string, generation: number, pageIndex: number): string {
-  return PLAYER_COLLECTION_PAGE_PREFIX + encodeURIComponent(userId) + ':' + generation + ':' + pageIndex;
+function playerCollectionPageKey(userId: string, generation: number, pageId: string): string {
+  return PLAYER_COLLECTION_PAGE_PREFIX + encodeURIComponent(userId) + ':' + generation + ':' + pageId;
+}
+
+async function playerCollectionPageId(value: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function serializePlayerCollectionPages(collection: Record<string, number>): string[] {
@@ -184,15 +189,18 @@ function serializePlayerCollectionPages(collection: Record<string, number>): str
 async function loadPlayerCollectionPages(
   userId: string,
   generation: number,
-  pageCount: number,
+  pageIds: string[],
 ): Promise<{ collection: Record<string, number>; pages: string[] }> {
-  if (!Number.isSafeInteger(pageCount) || pageCount < 0 || pageCount > PLAYER_COLLECTION_MAX_PAGES) {
+  if (!Array.isArray(pageIds) || pageIds.length > PLAYER_COLLECTION_MAX_PAGES ||
+      !pageIds.every(id => typeof id === 'string' && /^[a-f0-9]{64}$/.test(id))) {
     throw new Error('Your Codex page index is invalid. No changes were applied.');
   }
-  if (pageCount === 0) {
-    return { collection: Object.create(null) as Record<string, number>, pages: [] };
+  if (pageIds.length === 0) {
+    return { collection: Object.create(null) as Record<string, number>, pages: [], pageIds: [] } as {
+      collection: Record<string, number>; pages: string[];
+    };
   }
-  const keys = Array.from({ length: pageCount }, (_, index) => playerCollectionPageKey(userId, generation, index));
+  const keys = pageIds.map(id => playerCollectionPageKey(userId, generation, id));
   const rawPages = await readInBatches(keys, batch => redis.mGet(batch), 16, 4);
   const collection = Object.create(null) as Record<string, number>;
   const pages: string[] = [];
@@ -402,6 +410,7 @@ function saveStatesMatchIgnoringRevision(a: PlayerState, b: PlayerState): boolea
     // save stores only the page count, not the expanded rarity dictionary.
     delete copy.collection;
     delete copy.collectionPageCount;
+    delete copy.collectionPageIds;
     delete copy.collectionStorageVersion;
     return JSON.stringify(copy);
   };
@@ -2726,16 +2735,19 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     return fresh;
   }
 
-  const storedCollectionPageCountValue = (parsed as PlayerState & { collectionPageCount?: unknown }).collectionPageCount;
-  const storedCollectionPageCount = storedCollectionPageCountValue == null ? 0 : Number(storedCollectionPageCountValue);
-  if (!Number.isSafeInteger(storedCollectionPageCount) || storedCollectionPageCount < 0 || storedCollectionPageCount > PLAYER_COLLECTION_MAX_PAGES) {
-    throw new Error('Your Codex page index is invalid. No changes were applied.');
-  }
-  const pagedCollection = storedCollectionPageCount > 0
-    ? await loadPlayerCollectionPages(userId, generation, storedCollectionPageCount)
+  const storedPageIdsValue = (parsed as PlayerState & { collectionPageIds?: unknown }).collectionPageIds;
+  const pagedCollection = storedPageIdsValue != null
+    ? await loadPlayerCollectionPages(
+        userId,
+        generation,
+        Array.isArray(storedPageIdsValue) ? storedPageIdsValue as string[] : [],
+      )
     : {
+        // Legacy saves keep the complete Codex in the player value. The next
+        // successful mutation migrates it to content-addressed bounded pages.
         collection: isValidCollection(parsed.collection) ? parsed.collection : createInitialState().collection,
         pages: [] as string[],
+        pageIds: [] as string[],
       };
   const base = createInitialState();
   const cleanParsed = { ...(parsed as PlayerState & Record<string, unknown>), collection: pagedCollection.collection };
@@ -2865,7 +2877,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
   restored.cosmicDust = Math.min(MAX_COSMIC_DUST, restored.cosmicDust);
   playerGuildScopes.set(restored, guildId);
   playerCollectionStorageSnapshots.set(restored, {
-    pageCount: storedCollectionPageCount,
+    pageIds: pagedCollection.pageIds ?? (Array.isArray(storedPageIdsValue) ? storedPageIdsValue as string[] : []),
     pages: pagedCollection.pages,
   });
   // One-time migration: persist the new hard cap instead of only clamping its read view.
@@ -3345,15 +3357,23 @@ export async function save(
   const generationKey = saveGenerationKeyFor(userId);
   const storageGeneration = Math.max(0, Math.floor(Number(s.saveGeneration ?? 0)));
   const collectionPages = serializePlayerCollectionPages(s.collection ?? {});
-  const previousCollectionSnapshot = playerCollectionStorageSnapshots.get(s) ?? { pageCount: 0, pages: [] };
+  const collectionPageIds = await Promise.all(collectionPages.map(playerCollectionPageId));
+  const previousCollectionSnapshot = playerCollectionStorageSnapshots.get(s) ?? { pageIds: [], pages: [] };
+  const previousPageIds = new Set(previousCollectionSnapshot.pageIds);
   const collectionPageWrites = collectionPages
     .map((value, index) => ({
-      index,
-      key: playerCollectionPageKey(userId, storageGeneration, index),
+      id: collectionPageIds[index],
+      key: playerCollectionPageKey(userId, storageGeneration, collectionPageIds[index]),
       value,
-      expectedValue: previousCollectionSnapshot.pages[index] ?? null,
     }))
-    .filter(page => previousCollectionSnapshot.pages[page.index] !== page.value);
+    .filter(page => !previousPageIds.has(page.id));
+
+  // Pages are immutable/content-addressed, so writing them before the main
+  // WATCH/MULTI is safe: a failed save only leaves unreferenced pages behind.
+  // Each SET is individually small instead of one giant multi-page RPC payload.
+  for (let index = 0; index < collectionPageWrites.length; index += 4) {
+    await Promise.all(collectionPageWrites.slice(index, index + 4).map(page => redis.set(page.key, page.value)));
+  }
   await ensureRedisStringKey(generationKey, '0');
 
   let expectedRevision = Math.max(0, Math.floor(Number(s.stateRevision ?? 0)) || 0);
@@ -3384,7 +3404,6 @@ export async function save(
       playerKey,
       generationKey,
       ...extraWrites.map(write => write.key),
-      ...collectionPageWrites.map(page => page.key),
       ...activeLocks.map(item => item.key),
     ])];
     const txn = await redis.watch(...watchedKeys);
@@ -3461,15 +3480,6 @@ export async function save(
     const latestRevision = Math.max(0, Math.floor(Number(latest?.stateRevision ?? 0)) || 0);
     const saveKeyMissing = latestRaw == null;
 
-    for (const page of collectionPageWrites) {
-      const storedPage = await redis.get(page.key);
-      const actualPage = storedPage == null ? null : String(storedPage);
-      if (actualPage !== page.expectedValue) {
-        await txn.unwatch();
-        throw new Error('Your Codex changed while saving. Please retry so no rarity counts are lost.');
-      }
-    }
-
     // A missing player key is a recoverable first-save/persistence hole, not a
     // stale-write conflict. The generation key is still watched above, so a
     // concurrent write or account wipe aborts this transaction safely.
@@ -3528,15 +3538,12 @@ export async function save(
       ...playerStateWithoutCollection,
       collection: {},
       collectionStorageVersion: 1,
-      collectionPageCount: collectionPages.length,
+      collectionPageIds,
       saveGeneration: generation,
       stateRevision: expectedRevision + 1,
     };
     await txn.multi();
     await txn.set(playerKey, JSON.stringify(nextState));
-    for (const page of collectionPageWrites) {
-      await txn.set(page.key, page.value);
-    }
     for (const write of extraWrites) {
       if (write.expiration) {
         await txn.set(write.key, write.nextValue, { expiration: write.expiration });
@@ -3550,7 +3557,7 @@ export async function save(
       pendingSaveExtraWrites.delete(s);
       Object.assign(s, { ...nextState, collection: inMemoryCollection });
       playerCollectionStorageSnapshots.set(s, {
-        pageCount: collectionPages.length,
+        pageIds: collectionPageIds,
         pages: collectionPages,
       });
 
