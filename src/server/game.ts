@@ -3919,27 +3919,51 @@ export async function applyRolls(
     const baseFinalVal = Math.min(MAX_ORB_RARITY, Math.round(rewardRarity * valueMul));
     const hasDistinctGroupMaximum = isInfinityOrb || rarity !== rewardRarity;
     const baseGroupCount = Math.max(0, sampleWeight - (hasDistinctGroupMaximum ? 1 : 0));
-    const baseRarityKey = String(rewardRarity);
+    // The effective critical count is sampled independently from the group
+    // maximum. Treat one critical Orb as the maximum when it is distinct and
+    // weight the remaining critical/base Orbs separately for payout accounting.
+    const groupCriticalCount = sampleWeight > 1 ? Math.min(sampleWeight, critCountInGroup) : 0;
+    const criticalOtherCount = Math.min(
+      baseGroupCount,
+      Math.max(0, groupCriticalCount - (hasDistinctGroupMaximum && isCrit ? 1 : 0)),
+    );
+    const ordinaryGroupCount = baseGroupCount - criticalOtherCount;
+    const criticalRewardRarity = criticalOtherCount > 0
+      ? Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY, Math.round(rewardRarity * effectiveCm)))
+      : rewardRarity;
+    const criticalFinalVal = Math.min(MAX_ORB_RARITY, Math.round(criticalRewardRarity * valueMul));
     const topRarityKey = isInfinityOrb ? 'Infinity' : String(rarity);
-    const baseIsNew = baseGroupCount > 0 && !s.collection[baseRarityKey];
-    const topIsNew = hasDistinctGroupMaximum && !s.collection[topRarityKey];
-    if (baseGroupCount > 0) {
-      s.collection[baseRarityKey] = (s.collection[baseRarityKey] ?? 0) + baseGroupCount;
+    const groupRarityCounts = new Map<string, number>();
+    const addGroupRarity = (key: string, count: number) => {
+      if (count <= 0) return;
+      groupRarityCounts.set(key, (groupRarityCounts.get(key) ?? 0) + count);
+    };
+    addGroupRarity(String(rewardRarity), ordinaryGroupCount);
+    addGroupRarity(String(criticalRewardRarity), criticalOtherCount);
+    if (hasDistinctGroupMaximum) addGroupRarity(topRarityKey, 1);
+    const newlyDiscoveredGroupRarities = [...groupRarityCounts.keys()].filter(key => !s.collection[key]);
+    const isNew = hasDistinctGroupMaximum
+      ? newlyDiscoveredGroupRarities.includes(topRarityKey)
+      : newlyDiscoveredGroupRarities.includes(String(criticalRewardRarity));
+    const groupNewRarity = newlyDiscoveredGroupRarities.length > 0;
+    for (const [key, count] of groupRarityCounts) {
+      s.collection[key] = (s.collection[key] ?? 0) + count;
     }
-    if (hasDistinctGroupMaximum) {
-      s.collection[topRarityKey] = (s.collection[topRarityKey] ?? 0) + 1;
-    }
-    const isNew = topIsNew || (!hasDistinctGroupMaximum && baseIsNew);
-    const groupNewRarity = baseIsNew || topIsNew;
     const weightedFinalValue = Math.min(
       Number.MAX_VALUE,
-      baseFinalVal * baseGroupCount + (hasDistinctGroupMaximum ? finalVal : 0),
+      baseFinalVal * ordinaryGroupCount +
+        criticalFinalVal * criticalOtherCount +
+        (hasDistinctGroupMaximum ? finalVal : 0),
     );
 
     totalVal = Math.min(Number.MAX_VALUE, totalVal + weightedFinalValue);
-    if (baseGroupCount > 0) {
+    if (ordinaryGroupCount > 0) {
       rarities.push(rewardRarity);
-      rarityWeights.push(baseGroupCount);
+      rarityWeights.push(ordinaryGroupCount);
+    }
+    if (criticalOtherCount > 0) {
+      rarities.push(criticalRewardRarity);
+      rarityWeights.push(criticalOtherCount);
     }
     if (hasDistinctGroupMaximum) {
       rarities.push(rarity);
@@ -3950,22 +3974,35 @@ export async function applyRolls(
     s.collectionValue = addCollectionValue(s.collectionValue, weightedFinalValue);
     s.lifetimeCollectionValue = addCollectionValue(s.lifetimeCollectionValue, weightedFinalValue);
 
-    if (baseIsNew) uniqueGained++;
-    if (topIsNew) uniqueGained++;
+    uniqueGained += newlyDiscoveredGroupRarities.length;
     const extraCoinsForBaseOrbs = Math.max(1, Math.round(coinsForRarity(rewardRarity) * 0.20));
     extraCoinsEstimate = addCoinAmount(
       extraCoinsEstimate,
-      normalizeCoinAmount(extraCoinsForBaseOrbs * baseGroupCount),
+      normalizeCoinAmount(extraCoinsForBaseOrbs * ordinaryGroupCount),
     );
+    if (criticalOtherCount > 0) {
+      const extraCoinsForCriticalOrbs = Math.max(1, Math.round(coinsForRarity(criticalRewardRarity) * 0.20));
+      extraCoinsEstimate = addCoinAmount(
+        extraCoinsEstimate,
+        normalizeCoinAmount(extraCoinsForCriticalOrbs * criticalOtherCount),
+      );
+    }
     if (hasDistinctGroupMaximum) {
       const extraCoinsForGroupMaximum = Math.max(1, Math.round(coinsForRarity(rarity) * 0.20));
       extraCoinsEstimate = addCoinAmount(extraCoinsEstimate, extraCoinsForGroupMaximum);
     }
-    if (baseGroupCount > 0 && rewardRarity < 100) {
+    if (ordinaryGroupCount > 0 && rewardRarity < 100) {
       const lowCoinsForBaseOrbs = Math.max(1, Math.round(coinsForRarity(rewardRarity)));
       lowRarityCoinsEstimate = addCoinAmount(
         lowRarityCoinsEstimate,
-        normalizeCoinAmount(lowCoinsForBaseOrbs * baseGroupCount),
+        normalizeCoinAmount(lowCoinsForBaseOrbs * ordinaryGroupCount),
+      );
+    }
+    if (criticalOtherCount > 0 && criticalRewardRarity < 100) {
+      const lowCoinsForCriticalOrbs = Math.max(1, Math.round(coinsForRarity(criticalRewardRarity)));
+      lowRarityCoinsEstimate = addCoinAmount(
+        lowRarityCoinsEstimate,
+        normalizeCoinAmount(lowCoinsForCriticalOrbs * criticalOtherCount),
       );
     }
     if (hasDistinctGroupMaximum && rarity < 100) {
@@ -4077,12 +4114,15 @@ export async function applyRolls(
       levelBenefits.xpMultiplier *
       (1 + runeBonuses.xpGainPct / 100);
     const xpForBaseOrb = Math.round(Math.min(300, 12 + Math.floor(Math.log10(rewardRarity + 1) * 12)) * xpBonusMul);
+    const xpForCriticalOrb = Math.round(Math.min(300, 12 + Math.floor(Math.log10(criticalRewardRarity + 1) * 12)) * xpBonusMul);
     const xpForGroupMaximum = hasDistinctGroupMaximum
       ? Math.round(Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) * xpBonusMul)
-      : xpForBaseOrb;
+      : 0;
     const earnedXp = Math.min(
       Number.MAX_SAFE_INTEGER,
-      xpForBaseOrb * sampleWeight + (hasDistinctGroupMaximum ? xpForGroupMaximum - xpForBaseOrb : 0),
+      xpForBaseOrb * ordinaryGroupCount +
+        xpForCriticalOrb * criticalOtherCount +
+        xpForGroupMaximum,
     );
 
     // High rarity is not a guaranteed Shard source. All repeatable Orb earnings are proc-based.
