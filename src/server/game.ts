@@ -1241,10 +1241,53 @@ const FRENZY_CLAIM_RECEIPT_PREFIX = 'io:frenzy:claim-receipt:';
 const FRENZY_POST_RECEIPT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const FRENZY_HANDOFF_PREFIX = 'io:frenzy:handoff:';
 const FRENZY_HANDOFF_TTL_MS = 60_000;
+const FRENZY_CLAIM_PROGRESS_PREFIX = 'io:frenzy:claim-progress:';
+const FRENZY_CLAIM_PROGRESS_TTL_MS = 3 * 60_000;
 const FRENZY_THANK_YOU_PREFIX = 'io:frenzy:thank-you:';
 
 function frenzyHandoffKey(userId: string): string {
   return FRENZY_HANDOFF_PREFIX + userId;
+}
+
+function frenzyClaimProgressKey(userId: string): string {
+  return FRENZY_CLAIM_PROGRESS_PREFIX + encodeURIComponent(userId);
+}
+
+interface FrenzyClaimProgressRecord {
+  postId: string;
+  processed: number;
+  total: number;
+  updatedAt: number;
+  completed: boolean;
+}
+
+async function writeFrenzyClaimProgress(
+  userId: string,
+  postId: string,
+  total: number,
+  processed: number,
+  completed = false,
+): Promise<void> {
+  try {
+    const now = Date.now();
+    const safeTotal = Math.max(0, Math.floor(total));
+    const safeProcessed = Math.max(0, Math.min(safeTotal, Math.floor(processed)));
+    const record: FrenzyClaimProgressRecord = {
+      postId,
+      processed: safeProcessed,
+      total: safeTotal,
+      updatedAt: now,
+      completed,
+    };
+    await redis.set(
+      frenzyClaimProgressKey(userId),
+      JSON.stringify(record),
+      { expiration: new Date(now + FRENZY_CLAIM_PROGRESS_TTL_MS) },
+    );
+  } catch (error) {
+    // Progress is display-only; never let a status write cancel a valid reward.
+    console.error('[Frenzy Claim] Could not update live progress; reward processing continues.', error);
+  }
 }
 
 function frenzyClaimReceiptKey(postId: string, userId: string): string {
@@ -6494,6 +6537,39 @@ export async function getOrbFrenzyInfo(): Promise<{
   };
 }
 
+export async function getOrbFrenzyClaimProgress(): Promise<{
+  active: boolean;
+  processed: number;
+  total: number;
+  percent: number;
+  completed: boolean;
+}> {
+  const raw = await redis.get(frenzyClaimProgressKey(currentUserId()));
+  const progress = parseStoredJson<FrenzyClaimProgressRecord>(raw);
+  if (
+    !progress ||
+    typeof progress.postId !== 'string' ||
+    !Number.isSafeInteger(progress.processed) ||
+    !Number.isSafeInteger(progress.total) ||
+    progress.processed < 0 ||
+    progress.total < 0 ||
+    progress.processed > progress.total ||
+    !Number.isSafeInteger(progress.updatedAt) ||
+    progress.updatedAt < 0
+  ) {
+    return { active: false, processed: 0, total: 0, percent: 0, completed: false };
+  }
+  const completed = progress.completed === true;
+  const processed = Math.min(progress.total, progress.processed);
+  const percent = completed
+    ? 100
+    : progress.total > 0
+      ? Math.min(95, Math.floor((processed / progress.total) * 95))
+      : 0;
+  const active = !completed && Date.now() - progress.updatedAt <= FRENZY_CLAIM_PROGRESS_TTL_MS;
+  return { active, processed, total: progress.total, percent, completed };
+}
+
 export async function claimOrbFrenzy(options: {
   allowAdminTestOwner?: boolean;
   postId?: string;
@@ -6596,6 +6672,7 @@ export async function claimOrbFrenzy(options: {
   let xpGained = 0;
   let processedCount = 0;
   let remainingCount = count;
+  await writeFrenzyClaimProgress(claimantId, postId, count, 0, false);
 
   // Keep each normal RNG batch bounded. Frenzy's displayed payout is exact,
   // so effects that add extra Orbs are disabled for this source.
@@ -6619,6 +6696,7 @@ export async function claimOrbFrenzy(options: {
     xpGained = Math.min(Number.MAX_SAFE_INTEGER, xpGained + result.xpGained);
     processedCount = Math.min(Number.MAX_SAFE_INTEGER, processedCount + result.rollCount);
     remainingCount -= chunkCount;
+    await writeFrenzyClaimProgress(claimantId, postId, count, processedCount, false);
   }
 
   if (!bestOrb || processedCount !== count) {
@@ -6670,8 +6748,7 @@ export async function claimOrbFrenzy(options: {
       console.error('[Frenzy Claim] Handoff cleanup failed after durable claim:', error);
     });
   }
-
-
+  await writeFrenzyClaimProgress(claimantId, postId, count, processedCount, true);
 
   return {
     orb: bestOrb,
