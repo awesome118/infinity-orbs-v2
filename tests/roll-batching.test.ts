@@ -65,10 +65,18 @@ test('large low-probability proc counts stay within valid binomial bounds', () =
   assert.ok(successes >= 400 && successes <= 600, 'unexpected proc count: ' + successes);
   assert.equal(sampleBinomialCount(500, 0, rng), 0);
   assert.equal(sampleBinomialCount(500, 1, rng), 500);
-  assert.equal(sampleBinomialCount(10, 0.5, () => 0), 10);
-  assert.equal(sampleBinomialCount(10, 0.5, () => 1), 0);
+  assert.equal(sampleBinomialCount(10, 0.5, () => 0), 0);
+  assert.equal(sampleBinomialCount(10, 0.5, () => 1), 10);
   assert.equal(sampleBinomialCount(10, 0.9, () => 0), 10);
   assert.equal(sampleBinomialCount(10, 0.9, () => 1), 0);
+  const distributionRng = seededRandom(987654321);
+  let distributionTotal = 0;
+  const distributionSamples = 20_000;
+  for (let index = 0; index < distributionSamples; index++) {
+    distributionTotal += sampleBinomialCount(10, 0.3, distributionRng);
+  }
+  const sampledMean = distributionTotal / distributionSamples;
+  assert.ok(Math.abs(sampledMean - 3) < 0.08, 'small-group binomial mean should remain close to n*p: ' + sampledMean);
 });
 
 test('server uses weighted sample counts for Luck, player totals, XP, Coins, and progress', () => {
