@@ -32,7 +32,7 @@ test('player save migration preserves full legacy Codex data until a successful 
 
 test('Guild Redis writes serialize under a bounded document size and compact chat only', () => {
   const social = source('src/server/social.ts');
-  assert.match(social, /GUILD_DOCUMENT_MAX_CHARS = 48_000/);
+  assert.match(social, /GUILD_DOCUMENT_MAX_BYTES = 32_000/);
   assert.match(social, /function serializeGuildsForRedis\(guilds: Guild\[\]\)/);
   assert.match(social, /chat\.slice\(-12\)/);
   assert.match(social, /String\(message\.text \?\? ''\)\.slice\(0, 400\)/);
@@ -52,4 +52,22 @@ test('full-batch roll path no longer rejects stored Free Rolls above 5,000', () 
   assert.doesNotMatch(roll, /freeRollActivations > 5_000/);
   assert.match(roll, /const result = await applyRolls\(/);
   assert.match(roll, /const rollCount = result\.rollCount/);
+});
+
+
+test('every direct player-save writer paginates legacy Codex data before Redis SET', () => {
+  const storage = source('src/server/player-collection-storage.ts');
+  const game = source('src/server/game.ts');
+  const debug = source('src/server/debug.ts');
+  const social = source('src/server/social.ts');
+  assert.match(storage, /PLAYER_COLLECTION_PAGE_CHARS = 18_000/);
+  assert.match(storage, /preparePlayerStateForRedisWrite/);
+  assert.match(storage, /collectionStorageVersion: 1/);
+  assert.match(storage, /collectionPageIds: pageIds/);
+  assert.match(game, /preparePlayerStateForRedisWrite\(state, userId, generation\)/);
+  assert.match(debug, /preparePlayerStateForRedisWrite\(state as any, id, generation\)/);
+  assert.match(social, /preparePlayerStateForRedisWrite\(state, user\(\), generation\)/);
+  assert.doesNotMatch(game, /txn\.set\(pkey, JSON\.stringify\(state\)\)/);
+  assert.doesNotMatch(debug, /txn\.set\(playerKey, JSON\.stringify\(state\)\)/);
+  assert.doesNotMatch(social, /txn\.set\(playerKey, JSON\.stringify\(state\)\)/);
 });
