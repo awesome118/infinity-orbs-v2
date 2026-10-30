@@ -7,6 +7,7 @@ import { OrbOrbit } from './OrbOrbit.js';
 interface Props {
   busy: boolean;
   reducedMotion: boolean;
+  frenzyRevealActive?: boolean;
   orb: Orb | null;
   batch: Orb[];
   radius: number;
@@ -27,6 +28,7 @@ interface Props {
 export const DynamicOrbRoll: React.FC<Props> = ({
   busy,
   reducedMotion,
+  frenzyRevealActive = false,
   orb,
   batch,
   radius,
@@ -40,9 +42,10 @@ export const DynamicOrbRoll: React.FC<Props> = ({
   children,
 }) => {
   const [frame, setFrame] = useState(0);
+  const isSpinning = busy && !frenzyRevealActive;
 
   useEffect(() => {
-    if (!busy || reducedMotion) {
+    if (!isSpinning || reducedMotion) {
       setFrame(0);
       return;
     }
@@ -66,17 +69,17 @@ export const DynamicOrbRoll: React.FC<Props> = ({
     return () => {
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [busy, reducedMotion]);
+  }, [isSpinning, reducedMotion]);
 
   const previewRarity = rollingOrbRarityAt(frame);
-  const previewInfo = busy ? getOrbInfo(previewRarity) : null;
-  const stageInfo = busy
+  const previewInfo = isSpinning ? getOrbInfo(previewRarity) : null;
+  const stageInfo = isSpinning
     ? previewInfo
     : orb
       ? getOrbInfo(orb.rarity, orb.isInfinity)
       : null;
 
-  const previewOrbit = busy
+  const previewOrbit = isSpinning
     ? rollingOrbRaritiesAt(frame).map(rarity => {
         const info = getOrbInfo(rarity);
         return { rarity, rolledAt: 0, tier: info.tier, name: info.name };
@@ -85,8 +88,8 @@ export const DynamicOrbRoll: React.FC<Props> = ({
 
   return (
     <>
-      {(busy || batch.length > 1) && (
-        <OrbOrbit orbs={previewOrbit} radius={radius} rolling={busy} />
+      {(isSpinning || batch.length > 1) && (
+        <OrbOrbit orbs={previewOrbit} radius={radius} rolling={isSpinning} />
       )}
       <div
         role="button"
@@ -115,11 +118,11 @@ export const DynamicOrbRoll: React.FC<Props> = ({
             className="text-[11px] font-black uppercase tracking-widest block mb-1 drop-shadow"
             style={{ color: stageInfo ? stageInfo.color : '#cbd5e1' }}
           >
-            {busy ? 'ROLLING' : stageInfo ? stageInfo.tier : 'READY'}
+            {isSpinning ? 'ROLLING' : stageInfo ? stageInfo.tier : 'READY'}
           </span>
 
           <div className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow-md font-mono">
-            {busy
+            {isSpinning
               ? `1 / ${formatRarity(previewRarity)}`
               : orb
                 ? `1 / ${formatRarity(orb.rarity, orb.isInfinity)}`
@@ -127,23 +130,23 @@ export const DynamicOrbRoll: React.FC<Props> = ({
           </div>
 
           <div className="text-xs font-semibold text-white/90 mt-1 drop-shadow">
-            {busy ? stageInfo?.name ?? 'Resonating…' : stageInfo ? stageInfo.name : 'Tap to Roll'}
+            {isSpinning ? stageInfo?.name ?? 'Resonating…' : stageInfo ? stageInfo.name : 'Tap to Roll'}
           </div>
           <div
             className="mt-2 text-[10px] text-slate-300/80"
             aria-label={`Personal best rarity 1 in ${formatRarity(personalBestRarity, personalBestIsInfinity)}`}
           >
-            {busy ? 'Resolving your roll…' : `Personal best · 1 / ${formatRarity(personalBestRarity, personalBestIsInfinity)}`}
+            {isSpinning ? 'Resolving your roll…' : `Personal best · 1 / ${formatRarity(personalBestRarity, personalBestIsInfinity)}`}
           </div>
         </div>
 
         {/* Only server-confirmed Orb metadata can produce result badges. */}
-        {!busy && orb?.isCrit && (
+        {!isSpinning && orb?.isCrit && (
           <div className="absolute -top-6 bg-gradient-to-r from-rose-500 to-amber-500 text-white text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-lg border border-amber-300">
             ⚡ 2× CRITICAL ROLL
           </div>
         )}
-        {!busy && orb?.isNew && (
+        {!isSpinning && orb?.isNew && (
           <div className="absolute -top-2 bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-lg">
             ★ NEW ORB
           </div>
