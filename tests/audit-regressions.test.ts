@@ -1103,7 +1103,7 @@ test('Frenzy claim uses normal-roll projections and commits its receipt and owne
   const claimEnd = game.indexOf('export async function postFrenzyThankYouComment', claimStart);
   assert.ok(claimStart >= 0 && claimEnd > claimStart);
   const claim = game.slice(claimStart, claimEnd);
-  assert.match(frenzy, /applyRolls\([\s\S]{0,220}'frenzy',[\s\S]{0,220}chunkProcessed =>/);
+  assert.match(claim, /applyRolls\([\s\S]{0,220}'frenzy',[\s\S]{0,220}chunkProcessed =>/);
   assert.match(claim, /prepareFrenzyOwnerRewardWrites\(/);
   const ownerRewardCallStart = claim.indexOf('const ownerReward = await prepareFrenzyOwnerRewardWrites(');
   const ownerRewardCallEnd = claim.indexOf(');', ownerRewardCallStart);
@@ -2006,7 +2006,7 @@ test('optional World Event conflicts cannot block primary player rewards', () =>
   const claimEnd = game.indexOf('export async function postFrenzyThankYouComment', claimStart);
   assert.ok(claimStart >= 0 && claimEnd > claimStart);
   const claim = game.slice(claimStart, claimEnd);
-  assert.match(frenzy, /applyRolls\([\s\S]{0,220}'frenzy',[\s\S]{0,220}chunkProcessed =>/);
+  assert.match(claim, /applyRolls\([\s\S]{0,220}'frenzy',[\s\S]{0,220}chunkProcessed =>/);
   assert.doesNotMatch(claim, /Frenzy progress not recorded; preserving shared data/);
 });
 
@@ -2060,7 +2060,7 @@ test('critical rarity caps match the continuum ceiling and cannot downgrade high
   const claimEnd = game.indexOf('export async function postFrenzyThankYouComment', claimStart);
   assert.ok(claimStart >= 0 && claimEnd > claimStart);
   const claim = game.slice(claimStart, claimEnd);
-  assert.match(frenzy, /applyRolls\([\s\S]{0,220}'frenzy',[\s\S]{0,220}chunkProcessed =>/);
+  assert.match(claim, /applyRolls\([\s\S]{0,220}'frenzy',[\s\S]{0,220}chunkProcessed =>/);
   assert.doesNotMatch(claim, /const rawNormalCritRarity = Math\.round\(data\.rarity/);
   assert.doesNotMatch(claim, /const groups = \[\s*\{ count: count - critCount/);
 });
