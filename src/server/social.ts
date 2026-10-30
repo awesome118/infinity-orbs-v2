@@ -258,8 +258,8 @@ function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index
     } else if (guild.tasks.length >= 3) {
       guild.tasks = guild.tasks.slice(0, 3).map((value: unknown, taskIndex: number) => {
         const task = isRecordValue(value) ? value : {};
-        const type = ['rolls', 'value', 'rare'].includes(String(task.type))
-          ? task.type
+        const type: GuildTask['type'] = ['rolls', 'value', 'rare'].includes(String(task.type))
+          ? String(task.type) as GuildTask['type']
           : generatedFallbackTaskType(taskIndex);
         const tier = clampInteger(task.tier, 1, 1_200, 1);
         const generated = createGuildTask(type, tier, guild.level);
@@ -285,7 +285,7 @@ function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index
       delete guild.chat;
     } else {
       guild.chat = guild.chat
-        .filter((value: unknown) =>
+        .filter((value: unknown): value is Record<string, unknown> =>
           isRecordValue(value) &&
           typeof value.id === 'string' && !!value.id.trim() &&
           typeof value.username === 'string' && !!value.username.trim() &&
