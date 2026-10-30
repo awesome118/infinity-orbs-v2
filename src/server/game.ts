@@ -3930,8 +3930,17 @@ export async function applyRolls(
     const rarity = isCrit
       ? Math.min(MAX_ORB_RARITY, Number.isFinite(rawCritRarity) ? rawCritRarity : MAX_ORB_RARITY)
       : baseRarity;
+    // Aggregate payouts need representative *individual* rolls, not the
+    // weighted group maximum divided by its scale. The latter has a max-biased
+    // distribution and would understate the sum of 500,000 individual rewards.
     const rewardRarity = sampleWeight > 1
-      ? Math.max(runeRarityFloor, Math.floor(baseRarity / (sampleWeight * averageGroupMultiplier)))
+      ? rollContinuum(
+        effectiveLuck,
+        rng,
+        runeLuckMultiplier,
+        runeRarityFloor,
+        Math.max(1, Math.floor(Number(s.level) || 1)),
+      )
       : rarity;
     const finalVal = Math.min(MAX_ORB_RARITY, Math.round(rarity * valueMul));
     const baseFinalVal = Math.min(MAX_ORB_RARITY, Math.round(rewardRarity * valueMul));
@@ -3942,12 +3951,24 @@ export async function applyRolls(
     const criticalRewardRarity = sampleWeight === 1
       ? rarity
       : normalCriticalGroupCount > 0
-        ? Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY, Math.round(rewardRarity * cm)))
+        ? rollContinuum(
+          effectiveLuck,
+          rng,
+          runeLuckMultiplier * criticalMultiplier,
+          runeRarityFloor * criticalMultiplier,
+          Math.max(1, Math.floor(Number(s.level) || 1)),
+        )
         : rewardRarity;
     const supernovaRewardRarity = sampleWeight === 1
       ? rarity
       : groupSupernovaCount > 0
-        ? Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY, Math.round(rewardRarity * cm * 5)))
+        ? rollContinuum(
+          effectiveLuck,
+          rng,
+          runeLuckMultiplier * supernovaMultiplier,
+          runeRarityFloor * supernovaMultiplier,
+          Math.max(1, Math.floor(Number(s.level) || 1)),
+        )
         : rewardRarity;
     const criticalFinalVal = Math.min(MAX_ORB_RARITY, Math.round(criticalRewardRarity * valueMul));
     const supernovaFinalVal = Math.min(MAX_ORB_RARITY, Math.round(supernovaRewardRarity * valueMul));
