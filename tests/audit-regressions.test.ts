@@ -1103,7 +1103,7 @@ test('Frenzy claim uses normal-roll projections and commits its receipt and owne
   const claimEnd = game.indexOf('export async function postFrenzyThankYouComment', claimStart);
   assert.ok(claimStart >= 0 && claimEnd > claimStart);
   const claim = game.slice(claimStart, claimEnd);
-  assert.match(claim, /applyRolls\(s, 1, undefined, 'frenzy', chunkCount\)/);
+  assert.match(frenzy, /applyRolls\([\s\S]{0,220}'frenzy',[\s\S]{0,220}chunkProcessed =>/);
   assert.match(claim, /prepareFrenzyOwnerRewardWrites\(/);
   const ownerRewardCallStart = claim.indexOf('const ownerReward = await prepareFrenzyOwnerRewardWrites(');
   const ownerRewardCallEnd = claim.indexOf(');', ownerRewardCallStart);
@@ -1536,7 +1536,7 @@ test('collection value uses the full finite Number range consistently in every r
   const frenzyEnd = server.indexOf('export async function postFrenzyThankYouComment', frenzyStart);
   assert.ok(frenzyStart >= 0 && frenzyEnd > frenzyStart);
   const frenzy = server.slice(frenzyStart, frenzyEnd);
-  assert.match(frenzy, /applyRolls\(s, 1, undefined, 'frenzy', chunkCount\)/);
+  assert.match(frenzy, /applyRolls\([\s\S]{0,220}'frenzy',[\s\S]{0,220}chunkProcessed =>/);
   assert.doesNotMatch(frenzy, /s\.collectionValue = addCollectionValue/);
   assert.doesNotMatch(frenzy, /s\.lifetimeCollectionValue = addCollectionValue/);
 
@@ -1563,7 +1563,7 @@ test('corrupt optional Guild roll projections do not cancel normal or Frenzy pla
   const frenzyEnd = game.indexOf('export async function postFrenzyThankYouComment', frenzyStart);
   assert.ok(frenzyStart >= 0 && frenzyEnd > frenzyStart);
   const frenzy = game.slice(frenzyStart, frenzyEnd);
-  assert.match(frenzy, /applyRolls\(s, 1, undefined, 'frenzy', chunkCount\)/);
+  assert.match(frenzy, /applyRolls\([\s\S]{0,220}'frenzy',[\s\S]{0,220}chunkProcessed =>/);
   assert.doesNotMatch(frenzy, /prepareGuildRollEffects\(/);
 });
 
@@ -2006,7 +2006,7 @@ test('optional World Event conflicts cannot block primary player rewards', () =>
   const claimEnd = game.indexOf('export async function postFrenzyThankYouComment', claimStart);
   assert.ok(claimStart >= 0 && claimEnd > claimStart);
   const claim = game.slice(claimStart, claimEnd);
-  assert.match(claim, /applyRolls\(s, 1, undefined, 'frenzy', chunkCount\)/);
+  assert.match(frenzy, /applyRolls\([\s\S]{0,220}'frenzy',[\s\S]{0,220}chunkProcessed =>/);
   assert.doesNotMatch(claim, /Frenzy progress not recorded; preserving shared data/);
 });
 
@@ -2060,7 +2060,7 @@ test('critical rarity caps match the continuum ceiling and cannot downgrade high
   const claimEnd = game.indexOf('export async function postFrenzyThankYouComment', claimStart);
   assert.ok(claimStart >= 0 && claimEnd > claimStart);
   const claim = game.slice(claimStart, claimEnd);
-  assert.match(claim, /applyRolls\(s, 1, undefined, 'frenzy', chunkCount\)/);
+  assert.match(frenzy, /applyRolls\([\s\S]{0,220}'frenzy',[\s\S]{0,220}chunkProcessed =>/);
   assert.doesNotMatch(claim, /const rawNormalCritRarity = Math\.round\(data\.rarity/);
   assert.doesNotMatch(claim, /const groups = \[\s*\{ count: count - critCount/);
 });
@@ -2112,7 +2112,7 @@ test('earned Coins and lifetime Coins use the full finite Number range', () => {
   const frenzyEnd = game.indexOf('export async function postFrenzyThankYouComment', frenzyStart);
   assert.ok(frenzyStart >= 0 && frenzyEnd > frenzyStart);
   const frenzy = game.slice(frenzyStart, frenzyEnd);
-  assert.match(frenzy, /applyRolls\(s, 1, undefined, 'frenzy', chunkCount\)/);
+  assert.match(frenzy, /applyRolls\([\s\S]{0,220}'frenzy',[\s\S]{0,220}chunkProcessed =>/);
   assert.doesNotMatch(frenzy, /s\.coins \+= coinsGained/);
 });
 
@@ -2359,7 +2359,7 @@ test('Frenzy uses the shared critical chance and Coin/Shard modifiers from norma
   assert.ok(applyEnd > normalStart);
   const apply = game.slice(normalStart, applyEnd);
   assert.match(apply, /effectiveRollCritChance\(s, globalBoosters\)/);
-  assert.match(apply, /const lowRarityCoins = rarities[\s\S]*?r < 100/);
+  assert.match(apply, /const lowRarityCoins = lowRarityCoinsEstimate/);
   assert.match(apply, /hasFilter[\s\S]*?Math\.round\(lowRarityCoins \* 0\.25\)/);
   assert.match(apply, /transLevel[\s\S]*?Math\.round\(lowRarityCoins \* \(transLevel \* 0\.15\)\)/);
   assert.match(apply, /const shardProcChance = Math\.min\(\s*ROLL_SHARD_PROC_CHANCE_CAP,/);
@@ -2368,7 +2368,7 @@ test('Frenzy uses the shared critical chance and Coin/Shard modifiers from norma
   const frenzyEnd = game.indexOf('export async function postFrenzyThankYouComment', frenzyStart);
   assert.ok(frenzyEnd > frenzyStart, 'claimOrbFrenzy should have a following export');
   const frenzy = game.slice(frenzyStart, frenzyEnd);
-  assert.match(frenzy, /applyRolls\(s, 1, undefined, 'frenzy', chunkCount\)/);
+  assert.match(frenzy, /applyRolls\([\s\S]{0,220}'frenzy',[\s\S]{0,220}chunkProcessed =>/);
   assert.doesNotMatch(frenzy, /const shardChance = Math\.min/);
   assert.doesNotMatch(frenzy, /const rarityShards = groups\.reduce/);
 });
