@@ -3881,8 +3881,14 @@ export async function applyRolls(
       // Combine Rune Luck and critical strength before the final integer floor.
       // This preserves rarity resolution instead of multiplying an already-
       // floored baseline integer by potentially enormous late-game bonuses.
-      const rarityMultiplier = runeLuckMultiplier * (isCrit ? effectiveCm : 1);
-      const rarityFloor = isCrit ? runeRarityFloor * effectiveCm : runeRarityFloor;
+      const compressedGroup = sampleWeight > 1;
+      // For compressed groups, weighted Luck estimates the group's maximum.
+      // Keep the representative baseline uncritical; only the group's best
+      // Orb receives a critical multiplier below.
+      const rarityMultiplier = runeLuckMultiplier * (isCrit && !compressedGroup ? effectiveCm : 1);
+      const rarityFloor = isCrit && !compressedGroup
+        ? runeRarityFloor * effectiveCm
+        : runeRarityFloor;
       const sampleLuck = Math.min(Number.MAX_VALUE, effectiveLuck * sampleWeight * sampleWeight);
       const rawRolledRarity = rollContinuum(
         sampleLuck,
@@ -3894,7 +3900,7 @@ export async function applyRolls(
       isInfinityOrb = !Number.isFinite(rawRolledRarity) || rawRolledRarity > MAX_ORB_RARITY;
       rolledRarity = Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY,
         Number.isFinite(rawRolledRarity) ? rawRolledRarity : MAX_ORB_RARITY));
-      criticalMultiplierAppliedBeforeFloor = isCrit;
+      criticalMultiplierAppliedBeforeFloor = isCrit && !compressedGroup;
     }
     const baseRarity = exactRarity && forcedRarity != null && i === 0
       ? forcedRarity
@@ -3907,7 +3913,7 @@ export async function applyRolls(
       ? Math.min(MAX_ORB_RARITY, Number.isFinite(rawCritRarity) ? rawCritRarity : MAX_ORB_RARITY)
       : baseRarity;
     const rewardRarity = sampleWeight > 1
-      ? Math.max(runeRarityFloor, Math.floor(rarity / sampleWeight))
+      ? Math.max(runeRarityFloor, Math.floor(baseRarity / sampleWeight))
       : rarity;
     const finalVal = Math.min(MAX_ORB_RARITY, Math.round(rarity * valueMul));
     const baseFinalVal = Math.min(MAX_ORB_RARITY, Math.round(rewardRarity * valueMul));
