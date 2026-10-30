@@ -326,6 +326,10 @@ export function createApp() {
         : nextCodexChainRarity(sourceCollection);
       copy.collection = {};
       copy.collectionCount = Object.keys(sourceCollection).length;
+      // Storage page IDs are server-only implementation details, not client state.
+      delete copy.collectionPageIds;
+      delete copy.collectionPageCount;
+      delete copy.collectionStorageVersion;
       return copy;
     }
     if (!Array.isArray(value) && value.state && typeof value.state === 'object') {
