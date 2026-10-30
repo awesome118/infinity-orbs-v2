@@ -43,3 +43,38 @@ export async function readInBatches<T>(
   );
   return output;
 }
+
+
+/**
+ * Serialize an array while keeping its payload below Devvit's Redis RPC budget.
+ * "first" preserves the array prefix (for ranked lists); "last" preserves the
+ * newest entries (for append-only diagnostics). Returns null only when even []
+ * cannot fit the requested limit.
+ */
+export function serializeJsonArrayWithinByteLimit<T>(
+  items: readonly T[],
+  maxBytes: number,
+  retain: 'first' | 'last' = 'last',
+): string | null {
+  const budget = Math.max(2, Math.floor(Number(maxBytes) || 0));
+  const encoder = new TextEncoder();
+  let low = 0;
+  let high = items.length;
+  let best: string | null = null;
+
+  while (low <= high) {
+    const count = Math.floor((low + high) / 2);
+    const slice = retain === 'first'
+      ? items.slice(0, count)
+      : items.slice(items.length - count);
+    const serialized = JSON.stringify(slice);
+    if (encoder.encode(serialized).byteLength <= budget) {
+      best = serialized;
+      low = count + 1;
+    } else {
+      high = count - 1;
+    }
+  }
+
+  return best;
+}
