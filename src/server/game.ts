@@ -4055,54 +4055,53 @@ export async function applyRolls(
     const isGuaranteedThirdBall = forcedRarity == null && lifetimeRollsBeforeBatch + i === 2;
 
     // Chain Patcher guarantees the exact requested rarity, not a critical multiplier.
-    const groupCritChance = groupWeight > 1
-      ? compressedEventChance(effectiveCritChance, groupWeight)
-      : effectiveCritChance;
-    const isCrit = !isGuaranteedThirdBall &&
-      !(exactRarity && forcedRarity != null && i === 0) &&
-      rng() < groupCritChance;
-
-    // The representative Orb is the group maximum. Estimate the number of
-    // critical Orbs among the remaining group members conditionally on that
-    // maximum being critical, so one group crit does not turn every payout Orb
-    // into a critical hit.
-    let representedOtherCritCount = 0;
-    if (groupWeight > 1 && isCrit && groupCritChance > 0) {
-      const expectedOtherCrits = Math.max(
-        0,
-        Math.min(groupWeight - 1, (effectiveCritChance * groupWeight / groupCritChance) - 1),
-      );
-      representedOtherCritCount = sampleExpectedEventCount(
-        expectedOtherCrits / (groupWeight - 1),
-        groupWeight - 1,
-        rng,
-      );
-    }
     const supernovaLevel = s.prestigeUpgrades?.supernova ?? 0;
     const supernovaChancePerCrit = Math.min(1, Math.max(0, supernovaLevel * 0.10));
+    const isGuaranteedThirdBall = forcedRarity == null && lifetimeRollsBeforeBatch + i === 2;
+    const isExactForcedOrb = exactRarity && forcedRarity != null && i === 0;
+    const mayCrit = !isGuaranteedThirdBall && !isExactForcedOrb;
+
+    // For a Pareto rarity tail, the chance a category supplies the group's
+    // maximum is proportional to its per-Orb chance times its rarity multiplier.
+    // This keeps the representative maximum from becoming a guaranteed Crit
+    // merely because a large group has a high chance of containing some Crit.
+    const topNormalWeight = 1 - effectiveCritChance;
+    const topCriticalWeight = effectiveCritChance * (1 - supernovaChancePerCrit) * cm;
+    const topSupernovaWeight = effectiveCritChance * supernovaChancePerCrit * cm * 5;
+    const topCategoryWeight = topNormalWeight + topCriticalWeight + topSupernovaWeight;
+    const topCritChance = topCategoryWeight > 0
+      ? Math.min(1, (topCriticalWeight + topSupernovaWeight) / topCategoryWeight)
+      : effectiveCritChance;
+    const topSupernovaChance = topCriticalWeight + topSupernovaWeight > 0
+      ? topSupernovaWeight / (topCriticalWeight + topSupernovaWeight)
+      : 0;
+
+    const isCrit = mayCrit && rng() < (groupWeight > 1 ? topCritChance : effectiveCritChance);
+    const isSupernova = isCrit && supernovaChancePerCrit > 0 && (
+      groupWeight > 1 ? rng() < topSupernovaChance : rng() < supernovaChancePerCrit
+    );
+
+    // Sample the represented number of non-maximum Crits separately from the
+    // identity of the maximum. The same weighting is applied to Supernova hits.
+    const representedGroupCritCount = groupWeight > 1 && mayCrit
+      ? sampleExpectedEventCount(effectiveCritChance, groupWeight, rng)
+      : (isCrit ? 1 : 0);
+    const representedOtherCritCount = groupWeight > 1
+      ? Math.min(
+        groupWeight - 1,
+        Math.max(0, Math.max(isCrit ? 1 : 0, representedGroupCritCount) - (isCrit ? 1 : 0)),
+      )
+      : 0;
     const representedOtherSupernovaCount = groupWeight > 1 && representedOtherCritCount > 0
       ? sampleExpectedEventCount(supernovaChancePerCrit, representedOtherCritCount, rng)
       : 0;
     if (groupWeight > 1) {
-      s.totalCrits = (s.totalCrits ?? 0) + (isCrit ? 1 + representedOtherCritCount : 0);
+      s.totalCrits = (s.totalCrits ?? 0) + representedOtherCritCount + (isCrit ? 1 : 0);
     } else if (isCrit) {
       s.totalCrits = (s.totalCrits ?? 0) + 1;
     }
 
-    let effectiveCm = cm;
-    if (isCrit && supernovaChancePerCrit > 0) {
-      const anySupernovaChance = groupWeight > 1
-        ? compressedEventChance(effectiveCritChance * supernovaChancePerCrit, groupWeight)
-        : supernovaChancePerCrit;
-      // Condition on the group having at least one critical result; this is
-      // the chance that its maximum includes a Supernova critical.
-      const groupSupernovaChance = groupWeight > 1 && groupCritChance > 0
-        ? Math.min(1, anySupernovaChance / groupCritChance)
-        : supernovaChancePerCrit;
-      if (rng() < groupSupernovaChance) {
-        effectiveCm = cm * 5; // Supernova multiplies the full normal critical strength by 5.
-      }
-    }
+    let effectiveCm = isSupernova ? cm * 5 : cm;
 
     // Player level scales rarity linearly; effective Luck applies a separate
     // diminishing-return factor to the continuous roll distribution.
@@ -4135,7 +4134,7 @@ export async function applyRolls(
       );
       // A compressed sample represents a group maximum. Avoid promoting the
       // whole group to Infinity merely because the scaled sample crossed the cap.
-      isInfinityOrb = groupWeight === 1 && (!Number.isFinite(rawRolledRarity) || rawRolledRarity > MAX_ORB_RARITY);
+      isInfinityOrb = !Number.isFinite(rawRolledRarity) || rawRolledRarity > MAX_ORB_RARITY;
       rolledRarity = Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY,
         Number.isFinite(rawRolledRarity) ? rawRolledRarity : MAX_ORB_RARITY));
       criticalMultiplierAppliedBeforeFloor = isCrit;
