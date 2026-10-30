@@ -37,7 +37,7 @@ import {
 import { combatBossLuckBonus, combatRuneBonuses, combatRuneLuckMultiplier, combatTotalBossesBeaten, type CombatState } from '../../shared/combat.js';
 
 import { sound } from '../sound.js';
-import { OrbOrbit } from './OrbOrbit.js';
+import { DynamicOrbRoll } from './DynamicOrbRoll.js';
 
 interface RollSectionProps {
   state: PlayerState;
@@ -478,9 +478,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
           </div>
         )}
 
-        {/* Orbiting Satellite Orbs Container (Concentric with central orb) */}
-        {hasMultipleOrbs && <OrbOrbit orbs={lastBatch} radius={orbitRadius} />}
-
         {/* Celestial Sonar Radar Pulse Wave on Rare Drops */}
         {sonarPinging && (
           <div className="absolute z-0 w-48 h-48 rounded-full border-4 border-cyan-400/90 animate-ping pointer-events-none" />
@@ -488,13 +485,18 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
         {/* One restrained ring keeps the stage alive without turning the center into a screensaver. */}
         <div className="absolute w-60 h-60 rounded-full border border-white/10 pointer-events-none" />
-        {/* The Central Main Orb */}
-        <div
-          role="button"
-          tabIndex={0}
-          aria-label={primaryActionLabel.toLowerCase()}
-          aria-busy={busy}
-          aria-disabled={busy}
+
+        <DynamicOrbRoll
+          busy={busy}
+          reducedMotion={reducedMotion}
+          orb={displayOrb}
+          batch={lastBatch}
+          radius={orbitRadius}
+          primaryActionLabel={primaryActionLabel}
+          cosmeticEffectClass={cosmeticEffectClass}
+          isRevealing={isRevealing}
+          personalBestRarity={state.highestRarity}
+          personalBestIsInfinity={state.highestRarityIsInfinity}
           onClick={handleRollClick}
           onKeyDown={event => {
             if (!event.repeat && (event.key === 'Enter' || event.key === ' ')) {
@@ -502,17 +504,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
               handleRollClick();
             }
           }}
-          className={`io-main-orb relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 ${cosmeticEffectClass} ${
-            isRevealing ? 'scale-105 ring-4 ring-white/60' : 'hover:scale-102'
-          }`}
-          style={{
-            background: orbInfo
-              ? orbInfo.bgGradient
-              : 'radial-gradient(circle at 35% 30%, #6366f1, #312e81 65%, #0f172a)',
-          }}
         >
           {/* Exact reward burst. These values come from the authoritative roll response. */}
-          {batchSummary && rewardBurstActive && (
+          {batchSummary && rewardBurstActive && !busy && (
             <div
               key={rewardBurstKeyRef.current}
               className="reward-burst"
@@ -547,48 +541,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               {lastOrb?.isCrit && <div className="reward-burst-crit">⚡ CRITICAL</div>}
             </div>
           )}
-
-          {/* Subtle Inner Glass Ring */}
-          <div className="absolute inset-2 rounded-full border border-white/20 pointer-events-none" />
-
-          {/* Rarity & Name Presentation */}
-          <div className="relative z-10 text-center px-4">
-            <span
-              className="text-[11px] font-black uppercase tracking-widest block mb-1 drop-shadow"
-              style={{ color: orbInfo ? orbInfo.color : '#cbd5e1' }}
-            >
-              {orbInfo ? orbInfo.tier : 'READY'}
-            </span>
-
-            <div className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow-md font-mono">
-              {displayOrb
-                ? `1 / ${formatRarity(displayOrb.rarity, displayOrb.isInfinity)}`
-                : '—'}
-            </div>
-
-            <div className="text-xs font-semibold text-white/90 mt-1 drop-shadow">
-              {orbInfo ? orbInfo.name : 'Tap to Roll'}
-            </div>
-            <div className="mt-2 text-[10px] text-slate-300/80" aria-label={`Personal best rarity 1 in ${formatRarity(state.highestRarity, state.highestRarityIsInfinity)}`}>
-              Personal best · 1 / {formatRarity(state.highestRarity, state.highestRarityIsInfinity)}
-            </div>
-          </div>
-
-          {/* Critical Roll Badge */}
-          {displayOrb?.isCrit && (
-            <div className="absolute -top-6 bg-gradient-to-r from-rose-500 to-amber-500 text-white text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-lg border border-amber-300">
-              ⚡ 2× CRITICAL ROLL
-            </div>
-          )}
-
-          {/* New Discovery Badge */}
-          {displayOrb?.isNew && (
-            <div className="absolute -top-2 bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-lg">
-              ★ NEW ORB
-            </div>
-          )}
-        </div>
-      </div>
+        </DynamicOrbRoll>div>
 
       {/* Orbit & Roll Status Callouts (sitting comfortably below the orb and satellites) */}
       <div className="w-full flex flex-col items-center space-y-2">
