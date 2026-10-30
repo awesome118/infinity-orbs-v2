@@ -533,7 +533,10 @@ test('Frenzy batches use ordinary RNG without hidden extra Orb rolls', () => {
   assert.match(apply, /const logicalRollCount = requestedRollCount \+ runeBonusRollsUsed/);
   assert.match(apply, /rarityWeights\.reduce/);
   assert.match(apply, /source !== 'frenzy' && requestedRollCount > 1 && magnetLevel > 0/);
-  assert.match(apply, /payoutWeight > 0 && payoutKey === bestKey/);
+  assert.match(apply, /representedOtherCritCount/);
+  assert.match(apply, /rewardRarityGroups/);
+  assert.match(apply, /samplePayoutRarity/);
+  assert.match(apply, /supernovaChancePerCrit/);
   assert.match(apply, /crossedStellarDividendMilestone/);
   assert.match(apply, /source !== 'frenzy' && !constellationTriggered/);
   assert.match(apply, /source !== 'frenzy' && !temporalLoopTriggered/);
