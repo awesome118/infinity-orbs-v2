@@ -1302,7 +1302,9 @@ function App() {
         // A serverless response can be lost after Redis has durably committed
         // the claim. Keep the calculating popup alive and reconcile against the
         // attempt-scoped progress receipt before telling the player it failed.
-        const recoveryDeadline = Date.now() + 3 * 60_000;
+        // The server refreshes this attempt-scoped record for up to 15 minutes.
+        // Keep the calculating UI open until just before that lease expires.
+        const recoveryDeadline = Date.now() + 14 * 60_000;
         let recoveredResult: RollResponse | null = null;
         while (Date.now() < recoveryDeadline && componentMountedRef.current) {
           try {
