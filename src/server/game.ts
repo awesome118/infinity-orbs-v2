@@ -3852,14 +3852,15 @@ export async function applyRolls(
       : 0;
     const isCrit = critCountInGroup > 0;
     let effectiveCm = cm;
+    let supernovaCountInGroup = 0;
     if (isCrit) {
       s.totalCrits = Math.min(Number.MAX_SAFE_INTEGER, (s.totalCrits ?? 0) + critCountInGroup);
       const supernovaLevel = s.prestigeUpgrades?.supernova ?? 0;
       const supernovaChance = Math.max(0, Math.min(1, supernovaLevel * 0.10));
-      const groupSupernovaChance = supernovaLevel > 0
-        ? 1 - Math.pow(1 - supernovaChance, critCountInGroup)
+      supernovaCountInGroup = supernovaLevel > 0
+        ? sampleBinomialCount(critCountInGroup, supernovaChance, rng)
         : 0;
-      if (groupSupernovaChance > 0 && rng() < groupSupernovaChance) {
+      if (supernovaCountInGroup > 0) {
         effectiveCm = cm * 5; // Supernova multiplies the full normal critical strength by 5.
       }
     }
@@ -3918,17 +3919,31 @@ export async function applyRolls(
     const finalVal = Math.min(MAX_ORB_RARITY, Math.round(rarity * valueMul));
     const baseFinalVal = Math.min(MAX_ORB_RARITY, Math.round(rewardRarity * valueMul));
     const hasDistinctGroupMaximum = isInfinityOrb || rarity !== rewardRarity;
-    // The batch sample is a representative Orb for the effective group. Split
-    // its weighted reward estimate by the sampled critical count, then use the
-    // weighted-Luck maximum only for best-Orb/Codex discovery.
+    // Split the effective batch by its sampled normal-critical-supernova mix.
+    // The weighted-Luck maximum is used for the best Orb; aggregate rewards
+    // remain weighted across the full effective count.
     const groupCriticalCount = sampleWeight > 1 ? Math.min(sampleWeight, critCountInGroup) : 0;
+    const groupSupernovaCount = sampleWeight > 1
+      ? Math.min(groupCriticalCount, supernovaCountInGroup)
+      : 0;
     const ordinaryGroupCount = sampleWeight - groupCriticalCount;
-    const criticalRewardRarity = groupCriticalCount > 0
-      ? Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY, Math.round(rewardRarity * effectiveCm)))
+    const normalCriticalGroupCount = groupCriticalCount - groupSupernovaCount;
+    const criticalRewardRarity = normalCriticalGroupCount > 0
+      ? Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY, Math.round(rewardRarity * cm)))
+      : rewardRarity;
+    const supernovaRewardRarity = groupSupernovaCount > 0
+      ? Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY, Math.round(rewardRarity * cm * 5)))
       : rewardRarity;
     const criticalFinalVal = Math.min(MAX_ORB_RARITY, Math.round(criticalRewardRarity * valueMul));
+    const supernovaFinalVal = Math.min(MAX_ORB_RARITY, Math.round(supernovaRewardRarity * valueMul));
     const topRarityKey = isInfinityOrb ? 'Infinity' : String(rarity);
-    const topBaseRewardRarity = sampleWeight > 1 && isCrit ? criticalRewardRarity : rewardRarity;
+    const topBaseRewardRarity = sampleWeight > 1
+      ? groupSupernovaCount > 0
+        ? supernovaRewardRarity
+        : normalCriticalGroupCount > 0
+          ? criticalRewardRarity
+          : rewardRarity
+      : rewardRarity;
     const topBaseRewardKey = String(topBaseRewardRarity);
     const groupRarityCounts = new Map<string, number>();
     const addGroupRarity = (key: string, count: number) => {
@@ -3936,10 +3951,10 @@ export async function applyRolls(
       groupRarityCounts.set(key, (groupRarityCounts.get(key) ?? 0) + count);
     };
     addGroupRarity(String(rewardRarity), ordinaryGroupCount);
-    addGroupRarity(String(criticalRewardRarity), groupCriticalCount);
-    // The representative maximum is already included in the weighted reward
-    // estimate above. Replace its baseline Codex entry with the actual maximum;
-    // do not add a 51st Orb to a 50-sample representation of 500 effective Orbs.
+    addGroupRarity(String(criticalRewardRarity), normalCriticalGroupCount);
+    addGroupRarity(String(supernovaRewardRarity), groupSupernovaCount);
+    // Replace the representative maximum in the Codex with its actual rarity;
+    // it remains part of the weighted payout totals above, not an extra Orb.
     if (hasDistinctGroupMaximum) {
       const baselineCount = groupRarityCounts.get(topBaseRewardKey) ?? 0;
       if (baselineCount > 0) groupRarityCounts.set(topBaseRewardKey, baselineCount - 1);
@@ -3954,7 +3969,9 @@ export async function applyRolls(
     }
     const weightedFinalValue = Math.min(
       Number.MAX_VALUE,
-      baseFinalVal * ordinaryGroupCount + criticalFinalVal * groupCriticalCount,
+      baseFinalVal * ordinaryGroupCount +
+        criticalFinalVal * normalCriticalGroupCount +
+        supernovaFinalVal * groupSupernovaCount,
     );
 
     totalVal = Math.min(Number.MAX_VALUE, totalVal + weightedFinalValue);
@@ -3976,11 +3993,18 @@ export async function applyRolls(
       extraCoinsEstimate,
       normalizeCoinAmount(extraCoinsForBaseOrbs * ordinaryGroupCount),
     );
-    if (groupCriticalCount > 0) {
+    if (normalCriticalGroupCount > 0) {
       const extraCoinsForCriticalOrbs = Math.max(1, Math.round(coinsForRarity(criticalRewardRarity) * 0.20));
       extraCoinsEstimate = addCoinAmount(
         extraCoinsEstimate,
-        normalizeCoinAmount(extraCoinsForCriticalOrbs * groupCriticalCount),
+        normalizeCoinAmount(extraCoinsForCriticalOrbs * normalCriticalGroupCount),
+      );
+    }
+    if (groupSupernovaCount > 0) {
+      const extraCoinsForSupernovaOrbs = Math.max(1, Math.round(coinsForRarity(supernovaRewardRarity) * 0.20));
+      extraCoinsEstimate = addCoinAmount(
+        extraCoinsEstimate,
+        normalizeCoinAmount(extraCoinsForSupernovaOrbs * groupSupernovaCount),
       );
     }
     if (ordinaryGroupCount > 0 && rewardRarity < 100) {
@@ -3990,11 +4014,18 @@ export async function applyRolls(
         normalizeCoinAmount(lowCoinsForBaseOrbs * ordinaryGroupCount),
       );
     }
-    if (groupCriticalCount > 0 && criticalRewardRarity < 100) {
+    if (normalCriticalGroupCount > 0 && criticalRewardRarity < 100) {
       const lowCoinsForCriticalOrbs = Math.max(1, Math.round(coinsForRarity(criticalRewardRarity)));
       lowRarityCoinsEstimate = addCoinAmount(
         lowRarityCoinsEstimate,
-        normalizeCoinAmount(lowCoinsForCriticalOrbs * groupCriticalCount),
+        normalizeCoinAmount(lowCoinsForCriticalOrbs * normalCriticalGroupCount),
+      );
+    }
+    if (groupSupernovaCount > 0 && supernovaRewardRarity < 100) {
+      const lowCoinsForSupernovaOrbs = Math.max(1, Math.round(coinsForRarity(supernovaRewardRarity)));
+      lowRarityCoinsEstimate = addCoinAmount(
+        lowRarityCoinsEstimate,
+        normalizeCoinAmount(lowCoinsForSupernovaOrbs * groupSupernovaCount),
       );
     }
     if (hasDistinctGroupMaximum && rarity >= 100 && topBaseRewardRarity < 100) {
@@ -4109,14 +4140,12 @@ export async function applyRolls(
       (1 + runeBonuses.xpGainPct / 100);
     const xpForBaseOrb = Math.round(Math.min(300, 12 + Math.floor(Math.log10(rewardRarity + 1) * 12)) * xpBonusMul);
     const xpForCriticalOrb = Math.round(Math.min(300, 12 + Math.floor(Math.log10(criticalRewardRarity + 1) * 12)) * xpBonusMul);
-    const xpForGroupMaximum = hasDistinctGroupMaximum
-      ? Math.round(Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) * xpBonusMul)
-      : 0;
+    const xpForSupernovaOrb = Math.round(Math.min(300, 12 + Math.floor(Math.log10(supernovaRewardRarity + 1) * 12)) * xpBonusMul);
     const earnedXp = Math.min(
       Number.MAX_SAFE_INTEGER,
       xpForBaseOrb * ordinaryGroupCount +
-        xpForCriticalOrb * criticalOtherCount +
-        xpForGroupMaximum,
+        xpForCriticalOrb * normalCriticalGroupCount +
+        xpForSupernovaOrb * groupSupernovaCount,
     );
 
     // High rarity is not a guaranteed Shard source. All repeatable Orb earnings are proc-based.
