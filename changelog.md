@@ -1,5 +1,12 @@
 # Infinity Orbs Changelog
 
+### Combat Turn Timer Upgrade (2.1.17)
+
+- Removed the Chrono Surge base-timer explanation from the turn-order panel.
+- Added a 10-rank Turn Timer Combat Shop upgrade that reduces the global 30-second beat interval by one second per rank.
+- Turn Timer reductions stack with equipped Chrono Surge; server cooldown validation and the client countdown share the same interval.
+- Added tests for timer reductions, Chrono Surge stacking, and exponential pricing across every Combat Shop upgrade.
+
 ### Frenzy Calculating Overlay (2.1.16)
 
 - Slow Frenzy claims show a full-screen calculating popup after a brief delay, avoiding a flash for normal fast claims.

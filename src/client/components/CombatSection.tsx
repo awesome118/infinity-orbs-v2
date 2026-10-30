@@ -583,7 +583,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         }
         const events=projected;
         return <section className="io-combat-turn-tracker" aria-label="Combat speed and turn order">
-          <div className="io-combat-turn-head"><div><span className="io-combat-eyebrow">SPEED & INITIATIVE</span><h2>Turn order</h2><p>Chrono Surge shortens the 30-second base beat timer.</p></div><strong>{beatCooldownMs>0?'NEXT BEAT '+Math.ceil(beatCooldownMs/1000)+'s':'BEAT READY'}</strong></div>
+          <div className="io-combat-turn-head"><div><span className="io-combat-eyebrow">SPEED & INITIATIVE</span><h2>Turn order</h2></div><strong>{beatCooldownMs>0?'NEXT BEAT '+Math.ceil(beatCooldownMs/1000)+'s':'BEAT READY'}</strong></div>
           <div className="io-combat-beat-track" role="progressbar" aria-label="Time until the next combat beat" aria-valuemin={0} aria-valuemax={100} aria-valuenow={beatProgressPct} aria-valuetext={beatCooldownMs>0?Math.ceil(beatCooldownMs/1000)+' seconds remaining':'Beat ready'}><span style={{width:beatProgressPct+'%'}}/></div>
            <div className="io-combat-speed-bars">
             <div className="io-combat-speed-row"><span>∞ DELVER <b>{fmt(stats.speed)} SPD</b></span><div className="io-combat-speed-track"><span className="is-player" style={{width:playerPace+'%'}}/></div><strong>{playerPace}% pace</strong></div>

@@ -394,8 +394,8 @@ export function combatRuneBonuses(runesValue: unknown, equippedValue: unknown): 
   return bonuses;
 }
 export type CombatSkillStat = 'damagePct' | 'speedFlat' | 'healthPct' | 'critChance' | 'coinBonus';
-export type CombatUpgradeId = 'edge-training' | 'vitality' | 'precision' | 'scavenger' | 'orb-resonance' | 'mark-magnet' | 'ward-training';
-export type CombatUpgradeStat = 'damagePct' | 'healthPct' | 'speedFlat' | 'critChance' | 'markBonus' | 'orbFocusPct' | 'damageReduction';
+export type CombatUpgradeId = 'edge-training' | 'vitality' | 'precision' | 'scavenger' | 'orb-resonance' | 'mark-magnet' | 'ward-training' | 'turn-timer';
+export type CombatUpgradeStat = 'damagePct' | 'healthPct' | 'speedFlat' | 'critChance' | 'markBonus' | 'orbFocusPct' | 'damageReduction' | 'beatIntervalMs';
 export type CombatTrait = 'bleed' | 'keen' | 'first-strike' | 'bulwark' | 'regeneration' | 'desperation';
 export type CombatGearSlot = 'weapon' | 'armor' | 'helmet' | 'gloves' | 'boots' | 'ring' | 'amulet';
 export type CombatMajorAbility =
@@ -921,6 +921,7 @@ export const COMBAT_UPGRADES: CombatUpgradeDefinition[] = [
   { id:'orb-resonance', name:'Orb Resonance', description:'+1.5% focused-orb combat power per rank', stat:'orbFocusPct', value:.015, baseCost:40, costMultiplier:1.65, maxRank:10 },
   { id:'mark-magnet', name:'Mark Magnet', description:'+10% Combat Marks from kills per rank', stat:'markBonus', value:.10, baseCost:60, costMultiplier:1.68, maxRank:10 },
   { id:'ward-training', name:'Warding Doctrine', description:'+1.5 percentage points damage reduction per rank', stat:'damageReduction', value:.015, baseCost:52, costMultiplier:1.65, maxRank:10 },
+  { id:'turn-timer', name:'Turn Timer', description:'−1 second from the combat beat timer per rank', stat:'beatIntervalMs', value:1_000, baseCost:80, costMultiplier:1.75, maxRank:10 },
 ];
 export type CombatUpgradeLevels = Partial<Record<CombatUpgradeId, number>>;
 
@@ -1376,14 +1377,15 @@ export function combatStatsFor(state: CombatState): CombatStats {
   };
 }
 /**
- * Chrono Surge accelerates the global combat beat as well as the relative Speed
- * clock. Keep this derived from equipped, quality-adjusted Major Abilities so
- * server cooldown validation and the client's countdown share one calculation.
+ * Turn Timer ranks reduce the global base beat interval by one second each.
+ * Equipped, quality-adjusted Chrono Surge then multiplies that faster cadence.
+ * The same derived interval is used by server cooldown validation and the client.
  */
 export function combatBeatIntervalMsFor(
-  state: Pick<CombatState, 'depth' | 'equipment' | 'inventory'> | null | undefined,
+  state: Pick<CombatState, 'depth' | 'equipment' | 'inventory' | 'combatUpgrades'> | null | undefined,
 ): number {
   if (!state) return COMBAT_BEAT_INTERVAL_MS;
+  const baseIntervalMs = Math.max(1_000, COMBAT_BEAT_INTERVAL_MS - combatUpgradeRank(state, 'turn-timer') * 1_000);
   const floor = Math.max(0, Number(state.depth ?? 1) - 1);
   const inventory = Array.isArray(state.inventory) ? state.inventory : [];
   const equipment = state.equipment ?? {};
@@ -1396,7 +1398,7 @@ export function combatBeatIntervalMsFor(
     if (Number.isFinite(raw) && raw > 0) chronoSpeedPercent += raw * gearQualityEffectiveness(item, floor);
   }
   const speedMultiplier = 1 + Math.max(0, chronoSpeedPercent);
-  return Math.max(1_000, Math.round(COMBAT_BEAT_INTERVAL_MS / speedMultiplier));
+  return Math.max(1_000, Math.round(baseIntervalMs / speedMultiplier));
 }
 
 export function synchronizeCombatStats(state: CombatState): CombatStats {
