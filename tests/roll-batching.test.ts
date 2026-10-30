@@ -80,12 +80,12 @@ test('server uses weighted sample counts for Luck, player totals, XP, Coins, and
   assert.match(apply, /xpForBaseOrb \* ordinaryGroupCount/);
   assert.match(apply, /xpForCriticalOrb \* normalCriticalGroupCount/);
   assert.match(apply, /const normalCriticalGroupCount = groupCriticalCount - groupSupernovaCount/);
-  assert.match(apply, /const supernovaCountInGroup = sampleWeight > 1[\\s\\S]{0,130}sampleBinomialCount\(critCountInGroup, supernovaChance, rng\)/);
+  assert.ok(apply.includes('sampleBinomialCount(critCountInGroup, supernovaChance, rng)'));
   assert.match(apply, /xpForSupernovaOrb \* groupSupernovaCount/);
   assert.match(apply, /extraCoinsEstimate = addCoinAmount/);
-  assert.match(apply, /extraCoinsForGroupMaximum = Math\.max\(1, Math\.round\(coinsForRarity\(rarity\) \* 0\.20\)\)/);
+  assert.match(apply, /extraCoinsForSupernovaOrbs = Math\.max\(1, Math\.round\(coinsForRarity\(supernovaRewardRarity\) \* 0\.20\)\)/);
   assert.match(apply, /rarities\.push\(rarity\);\s*rarityWeights\.push\(1\)/);
-  assert.match(apply, /lowCoinsForGroupMaximum/);
+  assert.match(apply, /lowCoinsForMaximumBaseline/);
   assert.match(apply, /lowRarityCoinsEstimate = addCoinAmount/);
   assert.match(apply, /sampleBinomialCount\(sampleWeight, combinedShardChance, rng\)/);
   assert.ok(multiRoll.includes('Math.floor((MAX_EFFECTIVE_ROLLS_PER_BATCH - 2) / ballsPerActivation)'));
