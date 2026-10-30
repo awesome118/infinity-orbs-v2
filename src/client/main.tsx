@@ -228,7 +228,7 @@ async function getJsonWithTimeout<T>(url: string, timeoutMs = 10_000, options?: 
 }
 
 export const FRENZY_CALCULATING_DELAY_MS = 650;
-const FRENZY_CALCULATING_MIN_VISIBLE_MS = 420;
+const FRENZY_CALCULATING_MIN_VISIBLE_MS = 1_200;
 
 function App() {
   const [state, setState] = useState<PlayerState | null>(null);
@@ -1289,13 +1289,48 @@ function App() {
 
       // Claim exactly once per attempt. A retry requires a fresh user action
       // because a failed HTTP response cannot prove the server did not commit.
-      const res = await enqueueMutation(() =>
-        getJson<RollResponse>('/api/frenzy/claim', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ attemptId: activeFrenzyAttemptId }),
-        }),
-      );
+      let res: RollResponse;
+      try {
+        res = await enqueueMutation(() =>
+          getJson<RollResponse>('/api/frenzy/claim', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ attemptId: activeFrenzyAttemptId }),
+          }),
+        );
+      } catch (claimRequestError) {
+        // A serverless response can be lost after Redis has durably committed
+        // the claim. Keep the calculating popup alive and reconcile against the
+        // attempt-scoped progress receipt before telling the player it failed.
+        const recoveryDeadline = Date.now() + 3 * 60_000;
+        let recoveredResult: RollResponse | null = null;
+        while (Date.now() < recoveryDeadline && componentMountedRef.current) {
+          try {
+            const progress = await getJson<{
+              postId: string | null;
+              attemptId: string | null;
+              active: boolean;
+              completed: boolean;
+              result?: Omit<RollResponse, 'state'>;
+            }>('/api/frenzy/progress', { cache: 'no-store' });
+            if (
+              progress.postId !== activeFrenzyPostId ||
+              progress.attemptId !== activeFrenzyAttemptId
+            ) break;
+            if (progress.completed && progress.result) {
+              const recoveredState = await getJson<PlayerState>('/api/me', { cache: 'no-store' });
+              recoveredResult = { ...progress.result, state: recoveredState };
+              break;
+            }
+            if (!progress.active) break;
+          } catch {
+            // Continue polling; the primary progress interval is also active.
+          }
+          await new Promise(resolve => window.setTimeout(resolve, 500));
+        }
+        if (!recoveredResult) throw claimRequestError;
+        res = recoveredResult;
+      }
 
       if (!componentMountedRef.current) return;
 
