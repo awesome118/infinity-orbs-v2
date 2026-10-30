@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   addCoinAmount,
   addCollectionValue,
+  altarCoinFloor,
   coinsForRarity,
   formatNumber,
   normalizeCoinAmount,
@@ -20,6 +21,11 @@ test('Coin and collection totals saturate only at the largest finite Number', ()
   assert.equal(addCoinAmount(Number.MAX_VALUE * 0.75, Number.MAX_VALUE), Number.MAX_VALUE);
   assert.equal(addCollectionValue(1e200, 2e200), 3e200);
   assert.equal(addCollectionValue(Number.MAX_VALUE, 1e200), Number.MAX_VALUE);
+});
+
+test('Altar Coin requirements can scale beyond the safe-integer threshold', () => {
+  assert.ok(altarCoinFloor(100) > Number.MAX_SAFE_INTEGER);
+  assert.equal(altarCoinFloor(100_000), Number.MAX_VALUE);
 });
 
 test('rarity-derived Coin rewards remain above 64-bit-safe integer scale', () => {
