@@ -1,0 +1,34 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  addCoinAmount,
+  addCollectionValue,
+  coinsForRarity,
+  formatNumber,
+  normalizeCoinAmount,
+} from '../src/shared/game.js';
+
+test('Coin balances and rewards can grow beyond the JavaScript safe-integer threshold', () => {
+  const beyondSafeInteger = 1e30;
+  assert.equal(normalizeCoinAmount(beyondSafeInteger), beyondSafeInteger);
+  assert.equal(addCoinAmount(Number.MAX_SAFE_INTEGER, beyondSafeInteger), beyondSafeInteger);
+  assert.equal(addCoinAmount(1e200, 2e200), 3e200);
+});
+
+test('Coin and collection totals saturate only at the largest finite Number', () => {
+  assert.equal(normalizeCoinAmount(Number.POSITIVE_INFINITY), Number.MAX_VALUE);
+  assert.equal(addCoinAmount(Number.MAX_VALUE * 0.75, Number.MAX_VALUE), Number.MAX_VALUE);
+  assert.equal(addCollectionValue(1e200, 2e200), 3e200);
+  assert.equal(addCollectionValue(Number.MAX_VALUE, 1e200), Number.MAX_VALUE);
+});
+
+test('rarity-derived Coin rewards remain above 64-bit-safe integer scale', () => {
+  const coins = coinsForRarity(1e308);
+  assert.ok(Number.isFinite(coins));
+  assert.ok(coins > Number.MAX_SAFE_INTEGER);
+});
+
+test('large finite Coin balances retain scientific-notation display', () => {
+  assert.equal(formatNumber(1e100), '1.00e100');
+  assert.equal(formatNumber(Number.MAX_VALUE), '1.80e308');
+});
