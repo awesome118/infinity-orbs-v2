@@ -1352,6 +1352,19 @@ function frenzyClaimProgressKey(userId: string): string {
   return FRENZY_CLAIM_PROGRESS_PREFIX + encodeURIComponent(userId);
 }
 
+interface FrenzyClaimProgressResult {
+  orb: Orb;
+  batch: Orb[];
+  totalValueGained: number;
+  totalRollValue: number;
+  coinsGained: number;
+  shardsGained: number;
+  xpGained: number;
+  rollsRemainingUntilNext: number;
+  dramaticReveal: boolean;
+  frenzyCount: number;
+}
+
 interface FrenzyClaimProgressRecord {
   postId: string;
   attemptId: string;
@@ -1359,6 +1372,7 @@ interface FrenzyClaimProgressRecord {
   total: number;
   updatedAt: number;
   completed: boolean;
+  result?: FrenzyClaimProgressResult;
 }
 
 async function writeFrenzyClaimProgress(
@@ -1368,6 +1382,7 @@ async function writeFrenzyClaimProgress(
   total: number,
   processed: number,
   completed = false,
+  result?: FrenzyClaimProgressResult,
 ): Promise<void> {
   try {
     const now = Date.now();
@@ -1380,6 +1395,7 @@ async function writeFrenzyClaimProgress(
       total: safeTotal,
       updatedAt: now,
       completed,
+      ...(completed && result ? { result } : {}),
     };
     await redis.set(
       frenzyClaimProgressKey(userId),
@@ -4024,8 +4040,9 @@ export async function applyRolls(
   let processedLogicalRolls = 0;
   let bestGroupIndex = 0;
   let bestPayoutRarity = 2;
+  const progressTargetUpdates = Math.min(500, Math.max(20, Math.ceil(requestedRollCount / 1_000)));
   const progressUpdateEvery = source === 'frenzy' && onProgress
-    ? Math.max(1, Math.ceil(baseBatchRollCount / 100))
+    ? Math.max(1, Math.ceil(baseBatchRollCount / progressTargetUpdates))
     : Number.MAX_SAFE_INTEGER;
   const validCharge = (value: unknown) => Number.isFinite(Number(value)) ? Math.min(1_000_000, Math.max(0, Number(value))) : 0;
   s.runeConstellationCharge = validCharge(s.runeConstellationCharge);
@@ -6810,6 +6827,7 @@ export async function getOrbFrenzyClaimProgress(): Promise<{
   total: number;
   percent: number;
   completed: boolean;
+  result?: FrenzyClaimProgressResult;
 }> {
   const raw = await redis.get(frenzyClaimProgressKey(currentUserId()));
   const progress = parseStoredJson<FrenzyClaimProgressRecord>(raw);
@@ -6834,7 +6852,17 @@ export async function getOrbFrenzyClaimProgress(): Promise<{
       ? Math.min(95, Math.floor((processed / progress.total) * 95))
       : 0;
   const active = !completed && Date.now() - progress.updatedAt <= FRENZY_CLAIM_PROGRESS_TTL_MS;
-  return { postId: progress.postId, attemptId: progress.attemptId, updatedAt: progress.updatedAt, active, processed, total: progress.total, percent, completed };
+  return {
+    postId: progress.postId,
+    attemptId: progress.attemptId,
+    updatedAt: progress.updatedAt,
+    active,
+    processed,
+    total: progress.total,
+    percent,
+    completed,
+    ...(completed && progress.result ? { result: progress.result } : {}),
+  };
 }
 
 export async function claimOrbFrenzy(options: {
@@ -7016,9 +7044,7 @@ export async function claimOrbFrenzy(options: {
       console.error('[Frenzy Claim] Handoff cleanup failed after durable claim:', error);
     });
   }
-  await writeFrenzyClaimProgress(claimantId, postId, attemptId, count, processedCount, true);
-
-  return {
+  const progressResult: FrenzyClaimProgressResult = {
     orb: bestOrb,
     batch: visibleBatch,
     totalValueGained: finalValue,
@@ -7026,10 +7052,18 @@ export async function claimOrbFrenzy(options: {
     coinsGained,
     shardsGained: shardsGained + (isOwner ? ownerRewardShards : 0),
     xpGained,
-    state: s,
     rollsRemainingUntilNext: cooldownMs(s),
     dramaticReveal: bestOrb.rarity >= 100,
     frenzyCount: processedCount,
+  };
+  // The compact result lets a client recover after a response disconnect once
+  // the durable claim has already committed. The full PlayerState is fetched
+  // separately, so this progress key never stores the large Codex.
+  await writeFrenzyClaimProgress(claimantId, postId, attemptId, count, processedCount, true, progressResult);
+
+  return {
+    ...progressResult,
+    state: s,
   };
 
   };
