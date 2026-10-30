@@ -3666,7 +3666,6 @@ export async function applyRolls(
   const rarityWeights: number[] = [];
   let extraCoinsEstimate = 0;
   let lowRarityCoinsEstimate = 0;
-  let bestRewardRarity = 0;
   let rollCount = rollCountOverride ?? (rollsPerActivation(s) * activationCount);
   const now = Date.now();
   const spyUserId = currentUserId();
@@ -4058,12 +4057,10 @@ export async function applyRolls(
 
     if (rarity > bestRarity || (isInfinityOrb && !bestIsInfinity)) {
       bestRarity = rarity;
-      bestRewardRarity = rewardRarity;
       bestIsCrit = isCrit;
       bestIsNew = isNew;
       bestIsInfinity = isInfinityOrb;
     } else if (rarity === bestRarity) {
-      bestRewardRarity = Math.max(bestRewardRarity, rewardRarity);
       if (isCrit) bestIsCrit = true;
       bestIsNew = bestIsNew || isNew;
       bestIsInfinity = bestIsInfinity || isInfinityOrb;
