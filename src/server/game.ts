@@ -3769,6 +3769,20 @@ function effectiveRollCritChance(
   );
 }
 
+function compressedEventChance(perRollChance: number, count: number): number {
+  const chance = Math.max(0, Math.min(1, Number(perRollChance) || 0));
+  const trials = Math.max(0, Math.floor(Number(count) || 0));
+  if (chance <= 0 || trials <= 0) return 0;
+  if (chance >= 1) return 1;
+  return -Math.expm1(trials * Math.log1p(-chance));
+}
+
+function sampleExpectedEventCount(perRollChance: number, count: number, rng: () => number): number {
+  const expected = Math.max(0, Math.min(count, Math.max(0, Number(perRollChance) || 0) * count));
+  const whole = Math.floor(expected);
+  return whole + (rng() < expected - whole ? 1 : 0);
+}
+
 export async function applyRolls(
   s: PlayerState,
   activationCount = 1,
@@ -3777,6 +3791,7 @@ export async function applyRolls(
   rollCountOverride?: number,
   randomOverride?: () => number,
   exactRarity = false,
+  onProgress?: (processedRolls: number) => Promise<void> | void,
 ): Promise<{ bestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number; rollCount: number }> {
   let bestRarity = 0;
   let bestIsCrit = false;
@@ -3789,6 +3804,7 @@ export async function applyRolls(
   let uniqueGained = 0;
   const batch: Orb[] = [];
   const rarities: number[] = [];
+  const rarityWeights: number[] = [];
   let rollCount = rollCountOverride ?? (rollsPerActivation(s) * activationCount);
   const now = Date.now();
   const spyUserId = currentUserId();
@@ -3801,36 +3817,58 @@ export async function applyRolls(
     level: s.level,
     highestRarity: s.highestRarity,
   };
-  const requestedRollCount = rollCount;
-  // Freeze the lifetime counter for this batch. s.totalRolls increments inside
-  // the loop, so using its live value plus i double-counts the current batch.
+  // Freeze the lifetime counter for this batch. The third lifetime Orb is
+  // always resolved exactly, even when the rest of the request is compressed.
   const lifetimeRollsBeforeBatch = s.totalRolls;
   const rng = randomOverride ?? serverRandom;
+  let requestedRollCount = rollCount;
 
-  // Astral Magnetism proc: chance for multi-rolls to pull 2 bonus orbs
+  if (!Number.isSafeInteger(requestedRollCount) || requestedRollCount < 0) {
+    throw new Error('Roll counter would exceed the safe integer range; no rolls were processed.');
+  }
+
+  // Large requests simulate at most 50,000 representative groups. A group of
+  // N orbs uses N² Luck input so sqrt(Luck) produces an N× rarity scale; reward
+  // math then uses the representative unscaled rarity for the N real orbs.
+  const MAX_SAMPLED_ROLLS = 50_000;
+  const exactIntroRolls = forcedRarity == null
+    ? Math.min(requestedRollCount, Math.max(0, 3 - s.totalRolls))
+    : 0;
+  const compressibleRolls = requestedRollCount - exactIntroRolls;
+  const maxCompressedSamples = Math.max(1, MAX_SAMPLED_ROLLS - exactIntroRolls);
+  const compressionFactor = compressibleRolls > maxCompressedSamples
+    ? Math.ceil(compressibleRolls / maxCompressedSamples)
+    : 1;
+  const compressedSamples = compressionFactor > 1
+    ? Math.ceil(compressibleRolls / compressionFactor)
+    : compressibleRolls;
+  rollCount = exactIntroRolls + compressedSamples;
+
+  // Astral Magnetism remains an exact bonus on ordinary batches. For compressed
+  // batches its extra-orb chance is folded into the batch approximation instead
+  // of making the sample/true count diverge.
   const magnetLevel = s.prestigeUpgrades?.stellarMagnet ?? 0;
-  if (source !== 'frenzy' && rollCount > 1 && magnetLevel > 0 && rng() < 0.10 * magnetLevel) {
+  if (compressionFactor === 1 && source !== 'frenzy' && rollCount > 1 && magnetLevel > 0 && rng() < 0.10 * magnetLevel) {
+    requestedRollCount += 2;
     rollCount += 2;
   }
   const baseBatchRollCount = rollCount;
 
-  // The player-state parser rejects unsafe lifetime roll counters. Refuse an
-  // invalid or overflowing batch before shared reads or per-orb mutations.
   if (
     !Number.isSafeInteger(s.totalRolls) ||
     s.totalRolls < 0 ||
-    !Number.isSafeInteger(rollCount) ||
-    rollCount < 0 ||
-    rollCount > Number.MAX_SAFE_INTEGER - s.totalRolls
+    requestedRollCount > Number.MAX_SAFE_INTEGER - s.totalRolls
   ) {
     throw new Error('Roll counter would exceed the safe integer range; no rolls were processed.');
   }
-  const maxSupportedRollCount = source === 'frenzy'
-    ? 5_000
-    : offlineRollCap(s) * rollsPerActivation(s) + 2;
-  if (!Number.isSafeInteger(maxSupportedRollCount) || rollCount > maxSupportedRollCount) {
+  if (!Number.isSafeInteger(rollCount) || rollCount < 0 || rollCount > MAX_SAMPLED_ROLLS + 50) {
     throw new Error('Roll batch exceeds the supported processing cap; no rolls were processed.');
   }
+  const representedWeightForSample = (index: number): number => {
+    if (index >= baseBatchRollCount || index < exactIntroRolls || compressionFactor === 1) return 1;
+    const offset = (index - exactIntroRolls) * compressionFactor;
+    return Math.max(1, Math.min(compressionFactor, compressibleRolls - offset));
+  };
 
   // These reads are independent. Keep them parallel so a roll does not spend
   // several sequential Redis round trips before it can even start rolling.
