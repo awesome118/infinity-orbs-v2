@@ -4224,7 +4224,6 @@ export async function applyRolls(
     if (rarity > bestRarity || (isInfinityOrb && !bestIsInfinity)) {
       bestRarity = rarity;
       bestPayoutRarity = payoutRarity;
-      bestGroupIndex = i;
       bestIsCrit = isCrit;
       bestIsNew = isNew;
       bestIsInfinity = isInfinityOrb;
