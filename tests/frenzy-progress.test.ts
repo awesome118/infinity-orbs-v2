@@ -9,6 +9,11 @@ test('Frenzy calculating popup displays server-backed live progress without the 
   assert.match(main, /\/api\/frenzy\/progress/);
   assert.match(main, /role="progressbar"/);
   assert.match(main, /io-frenzy-progress-track/);
+  assert.match(main, /frenzyProgressCount = Math\.min\(/);
+  assert.match(main, /const ceiling = Math\.min\(total, processed \+ Math\.max\(500, Math\.ceil\(total \* 0\.01\)\)\)/);
+  assert.match(main, /Math\.random\(\) \* Math\.min\(250, room\)/);
+  assert.match(main, /setFrenzyDisplayedProcessed\(finalFrenzyCount\)/);
+
 });
 
 test('Frenzy progress is claimant-scoped and updated after bounded server batches', () => {
