@@ -541,7 +541,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
               {lastOrb?.isCrit && <div className="reward-burst-crit">⚡ CRITICAL</div>}
             </div>
           )}
-        </DynamicOrbRoll>div>
+        </DynamicOrbRoll>
+      </div>
 
       {/* Orbit & Roll Status Callouts (sitting comfortably below the orb and satellites) */}
       <div className="w-full flex flex-col items-center space-y-2">
