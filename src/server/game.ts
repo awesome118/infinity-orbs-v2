@@ -1255,6 +1255,7 @@ function frenzyClaimProgressKey(userId: string): string {
 
 interface FrenzyClaimProgressRecord {
   postId: string;
+  attemptId: string;
   processed: number;
   total: number;
   updatedAt: number;
@@ -1264,6 +1265,7 @@ interface FrenzyClaimProgressRecord {
 async function writeFrenzyClaimProgress(
   userId: string,
   postId: string,
+  attemptId: string,
   total: number,
   processed: number,
   completed = false,
@@ -1274,6 +1276,7 @@ async function writeFrenzyClaimProgress(
     const safeProcessed = Math.max(0, Math.min(safeTotal, Math.floor(processed)));
     const record: FrenzyClaimProgressRecord = {
       postId,
+      attemptId,
       processed: safeProcessed,
       total: safeTotal,
       updatedAt: now,
@@ -6539,6 +6542,7 @@ export async function getOrbFrenzyInfo(): Promise<{
 
 export async function getOrbFrenzyClaimProgress(): Promise<{
   postId: string | null;
+  attemptId: string | null;
   updatedAt: number | null;
   active: boolean;
   processed: number;
@@ -6559,7 +6563,7 @@ export async function getOrbFrenzyClaimProgress(): Promise<{
     !Number.isSafeInteger(progress.updatedAt) ||
     progress.updatedAt < 0
   ) {
-    return { postId: null, updatedAt: null, active: false, processed: 0, total: 0, percent: 0, completed: false };
+    return { postId: null, attemptId: null, updatedAt: null, active: false, processed: 0, total: 0, percent: 0, completed: false };
   }
   const completed = progress.completed === true;
   const processed = Math.min(progress.total, progress.processed);
@@ -6569,18 +6573,23 @@ export async function getOrbFrenzyClaimProgress(): Promise<{
       ? Math.min(95, Math.floor((processed / progress.total) * 95))
       : 0;
   const active = !completed && Date.now() - progress.updatedAt <= FRENZY_CLAIM_PROGRESS_TTL_MS;
-  return { postId: progress.postId, updatedAt: progress.updatedAt, active, processed, total: progress.total, percent, completed };
+  return { postId: progress.postId, attemptId: progress.attemptId, updatedAt: progress.updatedAt, active, processed, total: progress.total, percent, completed };
 }
 
 export async function claimOrbFrenzy(options: {
   allowAdminTestOwner?: boolean;
   postId?: string;
+  attemptId?: string;
 } = {}): Promise<RollResponse> {
   if (options.postId && options.allowAdminTestOwner !== true) {
     throw new Error('Explicit Frenzy post targeting is admin-only.');
   }
 
   const claimantId = currentUserId();
+  const attemptId = String(options.attemptId ?? '').trim() || `claim-${Date.now().toString(36)}`;
+  if (!/^[A-Za-z0-9._:-]{1,128}$/.test(attemptId)) {
+    throw new Error('Invalid Frenzy claim attempt.');
+  }
   const contextPostId = String(context.postId ?? '').trim();
   const contextPostRaw = !options.postId && contextPostId
     ? await redis.get(FRENZY_POST_PREFIX + contextPostId)
@@ -6674,7 +6683,7 @@ export async function claimOrbFrenzy(options: {
   let xpGained = 0;
   let processedCount = 0;
   let remainingCount = count;
-  await writeFrenzyClaimProgress(claimantId, postId, count, 0, false);
+  await writeFrenzyClaimProgress(claimantId, postId, attemptId, count, 0, false);
 
   // Keep each normal RNG batch bounded. Frenzy's displayed payout is exact,
   // so effects that add extra Orbs are disabled for this source.
@@ -6698,7 +6707,7 @@ export async function claimOrbFrenzy(options: {
     xpGained = Math.min(Number.MAX_SAFE_INTEGER, xpGained + result.xpGained);
     processedCount = Math.min(Number.MAX_SAFE_INTEGER, processedCount + result.rollCount);
     remainingCount -= chunkCount;
-    await writeFrenzyClaimProgress(claimantId, postId, count, processedCount, false);
+    await writeFrenzyClaimProgress(claimantId, postId, attemptId, count, processedCount, false);
   }
 
   if (!bestOrb || processedCount !== count) {
@@ -6750,7 +6759,7 @@ export async function claimOrbFrenzy(options: {
       console.error('[Frenzy Claim] Handoff cleanup failed after durable claim:', error);
     });
   }
-  await writeFrenzyClaimProgress(claimantId, postId, count, processedCount, true);
+  await writeFrenzyClaimProgress(claimantId, postId, attemptId, count, processedCount, true);
 
   return {
     orb: bestOrb,
