@@ -5,7 +5,7 @@ import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
-import { createRollBatchPlan, effectiveWeightAtSample, virtualRollOffsetAtSample, sampleBinomialCount, MAX_EFFECTIVE_ROLLS_PER_BATCH } from '../shared/roll-batching.js';
+import { createRollBatchPlan, effectiveWeightAtSample, virtualRollOffsetAtSample, sampleBinomialCount, getRarityBounds, MAX_EFFECTIVE_ROLLS_PER_BATCH } from '../shared/roll-batching.js';
 import { combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityEffects, combatTotalBossesBeaten, combatBossLuckBonus } from '../shared/combat.js';
 import {
   createInitialState,
@@ -4461,14 +4461,17 @@ export async function applyRolls(
     isCrit: bestIsCrit,
   };
 
+  // Scan the sample list iteratively; spreading tens of thousands of values into Math.min/max can overflow the runtime call stack.
+  const rarityBounds = getRarityBounds(rarities);
+
   await appendPlayerSpyLog('roll', {
     source,
     forcedRarity: forcedRarity ?? null,
     requestedRollCount,
     processedRollCount: rollCount,
     activationCount,
-    rarityMin: rarities.length ? Math.min(...rarities) : 0,
-    rarityMax: rarities.length ? Math.max(...rarities) : 0,
+    rarityMin: rarityBounds.min,
+    rarityMax: rarityBounds.max,
     rarityAverage: rarities.length
       ? Math.round(rarities.reduce((sum, rarity, index) => sum + rarity * rarityWeights[index], 0) / rarityWeights.reduce((sum, weight) => sum + weight, 0))
       : 0,
