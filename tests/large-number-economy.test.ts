@@ -13,8 +13,9 @@ import {
 
 test('Coin balances and rewards can grow beyond the JavaScript safe-integer threshold', () => {
   const beyondSafeInteger = 1e30;
-  assert.equal(normalizeCoinAmount(beyondSafeInteger), beyondSafeInteger);
-  assert.equal(addCoinAmount(Number.MAX_SAFE_INTEGER, beyondSafeInteger), beyondSafeInteger);
+  const normalizedLargeBalance = normalizeCoinAmount(beyondSafeInteger);
+  assert.equal(normalizedLargeBalance, Math.floor(beyondSafeInteger));
+  assert.equal(addCoinAmount(Number.MAX_SAFE_INTEGER, beyondSafeInteger), normalizedLargeBalance);
   assert.equal(addCoinAmount(1e200, 2e200), 3e200);
 });
 
