@@ -2,6 +2,7 @@ import { context, redis, reddit } from './devvit-mock.js';
 import { readInBatches } from './redis-batches.js';
 import { combatHighestDepthReached } from '../shared/combat.js';
 import { withPlayerMutationLockFor } from './player-lock.js';
+import { preparePlayerStateForRedisWrite } from './player-collection-storage.js';
 import type {
   Guild,
   LeaderboardEntry,
@@ -3232,8 +3233,15 @@ export async function claimAchievement(_s: PlayerState, id: string) {
     state.lifetimeCoins = addCoinAmount(lifetimeCoins, rewardCoins);
     const rewardShards = grantFreeShards(state, achievement.rewardShards ?? 0);
 
+    let persistedState: Record<string, unknown>;
+    try {
+      persistedState = await preparePlayerStateForRedisWrite(state, user(), generation);
+    } catch (error) {
+      await txn.unwatch().catch(() => undefined);
+      throw error;
+    }
     await txn.multi();
-    await txn.set(playerKey, JSON.stringify(state));
+    await txn.set(playerKey, JSON.stringify(persistedState));
     const committed = await txn.exec();
     if (committed !== null) {
       return { state, rewardCoins, rewardShards };
