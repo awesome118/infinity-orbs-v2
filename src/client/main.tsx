@@ -3262,6 +3262,7 @@ function App() {
             batchSummary={batchSummary}
             readyAt={readyAt}
             busy={isRolling}
+            frenzyRevealActive={frenzyProgress.total > 0 && frenzyProgress.percent >= 100}
             autoRoll={autoRoll}
             worldEvent={worldEvent}
             onToggleAutoRoll={handleToggleAutoRoll}
