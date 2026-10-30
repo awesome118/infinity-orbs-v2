@@ -2457,10 +2457,10 @@ export const ALTAR_BASE_CHANCE_DECAY = 0.85;
 
 export function altarCoinFloor(altarLevel: number): number {
   const safeLevel = Math.max(0, Math.floor(Number(altarLevel) || 0));
-  return Math.min(
-    Number.MAX_SAFE_INTEGER,
-    Math.round(MIN_ALTAR_COIN_OFFER * Math.pow(ALTAR_COIN_FLOOR_GROWTH, safeLevel)),
-  );
+  const required = MIN_ALTAR_COIN_OFFER * Math.pow(ALTAR_COIN_FLOOR_GROWTH, safeLevel);
+  return Number.isFinite(required)
+    ? Math.min(Number.MAX_VALUE, Math.round(required))
+    : Number.MAX_VALUE;
 }
 
 export function altarCoinDevotionChancePercent(
