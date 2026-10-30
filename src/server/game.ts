@@ -3851,20 +3851,33 @@ export async function applyRolls(
     const critCountInGroup = critEligible
       ? sampleBinomialCount(sampleWeight, effectiveCritChance, rng)
       : 0;
-    const isCrit = critCountInGroup > 0;
-    let effectiveCm = cm;
+    const isCompressedGroup = sampleWeight > 1;
     let supernovaCountInGroup = 0;
-    if (isCrit) {
+    if (critCountInGroup > 0) {
       s.totalCrits = Math.min(Number.MAX_SAFE_INTEGER, (s.totalCrits ?? 0) + critCountInGroup);
       const supernovaLevel = s.prestigeUpgrades?.supernova ?? 0;
       const supernovaChance = Math.max(0, Math.min(1, supernovaLevel * 0.10));
       supernovaCountInGroup = supernovaLevel > 0
         ? sampleBinomialCount(critCountInGroup, supernovaChance, rng)
         : 0;
-      if (supernovaCountInGroup > 0) {
-        effectiveCm = cm * 5; // Supernova multiplies the full normal critical strength by 5.
-      }
     }
+    const groupCriticalCount = critCountInGroup;
+    const groupSupernovaCount = supernovaCountInGroup;
+    const normalCriticalGroupCount = groupCriticalCount - groupSupernovaCount;
+    const ordinaryGroupCount = sampleWeight - groupCriticalCount;
+    // The group maximum has one sampled category. For compressed groups,
+    // select it from the weighted ordinary/critical/Supernova mix rather than
+    // upgrading the maximum merely because some other Orb in the group crit.
+    const topCategorySample = isCompressedGroup ? rng() : 1;
+    const topSupernovaProbability = groupSupernovaCount / sampleWeight;
+    const topCriticalProbability = normalCriticalGroupCount / sampleWeight;
+    const isSupernova = isCompressedGroup
+      ? topCategorySample < topSupernovaProbability
+      : groupSupernovaCount > 0;
+    const isCrit = isCompressedGroup
+      ? isSupernova || topCategorySample < topSupernovaProbability + topCriticalProbability
+      : groupCriticalCount > 0;
+    let effectiveCm = isSupernova ? cm * 5 : cm;
 
     // Player level scales rarity linearly; effective Luck applies a separate
     // diminishing-return factor to the continuous roll distribution.
@@ -3923,18 +3936,16 @@ export async function applyRolls(
     // Split the effective batch by its sampled normal-critical-supernova mix.
     // The weighted-Luck maximum is used for the best Orb; aggregate rewards
     // remain weighted across the full effective count.
-    const groupCriticalCount = sampleWeight > 1 ? Math.min(sampleWeight, critCountInGroup) : 0;
-    const groupSupernovaCount = sampleWeight > 1
-      ? Math.min(groupCriticalCount, supernovaCountInGroup)
-      : 0;
-    const ordinaryGroupCount = sampleWeight - groupCriticalCount;
-    const normalCriticalGroupCount = groupCriticalCount - groupSupernovaCount;
-    const criticalRewardRarity = normalCriticalGroupCount > 0
-      ? Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY, Math.round(rewardRarity * cm)))
-      : rewardRarity;
-    const supernovaRewardRarity = groupSupernovaCount > 0
-      ? Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY, Math.round(rewardRarity * cm * 5)))
-      : rewardRarity;
+    const criticalRewardRarity = sampleWeight === 1
+      ? rarity
+      : normalCriticalGroupCount > 0
+        ? Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY, Math.round(rewardRarity * cm)))
+        : rewardRarity;
+    const supernovaRewardRarity = sampleWeight === 1
+      ? rarity
+      : groupSupernovaCount > 0
+        ? Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY, Math.round(rewardRarity * cm * 5)))
+        : rewardRarity;
     const criticalFinalVal = Math.min(MAX_ORB_RARITY, Math.round(criticalRewardRarity * valueMul));
     const supernovaFinalVal = Math.min(MAX_ORB_RARITY, Math.round(supernovaRewardRarity * valueMul));
     const topRarityKey = isInfinityOrb ? 'Infinity' : String(rarity);
