@@ -182,11 +182,12 @@ test('Chain Patcher extends the cheapest edge of the longest Codex chain', () =>
   assert.equal(nextCodexChainRarity(collection), 899);
 });
 
-test('collection value accumulation saturates instead of losing precision or becoming non-finite', () => {
-  const max = Number.MAX_SAFE_INTEGER;
-  assert.equal(addCollectionValue(max - 2, 10), max);
-  assert.equal(addCollectionValue(max + 10, 1), max);
-  assert.equal(addCollectionValue(100, Number.POSITIVE_INFINITY), max);
+test('collection value accumulation uses the full finite Number range without overflowing', () => {
+  const safeIntegerCeiling = Number.MAX_SAFE_INTEGER;
+  assert.ok(addCollectionValue(safeIntegerCeiling - 2, 10) > safeIntegerCeiling);
+  assert.ok(addCollectionValue(safeIntegerCeiling, 1e100) > safeIntegerCeiling);
+  assert.equal(addCollectionValue(Number.MAX_VALUE, Number.MAX_VALUE), Number.MAX_VALUE);
+  assert.equal(addCollectionValue(100, Number.POSITIVE_INFINITY), Number.MAX_VALUE);
   assert.equal(addCollectionValue(-1, 25), 25);
   assert.equal(addCollectionValue(Number.NaN, 25), 25);
   assert.equal(addCollectionValue(25, Number.NaN), 25);
