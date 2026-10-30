@@ -30,18 +30,23 @@ test('dynamic reel is cosmetic and only uses the real Orb after the request comp
   const reel = source('src/client/components/DynamicOrbRoll.tsx');
   const preview = source('src/client/rolling-orb-preview.ts');
   const rollSection = source('src/client/components/RollSection.tsx');
+  const main = source('src/client/main.tsx');
 
-  assert.match(reel, /if \(!busy \|\| reducedMotion\)/);
-  assert.match(reel, /rollingOrbRarityAt\(frame\)/);
-  assert.match(reel, /const stageInfo = busy\s+\?\s+previewInfo\s+:\s+orb/);
-  assert.match(reel, /aria-busy=\{busy\}/);
-  assert.match(reel, /busy \? 'ROLLING'/);
-  assert.match(reel, /\!busy && orb\?\.isCrit/);
-  assert.match(reel, /\!busy && orb\?\.isNew/);
-  assert.match(reel, /OrbOrbit orbs=\{previewOrbit\} radius=\{radius\} rolling=\{busy\}/);
+  assert.ok(reel.includes('const isSpinning = busy && !frenzyRevealActive'));
+  assert.ok(reel.includes('if (!isSpinning || reducedMotion)'));
+  assert.ok(reel.includes('rollingOrbRarityAt(frame)'));
+  assert.ok(reel.includes('const stageInfo = isSpinning'));
+  assert.ok(reel.includes("isSpinning ? 'ROLLING'"));
+  assert.ok(reel.includes('{!isSpinning && orb?.isCrit && ('));
+  assert.ok(reel.includes('{!isSpinning && orb?.isNew && ('));
+  assert.ok(reel.includes('<OrbOrbit orbs={previewOrbit} radius={radius} rolling={isSpinning} />'));
+  assert.ok(reel.includes('{!isSpinning && children}'));
   assert.doesNotMatch(preview, /Math\.random/);
-  assert.match(rollSection, /<DynamicOrbRoll/);
-  assert.match(rollSection, /orb=\{displayOrb\}/);
+  assert.ok(rollSection.includes('<DynamicOrbRoll'));
+  assert.ok(rollSection.includes('frenzyRevealActive={frenzyRevealActive}'));
+  assert.ok(rollSection.includes('orb={displayOrb}'));
+  assert.ok(main.includes('frenzyRevealActive={frenzyProgress.total > 0 && frenzyProgress.percent >= 100}'));
+
   const css = source('src/client/styles.css');
   assert.match(css, /\.io-main-orb\.is-dynamic-rolling/);
   assert.match(css, /\.io-rolling-orbit/);
