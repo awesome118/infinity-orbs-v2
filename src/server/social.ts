@@ -1,5 +1,5 @@
 import { context, redis, reddit } from './devvit-mock.js';
-import { readInBatches } from './redis-batches.js';
+import { readInBatches, serializeJsonArrayWithinByteLimit } from './redis-batches.js';
 import { combatHighestDepthReached } from '../shared/combat.js';
 import { withPlayerMutationLockFor } from './player-lock.js';
 import { preparePlayerStateForRedisWrite } from './player-collection-storage.js';
@@ -2288,7 +2288,17 @@ function normalizeRedditPostId(value: unknown): string {
   return /^t3_/i.test(id) ? id : 't3_' + id;
 }
 const GLOBAL_CHAT_MAX_MESSAGES = 100;
+const GLOBAL_CHAT_MAX_MESSAGE_CHARS = 4_000;
+const GLOBAL_CHAT_MAX_BYTES = 24_000;
 const CHAT_REPORTS_KEY = key('chat-reports:v1');
+
+function serializeGlobalChatMessages(messages: GlobalChatMessage[]): string | null {
+  const bounded = messages.slice(-GLOBAL_CHAT_MAX_MESSAGES).map(message => ({
+    ...message,
+    text: String(message.text ?? '').slice(0, GLOBAL_CHAT_MAX_MESSAGE_CHARS),
+  }));
+  return serializeJsonArrayWithinByteLimit(bounded, GLOBAL_CHAT_MAX_BYTES, 'last');
+}
 const CHAT_REPORT_RESERVATION_PREFIX = key('chat-report-reservation:v1:');
 const CHAT_COOLDOWN_PREFIX = key('chat-cooldown:v1:');
 
@@ -2490,8 +2500,14 @@ export async function recordGlobalChatComment(input: {
       }
       messages.push(message);
       messages.sort((a, b) => a.timestamp - b.timestamp);
+      const serializedMessages = serializeGlobalChatMessages(messages);
+      if (serializedMessages == null) {
+        await txn.unwatch();
+        closed = true;
+        throw new Error('Global Chat message exceeded its safe storage size.');
+      }
       await txn.multi();
-      await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(messages.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
+      await txn.set(GLOBAL_CHAT_KEY, serializedMessages);
       const committed = await txn.exec();
       closed = true;
       if (committed !== null) return message;
@@ -2526,8 +2542,13 @@ async function purgeChatMessagesForUser(userId: string, targetUsername: string):
       return messageUserId !== userId && messageUsername !== cleanUsername;
     });
 
+    const serializedMessages = serializeGlobalChatMessages(retained);
+    if (serializedMessages == null) {
+      await txn.unwatch();
+      throw new Error('Global Chat history exceeded its safe storage size.');
+    }
     await txn.multi();
-    await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(retained.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
+    await txn.set(GLOBAL_CHAT_KEY, serializedMessages);
     const committed = await txn.exec();
     if (committed !== null) return;
   }
@@ -3006,8 +3027,13 @@ export async function recordLeaderboard(s: PlayerState) {
       }
     } else board.push(next);
     board.sort((a, b) => b.value - a.value);
+    const serializedBoard = serializeJsonArrayWithinByteLimit(board, 24_000, 'first');
+    if (serializedBoard == null) {
+      await txn.unwatch();
+      throw new Error('Leaderboard projection exceeded its safe storage size.');
+    }
     await txn.multi();
-    await txn.set(leaderboardKey, JSON.stringify(board.slice(0, 5000)));
+    await txn.set(leaderboardKey, serializedBoard);
     const committed = await txn.exec();
     if (committed !== null) return;
   }
