@@ -510,7 +510,7 @@ test('Frenzy payout preview and claim use the same Multiball-scaled count', () =
   assert.match(info, /const rewardOrbCount = frenzyClaimCountForRarity\(/);
   assert.match(info, /rewardOrbCount,/);
   assert.match(claim, /const count = frenzyClaimCountForRarity\(\s*data\.rarity,\s*rollsPerActivation\(s\)/);
-  assert.match(claim, /applyRolls\(s, 1, undefined, 'frenzy', chunkCount\)/);
+  assert.match(claim, /applyRolls\([\s\S]{0,220}'frenzy',[\s\S]{0,220}chunkProcessed =>/);
   assert.match(claim, /frenzyCount: processedCount/);
   assert.doesNotMatch(claim, /data\.rarity \* critMultiplier\(s\)/);
 });
@@ -522,7 +522,9 @@ test('Frenzy batches use ordinary RNG without hidden extra Orb rolls', () => {
   assert.ok(start >= 0 && end > start);
   const apply = source.slice(start, end);
   assert.match(apply, /source: 'online' \| 'offline' \| 'frenzy'/);
-  assert.match(apply, /source === 'frenzy'\s*\?\s*5_000/);
+  assert.match(apply, /MAX_EFFECTIVE_ROLLS_PER_BATCH/);
+  assert.match(apply, /source === 'offline'[\s\S]{0,100}offlineRollCap\(s\)/);
+  assert.match(apply, /sampleWeight \\* sampleWeight/);
   assert.match(apply, /source === 'frenzy'\s*\?\s*0\s*:\s*Math\.max/);
   assert.match(apply, /source !== 'frenzy' && rollCount > 1 && magnetLevel > 0/);
   assert.match(apply, /source !== 'frenzy' && !constellationTriggered/);
