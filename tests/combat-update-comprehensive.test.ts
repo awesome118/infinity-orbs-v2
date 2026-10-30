@@ -183,7 +183,7 @@ test('all roll-earned Shard chance sources are reduced and all Shard additions a
   const claimEnd = game.indexOf('export async function postFrenzyThankYouComment', claimStart);
   assert.ok(claimStart >= 0 && claimEnd > claimStart);
   const frenzy = game.slice(claimStart, claimEnd);
-  assert.match(frenzy, /applyRolls\(s, 1, undefined, 'frenzy', chunkCount\)/);
+  assert.match(frenzy, /applyRolls\([\s\S]{0,220}'frenzy',[\s\S]{0,220}chunkProcessed =>/);
   assert.doesNotMatch(frenzy, /const rarityShards = groups\.reduce/);
 });
 
