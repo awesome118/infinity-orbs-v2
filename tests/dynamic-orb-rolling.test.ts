@@ -33,7 +33,7 @@ test('dynamic reel is cosmetic and only uses the real Orb after the request comp
 
   assert.match(reel, /if \(!busy \|\| reducedMotion\)/);
   assert.match(reel, /rollingOrbRarityAt\(frame\)/);
-  assert.match(reel, /const stageInfo = busy\\s+\\? previewInfo\\s+: orb/);
+  assert.match(reel, /const stageInfo = busy\s+\?\s+previewInfo\s+:\s+orb/);
   assert.match(reel, /aria-busy=\{busy\}/);
   assert.match(reel, /busy \? 'ROLLING'/);
   assert.match(reel, /\!busy && orb\?\.isCrit/);
