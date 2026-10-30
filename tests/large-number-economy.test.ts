@@ -16,7 +16,9 @@ test('Coin balances and rewards can grow beyond the JavaScript safe-integer thre
   const normalizedLargeBalance = normalizeCoinAmount(beyondSafeInteger);
   assert.equal(normalizedLargeBalance, Math.floor(beyondSafeInteger));
   assert.equal(addCoinAmount(Number.MAX_SAFE_INTEGER, beyondSafeInteger), normalizedLargeBalance);
-  const accumulated = addCoinAmount(1e200, 2e200);\n  assert.ok(Number.isFinite(accumulated));\n  assert.ok(accumulated > Number.MAX_SAFE_INTEGER);
+  const accumulated = addCoinAmount(1e200, 2e200);
+  assert.ok(Number.isFinite(accumulated));
+  assert.ok(accumulated > Number.MAX_SAFE_INTEGER);
 });
 
 test('Coin and collection totals saturate only at the largest finite Number', () => {
