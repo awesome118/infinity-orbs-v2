@@ -74,6 +74,8 @@ test('server uses weighted sample counts for Luck, player totals, XP, Coins, and
   const frenzy = server.slice(server.indexOf('export async function claimOrbFrenzy'), server.indexOf('export async function postFrenzyThankYouComment'));
 
   assert.ok(apply.includes('sampleLuck = Math.min(Number.MAX_VALUE, effectiveLuck * sampleWeight * sampleWeight)'));
+  assert.match(apply, /const compressedGroup = sampleWeight > 1/);
+  assert.match(apply, /Math\.floor\(baseRarity \/ sampleWeight\)/);
   assert.match(apply, /s\.totalRolls \+= sampleWeight/);
   assert.match(apply, /xpForBaseOrb \* sampleWeight/);
   assert.match(apply, /extraCoinsEstimate = addCoinAmount/);
