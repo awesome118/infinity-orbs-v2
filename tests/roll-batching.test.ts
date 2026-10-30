@@ -80,6 +80,7 @@ test('server uses weighted sample counts for Luck, player totals, XP, Coins, and
   assert.ok(apply.includes('const sampleScale = sampleWeight * averageGroupMultiplier'));
   assert.ok(apply.includes('effectiveLuck * sampleScale * sampleScale'));
   assert.match(apply, /const isCompressedGroup = sampleWeight > 1/);
+  assert.match(apply, /source !== 'offline' && forcedRarity == null/);
   assert.match(apply, /rollContinuum\(\s*effectiveLuck,\s*rng,\s*runeLuckMultiplier,\s*runeRarityFloor/);
   assert.match(apply, /runeLuckMultiplier \* criticalMultiplier/);
   assert.match(apply, /runeLuckMultiplier \* supernovaMultiplier/);
