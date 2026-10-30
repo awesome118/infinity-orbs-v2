@@ -74,7 +74,7 @@ test('Auto Scrap settings are configurable and safely bounded',()=>{
 });
 
 test('combat upgrade ranks have higher entry costs and increase further by rank',()=>{
-  assert.deepEqual(COMBAT_UPGRADES.map(upgrade=>upgrade.baseCost),[23,23,32,35,40,60,52]);
+  assert.deepEqual(COMBAT_UPGRADES.map(upgrade=>upgrade.baseCost),[23,23,32,35,40,60,52,80]);
   const state=createCombatState(),upgrade=COMBAT_UPGRADES[0]!;
   const first=combatUpgradeCost(state,upgrade.id);
   assert.equal(first,23);
