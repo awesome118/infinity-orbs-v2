@@ -20,11 +20,13 @@ test('player Codex data is stored in small immutable Redis pages', () => {
 
 test('player save migration preserves full legacy Codex data until a successful paged save', () => {
   const game = source('src/server/game.ts');
+  const social = source('src/server/social.ts');
   assert.match(game, /storedPageIdsValue != null/);
   assert.match(game, /collection: isValidCollection\(parsed\.collection\) \? parsed\.collection/);
   assert.match(game, /collectionStorageVersion: 1/);
   assert.match(game, /collection: inMemoryCollection/);
   assert.match(game, /delete copy\.collectionPageIds/);
+  assert.match(social, /save\.codexChain \?\? highestCodexChain\(save\.collection\)/);
   assert.match(social, /source\.codexChain \?\? highestCodexChain\(source\.collection\)/);
 });
 
