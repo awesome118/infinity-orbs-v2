@@ -1,5 +1,12 @@
 # Infinity Orbs Changelog
 
+### Dynamic Orb Rolling (2.1.21)
+
+- Add a live cosmetic orb reel while standard and Auto Roll requests are resolving, with shifting rarity/color previews and faster orbiting satellite orbs.
+- Reveal only the server-confirmed Orb after a normal roll; preview values never affect tickets, rarity, rewards, or collection data.
+- Preserve the real orb-by-orb Frenzy reveal and respect reduced-motion preferences.
+- Add deterministic preview and regression coverage.
+
 ### Guild Polling Regression Coverage (2.1.20)
 
 - Align background-polling regression checks with independent Guild and world-event request locks.
