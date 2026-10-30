@@ -144,6 +144,77 @@ const playerGuildScopes = new WeakMap<PlayerState, string | null>();
 const pendingSaveExtraWrites = new WeakMap<PlayerState, SaveExtraWrite[]>();
 const pendingSavePostCommitActions = new WeakMap<PlayerState, SavePostCommitAction[]>();
 
+// Keep the unbounded Codex out of the main player JSON value. Immutable pages
+// are updated only when their contents change, keeping each Redis SET small.
+const PLAYER_COLLECTION_PAGE_PREFIX = 'io:player-collection:v1:';
+const PLAYER_COLLECTION_PAGE_CHARS = 18_000;
+const PLAYER_COLLECTION_MAX_PAGES = 256;
+interface PlayerCollectionStorageSnapshot {
+  pageCount: number;
+  pages: string[];
+}
+const playerCollectionStorageSnapshots = new WeakMap<PlayerState, PlayerCollectionStorageSnapshot>();
+
+function playerCollectionPageKey(userId: string, generation: number, pageIndex: number): string {
+  return PLAYER_COLLECTION_PAGE_PREFIX + encodeURIComponent(userId) + ':' + generation + ':' + pageIndex;
+}
+
+function serializePlayerCollectionPages(collection: Record<string, number>): string[] {
+  const pages: string[] = [];
+  let entries: string[] = [];
+  let pageChars = 2;
+  for (const [rarity, count] of Object.entries(collection ?? {})) {
+    const entry = JSON.stringify(rarity) + ':' + String(count);
+    const entryChars = entry.length + (entries.length > 0 ? 1 : 0);
+    if (entries.length > 0 && pageChars + entryChars > PLAYER_COLLECTION_PAGE_CHARS) {
+      pages.push('{' + entries.join(',') + '}');
+      entries = [];
+      pageChars = 2;
+    }
+    entries.push(entry);
+    pageChars += entryChars;
+  }
+  if (entries.length > 0) pages.push('{' + entries.join(',') + '}');
+  if (pages.length > PLAYER_COLLECTION_MAX_PAGES) {
+    throw new Error('Your Codex is too large to save safely. No roll or reward was committed.');
+  }
+  return pages;
+}
+
+async function loadPlayerCollectionPages(
+  userId: string,
+  generation: number,
+  pageCount: number,
+): Promise<{ collection: Record<string, number>; pages: string[] }> {
+  if (!Number.isSafeInteger(pageCount) || pageCount < 0 || pageCount > PLAYER_COLLECTION_MAX_PAGES) {
+    throw new Error('Your Codex page index is invalid. No changes were applied.');
+  }
+  if (pageCount === 0) {
+    return { collection: Object.create(null) as Record<string, number>, pages: [] };
+  }
+  const keys = Array.from({ length: pageCount }, (_, index) => playerCollectionPageKey(userId, generation, index));
+  const rawPages = await readInBatches(keys, batch => redis.mGet(batch), 16, 4);
+  const collection = Object.create(null) as Record<string, number>;
+  const pages: string[] = [];
+  for (const raw of rawPages) {
+    if (typeof raw !== 'string') {
+      throw new Error('Part of your Codex could not be loaded safely. No changes were applied.');
+    }
+    const parsed = parseStoredJson<Record<string, number>>(raw);
+    if (!isValidCollection(parsed)) {
+      throw new Error('A Codex page is corrupted. No changes were applied.');
+    }
+    for (const [rarity, count] of Object.entries(parsed)) {
+      if (Object.prototype.hasOwnProperty.call(collection, rarity)) {
+        throw new Error('Your Codex contains duplicate page entries. No changes were applied.');
+      }
+      collection[rarity] = count;
+    }
+    pages.push(raw);
+  }
+  return { collection, pages };
+}
+
 function getPendingSaveExtraWrite(s: PlayerState, keyName: string): SaveExtraWrite | undefined {
   return pendingSaveExtraWrites.get(s)?.find(item => item.key === keyName);
 }
@@ -327,6 +398,11 @@ function saveStatesMatchIgnoringRevision(a: PlayerState, b: PlayerState): boolea
   const normalize = (state: PlayerState): string => {
     const copy = JSON.parse(JSON.stringify(state)) as Record<string, unknown>;
     delete copy.stateRevision;
+    // Codex pages are compared through their own watched page keys. The main
+    // save stores only the page count, not the expanded rarity dictionary.
+    delete copy.collection;
+    delete copy.collectionPageCount;
+    delete copy.collectionStorageVersion;
     return JSON.stringify(copy);
   };
   return normalize(a) === normalize(b);
@@ -2650,8 +2726,19 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     return fresh;
   }
 
+  const storedCollectionPageCountValue = (parsed as PlayerState & { collectionPageCount?: unknown }).collectionPageCount;
+  const storedCollectionPageCount = storedCollectionPageCountValue == null ? 0 : Number(storedCollectionPageCountValue);
+  if (!Number.isSafeInteger(storedCollectionPageCount) || storedCollectionPageCount < 0 || storedCollectionPageCount > PLAYER_COLLECTION_MAX_PAGES) {
+    throw new Error('Your Codex page index is invalid. No changes were applied.');
+  }
+  const pagedCollection = storedCollectionPageCount > 0
+    ? await loadPlayerCollectionPages(userId, generation, storedCollectionPageCount)
+    : {
+        collection: isValidCollection(parsed.collection) ? parsed.collection : createInitialState().collection,
+        pages: [] as string[],
+      };
   const base = createInitialState();
-  const cleanParsed = { ...(parsed as PlayerState & Record<string, unknown>) };
+  const cleanParsed = { ...(parsed as PlayerState & Record<string, unknown>), collection: pagedCollection.collection };
   const normalizedPurchasedShards = Math.min(
     normalizeSafeInteger(parsed.purchasedShards, base.purchasedShards ?? 0),
     normalizeSafeInteger(Math.floor(Number(parsed.shards)), base.shards),
@@ -2777,6 +2864,10 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
   // Cosmic Dust has a lower game-specific cap than the shared safe-integer guard.
   restored.cosmicDust = Math.min(MAX_COSMIC_DUST, restored.cosmicDust);
   playerGuildScopes.set(restored, guildId);
+  playerCollectionStorageSnapshots.set(restored, {
+    pageCount: storedCollectionPageCount,
+    pages: pagedCollection.pages,
+  });
   // One-time migration: persist the new hard cap instead of only clamping its read view.
   if (finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust) > MAX_COSMIC_DUST) {
     try {
@@ -3252,6 +3343,17 @@ export async function save(
   );
   const playerKey = key();
   const generationKey = saveGenerationKeyFor(userId);
+  const storageGeneration = Math.max(0, Math.floor(Number(s.saveGeneration ?? 0)));
+  const collectionPages = serializePlayerCollectionPages(s.collection ?? {});
+  const previousCollectionSnapshot = playerCollectionStorageSnapshots.get(s) ?? { pageCount: 0, pages: [] };
+  const collectionPageWrites = collectionPages
+    .map((value, index) => ({
+      index,
+      key: playerCollectionPageKey(userId, storageGeneration, index),
+      value,
+      expectedValue: previousCollectionSnapshot.pages[index] ?? null,
+    }))
+    .filter(page => previousCollectionSnapshot.pages[page.index] !== page.value);
   await ensureRedisStringKey(generationKey, '0');
 
   let expectedRevision = Math.max(0, Math.floor(Number(s.stateRevision ?? 0)) || 0);
@@ -3282,6 +3384,7 @@ export async function save(
       playerKey,
       generationKey,
       ...extraWrites.map(write => write.key),
+      ...collectionPageWrites.map(page => page.key),
       ...activeLocks.map(item => item.key),
     ])];
     const txn = await redis.watch(...watchedKeys);
@@ -3358,6 +3461,15 @@ export async function save(
     const latestRevision = Math.max(0, Math.floor(Number(latest?.stateRevision ?? 0)) || 0);
     const saveKeyMissing = latestRaw == null;
 
+    for (const page of collectionPageWrites) {
+      const storedPage = await redis.get(page.key);
+      const actualPage = storedPage == null ? null : String(storedPage);
+      if (actualPage !== page.expectedValue) {
+        await txn.unwatch();
+        throw new Error('Your Codex changed while saving. Please retry so no rarity counts are lost.');
+      }
+    }
+
     // A missing player key is a recoverable first-save/persistence hole, not a
     // stale-write conflict. The generation key is still watched above, so a
     // concurrent write or account wipe aborts this transaction safely.
@@ -3410,9 +3522,21 @@ export async function save(
       }, userId);
     }
 
-    const nextState = { ...s, saveGeneration: generation, stateRevision: expectedRevision + 1 };
+    const inMemoryCollection = s.collection;
+    const { collection: _fullCollection, ...playerStateWithoutCollection } = s;
+    const nextState = {
+      ...playerStateWithoutCollection,
+      collection: {},
+      collectionStorageVersion: 1,
+      collectionPageCount: collectionPages.length,
+      saveGeneration: generation,
+      stateRevision: expectedRevision + 1,
+    };
     await txn.multi();
     await txn.set(playerKey, JSON.stringify(nextState));
+    for (const page of collectionPageWrites) {
+      await txn.set(page.key, page.value);
+    }
     for (const write of extraWrites) {
       if (write.expiration) {
         await txn.set(write.key, write.nextValue, { expiration: write.expiration });
@@ -3424,7 +3548,11 @@ export async function save(
     transactionClosed = true;
     if (committed !== null) {
       pendingSaveExtraWrites.delete(s);
-      Object.assign(s, nextState);
+      Object.assign(s, { ...nextState, collection: inMemoryCollection });
+      playerCollectionStorageSnapshots.set(s, {
+        pageCount: collectionPages.length,
+        pages: collectionPages,
+      });
 
       // Optional projections are deliberately outside the authoritative player
       // transaction. They can lag briefly or be skipped on conflicts, but they
