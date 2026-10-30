@@ -47,10 +47,11 @@ function isAdminUsername(value: unknown): boolean {
 }
 const key = (name: string) => `io:${name}`;
 const GUILDS_KEY = key('guilds');
-const GUILD_DOCUMENT_MAX_CHARS = 48_000;
+// Use a byte ceiling, not JavaScript character count: emoji and other UTF-8
+// chat content can occupy several request bytes per visible character.
+const GUILD_DOCUMENT_MAX_BYTES = 32_000;
 
 function serializeGuildsForRedis(guilds: Guild[]): string {
-  // Keep this shared JSON document below the Redis RPC request-size ceiling.
   // Membership, upgrades, tasks, and boss state are preserved; only chat history
   // is compacted, oldest-first, when the storage budget requires it.
   for (const guild of guilds) {
@@ -61,7 +62,9 @@ function serializeGuildsForRedis(guilds: Guild[]): string {
     }));
   }
   let serialized = JSON.stringify(guilds);
-  while (serialized.length > GUILD_DOCUMENT_MAX_CHARS) {
+  const byteLength = (value: string) => new TextEncoder().encode(value).byteLength;
+  let serializedBytes = byteLength(serialized);
+  while (serializedBytes > GUILD_DOCUMENT_MAX_BYTES) {
     let oldestGuild: Guild | null = null;
     let oldestTimestamp = Number.POSITIVE_INFINITY;
     for (const guild of guilds) {
@@ -75,8 +78,9 @@ function serializeGuildsForRedis(guilds: Guild[]): string {
     if (!oldestGuild?.chat?.length) break;
     oldestGuild.chat.shift();
     serialized = JSON.stringify(guilds);
+    serializedBytes = byteLength(serialized);
   }
-  if (serialized.length > GUILD_DOCUMENT_MAX_CHARS) {
+  if (serializedBytes > GUILD_DOCUMENT_MAX_BYTES) {
     throw new Error('Guild data has exceeded its safe storage size. Guild progression was not changed; contact a moderator to repair the registry.');
   }
   return serialized;
