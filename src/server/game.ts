@@ -4038,8 +4038,6 @@ export async function applyRolls(
   let previousBatchRarity = 0;
   let risingRarityChain = 0;
   let processedLogicalRolls = 0;
-  let bestGroupIndex = 0;
-  let bestPayoutRarity = 2;
   const progressTargetUpdates = Math.min(500, Math.max(20, Math.ceil(requestedRollCount / 1_000)));
   const progressUpdateEvery = source === 'frenzy' && onProgress
     ? Math.max(1, Math.ceil(baseBatchRollCount / progressTargetUpdates))
@@ -4237,7 +4235,6 @@ export async function applyRolls(
 
     if (rarity > bestRarity || (isInfinityOrb && !bestIsInfinity)) {
       bestRarity = rarity;
-      bestPayoutRarity = payoutRarity;
       bestIsCrit = isCrit;
       bestIsNew = isNew;
       bestIsInfinity = isInfinityOrb;
@@ -4251,7 +4248,11 @@ export async function applyRolls(
       (1 + (s.upgrades.xpBonus ?? 0) * 0.20) *
       levelBenefits.xpMultiplier *
       (1 + runeBonuses.xpGainPct / 100);
-    const earnedXp = Math.min(Number.MAX_SAFE_INTEGER, Math.round(Math.min(300, 12 + Math.floor(Math.log10(payoutRarity + 1) * 12)) * xpBonusMul)) * groupWeight;
+    const xpForRarity = (value: number) => Math.min(
+      Number.MAX_SAFE_INTEGER,
+      Math.round(Math.min(300, 12 + Math.floor(Math.log10(value + 1) * 12)) * xpBonusMul),
+    );
+    const earnedXp = xpForRarity(payoutRarity) * Math.max(0, groupWeight - 1) + xpForRarity(rarity);
 
     // High rarity is not a guaranteed Shard source. Compressed groups use an
     // unbiased expected-proc sampler so the total payout scales with represented
@@ -4353,13 +4354,14 @@ export async function applyRolls(
 
   // Balanced Gold progression: one representative best Orb pays 100%; every
   // other represented Orb contributes its usual 20% Coin share.
-  const topCoins = Math.round(coinsForRarity(bestPayoutRarity));
+  const topCoins = Math.round(coinsForRarity(bestRarity));
+  const bestRarityIndex = rarities.indexOf(bestRarity);
   let extraCoins = 0;
   let lowRarityCoins = 0;
   for (let index = 0; index < rarities.length; index++) {
     const rarity = rarities[index];
     const weight = Math.max(1, rarityWeights[index] ?? 1);
-    const extraCount = Math.max(0, weight - (index === bestGroupIndex ? 1 : 0));
+    const extraCount = Math.max(0, weight - (index === bestRarityIndex ? 1 : 0));
     if (extraCount > 0) {
       const perOrbExtra = Math.max(1, Math.round(coinsForRarity(rarity) * 0.20));
       extraCoins = addCoinAmount(extraCoins, Math.min(Number.MAX_VALUE, perOrbExtra * extraCount));
@@ -4504,17 +4506,20 @@ export async function applyRolls(
     rarityMin: rarities.length ? Math.min(...rarities) : 0,
     rarityMax: rarities.length ? Math.max(...rarities) : 0,
     rarityAverage: rarities.length
-      ? Math.round(rarities.reduce((sum, rarity) => sum + rarity, 0) / rarities.length)
+      ? Math.round(
+          rarities.reduce((sum, rarity, index) => sum + rarity * (rarityWeights[index] ?? 1), 0) /
+          Math.max(1, rarityWeights.reduce((sum, weight) => sum + weight, 0)),
+        )
       : 0,
     rarityHistogram: {
-      '2-9': rarities.filter(r => r < 10).length,
-      '10-99': rarities.filter(r => r >= 10 && r < 100).length,
-      '100-999': rarities.filter(r => r >= 100 && r < 1_000).length,
-      '1k-9.9k': rarities.filter(r => r >= 1_000 && r < 10_000).length,
-      '10k-99.9k': rarities.filter(r => r >= 10_000 && r < 100_000).length,
-      '100k-999.9k': rarities.filter(r => r >= 100_000 && r < 1_000_000).length,
-      '1m-9.9m': rarities.filter(r => r >= 1_000_000 && r < 10_000_000).length,
-      '10m+': rarities.filter(r => r >= 10_000_000).length,
+      '2-9': rarities.reduce((count, rarity, index) => count + (rarity < 10 ? rarityWeights[index] ?? 1 : 0), 0),
+      '10-99': rarities.reduce((count, rarity, index) => count + (rarity >= 10 && rarity < 100 ? rarityWeights[index] ?? 1 : 0), 0),
+      '100-999': rarities.reduce((count, rarity, index) => count + (rarity >= 100 && rarity < 1_000 ? rarityWeights[index] ?? 1 : 0), 0),
+      '1k-9.9k': rarities.reduce((count, rarity, index) => count + (rarity >= 1_000 && rarity < 10_000 ? rarityWeights[index] ?? 1 : 0), 0),
+      '10k-99.9k': rarities.reduce((count, rarity, index) => count + (rarity >= 10_000 && rarity < 100_000 ? rarityWeights[index] ?? 1 : 0), 0),
+      '100k-999.9k': rarities.reduce((count, rarity, index) => count + (rarity >= 100_000 && rarity < 1_000_000 ? rarityWeights[index] ?? 1 : 0), 0),
+      '1m-9.9m': rarities.reduce((count, rarity, index) => count + (rarity >= 1_000_000 && rarity < 10_000_000 ? rarityWeights[index] ?? 1 : 0), 0),
+      '10m+': rarities.reduce((count, rarity, index) => count + (rarity >= 10_000_000 ? rarityWeights[index] ?? 1 : 0), 0),
     },
     sampleRarities: rarities.slice(0, 50),
     coinsPerRoll: rollCount > 0 ? Math.round(coinsGained / rollCount) : 0,
