@@ -1,7 +1,7 @@
 name: Submit Infinity Orbs for Reddit Review
 
 on:
-  # v2.1.10 Devvit Redis counter API fix review submission: publish the patch release, then install it to r/infinity_orbs_dev. Production install remains gated on Reddit approval.
+  # v2.1.22 weighted large-batch roll release: submit the tested patch for Reddit review, then install it to r/infinity_orbs_dev only. Production install remains gated on Reddit approval.
   push:
     branches: [main]
     paths:
@@ -21,7 +21,7 @@ on:
 
 jobs:
   release:
-    if: ${{ inputs.confirm_publish || (github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.1.10]')) }}
+    if: ${{ inputs.confirm_publish || (github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.1.22]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -47,6 +47,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify Devvit CLI authentication
+        env:
+          DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
+        run: |
+          set -euo pipefail
+          test -n "${DEVVIT_AUTH_TOKEN:-}" || {
+            echo "::error::Repository secret DEVVIT_TOKEN is missing."
+            exit 1
+          }
+          test -n "${DEVVIT_SESSION_ID:-}" || {
+            echo "::error::Repository secret DEVVIT_SESSION_ID is missing."
+            exit 1
+          }
+          npx devvit whoami
+
       - name: Verify requested release version
         env:
           REQUESTED_VERSION: ${{ inputs.release_version }}
@@ -66,6 +82,7 @@ jobs:
       - name: Submit version for Reddit review
         env:
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
           CI: true
           DEVVIT_ALLOW_SOURCE_UPLOAD: 1
           REQUESTED_VERSION: ${{ inputs.release_version }}
@@ -79,6 +96,7 @@ jobs:
       - name: Install published candidate to development subreddit only (r/infinity_orbs_dev)
         env:
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
+          DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./package.json').version")"
