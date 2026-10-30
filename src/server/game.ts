@@ -3998,8 +3998,12 @@ export async function applyRolls(
       addGroupRarity(topRarityKey, 1);
     }
     const newlyDiscoveredGroupRarities = [...groupRarityCounts.keys()].filter(key => !s.collection[key]);
+    const newDiscoveryOrbCount = newlyDiscoveredGroupRarities.reduce(
+      (count, key) => count + (groupRarityCounts.get(key) ?? 0),
+      0,
+    );
     const isNew = newlyDiscoveredGroupRarities.includes(topRarityKey);
-    const groupNewRarity = newlyDiscoveredGroupRarities.length > 0;
+    const groupNewRarity = newDiscoveryOrbCount > 0;
     for (const [key, count] of groupRarityCounts) {
       s.collection[key] = (s.collection[key] ?? 0) + count;
     }
@@ -4082,29 +4086,34 @@ export async function applyRolls(
     );
     const totalRollsBeforeSample = s.totalRolls - sampleWeight;
     const previousAllTimeRarity = s.highestRarity;
+    const groupDryStreakBeforeSample = Math.max(0, Math.floor(Number(s.rollsSinceBest ?? 0) || 0));
+    // A group maximum is equally likely to occur at any represented position.
+    // Use the expected pre-record position for Aftershock and dry-streak state.
+    const groupDryStreakAtMaximum = groupDryStreakBeforeSample + Math.floor((sampleWeight - 1) / 2);
+    const groupDryStreakAverage = groupDryStreakBeforeSample + (sampleWeight + 1) / 2;
     const isNewRarityRecord = rarity > previousAllTimeRarity || (isInfinityOrb && !s.highestRarityIsInfinity);
     if (isNewRarityRecord) {
       // The rolls since the previous record become an Aftershock candidate
       // only when a strictly rarer all-time orb finally appears.
       if (s.highestRarity > 0) {
-        const previousDryRolls = Math.max(0, Math.floor(Number(s.rollsSinceBest ?? 0) || 0));
         s.aftershockRecord = Math.max(
           Math.max(0, Math.floor(Number(s.aftershockRecord ?? 0) || 0)),
-          previousDryRolls,
+          groupDryStreakAtMaximum,
         );
+        s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, groupDryStreakAtMaximum);
       }
       s.highestRarity = rarity;
       s.highestRarityIsInfinity = isInfinityOrb;
-      s.rollsSinceBest = Math.floor((sampleWeight - 1) / 2);
+      s.rollsSinceBest = groupDryStreakAtMaximum;
     } else {
-      s.rollsSinceBest = (s.rollsSinceBest ?? 0) + sampleWeight;
+      s.rollsSinceBest = groupDryStreakBeforeSample + sampleWeight;
       s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest);
     }
 
     // Discovery Oracle rewards a new-to-this-player rarity at most once per activation.
-    const groupDiscoveryChance = sampleWeight > 1
-      ? 1 - Math.pow(1 - discoveryOracleChance, sampleWeight)
-      : discoveryOracleChance;
+    const groupDiscoveryChance = newDiscoveryOrbCount > 0
+      ? 1 - Math.pow(1 - discoveryOracleChance, newDiscoveryOrbCount)
+      : 0;
     if (groupNewRarity && !discoveryOracleTriggered && !suppressOtherRuneProcs && groupDiscoveryChance > 0 && rng() < groupDiscoveryChance) {
       addRuneBonusRolls(runeAbilityEffects.discoveryOracleBonusRolls, { minRarity: Math.max(2, rarity), skipAllProcs: true });
       discoveryOracleTriggered = true;
@@ -4127,12 +4136,25 @@ export async function applyRolls(
       }
     }
     // Critical Convergence converts a critical hit into a chance for a non-recursive, rarity-floored bonus.
-    const convergenceCount = !suppressOtherRuneProcs && critCountInGroup > 0
-      ? sampleBinomialCount(critCountInGroup, criticalConvergenceChance, rng)
+    const normalConvergenceCount = !suppressOtherRuneProcs && normalCriticalGroupCount > 0
+      ? sampleBinomialCount(normalCriticalGroupCount, criticalConvergenceChance, rng)
       : 0;
-    if (convergenceCount > 0) {
-      const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity, Math.ceil(rarity * criticalConvergenceRarityMultiplier)));
-      addRuneBonusRolls(runeAbilityEffects.criticalConvergenceBonusRolls * convergenceCount, { minRarity: floor, skipAllProcs: true });
+    const supernovaConvergenceCount = !suppressOtherRuneProcs && groupSupernovaCount > 0
+      ? sampleBinomialCount(groupSupernovaCount, criticalConvergenceChance, rng)
+      : 0;
+    if (normalConvergenceCount > 0) {
+      const floor = Math.min(
+        MAX_ORB_RARITY,
+        Math.max(criticalRewardRarity, Math.ceil(criticalRewardRarity * criticalConvergenceRarityMultiplier)),
+      );
+      addRuneBonusRolls(runeAbilityEffects.criticalConvergenceBonusRolls * normalConvergenceCount, { minRarity: floor, skipAllProcs: true });
+    }
+    if (supernovaConvergenceCount > 0) {
+      const floor = Math.min(
+        MAX_ORB_RARITY,
+        Math.max(supernovaRewardRarity, Math.ceil(supernovaRewardRarity * criticalConvergenceRarityMultiplier)),
+      );
+      addRuneBonusRolls(runeAbilityEffects.criticalConvergenceBonusRolls * supernovaConvergenceCount, { minRarity: floor, skipAllProcs: true });
     }
     // Three strictly rising results in the same activation trigger Rarity Ladder once.
     risingRarityChain = rarity > previousBatchRarity ? risingRarityChain + 1 : 1;
@@ -4160,13 +4182,27 @@ export async function applyRolls(
     if (echoCount > 0) {
       addRuneBonusRolls(echoCount, { echoDepth: echoDepth + 1, echoOnly: true });
     }
-    // Prismatic Fork is limited to rare-or-better rolls, and its bonus roll cannot fork again.
-    const prismaticForkCount = !suppressOtherRuneProcs && rarity >= 1_000
-      ? sampleBinomialCount(sampleWeight, prismaticForkChance, rng)
+    // Prismatic Fork only samples effective Orbs whose category rarity is rare-or-better.
+    const ordinaryForkCount = !suppressOtherRuneProcs && rewardRarity >= 1_000
+      ? sampleBinomialCount(ordinaryGroupCount, prismaticForkChance, rng)
       : 0;
-    if (prismaticForkCount > 0) {
-      const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity + 1, Math.ceil(rarity * prismaticForkRarityMultiplier)));
-      addRuneBonusRolls(prismaticForkCount, { minRarity: floor, skipAllProcs: true });
+    const criticalForkCount = !suppressOtherRuneProcs && criticalRewardRarity >= 1_000
+      ? sampleBinomialCount(normalCriticalGroupCount, prismaticForkChance, rng)
+      : 0;
+    const supernovaForkCount = !suppressOtherRuneProcs && supernovaRewardRarity >= 1_000
+      ? sampleBinomialCount(groupSupernovaCount, prismaticForkChance, rng)
+      : 0;
+    if (ordinaryForkCount > 0) {
+      const floor = Math.min(MAX_ORB_RARITY, Math.max(rewardRarity + 1, Math.ceil(rewardRarity * prismaticForkRarityMultiplier)));
+      addRuneBonusRolls(ordinaryForkCount, { minRarity: floor, skipAllProcs: true });
+    }
+    if (criticalForkCount > 0) {
+      const floor = Math.min(MAX_ORB_RARITY, Math.max(criticalRewardRarity + 1, Math.ceil(criticalRewardRarity * prismaticForkRarityMultiplier)));
+      addRuneBonusRolls(criticalForkCount, { minRarity: floor, skipAllProcs: true });
+    }
+    if (supernovaForkCount > 0) {
+      const floor = Math.min(MAX_ORB_RARITY, Math.max(supernovaRewardRarity + 1, Math.ceil(supernovaRewardRarity * prismaticForkRarityMultiplier)));
+      addRuneBonusRolls(supernovaForkCount, { minRarity: floor, skipAllProcs: true });
     }
 
     if (rarity > bestRarity || (isInfinityOrb && !bestIsInfinity)) {
