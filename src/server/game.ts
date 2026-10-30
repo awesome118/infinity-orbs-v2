@@ -3947,8 +3947,6 @@ export async function applyRolls(
       const lowCoinsForGroup = Math.max(1, Math.round(coinsForRarity(rewardRarity)));
       lowRarityCoinsEstimate = addCoinAmount(lowRarityCoinsEstimate, normalizeCoinAmount(lowCoinsForGroup * sampleWeight));
     }
-    s.collection[rarityKey] = (s.collection[rarityKey] ?? 0) + 1;
-
     const previousAllTimeRarity = s.highestRarity;
     const isNewRarityRecord = rarity > previousAllTimeRarity || (isInfinityOrb && !s.highestRarityIsInfinity);
     if (isNewRarityRecord) {
