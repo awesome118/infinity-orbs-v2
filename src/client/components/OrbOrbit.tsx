@@ -5,9 +5,10 @@ import { getOrbInfo } from '../../shared/game.js';
 interface Props {
   orbs: Orb[];
   radius?: number;
+  rolling?: boolean;
 }
 
-export function OrbOrbit({ orbs, radius = 152 }: Props) {
+export function OrbOrbit({ orbs, radius = 152, rolling = false }: Props) {
   if (orbs.length <= 1) return null;
 
   return (
@@ -16,7 +17,7 @@ export function OrbOrbit({ orbs, radius = 152 }: Props) {
         className="absolute rounded-full border border-dashed border-slate-700/50"
         style={{ width: radius * 2, height: radius * 2 }}
       />
-      <div className="relative w-0 h-0 animate-orbit-ring">
+      <div className={`relative w-0 h-0 ${rolling ? 'io-rolling-orbit' : 'animate-orbit-ring'}`}>
         {orbs.slice(0, 8).map((orb, index) => {
           const angle = (index / Math.min(orbs.length, 8)) * Math.PI * 2 - Math.PI / 2;
           const info = getOrbInfo(orb.rarity, orb.isInfinity);
@@ -30,7 +31,7 @@ export function OrbOrbit({ orbs, radius = 152 }: Props) {
               }}
             >
               <div
-                className="animate-orbit-counter w-8 h-8 rounded-full border border-white/20 shadow-md flex items-center justify-center"
+                className={`${rolling ? 'io-rolling-orb-counter' : 'animate-orbit-counter'} ${rolling ? 'w-6 h-6' : 'w-8 h-8'} rounded-full border border-white/20 shadow-md flex items-center justify-center`}
                 style={{ background: info.bgGradient }}
               />
             </div>
