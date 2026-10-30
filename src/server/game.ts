@@ -5363,50 +5363,28 @@ export async function roll(
     const freeRollActivations = usingFreeRoll
       ? (useAllFreeRolls ? availableFreeRolls : 1)
       : 1;
-    if (usingFreeRoll && freeRollActivations > 5_000) {
-      throw new Error('You have too many stored Free Rolls for one batch (maximum 5,000). No rolls were spent.');
-    }
     if (usingFreeRoll) s.freeRolls = availableFreeRolls - freeRollActivations;
     const activations = usingChainPatcher ? 1 : freeRollActivations;
 
-    // Bound each allocation/iteration by actual orb count, not just button
-    // activations. All chunks mutate the same in-memory state and are committed
-    // together, so a failure cannot spend Free Rolls without saving their rolls.
-    let bestOrb: Orb | null = null;
-    const batch: Orb[] = [];
-    let totalVal = 0;
-    let coinsGained = 0;
-    let shardsGained = 0;
-    let xpGained = 0;
-    let rollCount = 0;
-    let remainingActivations = activations;
-    const ballsPerActivation = Math.max(1, rollsPerActivation(s));
-    const maxActivationsPerChunk = Math.max(
-      1,
-      Math.min(offlineRollCap(s), Math.floor(5_000 / ballsPerActivation)),
+    // Submit the full logical batch once. applyRolls transparently reduces
+    // large requests to at most 50,000 representative samples while preserving
+    // the requested lifetime count and scaled currency/XP rewards.
+    const result = await applyRolls(
+      s,
+      activations,
+      usingChainPatcher ? rawPatcherRarity : undefined,
+      'online',
+      usingChainPatcher ? 1 : undefined,
+      undefined,
+      usingChainPatcher,
     );
-    while (remainingActivations > 0) {
-      const chunkActivations = Math.min(remainingActivations, maxActivationsPerChunk);
-      const result = await applyRolls(
-        s,
-        chunkActivations,
-        usingChainPatcher ? rawPatcherRarity : undefined,
-        'online',
-        usingChainPatcher ? 1 : undefined,
-        undefined,
-        usingChainPatcher,
-      );
-      if (!bestOrb || result.bestOrb.rarity > bestOrb.rarity) bestOrb = result.bestOrb;
-      batch.push(...result.batch.slice(-200));
-      if (batch.length > 200) batch.splice(0, batch.length - 200);
-      totalVal = addCollectionValue(totalVal, result.totalVal);
-      coinsGained = addCoinAmount(coinsGained, result.coinsGained);
-      shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + result.shardsGained);
-      xpGained = Math.min(Number.MAX_SAFE_INTEGER, xpGained + result.xpGained);
-      rollCount = Math.min(Number.MAX_SAFE_INTEGER, rollCount + result.rollCount);
-      remainingActivations -= chunkActivations;
-    }
-    if (!bestOrb) throw new Error('No rolls were processed.');
+    const bestOrb = result.bestOrb;
+    const batch = result.batch.slice(-200);
+    const totalVal = result.totalVal;
+    const coinsGained = result.coinsGained;
+    const shardsGained = result.shardsGained;
+    const xpGained = result.xpGained;
+    const rollCount = result.rollCount;
 
     if (usingChainPatcher) s.chainPatcherNextRarity = 0;
 
@@ -6922,33 +6900,29 @@ export async function claimOrbFrenzy(options: {
   let shardsGained = 0;
   let xpGained = 0;
   let processedCount = 0;
-  let remainingCount = count;
   await writeFrenzyClaimProgress(claimantId, postId, attemptId, count, 0, false);
 
-  // Keep each normal RNG batch bounded. Frenzy's displayed payout is exact,
-  // so effects that add extra Orbs are disabled for this source.
-  while (remainingCount > 0) {
-    const chunkCount = Math.min(5_000, remainingCount);
-    const result = await applyRolls(s, 1, undefined, 'frenzy', chunkCount);
-    const candidate = result.bestOrb;
-    if (
-      !bestOrb ||
-      (candidate.isInfinity && !bestOrb.isInfinity) ||
-      (Boolean(candidate.isInfinity) === Boolean(bestOrb.isInfinity) && candidate.rarity > bestOrb.rarity)
-    ) {
-      bestOrb = candidate;
-    }
-    if (visibleBatch.length < 8) {
-      visibleBatch.push(...result.batch.slice(0, 8 - visibleBatch.length));
-    }
-    finalValue = addCollectionValue(finalValue, result.totalVal);
-    coinsGained = addCoinAmount(coinsGained, result.coinsGained);
-    shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + result.shardsGained);
-    xpGained = Math.min(Number.MAX_SAFE_INTEGER, xpGained + result.xpGained);
-    processedCount = Math.min(Number.MAX_SAFE_INTEGER, processedCount + result.rollCount);
-    remainingCount -= chunkCount;
-    await writeFrenzyClaimProgress(claimantId, postId, attemptId, count, processedCount, false);
-  }
+  // One call handles the complete logical payout. applyRolls samples at most
+  // 50,000 groups and reports the true represented Orb count as it progresses.
+  // Frenzy suppresses bonus-roll runes, so the final logical count is exact.
+  const result = await applyRolls(
+    s,
+    1,
+    undefined,
+    'frenzy',
+    count,
+    undefined,
+    false,
+    async processed => writeFrenzyClaimProgress(claimantId, postId, attemptId, count, processed, false),
+  );
+  bestOrb = result.bestOrb;
+  visibleBatch.push(...(result.batch ?? []).slice(0, 8));
+  finalValue = result.totalVal;
+  coinsGained = result.coinsGained;
+  shardsGained = result.shardsGained;
+  xpGained = result.xpGained;
+  processedCount = result.rollCount;
+  await writeFrenzyClaimProgress(claimantId, postId, attemptId, count, processedCount, false);
 
   if (!bestOrb || processedCount !== count) {
     throw new Error('Frenzy roll batch could not be completed exactly; claim was not saved.');
