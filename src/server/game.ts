@@ -28,6 +28,7 @@ import {
   PRESTIGE_UPGRADES,
   cooldownMs,
   rollsPerActivation,
+  bulkRollSimulationScale,
   luckMultiplier,
   upgradeCost,
   prestigeUpgradeCost,
@@ -3649,6 +3650,8 @@ export async function applyRolls(
   rollCountOverride?: number,
   randomOverride?: () => number,
   exactRarity = false,
+  simulationScale = 1,
+  onProgress?: (processedRolls: number) => Promise<void> | void,
 ): Promise<{ bestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number; rollCount: number }> {
   let bestRarity = 0;
   let bestIsCrit = false;
@@ -3661,6 +3664,8 @@ export async function applyRolls(
   let uniqueGained = 0;
   const batch: Orb[] = [];
   const rarities: number[] = [];
+  const payoutRarities: { rarity: number; weight: number; coinBlockIndex: number }[] = [];
+  const coinBlockBests = new Map<number, { rarity: number; isInfinity: boolean; sampleIndex: number }>();
   let rollCount = rollCountOverride ?? (rollsPerActivation(s) * activationCount);
   const now = Date.now();
   const spyUserId = currentUserId();
@@ -3679,12 +3684,74 @@ export async function applyRolls(
   const lifetimeRollsBeforeBatch = s.totalRolls;
   const rng = randomOverride ?? serverRandom;
 
-  // Astral Magnetism proc: chance for multi-rolls to pull 2 bonus orbs
+  const ballsPerActivation = Math.max(1, rollsPerActivation(s));
+  const activationsPerCoinBlock = Math.max(1, Math.floor(5_000 / ballsPerActivation));
+  const onlineCoinBlockSize = Math.max(
+    ballsPerActivation,
+    activationsPerCoinBlock * ballsPerActivation,
+  );
+
+  // Astral Magnetism used to be checked once for each bounded online batch.
+  // Sample the same expected number of procs now that a request can represent
+  // several of those batches instead of checking only once for the whole request.
   const magnetLevel = s.prestigeUpgrades?.stellarMagnet ?? 0;
-  if (source !== 'frenzy' && rollCount > 1 && magnetLevel > 0 && rng() < 0.10 * magnetLevel) {
-    rollCount += 2;
-  }
+  const legacyBatchCount = source === 'online' && requestedRollCount > 0
+    ? Math.max(1, Math.ceil(requestedRollCount / onlineCoinBlockSize))
+    : 1;
+  const legacyRuneBonusBudget = source === 'frenzy'
+    ? 0
+    : Math.min(Number.MAX_SAFE_INTEGER, 50 * legacyBatchCount);
+  const legacyMagnetChecks = source === 'online' ? legacyBatchCount : 1;
+  const magnetProcChance = Math.max(0, Math.min(1, 0.10 * magnetLevel));
+  const expectedMagnetProcs = source !== 'frenzy' && rollCount > 1 && magnetLevel > 0
+    ? magnetProcChance * legacyMagnetChecks
+    : 0;
+  const wholeMagnetProcs = Math.floor(expectedMagnetProcs);
+  const magnetBonusRolls = 2 * (
+    wholeMagnetProcs +
+    (expectedMagnetProcs > wholeMagnetProcs && rng() < expectedMagnetProcs - wholeMagnetProcs ? 1 : 0)
+  );
+  rollCount += magnetBonusRolls;
   const baseBatchRollCount = rollCount;
+  const safeSimulationScale = source === 'offline'
+    ? 1
+    : Math.max(1, Math.min(100, Math.floor(Number(simulationScale) || 1), Math.max(1, baseBatchRollCount)));
+  const leadingUncompressedRolls = Math.min(
+    baseBatchRollCount,
+    Math.max(0, 3 - lifetimeRollsBeforeBatch),
+  );
+  const baseRollGroups: Array<{ start: number; weight: number }> = [];
+  let nextBaseRoll = 0;
+  while (nextBaseRoll < baseBatchRollCount) {
+    const requestedWeight = nextBaseRoll < leadingUncompressedRolls ? 1 : safeSimulationScale;
+    const remainingInCoinBlock = coinBlockSpan - (nextBaseRoll % coinBlockSpan);
+    const weight = Math.max(1, Math.min(
+      requestedWeight,
+      baseBatchRollCount - nextBaseRoll,
+      remainingInCoinBlock,
+    ));
+    baseRollGroups.push({ start: nextBaseRoll, weight });
+    nextBaseRoll += weight;
+  }
+  const baseSimulationRollCount = baseRollGroups.length;
+  const coinBlockSpan = source === 'offline'
+    ? Number.MAX_SAFE_INTEGER
+    : source === 'frenzy' ? 5_000 : onlineCoinBlockSize;
+  const aggregateChance = (chance: number, weight: number): number => {
+    const safeChance = Math.max(0, Math.min(1, Number(chance) || 0));
+    if (safeChance <= 0 || weight <= 0) return 0;
+    if (safeChance >= 1) return 1;
+    return 1 - Math.pow(1 - safeChance, weight);
+  };
+  const weightedProcCount = (chance: number, weight: number): number => {
+    const safeChance = Math.max(0, Math.min(1, Number(chance) || 0));
+    if (safeChance <= 0 || weight <= 0) return 0;
+    if (safeChance >= 1) return weight;
+    const expected = safeChance * weight;
+    const whole = Math.floor(expected);
+    const fractional = expected - whole;
+    return whole + (fractional > 0 && rng() < fractional ? 1 : 0);
+  };
 
   // The player-state parser rejects unsafe lifetime roll counters. Refuse an
   // invalid or overflowing batch before shared reads or per-orb mutations.
@@ -3697,9 +3764,11 @@ export async function applyRolls(
   ) {
     throw new Error('Roll counter would exceed the safe integer range; no rolls were processed.');
   }
-  const maxSupportedRollCount = source === 'frenzy'
-    ? 5_000
-    : offlineRollCap(s) * rollsPerActivation(s) + 2;
+  const maxSupportedRollCount = source === 'offline'
+    ? offlineRollCap(s) * rollsPerActivation(s) + 2 + legacyRuneBonusBudget
+    : source === 'frenzy'
+      ? 50_000 * safeSimulationScale
+      : 50_000 * safeSimulationScale + magnetBonusRolls + legacyRuneBonusBudget;
   if (!Number.isSafeInteger(maxSupportedRollCount) || rollCount > maxSupportedRollCount) {
     throw new Error('Roll batch exceeds the supported processing cap; no rolls were processed.');
   }
@@ -3756,7 +3825,10 @@ export async function applyRolls(
   // Apex Fortune Mastery: chance on multi-roll to double the luck of that activation
   const apexChance = Math.min(0.45, (s.masterySkills?.apexFortune ?? 0) * 0.03);
   const isApex = rollCount > 1 && rng() < apexChance;
-  const effectiveLuck = isApex ? Math.min(Number.MAX_VALUE, baseLuck * 2) : baseLuck;
+  const payoutLuck = isApex ? Math.min(Number.MAX_VALUE, baseLuck * 2) : baseLuck;
+  // Luck is square-root scaled, so ×scale² Luck makes each representative sample
+  // approximate the best rarity from `scale` ordinary independent rolls.
+  const effectiveLuck = Math.min(Number.MAX_VALUE, payoutLuck * safeSimulationScale * safeSimulationScale);
 
   const cm = critMultiplier(s);
   const levelBenefits = getLevelBenefits(s.level || 1);
@@ -3770,7 +3842,7 @@ export async function applyRolls(
   const runeBonusRollBudget = source === 'frenzy'
     ? 0
     : Math.max(0, Math.min(
-      50,
+      legacyRuneBonusBudget,
       maxSupportedRollCount - baseBatchRollCount,
       Number.MAX_SAFE_INTEGER - s.totalRolls - baseBatchRollCount,
     ));
@@ -3810,53 +3882,74 @@ export async function applyRolls(
   let discoveryOracleTriggered = false;
   let previousBatchRarity = 0;
   let risingRarityChain = 0;
+  let activeLegacyBlockIndex = -1;
   const validCharge = (value: unknown) => Number.isFinite(Number(value)) ? Math.min(1_000_000, Math.max(0, Number(value))) : 0;
   s.runeConstellationCharge = validCharge(s.runeConstellationCharge);
   s.runeTemporalMomentum = validCharge(s.runeTemporalMomentum);
 
-  for (let i = 0; i < rollCount; i++) {
-    const currentRuneSpec = i >= baseBatchRollCount ? runeBonusRollSpecs[i - baseBatchRollCount] : undefined;
+  let processedEquivalentRolls = 0;
+  const progressEvery = Math.max(1, Math.floor(baseSimulationRollCount / 40));
+
+  for (let i = 0; i < baseSimulationRollCount + runeBonusRollSpecs.length; i++) {
+    const isRuneBonusRoll = i >= baseSimulationRollCount;
+    const currentRuneSpec = isRuneBonusRoll
+      ? runeBonusRollSpecs[i - baseSimulationRollCount]
+      : undefined;
+    const baseRollGroup = isRuneBonusRoll ? undefined : baseRollGroups[i];
+    const rollWeight = baseRollGroup?.weight ?? 1;
+    const rollIndexWithinBatch = baseRollGroup?.start
+      ?? (baseBatchRollCount + (i - baseSimulationRollCount));
+    const groupSimulationScale = rollWeight;
+    const groupEffectiveLuck = Math.min(Number.MAX_VALUE, payoutLuck * groupSimulationScale * groupSimulationScale);
+    const legacyBlockIndex = Math.floor(rollIndexWithinBatch / coinBlockSpan);
+    const isFirstSampleInLegacyBlock = legacyBlockIndex !== activeLegacyBlockIndex;
+    if (isFirstSampleInLegacyBlock) {
+      activeLegacyBlockIndex = legacyBlockIndex;
+      paradoxTriggered = false;
+      constellationTriggered = false;
+      temporalLoopTriggered = false;
+      stellarDividendTriggered = false;
+      rarityLadderTriggered = false;
+      discoveryOracleTriggered = false;
+      previousBatchRarity = 0;
+      risingRarityChain = 0;
+    }
     const echoDepth = currentRuneSpec?.echoDepth ?? 0;
     const suppressOtherRuneProcs = currentRuneSpec?.skipAllProcs === true || currentRuneSpec?.echoOnly === true;
-    // New-player hype: the third Orb this account ever rolls is guaranteed
-    // to land in the 1/101 through 1/120 range. It cannot crit upward, so the
-    // guarantee is the exact advertised range.
-    const isGuaranteedThirdBall = forcedRarity == null && lifetimeRollsBeforeBatch + i === 2;
+    // The new-player guarantee is irrelevant to large-batch scaling in normal play,
+    // but retain it when a compressed group spans lifetime Orb number three.
+    const isGuaranteedThirdBall = forcedRarity == null &&
+      lifetimeRollsBeforeBatch + rollIndexWithinBatch <= 2 &&
+      lifetimeRollsBeforeBatch + rollIndexWithinBatch + rollWeight > 2;
 
-    // Chain Patcher guarantees the exact requested rarity, not a critical multiplier.
-    const isCrit = !isGuaranteedThirdBall &&
-      !(exactRarity && forcedRarity != null && i === 0) &&
-      rng() < effectiveCritChance;
-    let effectiveCm = cm;
-    if (isCrit) {
-      s.totalCrits = (s.totalCrits ?? 0) + 1;
-      const supernovaLevel = s.prestigeUpgrades?.supernova ?? 0;
-      if (supernovaLevel > 0 && rng() < supernovaLevel * 0.10) {
-        effectiveCm = cm * 5; // Supernova multiplies the full normal critical strength by 5.
-      }
-    }
-
-    // Player level scales rarity linearly; effective Luck applies a separate
-    // diminishing-return factor to the continuous roll distribution.
-    // The third lifetime Orb overrides the random result with a guaranteed beginner drop.
     const minimumRarity = 2 + (s.prestigeUpgrades?.luckyFloor ?? 0);
     const beginnerRarity = 101 + Math.floor(rng() * 20);
     const runeRarityFloor = Math.max(minimumRarity, currentRuneSpec?.minRarity ?? minimumRarity);
+    const supernovaLevel = s.prestigeUpgrades?.supernova ?? 0;
+    const critEligibleWeight = Math.max(0, rollWeight - (isGuaranteedThirdBall ? 1 : 0));
+    const groupedCriticalCount = !(exactRarity && forcedRarity != null && rollIndexWithinBatch === 0)
+      ? weightedProcCount(effectiveCritChance, critEligibleWeight)
+      : 0;
+    const isCrit = groupedCriticalCount > 0;
+    s.totalCrits = Math.min(Number.MAX_SAFE_INTEGER, (s.totalCrits ?? 0) + groupedCriticalCount);
+    let effectiveCm = cm;
+    if (isCrit && supernovaLevel > 0 &&
+        rng() < aggregateChance(supernovaLevel * 0.10, groupedCriticalCount)) {
+      effectiveCm = cm * 5;
+    }
+
     let isInfinityOrb = false;
     let rolledRarity: number;
     let criticalMultiplierAppliedBeforeFloor = false;
     if (isGuaranteedThirdBall) {
       rolledRarity = beginnerRarity;
-    } else if (forcedRarity && i === 0) {
+    } else if (forcedRarity && rollIndexWithinBatch === 0) {
       rolledRarity = forcedRarity;
     } else {
-      // Combine Rune Luck and critical strength before the final integer floor.
-      // This preserves rarity resolution instead of multiplying an already-
-      // floored baseline integer by potentially enormous late-game bonuses.
       const rarityMultiplier = runeLuckMultiplier * (isCrit ? effectiveCm : 1);
       const rarityFloor = isCrit ? runeRarityFloor * effectiveCm : runeRarityFloor;
       const rawRolledRarity = rollContinuum(
-        effectiveLuck,
+        groupEffectiveLuck,
         randomOverride ?? serverRarityRandom,
         rarityMultiplier,
         rarityFloor,
@@ -3867,7 +3960,7 @@ export async function applyRolls(
         Number.isFinite(rawRolledRarity) ? rawRolledRarity : MAX_ORB_RARITY));
       criticalMultiplierAppliedBeforeFloor = isCrit;
     }
-    const baseRarity = exactRarity && forcedRarity != null && i === 0
+    const baseRarity = exactRarity && forcedRarity != null && rollIndexWithinBatch === 0
       ? forcedRarity
       : Math.max(minimumRarity, isGuaranteedThirdBall ? rolledRarity : runeRarityFloor, rolledRarity);
     const rawCritRarity = isCrit && !criticalMultiplierAppliedBeforeFloor
@@ -3877,25 +3970,103 @@ export async function applyRolls(
     const rarity = isCrit
       ? Math.min(MAX_ORB_RARITY, Number.isFinite(rawCritRarity) ? rawCritRarity : MAX_ORB_RARITY)
       : baseRarity;
+
+    // One ordinary sample stands for the non-maximum Orbs in this group.
+    // Its rarity drives weighted XP, collection value, and the 20% extra-Orb Coins.
+    let payoutRarity = rarity;
+    let payoutIsInfinityOrb = isInfinityOrb;
+    if (
+      safeSimulationScale > 1 &&
+      !isGuaranteedThirdBall &&
+      !(forcedRarity && rollIndexWithinBatch === 0)
+    ) {
+      const payoutIsCrit = rng() < effectiveCritChance;
+      let payoutCritMultiplier = cm;
+      if (payoutIsCrit && supernovaLevel > 0 && rng() < supernovaLevel * 0.10) {
+        payoutCritMultiplier = cm * 5;
+      }
+      const payoutRarityFloor = payoutIsCrit ? runeRarityFloor * payoutCritMultiplier : runeRarityFloor;
+      const payoutRawRarity = rollContinuum(
+        payoutLuck,
+        randomOverride ?? serverRarityRandom,
+        runeLuckMultiplier * (payoutIsCrit ? payoutCritMultiplier : 1),
+        payoutRarityFloor,
+        Math.max(1, Math.floor(Number(s.level) || 1)),
+      );
+      payoutIsInfinityOrb = !Number.isFinite(payoutRawRarity) || payoutRawRarity > MAX_ORB_RARITY;
+      payoutRarity = Math.max(minimumRarity, runeRarityFloor, Math.min(
+        MAX_ORB_RARITY,
+        Number.isFinite(payoutRawRarity) ? payoutRawRarity : MAX_ORB_RARITY,
+      ));
+    }
+
     const finalVal = Math.min(MAX_ORB_RARITY, Math.round(rarity * valueMul));
+    const payoutFinalVal = Math.min(MAX_ORB_RARITY, Math.round(payoutRarity * valueMul));
     const rarityKey = isInfinityOrb ? 'Infinity' : String(rarity);
+    const payoutRarityKey = payoutIsInfinityOrb ? 'Infinity' : String(payoutRarity);
     const isNew = !s.collection[rarityKey];
+    const payoutIsNew = !s.collection[payoutRarityKey];
+    const previousAllTimeRarity = s.highestRarity;
+    const totalRollsBeforeGroup = s.totalRolls;
+    const dryStreakBeforeGroup = Math.max(0, Math.floor(Number(s.rollsSinceBest ?? 0) || 0));
+    const isNewRarityRecord = rarity > previousAllTimeRarity || (isInfinityOrb && !s.highestRarityIsInfinity);
 
-    totalVal = Math.min(Number.MAX_VALUE, totalVal + finalVal);
+    // Keep one copy of the group's best Orb and use the baseline sample for
+    // the remaining represented Orbs. This retains the full roll counter and
+    // approximately preserves the aggregate value and experience payout.
+    const payoutCopies = Math.max(0, rollWeight - 1);
+    const groupValue = Math.min(Number.MAX_VALUE, payoutFinalVal * payoutCopies + finalVal);
+    totalVal = Math.min(Number.MAX_VALUE, totalVal + groupValue);
     rarities.push(rarity);
-    s.totalRolls++;
-    s.currentRunRolls = (s.currentRunRolls ?? 0) + 1;
-    s.collectionValue = addCollectionValue(s.collectionValue, finalVal);
-    s.lifetimeCollectionValue = addCollectionValue(s.lifetimeCollectionValue, finalVal);
+    const appendPayoutSegments = (
+      segmentRarity: number,
+      segmentInfinity: boolean,
+      segmentWeight: number,
+      absoluteStart: number,
+    ) => {
+      let remainingWeight = segmentWeight;
+      let absoluteIndex = absoluteStart;
+      while (remainingWeight > 0) {
+        const coinBlockIndex = Math.floor(absoluteIndex / coinBlockSpan);
+        const blockRemaining = coinBlockSpan - (absoluteIndex % coinBlockSpan);
+        const weight = Math.min(remainingWeight, blockRemaining);
+        const payoutSampleIndex = payoutRarities.length;
+        payoutRarities.push({ rarity: segmentRarity, weight, coinBlockIndex });
+        const existingBlockBest = coinBlockBests.get(coinBlockIndex);
+        if (
+          !existingBlockBest ||
+          segmentRarity > existingBlockBest.rarity ||
+          (segmentInfinity && !existingBlockBest.isInfinity)
+        ) {
+          coinBlockBests.set(coinBlockIndex, {
+            rarity: segmentRarity,
+            isInfinity: segmentInfinity,
+            sampleIndex: payoutSampleIndex,
+          });
+        }
+        remainingWeight -= weight;
+        absoluteIndex += weight;
+      }
+    };
+    const absoluteGroupStart = rollIndexWithinBatch;
+    appendPayoutSegments(rarity, isInfinityOrb, 1, absoluteGroupStart);
+    if (payoutCopies > 0) {
+      appendPayoutSegments(payoutRarity, payoutIsInfinityOrb, payoutCopies, absoluteGroupStart + 1);
+    }
+    s.totalRolls += rollWeight;
+    s.currentRunRolls = (s.currentRunRolls ?? 0) + rollWeight;
+    s.collectionValue = addCollectionValue(s.collectionValue, groupValue);
+    s.lifetimeCollectionValue = addCollectionValue(s.lifetimeCollectionValue, groupValue);
 
-    if (isNew) uniqueGained++;
+    if (payoutCopies > 0 && payoutIsNew) uniqueGained++;
+    if (payoutCopies === 0 && isNew) uniqueGained++;
+    if (rarityKey !== payoutRarityKey && isNew) uniqueGained++;
+    if (payoutCopies > 0) {
+      s.collection[payoutRarityKey] = (s.collection[payoutRarityKey] ?? 0) + payoutCopies;
+    }
     s.collection[rarityKey] = (s.collection[rarityKey] ?? 0) + 1;
 
-    const previousAllTimeRarity = s.highestRarity;
-    const isNewRarityRecord = rarity > previousAllTimeRarity || (isInfinityOrb && !s.highestRarityIsInfinity);
     if (isNewRarityRecord) {
-      // The rolls since the previous record become an Aftershock candidate
-      // only when a strictly rarer all-time orb finally appears.
       if (s.highestRarity > 0) {
         const previousDryRolls = Math.max(0, Math.floor(Number(s.rollsSinceBest ?? 0) || 0));
         s.aftershockRecord = Math.max(
@@ -3905,23 +4076,21 @@ export async function applyRolls(
       }
       s.highestRarity = rarity;
       s.highestRarityIsInfinity = isInfinityOrb;
-      s.rollsSinceBest = 0;
+      s.rollsSinceBest = Math.max(0, rollWeight - 1);
     } else {
-      s.rollsSinceBest = (s.rollsSinceBest ?? 0) + 1;
-      s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest);
+      s.rollsSinceBest = (s.rollsSinceBest ?? 0) + rollWeight;
     }
+    s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest);
 
-    // Discovery Oracle rewards a new-to-this-player rarity at most once per activation.
+    // Discovery and record-triggered Runes use the best sample in the group.
     if (isNew && !discoveryOracleTriggered && !suppressOtherRuneProcs && discoveryOracleChance > 0 && rng() < discoveryOracleChance) {
       addRuneBonusRolls(runeAbilityEffects.discoveryOracleBonusRolls, { minRarity: Math.max(2, rarity), skipAllProcs: true });
       discoveryOracleTriggered = true;
     }
-    // Event Horizon fires only on genuine all-time records and its generated burst cannot recurse.
     if (isNewRarityRecord && !suppressOtherRuneProcs && runeAbilityEffects.eventHorizonPct > 0) {
       const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity + 1, Math.ceil(rarity * eventHorizonRarityMultiplier)));
       addRuneBonusRolls(runeAbilityEffects.eventHorizonBonusRolls, { minRarity: floor, skipAllProcs: true });
     }
-    // Milestone Engine has a small bonus-Shard chance and a tightly bounded roll burst.
     if (isNewRarityRecord && previousAllTimeRarity > 0 && !suppressOtherRuneProcs && runeAbilityEffects.milestoneEnginePct > 0) {
       const decadesCrossed = Math.min(5, Math.max(0, Math.floor(Math.log10(rarity)) - Math.floor(Math.log10(previousAllTimeRarity))));
       if (decadesCrossed > 0) {
@@ -3933,12 +4102,11 @@ export async function applyRolls(
         addRuneBonusRolls(Math.min(2, runeAbilityEffects.milestoneEngineBonusRolls), { minRarity: floor, skipAllProcs: true });
       }
     }
-    // Critical Convergence converts a critical hit into a chance for a non-recursive, rarity-floored bonus.
-    if (isCrit && !suppressOtherRuneProcs && criticalConvergenceChance > 0 && rng() < criticalConvergenceChance) {
+    if (isCrit && !suppressOtherRuneProcs && criticalConvergenceChance > 0 && rng() < aggregateChance(criticalConvergenceChance, rollWeight)) {
       const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity, Math.ceil(rarity * criticalConvergenceRarityMultiplier)));
       addRuneBonusRolls(runeAbilityEffects.criticalConvergenceBonusRolls, { minRarity: floor, skipAllProcs: true });
     }
-    // Three strictly rising results in the same activation trigger Rarity Ladder once.
+
     risingRarityChain = rarity > previousBatchRarity ? risingRarityChain + 1 : 1;
     previousBatchRarity = rarity;
     if (!rarityLadderTriggered && !suppressOtherRuneProcs && risingRarityChain >= 3 && runeAbilityEffects.rarityLadderPct > 0) {
@@ -3946,22 +4114,28 @@ export async function applyRolls(
       addRuneBonusRolls(runeAbilityEffects.rarityLadderBonusRolls, { minRarity: floor, skipAllProcs: true });
       rarityLadderTriggered = true;
     }
-    // Stellar Dividend pays once per activation when a processed roll hits its lifetime milestone.
-    if (!stellarDividendTriggered && !suppressOtherRuneProcs && runeAbilityEffects.stellarDividendPct > 0 && s.totalRolls % stellarDividendInterval === 0) {
+    if (
+      !stellarDividendTriggered &&
+      !suppressOtherRuneProcs &&
+      runeAbilityEffects.stellarDividendPct > 0 &&
+      Math.floor(s.totalRolls / stellarDividendInterval) > Math.floor(totalRollsBeforeGroup / stellarDividendInterval)
+    ) {
       addRuneBonusRolls(runeAbilityEffects.stellarDividendBonusRolls, { skipAllProcs: true });
       stellarDividendTriggered = true;
     }
-    // Paradox Engine gets one proc check per multi-roll activation.
-    if (i === 0 && baseBatchRollCount > 1 && paradoxChance > 0 && rng() < paradoxChance) {
+    if (isFirstSampleInLegacyBlock && baseBatchRollCount > 1 && paradoxChance > 0 && !paradoxTriggered && rng() < paradoxChance) {
       addRuneBonusRolls(runeAbilityEffects.paradoxEngineBonusRolls, { skipAllProcs: true });
+      paradoxTriggered = true;
     }
-    // Echo Chamber can echo normal rolls and its own echoes; each link has half the chance of the previous link.
-    if (!currentRuneSpec?.skipAllProcs && echoChance > 0 && echoDepth < maxEchoChain &&
-        rng() < echoChance * Math.pow(.5, echoDepth)) {
+    if (
+      !currentRuneSpec?.skipAllProcs &&
+      echoChance > 0 &&
+      echoDepth < maxEchoChain &&
+      rng() < aggregateChance(echoChance * Math.pow(.5, echoDepth), rollWeight)
+    ) {
       addRuneBonusRolls(1, { echoDepth: echoDepth + 1, echoOnly: true });
     }
-    // Prismatic Fork is limited to rare-or-better rolls, and its bonus roll cannot fork again.
-    if (!suppressOtherRuneProcs && rarity >= 1_000 && prismaticForkChance > 0 && rng() < prismaticForkChance) {
+    if (!suppressOtherRuneProcs && rarity >= 1_000 && prismaticForkChance > 0 && rng() < aggregateChance(prismaticForkChance, rollWeight)) {
       const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity + 1, Math.ceil(rarity * prismaticForkRarityMultiplier)));
       addRuneBonusRolls(1, { minRarity: floor, skipAllProcs: true });
     }
@@ -3981,17 +4155,18 @@ export async function applyRolls(
       (1 + (s.upgrades.xpBonus ?? 0) * 0.20) *
       levelBenefits.xpMultiplier *
       (1 + runeBonuses.xpGainPct / 100);
-    const earnedXp = Math.min(Number.MAX_SAFE_INTEGER, Math.round(Math.min(300, 12 + Math.floor(Math.log10(rarity + 1) * 12)) * xpBonusMul));
+    const xpForRarity = (value: number) => Math.min(300, 12 + Math.floor(Math.log10(value + 1) * 12));
+    const sampleXp = Math.min(Number.MAX_SAFE_INTEGER, Math.round(xpForRarity(payoutRarity) * xpBonusMul));
+    const bestXp = Math.min(Number.MAX_SAFE_INTEGER, Math.round(xpForRarity(rarity) * xpBonusMul));
+    xpGained = Math.min(Number.MAX_SAFE_INTEGER, xpGained + sampleXp * payoutCopies + bestXp);
 
-    // High rarity is not a guaranteed Shard source. All repeatable Orb earnings are proc-based.
-    let earnedShards = 0;
+    // Proc-based Shards are sampled as weighted counts. The per-Orb cap remains
+    // one Shard (two on a Jackpot), while the expected payout scales with weight.
     const shardTitheChance = Math.min(0.000125, Math.max(0, runeAbilityEffects.shardTithePerRoll) * 0.5);
-    if (!suppressOtherRuneProcs && shardTitheChance > 0 && rng() < shardTitheChance) earnedShards += 1;
-    // Dry-Streak Refinery converts its former fractional drip into a reduced chance for one whole Shard.
-    const dryRefineryChance = Math.min(0.000125, Math.floor(Math.max(0, s.rollsSinceBest ?? 0) / 100) * Math.max(0, runeAbilityEffects.dryStreakRefineryRate) * 0.5);
-    if (!suppressOtherRuneProcs && dryRefineryChance > 0 && rng() < dryRefineryChance) earnedShards += 1;
-
-    // Shard Chance upgrade + Mastery + Guild perk proc
+    const dryRefineryChance = Math.min(
+      0.000125,
+      Math.floor(dryStreakBeforeGroup / 100) * Math.max(0, runeAbilityEffects.dryStreakRefineryRate) * 0.5,
+    );
     const shardProcChance = Math.min(
       ROLL_SHARD_PROC_CHANCE_CAP,
       ((s.upgrades.shardChance ?? 0) * 0.0015 +
@@ -4001,19 +4176,19 @@ export async function applyRolls(
       levelBenefits.shardChance +
       Math.min(100, runeBonuses.shardChancePct) / 100) * 0.025
     );
-    const shardProcTriggered = rng() < shardProcChance;
-    earnedShards += resolveShardPityReward(s, shardProcTriggered);
-    // Multiple low-probability effects cannot stack into a large per-Orb payout.
-    // Jackpot is the one exception: a successful proc may turn one Shard into two.
-    earnedShards = Math.min(1, earnedShards);
-    if (earnedShards > 0 && !suppressOtherRuneProcs && shardJackpotChance > 0 && rng() < shardJackpotChance) {
-      earnedShards = Math.min(2, Math.round(earnedShards * (1 + runeAbilityEffects.shardJackpotExtraMultiplier)));
+    const shardFromTithe = suppressOtherRuneProcs ? 0 : weightedProcCount(shardTitheChance, rollWeight);
+    const shardFromDryRefinery = suppressOtherRuneProcs ? 0 : weightedProcCount(dryRefineryChance, rollWeight);
+    const shardFromUpgrade = weightedProcCount(shardProcChance, rollWeight);
+    resolveShardPityReward(s, false); // preserves the existing per-roll pity reset
+    let earnedShards = Math.min(rollWeight, shardFromTithe + shardFromDryRefinery + shardFromUpgrade);
+    if (earnedShards > 0 && !suppressOtherRuneProcs && shardJackpotChance > 0) {
+      const jackpots = weightedProcCount(shardJackpotChance, earnedShards);
+      if (jackpots > 0) {
+        earnedShards = Math.min(rollWeight * 2, earnedShards + Math.round(jackpots * runeAbilityEffects.shardJackpotExtraMultiplier));
+      }
     }
+    shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + earnedShards);
 
-    shardsGained = Math.round(shardsGained + earnedShards);
-    xpGained += earnedXp;
-
-    // Shard Constellation retains charge between activations and pays only once per activation.
     if (runeAbilityEffects.shardConstellationPct > 0) {
       s.runeConstellationCharge = Math.min(1_000_000, validCharge(s.runeConstellationCharge) + earnedShards);
       if (source !== 'frenzy' && !constellationTriggered && !suppressOtherRuneProcs && s.runeConstellationCharge >= shardConstellationThreshold) {
@@ -4024,10 +4199,12 @@ export async function applyRolls(
       }
     }
 
-    // Temporal Loop charges on every real roll, then releases a bounded bonus batch.
     if (temporalMomentumPerRoll > 0) {
       const dryStreakMomentum = Math.min(5, Math.log2(Math.max(1, s.rollsSinceBest + 1)) * .25);
-      s.runeTemporalMomentum = Math.min(1_000_000, validCharge(s.runeTemporalMomentum) + temporalMomentumPerRoll + dryStreakMomentum);
+      s.runeTemporalMomentum = Math.min(
+        1_000_000,
+        validCharge(s.runeTemporalMomentum) + (temporalMomentumPerRoll + dryStreakMomentum) * rollWeight,
+      );
       if (source !== 'frenzy' && !temporalLoopTriggered && !suppressOtherRuneProcs && s.runeTemporalMomentum >= 100) {
         s.runeTemporalMomentum -= 100;
         addRuneBonusRolls(runeAbilityEffects.temporalLoopBonusRolls, { skipAllProcs: true });
@@ -4047,15 +4224,32 @@ export async function applyRolls(
         isCrit,
       });
     }
+    processedEquivalentRolls += rollWeight;
+    if (onProgress && (
+      (i + 1) % progressEvery === 0 ||
+      i + 1 === baseSimulationRollCount ||
+      i + 1 === baseSimulationRollCount + runeBonusRollSpecs.length
+    )) {
+      await onProgress(Math.min(rollCount, processedEquivalentRolls));
+    }
+  }
+  if (onProgress && processedEquivalentRolls !== rollCount) {
+    await onProgress(Math.min(rollCount, processedEquivalentRolls));
   }
 
-  // Balanced Gold progression: top rolled orb gives 100% coins; extra orbs in multi-roll give 20% bonus coins
+    // Balanced Gold progression: top rolled orb gives 100% coins; extra orbs in multi-roll give 20% bonus coins
   rarities.sort((a, b) => b - a);
-  const topCoins = Math.round(coinsForRarity(rarities[0]));
-  const extraCoins = rarities.slice(1).reduce(
-    (acc, r) => addCoinAmount(acc, Math.max(1, Math.round(coinsForRarity(r) * 0.20))),
+  const topCoins = [...coinBlockBests.values()].reduce(
+    (sum, best) => addCoinAmount(sum, Math.round(coinsForRarity(best.rarity))),
     0,
   );
+  const extraCoins = payoutRarities.reduce((acc, sample, index) => {
+    const top = coinBlockBests.get(sample.coinBlockIndex);
+    const extraCount = Math.max(0, sample.weight - (top?.sampleIndex === index ? 1 : 0));
+    return extraCount > 0
+      ? addCoinAmount(acc, Math.max(1, Math.round(coinsForRarity(sample.rarity) * 0.20)) * extraCount)
+      : acc;
+  }, 0);
   coinsGained = addCoinAmount(topCoins, extraCoins);
 
   // Level passives and other coin modifiers stack multiplicatively by source.
@@ -4067,9 +4261,12 @@ export async function applyRolls(
     (1 + runeBonuses.coinGainPct / 100);
   coinsGained = normalizeCoinAmount(Math.round(coinsGained * coinBonusMul));
 
-  const lowRarityCoins = rarities
-    .filter(r => r < 100)
-    .reduce((sum, r) => sum + Math.max(1, Math.round(coinsForRarity(r))), 0);
+  const lowRarityCoins = payoutRarities.reduce((sum, sample) =>
+    sample.rarity < 100
+      ? sum + Math.max(1, Math.round(coinsForRarity(sample.rarity))) * sample.weight
+      : sum,
+    0,
+  );
 
   // Singularity Filter: +25% only to Common/Uncommon coin yield.
   const hasFilter = (s.prestigeUpgrades?.autoFilter ?? 0) > 0;
@@ -4081,10 +4278,11 @@ export async function applyRolls(
   const transLevel = s.prestigeUpgrades?.transmutation ?? 0;
   if (transLevel > 0) {
     coinsGained = addCoinAmount(coinsGained, Math.round(lowRarityCoins * (transLevel * 0.15)));
-    for (let i = 0; i < rollCount; i++) {
-      if (rng() < 0.00025 * transLevel) {
-        shardsGained += 1;
-      }
+    for (const sample of payoutRarities) {
+      shardsGained = Math.min(
+        Number.MAX_SAFE_INTEGER,
+        shardsGained + weightedProcCount(0.00025 * transLevel, sample.weight),
+      );
     }
   }
 
@@ -5141,9 +5339,15 @@ export async function roll(
     let rollCount = 0;
     let remainingActivations = activations;
     const ballsPerActivation = Math.max(1, rollsPerActivation(s));
+    const batchSimulationScale = usingChainPatcher
+      ? 1
+      : bulkRollSimulationScale(activations * ballsPerActivation);
+    const activationsPerCoinBlock = Math.max(1, Math.floor(5_000 / ballsPerActivation));
     const maxActivationsPerChunk = Math.max(
-      1,
-      Math.min(offlineRollCap(s), Math.floor(5_000 / ballsPerActivation)),
+      activationsPerCoinBlock,
+      Math.floor(
+        Math.floor((50_000 * batchSimulationScale) / ballsPerActivation) / activationsPerCoinBlock,
+      ) * activationsPerCoinBlock,
     );
     while (remainingActivations > 0) {
       const chunkActivations = Math.min(remainingActivations, maxActivationsPerChunk);
@@ -5155,6 +5359,7 @@ export async function roll(
         usingChainPatcher ? 1 : undefined,
         undefined,
         usingChainPatcher,
+        batchSimulationScale,
       );
       if (!bestOrb || result.bestOrb.rarity > bestOrb.rarity) bestOrb = result.bestOrb;
       batch.push(...result.batch.slice(-200));
@@ -6683,13 +6888,34 @@ export async function claimOrbFrenzy(options: {
   let xpGained = 0;
   let processedCount = 0;
   let remainingCount = count;
+  const batchSimulationScale = bulkRollSimulationScale(count);
+  const maxFrenzyChunk = 50_000 * batchSimulationScale;
   await writeFrenzyClaimProgress(claimantId, postId, attemptId, count, 0, false);
 
-  // Keep each normal RNG batch bounded. Frenzy's displayed payout is exact,
-  // so effects that add extra Orbs are disabled for this source.
+  // Simulate at most 50,000 representative Orbs per server pass. Every group
+  // carries its real roll weight, including the square-root-adjusted Luck.
   while (remainingCount > 0) {
-    const chunkCount = Math.min(5_000, remainingCount);
-    const result = await applyRolls(s, 1, undefined, 'frenzy', chunkCount);
+    const chunkCount = Math.min(maxFrenzyChunk, remainingCount);
+    const result = await applyRolls(
+      s,
+      1,
+      undefined,
+      'frenzy',
+      chunkCount,
+      undefined,
+      false,
+      batchSimulationScale,
+      async processedInChunk => {
+        await writeFrenzyClaimProgress(
+          claimantId,
+          postId,
+          attemptId,
+          count,
+          Math.min(count, processedCount + processedInChunk),
+          false,
+        );
+      },
+    );
     const candidate = result.bestOrb;
     if (
       !bestOrb ||

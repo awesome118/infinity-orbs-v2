@@ -3,11 +3,13 @@ import { createApp } from './app.js';
 import { configureDevvitRuntime } from './devvit-mock.js';
 import { mGetInChunks } from './redis-batch.js';
 import { instrumentRedisClient } from './server-monitor.js';
+import { createRedisCompressionProxy } from './redis-compression.js';
 
-// Devvit Redis MGet can exceed its RPC response-size cap when the subreddit
-// has hundreds of player saves. Proxy only this method; all other Redis methods
-// remain bound to the original client and retain their normal behavior.
-const boundedRedis = new Proxy(redis, {
+// Compress large string and hash values before both direct and transactional writes.
+// This keeps player saves, Guilds, and leaderboards below Devvit's Redis request-size
+// ceiling while preserving legacy plain-JSON reads. MGet remains separately bounded.
+const compressedRedis = createRedisCompressionProxy(redis);
+const boundedRedis = new Proxy(compressedRedis, {
   get(target, property, receiver) {
     if (property === 'mGet') {
       return (keys: string[]) => mGetInChunks(keys, batch => target.mGet(batch));

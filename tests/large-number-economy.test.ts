@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   addCoinAmount,
+  bulkRollSimulationScale,
   addCollectionValue,
   altarCoinFloor,
   coinsForRarity,
@@ -11,6 +12,35 @@ import {
   normalizeCoinAmount,
 } from '../src/shared/game.js';
 
+test('bulk roll sampling scales dynamically around a 50,000-sample target', () => {
+  assert.equal(bulkRollSimulationScale(1), 1);
+  assert.equal(bulkRollSimulationScale(50_000), 1);
+  assert.equal(bulkRollSimulationScale(50_001), 2);
+  assert.equal(bulkRollSimulationScale(150_000), 3);
+  assert.equal(bulkRollSimulationScale(500_000), 10);
+  assert.equal(bulkRollSimulationScale(500_001), 11);
+  assert.equal(bulkRollSimulationScale(5_000_000), 100);
+  assert.equal(bulkRollSimulationScale(50_000_000), 100);
+});
+
+test('large roll batches retain real-count weighting and square-root Luck compensation', () => {
+  const server = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  assert.match(server, /payoutLuck \* safeSimulationScale \* safeSimulationScale/);
+  assert.match(server, /const payoutCopies = Math\.max\(0, rollWeight - 1\)/);
+  assert.match(server, /xpGained = Math\.min\(Number\.MAX_SAFE_INTEGER, xpGained \+ sampleXp \* payoutCopies \+ bestXp\)/);
+  assert.match(server, /s\.totalRolls \+= rollWeight/);
+  assert.match(server, /await onProgress\(Math\.min\(rollCount, processedEquivalentRolls\)\)/);
+  assert.match(server, /const maxFrenzyChunk = 50_000 \* batchSimulationScale/);
+  assert.match(server, /const leadingUncompressedRolls/);
+  assert.match(server, /const groupEffectiveLuck = Math\.min\(Number\.MAX_VALUE, payoutLuck \* groupSimulationScale \* groupSimulationScale\)/);
+  assert.match(server, /const onlineCoinBlockSize = Math\.max/);
+  assert.match(server, /const appendPayoutSegments =/);
+  assert.match(server, /const legacyRuneBonusBudget = source === 'frenzy'/);
+  assert.match(server, /const baseRollGroups: Array/);
+  assert.match(server, /const remainingInCoinBlock/);
+  assert.match(server, /let activeLegacyBlockIndex = -1/);
+  assert.match(server, /const legacyBatchCount = source === 'online'/);
+});
 test('Coin balances and rewards can grow beyond the JavaScript safe-integer threshold', () => {
   const beyondSafeInteger = 1e30;
   const normalizedLargeBalance = normalizeCoinAmount(beyondSafeInteger);
