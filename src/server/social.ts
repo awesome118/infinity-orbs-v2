@@ -261,7 +261,7 @@ function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index
         const type: GuildTask['type'] = ['rolls', 'value', 'rare'].includes(String(task.type))
           ? String(task.type) as GuildTask['type']
           : generatedFallbackTaskType(taskIndex);
-        const tier = clampInteger(task.tier, 1, 1_200, 1);
+        const tier = clampInteger(task.tier, 1, 70, 1);
         const generated = createGuildTask(type, tier, guild.level);
         const target = clampInteger(task.target, 1, Number.MAX_SAFE_INTEGER, generated.target);
         return {
