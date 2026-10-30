@@ -3918,29 +3918,34 @@ export async function applyRolls(
     const finalVal = Math.min(MAX_ORB_RARITY, Math.round(rarity * valueMul));
     const baseFinalVal = Math.min(MAX_ORB_RARITY, Math.round(rewardRarity * valueMul));
     const hasDistinctGroupMaximum = isInfinityOrb || rarity !== rewardRarity;
-    const baseGroupCount = Math.max(0, sampleWeight - (hasDistinctGroupMaximum ? 1 : 0));
-    // The effective critical count is sampled independently from the group
-    // maximum. Treat one critical Orb as the maximum when it is distinct and
-    // weight the remaining critical/base Orbs separately for payout accounting.
+    // The batch sample is a representative Orb for the effective group. Split
+    // its weighted reward estimate by the sampled critical count, then use the
+    // weighted-Luck maximum only for best-Orb/Codex discovery.
     const groupCriticalCount = sampleWeight > 1 ? Math.min(sampleWeight, critCountInGroup) : 0;
-    const criticalOtherCount = Math.min(
-      baseGroupCount,
-      Math.max(0, groupCriticalCount - (hasDistinctGroupMaximum && isCrit ? 1 : 0)),
-    );
-    const ordinaryGroupCount = baseGroupCount - criticalOtherCount;
-    const criticalRewardRarity = criticalOtherCount > 0
+    const ordinaryGroupCount = sampleWeight - groupCriticalCount;
+    const criticalRewardRarity = groupCriticalCount > 0
       ? Math.max(runeRarityFloor, Math.min(MAX_ORB_RARITY, Math.round(rewardRarity * effectiveCm)))
       : rewardRarity;
     const criticalFinalVal = Math.min(MAX_ORB_RARITY, Math.round(criticalRewardRarity * valueMul));
     const topRarityKey = isInfinityOrb ? 'Infinity' : String(rarity);
+    const topBaseRewardRarity = sampleWeight > 1 && isCrit ? criticalRewardRarity : rewardRarity;
+    const topBaseRewardKey = String(topBaseRewardRarity);
     const groupRarityCounts = new Map<string, number>();
     const addGroupRarity = (key: string, count: number) => {
       if (count <= 0) return;
       groupRarityCounts.set(key, (groupRarityCounts.get(key) ?? 0) + count);
     };
     addGroupRarity(String(rewardRarity), ordinaryGroupCount);
-    addGroupRarity(String(criticalRewardRarity), criticalOtherCount);
-    if (hasDistinctGroupMaximum) addGroupRarity(topRarityKey, 1);
+    addGroupRarity(String(criticalRewardRarity), groupCriticalCount);
+    // The representative maximum is already included in the weighted reward
+    // estimate above. Replace its baseline Codex entry with the actual maximum;
+    // do not add a 51st Orb to a 50-sample representation of 500 effective Orbs.
+    if (hasDistinctGroupMaximum) {
+      const baselineCount = groupRarityCounts.get(topBaseRewardKey) ?? 0;
+      if (baselineCount > 0) groupRarityCounts.set(topBaseRewardKey, baselineCount - 1);
+      if ((groupRarityCounts.get(topBaseRewardKey) ?? 0) <= 0) groupRarityCounts.delete(topBaseRewardKey);
+      addGroupRarity(topRarityKey, 1);
+    }
     const newlyDiscoveredGroupRarities = [...groupRarityCounts.keys()].filter(key => !s.collection[key]);
     const isNew = newlyDiscoveredGroupRarities.includes(topRarityKey);
     const groupNewRarity = newlyDiscoveredGroupRarities.length > 0;
@@ -3949,23 +3954,16 @@ export async function applyRolls(
     }
     const weightedFinalValue = Math.min(
       Number.MAX_VALUE,
-      baseFinalVal * ordinaryGroupCount +
-        criticalFinalVal * criticalOtherCount +
-        (hasDistinctGroupMaximum ? finalVal : 0),
+      baseFinalVal * ordinaryGroupCount + criticalFinalVal * groupCriticalCount,
     );
 
     totalVal = Math.min(Number.MAX_VALUE, totalVal + weightedFinalValue);
-    if (ordinaryGroupCount > 0) {
-      rarities.push(rewardRarity);
-      rarityWeights.push(ordinaryGroupCount);
-    }
-    if (criticalOtherCount > 0) {
-      rarities.push(criticalRewardRarity);
-      rarityWeights.push(criticalOtherCount);
-    }
-    if (hasDistinctGroupMaximum) {
-      rarities.push(rarity);
-      rarityWeights.push(1);
+    for (const [key, count] of groupRarityCounts) {
+      const rarityValue = key === 'Infinity' ? MAX_ORB_RARITY : Number(key);
+      if (Number.isFinite(rarityValue) && count > 0) {
+        rarities.push(rarityValue);
+        rarityWeights.push(count);
+      }
     }
     s.totalRolls += sampleWeight;
     s.currentRunRolls = (s.currentRunRolls ?? 0) + sampleWeight;
@@ -3978,16 +3976,12 @@ export async function applyRolls(
       extraCoinsEstimate,
       normalizeCoinAmount(extraCoinsForBaseOrbs * ordinaryGroupCount),
     );
-    if (criticalOtherCount > 0) {
+    if (groupCriticalCount > 0) {
       const extraCoinsForCriticalOrbs = Math.max(1, Math.round(coinsForRarity(criticalRewardRarity) * 0.20));
       extraCoinsEstimate = addCoinAmount(
         extraCoinsEstimate,
-        normalizeCoinAmount(extraCoinsForCriticalOrbs * criticalOtherCount),
+        normalizeCoinAmount(extraCoinsForCriticalOrbs * groupCriticalCount),
       );
-    }
-    if (hasDistinctGroupMaximum) {
-      const extraCoinsForGroupMaximum = Math.max(1, Math.round(coinsForRarity(rarity) * 0.20));
-      extraCoinsEstimate = addCoinAmount(extraCoinsEstimate, extraCoinsForGroupMaximum);
     }
     if (ordinaryGroupCount > 0 && rewardRarity < 100) {
       const lowCoinsForBaseOrbs = Math.max(1, Math.round(coinsForRarity(rewardRarity)));
@@ -3996,16 +3990,16 @@ export async function applyRolls(
         normalizeCoinAmount(lowCoinsForBaseOrbs * ordinaryGroupCount),
       );
     }
-    if (criticalOtherCount > 0 && criticalRewardRarity < 100) {
+    if (groupCriticalCount > 0 && criticalRewardRarity < 100) {
       const lowCoinsForCriticalOrbs = Math.max(1, Math.round(coinsForRarity(criticalRewardRarity)));
       lowRarityCoinsEstimate = addCoinAmount(
         lowRarityCoinsEstimate,
-        normalizeCoinAmount(lowCoinsForCriticalOrbs * criticalOtherCount),
+        normalizeCoinAmount(lowCoinsForCriticalOrbs * groupCriticalCount),
       );
     }
-    if (hasDistinctGroupMaximum && rarity < 100) {
-      const lowCoinsForGroupMaximum = Math.max(1, Math.round(coinsForRarity(rarity)));
-      lowRarityCoinsEstimate = addCoinAmount(lowRarityCoinsEstimate, lowCoinsForGroupMaximum);
+    if (hasDistinctGroupMaximum && rarity >= 100 && topBaseRewardRarity < 100) {
+      const lowCoinsForMaximumBaseline = Math.max(1, Math.round(coinsForRarity(topBaseRewardRarity)));
+      lowRarityCoinsEstimate = Math.max(0, lowRarityCoinsEstimate - lowCoinsForMaximumBaseline);
     }
     const totalRollsBeforeSample = s.totalRolls - sampleWeight;
     const previousAllTimeRarity = s.highestRarity;
@@ -4098,10 +4092,12 @@ export async function applyRolls(
 
     if (rarity > bestRarity || (isInfinityOrb && !bestIsInfinity)) {
       bestRarity = rarity;
+      bestRewardRarity = topBaseRewardRarity;
       bestIsCrit = isCrit;
       bestIsNew = isNew;
       bestIsInfinity = isInfinityOrb;
     } else if (rarity === bestRarity) {
+      bestRewardRarity = Math.max(bestRewardRarity, topBaseRewardRarity);
       if (isCrit) bestIsCrit = true;
       bestIsNew = bestIsNew || isNew;
       bestIsInfinity = bestIsInfinity || isInfinityOrb;
@@ -4217,7 +4213,7 @@ export async function applyRolls(
   // Balanced Gold progression: top rolled Orb pays 100%; every other effective
   // Orb contributes 20% of its base-equivalent coin value.
   const topCoins = Math.round(coinsForRarity(bestRarity));
-  const topExtraCoins = Math.max(1, Math.round(coinsForRarity(bestRarity) * 0.20));
+  const topExtraCoins = Math.max(1, Math.round(coinsForRarity(bestRewardRarity) * 0.20));
   const extraCoins = Math.max(0, extraCoinsEstimate - topExtraCoins);
   coinsGained = addCoinAmount(topCoins, extraCoins);
 
