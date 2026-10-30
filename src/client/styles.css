@@ -402,7 +402,7 @@ main select { color: #dfe8df; background: #111c22; border-color: var(--line); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
-  .roll-stage.is-rolling::after, .roll-stage.is-rolling > .absolute.w-64 { animation: none !important; }
+  .roll-stage.is-rolling::after, .roll-stage.is-rolling > .absolute.w-64, .io-main-orb.is-dynamic-rolling, .io-rolling-orbit, .io-rolling-orb-counter { animation: none !important; will-change: auto; }
 }
 
 
