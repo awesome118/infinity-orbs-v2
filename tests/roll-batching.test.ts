@@ -79,7 +79,7 @@ test('server uses weighted sample counts for Luck, player totals, XP, Coins, and
   assert.match(apply, /extraCoinsEstimate = addCoinAmount/);
   assert.match(apply, /extraCoinsForGroupMaximum = Math\.max\(1, Math\.round\(coinsForRarity\(rarity\) \* 0\.20\)\)/);
   assert.match(apply, /rarities\.push\(rarity\);\s*rarityWeights\.push\(1\)/);
-  assert.match(apply, /lowRarityCoinsForGroupMaximum/);
+  assert.match(apply, /lowCoinsForGroupMaximum/);
   assert.match(apply, /lowRarityCoinsEstimate = addCoinAmount/);
   assert.match(apply, /sampleBinomialCount\(sampleWeight, combinedShardChance, rng\)/);
   assert.match(multiRoll, /MAX_EFFECTIVE_ROLLS_PER_BATCH \/ ballsPerActivation/);
