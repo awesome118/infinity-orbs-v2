@@ -98,7 +98,7 @@ test('server uses weighted sample counts for Luck, player totals, XP, Coins, and
   const frenzy = server.slice(server.indexOf('export async function claimOrbFrenzy'), server.indexOf('export async function postFrenzyThankYouComment'));
 
   assert.match(apply, /const rarityBounds = getRarityBounds\(rarities\)/);
-  assert.doesNotMatch(apply, /Math\\.(?:min|max)\\(\\.\\.\\.rarities\\)/);
+  assert.doesNotMatch(apply, /Math\.(?:min|max)\(\.\.\.rarities\)/);
   assert.ok(apply.includes('const sampleScale = sampleWeight * averageGroupMultiplier'));
   assert.ok(apply.includes('effectiveLuck * sampleScale * sampleScale'));
   assert.match(apply, /const isCompressedGroup = sampleWeight > 1/);
