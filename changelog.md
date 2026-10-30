@@ -1,5 +1,12 @@
 # Infinity Orbs Changelog
 
+### Finite-Range Coins and Live Frenzy Progress (2.1.18)
+
+- Removed the safe-integer ceiling from Coin balances, lifetime Coins, Coin rewards, and collection value; these values now use the full finite JavaScript Number range through approximately 1.7977e308.
+- Kept safe-integer protections for Shards, timestamps, roll counts, and other discrete counters.
+- Updated roll aggregation, Guild tax, achievement rewards, and Altar spending to preserve large Coin balances.
+- Replaced the Frenzy popup's vague spawning message with a live progress bar backed by server updates after each 5,000-roll batch.
+
 ### Combat Turn Timer Upgrade (2.1.17)
 
 - Removed the Chrono Surge base-timer explanation from the turn-order panel.
