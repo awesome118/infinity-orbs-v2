@@ -45,7 +45,7 @@ test('dynamic reel is cosmetic and only uses the real Orb after the request comp
   assert.ok(rollSection.includes('<DynamicOrbRoll'));
   assert.ok(rollSection.includes('frenzyRevealActive={frenzyRevealActive}'));
   assert.ok(rollSection.includes('orb={displayOrb}'));
-  assert.ok(main.includes('frenzyRevealActive={frenzyProgress.total > 0 && frenzyProgress.percent >= 100}'));
+  assert.ok(main.includes('frenzyRevealActive={!frenzyProgress.active && frenzyProgress.total > 0 && frenzyProgress.percent >= 100}'));
 
   const css = source('src/client/styles.css');
   assert.match(css, /\.io-main-orb\.is-dynamic-rolling/);
