@@ -73,7 +73,7 @@ test('server uses weighted sample counts for Luck, player totals, XP, Coins, and
   const apply = server.slice(server.indexOf('export async function applyRolls('), server.indexOf('\nasync function commitOfflineNotificationMarkerIfUnchanged'));
   const frenzy = server.slice(server.indexOf('export async function claimOrbFrenzy'), server.indexOf('export async function postFrenzyThankYouComment'));
 
-  assert.match(apply, /sampleLuck = Math\.min\(Number\.MAX_VALUE, effectiveLuck \* sampleWeight \* sampleWeight\)/);
+  assert.ok(apply.includes('sampleLuck = Math.min(Number.MAX_VALUE, effectiveLuck * sampleWeight * sampleWeight)'));
   assert.match(apply, /s\.totalRolls \+= sampleWeight/);
   assert.match(apply, /xpForBaseOrb \* sampleWeight/);
   assert.match(apply, /extraCoinsEstimate = addCoinAmount/);
@@ -82,7 +82,7 @@ test('server uses weighted sample counts for Luck, player totals, XP, Coins, and
   assert.match(apply, /lowCoinsForGroupMaximum/);
   assert.match(apply, /lowRarityCoinsEstimate = addCoinAmount/);
   assert.match(apply, /sampleBinomialCount\(sampleWeight, combinedShardChance, rng\)/);
-  assert.match(multiRoll, /MAX_EFFECTIVE_ROLLS_PER_BATCH \/ ballsPerActivation/);
+  assert.match(multiRoll, /MAX_EFFECTIVE_ROLLS_PER_BATCH - 2\\) \/ ballsPerActivation/);
   assert.match(frenzy, /MAX_EFFECTIVE_ROLLS_PER_BATCH, remainingCount/);
   assert.match(frenzy, /writeFrenzyClaimProgress\(claimantId, postId, attemptId, count, absoluteProcessed, false\)/);
 });
