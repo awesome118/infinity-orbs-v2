@@ -82,7 +82,7 @@ test('server uses weighted sample counts for Luck, player totals, XP, Coins, and
   assert.match(apply, /lowCoinsForGroupMaximum/);
   assert.match(apply, /lowRarityCoinsEstimate = addCoinAmount/);
   assert.match(apply, /sampleBinomialCount\(sampleWeight, combinedShardChance, rng\)/);
-  assert.match(multiRoll, /MAX_EFFECTIVE_ROLLS_PER_BATCH - 2\\) \/ ballsPerActivation/);
+  assert.ok(multiRoll.includes('Math.floor((MAX_EFFECTIVE_ROLLS_PER_BATCH - 2) / ballsPerActivation)'));
   assert.match(frenzy, /MAX_EFFECTIVE_ROLLS_PER_BATCH, remainingCount/);
   assert.match(frenzy, /writeFrenzyClaimProgress\(claimantId, postId, attemptId, count, absoluteProcessed, false\)/);
 });
