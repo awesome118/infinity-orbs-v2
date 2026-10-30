@@ -291,6 +291,32 @@ body.io-inline-post { margin: 0; }
 .roll-button:hover:disabled { filter: none !important; transform: none !important; cursor: wait !important; }
 .roll-action-hint { max-width: 34rem; min-height: 1.15rem; color: #91a4a7; text-align: center; font-size: 11px; line-height: 1.45; }
 .roll-stage.is-rolling::after { position: absolute; z-index: 1; inset: 7px; border: 1px solid rgba(116, 221, 202, .58); border-radius: 19px; content: ""; pointer-events: none; animation: io-roll-resolve-ring 1.25s ease-in-out infinite; }
+.io-main-orb.is-dynamic-rolling {
+  border-color: rgba(206, 255, 246, .82) !important;
+  box-shadow: 0 0 34px rgba(105, 230, 211, .34), 0 0 84px rgba(102, 139, 255, .2), inset 0 0 28px rgba(255,255,255,.18) !important;
+  animation: io-dynamic-orb-core .82s ease-in-out infinite;
+  will-change: transform, filter, box-shadow;
+}
+@keyframes io-dynamic-orb-core {
+  0%, 100% { transform: perspective(700px) rotateY(-11deg) scale(.975); filter: saturate(.96) brightness(.98); }
+  50% { transform: perspective(700px) rotateY(11deg) scale(1.035); filter: saturate(1.28) brightness(1.12); }
+}
+.io-rolling-orbit {
+  transform-origin: center;
+  animation: io-rolling-orbit 1.65s linear infinite;
+}
+@keyframes io-rolling-orbit {
+  from { transform: rotate(0deg) scale(.96); }
+  to { transform: rotate(360deg) scale(1.04); }
+}
+.io-rolling-orb-counter {
+  animation: io-rolling-orb-counter .72s ease-in-out infinite alternate;
+}
+@keyframes io-rolling-orb-counter {
+  from { transform: scale(.82); filter: brightness(.86) saturate(.9); }
+  to { transform: scale(1.12); filter: brightness(1.2) saturate(1.35); }
+}
+.roll-stage.is-rolling .absolute.w-64 { opacity: .58; }
 @keyframes io-roll-resolve-ring { 0%, 100% { opacity: .22; box-shadow: inset 0 0 0 rgba(116, 221, 202, 0); } 50% { opacity: .9; box-shadow: inset 0 0 28px rgba(116, 221, 202, .08), 0 0 18px rgba(116, 221, 202, .08); } }
 .roll-controls { gap: 7px !important; }
 .roll-controls button { border-radius: 10px !important; }
