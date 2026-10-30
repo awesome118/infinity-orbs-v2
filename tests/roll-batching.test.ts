@@ -6,6 +6,7 @@ import {
   MAX_EFFECTIVE_ROLLS_PER_BATCH,
   MAX_SIMULATED_ROLLS_PER_BATCH,
   createRollBatchPlan,
+  getRarityBounds,
   effectiveWeightAtSample,
   sampleBinomialCount,
   virtualRollOffsetAtSample,
@@ -28,6 +29,17 @@ test('500,000 effective Orbs are simulated as 50,000 samples at 100x Luck', () =
   assert.ok(plan.simulatedBaseCount <= MAX_SIMULATED_ROLLS_PER_BATCH);
   assert.equal(MAX_SIMULATED_ROLLS_PER_BATCH, 50_000);
   assert.equal(MAX_EFFECTIVE_ROLLS_PER_BATCH, 500_000);
+});
+
+
+test('rarity bounds handle large sample lists without argument spreading', () => {
+  const samples = new Array<number>(100_000);
+  for (let index = 0; index < samples.length; index++) {
+    samples[index] = (index % 10_000) + 1;
+  }
+
+  assert.deepEqual(getRarityBounds(samples), { min: 1, max: 10_000 });
+  assert.deepEqual(getRarityBounds([]), { min: 0, max: 0 });
 });
 
 test('weighted samples conserve the exact effective Orb count, including a partial tail', () => {
@@ -85,6 +97,8 @@ test('server uses weighted sample counts for Luck, player totals, XP, Coins, and
   const apply = server.slice(server.indexOf('export async function applyRolls('), server.indexOf('\nasync function commitOfflineNotificationMarkerIfUnchanged'));
   const frenzy = server.slice(server.indexOf('export async function claimOrbFrenzy'), server.indexOf('export async function postFrenzyThankYouComment'));
 
+  assert.match(apply, /const rarityBounds = getRarityBounds\(rarities\)/);
+  assert.doesNotMatch(apply, /Math\\.(?:min|max)\\(\\.\\.\\.rarities\\)/);
   assert.ok(apply.includes('const sampleScale = sampleWeight * averageGroupMultiplier'));
   assert.ok(apply.includes('effectiveLuck * sampleScale * sampleScale'));
   assert.match(apply, /const isCompressedGroup = sampleWeight > 1/);
