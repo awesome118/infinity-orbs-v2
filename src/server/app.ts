@@ -40,6 +40,7 @@ import {
   claimOrbFrenzy,
   postFrenzyThankYouComment,
   getOrbFrenzyInfo,
+  getOrbFrenzyClaimProgress,
   getOrbFrenzyHandoff,
   armOrbFrenzyClaim,
   startOrbFrenzy,
@@ -1512,7 +1513,7 @@ export function createApp() {
       const numShards = Number(shards);
       if (!Number.isFinite(numCoins) || !Number.isFinite(numShards) ||
           numCoins < 0 || numShards < 0 ||
-          !Number.isSafeInteger(Math.floor(numCoins)) || !Number.isSafeInteger(Math.floor(numShards))) {
+          !Number.isInteger(Math.floor(numCoins)) || !Number.isSafeInteger(Math.floor(numShards))) {
         return res.status(400).json({ error: 'Invalid offering amounts.' });
       }
       const result = await sacrificeToAltar(numCoins, numShards);
@@ -1587,6 +1588,12 @@ export function createApp() {
     res.set('Cache-Control', 'no-store');
     try { res.json(await getOrbFrenzyInfo()); }
     catch (e) { badRequest(res, e, 'Could not load Orb Frenzy.'); }
+  });
+
+  app.get('/api/frenzy/progress', async (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try { res.json(await getOrbFrenzyClaimProgress()); }
+    catch (e) { badRequest(res, e, 'Could not load Frenzy progress.'); }
   });
 
   app.post('/api/frenzy/claim', async (_req, res) => {
