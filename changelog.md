@@ -1,5 +1,10 @@
 # Infinity Orbs Changelog
 
+### Guild Polling Regression Coverage (2.1.20)
+
+- Align background-polling regression checks with independent Guild and world-event request locks.
+- Keep regression coverage for conservative Guild data recovery and retryable load errors.
+
 ### Guild Recovery and Polling Reliability (2.1.19)
 
 - Recover malformed non-authoritative Guild task, perk, combo, challenge, chat, and temporary boss data before strict validation. Guild IDs, member IDs, and member roles remain strict.
