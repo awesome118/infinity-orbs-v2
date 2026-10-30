@@ -3801,6 +3801,7 @@ export async function applyRolls(
     const count = Math.min(requested, runeBonusRollBudget - runeBonusRollsUsed);
     for (let j = 0; j < count; j++) runeBonusRollSpecs.push({ ...spec });
     rollCount += count;
+    simulationLoopCount += count;
     runeBonusRollsUsed += count;
     return count;
   };
