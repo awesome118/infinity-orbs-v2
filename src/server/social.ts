@@ -27,6 +27,8 @@ import {
   createInitialState,
   createInitialDailyStreakCommunity,
   grantFreeShards,
+  normalizeCoinAmount,
+  addCoinAmount,
   weekEndMs,
   weekKey,
   createInitialGuildCombo,
@@ -1413,7 +1415,7 @@ export async function setGuildTaxRate(rate: number) {
 }
 
 export async function applyGuildTax(coinsEarned: number): Promise<{ taxedCoins: number; tokensEarned: number; xpEarned: number }> {
-  const safeCoins = Math.max(0, Math.floor(coinsEarned || 0));
+  const safeCoins = normalizeCoinAmount(coinsEarned);
   if (safeCoins < 100) return { taxedCoins: 0, tokensEarned: 0, xpEarned: 0 };
 
   return updateGuilds(guilds => {
@@ -1421,7 +1423,7 @@ export async function applyGuildTax(coinsEarned: number): Promise<{ taxedCoins: 
     if (!guild) return { taxedCoins: 0, tokensEarned: 0, xpEarned: 0 };
 
     const rate = Math.max(0, Math.min(10, Math.floor(Number(guild.taxRate ?? 0) || 0)));
-    const taxedCoins = Math.min(safeCoins, Math.floor(safeCoins * rate / 100));
+    const taxedCoins = Math.min(safeCoins, Math.floor(safeCoins * (rate / 100)));
     if (taxedCoins <= 0) return { taxedCoins, tokensEarned: 0, xpEarned: 0 };
 
     const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * 0.10;
@@ -1724,14 +1726,14 @@ export async function prepareGuildRollEffects(
 
   const capInteger = (value: number) =>
     Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Number.isFinite(value) ? Math.floor(value) : 0));
-  const safeCoins = capInteger(coinsEarned);
+  const safeCoins = normalizeCoinAmount(coinsEarned);
   const safeValue = capInteger(value);
   const safeRolls = capInteger(rollCount);
   let taxedCoins = 0;
 
   if (safeCoins >= 100) {
     const rate = Math.max(0, Math.min(10, Math.floor(Number(guild.taxRate ?? 0) || 0)));
-    taxedCoins = Math.min(safeCoins, Math.floor(safeCoins * rate / 100));
+    taxedCoins = Math.min(safeCoins, Math.floor(safeCoins * (rate / 100)));
     if (taxedCoins > 0) {
       const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * 0.10;
       const xpEarned = Math.max(1, Math.floor((taxedCoins / 100) * xpMultiplier));
@@ -3177,18 +3179,15 @@ export async function claimAchievement(_s: PlayerState, id: string) {
       throw new Error('Achievement Coin reward is invalid.');
     }
 
-    const currentCoins = Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(state.coins)));
-    const requestedGain = Math.min(Number.MAX_SAFE_INTEGER, achievement.rewardCoins);
-    const rewardCoins = Math.min(requestedGain, Number.MAX_SAFE_INTEGER - currentCoins);
-    const lifetimeCoins = Math.min(
-      Number.MAX_SAFE_INTEGER,
-      Math.max(0, Math.floor(state.lifetimeCoins ?? currentCoins)),
-    );
+    const currentCoins = normalizeCoinAmount(state.coins);
+    const requestedGain = normalizeCoinAmount(achievement.rewardCoins);
+    const rewardCoins = Math.min(requestedGain, Number.MAX_VALUE - currentCoins);
+    const lifetimeCoins = normalizeCoinAmount(state.lifetimeCoins ?? currentCoins);
 
     state.claimedAchievements.push(id);
     state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
-    state.coins = currentCoins + rewardCoins;
-    state.lifetimeCoins = Math.min(Number.MAX_SAFE_INTEGER, lifetimeCoins + rewardCoins);
+    state.coins = addCoinAmount(currentCoins, rewardCoins);
+    state.lifetimeCoins = addCoinAmount(lifetimeCoins, rewardCoins);
     const rewardShards = grantFreeShards(state, achievement.rewardShards ?? 0);
 
     await txn.multi();
