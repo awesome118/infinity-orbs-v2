@@ -18,7 +18,7 @@ test('Frenzy progress is claimant-scoped and updated after bounded server batche
   assert.match(server, /FRENZY_CLAIM_PROGRESS_PREFIX/);
   assert.match(server, /export async function getOrbFrenzyClaimProgress/);
   assert.match(server, /await writeFrenzyClaimProgress\(claimantId, postId, attemptId, count, processedCount, false\)/);
-  assert.match(server, /await writeFrenzyClaimProgress\(claimantId, postId, attemptId, count, processedCount, true\)/);
+  assert.match(server, /await writeFrenzyClaimProgress\(claimantId, postId, attemptId, count, processedCount, true, progressResult\)/);
   assert.match(main, /progress\.attemptId !== activeFrenzyAttemptId/);
   assert.match(main, /body: JSON\.stringify\(\{ attemptId: activeFrenzyAttemptId \}\)/);
   assert.match(app, /app\.get\('\/api\/frenzy\/progress'/);
