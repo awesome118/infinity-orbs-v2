@@ -5245,7 +5245,7 @@ export async function roll(
     const ballsPerActivation = Math.max(1, rollsPerActivation(s));
     const maxActivationsPerChunk = Math.max(
       1,
-      Math.min(offlineRollCap(s), Math.floor(5_000 / ballsPerActivation)),
+      Math.floor(MAX_EFFECTIVE_ROLLS_PER_BATCH / ballsPerActivation),
     );
     while (remainingActivations > 0) {
       const chunkActivations = Math.min(remainingActivations, maxActivationsPerChunk);
