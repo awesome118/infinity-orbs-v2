@@ -3947,6 +3947,7 @@ export async function applyRolls(
       const lowCoinsForGroup = Math.max(1, Math.round(coinsForRarity(rewardRarity)));
       lowRarityCoinsEstimate = addCoinAmount(lowRarityCoinsEstimate, normalizeCoinAmount(lowCoinsForGroup * sampleWeight));
     }
+    const totalRollsBeforeSample = s.totalRolls - sampleWeight;
     const previousAllTimeRarity = s.highestRarity;
     const isNewRarityRecord = rarity > previousAllTimeRarity || (isInfinityOrb && !s.highestRarityIsInfinity);
     if (isNewRarityRecord) {
@@ -3993,12 +3994,12 @@ export async function applyRolls(
       }
     }
     // Critical Convergence converts a critical hit into a chance for a non-recursive, rarity-floored bonus.
-    const groupCriticalConvergenceChance = critCountInGroup > 0
-      ? 1 - Math.pow(1 - criticalConvergenceChance, critCountInGroup)
+    const convergenceCount = !suppressOtherRuneProcs && critCountInGroup > 0
+      ? sampleBinomialCount(critCountInGroup, criticalConvergenceChance, rng)
       : 0;
-    if (isCrit && !suppressOtherRuneProcs && groupCriticalConvergenceChance > 0 && rng() < groupCriticalConvergenceChance) {
+    if (convergenceCount > 0) {
       const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity, Math.ceil(rarity * criticalConvergenceRarityMultiplier)));
-      addRuneBonusRolls(runeAbilityEffects.criticalConvergenceBonusRolls, { minRarity: floor, skipAllProcs: true });
+      addRuneBonusRolls(runeAbilityEffects.criticalConvergenceBonusRolls * convergenceCount, { minRarity: floor, skipAllProcs: true });
     }
     // Three strictly rising results in the same activation trigger Rarity Ladder once.
     risingRarityChain = rarity > previousBatchRarity ? risingRarityChain + 1 : 1;
@@ -4009,7 +4010,8 @@ export async function applyRolls(
       rarityLadderTriggered = true;
     }
     // Stellar Dividend pays once per activation when a processed roll hits its lifetime milestone.
-    if (!stellarDividendTriggered && !suppressOtherRuneProcs && runeAbilityEffects.stellarDividendPct > 0 && s.totalRolls % stellarDividendInterval === 0) {
+    if (!stellarDividendTriggered && !suppressOtherRuneProcs && runeAbilityEffects.stellarDividendPct > 0 &&
+        Math.floor(s.totalRolls / stellarDividendInterval) > Math.floor(totalRollsBeforeSample / stellarDividendInterval)) {
       addRuneBonusRolls(runeAbilityEffects.stellarDividendBonusRolls, { skipAllProcs: true });
       stellarDividendTriggered = true;
     }
@@ -4019,20 +4021,19 @@ export async function applyRolls(
     }
     // Echo Chamber can echo normal rolls and its own echoes; each link has half the chance of the previous link.
     const perOrbEchoChance = echoChance * Math.pow(.5, echoDepth);
-    const groupEchoChance = sampleWeight > 1
-      ? 1 - Math.pow(1 - perOrbEchoChance, sampleWeight)
-      : perOrbEchoChance;
-    if (!currentRuneSpec?.skipAllProcs && groupEchoChance > 0 && echoDepth < maxEchoChain &&
-        rng() < groupEchoChance) {
-      addRuneBonusRolls(1, { echoDepth: echoDepth + 1, echoOnly: true });
+    const echoCount = !currentRuneSpec?.skipAllProcs && echoDepth < maxEchoChain
+      ? sampleBinomialCount(sampleWeight, perOrbEchoChance, rng)
+      : 0;
+    if (echoCount > 0) {
+      addRuneBonusRolls(echoCount, { echoDepth: echoDepth + 1, echoOnly: true });
     }
     // Prismatic Fork is limited to rare-or-better rolls, and its bonus roll cannot fork again.
-    const groupPrismaticChance = sampleWeight > 1
-      ? 1 - Math.pow(1 - prismaticForkChance, sampleWeight)
-      : prismaticForkChance;
-    if (!suppressOtherRuneProcs && rarity >= 1_000 && groupPrismaticChance > 0 && rng() < groupPrismaticChance) {
+    const prismaticForkCount = !suppressOtherRuneProcs && rarity >= 1_000
+      ? sampleBinomialCount(sampleWeight, prismaticForkChance, rng)
+      : 0;
+    if (prismaticForkCount > 0) {
       const floor = Math.min(MAX_ORB_RARITY, Math.max(rarity + 1, Math.ceil(rarity * prismaticForkRarityMultiplier)));
-      addRuneBonusRolls(1, { minRarity: floor, skipAllProcs: true });
+      addRuneBonusRolls(prismaticForkCount, { minRarity: floor, skipAllProcs: true });
     }
 
     if (rarity > bestRarity || (isInfinityOrb && !bestIsInfinity)) {
@@ -4064,10 +4065,8 @@ export async function applyRolls(
     // High rarity is not a guaranteed Shard source. All repeatable Orb earnings are proc-based.
     let earnedShards = 0;
     const shardTitheChance = Math.min(0.000125, Math.max(0, runeAbilityEffects.shardTithePerRoll) * 0.5);
-    if (!suppressOtherRuneProcs && shardTitheChance > 0 && rng() < shardTitheChance) earnedShards += 1;
     // Dry-Streak Refinery converts its former fractional drip into a reduced chance for one whole Shard.
     const dryRefineryChance = Math.min(0.000125, Math.floor(Math.max(0, s.rollsSinceBest ?? 0) / 100) * Math.max(0, runeAbilityEffects.dryStreakRefineryRate) * 0.5);
-    if (!suppressOtherRuneProcs && dryRefineryChance > 0 && rng() < dryRefineryChance) earnedShards += 1;
 
     // Shard Chance upgrade + Mastery + Guild perk proc
     const shardProcChance = Math.min(
@@ -4092,6 +4091,8 @@ export async function applyRolls(
       const jackpotExtra = Math.max(0, Math.min(1, Math.round(1 + runeAbilityEffects.shardJackpotExtraMultiplier) - 1));
       earnedShards = baseShardCount + jackpotCount * jackpotExtra;
     } else {
+      if (!suppressOtherRuneProcs && shardTitheChance > 0 && rng() < shardTitheChance) earnedShards += 1;
+      if (!suppressOtherRuneProcs && dryRefineryChance > 0 && rng() < dryRefineryChance) earnedShards += 1;
       const shardProcTriggered = rng() < shardProcChance;
       earnedShards += resolveShardPityReward(s, shardProcTriggered);
       // Multiple low-probability effects cannot stack into a large per-Orb payout.
