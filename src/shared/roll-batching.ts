@@ -5,6 +5,23 @@
 export const MAX_SIMULATED_ROLLS_PER_BATCH = 50_000;
 export const MAX_EFFECTIVE_ROLLS_PER_BATCH = 500_000;
 
+/**
+ * Find sample rarity bounds without spreading a potentially large array into
+ * function arguments. Some server runtimes have a low argument/stack limit.
+ */
+export function getRarityBounds(values: readonly number[]): { min: number; max: number } {
+  if (values.length === 0) return { min: 0, max: 0 };
+
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  for (const value of values) {
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+  return { min, max };
+}
+
+
 export interface RollBatchPlan {
   effectiveCount: number;
   protectedOpeningCount: number;
