@@ -12,6 +12,7 @@ test('Frenzy calculating popup displays server-backed live progress without the 
 });
 
 test('Frenzy progress is claimant-scoped and updated after bounded server batches', () => {
+  const main = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
   const server = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
   const app = readFileSync(resolve(process.cwd(), 'src/server/app.ts'), 'utf8');
   assert.match(server, /FRENZY_CLAIM_PROGRESS_PREFIX/);
