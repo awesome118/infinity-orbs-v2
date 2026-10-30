@@ -537,6 +537,9 @@ function App() {
   const [newBestModalData, setNewBestModalData] = useState<{ orb: Orb; prevBest: number } | null>(null);
   const [frenzyRunTriggered, setFrenzyRunTriggered] = useState(false);
   const [showFrenzyCalculating, setShowFrenzyCalculating] = useState(false);
+  const [frenzyProgress, setFrenzyProgress] = useState<{ active: boolean; processed: number; total: number; percent: number }>({
+    active: false, processed: 0, total: 0, percent: 0,
+  });
   const [frenzyArmed, setFrenzyArmed] = useState(false);
   const [showFrenzyPrompt, setShowFrenzyPrompt] = useState(false);
   const [frenzyPromptPreview, setFrenzyPromptPreview] = useState(false);
@@ -1174,6 +1177,39 @@ function App() {
 
     let frenzyCalculatingTimeout: number | null = null;
     let frenzyCalculatingShownAt = 0;
+    let frenzyProgressInterval: number | null = null;
+    let frenzyProgressPollInFlight = false;
+    const stopFrenzyProgressPolling = () => {
+      if (frenzyProgressInterval !== null) {
+        window.clearInterval(frenzyProgressInterval);
+        frenzyProgressInterval = null;
+      }
+    };
+    const refreshFrenzyProgress = async () => {
+      if (frenzyProgressPollInFlight) return;
+      frenzyProgressPollInFlight = true;
+      try {
+        const progress = await getJson<{
+          active: boolean;
+          processed: number;
+          total: number;
+          percent: number;
+          completed: boolean;
+        }>('/api/frenzy/progress');
+        if (componentMountedRef.current) {
+          setFrenzyProgress(current => ({
+            active: progress.active === true,
+            processed: Math.max(current.processed, Math.max(0, Math.floor(Number(progress.processed) || 0))),
+            total: Math.max(current.total, Math.max(0, Math.floor(Number(progress.total) || 0))),
+            percent: Math.max(current.percent, Math.max(0, Math.min(100, Number(progress.percent) || 0))),
+          }));
+        }
+      } catch {
+        // Progress is display-only; keep the claim moving if polling is unavailable.
+      } finally {
+        frenzyProgressPollInFlight = false;
+      }
+    };
 
     const resolveFrenzy = async () => {
       // Lock before the first await. Effect replay must not run a second
@@ -1228,6 +1264,9 @@ function App() {
       setBusy(true);
       setIsRolling(true);
       setShowFrenzyCalculating(false);
+      setFrenzyProgress({ active: true, processed: 0, total: 0, percent: 0 });
+      void refreshFrenzyProgress();
+      frenzyProgressInterval = window.setInterval(() => { void refreshFrenzyProgress(); }, 250);
       frenzyCalculatingShownAt = 0;
       if (frenzyCalculatingTimeout !== null) window.clearTimeout(frenzyCalculatingTimeout);
       // Delay the full-screen treatment so quick claims keep their current flow.
@@ -1244,6 +1283,14 @@ function App() {
 
       if (!componentMountedRef.current) return;
 
+      stopFrenzyProgressPolling();
+      const finalFrenzyCount = Math.max(0, Math.floor(Number(res.frenzyCount ?? 0) || 0));
+      setFrenzyProgress({
+        active: false,
+        processed: finalFrenzyCount,
+        total: finalFrenzyCount,
+        percent: 100,
+      });
       if (frenzyCalculatingTimeout !== null) {
         window.clearTimeout(frenzyCalculatingTimeout);
         frenzyCalculatingTimeout = null;
@@ -1305,10 +1352,12 @@ function App() {
         }
       })
       .finally(() => {
+        stopFrenzyProgressPolling();
         if (frenzyCalculatingTimeout !== null) window.clearTimeout(frenzyCalculatingTimeout);
         frenzyCalculatingTimeout = null;
         frenzyClaimActiveRef.current = false;
         if (!componentMountedRef.current) return;
+        setFrenzyProgress({ active: false, processed: 0, total: 0, percent: 0 });
         setShowFrenzyCalculating(false);
         setIsRolling(false);
         setBusy(false);
@@ -3455,8 +3504,29 @@ function App() {
             </div>
             <h2 id="frenzy-calculating-title" className="io-frenzy-calculating-title">Calculating Frenzy</h2>
             <p id="frenzy-calculating-description" className="io-frenzy-calculating-copy">
-              Rolling your payout at warp speed. Orbs are spawning while we secure your claim…
+              Rolling your payout at warp speed.
             </p>
+            <div className="io-frenzy-progress-wrap">
+              <div className="io-frenzy-progress-meta">
+                <span>
+                  {frenzyProgress.total > 0
+                    ? `${formatNumber(frenzyProgress.processed)} / ${formatNumber(frenzyProgress.total)} ORBS`
+                    : 'PREPARING ROLLS'}
+                </span>
+                <strong>{Math.round(Math.max(0, Math.min(100, frenzyProgress.percent)))}%</strong>
+              </div>
+              <div
+                className="io-frenzy-progress-track"
+                role="progressbar"
+                aria-label="Frenzy claim progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(Math.max(0, Math.min(100, frenzyProgress.percent)))}
+                aria-valuetext={`${Math.round(Math.max(0, Math.min(100, frenzyProgress.percent)))}% complete`}
+              >
+                <span style={{ width: `${Math.max(0, Math.min(100, frenzyProgress.percent))}%` }} />
+              </div>
+            </div>
             <div className="io-frenzy-calculating-status" role="status" aria-live="polite">
               <span className="io-frenzy-calculating-status-dot" />
               Processing your Frenzy reward
