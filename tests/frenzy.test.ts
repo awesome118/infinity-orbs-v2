@@ -524,7 +524,7 @@ test('Frenzy batches use ordinary RNG without hidden extra Orb rolls', () => {
   assert.match(apply, /source: 'online' \| 'offline' \| 'frenzy'/);
   assert.match(apply, /MAX_EFFECTIVE_ROLLS_PER_BATCH/);
   assert.match(apply, /source === 'offline'[\s\S]{0,100}offlineRollCap\(s\)/);
-  assert.match(apply, /sampleWeight \\* sampleWeight/);
+  assert.ok(apply.includes('effectiveLuck * sampleWeight * sampleWeight'));
   assert.match(apply, /source === 'frenzy'\s*\?\s*0\s*:\s*Math\.max/);
   assert.match(apply, /source !== 'frenzy' && rollCount > 1 && magnetLevel > 0/);
   assert.match(apply, /source !== 'frenzy' && !constellationTriggered/);
