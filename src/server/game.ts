@@ -4130,21 +4130,35 @@ export async function applyRolls(
     const payoutRarity = groupWeight > 1
       ? Math.max(runeRarityFloor, Math.floor(rarity / groupWeight))
       : rarity;
-    const finalVal = Math.min(MAX_ORB_RARITY, Math.round(payoutRarity * valueMul));
-    const rarityKey = isInfinityOrb ? 'Infinity' : String(payoutRarity);
-    const isNew = !s.collection[rarityKey];
-    const weightedValue = Math.min(Number.MAX_VALUE, finalVal * groupWeight);
+    const payoutWeight = Math.max(0, groupWeight - 1);
+    const payoutValue = Math.min(MAX_ORB_RARITY, Math.round(payoutRarity * valueMul));
+    const bestValue = Math.min(MAX_ORB_RARITY, Math.round(rarity * valueMul));
+    const payoutKey = String(payoutRarity);
+    const bestKey = isInfinityOrb ? 'Infinity' : String(rarity);
+    const isNew = !s.collection[bestKey];
+    const payoutIsNew = payoutWeight > 0 && payoutKey !== bestKey && !s.collection[payoutKey];
+    const weightedValue = Math.min(Number.MAX_VALUE, payoutValue * payoutWeight + bestValue);
 
     totalVal = Math.min(Number.MAX_VALUE, totalVal + weightedValue);
-    rarities.push(payoutRarity);
-    rarityWeights.push(groupWeight);
+    if (payoutWeight > 0 && payoutKey !== bestKey) {
+      rarities.push(payoutRarity);
+      rarityWeights.push(payoutWeight);
+    }
+    rarities.push(rarity);
+    rarityWeights.push(1);
     s.totalRolls += groupWeight;
     s.currentRunRolls = (s.currentRunRolls ?? 0) + groupWeight;
     s.collectionValue = addCollectionValue(s.collectionValue, weightedValue);
     s.lifetimeCollectionValue = addCollectionValue(s.lifetimeCollectionValue, weightedValue);
 
+    if (payoutIsNew) uniqueGained++;
     if (isNew) uniqueGained++;
-    s.collection[rarityKey] = (s.collection[rarityKey] ?? 0) + groupWeight;
+    if (payoutWeight > 0 && payoutKey === bestKey) {
+      s.collection[payoutKey] = (s.collection[payoutKey] ?? 0) + groupWeight;
+    } else {
+      if (payoutWeight > 0) s.collection[payoutKey] = (s.collection[payoutKey] ?? 0) + payoutWeight;
+      s.collection[bestKey] = (s.collection[bestKey] ?? 0) + 1;
+    }
 
     const previousAllTimeRarity = s.highestRarity;
     const isNewRarityRecord = rarity > previousAllTimeRarity || (isInfinityOrb && !s.highestRarityIsInfinity);
