@@ -5243,9 +5243,10 @@ export async function roll(
     let rollCount = 0;
     let remainingActivations = activations;
     const ballsPerActivation = Math.max(1, rollsPerActivation(s));
+    // Reserve two slots for Astral Magnetism's possible bonus Orbs.
     const maxActivationsPerChunk = Math.max(
       1,
-      Math.floor(MAX_EFFECTIVE_ROLLS_PER_BATCH / ballsPerActivation),
+      Math.floor((MAX_EFFECTIVE_ROLLS_PER_BATCH - 2) / ballsPerActivation),
     );
     while (remainingActivations > 0) {
       const chunkActivations = Math.min(remainingActivations, maxActivationsPerChunk);
