@@ -537,7 +537,13 @@ test('Frenzy batches use ordinary RNG without hidden extra Orb rolls', () => {
   assert.match(apply, /rewardRarityGroups/);
   assert.match(apply, /samplePayoutRarity/);
   assert.match(apply, /supernovaChancePerCrit/);
+  assert.match(apply, /topCriticalWeight/);
+  assert.match(apply, /topSupernovaWeight/);
+  assert.match(apply, /effectiveLuck \* groupWeight \* groupWeight/);
   assert.match(apply, /crossedStellarDividendMilestone/);
+  assert.equal((apply.match(/const isGuaranteedThirdBall =/g) ?? []).length, 1);
+  assert.ok(apply.indexOf('requestedRollCount += 2') < apply.indexOf('const MAX_SAMPLED_ROLLS = 50_000'));
+  assert.match(apply, /isInfinityOrb = !Number\.isFinite\(rawRolledRarity\)/);
   assert.match(apply, /source !== 'frenzy' && !constellationTriggered/);
   assert.match(apply, /source !== 'frenzy' && !temporalLoopTriggered/);
   assert.match(apply, /source === 'online' \|\| source === 'frenzy'/);
