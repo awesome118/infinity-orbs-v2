@@ -4091,10 +4091,10 @@ export async function applyRolls(
     // Use the expected pre-record position for Aftershock and dry-streak state.
     const groupDryStreakAtMaximum = groupDryStreakBeforeSample + Math.floor((sampleWeight - 1) / 2);
     const groupDryStreakAverage = groupDryStreakBeforeSample + (sampleWeight + 1) / 2;
+    const isNewRarityRecord = rarity > previousAllTimeRarity || (isInfinityOrb && !s.highestRarityIsInfinity);
     const dryStreakForBatchProcs = isNewRarityRecord
       ? Math.floor((sampleWeight - 1) / 2)
       : Math.floor(groupDryStreakAverage);
-    const isNewRarityRecord = rarity > previousAllTimeRarity || (isInfinityOrb && !s.highestRarityIsInfinity);
     if (isNewRarityRecord) {
       // The rolls since the previous record become an Aftershock candidate
       // only when a strictly rarer all-time orb finally appears.
