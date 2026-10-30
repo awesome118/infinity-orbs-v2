@@ -510,8 +510,11 @@ test('Frenzy payout preview and claim use the same Multiball-scaled count', () =
   assert.match(info, /const rewardOrbCount = frenzyClaimCountForRarity\(/);
   assert.match(info, /rewardOrbCount,/);
   assert.match(claim, /const count = frenzyClaimCountForRarity\(\s*data\.rarity,\s*rollsPerActivation\(s\)/);
-  assert.match(claim, /applyRolls\(s, 1, undefined, 'frenzy', chunkCount\)/);
+  assert.match(claim, /applyRolls\(\s*s,\s*1,\s*undefined,\s*'frenzy',\s*count,/);
+  assert.match(claim, /async processed => writeFrenzyClaimProgress\(/);
   assert.match(claim, /frenzyCount: processedCount/);
+  assert.doesNotMatch(claim, /remainingCount|chunkCount/);
+  assert.match(claim, /FrenzyClaimProgressResult/);
   assert.doesNotMatch(claim, /data\.rarity \* critMultiplier\(s\)/);
 });
 
@@ -522,8 +525,13 @@ test('Frenzy batches use ordinary RNG without hidden extra Orb rolls', () => {
   assert.ok(start >= 0 && end > start);
   const apply = source.slice(start, end);
   assert.match(apply, /source: 'online' \| 'offline' \| 'frenzy'/);
-  assert.match(apply, /source === 'frenzy'\s*\?\s*5_000/);
-  assert.match(apply, /source === 'frenzy'\s*\?\s*0\s*:\s*Math\.max/);
+  assert.match(apply, /const maxSupportedRollCount = 50_000/);
+  assert.match(apply, /const runeBonusRollBudget = source === 'frenzy'\s*\?\s*0\s*:\s*Math\.max/);
+  assert.match(apply, /const MAX_SAMPLED_ROLLS = 50_000/);
+  assert.match(apply, /groupWeight \* groupWeight/);
+  assert.match(apply, /sampleExpectedEventCount\(/);
+  assert.match(apply, /const logicalRollCount = requestedRollCount \+ runeBonusRollsUsed/);
+  assert.match(apply, /rarityWeights\.reduce/);
   assert.match(apply, /source !== 'frenzy' && rollCount > 1 && magnetLevel > 0/);
   assert.match(apply, /source !== 'frenzy' && !constellationTriggered/);
   assert.match(apply, /source !== 'frenzy' && !temporalLoopTriggered/);
@@ -536,7 +544,9 @@ test('slow Frenzy claims show a delayed calculating popup with rapid Orb spawns'
   const styles = readFileSync(resolve(process.cwd(), 'src/client/ui-polish.css'), 'utf8');
 
   assert.match(main, /FRENZY_CALCULATING_DELAY_MS = 650/);
-  assert.match(main, /FRENZY_CALCULATING_MIN_VISIBLE_MS = 420/);
+  assert.match(main, /FRENZY_CALCULATING_MIN_VISIBLE_MS = 1_200/);
+  assert.match(main, /recoveryDeadline = Date\.now\(\) \+ 3 \* 60_000/);
+  assert.match(main, /progress\.completed && progress\.result/);
   assert.match(main, /setTimeout\(\(\) => \{/);
   assert.match(main, /setShowFrenzyCalculating\(true\)/);
   assert.match(main, /data-testid="frenzy-calculating-popup"/);
