@@ -4503,8 +4503,8 @@ export async function applyRolls(
     requestedRollCount,
     processedRollCount: rollCount,
     activationCount,
-    rarityMin: rarities.length ? Math.min(...rarities) : 0,
-    rarityMax: rarities.length ? Math.max(...rarities) : 0,
+    rarityMin: rarities.length ? rarities.reduce((minimum, rarity) => Math.min(minimum, rarity), Number.POSITIVE_INFINITY) : 0,
+    rarityMax: rarities.length ? rarities.reduce((maximum, rarity) => Math.max(maximum, rarity), 0) : 0,
     rarityAverage: rarities.length
       ? Math.round(
           rarities.reduce((sum, rarity, index) => sum + rarity * (rarityWeights[index] ?? 1), 0) /
