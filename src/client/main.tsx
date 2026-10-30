@@ -540,6 +540,16 @@ function App() {
   const [frenzyProgress, setFrenzyProgress] = useState<{ active: boolean; processed: number; total: number; percent: number }>({
     active: false, processed: 0, total: 0, percent: 0,
   });
+  const [frenzyDisplayedProcessed, setFrenzyDisplayedProcessed] = useState(0);
+  const frenzyProgressCount = Math.min(
+    Math.max(0, frenzyProgress.total),
+    Math.max(frenzyProgress.processed, frenzyDisplayedProcessed),
+  );
+  const frenzyProgressPercent = frenzyProgress.percent >= 100
+    ? 100
+    : frenzyProgress.total > 0
+      ? Math.min(95, (frenzyProgressCount / frenzyProgress.total) * 95)
+      : frenzyProgress.percent;
   const [frenzyArmed, setFrenzyArmed] = useState(false);
   const [showFrenzyPrompt, setShowFrenzyPrompt] = useState(false);
   const [frenzyPromptPreview, setFrenzyPromptPreview] = useState(false);
@@ -1189,13 +1199,19 @@ function App() {
     let frenzyCalculatingTimeout: number | null = null;
     let frenzyCalculatingShownAt = 0;
     let frenzyProgressInterval: number | null = null;
+    let frenzyProgressDisplayInterval: number | null = null;
     let frenzyProgressPollInFlight = false;
+    let latestProgressSnapshot = { processed: 0, total: 0 };
     let activeFrenzyPostId: string | null = null;
     let activeFrenzyAttemptId: string | null = null;
     const stopFrenzyProgressPolling = () => {
       if (frenzyProgressInterval !== null) {
         window.clearInterval(frenzyProgressInterval);
         frenzyProgressInterval = null;
+      }
+      if (frenzyProgressDisplayInterval !== null) {
+        window.clearInterval(frenzyProgressDisplayInterval);
+        frenzyProgressDisplayInterval = null;
       }
     };
     const refreshFrenzyProgress = async () => {
@@ -1217,10 +1233,17 @@ function App() {
           progress.attemptId !== activeFrenzyAttemptId
         ) return;
         if (componentMountedRef.current) {
+          const nextProcessed = Math.max(0, Math.floor(Number(progress.processed) || 0));
+          const nextTotal = Math.max(0, Math.floor(Number(progress.total) || 0));
+          latestProgressSnapshot = {
+            processed: Math.max(latestProgressSnapshot.processed, nextProcessed),
+            total: Math.max(latestProgressSnapshot.total, nextTotal),
+          };
+          setFrenzyDisplayedProcessed(current => Math.max(current, latestProgressSnapshot.processed));
           setFrenzyProgress(current => ({
             active: progress.active === true,
-            processed: Math.max(current.processed, Math.max(0, Math.floor(Number(progress.processed) || 0))),
-            total: Math.max(current.total, Math.max(0, Math.floor(Number(progress.total) || 0))),
+            processed: Math.max(current.processed, nextProcessed),
+            total: Math.max(current.total, nextTotal),
             percent: Math.max(current.percent, Math.max(0, Math.min(100, Number(progress.percent) || 0))),
           }));
         }
@@ -1287,9 +1310,25 @@ function App() {
       activeFrenzyPostId = claimedFrenzyInfo?.postId ?? null;
       activeFrenzyAttemptId = window.crypto?.randomUUID?.()
         ?? `frenzy-${Date.now().toString(36)}-${Math.floor(window.performance.now() * 1000).toString(36)}`;
+      latestProgressSnapshot = { processed: 0, total: 0 };
+      setFrenzyDisplayedProcessed(0);
       setFrenzyProgress({ active: true, processed: 0, total: 0, percent: 0 });
       void refreshFrenzyProgress();
       frenzyProgressInterval = window.setInterval(() => { void refreshFrenzyProgress(); }, 250);
+      // Smooth the visible counter between authoritative server snapshots.
+      // The estimate is capped close to the last confirmed count and never past the true target.
+      frenzyProgressDisplayInterval = window.setInterval(() => {
+        const { processed, total } = latestProgressSnapshot;
+        if (total <= 0) return;
+        setFrenzyDisplayedProcessed(current => {
+          const base = Math.max(current, processed);
+          const ceiling = Math.min(total, processed + Math.max(500, Math.ceil(total * 0.01)));
+          if (base >= ceiling) return base;
+          const room = ceiling - base;
+          const step = 1 + Math.floor(Math.random() * Math.min(250, room));
+          return Math.min(ceiling, base + step);
+        });
+      }, 50);
       frenzyCalculatingShownAt = 0;
       if (frenzyCalculatingTimeout !== null) window.clearTimeout(frenzyCalculatingTimeout);
       // Delay the full-screen treatment so quick claims keep their current flow.
@@ -1312,6 +1351,8 @@ function App() {
 
       stopFrenzyProgressPolling();
       const finalFrenzyCount = Math.max(0, Math.floor(Number(res.frenzyCount ?? 0) || 0));
+      setFrenzyDisplayedProcessed(finalFrenzyCount);
+      latestProgressSnapshot = { processed: finalFrenzyCount, total: finalFrenzyCount };
       setFrenzyProgress({
         active: false,
         processed: finalFrenzyCount,
@@ -1387,6 +1428,7 @@ function App() {
         activeFrenzyAttemptId = null;
         if (!componentMountedRef.current) return;
         setFrenzyProgress({ active: false, processed: 0, total: 0, percent: 0 });
+        setFrenzyDisplayedProcessed(0);
         setShowFrenzyCalculating(false);
         setIsRolling(false);
         setBusy(false);
@@ -3539,10 +3581,10 @@ function App() {
               <div className="io-frenzy-progress-meta">
                 <span>
                   {frenzyProgress.total > 0
-                    ? `${formatNumber(frenzyProgress.processed)} / ${formatNumber(frenzyProgress.total)} ORBS`
+                    ? `${formatNumber(frenzyProgressCount)} / ${formatNumber(frenzyProgress.total)} ORBS`
                     : 'PREPARING ROLLS'}
                 </span>
-                <strong>{Math.round(Math.max(0, Math.min(100, frenzyProgress.percent)))}%</strong>
+                <strong>{Math.round(Math.max(0, Math.min(100, frenzyProgressPercent)))}%</strong>
               </div>
               <div
                 className="io-frenzy-progress-track"
@@ -3550,10 +3592,10 @@ function App() {
                 aria-label="Frenzy claim progress"
                 aria-valuemin={0}
                 aria-valuemax={100}
-                aria-valuenow={Math.round(Math.max(0, Math.min(100, frenzyProgress.percent)))}
-                aria-valuetext={`${Math.round(Math.max(0, Math.min(100, frenzyProgress.percent)))}% complete`}
+                aria-valuenow={Math.round(Math.max(0, Math.min(100, frenzyProgressPercent)))}
+                aria-valuetext={`${formatNumber(frenzyProgressCount)} of ${formatNumber(frenzyProgress.total)} Orbs processed`}
               >
-                <span style={{ width: `${Math.max(0, Math.min(100, frenzyProgress.percent))}%` }} />
+                <span style={{ width: `${Math.max(0, Math.min(100, frenzyProgressPercent))}%` }} />
               </div>
             </div>
             <div className="io-frenzy-calculating-status" role="status" aria-live="polite">

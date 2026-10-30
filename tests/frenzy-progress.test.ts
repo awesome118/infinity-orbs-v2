@@ -9,6 +9,11 @@ test('Frenzy calculating popup displays server-backed live progress without the 
   assert.match(main, /\/api\/frenzy\/progress/);
   assert.match(main, /role="progressbar"/);
   assert.match(main, /io-frenzy-progress-track/);
+  assert.match(main, /frenzyProgressCount = Math\.min\(/);
+  assert.match(main, /const ceiling = Math\.min\(total, processed \+ Math\.max\(500, Math\.ceil\(total \* 0\.01\)\)\)/);
+  assert.match(main, /Math\.random\(\) \* Math\.min\(250, room\)/);
+  assert.match(main, /setFrenzyDisplayedProcessed\(finalFrenzyCount\)/);
+
 });
 
 test('Frenzy progress is claimant-scoped and updated after bounded server batches', () => {
@@ -18,6 +23,9 @@ test('Frenzy progress is claimant-scoped and updated after bounded server batche
   assert.match(server, /FRENZY_CLAIM_PROGRESS_PREFIX/);
   assert.match(server, /export async function getOrbFrenzyClaimProgress/);
   assert.match(server, /await writeFrenzyClaimProgress\(claimantId, postId, attemptId, count, processedCount, false\)/);
+  assert.match(server, /MAX_EFFECTIVE_ROLLS_PER_BATCH/);
+  assert.match(server, /chunkProcessed =>/);
+  assert.match(server, /nowForProgress - lastProgressWriteAt >= 100/);
   assert.match(server, /await writeFrenzyClaimProgress\(claimantId, postId, attemptId, count, processedCount, true\)/);
   assert.match(main, /progress\.attemptId !== activeFrenzyAttemptId/);
   assert.match(main, /body: JSON\.stringify\(\{ attemptId: activeFrenzyAttemptId \}\)/);

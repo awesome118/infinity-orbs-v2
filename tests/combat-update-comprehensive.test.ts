@@ -170,7 +170,7 @@ test('all roll-earned Shard chance sources are reduced and all Shard additions a
   assert.match(game, /const dryRefineryChance = Math\.min\(0\.000125,/);
   assert.match(game, /const shardJackpotChance = Math\.min\(\.005, runeAbilityEffects\.shardJackpotPct \/ 20000\)/);
   assert.match(game, /const milestoneShardChance = Math\.min\(\.0025, runeAbilityEffects\.milestoneEnginePct \/ 40000\)/);
-  assert.match(game, /rng\(\) < 0\.00025 \* transLevel/);
+  assert.match(game, /sampleBinomialCount\(rollCount, Math\.min\(1, 0\.00025 \* transLevel\), rng\)/);
   assert.match(combat, /Math\.min\(\.5,power\/200\)/);
   assert.match(combat, /Math\.min\(\.25,power\/400\)/);
   assert.match(shared, /SHARD_DECIMAL_PLACES = 0/);
@@ -183,7 +183,7 @@ test('all roll-earned Shard chance sources are reduced and all Shard additions a
   const claimEnd = game.indexOf('export async function postFrenzyThankYouComment', claimStart);
   assert.ok(claimStart >= 0 && claimEnd > claimStart);
   const frenzy = game.slice(claimStart, claimEnd);
-  assert.match(frenzy, /applyRolls\(s, 1, undefined, 'frenzy', chunkCount\)/);
+  assert.match(frenzy, /applyRolls\([\s\S]{0,220}'frenzy',[\s\S]{0,220}chunkProcessed =>/);
   assert.doesNotMatch(frenzy, /const rarityShards = groups\.reduce/);
 });
 

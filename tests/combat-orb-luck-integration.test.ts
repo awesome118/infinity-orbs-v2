@@ -4,17 +4,17 @@ import assert from 'node:assert/strict';
 import { context, redis } from '../src/server/devvit-mock.js';
 import { applyRolls } from '../src/server/game.js';
 import { createInitialState } from '../src/shared/game.js';
+import { combatTotalBossesBeaten } from '../src/shared/combat.js';
 
 function fixedLuckSample(): () => number {
-  // No crit; don't trigger the new-player third-orb guarantee; use a sample
-  // close enough to a rarity boundary that a modest Luck multiplier is visible.
-  const samples = [0.99, 0.99, 1 / 100.5, 0.99];
-  let index = 0;
-  return () => samples[Math.min(index++, samples.length - 1)]!;
+  // 0.5 is above the maximum 40% critical chance and gives a clean rarity
+  // boundary when comparing the same level with and without boss-clear Luck.
+  return () => 0.5;
 }
 
 async function rollOnceWithCurrentCombatSave() {
   const state = createInitialState(Date.now());
+  state.level = 100;
   state.totalRolls = 100;
   return applyRolls(state, 1, undefined, 'online', 1, fixedLuckSample());
 }
@@ -40,6 +40,8 @@ test('boss clears across all three dungeons increase real orb-roll Luck; invalid
       dungeonBestDepths: { undercrypt: 51, 'cinder-vault': 101, 'glass-labyrinth': 101 },
       dungeonBossesBeaten: { undercrypt: 5, 'cinder-vault': 10, 'glass-labyrinth': 10 },
     }));
+    const combatFixture = JSON.parse(String(await redis.get(combatKey)));
+    assert.equal(combatTotalBossesBeaten(combatFixture), 25, 'boss counts from each dungeon must be included');
     const afterClearingBosses = await rollOnceWithCurrentCombatSave();
 
     assert.equal(

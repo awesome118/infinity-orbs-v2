@@ -1,5 +1,13 @@
 # Infinity Orbs Changelog
 
+### Weighted Large-Batch Rolling (2.1.21)
+
+- Compress large online Multi Roll and Frenzy batches to at most 50,000 weighted representative samples per 500,000 effective Orbs, plus up to three exact starter-guarantee Orbs.
+- Apply the squared sample-weight Luck factor (10× fewer representatives use 100× base Luck), while accounting for the critical/Supernova mix in the group maximum and weighting Coin, XP, collection, lifetime roll, and progress totals across every effective Orb.
+- Keep offline-vault batches on their existing exact processing path and preserve the first three guaranteed new-player Orbs.
+- Report Frenzy progress from effective Orbs processed; smooth the calculating popup's count between authoritative updates without exceeding the server-calculated target.
+- Add regression coverage for weighted sample plans, batch caps, and live Frenzy progress.
+
 ### Guild Polling Regression Coverage (2.1.20)
 
 - Align background-polling regression checks with independent Guild and world-event request locks.
