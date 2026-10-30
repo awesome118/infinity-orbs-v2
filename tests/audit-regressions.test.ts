@@ -2363,7 +2363,7 @@ test('Frenzy uses the shared critical chance and Coin/Shard modifiers from norma
   assert.match(apply, /hasFilter[\s\S]*?Math\.round\(lowRarityCoins \* 0\.25\)/);
   assert.match(apply, /transLevel[\s\S]*?Math\.round\(lowRarityCoins \* \(transLevel \* 0\.15\)\)/);
   assert.match(apply, /const shardProcChance = Math\.min\(\s*ROLL_SHARD_PROC_CHANCE_CAP,/);
-  assert.match(apply, /rng\(\) < 0\.00025 \* transLevel/);
+  assert.match(apply, /sampleBinomialCount\(rollCount, Math\.min\(1, 0\.00025 \* transLevel\), rng\)/);
 
   const frenzyEnd = game.indexOf('export async function postFrenzyThankYouComment', frenzyStart);
   assert.ok(frenzyEnd > frenzyStart, 'claimOrbFrenzy should have a following export');
