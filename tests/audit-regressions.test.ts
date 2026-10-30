@@ -99,7 +99,7 @@ test('Frenzy handoff preflight is single-flight and stops before claim after unm
   const mountedGuard = effect.indexOf('if (!componentMountedRef.current) return;');
   const claim = effect.indexOf("getJson<RollResponse>('/api/frenzy/claim'");
   assert.ok(mountedGuard > 0 && claim > mountedGuard, 'mounted state must be checked before the claim POST');
-  assert.ok(client.includes('frenzyClaimActiveRef.current = false;\n        if (!componentMountedRef.current) return;'));
+  assert.ok(client.includes('frenzyClaimActiveRef.current = false;\n        activeFrenzyPostId = null;\n        activeFrenzyAttemptId = null;\n        if (!componentMountedRef.current) return;'));
 });
 
 test('Frenzy client retries read-only preflight but does not retry the claim POST', () => {
@@ -110,7 +110,7 @@ test('Frenzy client retries read-only preflight but does not retry the claim POS
   const resolver = main.slice(start, end);
 
   assert.match(resolver, /for \(let attempt = 0; attempt < 12; attempt\+\+\)/);
-  assert.match(resolver, /getJson<RollResponse>\('\/api\/frenzy\/claim', \{ method: 'POST' \}\)/);
+  assert.match(resolver, /getJson<RollResponse>\('\/api\/frenzy\/claim', \{[\s\S]*?method: 'POST',[\s\S]*?body: JSON\.stringify\(\{ attemptId: activeFrenzyAttemptId \}\)/);
   assert.equal(
     (resolver.match(/getJson<RollResponse>\('\/api\/frenzy\/claim'/g) ?? []).length,
     1,
@@ -1518,11 +1518,12 @@ test('manual offline claim compare-clears only reminder values observed before t
 });
 
 
-test('collection value rollover is prevented consistently in every roll path', () => {
+test('collection value uses the full finite Number range consistently in every roll path', () => {
   const shared = source('src/shared/game.ts');
   const server = source('src/server/game.ts');
   assert.match(shared, /export function addCollectionValue\(current: unknown, increment: unknown\): number/);
-  assert.match(shared, /Number\.MAX_SAFE_INTEGER, bounded\(current\) \+ bounded\(increment\)/);
+  assert.match(shared, /return addCoinAmount\(current, increment\);/);
+  assert.match(shared, /return Number\.isFinite\(sum\) \? Math\.min\(Number\.MAX_VALUE, sum\) : Number\.MAX_VALUE;/);
 
   const normalStart = server.indexOf('export async function applyRolls(');
   const normalEnd = server.indexOf('\nasync function commitOfflineNotificationMarkerIfUnchanged', normalStart);
@@ -2081,24 +2082,23 @@ test('the rarity continuum can sample and display its full finite Infinity ceili
 
 
 
-test('earned Coins and lifetime Coins stay within safe integer bounds', () => {
+test('earned Coins and lifetime Coins use the full finite Number range', () => {
   const game = source('src/server/game.ts');
-  assert.match(game, /function finiteNonNegativeInteger\(value: unknown, fallback = 0\): number \{[\s\S]*?Math\.min\(Number\.MAX_SAFE_INTEGER/);
-  assert.match(game, /function addCoins\(s: PlayerState, amount: number\): number \{[\s\S]*?Number\.MAX_SAFE_INTEGER - currentCoins/);
+  assert.match(game, /function addCoins\(s: PlayerState, amount: number\): number \{[\s\S]*?Number\.MAX_VALUE - currentCoins/);
 
   const loadStart = game.indexOf('export async function loadRaw');
   const loadEnd = game.indexOf('function applyXp', loadStart);
   assert.ok(loadStart >= 0 && loadEnd > loadStart);
   const load = game.slice(loadStart, loadEnd);
-  assert.match(load, /coins: finiteNonNegativeInteger\(parsed\.coins\)/);
-  assert.match(load, /lifetimeCoins: finiteNonNegativeInteger\(parsed\.lifetimeCoins \?\? parsed\.coins\)/);
+  assert.match(load, /coins: normalizeCoinAmount\(parsed\.coins\)/);
+  assert.match(load, /lifetimeCoins: normalizeCoinAmount\(parsed\.lifetimeCoins \?\? parsed\.coins\)/);
 
   const saveStart = game.indexOf('export async function save(');
   const saveEnd = game.indexOf('function serverRandom', saveStart);
   assert.ok(saveStart >= 0 && saveEnd > saveStart);
   const save = game.slice(saveStart, saveEnd);
   assert.match(save, /Player Coin balance is invalid; no changes were saved/);
-  assert.match(save, /s\.coins = finiteNonNegativeInteger\(s\.coins\)/);
+  assert.match(save, /s\.coins = normalizeCoinAmount\(s\.coins\)/);
 
   const rollStart = game.indexOf('export async function applyRolls');
   const rollEnd = game.indexOf('async function commitOfflineNotificationMarkerIfUnchanged', rollStart);
@@ -2115,6 +2115,7 @@ test('earned Coins and lifetime Coins stay within safe integer bounds', () => {
   assert.match(frenzy, /applyRolls\(s, 1, undefined, 'frenzy', chunkCount\)/);
   assert.doesNotMatch(frenzy, /s\.coins \+= coinsGained/);
 });
+
 
 test('Frenzy claim does not add a fallible read after atomic reward commit', () => {
   const game = source('src/server/game.ts');
@@ -2237,7 +2238,7 @@ test('applyRolls preflights lifetime roll-counter capacity before shared reads a
 });
 
 
-test('achievement claim cannot exceed bounded Coin accounting', () => {
+test('achievement claim preserves Coin accounting through the finite Number range', () => {
   const social = source('src/server/social.ts');
   const start = social.indexOf('export async function claimAchievement');
   const end = social.indexOf('\nexport function shareText', start);
@@ -2246,9 +2247,9 @@ test('achievement claim cannot exceed bounded Coin accounting', () => {
 
   assert.match(claim, /typeof state\.coins !== 'number'/);
   assert.match(claim, /!Number\.isFinite\(state\.coins\)/);
-  assert.match(claim, /Number\.MAX_SAFE_INTEGER - currentCoins/);
-  assert.match(claim, /state\.coins = currentCoins \+ rewardCoins/);
-  assert.match(claim, /state\.lifetimeCoins = Math\.min\(Number\.MAX_SAFE_INTEGER, lifetimeCoins \+ rewardCoins\)/);
+  assert.match(claim, /Math\.min\(requestedGain, Number\.MAX_VALUE - currentCoins\)/);
+  assert.match(claim, /state\.coins = addCoinAmount\(currentCoins, rewardCoins\)/);
+  assert.match(claim, /state\.lifetimeCoins = addCoinAmount\(lifetimeCoins, rewardCoins\)/);
   assert.match(claim, /return \{ state, rewardCoins, rewardShards \}/);
   assert.doesNotMatch(claim, /state\.coins\s*\+=\s*achievement\.rewardCoins/);
 });
