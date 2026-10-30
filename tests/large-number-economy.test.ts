@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   addCoinAmount,
   addCollectionValue,
@@ -37,4 +39,14 @@ test('rarity-derived Coin rewards remain above 64-bit-safe integer scale', () =>
 test('large finite Coin balances retain scientific-notation display', () => {
   assert.equal(formatNumber(1e100), '1.00e100');
   assert.equal(formatNumber(Number.MAX_VALUE), '1.80e308');
+});
+
+test('save, load, and admin grant paths preserve Coin balances above MAX_SAFE_INTEGER', () => {
+  const server = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  const debug = readFileSync(resolve(process.cwd(), 'src/server/debug.ts'), 'utf8');
+  assert.match(server, /coins:\s*normalizeCoinAmount\(parsed\.coins\)/);
+  assert.match(server, /lifetimeCoins:\s*normalizeCoinAmount\(parsed\.lifetimeCoins\s*\?\?\s*parsed\.coins\)/);
+  assert.match(server, /s\.coins = normalizeCoinAmount\(s\.coins\)/);
+  assert.match(server, /const currentCoins = normalizeCoinAmount\(s\.coins\)/);
+  assert.match(debug, /s\.coins = coinDelta >= 0[\s\S]*?addCoinAmount\(s\.coins, coinDelta\)/);
 });
