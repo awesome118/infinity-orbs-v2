@@ -71,3 +71,16 @@ test('every direct player-save writer paginates legacy Codex data before Redis S
   assert.doesNotMatch(debug, /txn\.set\(playerKey, JSON\.stringify\(state\)\)/);
   assert.doesNotMatch(social, /txn\.set\(playerKey, JSON\.stringify\(state\)\)/);
 });
+
+
+test('diagnostic and legacy shared arrays stay under a UTF-8 Redis byte budget', () => {
+  const batches = source('src/server/redis-batches.ts');
+  const game = source('src/server/game.ts');
+  const social = source('src/server/social.ts');
+  assert.match(batches, /serializeJsonArrayWithinByteLimit/);
+  assert.match(batches, /new TextEncoder\(\)\.encode\(serialized\)\.byteLength/);
+  assert.match(game, /serializeJsonArrayWithinByteLimit\(entries, 24_000, 'last'\)/);
+  assert.match(social, /serializeJsonArrayWithinByteLimit\(board, 24_000, 'first'\)/);
+  assert.match(social, /GLOBAL_CHAT_MAX_BYTES = 24_000/);
+  assert.match(social, /serializeGlobalChatMessages/);
+});
