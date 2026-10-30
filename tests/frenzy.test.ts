@@ -532,7 +532,9 @@ test('Frenzy batches use ordinary RNG without hidden extra Orb rolls', () => {
   assert.match(apply, /sampleExpectedEventCount\(/);
   assert.match(apply, /const logicalRollCount = requestedRollCount \+ runeBonusRollsUsed/);
   assert.match(apply, /rarityWeights\.reduce/);
-  assert.match(apply, /source !== 'frenzy' && rollCount > 1 && magnetLevel > 0/);
+  assert.match(apply, /source !== 'frenzy' && requestedRollCount > 1 && magnetLevel > 0/);
+  assert.match(apply, /payoutWeight > 0 && payoutKey === bestKey/);
+  assert.match(apply, /crossedStellarDividendMilestone/);
   assert.match(apply, /source !== 'frenzy' && !constellationTriggered/);
   assert.match(apply, /source !== 'frenzy' && !temporalLoopTriggered/);
   assert.match(apply, /source === 'online' \|\| source === 'frenzy'/);
@@ -545,7 +547,7 @@ test('slow Frenzy claims show a delayed calculating popup with rapid Orb spawns'
 
   assert.match(main, /FRENZY_CALCULATING_DELAY_MS = 650/);
   assert.match(main, /FRENZY_CALCULATING_MIN_VISIBLE_MS = 1_200/);
-  assert.match(main, /recoveryDeadline = Date\.now\(\) \+ 3 \* 60_000/);
+  assert.match(main, /recoveryDeadline = Date\.now\(\) \+ 14 \* 60_000/);
   assert.match(main, /progress\.completed && progress\.result/);
   assert.match(main, /setTimeout\(\(\) => \{/);
   assert.match(main, /setShowFrenzyCalculating\(true\)/);
