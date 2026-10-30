@@ -78,7 +78,7 @@ test('diagnostic and legacy shared arrays stay under a UTF-8 Redis byte budget',
   const game = source('src/server/game.ts');
   const social = source('src/server/social.ts');
   assert.match(batches, /serializeJsonArrayWithinByteLimit/);
-  assert.match(batches, /new TextEncoder\(\)\.encode\(serialized\)\.byteLength/);
+  assert.match(batches, /encoder\.encode\(serialized\)\.byteLength/);
   assert.match(game, /serializeJsonArrayWithinByteLimit\(entries, 24_000, 'last'\)/);
   assert.match(social, /serializeJsonArrayWithinByteLimit\(board, 24_000, 'first'\)/);
   assert.match(social, /GLOBAL_CHAT_MAX_BYTES = 24_000/);
