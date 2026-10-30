@@ -1,6 +1,7 @@
 import { redis, context, reddit } from './devvit-mock.js';
 import { readInBatches } from './redis-batches.js';
 import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
+import { preparePlayerStateForRedisWrite } from './player-collection-storage.js';
 import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
@@ -2557,8 +2558,15 @@ return withPlayerMutationLockFor(userId, async () => {
       lifetimeShards: state.lifetimeShards,
     });
 
+    let persistedState: Record<string, unknown>;
+    try {
+      persistedState = await preparePlayerStateForRedisWrite(state, userId, generation);
+    } catch (error) {
+      await txn.unwatch().catch(() => undefined);
+      throw error;
+    }
     await txn.multi();
-    await txn.set(pkey, JSON.stringify(state));
+    await txn.set(pkey, JSON.stringify(persistedState));
     const committed = await txn.exec();
     if (committed !== null) {
       await appendPaymentDebugLog('grant:success', {
@@ -2685,8 +2693,15 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
         globalBoosterCredits: grantedCredits,
       };
 
+      let persistedState: Record<string, unknown>;
+      try {
+        persistedState = await preparePlayerStateForRedisWrite(state, userId, generation);
+      } catch (error) {
+        await txn.unwatch().catch(() => undefined);
+        throw error;
+      }
       await txn.multi();
-      await txn.set(pkey, JSON.stringify(state));
+      await txn.set(pkey, JSON.stringify(persistedState));
       const committed = await txn.exec();
       if (committed !== null) return;
     }
