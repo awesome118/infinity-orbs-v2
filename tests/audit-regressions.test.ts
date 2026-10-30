@@ -2827,14 +2827,17 @@ test('background refreshes are deferred until Play and refresh promptly on entry
   const versionEffectStart = client.lastIndexOf('useEffect(() => {', versionStart);
   assert.match(client.slice(versionEffectStart, versionStart), /if \(!splashEntered\) return;/);
 
-  const communityStart = client.indexOf('const refreshCommunityState = async () =>');
+  const communityStart = client.indexOf('const refreshCommunityState = () =>');
   const communityEffectStart = client.lastIndexOf('useEffect(() => {', communityStart);
   const communityEffectEnd = client.indexOf('}, [tab, splashEntered]);', communityStart);
   assert.ok(communityEffectStart >= 0 && communityEffectEnd > communityStart);
   const communityEffect = client.slice(communityEffectStart, communityEffectEnd);
   assert.match(communityEffect, /if \(!splashEntered\) return;/);
   assert.match(communityEffect, /void refreshCommunityState\(\);/);
-  assert.match(communityEffect, /if \(inFlight\) return;/);
+  assert.match(communityEffect, /let worldEventInFlight = false/);
+  assert.match(communityEffect, /let guildInFlight = false/);
+  assert.match(communityEffect, /if \(!worldEventInFlight\)/);
+  assert.match(communityEffect, /if \(tab === 'social' && !guildInFlight\)/);
 
   const presenceStart = client.indexOf('const refreshPresence = async () =>');
   const presenceEffectStart = client.lastIndexOf('useEffect(() => {', presenceStart);
@@ -3172,7 +3175,9 @@ test('background polling is single-flight and paused while hidden', () => {
   const sharedPollGuard = "if (cancelled || inFlight || document.visibilityState === 'hidden') return;";
   assert.ok(client.split(sharedPollGuard).length - 1 >= 3);
   assert.ok(client.includes("if (cancelled || !splashEntered || inFlight || document.visibilityState === 'hidden') return;"));
-  assert.ok(client.includes("if (!splashEntered) return;\n      if (inFlight) return;\n      if (document.visibilityState === 'hidden') return;"));
+  assert.ok(client.includes("if (!splashEntered || document.visibilityState === 'hidden') return;"));
+  assert.ok(client.includes("if (!worldEventInFlight)"));
+  assert.ok(client.includes("if (tab === 'social' && !guildInFlight)"));
   assert.ok(client.includes("if (inFlight || document.visibilityState === 'hidden') return;"));
   assert.ok(client.includes("document.addEventListener('visibilitychange', onVisibilityChange);"));
   assert.ok(client.includes("document.removeEventListener('visibilitychange', onVisibilityChange);"));
