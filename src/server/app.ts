@@ -1596,10 +1596,11 @@ export function createApp() {
     catch (e) { badRequest(res, e, 'Could not load Frenzy progress.'); }
   });
 
-  app.post('/api/frenzy/claim', async (_req, res) => {
+  app.post('/api/frenzy/claim', async (req, res) => {
     res.set('Cache-Control', 'no-store');
     try {
-      const result = await claimOrbFrenzy();
+      const attemptId = typeof req.body?.attemptId === 'string' ? req.body.attemptId : undefined;
+      const result = await claimOrbFrenzy({ attemptId });
       const rolledOrb = (result as { orb?: { rarity?: number; name?: string } }).orb;
       if (rolledOrb) await setCombatOrbFocus(rolledOrb.rarity, rolledOrb.name).catch(error => console.error('[Combat Orb Focus] Could not sync Frenzy orb claim.', error));
       res.json(result);
