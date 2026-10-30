@@ -2301,7 +2301,7 @@ test('Frenzy preflights lifetime roll-counter capacity before rewards and shared
 
   const countIndex = frenzy.indexOf('const count = frenzyClaimCountForRarity(');
   const guardIndex = frenzy.indexOf('Frenzy roll counter would exceed the safe integer range');
-  const rollIndex = frenzy.indexOf("applyRolls(s, 1, undefined, 'frenzy', chunkCount)");
+  const rollIndex = frenzy.indexOf("const result = await applyRolls(");
   const ownerRewardIndex = frenzy.indexOf('prepareFrenzyOwnerRewardWrites(');
   const saveIndex = frenzy.indexOf('await save(s, [');
   assert.ok(countIndex >= 0 && guardIndex > countIndex, 'final batch count must be established before its guard');
@@ -2420,10 +2420,12 @@ test('offline vault state is validated and bounded before auto-claim can process
   const applyEnd = game.indexOf('\nasync function commitOfflineNotificationMarkerIfUnchanged', applyStart);
   assert.ok(applyStart >= 0 && applyEnd > applyStart);
   const apply = game.slice(applyStart, applyEnd);
-  const maxCountIndex = apply.indexOf("const maxSupportedRollCount = source === 'frenzy'");
+  const maxCountIndex = apply.indexOf("const maxSupportedRollCount = source === 'offline'");
   const sharedReadsIndex = apply.indexOf('const [freshGlobalBoosters, worldEvent, fakeCcuBonus, combatStateRaw] = await Promise.all([');
   assert.ok(maxCountIndex >= 0 && sharedReadsIndex > maxCountIndex);
-  assert.match(apply, /source === 'frenzy'\s*\?\s*5_000\s*:\s*offlineRollCap\(s\) \* rollsPerActivation\(s\) \+ 2/);
+  assert.match(apply, /source === 'offline'[\s\S]{0,100}offlineRollCap\(s\) \* rollsPerActivation\(s\) \+ 2/);
+  assert.match(apply, /MAX_EFFECTIVE_ROLLS_PER_BATCH/);
+  assert.match(apply, /createRollBatchPlan/);
   assert.match(apply, /rollCount > maxSupportedRollCount/);
 });
 
