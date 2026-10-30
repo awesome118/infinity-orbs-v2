@@ -170,7 +170,7 @@ test('all roll-earned Shard chance sources are reduced and all Shard additions a
   assert.match(game, /const dryRefineryChance = Math\.min\(0\.000125,/);
   assert.match(game, /const shardJackpotChance = Math\.min\(\.005, runeAbilityEffects\.shardJackpotPct \/ 20000\)/);
   assert.match(game, /const milestoneShardChance = Math\.min\(\.0025, runeAbilityEffects\.milestoneEnginePct \/ 40000\)/);
-  assert.match(game, /rng\(\) < 0\.00025 \* transLevel/);
+  assert.match(game, /sampleBinomialCount\(rollCount, Math\.min\(1, 0\.00025 \* transLevel\), rng\)/);
   assert.match(combat, /Math\.min\(\.5,power\/200\)/);
   assert.match(combat, /Math\.min\(\.25,power\/400\)/);
   assert.match(shared, /SHARD_DECIMAL_PLACES = 0/);
