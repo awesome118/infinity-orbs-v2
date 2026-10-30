@@ -44,6 +44,7 @@ test('Production Guild parsing repairs non-authoritative nested state before str
   assert.match(recovery, /delete guild\.boss/);
   assert.match(recovery, /guild\.perks\[rank\] = clampInteger/);
   assert.match(recovery, /guild\.combo\.endsAt = clampInteger/);
+  assert.match(recovery, /clampInteger\(task\.tier, 1, 70, 1\)/);
   assert.doesNotMatch(recovery, /guild\.id\s*=/);
   assert.doesNotMatch(recovery, /member\.role\s*=/);
   assert.doesNotMatch(recovery, /member\.userId\s*=/);
