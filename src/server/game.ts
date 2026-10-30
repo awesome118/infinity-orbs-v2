@@ -3656,6 +3656,7 @@ export async function applyRolls(
   let bestIsCrit = false;
   let bestIsNew = false;
   let bestIsInfinity = false;
+  let bestRewardRarity = 0;
   let totalVal = 0;
   let coinsGained = 0;
   let shardsGained = 0;
