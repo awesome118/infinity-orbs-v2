@@ -39,6 +39,7 @@ import {
   getRollTicket,
 } from './game.js';
 import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
+import { preparePlayerStateForRedisWrite } from './player-collection-storage.js';
 import { adminCombatLabAction, getCombatSnapshot, getCombatSnapshotForUser, performCombatBeat } from './combat.js';
 import { COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatBossLuckBonus, combatGearRarityOdds, combatGearStatBudgetMultiplier, combatOrbDamageMultiplier, combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityStrengthPct, combatRuneScaledValue, combatStatsFor, combatTotalBossesBeaten, getEnemyForDungeonDepth, type CombatRuneBonuses, type CombatState } from '../shared/combat.js';
 import { context, redis, reddit } from './devvit-mock.js';
@@ -712,8 +713,15 @@ async function grantGlobalBoosterCreditsToUser(
       state.stateRevision = currentRevision + 1;
 
       const receipt = JSON.stringify({ amount: safeAmount, before, after, createdAt: Date.now() });
+      let persistedState: Record<string, unknown>;
+      try {
+        persistedState = await preparePlayerStateForRedisWrite(state as any, id, generation);
+      } catch (error) {
+        await txn.unwatch().catch(() => undefined);
+        throw error;
+      }
       await txn.multi();
-      await txn.set(playerKey, JSON.stringify(state));
+      await txn.set(playerKey, JSON.stringify(persistedState));
       await txn.set(receiptKey, receipt);
       if (await txn.exec() !== null) {
         return { userId: id, username: safeUsername, before, after };
