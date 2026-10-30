@@ -46,6 +46,7 @@ interface RollSectionProps {
   batchSummary: { totalVal: number; coins: number; shards: number; xp: number; frenzyCount?: number } | null;
   readyAt: number;
   busy: boolean;
+  frenzyRevealActive?: boolean;
   autoRoll: boolean;
   worldEvent?: WorldEvent | null;
   onToggleAutoRoll: () => void;
@@ -92,6 +93,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
   batchSummary,
   readyAt,
   busy,
+  frenzyRevealActive = false,
   autoRoll,
   worldEvent,
   onToggleAutoRoll,
@@ -489,6 +491,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
         <DynamicOrbRoll
           busy={busy}
           reducedMotion={reducedMotion}
+          frenzyRevealActive={frenzyRevealActive}
           orb={displayOrb}
           batch={lastBatch}
           radius={orbitRadius}
