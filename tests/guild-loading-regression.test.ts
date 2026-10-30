@@ -5,25 +5,29 @@ import { resolve } from 'node:path';
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
-test('Guild polling runs concurrently with the world-event request', () => {
+test('Guild and world-event polling use independent in-flight locks', () => {
   const main = source('src/client/main.tsx');
-  const start = main.indexOf('const refreshCommunityState = async () =>');
+  const start = main.indexOf('const refreshCommunityState = () =>');
   const end = main.indexOf('\n    const onVisibilityChange', start);
   assert.ok(start >= 0 && end > start, 'community polling effect must exist');
   const poll = main.slice(start, end);
-  assert.match(poll, /getJson<WorldEvent \| null>\('\/api\/world-event'\)\.catch\(\(\) => null\)/);
+  assert.match(poll, /let worldEventInFlight = false/);
+  assert.match(poll, /let guildInFlight = false/);
+  assert.match(poll, /if \(!worldEventInFlight\)/);
+  assert.match(poll, /if \(tab === 'social' && !guildInFlight\)/);
+  assert.match(poll, /finally \{\s+worldEventInFlight = false/);
+  assert.match(poll, /finally \{\s+guildInFlight = false/);
+  assert.match(poll, /getJson<WorldEvent \| null>\('\/api\/world-event'\)/);
   assert.match(poll, /getJson<\{ guilds: Guild\[\]; mine: Guild \| null \}>\('\/api\/guilds', \{ cache: 'no-store' \}\)/);
-  assert.match(poll, /const \[we, gd\] = await Promise\.all\(\[worldEventRequest, guildRequest\]\)/);
-  assert.match(poll, /Guild data could not be loaded/);
-  assert.doesNotMatch(poll, /const we = await getJson<WorldEvent/);
+  assert.doesNotMatch(poll, /await Promise\.all/);
 });
 
 test('Failed Guild requests preserve the last successful snapshot and expose retry', () => {
   const main = source('src/client/main.tsx');
   const guildUi = source('src/client/components/GuildsAndSocial.tsx');
   assert.doesNotMatch(main, /catch\(\(\) => \(\{ guilds: \[\], mine: null \}\)\)/);
-  assert.match(main, /if \(gd\.data\) \{\s*setGuildData\(gd\.data\)/);
-  assert.match(main, /setGuildLoadError\(gd\.error\)/);
+  assert.match(main, /setGuildData\(gd\)/);
+  assert.match(main, /setGuildLoadError\(error instanceof Error \? error\.message/);
   assert.match(guildUi, /Guild data could not be loaded/);
   assert.match(guildUi, /Retry loading/);
 });
