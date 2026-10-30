@@ -25,6 +25,7 @@ test('player save migration preserves full legacy Codex data until a successful 
   assert.match(game, /collectionStorageVersion: 1/);
   assert.match(game, /collection: inMemoryCollection/);
   assert.match(game, /delete copy\.collectionPageIds/);
+  assert.match(social, /source\.codexChain \?\? highestCodexChain\(source\.collection\)/);
 });
 
 test('Guild Redis writes serialize under a bounded document size and compact chat only', () => {
@@ -36,6 +37,8 @@ test('Guild Redis writes serialize under a bounded document size and compact cha
   assert.match(social, /oldestGuild\.chat\.shift\(\)/);
   assert.match(social, /Guild data has exceeded its safe storage size/);
   assert.ok((social.match(/serializeGuildsForRedis\(/g) ?? []).length >= 4);
+  assert.match(social, /GUILD_DOCUMENT_COMPACTION_KEY/);
+  assert.match(social, /applyGuildMigration\(GUILD_DOCUMENT_COMPACTION_KEY/);
 });
 
 test('full-batch roll path no longer rejects stored Free Rolls above 5,000', () => {
