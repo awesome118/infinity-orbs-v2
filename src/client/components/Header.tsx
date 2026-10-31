@@ -16,6 +16,8 @@ interface HeaderProps {
   changelogUnread?: boolean;
   onClaimOffline: () => void;
   onOpenDevDebug?: () => void;
+  adminStatusUnavailable?: boolean;
+  onRetryAdminStatus?: () => void;
   onOpenProfile?: () => void;
   notificationsEnabled: boolean;
   onToggleNotifications: () => void;
@@ -32,6 +34,8 @@ export const Header: React.FC<HeaderProps> = ({
   changelogUnread = false,
   onClaimOffline,
   onOpenDevDebug,
+  adminStatusUnavailable = false,
+  onRetryAdminStatus,
   onOpenProfile,
   notificationsEnabled,
   onToggleNotifications,
@@ -234,6 +238,18 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           {/* Admin Console */}
+          {adminStatusUnavailable && onRetryAdminStatus && (
+            <button
+              type="button"
+              aria-label="Retry admin console availability check"
+              onClick={onRetryAdminStatus}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 rounded-lg text-xs font-bold transition-all"
+              title="Admin tools could not be checked. Retry."
+            >
+              <Wrench className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Retry Admin</span>
+            </button>
+          )}
           {onOpenDevDebug && (
             <button
               type="button"

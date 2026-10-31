@@ -1140,10 +1140,10 @@ export function createApp() {
     }
   });
 
-  app.get('/api/leaderboards', async (_req, res) => {
+  app.get('/api/leaderboards', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store, max-age=0');
     try {
-      res.json(await leaderboards());
+      res.json(await leaderboards({ fresh: req.query.fresh === '1' }));
     } catch (e: any) {
       reportRedisTransactionFailure(e);
       res.status(transientContentionError(e) ? 503 : 500).json({

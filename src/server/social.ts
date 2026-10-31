@@ -11,6 +11,7 @@ import type {
   GuildTask,
   WorldEvent,
   GlobalChatMessage,
+  LeaderboardBoards,
 } from '../shared/social.js';
 import {
   ACHIEVEMENTS,
@@ -50,6 +51,9 @@ const PLAYER_REGISTRY_KEY = key('player-registry');
 const GUILD_CHAT_MUTES_KEY = key('guild-chat-mutes:v1');
 const GUILD_TOKEN_RESET_KEY = key('guild-token-reset:v1');
 const GUILD_UPGRADE_RESET_KEY = key('guild-upgrade-reset:v1');
+const LEADERBOARDS_CACHE_KEY = key('leaderboards:cache:v1');
+const LEADERBOARDS_CACHE_TTL_MS = 10_000;
+let leaderboardSnapshotInFlight: Promise<LeaderboardBoards> | null = null;
 /** Create collision-resistant IDs for guild, chat, and moderation receipts. */
 function createSecureId(): string {
   if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
@@ -2941,7 +2945,51 @@ function sortLeaderboard(entries: LeaderboardEntry[], selector: (entry: Leaderbo
     .slice(0, 25);
 }
 
-export async function leaderboards(): Promise<import('../shared/social.js').LeaderboardBoards> {
+function isLeaderboardBoards(value: unknown): value is LeaderboardBoards {
+  if (!isRecordValue(value)) return false;
+  const ids: Array<keyof LeaderboardBoards> = [
+    'collectionValue',
+    'mostRolls',
+    'highestDryStreak',
+    'currentDryStreak',
+    'bestOrb',
+    'mostPlaytime',
+    'chainLength',
+    'highestDepthReached',
+  ];
+  return ids.every(id => Array.isArray(value[id]));
+}
+
+export async function leaderboards(options: { fresh?: boolean } = {}): Promise<LeaderboardBoards> {
+  if (!options.fresh) {
+    let cached: unknown = null;
+    try {
+      cached = parseStoredJson<unknown>(await redis.get(LEADERBOARDS_CACHE_KEY));
+    } catch (error) {
+      // The projection is an optimization only. If the cache is unavailable,
+      // build rankings from the durable player records as before.
+      console.warn('[Leaderboard] Snapshot cache read failed; rebuilding:', error);
+    }
+    if (isLeaderboardBoards(cached)) return cached;
+  }
+  if (leaderboardSnapshotInFlight) return leaderboardSnapshotInFlight;
+
+  const snapshotRequest = buildLeaderboardsSnapshot();
+  leaderboardSnapshotInFlight = snapshotRequest;
+  try {
+    const boards = await snapshotRequest;
+    await redis.set(LEADERBOARDS_CACHE_KEY, JSON.stringify(boards), {
+      expiration: new Date(Date.now() + LEADERBOARDS_CACHE_TTL_MS),
+    }).catch(error => {
+      console.error('[Leaderboard] Could not cache the current snapshot:', error);
+    });
+    return boards;
+  } finally {
+    if (leaderboardSnapshotInFlight === snapshotRequest) leaderboardSnapshotInFlight = null;
+  }
+}
+
+async function buildLeaderboardsSnapshot(): Promise<LeaderboardBoards> {
   const rawRegistry = await redis.hGetAll(PLAYER_REGISTRY_KEY);
   const registry = rawRegistry && typeof rawRegistry === 'object'
     ? rawRegistry as Record<string, string>

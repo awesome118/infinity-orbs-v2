@@ -140,15 +140,40 @@ type ActiveTab =
   | 'skills'
   | 'arena';
 
+const inFlightReadRequests = new Map<string, Promise<unknown>>();
+
 async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
+  const method = String(options?.method ?? 'GET').toUpperCase();
+  const isRead = method === 'GET' || method === 'HEAD';
+  if (!isRead || options?.signal) return fetchJson<T>(url, options);
+
+  const requestKey = `${method}:${url}`;
+  const existing = inFlightReadRequests.get(requestKey);
+  if (existing) return existing as Promise<T>;
+
+  const request = fetchJson<T>(url, options);
+  inFlightReadRequests.set(requestKey, request);
+  try {
+    return await request;
+  } finally {
+    if (inFlightReadRequests.get(requestKey) === request) inFlightReadRequests.delete(requestKey);
+  }
+}
+
+async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const method = String(options?.method ?? 'GET').toUpperCase();
   const isRead = method === 'GET' || method === 'HEAD';
   const maxAttempts = isRead ? 3 : 1;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let receivedNonRetryableHttpError = false;
+    const requestController = isRead && !options?.signal ? new AbortController() : null;
+    const requestTimer = requestController
+      ? window.setTimeout(() => requestController.abort(), 15_000)
+      : null;
     try {
-      const res = await fetch(url, options);
+      const requestOptions = requestController ? { ...options, signal: requestController.signal } : options;
+      const res = await fetch(url, requestOptions);
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         const message =
@@ -190,11 +215,16 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
         }
 
         receivedNonRetryableHttpError = true;
-        throw new Error(message);
+        const httpError = new Error(message) as Error & { status?: number };
+        httpError.status = res.status;
+        throw httpError;
       }
 
       return await res.json();
     } catch (error: any) {
+      if (requestController?.signal.aborted) {
+        throw new Error('The game server took too long to respond. Try again.');
+      }
       const retryableNetworkRead =
         isRead &&
         !receivedNonRetryableHttpError &&
@@ -206,6 +236,8 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
         continue;
       }
       throw error;
+    } finally {
+      if (requestTimer !== null) window.clearTimeout(requestTimer);
     }
   }
 
@@ -290,6 +322,8 @@ function App() {
 
   const [readyAt, setReadyAt] = useState<number>(0);
   const [tab, setTab] = useState<ActiveTab>('roll');
+  const activeTabRef = useRef<ActiveTab>(tab);
+  activeTabRef.current = tab;
   const [tutorialStep, setTutorialStep] = useState(0);
   const [tutorialDismissed, setTutorialDismissed] = useState(false);
   const [tutorialStatusLoaded, setTutorialStatusLoaded] = useState(false);
@@ -498,11 +532,20 @@ function App() {
   // Social & Community state
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
   const [leaderboards, setLeaderboards] = useState<LeaderboardBoards | null>(null);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [leaderboardLoaded, setLeaderboardLoaded] = useState(false);
+  const [leaderboardLoadError, setLeaderboardLoadError] = useState<string | null>(null);
   const [guildData, setGuildData] = useState<{ guilds: Guild[]; mine: Guild | null }>({
     guilds: [],
     mine: null,
   });
+  const [guildLoading, setGuildLoading] = useState(false);
+  const [guildDataLoaded, setGuildDataLoaded] = useState(false);
   const [guildLoadError, setGuildLoadError] = useState<string | null>(null);
+  const guildRequestRef = useRef<Promise<{ guilds: Guild[]; mine: Guild | null }> | null>(null);
+  const leaderboardRequestRef = useRef<Promise<LeaderboardBoards> | null>(null);
+  const guildDataLoadedRef = useRef(false);
+  const leaderboardLoadedAtRef = useRef(0);
   const [worldEvent, setWorldEvent] = useState<WorldEvent | null>(null);
   const [developerAnnouncement, setDeveloperAnnouncement] = useState<{ message: string; updatedAt: number; updatedBy: string } | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -521,6 +564,8 @@ function App() {
     activatedAt: number;
   } | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [adminStatusUnavailable, setAdminStatusUnavailable] = useState(false);
+  const adminStatusInFlightRef = useRef(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(sound.enabled);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [notificationSettingsLoaded, setNotificationSettingsLoaded] = useState(false);
@@ -905,23 +950,91 @@ function App() {
     }
   }, [applyPlayerState, autoRoll, beginOptimisticState, enqueueMutation, showToast, combatMode]);
 
-  const refreshLeaderboards = useCallback(async () => {
-    const [lb, lbs] = await Promise.all([
-      getJson<LeaderboardEntry[]>('/api/leaderboard', { cache: 'no-store' }),
-      getJson<LeaderboardBoards>('/api/leaderboards', { cache: 'no-store' }),
-    ]);
-    setLeaderboardData(lb);
-    setLeaderboards(lbs);
+  const refreshLeaderboards = useCallback(async (force = false) => {
+    if (!force && leaderboardLoadedAtRef.current > 0 && Date.now() - leaderboardLoadedAtRef.current < 30_000) return;
+    if (leaderboardRequestRef.current) {
+      await leaderboardRequestRef.current;
+      return;
+    }
+
+    setLeaderboardLoading(true);
+    const requestUrl = force ? '/api/leaderboards?fresh=1' : '/api/leaderboards';
+    const request = getJsonWithTimeout<LeaderboardBoards>(requestUrl, 20_000, { cache: 'no-store' });
+    leaderboardRequestRef.current = request;
+    try {
+      const boards = await request;
+      if (!componentMountedRef.current) return;
+      setLeaderboards(boards);
+      const collectionBoard = Array.isArray(boards.collectionValue) ? boards.collectionValue : [];
+      setLeaderboardData(collectionBoard);
+      setLeaderboardLoadError(null);
+      leaderboardLoadedAtRef.current = Date.now();
+      setLeaderboardLoaded(true);
+    } catch (error) {
+      if (componentMountedRef.current) {
+        setLeaderboardLoadError(error instanceof Error ? error.message : 'Leaderboards could not be loaded.');
+      }
+      throw error;
+    } finally {
+      if (leaderboardRequestRef.current === request) leaderboardRequestRef.current = null;
+      if (componentMountedRef.current) setLeaderboardLoading(false);
+    }
   }, []);
 
   const refreshGuildData = useCallback(async () => {
+    setGuildLoading(true);
+    let request = guildRequestRef.current;
+    if (!request) {
+      request = getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds', { cache: 'no-store' });
+      guildRequestRef.current = request;
+    }
     try {
-      const data = await getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds', { cache: 'no-store' });
+      const data = await request;
+      if (!componentMountedRef.current) return;
       setGuildData(data);
       setGuildLoadError(null);
+      guildDataLoadedRef.current = true;
+      setGuildDataLoaded(true);
     } catch (error) {
-      setGuildLoadError(error instanceof Error ? error.message : 'Guild data could not be loaded.');
+      if (componentMountedRef.current) {
+        setGuildLoadError(error instanceof Error ? error.message : 'Guild data could not be loaded.');
+      }
       throw error;
+    } finally {
+      if (guildRequestRef.current === request) guildRequestRef.current = null;
+      if (componentMountedRef.current) setGuildLoading(false);
+    }
+  }, []);
+
+  const refreshAdminStatus = useCallback(async (): Promise<'allowed' | 'denied' | 'retry'> => {
+    if (adminStatusInFlightRef.current) return 'retry';
+    adminStatusInFlightRef.current = true;
+    try {
+      const status = await getJsonWithTimeout<{ isAdmin: boolean }>('/api/dev/status', 8_000, { cache: 'no-store' });
+      if (!componentMountedRef.current) return 'retry';
+      const allowed = status.isAdmin === true;
+      setIsAdmin(allowed);
+      setAdminStatusUnavailable(false);
+      return allowed ? 'allowed' : 'denied';
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const statusCode = typeof error === 'object' && error !== null && 'status' in error
+        ? Number((error as { status?: unknown }).status)
+        : NaN;
+      // The admin router intentionally returns 404 to non-admins. That is a
+      // definitive answer; transient failures keep the last confirmed access
+      // state and are retried instead of hiding the console permanently.
+      if (statusCode === 403 || statusCode === 404 || /\bHTTP (?:403|404)\b/.test(message)) {
+        if (componentMountedRef.current) {
+          setIsAdmin(false);
+          setAdminStatusUnavailable(false);
+        }
+        return 'denied';
+      }
+      if (componentMountedRef.current) setAdminStatusUnavailable(true);
+      return 'retry';
+    } finally {
+      adminStatusInFlightRef.current = false;
     }
   }, []);
 
@@ -938,38 +1051,34 @@ function App() {
       setStartupError(null);
       if (!splashEntered) return;
 
-      const adminStatus = await getJson<{ isAdmin: boolean }>('/api/dev/status').catch(() => ({ isAdmin: false }));
-      if (!componentMountedRef.current) return;
-      if (refreshSequence !== refreshSequenceRef.current) return;
-      setIsAdmin(adminStatus.isAdmin === true);
       if (me.gameBan?.active) return;
-      const [lb, lbs, gd, we, announcement, notificationState] = await Promise.all([
-        getJson<LeaderboardEntry[]>('/api/leaderboard', { cache: 'no-store' }).catch(() => []),
-        getJson<LeaderboardBoards>('/api/leaderboards', { cache: 'no-store' }).catch(() => null),
-        getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds', { cache: 'no-store' })
-          .then(data => ({ data, error: null as string | null }))
-          .catch((error: unknown) => ({
-            data: null,
-            error: error instanceof Error ? error.message : 'Guild data could not be loaded.',
-          })),
-        getJson<WorldEvent | null>('/api/world-event').catch(() => null),
-        getJson<{ message: string; updatedAt: number; updatedBy: string } | null>('/api/developer-announcement').catch(() => null),
-        getJson<{ enabled: boolean }>('/api/notifications').catch(() => ({ enabled: false })),
-      ]);
-      if (!componentMountedRef.current) return;
-      if (refreshSequence !== refreshSequenceRef.current) return;
-      setLeaderboardData(lb);
-      setLeaderboards(lbs);
-      if (gd.data) {
-        setGuildData(gd.data);
-        setGuildLoadError(null);
-      } else {
-        setGuildLoadError(gd.error);
-      }
-      setWorldEvent(we);
-      setDeveloperAnnouncement(announcement?.message ? announcement : null);
-      setNotificationsEnabled(notificationState.enabled === true);
-      setNotificationSettingsLoaded(true);
+      const isCurrentRefresh = () =>
+        componentMountedRef.current && refreshSequence === refreshSequenceRef.current;
+      const communityReads = [
+        ...(activeTabRef.current === 'social'
+          ? [refreshLeaderboards().catch(() => undefined), refreshGuildData().catch(() => undefined)]
+          : []),
+        getJson<WorldEvent | null>('/api/world-event')
+          .then(value => { if (isCurrentRefresh()) setWorldEvent(value); })
+          .catch(() => undefined),
+        getJson<{ message: string; updatedAt: number; updatedBy: string } | null>('/api/developer-announcement')
+          .then(value => { if (isCurrentRefresh()) setDeveloperAnnouncement(value?.message ? value : null); })
+          .catch(() => undefined),
+        getJson<{ enabled: boolean }>('/api/notifications')
+          .then(value => {
+            if (!isCurrentRefresh()) return;
+            setNotificationsEnabled(value.enabled === true);
+            setNotificationSettingsLoaded(true);
+          })
+          .catch(() => {
+            if (!isCurrentRefresh()) return;
+            setNotificationsEnabled(false);
+            setNotificationSettingsLoaded(true);
+          }),
+      ];
+      // Each panel paints as soon as its own request completes instead of
+      // waiting for the slowest community endpoint to finish.
+      await Promise.all(communityReads);
     } catch (e: any) {
       // Do not let a late error from an older request clear a newer session or
       // overwrite a newer successful refresh with a stale network error.
@@ -994,7 +1103,69 @@ function App() {
       setStartupError(message);
       console.error('Refresh error:', e);
     }
-  }, [applyPlayerState, splashEntered]);
+  }, [applyPlayerState, refreshGuildData, refreshLeaderboards, splashEntered]);
+
+  // Admin discovery must not delay the game or community panels. A brief
+  // status outage retries with backoff while preserving any confirmed access.
+  useEffect(() => {
+    if (!splashEntered || !state) return;
+    let cancelled = false;
+    let retryTimer: number | null = null;
+    let periodicTimer: number | null = null;
+    let retryAttempt = 0;
+    let lastResult: 'allowed' | 'denied' | 'retry' | null = null;
+    const retryDelays = [1_000, 3_000, 8_000, 15_000, 30_000];
+
+    const scheduleRetry = () => {
+      if (cancelled || retryTimer !== null) return;
+      const delay = retryDelays[Math.min(retryAttempt, retryDelays.length - 1)];
+      retryAttempt += 1;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        void checkStatus();
+      }, delay);
+    };
+
+    const checkStatus = async () => {
+      if (cancelled || document.visibilityState === 'hidden') return;
+      const result = await refreshAdminStatus();
+      if (cancelled) return;
+      lastResult = result;
+      if (result === 'retry') {
+        scheduleRetry();
+        return;
+      }
+      retryAttempt = 0;
+      if (retryTimer !== null) {
+        window.clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      if (result === 'allowed' && periodicTimer === null) {
+        periodicTimer = window.setInterval(() => void checkStatus(), 60_000);
+      } else if (result === 'denied' && periodicTimer !== null) {
+        window.clearInterval(periodicTimer);
+        periodicTimer = null;
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible' || lastResult === 'denied') return;
+      if (retryTimer !== null) {
+        window.clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      void checkStatus();
+    };
+
+    void checkStatus();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      cancelled = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+      if (periodicTimer !== null) window.clearInterval(periodicTimer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [refreshAdminStatus, splashEntered, Boolean(state)]);
 
   useEffect(() => {
     if (!splashEntered || !stateRef.current) return;
@@ -1075,7 +1246,7 @@ function App() {
   // Refresh live community state while visible; hidden webviews should not poll.
   useEffect(() => {
     if (!splashEntered) return;
-    const pollInterval = tab === 'social' ? 3000 : 8000;
+    const pollInterval = tab === 'social' ? 10_000 : 20_000;
     let cancelled = false;
     let worldEventInFlight = false;
     let guildInFlight = false;
@@ -1100,12 +1271,15 @@ function App() {
 
       if (tab === 'social' && !guildInFlight) {
         guildInFlight = true;
+        if (!guildDataLoadedRef.current) setGuildLoading(true);
         void (async () => {
           try {
             const gd = await getJson<{ guilds: Guild[]; mine: Guild | null }>('/api/guilds', { cache: 'no-store' });
             if (!cancelled) {
               setGuildData(gd);
               setGuildLoadError(null);
+              guildDataLoadedRef.current = true;
+              setGuildDataLoaded(true);
             }
           } catch (error) {
             // Preserve the last successful Guild snapshot while exposing a retryable error.
@@ -1114,6 +1288,7 @@ function App() {
             }
           } finally {
             guildInFlight = false;
+            if (!cancelled) setGuildLoading(false);
           }
         })();
       }
@@ -2425,7 +2600,7 @@ function App() {
       });
       sound.playChime(784, 'triangle', 0.3);
       showToast('Guild Perk leveled up for all members!', 'success');
-      void refreshAll();
+      void refreshGuildData().catch(() => undefined);
     } catch (e: any) {
       showToast(e.message || 'Could not upgrade perk', 'warn');
     } finally {
@@ -2444,7 +2619,7 @@ function App() {
         body: JSON.stringify({ name, tag }),
       });
       showToast(`Guild [${tag}] ${name} founded!`, 'success');
-      void refreshAll();
+      void refreshGuildData().catch(() => undefined);
       return true;
     } catch (e: any) {
       showToast(e.message || 'Could not create guild', 'warn');
@@ -2463,7 +2638,7 @@ function App() {
         body: JSON.stringify({ id }),
       });
       showToast('Joined guild successfully!', 'success');
-      void refreshAll();
+      void refreshGuildData().catch(() => undefined);
     } catch (e: any) {
       showToast(e.message || 'Could not join guild', 'warn');
     } finally {
@@ -2476,7 +2651,7 @@ function App() {
     try {
       await getJson('/api/guilds/leave', { method: 'POST' });
       showToast('You left the guild.', 'info');
-      void refreshAll();
+      void refreshGuildData().catch(() => undefined);
     } catch (e: any) {
       showToast(e.message || 'Could not leave guild', 'warn');
     } finally {
@@ -2493,7 +2668,7 @@ function App() {
         body: JSON.stringify({ username, trusted }),
       });
       showToast(trusted ? `${username} is now trusted.` : `${username} is no longer trusted.`, 'success');
-      void refreshAll();
+      void refreshGuildData().catch(() => undefined);
     } catch (e: any) {
       showToast(e.message || 'Could not change Trust status', 'warn');
     } finally {
@@ -2510,7 +2685,7 @@ function App() {
         body: JSON.stringify({ username }),
       });
       showToast(username + ' was kicked from the guild.', 'success');
-      void refreshAll();
+      void refreshGuildData().catch(() => undefined);
     } catch (e: any) {
       showToast(e.message || 'Could not kick guild member', 'warn');
     } finally {
@@ -2527,7 +2702,7 @@ function App() {
         body: JSON.stringify({ rate }),
       });
       showToast(`Guild Tax set to ${rate}%.`, 'success');
-      void refreshAll();
+      void refreshGuildData().catch(() => undefined);
     } catch (e: any) {
       showToast(e.message || 'Could not change Guild Tax', 'warn');
     } finally {
@@ -2857,7 +3032,13 @@ function App() {
               </div>
             ) : (
               <div className="mt-6 text-xs text-slate-500">
-                Contact an Infinity Orbs administrator if you believe this was a mistake.
+                {adminStatusUnavailable ? (
+                  <button type="button" onClick={() => void refreshAdminStatus()} className="rounded-lg border border-amber-500/30 px-3 py-2 font-bold text-amber-300 hover:bg-amber-500/10">
+                    Admin tools could not be checked. Retry.
+                  </button>
+                ) : (
+                  'Contact an Infinity Orbs administrator if you believe this was a mistake.'
+                )}
               </div>
             )}
           </div>
@@ -2916,6 +3097,8 @@ function App() {
         changelogUnread={isBeta && changelogUnread}
         onClaimOffline={handleClaimOffline}
         onOpenDevDebug={isAdmin ? () => setShowDevModal(true) : undefined}
+        adminStatusUnavailable={adminStatusUnavailable}
+        onRetryAdminStatus={() => { void refreshAdminStatus(); }}
         onOpenProfile={() => changeTab('profile')}
         notificationsEnabled={notificationsEnabled}
         onToggleNotifications={() => void handleToggleNotifications()}
@@ -3381,10 +3564,15 @@ function App() {
             guilds={guildData.guilds}
             myGuild={guildData.mine}
             guildLoadError={guildLoadError}
+            guildLoading={guildLoading}
+            guildDataLoaded={guildDataLoaded}
             onRefreshGuildData={refreshGuildData}
             leaderboard={leaderboardData}
             leaderboards={leaderboards ?? undefined}
             onRefreshLeaderboards={refreshLeaderboards}
+            leaderboardLoading={leaderboardLoading}
+            leaderboardLoaded={leaderboardLoaded}
+            leaderboardLoadError={leaderboardLoadError}
             worldEvent={worldEvent}
             onCreateGuild={handleCreateGuild}
             onJoinGuild={handleJoinGuild}
