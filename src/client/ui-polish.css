@@ -2341,3 +2341,279 @@
     flex-direction: column;
   }
 }
+
+
+/* Rare-drop celebration: a compact, tier-aware announcement that keeps the orb visible. */
+.io-ui .io-discovery-callout {
+  position: absolute;
+  z-index: 22;
+  top: 54px;
+  left: 50%;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  width: min(360px, calc(100% - 34px));
+  padding: 9px 14px 10px;
+  border: 1px solid #3c8298;
+  border-radius: 6px;
+  color: #e8fbff;
+  background: rgba(8, 25, 38, .94);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .26), inset 0 1px rgba(255, 255, 255, .06);
+  text-align: center;
+  transform: translateX(-50%);
+  animation: io-discovery-enter .55s cubic-bezier(.2,.75,.25,1) both;
+  pointer-events: none;
+}
+.io-ui .io-discovery-callout[data-band="epic"] {
+  border-color: #4789a4;
+  box-shadow: 0 8px 22px rgba(0,0,0,.26), 0 0 18px rgba(115,217,229,.07);
+}
+.io-ui .io-discovery-callout[data-band="mythic"] {
+  border-color: #6a83bd;
+  background: rgba(15, 26, 50, .95);
+  box-shadow: 0 8px 22px rgba(0,0,0,.26), 0 0 22px rgba(137,159,233,.1);
+}
+.io-ui .io-discovery-callout[data-band="endgame"],
+.io-ui .io-discovery-callout[data-band="infinity"] {
+  border-color: #c8aa76;
+  background: rgba(29, 27, 31, .96);
+  box-shadow: 0 8px 22px rgba(0,0,0,.28), 0 0 26px rgba(200,170,118,.15);
+}
+.io-ui .io-discovery-kicker {
+  color: #73d9e5;
+  font: 900 8px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: .16em;
+}
+.io-ui .io-discovery-callout[data-band="mythic"] .io-discovery-kicker {
+  color: #aebeff;
+}
+.io-ui .io-discovery-callout[data-band="endgame"] .io-discovery-kicker,
+.io-ui .io-discovery-callout[data-band="infinity"] .io-discovery-kicker {
+  color: #e3bd85;
+}
+.io-ui .io-discovery-callout strong {
+  overflow: hidden;
+  max-width: 100%;
+  color: #f0fbfd;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.io-ui .io-discovery-rarity {
+  color: #9cc8d5;
+  font: 700 10px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.io-ui .io-discovery-callout[data-band="endgame"] .io-discovery-rarity,
+.io-ui .io-discovery-callout[data-band="infinity"] .io-discovery-rarity {
+  color: #e3d1ad;
+}
+@keyframes io-discovery-enter {
+  from { opacity: 0; translate: 0 -7px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+/* Endgame Codex cards receive a special frame; their individual tier colors stay intact. */
+.io-ui .io-page-codex .io-codex-entry {
+  position: relative;
+  min-width: 0;
+  border-radius: 7px !important;
+  background: #101e2b !important;
+  transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease !important;
+}
+.io-ui .io-page-codex .io-codex-entry.is-endgame {
+  border-color: rgba(200, 170, 118, .52) !important;
+  background:
+    linear-gradient(145deg, rgba(200, 170, 118, .075), transparent 54%),
+    #101e2b !important;
+  box-shadow: inset 0 0 0 1px rgba(200, 170, 118, .08), 0 8px 20px rgba(0,0,0,.2) !important;
+}
+.io-ui .io-page-codex .io-codex-entry.is-endgame::before {
+  position: absolute;
+  top: 0;
+  right: 12px;
+  left: 12px;
+  height: 2px;
+  content: "";
+  background: linear-gradient(90deg, transparent, #c8aa76, transparent);
+  opacity: .8;
+}
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="paradox"],
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="beyond"],
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="endless"],
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="empyrean"],
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="hyperversal"],
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="transfinite"],
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="metacosmic"],
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="primordial"] {
+  border-left: 3px solid rgba(200, 170, 118, .82) !important;
+}
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="paradox"]::before,
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="beyond"]::before,
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="endless"]::before,
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="empyrean"]::before,
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="hyperversal"]::before,
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="transfinite"]::before,
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="metacosmic"]::before,
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="primordial"]::before {
+  opacity: 1;
+}
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="paradox"] .rounded-full,
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="beyond"] .rounded-full,
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="endless"] .rounded-full,
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="empyrean"] .rounded-full,
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="hyperversal"] .rounded-full,
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="transfinite"] .rounded-full,
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="metacosmic"] .rounded-full,
+.io-ui .io-page-codex .io-codex-entry[data-orb-tier="primordial"] .rounded-full {
+  box-shadow: 0 0 18px rgba(200, 170, 118, .12), inset 0 1px rgba(255,255,255,.15) !important;
+}
+.io-ui .io-page-codex .io-codex-entry.is-endgame h3 {
+  color: #f0e5c9 !important;
+}
+
+/* Prestige roadmap: show threshold and projected Dust before the reset decision. */
+.io-ui .io-prestige-readiness {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid #315a70;
+  border-radius: 7px;
+  background: linear-gradient(110deg, rgba(16, 54, 73, .42), rgba(10, 25, 39, .92) 70%);
+}
+.io-ui .io-prestige-readiness-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.io-ui .io-prestige-readiness-top > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.io-ui .io-prestige-kicker,
+.io-ui .io-prestige-preview > span {
+  color: #7da9ba;
+  font: 800 8px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: .12em;
+}
+.io-ui .io-prestige-readiness-top strong {
+  color: #e4f6f9;
+  font: 750 17px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.io-ui .io-prestige-readiness-top strong small {
+  color: #7295a5;
+  font-size: 9px;
+  font-weight: 700;
+}
+.io-ui .io-prestige-preview {
+  text-align: right;
+}
+.io-ui .io-prestige-preview strong {
+  color: #e3c58c;
+}
+.io-ui .io-prestige-progress {
+  height: 7px;
+  overflow: hidden;
+  border: 1px solid #31566b;
+  border-radius: 2px;
+  background: #071722;
+}
+.io-ui .io-prestige-progress > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #397e9a, #73d9e5);
+  box-shadow: 0 0 12px rgba(115, 217, 229, .22);
+  transition: width .25s ease;
+}
+.io-ui .io-prestige-readiness > p {
+  margin: 0;
+  color: #8eafbc !important;
+  font-size: 10px;
+}
+
+/* Mobile: let controls wrap instead of forcing long horizontal scroll strips. */
+@media (max-width: 680px) {
+  .io-ui .io-discovery-callout {
+    top: 48px;
+    width: calc(100% - 24px);
+    padding: 8px 10px;
+  }
+  .io-ui .io-discovery-callout strong {
+    font-size: 13px;
+  }
+  .io-ui .io-page-codex > .flex.flex-wrap.items-center.justify-between {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .io-ui .io-page-codex [role="group"][aria-label="Filter Codex by tier"] {
+    display: flex;
+    flex-wrap: wrap;
+    overflow: visible !important;
+    max-width: 100%;
+    padding-bottom: 0 !important;
+  }
+  .io-ui .io-page-codex [role="group"][aria-label="Filter Codex by tier"] button {
+    min-height: 34px;
+  }
+  .io-ui .io-page-codex #io-codex-sort,
+  .io-ui .io-page-codex select[aria-label="Sort Codex entries"] {
+    width: 100%;
+    min-height: 40px;
+  }
+  .io-ui .io-page-codex > .flex.flex-wrap.items-center.justify-between > div:last-child {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    width: 100%;
+  }
+  .io-ui .io-page-profile .io-prestige-readiness-top {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .io-ui .io-page-profile .io-prestige-preview {
+    text-align: left;
+  }
+  .io-ui .io-page-profile .io-page-hero {
+    padding: 17px !important;
+  }
+  .io-ui .io-page-profile .io-page-hero [role="progressbar"] {
+    height: 10px;
+  }
+  .io-ui .io-page-profile [role="group"][aria-label="Filter permanent Prestige upgrades"] {
+    flex-wrap: wrap;
+    overflow: visible;
+    width: 100%;
+  }
+  .io-ui .io-page-profile [role="group"][aria-label="Filter permanent Prestige upgrades"] button {
+    flex: 1 1 auto;
+    min-height: 38px;
+  }
+}
+@media (max-width: 420px) {
+  .io-ui .io-page-codex .io-codex-entry {
+    padding: 12px !important;
+  }
+  .io-ui .io-page-codex .io-codex-entry > div:first-of-type {
+    gap: 10px;
+  }
+  .io-ui .io-page-codex .io-codex-entry .w-14.h-14 {
+    width: 46px;
+    height: 46px;
+  }
+  .io-ui .io-prestige-readiness {
+    padding: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .io-ui .io-discovery-callout {
+    animation: none !important;
+  }
+  .io-ui .io-prestige-progress > span {
+    transition: none !important;
+  }
+}
