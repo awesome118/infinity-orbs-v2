@@ -480,6 +480,19 @@ export const RollSection: React.FC<RollSectionProps> = ({
           <span>ORB CHAMBER <i /></span>
           <span>{busy ? 'RESOLVING' : displayOrb ? 'LATEST RESULT' : 'AWAITING ROLL'}</span>
         </div>
+        {displayOrb && (displayOrb.rarity >= 1_000 || displayOrb.isInfinity) && (
+          <div
+            key={`${displayOrb.rarity}:${displayOrb.isInfinity ? 1 : 0}`}
+            className="io-discovery-callout"
+            data-band={displayOrb.isInfinity ? 'infinity' : displayOrb.rarity >= 1e15 ? 'endgame' : displayOrb.rarity >= 100_000 ? 'mythic' : 'epic'}
+            role="status"
+            aria-live="polite"
+          >
+            <span className="io-discovery-kicker">{displayOrb.isNew ? 'NEW CODEX ENTRY' : (orbInfo?.tier ?? 'RARE').toUpperCase() + ' DROP'}</span>
+            <strong>{displayOrb.name}</strong>
+            <span className="io-discovery-rarity">1 / {formatRarity(displayOrb.rarity, displayOrb.isInfinity)}</span>
+          </div>
+        )}
         {/* Ambient Glow Background centered on orb */}
         <div
           className="absolute w-64 h-64 rounded-full blur-3xl opacity-20 pointer-events-none transition-colors duration-700"
