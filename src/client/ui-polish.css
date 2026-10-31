@@ -3710,3 +3710,305 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+
+/* ===== INFINITY ORBS · 100-POINT UI REFINEMENT PASS ===== */
+/* 01 · App canvas: add a very quiet technical grid behind the interface. */
+.io-ui { background-image: radial-gradient(ellipse at 50% -15%, rgba(50,131,157,.12), transparent 52%), linear-gradient(rgba(100,164,185,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(100,164,185,.025) 1px, transparent 1px); background-size: auto, 36px 36px, 36px 36px; }
+
+/* 02 · Main content gets a consistent readable measure. */
+.io-ui .app-main { max-width: 1240px; padding-inline: clamp(14px, 2.2vw, 30px); }
+
+/* 03 · Main content typography uses a steadier default rhythm. */
+.io-ui .app-main { line-height: 1.48; }
+
+/* 04 · Every progression surface shares predictable vertical spacing. */
+.io-ui .io-page-shell { display: flex; flex-direction: column; gap: 18px; }
+
+/* 05 · Page hero panels use the same clipped technical silhouette. */
+.io-ui .io-page-hero { position: relative; border-radius: 8px !important; border-color: #2b4a60 !important; }
+
+/* 06 · Remove the last strong purple cast from progression headers. */
+.io-ui .io-page-hero { background: linear-gradient(112deg, rgba(19,54,75,.72), rgba(9,23,36,.97) 68%) !important; box-shadow: inset 0 1px rgba(203,238,245,.05), 0 14px 30px rgba(0,0,0,.15) !important; }
+
+/* 07 · Page hero titles have a consistent, compact scale. */
+.io-ui .io-page-hero :is(h1,h2,h3) { color: #e5f5f8 !important; font-weight: 850 !important; letter-spacing: -.025em; }
+
+/* 08 · Intro copy is brighter and constrained for scanning. */
+.io-ui .io-page-hero :is(p,small) { color: #9bb8c4 !important; max-width: 68ch; line-height: 1.55; }
+
+/* 09 · Nested page grids share a tighter, aligned gap. */
+.io-ui .io-page-shell :is(.grid,.flex.flex-wrap) { min-width: 0; }
+
+/* 10 · Section dividers become quiet blue guide lines. */
+.io-ui .io-page-shell :is(.border-t,.border-b) { border-color: rgba(100,158,180,.2) !important; }
+
+/* 11 · Header has a defined edge separating HUD from gameplay. */
+.io-ui .app-header { border-bottom: 1px solid #2a4a60 !important; background: rgba(6,17,28,.96) !important; box-shadow: 0 8px 22px rgba(0,0,0,.18); }
+
+/* 12 · Brand tile reads as the IO control mark. */
+.io-ui .brand-mark { border-color: rgba(115,217,229,.52) !important; border-radius: 7px !important; background: linear-gradient(145deg,#123247,#081927) !important; box-shadow: inset 0 1px rgba(255,255,255,.13), 0 0 16px rgba(74,174,195,.1); }
+
+/* 13 · Brand glyph moves from purple to cool cyan metal. */
+.io-ui .brand-glyph { color: #a4edf0 !important; text-shadow: 0 0 14px rgba(115,217,229,.3); }
+
+/* 14 · Product title is a touch more compact and deliberate. */
+.io-ui .brand-copy h1 { color: #e5f6fa !important; letter-spacing: -.035em; }
+
+/* 15 · Version label stops competing with the game title. */
+.io-ui .brand-copy [aria-label^="App version"] { border-color: #29485d !important; color: #7596a5 !important; background: rgba(6,19,30,.6); }
+
+/* 16 · Level badge becomes a clear player-status chip. */
+.io-ui .brand-copy button[aria-label^="View Level"] { border-radius: 4px !important; border-color: rgba(115,217,229,.28) !important; background: rgba(115,217,229,.08) !important; color: #a5e6ec !important; }
+
+/* 17 · Experience track has a clearer high-contrast rail. */
+.io-ui .brand-copy [role="button"][aria-label^="Open profile"] { border-color: #2c4f65 !important; background: #061522 !important; }
+
+/* 18 · Experience fill uses the core IO cyan. */
+.io-ui .brand-copy [role="button"][aria-label^="Open profile"] > div { background: linear-gradient(90deg,#287e9a,#78dce5) !important; box-shadow: 0 0 9px rgba(115,217,229,.25); }
+
+/* 19 · Header resources become a single contained HUD strip. */
+.io-ui .header-resource-row { border: 1px solid #28485d !important; border-radius: 5px !important; background: rgba(9,25,39,.92) !important; }
+
+/* 20 · Each resource has a stable, aligned footprint. */
+.io-ui .header-resource-entry { min-width: 48px; display: grid; grid-template-rows: auto auto; gap: 2px; align-content: center; }
+
+/* 21 · Resource values use tabular numerals for stable width. */
+.io-ui .header-resource-value { color: #e0f2f6 !important; font-variant-numeric: tabular-nums; font-weight: 850 !important; }
+
+/* 22 · Resource labels remain legible but secondary. */
+.io-ui .header-resource-label { color: #789cab !important; font-size: 8px !important; letter-spacing: .1em; }
+
+/* 23 · Resource dividers become subtle rather than dominant. */
+.io-ui .header-resource-divider { background: #29495e !important; opacity: .8; }
+
+/* 24 · Online status is a small systems indicator, not a badge blob. */
+.io-ui .community-presence-chip { border-color: rgba(115,217,229,.22) !important; border-radius: 4px !important; background: rgba(58,145,166,.08) !important; color: #9bdde4 !important; }
+
+/* 25 · Offline reward action is clearly actionable. */
+.io-ui .offline-button { border-radius: 4px !important; border-color: #3b6b81 !important; background: #102a3b !important; color: #c3e9ef !important; }
+
+/* 26 · Header utility buttons share one square hit-area. */
+.io-ui .header-icon-button { border: 1px solid #2b4a60 !important; border-radius: 5px !important; background: #0c2030 !important; color: #91b6c4 !important; }
+
+/* 27 · Main navigation reads as a dedicated command strip. */
+.io-ui .nav-shell { border: 1px solid #28485c; border-radius: 6px; padding: 7px; background: rgba(7,20,32,.9); box-shadow: inset 0 1px rgba(255,255,255,.025); }
+
+/* 28 · Nav groups receive a little more separation. */
+.io-ui .io-nav-group { padding-inline: 5px; border-right-color: rgba(101,160,182,.17) !important; }
+
+/* 29 · Nav group labels get more contrast and consistent scale. */
+.io-ui .io-nav-group-label { color: #6f9aab !important; font-size: 8px !important; letter-spacing: .16em !important; }
+
+/* 30 · Inactive nav tabs are calmer and easier to distinguish. */
+.io-ui .nav-tab { border-radius: 4px !important; color: #95b0bc !important; min-height: 35px; }
+
+/* 31 · Active nav tab uses the cyan selection state. */
+.io-ui .nav-tab.is-active { color: #d9f8fa !important; background: rgba(73,166,188,.18) !important; box-shadow: inset 0 0 0 1px rgba(115,217,229,.38), 0 3px 12px rgba(17,110,138,.1) !important; }
+
+/* 32 · Active underline is removed in favor of a contained selection frame. */
+.io-ui .nav-tab.is-active::after { display: none !important; }
+
+/* 33 · Combat mode switch looks like a sibling navigation mode. */
+.io-ui .io-combat-mode-switch { border-radius: 4px !important; border-color: #4b879d !important; background: rgba(72,157,179,.1) !important; color: #a6e3e9 !important; }
+
+/* 34 · Small screens keep nav labels tappable without making the strip bulky. */
+@media (max-width: 680px) { .io-ui .nav-shell { gap: 4px; padding: 5px; } .io-ui .io-nav-group { padding-inline: 3px; } .io-ui .nav-tab { min-height: 38px; padding-inline: 10px !important; } }
+
+/* 35 · Roll page uses a measured main stage plus a compact side rail. */
+.io-ui .roll-layout { width: 100%; max-width: 1180px; margin-inline: auto; gap: clamp(16px,2.2vw,26px) !important; }
+
+/* 36 · Roll column keeps the chamber centered without excess whitespace. */
+.io-ui .roll-main { min-width: 0; width: 100%; gap: 15px !important; }
+
+/* 37 · Roll title block has stronger information hierarchy. */
+.io-ui .io-roll-page-head { align-items: center !important; border-bottom-color: rgba(115,217,229,.24) !important; padding-bottom: 10px !important; }
+
+/* 38 · Roll status has a fixed-width instrument readout. */
+.io-ui .io-roll-status { min-width: 164px; border: 1px solid #31566d; border-radius: 5px !important; background: #0c2030 !important; padding: 9px 11px !important; }
+
+/* 39 · Orb chamber perimeter gets a more defined frame. */
+.io-ui .roll-stage { border: 1px solid rgba(74,146,170,.28); border-radius: 8px; background: radial-gradient(ellipse at 50% 46%,rgba(49,137,160,.1),transparent 55%), linear-gradient(160deg,rgba(12,30,45,.9),rgba(5,16,27,.8)); }
+
+/* 40 · Chamber readout labels line up with the global HUD. */
+.io-ui .roll-stage-topline { color: #80adbc !important; letter-spacing: .15em !important; }
+
+/* 41 · First-roll marker receives a crisp mission-label treatment. */
+.io-ui .io-first-roll-label { border: 1px solid rgba(115,217,229,.28); border-radius: 4px; background: rgba(5,20,32,.78); color: #a7e4e9 !important; padding: 7px 10px; }
+
+/* 42 · Ambient glow stays behind the orb and is more restrained. */
+.io-ui .roll-stage > .absolute.w-64.h-64 { opacity: .13 !important; filter: blur(42px) !important; }
+
+/* 43 · Main orb gains a quiet separation shadow from the chamber. */
+.io-ui .io-main-orb { outline: 1px solid rgba(207,245,249,.08); outline-offset: 5px; }
+
+/* 44 · Latest-result marker becomes a readable result chip. */
+.io-ui .latest-orb-mark { border: 1px solid #355d72 !important; border-radius: 5px !important; background: rgba(8,25,39,.94) !important; color: #d8edf2 !important; }
+
+/* 45 · Discovery callout becomes a distinct notification plate. */
+.io-ui .io-discovery-callout { border-radius: 6px !important; border-color: rgba(115,217,229,.48) !important; background: linear-gradient(110deg,rgba(14,47,65,.98),rgba(7,22,34,.97)) !important; box-shadow: 0 12px 28px rgba(0,0,0,.32), inset 0 1px rgba(255,255,255,.06) !important; }
+
+/* 46 · Reward burst is easier to read after large batches. */
+.io-ui .reward-burst { border: 1px solid #3b7890 !important; border-radius: 7px !important; background: rgba(6,20,32,.97) !important; box-shadow: 0 14px 35px rgba(0,0,0,.4), inset 0 1px rgba(255,255,255,.07) !important; }
+
+/* 47 · Reward chips use aligned numeric columns. */
+.io-ui .reward-burst-row { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+
+/* 48 · Roll controls sit in a defined control bay. */
+.io-ui .roll-controls { padding: 12px; border: 1px solid #294a60; border-radius: 6px; background: rgba(8,24,37,.82); }
+
+/* 49 · Primary roll button gets a stronger focal edge. */
+.io-ui .roll-button { min-height: 48px; border-radius: 5px !important; letter-spacing: .04em; box-shadow: 0 5px 16px rgba(0,0,0,.22), inset 0 1px rgba(255,255,255,.2) !important; }
+
+/* 50 · Roll action helper text is clear and consistently aligned. */
+.io-ui .roll-action-hint { max-width: 46ch; text-align: center; color: #8eafbd !important; line-height: 1.45; }
+
+/* 51 · Run summary sidebar is easier to scan vertically. */
+.io-ui .roll-sidebar { gap: 10px !important; align-content: start; }
+
+/* 52 · Sidebar field cards align with the rest of the dashboard. */
+.io-ui .field-card { border: 1px solid #29485d !important; border-radius: 6px !important; background: linear-gradient(145deg,#10263a,#091a29) !important; box-shadow: inset 0 1px rgba(255,255,255,.035) !important; }
+
+/* 53 · Sidebar headers use a compact instrument label. */
+.io-ui .field-card-header { border-bottom: 1px solid rgba(112,171,191,.19); padding-bottom: 8px; color: #9cc4d0 !important; }
+
+/* 54 · Telemetry rows align labels and values for quick comparison. */
+.io-ui .field-stat-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-block: 5px; border-bottom: 1px solid rgba(112,171,191,.1); font-variant-numeric: tabular-nums; }
+
+/* 55 · Progression cards use a subtle consistent technical surface. */
+.io-ui .io-page-shell :is(article,section,div)[class*="rounded-2xl"][class*="border"][class*="bg-slate-950"] { border-radius: 6px !important; border-color: #29475c !important; }
+
+/* 56 · Main page button hover has one restrained lift behavior. */
+.io-ui .io-page-shell button:not(:disabled):hover { filter: brightness(1.08); }
+
+/* 57 · Selected filters and toggles are visibly selected. */
+.io-ui .io-page-shell button[aria-pressed="true"] { box-shadow: inset 0 0 0 1px rgba(115,217,229,.32), 0 0 12px rgba(65,164,188,.08); }
+
+/* 58 · Disabled actions remain legible instead of disappearing. */
+.io-ui .io-page-shell button:disabled { filter: saturate(.45); opacity: .58; }
+
+/* 59 · Page inputs share one compact technical form style. */
+.io-ui .io-page-shell :is(input,select,textarea) { border-color: #31566c !important; border-radius: 4px !important; background-color: #081a28 !important; color: #dceef3 !important; }
+
+/* 60 · Focus states are consistent across every editable control. */
+.io-ui .io-page-shell :is(input,select,textarea):focus-visible { outline: 2px solid rgba(115,217,229,.7) !important; outline-offset: 2px; box-shadow: 0 0 0 4px rgba(115,217,229,.1) !important; }
+
+/* 61 · Progress bars become compact technical meters. */
+.io-ui .io-page-shell [role="progressbar"] { border-radius: 3px !important; border-color: #294b61 !important; background-color: #061622 !important; overflow: hidden; }
+
+/* 62 · Status and alert blocks have a predictable inset. */
+.io-ui .io-page-shell :is([role="status"],[role="alert"]) { border-radius: 5px !important; line-height: 1.5; }
+
+/* 63 · Upgrade cards emphasize level and next cost. */
+.io-ui .io-page-upgrades :is(.grid > div,.grid > article) { border-radius: 6px !important; border-color: #315267 !important; background: linear-gradient(145deg,#122b40,#0a1c2b) !important; }
+
+/* 64 · Upgrade purchase actions span their cards consistently. */
+.io-ui .io-page-upgrades button { min-height: 38px; border-radius: 4px !important; }
+
+/* 65 · Global booster cards distinguish active effects from inactive stock. */
+.io-ui .io-page-boosters :is(.grid > div,article) { border-radius: 6px !important; border-color: #2d5369 !important; }
+
+/* 66 · Booster countdowns use tabular numerals and a cyan active state. */
+.io-ui .io-page-boosters :is(.font-mono,.tabular-nums) { font-variant-numeric: tabular-nums; }
+
+/* 67 · Altar hero uses a restrained warm accent within the blue shell. */
+.io-ui .io-page-altar .io-page-hero { border-left: 3px solid #d6a36f !important; background: linear-gradient(110deg,rgba(75,48,38,.55),rgba(10,26,40,.96) 68%) !important; }
+
+/* 68 · Altar offer cards have a clear selected/available contrast. */
+.io-ui .io-page-altar :is(input,select) { border-color: #8d6848 !important; }
+
+/* 69 · Sacrifice submission is a single clear action. */
+.io-ui .io-page-altar > button:last-of-type { min-height: 44px; border-radius: 5px !important; }
+
+/* 70 · Mastery hero uses cyan rather than mixed saturated accents. */
+.io-ui .io-page-mastery .io-page-hero { border-left: 3px solid #73d9e5 !important; }
+
+/* 71 · Mastery tier pips gain clearer spacing and edge definition. */
+.io-ui .io-page-mastery [class*="rounded-full"][class*="h-"] { outline: 1px solid rgba(170,220,231,.13); outline-offset: 1px; }
+
+/* 72 · Mastery upgrade choices align title and level information. */
+.io-ui .io-page-mastery :is(.grid > div,.grid > article) { min-width: 0; border-radius: 6px !important; }
+
+/* 73 · Quest page emphasizes the current streak area. */
+.io-ui .io-page-quests .io-page-hero { border-left: 3px solid #67cbb2 !important; }
+
+/* 74 · Quest cards use a stable card height and readable copy. */
+.io-ui .io-page-quests :is(.grid > div,.grid > article) { min-width: 0; border-radius: 6px !important; }
+
+/* 75 · Quest progress tracks are thicker on touch devices. */
+@media (max-width: 680px) { .io-ui .io-page-quests [role="progressbar"] { min-height: 9px; } }
+
+/* 76 · Profile hero reads like a player dossier. */
+.io-ui .io-page-profile .io-page-hero { border-left: 3px solid #78cbdc !important; background: linear-gradient(110deg,rgba(15,52,72,.78),rgba(8,22,35,.98) 68%) !important; }
+
+/* 77 · Prestige readiness is a clear decision panel. */
+.io-ui .io-prestige-readiness { border-radius: 6px !important; border-color: #3b687f !important; background: linear-gradient(110deg,rgba(19,58,78,.62),rgba(8,24,37,.96) 70%) !important; }
+
+/* 78 · Profile stat tiles align value baselines. */
+.io-ui .io-page-profile .grid > div { min-width: 0; }
+
+/* 79 · Profile milestone badges use a quiet metallic edge. */
+.io-ui .io-page-profile [class*="rounded-full"][class*="border"] { border-radius: 4px !important; }
+
+/* 80 · Codex hero is a field-guide header, not a gradient blob. */
+.io-ui .io-page-codex .io-page-hero { border-left: 3px solid #78cbdc !important; }
+
+/* 81 · Codex entries have a compact information hierarchy. */
+.io-ui .io-page-codex .io-codex-entry { border-radius: 6px !important; background: linear-gradient(145deg,#12283a,#0a1c2a) !important; }
+
+/* 82 · Codex hover marks the actual entry without a large jump. */
+.io-ui .io-page-codex .io-codex-entry:hover { border-color: #4b93a9 !important; transform: translateY(-1px); box-shadow: 0 8px 18px rgba(0,0,0,.2) !important; }
+
+/* 83 · Codex tier filters are visible as segmented controls. */
+.io-ui .io-page-codex [aria-label="Filter Codex by tier"] button { border-radius: 4px !important; min-height: 32px; }
+
+/* 84 · Social surfaces use the same page spacing as progression. */
+.io-ui .io-page-social { max-width: 1040px; gap: 16px !important; }
+
+/* 85 · Social sub-navigation forms a compact segmented rail. */
+.io-ui .io-social-tabs { border: 1px solid #29495f; border-radius: 6px; padding: 6px; background: #091c2a; }
+
+/* 86 · Social tabs have an explicit active state and consistent height. */
+.io-ui .io-social-tab { min-height: 37px; border-radius: 4px !important; color: #91adba; } .io-ui .io-social-tab[aria-pressed="true"] { background: #17455b !important; color: #d4f4f6 !important; box-shadow: inset 0 0 0 1px #39768d; }
+
+/* 87 · Guild hero presents tag, level and member count as one identity block. */
+.io-ui .io-social-guild-hero { border-radius: 7px !important; border-color: #31556b !important; background: linear-gradient(110deg,#143247,#0b1d2c 72%) !important; }
+
+/* 88 · Guild tasks have consistent compact cards. */
+.io-ui .io-social-task-card { border-radius: 5px !important; border-color: #2c4d62 !important; background: #0b1e2d !important; }
+
+/* 89 · Guild combo panel gets a technical buff meter appearance. */
+.io-ui .io-social-combo-card { border-radius: 5px !important; border-color: rgba(115,217,229,.34) !important; background: linear-gradient(110deg,rgba(29,76,91,.36),rgba(8,25,39,.96)) !important; }
+
+/* 90 · Raid boss panel uses warm warning accents without red overload. */
+.io-ui .io-social-raid-card { border-radius: 6px !important; border-color: rgba(221,151,105,.46) !important; background: linear-gradient(110deg,rgba(75,47,39,.45),#0c2030 72%) !important; }
+
+/* 91 · Guild perks chamber is a clear shared-resource area. */
+.io-ui .io-social-perks-panel { border-radius: 6px !important; border-color: #2c4c62 !important; background: linear-gradient(145deg,#122a3e,#0a1b2a) !important; }
+
+/* 92 · Leaderboard rows gain clear rank gutters and hover feedback. */
+.io-ui .io-social-leaderboard-row { min-height: 54px; border-bottom: 1px solid rgba(93,148,170,.14); } .io-ui .io-social-leaderboard-row:hover { background: rgba(66,155,180,.07) !important; }
+
+/* 93 · Leaderboard metrics are aligned and stable. */
+.io-ui .io-social-leaderboard-row > div:last-child { min-width: 92px; font-variant-numeric: tabular-nums; }
+
+/* 94 · Community event becomes a milestone dashboard. */
+.io-ui .io-social-event { border-radius: 7px !important; border-color: #31566c !important; background: linear-gradient(145deg,#122b40,#0a1c2b) !important; }
+
+/* 95 · Global Chat launcher matches the app's command buttons. */
+.io-ui .io-global-chat-launcher { border: 1px solid #4a8299 !important; border-radius: 5px !important; background: rgba(8,28,43,.97) !important; color: #d8f1f5 !important; box-shadow: 0 9px 26px rgba(0,0,0,.38), inset 0 1px rgba(255,255,255,.06) !important; }
+
+/* 96 · Global Chat panel becomes a compact utility window. */
+.io-ui .io-global-chat-window { border: 1px solid #3b6b82 !important; border-radius: 7px !important; background: rgba(6,19,30,.98) !important; box-shadow: 0 18px 44px rgba(0,0,0,.5) !important; }
+
+/* 97 · Chat header separates title from posting policy text. */
+.io-ui .io-global-chat-header { border-bottom-color: #294b60 !important; background: #0d2638 !important; } .io-ui .io-global-chat-caption { max-width: 250px; color: #87a9b8 !important; line-height: 1.4; }
+
+/* 98 · Chat messages have a clear author line and compact bubble. */
+.io-ui .io-global-chat-message { border-radius: 4px !important; border-color: #29485d !important; background: #0e2435 !important; }
+
+/* 99 · Chat form controls are sized for quick one-handed posting. */
+.io-ui .io-global-chat-input { min-height: 40px; border-radius: 4px !important; border-color: #31566c !important; background: #061725 !important; } .io-ui .io-global-chat-send { min-width: 42px; min-height: 40px; border-radius: 4px !important; background: #267e98 !important; }
+
+/* 100 · Chat launcher and panel stay inside narrow mobile safe areas. */
+@media (max-width: 520px) { .io-ui .io-global-chat-launcher { right: 12px !important; bottom: 12px !important; min-height: 42px; padding: 10px 12px !important; } .io-ui .io-global-chat-window { right: 8px !important; bottom: 8px !important; width: calc(100vw - 16px) !important; max-height: min(620px,calc(100dvh - 16px)); } .io-ui .io-global-chat-log { max-height: min(45vh,360px) !important; } }
