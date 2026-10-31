@@ -4012,3 +4012,312 @@
 
 /* 100 · Chat launcher and panel stay inside narrow mobile safe areas. */
 @media (max-width: 520px) { .io-ui .io-global-chat-launcher { right: 12px !important; bottom: 12px !important; min-height: 42px; padding: 10px 12px !important; } .io-ui .io-global-chat-window { right: 8px !important; bottom: 8px !important; width: calc(100vw - 16px) !important; max-height: min(620px,calc(100dvh - 16px)); } .io-ui .io-global-chat-log { max-height: min(45vh,360px) !important; } }
+
+
+/* ===== VISUAL COHESION PASS · 2026-10-31 =====
+   Calm the 100-point refinement layer into one consistent interface.
+   Keep the navy/blue direction; reduce competing edges, tiny labels and glow. */
+.io-ui {
+  --io-canvas: #071522;
+  --io-panel: #0d2030;
+  --io-panel-raised: #11283a;
+  --io-panel-inset: #091a28;
+  --io-line: rgba(121, 166, 188, .17);
+  --io-line-strong: rgba(121, 166, 188, .28);
+  --io-text: #dce9ef;
+  --io-muted: #91aab8;
+  --io-blue: #78bbcf;
+  --io-blue-soft: rgba(83, 156, 184, .12);
+  background-color: var(--io-canvas);
+  background-image: radial-gradient(ellipse at 50% -20%, rgba(48, 112, 145, .10), transparent 58%);
+  background-size: auto;
+  color: var(--io-text);
+}
+
+/* One shared radius and border weight across the major surfaces. */
+.io-ui :is(
+  .app-header, .nav-shell, .io-page-hero, .field-card, .roll-stage,
+  .roll-controls, .io-combat-stage, .io-combat-panel, .io-runes-panel,
+  .io-combat-arena, .io-combat-arena-result, .io-social-guild-hero,
+  .io-social-combo-card, .io-social-raid-card, .io-social-perks-panel,
+  .io-social-event, .io-global-chat-window, .io-modal-card, .toast-card
+) {
+  border-radius: 11px !important;
+  border-color: var(--io-line-strong) !important;
+}
+
+.io-ui :is(
+  .field-card, .io-combat-panel, .io-runes-panel, .io-combat-arena,
+  .io-social-task-card, .io-social-event, .io-global-chat-message,
+  .io-codex-entry
+) {
+  background-image: none;
+  box-shadow: inset 0 1px rgba(255,255,255,.025), 0 7px 20px rgba(0,0,0,.12) !important;
+}
+
+/* Softer shell: the header, navigation and page canvas should feel related. */
+.io-ui .app-header {
+  padding-block: 10px;
+  border-bottom: 1px solid var(--io-line) !important;
+  background: rgba(7, 19, 31, .96) !important;
+  box-shadow: 0 5px 16px rgba(0,0,0,.12) !important;
+}
+.io-ui .app-nav {
+  padding-block: 7px;
+  border-bottom-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.io-ui .nav-shell {
+  padding: 5px;
+  border: 1px solid var(--io-line) !important;
+  background: rgba(10, 27, 41, .78) !important;
+  box-shadow: none !important;
+}
+.io-ui .nav-list { gap: 4px; }
+.io-ui .nav-tab {
+  min-height: 38px;
+  padding-inline: 12px !important;
+  border-radius: 8px !important;
+  color: #9aafbb !important;
+  letter-spacing: 0 !important;
+}
+.io-ui .nav-tab:hover {
+  border-color: var(--io-line) !important;
+  background: rgba(75, 133, 158, .10) !important;
+}
+.io-ui .nav-tab.is-active {
+  border-color: rgba(117, 187, 207, .25) !important;
+  background: rgba(65, 132, 160, .18) !important;
+  color: #d9eef4 !important;
+  box-shadow: inset 0 0 0 1px rgba(117,187,207,.08) !important;
+}
+.io-ui .io-nav-group { border-right-color: rgba(121,166,188,.12) !important; }
+.io-ui .io-nav-group-label {
+  color: #83a5b5 !important;
+  font-size: 9px !important;
+  letter-spacing: .12em !important;
+}
+.io-ui .brand-mark {
+  border-radius: 9px !important;
+  border-color: rgba(117,187,207,.32) !important;
+  background: linear-gradient(145deg, #15364b, #0b2030) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.08) !important;
+}
+.io-ui .brand-glyph { color: #a8dce8 !important; text-shadow: none !important; }
+.io-ui .brand-copy h1 { color: #e0edf2 !important; }
+.io-ui .header-resource-row {
+  border-radius: 9px !important;
+  border-color: var(--io-line) !important;
+  background: rgba(10, 27, 41, .78) !important;
+}
+.io-ui .header-resource-label {
+  color: #90aab8 !important;
+  font-size: 9px !important;
+  letter-spacing: .07em !important;
+}
+.io-ui .header-resource-value { color: #e0edf2 !important; }
+.io-ui .header-resource-divider { background: var(--io-line) !important; }
+
+/* Page introductions and cards: consistent surfaces, no competing silhouettes. */
+.io-ui .io-page-shell { gap: 20px !important; }
+.io-ui .io-page-hero {
+  padding: clamp(16px, 2vw, 22px) !important;
+  border-color: var(--io-line) !important;
+  background: linear-gradient(115deg, rgba(19, 49, 68, .72), rgba(10, 27, 42, .94) 72%) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.035), 0 8px 22px rgba(0,0,0,.12) !important;
+}
+.io-ui .io-page-hero :is(h1,h2,h3) {
+  color: #e1edf2 !important;
+  letter-spacing: -.02em !important;
+  font-weight: 750 !important;
+}
+.io-ui .io-page-hero :is(p,small) {
+  color: #a0b6c1 !important;
+  line-height: 1.55;
+}
+.io-ui .io-page-shell :is(article,section,div)[class*="rounded-2xl"][class*="border"][class*="bg-slate-950"] {
+  border-radius: 10px !important;
+  border-color: var(--io-line) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.02), 0 6px 18px rgba(0,0,0,.10) !important;
+}
+.io-ui .io-page-shell :is(.grid > div, .grid > article) {
+  border-radius: 10px !important;
+}
+.io-ui .io-page-shell :is(.border-t,.border-b) {
+  border-color: var(--io-line) !important;
+}
+.io-ui .io-page-shell :is(input,select,textarea) {
+  min-height: 38px;
+  border-radius: 8px !important;
+  border-color: var(--io-line-strong) !important;
+  background: var(--io-panel-inset) !important;
+  color: var(--io-text) !important;
+}
+.io-ui .io-page-shell :is(input,select,textarea):focus-visible {
+  outline-color: rgba(120,187,207,.72) !important;
+  box-shadow: 0 0 0 3px rgba(83,156,184,.10) !important;
+}
+.io-ui .io-page-shell button:not(:disabled) {
+  border-radius: 8px;
+}
+.io-ui .io-page-shell button:not(:disabled):hover { filter: brightness(1.045); }
+.io-ui .io-page-shell button[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1px rgba(120,187,207,.24) !important;
+}
+.io-ui .io-page-shell button:disabled { opacity: .62; filter: none; }
+
+/* Roll chamber stays prominent, but stops competing with the actual orb. */
+.io-ui .roll-layout { gap: clamp(16px, 2vw, 22px) !important; }
+.io-ui .roll-stage {
+  border-radius: 12px !important;
+  border-color: rgba(105, 160, 184, .24) !important;
+  background: radial-gradient(ellipse at 50% 42%, rgba(45,111,145,.09), transparent 56%), #091b2a !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.035), 0 14px 34px rgba(0,0,0,.20) !important;
+}
+.io-ui .roll-stage:not(.is-first-session):not(.is-rolling)::after {
+  animation: none !important;
+  opacity: .28 !important;
+}
+.io-ui .roll-stage.is-first-session {
+  border-color: rgba(105,160,184,.28) !important;
+  background: radial-gradient(ellipse at 50% 42%, rgba(53,122,155,.14), transparent 58%), #091b2a !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.04), 0 14px 34px rgba(0,0,0,.20) !important;
+}
+.io-ui .roll-stage.is-first-session::before {
+  background-image: none !important;
+  animation: none !important;
+}
+.io-ui .roll-stage.is-first-session:not(.is-rolling)::after {
+  border-color: rgba(120,187,207,.12) !important;
+  box-shadow: 0 0 0 18px rgba(83,156,184,.018) !important;
+  animation: none !important;
+  opacity: .5 !important;
+}
+.io-ui .roll-stage.is-first-session .io-main-orb {
+  animation: none !important;
+  box-shadow: 0 0 28px rgba(83,156,184,.14), inset 0 1px rgba(255,255,255,.18) !important;
+}
+.io-ui .io-first-roll-label {
+  border-radius: 7px !important;
+  border-color: rgba(120,187,207,.24) !important;
+  background: rgba(8,25,39,.88) !important;
+  color: #b8dce7 !important;
+  box-shadow: none !important;
+  animation: none !important;
+  letter-spacing: .12em !important;
+}
+.io-ui .roll-button {
+  min-height: 46px;
+  border-radius: 8px !important;
+  letter-spacing: .015em !important;
+}
+.io-ui .roll-button.is-first-session-cta.is-ready:not(:disabled) {
+  border-color: rgba(163,218,231,.48) !important;
+  background: linear-gradient(105deg, #246a89, #3289a5) !important;
+  color: #f0f8fa !important;
+  box-shadow: 0 6px 18px rgba(33,111,145,.20), inset 0 1px rgba(255,255,255,.12) !important;
+  animation: none !important;
+}
+.io-ui .roll-button.is-first-session-cta.is-ready:not(:disabled)::after { display: none !important; }
+.io-ui .roll-controls {
+  padding: 12px;
+  border-radius: 10px !important;
+  border-color: var(--io-line) !important;
+  background: rgba(9, 26, 40, .72) !important;
+}
+.io-ui .roll-status, .io-ui .io-roll-status {
+  border-radius: 8px !important;
+  border-color: var(--io-line) !important;
+}
+.io-ui .field-card {
+  border-radius: 10px !important;
+  border-color: var(--io-line) !important;
+  background: linear-gradient(145deg, #102638, #0b1d2b) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.025), 0 6px 18px rgba(0,0,0,.10) !important;
+}
+.io-ui .field-card-header {
+  color: #a6c0cb !important;
+  font-size: 10px !important;
+  letter-spacing: .09em !important;
+}
+.io-ui .field-stat-row { border-color: rgba(121,166,188,.11) !important; }
+.io-ui .roll-action-hint { color: #9bb2bf !important; }
+
+/* Combat cards, buttons and status strips use the same visual grammar. */
+.io-ui .io-combat-page-head { margin-bottom: 16px !important; }
+.io-ui .io-combat-page-head h1 { letter-spacing: -.025em !important; }
+.io-ui .io-combat-stage {
+  border-radius: 12px !important;
+  border-color: var(--io-line) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.03), 0 10px 26px rgba(0,0,0,.16) !important;
+}
+.io-ui :is(.io-combat-panel,.io-runes-panel,.io-combat-stat-strip > div) {
+  border-radius: 10px !important;
+  border-color: var(--io-line) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.02), 0 6px 18px rgba(0,0,0,.10) !important;
+}
+.io-ui :is(.io-combat-gear-card,.io-combat-skill-card,.io-combat-opponent-card,.io-combat-dungeon-choice,.io-runes-major-card) {
+  border-radius: 9px !important;
+  box-shadow: none !important;
+}
+.io-ui :is(.io-combat-gear-card,.io-combat-skill-card,.io-combat-opponent-card,.io-combat-dungeon-choice,.io-runes-major-card):hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 16px rgba(0,0,0,.14) !important;
+}
+.io-ui :is(.io-combat-button,.io-runes-button) {
+  min-height: 38px;
+  border-radius: 8px !important;
+  letter-spacing: 0 !important;
+}
+.io-ui .io-combat-button.is-primary {
+  box-shadow: 0 4px 12px rgba(73,151,178,.12) !important;
+}
+.io-ui .io-combat-button.is-primary:hover:not(:disabled) {
+  box-shadow: 0 5px 14px rgba(73,151,178,.16) !important;
+}
+
+/* Social and chat elements should feel native to the same app, not separate widgets. */
+.io-ui :is(.io-social-tabs,.io-social-guild-hero,.io-social-task-card,.io-social-combo-card,
+  .io-social-raid-card,.io-social-perks-panel,.io-social-event,.io-global-chat-window,
+  .io-global-chat-header,.io-global-chat-message,.io-global-chat-input,.io-global-chat-send,
+  .io-global-chat-launcher) {
+  border-radius: 9px !important;
+}
+.io-ui .io-social-tabs { padding: 5px !important; border-color: var(--io-line) !important; background: rgba(9,26,40,.8) !important; }
+.io-ui .io-social-tab { min-height: 36px; border-radius: 7px !important; }
+.io-ui .io-social-tab[aria-pressed="true"] {
+  background: rgba(65,132,160,.20) !important;
+  box-shadow: inset 0 0 0 1px rgba(120,187,207,.18) !important;
+}
+.io-ui .io-global-chat-window {
+  border-color: var(--io-line-strong) !important;
+  background: #0a1d2c !important;
+  box-shadow: 0 14px 36px rgba(0,0,0,.30) !important;
+}
+.io-ui .io-global-chat-launcher {
+  border-color: rgba(120,187,207,.32) !important;
+  background: #12344a !important;
+  box-shadow: 0 6px 18px rgba(0,0,0,.22) !important;
+}
+
+/* Keep intentional rarity colors, but avoid decorative animation on ordinary UI. */
+.io-ui :is(.brand-lockup:hover .brand-mark,.io-combat-gear-icon:hover,.io-combat-skill-icon:hover) {
+  filter: none !important;
+  transform: none !important;
+}
+@media (max-width: 680px) {
+  .io-ui .app-main { padding-top: 18px !important; }
+  .io-ui .app-nav { padding-block: 5px !important; }
+  .io-ui .nav-tab { min-height: 38px !important; }
+  .io-ui .io-page-shell { gap: 16px !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .io-ui .roll-stage::after,
+  .io-ui .roll-stage.is-first-session::before,
+  .io-ui .roll-stage.is-first-session .io-main-orb,
+  .io-ui .io-first-roll-label,
+  .io-ui .roll-button.is-first-session-cta.is-ready:not(:disabled) {
+    animation: none !important;
+  }
+}
