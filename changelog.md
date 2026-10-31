@@ -1,5 +1,12 @@
 # Infinity Orbs Changelog
 
+### Frenzy 503 Request-Load Reduction (2.1.24)
+
+- Process up to 2.5 million effective Frenzy Orbs in one weighted roll pass, capped at 25,000 representative samples per pass.
+- Preserve the full effective roll count and weighted rewards while avoiding five separate 500,000-Orb roll setups for a 2.5 million claim.
+- Add a regression test verifying the 2.5 million sample plan conserves every effective Orb.
+
+
 ### Large Frenzy Stack-Safety Fix (2.1.23)
 
 - Replace spread-based minimum/maximum calculations over rarity samples with an iterative scan, preventing call-stack errors on large Frenzy claims.
