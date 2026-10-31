@@ -5,7 +5,7 @@ import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
-import { createRollBatchPlan, effectiveWeightAtSample, virtualRollOffsetAtSample, sampleBinomialCount, getRarityBounds, MAX_EFFECTIVE_ROLLS_PER_BATCH } from '../shared/roll-batching.js';
+import { createRollBatchPlan, effectiveWeightAtSample, virtualRollOffsetAtSample, sampleBinomialCount, getRarityBounds, MAX_SIMULATED_ROLLS_PER_BATCH, MAX_EFFECTIVE_ROLLS_PER_BATCH, MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH, MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH } from '../shared/roll-batching.js';
 import { combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityEffects, combatTotalBossesBeaten, combatBossLuckBonus } from '../shared/combat.js';
 import {
   createInitialState,
@@ -3695,10 +3695,14 @@ export async function applyRolls(
   const protectedOpeningCount = forcedRarity == null
     ? Math.max(0, Math.min(baseBatchRollCount, 3 - lifetimeRollsBeforeBatch))
     : 0;
+  const maxSimulatedRolls = source === 'frenzy'
+    ? MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH
+    : MAX_SIMULATED_ROLLS_PER_BATCH;
   const batchPlan = createRollBatchPlan(
     baseBatchRollCount,
     protectedOpeningCount,
     source !== 'offline' && forcedRarity == null,
+    maxSimulatedRolls,
   );
   let simulationLoopCount = batchPlan.simulatedBaseCount;
   let processedEffectiveRolls = 0;
@@ -3716,7 +3720,9 @@ export async function applyRolls(
   }
   const maxSupportedRollCount = source === 'offline'
     ? offlineRollCap(s) * rollsPerActivation(s) + 2
-    : MAX_EFFECTIVE_ROLLS_PER_BATCH;
+    : source === 'frenzy'
+      ? MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH
+      : MAX_EFFECTIVE_ROLLS_PER_BATCH;
   if (!Number.isSafeInteger(maxSupportedRollCount) || rollCount > maxSupportedRollCount) {
     throw new Error('Roll batch exceeds the supported processing cap; no rolls were processed.');
   }
@@ -6974,7 +6980,7 @@ export async function claimOrbFrenzy(options: {
   // batch to at most 50,000 representative samples and reports exact weighted progress.
   let lastProgressWriteAt = 0;
   while (remainingCount > 0) {
-    const chunkCount = Math.min(MAX_EFFECTIVE_ROLLS_PER_BATCH, remainingCount);
+    const chunkCount = Math.min(MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH, remainingCount);
     const result = await applyRolls(
       s,
       1,
