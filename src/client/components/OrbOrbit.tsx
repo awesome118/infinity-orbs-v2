@@ -23,10 +23,6 @@ export function OrbOrbit({ orbs, radius = 152 }: Props) {
 
   return (
     <div aria-hidden="true" className="io-orbit-system absolute inset-0 flex items-center justify-center pointer-events-none">
-      <div
-        className="io-orbit-track absolute rounded-full"
-        style={{ width: radius * 2, height: radius * 2 }}
-      />
       <div className="io-orbit-rotator relative w-0 h-0">
         {visibleOrbs.map((orb, index) => {
           const angle = (index / orbitCount) * Math.PI * 2 - Math.PI / 2;
