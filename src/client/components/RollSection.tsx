@@ -532,15 +532,22 @@ export const RollSection: React.FC<RollSectionProps> = ({
               handleRollClick();
             }
           }}
-          className={`io-main-orb relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 ${cosmeticEffectClass} ${
-            isRevealing ? 'scale-105 ring-4 ring-white/60' : 'hover:scale-102'
-          }`}
+          className={`io-main-orb relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 ${cosmeticEffectClass} ${isRevealing ? 'is-revealing scale-105 ring-4 ring-white/60' : 'hover:scale-102'}`}
+          data-orb-tier={orbInfo?.tier.toLowerCase() ?? 'unknown'}
+          data-orb-band={displayOrb?.isInfinity ? 'infinity' : displayOrb && displayOrb.rarity >= 1e15 ? 'endgame' : displayOrb && displayOrb.rarity >= 100_000 ? 'mythic' : displayOrb && displayOrb.rarity >= 1_000 ? 'epic' : 'standard'}
           style={{
+            '--io-orb-accent': orbInfo?.color ?? '#73d9e5',
             background: orbInfo
               ? orbInfo.bgGradient
               : 'radial-gradient(circle at 35% 30%, #6366f1, #312e81 65%, #0f172a)',
-          }}
+          } as React.CSSProperties}
         >
+          <span className="io-orb-surface" aria-hidden="true">
+            <span className="io-orb-surface-orbit io-orb-surface-orbit-a" />
+            <span className="io-orb-surface-orbit io-orb-surface-orbit-b" />
+            <span className="io-orb-surface-core" />
+            <span className="io-orb-surface-glint" />
+          </span>
           {/* Exact reward burst. These values come from the authoritative roll response. */}
           {batchSummary && rewardBurstActive && (
             <div
