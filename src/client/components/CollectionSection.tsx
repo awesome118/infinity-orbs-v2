@@ -416,10 +416,13 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {items.map(item => {
               const info = getOrbInfo(item.rarity, item.isInfinity);
+              const isEndgameRarity = item.isInfinity || item.rarity >= 1e15;
               return (
                 <div
                   key={item.isInfinity ? 'Infinity' : item.rarity}
-                  className="relative rounded-2xl p-4 border bg-slate-900/90 border-slate-800 hover:border-slate-700 transition-all shadow-md"
+                  className={`io-codex-entry relative rounded-2xl p-4 border bg-slate-900/90 border-slate-800 hover:border-slate-700 transition-all shadow-md ${isEndgameRarity ? 'is-endgame' : ''}`}
+                  data-orb-tier={info.tier.toLowerCase()}
+                  aria-label={`${info.tier} ${info.name}, rarity 1 in ${formatRarity(item.rarity, item.isInfinity)}, owned ${fmt(item.count)} times`}
                 >
                   <div className="flex items-center gap-3.5">
                     <div
