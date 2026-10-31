@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star, Users, MessageSquarePlus, Bell, BellOff, ScrollText, Swords } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { getLevelBenefits, getLevelProgress, onlinePlayerLuckMultiplier, formatShardAmount, formatNumber } from '../../shared/game.js';
+import { getLevelBenefits, getLevelProgress, onlinePlayerLuckMultiplier, formatShardAmount, formatNumber, MAX_PLAYER_LEVEL } from '../../shared/game.js';
 import { sound } from '../sound.js';
 import { APP_VERSION } from '../../shared/version.js';
 
@@ -110,15 +110,19 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               className="io-level-progress"
-              aria-label={`View progress. ${fmt(levelInfo.currentLevelXp)} of ${fmt(levelInfo.nextLevelXp)} XP toward level ${levelInfo.level + 1}.`}
+              aria-label={displayedLevel >= MAX_PLAYER_LEVEL
+                ? `Maximum Paragon Level ${MAX_PLAYER_LEVEL} reached.`
+                : `View progress. ${fmt(levelInfo.currentLevelXp)} of ${fmt(levelInfo.nextLevelXp)} XP toward level ${levelInfo.level + 1}.`}
               onClick={() => onOpenProfile?.()}
-              title={`Progress to Level ${levelInfo.level + 1}: ${fmt(levelInfo.currentLevelXp)} / ${fmt(levelInfo.nextLevelXp)} XP`}
+              title={displayedLevel >= MAX_PLAYER_LEVEL
+                ? `Maximum Paragon Level ${MAX_PLAYER_LEVEL} reached`
+                : `Progress to Level ${levelInfo.level + 1}: ${fmt(levelInfo.currentLevelXp)} / ${fmt(levelInfo.nextLevelXp)} XP`}
             >
               <span className="io-level-progress-track" aria-hidden="true">
                 <span style={{ width: `${levelInfo.progressPercent}%` }} />
               </span>
               <span className="io-level-progress-copy">
-                {fmt(levelInfo.currentLevelXp)} / {fmt(levelInfo.nextLevelXp)} XP
+                {displayedLevel >= MAX_PLAYER_LEVEL ? 'MAX LEVEL' : `${fmt(levelInfo.currentLevelXp)} / ${fmt(levelInfo.nextLevelXp)} XP`}
               </span>
             </button>
           </div>

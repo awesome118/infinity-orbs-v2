@@ -1997,9 +1997,9 @@ export function xpRequiredForLevel(level: number): number {
     // from the exact Level 1,000 cost with a gentler power curve so the
     // expanded endgame remains challenging without the old linear multiplier
     // making each additional level disproportionately expensive.
+    const legacyCapBase = Math.floor(70 * Math.pow(LEVEL_EXPANSION_START, 1.30));
     const legacyCapCost = Math.floor(
-      70 * Math.pow(LEVEL_EXPANSION_START, 1.30) *
-      (1 + (LEVEL_EXPANSION_START - 25) * 0.10),
+      legacyCapBase * (1 + (LEVEL_EXPANSION_START - 25) * 0.10),
     );
     return Math.floor(legacyCapCost * Math.pow(safeLevel / LEVEL_EXPANSION_START, 1.35));
   }
