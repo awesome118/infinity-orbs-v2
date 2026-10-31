@@ -204,9 +204,9 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   };
 
   return (
-    <div className="io-page-hero io-page-shell io-page-boosters max-w-5xl mx-auto space-y-6">
+    <div className="io-page-shell io-page-boosters max-w-5xl mx-auto space-y-6">
       {globalActivationError && <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-950/30 px-4 py-3 text-xs text-rose-200">{globalActivationError}</div>}
-      <section className="rounded-3xl border border-indigo-500/25 bg-gradient-to-br from-slate-900 via-indigo-950/20 to-slate-900 p-5 shadow-xl">
+      <section className="io-page-hero rounded-3xl border border-indigo-500/25 bg-gradient-to-br from-slate-900 via-indigo-950/20 to-slate-900 p-5 shadow-xl">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
