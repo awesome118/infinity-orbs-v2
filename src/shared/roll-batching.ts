@@ -4,6 +4,10 @@
  */
 export const MAX_SIMULATED_ROLLS_PER_BATCH = 50_000;
 export const MAX_EFFECTIVE_ROLLS_PER_BATCH = 500_000;
+// A single Frenzy HTTP request is more expensive than a normal roll batch.
+// Keep its total representative-sample work substantially lower.
+export const MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH = 25_000;
+export const MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH = 2_500_000;
 
 /**
  * Find sample rarity bounds without spreading a potentially large array into
@@ -34,6 +38,7 @@ export function createRollBatchPlan(
   effectiveCount: number,
   protectedOpeningCount = 0,
   compress = true,
+  maxSimulatedRolls = MAX_SIMULATED_ROLLS_PER_BATCH,
 ): RollBatchPlan {
   const safeCount = Number.isSafeInteger(effectiveCount) ? Math.max(0, effectiveCount) : 0;
   const opening = Math.min(
@@ -41,8 +46,11 @@ export function createRollBatchPlan(
     Number.isSafeInteger(protectedOpeningCount) ? Math.max(0, protectedOpeningCount) : 0,
   );
   const remaining = safeCount - opening;
-  const weight = compress && remaining > MAX_SIMULATED_ROLLS_PER_BATCH
-    ? Math.ceil(remaining / MAX_SIMULATED_ROLLS_PER_BATCH)
+  const sampleLimit = Number.isSafeInteger(maxSimulatedRolls)
+    ? Math.max(1, maxSimulatedRolls)
+    : MAX_SIMULATED_ROLLS_PER_BATCH;
+  const weight = compress && remaining > sampleLimit
+    ? Math.ceil(remaining / sampleLimit)
     : 1;
   const sampleCount = remaining > 0 ? Math.ceil(remaining / weight) : 0;
 
