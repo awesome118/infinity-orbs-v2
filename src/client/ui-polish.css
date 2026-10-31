@@ -4467,3 +4467,80 @@
   background: rgba(48,112,139,.15) !important;
   color: #b6dce7 !important;
 }
+
+
+/* Main roll view: keep the Orb and a small purchase loop visible together. */
+.io-ui .roll-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(292px, 318px);
+  max-width: 1280px;
+  gap: 16px;
+}
+.io-ui .roll-main { max-width: none; gap: 10px; }
+.io-ui .roll-sidebar { min-width: 0; gap: 10px; }
+.io-ui .io-inline-upgrade-shop {
+  padding: 13px;
+  border: 1px solid rgba(80, 151, 188, .2);
+  border-radius: 16px;
+  background: linear-gradient(155deg, rgba(17, 32, 42, .98), rgba(10, 19, 27, .98));
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .18), inset 0 1px rgba(156, 208, 225, .035);
+}
+.io-ui .io-inline-upgrade-head { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 1px 10px; }
+.io-ui .io-inline-upgrade-kicker { display:flex; align-items:center; gap:6px; color:#91cfe4; font-size:9px; font-weight:900; letter-spacing:.15em; }
+.io-ui .io-inline-upgrade-balance { display:flex; align-items:center; gap:6px; margin-top:5px; color:#f4d58a; font-size:16px; font-weight:900; font-variant-numeric:tabular-nums; }
+.io-ui .io-inline-upgrade-balance span { color:#718890; font-size:8px; letter-spacing:.12em; }
+.io-ui .io-inline-upgrade-count { padding:5px 7px; border-radius:7px; color:#9bd8bd; background:rgba(53,131,102,.12); font-size:9px; font-weight:900; letter-spacing:.08em; }
+.io-ui .io-inline-upgrade-list { display:grid; gap:6px; }
+.io-ui .io-inline-upgrade-row { display:flex; align-items:center; justify-content:space-between; min-width:0; gap:8px; padding:8px; border:1px solid rgba(93,144,168,.14); border-radius:10px; background:rgba(5,14,22,.48); transition:border-color .16s ease,background .16s ease,transform .16s ease; }
+.io-ui .io-inline-upgrade-row.is-affordable { border-color:rgba(90,174,151,.3); background:rgba(24,62,54,.2); }
+.io-ui .io-inline-upgrade-row.is-upgraded { border-color:rgba(211,171,93,.55); background:rgba(110,76,24,.2); }
+.io-ui .io-inline-upgrade-identity { display:flex; align-items:center; min-width:0; gap:8px; }
+.io-ui .io-inline-upgrade-icon { display:grid; width:30px; height:30px; flex:0 0 auto; place-items:center; border-radius:8px; background:rgba(52,111,142,.16); }
+.io-ui .io-inline-upgrade-icon svg { width:16px; height:16px; }
+.io-ui .io-inline-upgrade-name { display:grid; min-width:0; gap:2px; }
+.io-ui .io-inline-upgrade-name strong { overflow:hidden; color:#e5edf0; font-size:10px; font-weight:850; text-overflow:ellipsis; white-space:nowrap; }
+.io-ui .io-inline-upgrade-name small { display:flex; align-items:center; gap:3px; overflow:hidden; color:#849ba5; font-size:9px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.io-ui .io-inline-upgrade-name small b { color:#a6d5e8; font-weight:800; }
+.io-ui .io-inline-upgrade-buy { min-width:68px; max-width:92px; padding:7px 8px; border:1px solid rgba(224,184,102,.3); border-radius:8px; color:#f7d88d; background:rgba(119,83,33,.2); font-size:9px; font-weight:900; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.io-ui .io-inline-upgrade-buy:not(:disabled):hover { border-color:rgba(244,208,128,.65); background:rgba(143,101,36,.32); }
+.io-ui .io-inline-upgrade-buy:disabled { border-color:rgba(100,128,142,.14); color:#62747a; background:rgba(33,47,54,.45); }
+.io-ui .io-inline-upgrade-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; padding-top:9px; }
+.io-ui .io-inline-upgrade-footer label { display:flex; align-items:center; gap:5px; color:#8da1a8; font-size:9px; font-weight:750; }
+.io-ui .io-inline-upgrade-footer input { width:12px; height:12px; accent-color:#61b8d0; }
+.io-ui .io-inline-upgrade-footer button { padding:5px 7px; border:1px solid rgba(82,149,179,.22); border-radius:7px; color:#9ecfe0; background:rgba(42,91,112,.15); font-size:9px; font-weight:850; }
+.io-ui .io-inline-upgrade-footer button:disabled { color:#62747a; }
+.io-ui .io-roll-sidebar-summary { padding:12px; }
+.io-ui .io-roll-sidebar-summary .latest-orb { margin-top:9px; gap:9px; }
+.io-ui .io-roll-sidebar-summary .latest-orb-mark { width:34px; height:34px; }
+.io-ui .io-roll-sidebar-summary .latest-orb-name { font-size:11px; }
+.io-ui .io-roll-sidebar-summary .latest-orb-rarity { font-size:10px; }
+.io-ui .io-roll-summary-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 10px; margin-top:10px; }
+.io-ui .io-roll-summary-grid > div { display:grid; gap:2px; min-width:0; }
+.io-ui .io-roll-summary-grid span { color:#7e9299; font-size:8px; font-weight:850; letter-spacing:.09em; text-transform:uppercase; }
+.io-ui .io-roll-summary-grid strong { overflow:hidden; color:#dce8e8; font-size:11px; font-weight:850; font-variant-numeric:tabular-nums; text-overflow:ellipsis; white-space:nowrap; }
+.io-ui .io-roll-horizon-progress { display:flex; justify-content:space-between; gap:8px; margin-top:10px; padding-top:8px; border-top:1px solid rgba(100,145,164,.12); color:#71868d; font-size:8px; font-weight:850; letter-spacing:.1em; }
+.io-ui .io-roll-horizon-progress strong { color:#a8cad3; font-size:9px; }
+
+@media (min-width: 1120px) {
+  .io-ui .app-main { padding-top: 12px; padding-bottom: 18px; }
+  .io-ui .roll-layout { align-items: start; }
+  .io-ui .roll-main { gap: 9px; }
+  .io-ui .roll-stage { min-height: 390px; padding: 13px 16px 12px; gap: 4px; }
+  .io-ui .roll-stage .relative.w-full.flex.items-center { min-height: 218px; padding: 0; }
+  .io-ui .roll-stage .io-main-orb { width: 150px; height: 150px; }
+  .io-ui .roll-controls { gap: 6px !important; }
+  .io-ui .roll-controls .roll-button { min-height: 44px; padding-block: 10px; font-size: 12px !important; }
+  .io-ui .roll-controls .roll-action-hint { min-height: 0; font-size: 10px; }
+  .io-ui .roll-controls > button:not(.roll-button) { padding-block: 7px; }
+  .io-ui .roll-controls details { padding-block: 7px; }
+  .io-ui .io-roll-page-head { margin-bottom: 0; }
+}
+@media (max-width: 1119px) {
+  .io-ui .roll-layout { grid-template-columns: minmax(0,1fr); max-width: 920px; }
+  .io-ui .roll-main { max-width: 760px; }
+  .io-ui .roll-sidebar { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start; }
+  .io-ui .io-inline-upgrade-shop { grid-row:span 2; }
+}
+@media (max-width: 640px) {
+  .io-ui .roll-sidebar { display:flex; }
+  .io-ui .roll-stage { min-height:470px; }
+}
