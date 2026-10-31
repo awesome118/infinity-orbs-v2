@@ -423,6 +423,19 @@ export const RollSection: React.FC<RollSectionProps> = ({
   return (
     <div className="roll-layout">
       <section className="roll-main flex flex-col items-center justify-center max-w-2xl mx-auto space-y-4">
+      <header className="io-roll-page-head">
+        <div className="io-roll-page-copy">
+          <div className="io-roll-eyebrow">MAIN GAME <span>/</span> ORB ENGINE</div>
+          <h1>Roll Orbs</h1>
+          <p>Each roll is a new shot at the next rarity record.</p>
+        </div>
+        <div className="io-roll-status" data-state={busy ? 'busy' : frenzyArmed ? 'frenzy' : canRoll ? 'ready' : 'cooldown'} role="status" aria-live="polite">
+          <span className="io-roll-status-dot" />
+          <span className="io-roll-status-main">{busy ? 'PROCESSING' : frenzyArmed ? (frenzyReady ? 'FRENZY READY' : 'FRENZY ARMED') : canRoll ? 'READY' : 'COOLDOWN'}</span>
+          <span className="io-roll-status-detail">{busy ? 'Waiting for server result' : frenzyArmed ? (frenzyReady ? 'Release available' : 'Waiting for roll timer') : canRoll ? 'Next roll available' : `${(remain / 1000).toFixed(1)}s remaining`}</span>
+        </div>
+      </header>
+
       {/* Weekly Cosmos Milestone Goal Banner */}
       {worldEvent && (
         <div className="w-full bg-gradient-to-r from-purple-950/70 via-slate-900 to-indigo-950/70 border border-purple-500/30 rounded-2xl p-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-lg">
@@ -463,6 +476,10 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
       {/* Main Celestial Orb Stage (Orbits & Main Orb are concentric and centered together) */}
       <div className={`roll-stage relative w-full flex items-center justify-center select-none ${isFirstSession ? 'is-first-session' : ''} ${busy ? 'is-rolling' : ''} ${isShaking ? 'animate-screen-shake' : ''}`}>
+        <div className="roll-stage-topline" aria-hidden="true">
+          <span>ORB CHAMBER <i /></span>
+          <span>{busy ? 'RESOLVING' : displayOrb ? 'LATEST RESULT' : 'AWAITING ROLL'}</span>
+        </div>
         {/* Ambient Glow Background centered on orb */}
         <div
           className="absolute w-64 h-64 rounded-full blur-3xl opacity-20 pointer-events-none transition-colors duration-700"
@@ -1000,26 +1017,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
         </button>
       )}
 
-      {/* Quick Specs Footer */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 w-full text-center text-xs">
-        <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-2.5">
-          <span className="text-slate-500 block text-[10px] font-semibold uppercase">Cooldown</span>
-          <span className="font-bold text-slate-200">{(cd / 1000).toFixed(1)}s</span>
-        </div>
-        <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-2.5">
-          <span className="text-slate-500 block text-[10px] font-semibold uppercase">Multi Roll</span>
-          <span className="font-bold text-slate-200">×{multi}</span>
-        </div>
-        <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-2.5">
-          <span className="text-slate-500 block text-[10px] font-semibold uppercase">Total Luck</span>
-          <span className="font-bold text-cyan-300">{formatNumber(totalLuckMultiplier)}x</span>
-        </div>
-        <div className="level-scaling-card rounded-xl border border-violet-300/25 bg-gradient-to-br from-violet-950/80 via-slate-900/80 to-cyan-950/60 p-2.5 shadow-[0_0_22px_rgba(139,92,246,.13)]">
-          <span className="block text-[10px] font-semibold uppercase tracking-wide text-violet-200/80">Rarity Scaling</span>
-          <span className="font-black text-cyan-100">×{formatNumber(luckRarityFactor(totalLuckMultiplier))}</span>
-          <span className="mt-1 block text-[10px] text-violet-200/75">Luck curve × Level {Math.max(1, Math.floor(Number(state.level) || 1))} = ×{formatNumber(luckRarityFactor(totalLuckMultiplier) * Math.max(1, Math.floor(Number(state.level) || 1)))}</span>
-        </div>
-      </div>
         </section>
 
       <aside className="roll-sidebar" aria-label="Run summary">
@@ -1055,6 +1052,19 @@ export const RollSection: React.FC<RollSectionProps> = ({
           ) : (
             <p className="field-empty">Every listed horizon is behind you. The continuum keeps going.</p>
           )}
+        </section>
+
+        <section className="field-card field-card-run-data" aria-label="Run telemetry">
+          <div className="field-card-header">
+            <span className="field-label">Run telemetry</span>
+            <span className="field-live-tag"><i /> LIVE</span>
+          </div>
+          <div className="field-metric-grid">
+            <div className="field-metric"><span>Total rolls</span><strong>{formatNumber(totalRollCount)}</strong></div>
+            <div className="field-metric"><span>Total luck</span><strong>{formatNumber(totalLuckMultiplier)}×</strong></div>
+            <div className="field-metric"><span>Multi roll</span><strong>×{multi}</strong></div>
+            <div className="field-metric"><span>Rarity curve</span><strong>×{formatNumber(luckRarityFactor(totalLuckMultiplier))}</strong></div>
+          </div>
         </section>
       </aside>
     </div>
