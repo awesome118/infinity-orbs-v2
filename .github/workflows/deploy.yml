@@ -178,3 +178,4 @@ jobs:
           npx devvit list installs r/infinity_orbs_dev
 
 # Dev-only deployment trigger: refreshed credentials; keep production installation in a separate workflow.
+# Retry: restore the XP bar's tested accessible label while retaining the max-level announcement.
