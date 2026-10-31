@@ -51,6 +51,7 @@ import {
   critMultiplier,
   calculateLevelFromXp,
   applyLevelProgress,
+  MAX_PLAYER_LEVEL,
   totalXpRequiredBeforeLevel,
   type MasterySkillId,
   type PremiumBoosterId,
@@ -2695,7 +2696,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     MASTERY_SKILL_LEVEL_LIMITS,
   );
 
-  const parsedLevel = Math.max(1, Math.min(1000, Math.floor(Number(parsed.level ?? 1) || 1)));
+  const parsedLevel = Math.max(1, Math.min(MAX_PLAYER_LEVEL, Math.floor(Number(parsed.level ?? 1) || 1)));
   const parsedXp = Math.max(0, Number(parsed.xp ?? 0) || 0);
   const calculatedLevel = calculateLevelFromXp(parsedXp).level;
   const storedLevelXpFloor = Number(parsed.levelXpFloor);
