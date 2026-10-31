@@ -171,7 +171,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="io-page-hero io-page-shell io-page-codex max-w-4xl mx-auto space-y-6">
       <div className="bg-gradient-to-r from-slate-900 via-purple-950/20 to-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
