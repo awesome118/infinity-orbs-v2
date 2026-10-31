@@ -265,7 +265,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="io-page-shell io-page-social max-w-4xl mx-auto space-y-6">
       {guildLoadError && (
         <div role="alert" aria-live="assertive" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-xs text-rose-200">
           <div>
@@ -281,7 +281,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
       )}
       {(socialError || socialNotice) && <div role={socialError ? 'alert' : 'status'} aria-live={socialError ? 'assertive' : 'polite'} className={socialError ? 'rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-xs text-rose-200' : 'rounded-xl border border-emerald-500/20 bg-emerald-950/10 p-3 text-xs text-emerald-200'}>{socialError || socialNotice}</div>}
       {/* Sub-navigation */}
-      <div role="group" aria-label="Guilds and social sections" className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">
+      <div role="group" aria-label="Guilds and social sections" className="io-social-tabs flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">
         <button
           type="button"
           aria-pressed={activeTab === 'guild'}
@@ -289,7 +289,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
             sound.playClick();
             setActiveTab('guild');
           }}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+          className={`io-social-tab flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
             activeTab === 'guild'
               ? 'bg-purple-600 text-white shadow-md'
               : 'text-slate-400 hover:text-white bg-slate-900/60'
@@ -306,7 +306,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
             sound.playClick();
             setActiveTab('leaderboard');
           }}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+          className={`io-social-tab flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
             activeTab === 'leaderboard'
               ? 'bg-purple-600 text-white shadow-md'
               : 'text-slate-400 hover:text-white bg-slate-900/60'
@@ -323,7 +323,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
             sound.playClick();
             setActiveTab('event');
           }}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+          className={`io-social-tab flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
             activeTab === 'event'
               ? 'bg-purple-600 text-white shadow-md'
               : 'text-slate-400 hover:text-white bg-slate-900/60'
@@ -341,7 +341,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
             /* Player Is In A Guild */
             <div className="space-y-6">
               {/* Guild Header Hero */}
-              <div className="bg-gradient-to-r from-slate-900 via-purple-950/30 to-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl">
+              <div className="io-social-guild-hero bg-gradient-to-r from-slate-900 via-purple-950/30 to-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-2xl bg-purple-600/20 border border-purple-500/40 flex items-center justify-center font-black text-purple-300 text-lg">
@@ -391,7 +391,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
+                  <div className="io-social-task-grid grid grid-cols-1 lg:grid-cols-3 gap-2.5">
                     {(myGuild.tasks ?? []).map(task => {
                       const rawTarget = Number(task.target);
                       const target = Number.isFinite(rawTarget) && rawTarget > 0 ? rawTarget : 1;
@@ -399,7 +399,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                       const progress = Number.isFinite(rawProgress) ? Math.max(0, Math.min(target, rawProgress)) : 0;
                       const percent = Math.max(0, Math.min(100, (progress / target) * 100));
                       return (
-                        <div key={task.id} className="bg-slate-950/60 border border-slate-800 rounded-2xl p-3">
+                        <div key={task.id} className="io-social-task-card bg-slate-950/60 border border-slate-800 rounded-2xl p-3">
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-[11px] font-black text-purple-200">{task.type.toUpperCase()}</span>
                             <span className="text-[10px] font-black text-amber-300 border border-amber-500/30 bg-amber-500/10 rounded-lg px-2 py-0.5">
@@ -433,7 +433,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                     const effectCritPower = guildComboCritLuckBonus(combo, now);
                     const durationProgress = guildComboTimeProgress(combo, now);
                     return (
-                      <div className="rounded-2xl border border-fuchsia-500/30 bg-fuchsia-950/15 p-4">
+                      <div className="io-social-combo-card rounded-2xl border border-fuchsia-500/30 bg-fuchsia-950/15 p-4">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                           <div>
                             <div className="flex items-center gap-2">
@@ -518,7 +518,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
 
               {/* Weekly Guild Raid Boss */}
               {myGuild.boss && (
-                <div className="bg-gradient-to-r from-red-950/40 via-slate-900 to-purple-950/40 border border-red-500/30 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+                <div className="io-social-raid-card bg-gradient-to-r from-red-950/40 via-slate-900 to-purple-950/40 border border-red-500/30 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-600 to-amber-600 flex items-center justify-center text-white shadow-lg shadow-red-950/50">
@@ -581,7 +581,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
               )}
 
               {/* Guild Perks Chamber */}
-              <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+              <div className="io-social-perks-panel bg-slate-900/80 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
                   <div>
                     <div className="flex items-center gap-2">
@@ -1145,9 +1145,9 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
             ))}
           </div>
           {displayedLeaderboard.length === 0 && <div role="status" className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-500">No entries for {leaderboardMeta.find(item => item.id === activeLeaderboard)?.label ?? 'this leaderboard'} yet. Eligible players appear after sharing an Orb post.</div>}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-800/60">
+          <div className="io-social-leaderboard bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-800/60">
             {displayedLeaderboard.map((entry, idx) => (
-              <div key={entry.username} aria-label={`Rank ${idx+1}: ${entry.username}, ${leaderboardMetric(entry)}`} className="flex items-center justify-between p-3 sm:px-4 text-xs hover:bg-slate-800/40 transition-colors">
+              <div key={entry.username} aria-label={`Rank ${idx+1}: ${entry.username}, ${leaderboardMetric(entry)}`} className="io-social-leaderboard-row flex items-center justify-between p-3 sm:px-4 text-xs hover:bg-slate-800/40 transition-colors">
                 <div className="flex items-center gap-3">
                   <span className={`w-6 text-center font-black text-sm ${idx===0?'text-amber-400':idx===1?'text-slate-300':idx===2?'text-amber-600':'text-slate-500'}`}>#{idx+1}</span>
                   <div>
@@ -1164,7 +1164,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
 
       {/* 3. COMMUNITY EVENT TAB */}
       {activeTab === 'event' && worldEvent && (
-        <div className="bg-gradient-to-b from-slate-900 via-indigo-950/20 to-slate-900 border border-indigo-500/30 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
+        <div className="io-social-event bg-gradient-to-b from-slate-900 via-indigo-950/20 to-slate-900 border border-indigo-500/30 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="p-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400">
