@@ -1081,7 +1081,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           </div>
           <div className="field-metric-grid">
             <div className="field-metric"><span>Total rolls</span><strong>{formatNumber(totalRollCount)}</strong></div>
-            <div className="field-metric"><span>Total luck</span><strong>{formatNumber(totalLuckMultiplier)}×</strong></div>
+            <div className="field-metric"><span>Total Luck</span><strong>{formatNumber(totalLuckMultiplier)}×</strong></div>
             <div className="field-metric"><span>Multi roll</span><strong>×{multi}</strong></div>
             <div className="field-metric"><span>Rarity curve</span><strong>×{formatNumber(luckRarityFactor(totalLuckMultiplier))}</strong></div>
           </div>
