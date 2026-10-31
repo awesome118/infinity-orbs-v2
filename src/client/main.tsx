@@ -100,6 +100,7 @@ import { APP_VERSION } from '../shared/version.js';
 import './styles.css';
 import './ui-polish.css';
 import './experience-200.css';
+import './mobile-experience.css';
 
 function optimisticShardSpend(
   state: PlayerState,
