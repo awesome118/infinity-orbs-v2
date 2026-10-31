@@ -4544,3 +4544,51 @@
   .io-ui .roll-sidebar { display:flex; }
   .io-ui .roll-stage { min-height:470px; }
 }
+
+
+/* On desktop, the roll controls share a row instead of extending the page downward. */
+@media (min-width: 1120px) {
+  .io-ui .roll-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 9px 12px;
+  }
+  .io-ui .roll-main > .io-roll-page-head,
+  .io-ui .roll-main > .roll-stage,
+  .io-ui .roll-main > .w-full.bg-gradient-to-r {
+    grid-column: 1 / -1;
+  }
+  .io-ui .roll-main > .roll-stage {
+    min-height: 312px;
+    padding-block: 9px;
+  }
+  .io-ui .roll-main > .roll-stage .relative.w-full.flex.items-center {
+    min-height: 174px;
+  }
+  .io-ui .roll-main > .w-full.flex.flex-col.items-center.space-y-2 {
+    grid-column: 1;
+    min-width: 0;
+    padding: 4px 8px;
+  }
+  .io-ui .roll-main > .roll-controls {
+    grid-column: 2;
+    width: 100%;
+    max-width: none;
+    align-self: start;
+    padding-top: 3px;
+    gap: 5px !important;
+  }
+  .io-ui .roll-main > .roll-controls details { margin-top: 1px; }
+  .io-ui .roll-main > .roll-controls button { min-height: 34px; }
+  .io-ui .roll-main > .roll-controls .roll-button { min-height: 42px; }
+}
+@media (min-width: 1120px) and (max-height: 820px) {
+  .io-ui .app-main { padding-top: 7px; padding-bottom: 8px; }
+  .io-ui .roll-main { gap: 6px 10px; }
+  .io-ui .roll-main > .roll-stage { min-height: 282px; padding-block: 6px; }
+  .io-ui .roll-main > .roll-stage .relative.w-full.flex.items-center { min-height: 150px; }
+  .io-ui .roll-main > .roll-stage .io-main-orb { width: 136px; height: 136px; }
+  .io-ui .roll-main > .w-full.flex.flex-col.items-center.space-y-2 { padding-block: 0; }
+  .io-ui .roll-main > .roll-controls { gap: 4px !important; padding-top: 0; }
+}
