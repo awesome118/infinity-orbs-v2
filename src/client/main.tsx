@@ -68,6 +68,7 @@ import {
   upgradeCost,
   prestigeUpgradeCost,
   masterySkillCost,
+  levelAdjustedXpReward,
   PREMIUM_BOOSTERS,
   AUTOMATIONS,
   FEATURE_UNLOCK_LEVELS,
@@ -2523,7 +2524,7 @@ function App() {
         coins: current.coins + quest.rewardCoins,
         lifetimeCoins: (current.lifetimeCoins ?? 0) + quest.rewardCoins,
         questsCompleted: (current.questsCompleted ?? 0) + 1,
-        xp: current.xp + (quest.rewardXp ?? 0),
+        xp: current.xp + levelAdjustedXpReward(current.level || 1, quest.rewardXp ?? 0),
       };
       grantFreeShards(next, quest.rewardShards ?? 0);
       applyLevelProgress(next);

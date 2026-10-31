@@ -9,6 +9,7 @@ import {
   calculateLevelFromXp,
   createInitialState,
   getLevelBenefits,
+  levelAdjustedXpReward,
   getLevelProgress,
   totalXpRequiredBeforeLevel,
   xpRequiredForLevel,
@@ -85,4 +86,24 @@ test('the new level cap remains stable and does not overflow level calculations'
   assert.equal(state.level, MAX_PLAYER_LEVEL);
   assert.equal(state.masteryPoints, 12);
   assert.equal(calculateLevelFromXp(Number.MAX_SAFE_INTEGER).level, MAX_PLAYER_LEVEL);
+});
+
+
+test('level XP bonuses apply to quest and community rewards as well as roll XP', () => {
+  assert.equal(levelAdjustedXpReward(1, 100), 100);
+  assert.equal(levelAdjustedXpReward(5, 100), 115);
+  assert.equal(levelAdjustedXpReward(1_000, 100), 138);
+  assert.equal(levelAdjustedXpReward(1_250, 100), 152);
+  assert.equal(levelAdjustedXpReward(10_000, 100), Math.round(100 * getLevelBenefits(10_000).xpMultiplier));
+  assert.equal(levelAdjustedXpReward(10, -100), 0);
+  assert.equal(levelAdjustedXpReward(10, Number.NaN), 0);
+});
+
+test('server and optimistic quest claims share the same level-adjusted XP calculation', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { resolve } = await import('node:path');
+  const server = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  const client = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
+  assert.match(server, /function applyXp\(s: PlayerState, amount: number\): void \{\s*s\.xp \+= levelAdjustedXpReward\(s\.level \|\| 1, amount\)/);
+  assert.match(client, /xp: current\.xp \+ levelAdjustedXpReward\(current\.level \|\| 1, quest\.rewardXp \?\? 0\)/);
 });

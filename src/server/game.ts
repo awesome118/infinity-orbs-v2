@@ -88,6 +88,7 @@ import {
   MASTERY_SKILLS,
   masterySkillCost,
   getLevelBenefits,
+  levelAdjustedXpReward,
   highestCodexChain,
   recordRollingSessionActivity,
   nextCodexChainRarity,
@@ -2810,7 +2811,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
 }
 
 function applyXp(s: PlayerState, amount: number): void {
-  s.xp += Math.max(0, Math.floor(amount));
+  s.xp += levelAdjustedXpReward(s.level || 1, amount);
   applyLevelProgress(s);
 }
 

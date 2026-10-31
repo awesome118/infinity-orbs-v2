@@ -1963,7 +1963,7 @@ export interface LevelMilestonePerk {
 }
 
 export const LEVEL_MILESTONES: LevelMilestonePerk[] = [
-  { level: 5, name: 'Novice Seeker', desc: '+15% XP earned on all rolls', bonusXpMultiplier: 1.15 },
+  { level: 5, name: 'Novice Seeker', desc: '+15% XP from rolls, quests, and community rewards', bonusXpMultiplier: 1.15 },
   { level: 10, name: 'Shard Sifter', desc: '+5% chance for bonus Shards', bonusShardChance: 0.05 },
   { level: 15, name: 'Chrono Adept', desc: 'Cooldown floor reduced by 150ms', bonusCooldownReductionMs: 150 },
   { level: 20, name: 'Alchemical Affinity', desc: 'Altar Sacrifices are 15% more potent', bonusAltarEffectMultiplier: 1.15 },
@@ -1979,7 +1979,7 @@ export const LEVEL_MILESTONES: LevelMilestonePerk[] = [
   { level: 500, name: 'Astral Zenith', desc: '+40% Luck and +10% Shard Chance!', bonusLuckMultiplier: 1.40, bonusShardChance: 0.10 },
   { level: 750, name: 'Infinite Arsenal', desc: '+3 Extra Orbs per activation!', bonusBalls: 3 },
   { level: 1000, name: 'Infinity Master', desc: '+50% Luck and 2.00× Coins!', bonusLuckMultiplier: 1.50, bonusCoinsMultiplier: 2.00 },
-  { level: 1250, name: 'Aether Cartographer', desc: '+10% XP from rolls and quests', bonusXpMultiplier: 1.10 },
+  { level: 1250, name: 'Aether Cartographer', desc: 'Another +10% XP from all sources', bonusXpMultiplier: 1.10 },
   { level: 1500, name: 'Stellar Economy', desc: '+15% Coin earnings', bonusCoinsMultiplier: 1.15 },
   { level: 2000, name: 'Paragon of Fortune', desc: '+20% Luck', bonusLuckMultiplier: 1.20 },
   { level: 2500, name: 'Celestial Chorus', desc: '+1 Extra Orb per activation', bonusBalls: 1 },
@@ -2050,6 +2050,19 @@ export function getLevelBenefits(level: number): LevelBenefits {
     cooldownReductionMs,
     altarEffectMultiplier,
   };
+}
+
+/** Apply the current level's cumulative XP bonus to quest and community rewards.
+ * Roll XP uses its per-orb batch calculation, so it deliberately does not call this helper.
+ */
+export function levelAdjustedXpReward(level: number, baseXp: number): number {
+  const numericXp = Number(baseXp);
+  if (!Number.isFinite(numericXp) || numericXp <= 0) return 0;
+  const safeXp = Math.floor(numericXp);
+  return Math.min(
+    Number.MAX_SAFE_INTEGER,
+    Math.max(0, Math.round(safeXp * getLevelBenefits(level).xpMultiplier)),
+  );
 }
 
 export function totalXpRequiredBeforeLevel(level: number): number {
