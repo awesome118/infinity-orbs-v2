@@ -1135,7 +1135,7 @@
 }
 
 .io-ui .app-main :is(p, li) {
-  color: inherit;
+  line-height: 1.55;
 }
 
 /* Flatten the repeated glossy card treatment without changing card structure. */
