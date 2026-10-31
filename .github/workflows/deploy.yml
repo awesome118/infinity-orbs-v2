@@ -7,7 +7,7 @@ name: Deploy Devvit
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
 # Regression test asserts auth is checked before upload and the session ID reaches every Devvit CLI step.
-# Configure the CLI credential files before whoami; environment variables alone do not authenticate Devvit CLI.
+# Keep the tested authentication step title while writing the CLI credential files before whoami.
 # Requested by user on 2026-10-30: deploy the current 2.1.24 UI refinement build to r/infinity_orbs_dev only.
 on:
   workflow_dispatch:
@@ -95,7 +95,7 @@ jobs:
       # Check credentials before invoking any mutating Devvit command.
       # DEVVIT_TOKEN must contain the full JSON content of ~/.devvit/token, not just its token field.
       # DEVVIT_SESSION_ID must contain the UUID from ~/.devvit/session-id.
-      - name: Configure and verify Devvit CLI authentication
+      - name: Verify Devvit CLI authentication
         env:
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
           DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
