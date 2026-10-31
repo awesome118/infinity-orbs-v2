@@ -4458,9 +4458,6 @@
 .io-ui .io-page-profile .io-page-hero .grid > div .text-purple-300 {
   color: #add5e2 !important;
 }
-.io-ui .io-page-profile .io-page-hero .grid > div .bg-purple-950\\/30 {
-  background: rgba(31,83,105,.24) !important;
-}
 .io-ui .brand-copy [role="button"][aria-label^="Open profile"] > div {
   background: linear-gradient(90deg, #286e8a, #62b4cb) !important;
   box-shadow: none !important;
