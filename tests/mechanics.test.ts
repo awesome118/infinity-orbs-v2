@@ -67,6 +67,11 @@ import {
   CHAIN_PATCHER_COOLDOWN_MS,
   applyLevelProgress,
   xpRequiredForLevel,
+  MAX_PLAYER_LEVEL,
+  calculateLevelFromXp,
+  getLevelProgress,
+  getLevelBenefits,
+  totalXpRequiredBeforeLevel,
   visibleContinuumTiers,
 } from '../src/shared/game.js';
 import {
@@ -339,6 +344,55 @@ test('Level progression awards one Mastery Point per level gained', () => {
   assert.equal(gained, 3);
   assert.equal(state.level, 4);
   assert.equal(state.masteryPoints, 3);
+});
+
+test('legacy level XP requirements remain unchanged through level 1,000 and stop inflating after it', () => {
+  assert.equal(xpRequiredForLevel(25), 4_596);
+  assert.equal(xpRequiredForLevel(1_000), 54_768_856);
+  assert.ok(
+    xpRequiredForLevel(1_001) / xpRequiredForLevel(1_000) < 1.01,
+    'the requirement should grow smoothly after 1,000, not jump by another 10%',
+  );
+  assert.equal(
+    xpRequiredForLevel(1_001),
+    Math.floor(Math.floor(70 * Math.pow(1_001, 1.3)) * 98.5),
+  );
+});
+
+test('legacy level-1,000 accounts convert stored excess XP into levels and Mastery Points', () => {
+  const state = createInitialState(NOW);
+  state.level = 1_000;
+  state.levelXpFloor = totalXpRequiredBeforeLevel(1_000);
+  state.xp = state.levelXpFloor +
+    xpRequiredForLevel(1_000) +
+    xpRequiredForLevel(1_001) +
+    xpRequiredForLevel(1_002) +
+    Math.floor(xpRequiredForLevel(1_003) / 2);
+
+  const gained = applyLevelProgress(state);
+  assert.equal(gained, 3);
+  assert.equal(state.level, 1_003);
+  assert.equal(state.masteryPoints, 3);
+  assert.equal(calculateLevelFromXp(state.xp).level, 1_003);
+  assert.equal(getLevelProgress(state.level, state.xp, state.levelXpFloor).level, 1_003);
+});
+
+test('Paragon levels extend to 50,000 with explicit milestone rewards and safe XP thresholds', () => {
+  assert.equal(MAX_PLAYER_LEVEL, 50_000);
+  assert.ok(Number.isSafeInteger(totalXpRequiredBeforeLevel(MAX_PLAYER_LEVEL + 1)));
+
+  const atOneThousand = getLevelBenefits(1_000);
+  const atTwentyFiveHundred = getLevelBenefits(2_500);
+  const atFiftyThousand = getLevelBenefits(MAX_PLAYER_LEVEL);
+  assert.equal(atTwentyFiveHundred.bonusBalls, atOneThousand.bonusBalls + 1);
+  assert.ok(atTwentyFiveHundred.luckMultiplier > atOneThousand.luckMultiplier);
+  assert.ok(atTwentyFiveHundred.coinsMultiplier > atOneThousand.coinsMultiplier);
+  assert.ok(atFiftyThousand.bonusBalls > atTwentyFiveHundred.bonusBalls);
+  assert.ok(atFiftyThousand.luckMultiplier > atTwentyFiveHundred.luckMultiplier);
+  assert.ok(atFiftyThousand.coinsMultiplier > atTwentyFiveHundred.coinsMultiplier);
+
+  const capXp = totalXpRequiredBeforeLevel(MAX_PLAYER_LEVEL + 1);
+  assert.equal(calculateLevelFromXp(capXp).level, MAX_PLAYER_LEVEL);
 });
 
 test('Legacy high-level accounts can progress after the XP curve changed', () => {
