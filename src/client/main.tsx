@@ -3324,7 +3324,7 @@ function App() {
                 <div className="io-nav-more-wrap">
                   <button
                     type="button"
-                    className={"nav-tab io-nav-more" + (moreNavOpen || ['boosters', 'altar', 'mastery'].includes(tab) ? " is-active" : "") + (tab === 'profile' ? " io-nav-profile-active" : "")}
+                    className={"nav-tab io-nav-more" + (moreNavOpen || ['boosters', 'altar', 'mastery'].includes(tab) ? " is-active" : "") + (['quests', 'social'].includes(tab) ? " io-nav-mobile-more-active" : "") + (tab === 'profile' ? " io-nav-profile-active" : "")}
                     aria-expanded={moreNavOpen}
                     aria-controls="io-more-navigation"
                     onClick={() => setMoreNavOpen(open => !open)}
@@ -3333,6 +3333,8 @@ function App() {
                     {tab === 'boosters' && <span className="io-nav-current-page">Boosters</span>}
                     {tab === 'altar' && <span className="io-nav-current-page">Altar</span>}
                     {tab === 'mastery' && <span className="io-nav-current-page">Mastery</span>}
+                    {tab === 'quests' && <span className="io-nav-current-page">Quests</span>}
+                    {tab === 'social' && <span className="io-nav-current-page">Community</span>}
                     <ChevronDown className="io-nav-icon io-nav-chevron" aria-hidden="true" />
                   </button>
                   {moreNavOpen && (
@@ -3346,6 +3348,8 @@ function App() {
                         <span>How to play</span>
                       </button>
                       <p className="io-nav-menu-title">More ways to play</p>
+                      {renderNavItem('quests', 'Quests', Calendar, streakReady || questsReady, 'io-nav-mobile-only')}
+                      {renderNavItem('social', 'Community', Users, false, 'io-nav-mobile-only')}
                       {renderNavItem('profile', 'Progress', Star, prestigeReady, 'io-nav-profile-mobile')}
                       {renderNavItem('boosters', 'Boosters', Dices)}
                       {renderNavItem('altar', 'Altar', Flame)}
