@@ -5051,3 +5051,16 @@
   .io-ui .io-page-boosters > section:nth-of-type(2),
   .io-ui .io-page-boosters > section:nth-of-type(3) { grid-column: 1 / -1; }
 }
+
+
+/* Full-width result shelves stay aligned beneath their page toolbars. */
+@media (min-width: 1180px) {
+  .io-ui .io-page-codex > [class*="grid-cols-"],
+  .io-ui .io-page-codex > nav[aria-label="Codex pages"],
+  .io-ui .io-page-codex > div[aria-live="polite"] {
+    grid-column: 1 / -1;
+  }
+  .io-ui .io-combat-page-dungeons > .io-combat-rule-panel {
+    grid-column: 1 / -1;
+  }
+}
