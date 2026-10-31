@@ -422,6 +422,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
                   key={item.isInfinity ? 'Infinity' : item.rarity}
                   className={`io-codex-entry relative rounded-2xl p-4 border bg-slate-900/90 border-slate-800 hover:border-slate-700 transition-all shadow-md ${isEndgameRarity ? 'is-endgame' : ''}`}
                   data-orb-tier={info.tier.toLowerCase()}
+                  role="group"
                   aria-label={`${info.tier} ${info.name}, rarity 1 in ${formatRarity(item.rarity, item.isInfinity)}, owned ${fmt(item.count)} times`}
                 >
                   <div className="flex items-center gap-3.5">
@@ -450,6 +451,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
                       </div>
 
                       <h3 className="text-sm font-black text-white truncate mt-1">{info.name}</h3>
+                      {isEndgameRarity && <span className="io-codex-endgame-tag">ENDGAME TIER</span>}
 
                       <div className="flex items-center justify-between text-xs text-slate-400 mt-1">
                         <span className="font-mono text-[11px]">1 in {formatRarity(item.rarity, item.isInfinity)}</span>
