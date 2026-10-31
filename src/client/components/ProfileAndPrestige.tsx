@@ -36,6 +36,7 @@ import {
   SHARD_SYNTHESIS_COST,
   MAX_COSMIC_DUST,
   getLevelBenefits,
+  MAX_PLAYER_LEVEL,
   formatNumber,
   unbrokenMomentumSpeedBonus,
 } from '../../shared/game.js';
@@ -189,11 +190,11 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
     }
   };
 
-  const safeStoredLevel=Number.isFinite(Number(state.level))?Math.max(1,Math.min(1000,Math.floor(Number(state.level)))):1;
-  const displayedLevel=safeStoredLevel;
+  const safeStoredLevel=Number.isFinite(Number(state.level))?Math.max(1,Math.min(MAX_PLAYER_LEVEL,Math.floor(Number(state.level)))):1;
   const safeTotalXp=Number.isFinite(Number(state.xp))?Math.max(0,Number(state.xp)):0;
-  const isMaxLevel=safeStoredLevel>=1000;
   const levelProgress=getLevelProgress(safeStoredLevel,safeTotalXp,state.levelXpFloor);
+  const displayedLevel=levelProgress.level;
+  const isMaxLevel=displayedLevel>=MAX_PLAYER_LEVEL;
   const levelInfo={
     ...levelProgress,
     currentLevelXp:isMaxLevel?levelProgress.nextLevelXp:levelProgress.currentLevelXp,
