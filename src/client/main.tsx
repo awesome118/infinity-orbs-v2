@@ -3321,9 +3321,11 @@ function App() {
             readyAt={readyAt}
             busy={isRolling}
             autoRoll={autoRoll}
-            worldEvent={worldEvent}
             onToggleAutoRoll={handleToggleAutoRoll}
             onRoll={handleRoll}
+            onBuyUpgrade={handleBuyUpgrade}
+            onBuyAllUpgrades={handleBuyAllUpgrades}
+            onActivateTurbo={handleActivateTurbo}
             onOrbFrenzy={handleStartOrbFrenzy}
             frenzyArmed={frenzyArmed}
             onOpenShareModal={(r, isInfinity) => { setShareRarity(r); setShareIsInfinity(!!isInfinity); }}
