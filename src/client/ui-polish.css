@@ -1760,3 +1760,43 @@
     padding-inline: 8px !important;
   }
 }
+
+
+/* Final HUD accents: one cyan signal color across level, navigation and tools. */
+.io-ui .brand-copy > div:first-child > button {
+  border: 1px solid #36758d !important;
+  border-radius: 5px !important;
+  color: #b8edf3 !important;
+  background: #102c3c !important;
+  box-shadow: none !important;
+}
+.io-ui .brand-copy > div:first-child > button svg {
+  color: #73d9e5 !important;
+}
+.io-ui .brand-copy [role="button"] {
+  border-color: #29485b !important;
+  border-radius: 3px !important;
+  background: #091722 !important;
+}
+.io-ui .brand-copy [role="button"] > div {
+  border-radius: 1px !important;
+  background: #73d9e5 !important;
+  box-shadow: none !important;
+}
+.io-ui .brand-copy [role="button"] + span {
+  color: #85b9c8 !important;
+}
+.io-ui .nav-tab:not(.is-active) > svg {
+  color: #7697a7 !important;
+}
+.io-ui .header-actions > button.header-icon-button {
+  width: 35px;
+  height: 35px;
+  padding: 0 !important;
+  border-radius: 6px !important;
+}
+.io-ui .header-actions > button.header-icon-button:hover {
+  border-color: #36758d !important;
+  color: #d7faff !important;
+  background: #142d3d !important;
+}
