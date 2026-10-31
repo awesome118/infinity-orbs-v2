@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star, Users, MessageSquarePlus, Bell, BellOff, ScrollText, Swords } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { LEVEL_MILESTONES, getLevelBenefits, getLevelProgress, onlinePlayerLuckMultiplier, formatShardAmount, formatNumber } from '../../shared/game.js';
+import { LEVEL_MILESTONES, MAX_PLAYER_LEVEL, getLevelBenefits, getLevelProgress, onlinePlayerLuckMultiplier, formatShardAmount, formatNumber } from '../../shared/game.js';
 import { sound } from '../sound.js';
 import { APP_VERSION } from '../../shared/version.js';
 
@@ -67,6 +67,7 @@ export const Header: React.FC<HeaderProps> = ({
     state.levelXpFloor,
   );
   const displayedLevel = levelInfo.level;
+  const isMaxLevel = displayedLevel >= MAX_PLAYER_LEVEL;
   const nextMilestone = LEVEL_MILESTONES.find(m => m.level > displayedLevel);
   const levelBenefits = getLevelBenefits(displayedLevel);
   return (
@@ -109,11 +110,11 @@ export const Header: React.FC<HeaderProps> = ({
               <div
                 role="button"
                 tabIndex={0}
-                aria-label={`Open profile. Experience progress: ${levelInfo.progressPercent}% to level ${levelInfo.level + 1}`}
+                aria-label={isMaxLevel ? `Maximum level ${MAX_PLAYER_LEVEL}. Open profile for progression details.` : `Open profile. Experience progress: ${levelInfo.progressPercent}% to level ${levelInfo.level + 1}`}
                 className="w-28 sm:w-40 h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800 p-0.5 relative cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
                 onClick={() => onOpenProfile?.()}
                 onKeyDown={event => { if (!event.repeat && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpenProfile?.(); } }}
-                title={`EXP: ${fmt(levelInfo.currentLevelXp)} / ${fmt(levelInfo.nextLevelXp)} (${levelInfo.progressPercent}%)`}
+                title={isMaxLevel ? `Maximum level reached · ${fmt(state.xp || 0)} total XP` : `EXP: ${fmt(levelInfo.currentLevelXp)} / ${fmt(levelInfo.nextLevelXp)} (${levelInfo.progressPercent}%)`}
               >
                 <div
                   className="h-full bg-purple-400 rounded-full transition-all duration-300 relative"
@@ -122,7 +123,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
               </div>
               <span className="text-[10px] font-mono text-slate-400 font-medium">
-                {levelInfo.progressPercent}%
+                {isMaxLevel ? 'MAX' : `${levelInfo.progressPercent}%`}
               </span>
               {nextMilestone && (
                 <span className="text-[9px] text-purple-300/80 hidden md:inline truncate max-w-[140px]">
