@@ -17,11 +17,9 @@ import {
   Radio,
   Filter,
   Compass,
-  Globe,
   Award,
 } from 'lucide-react';
-import type { PlayerState, Orb } from '../../shared/game.js';
-import type { WorldEvent } from '../../shared/social.js';
+import type { PlayerState, Orb, UpgradeId } from '../../shared/game.js';
 import {
   cooldownMs,
   rollsPerActivation,
@@ -38,6 +36,7 @@ import { combatBossLuckBonus, combatRuneBonuses, combatRuneLuckMultiplier, comba
 
 import { sound } from '../sound.js';
 import { OrbOrbit } from './OrbOrbit.js';
+import { UpgradesSection } from './UpgradesSection.js';
 
 interface RollSectionProps {
   state: PlayerState;
@@ -47,9 +46,11 @@ interface RollSectionProps {
   readyAt: number;
   busy: boolean;
   autoRoll: boolean;
-  worldEvent?: WorldEvent | null;
   onToggleAutoRoll: () => void;
   onRoll: () => Promise<void>;
+  onBuyUpgrade: (id: UpgradeId) => Promise<void>;
+  onBuyAllUpgrades: () => Promise<void>;
+  onActivateTurbo: () => Promise<void>;
   onOrbFrenzy: () => Promise<void>;
   frenzyArmed: boolean;
   onOpenShareModal: (rarity: number, isInfinity?: boolean) => void;
@@ -64,16 +65,6 @@ function prefersReducedMotion(): boolean {
   } catch {
     return false;
   }
-}
-
-function formatTimeLeft(ms: number): string {
-  if (ms <= 0) return 'Resetting soon';
-  const totalSecs = Math.floor(ms / 1000);
-  const days = Math.floor(totalSecs / 86400);
-  const hours = Math.floor((totalSecs % 86400) / 3600);
-  const mins = Math.floor((totalSecs % 3600) / 60);
-  if (days > 0) return `${days}d ${hours}h`;
-  return `${hours}h ${mins}m`;
 }
 
 function formatFrenzyCooldown(ms: number): string {
@@ -93,9 +84,11 @@ export const RollSection: React.FC<RollSectionProps> = ({
   readyAt,
   busy,
   autoRoll,
-  worldEvent,
   onToggleAutoRoll,
   onRoll,
+  onBuyUpgrade,
+  onBuyAllUpgrades,
+  onActivateTurbo,
   onOrbFrenzy,
   frenzyArmed,
   onOpenShareModal,
@@ -435,31 +428,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
           <span className="io-roll-status-detail">{busy ? 'Waiting for server result' : frenzyArmed ? (frenzyReady ? 'Release available' : 'Waiting for roll timer') : canRoll ? 'Next roll available' : `${(remain / 1000).toFixed(1)}s remaining`}</span>
         </div>
       </header>
-
-      {/* Weekly Cosmos Milestone Goal Banner */}
-      {worldEvent && (
-        <div className="w-full bg-gradient-to-r from-purple-950/70 via-slate-900 to-indigo-950/70 border border-purple-500/30 rounded-2xl p-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-lg">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-purple-500/20 border border-purple-400/30 flex items-center justify-center text-purple-300 shrink-0">
-              <Globe className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-white">Weekly Goal (Tier {worldEvent.tier})</span>
-                <span className="text-[10px] bg-purple-500/20 text-purple-300 font-bold px-2 py-0.5 rounded-full border border-purple-500/30">
-                  {worldEvent.buffDescription}
-                </span>
-              </div>
-              <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                {formatNumber(worldEvent.currentProgress)} / {formatNumber(worldEvent.goal)} rolls contributed
-              </div>
-            </div>
-          </div>
-          <div className="text-right text-[11px] font-mono text-amber-300/90 whitespace-nowrap bg-slate-950/60 border border-slate-800 px-2.5 py-1 rounded-lg">
-            ⏳ Resets in {formatTimeLeft(worldEvent.endsAt - now)}
-          </div>
-        </div>
-      )}
 
       {/* Turbo Roll Active Banner */}
       {isTurbo && (
@@ -1035,51 +1003,45 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
         </section>
 
-      <aside className="roll-sidebar" aria-label="Run summary">
-        <section className="field-card">
+      <aside className="roll-sidebar" aria-label="Quick upgrades and run summary">
+        <UpgradesSection
+          state={state}
+          onBuyUpgrade={onBuyUpgrade}
+          onBuyAllUpgrades={onBuyAllUpgrades}
+          onActivateTurbo={onActivateTurbo}
+          busy={busy}
+          compact
+        />
+        <section className="field-card io-roll-sidebar-summary" aria-label="Current run summary">
           <div className="field-card-header">
-            <span className="field-label">Latest discovery</span>
-            {displayOrb?.isNew && <span className="text-[9px] font-extrabold uppercase tracking-wider text-amber-300">New</span>}
+            <span className="field-label">Current run</span>
+            <span className="field-live-tag"><i /> LIVE</span>
           </div>
           {displayOrb ? (
             <div className="latest-orb">
-              <div key={`${displayOrb.rarity}:${displayOrb.isInfinity ? 1 : 0}`} className={`latest-orb-mark ${displayOrb?.isNew ? 'is-new-discovery' : ''}`}><Award className="h-5 w-5" /></div>
+              <div className={"latest-orb-mark" + (displayOrb.isNew ? " is-new-discovery" : "")}>
+                <Award className="h-5 w-5" />
+              </div>
               <div className="min-w-0">
                 <div className="latest-orb-name">{displayOrb.name}</div>
                 <div className="latest-orb-rarity">1 / {formatRarity(displayOrb.rarity, displayOrb.isInfinity)}</div>
               </div>
             </div>
           ) : (
-            <p className="field-empty">Your first Orb will appear here after you roll.</p>
+            <p className="field-empty">Your first Orb appears here after your first roll.</p>
           )}
-          {displayOrb && orbInfo && <div className="field-stat-row mt-3 !border-t-0 !pt-0"><span>Continuum class</span><strong style={{ color: orbInfo.color }}>{orbInfo.tier}</strong></div>}
-        </section>
-
-        <section className="field-card">
-          <div className="field-card-header">
-            <span className="field-label">Next horizon</span>
-            <span className="text-[10px] font-bold text-teal-200">{tiersReached} / {visibleTiers.length}</span>
-          </div>
-          {nextTier ? (
-            <>
-              <div className="field-level"><strong className="!text-[21px]">{nextTier.tier}</strong><span>tier</span></div>
-              <div className="field-stat-row mt-2"><span>Threshold</span><strong>1 / {formatRarity(nextTier.minRarity)}</strong></div>
-            </>
-          ) : (
-            <p className="field-empty">Every listed horizon is behind you. The continuum keeps going.</p>
+          {displayOrb && orbInfo && (
+            <div className="field-stat-row"><span>Continuum class</span><strong style={{ color: orbInfo.color }}>{orbInfo.tier}</strong></div>
           )}
-        </section>
-
-        <section className="field-card field-card-run-data" aria-label="Run telemetry">
-          <div className="field-card-header">
-            <span className="field-label">Run telemetry</span>
-            <span className="field-live-tag"><i /> LIVE</span>
+          <div className="io-roll-summary-grid">
+            <div><span>Total rolls</span><strong>{formatNumber(totalRollCount)}</strong></div>
+            <div><span>Total Luck</span><strong>{formatNumber(totalLuckMultiplier)}×</strong></div>
+            <div><span>Multi roll</span><strong>×{multi}</strong></div>
+            <div><span>Next horizon</span><strong>{nextTier?.tier ?? 'Complete'}</strong></div>
           </div>
-          <div className="field-metric-grid">
-            <div className="field-metric"><span>Total rolls</span><strong>{formatNumber(totalRollCount)}</strong></div>
-            <div className="field-metric"><span>Total Luck</span><strong>{formatNumber(totalLuckMultiplier)}×</strong></div>
-            <div className="field-metric"><span>Multi roll</span><strong>×{multi}</strong></div>
-            <div className="field-metric"><span>Rarity curve</span><strong>×{formatNumber(luckRarityFactor(totalLuckMultiplier))}</strong></div>
+          <div className="io-roll-horizon-progress">
+            <span>HORIZONS REACHED</span>
+            <strong>{tiersReached} / {visibleTiers.length}</strong>
           </div>
         </section>
       </aside>
