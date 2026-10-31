@@ -2686,7 +2686,15 @@ export function predictRollActivation(
 
     const minimumRarity = 2 + (s.prestigeUpgrades?.luckyFloor ?? 0);
     const beginnerRarity = 101 + Math.floor(rng() * 20);
-    const rawRolledRarity = isGuaranteedThirdBall ? beginnerRarity : rollContinuum(effectiveLuck, rng);
+    const rawRolledRarity = isGuaranteedThirdBall
+      ? beginnerRarity
+      : rollContinuum(
+        effectiveLuck,
+        rng,
+        1,
+        minimumRarity,
+        Math.max(1, Math.floor(Number(s.level) || 1)),
+      );
     const rawCritRarity = isCrit ? Math.round(rawRolledRarity * effectiveCm) : rawRolledRarity;
     const isInfinityOrb = !isGuaranteedThirdBall &&
       (rawRolledRarity === Number.POSITIVE_INFINITY || rawCritRarity === Number.POSITIVE_INFINITY ||

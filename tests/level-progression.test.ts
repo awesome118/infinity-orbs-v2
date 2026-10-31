@@ -10,6 +10,7 @@ import {
   createInitialState,
   getLevelBenefits,
   levelAdjustedXpReward,
+  predictRollActivation,
   getLevelProgress,
   totalXpRequiredBeforeLevel,
   xpRequiredForLevel,
@@ -106,4 +107,18 @@ test('server and optimistic quest claims share the same level-adjusted XP calcul
   const client = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
   assert.match(server, /function applyXp\(s: PlayerState, amount: number\): void \{\s*s\.xp \+= levelAdjustedXpReward\(s\.level \|\| 1, amount\)/);
   assert.match(client, /xp: current\.xp \+ levelAdjustedXpReward\(current\.level \|\| 1, quest\.rewardXp \?\? 0\)/);
+});
+
+test('single-activation predictions apply the same player-level rarity scale as live rolls', () => {
+  const levelOne = createInitialState();
+  const levelTen = createInitialState();
+  levelTen.level = 10;
+
+  const levelOnePrediction = predictRollActivation(levelOne, 741_852_963, false, 1);
+  const levelTenPrediction = predictRollActivation(levelTen, 741_852_963, false, 1);
+
+  const levelOneRarity = levelOnePrediction.batch[0]?.rarity ?? 0;
+  const levelTenRarity = levelTenPrediction.batch[0]?.rarity ?? 0;
+  assert.ok(levelOneRarity >= 2);
+  assert.ok(levelTenRarity > levelOneRarity * 2);
 });
