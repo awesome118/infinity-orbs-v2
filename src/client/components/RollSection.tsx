@@ -30,7 +30,6 @@ import {
   formatNumber,
   formatShardAmount,
   frenzyCooldownRemaining,
-  luckRarityFactor,
   FEATURE_UNLOCK_LEVELS,
 } from '../../shared/game.js';
 import { combatBossLuckBonus, combatRuneBonuses, combatRuneLuckMultiplier, combatTotalBossesBeaten, type CombatState } from '../../shared/combat.js';
