@@ -516,8 +516,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
           <div className="absolute z-0 w-48 h-48 rounded-full border-4 border-cyan-400/90 animate-ping pointer-events-none" />
         )}
 
-        {/* One restrained ring keeps the stage alive without turning the center into a screensaver. */}
-        <div className="absolute w-60 h-60 rounded-full border border-white/10 pointer-events-none" />
         {/* The Central Main Orb */}
         <div
           role="button"
@@ -532,7 +530,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               handleRollClick();
             }
           }}
-          className={`io-main-orb relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 ${cosmeticEffectClass} ${isRevealing ? 'is-revealing scale-105 ring-4 ring-white/60' : 'hover:scale-102'}`}
+          className={`io-main-orb relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 ${cosmeticEffectClass} ${isRevealing ? 'is-revealing scale-105' : 'hover:scale-102'}`}
           data-orb-tier={orbInfo?.tier.toLowerCase() ?? 'unknown'}
           data-orb-band={displayOrb?.isInfinity ? 'infinity' : displayOrb && displayOrb.rarity >= 1e15 ? 'endgame' : displayOrb && displayOrb.rarity >= 100_000 ? 'mythic' : displayOrb && displayOrb.rarity >= 1_000 ? 'epic' : 'standard'}
           style={{
@@ -543,8 +541,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
           } as React.CSSProperties}
         >
           <span className="io-orb-surface" aria-hidden="true">
-            <span className="io-orb-surface-orbit io-orb-surface-orbit-a" />
-            <span className="io-orb-surface-orbit io-orb-surface-orbit-b" />
             <span className="io-orb-surface-core" />
             <span className="io-orb-surface-glint" />
           </span>
