@@ -1,8 +1,8 @@
 name: Deploy Devvit
 
-# Explicit deployment request (2026-10-30): deploy v2.1.23 large Frenzy stack-safety fix to r/infinity_orbs_dev only.
-# Replaces spread-based rarity bounds with an iterative scan to prevent call-stack overflow in 6+ digit Frenzy payouts.
-# Includes regression coverage with 100,000 rarity samples; production review/install remains separate.
+# Explicit deployment request (2026-10-30): deploy v2.1.24 Frenzy 503 request-load reduction to r/infinity_orbs_dev only.
+# Uses a 25,000-sample cap for up to 2.5 million effective Orbs in one weighted Frenzy roll pass.
+# Retains iterative rarity bounds; production review/install remains separate.
 # The version-specific push marker is reserved for explicitly requested development deployments.
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
@@ -29,7 +29,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.23]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.24]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
