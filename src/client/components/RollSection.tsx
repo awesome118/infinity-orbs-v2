@@ -31,6 +31,7 @@ import {
   formatShardAmount,
   frenzyCooldownRemaining,
   luckRarityFactor,
+  FEATURE_UNLOCK_LEVELS,
 } from '../../shared/game.js';
 import { combatBossLuckBonus, combatRuneBonuses, combatRuneLuckMultiplier, combatTotalBossesBeaten, type CombatState } from '../../shared/combat.js';
 
@@ -1004,14 +1005,22 @@ export const RollSection: React.FC<RollSectionProps> = ({
         </section>
 
       <aside className="roll-sidebar" aria-label="Quick upgrades and run summary">
-        <UpgradesSection
-          state={state}
-          onBuyUpgrade={onBuyUpgrade}
-          onBuyAllUpgrades={onBuyAllUpgrades}
-          onActivateTurbo={onActivateTurbo}
-          busy={busy}
-          compact
-        />
+        {state.level >= FEATURE_UNLOCK_LEVELS.upgrades ? (
+          <UpgradesSection
+            state={state}
+            onBuyUpgrade={onBuyUpgrade}
+            onBuyAllUpgrades={onBuyAllUpgrades}
+            onActivateTurbo={onActivateTurbo}
+            busy={busy}
+            compact
+          />
+        ) : (
+          <section className="io-inline-upgrade-locked" aria-label="Upgrade shop unlock">
+            <div className="io-inline-upgrade-kicker"><Zap className="w-3.5 h-3.5" /> UPGRADE SHOP</div>
+            <strong>Unlocks at Level {FEATURE_UNLOCK_LEVELS.upgrades}</strong>
+            <span>Keep rolling to earn XP and open the quick-purchase shop.</span>
+          </section>
+        )}
         <section className="field-card io-roll-sidebar-summary" aria-label="Current run summary">
           <div className="field-card-header">
             <span className="field-label">Current run</span>
