@@ -2130,3 +2130,212 @@
   }
   .io-ui .io-page-hero::after { height: 1px; }
 }
+
+
+/* Combat HUD detail: initiative, combatants and commands use one cyan signal system. */
+.io-ui .io-combat-screen {
+  max-width: 1260px;
+  margin-inline: auto;
+}
+.io-ui .io-combat-stage {
+  border: 1px solid #2d5a70 !important;
+  border-radius: 9px !important;
+  background: #0d1b29 !important;
+  background-image:
+    linear-gradient(rgba(92, 158, 186, .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(92, 158, 186, .035) 1px, transparent 1px) !important;
+  background-size: 28px 28px !important;
+}
+.io-ui .io-combat-combatant {
+  border-color: rgba(89, 151, 176, .2) !important;
+  border-radius: 7px !important;
+  background: rgba(14, 30, 43, .92) !important;
+}
+.io-ui .io-combat-sprite {
+  border: 1px solid #315d72 !important;
+  border-radius: 7px !important;
+  background: #132b3c !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .04) !important;
+}
+.io-ui .io-combat-name {
+  color: #e5f6f9 !important;
+  letter-spacing: .045em !important;
+}
+.io-ui .io-combat-hp {
+  overflow: hidden;
+  border: 1px solid #294b5f !important;
+  border-radius: 2px !important;
+  background: #091722 !important;
+}
+.io-ui .io-combat-hp-fill {
+  background: #73d9e5 !important;
+  box-shadow: 0 0 8px rgba(115, 217, 229, .18) !important;
+}
+.io-ui .io-combat-hp.is-enemy span {
+  background: #d17d88 !important;
+}
+.io-ui .io-combat-orb-copy {
+  border-top: 1px solid rgba(89, 151, 176, .18);
+}
+.io-ui .io-combat-orb-copy h2 {
+  color: #effcff !important;
+  font-family: ui-sans-serif, system-ui, sans-serif !important;
+  letter-spacing: -.025em !important;
+}
+.io-ui .io-combat-orb-copy p,
+.io-ui .io-combat-orb-luck-note {
+  color: #91b3c1 !important;
+}
+.io-ui .io-combat-turn-tracker {
+  border: 1px solid #2e5b72 !important;
+  border-radius: 7px !important;
+  background: #102232 !important;
+  box-shadow: none !important;
+}
+.io-ui .io-combat-turn-head {
+  align-items: center;
+}
+.io-ui .io-combat-turn-head strong {
+  padding: 6px 8px;
+  border: 1px solid #35677f;
+  border-radius: 4px;
+  color: #bceef4 !important;
+  background: #0b1b28 !important;
+  font: 800 10px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: .06em;
+}
+.io-ui .io-combat-beat-track {
+  height: 6px !important;
+  border: 1px solid #294d62 !important;
+  border-radius: 2px !important;
+  background: #091722 !important;
+}
+.io-ui .io-combat-beat-track > span {
+  background: #73d9e5 !important;
+  box-shadow: 0 0 10px rgba(115, 217, 229, .2);
+}
+.io-ui .io-combat-tactic-row {
+  border-color: rgba(89, 151, 176, .18) !important;
+}
+.io-ui .io-combat-tactic-row label strong {
+  color: #e4f5f8 !important;
+}
+.io-ui .io-combat-control-row {
+  gap: 10px;
+}
+.io-ui .io-combat-command-group {
+  gap: 5px !important;
+}
+.io-ui .io-combat-command {
+  min-height: 54px;
+  border: 1px solid #2c5267 !important;
+  border-radius: 6px !important;
+  color: #9ab9c5 !important;
+  background: #112333 !important;
+  box-shadow: none !important;
+}
+.io-ui .io-combat-command:hover {
+  border-color: #4f91a8 !important;
+  color: #e6f7fa !important;
+  background: #17364a !important;
+}
+.io-ui .io-combat-command.is-selected {
+  border-color: #73d9e5 !important;
+  color: #e9fcff !important;
+  background: #17445a !important;
+  box-shadow: inset 0 -2px #73d9e5 !important;
+}
+.io-ui .io-combat-command small {
+  color: #79a8ba !important;
+}
+.io-ui .io-combat-run-controls {
+  gap: 5px;
+}
+.io-ui .io-combat-panel-head {
+  padding-bottom: 11px;
+}
+.io-ui .io-combat-panel-head > span,
+.io-ui .io-combat-panel-head > strong {
+  color: #91bfcd !important;
+  font: 800 9px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: .08em;
+}
+.io-ui .io-combat-stat-strip > div {
+  min-width: 0;
+  border-radius: 5px !important;
+  background: #122536 !important;
+}
+.io-ui .io-combat-stat-strip > div > span {
+  color: #759aaa !important;
+}
+.io-ui .io-combat-stat-strip > div > strong {
+  color: #e4f5f8 !important;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.io-ui .io-combat-log {
+  border-radius: 5px !important;
+  background: #0a1722 !important;
+}
+.io-ui .io-combat-log p {
+  border-bottom: 1px solid rgba(89, 151, 176, .12);
+  color: #a8c0ca !important;
+}
+.io-ui .io-combat-equipped-line,
+.io-ui .io-combat-equipped-card {
+  border-color: rgba(89, 151, 176, .18) !important;
+  border-radius: 5px !important;
+  background: #112333 !important;
+}
+.io-ui .io-combat-equipped-line strong,
+.io-ui .io-combat-equipped-card strong {
+  color: #e3f4f7 !important;
+}
+.io-ui .io-combat-equipped-line small,
+.io-ui .io-combat-equipped-card small {
+  color: #85a9b8 !important;
+}
+.io-ui .io-combat-inventory-empty {
+  border: 1px dashed #365c70 !important;
+  border-radius: 6px !important;
+  color: #7fa3b3 !important;
+  background: rgba(9, 23, 34, .55) !important;
+}
+.io-ui .io-combat-text-link {
+  color: #8ce3ed !important;
+}
+.io-ui .io-combat-text-link:hover {
+  color: #d4faff !important;
+}
+.io-ui .io-combat-skill-banner,
+.io-ui .io-combat-dungeon-hero,
+.io-ui .io-combat-arena-head {
+  border-color: #2d566d !important;
+  border-radius: 8px !important;
+  background: #101f2d !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+.io-ui .io-combat-dungeon-choice-best {
+  border-top-color: rgba(89, 151, 176, .18) !important;
+}
+.io-ui .io-combat-dungeon-choice.is-selected {
+  border-color: #73d9e5 !important;
+  box-shadow: inset 0 0 0 1px rgba(115, 217, 229, .18) !important;
+}
+.io-ui .io-combat-error {
+  border-color: rgba(209, 125, 136, .4) !important;
+  background: rgba(86, 35, 48, .3) !important;
+}
+@media (max-width: 680px) {
+  .io-ui .io-combat-control-row {
+    gap: 7px;
+  }
+  .io-ui .io-combat-command {
+    min-height: 48px;
+  }
+  .io-ui .io-combat-turn-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
