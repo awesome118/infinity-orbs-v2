@@ -176,3 +176,5 @@ jobs:
           set -euo pipefail
           npx devvit install r/infinity_orbs_dev "infinity-orbs@$VERSION"
           npx devvit list installs r/infinity_orbs_dev
+
+# Dev-only deployment trigger: refreshed credentials; keep production installation in a separate workflow.
