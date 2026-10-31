@@ -219,7 +219,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-0.5">
-                Each level grants permanent passive multipliers, milestone perks, and Mastery Points.
+                Every level improves rarity and grants a Mastery Point. Paragon milestones add permanent Orbs, Luck and Coin bonuses.
               </p>
             </div>
           </div>
