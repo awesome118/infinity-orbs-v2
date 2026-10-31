@@ -320,9 +320,9 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   ];
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="io-page-shell io-page-upgrades max-w-4xl mx-auto space-y-6">
       {/* Header Info & Stats Bar */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+      <div className="io-page-hero bg-slate-900/80 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
           <div>
             <div className="flex items-center gap-2">
