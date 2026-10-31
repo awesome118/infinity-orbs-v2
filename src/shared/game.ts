@@ -2017,7 +2017,7 @@ export function getLevelBenefits(level: number): LevelBenefits {
   let altarEffectMultiplier = 1;
 
   for (const milestone of LEVEL_MILESTONES) {
-    if (level < milestone.level) continue;
+    if (safeLevel < milestone.level) continue;
     bonusBalls += milestone.bonusBalls ?? 0;
     luckMultiplier += Math.max(0, (milestone.bonusLuckMultiplier ?? 1) - 1);
     coinsMultiplier *= milestone.bonusCoinsMultiplier ?? 1;
