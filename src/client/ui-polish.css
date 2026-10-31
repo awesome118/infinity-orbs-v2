@@ -4321,3 +4321,102 @@
     animation: none !important;
   }
 }
+
+
+/* ===== FINAL COHESION · remove decorative white rules and rebuild the Orb ===== */
+.io-ui .app-main :is([class*="border-white"], [class*="divide-white"]) {
+  border-color: rgba(113, 158, 181, .14) !important;
+}
+.io-ui .app-main :is(.border-t, .border-b, .border-l, .border-r) {
+  border-color: rgba(113, 158, 181, .12) !important;
+}
+.io-ui .app-main :is([class*="ring-white"], [class*="outline-white"]) {
+  --tw-ring-color: rgba(113, 181, 204, .38) !important;
+  outline-color: rgba(113, 181, 204, .38) !important;
+}
+.io-ui :is(.app-header, .nav-shell, .roll-stage, .roll-controls, .field-card,
+  .io-page-hero, .io-combat-stage, .io-combat-panel, .io-runes-panel,
+  .io-social-guild-hero, .io-social-task-card, .io-social-event,
+  .io-global-chat-window, .io-modal-card, .toast-card) {
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .14) !important;
+}
+
+/* The Orb is now a single glassy body with a soft internal energy core.
+   Tier color comes from the actual reward data; no orbit outlines or white rings. */
+.io-ui .io-main-orb {
+  border: 1px solid color-mix(in srgb, var(--io-orb-accent) 56%, #27465e) !important;
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, .36),
+    0 0 28px color-mix(in srgb, var(--io-orb-accent) 19%, transparent),
+    inset 0 -18px 30px rgba(0, 0, 0, .24) !important;
+  filter: saturate(1.08);
+  transition: transform .24s ease, box-shadow .24s ease, filter .24s ease !important;
+}
+.io-ui .io-main-orb:hover:not(:active) {
+  filter: saturate(1.14) brightness(1.035);
+}
+.io-ui .io-orb-surface {
+  background:
+    radial-gradient(ellipse at 31% 22%, rgba(255,255,255,.18), transparent 34%),
+    radial-gradient(ellipse at 74% 79%, rgba(0,7,19,.42), transparent 56%) !important;
+  box-shadow: inset 0 -12px 22px rgba(0,0,0,.16) !important;
+}
+.io-ui .io-orb-surface::before {
+  inset: 0 !important;
+  opacity: .72 !important;
+  background:
+    radial-gradient(ellipse at 68% 35%, color-mix(in srgb, var(--io-orb-accent) 40%, transparent), transparent 42%),
+    radial-gradient(ellipse at 35% 75%, rgba(255,255,255,.09), transparent 34%) !important;
+  mix-blend-mode: screen;
+}
+.io-ui .io-orb-surface::after,
+.io-ui .io-orb-surface-orbit {
+  display: none !important;
+  content: none !important;
+}
+.io-ui .io-main-orb .io-orb-surface-core {
+  top: 43% !important;
+  left: 52% !important;
+  width: 48% !important;
+  height: 48% !important;
+  border: 0 !important;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--io-orb-accent) 68%, rgba(255,255,255,.5)) 0%,
+    color-mix(in srgb, var(--io-orb-accent) 38%, transparent) 34%,
+    transparent 73%
+  ) !important;
+  box-shadow: none !important;
+  filter: blur(3px);
+  opacity: .55 !important;
+}
+.io-ui .io-orb-surface-glint {
+  top: 16% !important;
+  left: 23% !important;
+  width: 23% !important;
+  height: 11% !important;
+  background: rgba(255,255,255,.22) !important;
+  filter: blur(9px) !important;
+}
+.io-ui .io-main-orb[data-orb-band="epic"],
+.io-ui .io-main-orb[data-orb-band="mythic"],
+.io-ui .io-main-orb[data-orb-band="endgame"],
+.io-ui .io-main-orb[data-orb-band="infinity"] {
+  border-color: color-mix(in srgb, var(--io-orb-accent) 70%, #294860) !important;
+  box-shadow:
+    0 14px 34px rgba(0,0,0,.38),
+    0 0 38px color-mix(in srgb, var(--io-orb-accent) 27%, transparent),
+    inset 0 -18px 30px rgba(0,0,0,.22) !important;
+}
+.io-ui .io-main-orb[data-orb-band="mythic"],
+.io-ui .io-main-orb[data-orb-band="endgame"],
+.io-ui .io-main-orb[data-orb-band="infinity"] {
+  filter: saturate(1.16) brightness(1.035);
+}
+.io-ui .io-main-orb.is-revealing {
+  animation: io-orb-reveal 620ms cubic-bezier(.16,.78,.25,1) both !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .io-ui .io-main-orb { transition: none !important; }
+  .io-ui .io-main-orb.is-revealing { animation: none !important; }
+}
