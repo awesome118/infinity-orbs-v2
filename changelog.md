@@ -1,5 +1,14 @@
 # Infinity Orbs Changelog
 
+### A Friendlier Start and Clearer Game UI (2.1.26)
+
+- Explain the first three steps on the start screen and give returning players a quick look at their saved progress.
+- Put Roll, Upgrades, Collection, Quests, Community, and Progress first; keep specialized systems together under More and show their unlock levels.
+- Make the Progress page available from the level display before Prestige unlocks, so new players can see milestones and level benefits.
+- Show resource names and a plain-language XP target in the header.
+- Use a calmer, consistent palette, clearer text sizes, and simpler card and button treatments across the core game and Combat.
+- Replace all-caps roll instructions with plain action labels and explain the core roll loop above the Orb.
+
 ### Guild, Leaderboard, and Admin Loading (2.1.25)
 
 - Load the leaderboard snapshot once instead of requesting the legacy and full boards separately; share in-flight reads and cache the public snapshot briefly in Redis.

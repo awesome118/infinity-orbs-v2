@@ -4,11 +4,12 @@ import { getWebViewMode, requestExpandedMode } from '@devvit/web/client';
 import { telemetry } from '@devvit/analytics/client/reddit';
 import {
   Sparkles,
+  ChevronDown,
   Zap,
   BookOpen,
   Calendar,
   Users,
-  Award,
+  Star,
   Dices,
   RefreshCw,
   Flame,
@@ -18,7 +19,6 @@ import {
   DoorOpen,
   Package,
   Hammer,
-  Lock,
   Megaphone,
   X,
   Gem,
@@ -322,6 +322,25 @@ function App() {
 
   const [readyAt, setReadyAt] = useState<number>(0);
   const [tab, setTab] = useState<ActiveTab>('roll');
+  const [moreNavOpen, setMoreNavOpen] = useState(false);
+  useEffect(() => {
+    if (!moreNavOpen) return;
+    const closeMenu = (event: Event) => {
+      if (event instanceof KeyboardEvent && event.key === 'Escape') {
+        setMoreNavOpen(false);
+        return;
+      }
+      if (event instanceof PointerEvent && event.target instanceof Element && !event.target.closest('.io-nav-more-wrap')) {
+        setMoreNavOpen(false);
+      }
+    };
+    document.addEventListener('keydown', closeMenu);
+    document.addEventListener('pointerdown', closeMenu);
+    return () => {
+      document.removeEventListener('keydown', closeMenu);
+      document.removeEventListener('pointerdown', closeMenu);
+    };
+  }, [moreNavOpen]);
   const activeTabRef = useRef<ActiveTab>(tab);
   activeTabRef.current = tab;
   const [tutorialStep, setTutorialStep] = useState(0);
@@ -866,16 +885,34 @@ function App() {
     if (nextTab === 'social') return 'social';
     if (nextTab === 'altar') return 'altar';
     if (nextTab === 'mastery') return 'mastery';
-    if (nextTab === 'profile') return 'prestige';
+    // Profile also explains levels and milestones to new players. Keep it open
+    // even before Prestige itself unlocks; its actions already have their own gates.
+    if (nextTab === 'profile') return null;
     if (nextTab === 'fight' || nextTab === 'dungeons' || nextTab === 'gear' || nextTab === 'forge' || nextTab === 'skills' || nextTab === 'arena' || nextTab === 'runes') return 'combat';
     return null;
+  };
+
+  const tabNames: Partial<Record<ActiveTab, string>> = {
+    boosters: 'Boosters',
+    altar: 'Altar',
+    mastery: 'Mastery',
+    collection: 'Collection',
+    social: 'Community',
+    profile: 'Progress',
+    fight: 'Combat',
+    dungeons: 'Combat',
+    gear: 'Combat',
+    forge: 'Combat',
+    skills: 'Combat',
+    arena: 'Combat',
+    runes: 'Runes',
   };
 
   const changeTab = (nextTab: ActiveTab) => {
     const feature = featureForTab(nextTab);
     if (feature && (state?.level ?? 1) < FEATURE_UNLOCK_LEVELS[feature]) {
       showToast(
-        `Reach Level ${FEATURE_UNLOCK_LEVELS[feature]} to unlock ${nextTab === 'profile' ? 'Prestige' : nextTab.charAt(0).toUpperCase() + nextTab.slice(1)}.`,
+        `Reach Level ${FEATURE_UNLOCK_LEVELS[feature]} to open ${tabNames[nextTab] ?? nextTab}.`,
         'info',
       );
       return;
@@ -911,8 +948,38 @@ function App() {
     }
     sound.playClick();
     setTab(nextTab);
+    setMoreNavOpen(false);
     reportJourneyInteraction('tab_opened', nextTab);
     if (targetIsCombatMode) reportJourneyProgress(0.65, 'combat_opened');
+  };
+
+  const renderNavItem = (
+    target: ActiveTab,
+    label: string,
+    Icon: React.ComponentType<{ className?: string }>,
+    showIndicator = false,
+  ) => {
+    const active = tab === target;
+    const feature = featureForTab(target);
+    const unlockLevel = feature ? FEATURE_UNLOCK_LEVELS[feature] : 1;
+    const locked = Boolean(feature && (state?.level ?? 1) < unlockLevel);
+    return (
+      <button
+        key={target}
+        type="button"
+        onClick={() => changeTab(target)}
+        aria-current={active ? 'page' : undefined}
+        aria-label={locked ? `${label}, unlocks at level ${unlockLevel}` : label}
+        title={locked ? `${label} unlocks at Level ${unlockLevel}.` : undefined}
+        className={`nav-tab io-nav-item${active ? ' is-active' : ''}${locked ? ' is-locked' : ''}`}
+      >
+        <Icon className="io-nav-icon" />
+        <span className="io-nav-label">{label}</span>
+        {locked
+          ? <span className="io-nav-unlock">Lv {unlockLevel}</span>
+          : showIndicator && <span className="io-nav-indicator" aria-label="Ready to claim" />}
+      </button>
+    );
   };
 
   const showToast = (msg: string, type: 'info' | 'success' | 'warn' = 'info') => {
@@ -3236,208 +3303,91 @@ function App() {
         </div>
       )}
 
-      {/* Main Navigation Bar */}
-      <div role="navigation" aria-label={combatMode ? "Combat navigation" : "Game navigation"} className={"io-nav app-nav bg-slate-900/55 border-b border-slate-800/80 px-4 py-2 sticky top-[57px] z-20 backdrop-blur-md" + (combatMode ? " io-nav-combat" : "")}>
-        <div className="nav-shell max-w-6xl mx-auto flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-          <button type="button" onClick={() => { changeTab(combatMode ? 'roll' : 'fight'); }}
-            className={"io-combat-mode-switch nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (combatMode ? " is-active" : "")}
-            aria-pressed={combatMode} title={combatMode ? "Return to the core orb-rolling game" : (state.level < FEATURE_UNLOCK_LEVELS.combat ? "Unlock Combat at Level " + FEATURE_UNLOCK_LEVELS.combat : "Enter the combat expansion")}>
-            <Swords className="w-4 h-4" />
-            <span>{combatMode ? "Back to Orbs" : "Combat"}</span>
-            <span className="io-combat-mode-mark">{combatMode ? "ON" : state.level < FEATURE_UNLOCK_LEVELS.combat ? "LV " + FEATURE_UNLOCK_LEVELS.combat : "NEW"}</span>
-          </button>
-
-          {!combatMode && <>
-          <button
-            type="button"
-            onClick={() => {
-              changeTab('roll');
-            }}
-            aria-current={tab === 'roll' ? 'page' : undefined}
-            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-              tab === 'roll'
-                ? 'is-active bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
-            <span>Roll</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              changeTab('upgrades');
-            }}
-            aria-current={tab === 'upgrades' ? 'page' : undefined}
-            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
-              tab === 'upgrades'
-                ? 'is-active bg-gradient-to-r from-amber-600 to-yellow-500 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Zap className="w-3.5 h-3.5 text-amber-300" />
-            <span>Upgrades</span>
-            {featureForTab('upgrades' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('upgrades' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
-          </button>
-<button
-            type="button"
-            onClick={() => {
-              changeTab('boosters');
-            }}
-            aria-current={tab === 'boosters' ? 'page' : undefined}
-            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
-              tab === 'boosters'
-                ? 'is-active bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Dices className="w-3.5 h-3.5 text-fuchsia-300" />
-            <span>Boosters</span>
-            {featureForTab('boosters' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('boosters' as ActiveTab)!] && (
-              <Lock className="w-3 h-3 text-slate-600" />
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              changeTab('altar');
-            }}
-            aria-current={tab === 'altar' ? 'page' : undefined}
-            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
-              tab === 'altar'
-                ? 'is-active bg-gradient-to-r from-orange-600 to-amber-500 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Flame className="w-3.5 h-3.5 text-orange-400 animate-flame" />
-            <span>Altar</span>
-            {featureForTab('altar' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('altar' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              changeTab('mastery');
-            }}
-            aria-current={tab === 'mastery' ? 'page' : undefined}
-            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
-              tab === 'mastery'
-                ? 'is-active bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-            <span>Mastery</span>
-            {featureForTab('mastery' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('mastery' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
-            {(state.masteryPoints ?? 0) > 0 && (
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              changeTab('collection');
-            }}
-            aria-current={tab === 'collection' ? 'page' : undefined}
-            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-              tab === 'collection'
-                ? 'is-active bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Codex</span>
-            {featureForTab('collection' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('collection' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              changeTab('quests');
-            }}
-            aria-current={tab === 'quests' ? 'page' : undefined}
-            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
-              tab === 'quests'
-                ? 'is-active bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Calendar className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Quests</span>
-            {featureForTab('quests' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('quests' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
-            {(streakReady || questsReady) && (
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              changeTab('social');
-            }}
-            aria-current={tab === 'social' ? 'page' : undefined}
-            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-              tab === 'social'
-                ? 'is-active bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Community</span>
-            {featureForTab('social' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('social' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              changeTab('profile');
-            }}
-            aria-current={tab === 'profile' ? 'page' : undefined}
-            className={`nav-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap relative ${
-              tab === 'profile'
-                ? 'is-active bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-fuchsia-400" />
-            <span>Prestige</span>
-            {featureForTab('profile' as ActiveTab) && (state.level ?? 1) < FEATURE_UNLOCK_LEVELS[featureForTab('profile' as ActiveTab)!] && <Lock className="w-3 h-3 text-slate-600" />}
-            {prestigeReady && (
-              <span className="w-2 h-2 rounded-full bg-fuchsia-400" />
-            )}
-          </button>
-          </>}
-          {combatMode && <>
-            <button type="button" aria-current={tab === 'fight' ? 'page' : undefined} onClick={() => changeTab('fight')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap" + (tab === 'fight' ? " is-active" : "")}><Flame className="w-3.5 h-3.5" /><span>Fight</span></button>
-            <button type="button" aria-current={tab === 'dungeons' ? 'page' : undefined} onClick={() => changeTab('dungeons')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'dungeons' ? " is-active" : "")}><DoorOpen className="w-3.5 h-3.5" /><span>Dungeons</span></button>
-            <button type="button" aria-current={tab === 'gear' ? 'page' : undefined} onClick={() => changeTab('gear')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'gear' ? " is-active" : "")}><Package className="w-3.5 h-3.5" /><span>Gear</span></button>
-            <button type="button" aria-current={tab === 'forge' ? 'page' : undefined} onClick={() => changeTab('forge')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'forge' ? " is-active" : "")}><Hammer className="w-3.5 h-3.5" /><span>Forge</span></button>
-            <button type="button" aria-current={tab === 'skills' ? 'page' : undefined} onClick={() => changeTab('skills')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'skills' ? " is-active" : "")}><Sparkles className="w-3.5 h-3.5" /><span>Skills</span></button>
-            <button type="button" aria-current={tab === 'arena' ? 'page' : undefined} onClick={() => changeTab('arena')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'arena' ? " is-active" : "")}><Users className="w-3.5 h-3.5" /><span>Arena</span><span className="io-combat-soon">NEXT</span></button>
-            <button type="button" aria-current={tab === 'runes' ? 'page' : undefined} onClick={() => changeTab('runes')} className={"nav-tab io-combat-tab flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap" + (tab === 'runes' ? " is-active" : "")}><Gem className="w-3.5 h-3.5" /><span>Runes</span></button>
-          </>}
+      <nav aria-label={combatMode ? "Combat navigation" : "Game navigation"} className={"io-nav app-nav" + (combatMode ? " io-nav-combat" : "")}>
+        <div className="nav-shell">
+          {!combatMode ? (
+            <>
+              <div className="io-nav-primary" role="group" aria-label="Main game">
+                {renderNavItem('roll', 'Roll', Sparkles)}
+                {renderNavItem('upgrades', 'Upgrades', Zap)}
+                {renderNavItem('collection', 'Collection', BookOpen)}
+                {renderNavItem('quests', 'Quests', Calendar, streakReady || questsReady)}
+                {renderNavItem('social', 'Community', Users)}
+                {renderNavItem('profile', 'Progress', Star, prestigeReady)}
+              </div>
+              <div className="io-nav-trailing">
+                <div className="io-nav-more-wrap">
+                  <button
+                    type="button"
+                    className={"nav-tab io-nav-more" + (moreNavOpen || ['boosters', 'altar', 'mastery'].includes(tab) ? " is-active" : "")}
+                    aria-expanded={moreNavOpen}
+                    aria-controls="io-more-navigation"
+                    onClick={() => setMoreNavOpen(open => !open)}
+                  >
+                    <span className="io-nav-label">More</span>
+                    {tab === 'boosters' && <span className="io-nav-current-page">Boosters</span>}
+                    {tab === 'altar' && <span className="io-nav-current-page">Altar</span>}
+                    {tab === 'mastery' && <span className="io-nav-current-page">Mastery</span>}
+                    <ChevronDown className="io-nav-icon io-nav-chevron" aria-hidden="true" />
+                  </button>
+                  {moreNavOpen && (
+                    <div id="io-more-navigation" className="io-nav-menu" role="group" aria-label="More game features">
+                      <p className="io-nav-menu-title">More ways to play</p>
+                      {renderNavItem('boosters', 'Boosters', Dices)}
+                      {renderNavItem('altar', 'Altar', Flame)}
+                      {renderNavItem('mastery', 'Mastery', Sparkles, (state.masteryPoints ?? 0) > 0)}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => changeTab('fight')}
+                  className="nav-tab io-combat-mode-switch"
+                  aria-label={state.level < FEATURE_UNLOCK_LEVELS.combat ? "Combat, unlocks at level " + FEATURE_UNLOCK_LEVELS.combat : "Enter Combat"}
+                  title={state.level < FEATURE_UNLOCK_LEVELS.combat ? "Combat unlocks at Level " + FEATURE_UNLOCK_LEVELS.combat + "." : "Enter the combat game"}
+                >
+                  <Swords className="io-nav-icon" />
+                  <span className="io-nav-label">Combat</span>
+                  {state.level < FEATURE_UNLOCK_LEVELS.combat && <span className="io-nav-unlock">Lv {FEATURE_UNLOCK_LEVELS.combat}</span>}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="io-nav-primary io-nav-combat-list" role="group" aria-label="Combat pages">
+                <button type="button" aria-current={tab === 'fight' ? 'page' : undefined} onClick={() => changeTab('fight')} className={"nav-tab io-nav-item" + (tab === 'fight' ? " is-active" : "")}><Flame className="io-nav-icon" /><span className="io-nav-label">Fight</span></button>
+                <button type="button" aria-current={tab === 'dungeons' ? 'page' : undefined} onClick={() => changeTab('dungeons')} className={"nav-tab io-nav-item" + (tab === 'dungeons' ? " is-active" : "")}><DoorOpen className="io-nav-icon" /><span className="io-nav-label">Dungeons</span></button>
+                <button type="button" aria-current={tab === 'gear' ? 'page' : undefined} onClick={() => changeTab('gear')} className={"nav-tab io-nav-item" + (tab === 'gear' ? " is-active" : "")}><Package className="io-nav-icon" /><span className="io-nav-label">Gear</span></button>
+                <button type="button" aria-current={tab === 'runes' ? 'page' : undefined} onClick={() => changeTab('runes')} className={"nav-tab io-nav-item" + (tab === 'runes' ? " is-active" : "")}><Gem className="io-nav-icon" /><span className="io-nav-label">Runes</span></button>
+                <button type="button" aria-current={tab === 'forge' ? 'page' : undefined} onClick={() => changeTab('forge')} className={"nav-tab io-nav-item" + (tab === 'forge' ? " is-active" : "")}><Hammer className="io-nav-icon" /><span className="io-nav-label">Forge</span></button>
+                <button type="button" aria-current={tab === 'skills' ? 'page' : undefined} onClick={() => changeTab('skills')} className={"nav-tab io-nav-item" + (tab === 'skills' ? " is-active" : "")}><Sparkles className="io-nav-icon" /><span className="io-nav-label">Skills</span></button>
+                <button type="button" aria-current={tab === 'arena' ? 'page' : undefined} onClick={() => changeTab('arena')} className={"nav-tab io-nav-item" + (tab === 'arena' ? " is-active" : "")}><Users className="io-nav-icon" /><span className="io-nav-label">Arena</span><span className="io-nav-unlock">Coming soon</span></button>
+              </div>
+              <button type="button" onClick={() => changeTab('roll')} className="nav-tab io-combat-mode-switch">
+                <Sparkles className="io-nav-icon" />
+                <span className="io-nav-label">Back to Orbs</span>
+              </button>
+            </>
+          )}
         </div>
-      </div>
+      </nav>
 
       {combatTutorialStatusLoaded && state && combatTutorialStep > 0 && !combatTutorialDismissed && (
         <section className="io-tutorial-guide io-combat-onboarding" aria-live="polite" aria-label="Combat unlock tutorial">
-          <div className="io-tutorial-topline"><span>COMBAT UNLOCKED · LEVEL {FEATURE_UNLOCK_LEVELS.combat}</span><span>STEP {combatTutorialStep} / 3</span><button type="button" onClick={finishCombatTutorial} aria-label="Skip Combat tutorial">Skip</button></div>
+          <div className="io-tutorial-topline"><span>Combat · Level {FEATURE_UNLOCK_LEVELS.combat}</span><span>Step {combatTutorialStep} of 3</span><button type="button" onClick={finishCombatTutorial} aria-label="Skip Combat tutorial">Skip</button></div>
           {combatTutorialStep === 1 && <>
             <h2>Your next progression path is Combat</h2>
-            <p>Combat unlocks at Level {FEATURE_UNLOCK_LEVELS.combat}. Your current orb is the source of combat power: each accepted beat rolls an orb, and its rarity increases the damage of your attacks.</p>
+            <p>Each attack uses a roll from your main game. Rarer Orbs hit harder, so the Luck and Speed upgrades you buy here carry into battle.</p>
             <button type="button" className="io-tutorial-primary" onClick={() => { setCombatTutorialStep(2); changeTab('fight'); }}><Swords size={15} /> Enter Combat</button>
           </>}
           {combatTutorialStep === 2 && <>
             <h2>Learn the rhythm</h2>
-            <p>Fight beats resolve on a 30-second cadence. Speed controls turn order; Auto Fight can resolve your selected tactic when your next beat is ready. Defeating enemies earns Combat Marks and gear.</p>
+            <p>Fights take turns every 30 seconds. Speed decides who acts first. Wins earn Combat Marks and gear for your next run.</p>
             <button type="button" className="io-tutorial-primary" onClick={() => { setCombatTutorialStep(3); changeTab('gear'); }}><Package size={15} /> View your Gear</button>
           </>}
           {combatTutorialStep === 3 && <>
             <h2>Grow your build</h2>
-            <p>Spend Combat Marks on permanent Combat upgrades and Skill Gacha. Equip gear for stat bonuses, and open Runes to equip monster drops that improve your main-game rolls. Bosses always drop a Rune.</p>
+            <p>Spend Combat Marks on upgrades, equip the gear you find, and use Runes to improve your main-game rolls. Bosses always drop a Rune.</p>
             <button type="button" className="io-tutorial-primary" onClick={() => { finishCombatTutorial(); changeTab('runes'); }}><Gem size={15} /> Finish in Runes</button>
           </>}
         </section>
@@ -3448,29 +3398,29 @@ function App() {
 
         {!combatMode && state && tutorialStatusLoaded && !tutorialDismissed && (state.totalRolls <= 3 || tutorialStep > 0) && (
           <section className="io-tutorial-guide" aria-live="polite" aria-label={`First steps tutorial, step ${Math.min(4, tutorialStep + 1)} of 4`}>
-            <div className="io-tutorial-topline"><span>FIRST STEPS</span><span>STEP {Math.min(4, tutorialStep + 1)} / 4</span><button type="button" onClick={finishTutorial} aria-label="Skip tutorial">Skip</button></div>
+          <div className="io-tutorial-topline"><span>First steps</span><span>Step {Math.min(4, tutorialStep + 1)} of 4</span><button type="button" onClick={finishTutorial} aria-label="Skip tutorial">Skip</button></div>
             {tutorialStep === 0 && <>
               <h2>Roll your first orb</h2>
-              <p>Every roll can reveal a rarer Orb. Rarity determines its Coin value; rolls also earn XP and sometimes Shards. Start with one roll to see the core loop.</p>
+              <p>Each roll finds an Orb. Rarer ones are worth more Coins, and every roll earns XP. Some rolls also find Shards.</p>
               <button type="button" className="io-tutorial-primary" disabled={isRolling || busy} onClick={() => { void handleRoll(false); }}><Sparkles size={15} /> Roll my first orb</button>
             </>}
             {tutorialStep === 1 && <>
               <h2>Turn the result into progress</h2>
-              <p>{lastOrb ? `You found ${lastOrb.name} (1 / ${formatNumber(lastOrb.rarity)}). ` : ''}Rarer orbs are worth more. Keep rolling to earn XP; Level 2 unlocks Upgrades. Buy Auto Roll there, then switch it on from the Roll screen to repeat rolls as cooldowns allow.</p>
+              <p>{lastOrb ? `You found ${lastOrb.name} (1 / ${formatNumber(lastOrb.rarity)}). ` : ''}Keep rolling to earn Coins and XP. Level 2 opens Upgrades, where Luck and Speed help your next roll.</p>
               {state.level >= 2
                 ? <button type="button" className="io-tutorial-primary" onClick={() => { setTutorialStep(2); changeTab('upgrades'); }}>Explore Upgrades <Zap size={15} /></button>
                 : <button type="button" className="io-tutorial-primary" disabled={isRolling || busy} onClick={() => { void handleRoll(false); }}>Roll toward Level 2 <Sparkles size={15} /></button>}
             </>}
             {tutorialStep === 2 && <>
               <h2>Make the next roll better</h2>
-              <p>Luck improves your rarity odds; Speed reduces the wait between rolls. Coin and XP upgrades help you reinvest as you play. The Codex unlocks at Level 4 and tracks the rarities you’ve discovered.</p>
+              <p>Luck helps you find rarer Orbs. Speed lets you roll again sooner. Level 4 opens your Collection, where every new discovery is saved.</p>
               {state.level >= 4
                 ? <button type="button" className="io-tutorial-primary" onClick={() => { setTutorialStep(3); changeTab('collection'); }}>Open the Codex <BookOpen size={15} /></button>
                 : <button type="button" className="io-tutorial-primary" disabled={isRolling || busy} onClick={() => { void handleRoll(false); }}>Roll toward Level 4 <Sparkles size={15} /></button>}
             </>}
             {tutorialStep >= 3 && <>
               <h2>Grow beyond rolling</h2>
-              <p>Your discoveries stay in the Codex. When Combat unlocks, monster drops include Runes that can improve your normal-roll Luck. You can return to rolling at any time.</p>
+              <p>Your finds stay in Collection. At Level {FEATURE_UNLOCK_LEVELS.combat}, Combat opens a new way to play; Runes you find there can improve your rolls here.</p>
               <button type="button" className="io-tutorial-primary" onClick={() => { finishTutorial(); changeTab('roll'); }}>Back to rolling <Sparkles size={15} /></button>
             </>}
           </section>

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Volume2, VolumeX, Sparkles, HelpCircle, Coins, Gem, Zap, Wrench, Star, Users, MessageSquarePlus, Bell, BellOff, ScrollText, Swords } from 'lucide-react';
 import type { PlayerState } from '../../shared/game.js';
-import { LEVEL_MILESTONES, getLevelBenefits, getLevelProgress, onlinePlayerLuckMultiplier, formatShardAmount, formatNumber } from '../../shared/game.js';
+import { getLevelBenefits, getLevelProgress, onlinePlayerLuckMultiplier, formatShardAmount, formatNumber } from '../../shared/game.js';
 import { sound } from '../sound.js';
 import { APP_VERSION } from '../../shared/version.js';
 
@@ -71,7 +71,6 @@ export const Header: React.FC<HeaderProps> = ({
     state.levelXpFloor,
   );
   const displayedLevel = levelInfo.level;
-  const nextMilestone = LEVEL_MILESTONES.find(m => m.level > displayedLevel);
   const levelBenefits = getLevelBenefits(displayedLevel);
   return (
     <>
@@ -108,32 +107,20 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             </div>
 
-            {/* Glowing EXP Bar */}
-            <div className="flex items-center gap-2 mt-1">
-              <div
-                role="button"
-                tabIndex={0}
-                aria-label={`Open profile. Experience progress: ${levelInfo.progressPercent}% to level ${levelInfo.level + 1}`}
-                className="w-28 sm:w-40 h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800 p-0.5 relative cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
-                onClick={() => onOpenProfile?.()}
-                onKeyDown={event => { if (!event.repeat && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpenProfile?.(); } }}
-                title={`EXP: ${fmt(levelInfo.currentLevelXp)} / ${fmt(levelInfo.nextLevelXp)} (${levelInfo.progressPercent}%)`}
-              >
-                <div
-                  className="h-full bg-purple-400 rounded-full transition-all duration-300 relative"
-                  style={{ width: `${levelInfo.progressPercent}%` }}
-                >
-                </div>
-              </div>
-              <span className="text-[10px] font-mono text-slate-400 font-medium">
-                {levelInfo.progressPercent}%
+            <button
+              type="button"
+              className="io-level-progress"
+              aria-label={`View progress. ${fmt(levelInfo.currentLevelXp)} of ${fmt(levelInfo.nextLevelXp)} XP toward level ${levelInfo.level + 1}.`}
+              onClick={() => onOpenProfile?.()}
+              title={`Progress to Level ${levelInfo.level + 1}: ${fmt(levelInfo.currentLevelXp)} / ${fmt(levelInfo.nextLevelXp)} XP`}
+            >
+              <span className="io-level-progress-track" aria-hidden="true">
+                <span style={{ width: `${levelInfo.progressPercent}%` }} />
               </span>
-              {nextMilestone && (
-                <span className="text-[9px] text-purple-300/80 hidden md:inline truncate max-w-[140px]">
-                  Next: Lv {nextMilestone.level} ({nextMilestone.name})
-                </span>
-              )}
-            </div>
+              <span className="io-level-progress-copy">
+                {fmt(levelInfo.currentLevelXp)} / {fmt(levelInfo.nextLevelXp)} XP to Level {levelInfo.level + 1}
+              </span>
+            </button>
           </div>
         </div>
 
@@ -154,35 +141,39 @@ export const Header: React.FC<HeaderProps> = ({
           <div role="group" aria-label={combatMode ? "Combat resources" : "Player resources"} className="header-resource-row resource-chip flex items-center gap-2 bg-slate-950/70 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-semibold">
             {/* Core-game Coins stay hidden while in Combat. */}
             {!combatMode && <>
-              <div className="flex items-center gap-1 text-amber-400" aria-label={`${formatNumber(state.coins)} Coins`} title="Coins: spend them on upgrades to improve your rolls.">
-                <Coins className="w-3.5 h-3.5" />
-                <span>{formatNumber(state.coins)}</span>
+              <div className="resource-item resource-coins" aria-label={`${formatNumber(state.coins)} Coins`} title="Spend Coins on upgrades to improve your rolls.">
+                <Coins className="w-4 h-4" />
+                <span className="resource-value">{formatNumber(state.coins)}</span>
+                <span className="resource-label">Coins</span>
               </div>
               <div className="w-[1px] h-3.5 bg-slate-800" />
             </>}
 
             {/* Combat Marks are shown only while in the Combat section. */}
             {combatMode && <>
-              <div className="flex items-center gap-1 text-lime-300" title="Combat Marks are earned in battles and spent on combat upgrades and Skill Gacha.">
-                <Swords className="w-3.5 h-3.5" />
-                <span>{fmt(combatMarks)}</span>
+              <div className="resource-item resource-marks" title="Earn Combat Marks in battles and spend them on combat upgrades.">
+                <Swords className="w-4 h-4" />
+                <span className="resource-value">{fmt(combatMarks)}</span>
+                <span className="resource-label">Marks</span>
               </div>
               <div className="w-[1px] h-3.5 bg-slate-800" />
             </>}
 
             {/* Shards */}
-            <div className="flex items-center gap-1 text-cyan-400" aria-label={`${formatShardAmount(state.shards ?? 0)} Shards`} title="Shards: used for special tools and boosters.">
-              <Gem className="w-3.5 h-3.5" />
-              <span>{formatShardAmount(state.shards ?? 0)}</span>
+            <div className="resource-item resource-shards" aria-label={`${formatShardAmount(state.shards ?? 0)} Shards`} title="Use Shards for special tools and boosters.">
+              <Gem className="w-4 h-4" />
+              <span className="resource-value">{formatShardAmount(state.shards ?? 0)}</span>
+              <span className="resource-label">Shards</span>
             </div>
 
             {/* Cosmic Dust */}
             {(state.cosmicDust > 0 || state.prestigeCount > 0) && (
               <>
                 <div className="w-[1px] h-3.5 bg-slate-800" />
-                <div className="flex items-center gap-1 text-fuchsia-400" aria-label={`${fmt(state.cosmicDust)} Cosmic Dust`} title="Cosmic Dust: used for permanent Prestige upgrades.">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>{fmt(state.cosmicDust)}</span>
+                <div className="resource-item resource-dust" aria-label={`${fmt(state.cosmicDust)} Cosmic Dust`} title="Use Cosmic Dust for permanent Prestige upgrades.">
+                  <Sparkles className="w-4 h-4" />
+                  <span className="resource-value">{fmt(state.cosmicDust)}</span>
+                  <span className="resource-label">Dust</span>
                 </div>
               </>
             )}

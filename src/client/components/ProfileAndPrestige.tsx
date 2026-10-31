@@ -36,6 +36,7 @@ import {
   SHARD_SYNTHESIS_COST,
   MAX_COSMIC_DUST,
   getLevelBenefits,
+  FEATURE_UNLOCK_LEVELS,
   formatNumber,
   unbrokenMomentumSpeedBonus,
 } from '../../shared/game.js';
@@ -104,7 +105,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
 
   const currentRunVal = state.collectionValue ?? 0;
   const pendingDust = calculateCosmicDust(state);
-  const canPrestige = pendingDust > 0 && currentRunVal >= 1_000_000;
+  const canPrestige = (state.level ?? 1) >= FEATURE_UNLOCK_LEVELS.prestige && pendingDust > 0 && currentRunVal >= 1_000_000;
 
   const luckRatio = state.highestRarity > 0 ? state.totalRolls / state.highestRarity : 1;
   const luckRating =
@@ -209,24 +210,24 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-xl font-black text-white">Orbmaster Level {levelInfo.level}</h2>
+                <h2 className="text-xl font-black text-white">Level {levelInfo.level}</h2>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                  {fmt(state.xp || 0)} Total EXP
+                  {fmt(state.xp || 0)} Total XP
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-0.5">
-                Each level grants permanent passive multipliers, milestone perks, and Mastery Points.
+                Levels improve your Luck and Coin rewards. Some levels open new features and award Mastery Points.
               </p>
             </div>
           </div>
 
           <div className="bg-slate-950/80 border border-purple-500/30 px-4 py-2 rounded-2xl text-right">
-            <div className="text-[10px] font-bold uppercase text-purple-300">Level Passives</div>
+            <div className="text-[10px] font-bold uppercase text-purple-300">Current bonuses</div>
             <div className="text-xs font-mono text-emerald-400 font-bold">
-              {levelBenefits.luckMultiplier.toFixed(2)}× Multiplicative Luck
+              {levelBenefits.luckMultiplier.toFixed(2)}× Luck
             </div>
             <div className="text-[10px] font-mono text-amber-300 font-bold">
-              {levelBenefits.coinsMultiplier.toFixed(2)}× Multiplicative Coins
+              {levelBenefits.coinsMultiplier.toFixed(2)}× Coin earnings
             </div>
           </div>
         </div>
@@ -253,7 +254,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
         <div className="space-y-2.5">
           <div className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
             <Award className="w-3.5 h-3.5 text-amber-400" />
-            <span>Level Milestone Perks</span>
+            <span>Level rewards</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
             {LEVEL_MILESTONES.map(m => {
@@ -393,12 +394,15 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg sm:text-xl font-black text-white">Prestige</h2>
+                {state.level < FEATURE_UNLOCK_LEVELS.prestige && (
+                  <span className="text-xs font-semibold text-slate-400">Opens at Level {FEATURE_UNLOCK_LEVELS.prestige}</span>
+                )}
                 <span className="text-xs font-bold bg-fuchsia-500/20 text-fuchsia-300 px-2.5 py-0.5 rounded-full border border-fuchsia-500/30">
                   {fmt(state.cosmicDust)} Cosmic Dust
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Resets current-run Collection Value, base upgrades, offline rolls, and rolls-since-best. Shards and permanent Prestige upgrades stay; Cosmic Inheritance determines Coins retained (minimum 50). 
+                Trade this run’s progress for Cosmic Dust and permanent upgrades. Your Collection and Shards stay; your run value and base upgrades reset. The confirmation explains exactly what carries over.
               </p>
             </div>
           </div>
