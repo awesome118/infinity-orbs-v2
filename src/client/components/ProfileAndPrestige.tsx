@@ -105,6 +105,9 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
   const currentRunVal = state.collectionValue ?? 0;
   const pendingDust = calculateCosmicDust(state);
   const canPrestige = pendingDust > 0 && currentRunVal >= 1_000_000;
+  const prestigeProgressPct = Number.isFinite(currentRunVal)
+    ? Math.max(0, Math.min(100, (currentRunVal / 1_000_000) * 100))
+    : 0;
 
   const luckRatio = state.highestRarity > 0 ? state.totalRolls / state.highestRarity : 1;
   const luckRating =
@@ -460,6 +463,31 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
               </span>
             </button>
           )}
+        </div>
+
+        <div className="io-prestige-readiness" aria-label="Progress toward the next Prestige">
+          <div className="io-prestige-readiness-top">
+            <div>
+              <span className="io-prestige-kicker">NEXT PRESTIGE</span>
+              <strong>{fmt(currentRunVal)} <small>/ 1,000,000 RUN VALUE</small></strong>
+            </div>
+            <div className="io-prestige-preview">
+              <span>COSMIC DUST PREVIEW</span>
+              <strong>+{fmt(pendingDust)}</strong>
+            </div>
+          </div>
+          <div
+            className="io-prestige-progress"
+            role="progressbar"
+            aria-label="Current run value toward Prestige threshold"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={prestigeProgressPct}
+            aria-valuetext={`${prestigeProgressPct.toFixed(1)} percent of the 1,000,000 run-value threshold`}
+          >
+            <span style={{ width: `${prestigeProgressPct}%` }} />
+          </div>
+          <p>{canPrestige ? 'Prestige is available. Review the reset summary before confirming.' : 'Current-run value moves this meter toward the 1,000,000 Prestige threshold.'}</p>
         </div>
 
         {/* Shard Synthesis (Unlocks with shardSynthesis prestige upgrade) */}
