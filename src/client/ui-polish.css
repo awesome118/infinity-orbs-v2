@@ -2679,3 +2679,232 @@
   font: 800 7px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
   letter-spacing: .13em;
 }
+
+
+/* Orb object treatment: material layers, light response, and tier-weighted reveal. */
+.io-ui .io-main-orb {
+  --io-orb-accent: #73d9e5;
+  isolation: isolate;
+  border: 1px solid color-mix(in srgb, var(--io-orb-accent) 58%, rgba(255,255,255,.34)) !important;
+  box-shadow:
+    0 0 0 1px rgba(4, 13, 23, .5),
+    0 12px 30px rgba(0, 0, 0, .32),
+    0 0 30px color-mix(in srgb, var(--io-orb-accent) 20%, transparent),
+    inset 0 1px rgba(255, 255, 255, .3),
+    inset 0 -15px 28px rgba(0, 0, 0, .2) !important;
+  transform-style: preserve-3d;
+  transition: box-shadow .24s ease, border-color .24s ease, filter .24s ease, transform .24s ease !important;
+}
+.io-ui .io-orb-surface {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 31% 19%, rgba(255,255,255,.26), transparent 33%),
+    radial-gradient(ellipse at 76% 83%, rgba(1,8,18,.42), transparent 52%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.16), inset 0 -8px 20px rgba(0,0,0,.2);
+}
+.io-ui .io-orb-surface::before {
+  position: absolute;
+  inset: -18%;
+  content: "";
+  border-radius: inherit;
+  opacity: .62;
+  background:
+    conic-gradient(from 18deg at 50% 50%, transparent 0deg, color-mix(in srgb, var(--io-orb-accent) 26%, transparent) 48deg, transparent 105deg, rgba(255,255,255,.13) 160deg, transparent 220deg, color-mix(in srgb, var(--io-orb-accent) 23%, transparent) 300deg, transparent 360deg);
+  mix-blend-mode: screen;
+}
+.io-ui .io-orb-surface::after {
+  position: absolute;
+  inset: 5%;
+  content: "";
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 50%;
+  box-shadow: inset 0 0 18px rgba(255,255,255,.08), 0 0 18px color-mix(in srgb, var(--io-orb-accent) 15%, transparent);
+}
+.io-ui .io-orb-surface-orbit {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 125%;
+  height: 43%;
+  border: 1px solid color-mix(in srgb, var(--io-orb-accent) 56%, rgba(255,255,255,.22));
+  border-radius: 50%;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--io-orb-accent) 24%, transparent);
+  transform: translate(-50%, -50%) rotate(-34deg);
+  opacity: .54;
+}
+.io-ui .io-orb-surface-orbit-b {
+  width: 108%;
+  height: 65%;
+  border-color: rgba(255,255,255,.2);
+  transform: translate(-50%, -50%) rotate(42deg);
+  opacity: .34;
+}
+.io-ui .io-orb-surface-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 29%;
+  height: 29%;
+  border: 1px solid rgba(255,255,255,.54);
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 26%, rgba(255,255,255,.7), color-mix(in srgb, var(--io-orb-accent) 48%, transparent) 32%, rgba(4,12,24,.22) 78%);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--io-orb-accent) 34%, transparent), inset 0 0 12px rgba(255,255,255,.2);
+  transform: translate(-50%, -50%);
+  opacity: .7;
+}
+.io-ui .io-orb-surface-glint {
+  position: absolute;
+  top: 17%;
+  left: 25%;
+  width: 17%;
+  height: 8%;
+  border-radius: 50%;
+  background: rgba(255,255,255,.36);
+  filter: blur(5px);
+  transform: rotate(-33deg);
+}
+.io-ui .io-main-orb > .relative.z-10 {
+  text-shadow: 0 2px 7px rgba(0, 8, 19, .55);
+}
+.io-ui .io-main-orb.is-revealing {
+  animation: io-orb-reveal .62s cubic-bezier(.16,.78,.25,1) both;
+}
+.io-ui .io-main-orb[data-orb-band="epic"] {
+  box-shadow: 0 0 0 1px rgba(115,217,229,.15), 0 0 34px color-mix(in srgb,var(--io-orb-accent) 25%,transparent), inset 0 1px rgba(255,255,255,.3), inset 0 -15px 28px rgba(0,0,0,.2) !important;
+}
+.io-ui .io-main-orb[data-orb-band="mythic"] {
+  box-shadow: 0 0 0 2px rgba(159,169,255,.14), 0 0 42px color-mix(in srgb,var(--io-orb-accent) 31%,transparent), 0 12px 30px rgba(0,0,0,.32), inset 0 1px rgba(255,255,255,.36), inset 0 -15px 28px rgba(0,0,0,.2) !important;
+}
+.io-ui .io-main-orb[data-orb-band="endgame"],
+.io-ui .io-main-orb[data-orb-band="infinity"] {
+  box-shadow: 0 0 0 2px rgba(200,170,118,.16), 0 0 52px color-mix(in srgb,var(--io-orb-accent) 35%,transparent), 0 0 90px rgba(200,170,118,.08), 0 12px 30px rgba(0,0,0,.35), inset 0 1px rgba(255,255,255,.42), inset 0 -15px 28px rgba(0,0,0,.2) !important;
+}
+.io-ui .io-main-orb[data-orb-band="endgame"] .io-orb-surface-orbit,
+.io-ui .io-main-orb[data-orb-band="infinity"] .io-orb-surface-orbit {
+  border-width: 2px;
+  opacity: .78;
+}
+.io-ui .io-main-orb[data-orb-band="infinity"] .io-orb-surface-core {
+  width: 38%;
+  height: 38%;
+  opacity: .95;
+}
+.io-ui .io-main-orb[data-orb-tier="common"] .io-orb-surface-orbit,
+.io-ui .io-main-orb[data-orb-band="standard"] .io-orb-surface-core {
+  opacity: .3;
+}
+@keyframes io-orb-reveal {
+  0% { filter: brightness(.8) saturate(.8); box-shadow: 0 0 0 0 color-mix(in srgb,var(--io-orb-accent) 0%,transparent); }
+  42% { filter: brightness(1.3) saturate(1.18); box-shadow: 0 0 0 9px color-mix(in srgb,var(--io-orb-accent) 22%,transparent), 0 0 46px color-mix(in srgb,var(--io-orb-accent) 38%,transparent); }
+  100% { filter: brightness(1) saturate(1); }
+}
+
+/* Multi-roll satellites are now miniature versions of the central orb. */
+.io-ui .io-orbit-system {
+  z-index: 4;
+}
+.io-ui .io-orbit-track {
+  border: 1px solid rgba(112, 171, 194, .28);
+  background: radial-gradient(circle, transparent 64%, rgba(115,217,229,.025) 65%, transparent 67%);
+  box-shadow: 0 0 24px rgba(55, 153, 184, .06), inset 0 0 20px rgba(55,153,184,.025);
+}
+.io-ui .io-orbit-track::before,
+.io-ui .io-orbit-track::after {
+  position: absolute;
+  inset: 8%;
+  content: "";
+  border: 1px dashed rgba(112, 171, 194, .16);
+  border-radius: 50%;
+}
+.io-ui .io-orbit-track::after {
+  inset: 22%;
+  border-style: solid;
+  border-color: rgba(112,171,194,.08);
+}
+.io-ui .io-orbit-rotator {
+  width: 0;
+  height: 0;
+  animation: io-orbit-rotation 34s linear infinite;
+}
+.io-ui .io-orbit-position {
+  transform: translate(-50%, -50%);
+}
+.io-ui .io-orbit-satellite-counter {
+  --io-orbit-accent: #73d9e5;
+  display: grid;
+  width: 31px;
+  height: 31px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--io-orbit-accent) 66%, rgba(255,255,255,.25));
+  border-radius: 50%;
+  background: rgba(7, 19, 30, .88);
+  box-shadow: 0 3px 10px rgba(0,0,0,.35), 0 0 13px color-mix(in srgb,var(--io-orbit-accent) 22%,transparent);
+  animation: io-orbit-counter-rotation 34s linear infinite;
+}
+.io-ui .io-orbit-satellite-counter[data-orb-band="mythic"] {
+  width: 35px;
+  height: 35px;
+}
+.io-ui .io-orbit-satellite-counter[data-orb-band="endgame"],
+.io-ui .io-orbit-satellite-counter[data-orb-band="infinity"] {
+  width: 39px;
+  height: 39px;
+  border-width: 2px;
+  box-shadow: 0 3px 12px rgba(0,0,0,.4), 0 0 18px color-mix(in srgb,var(--io-orbit-accent) 36%,transparent);
+}
+.io-ui .io-orbit-satellite {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  width: 75%;
+  height: 75%;
+  border: 1px solid rgba(255,255,255,.45);
+  border-radius: 50%;
+  box-shadow: inset 0 1px rgba(255,255,255,.4), inset 0 -5px 8px rgba(0,0,0,.25);
+}
+.io-ui .io-orbit-satellite-core {
+  position: absolute;
+  inset: 28%;
+  border: 1px solid rgba(255,255,255,.6);
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.75), rgba(255,255,255,.1) 72%);
+  box-shadow: 0 0 9px var(--io-orbit-accent);
+}
+.io-ui .io-orbit-satellite-glint {
+  position: absolute;
+  top: 16%;
+  left: 23%;
+  width: 27%;
+  height: 13%;
+  border-radius: 50%;
+  background: rgba(255,255,255,.72);
+  filter: blur(2px);
+}
+@keyframes io-orbit-rotation {
+  from { transform: rotate(0); }
+  to { transform: rotate(360deg); }
+}
+@keyframes io-orbit-counter-rotation {
+  from { transform: rotate(0); }
+  to { transform: rotate(-360deg); }
+}
+@media (max-width: 680px) {
+  .io-ui .io-orbit-satellite-counter { width: 27px; height: 27px; }
+  .io-ui .io-orbit-satellite-counter[data-orb-band="mythic"] { width: 31px; height: 31px; }
+  .io-ui .io-orbit-satellite-counter[data-orb-band="endgame"],
+  .io-ui .io-orbit-satellite-counter[data-orb-band="infinity"] { width: 34px; height: 34px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .io-ui .io-main-orb,
+  .io-ui .io-main-orb.is-revealing,
+  .io-ui .io-orbit-rotator,
+  .io-ui .io-orbit-satellite-counter {
+    animation: none !important;
+    transition: none !important;
+  }
+}
