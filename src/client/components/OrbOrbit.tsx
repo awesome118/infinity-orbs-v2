@@ -11,9 +11,9 @@ export function OrbOrbit({ orbs, radius = 152 }: Props) {
   if (orbs.length <= 1) return null;
 
   return (
-    <div aria-hidden="true" className="absolute inset-0 flex items-center justify-center pointer-events-none">
+    <div aria-hidden="true" className="io-orbit-layer absolute inset-0 flex items-center justify-center pointer-events-none">
       <div
-        className="absolute rounded-full border border-dashed border-slate-700/50"
+        className="io-orbit-track absolute rounded-full border border-dashed border-slate-700/50"
         style={{ width: radius * 2, height: radius * 2 }}
       />
       <div className="relative w-0 h-0 animate-orbit-ring">
@@ -22,17 +22,14 @@ export function OrbOrbit({ orbs, radius = 152 }: Props) {
           const info = getOrbInfo(orb.rarity, orb.isInfinity);
           return (
             <div
-              key={index}
-              className="absolute -translate-x-1/2 -translate-y-1/2"
+              key={`${orb.rarity}:${orb.isInfinity ? 1 : 0}:${index}`}
+              className="io-orbit-satellite absolute -translate-x-1/2 -translate-y-1/2"
               style={{
                 left: Math.cos(angle) * radius,
                 top: Math.sin(angle) * radius,
               }}
             >
-              <div
-                className="animate-orbit-counter w-8 h-8 rounded-full border border-white/20 shadow-md flex items-center justify-center"
-                style={{ background: info.bgGradient }}
-              />
+              <span className="io-orbit-satellite-core animate-orbit-counter" style={{ background: info.bgGradient }} />
             </div>
           );
         })}

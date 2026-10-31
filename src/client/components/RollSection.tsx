@@ -560,8 +560,12 @@ export const RollSection: React.FC<RollSectionProps> = ({
             </div>
           )}
 
+          {/* Layered glass details keep the Orb tactile without adding noisy decoration. */}
+          <span className="io-orb-glint" aria-hidden="true" />
+          <span className="io-orb-core" aria-hidden="true" />
+          <span className="io-orb-contour" aria-hidden="true" />
           {/* Subtle Inner Glass Ring */}
-          <div className="absolute inset-2 rounded-full border border-white/20 pointer-events-none" />
+          <div className="io-orb-inner-ring absolute inset-2 rounded-full border border-white/20 pointer-events-none" />
 
           {/* Rarity & Name Presentation */}
           <div className="relative z-10 text-center px-4">
