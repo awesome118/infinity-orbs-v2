@@ -222,8 +222,10 @@ test('Luck display combines equipped Rune bonuses with all-dungeon boss Luck and
   assert.match(roll, /combatBossLuckBonus/);
   assert.match(roll, /Total Luck/);
   assert.match(roll, /\{formatNumber\(totalLuckMultiplier\)\}×/);
-  assert.match(roll, /Rarity curve/);
-  assert.match(roll, /luckRarityFactor\(totalLuckMultiplier\)/);
+  // The compact dashboard now uses its fourth metric for progression context.
+  assert.match(roll, /Next horizon/);
+  assert.doesNotMatch(roll, /Rarity curve/);
+  assert.doesNotMatch(roll, /luckRarityFactor\(totalLuckMultiplier\)/);
   assert.doesNotMatch(roll, /Math\.round\(\(luck - 1\) \* 100\)\}%/);
 });
 
