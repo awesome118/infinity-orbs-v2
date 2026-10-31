@@ -37,6 +37,7 @@ import {
   MAX_COSMIC_DUST,
   getLevelBenefits,
   FEATURE_UNLOCK_LEVELS,
+  MAX_PLAYER_LEVEL,
   formatNumber,
   unbrokenMomentumSpeedBonus,
 } from '../../shared/game.js';
@@ -187,10 +188,13 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
     }
   };
 
-  const safeStoredLevel=Number.isFinite(Number(state.level))?Math.max(1,Math.min(1000,Math.floor(Number(state.level)))):1;
+  const safeStoredLevel=Number.isFinite(Number(state.level))?Math.max(1,Math.min(MAX_PLAYER_LEVEL,Math.floor(Number(state.level)))):1;
   const displayedLevel=safeStoredLevel;
   const safeTotalXp=Number.isFinite(Number(state.xp))?Math.max(0,Number(state.xp)):0;
-  const isMaxLevel=safeStoredLevel>=1000;
+  const isMaxLevel=safeStoredLevel>=MAX_PLAYER_LEVEL;
+  const recentUnlockedMilestones=LEVEL_MILESTONES.filter(milestone=>milestone.level<=displayedLevel).slice(-4);
+  const nextLevelMilestones=LEVEL_MILESTONES.filter(milestone=>milestone.level>displayedLevel).slice(0,4);
+  const displayedMilestones=[...recentUnlockedMilestones,...nextLevelMilestones];
   const levelProgress=getLevelProgress(safeStoredLevel,safeTotalXp,state.levelXpFloor);
   const levelInfo={
     ...levelProgress,
@@ -216,7 +220,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-0.5">
-                Levels improve your Luck and Coin rewards. Some levels open new features and award Mastery Points.
+                Every level grants 1 Mastery Point and increases your base rarity. Milestones add permanent bonuses and unlock new systems.
               </p>
             </div>
           </div>
@@ -235,7 +239,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
         {/* EXP Progress Bar */}
         <div className="space-y-2 bg-slate-950/60 border border-purple-900/40 p-4 rounded-2xl">
           <div className="flex items-center justify-between text-xs font-mono">
-            <span className="text-slate-300 font-bold">{isMaxLevel ? 'Maximum Level Reached' : 'Progress to Level ' + (levelInfo.level + 1)}</span>
+            <span className="text-slate-300 font-bold">{isMaxLevel ? 'Paragon cap reached · Level ' + MAX_PLAYER_LEVEL : 'Progress to Level ' + (levelInfo.level + 1)}</span>
             <span className="text-purple-300">
               {fmt(levelInfo.currentLevelXp)} / {fmt(levelInfo.nextLevelXp)} XP ({levelInfo.progressPercent}%)
             </span>
@@ -257,7 +261,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
             <span>Level rewards</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
-            {LEVEL_MILESTONES.map(m => {
+            {displayedMilestones.map(m => {
               const isUnlocked = levelInfo.level >= m.level;
               return (
                 <div

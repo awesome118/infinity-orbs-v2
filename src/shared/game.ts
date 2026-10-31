@@ -1946,6 +1946,9 @@ export function createInitialState(now = Date.now()): PlayerState {
 }
 
 // Level Progression and Milestones System
+export const MAX_PLAYER_LEVEL = 10_000;
+export const LEVEL_EXPANSION_START = 1_000;
+
 export interface LevelMilestonePerk {
   level: number;
   name: string;
@@ -1955,13 +1958,15 @@ export interface LevelMilestonePerk {
   bonusCoinsMultiplier?: number;
   bonusXpMultiplier?: number;
   bonusShardChance?: number;
+  bonusCooldownReductionMs?: number;
+  bonusAltarEffectMultiplier?: number;
 }
 
 export const LEVEL_MILESTONES: LevelMilestonePerk[] = [
   { level: 5, name: 'Novice Seeker', desc: '+15% XP earned on all rolls', bonusXpMultiplier: 1.15 },
   { level: 10, name: 'Shard Sifter', desc: '+5% chance for bonus Shards', bonusShardChance: 0.05 },
-  { level: 15, name: 'Chrono Adept', desc: 'Cooldown floor reduced by 150ms' },
-  { level: 20, name: 'Alchemical Affinity', desc: 'Altar Sacrifices are 15% more potent' },
+  { level: 15, name: 'Chrono Adept', desc: 'Cooldown floor reduced by 150ms', bonusCooldownReductionMs: 150 },
+  { level: 20, name: 'Alchemical Affinity', desc: 'Altar Sacrifices are 15% more potent', bonusAltarEffectMultiplier: 1.15 },
   { level: 25, name: 'Twin Orb Conductor', desc: '+1 Extra Orb per activation!', bonusBalls: 1 },
   { level: 35, name: "Fortune's Blessing", desc: '+15% Luck!', bonusLuckMultiplier: 1.15 },
   { level: 50, name: 'Orb Titan', desc: '+1 Extra Orb per activation & 1.30× Coins!', bonusBalls: 1, bonusCoinsMultiplier: 1.30 },
@@ -1974,14 +1979,34 @@ export const LEVEL_MILESTONES: LevelMilestonePerk[] = [
   { level: 500, name: 'Astral Zenith', desc: '+40% Luck and +10% Shard Chance!', bonusLuckMultiplier: 1.40, bonusShardChance: 0.10 },
   { level: 750, name: 'Infinite Arsenal', desc: '+3 Extra Orbs per activation!', bonusBalls: 3 },
   { level: 1000, name: 'Infinity Master', desc: '+50% Luck and 2.00× Coins!', bonusLuckMultiplier: 1.50, bonusCoinsMultiplier: 2.00 },
+  { level: 1250, name: 'Aether Cartographer', desc: '+10% XP from rolls and quests', bonusXpMultiplier: 1.10 },
+  { level: 1500, name: 'Stellar Economy', desc: '+15% Coin earnings', bonusCoinsMultiplier: 1.15 },
+  { level: 2000, name: 'Paragon of Fortune', desc: '+20% Luck', bonusLuckMultiplier: 1.20 },
+  { level: 2500, name: 'Celestial Chorus', desc: '+1 Extra Orb per activation', bonusBalls: 1 },
+  { level: 3000, name: 'Chrono Architect', desc: 'Cooldown floor reduced by another 100ms', bonusCooldownReductionMs: 100 },
+  { level: 4000, name: 'Starlit Crucible', desc: 'Altar Sacrifices are 15% more potent', bonusAltarEffectMultiplier: 1.15 },
+  { level: 5000, name: 'Infinite Conductor', desc: '+1 Extra Orb and +2.5% Shard chance', bonusBalls: 1, bonusShardChance: 0.025 },
+  { level: 7500, name: 'Paragon Fortune', desc: '+25% Luck', bonusLuckMultiplier: 1.25 },
+  { level: 10000, name: 'Infinity Ascendant', desc: '+2 Extra Orbs, +25% Coins and +15% XP', bonusBalls: 2, bonusCoinsMultiplier: 1.25, bonusXpMultiplier: 1.15 },
 ];
 
 export function xpRequiredForLevel(level: number): number {
   const safeLevel = Math.max(1, Math.floor(Number(level) || 1));
+  if (safeLevel > LEVEL_EXPANSION_START) {
+    // Preserve the original curve through Level 1,000. Beyond that, continue
+    // from the exact Level 1,000 cost with a gentler power curve so the
+    // expanded endgame remains challenging without the old linear multiplier
+    // making each additional level disproportionately expensive.
+    const legacyCapCost = Math.floor(
+      70 * Math.pow(LEVEL_EXPANSION_START, 1.30) *
+      (1 + (LEVEL_EXPANSION_START - 25) * 0.10),
+    );
+    return Math.floor(legacyCapCost * Math.pow(safeLevel / LEVEL_EXPANSION_START, 1.35));
+  }
+
   const base = Math.floor(70 * Math.pow(safeLevel, 1.30));
-  // Levels through 25 retain the existing curve. After 25, each additional
-  // level increases its XP requirement by another 10%, progressively slowing
-  // late-game leveling without changing the early game.
+  // The original curve is retained exactly through Level 1,000 for existing
+  // accounts. Only the newly opened Paragon range uses the smoother extension.
   const lateGameMultiplier = safeLevel <= 25 ? 1 : 1 + (safeLevel - 25) * 0.10;
   return Math.floor(base * lateGameMultiplier);
 }
@@ -2012,8 +2037,8 @@ export function getLevelBenefits(level: number): LevelBenefits {
     coinsMultiplier *= milestone.bonusCoinsMultiplier ?? 1;
     xpMultiplier *= milestone.bonusXpMultiplier ?? 1;
     shardChance += milestone.bonusShardChance ?? 0;
-    if (milestone.level === 15) cooldownReductionMs += 150;
-    if (milestone.level === 20) altarEffectMultiplier *= 1.15;
+    cooldownReductionMs += milestone.bonusCooldownReductionMs ?? 0;
+    altarEffectMultiplier *= milestone.bonusAltarEffectMultiplier ?? 1;
   }
 
   return {
@@ -2028,7 +2053,7 @@ export function getLevelBenefits(level: number): LevelBenefits {
 }
 
 export function totalXpRequiredBeforeLevel(level: number): number {
-  const safeLevel = Math.max(1, Math.min(1000, Math.floor(Number(level) || 1)));
+  const safeLevel = Math.max(1, Math.min(MAX_PLAYER_LEVEL, Math.floor(Number(level) || 1)));
   let total = 0;
   for (let currentLevel = 1; currentLevel < safeLevel; currentLevel++) {
     total += xpRequiredForLevel(currentLevel);
@@ -2046,7 +2071,7 @@ export function getLevelProgress(
   nextLevelXp: number;
   progressPercent: number;
 } {
-  const safeLevel = Math.max(1, Math.min(1000, Math.floor(Number(level) || 1)));
+  const safeLevel = Math.max(1, Math.min(MAX_PLAYER_LEVEL, Math.floor(Number(level) || 1)));
   const safeXp = Math.max(0, Number(totalXp) || 0);
   const calculatedFloor = totalXpRequiredBeforeLevel(safeLevel);
   const floor = Number.isFinite(Number(levelXpFloor))
@@ -2063,7 +2088,7 @@ export function getLevelProgress(
 }
 
 export function applyLevelProgress(s: PlayerState, maxLevelsPerCall = Number.MAX_SAFE_INTEGER): number {
-  const MAX_LEVEL = 1000;
+  const MAX_LEVEL = MAX_PLAYER_LEVEL;
   const maxLevels = Math.max(0, Math.floor(Number(maxLevelsPerCall) || 0));
   if (maxLevels === 0) return 0;
 
@@ -2101,7 +2126,7 @@ export function calculateLevelFromXp(totalXp: number): {
   progressPercent: number;
 } {
   const safeXp = Math.max(0, Number(totalXp) || 0);
-  const MAX_LEVEL = 1000;
+  const MAX_LEVEL = MAX_PLAYER_LEVEL;
   let lvl = 1;
   let accumulated = 0;
 

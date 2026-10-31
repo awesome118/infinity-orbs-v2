@@ -97,6 +97,8 @@ import {
   altarCoinDevotionChancePercent,
   altarCoinFloor,
   MAX_ORB_RARITY,
+  MAX_PLAYER_LEVEL,
+  LEVEL_EXPANSION_START,
 } from '../shared/game.js';
 import {
   recordLeaderboard,
@@ -2695,15 +2697,27 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     MASTERY_SKILL_LEVEL_LIMITS,
   );
 
-  const parsedLevel = Math.max(1, Math.min(1000, Math.floor(Number(parsed.level ?? 1) || 1)));
+  const parsedLevel = Math.max(1, Math.min(MAX_PLAYER_LEVEL, Math.floor(Number(parsed.level ?? 1) || 1)));
   const parsedXp = Math.max(0, Number(parsed.xp ?? 0) || 0);
   const calculatedLevel = calculateLevelFromXp(parsedXp).level;
   const storedLevelXpFloor = Number(parsed.levelXpFloor);
-  const levelXpFloor = Number.isFinite(storedLevelXpFloor)
+  let levelXpFloor = Number.isFinite(storedLevelXpFloor)
     ? Math.max(0, Math.min(parsedXp, storedLevelXpFloor))
     : parsedLevel > calculatedLevel
       ? parsedXp
       : totalXpRequiredBeforeLevel(parsedLevel);
+  let restoredLevel = parsedLevel;
+
+  // Existing Level 1,000 accounts could keep earning XP while the old cap was
+  // active. Convert that banked XP into the new Paragon levels without granting
+  // a second set of Mastery Points for levels that were previously capped.
+  if (parsedLevel === LEVEL_EXPANSION_START) {
+    const xpDerivedLevel = calculateLevelFromXp(parsedXp).level;
+    if (xpDerivedLevel > LEVEL_EXPANSION_START) {
+      restoredLevel = xpDerivedLevel;
+      levelXpFloor = totalXpRequiredBeforeLevel(restoredLevel);
+    }
+  }
 
   const restored: PlayerState = {
     ...base,
@@ -2721,7 +2735,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     lastFrenzyAt: normalizeCooldownTimestamp(parsed.lastFrenzyAt, base.lastFrenzyAt ?? 0),
     lastFrenzyClaimAt: normalizeCooldownTimestamp(parsed.lastFrenzyClaimAt, base.lastFrenzyClaimAt ?? 0),
     lastShareAt: normalizeCooldownTimestamp(parsed.lastShareAt, base.lastShareAt ?? 0),
-    level: parsedLevel,
+    level: restoredLevel,
     xp: finiteNonNegativeInteger(parsedXp, base.xp),
     levelXpFloor,
     upgrades: normalizedUpgrades,
@@ -2778,12 +2792,18 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
   // Cosmic Dust has a lower game-specific cap than the shared safe-integer guard.
   restored.cosmicDust = Math.min(MAX_COSMIC_DUST, restored.cosmicDust);
   playerGuildScopes.set(restored, guildId);
-  // One-time migration: persist the new hard cap instead of only clamping its read view.
-  if (finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust) > MAX_COSMIC_DUST) {
+  // Persist both one-time migrations rather than only changing the read view.
+  const cosmicDustCapMigration = finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust) > MAX_COSMIC_DUST;
+  const levelExpansionMigration = restoredLevel > parsedLevel;
+  if (cosmicDustCapMigration || levelExpansionMigration) {
     try {
       await save(restored);
     } catch (error) {
-      console.error('[Prestige] Cosmic Dust cap migration will retry on next load.', error);
+      if (levelExpansionMigration) {
+        console.error('[Level] Paragon XP migration will retry on the next load.', error);
+      } else {
+        console.error('[Prestige] Cosmic Dust cap migration will retry on next load.', error);
+      }
     }
   }
   return restored;
