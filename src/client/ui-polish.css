@@ -4615,3 +4615,439 @@
 }
 .io-ui .io-inline-upgrade-locked strong { color:#dcebf0; font-size:15px; font-weight:850; }
 .io-ui .io-inline-upgrade-locked > span { max-width:26ch; color:#81949b; font-size:11px; line-height:1.5; }
+
+
+/* ALL SCREENS · INCREMENTAL DASHBOARD LAYOUT
+   Wide viewports prioritize visible controls and useful multi-column panels.
+   Narrow viewports retain normal document flow; no new nested scroll regions. */
+@media (min-width: 1180px) {
+  .io-ui .app-main {
+    max-width: 1600px;
+    padding: 11px 18px 18px;
+  }
+  .io-ui .header-inner,
+  .io-ui .nav-shell {
+    max-width: 1540px;
+  }
+  .io-ui .io-page-shell {
+    max-width: 1540px !important;
+    gap: 12px !important;
+  }
+  .io-ui .io-page-shell > * {
+    min-width: 0;
+    margin-top: 0 !important;
+  }
+  .io-ui .io-page-shell > [role="alert"],
+  .io-ui .io-page-shell > [role="status"] {
+    grid-column: 1 / -1;
+  }
+  .io-ui .io-page-shell .io-page-hero {
+    padding: 14px 18px !important;
+  }
+  .io-ui .io-page-shell .io-page-hero p {
+    max-width: 92ch;
+    line-height: 1.5;
+  }
+
+  /* UPGRADES · show all upgrade categories in a two-by-two shop layout. */
+  .io-ui .io-page-upgrades {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .io-ui .io-page-upgrades > .io-page-hero,
+  .io-ui .io-page-upgrades > .io-page-hero + div,
+  .io-ui .io-page-upgrades > div:last-child {
+    grid-column: 1 / -1;
+  }
+  .io-ui .io-page-upgrades > .io-page-hero + div {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 10px;
+  }
+  .io-ui .io-page-upgrades > .io-page-hero + div > section {
+    min-width: 0;
+    margin-top: 0 !important;
+    padding: 11px !important;
+    gap: 9px !important;
+  }
+  .io-ui .io-page-upgrades > .io-page-hero + div > section > header p {
+    display: none;
+  }
+  .io-ui .io-page-upgrades > .io-page-hero + div [class*="grid-cols-1"][class*="md:grid-cols-2"] {
+    gap: 8px !important;
+  }
+  .io-ui .io-page-upgrades > .io-page-hero + div [class*="bg-slate-900/90"][class*="rounded-2xl"][class*="p-4"] {
+    padding: 10px !important;
+    gap: 8px !important;
+  }
+  .io-ui .io-page-upgrades > .io-page-hero + div [class*="bg-slate-900/90"] p {
+    font-size: 10px;
+    line-height: 1.4;
+  }
+  .io-ui .io-page-upgrades > div:last-child {
+    padding: 12px !important;
+  }
+
+  /* BOOSTERS · global effects stay broad; personal boosts and automation sit beside them. */
+  .io-ui .io-page-boosters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 12px !important;
+  }
+  .io-ui .io-page-boosters > .io-page-hero,
+  .io-ui .io-page-boosters > section:nth-of-type(2),
+  .io-ui .io-page-boosters > section:nth-of-type(3) {
+    grid-column: 1 / -1;
+  }
+  .io-ui .io-page-boosters > section {
+    min-width: 0;
+    margin-top: 0 !important;
+    padding: 13px !important;
+  }
+  .io-ui .io-page-boosters > section:nth-of-type(2) [class*="grid-cols-1"][class*="lg:grid-cols-3"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px !important;
+  }
+  .io-ui .io-page-boosters > section:nth-of-type(4) [class*="p-5"] {
+    padding: 10px !important;
+  }
+  .io-ui .io-page-boosters > section:nth-of-type(5) [class*="grid-cols-1"][class*="md:grid-cols-2"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px !important;
+  }
+
+  /* ALTAR · formula, rank status and offering controls are visible together. */
+  .io-ui .io-page-altar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 12px !important;
+  }
+  .io-ui .io-page-altar > .io-page-hero,
+  .io-ui .io-page-altar > form {
+    grid-column: 1 / -1;
+  }
+  .io-ui .io-page-altar > .io-page-hero + div {
+    grid-column: 1;
+    padding: 13px !important;
+  }
+  .io-ui .io-page-altar > .io-page-hero ~ .grid {
+    grid-column: 2;
+    align-self: stretch;
+    gap: 8px !important;
+  }
+  .io-ui .io-page-altar > .io-page-hero ~ .grid > div {
+    padding: 11px !important;
+  }
+  .io-ui .io-page-altar > form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 12px !important;
+    padding: 15px !important;
+  }
+  .io-ui .io-page-altar > form > :first-child,
+  .io-ui .io-page-altar > form > :last-child {
+    grid-column: 1 / -1;
+  }
+  .io-ui .io-page-altar > form [class*="grid-cols-1"][class*="sm:grid-cols-2"] {
+    grid-column: 1 / -1;
+    gap: 10px !important;
+  }
+
+  /* MASTERY · the skill tree gets more columns without changing its purchase behavior. */
+  .io-ui .io-page-mastery {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px !important;
+  }
+  .io-ui .io-page-mastery > .io-page-hero,
+  .io-ui .io-page-mastery > .io-page-hero + div {
+    grid-column: 1 / -1;
+  }
+  .io-ui .io-page-mastery > .io-page-hero + div {
+    padding: 14px !important;
+    gap: 12px !important;
+  }
+  .io-ui .io-page-mastery > .io-page-hero + div [class*="grid-cols-1"][class*="md:grid-cols-2"] {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 9px !important;
+  }
+  .io-ui .io-page-mastery > .io-page-hero + div [role="group"][aria-label*="Mastery"] {
+    padding: 10px !important;
+  }
+
+  /* CODEX · compact controls and a denser catalogue; pagination stays intact. */
+  .io-ui .io-page-codex {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 12px !important;
+  }
+  .io-ui .io-page-codex > .io-page-hero,
+  .io-ui .io-page-codex > section,
+  .io-ui .io-page-codex > div.flex.flex-wrap,
+  .io-ui .io-page-codex > [role="alert"],
+  .io-ui .io-page-codex > [role="status"] {
+    grid-column: 1 / -1;
+  }
+  .io-ui .io-page-codex > section {
+    padding: 13px !important;
+    gap: 10px !important;
+  }
+  .io-ui .io-page-codex [class*="grid-cols-1"][class*="sm:grid-cols-2"][class*="lg:grid-cols-3"] {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px !important;
+  }
+  .io-ui .io-page-codex [class*="grid-cols-1"][class*="sm:grid-cols-2"][class*="lg:grid-cols-3"] > div {
+    padding: 9px !important;
+  }
+  .io-ui .io-page-codex [class*="p-10"] {
+    padding: 18px !important;
+  }
+
+  /* QUESTS · streak, daily and weekly goals become one dashboard. */
+  .io-ui .io-page-quests {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 12px !important;
+  }
+  .io-ui .io-page-quests > .io-page-hero {
+    grid-column: 1 / -1;
+  }
+  .io-ui .io-page-quests > .io-page-hero + div,
+  .io-ui .io-page-quests > .io-page-hero ~ div.space-y-3 {
+    min-width: 0;
+    margin-top: 0 !important;
+  }
+  .io-ui .io-page-quests > .io-page-hero ~ div.space-y-3 [class*="grid-cols-1"][class*="md:grid-cols-2"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px !important;
+  }
+  .io-ui .io-page-quests > .io-page-hero ~ div.space-y-3 [class*="rounded-2xl"][class*="p-4"] {
+    padding: 10px !important;
+    gap: 8px !important;
+  }
+
+  /* PROFILE · level perks across the top, live stats and prestige beside each other. */
+  .io-ui .io-page-profile {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 12px !important;
+  }
+  .io-ui .io-page-profile > .io-page-hero {
+    grid-column: 1 / -1;
+  }
+  .io-ui .io-page-profile > .io-page-hero + div,
+  .io-ui .io-page-profile > .io-page-hero ~ div {
+    min-width: 0;
+    margin-top: 0 !important;
+    padding: 13px !important;
+    gap: 12px !important;
+  }
+  .io-ui .io-page-profile > .io-page-hero [class*="grid-cols-1"][class*="sm:grid-cols-2"][class*="md:grid-cols-3"] {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px !important;
+  }
+  .io-ui .io-page-profile > .io-page-hero [class*="grid-cols-1"][class*="sm:grid-cols-2"][class*="md:grid-cols-3"] > div {
+    padding: 9px !important;
+  }
+  .io-ui .io-page-profile > .io-page-hero ~ div [class*="grid-cols-1"][class*="sm:grid-cols-2"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px !important;
+  }
+  .io-ui .io-page-profile > .io-page-hero ~ div [class*="rounded-2xl"][class*="p-4"] {
+    padding: 10px !important;
+  }
+
+  /* SOCIAL · more useful cards per row and natural page flow instead of inner scroll boxes. */
+  .io-ui .io-page-social {
+    max-width: 1540px !important;
+    gap: 12px !important;
+  }
+  .io-ui .io-page-social .io-social-task-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px !important;
+  }
+  .io-ui .io-page-social .io-social-perks-panel [class*="grid-cols-1"][class*="sm:grid-cols-2"][class*="md:grid-cols-3"] {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px !important;
+  }
+  .io-ui .io-page-social [class*="grid-cols-1"][class*="md:grid-cols-2"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 9px !important;
+  }
+  .io-ui .io-page-social .io-social-raid-card {
+    padding: 13px !important;
+  }
+  .io-ui .io-page-social .io-social-perks-panel {
+    padding: 13px !important;
+  }
+  .io-ui .io-page-social .max-h-64,
+  .io-ui .io-page-social .h-80 {
+    height: auto !important;
+    max-height: none !important;
+  }
+  .io-ui .io-page-social .overflow-y-auto,
+  .io-ui .io-page-social .overflow-auto {
+    overflow: visible !important;
+  }
+  .io-ui .io-page-social .min-h-0 {
+    min-height: auto !important;
+  }
+
+  /* COMBAT · every subpage uses the same two-column dashboard frame. */
+  .io-ui .io-combat-screen {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 10px;
+    width: 100%;
+    max-width: 1540px;
+    margin: 0 auto;
+  }
+  .io-ui .io-combat-screen > .io-combat-page-head,
+  .io-ui .io-combat-screen > .io-combat-error,
+  .io-ui .io-combat-page-fight > .io-combat-battle-grid,
+  .io-ui .io-combat-page-fight > .io-combat-stat-strip,
+  .io-ui .io-combat-page-fight > .io-combat-columns,
+  .io-ui .io-combat-page-dungeons > .io-combat-dungeon-choices,
+  .io-ui .io-combat-page-dungeons > .io-combat-dungeon-hero,
+  .io-ui .io-combat-page-gear > .io-combat-stat-strip,
+  .io-ui .io-combat-page-gear > .io-combat-inventory-head,
+  .io-ui .io-combat-page-gear > .io-combat-gear-filters,
+  .io-ui .io-combat-page-gear > .io-combat-gear-grid,
+  .io-ui .io-combat-page-gear > .io-combat-inventory-empty,
+  .io-ui .io-combat-page-forge > .io-combat-stat-strip,
+  .io-ui .io-combat-page-forge > .io-combat-forge-success,
+  .io-ui .io-combat-page-skills > .io-combat-skill-banner,
+  .io-ui .io-combat-page-skills > .io-combat-skill-results,
+  .io-ui .io-combat-page-skills > .io-combat-codex-toolbar,
+  .io-ui .io-combat-page-skills > .io-combat-skill-search,
+  .io-ui .io-combat-page-skills > .io-combat-skill-grid,
+  .io-ui .io-combat-page-arena > .io-combat-arena-head,
+  .io-ui .io-combat-page-arena > .io-combat-arena-result,
+  .io-ui .io-combat-page-arena > .io-combat-arena-toolbar,
+  .io-ui .io-combat-page-arena > .io-combat-arena-filters,
+  .io-ui .io-combat-page-arena > .io-combat-opponent-grid {
+    grid-column: 1 / -1;
+  }
+  .io-ui .io-combat-page-gear > .io-combat-inventory-head,
+  .io-ui .io-combat-page-gear > .io-combat-gear-filters {
+    margin-top: 0 !important;
+  }
+  .io-ui .io-combat-page-gear > .io-combat-panel,
+  .io-ui .io-combat-page-forge > .io-combat-forge-panel,
+  .io-ui .io-combat-page-forge > .io-combat-auto-scrap-panel,
+  .io-ui .io-combat-page-skills > .io-combat-panel {
+    min-width: 0;
+    margin: 0 !important;
+  }
+  .io-ui .io-combat-page-gear > .io-combat-panel,
+  .io-ui .io-combat-page-gear > .io-combat-inventory-head ~ .io-combat-panel {
+    grid-column: span 1;
+  }
+  .io-ui .io-combat-page-forge > .io-combat-forge-panel,
+  .io-ui .io-combat-page-forge > .io-combat-auto-scrap-panel,
+  .io-ui .io-combat-page-skills > .io-combat-panel {
+    grid-column: span 1;
+  }
+  .io-ui .io-combat-page-dungeons .io-combat-dungeon-choice-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .io-ui .io-combat-page-gear .io-combat-equipped-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .io-ui .io-combat-page-gear .io-combat-gear-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .io-ui .io-combat-page-skills .io-combat-skill-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .io-ui .io-combat-page-arena .io-combat-opponent-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .io-ui .io-combat-screen .io-combat-panel {
+    padding: 11px;
+  }
+  .io-ui .io-combat-screen .io-combat-panel-head {
+    margin-bottom: 8px;
+  }
+  .io-ui .io-combat-screen .io-combat-log {
+    max-height: none;
+    overflow: visible;
+  }
+  .io-ui .io-combat-page-fight .io-combat-stage {
+    min-height: 0;
+    padding: 10px 12px 8px;
+  }
+  .io-ui .io-combat-page-fight .io-combat-stage-foot {
+    padding-top: 7px;
+  }
+  .io-ui .io-combat-screen .io-combat-stat-strip {
+    margin: 0;
+    gap: 7px;
+  }
+  .io-ui .io-combat-screen .io-combat-stat-strip > div {
+    padding: 8px 9px;
+  }
+}
+
+/* Short laptop-height screens get tighter card padding, not separate scroll panes. */
+@media (min-width: 1180px) and (max-height: 850px) {
+  .io-ui .app-main { padding-top: 7px; padding-bottom: 10px; }
+  .io-ui .io-page-shell { gap: 9px !important; }
+  .io-ui .io-page-shell .io-page-hero { padding: 10px 14px !important; }
+  .io-ui .io-page-profile > .io-page-hero ~ div,
+  .io-ui .io-page-profile > .io-page-hero + div,
+  .io-ui .io-page-altar > form,
+  .io-ui .io-page-mastery > .io-page-hero + div {
+    padding: 10px !important;
+  }
+  .io-ui .io-combat-screen { gap: 8px; }
+  .io-ui .io-combat-screen .io-combat-panel { padding: 9px; }
+  .io-ui .io-combat-page-fight .io-combat-stage { padding: 8px 10px 6px; }
+}
+
+/* Keep a natural single-column reading flow on compact displays. */
+@media (max-width: 1179px) {
+  .io-ui .io-page-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 14px !important;
+  }
+  .io-ui .io-page-shell > * { width: 100%; }
+  .io-ui .io-combat-screen {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+}
+@media (min-width: 900px) and (max-width: 1179px) {
+  .io-ui .io-page-quests,
+  .io-ui .io-page-profile,
+  .io-ui .io-page-altar,
+  .io-ui .io-page-boosters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .io-ui .io-page-quests > .io-page-hero,
+  .io-ui .io-page-profile > .io-page-hero,
+  .io-ui .io-page-altar > .io-page-hero,
+  .io-ui .io-page-boosters > .io-page-hero {
+    grid-column: 1 / -1;
+  }
+  .io-ui .io-page-altar > form { grid-column: 1 / -1; }
+  .io-ui .io-page-boosters > section:nth-of-type(2),
+  .io-ui .io-page-boosters > section:nth-of-type(3) { grid-column: 1 / -1; }
+}
