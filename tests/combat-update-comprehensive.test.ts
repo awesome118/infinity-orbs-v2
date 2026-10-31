@@ -221,7 +221,7 @@ test('Luck display combines equipped Rune bonuses with all-dungeon boss Luck and
   assert.match(roll, /combatTotalBossesBeaten/);
   assert.match(roll, /combatBossLuckBonus/);
   assert.match(roll, /Total Luck/);
-  assert.match(roll, /\{formatNumber\(totalLuckMultiplier\)\}x/);
+  assert.match(roll, /\{formatNumber\(totalLuckMultiplier\)\}×/);
   assert.match(roll, /Rarity Scaling/);
   assert.match(roll, /luckRarityFactor\(totalLuckMultiplier\)/);
   assert.doesNotMatch(roll, /Math\.round\(\(luck - 1\) \* 100\)\}%/);
