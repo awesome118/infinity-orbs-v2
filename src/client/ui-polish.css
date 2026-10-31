@@ -2617,3 +2617,65 @@
     transition: none !important;
   }
 }
+
+@media (max-width: 680px) {
+  .io-ui .header-inner {
+    align-items: flex-start;
+    gap: 9px !important;
+  }
+  .io-ui .brand-lockup {
+    width: 100%;
+    min-width: 0;
+  }
+  .io-ui .header-actions {
+    width: 100%;
+    min-width: 0;
+    margin-left: 0 !important;
+    justify-content: flex-start !important;
+    gap: 6px !important;
+  }
+  .io-ui .header-actions .header-resource-row {
+    flex: 1 1 100%;
+    justify-content: space-around;
+    width: 100%;
+    min-width: 0;
+  }
+  .io-ui .header-actions > button.header-icon-button {
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+  }
+  .io-ui .header-actions .offline-button {
+    flex: 1 1 auto;
+    min-width: 0;
+    justify-content: center;
+    white-space: nowrap;
+  }
+}
+@media (max-width: 420px) {
+  .io-ui .header-actions {
+    gap: 5px !important;
+  }
+  .io-ui .header-actions .header-resource-row {
+    gap: 7px;
+    padding-inline: 6px;
+  }
+  .io-ui .header-actions > button.header-icon-button {
+    flex-basis: 32px;
+    width: 32px;
+    height: 32px;
+  }
+}
+.io-ui .io-page-codex .io-codex-endgame-tag {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 3px;
+  padding: 2px 5px;
+  border: 1px solid rgba(200, 170, 118, .35);
+  border-radius: 3px;
+  color: #d9bf8f;
+  background: rgba(200, 170, 118, .08);
+  font: 800 7px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: .13em;
+}
