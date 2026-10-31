@@ -3450,7 +3450,9 @@ function App() {
             readyAt={readyAt}
             busy={isRolling}
             autoRoll={autoRoll}
-            worldEvent={worldEvent}
+            onBuyUpgrade={handleBuyUpgrade}
+            onBuyAllUpgrades={handleBuyAllUpgrades}
+            onOpenUpgrades={() => changeTab('upgrades')}
             onToggleAutoRoll={handleToggleAutoRoll}
             onRoll={handleRoll}
             onOrbFrenzy={handleStartOrbFrenzy}

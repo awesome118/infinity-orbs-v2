@@ -17,15 +17,14 @@ import {
   Radio,
   Filter,
   Compass,
-  Globe,
   Award,
 } from 'lucide-react';
-import type { PlayerState, Orb } from '../../shared/game.js';
-import type { WorldEvent } from '../../shared/social.js';
+import type { PlayerState, Orb, UpgradeId } from '../../shared/game.js';
 import {
   cooldownMs,
   rollsPerActivation,
   luckMultiplier,
+  upgradeCost,
   getOrbInfo,
   formatRarity,
   visibleContinuumTiers,
@@ -47,7 +46,9 @@ interface RollSectionProps {
   readyAt: number;
   busy: boolean;
   autoRoll: boolean;
-  worldEvent?: WorldEvent | null;
+  onBuyUpgrade: (id: UpgradeId) => Promise<void>;
+  onBuyAllUpgrades: () => Promise<void>;
+  onOpenUpgrades: () => void;
   onToggleAutoRoll: () => void;
   onRoll: () => Promise<void>;
   onOrbFrenzy: () => Promise<void>;
@@ -64,16 +65,6 @@ function prefersReducedMotion(): boolean {
   } catch {
     return false;
   }
-}
-
-function formatTimeLeft(ms: number): string {
-  if (ms <= 0) return 'Resetting soon';
-  const totalSecs = Math.floor(ms / 1000);
-  const days = Math.floor(totalSecs / 86400);
-  const hours = Math.floor((totalSecs % 86400) / 3600);
-  const mins = Math.floor((totalSecs % 3600) / 60);
-  if (days > 0) return `${days}d ${hours}h`;
-  return `${hours}h ${mins}m`;
 }
 
 function formatFrenzyCooldown(ms: number): string {
@@ -93,7 +84,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
   readyAt,
   busy,
   autoRoll,
-  worldEvent,
+  onBuyUpgrade,
+  onBuyAllUpgrades,
+  onOpenUpgrades,
   onToggleAutoRoll,
   onRoll,
   onOrbFrenzy,
@@ -102,6 +95,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
   onNewBest,
 }) => {
   const [showBatchDetails, setShowBatchDetails] = useState(false);
+  const [quickUpgradeBusyId, setQuickUpgradeBusyId] = useState<UpgradeId | null>(null);
+  const [quickBuyAllBusy, setQuickBuyAllBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [reducedMotion, setReducedMotion] = useState(() => prefersReducedMotion());
 
@@ -419,6 +414,42 @@ export const RollSection: React.FC<RollSectionProps> = ({
             : `Your next roll is ready in ${(remain / 1000).toFixed(1)} seconds.`;
   const hasMultipleOrbs = lastBatch.length > 1;
   const orbitRadius = typeof window !== 'undefined' && window.innerWidth < 400 ? 118 : 152;
+  const speedLevel = state.upgrades.speed ?? 0;
+  const luckLevel = state.upgrades.luck ?? 0;
+  const multiLevel = state.upgrades.multi ?? 0;
+  const coinBonusLevel = state.upgrades.coinBonus ?? 0;
+  const nextSpeedState: PlayerState = { ...state, upgrades: { ...state.upgrades, speed: speedLevel + 1 } };
+  const nextLuckState: PlayerState = { ...state, upgrades: { ...state.upgrades, luck: luckLevel + 1 } };
+  const nextMultiState: PlayerState = { ...state, upgrades: { ...state.upgrades, multi: multiLevel + 1 } };
+  const quickUpgradeItems = [
+    { id: 'luck' as const, title: 'Luck', level: luckLevel, current: `${luckMultiplier(state).toFixed(2)}×`, next: `${luckMultiplier(nextLuckState).toFixed(2)}×`, cost: upgradeCost('luck', luckLevel) },
+    { id: 'speed' as const, title: 'Roll speed', level: speedLevel, current: `${(cooldownMs(state) / 1000).toFixed(2)}s`, next: `${(cooldownMs(nextSpeedState) / 1000).toFixed(2)}s`, cost: upgradeCost('speed', speedLevel) },
+    { id: 'multi' as const, title: 'Multi roll', level: multiLevel, current: `${rollsPerActivation(state)} orbs`, next: `${rollsPerActivation(nextMultiState)} orbs`, cost: upgradeCost('multi', multiLevel) },
+    { id: 'coinBonus' as const, title: 'Coin bonus', level: coinBonusLevel, current: `+${coinBonusLevel * 15}%`, next: `+${(coinBonusLevel + 1) * 15}%`, cost: upgradeCost('coinBonus', coinBonusLevel) },
+  ];
+  const quickAffordableCount = quickUpgradeItems.filter(item =>
+    Number.isFinite(item.cost) &&
+    state.coins >= item.cost &&
+    !(item.id === 'speed' && item.level >= 20)
+  ).length;
+  const buyQuickUpgrade = async (id: UpgradeId) => {
+    if (busy || quickUpgradeBusyId !== null || quickBuyAllBusy) return;
+    setQuickUpgradeBusyId(id);
+    try {
+      await onBuyUpgrade(id);
+    } finally {
+      setQuickUpgradeBusyId(null);
+    }
+  };
+  const buyAllQuickUpgrades = async () => {
+    if (busy || quickUpgradeBusyId !== null || quickBuyAllBusy || quickAffordableCount === 0) return;
+    setQuickBuyAllBusy(true);
+    try {
+      await onBuyAllUpgrades();
+    } finally {
+      setQuickBuyAllBusy(false);
+    }
+  };
 
   return (
     <div className="roll-layout">
@@ -429,31 +460,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
           <p>Tap the Orb to see what turns up. Rarer finds earn more Coins.</p>
         </div>
       </header>
-      {/* Weekly Cosmos Milestone Goal Banner */}
-      {worldEvent && (
-        <div className="w-full bg-gradient-to-r from-purple-950/70 via-slate-900 to-indigo-950/70 border border-purple-500/30 rounded-2xl p-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-lg">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-purple-500/20 border border-purple-400/30 flex items-center justify-center text-purple-300 shrink-0">
-              <Globe className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-white">Weekly Goal (Tier {worldEvent.tier})</span>
-                <span className="text-[10px] bg-purple-500/20 text-purple-300 font-bold px-2 py-0.5 rounded-full border border-purple-500/30">
-                  {worldEvent.buffDescription}
-                </span>
-              </div>
-              <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                {formatNumber(worldEvent.currentProgress)} / {formatNumber(worldEvent.goal)} rolls contributed
-              </div>
-            </div>
-          </div>
-          <div className="text-right text-[11px] font-mono text-amber-300/90 whitespace-nowrap bg-slate-950/60 border border-slate-800 px-2.5 py-1 rounded-lg">
-            ⏳ Resets in {formatTimeLeft(worldEvent.endsAt - now)}
-          </div>
-        </div>
-      )}
-
       {/* Turbo Roll Active Banner */}
       {isTurbo && (
         <div className="w-full bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 rounded-xl px-3 py-1.5 flex items-center justify-between text-xs text-amber-300">
@@ -1031,6 +1037,59 @@ export const RollSection: React.FC<RollSectionProps> = ({
         </section>
 
       <aside className="roll-sidebar" aria-label="Run summary">
+        <section className="field-card roll-quick-upgrades" aria-label="Quick upgrades">
+          <div className="roll-quick-upgrades-head">
+            <div>
+              <span className="field-label">Quick upgrades</span>
+              <span className="roll-quick-wallet">{formatNumber(state.coins)} Coins</span>
+            </div>
+            <button type="button" className="roll-quick-all-link" onClick={onOpenUpgrades}>All</button>
+          </div>
+          <div className="roll-quick-upgrade-list">
+            {quickUpgradeItems.map(item => {
+              const maxed = !Number.isFinite(item.cost) || (item.id === 'speed' && item.level >= 20);
+              const canAfford = !maxed && state.coins >= item.cost;
+              const isPending = quickUpgradeBusyId === item.id;
+              return (
+                <div className="roll-quick-upgrade" key={item.id}>
+                  <div className="roll-quick-upgrade-copy">
+                    <div className="roll-quick-upgrade-title">
+                      <strong>{item.title}</strong>
+                      <span>Lv {item.level}</span>
+                    </div>
+                    <div className="roll-quick-upgrade-value">
+                      <span>{item.current}</span>
+                      <span aria-hidden="true">→</span>
+                      <strong>{item.next}</strong>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="roll-quick-upgrade-buy"
+                    disabled={!canAfford || busy || quickUpgradeBusyId !== null || quickBuyAllBusy}
+                    aria-busy={isPending}
+                    aria-label={maxed ? item.title + ' fully upgraded' : 'Buy ' + item.title + ' for ' + formatNumber(item.cost) + ' Coins'}
+                    title={maxed ? 'Fully upgraded' : canAfford ? 'Buy one level for ' + formatNumber(item.cost) + ' Coins' : 'Need ' + formatNumber(Math.max(0, item.cost - state.coins)) + ' more Coins'}
+                    onClick={() => { void buyQuickUpgrade(item.id).catch(() => undefined); }}
+                  >
+                    {isPending ? '…' : maxed ? 'MAX' : formatNumber(item.cost)}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <div className="roll-quick-upgrade-footer">
+            <button
+              type="button"
+              className="roll-quick-buy-all"
+              disabled={quickAffordableCount === 0 || busy || quickUpgradeBusyId !== null || quickBuyAllBusy}
+              aria-busy={quickBuyAllBusy}
+              onClick={() => { void buyAllQuickUpgrades().catch(() => undefined); }}
+            >
+              {quickBuyAllBusy ? 'Buying…' : quickAffordableCount > 0 ? 'Buy all available' : 'No affordable upgrades'}
+            </button>
+          </div>
+        </section>
         <section className="field-card">
           <div className="field-card-header">
             <span className="field-label">Latest discovery</span>

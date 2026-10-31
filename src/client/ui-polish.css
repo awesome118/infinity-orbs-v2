@@ -3931,3 +3931,229 @@ body {
   .io-ui .roll-main { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
   .io-ui .roll-main > * { grid-column: 1 !important; grid-row: auto !important; }
 }
+
+
+/* Blue console redesign: one consistent accent and quieter, denser surfaces. */
+.io-ui {
+  --ui-line: rgba(111, 158, 230, .19);
+  --ui-line-strong: rgba(135, 181, 255, .34);
+  --ui-surface: rgba(12, 23, 41, .96);
+  --ui-surface-raised: rgba(19, 34, 57, .97);
+  --ui-focus: rgba(130, 180, 255, .96);
+  --teal: #8dbaff;
+  --gold: #d2e3ff;
+  min-width: 0;
+}
+
+.io-ui .app-header {
+  border-bottom-color: rgba(108, 157, 233, .2);
+  background: linear-gradient(180deg, rgba(7, 14, 27, .98), rgba(9, 18, 34, .94));
+}
+
+.io-ui .brand-mark {
+  border-color: rgba(119, 173, 255, .48);
+  background: linear-gradient(145deg, rgba(41, 88, 151, .44), rgba(13, 25, 45, .96));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .12), 0 0 22px rgba(68, 133, 224, .14);
+}
+
+.io-ui .brand-glyph { color: #dceaff; }
+.io-ui .brand-lockup:hover .brand-mark {
+  border-color: rgba(164, 203, 255, .78);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .16), 0 0 25px rgba(83, 148, 241, .22);
+}
+
+.io-ui .resource-chip {
+  border-color: rgba(112, 160, 235, .18);
+  background: linear-gradient(145deg, rgba(19, 34, 57, .96), rgba(10, 20, 37, .96));
+}
+
+.io-ui .app-nav {
+  border-bottom-color: rgba(107, 158, 233, .16);
+  background: rgba(8, 16, 31, .96);
+}
+
+.io-ui .nav-tab { color: #9cabc2; }
+.io-ui .nav-tab:hover {
+  border-color: rgba(118, 168, 241, .2);
+  color: #edf5ff;
+  background: rgba(42, 67, 104, .38);
+}
+.io-ui .nav-tab.is-active {
+  border-color: rgba(120, 174, 255, .38);
+  color: #e5f0ff;
+  background: linear-gradient(135deg, rgba(46, 91, 153, .43), rgba(29, 56, 94, .48));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .07), 0 3px 14px rgba(22, 55, 101, .16);
+}
+.io-ui .nav-tab.is-active::after {
+  background: linear-gradient(90deg, transparent, rgba(139, 187, 255, .96), transparent);
+}
+
+.io-ui .io-level-progress-track { background: rgba(113, 156, 218, .18); }
+.io-ui .io-level-progress-track > span { background: linear-gradient(90deg, #4e8fe3, #9bc5ff); }
+.io-ui .app-main :is(div, section, article, form)[class*="border-slate-800"] {
+  border-color: rgba(110, 158, 230, .17);
+}
+.io-ui .app-main :is(input, select, textarea):focus {
+  border-color: rgba(133, 181, 255, .72);
+  box-shadow: 0 0 0 3px rgba(91, 145, 226, .12);
+}
+.io-ui .io-page-shell .io-page-hero {
+  border-color: rgba(105, 157, 232, .24) !important;
+  background-color: rgba(17, 32, 54, .96) !important;
+  background-image: linear-gradient(135deg, rgba(38, 75, 124, .18), rgba(12, 23, 41, .12)) !important;
+}
+.io-ui .roll-stage {
+  border-color: rgba(114, 168, 245, .28);
+  background:
+    radial-gradient(ellipse at 50% 42%, rgba(64, 119, 198, .2), transparent 43%),
+    linear-gradient(145deg, #14243d, #0e1a2e 72%);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .26), inset 0 1px rgba(211, 231, 255, .05);
+}
+.io-ui .roll-stage::before {
+  opacity: .36;
+  background-image:
+    linear-gradient(rgba(145, 185, 245, .028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(145, 185, 245, .028) 1px, transparent 1px);
+}
+.io-ui .roll-stage::after {
+  border-color: rgba(126, 176, 248, .13);
+  box-shadow: 0 0 0 22px rgba(112, 164, 239, .018), 0 0 0 54px rgba(112, 164, 239, .012);
+}
+.io-ui .roll-button {
+  border-color: rgba(153, 196, 255, .48) !important;
+  background: linear-gradient(105deg, #3979c6, #4b8de0 58%, #659de4) !important;
+  color: #f6f9ff !important;
+  box-shadow: 0 8px 22px rgba(48, 111, 194, .2), inset 0 1px rgba(255, 255, 255, .18) !important;
+}
+.io-ui .roll-button.is-waiting {
+  border-color: rgba(118, 148, 192, .18) !important;
+  background: #1c2b43 !important;
+}
+.io-ui .roll-button.frenzy-supercharged,
+.io-ui .roll-button:has(.frenzy-lightning) {
+  border-color: rgba(190, 167, 255, .38) !important;
+  background: linear-gradient(105deg, #46518c, #5864a5) !important;
+}
+.io-ui .field-card {
+  border-color: rgba(109, 159, 235, .2);
+  background: linear-gradient(150deg, rgba(19, 34, 57, .98), rgba(11, 21, 38, .98));
+}
+.io-ui .field-stat-row { border-top-color: rgba(111, 158, 230, .13); }
+.io-ui .roll-quick-upgrades {
+  display: none;
+  gap: 8px;
+  padding: 10px;
+  border-color: rgba(111, 164, 243, .29);
+  background: linear-gradient(145deg, rgba(20, 39, 66, .98), rgba(11, 22, 40, .98));
+}
+.io-ui .roll-quick-upgrades-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.io-ui .roll-quick-upgrades-head > div { display: grid; gap: 2px; }
+.io-ui .roll-quick-wallet {
+  color: #b6c9e7;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 700;
+}
+.io-ui .roll-quick-all-link {
+  min-height: 25px;
+  padding: 3px 8px;
+  border: 1px solid rgba(128, 176, 245, .22);
+  border-radius: 7px;
+  color: #b9d3f8;
+  background: rgba(54, 97, 157, .17);
+  font-size: 10px;
+  font-weight: 800;
+}
+.io-ui .roll-quick-upgrade-list { display: grid; gap: 5px; }
+.io-ui .roll-quick-upgrade {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 7px;
+  border: 1px solid rgba(121, 167, 231, .12);
+  border-radius: 9px;
+  background: rgba(7, 17, 33, .48);
+}
+.io-ui .roll-quick-upgrade-copy { min-width: 0; display: grid; gap: 3px; }
+.io-ui .roll-quick-upgrade-title { display: flex; align-items: baseline; justify-content: space-between; gap: 5px; }
+.io-ui .roll-quick-upgrade-title strong { color: #e0ebfa; font-size: 10px; line-height: 1.15; }
+.io-ui .roll-quick-upgrade-title span { color: #849abb; font-size: 9px; white-space: nowrap; }
+.io-ui .roll-quick-upgrade-value {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #8ea2c1;
+  font-size: 9px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.io-ui .roll-quick-upgrade-value strong { color: #b8d6ff; font-weight: 800; }
+.io-ui .roll-quick-upgrade-buy {
+  display: grid;
+  min-width: 60px;
+  min-height: 31px;
+  place-items: center;
+  padding: 3px 5px;
+  border: 1px solid rgba(127, 180, 255, .3);
+  border-radius: 7px;
+  color: #e6f1ff;
+  background: rgba(47, 103, 174, .38);
+  font-size: 9px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.io-ui .roll-quick-upgrade-buy:not(:disabled):hover { background: rgba(61, 128, 211, .52); }
+.io-ui .roll-quick-upgrade-buy:disabled { border-color: rgba(113, 139, 174, .12); color: #667995; background: rgba(20, 31, 49, .62); }
+.io-ui .roll-quick-upgrade-footer { display: flex; justify-content: stretch; }
+.io-ui .roll-quick-buy-all {
+  width: 100%;
+  min-height: 29px;
+  padding: 5px 7px;
+  border: 1px solid rgba(129, 183, 255, .32);
+  border-radius: 8px;
+  color: #dceaff;
+  background: linear-gradient(100deg, rgba(47, 100, 169, .46), rgba(43, 80, 135, .5));
+  font-size: 9px;
+  font-weight: 850;
+}
+.io-ui .roll-quick-buy-all:disabled {
+  border-color: rgba(113, 139, 174, .12);
+  color: #71839d;
+  background: rgba(20, 31, 49, .58);
+}
+.io-ui .roll-quick-all-link:focus-visible,
+.io-ui .roll-quick-upgrade-buy:focus-visible,
+.io-ui .roll-quick-buy-all:focus-visible { outline-offset: 2px; }
+
+@media (min-width: 1180px) and (min-height: 700px) {
+  .io-ui .roll-sidebar {
+    display: grid;
+    min-height: 0;
+    align-content: start;
+    gap: 8px;
+  }
+  .io-ui .roll-quick-upgrades { display: grid; }
+  .io-ui .roll-sidebar .field-card { padding: 9px; }
+  .io-ui .roll-sidebar .latest-orb { margin-top: 7px; gap: 8px; }
+  .io-ui .roll-sidebar .latest-orb-mark { width: 36px; height: 36px; border-radius: 11px; }
+  .io-ui .roll-sidebar .field-level { margin-top: 7px; }
+  .io-ui .roll-sidebar .field-level strong { font-size: 24px; }
+}
+
+@media (max-width: 1179px) {
+  .io-ui .roll-quick-upgrades { display: none; }
+}
+
+@media (min-width: 1180px) and (min-height: 700px) {
+  .io-ui .io-page-shell { gap: 7px !important; }
+  .io-ui .io-page-shell .io-page-hero { padding: 9px 12px !important; }
+  .io-ui .io-page-shell > :is(section, form) { min-height: 0; }
+  .io-ui .io-page-shell > :is(section, form)[class*="rounded-2xl"] { margin: 0 !important; }
+}
