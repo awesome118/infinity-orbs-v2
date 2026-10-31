@@ -4601,3 +4601,17 @@
 @media (min-width: 641px) and (max-width: 1119px) {
   .io-ui .io-inline-upgrade-shop { grid-row: auto; }
 }
+
+
+.io-ui .io-inline-upgrade-locked {
+  display: grid;
+  align-content: center;
+  min-height: 178px;
+  gap: 9px;
+  padding: 18px;
+  border: 1px solid rgba(80,151,188,.2);
+  border-radius: 16px;
+  background: linear-gradient(155deg,rgba(17,32,42,.98),rgba(10,19,27,.98));
+}
+.io-ui .io-inline-upgrade-locked strong { color:#dcebf0; font-size:15px; font-weight:850; }
+.io-ui .io-inline-upgrade-locked > span { max-width:26ch; color:#81949b; font-size:11px; line-height:1.5; }
