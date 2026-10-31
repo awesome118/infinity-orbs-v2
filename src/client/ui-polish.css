@@ -4420,3 +4420,53 @@
   .io-ui .io-main-orb { transition: none !important; }
   .io-ui .io-main-orb.is-revealing { animation: none !important; }
 }
+
+
+/* Paragon progression: present the extended level path as the same blue system. */
+.io-ui .io-page-profile .io-page-hero {
+  background: linear-gradient(120deg, rgba(17,49,69,.9), rgba(8,24,38,.98) 72%) !important;
+  border-color: rgba(112,164,187,.22) !important;
+}
+.io-ui .io-page-profile .io-page-hero .bg-gradient-to-br {
+  background: linear-gradient(145deg, #1b5975, #12354c) !important;
+  box-shadow: none !important;
+}
+.io-ui .io-page-profile .io-page-hero .animate-spin { animation: none !important; }
+.io-ui .io-page-profile .io-page-hero [role="progressbar"] {
+  border: 0 !important;
+  background: #061724 !important;
+  box-shadow: inset 0 0 0 1px rgba(110,160,183,.14) !important;
+}
+.io-ui .io-page-profile .io-page-hero [role="progressbar"] > div {
+  background: linear-gradient(90deg, #286e8a, #62b4cb) !important;
+  box-shadow: none !important;
+}
+.io-ui .io-page-profile .io-page-hero .grid > div {
+  border-color: rgba(110,160,183,.15) !important;
+  border-radius: 9px !important;
+  background: rgba(8,25,39,.68) !important;
+  color: #b8cbd4 !important;
+}
+.io-ui .io-page-profile .io-page-hero .grid > div :is(span, p) {
+  color: #a4bac5;
+}
+.io-ui .io-page-profile .io-page-hero .grid > div .text-emerald-400,
+.io-ui .io-page-profile .io-page-hero .grid > div .text-emerald-300 {
+  color: #91d2c0 !important;
+}
+.io-ui .io-page-profile .io-page-hero .grid > div .text-purple-200,
+.io-ui .io-page-profile .io-page-hero .grid > div .text-purple-300 {
+  color: #add5e2 !important;
+}
+.io-ui .io-page-profile .io-page-hero .grid > div .bg-purple-950\\/30 {
+  background: rgba(31,83,105,.24) !important;
+}
+.io-ui .brand-copy [role="button"][aria-label^="Open profile"] > div {
+  background: linear-gradient(90deg, #286e8a, #62b4cb) !important;
+  box-shadow: none !important;
+}
+.io-ui .brand-copy button[aria-label^="View Level"] {
+  border-color: rgba(117,187,207,.25) !important;
+  background: rgba(48,112,139,.15) !important;
+  color: #b6dce7 !important;
+}
