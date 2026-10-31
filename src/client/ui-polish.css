@@ -4592,3 +4592,12 @@
   .io-ui .roll-main > .w-full.flex.flex-col.items-center.space-y-2 { padding-block: 0; }
   .io-ui .roll-main > .roll-controls { gap: 4px !important; padding-top: 0; }
 }
+
+
+@media (min-width: 1120px) {
+  .io-ui .roll-main { justify-content: start; }
+  .io-ui .roll-main > * { margin-block: 0; }
+}
+@media (min-width: 641px) and (max-width: 1119px) {
+  .io-ui .io-inline-upgrade-shop { grid-row: auto; }
+}
