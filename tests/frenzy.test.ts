@@ -21,6 +21,12 @@ import {
   isFrenzyPostExpired,
   todayKey,
 } from '../src/shared/game.js';
+import {
+  MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH,
+  MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH,
+  createRollBatchPlan,
+  effectiveWeightAtSample,
+} from '../src/shared/roll-batching.js';
 
 const NOW = 1_800_000_000_000;
 
@@ -29,6 +35,31 @@ test('Frenzy claim size is multiplied by Multi Roll', () => {
   assert.equal(frenzyClaimCountForRarity(1_000_000, 1), base);
   assert.equal(frenzyClaimCountForRarity(1_000_000, 4), base * 4);
   assert.equal(frenzyClaimCountForRarity(1_000_000, 0), base);
+});
+
+test('1/e9 Frenzy stays below the supported claim cap and uses bounded samples', () => {
+  const baseCount = frenzyOrbCountForRarity(1e9);
+  assert.equal(baseCount, Math.floor(Math.log(1e9) / Math.log(FRENZY_LOG_BASE)));
+
+  // Stress a high-Multiball, Frenzy Volley claim rather than only the base payout.
+  const claimCount = frenzyClaimCountForRarity(1e9, 163, 1);
+  assert.ok(Number.isSafeInteger(claimCount));
+  assert.ok(claimCount > baseCount);
+  assert.ok(claimCount < MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH);
+
+  const plan = createRollBatchPlan(
+    claimCount,
+    0,
+    true,
+    MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH,
+  );
+  assert.ok(plan.simulatedBaseCount <= MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH);
+
+  let processedCount = 0;
+  for (let index = 0; index < plan.simulatedBaseCount; index++) {
+    processedCount += effectiveWeightAtSample(plan, index);
+  }
+  assert.equal(processedCount, claimCount);
 });
 
 test('Frenzy payout always applies full Multiball and Frenzy Volley adds 20%', () => {

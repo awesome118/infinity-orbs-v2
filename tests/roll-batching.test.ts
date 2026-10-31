@@ -7,6 +7,7 @@ import {
   MAX_SIMULATED_ROLLS_PER_BATCH,
   MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH,
   MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH,
+  MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH,
   createRollBatchPlan,
   getRarityBounds,
   effectiveWeightAtSample,
@@ -87,10 +88,28 @@ test('the first three new-player Orbs stay uncompressed and preserve their exact
   assert.equal(plan.simulatedBaseCount, 50_003); // 50k weighted samples plus 3 exact starter-guarantee Orbs.
 });
 
-test('offline batches remain uncompressed', () => {
-  const plan = createRollBatchPlan(20_000, 0, false);
-  assert.equal(plan.compressionWeight, 1);
-  assert.equal(plan.simulatedBaseCount, 20_000);
+test('large offline vault claims stay within a bounded sample budget and conserve every Orb', () => {
+  const effectiveCount = 1_000_000;
+  const plan = createRollBatchPlan(
+    effectiveCount,
+    3,
+    true,
+    MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH,
+  );
+
+  assert.equal(MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH, 4_096);
+  assert.equal(plan.protectedOpeningCount, 3);
+  assert.ok(plan.compressionWeight > 1);
+  assert.ok(plan.simulatedBaseCount <= MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH + 3);
+
+  let processedCount = 0;
+  for (let index = 0; index < plan.simulatedBaseCount; index++) {
+    processedCount += effectiveWeightAtSample(plan, index);
+  }
+  assert.equal(processedCount, effectiveCount);
+  assert.equal(effectiveWeightAtSample(plan, 0), 1);
+  assert.equal(effectiveWeightAtSample(plan, 1), 1);
+  assert.equal(effectiveWeightAtSample(plan, 2), 1);
 });
 
 test('large low-probability proc counts stay within valid binomial bounds', () => {
@@ -124,7 +143,8 @@ test('server uses weighted sample counts for Luck, player totals, XP, Coins, and
   assert.ok(apply.includes('const sampleScale = sampleWeight * averageGroupMultiplier'));
   assert.ok(apply.includes('effectiveLuck * sampleScale * sampleScale'));
   assert.match(apply, /const isCompressedGroup = sampleWeight > 1/);
-  assert.match(apply, /source !== 'offline' && forcedRarity == null/);
+  assert.match(apply, /source === 'offline'[\s\S]{0,100}MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH/);
+  assert.match(apply, /forcedRarity == null,[\s\S]{0,100}maxSimulatedRolls/);
   assert.match(apply, /rollContinuum\(\s*effectiveLuck,\s*rng,\s*runeLuckMultiplier,\s*runeRarityFloor/);
   assert.match(apply, /runeLuckMultiplier \* criticalMultiplier/);
   assert.match(apply, /runeLuckMultiplier \* supernovaMultiplier/);

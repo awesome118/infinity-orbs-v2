@@ -5,7 +5,7 @@ import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
-import { createRollBatchPlan, effectiveWeightAtSample, virtualRollOffsetAtSample, sampleBinomialCount, getRarityBounds, MAX_SIMULATED_ROLLS_PER_BATCH, MAX_EFFECTIVE_ROLLS_PER_BATCH, MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH, MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH } from '../shared/roll-batching.js';
+import { createRollBatchPlan, effectiveWeightAtSample, virtualRollOffsetAtSample, sampleBinomialCount, getRarityBounds, MAX_SIMULATED_ROLLS_PER_BATCH, MAX_EFFECTIVE_ROLLS_PER_BATCH, MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH, MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH, MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH } from '../shared/roll-batching.js';
 import { combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityEffects, combatTotalBossesBeaten, combatBossLuckBonus } from '../shared/combat.js';
 import {
   createInitialState,
@@ -3718,11 +3718,13 @@ export async function applyRolls(
     : 0;
   const maxSimulatedRolls = source === 'frenzy'
     ? MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH
-    : MAX_SIMULATED_ROLLS_PER_BATCH;
+    : source === 'offline'
+      ? MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH
+      : MAX_SIMULATED_ROLLS_PER_BATCH;
   const batchPlan = createRollBatchPlan(
     baseBatchRollCount,
     protectedOpeningCount,
-    source !== 'offline' && forcedRarity == null,
+    forcedRarity == null,
     maxSimulatedRolls,
   );
   let simulationLoopCount = batchPlan.simulatedBaseCount;
