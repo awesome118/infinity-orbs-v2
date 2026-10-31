@@ -2778,6 +2778,9 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
   };
   // Cosmic Dust has a lower game-specific cap than the shared safe-integer guard.
   restored.cosmicDust = Math.min(MAX_COSMIC_DUST, restored.cosmicDust);
+  // Migrate excess XP from legacy Level 1,000 saves immediately so their
+  // Paragon level and accumulated Mastery Points are correct before gameplay.
+  applyLevelProgress(restored);
   playerGuildScopes.set(restored, guildId);
   // One-time migration: persist the new hard cap instead of only clamping its read view.
   if (finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust) > MAX_COSMIC_DUST) {
