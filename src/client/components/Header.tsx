@@ -137,7 +137,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="header-actions flex flex-wrap items-center justify-end gap-2 sm:gap-4 ml-auto">
           {/* Live player count / social luck */}
           <div
-            className="hidden sm:flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-2.5 py-1.5 text-[10px] font-black text-indigo-200"
+            className="community-presence-chip hidden sm:flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-2.5 py-1.5 text-[10px] font-black text-indigo-200"
             aria-label={`Online players: ${fmt(onlineCount)}; community Luck multiplier ${onlinePlayerLuckMultiplier(onlineCount).toFixed(2)} times.`}
             title="Players currently active in this game installation. More players increase everyone’s Luck bonus."
           >
@@ -150,35 +150,39 @@ export const Header: React.FC<HeaderProps> = ({
           <div role="group" aria-label={combatMode ? "Combat resources" : "Player resources"} className="header-resource-row resource-chip flex items-center gap-2 bg-slate-950/70 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-semibold">
             {/* Core-game Coins stay hidden while in Combat. */}
             {!combatMode && <>
-              <div className="flex items-center gap-1 text-amber-400" aria-label={`${formatNumber(state.coins)} Coins`} title="Coins: spend them on upgrades to improve your rolls.">
+              <div className="header-resource-entry text-amber-300" aria-label={`${formatNumber(state.coins)} Coins`} title="Coins: spend them on upgrades to improve your rolls.">
                 <Coins className="w-3.5 h-3.5" />
-                <span>{formatNumber(state.coins)}</span>
+                <span className="header-resource-value">{formatNumber(state.coins)}</span>
+                <span className="header-resource-label">Coins</span>
               </div>
-              <div className="w-[1px] h-3.5 bg-slate-800" />
+              <div className="header-resource-divider w-[1px] h-3.5 bg-slate-800" />
             </>}
 
             {/* Combat Marks are shown only while in the Combat section. */}
             {combatMode && <>
-              <div className="flex items-center gap-1 text-lime-300" title="Combat Marks are earned in battles and spent on combat upgrades and Skill Gacha.">
+              <div className="header-resource-entry text-cyan-200" title="Combat Marks are earned in battles and spent on combat upgrades and Skill Gacha.">
                 <Swords className="w-3.5 h-3.5" />
-                <span>{fmt(combatMarks)}</span>
+                <span className="header-resource-value">{fmt(combatMarks)}</span>
+                <span className="header-resource-label">Marks</span>
               </div>
-              <div className="w-[1px] h-3.5 bg-slate-800" />
+              <div className="header-resource-divider w-[1px] h-3.5 bg-slate-800" />
             </>}
 
             {/* Shards */}
-            <div className="flex items-center gap-1 text-cyan-400" aria-label={`${formatShardAmount(state.shards ?? 0)} Shards`} title="Shards: used for special tools and boosters.">
+            <div className="header-resource-entry text-cyan-300" aria-label={`${formatShardAmount(state.shards ?? 0)} Shards`} title="Shards: used for special tools and boosters.">
               <Gem className="w-3.5 h-3.5" />
-              <span>{formatShardAmount(state.shards ?? 0)}</span>
+              <span className="header-resource-value">{formatShardAmount(state.shards ?? 0)}</span>
+              <span className="header-resource-label">Shards</span>
             </div>
 
             {/* Cosmic Dust */}
             {(state.cosmicDust > 0 || state.prestigeCount > 0) && (
               <>
-                <div className="w-[1px] h-3.5 bg-slate-800" />
-                <div className="flex items-center gap-1 text-fuchsia-400" aria-label={`${fmt(state.cosmicDust)} Cosmic Dust`} title="Cosmic Dust: used for permanent Prestige upgrades.">
+                <div className="header-resource-divider w-[1px] h-3.5 bg-slate-800" />
+                <div className="header-resource-entry text-sky-200" aria-label={`${fmt(state.cosmicDust)} Cosmic Dust`} title="Cosmic Dust: used for permanent Prestige upgrades.">
                   <Sparkles className="w-3.5 h-3.5" />
-                  <span>{fmt(state.cosmicDust)}</span>
+                  <span className="header-resource-value">{fmt(state.cosmicDust)}</span>
+                  <span className="header-resource-label">Dust</span>
                 </div>
               </>
             )}
