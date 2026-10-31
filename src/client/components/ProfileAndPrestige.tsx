@@ -199,9 +199,9 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
   const levelBenefits = getLevelBenefits(displayedLevel);
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="io-page-shell io-page-profile max-w-4xl mx-auto space-y-8">
       {/* 1. Level Perks & Milestones Section */}
-      <div className="bg-gradient-to-r from-purple-950/70 via-slate-900 to-indigo-950/70 border border-purple-800/40 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 relative overflow-hidden">
+      <div className="io-page-hero bg-gradient-to-r from-purple-950/70 via-slate-900 to-indigo-950/70 border border-purple-800/40 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 relative overflow-hidden">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-purple-800/30 pb-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-purple-500/30">
