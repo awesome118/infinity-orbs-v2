@@ -3667,3 +3667,46 @@
   .io-ui .io-combat-orb-art { animation: none !important; }
   .io-ui .io-combat-turn-track { animation: none !important; }
 }
+
+
+/* Keep rarity readable inside the unified blue interface. */
+.io-ui .io-combat-skill-card.io-rarity-common,
+.io-ui .io-combat-skill-result.io-rarity-common,
+.io-ui .io-combat-gear-card.io-rarity-common,
+.io-ui .io-combat-skill-icon.io-rarity-common,
+.io-ui .io-combat-gear-icon.io-rarity-common { border-color: #5c7080; }
+.io-ui .io-combat-skill-card.io-rarity-uncommon,
+.io-ui .io-combat-skill-result.io-rarity-uncommon,
+.io-ui .io-combat-gear-card.io-rarity-uncommon,
+.io-ui .io-combat-skill-icon.io-rarity-uncommon,
+.io-ui .io-combat-gear-icon.io-rarity-uncommon { border-color: #5d9d83; }
+.io-ui .io-combat-skill-card.io-rarity-rare,
+.io-ui .io-combat-skill-result.io-rarity-rare,
+.io-ui .io-combat-gear-card.io-rarity-rare,
+.io-ui .io-combat-skill-icon.io-rarity-rare,
+.io-ui .io-combat-gear-icon.io-rarity-rare { border-color: #5c9bcb; }
+.io-ui .io-combat-skill-card.io-rarity-epic,
+.io-ui .io-combat-skill-result.io-rarity-epic,
+.io-ui .io-combat-gear-card.io-rarity-epic,
+.io-ui .io-combat-skill-icon.io-rarity-epic,
+.io-ui .io-combat-gear-icon.io-rarity-epic { border-color: #9a83c9; }
+.io-ui .io-combat-skill-card.io-rarity-mythic,
+.io-ui .io-combat-skill-result.io-rarity-mythic,
+.io-ui .io-combat-gear-card.io-rarity-mythic,
+.io-ui .io-combat-skill-icon.io-rarity-mythic,
+.io-ui .io-combat-gear-icon.io-rarity-mythic { border-color: #d2a66b; }
+@media (max-width: 700px) {
+  .io-ui .io-combat-skill-grid.io-combat-skill-icons {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+@media (max-width: 520px) {
+  .io-ui .io-combat-skill-grid.io-combat-skill-icons {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+@media (max-width: 360px) {
+  .io-ui .io-combat-skill-grid.io-combat-skill-icons {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
