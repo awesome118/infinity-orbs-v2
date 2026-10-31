@@ -936,3 +936,638 @@
     transform: translate(calc(-50% + var(--orb-x)), calc(-50% + var(--orb-y))) scale(.56);
   }
 }
+
+
+/* -------------------------------------------------------------------------- */
+/* Infinity Orbs — field journal visual system                                */
+/* A quieter, more authored interface: ink, stone, aged brass and jade.       */
+/* -------------------------------------------------------------------------- */
+.io-ui {
+  --io-bg: #111713;
+  --io-panel: #19221b;
+  --io-panel-raised: #202a22;
+  --io-line: rgba(184, 194, 174, .17);
+  --io-line-strong: rgba(184, 194, 174, .29);
+  --io-text: #e9e8dc;
+  --io-muted: #a1a99b;
+  --io-subtle: #788477;
+  --io-jade: #b4cbb0;
+  --io-brass: #c8aa76;
+  min-width: 0;
+  color: var(--io-text);
+}
+
+.io-ui.app-shell {
+  background: var(--io-bg) !important;
+  background-image: none !important;
+}
+
+.io-ui .app-header {
+  padding: 11px 24px !important;
+  border-bottom: 1px solid #354136 !important;
+  background: #151d17 !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .16) !important;
+  backdrop-filter: none !important;
+}
+
+.io-ui .header-inner,
+.io-ui .nav-shell {
+  max-width: 1360px;
+}
+
+.io-ui .brand-mark {
+  border: 1px solid #596b54 !important;
+  border-radius: 10px !important;
+  background: #202c22 !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .08) !important;
+}
+
+.io-ui .brand-mark::before,
+.io-ui .brand-mark::after {
+  border-color: rgba(207, 190, 145, .68) !important;
+}
+
+.io-ui .brand-glyph {
+  color: #e8e1c9 !important;
+  font-family: Georgia, "Times New Roman", serif !important;
+  font-weight: 500 !important;
+}
+
+.io-ui .brand-copy h1 {
+  color: #eeeade !important;
+  font-family: Georgia, "Times New Roman", serif !important;
+  font-size: 19px !important;
+  font-weight: 600 !important;
+  letter-spacing: -.015em !important;
+}
+
+.io-ui .brand-copy button {
+  border-color: rgba(200, 170, 118, .28) !important;
+  color: #ddc89c !important;
+  background: rgba(200, 170, 118, .08) !important;
+  box-shadow: none !important;
+}
+
+.io-ui .resource-chip {
+  min-height: 36px;
+  border: 1px solid #344137 !important;
+  border-radius: 8px !important;
+  background: #111812 !important;
+  box-shadow: none !important;
+}
+
+.io-ui .header-icon-button {
+  width: 35px;
+  height: 35px;
+  border: 1px solid transparent;
+  border-radius: 8px !important;
+  color: #a9b1a2 !important;
+}
+
+.io-ui .header-icon-button:hover {
+  border-color: #465448 !important;
+  color: #e1dfce !important;
+  background: #202b22 !important;
+  transform: none !important;
+}
+
+/* Keep the primary game header fixed; let the navigation wrap naturally. */
+.io-ui .app-nav {
+  position: relative !important;
+  top: auto !important;
+  z-index: 10;
+  padding: 8px 24px !important;
+  border-bottom: 1px solid #303b32 !important;
+  background: #121914 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.io-ui .nav-shell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px !important;
+  overflow: visible !important;
+  padding-block: 1px !important;
+}
+
+.io-ui .nav-tab {
+  min-height: 36px !important;
+  padding: 0 11px !important;
+  border: 1px solid transparent !important;
+  border-radius: 7px !important;
+  color: #a0a99b !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 11px !important;
+  font-weight: 650 !important;
+  letter-spacing: .005em;
+  transition: color .15s ease, background-color .15s ease, border-color .15s ease !important;
+}
+
+.io-ui .nav-tab:hover {
+  border-color: #354238 !important;
+  color: #eeeade !important;
+  background: #1b251d !important;
+}
+
+.io-ui .nav-tab.is-active {
+  border-color: #52634e !important;
+  color: #f0eddf !important;
+  background: #263428 !important;
+  background-image: none !important;
+  box-shadow: inset 0 -2px #b79a66 !important;
+}
+
+.io-ui .nav-tab.is-active svg {
+  color: #d0bd8e !important;
+}
+
+.io-ui .nav-tab.is-active::after {
+  display: none !important;
+}
+
+/* Small breaks make the three destinations in the core game easier to scan. */
+.io-ui .io-nav:not(.io-nav-combat) .nav-shell > .nav-tab:nth-child(5)::before,
+.io-ui .io-nav:not(.io-nav-combat) .nav-shell > .nav-tab:nth-child(8)::before {
+  position: absolute;
+  top: 50%;
+  left: -8px;
+  width: 1px;
+  height: 18px;
+  content: "";
+  background: #3b473b;
+  transform: translateY(-50%);
+}
+
+.io-ui .io-nav-combat .nav-shell > .nav-tab::before {
+  display: none !important;
+}
+
+.io-ui .io-combat-mode-switch {
+  border-color: #4c5b48 !important;
+  color: #e4dec9 !important;
+  background: #202b21 !important;
+}
+
+.io-ui .io-combat-mode-switch.is-active {
+  border-color: #8c7751 !important;
+  color: #f0e7d2 !important;
+  background: #3a3326 !important;
+  box-shadow: inset 0 -2px #c8aa76 !important;
+}
+
+.io-ui .app-main {
+  max-width: 1400px !important;
+  padding: 26px clamp(16px, 3vw, 38px) 52px !important;
+}
+
+.io-ui .app-main :is(h1, h2) {
+  color: #eceade;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  letter-spacing: -.02em;
+}
+
+.io-ui .app-main h3 {
+  color: #e5e5d8;
+  letter-spacing: -.01em;
+}
+
+.io-ui .app-main :is(p, li) {
+  color: inherit;
+}
+
+/* Flatten the repeated glossy card treatment without changing card structure. */
+.io-ui .app-main :is(div, section, article, form)[class*="bg-slate-900"][class*="border-slate-800"][class*="rounded-2xl"] {
+  border-color: var(--io-line) !important;
+  border-radius: 12px !important;
+  background-color: var(--io-panel) !important;
+  background-image: none !important;
+  box-shadow: 0 7px 20px rgba(0, 0, 0, .14) !important;
+}
+
+.io-ui .app-main :is(input, select, textarea) {
+  border: 1px solid #465247 !important;
+  border-radius: 7px !important;
+  color: #eeeade !important;
+  background: #111812 !important;
+  box-shadow: none !important;
+}
+
+.io-ui .app-main :is(input, select, textarea)::placeholder {
+  color: #7f8b7d !important;
+}
+
+.io-ui .app-main :is(input, select, textarea):focus {
+  border-color: #9bb293 !important;
+  box-shadow: 0 0 0 2px rgba(155, 178, 147, .14) !important;
+}
+
+.io-ui :is(button, a, [role="button"], input, select, textarea):focus-visible {
+  outline: 2px solid #c8aa76 !important;
+  outline-offset: 2px !important;
+}
+
+.io-ui .app-main button {
+  border-radius: 8px;
+  transition: color .15s ease, background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .15s ease !important;
+}
+
+.io-ui .app-main button:not(:disabled):hover {
+  filter: brightness(1.04);
+}
+
+.io-ui .app-main button:disabled {
+  filter: saturate(.55);
+}
+
+/* Roll screen: one deliberate focal point, with supporting stats in a ledger rail. */
+.io-ui .roll-layout {
+  max-width: 1220px;
+  grid-template-columns: minmax(0, 1fr) 262px;
+  gap: 22px;
+}
+
+.io-ui .roll-main {
+  max-width: 790px;
+  gap: 14px;
+}
+
+.io-ui .roll-heading {
+  width: 100%;
+  padding: 2px 2px 7px;
+}
+
+.io-ui .roll-kicker {
+  color: #c0a779 !important;
+  font-size: 9px;
+  letter-spacing: .17em;
+}
+
+.io-ui .roll-title {
+  margin-top: 5px !important;
+  color: #eeeade !important;
+  font-family: Georgia, "Times New Roman", serif !important;
+  font-size: clamp(29px, 3.3vw, 38px) !important;
+  font-weight: 500 !important;
+  letter-spacing: -.035em !important;
+}
+
+.io-ui .roll-intro {
+  color: #9da899 !important;
+  font-size: 12px;
+}
+
+.io-ui .signal-live {
+  border-color: #465849 !important;
+  border-radius: 6px !important;
+  color: #c2d0b8 !important;
+  background: #202b22 !important;
+  font-size: 9px;
+  letter-spacing: .08em;
+}
+
+.io-ui .signal-live::before {
+  background: #aec39b !important;
+  box-shadow: none !important;
+}
+
+.io-ui .roll-stage,
+.io-ui .roll-stage.is-first-session {
+  min-height: 485px;
+  border: 1px solid #4a5b4b !important;
+  border-radius: 14px !important;
+  background: #19231c !important;
+  background-image: radial-gradient(ellipse at 50% 44%, rgba(171, 192, 151, .09), transparent 48%) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .035), 0 14px 34px rgba(0, 0, 0, .2) !important;
+}
+
+.io-ui .roll-stage::before,
+.io-ui .roll-stage.is-first-session::before {
+  background-image: radial-gradient(ellipse at center, rgba(184, 202, 164, .075), transparent 62%) !important;
+  background-size: auto !important;
+  opacity: 1 !important;
+  animation: none !important;
+}
+
+.io-ui .roll-stage::after,
+.io-ui .roll-stage.is-first-session::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  width: 340px;
+  height: 340px;
+  border: 1px solid rgba(193, 204, 169, .17) !important;
+  border-radius: 50% !important;
+  box-shadow: 0 0 0 22px rgba(193, 204, 169, .025) !important;
+  content: "";
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: none !important;
+}
+
+.io-ui .roll-stage.is-rolling::after {
+  border-color: rgba(200, 170, 118, .48) !important;
+  box-shadow: 0 0 0 22px rgba(200, 170, 118, .04) !important;
+}
+
+.io-ui .roll-stage .rounded-full.border.border-dashed {
+  border-color: rgba(194, 205, 178, .22) !important;
+  border-style: solid !important;
+}
+
+.io-ui .roll-button {
+  min-height: 54px;
+  border: 1px solid #d0d7b6 !important;
+  border-radius: 9px !important;
+  color: #192319 !important;
+  background: #c2d0ad !important;
+  background-image: none !important;
+  box-shadow: 0 5px 16px rgba(0, 0, 0, .19), inset 0 1px rgba(255, 255, 255, .34) !important;
+  font-size: 13px !important;
+  font-weight: 850 !important;
+  letter-spacing: .08em !important;
+}
+
+.io-ui .roll-button:hover:not(:disabled) {
+  background: #d0d9bc !important;
+  box-shadow: 0 7px 19px rgba(0, 0, 0, .24), inset 0 1px rgba(255, 255, 255, .42) !important;
+  transform: translateY(-1px);
+}
+
+.io-ui .roll-button.is-waiting,
+.io-ui .roll-button:disabled {
+  border-color: #485449 !important;
+  color: #9ca797 !important;
+  background: #263128 !important;
+  box-shadow: none !important;
+}
+
+.io-ui .roll-button.is-first-session-cta.is-ready:not(:disabled) {
+  border-color: #d0d7b6 !important;
+  color: #192319 !important;
+  background: #c2d0ad !important;
+  box-shadow: 0 5px 16px rgba(0, 0, 0, .19), inset 0 1px rgba(255, 255, 255, .34) !important;
+  animation: io-ui-roll-ready 4.5s ease-in-out infinite !important;
+}
+
+.io-ui .roll-button.is-first-session-cta.is-ready:not(:disabled)::after {
+  display: none !important;
+  animation: none !important;
+}
+
+.io-ui .roll-cooldown {
+  border: 1px solid #3b493d !important;
+  border-radius: 8px !important;
+  background: #121a14 !important;
+  box-shadow: none !important;
+}
+
+.io-ui .roll-cooldown .w-48 {
+  height: 4px;
+  border-radius: 99px;
+  background: #303d31;
+}
+
+.io-ui .roll-cooldown .bg-gradient-to-r {
+  background: #b5c49d !important;
+  background-image: none !important;
+}
+
+.io-ui .roll-action-hint {
+  color: #a1aa9b !important;
+}
+
+.io-ui .roll-sidebar {
+  gap: 10px;
+}
+
+.io-ui .field-card {
+  padding: 15px;
+  border: 1px solid #3d4b3e !important;
+  border-radius: 10px !important;
+  background: #19221b !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.io-ui .field-label {
+  color: #a0a895 !important;
+  font-size: 9px;
+  letter-spacing: .12em;
+}
+
+.io-ui .field-level strong {
+  color: #eeeade !important;
+  font-family: Georgia, "Times New Roman", serif !important;
+  font-size: 31px;
+  font-weight: 500;
+}
+
+.io-ui .field-level span,
+.io-ui .field-stat-row {
+  color: #9da797 !important;
+}
+
+.io-ui .field-progress {
+  height: 5px;
+  background: #303c31 !important;
+}
+
+.io-ui .field-progress > span {
+  background: #b6c69f !important;
+  box-shadow: none !important;
+}
+
+.io-ui .field-stat-row {
+  border-top-color: rgba(184, 194, 174, .13) !important;
+}
+
+.io-ui .field-stat-row strong {
+  color: #e5e5d8 !important;
+}
+
+.io-ui .latest-orb-mark {
+  border-color: #8b8c68 !important;
+  border-radius: 10px !important;
+  color: #eee2bd !important;
+  background: #354238 !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .12) !important;
+}
+
+.io-ui .latest-orb-name {
+  color: #e9e8dc !important;
+}
+
+.io-ui .latest-orb-rarity {
+  color: #c5b084 !important;
+}
+
+.io-ui .field-note {
+  color: #c5c5b5 !important;
+}
+
+/* Apply the same material and control language to the combat expansion. */
+.io-ui .io-combat-stage,
+.io-ui .io-combat-panel,
+.io-ui .io-runes-panel {
+  border-color: #3d4b3e !important;
+  border-radius: 11px !important;
+  background-color: #19221b !important;
+  background-image: none !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .16) !important;
+}
+
+.io-ui .io-combat-panel-head,
+.io-ui .io-combat-inventory-head,
+.io-ui .io-combat-codex-toolbar {
+  border-bottom-color: #354137 !important;
+}
+
+.io-ui .io-combat-stat-strip > div {
+  border-color: #3b493d !important;
+  border-radius: 8px !important;
+  background: #202a22 !important;
+  box-shadow: none !important;
+}
+
+.io-ui :is(.io-combat-gear-card, .io-combat-skill-card, .io-combat-opponent-card, .io-combat-dungeon-choice, .io-runes-major-card) {
+  border-color: #3c4a3e !important;
+  border-radius: 9px !important;
+  background-color: #1b251e !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  transition: border-color .15s ease, background-color .15s ease !important;
+}
+
+.io-ui :is(.io-combat-gear-card, .io-combat-skill-card, .io-combat-opponent-card, .io-combat-dungeon-choice, .io-runes-major-card):hover {
+  border-color: #839477 !important;
+  background-color: #222e25 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.io-ui .io-combat-button,
+.io-ui .io-runes-button {
+  min-height: 38px;
+  border-radius: 7px !important;
+  letter-spacing: .01em;
+}
+
+.io-ui .io-combat-button.is-primary {
+  border-color: #a8bc9e !important;
+  color: #172117 !important;
+  background: #b5c8a7 !important;
+  box-shadow: none !important;
+}
+
+.io-ui .io-combat-button.is-primary:hover:not(:disabled) {
+  background: #c5d3b9 !important;
+  box-shadow: none !important;
+}
+
+/* Modals and onboarding should feel like the same game, not separate templates. */
+.io-ui .io-modal-card,
+.io-ui .toast-card {
+  border: 1px solid #4a5848 !important;
+  border-radius: 13px !important;
+  background: #19221b !important;
+  background-image: none !important;
+  box-shadow: 0 22px 58px rgba(0, 0, 0, .42) !important;
+}
+
+.io-ui .io-tutorial-guide {
+  border: 1px solid #59634b !important;
+  border-radius: 11px !important;
+  background: #20291f !important;
+  box-shadow: none !important;
+}
+
+@keyframes io-ui-roll-ready {
+  0%, 100% { box-shadow: 0 5px 16px rgba(0, 0, 0, .19), inset 0 1px rgba(255, 255, 255, .34); }
+  50% { box-shadow: 0 7px 20px rgba(177, 197, 151, .19), inset 0 1px rgba(255, 255, 255, .42); }
+}
+
+@media (max-width: 920px) {
+  .io-ui .app-nav {
+    position: relative !important;
+    top: auto !important;
+    padding-inline: 16px !important;
+  }
+  .io-ui .roll-layout {
+    grid-template-columns: minmax(0, 1fr) 240px;
+    gap: 14px;
+  }
+}
+
+@media (max-width: 680px) {
+  .io-ui .app-header {
+    padding: 10px 13px !important;
+  }
+  .io-ui .app-nav {
+    padding: 7px 10px !important;
+  }
+  .io-ui .nav-shell {
+    justify-content: flex-start;
+    gap: 4px !important;
+  }
+  .io-ui .nav-tab {
+    min-height: 34px !important;
+    padding-inline: 9px !important;
+    font-size: 10px !important;
+  }
+  .io-ui .io-nav:not(.io-nav-combat) .nav-shell > .nav-tab:nth-child(5)::before,
+  .io-ui .io-nav:not(.io-nav-combat) .nav-shell > .nav-tab:nth-child(8)::before {
+    left: -6px;
+    height: 15px;
+  }
+  .io-ui .app-main {
+    padding: 18px 13px 36px !important;
+  }
+  .io-ui .roll-layout {
+    grid-template-columns: 1fr;
+    gap: 13px;
+  }
+  .io-ui .roll-stage,
+  .io-ui .roll-stage.is-first-session {
+    min-height: 410px;
+    border-radius: 12px !important;
+  }
+  .io-ui .roll-stage::after,
+  .io-ui .roll-stage.is-first-session::after {
+    width: min(320px, 78vw);
+    height: min(320px, 78vw);
+  }
+  .io-ui .roll-sidebar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .io-ui .roll-sidebar .field-card:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 420px) {
+  .io-ui .roll-heading {
+    align-items: flex-start;
+  }
+  .io-ui .roll-title {
+    font-size: 27px !important;
+  }
+  .io-ui .roll-sidebar {
+    grid-template-columns: 1fr;
+  }
+  .io-ui .roll-sidebar .field-card:last-child {
+    grid-column: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .io-ui .roll-button.is-ready:not(.frenzy-supercharged):not(:disabled),
+  .io-ui .roll-button.is-first-session-cta.is-ready:not(:disabled) {
+    animation: none !important;
+  }
+}
