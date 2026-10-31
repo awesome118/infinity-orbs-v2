@@ -1957,8 +1957,6 @@ export interface LevelMilestonePerk {
   bonusShardChance?: number;
 }
 
-export const MAX_PLAYER_LEVEL = 50_000;
-
 export const LEVEL_MILESTONES: LevelMilestonePerk[] = [
   { level: 5, name: 'Novice Seeker', desc: '+15% XP earned on all rolls', bonusXpMultiplier: 1.15 },
   { level: 10, name: 'Shard Sifter', desc: '+5% chance for bonus Shards', bonusShardChance: 0.05 },
@@ -1976,20 +1974,15 @@ export const LEVEL_MILESTONES: LevelMilestonePerk[] = [
   { level: 500, name: 'Astral Zenith', desc: '+40% Luck and +10% Shard Chance!', bonusLuckMultiplier: 1.40, bonusShardChance: 0.10 },
   { level: 750, name: 'Infinite Arsenal', desc: '+3 Extra Orbs per activation!', bonusBalls: 3 },
   { level: 1000, name: 'Infinity Master', desc: '+50% Luck and 2.00× Coins!', bonusLuckMultiplier: 1.50, bonusCoinsMultiplier: 2.00 },
-  { level: 2500, name: 'Paragon Gate', desc: '+1 Extra Orb, +10% Luck and 1.25× Coins', bonusBalls: 1, bonusLuckMultiplier: 1.10, bonusCoinsMultiplier: 1.25 },
-  { level: 5000, name: 'Starforged Crown', desc: '+1 Extra Orb, +15% Luck and 1.35× Coins', bonusBalls: 1, bonusLuckMultiplier: 1.15, bonusCoinsMultiplier: 1.35 },
-  { level: 10000, name: 'Celestial Engine', desc: '+2 Extra Orbs, +20% Luck and 1.50× Coins', bonusBalls: 2, bonusLuckMultiplier: 1.20, bonusCoinsMultiplier: 1.50 },
-  { level: 25000, name: 'Void Architect', desc: '+2 Extra Orbs, +25% Luck and 1.75× Coins', bonusBalls: 2, bonusLuckMultiplier: 1.25, bonusCoinsMultiplier: 1.75 },
-  { level: 50000, name: 'Infinity Ascendant', desc: '+3 Extra Orbs, +30% Luck and 2.00× Coins', bonusBalls: 3, bonusLuckMultiplier: 1.30, bonusCoinsMultiplier: 2.00 },
 ];
 
 export function xpRequiredForLevel(level: number): number {
   const safeLevel = Math.max(1, Math.floor(Number(level) || 1));
   const base = Math.floor(70 * Math.pow(safeLevel, 1.30));
-  // Preserve the original curve through level 1,000. Beyond that, keep the
-  // level-1,000 multiplier fixed instead of adding another 10% per level.
-  const cappedCurveLevel = Math.min(safeLevel, 1000);
-  const lateGameMultiplier = cappedCurveLevel <= 25 ? 1 : 1 + (cappedCurveLevel - 25) * 0.10;
+  // Levels through 25 retain the existing curve. After 25, each additional
+  // level increases its XP requirement by another 10%, progressively slowing
+  // late-game leveling without changing the early game.
+  const lateGameMultiplier = safeLevel <= 25 ? 1 : 1 + (safeLevel - 25) * 0.10;
   return Math.floor(base * lateGameMultiplier);
 }
 
@@ -2004,20 +1997,16 @@ export interface LevelBenefits {
 }
 
 export function getLevelBenefits(level: number): LevelBenefits {
-  const safeLevel = Math.max(1, Math.floor(Number(level) || 1));
   let bonusBalls = 0;
-  let luckMultiplier = 1 + Math.max(0, safeLevel - 1) * 0.01;
-  // The passive coin bonus reaches its intended 31× ceiling at level 1,000.
-  // Post-1,000 coin growth comes from explicit milestone rewards, not runaway
-  // linear scaling on every single level.
-  let coinsMultiplier = 1 + Math.min(999, Math.max(0, safeLevel - 1)) * 0.03;
+  let luckMultiplier = 1 + Math.max(0, level - 1) * 0.01;
+  let coinsMultiplier = 1 + Math.max(0, level - 1) * 0.03;
   let xpMultiplier = 1;
   let shardChance = 0;
   let cooldownReductionMs = 0;
   let altarEffectMultiplier = 1;
 
   for (const milestone of LEVEL_MILESTONES) {
-    if (safeLevel < milestone.level) continue;
+    if (level < milestone.level) continue;
     bonusBalls += milestone.bonusBalls ?? 0;
     luckMultiplier += Math.max(0, (milestone.bonusLuckMultiplier ?? 1) - 1);
     coinsMultiplier *= milestone.bonusCoinsMultiplier ?? 1;
@@ -2038,22 +2027,13 @@ export function getLevelBenefits(level: number): LevelBenefits {
   };
 }
 
-const levelXpCumulativeCache: number[] = [0];
-
-function ensureLevelXpCumulative(levelCount: number): void {
-  const target = Math.max(0, Math.min(MAX_PLAYER_LEVEL, Math.floor(Number(levelCount) || 0)));
-  while (levelXpCumulativeCache.length <= target) {
-    const level = levelXpCumulativeCache.length;
-    levelXpCumulativeCache.push(
-      levelXpCumulativeCache[level - 1] + xpRequiredForLevel(level),
-    );
-  }
-}
-
 export function totalXpRequiredBeforeLevel(level: number): number {
-  const safeLevel = Math.max(1, Math.min(MAX_PLAYER_LEVEL + 1, Math.floor(Number(level) || 1)));
-  ensureLevelXpCumulative(safeLevel - 1);
-  return levelXpCumulativeCache[safeLevel - 1];
+  const safeLevel = Math.max(1, Math.min(1000, Math.floor(Number(level) || 1)));
+  let total = 0;
+  for (let currentLevel = 1; currentLevel < safeLevel; currentLevel++) {
+    total += xpRequiredForLevel(currentLevel);
+  }
+  return total;
 }
 
 export function getLevelProgress(
@@ -2066,40 +2046,41 @@ export function getLevelProgress(
   nextLevelXp: number;
   progressPercent: number;
 } {
-  const safeLevel = Math.max(1, Math.min(MAX_PLAYER_LEVEL, Math.floor(Number(level) || 1)));
-  const numericXp = Number(totalXp);
-  const safeXp = Number.isFinite(numericXp) ? Math.max(0, numericXp) : 0;
+  const safeLevel = Math.max(1, Math.min(1000, Math.floor(Number(level) || 1)));
+  const safeXp = Math.max(0, Number(totalXp) || 0);
   const calculatedFloor = totalXpRequiredBeforeLevel(safeLevel);
-  const hasStoredFloor = Number.isFinite(Number(levelXpFloor));
-  const floor = hasStoredFloor
+  const floor = Number.isFinite(Number(levelXpFloor))
     ? Math.max(0, Math.min(safeXp, Number(levelXpFloor)))
     : calculatedFloor;
-
-  // Older accounts can have a stored floor that intentionally differs from
-  // the modern cumulative curve. Preserve that offset while deriving any
-  // levels already earned but not yet applied to the saved level field.
-  const xpCurveOffset = floor - calculatedFloor;
-  const xpOnCurrentCurve = Math.max(0, safeXp - xpCurveOffset);
-  return calculateLevelFromXp(xpOnCurrentCurve);
+  const nextLevelXp = xpRequiredForLevel(safeLevel);
+  const currentLevelXp = Math.max(0, safeXp - floor);
+  return {
+    level: safeLevel,
+    currentLevelXp,
+    nextLevelXp,
+    progressPercent: Math.min(100, Math.round((currentLevelXp / nextLevelXp) * 100)),
+  };
 }
 
 export function applyLevelProgress(s: PlayerState, maxLevelsPerCall = Number.MAX_SAFE_INTEGER): number {
+  const MAX_LEVEL = 1000;
   const maxLevels = Math.max(0, Math.floor(Number(maxLevelsPerCall) || 0));
   if (maxLevels === 0) return 0;
 
-  let level = Math.max(1, Math.min(MAX_PLAYER_LEVEL, Math.floor(Number(s.level) || 1)));
+  let level = Math.max(1, Math.min(MAX_LEVEL, Math.floor(Number(s.level) || 1)));
   const safeXp = Math.max(0, Number(s.xp) || 0);
   let floor = Number(s.levelXpFloor);
   if (!Number.isFinite(floor)) {
     const curveFloor = totalXpRequiredBeforeLevel(level);
-    // A stored level ahead of the curve is an account that predates a balance
-    // change. Start from its current XP rather than retroactively removing levels.
+    // A stored level that is ahead of the current XP curve is an account that
+    // predates a balance change. Start that player at their existing XP rather
+    // than requiring the retroactively raised cumulative threshold.
     floor = safeXp < curveFloor ? safeXp : curveFloor;
   }
   floor = Math.max(0, Math.min(safeXp, floor));
 
   let gained = 0;
-  while (level < MAX_PLAYER_LEVEL && gained < maxLevels) {
+  while (level < MAX_LEVEL && gained < maxLevels) {
     const required = xpRequiredForLevel(level);
     if (safeXp - floor < required) break;
     floor += required;
@@ -2119,36 +2100,28 @@ export function calculateLevelFromXp(totalXp: number): {
   nextLevelXp: number;
   progressPercent: number;
 } {
-  const numericXp = Number(totalXp);
-  const safeXp = Number.isFinite(numericXp) ? Math.max(0, numericXp) : Number.MAX_SAFE_INTEGER;
-  ensureLevelXpCumulative(MAX_PLAYER_LEVEL);
+  const safeXp = Math.max(0, Number(totalXp) || 0);
+  const MAX_LEVEL = 1000;
+  let lvl = 1;
+  let accumulated = 0;
 
-  // Binary search the cumulative XP thresholds so high-level saves don't need
-  // thousands of sequential checks every time the HUD is rendered.
-  let low = 1;
-  let high = MAX_PLAYER_LEVEL;
-  while (low < high) {
-    const mid = Math.ceil((low + high) / 2);
-    if (levelXpCumulativeCache[mid - 1] <= safeXp) low = mid;
-    else high = mid - 1;
+  while (lvl < MAX_LEVEL) {
+    const req = xpRequiredForLevel(lvl);
+    if (safeXp < accumulated + req) {
+      const currentLevelXp = Math.max(0, safeXp - accumulated);
+      const progressPercent = Math.min(100, Math.round((currentLevelXp / req) * 100));
+      return { level: lvl, currentLevelXp, nextLevelXp: req, progressPercent };
+    }
+    accumulated += req;
+    lvl++;
   }
 
-  const level = low;
-  const currentLevelXp = Math.max(0, safeXp - levelXpCumulativeCache[level - 1]);
-  const nextLevelXp = xpRequiredForLevel(level);
-  if (level >= MAX_PLAYER_LEVEL) {
-    return {
-      level,
-      currentLevelXp: Math.min(nextLevelXp, currentLevelXp),
-      nextLevelXp,
-      progressPercent: 100,
-    };
-  }
+  const finalReq = xpRequiredForLevel(MAX_LEVEL);
   return {
-    level,
-    currentLevelXp,
-    nextLevelXp,
-    progressPercent: Math.min(100, Math.round((currentLevelXp / nextLevelXp) * 100)),
+    level: MAX_LEVEL,
+    currentLevelXp: Math.max(0, safeXp - accumulated),
+    nextLevelXp: finalReq,
+    progressPercent: 100,
   };
 }
 
@@ -2790,10 +2763,11 @@ export function predictRollActivation(
   shardsGained = grantRollShards(s, shardsGained, predictionNow);
   s.xp += xpGained;
 
-  // Apply every level already earned by this activation. This catches up
-  // over-cap XP from legacy Level 1,000 accounts and awards the matching
-  // Mastery Points instead of requiring one roll per missed level.
-  applyLevelProgress(s);
+  const oldLevel = Math.max(1, sourceState.level || 1);
+  const earnedLevel = calculateLevelFromXp(s.xp).level;
+  const newLevel = Math.max(oldLevel, Math.min(oldLevel + 1, earnedLevel));
+  s.level = newLevel;
+  if (newLevel > oldLevel) s.masteryPoints = (s.masteryPoints ?? 0) + 1;
 
   s.manualRolls = isAuto
     ? Math.min(10, s.manualRolls ?? 0)

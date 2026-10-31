@@ -39,7 +39,6 @@ interface UpgradesSectionProps {
   onBuyAllUpgrades: () => Promise<void>;
   onActivateTurbo: () => Promise<void>;
   busy: boolean;
-  compact?: boolean;
 }
 
 export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
@@ -48,7 +47,6 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   onBuyAllUpgrades,
   onActivateTurbo,
   busy,
-  compact = false,
 }) => {
   const [recentUpgradeId, setRecentUpgradeId] = useState<UpgradeId | null>(null);
   const [upgradingAll, setUpgradingAll] = useState(false);
@@ -321,78 +319,6 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
     { title: 'Offline progress', subtitle: 'Improve the rate at which rolls accumulate while you are away.', ids: ['offlineRate'] },
   ];
 
-  if (compact) {
-    const featuredIds: UpgradeId[] = ['luck', 'multi', 'speed', 'coinBonus'];
-    const featuredUpgrades = featuredIds
-      .map(id => upgradesData.find(upgrade => upgrade.id === id))
-      .filter(Boolean) as typeof upgradesData;
-
-    return (
-      <section className="io-inline-upgrade-shop" aria-label="Quick upgrade shop">
-        <header className="io-inline-upgrade-head">
-          <div>
-            <div className="io-inline-upgrade-kicker"><Zap className="w-3.5 h-3.5" /> UPGRADE SHOP</div>
-            <div className="io-inline-upgrade-balance"><Coins className="w-4 h-4" /> {fmt(state.coins)} <span>COINS</span></div>
-          </div>
-          <div className="io-inline-upgrade-count">{affordableCount} READY</div>
-        </header>
-
-        <div className="io-inline-upgrade-list">
-          {featuredUpgrades.map(u => {
-            const maxLevel = standardUpgradeMaxLevels[u.id];
-            const isMaxed = maxLevel !== undefined ? u.level >= maxLevel : !Number.isFinite(u.cost);
-            const canAfford = !isMaxed && !u.locked && Number.isFinite(u.cost) && state.coins >= u.cost;
-            const isUpgraded = recentUpgradeId === u.id;
-
-            return (
-              <article
-                key={u.id}
-                className={"io-inline-upgrade-row" + (canAfford ? " is-affordable" : "") + (isUpgraded ? " is-upgraded" : "")}
-                title={u.desc}
-              >
-                <div className="io-inline-upgrade-identity">
-                  <span className="io-inline-upgrade-icon">{u.icon}</span>
-                  <span className="io-inline-upgrade-name">
-                    <strong>{u.title}</strong>
-                    <small>LV {u.level} · {u.currentVal} <ArrowRight className="inline w-3 h-3" /> <b>{u.nextVal}</b></small>
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="io-inline-upgrade-buy"
-                  onClick={() => { void handleUpgradeClick(u); }}
-                  disabled={!canAfford || busy || upgradingAll || upgradingId !== null}
-                  aria-label={isMaxed ? u.title + " fully upgraded" : "Buy " + u.title + " for " + fmt(u.cost) + " Coins"}
-                >
-                  {isMaxed ? 'MAX' : upgradingId === u.id ? '…' : fmt(u.cost)}
-                </button>
-              </article>
-            );
-          })}
-        </div>
-
-        <footer className="io-inline-upgrade-footer">
-          <label title="Automatically buy the cheapest affordable standard upgrade after each purchase.">
-            <input
-              type="checkbox"
-              checked={autoBuyEnabled}
-              disabled={busy || upgradingAll}
-              onChange={event => setAutoBuyEnabled(event.target.checked)}
-            />
-            <span>Auto-buy</span>
-          </label>
-          <button
-            type="button"
-            onClick={handleUpgradeAllClick}
-            disabled={affordableCount === 0 || busy || upgradingAll || upgradingId !== null}
-          >
-            {upgradingAll ? 'Buying…' : 'Buy all affordable'}
-          </button>
-        </footer>
-      </section>
-    );
-  }
-
   return (
     <div className="io-page-shell io-page-upgrades max-w-4xl mx-auto space-y-6">
       {/* Header Info & Stats Bar */}
@@ -404,7 +330,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
               <Star className="w-4 h-4 text-amber-400 fill-current animate-spin" style={{ animationDuration: '16s' }} />
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Spend Coins on upgrades. Each card shows its current value, next value, and cost. Buy All Affordable buys as many upgrade levels as your Coins allow.
+              Spend Coins to improve your rolls. Luck helps you find rarer Orbs; Speed lets you roll sooner. Upgrade All buys every level you can afford.
             </p>
           </div>
 

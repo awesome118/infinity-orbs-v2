@@ -318,13 +318,13 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           jumpToBottomRef.current = true;
           setOpen(true);
         }}
-        className="io-global-chat-launcher fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-2xl border border-indigo-500/30 bg-slate-900/95 px-4 py-3 text-xs font-black text-white shadow-2xl backdrop-blur-md hover:bg-slate-800 transition-all"
-        title={chatAvailable === true ? 'Open global chat' : 'Global Chat requires a registered main Game post'}
+        className="io-chat-launcher fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-2xl border border-indigo-500/30 bg-slate-900/95 px-4 py-3 text-xs font-black text-white shadow-2xl backdrop-blur-md hover:bg-slate-800 transition-all"
+        title={chatAvailable === true ? 'Open global chat' : 'Open Global Chat to read messages and see why posting is unavailable here'}
       >
         <MessageCircle className="w-4 h-4 text-indigo-300" />
-        <span>Global Chat</span>
+        <span className="io-chat-launcher-label">Global Chat</span>
         {chatAvailable === false && (
-          <span className="rounded-full border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-[9px] font-bold text-slate-400">Disabled</span>
+          <span className="io-chat-read-only rounded-full border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-[9px] font-bold text-slate-400">Read only</span>
         )}
         {unreadCount > 0 && (
           <span aria-label={unreadCount + ' unread messages'} className="rounded-full bg-indigo-500/20 px-1.5 py-0.5 text-[9px] text-indigo-200">
@@ -336,13 +336,13 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   }
 
   return (
-    <section role="dialog" aria-modal={false} aria-label="Global Chat" className="io-global-chat-window fixed bottom-4 right-4 z-40 w-[min(380px,calc(100vw-2rem))] rounded-3xl border border-slate-700 bg-slate-950/95 shadow-2xl backdrop-blur-xl overflow-hidden">
-      <header className="io-global-chat-header flex items-center justify-between border-b border-slate-800 bg-slate-900/95 px-4 py-3">
+    <section role="dialog" aria-modal={false} aria-label="Global Chat" className="fixed bottom-4 right-4 z-40 w-[min(380px,calc(100vw-2rem))] rounded-3xl border border-slate-700 bg-slate-950/95 shadow-2xl backdrop-blur-xl overflow-hidden">
+      <header className="flex items-center justify-between border-b border-slate-800 bg-slate-900/95 px-4 py-3">
         <div className="flex items-center gap-2">
           <MessageCircle className="w-4 h-4 text-indigo-300" />
           <div>
             <h3 className="text-sm font-black text-white">Global Chat</h3>
-            <p className="io-global-chat-caption text-[9px] text-slate-500">Messages are public Reddit comments on the main Game post, submitted as your account. Comments posted there also appear here.</p>
+            <p className="text-[9px] text-slate-500">Messages are public Reddit comments on the main Game post, submitted as your account. Comments posted there also appear here.</p>
           </div>
         </div>
         <button
@@ -381,10 +381,10 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           shouldFollowMessagesRef.current =
             element.scrollHeight - element.scrollTop - element.clientHeight < 48;
         }}
-        className="io-global-chat-log h-72 max-h-[45vh] min-h-40 overflow-y-auto px-3 py-3 space-y-2"
+        className="h-72 max-h-[45vh] min-h-40 overflow-y-auto px-3 py-3 space-y-2"
       >
         {messages.length === 0 ? (
-          <div className="io-global-chat-empty flex h-full items-center justify-center text-center text-xs text-slate-600">
+          <div className="flex h-full items-center justify-center text-center text-xs text-slate-600">
             <div>
               <MessageCircle className="mx-auto mb-2 h-6 w-6" />
               No messages yet. Send a message to start the conversation.
@@ -392,7 +392,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
           </div>
         ) : (
           messages.map(message => (
-            <article key={message.id} aria-label={`Message from ${message.username}`} className="io-global-chat-message rounded-xl border border-slate-800/80 bg-slate-900/70 px-3 py-2">
+            <article key={message.id} aria-label={`Message from ${message.username}`} className="rounded-xl border border-slate-800/80 bg-slate-900/70 px-3 py-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-1.5 min-w-0">
                   <span className={(message.isAdmin === true)
@@ -403,7 +403,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
                     {message.username}
                   </span>
                   {(message.isAdmin === true) && (
-                    <span className="io-global-chat-admin rounded border border-red-500/40 bg-red-500/10 px-1 py-0.5 text-[8px] font-black tracking-wider text-red-300">ADMIN</span>
+                    <span className="rounded border border-red-500/40 bg-red-500/10 px-1 py-0.5 text-[8px] font-black tracking-wider text-red-300">ADMIN</span>
                   )}
                 </span>
                 <span className="text-[9px] text-slate-600" aria-label={`Sent at ${new Date(message.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`}>
@@ -420,7 +420,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
                     void reportMessage(message);
                   }}
                   disabled={reportingId === message.id || reportedIds.has(message.id)}
-                  className="io-global-chat-report relative z-20 shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-950/20 px-3 py-2 text-[10px] font-black text-rose-300 hover:border-rose-400/60 hover:bg-rose-950/40 hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer touch-manipulation"
+                  className="relative z-20 shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-950/20 px-3 py-2 text-[10px] font-black text-rose-300 hover:border-rose-400/60 hover:bg-rose-950/40 hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer touch-manipulation"
                   title={reportedIds.has(message.id) ? 'Report sent to subreddit moderators' : 'Report this message'}
                   aria-label={reportedIds.has(message.id) ? 'Message reported' : 'Report message'}
                 >
@@ -434,7 +434,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
         <div ref={endRef} />
       </div>
 
-      <form aria-label="Post a public chat comment" autoComplete="off" onSubmit={sendMessage} className="io-global-chat-form border-t border-slate-800 bg-slate-900/95 p-3">
+      <form aria-label="Post a public chat comment" autoComplete="off" onSubmit={sendMessage} className="border-t border-slate-800 bg-slate-900/95 p-3">
         <div className="flex items-center gap-2">
           <label htmlFor="io-global-chat-input" className="sr-only">Public chat comment</label>
           <input
@@ -451,14 +451,14 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
             maxLength={200}
             placeholder={chatAvailable === true ? 'Write a public Reddit comment...' : 'Open a registered Game or Frenzy post to chat'}
             disabled={sending || chatAvailable !== true}
-            className="io-global-chat-input min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-xs text-white placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
+            className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-xs text-white placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
           />
           <button
             type="submit"
             aria-label={sending ? 'Sending public comment' : 'Send public comment'}
             aria-busy={sending}
             disabled={chatAvailable !== true || sending || !input.trim()}
-            className="io-global-chat-send rounded-xl bg-indigo-600 px-3 py-2.5 text-white transition-all hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600"
+            className="rounded-xl bg-indigo-600 px-3 py-2.5 text-white transition-all hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600"
             title={sending ? "Sending public comment…" : "Post public comment"}
           >
             {sending ? <X className="w-4 h-4 animate-pulse" /> : <Send className="w-4 h-4" />}

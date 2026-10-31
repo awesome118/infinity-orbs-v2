@@ -227,9 +227,10 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
             </div>
           </div>
         </div>
+      </div>
 
       {/* Chain Patcher: shard-priced exact-rarity next-roll guarantee */}
-      <section className="rounded-3xl border border-cyan-500/30 bg-gradient-to-br from-cyan-950/35 via-slate-900/90 to-slate-950 p-5 sm:p-6 shadow-xl shadow-cyan-950/20 space-y-4">
+      <section className="io-codex-patcher rounded-3xl border border-cyan-500/30 bg-gradient-to-br from-cyan-950/35 via-slate-900/90 to-slate-950 p-5 sm:p-6 shadow-xl shadow-cyan-950/20 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div className="flex items-start gap-3">
             <div className="rounded-2xl border border-cyan-400/30 bg-cyan-400/10 p-3 text-cyan-200">
@@ -311,7 +312,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
         </button>
       </section>
 
-        <div className="mt-5 pt-4 border-t border-slate-800">
+      <section className="io-codex-milestones mt-5 pt-4 border-t border-slate-800">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
             Continuum Tier Milestones
           </span>
@@ -340,8 +341,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
               );
             })}
           </div>
-        </div>
-      </div>
+      </section>
 
       <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 border border-slate-800/80 p-3 rounded-2xl">
         <div role="group" aria-label="Filter Codex by tier" className="flex items-center gap-1 overflow-x-auto max-w-full pb-1 sm:pb-0 scrollbar-thin">
@@ -416,14 +416,10 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {items.map(item => {
               const info = getOrbInfo(item.rarity, item.isInfinity);
-              const isEndgameRarity = item.isInfinity || item.rarity >= 1e15;
               return (
                 <div
                   key={item.isInfinity ? 'Infinity' : item.rarity}
-                  className={`io-codex-entry relative rounded-2xl p-4 border bg-slate-900/90 border-slate-800 hover:border-slate-700 transition-all shadow-md ${isEndgameRarity ? 'is-endgame' : ''}`}
-                  data-orb-tier={info.tier.toLowerCase()}
-                  role="group"
-                  aria-label={`${info.tier} ${info.name}, rarity 1 in ${formatRarity(item.rarity, item.isInfinity)}, owned ${fmt(item.count)} times`}
+                  className="relative rounded-2xl p-4 border bg-slate-900/90 border-slate-800 hover:border-slate-700 transition-all shadow-md"
                 >
                   <div className="flex items-center gap-3.5">
                     <div
@@ -451,7 +447,6 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
                       </div>
 
                       <h3 className="text-sm font-black text-white truncate mt-1">{info.name}</h3>
-                      {isEndgameRarity && <span className="io-codex-endgame-tag">ENDGAME TIER</span>}
 
                       <div className="flex items-center justify-between text-xs text-slate-400 mt-1">
                         <span className="font-mono text-[11px]">1 in {formatRarity(item.rarity, item.isInfinity)}</span>
