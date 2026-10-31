@@ -939,34 +939,41 @@
 
 
 /* -------------------------------------------------------------------------- */
-/* Infinity Orbs — field journal visual system                                */
-/* A quieter, more authored interface: ink, stone, aged brass and jade.       */
+
+/* -------------------------------------------------------------------------- */
+/* Infinity Orbs — Retro Digital                                               */
+/* Deep navy, cyan signal color, arcade precision, and quiet pixel detail.    */
 /* -------------------------------------------------------------------------- */
 .io-ui {
-  --io-bg: #111713;
-  --io-panel: #19221b;
-  --io-panel-raised: #202a22;
-  --io-line: rgba(184, 194, 174, .17);
-  --io-line-strong: rgba(184, 194, 174, .29);
-  --io-text: #e9e8dc;
-  --io-muted: #a1a99b;
-  --io-subtle: #788477;
-  --io-jade: #b4cbb0;
-  --io-brass: #c8aa76;
+  --io-bg: #08111b;
+  --io-panel: #101d2a;
+  --io-panel-raised: #14283a;
+  --io-line: rgba(89, 151, 176, .24);
+  --io-line-strong: rgba(103, 192, 214, .42);
+  --io-text: #e4f4f7;
+  --io-muted: #9bb9c5;
+  --io-subtle: #68899a;
+  --io-cyan: #73d9e5;
+  --io-blue: #438cac;
+  --io-amber: #e3bd68;
   min-width: 0;
   color: var(--io-text);
 }
 
 .io-ui.app-shell {
+  color: var(--io-text) !important;
   background: var(--io-bg) !important;
-  background-image: none !important;
+  background-image:
+    linear-gradient(rgba(91, 145, 170, .025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(91, 145, 170, .025) 1px, transparent 1px) !important;
+  background-size: 32px 32px !important;
 }
 
 .io-ui .app-header {
-  padding: 11px 24px !important;
-  border-bottom: 1px solid #354136 !important;
-  background: #151d17 !important;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, .16) !important;
+  padding: 10px 24px !important;
+  border-bottom: 1px solid #264255 !important;
+  background: #0d1925 !important;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, .24) !important;
   backdrop-filter: none !important;
 }
 
@@ -976,77 +983,92 @@
 }
 
 .io-ui .brand-mark {
-  border: 1px solid #596b54 !important;
-  border-radius: 10px !important;
-  background: #202c22 !important;
-  box-shadow: inset 0 1px rgba(255, 255, 255, .08) !important;
+  border: 1px solid #36758d !important;
+  border-radius: 7px !important;
+  background: #122b3b !important;
+  box-shadow: inset 0 0 0 3px rgba(115, 217, 229, .045), 0 0 16px rgba(77, 180, 205, .08) !important;
 }
 
 .io-ui .brand-mark::before,
 .io-ui .brand-mark::after {
-  border-color: rgba(207, 190, 145, .68) !important;
+  border-color: rgba(115, 217, 229, .68) !important;
+  border-radius: 3px !important;
 }
 
 .io-ui .brand-glyph {
-  color: #e8e1c9 !important;
-  font-family: Georgia, "Times New Roman", serif !important;
-  font-weight: 500 !important;
+  color: #e5fbff !important;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace !important;
+  font-size: 22px !important;
+  text-shadow: 0 0 12px rgba(115, 217, 229, .35);
 }
 
 .io-ui .brand-copy h1 {
-  color: #eeeade !important;
-  font-family: Georgia, "Times New Roman", serif !important;
-  font-size: 19px !important;
-  font-weight: 600 !important;
-  letter-spacing: -.015em !important;
+  color: #e6f5f8 !important;
+  font-family: ui-sans-serif, system-ui, sans-serif !important;
+  font-size: 17px !important;
+  font-weight: 850 !important;
+  letter-spacing: .075em !important;
+  text-transform: uppercase;
+}
+
+.io-ui .brand-copy > div:first-child > span {
+  border-color: #2b5368 !important;
+  color: #77bdce !important;
+  background: #102332 !important;
 }
 
 .io-ui .brand-copy button {
-  border-color: rgba(200, 170, 118, .28) !important;
-  color: #ddc89c !important;
-  background: rgba(200, 170, 118, .08) !important;
+  border-color: rgba(115, 217, 229, .3) !important;
+  color: #a6eaf2 !important;
+  background: #123041 !important;
   box-shadow: none !important;
+}
+
+.io-ui .brand-copy .bg-purple-400 {
+  background: #73d9e5 !important;
+  box-shadow: 0 0 8px rgba(115, 217, 229, .24);
 }
 
 .io-ui .resource-chip {
   min-height: 36px;
-  border: 1px solid #344137 !important;
-  border-radius: 8px !important;
-  background: #111812 !important;
-  box-shadow: none !important;
+  border: 1px solid #29485b !important;
+  border-radius: 7px !important;
+  color: #e4f4f7 !important;
+  background: #0a1621 !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .025) !important;
 }
 
 .io-ui .header-icon-button {
   width: 35px;
   height: 35px;
   border: 1px solid transparent;
-  border-radius: 8px !important;
-  color: #a9b1a2 !important;
+  border-radius: 7px !important;
+  color: #91b2c0 !important;
 }
 
 .io-ui .header-icon-button:hover {
-  border-color: #465448 !important;
-  color: #e1dfce !important;
-  background: #202b22 !important;
+  border-color: #36758d !important;
+  color: #d7faff !important;
+  background: #142d3d !important;
   transform: none !important;
 }
 
-/* Keep the primary game header fixed; let the navigation wrap naturally. */
+/* Navigation stays legible, wraps on small screens, and has a clear active tab. */
 .io-ui .app-nav {
-  position: relative !important;
-  top: auto !important;
-  z-index: 10;
+  position: sticky !important;
+  top: 64px !important;
+  z-index: 25;
   padding: 8px 24px !important;
-  border-bottom: 1px solid #303b32 !important;
-  background: #121914 !important;
-  box-shadow: none !important;
+  border-bottom: 1px solid #264255 !important;
+  background: rgba(8, 17, 27, .97) !important;
+  box-shadow: 0 5px 16px rgba(0, 0, 0, .15) !important;
   backdrop-filter: none !important;
 }
 
 .io-ui .nav-shell {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px !important;
+  gap: 5px !important;
   overflow: visible !important;
   padding-block: 1px !important;
 }
@@ -1055,138 +1077,160 @@
   min-height: 36px !important;
   padding: 0 11px !important;
   border: 1px solid transparent !important;
-  border-radius: 7px !important;
-  color: #a0a99b !important;
+  border-radius: 5px !important;
+  color: #91adba !important;
   background: transparent !important;
   box-shadow: none !important;
   font-size: 11px !important;
-  font-weight: 650 !important;
-  letter-spacing: .005em;
-  transition: color .15s ease, background-color .15s ease, border-color .15s ease !important;
+  font-weight: 750 !important;
+  letter-spacing: .025em;
+  transition: color .14s ease, background-color .14s ease, border-color .14s ease !important;
 }
 
 .io-ui .nav-tab:hover {
-  border-color: #354238 !important;
-  color: #eeeade !important;
-  background: #1b251d !important;
+  border-color: #2c5368 !important;
+  color: #e4f7fa !important;
+  background: #102536 !important;
 }
 
 .io-ui .nav-tab.is-active {
-  border-color: #52634e !important;
-  color: #f0eddf !important;
-  background: #263428 !important;
+  border-color: #3d8299 !important;
+  color: #e9fcff !important;
+  background: #153448 !important;
   background-image: none !important;
-  box-shadow: inset 0 -2px #b79a66 !important;
+  box-shadow: inset 0 -2px #73d9e5 !important;
 }
 
 .io-ui .nav-tab.is-active svg {
-  color: #d0bd8e !important;
+  color: #8ce8f1 !important;
 }
 
 .io-ui .nav-tab.is-active::after {
   display: none !important;
 }
 
-/* Small breaks make the three destinations in the core game easier to scan. */
+.io-ui .io-combat-mode-switch {
+  border-color: #38718a !important;
+  color: #bcecf2 !important;
+  background: #102c3c !important;
+}
+
+.io-ui .io-combat-mode-switch.is-active {
+  border-color: #58a9bc !important;
+  color: #effeff !important;
+  background: #19445a !important;
+  box-shadow: inset 0 -2px #73d9e5 !important;
+}
+
+.io-ui .io-nav .nav-shell > .nav-tab {
+  position: relative;
+}
+
+.io-ui .io-nav:not(.io-nav-combat) .nav-shell > .nav-tab:nth-child(5),
+.io-ui .io-nav:not(.io-nav-combat) .nav-shell > .nav-tab:nth-child(8) {
+  margin-left: 8px;
+}
+
 .io-ui .io-nav:not(.io-nav-combat) .nav-shell > .nav-tab:nth-child(5)::before,
 .io-ui .io-nav:not(.io-nav-combat) .nav-shell > .nav-tab:nth-child(8)::before {
   position: absolute;
-  top: 50%;
-  left: -8px;
+  top: 8px;
+  bottom: 8px;
+  left: -6px;
   width: 1px;
-  height: 18px;
   content: "";
-  background: #3b473b;
-  transform: translateY(-50%);
+  background: #315064;
 }
 
 .io-ui .io-nav-combat .nav-shell > .nav-tab::before {
   display: none !important;
 }
 
-.io-ui .io-combat-mode-switch {
-  border-color: #4c5b48 !important;
-  color: #e4dec9 !important;
-  background: #202b21 !important;
-}
-
-.io-ui .io-combat-mode-switch.is-active {
-  border-color: #8c7751 !important;
-  color: #f0e7d2 !important;
-  background: #3a3326 !important;
-  box-shadow: inset 0 -2px #c8aa76 !important;
-}
-
+/* Page typography and common panels. */
 .io-ui .app-main {
   max-width: 1400px !important;
-  padding: 26px clamp(16px, 3vw, 38px) 52px !important;
+  padding: 25px clamp(16px, 3vw, 38px) 52px !important;
 }
 
-.io-ui .app-main :is(h1, h2) {
-  color: #eceade;
-  font-family: Georgia, "Times New Roman", serif;
-  font-weight: 500;
-  letter-spacing: -.02em;
-}
-
-.io-ui .app-main h3 {
-  color: #e5e5d8;
-  letter-spacing: -.01em;
+.io-ui .app-main :is(h1, h2, h3, h4) {
+  color: #e8f5f7;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif !important;
+  font-weight: 760;
+  letter-spacing: -.025em;
 }
 
 .io-ui .app-main :is(p, li) {
   line-height: 1.55;
 }
 
-/* Flatten the repeated glossy card treatment without changing card structure. */
 .io-ui .app-main :is(div, section, article, form)[class*="bg-slate-900"][class*="border-slate-800"][class*="rounded-2xl"] {
-  border-color: var(--io-line) !important;
-  border-radius: 12px !important;
-  background-color: var(--io-panel) !important;
+  border-color: rgba(89, 151, 176, .22) !important;
+  border-radius: 8px !important;
+  background-color: #101d2a !important;
   background-image: none !important;
-  box-shadow: 0 7px 20px rgba(0, 0, 0, .14) !important;
+  box-shadow: 0 7px 20px rgba(0, 0, 0, .2), inset 0 1px rgba(255, 255, 255, .025) !important;
 }
 
 .io-ui .app-main :is(input, select, textarea) {
-  border: 1px solid #465247 !important;
-  border-radius: 7px !important;
-  color: #eeeade !important;
-  background: #111812 !important;
+  border: 1px solid #31566b !important;
+  border-radius: 5px !important;
+  color: #e5f6f8 !important;
+  background: #091722 !important;
   box-shadow: none !important;
 }
 
 .io-ui .app-main :is(input, select, textarea)::placeholder {
-  color: #7f8b7d !important;
+  color: #688b9c !important;
 }
 
 .io-ui .app-main :is(input, select, textarea):focus {
-  border-color: #9bb293 !important;
-  box-shadow: 0 0 0 2px rgba(155, 178, 147, .14) !important;
+  border-color: #73d9e5 !important;
+  box-shadow: 0 0 0 2px rgba(115, 217, 229, .13) !important;
 }
 
 .io-ui :is(button, a, [role="button"], input, select, textarea):focus-visible {
-  outline: 2px solid #c8aa76 !important;
+  outline: 2px solid #8ce8f1 !important;
   outline-offset: 2px !important;
 }
 
 .io-ui .app-main button {
-  border-radius: 8px;
-  transition: color .15s ease, background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .15s ease !important;
+  border-radius: 6px;
+  transition: color .14s ease, background-color .14s ease, border-color .14s ease, box-shadow .14s ease, transform .14s ease !important;
 }
 
 .io-ui .app-main button:not(:disabled):hover {
-  filter: brightness(1.04);
+  filter: brightness(1.07);
 }
 
 .io-ui .app-main button:disabled {
   filter: saturate(.55);
 }
 
-/* Roll screen: one deliberate focal point, with supporting stats in a ledger rail. */
+/* Unify the common purple/indigo primary-action treatment into IO cyan. */
+.io-ui .app-main button[class*="from-purple-"],
+.io-ui .app-main button[class*="from-indigo-"],
+.io-ui .app-main button[class*="from-fuchsia-"],
+.io-ui .app-main button[class*="from-blue-"] {
+  border: 1px solid #3c8ba4 !important;
+  color: #e9fcff !important;
+  background: #17445a !important;
+  background-image: none !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .07) !important;
+}
+
+.io-ui .app-main button[class*="from-purple-"]:hover:not(:disabled),
+.io-ui .app-main button[class*="from-indigo-"]:hover:not(:disabled),
+.io-ui .app-main button[class*="from-fuchsia-"]:hover:not(:disabled),
+.io-ui .app-main button[class*="from-blue-"]:hover:not(:disabled) {
+  background: #1d5870 !important;
+  box-shadow: 0 5px 16px rgba(34, 139, 171, .13) !important;
+}
+
+/* Roll page: a strong central stage and a compact status rail. */
 .io-ui .roll-layout {
   max-width: 1220px;
   grid-template-columns: minmax(0, 1fr) 262px;
-  gap: 22px;
+  gap: 20px;
 }
 
 .io-ui .roll-main {
@@ -1200,54 +1244,58 @@
 }
 
 .io-ui .roll-kicker {
-  color: #c0a779 !important;
+  color: #73d9e5 !important;
   font-size: 9px;
-  letter-spacing: .17em;
+  letter-spacing: .16em;
 }
 
 .io-ui .roll-title {
   margin-top: 5px !important;
-  color: #eeeade !important;
-  font-family: Georgia, "Times New Roman", serif !important;
-  font-size: clamp(29px, 3.3vw, 38px) !important;
-  font-weight: 500 !important;
-  letter-spacing: -.035em !important;
+  color: #e9f8fa !important;
+  font-family: ui-sans-serif, system-ui, sans-serif !important;
+  font-size: clamp(28px, 3.2vw, 37px) !important;
+  font-weight: 800 !important;
+  letter-spacing: -.04em !important;
 }
 
 .io-ui .roll-intro {
-  color: #9da899 !important;
+  color: #9ab7c2 !important;
   font-size: 12px;
 }
 
 .io-ui .signal-live {
-  border-color: #465849 !important;
-  border-radius: 6px !important;
-  color: #c2d0b8 !important;
-  background: #202b22 !important;
+  border-color: #2e7188 !important;
+  border-radius: 5px !important;
+  color: #a7eef4 !important;
+  background: #102c3b !important;
   font-size: 9px;
   letter-spacing: .08em;
 }
 
 .io-ui .signal-live::before {
-  background: #aec39b !important;
-  box-shadow: none !important;
+  background: #73d9e5 !important;
+  box-shadow: 0 0 8px rgba(115, 217, 229, .6) !important;
 }
 
 .io-ui .roll-stage,
 .io-ui .roll-stage.is-first-session {
   min-height: 485px;
-  border: 1px solid #4a5b4b !important;
-  border-radius: 14px !important;
-  background: #19231c !important;
-  background-image: radial-gradient(ellipse at 50% 44%, rgba(171, 192, 151, .09), transparent 48%) !important;
-  box-shadow: inset 0 1px rgba(255, 255, 255, .035), 0 14px 34px rgba(0, 0, 0, .2) !important;
+  border: 1px solid #2c5b72 !important;
+  border-radius: 9px !important;
+  background: #0e1b29 !important;
+  background-image:
+    radial-gradient(ellipse at 50% 43%, rgba(48, 142, 179, .17), transparent 46%),
+    linear-gradient(rgba(94, 165, 192, .055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(94, 165, 192, .055) 1px, transparent 1px) !important;
+  background-size: auto, 32px 32px, 32px 32px !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .035), 0 14px 34px rgba(0, 0, 0, .25) !important;
 }
 
 .io-ui .roll-stage::before,
 .io-ui .roll-stage.is-first-session::before {
-  background-image: radial-gradient(ellipse at center, rgba(184, 202, 164, .075), transparent 62%) !important;
-  background-size: auto !important;
-  opacity: 1 !important;
+  background-image: linear-gradient(90deg, transparent 49.8%, rgba(115, 217, 229, .035) 50%, transparent 50.2%) !important;
+  background-size: 100% 100% !important;
+  opacity: .8 !important;
   animation: none !important;
 }
 
@@ -1258,11 +1306,11 @@
   left: 50%;
   right: auto;
   bottom: auto;
-  width: 340px;
-  height: 340px;
-  border: 1px solid rgba(193, 204, 169, .17) !important;
+  width: 350px;
+  height: 350px;
+  border: 1px solid rgba(94, 185, 209, .2) !important;
   border-radius: 50% !important;
-  box-shadow: 0 0 0 22px rgba(193, 204, 169, .025) !important;
+  box-shadow: 0 0 0 20px rgba(75, 165, 194, .025), 0 0 0 48px rgba(75, 165, 194, .018) !important;
   content: "";
   pointer-events: none;
   transform: translate(-50%, -50%);
@@ -1270,48 +1318,48 @@
 }
 
 .io-ui .roll-stage.is-rolling::after {
-  border-color: rgba(200, 170, 118, .48) !important;
-  box-shadow: 0 0 0 22px rgba(200, 170, 118, .04) !important;
+  border-color: rgba(115, 217, 229, .5) !important;
+  box-shadow: 0 0 0 20px rgba(75, 165, 194, .05), 0 0 20px rgba(115, 217, 229, .08) !important;
 }
 
 .io-ui .roll-stage .rounded-full.border.border-dashed {
-  border-color: rgba(194, 205, 178, .22) !important;
+  border-color: rgba(115, 217, 229, .28) !important;
   border-style: solid !important;
 }
 
 .io-ui .roll-button {
   min-height: 54px;
-  border: 1px solid #d0d7b6 !important;
-  border-radius: 9px !important;
-  color: #192319 !important;
-  background: #c2d0ad !important;
+  border: 1px solid #a0edf2 !important;
+  border-radius: 6px !important;
+  color: #061722 !important;
+  background: #73d9e5 !important;
   background-image: none !important;
-  box-shadow: 0 5px 16px rgba(0, 0, 0, .19), inset 0 1px rgba(255, 255, 255, .34) !important;
+  box-shadow: 0 5px 16px rgba(32, 154, 184, .18), inset 0 1px rgba(255, 255, 255, .38) !important;
   font-size: 13px !important;
-  font-weight: 850 !important;
-  letter-spacing: .08em !important;
+  font-weight: 900 !important;
+  letter-spacing: .1em !important;
 }
 
 .io-ui .roll-button:hover:not(:disabled) {
-  background: #d0d9bc !important;
-  box-shadow: 0 7px 19px rgba(0, 0, 0, .24), inset 0 1px rgba(255, 255, 255, .42) !important;
+  background: #94eaf1 !important;
+  box-shadow: 0 7px 20px rgba(32, 154, 184, .26), inset 0 1px rgba(255, 255, 255, .5) !important;
   transform: translateY(-1px);
 }
 
 .io-ui .roll-button.is-waiting,
 .io-ui .roll-button:disabled {
-  border-color: #485449 !important;
-  color: #9ca797 !important;
-  background: #263128 !important;
+  border-color: #315368 !important;
+  color: #89aab8 !important;
+  background: #1a2d3b !important;
   box-shadow: none !important;
 }
 
 .io-ui .roll-button.is-first-session-cta.is-ready:not(:disabled) {
-  border-color: #d0d7b6 !important;
-  color: #192319 !important;
-  background: #c2d0ad !important;
-  box-shadow: 0 5px 16px rgba(0, 0, 0, .19), inset 0 1px rgba(255, 255, 255, .34) !important;
-  animation: io-ui-roll-ready 4.5s ease-in-out infinite !important;
+  border-color: #a0edf2 !important;
+  color: #061722 !important;
+  background: #73d9e5 !important;
+  box-shadow: 0 5px 16px rgba(32, 154, 184, .18), inset 0 1px rgba(255, 255, 255, .38) !important;
+  animation: io-ui-roll-ready 3.8s ease-in-out infinite !important;
 }
 
 .io-ui .roll-button.is-first-session-cta.is-ready:not(:disabled)::after {
@@ -1320,25 +1368,25 @@
 }
 
 .io-ui .roll-cooldown {
-  border: 1px solid #3b493d !important;
-  border-radius: 8px !important;
-  background: #121a14 !important;
+  border: 1px solid #2c5267 !important;
+  border-radius: 6px !important;
+  background: #091722 !important;
   box-shadow: none !important;
 }
 
 .io-ui .roll-cooldown .w-48 {
   height: 4px;
-  border-radius: 99px;
-  background: #303d31;
+  border-radius: 2px;
+  background: #203e50;
 }
 
 .io-ui .roll-cooldown .bg-gradient-to-r {
-  background: #b5c49d !important;
+  background: #73d9e5 !important;
   background-image: none !important;
 }
 
 .io-ui .roll-action-hint {
-  color: #a1aa9b !important;
+  color: #9ab7c2 !important;
 }
 
 .io-ui .roll-sidebar {
@@ -1347,105 +1395,120 @@
 
 .io-ui .field-card {
   padding: 15px;
-  border: 1px solid #3d4b3e !important;
-  border-radius: 10px !important;
-  background: #19221b !important;
+  border: 1px solid #294b60 !important;
+  border-radius: 7px !important;
+  background: #101e2b !important;
   background-image: none !important;
   box-shadow: none !important;
 }
 
 .io-ui .field-label {
-  color: #a0a895 !important;
+  color: #7fa2b1 !important;
   font-size: 9px;
   letter-spacing: .12em;
 }
 
 .io-ui .field-level strong {
-  color: #eeeade !important;
-  font-family: Georgia, "Times New Roman", serif !important;
-  font-size: 31px;
-  font-weight: 500;
+  color: #e5f5f7 !important;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace !important;
+  font-size: 27px;
+  font-weight: 700;
 }
 
 .io-ui .field-level span,
 .io-ui .field-stat-row {
-  color: #9da797 !important;
+  color: #94b3c0 !important;
 }
 
 .io-ui .field-progress {
   height: 5px;
-  background: #303c31 !important;
+  border-radius: 2px;
+  background: #203b4c !important;
 }
 
 .io-ui .field-progress > span {
-  background: #b6c69f !important;
-  box-shadow: none !important;
+  background: #73d9e5 !important;
+  box-shadow: 0 0 9px rgba(115, 217, 229, .24) !important;
 }
 
 .io-ui .field-stat-row {
-  border-top-color: rgba(184, 194, 174, .13) !important;
+  border-top-color: rgba(89, 151, 176, .16) !important;
 }
 
 .io-ui .field-stat-row strong {
-  color: #e5e5d8 !important;
+  color: #e1f2f5 !important;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
 }
 
 .io-ui .latest-orb-mark {
-  border-color: #8b8c68 !important;
-  border-radius: 10px !important;
-  color: #eee2bd !important;
-  background: #354238 !important;
+  border-color: #4d91a9 !important;
+  border-radius: 7px !important;
+  color: #e8fcff !important;
+  background: #173b50 !important;
   box-shadow: inset 0 1px rgba(255, 255, 255, .12) !important;
 }
 
 .io-ui .latest-orb-name {
-  color: #e9e8dc !important;
+  color: #e4f4f7 !important;
 }
 
 .io-ui .latest-orb-rarity {
-  color: #c5b084 !important;
+  color: #8ce3ed !important;
 }
 
 .io-ui .field-note {
-  color: #c5c5b5 !important;
+  color: #b5c9d0 !important;
 }
 
-/* Apply the same material and control language to the combat expansion. */
+/* Combat gets the same HUD language without sacrificing its darker battle art. */
+.io-ui .io-combat-page-head {
+  margin-bottom: 19px;
+}
+
+.io-ui .io-combat-page-head h1 {
+  letter-spacing: -.035em;
+}
+
+.io-ui .io-combat-page-head p {
+  max-width: 64ch;
+  color: #9bb9c5;
+}
+
 .io-ui .io-combat-stage,
 .io-ui .io-combat-panel,
 .io-ui .io-runes-panel {
-  border-color: #3d4b3e !important;
-  border-radius: 11px !important;
-  background-color: #19221b !important;
+  border-color: #2c5267 !important;
+  border-radius: 8px !important;
+  background-color: #101d2a !important;
   background-image: none !important;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, .16) !important;
+  box-shadow: 0 9px 24px rgba(0, 0, 0, .22) !important;
 }
 
 .io-ui .io-combat-panel-head,
 .io-ui .io-combat-inventory-head,
 .io-ui .io-combat-codex-toolbar {
-  border-bottom-color: #354137 !important;
+  border-bottom-color: #29495c !important;
 }
 
 .io-ui .io-combat-stat-strip > div {
-  border-color: #3b493d !important;
-  border-radius: 8px !important;
-  background: #202a22 !important;
+  border-color: #294c61 !important;
+  border-radius: 6px !important;
+  background: #142636 !important;
   box-shadow: none !important;
 }
 
 .io-ui :is(.io-combat-gear-card, .io-combat-skill-card, .io-combat-opponent-card, .io-combat-dungeon-choice, .io-runes-major-card) {
-  border-color: #3c4a3e !important;
-  border-radius: 9px !important;
-  background-color: #1b251e !important;
+  border-color: #2d5368 !important;
+  border-radius: 6px !important;
+  background-color: #132536 !important;
   background-image: none !important;
   box-shadow: none !important;
-  transition: border-color .15s ease, background-color .15s ease !important;
+  transition: border-color .14s ease, background-color .14s ease !important;
 }
 
 .io-ui :is(.io-combat-gear-card, .io-combat-skill-card, .io-combat-opponent-card, .io-combat-dungeon-choice, .io-runes-major-card):hover {
-  border-color: #839477 !important;
-  background-color: #222e25 !important;
+  border-color: #65b8cb !important;
+  background-color: #19364a !important;
   box-shadow: none !important;
   transform: none !important;
 }
@@ -1453,49 +1516,52 @@
 .io-ui .io-combat-button,
 .io-ui .io-runes-button {
   min-height: 38px;
-  border-radius: 7px !important;
-  letter-spacing: .01em;
+  border-radius: 5px !important;
+  letter-spacing: .02em;
 }
 
 .io-ui .io-combat-button.is-primary {
-  border-color: #a8bc9e !important;
-  color: #172117 !important;
-  background: #b5c8a7 !important;
+  border-color: #a0edf2 !important;
+  color: #061722 !important;
+  background: #73d9e5 !important;
   box-shadow: none !important;
 }
 
 .io-ui .io-combat-button.is-primary:hover:not(:disabled) {
-  background: #c5d3b9 !important;
-  box-shadow: none !important;
+  background: #94eaf1 !important;
+  box-shadow: 0 5px 15px rgba(32, 154, 184, .18) !important;
 }
 
-/* Modals and onboarding should feel like the same game, not separate templates. */
+/* Dialogs and tutorial keep the same console-like frame. */
 .io-ui .io-modal-card,
 .io-ui .toast-card {
-  border: 1px solid #4a5848 !important;
-  border-radius: 13px !important;
-  background: #19221b !important;
+  border: 1px solid #315c72 !important;
+  border-radius: 8px !important;
+  background: #101d2a !important;
   background-image: none !important;
-  box-shadow: 0 22px 58px rgba(0, 0, 0, .42) !important;
+  box-shadow: 0 22px 58px rgba(0, 0, 0, .48) !important;
 }
 
 .io-ui .io-tutorial-guide {
-  border: 1px solid #59634b !important;
-  border-radius: 11px !important;
-  background: #20291f !important;
+  border: 1px solid #39778f !important;
+  border-radius: 7px !important;
+  background: #122a3a !important;
   box-shadow: none !important;
 }
 
+.io-ui .io-tutorial-topline {
+  color: #8ce3ed !important;
+}
+
 @keyframes io-ui-roll-ready {
-  0%, 100% { box-shadow: 0 5px 16px rgba(0, 0, 0, .19), inset 0 1px rgba(255, 255, 255, .34); }
-  50% { box-shadow: 0 7px 20px rgba(177, 197, 151, .19), inset 0 1px rgba(255, 255, 255, .42); }
+  0%, 100% { box-shadow: 0 5px 16px rgba(32, 154, 184, .16), inset 0 1px rgba(255, 255, 255, .38); }
+  50% { box-shadow: 0 7px 22px rgba(32, 154, 184, .27), 0 0 14px rgba(115, 217, 229, .08), inset 0 1px rgba(255, 255, 255, .48); }
 }
 
 @media (max-width: 920px) {
   .io-ui .app-nav {
     position: relative !important;
     top: auto !important;
-    padding-inline: 16px !important;
   }
   .io-ui .roll-layout {
     grid-template-columns: minmax(0, 1fr) 240px;
@@ -1508,6 +1574,8 @@
     padding: 10px 13px !important;
   }
   .io-ui .app-nav {
+    position: relative !important;
+    top: auto !important;
     padding: 7px 10px !important;
   }
   .io-ui .nav-shell {
@@ -1519,11 +1587,6 @@
     padding-inline: 9px !important;
     font-size: 10px !important;
   }
-  .io-ui .io-nav:not(.io-nav-combat) .nav-shell > .nav-tab:nth-child(5)::before,
-  .io-ui .io-nav:not(.io-nav-combat) .nav-shell > .nav-tab:nth-child(8)::before {
-    left: -6px;
-    height: 15px;
-  }
   .io-ui .app-main {
     padding: 18px 13px 36px !important;
   }
@@ -1534,7 +1597,7 @@
   .io-ui .roll-stage,
   .io-ui .roll-stage.is-first-session {
     min-height: 410px;
-    border-radius: 12px !important;
+    border-radius: 7px !important;
   }
   .io-ui .roll-stage::after,
   .io-ui .roll-stage.is-first-session::after {
@@ -1555,7 +1618,7 @@
     align-items: flex-start;
   }
   .io-ui .roll-title {
-    font-size: 27px !important;
+    font-size: 26px !important;
   }
   .io-ui .roll-sidebar {
     grid-template-columns: 1fr;
@@ -1569,5 +1632,9 @@
   .io-ui .roll-button.is-ready:not(.frenzy-supercharged):not(:disabled),
   .io-ui .roll-button.is-first-session-cta.is-ready:not(:disabled) {
     animation: none !important;
+  }
+  .io-ui .nav-tab,
+  .io-ui .app-main button {
+    transition: none !important;
   }
 }
