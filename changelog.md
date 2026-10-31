@@ -1,5 +1,24 @@
 # Infinity Orbs Changelog
 
+### A Friendlier Start and Clearer Game UI (2.1.26)
+
+- Explain the first three steps on the start screen and give returning players a quick look at their saved progress.
+- Put Roll, Upgrades, Collection, Quests, Community, and Progress first; keep specialized systems together under More and show their unlock levels.
+- Make the Progress page available from the level display before Prestige unlocks, so new players can see milestones and level benefits.
+- Show resource names and a plain-language XP target in the header.
+- Use a calmer, consistent palette, clearer text sizes, and simpler card and button treatments across the core game and Combat.
+- Replace all-caps roll instructions with plain action labels and explain the core roll loop above the Orb.
+
+### Guild, Leaderboard, and Admin Loading (2.1.25)
+
+- Load the leaderboard snapshot once instead of requesting the legacy and full boards separately; share in-flight reads and cache the public snapshot briefly in Redis.
+- Show guilds and rankings as soon as each response arrives instead of holding them behind the slowest community request.
+- Load social rankings on demand and refresh only the Guild panel after Guild actions, keeping unrelated game actions from reloading the whole social area.
+- Add clear first-load placeholders, manual retry, and retained rankings when refreshes fail.
+- Reduce Guild polling from every 3 seconds to every 10 seconds while keeping it live during the social view.
+- Keep the Admin Console visible after a confirmed admin check, retry transient status failures with backoff, and provide a manual retry when its availability check is down.
+- Bound un-timed client reads so a stalled response cannot keep a screen or polling lane waiting forever.
+
 ### Frenzy 503 Request-Load Reduction (2.1.24)
 
 - Process up to 2.5 million effective Frenzy Orbs in one weighted roll pass, capped at 25,000 representative samples per pass.

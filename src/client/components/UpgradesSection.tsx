@@ -330,7 +330,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
               <Star className="w-4 h-4 text-amber-400 fill-current animate-spin" style={{ animationDuration: '16s' }} />
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Spend Coins on upgrades. Each card shows its current value, next value, and cost. Buy All Affordable buys as many upgrade levels as your Coins allow.
+              Spend Coins to improve your rolls. Luck helps you find rarer Orbs; Speed lets you roll sooner. Upgrade All buys every level you can afford.
             </p>
           </div>
 

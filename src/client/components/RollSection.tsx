@@ -388,18 +388,18 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const isFirstSession = totalRollCount < 12 && (state.prestigeCount ?? 0) === 0;
   const isFirstRoll = isFirstSession && totalRollCount === 0 && (state.manualRolls ?? 0) === 0;
   const primaryActionLabel = busy
-    ? 'ROLL IN PROGRESS'
+    ? 'Rolling…'
     : frenzyArmed
-      ? frenzyReady ? 'RELEASE FRENZY' : `WAIT ${(remain / 1000).toFixed(1)}s`
+      ? frenzyReady ? 'Release Frenzy' : `Ready in ${(remain / 1000).toFixed(1)}s`
       : chainPatcherPending
-        ? chainPatcherCharged ? 'ROLL CHAIN PATCHER' : 'CHAIN PATCHER NEEDS REPAIR'
+        ? chainPatcherCharged ? 'Use Chain Patcher' : 'Repair Chain Patcher'
         : freeRolls > 0
-          ? `ROLL ALL ${freeRolls} FREE ROLLS`
+          ? `Roll ${freeRolls} free ${freeRolls === 1 ? 'Orb' : 'Orbs'}`
           : remain > 0
-            ? `WAIT ${(remain / 1000).toFixed(1)}s`
+            ? `Ready in ${(remain / 1000).toFixed(1)}s`
             : isFirstRoll
-              ? 'ROLL YOUR FIRST ORB'
-              : `ROLL ${multi > 1 ? '×' + multi : ''}`;
+              ? 'Roll your first Orb'
+              : multi > 1 ? `Roll ${formatNumber(multi)} Orbs` : 'Roll';
   const actionHint = busy
     ? 'Resolving your roll. The result appears after the server confirms it.'
     : frenzyArmed
@@ -414,15 +414,21 @@ export const RollSection: React.FC<RollSectionProps> = ({
           ? `One press uses all ${freeRolls} Free Rolls.`
           : canRoll
             ? isFirstRoll
-              ? 'Tap the Orb or use the button to make your first roll.'
+              ? 'Tap the Orb or the button below. Either one starts a roll.'
               : 'Your next roll is ready.'
-            : `Next roll available in ${(remain / 1000).toFixed(1)} seconds.`;
+            : `Your next roll is ready in ${(remain / 1000).toFixed(1)} seconds.`;
   const hasMultipleOrbs = lastBatch.length > 1;
   const orbitRadius = typeof window !== 'undefined' && window.innerWidth < 400 ? 118 : 152;
 
   return (
     <div className="roll-layout">
       <section className="roll-main flex flex-col items-center justify-center max-w-2xl mx-auto space-y-4">
+      <header className="io-page-intro roll-page-intro">
+        <div>
+          <h1>Roll</h1>
+          <p>Tap the Orb to see what turns up. Rarer finds earn more Coins.</p>
+        </div>
+      </header>
       {/* Weekly Cosmos Milestone Goal Banner */}
       {worldEvent && (
         <div className="w-full bg-gradient-to-r from-purple-950/70 via-slate-900 to-indigo-950/70 border border-purple-500/30 rounded-2xl p-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-lg">
@@ -474,7 +480,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
         {isFirstRoll && (
           <div className="io-first-roll-label" aria-hidden="true">
             <span className="io-first-roll-dot" />
-            YOUR FIRST ORB
+            First roll
           </div>
         )}
 
@@ -544,7 +550,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
                   <span>Value</span>
                 </div>
               </div>
-              {lastOrb?.isCrit && <div className="reward-burst-crit">⚡ CRITICAL</div>}
+              {lastOrb?.isCrit && <div className="reward-burst-crit">⚡ Critical roll</div>}
             </div>
           )}
 
@@ -557,17 +563,17 @@ export const RollSection: React.FC<RollSectionProps> = ({
               className="text-[11px] font-black uppercase tracking-widest block mb-1 drop-shadow"
               style={{ color: orbInfo ? orbInfo.color : '#cbd5e1' }}
             >
-              {orbInfo ? orbInfo.tier : 'READY'}
+              {orbInfo ? orbInfo.tier : 'Ready'}
             </span>
 
             <div className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow-md font-mono">
               {displayOrb
                 ? `1 / ${formatRarity(displayOrb.rarity, displayOrb.isInfinity)}`
-                : '—'}
+                : 'Ready'}
             </div>
 
             <div className="text-xs font-semibold text-white/90 mt-1 drop-shadow">
-              {orbInfo ? orbInfo.name : 'Tap to Roll'}
+              {orbInfo ? orbInfo.name : 'Tap to roll'}
             </div>
             <div className="mt-2 text-[10px] text-slate-300/80" aria-label={`Personal best rarity 1 in ${formatRarity(state.highestRarity, state.highestRarityIsInfinity)}`}>
               Personal best · 1 / {formatRarity(state.highestRarity, state.highestRarityIsInfinity)}
@@ -577,14 +583,14 @@ export const RollSection: React.FC<RollSectionProps> = ({
           {/* Critical Roll Badge */}
           {displayOrb?.isCrit && (
             <div className="absolute -top-6 bg-gradient-to-r from-rose-500 to-amber-500 text-white text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-lg border border-amber-300">
-              ⚡ 2× CRITICAL ROLL
+              ⚡ Critical · 2×
             </div>
           )}
 
           {/* New Discovery Badge */}
           {displayOrb?.isNew && (
             <div className="absolute -top-2 bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-lg">
-              ★ NEW ORB
+              ★ New find
             </div>
           )}
         </div>
@@ -603,7 +609,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
         {/* Persistent exact reward readout, including all bonuses. */}
         {batchSummary && (
           <div className="roll-reward-summary" aria-live="polite">
-            <div className="roll-reward-label">Last Roll</div>
+            <div className="roll-reward-label">Last roll</div>
             <div className="roll-reward-values">
               <span className="roll-reward-value coins"><Coins className="w-3.5 h-3.5" /> +{formatNumber(batchSummary.coins)} Coins</span>
               <span className="roll-reward-value xp"><Sparkles className="w-3.5 h-3.5" /> +{formatNumber(batchSummary.xp)} XP</span>
@@ -616,7 +622,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
         {/* Cooldown Timer */}
         <div className="text-center pt-1">
           <div className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">
-            {canRoll ? 'READY TO ROLL' : `COOLDOWN: ${(remain / 1000).toFixed(1)}s`}
+            {canRoll ? 'Ready to roll' : `Next roll in ${(remain / 1000).toFixed(1)}s`}
           </div>
           {/* Progress Bar */}
           <div role="progressbar" aria-label="Roll cooldown progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(cooldownProgressPct)} aria-valuetext={canRoll ? "Ready to roll" : `${(remain / 1000).toFixed(1)} seconds remaining`} className="w-48 h-1.5 bg-slate-800 rounded-full mx-auto mt-2 overflow-hidden">
@@ -650,7 +656,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       <div className="roll-controls flex flex-col items-center gap-3 w-full max-w-sm">
         {freeRolls > 0 && (
           <div className="text-[10px] font-black uppercase tracking-wider text-emerald-300 border border-emerald-500/30 bg-emerald-500/10 rounded-full px-3 py-1">
-            FREE ROLLS READY · {freeRolls}
+            {freeRolls} free {freeRolls === 1 ? 'roll' : 'rolls'} ready
           </div>
         )}
 
@@ -661,9 +667,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
           onClick={handleRollClick}
           className={'roll-button ' + (isFirstSession ? 'is-first-session-cta ' : '') + (busy ? 'is-waiting' : frenzyReady ? 'frenzy-supercharged' : canRoll ? 'is-ready' : 'is-waiting') + ' w-full py-4 px-6 rounded-2xl font-black text-base sm:text-lg tracking-wide shadow-xl transition-all transform duration-150 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ' +
             (frenzyArmed
-              ? 'bg-fuchsia-700 hover:bg-fuchsia-600 text-white border border-fuchsia-300/40 shadow-[0_0_36px_rgba(217,70,239,0.38)]'
+              ? 'bg-amber-600 hover:bg-amber-500 text-white border border-amber-300/40'
               : canRoll
-              ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-950/30'
+              ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950/20'
               : busy
               ? 'bg-slate-800 text-slate-400 cursor-wait'
               : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700')}
@@ -678,7 +684,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           )}
           {busy
             ? <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
-            : <Sparkles className={'w-5 h-5 ' + (frenzyArmed ? 'text-yellow-200 frenzy-spark' : 'text-cyan-300')} />}
+            : <Sparkles className={'w-5 h-5 ' + (frenzyArmed ? 'text-amber-100 frenzy-spark' : 'text-white')} />}
           <span>{primaryActionLabel}</span>
         </button>
         <div id="roll-action-hint" className="roll-action-hint" aria-live="polite">{actionHint}</div>
@@ -702,7 +708,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
                 ? 'Frenzy Armed · Roll Now'
                 : frenzyUsedToday
                 ? 'Frenzy Cooldown · ' + formatFrenzyCooldown(frenzyCooldownRemain)
-                : 'Orb Frenzy · Charge Next Roll'}
+                : 'Charge a Frenzy for your next roll'}
             </span>
           </span>
         </button>

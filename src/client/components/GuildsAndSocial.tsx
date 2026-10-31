@@ -21,6 +21,7 @@ import {
   UserPlus,
   UserMinus,
   Flag,
+  RefreshCw,
 } from 'lucide-react';
 import type {
   Guild,
@@ -59,8 +60,13 @@ interface GuildsAndSocialProps {
   onSetGuildTax?: (rate: number) => Promise<void>;
   playerUsername?: string;
   playerHasShared?: boolean;
-  onRefreshLeaderboards?: () => Promise<void>;
+  onRefreshLeaderboards?: (force?: boolean) => Promise<void>;
+  leaderboardLoading?: boolean;
+  leaderboardLoaded?: boolean;
+  leaderboardLoadError?: string | null;
   guildLoadError?: string | null;
+  guildLoading?: boolean;
+  guildDataLoaded?: boolean;
   onRefreshGuildData?: () => Promise<void>;
   busy: boolean;
 }
@@ -107,7 +113,12 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   playerUsername = '',
   playerHasShared = false,
   onRefreshLeaderboards,
+  leaderboardLoading = false,
+  leaderboardLoaded = false,
+  leaderboardLoadError = null,
   guildLoadError = null,
+  guildLoading = false,
+  guildDataLoaded = false,
   onRefreshGuildData,
   busy,
 }) => {
@@ -175,6 +186,15 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   useEffect(() => {
     if (activeTab !== 'leaderboard' || !onRefreshLeaderboards) return;
     void onRefreshLeaderboards().catch(() => null);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void onRefreshLeaderboards().catch(() => null);
+    };
+    const interval = window.setInterval(refreshWhenVisible, 30_000);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, [activeTab, onRefreshLeaderboards]);
 
   useEffect(() => {
@@ -270,15 +290,16 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
         <div role="alert" aria-live="assertive" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-xs text-rose-200">
           <div>
             <strong>Guild data could not be loaded.</strong>
-            <p className="mt-1">{guildLoadError} Your last loaded guild data has been kept. Retry the request below.</p>
+            <p className="mt-1">{guildLoadError} {guildDataLoaded ? 'Your last loaded guild data is still shown.' : 'The directory will appear when the connection returns.'} Retry below.</p>
           </div>
           {onRefreshGuildData && (
-            <button type="button" disabled={busy} onClick={() => void onRefreshGuildData().catch(() => undefined)} className="shrink-0 rounded-lg border border-rose-400/40 px-3 py-2 font-bold hover:bg-rose-500/10 disabled:opacity-50">
-              Retry loading
+            <button type="button" disabled={busy || guildLoading} onClick={() => void onRefreshGuildData().catch(() => undefined)} className="shrink-0 rounded-lg border border-rose-400/40 px-3 py-2 font-bold hover:bg-rose-500/10 disabled:opacity-50">
+              {guildLoading ? 'Retrying…' : 'Retry loading'}
             </button>
           )}
         </div>
       )}
+      {guildLoading && guildDataLoaded && <p role="status" aria-live="polite" className="text-[10px] text-slate-500">Refreshing guild activity…</p>}
       {(socialError || socialNotice) && <div role={socialError ? 'alert' : 'status'} aria-live={socialError ? 'assertive' : 'polite'} className={socialError ? 'rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-xs text-rose-200' : 'rounded-xl border border-emerald-500/20 bg-emerald-950/10 p-3 text-xs text-emerald-200'}>{socialError || socialNotice}</div>}
       {/* Sub-navigation */}
       <div role="group" aria-label="Guilds and social sections" className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">
@@ -337,7 +358,20 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
       {/* 1. GUILD TAB */}
       {activeTab === 'guild' && (
         <div className="space-y-6">
-          {myGuild ? (
+          {guildLoading && !guildDataLoaded ? (
+            <div role="status" aria-busy="true" className="space-y-3 rounded-3xl border border-slate-800 bg-slate-900/70 p-5">
+              <div className="h-5 w-40 animate-pulse rounded bg-slate-800" />
+              <div className="h-3 w-64 max-w-full animate-pulse rounded bg-slate-800/80" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                {[0, 1, 2, 3].map(item => <div key={item} className="h-20 animate-pulse rounded-2xl border border-slate-800 bg-slate-950/60" />)}
+              </div>
+              <span className="sr-only">Loading guilds and your guild details…</span>
+            </div>
+          ) : guildLoadError && !guildDataLoaded ? (
+            <div role="status" className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 text-center text-xs text-slate-400">
+              Your guild directory is waiting for a connection. Use Retry loading above when you’re ready.
+            </div>
+          ) : myGuild ? (
             /* Player Is In A Guild */
             <div className="space-y-6">
               {/* Guild Header Hero */}
@@ -1126,16 +1160,30 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
 
       {/* 2. LEADERBOARD TAB */}
       {activeTab === 'leaderboard' && (
-        <div className="space-y-4">
+        <div className="space-y-4" aria-busy={leaderboardLoading}>
           <div className="flex items-center justify-between gap-3">
             <div>
               <h3 className="text-base font-black text-white flex items-center gap-2"><Trophy className="w-5 h-5 text-amber-400" /><span>{leaderboardMeta.find(item => item.id === activeLeaderboard)?.label ?? 'Leaderboard'}</span></h3>
               <span className="text-xs text-slate-400">Public rankings require at least one shared Orb post.</span>
             </div>
-            <div className={playerHasShared ? 'text-right text-[10px] font-bold text-emerald-300' : 'text-right text-[10px] font-bold text-amber-300'}>
-              {playerHasShared ? 'Leaderboard eligible' : 'Share an Orb post to appear'}
+            <div className="flex items-center gap-2">
+              <div className={playerHasShared ? 'text-right text-[10px] font-bold text-emerald-300' : 'text-right text-[10px] font-bold text-amber-300'}>
+                {playerHasShared ? 'Leaderboard eligible' : 'Share an Orb post to appear'}
+              </div>
+              {onRefreshLeaderboards && (
+                <button type="button" disabled={leaderboardLoading} onClick={() => void onRefreshLeaderboards(true).catch(() => null)} aria-label="Refresh leaderboards" className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2 py-1.5 text-[10px] font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-50">
+                  <RefreshCw className={`h-3 w-3 ${leaderboardLoading ? 'animate-spin' : ''}`} />
+                  {leaderboardLoading ? 'Loading…' : 'Refresh'}
+                </button>
+              )}
             </div>
           </div>
+          {leaderboardLoadError && (
+            <div role="alert" aria-live="assertive" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-xs text-rose-200">
+              <span>{leaderboardLoaded ? 'Showing the last loaded rankings.' : 'Rankings could not be loaded.'} {leaderboardLoadError}</span>
+              {onRefreshLeaderboards && <button type="button" disabled={leaderboardLoading} onClick={() => void onRefreshLeaderboards(true).catch(() => null)} className="shrink-0 rounded-lg border border-rose-400/40 px-3 py-2 font-bold hover:bg-rose-500/10 disabled:opacity-50">{leaderboardLoading ? 'Retrying…' : 'Try again'}</button>}
+            </div>
+          )}
           <div role="group" aria-label="Choose leaderboard metric" className="flex gap-1.5 overflow-x-auto pb-1">
             {leaderboardMeta.map(board => (
               <button key={board.id} type="button" aria-pressed={activeLeaderboard === board.id} onClick={() => { sound.playClick(); setActiveLeaderboard(board.id); }}
@@ -1144,7 +1192,8 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
               </button>
             ))}
           </div>
-          {displayedLeaderboard.length === 0 && <div role="status" className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-500">No entries for {leaderboardMeta.find(item => item.id === activeLeaderboard)?.label ?? 'this leaderboard'} yet. Eligible players appear after sharing an Orb post.</div>}
+          {leaderboardLoading && !leaderboardLoaded && <div role="status" className="space-y-2 rounded-2xl border border-slate-800 bg-slate-900/80 p-4" aria-busy="true"><span className="sr-only">Loading player rankings…</span>{[0, 1, 2, 3, 4].map(item => <div key={item} className="h-12 animate-pulse rounded-xl bg-slate-800/70" />)}</div>}
+          {!leaderboardLoading && leaderboardLoaded && !leaderboardLoadError && displayedLeaderboard.length === 0 && <div role="status" className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-500">No entries for {leaderboardMeta.find(item => item.id === activeLeaderboard)?.label ?? 'this leaderboard'} yet. Eligible players appear after sharing an Orb post.</div>}
           <div className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-800/60">
             {displayedLeaderboard.map((entry, idx) => (
               <div key={entry.username} aria-label={`Rank ${idx+1}: ${entry.username}, ${leaderboardMetric(entry)}`} className="flex items-center justify-between p-3 sm:px-4 text-xs hover:bg-slate-800/40 transition-colors">
