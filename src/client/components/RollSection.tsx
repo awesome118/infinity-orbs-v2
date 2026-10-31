@@ -429,7 +429,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           <h1>Roll Orbs</h1>
           <p>Each roll is a new shot at the next rarity record.</p>
         </div>
-        <div className="io-roll-status" data-state={busy ? 'busy' : frenzyArmed ? 'frenzy' : canRoll ? 'ready' : 'cooldown'} role="status" aria-live="polite">
+        <div className="io-roll-status" data-state={busy ? 'busy' : frenzyArmed ? 'frenzy' : canRoll ? 'ready' : 'cooldown'} role="group" aria-label={busy ? 'Roll is processing' : frenzyArmed ? (frenzyReady ? 'Frenzy is ready to release' : 'Frenzy is armed') : canRoll ? 'Roll is ready' : `Roll cooldown: ${(remain / 1000).toFixed(1)} seconds remaining`}>
           <span className="io-roll-status-dot" />
           <span className="io-roll-status-main">{busy ? 'PROCESSING' : frenzyArmed ? (frenzyReady ? 'FRENZY READY' : 'FRENZY ARMED') : canRoll ? 'READY' : 'COOLDOWN'}</span>
           <span className="io-roll-status-detail">{busy ? 'Waiting for server result' : frenzyArmed ? (frenzyReady ? 'Release available' : 'Waiting for roll timer') : canRoll ? 'Next roll available' : `${(remain / 1000).toFixed(1)}s remaining`}</span>
