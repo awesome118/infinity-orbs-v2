@@ -4157,3 +4157,396 @@ body {
   .io-ui .io-page-shell > :is(section, form) { min-height: 0; }
   .io-ui .io-page-shell > :is(section, form)[class*="rounded-2xl"] { margin: 0 !important; }
 }
+
+
+/* Shared destination system: all progression pages use the same blue console
+   surfaces, title scale, panel edges, and action language. Gameplay rarity,
+   reward, warning, and currency colors remain intentionally distinct. */
+.io-ui .app-main > .io-page-shell {
+  width: 100%;
+  max-width: min(100%, 1540px);
+  margin-inline: auto;
+  min-width: 0;
+}
+
+.io-ui .io-page-shell {
+  --page-line: rgba(115, 163, 235, .19);
+  --page-line-strong: rgba(135, 184, 255, .34);
+  --page-panel: rgba(13, 25, 44, .96);
+  --page-panel-raised: rgba(19, 35, 60, .97);
+  color: #e7effb;
+  gap: 10px !important;
+}
+
+.io-ui .io-page-shell .io-page-hero {
+  position: relative;
+  border: 1px solid var(--page-line-strong) !important;
+  border-radius: 15px !important;
+  padding: 13px 16px !important;
+  background:
+    linear-gradient(135deg, rgba(39, 75, 125, .22), rgba(14, 27, 48, .12) 58%),
+    var(--page-panel) !important;
+  box-shadow: 0 9px 26px rgba(0, 0, 0, .19), inset 0 1px rgba(218, 234, 255, .045) !important;
+}
+
+.io-ui .io-page-shell .io-page-hero :is(h1, h2) {
+  color: #edf4ff !important;
+  font-size: clamp(18px, 1.7vw, 23px) !important;
+  font-weight: 760 !important;
+  letter-spacing: -.025em;
+  line-height: 1.15;
+}
+
+.io-ui .io-page-shell .io-page-hero p {
+  max-width: 82ch;
+  color: #aabbd4 !important;
+  font-size: 11px !important;
+  line-height: 1.45 !important;
+}
+
+.io-ui .io-page-shell .io-page-hero :is(.border-b, [class*="border-purple-"], [class*="border-indigo-"], [class*="border-orange-"], [class*="border-emerald-"]) {
+  border-color: rgba(115, 163, 235, .17) !important;
+}
+
+.io-ui .io-page-shell :is(section, form, article)[class*="rounded-3xl"],
+.io-ui .io-page-shell > :is(div, section, form)[class*="rounded-3xl"] {
+  border-radius: 15px !important;
+}
+
+.io-ui .io-page-shell :is(section, form, article, div)[class*="border"][class*="rounded-2xl"] {
+  border-color: rgba(111, 158, 230, .17);
+  box-shadow: inset 0 1px rgba(214, 231, 255, .025), 0 6px 18px rgba(0, 0, 0, .11);
+}
+
+.io-ui .io-page-shell :is(section, form, article)[class*="rounded-2xl"] {
+  border-radius: 12px !important;
+}
+
+.io-ui .io-page-shell :is(h2, h3, h4) {
+  letter-spacing: -.012em;
+}
+
+.io-ui .io-page-shell :is(header, [class*="panel-head"]) :is(h2, h3) {
+  color: #e6effd;
+}
+
+.io-ui .io-page-shell :is(p, li) {
+  text-wrap: pretty;
+}
+
+.io-ui .io-page-shell [role="progressbar"] {
+  border-color: rgba(115, 163, 235, .16);
+  background-color: rgba(7, 16, 31, .92);
+}
+
+.io-ui .io-page-shell [role="progressbar"] > div {
+  background-image: linear-gradient(90deg, #3979c6, #78aef1) !important;
+  box-shadow: 0 0 12px rgba(75, 139, 224, .19);
+}
+
+.io-ui .io-page-shell :is(input, select, textarea) {
+  border-color: rgba(116, 164, 236, .23);
+  background-color: rgba(7, 17, 32, .88);
+}
+
+.io-ui .io-page-shell :is(input, select, textarea):focus {
+  border-color: rgba(142, 189, 255, .72);
+  box-shadow: 0 0 0 3px rgba(77, 137, 215, .13);
+}
+
+.io-ui .io-page-shell button {
+  border-radius: 9px;
+}
+
+.io-ui .io-page-shell button[aria-pressed="true"],
+.io-ui .io-page-shell button[class*="bg-purple-600"],
+.io-ui .io-page-shell button[class*="from-purple-600"],
+.io-ui .io-page-shell button[class*="from-indigo-600"] {
+  border-color: rgba(143, 190, 255, .4) !important;
+  color: #f0f6ff !important;
+  background: #315f98 !important;
+  background-image: none !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .09), 0 4px 12px rgba(25, 65, 117, .16) !important;
+}
+
+.io-ui .io-page-shell button[aria-pressed="true"]:hover,
+.io-ui .io-page-shell button[class*="bg-purple-600"]:hover,
+.io-ui .io-page-shell button[class*="from-purple-600"]:hover,
+.io-ui .io-page-shell button[class*="from-indigo-600"]:hover {
+  background: #3c70ad !important;
+}
+
+.io-ui .io-page-shell button:disabled {
+  filter: saturate(.65);
+}
+
+.io-ui .io-page-shell [role="alert"] {
+  border-radius: 11px !important;
+}
+
+/* Upgrades: make the four purchase categories read as one shop, not four
+   unrelated feature panels. Keep coin prices warm to retain currency meaning. */
+.io-ui .io-page-upgrades > .io-page-hero {
+  background:
+    linear-gradient(120deg, rgba(44, 85, 143, .2), transparent 62%),
+    var(--page-panel) !important;
+}
+
+.io-ui .io-page-upgrades > .io-page-hero + div > section {
+  border: 1px solid var(--page-line) !important;
+  border-radius: 13px !important;
+  background: linear-gradient(145deg, rgba(18, 34, 58, .95), rgba(10, 21, 39, .97)) !important;
+}
+
+.io-ui .io-page-upgrades > .io-page-hero + div > section > header {
+  padding: 1px 2px 5px;
+  border-bottom: 1px solid rgba(115, 163, 235, .14);
+}
+
+.io-ui .io-page-upgrades > .io-page-hero + div > section > header h3 {
+  color: #dceaff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.io-ui .io-page-upgrades > .io-page-hero + div > section > .grid > div {
+  border-color: rgba(118, 163, 226, .16) !important;
+  border-radius: 10px !important;
+  background: rgba(7, 17, 32, .56) !important;
+  box-shadow: none !important;
+}
+
+.io-ui .io-page-upgrades > .io-page-hero + div > section > .grid > div h3 {
+  color: #e5efff !important;
+}
+
+.io-ui .io-page-upgrades > .io-page-hero + div > section > .grid > div button:not(:disabled) {
+  border: 1px solid rgba(213, 174, 104, .34);
+  background: #725a31;
+  color: #fff4dd;
+}
+
+/* Boosters: timers, community activation and permanent automation share the
+   same panel frame; active timer/status accents stay color-coded. */
+.io-ui .io-page-boosters > section:not(.io-page-hero) {
+  border-color: var(--page-line) !important;
+  border-radius: 14px !important;
+  background: linear-gradient(145deg, rgba(18, 34, 57, .96), rgba(10, 21, 39, .97)) !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .14), inset 0 1px rgba(220, 236, 255, .025) !important;
+}
+
+.io-ui .io-page-boosters > section:not(.io-page-hero) > :first-child :is(h3, h4) {
+  color: #e6efff;
+}
+
+.io-ui .io-page-boosters > section:not(.io-page-hero) [class*="rounded-2xl"][class*="border"] {
+  border-color: rgba(116, 164, 236, .16);
+}
+
+/* Altar and Mastery: retain their distinct systems, but align the ritual/skill
+   panels with the same navy surface and remove the oversized banner treatment. */
+.io-ui .io-page-altar > .io-page-hero,
+.io-ui .io-page-mastery > .io-page-hero {
+  background:
+    linear-gradient(125deg, rgba(43, 82, 137, .21), transparent 60%),
+    var(--page-panel) !important;
+}
+
+.io-ui .io-page-altar > .io-page-hero ~ div,
+.io-ui .io-page-altar > form,
+.io-ui .io-page-mastery > .io-page-hero ~ div {
+  border-color: var(--page-line) !important;
+  background-color: var(--page-panel) !important;
+  background-image: linear-gradient(145deg, rgba(32, 60, 98, .13), transparent 65%) !important;
+  box-shadow: 0 7px 22px rgba(0, 0, 0, .13), inset 0 1px rgba(218, 234, 255, .025) !important;
+}
+
+.io-ui .io-page-altar > form {
+  border-radius: 14px !important;
+  padding: 14px !important;
+}
+
+.io-ui .io-page-mastery > .io-page-hero ~ div {
+  border-radius: 14px !important;
+}
+
+/* Codex and quests: make the browsing/filter controls feel like parts of the
+   same console, while keeping discovered rarity labels untouched. */
+.io-ui .io-page-codex > .io-page-hero,
+.io-ui .io-page-quests > .io-page-hero {
+  background:
+    linear-gradient(125deg, rgba(43, 82, 137, .19), transparent 60%),
+    var(--page-panel) !important;
+}
+
+.io-ui .io-page-codex [role="group"] button[aria-pressed="true"],
+.io-ui .io-page-quests [role="group"] button[aria-pressed="true"] {
+  border-color: rgba(143, 190, 255, .42) !important;
+  color: #f0f6ff !important;
+  background: #315f98 !important;
+}
+
+.io-ui .io-page-codex .io-codex-patcher,
+.io-ui .io-page-codex .io-codex-milestones {
+  border-color: var(--page-line) !important;
+  background-color: var(--page-panel) !important;
+}
+
+/* Progress: keep the level journey prominent, but let statistics and prestige
+   read as one hierarchy beneath it. */
+.io-ui .io-page-profile > .io-page-hero {
+  background:
+    linear-gradient(125deg, rgba(43, 82, 137, .22), transparent 64%),
+    var(--page-panel) !important;
+}
+
+.io-ui .io-page-profile > .io-page-hero ~ div {
+  border-color: var(--page-line) !important;
+  border-radius: 14px !important;
+  background: linear-gradient(145deg, rgba(18, 34, 57, .96), rgba(10, 21, 39, .97)) !important;
+  box-shadow: 0 8px 23px rgba(0, 0, 0, .14), inset 0 1px rgba(218, 234, 255, .025) !important;
+}
+
+/* Community: sub-navigation becomes a restrained segmented control. */
+.io-ui .io-page-social > [role="group"] {
+  gap: 5px;
+  padding: 0 0 8px;
+  border-bottom-color: rgba(115, 163, 235, .18);
+}
+
+.io-ui .io-page-social > [role="group"] > button {
+  min-height: 34px;
+  padding: 7px 11px !important;
+  border: 1px solid rgba(115, 163, 235, .13);
+  border-radius: 8px !important;
+  color: #a8b8d0;
+  background: rgba(15, 29, 49, .72);
+  box-shadow: none !important;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.io-ui .io-page-social > [role="group"] > button[aria-pressed="true"] {
+  border-color: rgba(143, 190, 255, .4);
+  color: #eff6ff;
+  background: #315f98;
+}
+
+.io-ui .io-page-social > :is(div, section)[class*="bg-gradient-to-"][class*="rounded-3xl"] {
+  border-color: var(--page-line) !important;
+  border-radius: 14px !important;
+  background: linear-gradient(145deg, rgba(18, 34, 57, .97), rgba(10, 21, 39, .98)) !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .15) !important;
+}
+
+/* Combat shares the same console chrome; tactical states and item rarity
+   still keep their existing colors. */
+.io-ui .io-combat-screen {
+  --combat-blue-line: rgba(116, 164, 236, .2);
+}
+
+.io-ui .io-combat-page-head .io-combat-eyebrow,
+.io-ui .io-combat-screen .io-combat-eyebrow {
+  color: #a9c8f3;
+}
+
+.io-ui .io-combat-page-head h1 {
+  color: #e9f2ff !important;
+}
+
+.io-ui .io-combat-page-head p {
+  color: #a9bad4 !important;
+}
+
+.io-ui .io-combat-screen :is(.io-combat-panel, .io-combat-stage, .io-runes-panel) {
+  border: 1px solid var(--combat-blue-line);
+  border-radius: 13px;
+  background-color: rgba(14, 27, 47, .97);
+  background-image: linear-gradient(145deg, rgba(43, 78, 125, .12), transparent 58%);
+  box-shadow: 0 9px 24px rgba(0, 0, 0, .18), inset 0 1px rgba(218, 234, 255, .025);
+}
+
+.io-ui .io-combat-screen .io-combat-panel-head,
+.io-ui .io-combat-screen .io-combat-inventory-head,
+.io-ui .io-combat-screen .io-combat-codex-toolbar {
+  border-bottom-color: rgba(116, 164, 236, .17);
+}
+
+.io-ui .io-combat-screen :is(.io-combat-panel-head h2, .io-combat-inventory-head h2, .io-combat-codex-toolbar h2) {
+  color: #e4efff;
+}
+
+.io-ui .io-combat-screen .io-combat-stat-strip > div {
+  border-color: rgba(116, 164, 236, .16);
+  background: linear-gradient(145deg, rgba(22, 40, 67, .95), rgba(10, 21, 39, .96));
+}
+
+.io-ui .io-combat-screen .io-combat-button.is-primary,
+.io-ui .io-combat-screen .io-runes-button.is-primary {
+  border-color: rgba(147, 190, 250, .42);
+  color: #f1f6ff;
+  background: #315f98;
+}
+
+.io-ui .io-combat-screen .io-combat-text-link {
+  color: #a9c8f3;
+}
+
+.io-ui .io-combat-screen :is(.io-combat-gear-card, .io-combat-skill-card, .io-combat-opponent-card, .io-combat-dungeon-choice):focus-within {
+  border-color: rgba(143, 190, 255, .52);
+}
+
+@media (min-width: 1180px) and (min-height: 700px) {
+  .io-ui .io-page-shell {
+    gap: 8px !important;
+  }
+  .io-ui .io-page-shell .io-page-hero {
+    padding: 10px 13px !important;
+  }
+  .io-ui .io-page-shell > :not(.io-page-hero) {
+    min-width: 0;
+  }
+  .io-ui .io-page-profile > .io-page-hero {
+    gap: 9px !important;
+  }
+  .io-ui .io-page-profile > .io-page-hero ~ div {
+    padding: 10px !important;
+  }
+  .io-ui .io-page-altar > form {
+    gap: 10px !important;
+  }
+  .io-ui .io-page-social > [role="group"] > button {
+    min-height: 31px;
+  }
+}
+
+@media (max-width: 1179px) {
+  .io-ui .io-page-shell {
+    gap: 12px !important;
+  }
+  .io-ui .io-page-shell .io-page-hero {
+    padding: 13px !important;
+  }
+  .io-ui .io-page-social > [role="group"] > button {
+    min-height: 36px;
+  }
+}
+
+@media (max-width: 680px) {
+  .io-ui .io-page-shell .io-page-hero {
+    border-radius: 12px !important;
+    padding: 11px !important;
+  }
+  .io-ui .io-page-shell .io-page-hero :is(h1, h2) {
+    font-size: 18px !important;
+  }
+  .io-ui .io-page-shell :is(section, form)[class*="rounded-3xl"] {
+    border-radius: 12px !important;
+  }
+  .io-ui .io-page-social > [role="group"] > button {
+    flex: 1 1 auto;
+    justify-content: center;
+    padding-inline: 8px !important;
+    font-size: 9px;
+  }
+}
