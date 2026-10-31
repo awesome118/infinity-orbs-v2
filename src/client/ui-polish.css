@@ -1800,3 +1800,333 @@
   color: #d7faff !important;
   background: #142d3d !important;
 }
+
+
+/* Progression screens share one console layout, card rhythm, and control language. */
+.io-ui .io-page-shell {
+  width: 100%;
+  max-width: 1180px !important;
+  margin-inline: auto;
+  gap: 18px !important;
+}
+.io-ui .io-page-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #2e566d !important;
+  border-radius: 9px !important;
+  background: #101d2a !important;
+  background-image: linear-gradient(112deg, rgba(35, 102, 129, .13), transparent 56%) !important;
+  box-shadow: 0 10px 27px rgba(0, 0, 0, .23), inset 0 1px rgba(255, 255, 255, .035) !important;
+}
+.io-ui .io-page-hero::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  content: "";
+  background: linear-gradient(90deg, #73d9e5, rgba(115, 217, 229, .14) 48%, transparent 88%);
+  pointer-events: none;
+}
+.io-ui .io-page-hero :is(h1,h2,h3) {
+  color: #e8f7fa !important;
+  font-family: ui-sans-serif, system-ui, sans-serif !important;
+  font-weight: 820 !important;
+  letter-spacing: -.035em !important;
+}
+.io-ui .io-page-hero p {
+  color: #9bb9c5 !important;
+}
+.io-ui .io-page-hero :is(.text-purple-300,.text-purple-400,.text-fuchsia-300,.text-indigo-300) {
+  color: #8ce3ed !important;
+}
+.io-ui .io-page-hero :is(.border-purple-800\\/40,.border-purple-500\\/30,.border-indigo-500\\/25,.border-fuchsia-500\\/20) {
+  border-color: #31566b !important;
+}
+.io-ui .io-page-shell :is(div,article,section)[class*="rounded-2xl"][class*="p-4"][class*="border"][class*="bg-slate-"] {
+  border-radius: 7px !important;
+  border-color: rgba(89, 151, 176, .22) !important;
+  background-color: #101e2b !important;
+  background-image: none !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .025), 0 5px 15px rgba(0, 0, 0, .16) !important;
+}
+.io-ui .io-page-shell :is(div,article,section)[class*="rounded-xl"][class*="p-3"][class*="border"][class*="bg-slate-"] {
+  border-radius: 6px !important;
+  border-color: rgba(89, 151, 176, .19) !important;
+  background-color: #0d1a26 !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+.io-ui .io-page-shell :is(h2,h3,h4) {
+  color: #e3f2f6;
+}
+.io-ui .io-page-shell :is(p,small) {
+  line-height: 1.55;
+}
+.io-ui .io-page-shell :is(input,select,textarea) {
+  border-color: #31566b !important;
+  border-radius: 5px !important;
+  color: #e4f4f7 !important;
+  background-color: #091722 !important;
+  box-shadow: none !important;
+}
+.io-ui .io-page-shell :is(input,select,textarea):focus {
+  border-color: #73d9e5 !important;
+  box-shadow: 0 0 0 2px rgba(115, 217, 229, .13) !important;
+}
+.io-ui .io-page-shell button[class*="bg-gradient-to-r"],
+.io-ui .io-page-shell button[class*="bg-purple-"],
+.io-ui .io-page-shell button[class*="bg-indigo-"],
+.io-ui .io-page-shell button[class*="bg-fuchsia-"] {
+  border: 1px solid #3c8298 !important;
+  border-radius: 6px !important;
+  color: #e9fcff !important;
+  background: #17445a !important;
+  background-image: none !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .06) !important;
+}
+.io-ui .io-page-shell button[class*="bg-gradient-to-r"]:hover:not(:disabled),
+.io-ui .io-page-shell button[class*="bg-purple-"]:hover:not(:disabled),
+.io-ui .io-page-shell button[class*="bg-indigo-"]:hover:not(:disabled),
+.io-ui .io-page-shell button[class*="bg-fuchsia-"]:hover:not(:disabled) {
+  background: #1d5870 !important;
+  box-shadow: 0 5px 15px rgba(34, 139, 171, .14) !important;
+}
+.io-ui .io-page-shell button:disabled {
+  filter: saturate(.55);
+}
+.io-ui .io-page-shell [role="progressbar"] {
+  border-color: #294c61 !important;
+  background-color: #203b4c !important;
+}
+.io-ui .io-page-shell [role="progressbar"] > :is(span,div) {
+  background-color: #73d9e5;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+.io-ui .io-page-shell [role="group"][aria-label*="Filter"],
+.io-ui .io-page-shell [role="group"][aria-label*="Sort"] {
+  border-color: #294c61 !important;
+  border-radius: 6px !important;
+  background: #0d1a26 !important;
+}
+.io-ui .io-page-shell [role="group"][aria-label*="Filter"] button,
+.io-ui .io-page-shell [role="group"][aria-label*="Sort"] button {
+  border-radius: 4px !important;
+}
+.io-ui .io-page-shell [role="group"][aria-label*="Filter"] button[aria-pressed="true"],
+.io-ui .io-page-shell [role="group"][aria-label*="Sort"] button[aria-pressed="true"] {
+  border-color: #3b839a !important;
+  color: #e7fbff !important;
+  background: #17445a !important;
+  box-shadow: inset 0 -2px #73d9e5 !important;
+}
+.io-ui .io-page-shell .text-amber-300,
+.io-ui .io-page-shell .text-amber-400 {
+  color: #e3bd68;
+}
+.io-ui .io-page-shell :is(.text-rose-200,.text-rose-300) {
+  color: #e6a3aa;
+}
+
+/* UPGRADES — make purchase choices feel like a deliberate control surface. */
+.io-ui .io-page-upgrades .io-page-hero h2::before {
+  display: block;
+  margin-bottom: 6px;
+  color: #73d9e5;
+  content: "ECONOMY  /  PERMANENT UPGRADES";
+  font: 800 9px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: .15em;
+}
+.io-ui .io-page-upgrades [class*="grid-cols-1"][class*="md:grid-cols-2"] > div {
+  border-radius: 8px;
+}
+.io-ui .io-page-upgrades [class*="bg-slate-900/90"][class*="rounded-2xl"][class*="p-4"] {
+  border-radius: 7px !important;
+  background-color: #101e2b !important;
+  background-image: none !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .025), 0 5px 15px rgba(0, 0, 0, .16) !important;
+}
+.io-ui .io-page-upgrades [class*="bg-slate-900/90"] h3 {
+  color: #e4f4f7 !important;
+}
+.io-ui .io-page-upgrades [class*="bg-slate-900/90"] [class*="text-cyan-"] {
+  color: #8ce3ed !important;
+}
+
+/* CODEX — retain rarity color on orb art, simplify the catalogue frame. */
+.io-ui .io-page-codex .io-page-hero h2::before {
+  display: block;
+  margin-bottom: 6px;
+  color: #73d9e5;
+  content: "ARCHIVE  /  DISCOVERED ORBS";
+  font: 800 9px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: .15em;
+}
+.io-ui .io-page-codex [class*="grid-cols-1"][class*="sm:grid-cols-2"][class*="lg:grid-cols-3"] > div {
+  border-radius: 7px !important;
+  background-color: #101e2b !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .025), 0 5px 15px rgba(0, 0, 0, .15) !important;
+}
+.io-ui .io-page-codex [aria-label="Filter Codex by tier"] {
+  scrollbar-width: thin;
+  scrollbar-color: #31566b transparent;
+}
+.io-ui .io-page-codex [aria-label="Sort Codex entries"] {
+  min-height: 36px;
+}
+.io-ui .io-page-codex .io-page-hero [class*="bg-purple-"] {
+  background-color: #102c3c !important;
+}
+
+/* PROFILE & PRESTIGE — separate player progress from permanent upgrades. */
+.io-ui .io-page-profile .io-page-hero h2::before {
+  display: block;
+  margin-bottom: 6px;
+  color: #73d9e5;
+  content: "PLAYER PROFILE  /  EXPERIENCE";
+  font: 800 9px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: .15em;
+}
+.io-ui .io-page-profile [class*="grid-cols-1"][class*="sm:grid-cols-2"] > div,
+.io-ui .io-page-profile [class*="grid-cols-2"][class*="sm:grid-cols-4"] > div {
+  border-radius: 7px;
+}
+.io-ui .io-page-profile [role="group"][aria-label="Filter permanent Prestige upgrades"] {
+  padding: 4px;
+  border: 1px solid #294c61;
+  border-radius: 6px;
+  background: #0d1a26;
+}
+.io-ui .io-page-profile [role="group"][aria-label="Filter permanent Prestige upgrades"] button {
+  border-radius: 4px;
+}
+
+/* ALTAR — retain its sacrifice theme, but use the shared blue console frame. */
+.io-ui .io-page-altar .io-page-hero h1::before {
+  display: block;
+  margin-bottom: 7px;
+  color: #73d9e5;
+  content: "RESOURCE EXCHANGE  /  DEVOTION";
+  font: 800 9px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: .15em;
+}
+.io-ui .io-page-altar .io-page-hero [class*="bg-gradient-to-br"] {
+  border-radius: 7px !important;
+  border-color: #3a6b82 !important;
+  color: #e5f5f7 !important;
+  background: #102536 !important;
+  box-shadow: none !important;
+}
+.io-ui .io-page-altar .io-page-hero [class*="text-orange-"] {
+  color: #8ce3ed !important;
+}
+
+/* MASTERY — branches, ranks, and point balance read as one skill tree. */
+.io-ui .io-page-mastery .io-page-hero h1::before {
+  display: block;
+  margin-bottom: 7px;
+  color: #73d9e5;
+  content: "PERMANENT BONUSES  /  SKILL TREE";
+  font: 800 9px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: .15em;
+}
+.io-ui .io-page-mastery [role="group"][aria-label="Filter Mastery skills by branch"] {
+  border: 1px solid #294c61 !important;
+  border-radius: 6px !important;
+  background: #0d1a26 !important;
+}
+.io-ui .io-page-mastery [role="group"][aria-label="Filter Mastery skills by branch"] button {
+  border-radius: 4px !important;
+}
+.io-ui .io-page-mastery [aria-label*="mastery ranks"] > div {
+  border-radius: 1px !important;
+}
+
+/* QUESTS — clear daily and weekly sections; claimable rewards stay obvious. */
+.io-ui .io-page-quests .io-page-hero h2::before {
+  display: block;
+  margin-bottom: 6px;
+  color: #73d9e5;
+  content: "DAILY CYCLE  /  STREAKS & TASKS";
+  font: 800 9px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: .15em;
+}
+.io-ui .io-page-quests [class*="grid-cols-1"][class*="md:grid-cols-2"] > div {
+  border-radius: 7px !important;
+  background-color: #101e2b !important;
+  background-image: none !important;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, .15) !important;
+}
+.io-ui .io-page-quests button[class*="bg-emerald-500"] {
+  border: 1px solid #4d987e !important;
+  border-radius: 6px !important;
+  color: #dff9ef !important;
+  background: #174536 !important;
+  box-shadow: none !important;
+}
+.io-ui .io-page-quests button[class*="bg-emerald-500"]:hover:not(:disabled) {
+  background: #1c5a45 !important;
+}
+
+/* BOOSTERS — distinguish global timers, personal boosts, and permanent automation. */
+.io-ui .io-page-boosters .io-page-hero h2::before {
+  display: block;
+  margin-bottom: 6px;
+  color: #73d9e5;
+  content: "SYSTEMS  /  TEMPORARY & PERMANENT";
+  font: 800 9px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: .15em;
+}
+.io-ui .io-page-boosters > section {
+  border-color: #2e566d !important;
+  border-radius: 8px !important;
+  background: #101e2b !important;
+  background-image: none !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .18) !important;
+}
+.io-ui .io-page-boosters > section + section {
+  border-top: 2px solid rgba(115, 217, 229, .35) !important;
+}
+.io-ui .io-page-boosters [class*="grid-cols-1"][class*="md:grid-cols-2"] > div,
+.io-ui .io-page-boosters [class*="grid-cols-1"][class*="lg:grid-cols-3"] > div {
+  border-radius: 7px !important;
+}
+.io-ui .io-page-boosters [role="progressbar"] > div {
+  background: #73d9e5 !important;
+  background-image: none !important;
+}
+
+/* Combat screen shares the same frame and neutral control treatment. */
+.io-ui .io-combat-page-head {
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(89, 151, 176, .2);
+}
+.io-ui .io-combat-run-stamp {
+  border: 1px solid #2e566d !important;
+  border-radius: 6px !important;
+  background: #0e2230 !important;
+}
+.io-ui .io-combat-eyebrow {
+  color: #73d9e5 !important;
+  letter-spacing: .12em !important;
+}
+.io-ui .io-combat-tab {
+  border-radius: 5px !important;
+}
+.io-ui .io-combat-tab.is-active {
+  border-color: #3d8299 !important;
+  color: #e9fcff !important;
+  background: #153448 !important;
+  box-shadow: inset 0 -2px #73d9e5 !important;
+}
+
+@media (max-width: 680px) {
+  .io-ui .io-page-shell {
+    gap: 13px !important;
+  }
+  .io-ui .io-page-hero {
+    padding: 17px !important;
+  }
+  .io-ui .io-page-hero::after { height: 1px; }
+}
