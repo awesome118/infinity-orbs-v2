@@ -31,6 +31,8 @@ test('Alignment chooser is a 60-second offer; each selected effect still lasts t
   assert.ok(main.includes('window.setInterval(tick, 250)'));
   assert.ok(main.includes('alignmentDismissedPendingAtRef.current = Math.max('));
   assert.ok(main.includes('setAlignmentPromptVisible(false)'));
+  assert.ok(main.includes('if (now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS) {'));
+  assert.ok(!main.includes('if (now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS && !alignmentChoiceBusy)'));
   assert.ok(main.includes('data-testid="celestial-alignment-duration"'));
   assert.ok(main.includes('>2 hours</strong>'));
   assert.ok(main.includes('Each chosen effect lasts 2 hours'));
