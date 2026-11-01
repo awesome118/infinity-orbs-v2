@@ -26,6 +26,7 @@ type PlayerSaveManifest = {
   chunkCount: number;
   /** UTF-16 code-unit length, retained for compatibility with existing manifests. */
   length: number;
+  byteLength?: number;
   checksum: string;
   projection: PlayerSaveProjection;
 };
@@ -73,16 +74,18 @@ function parsePlayerSaveManifest(raw: string | null | undefined): PlayerSaveMani
     const token = String(value.token ?? '');
     const chunkCount = Number(value.chunkCount);
     const length = Number(value.length);
+    const byteLength = value.byteLength === undefined ? undefined : Number(value.byteLength);
     const checksum = String(value.checksum ?? '');
     if (
       !/^[a-zA-Z0-9-]{8,120}$/.test(token) ||
       !Number.isSafeInteger(chunkCount) || chunkCount < 1 || chunkCount > PLAYER_SAVE_MAX_CHUNKS ||
       !Number.isSafeInteger(length) || length < 1 || length > PLAYER_SAVE_MAX_BYTES ||
+      (byteLength !== undefined && (!Number.isSafeInteger(byteLength) || byteLength < 1 || byteLength > PLAYER_SAVE_MAX_BYTES)) ||
       !/^[a-f0-9]{8}$/.test(checksum)
     ) {
       throw new Error('Invalid player-save manifest.');
     }
-    return { __ioPlayerSaveManifest: 1, token, chunkCount, length, checksum, projection };
+    return { __ioPlayerSaveManifest: 1, token, chunkCount, length, byteLength, checksum, projection };
   } catch (error) {
     console.error('[Player Save] Invalid chunk manifest:', error);
     throw new Error('Your Infinity Orbs save index could not be read safely.');
@@ -120,7 +123,7 @@ export async function readStoredPlayerSave(
   const joined = chunks.join('');
   if (
     joined.length !== manifest.length ||
-    utf8ByteLength(joined) > PLAYER_SAVE_MAX_BYTES ||
+    (manifest.byteLength !== undefined && utf8ByteLength(joined) !== manifest.byteLength) ||
     playerSaveChecksum(joined) !== manifest.checksum
   ) {
     throw new Error('Your Infinity Orbs save failed its integrity check. No changes were applied.');
@@ -196,6 +199,7 @@ export async function createPlayerSaveWritePlan(
     token,
     chunkCount: chunks.length,
     length: serialized.length,
+    byteLength,
     checksum: playerSaveChecksum(serialized),
     projection,
   };
