@@ -2169,7 +2169,7 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
   }
 
   const now = Date.now();
-  const saves = await readInBatches(userIds.map(id => playerKeyFor(id)), keys => redis.mGet(keys));
+  const saves = await readInBatches<string | null>(userIds.map(id => playerKeyFor(id)), keys => redis.mGet(keys) as Promise<Array<string | null>>);
   const players = userIds.map((userId, index): PlayerListEntry | null => {
     const hasRegistryEntry = Object.prototype.hasOwnProperty.call(records, userId);
     const registry = parseStoredJson<Partial<PlayerRegistryEntry>>(records[userId]) ?? {};
@@ -6946,7 +6946,7 @@ export async function chooseCelestialAlignment(
     s.alignmentPendingAt = 0;
     s.alignmentPendingForced = false;
     s.alignmentNextAt = hasMastery ? nextCelestialAlignmentAt(now) : 0;
-    const username = String(context.username ?? s.username ?? 'Redditor').trim().replace(/^u\\//i, '').slice(0, 32) || 'Redditor';
+    const username = String(context.username ?? s.username ?? 'Redditor').trim().replace(/^u\//i, '').slice(0, 32) || 'Redditor';
     stageSavePostCommitAction(s, async () => {
       await recordCelestialAlignmentChoiceStats(choice, username, now, wasAdminTest);
     });
