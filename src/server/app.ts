@@ -1334,10 +1334,11 @@ export function createApp() {
     try {
       const ticketId = typeof req.body?.ticketId === 'string' ? req.body.ticketId : '';
       const ticketIndex = req.body?.ticketIndex;
-      if (!ticketId || !Number.isSafeInteger(ticketIndex)) {
+      const ticketSeed = typeof req.body?.ticketSeed === 'string' ? req.body.ticketSeed : '';
+      if (!ticketId || !Number.isSafeInteger(ticketIndex) || !ticketSeed) {
         return res.status(400).json({ error: 'Roll request is missing its ticket. Refresh the game and try again.' });
       }
-      const result = await roll(req.body?.auto === true, ticketId, ticketIndex, req.body?.useAllFreeRolls === true, req.body?.useTimeEnergy === true);
+      const result = await roll(req.body?.auto === true, ticketId, ticketIndex, req.body?.useAllFreeRolls === true, req.body?.useTimeEnergy === true, ticketSeed);
       const rolledOrb = (result as { orb?: { rarity?: number; name?: string } }).orb;
       if (rolledOrb) queueCombatOrbFocusSync(rolledOrb.rarity, rolledOrb.name);
       res.json(result);
