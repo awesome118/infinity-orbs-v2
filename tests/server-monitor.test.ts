@@ -6,6 +6,7 @@ import {
   estimateKnownRedisStorage,
   getServerMonitorSnapshot,
   recordRedisOperation,
+  recordUpgradeBatchDiagnostic,
 } from '../src/server/server-monitor.js';
 
 test('server monitor turns roll requests into human-readable feed entries', () => {
@@ -79,4 +80,71 @@ test('storage estimate breaks down indexed player, combat, registry, and shared 
   assert.ok(estimate.groups.some(group => group.label === 'Combat saves' && group.records === 1));
   assert.ok(estimate.groups.some(group => group.label === 'Player registry' && group.records === 1));
   assert.match(estimate.note, /Lower-bound estimate/);
+});
+
+
+test('upgrade batch diagnostics distinguish server acceptance, partial purchase, rejection, and client rollback', () => {
+  const before = getServerMonitorSnapshot();
+
+  recordUpgradeBatchDiagnostic({
+    stage: 'server-accepted',
+    username: 'shadow_fen',
+    requestId: 'upgrade-diag-accepted-test',
+    upgradeIds: ['speed'],
+    status: 200,
+    durationMs: 8,
+    purchasedCount: 1,
+  });
+  recordUpgradeBatchDiagnostic({
+    stage: 'server-partial',
+    username: 'shadow_fen',
+    requestId: 'upgrade-diag-partial-test',
+    upgradeIds: ['speed', 'luck'],
+    status: 200,
+    durationMs: 11,
+    purchasedCount: 1,
+    message: 'Need more Coins for luck.',
+  });
+  recordUpgradeBatchDiagnostic({
+    stage: 'server-rejected',
+    username: 'shadow_fen',
+    requestId: 'upgrade-diag-rejected-test',
+    upgradeIds: ['criticalDividend'],
+    status: 400,
+    durationMs: 3,
+    errorCode: 'INVALID_BATCH_IDS',
+    message: 'Batch contained an unsupported upgrade.',
+  });
+  recordUpgradeBatchDiagnostic({
+    stage: 'client-rollback',
+    username: 'shadow_fen',
+    requestId: 'upgrade-diag-rollback-test',
+    upgradeIds: ['speed'],
+    status: 503,
+    durationMs: 3200,
+    errorCode: 'PLAYER_MUTATION_QUEUED',
+    message: 'Your action is queued and will retry automatically.',
+  });
+
+  const after = getServerMonitorSnapshot();
+  assert.equal(after.upgradeBatches.serverAttempts - before.upgradeBatches.serverAttempts, 3);
+  assert.equal(after.upgradeBatches.serverAccepted - before.upgradeBatches.serverAccepted, 1);
+  assert.equal(after.upgradeBatches.serverPartial - before.upgradeBatches.serverPartial, 1);
+  assert.equal(after.upgradeBatches.serverRejected - before.upgradeBatches.serverRejected, 1);
+  assert.equal(after.upgradeBatches.clientRollbacks - before.upgradeBatches.clientRollbacks, 1);
+  assert.ok(after.upgradeBatches.averageServerDurationMs >= 0);
+
+  const partial = after.events.find(event => event.details?.requestId === 'upgrade-diag-partial-test');
+  assert.ok(partial);
+  assert.equal(partial?.details?.stage, 'server-partial');
+  assert.equal(partial?.details?.purchasedCount, 1);
+  assert.match(partial?.message ?? '', /Need more Coins for luck/);
+
+  const rejected = after.events.find(event => event.details?.requestId === 'upgrade-diag-rejected-test');
+  assert.ok(rejected);
+  assert.equal(rejected?.details?.errorCode, 'INVALID_BATCH_IDS');
+
+  const rollback = after.events.find(event => event.details?.requestId === 'upgrade-diag-rollback-test');
+  assert.ok(rollback);
+  assert.equal(rollback?.details?.stage, 'client-rollback');
 });
