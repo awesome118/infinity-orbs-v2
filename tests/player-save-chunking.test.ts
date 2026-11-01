@@ -33,6 +33,20 @@ test('legacy inline saves remain readable and the next oversized save migrates s
   assert.match(game, /playerSaveProjection\(saves\[index\]\)/);
 });
 
+test('achievement claims use the canonical locked and chunked player-save path', () => {
+  const game = source('src/server/game.ts');
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('export async function claimAchievement');
+  const end = social.indexOf('export function shareText', start);
+  const claim = social.slice(start, end);
+
+  assert.match(game, /export async function mutateCurrentPlayerState/);
+  assert.match(game, /const state = await loadRaw\(\);[\s\S]*?await save\(state\);/);
+  assert.match(social, /import \{ mutateCurrentPlayerState \} from '\.\/game\.js'/);
+  assert.match(claim, /mutateCurrentPlayerState\(current =>/);
+  assert.doesNotMatch(claim, /redis\.watch|txn\.set\(playerKey|JSON\.stringify\(state\)/);
+});
+
 test('payment grants and refunds also use the chunked save protocol', () => {
   const game = source('src/server/game.ts');
   assert.ok((game.match(/txn\.set\(pkey, writePlan\.storedValue\)/g) ?? []).length >= 2);
