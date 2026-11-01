@@ -213,3 +213,4 @@ jobs:
 # Explicit user request 2026-11-01: retry v2.1.46 after Guild type-check fixes; dev only.
 # Explicit user request 2026-11-01: deploy v2.1.47 mobile Gear inline Equip controls to r/infinity_orbs_dev only.
 # Deployment trigger audit: user-requested dev-only upload of package.json version 2.1.49 on 2026-11-01.
+# Deployment retry audit: refreshed dev-only preflight after correcting the Guild recovery source-contract test.
