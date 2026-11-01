@@ -65,5 +65,5 @@ test('dev cooldown reset releases the player lock before issuing a ticket', () =
   assert.ok(rollStart >= 0 && rollEnd > rollStart);
   const rollOnce = modal.slice(rollStart, rollEnd);
   assert.match(rollOnce, /ticketSeed/);
-  assert.match(rollOnce, /ticketIndex: ticket\\.nextIndex/);
+  assert.match(rollOnce, /ticketIndex: ticket\.nextIndex/);
 });
