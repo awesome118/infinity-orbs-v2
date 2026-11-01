@@ -1788,11 +1788,18 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             nextIndex: number;
             rollsRemaining: number;
             expiresAt: number;
+            seeds: string[];
+            predictionStartIndex: number;
           }>('/api/dev/reset-cooldown', {});
+          const ticketSeed = ticket.seeds[
+            ticket.nextIndex - ticket.predictionStartIndex
+          ];
+          if (!ticketSeed) throw new Error('Fresh roll ticket did not include the next seed.');
           return await request<RollResponse>('/api/roll', {
             auto,
             ticketId: ticket.ticketId,
             ticketIndex: ticket.nextIndex,
+            ticketSeed,
           });
         } catch (error) {
           lastError = error instanceof Error ? error : new Error(String(error));
