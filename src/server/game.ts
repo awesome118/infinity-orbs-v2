@@ -6558,10 +6558,22 @@ export async function getCelestialAlignmentStatus(): Promise<{
     const s = await loadRaw();
     const hasMastery = (s.masterySkills?.celestialAlignment ?? 0) > 0;
     const forcedPending = s.alignmentPendingForced === true && (s.alignmentPendingAt ?? 0) > 0;
-    if (!hasMastery && !forcedPending) {
-      return { unlocked: false, pending: false, pendingAt: 0, activeChoice: null, activeUntil: 0, nextAt: 0 };
-    }
     const now = Date.now();
+    if (!hasMastery && !forcedPending) {
+      // Admin-forced test choices bypass mastery, but their 60-minute effect
+      // must remain visible on subsequent status polls without unlocking events.
+      const activeChoice = (s.alignmentActiveUntil ?? 0) > now
+        ? s.alignmentActiveChoice ?? null
+        : null;
+      return {
+        unlocked: false,
+        pending: false,
+        pendingAt: 0,
+        activeChoice,
+        activeUntil: activeChoice ? s.alignmentActiveUntil ?? 0 : 0,
+        nextAt: 0,
+      };
+    }
     let changed = false;
     if ((s.alignmentActiveUntil ?? 0) <= now && s.alignmentActiveChoice) {
       s.alignmentActiveChoice = null;
