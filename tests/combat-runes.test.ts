@@ -87,16 +87,16 @@ test('all eleven trigger-based Rune Major Abilities scale and expose distinct me
   ];
   const equipped=abilityRunes.map(rune=>rune.id);
   const effects=combatRuneMajorAbilityEffects(abilityRunes,equipped);
-  assert.equal(effects.echoChamberPct,10);
-  assert.equal(effects.paradoxEnginePct,12);
-  assert.equal(effects.eventHorizonPct,15);
-  assert.equal(effects.shardConstellationPct,20);
+  assert.equal(effects.echoChamberPct,8.5);
+  assert.equal(effects.paradoxEnginePct,6);
+  assert.equal(effects.eventHorizonPct,12.75);
+  assert.equal(effects.shardConstellationPct,17);
   assert.equal(effects.temporalLoopPct,8);
-  assert.equal(effects.prismaticForkPct,18);
-  assert.equal(effects.criticalConvergencePct,16);
-  assert.equal(effects.rarityLadderPct,14);
-  assert.equal(effects.stellarDividendPct,22);
-  assert.equal(effects.shardJackpotPct,25);
+  assert.equal(effects.prismaticForkPct,15.3);
+  assert.equal(effects.criticalConvergencePct,13.6);
+  assert.equal(effects.rarityLadderPct,7);
+  assert.equal(effects.stellarDividendPct,18.7);
+  assert.equal(effects.shardJackpotPct,21.25);
   assert.equal(effects.milestoneEnginePct,20);
   assert.ok(effects.echoChamberMaxChain>=1);
   assert.ok(effects.paradoxEngineBonusRolls>=1);
@@ -110,20 +110,57 @@ test('all eleven trigger-based Rune Major Abilities scale and expose distinct me
   assert.equal(effects.shardJackpotExtraMultiplier,1,'Jackpot can only double a single-Shard payout');
   assert.ok(effects.milestoneEngineBonusRolls>=1 && effects.milestoneEngineBonusRolls<=2);
   assert.equal(effects.milestoneEngineBonusShards,1);
-  assert.ok(combatRuneMajorAbilityStrengthPct(abilityRunes[0]!.majorAbility!,256)>combatRuneMajorAbilityStrengthPct(abilityRunes[0]!.majorAbility!,1));
-  assert.match(combatRuneMajorAbilitySummary(abilityRunes[0]!.majorAbility!,20),/echo|chain/i);
-  assert.match(combatRuneMajorAbilitySummary(abilityRunes[1]!.majorAbility!,20),/multi-roll|extra roll/i);
-  assert.match(combatRuneMajorAbilitySummary(abilityRunes[2]!.majorAbility!,20),/record|rarity floor/i);
-  assert.match(combatRuneMajorAbilitySummary(abilityRunes[3]!.majorAbility!,20),/Shards|bonus roll/i);
-  assert.match(combatRuneMajorAbilitySummary(abilityRunes[4]!.majorAbility!,20),/Momentum|bonus roll/i);
-  assert.match(combatRuneMajorAbilitySummary(abilityRunes[5]!.majorAbility!,20),/fork|rarity floor/i);
-  assert.match(combatRuneMajorAbilitySummary(abilityRunes[6]!.majorAbility!,20),/critical|bonus roll/i);
-  assert.match(combatRuneMajorAbilitySummary(abilityRunes[7]!.majorAbility!,20),/rising rarities/i);
-  assert.match(combatRuneMajorAbilitySummary(abilityRunes[8]!.majorAbility!,20),/lifetime rolls/i);
-  assert.match(combatRuneMajorAbilitySummary(abilityRunes[9]!.majorAbility!,20),/Shard payout/i);
-  assert.match(combatRuneMajorAbilitySummary(abilityRunes[10]!.majorAbility!,20),/power of ten/i);
+  assert.ok(combatRuneMajorAbilityStrengthPct(abilityRunes[0]!.majorAbility!,256,abilityRunes[0]!.rarity)>combatRuneMajorAbilityStrengthPct(abilityRunes[0]!.majorAbility!,1,abilityRunes[0]!.rarity));
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[0]!.majorAbility!,20,abilityRunes[0]!.rarity),/echo|chain/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[1]!.majorAbility!,20,abilityRunes[1]!.rarity),/multi-roll|extra roll/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[2]!.majorAbility!,20,abilityRunes[2]!.rarity),/record|rarity floor/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[3]!.majorAbility!,20,abilityRunes[3]!.rarity),/Shards|bonus roll/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[4]!.majorAbility!,20,abilityRunes[4]!.rarity),/Momentum|bonus roll/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[5]!.majorAbility!,20,abilityRunes[5]!.rarity),/fork|rarity floor/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[6]!.majorAbility!,20,abilityRunes[6]!.rarity),/critical|bonus roll/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[7]!.majorAbility!,20,abilityRunes[7]!.rarity),/rising rarities/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[8]!.majorAbility!,20,abilityRunes[8]!.rarity),/lifetime rolls/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[9]!.majorAbility!,20,abilityRunes[9]!.rarity),/Shard payout/i);
+  assert.match(combatRuneMajorAbilitySummary(abilityRunes[10]!.majorAbility!,20,abilityRunes[10]!.rarity),/power of ten/i);
   assert.equal(combatRuneMajorAbilityEffects(abilityRunes,equipped.slice(0,2)).eventHorizonPct,0,'unequipped Major Abilities must not be active');
 });
+test('Rune rarity multipliers strengthen real Major Ability power and its displayed summary',()=>{
+  const fateAbility={id:'fateweaver',name:'Fateweaver',valuePct:20,description:'Adds effective Luck.'} as const;
+  const echoAbility={id:'echo-chamber',name:'Echo Chamber',valuePct:20,description:'Echoes rolls.'} as const;
+  const expectedPower=[10,14,17,20,24,29,36,42,48,56];
+  const expectedMultipliers=[.5,.7,.85,1,1.2,1.45,1.8,2.1,2.4,2.8];
+  assert.deepEqual(
+    COMBAT_RUNE_RARITIES.map(rarity=>combatRuneMajorAbilityMultiplier(rarity)),
+    expectedMultipliers,
+  );
+  assert.deepEqual(
+    COMBAT_RUNE_RARITIES.map(rarity=>combatRuneMajorAbilityStrengthPct(fateAbility,1,rarity)),
+    expectedPower,
+  );
+  for(let index=0;index<COMBAT_RUNE_RARITIES.length;index++){
+    const rarity=COMBAT_RUNE_RARITIES[index]!;
+    const rune:CombatRune={
+      id:'rarity-fate-'+rarity,name:rarity+' Fate Rune',rarity,stat:'luckPct',value:.6,
+      level:1,sourceDepth:0,sourceDungeon:'undercrypt',majorAbility:fateAbility,
+    };
+    assert.equal(
+      combatRuneBonuses([rune],[rune.id]).luckPct,
+      .6+expectedPower[index]!,
+      rarity+' Fateweaver must use the rarity multiplier in the actual Luck bonus',
+    );
+    const triggerRune:CombatRune={...rune,id:'rarity-echo-'+rarity,majorAbility:echoAbility};
+    assert.equal(
+      combatRuneMajorAbilityEffects([triggerRune],[triggerRune.id]).echoChamberPct,
+      expectedPower[index],
+      rarity+' Echo Chamber must use the rarity multiplier in its active proc chance',
+    );
+    assert.ok(
+      combatRuneMajorAbilitySummary(fateAbility,1,rarity).includes('+'+expectedPower[index]+'% effective Luck'),
+      rarity+' tooltip must show the same rarity-scaled starting power',
+    );
+  }
+});
+
 test('Rune slot milestones are earned through Delver levels and depth',()=>{
   assert.equal(combatRuneSlotsUnlocked(1,1),2);
   assert.equal(combatRuneSlotsUnlocked(10,1),3);
