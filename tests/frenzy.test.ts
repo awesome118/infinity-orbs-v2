@@ -581,3 +581,34 @@ test('slow Frenzy claims show a delayed calculating popup with rapid Orb spawns'
   assert.match(styles, /\.io-frenzy-calculating-orb:nth-of-type\(12\)/);
   assert.match(styles, /prefers-reduced-motion: reduce/);
 });
+
+
+test('Frenzy claim activity is a retryable post-commit projection and cannot invalidate rewards', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  const claimStart = source.indexOf('export async function claimOrbFrenzy');
+  const claimEnd = source.indexOf('export async function postFrenzyThankYouComment', claimStart);
+  const helperStart = source.indexOf('async function recordFrenzyClaimer');
+  const helperEnd = source.indexOf('function frenzyHandoffKey', helperStart);
+  assert.ok(claimStart >= 0 && claimEnd > claimStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart);
+  const claim = source.slice(claimStart, claimEnd);
+  const helper = source.slice(helperStart, helperEnd);
+  const durableSaveStart = claim.indexOf('await save(s, [');
+  const durableSaveEnd = claim.indexOf(']);', durableSaveStart);
+  assert.ok(durableSaveStart >= 0 && durableSaveEnd > durableSaveStart);
+  const durableSave = claim.slice(durableSaveStart, durableSaveEnd);
+
+  assert.match(claim, /stageSavePostCommitAction\(s, async \(\) => \{[\s\S]*?recordFrenzyClaimer\(/);
+  assert.match(claim, /const claimProjectionExpiresAt = new Date\(/);
+  assert.match(durableSave, /key: claimReceiptKey/);
+  assert.match(durableSave, /key: FRENZY_POST_PREFIX \+ postId/);
+  assert.doesNotMatch(durableSave, /claimersKey|Frenzy claim activity changed/);
+  assert.match(helper, /const maxAttempts = 24/);
+  assert.match(helper, /redis\.watch\(claimersKey, projectionReceiptKey\)/);
+  assert.match(helper, /frenzyClaimerProjectionReceiptKey\(postId, userId\)/);
+  assert.match(helper, /if \(projectionReceipt != null\)/);
+  assert.match(helper, /await txn\.set\(claimersKey, JSON\.stringify\(next\), \{ expiration: expiresAt \}\)/);
+  assert.match(helper, /await txn\.set\(projectionReceiptKey, '1', \{ expiration: expiresAt \}\)/);
+  assert.match(helper, /if \(committed !== null\) return/);
+  assert.match(helper, /Reward was saved, but the live claim activity projection could not be updated/);
+});
