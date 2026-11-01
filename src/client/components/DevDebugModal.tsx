@@ -2162,6 +2162,78 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         },
       );
 
+      // Force-roll API checks run after the optional prestige sweep, so their
+      // isolated fixture must live outside that conditional's lexical scope.
+      const seedSingleBallForceRoll = async (highestRarity = 0) => {
+        // Clear subreddit-wide bonuses as well as account-specific sources so
+        // extra balls and criticals cannot contaminate a deterministic test.
+        for (const id of ['luck', 'speed', 'crit'] as const) {
+          await request('/api/dev/global-booster', { id, tier: 0, minutes: 1 });
+        }
+
+        const result = await request<any>('/api/dev/state', {
+          coins: 100_000,
+          shards: 50,
+          cosmicDust: 0,
+          level: 4,
+          levelXpFloor: 533,
+          xp: 600,
+          freeShardsEarnedToday: 0,
+          totalRolls: 0,
+          totalCrits: 0,
+          highestRarity,
+          collection: {},
+          collectionValue: 0,
+          lifetimeCollectionValue: 0,
+          offlineRolls: 0,
+          currentRunRolls: 0,
+          rollsSinceBest: 0,
+          lastRollAt: 0,
+          aftershockRecord: 0,
+          longestRollingSessionMs: 0,
+          rollingSessionStartedAt: 0,
+          rollingSessionLastRollAt: 0,
+          lastSeenAt: Date.now(),
+          lastFreeShardReset: '2020-01-01',
+          onlinePlayers: 1,
+          turboRollUntil: 0,
+          autoRollEnabled: false,
+          upgrades: {
+            speed: 0, multi: 0, clusterRoll: 0, auto: 0, luck: 0, coinBonus: 0,
+            shardChance: 0, xpBonus: 0, critChance: 0, critPower: 0,
+            offlineRate: 0, valueBonus: 0,
+          },
+          prestigeUpgrades: Object.fromEntries(
+            Object.keys(PRESTIGE_UPGRADES).map(id => [id, 0]),
+          ),
+          masterySkills: {
+            continuumLuck: 0, prosperity: 0, shardAttunement: 0, critMastery: 0,
+            aftershock: 0, chronoFlow: 0, infiniteVault: 0, cosmicAttunement: 0, celestialSurge: 0,
+            pityAccelerant: 0, apexFortune: 0, celestialVolley: 0,
+          },
+          activeBoosters: {},
+          automations: {
+            autoQuestClaim: false,
+            autoStreakClaim: false,
+            autoCommunityClaim: false,
+            autoOfflineClaim: false,
+            autoUpgrade: false,
+          },
+          sacrifices: {
+            coinsSacrificed: 0,
+            shardsSacrificed: 0,
+            altarLevel: 0,
+            luckSurgeUntil: 0,
+          },
+        });
+        const state = recordValue(result.state);
+        if (Number(state.level) < 2 || Number(state.xp) < 1) {
+          throw new Error('Force-roll fixture failed to persist an unlocked player state (level=' + state.level + ', xp=' + state.xp + ').');
+        }
+        return result;
+      };
+
+
 
       if (prestigeResult) {
         await step(
@@ -2272,17 +2344,6 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           rollNav.click();
           await new Promise(resolve => setTimeout(resolve, 100));
           await onRefresh();
-        };
-
-        // A force-roll test is about the requested Orb, not the account's
-        // multi-roll upgrades, level milestone balls, or critical effects.
-        const seedSingleBallForceRoll = async (highestRarity = 0) => {
-          await setMechanicState({}, {
-            highestRarity,
-            collection: {},
-            collectionValue: 0,
-            lifetimeCollectionValue: 0,
-          });
         };
 
         const readMechanics = async (): Promise<any> => {

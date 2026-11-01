@@ -74,15 +74,18 @@ test('admin sweep isolates force-roll results from multi-roll, critical, and cac
   const runner = readFileSync(resolve(process.cwd(), 'src/client/components/DevDebugModal.tsx'), 'utf8');
 
   const forceFixtureStart = runner.indexOf('const seedSingleBallForceRoll = async');
-  const forceFixtureEnd = runner.indexOf('const readMechanics = async', forceFixtureStart);
-  assert.ok(forceFixtureStart >= 0 && forceFixtureEnd > forceFixtureStart,
-    'single-ball force-roll fixture must be defined beside the mechanic fixture');
-  const forceFixture = runner.slice(forceFixtureStart, forceFixtureEnd);
-  assert.match(forceFixture, /await setMechanicState\(\{\}, \{/);
+  const prestigeBranch = runner.indexOf('if (prestigeResult)', forceFixtureStart);
+  assert.ok(forceFixtureStart >= 0 && prestigeBranch > forceFixtureStart,
+    'single-ball force-roll fixture must be declared outside the optional prestige branch');
+  const forceFixture = runner.slice(forceFixtureStart, prestigeBranch);
+  assert.match(forceFixture, /request<any>\\('\\/api\\/dev\\/state', \\{/);
   assert.match(forceFixture, /highestRarity,/);
-  assert.match(forceFixture, /collection:\s*\{\}/);
-  assert.match(forceFixture, /collectionValue:\s*0/);
-  assert.match(forceFixture, /lifetimeCollectionValue:\s*0/);
+  assert.match(forceFixture, /collection:\\s*\\{\\}/);
+  assert.match(forceFixture, /collectionValue:\\s*0/);
+  assert.match(forceFixture, /lifetimeCollectionValue:\\s*0/);
+  assert.match(forceFixture, /Object\\.keys\\(PRESTIGE_UPGRADES\\)/);
+  assert.match(forceFixture, /celestialVolley:\\s*0/);
+  assert.match(forceFixture, /request\\('\\/api\\/dev\\/global-booster'/);
 
   for (const [label, rarity] of [
     ['API · Force-roll 1/1e15 Paradox', '1_000_000_000_000_000'],
@@ -123,7 +126,7 @@ test('admin sweep isolates force-roll results from multi-roll, critical, and cac
 test('admin mechanic remount tests use an unlocked navigation tab instead of gated Guilds', () => {
   const runner = readFileSync(resolve(process.cwd(), 'src/client/components/DevDebugModal.tsx'), 'utf8');
   const start = runner.indexOf('const remountRollSection = async');
-  const end = runner.indexOf('const seedSingleBallForceRoll', start);
+  const end = runner.indexOf('const readMechanics = async', start);
   assert.ok(start >= 0 && end > start, 'RollSection remount helper must exist');
   const helper = runner.slice(start, end);
   assert.match(helper, /aria-label'\) === 'Upgrades'/);
