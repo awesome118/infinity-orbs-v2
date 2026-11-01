@@ -195,3 +195,5 @@ jobs:
 # 2026-10-31: relax the source-layout bound in the online/Frenzy sample-budget regression.
 
 # 2026-10-31: target the effective batch-cap branch rather than the representative-sample branch.
+
+# 2026-10-31: use a literal source-window check for effective roll caps.

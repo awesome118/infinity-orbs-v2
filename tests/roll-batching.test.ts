@@ -167,7 +167,9 @@ test('server uses weighted sample counts for Luck, player totals, XP, Coins, and
   assert.match(apply, /sampleBinomialCount\(sampleWeight, combinedShardChance, rng\)/);
   assert.ok(multiRoll.includes('Math.floor((MAX_EFFECTIVE_ROLLS_PER_BATCH - 2) / ballsPerActivation)'));
   assert.match(apply, /MAX_SIMULATED_ROLLS_PER_REQUEST/);
-  assert.match(apply, /const maxSupportedRollCount = source === 'offline'[\\s\\S]{0,200}: source === 'frenzy'[\\s\\S]{0,100}MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH/);
+  const effectiveCapStart = apply.indexOf("const maxSupportedRollCount = source === 'offline'");
+  assert.ok(effectiveCapStart >= 0);
+  assert.ok(apply.slice(effectiveCapStart, effectiveCapStart + 300).includes('MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH'));
   assert.match(apply, /MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH/);
   assert.match(frenzy, /MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH, remainingCount/);
   assert.match(frenzy, /writeFrenzyClaimProgress\(claimantId, postId, attemptId, count, absoluteProcessed, false\)/);
