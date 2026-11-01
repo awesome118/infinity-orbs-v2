@@ -3562,9 +3562,7 @@ async function commitOptionalSaveProjection(write: SaveExtraWrite): Promise<void
     transactionClosed = true;
     if (committed !== null) {
       writeCommitted = true;
-      if (writePlan.chunkKeys.length > 0) {
-        await retireRedisLargeValue(write.key, current);
-      }
+      await retireRedisLargeValue(write.key, current);
     } else {
       console.error('[Player Save] Optional projection conflicted at commit; skipped without affecting player state.', write.key);
     }
