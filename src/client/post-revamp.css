@@ -1492,3 +1492,76 @@
 @media (prefers-reduced-motion: reduce) {
   .io-frenzy-claimer.is-entering { animation: none !important; }
 }
+
+
+/* Keep the live five-player claim feed compact inside Reddit's fixed-height post preview.
+   The inline post is deliberately clipped, not scrollable, so this panel must not push Claim below the visible card. */
+#root.io-inline-post .io-frenzy-claim-activity {
+  display: grid;
+  gap: 4px;
+  margin: 5px 0;
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+#root.io-inline-post .io-frenzy-claim-activity-head {
+  min-height: 16px;
+  gap: 6px;
+}
+#root.io-inline-post .io-frenzy-claim-activity-head strong {
+  font-size: 9px;
+  line-height: 1.15;
+}
+#root.io-inline-post .io-frenzy-claim-activity-head span {
+  font-size: 7px;
+  letter-spacing: .08em;
+  line-height: 1.1;
+}
+#root.io-inline-post .io-frenzy-claim-activity-head svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+#root.io-inline-post .io-frenzy-claimers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 108px), 1fr));
+  gap: 3px;
+  margin-top: 2px;
+}
+#root.io-inline-post .io-frenzy-claimer {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 20px;
+  gap: 5px;
+  padding: 2px 5px;
+  border-radius: 6px;
+}
+#root.io-inline-post .io-frenzy-claimer-rank {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  font-size: 7px;
+}
+#root.io-inline-post .io-frenzy-claimer strong {
+  min-width: 0;
+  font-size: 8px;
+  line-height: 1.1;
+}
+#root.io-inline-post .io-frenzy-claimer-latest {
+  font-size: 6px;
+  letter-spacing: .07em;
+}
+#root.io-inline-post .io-frenzy-claimers-empty {
+  padding: 4px 2px;
+  font-size: 8px;
+  line-height: 1.2;
+}
+@media (max-width: 420px) {
+  #root.io-inline-post .io-frenzy-claim-activity {
+    margin: 4px 0;
+    padding: 5px 6px;
+  }
+  #root.io-inline-post .io-frenzy-claimers {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 96px), 1fr));
+    gap: 2px;
+  }
+}

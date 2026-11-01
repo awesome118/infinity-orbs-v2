@@ -178,3 +178,18 @@ test('immersive startup shows save-loading progress and unlocks the radiant Play
   assert.match(styles, /@keyframes io-splash-play-sheen/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
 });
+
+
+test('inline Frenzy claim activity stays compact inside the fixed, non-scrollable post preview', () => {
+  const frenzy = source('src/client/frenzy.tsx');
+  const styles = source('src/client/post-revamp.css');
+  const globalStyles = source('src/client/styles.css');
+
+  assert.ok(frenzy.includes('FrenzyClaimActivity count={info.claimCount ?? 0} players={info.recentClaimers ?? []}'));
+  assert.match(styles, /#root\\.io-inline-post \\.io-frenzy-claim-activity\\s*\\{[^}]*padding:\\s*6px 8px/s);
+  assert.match(styles, /#root\\.io-inline-post \\.io-frenzy-claimers\\s*\\{[^}]*repeat\\(auto-fit, minmax\\(min\\(100%, 108px\\), 1fr\\)\\)/s);
+  assert.match(styles, /#root\\.io-inline-post \\.io-frenzy-claimer\\s*\\{[^}]*min-height:\\s*20px/s);
+  assert.match(globalStyles, /#root\\.io-inline-post \\.io-frenzy-button\\s*\\{[^}]*min-height:\\s*40px/s);
+  assert.match(globalStyles, /#root\\.io-inline-post \\.io-frenzy-card\\s*\\{[^}]*overflow:\\s*clip/s);
+  assert.doesNotMatch(styles, /#root\\.io-inline-post \\.io-frenzy-claimers\\s*\\{[^}]*overflow(?:-y)?:\\s*(?:auto|scroll)/s);
+});
