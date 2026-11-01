@@ -1829,3 +1829,181 @@
   }
   #root.io-inline-post .io-launch-orb-stage::after { opacity: .2; transform: none; }
 }
+
+/* Inline Frenzy: fit the entire post card into Reddit's clipped preview.
+   Keep the community claim count visible as a one-line activity strip; the
+   full five-player feed remains available in expanded mode. */
+#root.io-inline-post .io-frenzy-card:not(.io-frenzy-success-card) {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px clamp(9px, 1.8vw, 14px);
+}
+#root.io-inline-post .io-frenzy-card:not(.io-frenzy-success-card) > .io-public-eyebrow {
+  flex: 0 0 auto;
+  line-height: 1.1;
+}
+#root.io-inline-post .io-frenzy-card:not(.io-frenzy-success-card) .io-frenzy-copy {
+  min-width: 0;
+  margin-top: 4px;
+}
+#root.io-inline-post .io-frenzy-lede {
+  font-size: 10px;
+  line-height: 1.2;
+}
+#root.io-inline-post .io-frenzy-rarity-lockup {
+  min-height: 34px;
+  margin: 3px 0 2px;
+  gap: 5px;
+}
+#root.io-inline-post .io-frenzy-rarity-prefix { font-size: 13px; }
+#root.io-inline-post .io-frenzy-orb-visual {
+  width: 48px;
+  height: 48px;
+  margin: 2px auto 0;
+}
+#root.io-inline-post .io-frenzy-orb-label {
+  margin-top: 0;
+  font-size: 8px;
+  line-height: 1.1;
+}
+#root.io-inline-post .io-frenzy-payout {
+  margin: 4px auto 3px;
+  padding: 5px 7px 4px;
+  border-radius: 9px;
+}
+#root.io-inline-post .io-frenzy-payout-heading {
+  gap: 3px;
+  font-size: 6px;
+  line-height: 1.15;
+}
+#root.io-inline-post .io-frenzy-payout-heading svg {
+  width: 10px;
+  height: 10px;
+}
+#root.io-inline-post .io-frenzy-payout-live {
+  padding: 1px 4px;
+  font-size: 5px;
+}
+#root.io-inline-post .io-frenzy-payout-total {
+  gap: 4px;
+  margin: 2px 0 0;
+}
+#root.io-inline-post .io-frenzy-payout-number {
+  font-size: clamp(21px, 4.4vw, 31px);
+}
+#root.io-inline-post .io-frenzy-payout-unit {
+  font-size: 7px;
+}
+#root.io-inline-post .io-frenzy-payout-details {
+  gap: 4px;
+  margin-top: 2px;
+}
+#root.io-inline-post .io-frenzy-payout-base { font-size: 6px; }
+#root.io-inline-post .io-frenzy-payout-multiball,
+#root.io-inline-post .io-frenzy-payout-volley {
+  gap: 2px;
+  padding: 2px 4px;
+  font-size: 6px;
+}
+#root.io-inline-post .io-frenzy-copy > .io-frenzy-instruction {
+  margin-top: 4px;
+  font-size: 8px;
+  line-height: 1.2;
+}
+#root.io-inline-post .io-frenzy-timer-grid {
+  flex: 0 0 auto;
+  gap: 4px;
+  margin-top: 4px;
+}
+#root.io-inline-post .io-frenzy-expiry-timer,
+#root.io-inline-post .io-frenzy-cooldown-mini {
+  min-width: 0;
+  padding: 4px 6px;
+}
+#root.io-inline-post .io-frenzy-timer-value {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.1;
+}
+#root.io-inline-post .io-frenzy-claim-activity {
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-width: 0;
+  min-height: 24px;
+  gap: 7px;
+  margin: 4px 0 2px;
+  padding: 4px 7px;
+}
+#root.io-inline-post .io-frenzy-claim-activity-head {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+#root.io-inline-post .io-frenzy-claim-activity-head > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+  gap: 2px 6px;
+}
+#root.io-inline-post .io-frenzy-claim-activity-head strong {
+  min-width: 0;
+  font-size: clamp(8px, 1.35vw, 10px);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+#root.io-inline-post .io-frenzy-claim-activity-head span { display: none; }
+#root.io-inline-post .io-frenzy-claim-activity-head svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+#root.io-inline-post .io-frenzy-claimers { display: none; }
+#root.io-inline-post .io-frenzy-meta {
+  flex: 0 0 auto;
+  margin: 3px auto 0;
+  padding-top: 3px;
+  font-size: 6px;
+  line-height: 1.15;
+}
+#root.io-inline-post .io-frenzy-card:not(.io-frenzy-success-card) > .io-cta-caption {
+  flex: 0 0 auto;
+  margin: auto 0 4px;
+  font-size: 7px;
+  line-height: 1.2;
+  letter-spacing: .08em;
+}
+#root.io-inline-post .io-frenzy-button.io-post-cta {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 40px;
+  margin: 0 auto;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 9px;
+  line-height: 1.2;
+}
+#root.io-inline-post .io-frenzy-button.io-post-cta svg {
+  width: 13px;
+  height: 13px;
+}
+@media (max-height: 640px) {
+  #root.io-inline-post .io-frenzy-card:not(.io-frenzy-success-card) {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  #root.io-inline-post .io-frenzy-orb-visual {
+    width: 42px;
+    height: 42px;
+  }
+  #root.io-inline-post .io-frenzy-rarity-lockup { min-height: 30px; }
+  #root.io-inline-post .io-frenzy-timer-grid { margin-top: 2px; }
+  #root.io-inline-post .io-frenzy-claim-activity { min-height: 22px; margin-top: 2px; }
+}
