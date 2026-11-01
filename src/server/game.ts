@@ -1,5 +1,6 @@
 import { redis, context, reddit } from './devvit-mock.js';
 import { readInBatches } from './redis-batches.js';
+import { createRedisLargeValueWritePlan, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
 import { CODEX_MIGRATION_BATCH_SIZE, CODEX_SHARD_COUNT, CODEX_STORAGE_VERSION, codexShardKey, groupCodexFields } from '../shared/collection-storage.js';
 import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import * as notificationsModule from '@devvit/notifications';
@@ -35,6 +36,7 @@ import {
   CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS,
   CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS,
   CELESTIAL_ALIGNMENT_DURATION_MS,
+  CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS,
   type CelestialAlignmentChoice,
   type CelestialAlignmentInstance,
   normalizeCelestialAlignmentInstances,
@@ -3532,6 +3534,8 @@ async function loadRollTicketForUse(
 async function commitOptionalSaveProjection(write: SaveExtraWrite): Promise<void> {
   const txn = await redis.watch(write.key);
   let transactionClosed = false;
+  let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+  let writeCommitted = false;
   try {
     const current = await redis.get(write.key);
     const actual = current == null ? null : String(current);
@@ -3542,20 +3546,34 @@ async function commitOptionalSaveProjection(write: SaveExtraWrite): Promise<void
       return;
     }
 
+    // Guild state is the only potentially large side projection. Keep its
+    // legacy inline format readable while new large values use small chunks.
+    writePlan = write.key === 'io:guilds'
+      ? await createRedisLargeValueWritePlan(write.key, write.nextValue)
+      : { storedValue: write.nextValue, chunkKeys: [] };
+
     await txn.multi();
     if (write.expiration) {
-      await txn.set(write.key, write.nextValue, { expiration: write.expiration });
+      await txn.set(write.key, writePlan.storedValue, { expiration: write.expiration });
     } else {
-      await txn.set(write.key, write.nextValue);
+      await txn.set(write.key, writePlan.storedValue);
     }
     const committed = await txn.exec();
     transactionClosed = true;
-    if (committed === null) {
+    if (committed !== null) {
+      writeCommitted = true;
+      if (writePlan.chunkKeys.length > 0) {
+        await retireRedisLargeValue(write.key, current);
+      }
+    } else {
       console.error('[Player Save] Optional projection conflicted at commit; skipped without affecting player state.', write.key);
     }
   } finally {
     if (!transactionClosed) {
       await txn.unwatch().catch(() => undefined);
+    }
+    if (writePlan && !writeCommitted) {
+      await discardRedisLargeValueWritePlan(writePlan);
     }
   }
 }
@@ -3666,6 +3684,7 @@ export async function save(
     let transactionClosed = false;
     let writePlan: PlayerSaveWritePlan | null = null;
     let saveCommitted = false;
+    const extraWritePlans = new Map<string, Awaited<ReturnType<typeof createRedisLargeValueWritePlan>>>();
     try {
     // Devvit's TxClient is a command builder after WATCH/MULTI. Reads must use
     // the Redis client itself, while WATCH keeps these keys protected until EXEC.
@@ -3794,16 +3813,25 @@ export async function save(
 
     const nextState = { ...s, saveGeneration: generation, stateRevision: expectedRevision + 1 };
     writePlan = await createPlayerSaveWritePlan(userId, serializePlayerStateForRedis(nextState));
+    for (const write of extraWrites) {
+      if (write.key === 'io:guilds') {
+        extraWritePlans.set(
+          write.key,
+          await createRedisLargeValueWritePlan(write.key, write.nextValue),
+        );
+      }
+    }
     await txn.multi();
     await txn.set(playerKey, writePlan.storedValue);
     for (let index = 0; index < codexWrites.length; index += 1) {
       await txn.hSet(codexWriteKeys[index], codexWrites[index].fields);
     }
     for (const write of extraWrites) {
+      const nextValue = extraWritePlans.get(write.key)?.storedValue ?? write.nextValue;
       if (write.expiration) {
-        await txn.set(write.key, write.nextValue, { expiration: write.expiration });
+        await txn.set(write.key, nextValue, { expiration: write.expiration });
       } else {
-        await txn.set(write.key, write.nextValue);
+        await txn.set(write.key, nextValue);
       }
     }
     const committed = await txn.exec();
@@ -3811,6 +3839,12 @@ export async function save(
     if (committed !== null) {
       saveCommitted = true;
       await cleanupPreviousPlayerSave(userId, latestRaw);
+      for (let index = 0; index < extraWrites.length; index += 1) {
+        const write = extraWrites[index];
+        if (extraWritePlans.has(write.key)) {
+          await retireRedisLargeValue(write.key, extraRaws[index]);
+        }
+      }
       pendingSaveExtraWrites.delete(s);
       pendingCodexRarityWrites.delete(s);
       Object.assign(s, nextState);
@@ -3858,6 +3892,11 @@ export async function save(
       // or EXEC throws. This is deliberately best-effort after explicit UNWATCH.
       if (!transactionClosed) await txn.unwatch().catch(() => undefined);
       if (writePlan && !saveCommitted) await discardPlayerSaveWritePlan(writePlan);
+      if (!saveCommitted) {
+        for (const plan of extraWritePlans.values()) {
+          await discardRedisLargeValueWritePlan(plan);
+        }
+      }
     }
   }
 
@@ -6848,11 +6887,21 @@ export async function getCelestialAlignmentStatus(): Promise<{
   return withPlayerMutationLock(async () => {
     const s = await loadRaw();
     const hasMastery = (s.masterySkills?.celestialAlignment ?? 0) > 0;
-    const forcedPending = s.alignmentPendingForced === true && (s.alignmentPendingAt ?? 0) > 0;
     const now = Date.now();
     const activeInstances = activeCelestialAlignmentInstances(s.alignmentActiveInstances, now);
     let changed = activeInstances.length !== (s.alignmentActiveInstances ?? []).length;
     if (changed) s.alignmentActiveInstances = activeInstances;
+
+    // Pending choices are short-lived offers, not persistent windows. Expire
+    // them on the server as well as in the client so stale tabs cannot claim one.
+    const pendingAt = Math.max(0, Math.floor(Number(s.alignmentPendingAt ?? 0) || 0));
+    if (pendingAt > 0 && now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS) {
+      s.alignmentPendingAt = 0;
+      s.alignmentPendingForced = false;
+      s.alignmentNextAt = hasMastery ? nextCelestialAlignmentAt(now) : 0;
+      changed = true;
+    }
+    const forcedPending = s.alignmentPendingForced === true && (s.alignmentPendingAt ?? 0) > 0;
     const latest = activeInstances[activeInstances.length - 1] ?? null;
 
     if (!hasMastery && !forcedPending) {
@@ -6912,6 +6961,9 @@ export async function chooseCelestialAlignment(
     const pendingAt = Number(s.alignmentPendingAt ?? 0);
     if (!(pendingAt > 0)) throw new Error('There is no Alignment choice waiting.');
     const now = Date.now();
+    if (now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS) {
+      throw new Error('The Alignment choice window expired. The next event will arrive later.');
+    }
 
     const activeInstances = activeCelestialAlignmentInstances(s.alignmentActiveInstances, now);
     const instance: CelestialAlignmentInstance = {
