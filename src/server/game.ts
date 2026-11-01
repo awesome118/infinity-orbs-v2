@@ -5908,6 +5908,9 @@ export async function roll(
       };
     }
 
+    const ticketRandom = ticketUse
+      ? createRollRandomSource(ticketUse.ticket.seeds[ticketUse.index])
+      : null;
     const loadedState = await loadRaw();
     const performRoll = async () => {
       const s = await settleOffline(loadedState);
