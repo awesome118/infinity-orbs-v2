@@ -57,13 +57,17 @@ test('dev-only Guild recovery persists repaired snapshots without overwriting co
   assert.ok(start >= 0 && end > start, 'Guild loader boundaries must exist');
   const loader = social.slice(start, end);
 
-  assert.match(loader, /parsedSnapshot = parseStoredJson<unknown>\(raw\)/);
+  assert.match(loader, /const storedRaw = await redis\.get\(GUILDS_KEY\)/);
+  assert.match(loader, /parsedSnapshot = parseStoredJson<unknown>\(decodedRaw\)/);
   assert.match(loader, /isGuildPlaytestRecoveryEnabled\(\)/);
   assert.match(loader, /Array\.isArray\(parsedSnapshot\)/);
   assert.match(loader, /const txn = await redis\.watch\(GUILDS_KEY\)/);
-  assert.match(loader, /if \(latestRaw !== raw\)/);
-  assert.match(loader, /await txn\.set\(GUILDS_KEY, recoveredRaw\)/);
+  assert.match(loader, /const latestStoredRaw = await redis\.get\(GUILDS_KEY\)/);
+  assert.match(loader, /if \(latestStoredRaw !== storedRaw\)/);
+  assert.match(loader, /createRedisLargeValueWritePlan\(GUILDS_KEY, recoveredRaw\)/);
+  assert.match(loader, /await txn\.set\(GUILDS_KEY, writePlan\.storedValue\)/);
+  assert.match(loader, /retireRedisLargeValue\(GUILDS_KEY, latestStoredRaw\)/);
   assert.match(loader, /Guild Recovery.*Could not persist the dev-only repaired snapshot/);
-  assert.ok(loader.indexOf('isGuildPlaytestRecoveryEnabled()') < loader.indexOf('await txn.set(GUILDS_KEY, recoveredRaw)'),
+  assert.ok(loader.indexOf('isGuildPlaytestRecoveryEnabled()') < loader.indexOf('await txn.set(GUILDS_KEY, writePlan.storedValue)'),
     'only the development subreddit can persist recovered Guild data');
 });
