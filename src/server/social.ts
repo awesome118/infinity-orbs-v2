@@ -28,6 +28,7 @@ import {
   createInitialDailyStreakCommunity,
   grantFreeShards,
   addCoinAmount,
+  normalizeCoinAmount,
   weekEndMs,
   weekKey,
   createInitialGuildCombo,
@@ -1177,7 +1178,7 @@ export async function guildInfo() {
   });
 
   const visibleGuilds = guilds
-    .sort((a, b) => b.xp - a.xp)
+    .sort((a, b) => b.tokens - a.tokens)
     .slice(0, 20)
     .map(guild => {
       const filtered = filterMutedGuildChat(guild);
