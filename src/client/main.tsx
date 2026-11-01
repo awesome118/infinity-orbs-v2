@@ -1415,8 +1415,11 @@ function App() {
           }
         } else {
           alignmentPendingSeenRef.current = 0;
-          // A clean server response must not close the post-choice confirmation early.
-          if (!alignmentConfirmationRef.current) setAlignmentPromptVisible(false);
+          // A status poll can finish while a choice is queued or after an error.
+          // Never hide the chooser until the choice has actually committed.
+          if (!alignmentConfirmationRef.current && !alignmentChoiceBusy && !alignmentChoiceError) {
+            setAlignmentPromptVisible(false);
+          }
         }
       } catch {
         // A failed status read is retried on the next visible poll.
@@ -1435,7 +1438,7 @@ function App() {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [splashEntered, state?.masterySkills?.celestialAlignment, isAdmin]);
+  }, [splashEntered, state?.masterySkills?.celestialAlignment, isAdmin, alignmentChoiceBusy, alignmentChoiceError]);
 
   // Refresh live community state while visible; hidden webviews should not poll.
   useEffect(() => {
@@ -2520,9 +2523,8 @@ function App() {
     alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, chosenPendingAt);
     setAlignmentChoiceError(null);
     setAlignmentChoiceBusy(true);
-    // Remove the blocking modal as soon as a choice is submitted. A small status
-    // notice remains while the server confirms it; failures reopen the chooser with details.
-    setAlignmentPromptVisible(false);
+    // Keep the chooser visible while the request waits in the server's player-action queue.
+    // The choices are disabled by alignmentChoiceBusy; successful confirmation closes it.
     try {
       const result = await getJson<{
         state: PlayerState;
@@ -3475,7 +3477,7 @@ function App() {
         </div>
       )}
 
-      {alignmentPromptVisible && alignmentConfirmation === null && alignmentStatus?.pending && (
+      {alignmentPromptVisible && alignmentConfirmation === null && (alignmentStatus?.pending || alignmentChoiceBusy || alignmentChoiceError !== null) && (
         <div className="fixed inset-0 z-[90] io-modal-backdrop flex items-center justify-center p-4" data-testid="celestial-alignment-prompt">
           <section
             className="w-full max-w-2xl rounded-3xl border border-cyan-400/30 bg-slate-950/95 p-5 sm:p-7 shadow-[0_0_70px_rgba(56,189,248,.2)]"
@@ -3487,6 +3489,11 @@ function App() {
             <h2 id="celestial-alignment-title" className="mt-2 text-2xl sm:text-3xl font-black text-white">Celestial Alignment</h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-400">The stars have aligned. Choose one effect to guide your next 60 minutes. Your next Alignment appears independently of your rolls.</p>
             {alignmentChoiceError && <p className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs leading-relaxed text-rose-200" role="alert">Your choice was not saved: {alignmentChoiceError}</p>}
+            {alignmentChoiceBusy && (
+              <div className="mt-4 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-center text-xs font-semibold text-cyan-100" role="status" aria-live="polite" data-testid="celestial-alignment-saving">
+                Your choice is queued. This window will close automatically when your selection is saved.
+              </div>
+            )}
             <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
                 type="button"
@@ -3523,12 +3530,6 @@ function App() {
               </button>
             </div>
           </section>
-        </div>
-      )}
-
-      {alignmentChoiceBusy && (
-        <div className="pointer-events-none fixed inset-x-0 top-4 z-[91] flex justify-center px-4" role="status" aria-live="polite" data-testid="celestial-alignment-saving">
-          <div className="rounded-xl border border-cyan-400/30 bg-slate-950/95 px-4 py-2 text-xs font-semibold text-cyan-100 shadow-lg">Your Alignment is queued. It will activate as soon as your current game action finishes…</div>
         </div>
       )}
 
