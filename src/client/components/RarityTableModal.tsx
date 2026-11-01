@@ -97,12 +97,12 @@ export const RarityTableModal: React.FC<RarityTableModalProps> = ({ onClose, hig
 
           {visibleTiers.length === 0 ? (
             <p className="p-4 text-sm text-slate-400">Discover an Orb to reveal its continuum tier here.</p>
-          ) : visibleTiers.map((tier: ContinuumTierMilestone) => (
+          ) : visibleTiers.map((tier: ContinuumTierMilestone, tierIndex: number) => (
             <div
               role="row"
               key={tier.tier}
-              className={`io-rarity-tier-row grid grid-cols-2 sm:grid-cols-4 items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-3 text-xs transition-all duration-200 ${tier.minRarity >= 1e19 ? 'io-rarity-new-tier bg-violet-950/15' : 'hover:bg-slate-900/50'}`}
-              style={{ borderLeftColor: tier.color }}
+              className={`io-rarity-tier-row grid grid-cols-2 sm:grid-cols-4 items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-3 text-xs transition-all duration-200 ${tierIndex === 3 ? 'io-rarity-tier-row--shifting' : ''} ${tier.minRarity >= 1e19 ? 'io-rarity-new-tier bg-violet-950/15' : 'hover:bg-slate-900/50'}`}
+              style={{ borderLeftColor: tier.color, '--io-rarity-tier-color': tier.color } as React.CSSProperties}
             >
               <div role="cell" aria-label={`${tier.tier} tier`} className="io-rarity-tier-name-cell flex min-w-0 items-center gap-2">
                 <RarityOrbIcon rarity={tier.minRarity} unlocked={highestRarity >= tier.minRarity} compact />

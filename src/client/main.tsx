@@ -290,6 +290,25 @@ export const FRENZY_CALCULATING_DELAY_MS = 650;
 const FRENZY_CALCULATING_MIN_VISIBLE_MS = 420;
 
 function App() {
+  const [webViewMode, setWebViewMode] = useState<'inline' | 'expanded'>(() => {
+    try {
+      return getWebViewMode();
+    } catch {
+      return 'inline';
+    }
+  });
+  useEffect(() => {
+    const syncWebViewMode = () => {
+      try {
+        setWebViewMode(getWebViewMode());
+      } catch {
+        setWebViewMode('inline');
+      }
+    };
+    window.addEventListener('focus', syncWebViewMode);
+    return () => window.removeEventListener('focus', syncWebViewMode);
+  }, []);
+
   const [state, setState] = useState<PlayerState | null>(null);
   const journeyStartPromiseRef = useRef<Promise<void> | null>(null);
   const journeyReadyReportedRef = useRef(false);
@@ -3567,7 +3586,7 @@ function App() {
   }
 
   return (
-    <div className="app-shell io-ui min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white">
+    <div className={`app-shell io-ui ${webViewMode === 'expanded' ? 'io-expanded-view' : 'io-inline-view'} min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white`}>
       {/* Sticky Top Header */}
       <Header
         state={state}

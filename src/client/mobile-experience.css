@@ -1960,3 +1960,165 @@ html,body,#root { width:100%; max-width:100%; min-width:320px; overflow-x:clip; 
   .io-ui .io-runes-inventory > *,
   .io-ui .io-page-upgrades .io-upgrade-card { content-visibility:auto; contain-intrinsic-size:auto 92px; }
 }
+
+/* Devvit expanded mode is the game's real fullscreen presentation. The webview
+   is a larger modal on desktop and a full-screen surface on mobile, so detect
+   it from the Devvit mode class rather than the browser :fullscreen pseudo-class. */
+.io-ui.io-expanded-view .app-main {
+  width: 100%;
+  max-width: min(100%, 1880px) !important;
+  padding-inline: clamp(18px, 2.6vw, 48px) !important;
+}
+.io-ui.io-expanded-view .io-page-codex {
+  width: 100%;
+  max-width: 1800px !important;
+}
+.io-ui.io-expanded-view .io-page-codex .io-codex-milestone-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)) !important;
+  align-items: stretch;
+  gap: clamp(12px, 1.15vw, 20px) !important;
+}
+.io-ui.io-expanded-view .io-page-codex .io-codex-milestone-card {
+  min-width: 0;
+  min-height: clamp(188px, 22vh, 264px) !important;
+  padding: clamp(14px, 1.35vw, 22px) !important;
+  gap: clamp(10px, 1.1vh, 16px) !important;
+  border-radius: 18px;
+}
+.io-ui.io-expanded-view .io-page-codex .io-codex-milestone-card .io-rarity-orb-icon {
+  width: clamp(84px, 6.5vw, 116px) !important;
+  flex: 0 0 auto;
+}
+.io-ui.io-expanded-view .io-page-codex .io-codex-milestone-name {
+  font-size: clamp(13px, 1vw, 17px) !important;
+  line-height: 1.2;
+}
+.io-ui.io-expanded-view .io-page-codex .io-codex-milestone-odds {
+  font-size: clamp(11px, .82vw, 14px) !important;
+  line-height: 1.25;
+}
+.io-ui.io-expanded-view .io-rarity-modal {
+  width: min(1180px, calc(100vw - 48px)) !important;
+  max-width: min(1180px, calc(100vw - 48px)) !important;
+  max-height: min(92dvh, 1120px) !important;
+  padding: clamp(16px, 2vw, 28px) !important;
+}
+.io-ui.io-expanded-view .io-rarity-modal .io-rarity-tier-row {
+  min-height: 76px;
+  padding-block: clamp(12px, 1.2vh, 18px);
+  gap: clamp(12px, 1.4vw, 20px);
+}
+.io-ui.io-expanded-view .io-rarity-modal .io-rarity-orb-icon--compact {
+  width: clamp(44px, 3.8vw, 58px) !important;
+}
+
+/* The fourth continuum row (Epic) gets a moving spectrum accent. */
+.io-rarity-tier-row--shifting {
+  position: relative;
+  isolation: isolate;
+  background-image: linear-gradient(
+    105deg,
+    rgba(251, 146, 60, .10),
+    rgba(250, 204, 21, .08),
+    rgba(74, 222, 128, .08),
+    rgba(56, 189, 248, .09),
+    rgba(192, 132, 252, .10),
+    rgba(251, 146, 60, .10)
+  ) !important;
+  background-size: 260% 100%;
+  animation: io-rarity-epic-row-shift 9s linear infinite;
+}
+.io-rarity-tier-row--shifting::before {
+  position: absolute;
+  z-index: 1;
+  inset: 0 auto 0 0;
+  width: 4px;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(180deg, #fb923c, #facc15, #4ade80, #38bdf8, #c084fc, #fb923c);
+  background-size: 100% 260%;
+  animation: io-rarity-epic-row-shift 6s linear infinite;
+}
+.io-rarity-tier-row--shifting .io-rarity-tier-name-cell > span {
+  color: transparent !important;
+  background-image: linear-gradient(90deg, #fb923c, #facc15, #4ade80, #38bdf8, #c084fc, #fb923c);
+  background-size: 260% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: io-rarity-epic-row-shift 6s linear infinite;
+}
+.io-rarity-tier-row--shifting .io-rarity-orb-icon::after {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  content: "";
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: .58;
+  mix-blend-mode: color;
+  background: conic-gradient(
+    from 0deg,
+    #fb923c,
+    #facc15,
+    #4ade80,
+    #38bdf8,
+    #818cf8,
+    #c084fc,
+    #fb923c
+  );
+  animation: io-rarity-epic-orb-shift 8s linear infinite;
+}
+.io-rarity-tier-row--shifting .io-rarity-orb-icon__glint { z-index: 1; }
+.io-rarity-tier-row--shifting .io-rarity-orb-icon__shine { z-index: 2; }
+.io-rarity-tier-row--shifting .io-rarity-orb-icon.is-locked {
+  opacity: .78;
+  filter: saturate(.82) brightness(.76);
+}
+@keyframes io-rarity-epic-row-shift {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 260% 50%; }
+}
+@keyframes io-rarity-epic-orb-shift {
+  from { transform: rotate(0deg); filter: hue-rotate(0deg); }
+  to { transform: rotate(360deg); filter: hue-rotate(360deg); }
+}
+
+@media (max-width: 760px) {
+  .io-ui.io-expanded-view .app-main {
+    padding-inline: clamp(10px, 3vw, 18px) !important;
+  }
+  .io-ui.io-expanded-view .io-page-codex .io-codex-milestone-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+  .io-ui.io-expanded-view .io-page-codex .io-codex-milestone-card {
+    min-height: 164px !important;
+    padding: 12px 8px !important;
+    gap: 9px !important;
+  }
+  .io-ui.io-expanded-view .io-page-codex .io-codex-milestone-card .io-rarity-orb-icon {
+    width: clamp(68px, 18vw, 88px) !important;
+  }
+  .io-ui.io-expanded-view .io-rarity-modal {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    padding: 12px !important;
+  }
+  .io-ui.io-expanded-view .io-rarity-modal .io-rarity-orb-icon--compact {
+    width: 36px !important;
+  }
+}
+@media (max-width: 420px) {
+  .io-ui.io-expanded-view .io-page-codex .io-codex-milestone-card {
+    min-height: 154px !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .io-rarity-tier-row--shifting,
+  .io-rarity-tier-row--shifting::before,
+  .io-rarity-tier-row--shifting .io-rarity-tier-name-cell > span,
+  .io-rarity-tier-row--shifting .io-rarity-orb-icon::after {
+    animation: none !important;
+  }
+}
