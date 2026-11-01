@@ -2987,24 +2987,6 @@ function App() {
     }
   };
 
-  const handleSetGuildTax = async (rate: number) => {
-    setBusy(true);
-    try {
-      await getJson('/api/guilds/tax', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rate }),
-      });
-      showToast(`Guild Tax set to ${rate}%.`, 'success');
-      void refreshGuildData().catch(() => undefined);
-    } catch (e: any) {
-      showToast(e.message || 'Could not change Guild Tax', 'warn');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-
   const handleSendFeedback = async (type: 'bug' | 'suggestion', message: string) => {
     await getJson<{ success: boolean }>('/api/feedback', {
       method: 'POST',
@@ -3872,7 +3854,6 @@ function App() {
             onBuyGuildPerk={handleBuyGuildPerk}
             onToggleGuildTrust={handleToggleGuildTrust}
             onKickGuildMember={handleKickGuildMember}
-            onSetGuildTax={handleSetGuildTax}
             playerUsername={state.username ?? ''}
             playerHasShared={Boolean(state.lastShareAt && state.lastShareAt > 0)}
             busy={false}
