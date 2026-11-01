@@ -148,7 +148,7 @@ interface SaveExtraWrite {
   expiration?: Date;
   // Optional projections must never prevent the primary player mutation from saving.
   optional?: boolean;
-  /** For a Guild write conflict, refund withheld tax and skip only the Guild projection. */
+  /** Optional follow-up when an ancillary Guild write conflicts with the player save. */
   onConflict?: () => void | Promise<void>;
 }
 
@@ -2776,7 +2776,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
         perks: {
           luckRank: 0, speedRank: 0, vaultRank: 0, shardRank: 0, critRank: 0,
           coinRank: 0, memberCapacityRank: 0, tokenYieldRank: 0, taskBountyRank: 0,
-          comboRank: 0, guildXpRank: 0,
+          comboRank: 0,
         },
         combo: createInitialState().guildCombo!,
       };
@@ -4631,29 +4631,15 @@ export async function applyRolls(
   const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
   let guildEffects: Awaited<ReturnType<typeof prepareGuildRollEffects>>;
   try {
-    guildEffects = await prepareGuildRollEffects(
-      coinsGained,
-      totalVal,
-      rollCount,
-      bestRarity,
-      pendingGuildWrite,
-    );
+    guildEffects = await prepareGuildRollEffects(totalVal, rollCount, bestRarity, pendingGuildWrite);
   } catch (error) {
-    // Guild taxes and contribution are optional projections, not a dependency
-    // for paying out a valid roll. Preserve corrupt shared Guild data, skip its
-    // effects for this batch, and allow the player's durable roll to complete.
-    console.error('[Guild] Could not prepare roll effects; skipping Guild tax/contribution for this batch.', error);
-    guildEffects = { taxedCoins: 0 };
+    // Guild task progress is an optional projection, not a dependency for a valid roll.
+    console.error('[Guild] Could not prepare task progress; the player roll will still complete.', error);
+    guildEffects = {};
   }
   if (guildEffects.extraWrite) {
-    stageSaveExtraWrite(s, {
-      ...guildEffects.extraWrite,
-      onConflict: () => {
-        if (guildEffects.taxedCoins > 0) addCoins(s, guildEffects.taxedCoins);
-      },
-    });
+    stageSaveExtraWrite(s, guildEffects.extraWrite);
   }
-  coinsGained = Math.max(0, coinsGained - guildEffects.taxedCoins);
   coinsGained = addCoins(s, coinsGained);
   shardsGained = grantRollShards(s, shardsGained);
 
@@ -7261,7 +7247,7 @@ export async function startOrbFrenzy(options: {
       };
       // Creating the Reddit post is an external request that may take time.
       // Do not hold the shared Guild lock across it; save() will safely skip a
-      // conflicting Guild projection and refund any withheld tax if needed.
+      // conflicting Guild projection without rolling back the player's reward.
       return performFrenzyStart();
   });
 }
