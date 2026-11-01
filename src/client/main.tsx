@@ -51,6 +51,7 @@ import type {
 import {
   formatRarity,
   formatNumber,
+  CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS,
   cooldownMs,
   calculateCosmicDust,
   calculateLevelFromXp,
@@ -343,6 +344,7 @@ function App() {
     nextAt: number;
   } | null>(null);
   const [alignmentPromptVisible, setAlignmentPromptVisible] = useState(false);
+  const [alignmentPromptNow, setAlignmentPromptNow] = useState(() => Date.now());
   const [alignmentChoiceBusy, setAlignmentChoiceBusy] = useState(false);
   const [alignmentChoiceError, setAlignmentChoiceError] = useState<string | null>(null);
   const alignmentDismissedPendingAtRef = useRef(0);
@@ -1418,6 +1420,29 @@ function App() {
     };
   }, [splashEntered, state?.masterySkills?.celestialAlignment, isAdmin, alignmentChoiceBusy, alignmentChoiceError]);
 
+  // The chooser is a 60-second offer. Its expiry is enforced by the server;
+  // this local clock only keeps the modal responsive between status polls.
+  useEffect(() => {
+    const pendingAt = Number(alignmentStatus?.pendingAt ?? 0);
+    if (!alignmentPromptVisible || !alignmentStatus?.pending || pendingAt <= 0) return;
+    const tick = () => {
+      const now = Date.now();
+      setAlignmentPromptNow(now);
+      if (now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS && !alignmentChoiceBusy) {
+        alignmentDismissedPendingAtRef.current = Math.max(
+          alignmentDismissedPendingAtRef.current,
+          pendingAt,
+        );
+        alignmentPendingSeenRef.current = 0;
+        setAlignmentChoiceError(null);
+        setAlignmentPromptVisible(false);
+      }
+    };
+    tick();
+    const timer = window.setInterval(tick, 250);
+    return () => window.clearInterval(timer);
+  }, [alignmentPromptVisible, alignmentStatus?.pending, alignmentStatus?.pendingAt, alignmentChoiceBusy]);
+
   // Refresh live community state while visible; hidden webviews should not poll.
   useEffect(() => {
     if (!splashEntered) return;
@@ -2485,6 +2510,13 @@ function App() {
 
   const handleChooseCelestialAlignment = async (choice: CelestialAlignmentChoice) => {
     if (alignmentChoiceBusy) return;
+    const currentPendingAt = Number(alignmentStatus?.pendingAt ?? 0);
+    if (currentPendingAt > 0 && Date.now() >= currentPendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS) {
+      alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, currentPendingAt);
+      setAlignmentPromptVisible(false);
+      setAlignmentChoiceError(null);
+      return;
+    }
     // The chooser can be visible before the first status poll has populated its timestamp.
     // Use the last observed event time, then a local timestamp as a safe fallback, so a
     // delayed pre-selection status response cannot reopen this same chooser.
@@ -2533,13 +2565,31 @@ function App() {
       setAlignmentPromptVisible(false);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Could not activate this Alignment.';
-      setAlignmentChoiceError(message);
-      setAlignmentPromptVisible(true);
-      showToast(message, 'warn');
+      const expired = currentPendingAt > 0 &&
+        Date.now() >= currentPendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS;
+      if (expired || message.toLowerCase().includes('choice window expired')) {
+        alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, currentPendingAt);
+        setAlignmentChoiceError(null);
+        setAlignmentPromptVisible(false);
+      } else {
+        setAlignmentChoiceError(message);
+        setAlignmentPromptVisible(true);
+        showToast(message, 'warn');
+      }
     } finally {
       setAlignmentChoiceBusy(false);
     }
   };
+
+  const alignmentPromptSecondsLeft = alignmentStatus?.pendingAt
+    ? Math.max(0, Math.ceil((
+      alignmentStatus.pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS - alignmentPromptNow
+    ) / 1_000))
+    : 0;
+  const alignmentPromptCountdown =
+    String(Math.floor(alignmentPromptSecondsLeft / 60)).padStart(2, '0') +
+    ':' +
+    String(alignmentPromptSecondsLeft % 60).padStart(2, '0');
 
   // Altar Sacrifice
   const handleSacrifice = async (coins: number, shards: number): Promise<PlayerState> => {
@@ -3434,8 +3484,12 @@ function App() {
           >
             <div className="text-[10px] font-black uppercase tracking-[.22em] text-cyan-300">A rare celestial event</div>
             <h2 id="celestial-alignment-title" className="mt-2 text-2xl sm:text-3xl font-black text-white">Celestial Alignment</h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400">The stars have aligned. Choose one effect. It lasts 2 hours, and every activation stacks independently with earlier activations.</p>
-            <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-cyan-400/25 bg-cyan-500/5 px-4 py-3" data-testid="celestial-alignment-duration" aria-label="Each selected effect lasts two hours and stacks independently">
+            <p className="mt-2 text-sm leading-relaxed text-slate-400">The stars have aligned. Choose one effect within 60 seconds. Each chosen effect lasts 2 hours, and every activation stacks independently with earlier activations.</p>
+            <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-cyan-400/25 bg-cyan-500/5 px-4 py-3" data-testid="celestial-alignment-choice-timer" aria-label="Time remaining to choose an Alignment effect">
+              <span className="text-[10px] font-black uppercase tracking-[.16em] text-cyan-300">Choose within</span>
+              <strong className="font-mono text-xl tabular-nums text-white">{alignmentPromptCountdown}</strong>
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-cyan-400/25 bg-cyan-500/5 px-4 py-3" data-testid="celestial-alignment-duration" aria-label="Each selected effect lasts two hours and stacks independently">
               <span className="text-[10px] font-black uppercase tracking-[.16em] text-cyan-300">Effect duration</span>
               <strong className="font-mono text-xl tabular-nums text-white">2 hours</strong>
             </div>
