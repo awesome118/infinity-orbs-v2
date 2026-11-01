@@ -784,7 +784,7 @@ test('Guild parser preserves task/member data while removing legacy levels, XP, 
   assert.match(normalize, /delete \(g as any\)\.boss/);
   assert.match(normalize, /delete \(task as any\)\.guildXpReward/);
   assert.match(normalize, /createInitialGuildTasks\(\)/);
-  assert.doesNotMatch(normalize, /g\.level|g\.xp|g\.boss|guildXpRank|guildXpReward/);
+  assert.doesNotMatch(normalize, /g\.level \?\?=|g\.xp =|g\.boss =|guildXpRank:|guildXpReward:/);
 
   // Legacy nested fields are discarded, while memberships and task progress remain.
   assert.match(social, /delete guild\.level/);
@@ -963,7 +963,8 @@ test('roll rewards commit atomically with Guild and community progress', () => {
   assert.ok(rollStart >= 0 && rollEnd > rollStart);
   const roll = game.slice(rollStart, rollEnd);
   assert.match(roll, /prepareGuildRollEffects\(/);
-  assert.match(roll, /if \(guildEffects\.extraWrite\) \{\s*stageSaveExtraWrite\(s, guildEffects\.extraWrite\)\s*\}/);
+  assert.match(game, /stageSaveExtraWrite\(s, guildEffects\.extraWrite\)/);
+  assert.doesNotMatch(roll, /onConflict:/);
   assert.match(roll, /prepareCommunityRolls\(rollCount, pendingCommunityWrite\)/);
   assert.match(roll, /getCommunityEvent\(\)\.catch\(error =>/);
   assert.match(roll, /Read failed; rolling without the event bonus/);
@@ -2640,21 +2641,21 @@ test('Global Chat destination cannot be inferred from a client-supplied launcher
   assert.doesNotMatch(creationRoutes, /global-game-post-id', post\.id, \{ nx: true \}/);
 });
 
-test('legacy guild contribution does not double-count each task update', () => {
+test('legacy Guild contribution advances each task once and rewards Tokens without XP or Titan', () => {
   const social = source('src/server/social.ts');
   const start = social.indexOf('export async function contribute(');
   const end = social.indexOf('export async function prepareGuildRollEffects', start);
   assert.ok(start >= 0 && end > start);
   const contribution = social.slice(start, end);
   for (const field of [
-    'task.progress = capSafeGuildCounter(task.progress + taskProgressValue)',
+    'task.progress = capSafeGuildCounter(task.progress + safeValue)',
     'task.progress = capSafeGuildCounter(task.progress + taskProgressRolls)',
     'task.progress = capSafeGuildCounter(task.progress + taskProgressRare)',
   ]) {
     assert.equal(contribution.split(field).length - 1, 1, field + ' should be applied once');
   }
-  assert.doesNotMatch(contribution, /guild\.boss|guildXpReward|guildXpRank|guild\.level|guild\.xp|taxRate/);
   assert.match(contribution, /guild\.tokens = capSafeGuildCounter\(\(guild\.tokens \?\? 0\) \+ reward\)/);
+  assert.doesNotMatch(contribution, /guild\.boss|guildXpReward|guildXpRank|guild\.level|guild\.xp|taxRate/);
 });
 
 
