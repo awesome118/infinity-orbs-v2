@@ -93,3 +93,19 @@ test('unbounded shared Guild JSON is stored through an atomic chunk manifest', (
   assert.match(game, /write\.key === 'io:guilds'/);
   assert.match(game, /extraWritePlans/);
 });
+
+
+test('combat and Arena state use checksummed Redis chunk manifests for large saves', () => {
+  const combat = source('src/server/combat.ts');
+  const largeValues = source('src/server/redis-large-values.ts');
+  assert.match(largeValues, /LARGE_VALUE_CHUNK_CHARS = 64 \* 1024/);
+  assert.match(largeValues, /LARGE_VALUE_INLINE_CHARS = 192 \* 1024/);
+  assert.match(largeValues, /checksum\(joined\) !== manifest\.checksum/);
+  assert.match(combat, /readRedisLargeValue\(key, storedRaw\)/);
+  assert.match(combat, /createRedisLargeValueWritePlan\(key, JSON\.stringify\(s\)\)/);
+  assert.match(combat, /txn\.set\(key, writePlan\.storedValue\)/);
+  assert.match(combat, /retireRedisLargeValue\(key, storedRaw\)/);
+  assert.match(combat, /createRedisLargeValueWritePlan\(ownKey, JSON\.stringify\(ownState\)\)/);
+  assert.match(combat, /createRedisLargeValueWritePlan\(opponentKey, JSON\.stringify\(opponentState\)\)/);
+  assert.match(combat, /discardRedisLargeValueWritePlan\(opponentWritePlan\)/);
+});
