@@ -45,6 +45,7 @@ import {
   CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS,
   CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS,
   CELESTIAL_ALIGNMENT_PROMPT_DURATION_MS,
+  CELESTIAL_ALIGNMENT_SCHEDULE_VERSION,
   CELESTIAL_ALIGNMENT_DURATION_MS,
   type CelestialAlignmentChoice,
   type CelestialAlignmentInstance,
@@ -6721,6 +6722,13 @@ export async function getCelestialAlignmentStatus(): Promise<{
     const hasMastery = (s.masterySkills?.celestialAlignment ?? 0) > 0;
     const now = Date.now();
     let changed = false;
+    // One-time migration: player saves with the former 45–90 minute cadence
+    // receive a fresh 4–8 hour schedule instead of inheriting a near-due event.
+    if (hasMastery && s.alignmentScheduleVersion !== CELESTIAL_ALIGNMENT_SCHEDULE_VERSION) {
+      s.alignmentScheduleVersion = CELESTIAL_ALIGNMENT_SCHEDULE_VERSION;
+      if (!(s.alignmentPendingAt ?? 0)) s.alignmentNextAt = nextCelestialAlignmentAt(now);
+      changed = true;
+    }
     const pendingAt = Number(s.alignmentPendingAt ?? 0);
     if (
       Number.isSafeInteger(pendingAt) && pendingAt > 0 && pendingAt <= now &&
