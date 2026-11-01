@@ -1472,7 +1472,7 @@ function equippedRuneStatSources(
           ? 'xpGainPct'
           : null;
     if (ability && abilityStat === stat && Number(ability.valuePct) > 0) {
-      const value = combatRuneMajorAbilityStrengthPct(ability, rune.level);
+      const value = combatRuneMajorAbilityStrengthPct(ability, rune.level, rune.rarity);
       if (value > 0) {
         sources.push(statSource(
           String(ability.name || ability.id) + ' · ' + String(rune.name || rune.id),
