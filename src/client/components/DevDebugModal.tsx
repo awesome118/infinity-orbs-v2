@@ -3474,8 +3474,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Force-roll persists collection entry",
         async () => {
-          await request<any>('/api/dev/state', { xp: 600, level: 4, levelXpFloor: 533, collection: {}, highestRarity: 0, collectionValue: 0 });
-          await request<any>('/api/dev/force-roll', { rarity: 777, randomValue: 0 });
+          await seedSingleBallForceRoll(0);
+          await request<any>('/api/dev/force-roll', { rarity: 777, randomValue: 0.999999 });
           const collection = await request<any>('/api/collection?offset=0&limit=100&tier=all&sort=rarity_desc');
           const item = Array.isArray(collection.items)
             ? collection.items.find((entry: any) => Number(entry.rarity) === 777)
