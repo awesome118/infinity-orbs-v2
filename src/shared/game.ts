@@ -158,7 +158,7 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   },
   celestialAlignment: {
     name: 'Celestial Alignment',
-    desc: 'Unlock a Celestial Alignment event every 45–90 minutes. Choose a 2-hour effect; each activation stacks independently with earlier activations.',
+    desc: 'Unlock a rare Celestial Alignment event every 3–6 hours. Choose a 2-hour effect; each activation stacks independently with earlier activations. The choice window lasts 60 seconds.',
     maxLevel: 1,
     costMultiplier: 4,
   },
@@ -175,8 +175,9 @@ export function timeEnergyActivationsAvailable(timeEnergyMs: number, cooldownMs:
   if (!Number.isFinite(energy) || !Number.isFinite(cooldown) || energy <= 0 || cooldown <= 0) return 0;
   return Math.min(TIME_ENERGY_MAX_ACTIVATIONS_PER_USE, Math.floor(Math.max(0, energy) / Math.max(1, cooldown)));
 }
-export const CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS = 45 * 60 * 1_000;
-export const CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS = 90 * 60 * 1_000;
+export const CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS = 3 * 60 * 60 * 1_000;
+export const CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS = 6 * 60 * 60 * 1_000;
+export const CELESTIAL_ALIGNMENT_PROMPT_DURATION_MS = 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS =
   (CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS + CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS) / 2;
 export const CELESTIAL_ALIGNMENT_LEGACY_DURATION_MS = 60 * 60 * 1_000;
