@@ -80,7 +80,6 @@ import {
   buyGuildPerk,
   setGuildTrust,
   kickGuildMember,
-  setGuildTaxRate,
   leaderboard,
   leaderboards,
   recordLeaderboard,
@@ -1743,7 +1742,7 @@ export function createApp() {
       const { perk } = req.body || {};
       const validPerks = [
         'luckRank', 'speedRank', 'vaultRank', 'shardRank', 'critRank', 'coinRank',
-        'memberCapacityRank', 'tokenYieldRank', 'taskBountyRank', 'comboRank', 'guildXpRank',
+        'memberCapacityRank', 'tokenYieldRank', 'taskBountyRank', 'comboRank',
       ];
       if (!validPerks.includes(perk)) return res.status(400).json({ error: 'Invalid guild perk.' });
       res.json(await buyGuildPerk(perk));
@@ -1765,17 +1764,6 @@ export function createApp() {
       res.json(await kickGuildMember(targetUsername));
     } catch (e) { badRequest(res, e, 'Could not kick guild member.'); }
   });
-
-  app.post('/api/guilds/tax', async (req, res) => {
-    try {
-      const rate = Number(req.body?.rate);
-      if (!Number.isFinite(rate) || rate < 0 || rate > 10) {
-        return res.status(400).json({ error: 'Guild Tax must be between 0% and 10%.' });
-      }
-      res.json({ guild: await setGuildTaxRate(rate) });
-    } catch (e) { badRequest(res, e, 'Could not change Guild Tax.'); }
-  });
-
 
   app.post('/api/share', async (req, res) => {
     try {
