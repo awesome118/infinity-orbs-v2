@@ -1,6 +1,6 @@
 import { redis, context, reddit } from './devvit-mock.js';
 import { readInBatches } from './redis-batches.js';
-import { createRedisLargeValueWritePlan, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
+import { createRedisLargeValueWritePlan, readRedisLargeValue, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
 import { CODEX_MIGRATION_BATCH_SIZE, CODEX_SHARD_COUNT, CODEX_STORAGE_VERSION, codexShardKey, groupCodexFields } from '../shared/collection-storage.js';
 import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import * as notificationsModule from '@devvit/notifications';
@@ -1128,7 +1128,8 @@ function parseGameBanRegistry(raw: unknown): Record<string, GameBanRecord> {
 }
 
 async function readGameBans(): Promise<Record<string, GameBanRecord>> {
-  return parseGameBanRegistry(await redis.get(GAME_BANS_KEY));
+  const storedValue = await redis.get(GAME_BANS_KEY);
+  return parseGameBanRegistry(await readRedisLargeValue(GAME_BANS_KEY, storedValue));
 }
 
 async function mutateGameBans<T>(
@@ -1136,28 +1137,40 @@ async function mutateGameBans<T>(
 ): Promise<T> {
   for (let attempt = 0; attempt < 8; attempt++) {
     const txn = await redis.watch(GAME_BANS_KEY);
-    const raw = await redis.get(GAME_BANS_KEY);
-    let bans: Record<string, GameBanRecord>;
+    let transactionClosed = false;
+    let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+    let writeCommitted = false;
+    let previousStoredValue: string | null = null;
     try {
+      previousStoredValue = await redis.get(GAME_BANS_KEY);
+      const decoded = await readRedisLargeValue(GAME_BANS_KEY, previousStoredValue);
+      let bans: Record<string, GameBanRecord>;
       // Only a truly absent key is an empty registry. A present empty string,
       // malformed JSON, or malformed row must fail closed instead of clearing
       // bans or letting the request proceed as if every user were unbanned.
-      bans = parseGameBanRegistry(raw);
-    } catch (error) {
-      await txn.unwatch();
-      throw error;
-    }
+      bans = parseGameBanRegistry(decoded);
 
-    const outcome = update(bans);
-    if (!outcome.changed) {
-      await txn.unwatch();
-      return outcome.result;
-    }
+      const outcome = update(bans);
+      if (!outcome.changed) {
+        await txn.unwatch();
+        transactionClosed = true;
+        return outcome.result;
+      }
 
-    await txn.multi();
-    await txn.set(GAME_BANS_KEY, JSON.stringify(bans));
-    const committed = await txn.exec();
-    if (committed !== null) return outcome.result;
+      writePlan = await createRedisLargeValueWritePlan(GAME_BANS_KEY, JSON.stringify(bans));
+      await txn.multi();
+      await txn.set(GAME_BANS_KEY, writePlan.storedValue);
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) {
+        writeCommitted = true;
+        await retireRedisLargeValue(GAME_BANS_KEY, previousStoredValue);
+        return outcome.result;
+      }
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+      if (writePlan && !writeCommitted) await discardRedisLargeValueWritePlan(writePlan);
+    }
   }
 
   throw new Error('Game ban list changed too frequently. Please retry.');
