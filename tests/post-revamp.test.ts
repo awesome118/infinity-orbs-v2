@@ -195,7 +195,9 @@ test('inline Frenzy claim activity stays compact inside the fixed, non-scrollabl
   assert.ok(globalStyles.includes('#root.io-inline-post .io-frenzy-button {'));
   assert.ok(globalStyles.includes('overflow: clip;'));
   assert.doesNotMatch(styles, /#root\.io-inline-post \.io-frenzy-claimers\s*\{[^}]*overflow(?:-y)?:\s*(?:auto|scroll)/s);
-  assert.match(styles, /#root\.io-inline-post \.io-frenzy-claimers\s*\{\s*display:\s*none;/s);
+  assert.match(styles, /#root\.io-inline-post \.io-frenzy-claimers\s*\{[^}]*display:\s*grid/s);
+  assert.match(styles, /#root\.io-inline-post \.io-frenzy-claimer strong\s*\{[^}]*white-space:\s*normal[^}]*overflow-wrap:\s*anywhere/s);
+  assert.match(frenzy, /players\.slice\(0, 5\)\.map/);
   assert.match(styles, /#root\.io-inline-post \.io-frenzy-claim-activity-head strong\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(styles, /#root\.io-inline-post \.io-frenzy-card:not\(\.io-frenzy-success-card\)\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column[^}]*min-height:\s*0/s);
   assert.match(styles, /#root\.io-inline-post \.io-frenzy-card:not\(\.io-frenzy-success-card\) > \.io-cta-caption\s*\{[^}]*margin:\s*auto 0 4px/s);
