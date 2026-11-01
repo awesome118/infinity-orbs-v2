@@ -245,6 +245,8 @@ function Splash() {
 
         <div className="io-launch-orb-stage" aria-hidden="true">
           <div className="io-launch-orb-aura" />
+          <span className="io-launch-orb-vortex io-launch-orb-vortex-a" />
+          <span className="io-launch-orb-vortex io-launch-orb-vortex-b" />
           <span className="io-launch-orb-ring io-launch-orb-ring-a" />
           <span className="io-launch-orb-ring io-launch-orb-ring-b" />
           <span className="io-launch-orb-ring io-launch-orb-ring-c" />

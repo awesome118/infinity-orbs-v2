@@ -1714,3 +1714,118 @@
   #root.io-inline-post .io-launch-button { min-height: 40px; margin-top: 4px; }
   #root.io-inline-post .io-launch-footer { padding-top: 7px; }
 }
+
+
+/* Layered energy field for the inline launch preview. These lightweight
+   transform/opacity loops give the taller chamber a continuous infinity-orb feel. */
+#root.io-inline-post .io-launch-orb-stage {
+  background:
+    radial-gradient(ellipse at 50% 48%, rgba(91, 255, 222, .19), transparent 34%),
+    radial-gradient(ellipse at 50% 100%, rgba(100, 111, 255, .13), transparent 57%),
+    linear-gradient(118deg, rgba(7, 28, 37, .94), rgba(16, 12, 40, .86) 50%, rgba(7, 30, 38, .94));
+  border-color: rgba(121, 246, 221, .3);
+  box-shadow: inset 0 1px rgba(255,255,255,.07), inset 0 -18px 42px rgba(35, 176, 172, .055), 0 0 26px rgba(59, 228, 194, .11);
+}
+#root.io-inline-post .io-launch-orb-stage::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  left: 50%;
+  width: min(74%, 560px);
+  height: 122%;
+  border: 1px solid rgba(114, 245, 220, .25);
+  border-radius: 50%;
+  box-shadow: 0 0 16px rgba(84, 239, 211, .08), inset 0 0 16px rgba(84, 239, 211, .045);
+  pointer-events: none;
+  transform: translate(-50%, -50%) rotate(-24deg) scaleX(.78);
+  animation: io-inline-orb-field-turn 16s linear infinite;
+}
+#root.io-inline-post .io-launch-orb-stage::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: -65% -35%;
+  pointer-events: none;
+  background: linear-gradient(108deg, transparent 39%, rgba(111, 250, 225, .025) 45%, rgba(165, 255, 239, .17) 49%, rgba(170, 151, 255, .09) 51%, transparent 58%);
+  transform: translate3d(-54%, 0, 0) rotate(-14deg);
+  animation: io-inline-orb-charge-sweep 6.8s ease-in-out infinite;
+}
+#root.io-inline-post .io-launch-orb-vortex {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  display: block;
+  border: 1px solid;
+  border-radius: 50%;
+  pointer-events: none;
+  transform-origin: 50% 50%;
+}
+#root.io-inline-post .io-launch-orb-vortex-a {
+  width: min(62%, 460px);
+  height: 138%;
+  border-color: rgba(104, 248, 221, .44);
+  box-shadow: 0 0 12px rgba(89, 240, 211, .12);
+  transform: translate(-50%, -50%) rotate(28deg) scaleX(.7);
+  animation: io-inline-orb-vortex-a 13s linear infinite;
+}
+#root.io-inline-post .io-launch-orb-vortex-b {
+  width: min(88%, 650px);
+  height: 69%;
+  border-color: rgba(177, 143, 255, .35);
+  border-style: dashed;
+  transform: translate(-50%, -50%) rotate(-32deg);
+  animation: io-inline-orb-vortex-b 19s linear infinite;
+}
+#root.io-inline-post .io-launch-orb-ring-a { animation-duration: 13s; }
+#root.io-inline-post .io-launch-orb-ring-b { animation-duration: 18s; }
+#root.io-inline-post .io-launch-orb-ring-c { animation-duration: 25s; }
+#root.io-inline-post .io-launch-orb-aura { animation: io-inline-orb-aura-pulse 4.2s ease-in-out infinite; }
+#root.io-inline-post .io-launch-orb-spark {
+  animation: io-inline-orb-spark-drift 3.7s ease-in-out infinite;
+  box-shadow: 0 0 9px 3px rgba(126, 255, 224, .58);
+}
+#root.io-inline-post .io-launch-orb-spark-a { animation-delay: -.4s; }
+#root.io-inline-post .io-launch-orb-spark-b { animation-delay: -1.3s; }
+#root.io-inline-post .io-launch-orb-spark-c { animation-delay: -2.2s; }
+#root.io-inline-post .io-launch-orb-spark-d { animation-delay: -3.1s; }
+@keyframes io-inline-orb-field-turn {
+  from { transform: translate(-50%, -50%) rotate(-24deg) scaleX(.78); }
+  to { transform: translate(-50%, -50%) rotate(336deg) scaleX(.78); }
+}
+@keyframes io-inline-orb-charge-sweep {
+  0%, 12% { opacity: .16; transform: translate3d(-54%, 0, 0) rotate(-14deg); }
+  55% { opacity: .82; }
+  88%, 100% { opacity: .2; transform: translate3d(54%, 0, 0) rotate(-14deg); }
+}
+@keyframes io-inline-orb-vortex-a {
+  from { transform: translate(-50%, -50%) rotate(28deg) scaleX(.7); }
+  to { transform: translate(-50%, -50%) rotate(388deg) scaleX(.7); }
+}
+@keyframes io-inline-orb-vortex-b {
+  from { transform: translate(-50%, -50%) rotate(-32deg); }
+  to { transform: translate(-50%, -50%) rotate(-392deg); }
+}
+@keyframes io-inline-orb-aura-pulse {
+  0%, 100% { opacity: .42; transform: scale(.84); }
+  50% { opacity: .96; transform: scale(1.22); }
+}
+@keyframes io-inline-orb-spark-drift {
+  0%, 100% { opacity: .22; transform: translate(0, 8px) scale(.55); }
+  45% { opacity: 1; transform: translate(5px, -8px) scale(1.25); }
+  75% { opacity: .68; transform: translate(-4px, -17px) scale(.8); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #root.io-inline-post .io-launch-orb-stage::before,
+  #root.io-inline-post .io-launch-orb-stage::after,
+  #root.io-inline-post .io-launch-orb-vortex,
+  #root.io-inline-post .io-launch-orb-ring,
+  #root.io-inline-post .io-launch-orb-sphere,
+  #root.io-inline-post .io-launch-orb-aura,
+  #root.io-inline-post .io-launch-orb-spark {
+    animation: none !important;
+    transition: none !important;
+  }
+  #root.io-inline-post .io-launch-orb-stage::after { opacity: .2; transform: none; }
+}
