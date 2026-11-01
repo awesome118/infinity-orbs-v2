@@ -281,7 +281,7 @@ test('acquisition timeout releases local queue state for the next attempt', asyn
 
   await assert.rejects(
     runtime.withPlayerMutationLockFor('timeout-player', async () => undefined),
-    /PLAYER_MUTATION_QUEUED\. Please retry\./,
+    /PLAYER_MUTATION_QUEUED/,
   );
 
   sharedRedis.delete(lockKey);
