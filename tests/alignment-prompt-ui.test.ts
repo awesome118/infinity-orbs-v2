@@ -146,6 +146,10 @@ test('Celestial Alignment events use a rare bounded 4–8 hour interval', () => 
   assert.match(shared, /CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS = 4 \* 60 \* 60 \* 1_000/);
   assert.match(shared, /CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS = 8 \* 60 \* 60 \* 1_000/);
   assert.match(shared, /CELESTIAL_ALIGNMENT_PROMPT_DURATION_MS = 60 \* 1_000/);
+  assert.match(shared, /CELESTIAL_ALIGNMENT_SCHEDULE_VERSION = 2/);
+  assert.match(shared, /alignmentScheduleVersion: CELESTIAL_ALIGNMENT_SCHEDULE_VERSION/);
+  assert.match(server, /One-time migration: player saves with the former 45–90 minute cadence/);
+  assert.match(server, /s.alignmentScheduleVersion !== CELESTIAL_ALIGNMENT_SCHEDULE_VERSION/);
   assert.match(shared, /CELESTIAL_ALIGNMENT_DURATION_MS = 2 \* 60 \* 60 \* 1_000/);
   const scheduler = server.slice(server.indexOf('function nextCelestialAlignmentAt'), server.indexOf('export async function getCelestialAlignmentStatus'));
   assert.match(scheduler, /CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS/);
