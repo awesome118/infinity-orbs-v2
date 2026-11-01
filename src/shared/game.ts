@@ -3131,19 +3131,19 @@ export function calculatePrestigeDust(collectionValue: number): number {
   return 2 + Math.max(0, additionalDust);
 }
 
-export const MAX_COSMIC_DUST = 50;
-
 export function calculateCosmicDust(s: PlayerState): number {
   const currentVal = s.collectionValue ?? 0;
   if (currentVal < 1_000_000) return 0;
   const base = calculatePrestigeDust(currentVal);
   if (base <= 0) return 0;
   const masteryBonus = (s.masterySkills?.cosmicAttunement ?? 0) * 0.08;
-  const existingDust = Math.max(0, Math.min(MAX_COSMIC_DUST,
-    Number.isSafeInteger(s.cosmicDust) ? s.cosmicDust : 0,
-  ));
+  const existingDust = Number.isSafeInteger(s.cosmicDust) && s.cosmicDust >= 0
+    ? s.cosmicDust
+    : 0;
   const pending = Math.floor(base * (1 + masteryBonus));
-  return Math.max(0, Math.min(MAX_COSMIC_DUST - existingDust, pending));
+  // Cosmic Dust has no gameplay wallet cap. Only preserve the safe-integer
+  // boundary required by the Number-based player-save format.
+  return Math.max(0, Math.min(Number.MAX_SAFE_INTEGER - existingDust, pending));
 }
 
 export function prestigeUpgradeCost(id: PrestigeUpgradeId, level: number): number {
