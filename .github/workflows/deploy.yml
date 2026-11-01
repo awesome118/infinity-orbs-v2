@@ -208,4 +208,4 @@ jobs:
 
 # Payment/refund paths retain the compact sharded Codex save format.
 
-# Explicit user request 2026-11-01: retry v2.1.44 after correcting Guild regression assertions; dev only.
+# Explicit user request 2026-11-01: retry v2.1.44 after Guild type-check fixes; dev only.
