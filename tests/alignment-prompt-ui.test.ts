@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { cooldownMs, createInitialState, normalizeCelestialAlignmentInstances, celestialAlignmentStackCount, CELESTIAL_ALIGNMENT_DURATION_MS } from '../src/shared/game.js';
+import { cooldownMs, createInitialState, normalizeCelestialAlignmentInstances, celestialAlignmentStackCount, CELESTIAL_ALIGNMENT_DURATION_MS, CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS, celestialAlignmentChoiceRemainingMs } from '../src/shared/game.js';
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
@@ -19,19 +19,27 @@ test('Celestial Alignment ignores stale pending polls after a choice succeeds', 
   assert.ok(main.includes('if (!alignmentChoiceBusy && !alignmentChoiceError)'));
 });
 
-test('Celestial Alignment chooser shows the two-hour effect duration without an arbitrary decision deadline', () => {
+test('Celestial Alignment chooser counts down for 60 seconds and expires unclaimed events', () => {
   const main = source('src/client/main.tsx');
   const server = source('src/server/game.ts');
+  const shared = source('src/shared/game.ts');
   const choice = server.slice(server.indexOf('export async function chooseCelestialAlignment'), server.indexOf('export async function synthesizeDust'));
+  const status = server.slice(server.indexOf('export async function getCelestialAlignmentStatus'), server.indexOf('export async function chooseCelestialAlignment'));
 
-  assert.ok(main.includes('data-testid="celestial-alignment-duration"'));
-  assert.ok(main.includes('Effect duration'));
-  assert.ok(main.includes('>2 hours</strong>'));
-  assert.ok(main.includes('Each selected effect lasts two hours and stacks independently'));
-  assert.ok(!main.includes('alignmentChoiceNow'));
-  assert.ok(!server.includes('CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS'));
-  assert.ok(!choice.includes('The Alignment choice window expired.'));
-  assert.ok(choice.includes('const pendingAt = Number(s.alignmentPendingAt ?? 0)'));
+  assert.equal(CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS, 60_000);
+  assert.equal(celestialAlignmentChoiceRemainingMs(1_000, 1_000), 60_000);
+  assert.equal(celestialAlignmentChoiceRemainingMs(1_000, 31_000), 30_000);
+  assert.equal(celestialAlignmentChoiceRemainingMs(1_000, 61_000), 0);
+  assert.ok(main.includes('data-testid="celestial-alignment-choice-countdown"'));
+  assert.ok(main.includes('window.setInterval(() => setAlignmentNow(Date.now()), 250)'));
+  assert.ok(main.includes('Choose an effect within 60 seconds'));
+  assert.ok(main.includes('Each selected effect lasts 60 minutes'));
+  assert.ok(main.includes('alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, pendingAt)'));
+  assert.ok(shared.includes('CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS = 60 * 1_000'));
+  assert.ok(status.includes('celestialAlignmentChoiceRemainingMs(pendingAt, now) <= 0'));
+  assert.ok(choice.includes('celestialAlignmentChoiceRemainingMs(pendingAt, now) <= 0'));
+  assert.ok(choice.includes('The Alignment choice window expired.'));
+  assert.match(shared, /CELESTIAL_ALIGNMENT_DURATION_MS = 60 \* 60 \* 1_000/);
 });
 test('Clockwork reduces real Auto Roll cooldown by 20%, but does not change manual rolls', () => {
   const now = Date.now();
@@ -137,7 +145,7 @@ test('Alignment choice requests wait in both player-action queues instead of fai
   assert.ok(playerLock.includes('const PLAYER_MUTATION_LOCK_RETRY_MS = 25'));
 });
 
-test('Celestial Alignment events use a bounded 45–90 minute interval, not exponential bursts', () => {
+test('Celestial Alignment events use a bounded 90–150 minute interval, not exponential bursts', () => {
   const shared = source('src/shared/game.ts');
   const server = source('src/server/game.ts');
   assert.match(shared, /CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS = 45 \* 60 \* 1_000/);
@@ -155,7 +163,7 @@ test('Celestial Alignment choice appends an independently expiring stack instanc
   assert.match(choice, /const nextInstances = \[\.\.\.activeInstances, instance\]/);
   assert.match(choice, /expiresAt: now \+ CELESTIAL_ALIGNMENT_DURATION_MS/);
   assert.match(choice, /const pendingAt = Number\(s\.alignmentPendingAt \?\? 0\)/);
-  assert.doesNotMatch(choice, /CHOICE_WINDOW|choice window expired/i);
+  assert.match(choice, /celestialAlignmentChoiceRemainingMs\(pendingAt, now\) <= 0/);
   assert.match(choice, /s\.alignmentActiveInstances = nextInstances/);
   assert.doesNotMatch(choice, /s\.alignmentActiveInstances = \[instance\]/);
 });
@@ -176,7 +184,7 @@ test('Boosters menu lists each active Alignment instance and its separate expiry
   assert.match(boosters, /Matching effects stack multiplicatively/);
 });
 
-test('Alignment migration preserves legacy effects and new choices stack for two hours independently', () => {
+test('Alignment migration preserves legacy effects and new choices stack for 60 minutes independently', () => {
   const now = 1_800_000_000_000;
   const legacyExpiresAt = now + 30 * 60_000;
   const legacy = normalizeCelestialAlignmentInstances(undefined, 'starseeker', legacyExpiresAt, now);
@@ -200,5 +208,5 @@ test('Alignment migration preserves legacy effects and new choices stack for two
   assert.equal(active.length, 2);
   assert.equal(celestialAlignmentStackCount(active, 'goldenOrbit', now), 2);
   assert.equal(celestialAlignmentStackCount(active, 'goldenOrbit', first.expiresAt + 1), 1);
-  assert.equal(CELESTIAL_ALIGNMENT_DURATION_MS, 2 * 60 * 60_000);
+  assert.equal(CELESTIAL_ALIGNMENT_DURATION_MS, 60 * 60_000);
 });
