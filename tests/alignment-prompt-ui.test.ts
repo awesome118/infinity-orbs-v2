@@ -12,6 +12,7 @@ test('Celestial Alignment ignores stale pending polls after a choice succeeds', 
   assert.match(main, /const chosenPendingAt = alignmentStatus\?\.pendingAt \?\? 0/);
   assert.match(main, /alignmentDismissedPendingAtRef\.current = Math\.max\(alignmentDismissedPendingAtRef\.current, chosenPendingAt\)/);
   assert.match(main, /const pendingWasDismissed = status\.pending[\s\S]*?status\.pendingAt <= alignmentDismissedPendingAtRef\.current/);
+  assert.match(main, /if \(pendingWasDismissed\) return;[\s\S]*?setAlignmentStatus\(status\)/);
   assert.match(main, /if \(!alignmentConfirmationRef\.current\) setAlignmentPromptVisible\(false\)/);
 });
 

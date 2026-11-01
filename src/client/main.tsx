@@ -1398,10 +1398,9 @@ function App() {
         const pendingWasDismissed = status.pending &&
           alignmentDismissedPendingAtRef.current > 0 &&
           status.pendingAt <= alignmentDismissedPendingAtRef.current;
-        const pendingNow = status.pending && !pendingWasDismissed;
-        const visibleStatus = pendingWasDismissed ? { ...status, pending: false, pendingAt: 0 } : status;
-        setAlignmentStatus(visibleStatus);
-        if (pendingNow) {
+        if (pendingWasDismissed) return;
+        setAlignmentStatus(status);
+        if (status.pending) {
           if (alignmentConfirmationRef.current) {
             alignmentConfirmationRef.current = null;
             setAlignmentConfirmation(null);
