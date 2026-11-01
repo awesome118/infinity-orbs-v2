@@ -3522,7 +3522,10 @@ export async function getRollTicket(): Promise<{
   predictionStartIndex: number;
   predictions: Array<{ index: number; orb: Orb }>;
 }> {
-  return withPlayerMutationLock(async () => {
+  // Keep the shared player lock limited to ticket allocation and the state
+  // snapshot. Preview simulation is presentation-only and must never hold up
+  // real rolls, upgrades, or other player mutations.
+  const prepared = await withPlayerMutationLock(async () => {
     const ticketKey = rollTicketKey();
     const now = Date.now();
 
@@ -3580,17 +3583,7 @@ export async function getRollTicket(): Promise<{
         }
 
         const state = await loadRaw();
-        const predictions = await createRollTicketPreviews(state, ticket);
-        return {
-          ticketId: ticket.id,
-          nextIndex: ticket.nextIndex,
-          rollsRemaining: ROLL_TICKET_COUNT - ticket.nextIndex,
-          expiresAt: ticket.expiresAt,
-          seeds: ticket.seeds.slice(ticket.nextIndex, ticket.nextIndex + ROLL_PREDICTION_COUNT),
-          predictionBaseRevision: Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0),
-          predictionStartIndex: ticket.nextIndex,
-          predictions,
-        };
+        return { ticket, state };
       } finally {
         if (!transactionClosed) await txn.unwatch().catch(() => undefined);
       }
@@ -3598,8 +3591,28 @@ export async function getRollTicket(): Promise<{
 
     throw new Error('Could not create a roll prediction ticket. Please retry.');
   });
-}
 
+  // A preview is only an instant-reveal optimization. The seed/ticket remains
+  // usable without it, so preview failures must not block manual or Auto Rolls.
+  let predictions: Array<{ index: number; orb: Orb }> = [];
+  try {
+    predictions = await createRollTicketPreviews(prepared.state, prepared.ticket);
+  } catch (error) {
+    console.error('[Roll Ticket] Preview generation failed; continuing without instant preview.', error);
+  }
+
+  const { ticket, state } = prepared;
+  return {
+    ticketId: ticket.id,
+    nextIndex: ticket.nextIndex,
+    rollsRemaining: ROLL_TICKET_COUNT - ticket.nextIndex,
+    expiresAt: ticket.expiresAt,
+    seeds: ticket.seeds.slice(ticket.nextIndex, ticket.nextIndex + ROLL_PREDICTION_COUNT),
+    predictionBaseRevision: Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0),
+    predictionStartIndex: ticket.nextIndex,
+    predictions,
+  };
+}
 async function loadRollTicketForUse(
   ticketId: string,
   ticketIndex: number,
