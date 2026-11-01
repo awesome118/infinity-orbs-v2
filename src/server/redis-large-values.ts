@@ -1,10 +1,15 @@
 import { redis } from './devvit-mock.js';
 
 const LARGE_VALUE_CHUNK_PREFIX = 'io:large-value-chunk:v1:';
-const LARGE_VALUE_CHUNK_CHARS = 64 * 1024;
-const LARGE_VALUE_INLINE_CHARS = 192 * 1024;
-const LARGE_VALUE_MAX_CHUNKS = 128;
-const LARGE_VALUE_MAX_CHARS = LARGE_VALUE_CHUNK_CHARS * LARGE_VALUE_MAX_CHUNKS;
+const LARGE_VALUE_CHUNK_BYTES = 48 * 1024;
+const LARGE_VALUE_INLINE_BYTES = 48 * 1024;
+const LARGE_VALUE_MAX_CHUNKS = 192;
+const LARGE_VALUE_MAX_BYTES = 8 * 1024 * 1024;
+// Previous releases used 64 KiB character chunks and a 192 KiB inline threshold.
+// Retain these bounds only when reading their manifests.
+const LEGACY_LARGE_VALUE_CHUNK_CHARS = 64 * 1024;
+const LEGACY_LARGE_VALUE_INLINE_CHARS = 192 * 1024;
+const LEGACY_LARGE_VALUE_MAX_CHARS = LEGACY_LARGE_VALUE_CHUNK_CHARS * 128;
 const LARGE_VALUE_RETIRED_TTL_SECONDS = 10 * 60;
 
 type LargeValueManifest = {
@@ -12,7 +17,10 @@ type LargeValueManifest = {
   namespaceHash: string;
   token: string;
   chunkCount: number;
+  /** UTF-16 code-unit length, compatible with existing manifests. */
   length: number;
+  /** Present on new byte-bounded manifests; absent on legacy manifests. */
+  byteLength?: number;
   checksum: string;
 };
 
@@ -51,23 +59,33 @@ function parseLargeValueManifest(
   if (typeof raw !== 'string' || !raw.startsWith('{"__ioLargeValueManifest":1')) return null;
   try {
     const value = JSON.parse(raw) as Record<string, unknown>;
+    const byteLength = value.byteLength === undefined ? undefined : Number(value.byteLength);
     const manifest: LargeValueManifest = {
       __ioLargeValueManifest: 1,
       namespaceHash: String(value.namespaceHash ?? ''),
       token: String(value.token ?? ''),
       chunkCount: Number(value.chunkCount),
       length: Number(value.length),
+      ...(byteLength === undefined ? {} : { byteLength }),
       checksum: String(value.checksum ?? ''),
     };
+    const validLength = Number.isSafeInteger(manifest.length) &&
+      manifest.length > 0 && manifest.length <= LARGE_VALUE_MAX_BYTES;
+    const validLegacySize = manifest.byteLength === undefined &&
+      manifest.length > LEGACY_LARGE_VALUE_INLINE_CHARS &&
+      manifest.length <= LEGACY_LARGE_VALUE_MAX_CHARS;
+    const validByteSize = manifest.byteLength !== undefined &&
+      Number.isSafeInteger(manifest.byteLength) &&
+      manifest.byteLength > LARGE_VALUE_INLINE_BYTES &&
+      manifest.byteLength <= LARGE_VALUE_MAX_BYTES;
     if (
       manifest.namespaceHash !== hashText(namespaceKey) ||
       !/^[a-zA-Z0-9-]{8,120}$/.test(manifest.token) ||
       !Number.isSafeInteger(manifest.chunkCount) ||
       manifest.chunkCount < 1 ||
       manifest.chunkCount > LARGE_VALUE_MAX_CHUNKS ||
-      !Number.isSafeInteger(manifest.length) ||
-      manifest.length <= LARGE_VALUE_INLINE_CHARS ||
-      manifest.length > LARGE_VALUE_MAX_CHARS ||
+      !validLength ||
+      !(validLegacySize || validByteSize) ||
       !/^[a-f0-9]{8}$/.test(manifest.checksum)
     ) {
       throw new Error('Invalid large-value manifest.');
@@ -101,25 +119,24 @@ export async function createRedisLargeValueWritePlan(
   namespaceKey: string,
   serialized: string,
 ): Promise<RedisLargeValueWritePlan> {
-  if (serialized.length <= LARGE_VALUE_INLINE_CHARS) {
+  const serializedBytes = new TextEncoder().encode(serialized);
+  if (serializedBytes.byteLength <= LARGE_VALUE_INLINE_BYTES) {
     return { storedValue: serialized, chunkKeys: [] };
   }
-  if (serialized.length > LARGE_VALUE_MAX_CHARS) {
+  if (serializedBytes.byteLength > LARGE_VALUE_MAX_BYTES) {
     throw new Error('Shared data exceeds the supported 8 MiB logical size; no changes were written.');
   }
 
   const chunks: string[] = [];
-  for (let offset = 0; offset < serialized.length;) {
-    let end = Math.min(serialized.length, offset + LARGE_VALUE_CHUNK_CHARS);
-    // Do not split a UTF-16 surrogate pair across Redis records.
-    if (
-      end < serialized.length &&
-      serialized.charCodeAt(end - 1) >= 0xd800 &&
-      serialized.charCodeAt(end - 1) <= 0xdbff
-    ) {
-      end -= 1;
+  const decoder = new TextDecoder();
+  for (let offset = 0; offset < serializedBytes.length;) {
+    let end = Math.min(serializedBytes.length, offset + LARGE_VALUE_CHUNK_BYTES);
+    // Keep each Redis SET under the byte ceiling and never split a UTF-8 sequence.
+    if (end < serializedBytes.length) {
+      while (end > offset && (serializedBytes[end] & 0xc0) === 0x80) end -= 1;
     }
-    chunks.push(serialized.slice(offset, end));
+    if (end <= offset) throw new Error('Shared data contains an invalid UTF-8 chunk boundary.');
+    chunks.push(decoder.decode(serializedBytes.subarray(offset, end)));
     offset = end;
   }
   if (chunks.length < 1 || chunks.length > LARGE_VALUE_MAX_CHUNKS) {
@@ -134,13 +151,14 @@ export async function createRedisLargeValueWritePlan(
     token,
     chunkCount: chunks.length,
     length: serialized.length,
+    byteLength: serializedBytes.byteLength,
     checksum: checksum(serialized),
   };
   const chunkKeys = chunkKeysFor(namespaceKey, manifest);
 
   try {
-    // Eight independent SETs stay far below the platform's per-request limit
-    // while avoiding a serial round trip for every 64 KiB record.
+    // Eight independent SETs stay below the platform's per-request limit
+    // while avoiding a serial round trip for every 48 KiB record.
     for (let offset = 0; offset < chunks.length; offset += 8) {
       await Promise.all(
         chunks.slice(offset, offset + 8).map((chunk, localIndex) =>
@@ -186,7 +204,11 @@ export async function readRedisLargeValue(
   }
 
   const joined = chunks.join('');
-  if (joined.length !== manifest.length || checksum(joined) !== manifest.checksum) {
+  if (
+    joined.length !== manifest.length ||
+    (manifest.byteLength !== undefined && new TextEncoder().encode(joined).byteLength !== manifest.byteLength) ||
+    checksum(joined) !== manifest.checksum
+  ) {
     throw new Error('A shared-data record failed its length/checksum validation.');
   }
   return joined;
