@@ -6,7 +6,8 @@ function byteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength;
 }
 
-function compactLogEntry<T extends Record<string, unknown>>(entry: T): T | Record<string, unknown> {
+function compactLogEntry<T extends object>(entry: T): T | Record<string, unknown> {
+  const record = entry as Record<string, unknown>;
   const raw = JSON.stringify(entry);
   if (byteLength(raw) <= REDIS_LOG_ENTRY_MAX_BYTES) return entry;
 
@@ -18,7 +19,7 @@ function compactLogEntry<T extends Record<string, unknown>>(entry: T): T | Recor
     'timestamp', 'at', 'event', 'stage', 'userId', 'username',
     'boosterId', 'boosterName', 'tier', 'usedCredit',
   ]) {
-    const value = entry[key];
+    const value = record[key];
     if (typeof value === 'string') compact[key] = value.slice(0, 100);
     else if (typeof value === 'number' || typeof value === 'boolean') compact[key] = value;
   }
@@ -26,7 +27,7 @@ function compactLogEntry<T extends Record<string, unknown>>(entry: T): T | Recor
 }
 
 /** Retains the newest diagnostics while guaranteeing one Redis value stays bounded. */
-export function serializeBoundedRedisLog<T extends Record<string, unknown>>(entries: T[]): string {
+export function serializeBoundedRedisLog<T extends object>(entries: T[]): string {
   const compacted = entries.map(compactLogEntry);
   let low = 0;
   let high = compacted.length;
