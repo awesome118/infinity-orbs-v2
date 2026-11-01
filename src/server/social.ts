@@ -259,6 +259,16 @@ function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index
       guild.combo.activationProgress = clampInteger(guild.combo.activationProgress, 0, 3, 0);
       guild.combo.endsAt = clampInteger(guild.combo.endsAt, 0, Number.MAX_SAFE_INTEGER, 0);
       guild.combo.lastTickAt = clampInteger(guild.combo.lastTickAt, 0, Number.MAX_SAFE_INTEGER, 0);
+      const legacyDuration = Math.max(
+        0,
+        guild.combo.endsAt - (guild.combo.lastTickAt > 0 ? guild.combo.lastTickAt : Date.now()),
+      );
+      guild.combo.totalDurationMs = clampInteger(
+        guild.combo.totalDurationMs,
+        0,
+        Number.MAX_SAFE_INTEGER,
+        legacyDuration,
+      );
     }
   }
 
@@ -364,7 +374,7 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
 
   if (guild.combo != null) {
     if (!isRecordValue(guild.combo)) throw invalid('guild.combo (expected object)');
-    for (const field of ['tier', 'activationProgress', 'endsAt', 'lastTickAt']) {
+    for (const field of ['tier', 'activationProgress', 'endsAt', 'lastTickAt', 'totalDurationMs']) {
       const value = guild.combo[field];
       if (value == null) continue; // Missing legacy timer fields decay to defaults.
       if (!Number.isSafeInteger(value) || Number(value) < 0) throw invalid(`guild.combo.${field}`);
@@ -1508,7 +1518,7 @@ export async function leaveGuild() {
   });
 }
 
-export async function contribute(value: number, rollCount = 1, bestRarity?: number) {
+export async function contribute(value: number, rollCount = 1, bestRarity?: number, rareOrbCount?: number) {
   try {
     const safeValue = capSafeGuildCounter(value);
     if (safeValue <= 0) return;
@@ -1531,7 +1541,7 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
       if (!Array.isArray(guild.tasks) || guild.tasks.length < 3) guild.tasks = createInitialGuildTasks();
       const now = Date.now();
       const taskProgressRolls = capSafeGuildCounter(rollCount);
-      const taskProgressRare = (bestRarity ?? 0) >= 100 ? 1 : 0;
+      const taskProgressRare = capSafeGuildCounter(rareOrbCount ?? ((bestRarity ?? 0) >= 100 ? 1 : 0));
       for (let i = 0; i < guild.tasks.length; i++) {
         let task = guild.tasks[i];
         if (!task) continue;
@@ -1566,6 +1576,7 @@ export async function prepareGuildRollEffects(
   rollCount: number,
   bestRarity?: number,
   pendingWrite?: { expectedValue: string | null; nextValue: string },
+  rareOrbCount?: number,
 ): Promise<{
   extraWrite?: { key: string; expectedValue: string | null; nextValue: string; conflictMessage?: string; optional?: boolean };
 }> {
@@ -1589,7 +1600,7 @@ export async function prepareGuildRollEffects(
       member.contribution = capInteger(member.contribution + safeValue);
       if (!Array.isArray(guild.tasks) || guild.tasks.length < 3) guild.tasks = createInitialGuildTasks();
       const now = Date.now();
-      const taskProgressRare = (bestRarity ?? 0) >= 100 ? 1 : 0;
+      const taskProgressRare = capInteger(rareOrbCount ?? ((bestRarity ?? 0) >= 100 ? 1 : 0));
       for (let i = 0; i < guild.tasks.length; i++) {
         let task = guild.tasks[i];
         if (!task) continue;
