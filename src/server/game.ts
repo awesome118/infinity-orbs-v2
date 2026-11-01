@@ -57,7 +57,6 @@ import {
   MAX_OFFLINE_ROLLS,
   OFFLINE_TICK_MS,
   calculateCosmicDust,
-  MAX_COSMIC_DUST,
   effectiveOfflineTickMs,
   critMultiplier,
   calculateLevelFromXp,
@@ -2982,22 +2981,19 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     globalBoosters,
     dailyStreakCommunity,
   };
-  // Cosmic Dust has a lower game-specific cap than the shared safe-integer guard.
-  restored.cosmicDust = Math.min(MAX_COSMIC_DUST, restored.cosmicDust);
+  // Cosmic Dust has no gameplay wallet cap. Parser normalization still
+  // enforces the safe-integer storage boundary for the Number-based save.
   playerGuildScopes.set(restored, guildId);
-  // Persist both one-time migrations rather than only changing the read view.
-  const cosmicDustCapMigration = finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust) > MAX_COSMIC_DUST;
+  // Persist one-time migrations rather than only changing the read view.
   const levelExpansionMigration = restoredLevel > parsedLevel;
-  if (cosmicDustCapMigration || levelExpansionMigration || needsCodexMigration) {
+  if (levelExpansionMigration || needsCodexMigration) {
     try {
       await save(restored);
     } catch (error) {
       if (levelExpansionMigration) {
         console.error('[Level] Paragon XP migration will retry on the next load.', error);
-      } else if (cosmicDustCapMigration) {
-        console.error('[Prestige] Cosmic Dust cap migration will retry on next load.', error);
       } else {
-        console.error('[Codex] Sharded collection migration will retry on next load.', error);
+        console.error('[Codex] Sharded collection migration will retry on the next load.', error);
       }
     }
   }
@@ -6280,7 +6276,7 @@ export async function prestige(): Promise<{ state: PlayerState; cosmicDustEarned
     throw new Error('Requires at least 1,000,000 Collection Value in current run.');
   }
 
-  s.cosmicDust = Math.min(MAX_COSMIC_DUST, (s.cosmicDust ?? 0) + dustEarned);
+  s.cosmicDust = (s.cosmicDust ?? 0) + dustEarned;
   s.prestigeCount = (s.prestigeCount ?? 0) + 1;
   s.masteryPoints = (s.masteryPoints ?? 0) + 3;
 
@@ -6782,15 +6778,16 @@ export async function synthesizeDust(): Promise<{ state: PlayerState; dustEarned
   if ((s.prestigeUpgrades?.shardSynthesis ?? 0) < 1) {
     throw new Error('Astral Forge prestige upgrade is required to synthesize Cosmic Dust.');
   }
-  if ((s.cosmicDust ?? 0) >= MAX_COSMIC_DUST) {
-    throw new Error(`Cosmic Dust is capped at ${MAX_COSMIC_DUST}; no Shards were spent.`);
+  const currentDust = s.cosmicDust ?? 0;
+  if (!Number.isSafeInteger(currentDust) || currentDust < 0 || currentDust >= Number.MAX_SAFE_INTEGER) {
+    throw new Error('Cosmic Dust has reached the maximum safely stored balance; no Shards were spent.');
   }
   if ((s.shards ?? 0) < SHARD_SYNTHESIS_COST) {
     throw new Error(`Synthesizing requires at least ${SHARD_SYNTHESIS_COST} Shards.`);
   }
 
   spendShards(s, SHARD_SYNTHESIS_COST);
-  s.cosmicDust = Math.min(MAX_COSMIC_DUST, (s.cosmicDust ?? 0) + 1);
+  s.cosmicDust = currentDust + 1;
   await save(s);
   await appendPlayerSpyLog('dust-synthesis', {
     shardsSpent: SHARD_SYNTHESIS_COST,
