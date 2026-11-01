@@ -203,4 +203,4 @@ jobs:
 
 # Payment/refund paths retain the compact sharded Codex save format.
 
-# Explicit user request 2026-11-01: deploy v2.1.42 Alignment chooser and Clockwork fix to r/infinity_orbs_dev only.
+# Explicit user request 2026-11-01: deploy v2.1.42 chooser-window and Frenzy-claim fix to r/infinity_orbs_dev only.
