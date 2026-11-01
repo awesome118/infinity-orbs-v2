@@ -760,49 +760,39 @@ test('chat report duplicate detection precedes the report cooldown check', () =>
   assert.match(modal, /beforeUpgraded = recordValue\(await request<any>\('\/api\/me'\)\)/);
 });
 
-test('guild parser validates nested state while repairing legacy challenge and boss projections', () => {
+test('Guild parser preserves task/member data while removing legacy levels, XP, Titan, and tax', () => {
   const social = source('src/server/social.ts');
   const start = social.indexOf('function validateGuildNestedState');
-  const end = social.indexOf('\nfunction isGuildPlaytestRecoveryEnabled', start);
+  const end = social.indexOf('function isGuildPlaytestRecoveryEnabled', start);
   assert.ok(start >= 0 && end > start, 'nested Guild validator must exist before normalization');
   const validator = social.slice(start, end);
   assert.match(validator, /const invalid = \(field = 'unknown nested field'\)/);
   assert.match(validator, /guild\.members\[\] \(invalid member fields\)/);
   assert.match(validator, /guild\.challenge \(type\/target\/progress\/reward\/label\)/);
-  assert.match(validator, /guild\.combo\.\${field}/);
-  assert.match(validator, /guild\.tasks\[\]\.\${field}/);
-  assert.match(validator, /perkCaps/);
-  assert.match(validator, /guildXpRank: 20/);
-  assert.match(validator, /if \(value == null\) continue; \/\/ Legacy saves can omit core economy defaults/);
-  assert.match(validator, /if \(field === 'xp'\)/);
-  assert.match(validator, /throw invalid\('guild\.xp'\)/);
+  assert.match(validator, /guild\.combo\.\$\{field\}/);
+  assert.match(validator, /guild\.tasks\[\]\.\$\{field\}/);
+  assert.match(validator, /guild\.tokens/);
+  assert.doesNotMatch(validator, /guildXpReward|guildXpRank|taxRate|guild\.level|guild\.xp|guild\.boss|GuildBoss/);
+
   const normalizeStart = social.indexOf('function normalizeGuilds');
   const normalizeEnd = social.indexOf('function generatedFallbackTaskType', normalizeStart);
   assert.ok(normalizeStart >= 0 && normalizeEnd > normalizeStart);
   const normalize = social.slice(normalizeStart, normalizeEnd);
-  assert.match(normalize, /g\.level \?\?= 1/);
-  assert.match(normalize, /g\.xp = Math\.min\(Number\.MAX_SAFE_INTEGER/);
-  assert.match(social, /function addGuildExperience\(guild: Guild, requested: number\)/);
-  assert.equal((social.match(/addGuildExperience\(guild,/g) ?? []).length, 4);
-  assert.doesNotMatch(social, /guild\.xp\s*\+=/);
-  assert.match(normalize, /g\.tokens \?\?= 0/);
-  assert.match(validator, /Number\.isSafeInteger\(member\.contribution\)/);
-  assert.match(validator, /guild\.challenge != null/);
-  // Challenge is a legacy projection of task progress. Normalization clamps its progress.
-  assert.doesNotMatch(validator, /Number\(challenge\.progress\) > Number\(challenge\.target\)/);
-  assert.match(normalize, /progress: Math\.min\(firstTask\.target, firstTask\.progress\)/);
-  assert.match(validator, /guild\.createdAt != null/);
-  assert.match(validator, /Number\.isSafeInteger\(value\)/);
-  assert.match(validator, /guild\.tasks != null/);
-  assert.match(validator, /!isRecordValue\(task\)/);
-  assert.match(validator, /guild\.chat != null/);
-  assert.match(validator, /typeof message\.text !== 'string'/);
-  assert.match(validator, /guild\.bossWeek === weekKey\(\)/);
-  assert.match(validator, /Number\.isSafeInteger\(boss\.tier\)/);
-  assert.doesNotMatch(validator, /Number\(boss\.tier\) > 10/);
-  assert.match(normalize, /legacyBossTierAboveCap/);
-  assert.match(normalize, /g\.boss = createInitialGuildBoss\(Math\.max\(1, Math\.min\(10, g\.level \|\| 1\)\)\)/);
-  assert.match(validator, /boss\.currentHp > boss\.maxHp/);
+  assert.match(normalize, /delete \(g as any\)\.level/);
+  assert.match(normalize, /delete \(g as any\)\.xp/);
+  assert.match(normalize, /delete \(g as any\)\.taxRate/);
+  assert.match(normalize, /delete \(g as any\)\.boss/);
+  assert.match(normalize, /delete \(task as any\)\.guildXpReward/);
+  assert.match(normalize, /createInitialGuildTasks\(\)/);
+  assert.doesNotMatch(normalize, /g\.level|g\.xp|g\.boss|guildXpRank|guildXpReward/);
+
+  // Legacy nested fields are discarded, while memberships and task progress remain.
+  assert.match(social, /delete guild\.level/);
+  assert.match(social, /delete guild\.xp/);
+  assert.match(social, /delete guild\.taxRate/);
+  assert.match(social, /delete guild\.boss/);
+  assert.match(social, /delete task\.guildXpReward/);
+  assert.match(social, /function parseGuildList/);
   const parserStart = social.indexOf('function parseGuildList');
   const parserEnd = social.indexOf('function parseLeaderboardList', parserStart);
   assert.ok(parserStart >= 0 && parserEnd > parserStart);
@@ -973,14 +963,14 @@ test('roll rewards commit atomically with Guild and community progress', () => {
   assert.ok(rollStart >= 0 && rollEnd > rollStart);
   const roll = game.slice(rollStart, rollEnd);
   assert.match(roll, /prepareGuildRollEffects\(/);
-  assert.match(roll, /if \(guildEffects\.extraWrite\) \{\s*stageSaveExtraWrite\(s, \{\s*\.\.\.guildEffects\.extraWrite,\s*onConflict:/);
+  assert.match(roll, /if \(guildEffects\.extraWrite\) \{\s*stageSaveExtraWrite\(s, guildEffects\.extraWrite\)\s*\}/);
   assert.match(roll, /prepareCommunityRolls\(rollCount, pendingCommunityWrite\)/);
   assert.match(roll, /getCommunityEvent\(\)\.catch\(error =>/);
   assert.match(roll, /Read failed; rolling without the event bonus/);
   assert.match(roll, /Progress not recorded for this roll; preserving shared data/);
 
   assert.match(roll, /stageSaveExtraWrite\(s, \{/);
-  assert.doesNotMatch(roll, /await applyGuildTax\(/);
+  assert.doesNotMatch(roll, /taxedCoins|Guild Tax|applyGuildTax/);
   assert.doesNotMatch(roll, /await contribute\(/);
   assert.doesNotMatch(roll, /await addCommunityRolls\(/);
   assert.match(social, /export async function prepareGuildRollEffects/);
@@ -1556,8 +1546,9 @@ test('corrupt optional Guild roll projections do not cancel normal or Frenzy pla
   assert.ok(normalStart >= 0 && normalEnd > normalStart);
   const normal = game.slice(normalStart, normalEnd);
   assert.match(normal, /let guildEffects: Awaited<ReturnType<typeof prepareGuildRollEffects>>/);
-  assert.match(normal, /Could not prepare roll effects; skipping Guild tax\/contribution/);
-  assert.match(normal, /guildEffects = \{ taxedCoins: 0 \}/);
+  assert.match(normal, /Could not prepare task progress; the player roll will still complete/);
+  assert.match(normal, /guildEffects = \{\}/);
+  assert.doesNotMatch(normal, /taxedCoins|Guild Tax|guildXpRank/);
 
   const frenzyStart = game.indexOf('export async function claimOrbFrenzy');
   const frenzyEnd = game.indexOf('export async function postFrenzyThankYouComment', frenzyStart);
@@ -2662,6 +2653,8 @@ test('legacy guild contribution does not double-count each task update', () => {
   ]) {
     assert.equal(contribution.split(field).length - 1, 1, field + ' should be applied once');
   }
+  assert.doesNotMatch(contribution, /guild\.boss|guildXpReward|guildXpRank|guild\.level|guild\.xp|taxRate/);
+  assert.match(contribution, /guild\.tokens = capSafeGuildCounter\(\(guild\.tokens \?\? 0\) \+ reward\)/);
 });
 
 
