@@ -34,7 +34,9 @@ import {
   TIME_ENERGY_MAX_MS,
   CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS,
   CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS,
+  CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS,
   CELESTIAL_ALIGNMENT_DURATION_MS,
+  celestialAlignmentChoiceRemainingMs,
   type CelestialAlignmentChoice,
   type CelestialAlignmentInstance,
   normalizeCelestialAlignmentInstances,
@@ -6848,11 +6850,24 @@ export async function getCelestialAlignmentStatus(): Promise<{
   return withPlayerMutationLock(async () => {
     const s = await loadRaw();
     const hasMastery = (s.masterySkills?.celestialAlignment ?? 0) > 0;
-    const forcedPending = s.alignmentPendingForced === true && (s.alignmentPendingAt ?? 0) > 0;
     const now = Date.now();
+    let changed = false;
+
+    // A missed event is consumed after its 60-second chooser window. Do not
+    // leave a stale pending flag that can reopen the popup on every poll.
+    const pendingAt = Number(s.alignmentPendingAt ?? 0);
+    if (pendingAt > 0 && celestialAlignmentChoiceRemainingMs(pendingAt, now) <= 0) {
+      s.alignmentPendingAt = 0;
+      s.alignmentPendingForced = false;
+      s.alignmentNextAt = hasMastery ? nextCelestialAlignmentAt(now) : 0;
+      changed = true;
+    }
+    const forcedPending = s.alignmentPendingForced === true && (s.alignmentPendingAt ?? 0) > 0;
     const activeInstances = activeCelestialAlignmentInstances(s.alignmentActiveInstances, now);
-    let changed = activeInstances.length !== (s.alignmentActiveInstances ?? []).length;
-    if (changed) s.alignmentActiveInstances = activeInstances;
+    if (activeInstances.length !== (s.alignmentActiveInstances ?? []).length) {
+      s.alignmentActiveInstances = activeInstances;
+      changed = true;
+    }
     const latest = activeInstances[activeInstances.length - 1] ?? null;
 
     if (!hasMastery && !forcedPending) {
@@ -6912,6 +6927,13 @@ export async function chooseCelestialAlignment(
     const pendingAt = Number(s.alignmentPendingAt ?? 0);
     if (!(pendingAt > 0)) throw new Error('There is no Alignment choice waiting.');
     const now = Date.now();
+    if (celestialAlignmentChoiceRemainingMs(pendingAt, now) <= 0) {
+      s.alignmentPendingAt = 0;
+      s.alignmentPendingForced = false;
+      s.alignmentNextAt = hasMastery ? nextCelestialAlignmentAt(now) : 0;
+      await save(s);
+      throw new Error('The Alignment choice window expired. Wait for the next event.');
+    }
 
     const activeInstances = activeCelestialAlignmentInstances(s.alignmentActiveInstances, now);
     const instance: CelestialAlignmentInstance = {
