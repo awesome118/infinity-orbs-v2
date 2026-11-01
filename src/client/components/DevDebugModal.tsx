@@ -3018,7 +3018,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       }
 
       await step(
-        'Contract · Rarity ladder has 18 tiers',
+        'Contract · Rarity ladder has 27 tiers',
         async () => {
           if (CONTINUUM_TIERS.length !== 27) {
             throw new Error('Expected 27 rarity tiers, found ' + CONTINUUM_TIERS.length + '.');
