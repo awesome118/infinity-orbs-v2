@@ -1378,6 +1378,7 @@ export function createApp() {
       const validUpgradeIds: UpgradeId[] = [
         'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
         'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus',
+        'offlineFoundry', 'orbFingers', 'criticalDividend',
       ];
       if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100 ||
           !ids.every(id => typeof id === 'string' && validUpgradeIds.includes(id as UpgradeId))) {
