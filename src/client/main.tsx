@@ -1432,7 +1432,7 @@ function App() {
     const tick = () => {
       const now = Date.now();
       setAlignmentPromptNow(now);
-      if (now >= pendingAt + CELESTIAL_ALIGNMENT_PROMPT_DURATION_MS && !alignmentChoiceBusy) {
+      if (now >= pendingAt + CELESTIAL_ALIGNMENT_PROMPT_DURATION_MS) {
         alignmentDismissedPendingAtRef.current = Math.max(
           alignmentDismissedPendingAtRef.current,
           pendingAt,
@@ -2562,7 +2562,9 @@ function App() {
       setAlignmentPromptVisible(false);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Could not activate this Alignment.';
-      const expired = /Alignment choice window expired|no Alignment choice waiting/i.test(message);
+      const promptDeadline = (alignmentStatus?.pendingAt ?? 0) + CELESTIAL_ALIGNMENT_PROMPT_DURATION_MS;
+      const expired = /Alignment choice window expired|no Alignment choice waiting/i.test(message) ||
+        (promptDeadline > CELESTIAL_ALIGNMENT_PROMPT_DURATION_MS && Date.now() >= promptDeadline);
       if (expired) {
         setAlignmentChoiceError(null);
         setAlignmentPromptVisible(false);
