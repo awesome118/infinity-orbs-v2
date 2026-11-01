@@ -56,19 +56,40 @@ test('player lock admission failures are coded, and client retries only that res
   const main = source('src/client/main.tsx');
   const combat = source('src/client/components/CombatSection.tsx');
   assert.match(lock, /throw new Error\('PLAYER_MUTATION_QUEUED'\)/);
-  assert.match(app, /body\.error === 'PLAYER_MUTATION_QUEUED'/);
+  assert.match(app, /body\?\.error === 'PLAYER_MUTATION_QUEUED'/);
   assert.match(app, /code: 'PLAYER_MUTATION_QUEUED'/);
   assert.match(main, /errorCode === 'PLAYER_MUTATION_QUEUED'/);
   assert.match(combat, /error\.code==='PLAYER_MUTATION_QUEUED'/);
   assert.doesNotMatch(app, /The game is busy finishing another action\. Please retry\./);
 });
 
-test('post-handler conflicts are not mislabeled as replay-safe queue admission', () => {
+test('transient Redis and lock contention is normalized into one retryable queue response', () => {
   const app = source('src/server/app.ts');
   const main = source('src/client/main.tsx');
   const combat = source('src/client/components/CombatSection.tsx');
-  assert.match(app, /code: 'PLAYER_STATE_CONFLICT'/);
-  assert.match(app, /Your latest saved state changed while this action was processing/);
+  assert.match(app, /code: 'PLAYER_MUTATION_QUEUED'/);
+  assert.match(app, /PLAYER_STATE_CONFLICT/);
+  assert.match(app, /combat state changed repeatedly/i);
+  assert.match(app, /Your action is queued and will retry automatically/);
+  assert.doesNotMatch(app, /code: 'PLAYER_STATE_CONFLICT'/);
+  assert.doesNotMatch(app, /MUTATION_LOCK_PREFIX|acquireMutationLock/);
   assert.match(main, /retryableQueuedMutation =/);
   assert.match(combat, /error\.code==='PLAYER_MUTATION_QUEUED'/);
+});
+
+test('unbounded shared Guild JSON is stored through an atomic chunk manifest', () => {
+  const large = source('src/server/redis-large-values.ts');
+  const social = source('src/server/social.ts');
+  const game = source('src/server/game.ts');
+
+  assert.match(large, /LARGE_VALUE_CHUNK_CHARS = 64 \* 1024/);
+  assert.match(large, /LARGE_VALUE_INLINE_CHARS = 192 \* 1024/);
+  assert.match(large, /LARGE_VALUE_MAX_CHUNKS = 128/);
+  assert.match(large, /redis\.mGet\(keys\.slice\(offset, offset \+ 8\)\)/);
+  assert.match(large, /checksum\(joined\) !== manifest\.checksum/);
+  assert.match(social, /readRedisLargeValue\(GUILDS_KEY/);
+  assert.match(social, /createRedisLargeValueWritePlan\(GUILDS_KEY/);
+  assert.doesNotMatch(social, /txn\.set\(GUILDS_KEY, JSON\.stringify/);
+  assert.match(game, /write\.key === 'io:guilds'/);
+  assert.match(game, /extraWritePlans/);
 });
