@@ -1,5 +1,13 @@
 # Infinity Orbs Changelog
 
+### Mobile Gear Equip Controls (2.1.47)
+
+- Add an always-visible Equip button to each un-equipped Gear inventory item on mobile, removing the need to open the floating item inspector first.
+- Give phone-sized item cards a clear two-part layout with a large 76px inspection target and a 46px Equip action.
+- Keep the compact desktop Gear inventory and its existing inspector behavior unchanged.
+- Add mobile layout regression coverage for the inline Equip action and touch target.
+
+
 ### Alignment Timer, Sonar Controls, Time Energy Bursts, and Guild Restoration (2.1.46)
 
 - Put the 60:00 effect duration inside the Celestial Alignment chooser, remove the post-selection activation popup, and show a live remaining-time display on the Roll screen.

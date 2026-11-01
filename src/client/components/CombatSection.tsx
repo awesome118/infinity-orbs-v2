@@ -148,6 +148,20 @@ function GearCard({item,isEquipped,onEquip,onScrap,busy,currentFloor,scrapBonusP
         <span className="io-combat-gear-icon-power">{fmt(item.power)}</span>
         {isEquipped&&<span className="io-combat-gear-equipped">✓</span>}
       </button>
+      <div className="io-combat-gear-mobile-details">
+        <strong title={item.name}>{item.name}</strong>
+        <small>{grade.toUpperCase()} · {slotLabel(item.slot)} · {item.quality.toFixed(0)}%</small>
+        <button
+          type="button"
+          className={isEquipped ? 'io-combat-gear-mobile-equip is-equipped' : 'io-combat-gear-mobile-equip'}
+          data-testid="mobile-gear-equip"
+          aria-label={isEquipped ? item.name + ' is equipped' : 'Equip ' + item.name + ' in ' + slotLabel(item.slot)}
+          disabled={busy || isEquipped}
+          onClick={onEquip}
+        >
+          {isEquipped ? 'Equipped' : 'Equip'}
+        </button>
+      </div>
     </article>
     {showTooltip&&tooltipPoint&&createPortal(
       <div ref={tooltipRef} id={tooltipId} className="io-combat-gear-tooltip is-open"

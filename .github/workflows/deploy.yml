@@ -1,6 +1,6 @@
 name: Deploy Devvit
 
-# Explicit second follow-up deployment request (2026-11-01): rerun v2.1.46 after aligning the mobile Guild navigation regression to r/infinity_orbs_dev only.
+# Explicit user-requested mobile Gear equip fix (2026-11-01): deploy v2.1.47 to r/infinity_orbs_dev only.
 # Uses a 25,000-sample cap for up to 2.5 million effective Orbs in one weighted Frenzy roll pass.
 # Retains iterative rarity bounds; production review/install remains separate.
 # The version-specific push marker is reserved for explicitly requested development deployments.
@@ -30,7 +30,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.46]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.47]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -210,3 +210,4 @@ jobs:
 # Payment/refund paths retain the compact sharded Codex save format.
 
 # Explicit user request 2026-11-01: retry v2.1.46 after Guild type-check fixes; dev only.
+# Explicit user request 2026-11-01: deploy v2.1.47 mobile Gear inline Equip controls to r/infinity_orbs_dev only.

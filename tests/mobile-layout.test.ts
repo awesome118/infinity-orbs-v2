@@ -167,3 +167,21 @@ test('desktop layouts use natural page flow and readable wide upgrade cards', ()
   assert.ok(desktopPass.includes('grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)) !important;'));
   assert.doesNotMatch(upgrades, /Idle-game synergy:/);
 });
+
+
+test('mobile Gear inventory exposes a direct Equip button on every item', () => {
+  const combat = read('src/client/components/CombatSection.tsx');
+  const css = read('src/client/mobile-experience.css');
+
+  const cardStart = combat.indexOf("className={'io-combat-gear-icon-wrap");
+  const cardEnd = combat.indexOf('{showTooltip&&tooltipPoint&&createPortal(', cardStart);
+  assert.ok(cardStart >= 0 && cardEnd > cardStart, 'gear item card must be present');
+  const card = combat.slice(cardStart, cardEnd);
+  assert.ok(card.includes('data-testid="mobile-gear-equip"'));
+  assert.ok(card.includes('disabled={busy || isEquipped}'));
+  assert.ok(card.includes('onClick={onEquip}'));
+  assert.ok(card.includes("{isEquipped ? 'Equipped' : 'Equip'}"));
+  assert.ok(css.includes('.io-ui .io-combat-page-gear .io-combat-gear-mobile-equip'));
+  assert.ok(css.includes('min-height: 46px;'));
+  assert.ok(css.includes('touch-action: manipulation;'));
+});
