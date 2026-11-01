@@ -1,5 +1,17 @@
 # Infinity Orbs Changelog
 
+### Responsive Fullscreen UX and Immediate Server Dispatch (2.1.48)
+
+- Apply a 100-point responsive pass across Roll, Upgrades, Boosters, Altar, Mastery, Collection, Codex, Quests, Guilds/Social, Progress, Fight, Dungeons, Armory, Forge, Skill Gacha, Arena, Runes, dialogs, navigation, and fullscreen layouts.
+- Reduce desktop Gear item tiles to 52px, pack them into adaptive inventory columns, and compact equipped-item cards without shrinking phone inspection and Equip targets.
+- Replace rigid combat-screen rows with content-sized layouts; reorganize Fight, Dungeons, Armory, Forge, Skill Gacha, Arena, and Runes for wide, tablet, and narrow screens.
+- Add shared width, wrapping, safe-area, modal, tooltip, landscape, and fullscreen guards to address clipped content and horizontal overflow.
+- Use offscreen rendering for long inventories and upgrade catalogs, and honor reduced-motion preferences across the interface.
+- Remove the duplicate client mutation queue; all API writes now enter the server's per-player FIFO and lock before authoritative validation and persistence.
+- Remove client-side waits for an active combat beat before Gear, Forge, Skill, Auto Scrap, and Arena requests; the server sequences these writes behind the active beat.
+- Retry safe combat reads only. Never blindly replay a side-effecting request; reconcile uncertain responses from saved server state instead.
+- Add accessible pending feedback and focused regression tests for responsive layout, desktop Gear sizing, server-owned mutation ordering, and safe request recovery.
+
 ### Mobile Gear Equip Controls (2.1.47)
 
 - Add an always-visible Equip button to each un-equipped Gear inventory item on mobile, removing the need to open the floating item inspector first.

@@ -16,22 +16,60 @@ interface ApiResponse extends CombatSnapshot {
   forgeResult?:{item:CombatGear;cost:number;remainingScrap:number};
   arenaResult?:CombatArenaResult;
 }
+type CombatRequestError = Error & { status?: number; retryAfterMs?: number };
+const combatReadRetryDelay=(attempt:number,retryAfterMs=0)=>Math.min(1_500,Math.max(retryAfterMs,120*(2**attempt)));
 async function request<T>(url:string,method='GET',body?:unknown):Promise<T> {
-  const controller=new AbortController();
-  const timeout=window.setTimeout(()=>controller.abort(),12_000);
-  try {
-    const response=await fetch(url,{method,cache:'no-store',headers:{'Content-Type':'application/json'},signal:controller.signal,...(body===undefined?{}:{body:JSON.stringify(body)})});
-    const data=await response.json().catch(()=>null) as Record<string,unknown>|null;
-    if(!response.ok) {
-      const retryAfterMs=Number(data?.retryAfterMs);
-      throw new Error(Number.isFinite(retryAfterMs)?'ARENA_COOLDOWN:'+Math.max(0,retryAfterMs):typeof data?.error==='string'?data.error:'Combat request failed.');
-    }
-    if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('Combat returned an invalid response. Refresh and retry.');
-    return data as T;
-  } catch(error) {
-    if(error instanceof Error&&error.name==='AbortError')throw new Error('Combat request timed out. Refresh to confirm whether the action completed.');
-    throw error;
-  } finally { window.clearTimeout(timeout); }
+  const verb=String(method||'GET').toUpperCase();
+  const isRead=verb==='GET'||verb==='HEAD';
+  const maxAttempts=isRead?3:1;
+  for(let attempt=0;attempt<maxAttempts;attempt+=1) {
+    const controller=new AbortController();
+    const timeout=window.setTimeout(()=>controller.abort(),isRead?8_000:12_000);
+    try {
+      const response=await fetch(url,{
+        method:verb,cache:'no-store',headers:{'Content-Type':'application/json'},signal:controller.signal,
+        ...(body===undefined?{}:{body:JSON.stringify(body)}),
+      });
+      const responseText=await response.text();
+      let parsed:unknown=null;
+      if(responseText){try{parsed=JSON.parse(responseText);}catch{parsed=null;}}
+      const data=parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed as Record<string,unknown>:null;
+      if(!response.ok) {
+        const bodyDelay=Number(data?.retryAfterMs);
+        const headerDelay=Number(response.headers.get('Retry-After'))*1000;
+        const retryAfterMs=Number.isFinite(bodyDelay)&&bodyDelay>=0?bodyDelay:
+          Number.isFinite(headerDelay)&&headerDelay>0?headerDelay:0;
+        const message=retryAfterMs>0?'ARENA_COOLDOWN:'+retryAfterMs:
+          typeof data?.error==='string'?data.error:
+          typeof data?.message==='string'?data.message:
+          responseText.trim().slice(0,240)||'HTTP '+response.status+' '+response.statusText;
+        const error=new Error(message) as CombatRequestError;
+        error.status=response.status;error.retryAfterMs=retryAfterMs;
+        throw error;
+      }
+      if(!data)throw new Error('Combat returned an invalid response. Refresh and retry.');
+      return data as T;
+    } catch(error) {
+      const normalized=error instanceof Error?error:new Error(String(error));
+      const status=(normalized as CombatRequestError).status;
+      const retryableRead=isRead&&(status===undefined||status===408||status===429||status>=500);
+      if(retryableRead&&attempt<maxAttempts-1) {
+        await new Promise(resolve=>window.setTimeout(resolve,
+          combatReadRetryDelay(attempt,(normalized as CombatRequestError).retryAfterMs??0)));
+        continue;
+      }
+      if(normalized.name==='AbortError')throw new Error(isRead?
+        'Combat data timed out after safe retries. Try again.':
+        'Combat request timed out. Refresh to confirm whether the action completed.');
+      throw normalized;
+    } finally {window.clearTimeout(timeout);}
+  }
+  throw new Error('Combat data is temporarily unavailable.');
+}
+function hasUncertainCombatMutationOutcome(error:unknown):boolean {
+  if(!error||typeof error!=='object')return true;
+  const status=(error as CombatRequestError).status;
+  return status===undefined||status===408||status>=500;
 }
 const fmt=(n:number)=>Number.isFinite(n)&&n>0?Math.floor(n).toLocaleString():'0';
 const MAJOR_OFFENSE_IDS=new Set(['void-edge','starfall','executioner','emberwake','critical-mass','orb-conduit','bossbreaker','echo-fang','blood-moon','deep-roots','glass-cannon','fortune-engine','full-moon','unstable-singularity']);
@@ -334,8 +372,6 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     arenaLoadSequenceRef.current+=1;
     runtime.current.mutating=true;setMutating(true);setArenaResult(null);
     try{
-      const activeBeat=runtime.current.beatPromise;
-      if(activeBeat)await activeBeat;
       const result=await request<ApiResponse>('/api/combat/arena/challenge','POST',{opponentId});
       accept(result);if(result.arenaResult)setArenaResult(result.arenaResult);
       setArenaCooldownMs(90000);setError('');
@@ -344,6 +380,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       const message=e instanceof Error?e.message:'Arena challenge failed.';
       setError(message);
       if(message.startsWith('ARENA_COOLDOWN:')||message==='ARENA_OPPONENT_UNAVAILABLE'||message.toLowerCase().includes('challenged recently'))await loadArena();
+      else if(hasUncertainCombatMutationOutcome(e)){await loadArena();setError(message+' Arena data reloaded; the challenge was not replayed.');}
     }finally{runtime.current.mutating=false;setMutating(false);}
   };
   const beat=useCallback(async()=>{
@@ -405,7 +442,10 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
           if(current)stateRef.current={...current,lastAcceptedBeatAtMs:Math.max(0,Date.now()+Math.max(0,remaining)-combatBeatIntervalMsFor(current))};
         }
       } else if(message==='stale combat sequence'||message.includes('changed repeatedly'))await load();
-      else {
+      else if(hasUncertainCombatMutationOutcome(e)){
+        await load();setAuto(false);
+        setError(message+' Latest saved combat state reloaded; the beat was not replayed.');
+      } else {
         if(queuedAbilityForBeat&&runtime.current.pendingAbilityId===queuedAbilityForBeat&&runtime.current.pendingCommandVersion===queuedCommandVersion){
           runtime.current.pendingAbilityId=null;setQueuedSkillId(null);
         }
@@ -457,20 +497,20 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
     if(runtime.current.mutating)return;
     runtime.current.mutating=true;setMutating(true);
     try{
-      const activeBeat=runtime.current.beatPromise;
-      if(activeBeat)await activeBeat;
       await request<{settings:CombatAutoScrapSettings}>('/api/combat/auto-scrap','POST',{enabled,maxQuality});
       await load();setError('');
     }
-    catch(e){setError(e instanceof Error?e.message:'Could not update Auto Scrap.');}
+    catch(e){
+      const message=e instanceof Error?e.message:'Could not update Auto Scrap.';
+      if(hasUncertainCombatMutationOutcome(e))await load();
+      setError(hasUncertainCombatMutationOutcome(e)?message+' Latest saved state reloaded; the action was not replayed.':message);
+    }
     finally{runtime.current.mutating=false;setMutating(false);}
   };
   const mutate=async(url:string,body?:unknown)=>{
     if(runtime.current.mutating)return;
     runtime.current.mutating=true;setMutating(true);
     try {
-      const activeBeat=runtime.current.beatPromise;
-      if(activeBeat)await activeBeat;
       if(url==='/api/combat/forge')setForgeFeedback(null);
       const result=await request<ApiResponse>(url,'POST',body);
       accept(result);
@@ -484,7 +524,11 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       }
       setError('');
     }
-    catch(e){setError(e instanceof Error?e.message:'Combat action failed.');}
+    catch(e){
+      const message=e instanceof Error?e.message:'Combat action failed.';
+      if(hasUncertainCombatMutationOutcome(e))await load();
+      setError(hasUncertainCombatMutationOutcome(e)?message+' Latest saved state reloaded; the action was not replayed.':message);
+    }
     finally{runtime.current.mutating=false;setMutating(false);}
   };
   if(loading&&!state)return <section className={`io-combat-screen io-combat-page-${page}`}><div className="io-combat-loading">ENTERING THE UNDERCRYPT…</div></section>;
@@ -559,6 +603,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const beatProgressPct=Math.max(0,Math.min(100,Math.round((beatIntervalMs-beatCooldownMs)/beatIntervalMs*100)));
   return <section className={`io-combat-screen io-combat-page-${page}`}>
     <header className="io-combat-page-head"><div><span className="io-combat-eyebrow">INFINITY ORBS · COMBAT EXPANSION</span><h1>{page==='fight'?'Fight':page==='dungeons'?'Dungeons':page==='gear'?'Armory':page==='forge'?'The Forge':page==='skills'?'Skill Gacha':'Arena'}</h1><p>{page==='fight'?'Every accepted beat rolls an orb; its rarity scales base damage before crits and active abilities. Speed determines action frequency and the visible turn order previews who acts next.':page==='dungeons'?'Switching dungeons starts a new run, but your gear inventory and equipped loadout stay with you. Best depth is tracked separately for each dungeon.':page==='gear'?'Your inventory persists between runs and dungeons. The 30-item haul limit resets each run. Gear rolls a mix of offensive and defensive stats, plus rare Major Abilities.':page==='forge'?'Choose the exact quality of new gear. Quality costs rise exponentially, and a guaranteed 100.00% item costs 5,000,000 Scrap. Auto Scrap is configured here.':page==='skills'?'Rank the Gacha to unlock higher rarities, then equip up to three active abilities. Duplicate ranks grow without a hard cap.':'Challenge active delvers with your saved gear and equipped abilities. Ratings update after each duel.'}</p></div><div className="io-combat-run-stamp"><span>RUN {fmt(state.runId)}</span><strong>DEPTH {fmt(state.depth)}</strong><span>BEST {fmt(state.bestDepth)}</span></div></header>
+    {(processing||mutating)&&<div className="io-combat-pending" role="status" aria-live="polite">{mutating?'Sending action for server validation…':'Resolving combat beat…'}</div>}
     {error&&<div className="io-combat-error" role="alert">{error} <button className="io-combat-text-link" type="button" onClick={()=>{setError('');if(!state)void load();}}>{state ? "Dismiss" : "Retry loading"}</button></div>}
 
     {page==='fight'&&<>

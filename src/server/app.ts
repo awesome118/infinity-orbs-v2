@@ -478,23 +478,9 @@ export function createApp() {
   };
 
   app.use('/api', async (req, res, next) => {
-    // Combat uses a separate Redis key, but dungeon progression and orb rolls
-    // share this per-player FIFO so the two progression systems never overlap.
-    // Gear, gacha, training and Arena writes still use combat-state CAS retries.
-    if (
-      req.path === '/combat/equip' ||
-      req.path === '/combat/gear/scrap' ||
-      req.path === '/combat/forge' ||
-      req.path === '/combat/auto-scrap' ||
-      req.path === '/combat/skills/roll' ||
-      req.path === '/combat/skills/equip' ||
-      req.path === '/combat/skills/rank-up' ||
-      req.path === '/combat/strategy-guide/buy' ||
-      req.path === '/combat/upgrades/buy' ||
-      req.path === '/combat/arena/challenge' ||
-      req.path === '/combat/tactics'
-    ) return next();
-
+    // Every player mutation, including Gear, Skills, Forge, Arena and combat
+    // beats, enters this server-side FIFO. The client dispatches immediately;
+    // the shared lock sequences requests before authoritative state checks.
     const mutatesState = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
     const readsAndPersistsPlayerState =
       req.method === 'GET' &&

@@ -1690,3 +1690,273 @@
     opacity: .82;
   }
 }
+
+
+/* 2.1.48 · Adaptive experience pass
+   Fluid layouts, smaller desktop Armory, mobile-safe controls and fullscreen flow. */
+.io-ui { width:100%; max-width:100%; min-width:0; overflow-x:clip; --io-layout-gap:clamp(10px,1.2vw,18px); }
+html,body,#root { width:100%; max-width:100%; min-width:320px; overflow-x:clip; }
+.io-ui .app-main,
+.io-ui .app-main > :is(.roll-layout,.io-page-shell,.io-combat-screen,.io-runes-page) {
+  width:100%; max-width:100%; min-width:0; box-sizing:border-box;
+}
+.io-ui :is(.roll-layout,.roll-main,.roll-sidebar,.io-page-shell,.io-combat-screen,.io-runes-page),
+.io-ui :is(.grid,[class*="grid-cols-"],.flex,[class*="flex-"]) > * { min-width:0; }
+.io-ui :is(h1,h2,h3,h4,p,li,span,strong,small,label,summary,a,td,th) { overflow-wrap:anywhere; }
+.io-ui :is(button,[role="button"],summary,a,input,select,textarea) { max-width:100%; box-sizing:border-box; }
+.io-ui :is(input,select,textarea) { min-width:0; }
+.io-ui :is(img,video,canvas,svg) { max-width:100%; }
+.io-ui pre { max-width:100%; overflow-x:auto; overflow-wrap:anywhere; overscroll-behavior-x:contain; }
+.io-ui .io-page-shell > *,
+.io-ui .io-combat-screen > *,
+.io-ui .io-runes-page > * { min-width:0; max-width:100%; }
+.io-ui .io-page-shell :is(section,article,form,aside) { min-width:0; }
+.io-ui .io-page-hero,.io-ui .io-combat-page-head { min-width:0; max-width:100%; }
+.io-ui .io-page-hero :is(h1,h2,p),.io-ui .io-combat-page-head :is(h1,h2,p) { max-width:100%; overflow-wrap:anywhere; }
+.io-ui .io-modal-backdrop {
+  box-sizing:border-box; max-width:100vw; max-height:100dvh;
+  padding:clamp(10px,2vw,26px) calc(10px + env(safe-area-inset-left,0px))
+    calc(10px + env(safe-area-inset-bottom,0px)) calc(10px + env(safe-area-inset-right,0px));
+}
+.io-ui .io-modal-backdrop .io-modal-card {
+  box-sizing:border-box; width:min(100%,900px); max-width:min(100%,900px);
+  max-height:min(90dvh,860px); overflow-x:hidden; overflow-y:auto;
+  overscroll-behavior:contain; scrollbar-gutter:stable;
+}
+.io-ui :is(.io-combat-gear-tooltip,.io-combat-skill-tooltip) {
+  box-sizing:border-box; max-width:min(360px,calc(100vw - 24px));
+  max-height:min(78dvh,720px); overflow-x:hidden; overflow-y:auto;
+  overscroll-behavior:contain; overflow-wrap:anywhere;
+}
+.io-ui .io-combat-screen,
+.io-ui .io-combat-screen :is(.io-combat-panel,.io-combat-stage,.io-combat-orb-panel,
+  .io-combat-turn-tracker,.io-combat-tactic-row,.io-combat-columns,.io-combat-dungeon-hero,
+  .io-combat-rule-panel,.io-combat-forge-panel,.io-combat-auto-scrap-panel) {
+  min-width:0; max-width:100%;
+}
+.io-ui .io-combat-stage-top,.io-ui .io-combat-stage-foot,.io-ui .io-combat-panel-head,
+.io-ui .io-combat-page-head,.io-ui .io-combat-arena-toolbar,.io-ui .io-combat-arena-filters,
+.io-ui .io-combat-inventory-head { min-width:0; flex-wrap:wrap; }
+.io-ui .io-combat-stat-strip > *,
+.io-ui .io-combat-speed-row > *,
+.io-ui .io-combat-equipped-line > * { min-width:0; }
+.io-ui .io-combat-log,.io-ui .io-combat-loot-items,
+.io-ui .io-combat-equipped-line strong,.io-ui .io-combat-equipped-card > strong {
+  overflow-wrap:anywhere; word-break:normal;
+}
+.io-ui .io-combat-gear-grid,.io-ui .io-combat-equipped-grid,
+.io-ui .io-combat-skill-grid,.io-ui .io-combat-opponent-grid,
+.io-ui .io-runes-inventory { min-width:0; max-width:100%; align-content:start; }
+.io-ui :is(button,[role="button"],summary,input,select,textarea):focus-visible {
+  outline:2px solid rgba(116,221,202,.9); outline-offset:2px;
+}
+.io-ui :is(button,[role="button"],summary) { touch-action:manipulation; }
+.io-ui .io-page-shell .io-page-hero :is(h1,h2) { font-size:clamp(20px,2vw,29px); line-height:1.18; }
+.io-ui .io-page-upgrades .io-upgrade-card-grid {
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr)) !important;
+}
+.io-ui .io-page-upgrades .io-upgrade-card { min-width:0; min-height:0; height:auto; }
+.io-ui .io-page-social > [role="group"] { min-width:0; max-width:100%; flex-wrap:wrap; }
+
+@media (min-width:1180px) {
+  html,body,#root { height:auto !important; min-height:100%; overflow-x:clip; overflow-y:visible !important; }
+  .io-ui { height:auto !important; min-height:100dvh; overflow:visible !important; }
+  .io-ui .app-main {
+    width:100%; max-width:min(100%,1880px) !important;
+    padding:clamp(18px,2vw,30px) clamp(20px,2.6vw,48px) clamp(38px,4vw,64px) !important;
+    overflow:visible !important;
+  }
+  .io-ui .header-inner,.io-ui .nav-shell {
+    max-width:min(100%,1840px) !important; padding-inline:clamp(16px,2vw,36px);
+  }
+  .io-ui .app-main > .roll-layout {
+    grid-template-columns:minmax(0,1fr) minmax(300px,370px);
+    gap:clamp(18px,2vw,34px); align-items:start;
+  }
+  .io-ui .roll-main {
+    min-width:0; grid-template-columns:minmax(0,1.2fr) minmax(260px,.8fr);
+    gap:14px clamp(14px,1.4vw,22px);
+  }
+  .io-ui .roll-main > .roll-stage { min-width:0; min-height:clamp(380px,48vh,620px); max-height:680px; }
+  .io-ui .io-page-shell { gap:clamp(14px,1.3vw,22px) !important; }
+  .io-ui .io-page-shell > * { min-width:0; max-width:100%; }
+
+  /* Combat screens use content-driven page height rather than viewport-sized rows. */
+  .io-ui .io-combat-screen {
+    display:flex !important; flex-direction:column; align-items:stretch;
+    gap:var(--io-layout-gap); width:100%; max-width:min(100%,1760px) !important;
+    height:auto !important; min-height:calc(100dvh - 150px);
+    max-height:none !important; overflow:visible !important;
+  }
+  .io-ui .io-combat-screen > * {
+    width:100%; min-width:0; min-height:0 !important; max-height:none !important; margin:0 !important;
+  }
+  .io-ui .io-combat-screen .io-combat-panel { padding:clamp(12px,1vw,18px); overflow:visible !important; }
+  .io-ui .io-combat-screen .io-combat-stat-strip {
+    grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px;
+  }
+  .io-ui .io-combat-screen .io-combat-stat-strip > div { min-width:0; padding:9px 11px; }
+  .io-ui .io-combat-screen .io-combat-stat-strip strong { font-size:clamp(14px,1vw,18px); overflow-wrap:anywhere; }
+
+  /* Fight: stage and turn order alongside the Orb readout and tactic. */
+  .io-ui .io-combat-page-fight {
+    display:grid !important; grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);
+    grid-template-rows:none; grid-auto-rows:auto; align-items:start; align-content:start;
+    gap:12px; overflow:visible !important;
+  }
+  .io-ui .io-combat-page-fight > :is(.io-combat-page-head,.io-combat-error,.io-combat-control-row,
+    .io-combat-panel,.io-combat-stat-strip,.io-combat-columns,.io-combat-pending) {
+    grid-column:1/-1 !important; grid-row:auto !important;
+  }
+  .io-ui .io-combat-page-fight > :is(.io-combat-stage,.io-combat-turn-tracker) { grid-column:1 !important; grid-row:auto !important; }
+  .io-ui .io-combat-page-fight > :is(.io-combat-orb-panel,.io-combat-tactic-row) { grid-column:2 !important; grid-row:auto !important; }
+  .io-ui .io-combat-page-fight > * { min-height:0 !important; max-height:none !important; }
+  .io-ui .io-combat-page-fight .io-combat-stage { min-height:270px; height:auto !important; }
+  .io-ui .io-combat-page-fight .io-combat-columns {
+    display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; overflow:visible !important;
+  }
+  .io-ui .io-combat-page-fight .io-combat-columns > * { min-width:0; overflow:visible !important; }
+  .io-ui .io-combat-page-fight .io-combat-turn-sequence { max-width:100%; overflow-x:auto; overscroll-behavior-x:contain; }
+
+  .io-ui .io-combat-page-dungeons {
+    display:flex !important; flex-direction:column; gap:12px; overflow:visible !important;
+  }
+  .io-ui .io-combat-page-dungeons .io-combat-dungeon-choice-grid {
+    grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:10px;
+  }
+  .io-ui .io-combat-page-dungeons .io-combat-dungeon-choice { min-width:0; height:auto; min-height:0; }
+
+  /* Armory: 52px actual item tiles, dense 76px columns and compact equipped cards. */
+  .io-ui .io-combat-page-gear {
+    display:flex !important; flex-direction:column; gap:12px;
+    grid-template-columns:none !important; grid-template-rows:none !important; overflow:visible !important;
+  }
+  .io-ui .io-combat-page-gear > * { width:100%; min-width:0; grid-column:auto !important; grid-row:auto !important; }
+  .io-ui .io-combat-page-gear .io-combat-equipped-grid {
+    grid-template-columns:repeat(auto-fit,minmax(140px,1fr)) !important; gap:8px;
+  }
+  .io-ui .io-combat-page-gear .io-combat-equipped-card { min-width:0; min-height:0; padding:9px 10px; }
+  .io-ui .io-combat-page-gear .io-combat-equipped-card :is(p,small) { font-size:10px; line-height:1.35; overflow-wrap:anywhere; }
+  .io-ui .io-combat-page-gear .io-combat-gear-grid {
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(76px,1fr)) !important;
+    grid-auto-rows:min-content; align-items:start; align-content:start; gap:8px;
+    max-height:none !important; overflow:visible !important;
+  }
+  .io-ui .io-combat-page-gear .io-combat-gear-icon-wrap { width:100%; max-width:62px; min-width:0; margin-inline:auto; }
+  .io-ui .io-combat-page-gear .io-combat-gear-icon {
+    width:52px; min-width:52px; max-width:52px; height:52px; min-height:52px;
+    aspect-ratio:1; gap:2px; border-radius:9px;
+  }
+  .io-ui .io-combat-page-gear .io-combat-gear-icon > small { font-size:8px; }
+  .io-ui .io-combat-page-gear .io-combat-gear-icon-power { left:3px; bottom:2px; font-size:7px; }
+
+  .io-ui .io-combat-page-forge {
+    display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr));
+    grid-template-rows:none !important; grid-auto-rows:auto; align-items:start; gap:12px;
+    overflow:visible !important;
+  }
+  .io-ui .io-combat-page-forge > :is(.io-combat-page-head,.io-combat-error,.io-combat-stat-strip,
+    .io-combat-forge-success,.io-combat-pending) { grid-column:1/-1 !important; grid-row:auto !important; }
+  .io-ui .io-combat-page-forge > .io-combat-forge-panel { grid-column:1 !important; }
+  .io-ui .io-combat-page-forge > .io-combat-auto-scrap-panel { grid-column:2 !important; }
+  .io-ui .io-combat-page-skills { display:flex !important; flex-direction:column; gap:12px; overflow:visible !important; }
+  .io-ui .io-combat-page-skills .io-combat-skill-grid {
+    grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); grid-auto-rows:min-content; gap:10px;
+  }
+  .io-ui .io-combat-page-arena {
+    display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr));
+    grid-template-rows:none !important; grid-auto-rows:auto; align-items:start; gap:12px;
+    overflow:visible !important;
+  }
+  .io-ui .io-combat-page-arena > :is(.io-combat-page-head,.io-combat-error,.io-combat-arena-head,
+    .io-combat-arena-result,.io-combat-opponent-grid,.io-combat-stat-strip,.io-combat-pending) {
+    grid-column:1/-1 !important; grid-row:auto !important;
+  }
+  .io-ui .io-combat-page-arena > .io-combat-arena-toolbar { grid-column:1 !important; }
+  .io-ui .io-combat-page-arena > .io-combat-arena-filters { grid-column:2 !important; }
+  .io-ui .io-combat-page-arena .io-combat-opponent-grid {
+    grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); overflow:visible !important;
+  }
+  .io-ui .io-runes-page {
+    display:flex !important; flex-direction:column; gap:14px; height:auto !important;
+    min-height:0 !important; max-height:none !important; overflow:visible !important;
+  }
+  .io-ui .io-runes-page > * { min-width:0; max-width:100%; height:auto !important; min-height:0 !important; max-height:none !important; overflow:visible !important; }
+  .io-ui .io-runes-page .io-runes-inventory { grid-template-columns:repeat(auto-fill,minmax(68px,1fr)); gap:8px; }
+}
+
+@media (min-width:761px) and (max-width:1179px) {
+  .io-ui .app-main { width:100%; max-width:100%; padding-inline:clamp(14px,2.2vw,26px); }
+  .io-ui .io-combat-screen { display:flex !important; flex-direction:column; gap:12px; height:auto !important; min-height:0 !important; max-height:none !important; overflow:visible !important; }
+  .io-ui .io-combat-screen > * { width:100%; min-width:0; min-height:0 !important; max-height:none !important; }
+  .io-ui .io-combat-page-gear .io-combat-gear-grid { grid-template-columns:repeat(auto-fill,minmax(64px,1fr)) !important; gap:7px; }
+  .io-ui .io-combat-page-gear .io-combat-gear-icon { width:48px; min-width:48px; max-width:48px; height:48px; min-height:48px; }
+  .io-ui .io-combat-page-gear .io-combat-equipped-grid { grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); }
+  .io-ui .io-combat-page-fight { display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:none !important; }
+  .io-ui .io-combat-page-fight > :is(.io-combat-page-head,.io-combat-control-row,.io-combat-panel,.io-combat-stat-strip,.io-combat-columns,.io-combat-pending) { grid-column:1/-1 !important; grid-row:auto !important; }
+  .io-ui .io-combat-page-fight > :is(.io-combat-stage,.io-combat-turn-tracker) { grid-column:1 !important; }
+  .io-ui .io-combat-page-fight > :is(.io-combat-orb-panel,.io-combat-tactic-row) { grid-column:2 !important; }
+  .io-ui .io-combat-page-forge,.io-ui .io-combat-page-arena { display:flex !important; flex-direction:column; height:auto !important; max-height:none !important; overflow:visible !important; }
+}
+
+@media (max-width:760px) {
+  html,body,#root,.io-ui { width:100%; min-width:0; max-width:100%; overflow-x:clip; }
+  .io-ui .app-main { width:100%; min-width:0; padding-inline:clamp(10px,3vw,16px) !important; }
+  .io-ui .io-page-shell,.io-ui .io-combat-screen,.io-ui .io-runes-page,.io-ui .roll-layout {
+    width:100%; min-width:0; max-width:100%; height:auto !important; min-height:0 !important;
+    max-height:none !important; overflow:visible !important;
+  }
+  .io-ui .io-combat-screen { display:flex !important; flex-direction:column; gap:12px; }
+  .io-ui .io-combat-page-fight,.io-ui .io-combat-page-forge,.io-ui .io-combat-page-arena {
+    display:flex !important; flex-direction:column; gap:10px; height:auto !important; max-height:none !important; overflow:visible !important;
+  }
+  .io-ui .io-combat-page-fight > *,.io-ui .io-combat-page-forge > *,.io-ui .io-combat-page-arena > * {
+    width:100%; min-width:0; max-width:100%; grid-column:auto !important; grid-row:auto !important;
+  }
+  .io-ui .io-combat-screen .io-combat-stat-strip { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .io-ui .io-combat-page-dungeons .io-combat-dungeon-choice-grid { grid-template-columns:minmax(0,1fr); }
+  .io-ui .io-combat-page-gear .io-combat-equipped-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .io-ui .io-combat-page-gear .io-combat-gear-filters { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .io-ui .io-combat-page-gear .io-combat-gear-grid { max-height:none !important; overflow:visible !important; }
+  .io-ui .io-combat-page-fight .io-combat-columns { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }
+  .io-ui .io-combat-page-fight .io-combat-stage { height:auto !important; min-height:190px; max-height:none !important; }
+  .io-ui .io-combat-page-fight .io-combat-turn-sequence { max-width:100%; overflow-x:auto; overscroll-behavior-x:contain; }
+  .io-ui .io-combat-page-head { align-items:flex-start; flex-wrap:wrap; gap:8px; }
+  .io-ui .io-combat-page-head p,.io-ui .io-combat-page-head .io-combat-run-stamp { max-width:100%; }
+  .io-ui .io-combat-pending { min-height:38px; padding:8px 10px; font-size:10px; }
+  .io-ui .app-main :is(button,[role="button"],summary) { min-height:44px; }
+  .io-ui .io-modal-backdrop { padding-inline:8px; }
+  .io-ui .io-modal-backdrop .io-modal-card { width:100%; max-width:100%; max-height:min(90dvh,820px); }
+}
+@media (max-width:420px) {
+  .io-ui .io-combat-page-gear .io-combat-gear-filters { grid-template-columns:minmax(0,1fr); }
+  .io-ui .io-combat-page-fight .io-combat-stage { padding:9px; }
+  .io-ui .io-page-shell .io-page-hero { padding:11px !important; }
+  .io-ui .io-page-shell .io-page-hero :is(h1,h2) { font-size:clamp(19px,6vw,24px) !important; }
+}
+@media (max-width:359px) {
+  .io-ui .io-combat-screen .io-combat-stat-strip,
+  .io-ui .io-combat-page-gear .io-combat-equipped-grid { grid-template-columns:minmax(0,1fr); }
+}
+@media (max-width:980px) and (orientation:landscape) and (max-height:540px) {
+  .io-ui .app-header,.io-ui .app-nav { position:relative; }
+  .io-ui .app-main { padding-top:10px !important; padding-bottom:24px !important; }
+  .io-ui .io-modal-backdrop .io-modal-card { max-height:88dvh; }
+  .io-ui .io-combat-page-fight .io-combat-stage { min-height:150px; }
+}
+#root:fullscreen { width:100vw; height:100dvh; min-height:100dvh; max-width:100vw; overflow-x:clip; overflow-y:auto; }
+#root:fullscreen .io-ui { width:100%; min-height:100%; height:auto !important; overflow:visible !important; }
+#root:fullscreen .io-ui .app-main { width:100%; max-width:100%; padding-inline:clamp(12px,2vw,36px) !important; }
+@media (prefers-reduced-motion:reduce) {
+  .io-ui *,.io-ui *::before,.io-ui *::after {
+    scroll-behavior:auto !important; animation-duration:.01ms !important;
+    animation-iteration-count:1 !important; transition-duration:.01ms !important;
+  }
+}
+@supports (content-visibility:auto) {
+  .io-ui .io-combat-page-gear .io-combat-gear-grid > *,
+  .io-ui .io-combat-page-skills .io-combat-skill-grid > *,
+  .io-ui .io-combat-page-arena .io-combat-opponent-grid > *,
+  .io-ui .io-runes-inventory > *,
+  .io-ui .io-page-upgrades .io-upgrade-card { content-visibility:auto; contain-intrinsic-size:auto 92px; }
+}

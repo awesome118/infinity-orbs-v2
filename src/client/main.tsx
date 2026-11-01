@@ -731,7 +731,6 @@ function App() {
   const rollActionLockRef = useRef(false);
   const combatBeatActiveRef = useRef(false);
   const autoRollDisableForCombatRef = useRef(false);
-  const mutationQueueRef = useRef<Promise<void>>(Promise.resolve());
   const pendingMutationCountRef = useRef(0);
   const mutationResyncNeededRef = useRef(false);
   const upgradeBatchQueueRef = useRef<UpgradeId[]>([]);
@@ -839,10 +838,14 @@ function App() {
     [state],
   );
 
+  // Dispatch immediately; the server FIFO and Redis lock own mutation ordering.
+  // A duplicate client queue only adds latency before authoritative validation.
   const enqueueMutation = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
-    const run = mutationQueueRef.current.then(task, task);
-    mutationQueueRef.current = run.then(() => undefined, () => undefined);
-    return run;
+    try {
+      return task();
+    } catch (error) {
+      return Promise.reject(error);
+    }
   }, []);
 
   const ensureRollTicket = useCallback(async () => {
