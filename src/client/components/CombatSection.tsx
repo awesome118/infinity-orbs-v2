@@ -21,10 +21,10 @@ const combatReadRetryDelay=(attempt:number,retryAfterMs=0)=>Math.min(1_500,Math.
 async function request<T>(url:string,method='GET',body?:unknown):Promise<T> {
   const verb=String(method||'GET').toUpperCase();
   const isRead=verb==='GET'||verb==='HEAD';
-  const maxAttempts=isRead?3:10;
+  const maxAttempts=isRead?3:30;
   for(let attempt=0;attempt<maxAttempts;attempt+=1) {
     const controller=new AbortController();
-    const timeout=window.setTimeout(()=>controller.abort(),isRead?8_000:12_000);
+    const timeout=window.setTimeout(()=>controller.abort(),isRead?8_000:25_000);
     try {
       const response=await fetch(url,{
         method:verb,cache:'no-store',headers:{'Content-Type':'application/json'},signal:controller.signal,
@@ -48,7 +48,7 @@ async function request<T>(url:string,method='GET',body?:unknown):Promise<T> {
         error.code=typeof data?.code==='string'?data.code:undefined;
         error.retryAfterMs=retryAfterMs;
         if(!isRead&&error.code==='PLAYER_MUTATION_QUEUED'&&attempt<maxAttempts-1){
-          await new Promise(resolve=>window.setTimeout(resolve,Math.min(1_500,retryAfterMs||180*(attempt+1))));
+          await new Promise(resolve=>window.setTimeout(resolve,Math.min(2_000,retryAfterMs||180*(attempt+1))));
           continue;
         }
         throw error;
