@@ -2811,3 +2811,20 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 }
 .io-join-subreddit-kicker { display: flex; align-items: center; gap: 8px; color: #7de7ff; font-size: 10px; font-weight: 900; letter-spacing: .16em; text-transform: uppercase; }
 .io-join-subreddit-reward { margin-top: 18px; padding: 15px; border: 1px solid rgba(83, 196, 235, .28); border-radius: 16px; background: linear-gradient(140deg, rgba(13, 83, 112, .24), rgba(15, 23, 42, .68)); }
+
+
+/* Keep the main inline game card flush with the bottom edge of the Reddit preview.
+   This final override follows the mobile inline padding rules above. */
+#root.io-inline-post > .io-public:not(.io-public-compact) {
+  padding-bottom: 0 !important;
+  align-items: stretch;
+}
+#root.io-inline-post > .io-public:not(.io-public-compact) > .io-public-frame {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  margin-bottom: 0;
+}
+#root.io-inline-post .io-launch-card {
+  margin-bottom: 0;
+}

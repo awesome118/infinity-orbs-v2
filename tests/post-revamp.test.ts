@@ -19,6 +19,7 @@ test('production Redis MGet is bounded and adapts to Devvit response-size limits
 test('main and shared post CTAs use the animated high-visibility play button', () => {
   const splash = source('src/client/splash.tsx');
   const styles = source('src/client/post-revamp.css');
+  const shellStyles = source('src/client/styles.css');
 
   assert.ok(splash.includes('io-post-cta'));
   assert.ok(splash.includes('YOUR FIRST ORB IS ONE TAP AWAY'));
@@ -208,4 +209,6 @@ test('inline main-game Reddit post fills the preview height and anchors the card
   assert.match(styles, /@media \(max-height:\s*640px\)/);
   assert.match(styles, /height:\s*100% !important/);
   assert.match(styles, /min-height:\s*0 !important/);
+  assert.match(shellStyles, /#root\.io-inline-post > \.io-public:not\(\.io-public-compact\)[^}]*padding-bottom:\s*0 !important/s);
+  assert.match(shellStyles, /#root\.io-inline-post \.io-launch-card\s*\{[^}]*margin-bottom:\s*0/s);
 });
