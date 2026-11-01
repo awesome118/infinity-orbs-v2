@@ -3,7 +3,7 @@ name: Deploy Devvit
 # Explicit user-requested responsive, fullscreen and immediate-dispatch overhaul (2026-11-01): deploy v2.1.49 to r/infinity_orbs_dev only.
 # Uses a 25,000-sample cap for up to 2.5 million effective Orbs in one weighted Frenzy roll pass.
 # Retains iterative rarity bounds; production review/install remains separate.
-# The version-specific push marker is reserved for explicitly requested development deployments. Current marker: 2.1.50.
+# The version-specific push marker is reserved for explicitly requested development deployments. Current marker: 2.1.51.
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
 # Regression test asserts auth is checked before upload and the session ID reaches every Devvit CLI step.
@@ -30,7 +30,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.50]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.51]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -112,6 +112,8 @@ jobs:
           node --import tsx --test tests/upgrade-expansion.test.ts
           # Validate upgrade-batch rejection/rollback telemetry and route ID parity.
           node --import tsx --test tests/server-monitor.test.ts tests/upgrade-batch-route.test.ts
+          # Guard the roll-ticket lock boundary, admin seed plumbing, and deterministic preview stream.
+          node --import tsx --test tests/roll-ticket-seeds.test.ts
           npm run build
 
       # Check credentials before invoking any mutating Devvit command.
@@ -219,3 +221,5 @@ jobs:
 # Deployment retry audit: refreshed dev-only preflight after correcting the Guild recovery source-contract test.
 # Deployment retry audit: TypeScript fixes for Redis player projection and Alignment username normalization.
 # Deployment retry audit: player-save test now checks the narrowed Redis string input.
+
+# Explicit user-requested dev-only deployment of v2.1.51 on 2026-11-01: fix manual-roll deadlock and non-blocking ticket previews.
