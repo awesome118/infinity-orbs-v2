@@ -2249,6 +2249,42 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           return result;
         };
 
+        // The admin mechanic sweep pins the player to Level 4, where Guilds is
+        // intentionally locked. Upgrades remains available and still forces a
+        // RollSection unmount/remount so mount-only preferences are re-read.
+        const remountRollSection = async () => {
+          const navButtons = () => Array.from(document.querySelectorAll('button'));
+          const upgradesNav = navButtons().find(el =>
+            el.classList.contains('nav-tab') &&
+            el.getAttribute('aria-label') === 'Upgrades' &&
+            el.getClientRects().length > 0
+          ) as HTMLButtonElement | undefined;
+          if (!upgradesNav) throw new Error('Visible Upgrades navigation control was not found.');
+          upgradesNav.click();
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          const rollNav = navButtons().find(el =>
+            el.classList.contains('nav-tab') &&
+            el.getAttribute('aria-label') === 'Roll' &&
+            el.getClientRects().length > 0
+          ) as HTMLButtonElement | undefined;
+          if (!rollNav) throw new Error('Visible Roll navigation control was not found after the tab transition.');
+          rollNav.click();
+          await new Promise(resolve => setTimeout(resolve, 100));
+          await onRefresh();
+        };
+
+        // A force-roll test is about the requested Orb, not the account's
+        // multi-roll upgrades, level milestone balls, or critical effects.
+        const seedSingleBallForceRoll = async (highestRarity = 0) => {
+          await setMechanicState({}, {
+            highestRarity,
+            collection: {},
+            collectionValue: 0,
+            lifetimeCollectionValue: 0,
+          });
+        };
+
         const readMechanics = async (): Promise<any> => {
           const result = await request<any>('/api/dev/mechanics');
           return recordValue(result.mechanics);
@@ -2405,29 +2441,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             sound.setSonarThreshold(100);
             await onRefresh();
 
-            // Force a RollSection remount so its local Sonar toggle state follows
-            // the sound singleton reset even when the test began on the Roll tab.
-            const navButtons = () => Array.from(document.querySelectorAll('button'));
-            const socialNav = navButtons().find(el =>
-              el.classList.contains('nav-tab') &&
-              el.getAttribute('aria-label') === 'Guilds' &&
-              el.getClientRects().length > 0
-            ) as HTMLButtonElement | undefined;
-            if (!socialNav) throw new Error('Visible Guilds navigation control was not found.');
-            socialNav.click();
-            await new Promise(resolve => setTimeout(resolve, 100));
-
-            // React may replace nav nodes during the tab transition. Always find
-            // the current Roll button after switching, never click a stale node.
-            const rollNav = navButtons().find(el =>
-              el.classList.contains('nav-tab') &&
-              el.getAttribute('aria-label') === 'Roll' &&
-              el.getClientRects().length > 0
-            ) as HTMLButtonElement | undefined;
-            if (!rollNav) throw new Error('Visible Roll navigation control was not found after the tab transition.');
-            rollNav.click();
-            await new Promise(resolve => setTimeout(resolve, 100));
-            await onRefresh();
+            // Remount the RollSection so its mount-only preference follows the test fixture.
+            await remountRollSection();
 
             const deadline = Date.now() + 2_000;
             let button: HTMLButtonElement | undefined;
@@ -2481,27 +2496,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             try { localStorage.setItem('orbs_instant_reveal', 'false'); } catch {}
             await onRefresh();
 
-            // Reset local React state as well as localStorage. The component
-            // only reads this preference on mount, so a storage write alone
-            // does not reset a control already mounted in the Roll tab.
-            const navButtons = () => Array.from(document.querySelectorAll('button'));
-            const socialNav = navButtons().find(el =>
-              el.classList.contains('nav-tab') &&
-              el.getAttribute('aria-label') === 'Guilds' &&
-              el.getClientRects().length > 0
-            ) as HTMLButtonElement | undefined;
-            if (!socialNav) throw new Error('Visible Guilds navigation control was not found.');
-            socialNav.click();
-            await new Promise(resolve => setTimeout(resolve, 100));
-            const rollNav = navButtons().find(el =>
-              el.classList.contains('nav-tab') &&
-              el.getAttribute('aria-label') === 'Roll' &&
-              el.getClientRects().length > 0
-            ) as HTMLButtonElement | undefined;
-            if (!rollNav) throw new Error('Visible Roll navigation control was not found after the tab transition.');
-            rollNav.click();
-            await new Promise(resolve => setTimeout(resolve, 100));
-            await onRefresh();
+            // Reopen RollSection so the component re-reads the mount-only preference.
+            await remountRollSection();
 
             const findInstantButton = () => Array.from(document.querySelectorAll('button'))
               .find(el => (el as HTMLButtonElement).title === 'Skip roll animations for instant reveals') as HTMLButtonElement | undefined;
@@ -3089,8 +3085,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'API · Force-roll 1/1e15 Paradox',
         async () => {
-          await request('/api/dev/state', { xp: 32_000, highestRarity: 9 });
-          const result = await request<any>('/api/dev/force-roll', { rarity: 1_000_000_000_000_000, randomValue: 0 });
+          await seedSingleBallForceRoll(9);
+          const result = await request<any>('/api/dev/force-roll', { rarity: 1_000_000_000_000_000, randomValue: 0.999999 });
           if (result.orb?.tier !== 'Paradox') throw new Error('Expected Paradox, got ' + result.orb?.tier + '.');
           return result;
         },
@@ -3100,7 +3096,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'API · Force-roll 1/1e16 Beyond',
         async () => {
-          const result = await request<any>('/api/dev/force-roll', { rarity: 10_000_000_000_000_000, randomValue: 0 });
+          await seedSingleBallForceRoll(9);
+          const result = await request<any>('/api/dev/force-roll', { rarity: 10_000_000_000_000_000, randomValue: 0.999999 });
           if (result.orb?.tier !== 'Beyond') throw new Error('Expected Beyond, got ' + result.orb?.tier + '.');
           return result;
         },
@@ -3110,7 +3107,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'API · Force-roll 1/1e17 Endless',
         async () => {
-          const result = await request<any>('/api/dev/force-roll', { rarity: 100_000_000_000_000_000, randomValue: 0 });
+          await seedSingleBallForceRoll(9);
+          const result = await request<any>('/api/dev/force-roll', { rarity: 100_000_000_000_000_000, randomValue: 0.999999 });
           if (result.orb?.tier !== 'Endless') throw new Error('Expected Endless, got ' + result.orb?.tier + '.');
           return result;
         },
@@ -3442,7 +3440,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Force-roll honors deterministic rarity",
         async () => {
-          const result = await request<any>('/api/dev/force-roll', { rarity: 12345, randomValue: 0 });
+          await seedSingleBallForceRoll(0);
+          const result = await request<any>('/api/dev/force-roll', { rarity: 12345, randomValue: 0.999999 });
           if (Number(result.orb?.rarity) !== 12345) throw new Error('Force-roll returned 1/' + result.orb?.rarity + ' instead of 1/12345.');
           return result;
         },
@@ -3960,14 +3959,21 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       );
 
       await step(
-        "API · Share immediately records leaderboard eligibility",
+        "API · Share records eligibility in a fresh leaderboard snapshot",
         async () => {
-          const result = await request<any>('/api/leaderboard');
-          const entries = Array.isArray(result) ? result : result.entries;
+          // The normal leaderboard endpoint may serve its short-lived snapshot
+          // cache. The eligibility contract is checked against a fresh rebuild
+          // from the player's durable save after the share request has returned.
+          const result = await request<any>('/api/leaderboards?fresh=1');
+          const entries = Array.isArray(result?.collectionValue) ? result.collectionValue : [];
           const context = await request<any>('/api/dev/context');
-          const match = entries.find((entry: any) => String(entry.username).toLowerCase() === String(context.username).toLowerCase());
-          if (!match) throw new Error('Current player was not eligible immediately after sharing.');
-          if (!Number.isFinite(Number(match.sharedAt))) throw new Error('Leaderboard share timestamp was missing.');
+          const match = entries.find((entry: any) =>
+            String(entry.username).toLowerCase() === String(context.username).toLowerCase()
+          );
+          if (!match) throw new Error('Current player was not eligible in the fresh leaderboard snapshot after sharing.');
+          if (!Number.isFinite(Number(match.sharedAt)) || Number(match.sharedAt) <= 0) {
+            throw new Error('Leaderboard share timestamp was missing or invalid.');
+          }
           return match;
         },
         entry => 'leaderboard share recorded at ' + entry.sharedAt,
