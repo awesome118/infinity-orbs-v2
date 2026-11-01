@@ -30,7 +30,8 @@ test('legacy inline saves remain readable and the next oversized save migrates s
   assert.match(game, /if \(storedValue == null\) return null/);
   assert.match(game, /if \(!manifest\) return storedValue/);
   assert.match(game, /createPlayerSaveWritePlan\(userId, serializePlayerStateForRedis\(nextState\)\)/);
-  assert.match(game, /playerSaveProjection\(saves\[index\]\)/);
+  assert.match(game, /const storedSave = saves\[index\]/);
+  assert.match(game, /playerSaveProjection\(typeof storedSave === 'string' \? storedSave : null\)/);
 });
 
 test('payment grants and refunds also use the chunked save protocol', () => {
