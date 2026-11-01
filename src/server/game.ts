@@ -355,7 +355,7 @@ type PlayerSaveManifest = {
     totalRolls?: number; highestRarity?: number; coins?: number; shards?: number;
   };
 };
-type PlayerSaveWritePlan = { storedValue: string; chunkKeys: string[] };
+export type PlayerSaveWritePlan = { storedValue: string; chunkKeys: string[] };
 
 function playerSaveChecksum(value: string): string {
   let hash = 0x811c9dc5;
@@ -449,11 +449,11 @@ async function createPlayerSaveWritePlan(userId: string, serialized: string): Pr
   };
   return { storedValue: JSON.stringify(manifest), chunkKeys };
 }
-async function discardPlayerSaveWritePlan(plan: PlayerSaveWritePlan): Promise<void> {
+export async function discardPlayerSaveWritePlan(plan: PlayerSaveWritePlan): Promise<void> {
   for (const keyName of plan.chunkKeys) await redis.del(keyName).catch(() => undefined);
 }
 const PLAYER_SAVE_RETIRED_CHUNK_TTL_MS = 10 * 60_000;
-async function cleanupPreviousPlayerSave(userId: string, previousRaw: string | null | undefined): Promise<void> {
+export async function cleanupPreviousPlayerSave(userId: string, previousRaw: string | null | undefined): Promise<void> {
   const previous = parsePlayerSaveManifest(previousRaw);
   if (!previous) return;
   const expiration = new Date(Date.now() + PLAYER_SAVE_RETIRED_CHUNK_TTL_MS);
@@ -467,6 +467,14 @@ async function cleanupPreviousPlayerSave(userId: string, previousRaw: string | n
     }
   }
 }
+export async function readPlayerSaveForUser(userId: string, storedValue: string | null | undefined): Promise<string | null> {
+  return readStoredPlayerSave(userId, storedValue);
+}
+
+export async function createPlayerSaveWritePlanForUser(userId: string, state: PlayerState): Promise<PlayerSaveWritePlan> {
+  return createPlayerSaveWritePlan(userId, serializePlayerStateForRedis(state));
+}
+
 function playerSaveProjection(raw: string | null | undefined): Partial<PlayerState> | null {
   if (raw == null) return null;
   const manifest = parsePlayerSaveManifest(raw);

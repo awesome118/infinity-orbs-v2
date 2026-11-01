@@ -29,6 +29,7 @@ test('Alignment chooser is a 60-second offer; each selected effect still lasts t
   assert.ok(shared.includes('CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS = 60 * 1_000'));
   assert.ok(main.includes('data-testid="celestial-alignment-choice-timer"'));
   assert.ok(main.includes('window.setInterval(tick, 250)'));
+  assert.ok(main.includes('const alignmentPromptCountdown = `${alignmentPromptSecondsLeft}s`;'));
   assert.ok(main.includes('alignmentDismissedPendingAtRef.current = Math.max('));
   assert.ok(main.includes('setAlignmentPromptVisible(false)'));
   assert.ok(main.includes('data-testid="celestial-alignment-duration"'));

@@ -2586,10 +2586,7 @@ function App() {
       alignmentStatus.pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS - alignmentPromptNow
     ) / 1_000))
     : 0;
-  const alignmentPromptCountdown =
-    String(Math.floor(alignmentPromptSecondsLeft / 60)).padStart(2, '0') +
-    ':' +
-    String(alignmentPromptSecondsLeft % 60).padStart(2, '0');
+  const alignmentPromptCountdown = `${alignmentPromptSecondsLeft}s`;
 
   // Altar Sacrifice
   const handleSacrifice = async (coins: number, shards: number): Promise<PlayerState> => {

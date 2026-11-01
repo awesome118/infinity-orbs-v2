@@ -39,8 +39,18 @@ import {
   getRollTicket,
   getCelestialAlignmentChoiceStats,
   forceCelestialAlignmentPromptForCurrentUser,
+  readPlayerSaveForUser,
+  createPlayerSaveWritePlanForUser,
+  discardPlayerSaveWritePlan,
+  cleanupPreviousPlayerSave,
 } from './game.js';
 import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
+import {
+  createRedisLargeValueWritePlan,
+  readRedisLargeValue,
+  retireRedisLargeValue,
+  discardRedisLargeValueWritePlan,
+} from './redis-large-values.js';
 import { adminCombatLabAction, getCombatSnapshot, getCombatSnapshotForUser, performCombatBeat } from './combat.js';
 import { COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatBossLuckBonus, combatGearRarityOdds, combatGearStatBudgetMultiplier, combatOrbDamageMultiplier, combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityStrengthPct, combatRuneScaledValue, combatStatsFor, combatTotalBossesBeaten, getEnemyForDungeonDepth, type CombatRuneBonuses, type CombatState } from '../shared/combat.js';
 import { context, redis, reddit } from './devvit-mock.js';
@@ -596,19 +606,26 @@ async function getOrCreateGlobalBoosterCreditGrantManifest(
 ): Promise<GlobalBoosterCreditGrantManifest> {
   const manifestKey = GLOBAL_BOOSTER_CREDIT_BATCH_PREFIX + encodeURIComponent(operationId);
   for (let attempt = 0; attempt < 6; attempt += 1) {
-    const existing = await redis.get(manifestKey);
+    const existingStored = await redis.get(manifestKey);
+    const existing = await readRedisLargeValue(manifestKey, existingStored);
     if (existing != null) {
       return parseGlobalBoosterCreditGrantManifest(existing, operationId, scope, amount);
     }
 
     const txn = await redis.watch(manifestKey);
-    const watched = await redis.get(manifestKey);
-    if (watched != null) {
-      await txn.unwatch();
-      return parseGlobalBoosterCreditGrantManifest(watched, operationId, scope, amount);
-    }
+    let transactionClosed = false;
+    let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+    let writeCommitted = false;
+    try {
+      const watchedStored = await redis.get(manifestKey);
+      const watched = await readRedisLargeValue(manifestKey, watchedStored);
+      if (watched != null) {
+        await txn.unwatch();
+        transactionClosed = true;
+        return parseGlobalBoosterCreditGrantManifest(watched, operationId, scope, amount);
+      }
 
-    const players = await listRegisteredPlayerIds();
+      const players = await listRegisteredPlayerIds();
     const selectedPlayers = scope === 'online'
       ? players.filter(player => player.active)
       : players;
@@ -624,9 +641,20 @@ async function getOrCreateGlobalBoosterCreditGrantManifest(
       })).filter(player => player.userId.length > 0 && player.username.length > 0),
     };
 
-    await txn.multi();
-    await txn.set(manifestKey, JSON.stringify(manifest));
-    if (await txn.exec() !== null) return manifest;
+      writePlan = await createRedisLargeValueWritePlan(manifestKey, JSON.stringify(manifest));
+      await txn.multi();
+      await txn.set(manifestKey, writePlan.storedValue);
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) {
+        writeCommitted = true;
+        await retireRedisLargeValue(manifestKey, watchedStored);
+        return manifest;
+      }
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+      if (writePlan && !writeCommitted) await discardRedisLargeValueWritePlan(writePlan);
+    }
   }
   throw new Error('Could not persist the Global Booster batch recipient manifest. Retry the same operation ID.');
 }
@@ -653,7 +681,8 @@ async function grantGlobalBoosterCreditsToUser(
       const txn = await redis.watch(playerKey, generationKey, receiptKey);
       const generationRaw = await redis.get(generationKey);
       const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
-      const raw = await redis.get(playerKey);
+      const storedRaw = await redis.get(playerKey);
+      const raw = await readPlayerSaveForUser(id, storedRaw);
       const rawReceipt = await redis.get(receiptKey);
 
       if (rawReceipt != null) {
@@ -731,11 +760,27 @@ async function grantGlobalBoosterCreditsToUser(
       state.stateRevision = currentRevision + 1;
 
       const receipt = JSON.stringify({ amount: safeAmount, before, after, createdAt: Date.now() });
-      await txn.multi();
-      await txn.set(playerKey, JSON.stringify(state));
-      await txn.set(receiptKey, receipt);
-      if (await txn.exec() !== null) {
-        return { userId: id, username: safeUsername, before, after };
+      let writePlan: Awaited<ReturnType<typeof createPlayerSaveWritePlanForUser>> | null = null;
+      let transactionClosed = false;
+      let writeCommitted = false;
+      try {
+        writePlan = await createPlayerSaveWritePlanForUser(
+          id,
+          state as unknown as import('../shared/game.js').PlayerState,
+        );
+        await txn.multi();
+        await txn.set(playerKey, writePlan.storedValue);
+        await txn.set(receiptKey, receipt);
+        const committed = await txn.exec();
+        transactionClosed = true;
+        if (committed !== null) {
+          writeCommitted = true;
+          await cleanupPreviousPlayerSave(id, storedRaw);
+          return { userId: id, username: safeUsername, before, after };
+        }
+      } finally {
+        if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+        if (writePlan && !writeCommitted) await discardPlayerSaveWritePlan(writePlan);
       }
     }
 
@@ -780,15 +825,17 @@ async function removeLeaderboardEntry(username: string): Promise<void> {
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const txn = await redis.watch(leaderboardKey);
-    const raw = await redis.get(leaderboardKey);
-    if (raw == null) {
+    const storedRaw = await redis.get(leaderboardKey);
+    if (storedRaw == null) {
       await txn.unwatch();
       return;
     }
 
+    let raw: string | null;
     let parsed: unknown;
     try {
-      parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      raw = await readRedisLargeValue(leaderboardKey, storedRaw);
+      parsed = raw == null ? null : JSON.parse(raw);
     } catch {
       await txn.unwatch();
       throw new Error('Leaderboard data is corrupted; refusing to replace it during account cleanup.');
@@ -808,9 +855,24 @@ async function removeLeaderboardEntry(username: string): Promise<void> {
       return;
     }
 
-    await txn.multi();
-    await txn.set(leaderboardKey, JSON.stringify(next));
-    if (await txn.exec() !== null) return;
+    let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+    let transactionClosed = false;
+    let writeCommitted = false;
+    try {
+      writePlan = await createRedisLargeValueWritePlan(leaderboardKey, JSON.stringify(next));
+      await txn.multi();
+      await txn.set(leaderboardKey, writePlan.storedValue);
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) {
+        writeCommitted = true;
+        await retireRedisLargeValue(leaderboardKey, storedRaw);
+        return;
+      }
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+      if (writePlan && !writeCommitted) await discardRedisLargeValueWritePlan(writePlan);
+    }
   }
 
   throw new Error('Leaderboard changed too frequently during account cleanup. Please retry.');

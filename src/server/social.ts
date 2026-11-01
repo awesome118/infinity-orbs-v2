@@ -2,6 +2,12 @@ import { context, redis, reddit } from './devvit-mock.js';
 import { readInBatches } from './redis-batches.js';
 import { combatHighestDepthReached } from '../shared/combat.js';
 import { withPlayerMutationLockFor } from './player-lock.js';
+import {
+  readPlayerSaveForUser,
+  createPlayerSaveWritePlanForUser,
+  discardPlayerSaveWritePlan,
+  cleanupPreviousPlayerSave,
+} from './game.js';
 import { createRedisLargeValueWritePlan, readRedisLargeValue, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
 import type {
   Guild,
@@ -2588,7 +2594,8 @@ async function buildLeaderboardsSnapshot(): Promise<LeaderboardBoards> {
     ? rawRegistry as Record<string, string>
     : {};
 
-  const legacyRaw = await redis.get(key('leaderboard'));
+  const legacyStoredRaw = await redis.get(key('leaderboard'));
+  const legacyRaw = await readRedisLargeValue(key('leaderboard'), legacyStoredRaw);
   // The legacy projection is retained as a read-only recovery index. If registry
   // fields are missing, its user IDs let us rebuild the visible boards from the
   // durable player saves instead of returning empty leaderboards.
@@ -2723,7 +2730,8 @@ export async function recordLeaderboard(s: PlayerState) {
   const incomingRevision = Math.max(0, Math.floor(Number(s.stateRevision ?? 0)) || 0);
   // Projection tasks run asynchronously. Prefer the newest durable save when
   // an older callback resumes after a later mutation has already committed.
-  const persistedRaw = await redis.get(`player:${userId}`);
+  const persistedStoredRaw = await redis.get(`player:${userId}`);
+  const persistedRaw = await readPlayerSaveForUser(userId, persistedStoredRaw);
   const persisted = parseStoredJson<Partial<PlayerState>>(persistedRaw);
   const persistedRevision = Number(persisted?.stateRevision);
   const source: PlayerState =
@@ -2751,26 +2759,43 @@ export async function recordLeaderboard(s: PlayerState) {
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(leaderboardKey);
-    const raw = await redis.get(leaderboardKey);
-    const board: LeaderboardEntry[] = parseLeaderboardList(raw);
-    const existing = board.find(existing =>
-      next.userId
-        ? existing.userId === next.userId || (!existing.userId && existing.username === name)
-        : existing.username === name,
-    );
-    if (existing) {
-      const existingRevision = Number(existing.stateRevision);
-      // WATCH protects list writes, not source freshness. An earlier async
-      // projection can finish later, so never replace a newer saved revision.
-      if (!Number.isSafeInteger(existingRevision) || existingRevision <= next.stateRevision!) {
-        Object.assign(existing, next);
+    let transactionClosed = false;
+    let writeCommitted = false;
+    let storedRaw: string | null = null;
+    let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+    try {
+      storedRaw = await redis.get(leaderboardKey);
+      const raw = await readRedisLargeValue(leaderboardKey, storedRaw);
+      const board: LeaderboardEntry[] = parseLeaderboardList(raw);
+      const existing = board.find(existing =>
+        next.userId
+          ? existing.userId === next.userId || (!existing.userId && existing.username === name)
+          : existing.username === name,
+      );
+      if (existing) {
+        const existingRevision = Number(existing.stateRevision);
+        // WATCH protects list writes, not source freshness. An earlier async
+        // projection can finish later, so never replace a newer saved revision.
+        if (!Number.isSafeInteger(existingRevision) || existingRevision <= next.stateRevision!) {
+          Object.assign(existing, next);
+        }
+      } else board.push(next);
+      board.sort((a, b) => b.value - a.value);
+      const serialized = JSON.stringify(board.slice(0, 5000));
+      writePlan = await createRedisLargeValueWritePlan(leaderboardKey, serialized);
+      await txn.multi();
+      await txn.set(leaderboardKey, writePlan.storedValue);
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) {
+        writeCommitted = true;
+        await retireRedisLargeValue(leaderboardKey, storedRaw);
+        return;
       }
-    } else board.push(next);
-    board.sort((a, b) => b.value - a.value);
-    await txn.multi();
-    await txn.set(leaderboardKey, JSON.stringify(board.slice(0, 5000)));
-    const committed = await txn.exec();
-    if (committed !== null) return;
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+      if (writePlan && !writeCommitted) await discardRedisLargeValueWritePlan(writePlan);
+    }
   }
   throw new Error('Leaderboard changed while recording the result. Please retry.');
 }
@@ -2944,7 +2969,8 @@ export async function claimAchievement(_s: PlayerState, id: string) {
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(playerKey, generationKey);
-    const raw = await redis.get(playerKey);
+    const storedRaw = await redis.get(playerKey);
+    const raw = await readPlayerSaveForUser(user(), storedRaw);
     const generationRaw = await redis.get(generationKey);
     const state = parseStoredJson<PlayerState>(raw);
     const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
@@ -2998,11 +3024,23 @@ export async function claimAchievement(_s: PlayerState, id: string) {
     state.lifetimeCoins = addCoinAmount(lifetimeCoins, rewardCoins);
     const rewardShards = grantFreeShards(state, achievement.rewardShards ?? 0);
 
-    await txn.multi();
-    await txn.set(playerKey, JSON.stringify(state));
-    const committed = await txn.exec();
-    if (committed !== null) {
-      return { state, rewardCoins, rewardShards };
+    let writePlan: Awaited<ReturnType<typeof createPlayerSaveWritePlanForUser>> | null = null;
+    let transactionClosed = false;
+    let writeCommitted = false;
+    try {
+      writePlan = await createPlayerSaveWritePlanForUser(user(), state);
+      await txn.multi();
+      await txn.set(playerKey, writePlan.storedValue);
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) {
+        writeCommitted = true;
+        await cleanupPreviousPlayerSave(user(), storedRaw);
+        return { state, rewardCoins, rewardShards };
+      }
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+      if (writePlan && !writeCommitted) await discardPlayerSaveWritePlan(writePlan);
     }
   }
 

@@ -39,6 +39,42 @@ test('payment grants and refunds also use the chunked save protocol', () => {
   assert.match(game, /await cleanupPreviousPlayerSave\(userId, storedRaw\)/);
 });
 
+test('achievement claims use the canonical chunked player-save codec', () => {
+  const social = source('src/server/social.ts');
+  const game = source('src/server/game.ts');
+  assert.match(social, /readPlayerSaveForUser\(user\(\), storedRaw\)/);
+  assert.match(social, /createPlayerSaveWritePlanForUser\(user\(\), state\)/);
+  assert.match(social, /cleanupPreviousPlayerSave\(user\(\), storedRaw\)/);
+  assert.doesNotMatch(social, /txn\.set\(playerKey, JSON\.stringify\(state\)\)/);
+  assert.match(game, /export async function readPlayerSaveForUser/);
+  assert.match(game, /export async function createPlayerSaveWritePlanForUser/);
+});
+
+test('admin Global Booster grants use chunked saves and preserve idempotency receipts', () => {
+  const debug = source('src/server/debug.ts');
+  assert.match(debug, /readPlayerSaveForUser\(id, storedRaw\)/);
+  assert.match(debug, /createPlayerSaveWritePlanForUser/);
+  assert.match(debug, /txn\.set\(playerKey, writePlan\.storedValue\)/);
+  assert.match(debug, /txn\.set\(receiptKey, receipt\)/);
+  assert.match(debug, /cleanupPreviousPlayerSave\(id, storedRaw\)/);
+  assert.doesNotMatch(debug, /txn\.set\(playerKey, JSON\.stringify\(state\)\)/);
+});
+
+test('legacy leaderboard and admin batch recipient manifests use chunked Redis records', () => {
+  const social = source('src/server/social.ts');
+  const debug = source('src/server/debug.ts');
+  const large = source('src/server/redis-large-values.ts');
+  assert.match(social, /readRedisLargeValue\(leaderboardKey, storedRaw\)/);
+  assert.match(social, /createRedisLargeValueWritePlan\(leaderboardKey, serialized\)/);
+  assert.match(social, /retireRedisLargeValue\(leaderboardKey, storedRaw\)/);
+  assert.match(debug, /readRedisLargeValue\(leaderboardKey, storedRaw\)/);
+  assert.match(debug, /createRedisLargeValueWritePlan\(leaderboardKey/);
+  assert.match(debug, /readRedisLargeValue\(manifestKey, existingStored\)/);
+  assert.match(debug, /createRedisLargeValueWritePlan\(manifestKey, JSON\.stringify\(manifest\)\)/);
+  assert.match(debug, /retireRedisLargeValue\(manifestKey, watchedStored\)/);
+  assert.match(large, /LARGE_VALUE_CHUNK_CHARS = 64 \* 1024/);
+});
+
 test('diagnostic and activation logs are bounded by count and serialized size', () => {
   const game = source('src/server/game.ts');
   for (const limit of [
