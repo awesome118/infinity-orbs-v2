@@ -6528,6 +6528,77 @@ export async function getCelestialAlignmentChoiceStats(): Promise<CelestialAlign
   return parseCelestialAlignmentChoiceStats(await redis.get(CELESTIAL_ALIGNMENT_CHOICE_STATS_KEY));
 }
 
+/**
+ * Shared Alignment analytics are a projection of an already-saved player choice.
+ * Retry WATCH conflicts against the newest value and make the write idempotent
+ * for this event. A stats failure is logged, never returned as a failed choice.
+ */
+async function recordCelestialAlignmentChoiceStats(
+  choice: CelestialAlignmentChoice,
+  username: string,
+  chosenAt: number,
+  adminTest: boolean,
+): Promise<void> {
+  const normalizedUsername = username.replace(/^u\//i, '').slice(0, 32) || 'Redditor';
+  const maxAttempts = 16;
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    let txn: Awaited<ReturnType<typeof redis.watch>> | null = null;
+    let transactionClosed = false;
+    try {
+      txn = await redis.watch(CELESTIAL_ALIGNMENT_CHOICE_STATS_KEY);
+      const previousRaw = await redis.get(CELESTIAL_ALIGNMENT_CHOICE_STATS_KEY);
+      const previous = parseCelestialAlignmentChoiceStats(previousRaw);
+
+      // Protect against an uncertain EXEC result being retried after it committed.
+      const alreadyRecorded = previous.recent.some(entry =>
+        entry.username.toLowerCase() === normalizedUsername.toLowerCase() &&
+        entry.choice === choice &&
+        entry.chosenAt === chosenAt &&
+        entry.adminTest === adminTest
+      );
+      if (alreadyRecorded) {
+        await txn.unwatch();
+        transactionClosed = true;
+        return;
+      }
+
+      const next: CelestialAlignmentChoiceStatsRecord = {
+        total: previous.total + 1,
+        choices: { ...previous.choices, [choice]: previous.choices[choice] + 1 },
+        recent: [
+          { username: normalizedUsername, choice, chosenAt, adminTest },
+          ...previous.recent.filter(entry =>
+            !(entry.username.toLowerCase() === normalizedUsername.toLowerCase() && entry.chosenAt === chosenAt)
+          ),
+        ].slice(0, 25),
+      };
+
+      await txn.multi();
+      await txn.set(CELESTIAL_ALIGNMENT_CHOICE_STATS_KEY, JSON.stringify(next));
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) return;
+    } catch (error) {
+      lastError = error;
+    } finally {
+      if (txn && !transactionClosed) {
+        await txn.unwatch().catch(() => undefined);
+      }
+    }
+
+    if (attempt < maxAttempts - 1) {
+      await new Promise(resolve => setTimeout(resolve, Math.min(10 * (attempt + 1), 100)));
+    }
+  }
+
+  console.warn(
+    '[Celestial Alignment] Player choice was saved, but shared choice statistics could not be updated.',
+    lastError,
+  );
+}
+
 export async function forceCelestialAlignmentPromptForCurrentUser(): Promise<{ queued: true; username: string; pendingAt: number }> {
   return withPlayerMutationLock(async () => {
     const s = await loadRaw();
@@ -6621,23 +6692,14 @@ export async function chooseCelestialAlignment(
     s.alignmentActiveChoice = choice;
     s.alignmentActiveUntil = activeUntil;
     s.alignmentNextAt = hasMastery ? nextCelestialAlignmentAt(now) : 0;
-    const previousStatsRaw = await redis.get(CELESTIAL_ALIGNMENT_CHOICE_STATS_KEY);
-    const previousStats = parseCelestialAlignmentChoiceStats(previousStatsRaw);
     const username = String(context.username ?? s.username ?? 'Redditor').trim().replace(/^u\//i, '').slice(0, 32) || 'Redditor';
-    const nextStats: CelestialAlignmentChoiceStatsRecord = {
-      total: previousStats.total + 1,
-      choices: { ...previousStats.choices, [choice]: previousStats.choices[choice] + 1 },
-      recent: [
-        { username, choice, chosenAt: now, adminTest: wasAdminTest },
-        ...previousStats.recent.filter(entry => !(entry.username.toLowerCase() === username.toLowerCase() && entry.chosenAt === now)),
-      ].slice(0, 25),
-    };
-    await save(s, {
-      key: CELESTIAL_ALIGNMENT_CHOICE_STATS_KEY,
-      expectedValue: previousStatsRaw,
-      nextValue: JSON.stringify(nextStats),
-      conflictMessage: 'Alignment choice statistics changed during your selection. Please choose again.',
+    // The player's selection is authoritative. Shared choice analytics are a
+    // post-commit projection, so another player's simultaneous choice can never
+    // reject an otherwise valid Alignment activation.
+    stageSavePostCommitAction(s, async () => {
+      await recordCelestialAlignmentChoiceStats(choice, username, now, wasAdminTest);
     });
+    await save(s);
     return { state: s, activeChoice: choice, activeUntil, nextAt: s.alignmentNextAt };
   });
 }
