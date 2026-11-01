@@ -193,3 +193,5 @@ jobs:
 # Explicit user request 2026-10-31: retry v2.1.29 dev deployment after syncing the compact-dashboard preflight assertion.
 
 # 2026-10-31: relax the source-layout bound in the online/Frenzy sample-budget regression.
+
+# 2026-10-31: target the effective batch-cap branch rather than the representative-sample branch.
