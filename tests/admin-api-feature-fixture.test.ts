@@ -69,3 +69,60 @@ test('admin roll helper consumes the ticket returned by the cooldown-reset endpo
   assert.match(helper, /message\.includes\('Roll prediction ticket is'\)/);
   assert.match(helper, /message\.includes\('Could not create a roll prediction ticket'\)/);
 });
+
+test('admin sweep isolates force-roll results from multi-roll, critical, and cached leaderboard state', () => {
+  const runner = readFileSync(resolve(process.cwd(), 'src/client/components/DevDebugModal.tsx'), 'utf8');
+
+  const forceFixtureStart = runner.indexOf('const seedSingleBallForceRoll = async');
+  const forceFixtureEnd = runner.indexOf('const readMechanics = async', forceFixtureStart);
+  assert.ok(forceFixtureStart >= 0 && forceFixtureEnd > forceFixtureStart,
+    'single-ball force-roll fixture must be defined beside the mechanic fixture');
+  const forceFixture = runner.slice(forceFixtureStart, forceFixtureEnd);
+  assert.match(forceFixture, /await setMechanicState\(\{\}, \{/);
+  assert.match(forceFixture, /highestRarity,/);
+  assert.match(forceFixture, /collection:\s*\{\}/);
+  assert.match(forceFixture, /collectionValue:\s*0/);
+  assert.match(forceFixture, /lifetimeCollectionValue:\s*0/);
+
+  for (const [label, rarity] of [
+    ['API · Force-roll 1/1e15 Paradox', '1_000_000_000_000_000'],
+    ['API · Force-roll 1/1e16 Beyond', '10_000_000_000_000_000'],
+    ['API · Force-roll 1/1e17 Endless', '100_000_000_000_000_000'],
+  ] as const) {
+    const start = runner.indexOf("'" + label + "'");
+    const end = runner.indexOf('\n      await step(', start + 1);
+    assert.ok(start >= 0 && end > start, label + ' step must exist');
+    const step = runner.slice(start, end);
+    assert.match(step, /await seedSingleBallForceRoll\(9\)/);
+    assert.ok(step.includes("rarity: " + rarity));
+    assert.match(step, /randomValue:\s*0\.999999/);
+  }
+
+  const deterministicStart = runner.indexOf('"API · Force-roll honors deterministic rarity"');
+  const deterministicEnd = runner.indexOf('\n      await step(', deterministicStart + 1);
+  assert.ok(deterministicStart >= 0 && deterministicEnd > deterministicStart);
+  const deterministicStep = runner.slice(deterministicStart, deterministicEnd);
+  assert.match(deterministicStep, /await seedSingleBallForceRoll\(0\)/);
+  assert.match(deterministicStep, /rarity:\s*12345,\s*randomValue:\s*0\.999999/);
+
+  const shareStart = runner.indexOf('"API · Share records eligibility in a fresh leaderboard snapshot"');
+  const shareEnd = runner.indexOf('\n      await step(', shareStart + 1);
+  assert.ok(shareStart >= 0 && shareEnd > shareStart);
+  const shareStep = runner.slice(shareStart, shareEnd);
+  assert.ok(shareStep.includes("'/api/leaderboards?fresh=1'"));
+  assert.match(shareStep, /result\?\.collectionValue/);
+});
+
+test('admin mechanic remount tests use an unlocked navigation tab instead of gated Guilds', () => {
+  const runner = readFileSync(resolve(process.cwd(), 'src/client/components/DevDebugModal.tsx'), 'utf8');
+  const start = runner.indexOf('const remountRollSection = async');
+  const end = runner.indexOf('const seedSingleBallForceRoll', start);
+  assert.ok(start >= 0 && end > start, 'RollSection remount helper must exist');
+  const helper = runner.slice(start, end);
+  assert.match(helper, /aria-label'\) === 'Upgrades'/);
+  assert.match(helper, /aria-label'\) === 'Roll'/);
+  assert.doesNotMatch(helper, /aria-label'\) === 'Guilds'/);
+  assert.ok(runner.includes("'Mechanic · Silent Alert Mode'") && runner.includes("'Mechanic · Skip Animations'"));
+  assert.equal(runner.split('await remountRollSection();').length - 1, 2,
+    'both mount-only RollSection preference tests should use the unlocked navigation helper');
+});
