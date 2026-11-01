@@ -112,7 +112,7 @@ function queueCombatOrbFocusSync(rarity: number, name?: string): void {
 import { withPlayerMutationLock } from './player-lock.js';
 import { beginServerRequest } from './server-monitor.js';
 import * as devvitServer from '@devvit/web/server';
-import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
+import { CELESTIAL_ALIGNMENT_CHOICE_ADMISSION_TTL_MS, CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS, celestialAlignmentChoiceAdmissionKey, PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
 import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, sacrificeCombatRuneInto, updateCombatRuneAutoSacrificeSettings, processCombatRuneAutoSacrifice, hasCompletedCombatTutorial, markCombatTutorialSeen, buyCombatStrategyGuideRank } from './combat.js';
 
@@ -368,6 +368,47 @@ export function createApp() {
     next();
   });
 
+  // Reserve an Alignment selection at trusted server ingress, before the local
+  // FIFO and distributed player lock can delay the route handler. pendingAt is
+  // only a lookup hint from the client; the game service must match it against
+  // the authoritative saved offer before honoring this marker.
+  app.use('/api', async (req, res, next) => {
+    if (req.method !== 'POST' || req.path !== '/alignment/choose') return next();
+    const userId = String(context.userId ?? '').trim();
+    const receivedAt = Date.now();
+    const pendingAt = Number(req.body?.pendingAt);
+    const choice = req.body?.choice;
+    if (
+      !userId ||
+      !Number.isSafeInteger(pendingAt) ||
+      pendingAt <= 0 ||
+      pendingAt > receivedAt ||
+      receivedAt >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS ||
+      !['starseeker', 'goldenOrbit', 'clockwork'].includes(choice)
+    ) {
+      return next();
+    }
+
+    try {
+      await redis.set(
+        celestialAlignmentChoiceAdmissionKey(userId, pendingAt),
+        JSON.stringify({ receivedAt, choice }),
+        {
+          nx: true,
+          expiration: new Date(receivedAt + CELESTIAL_ALIGNMENT_CHOICE_ADMISSION_TTL_MS),
+        },
+      );
+    } catch (error) {
+      console.error('[Alignment Admission] Could not reserve the pre-expiry selection:', error);
+      return res.status(503).json({
+        code: 'PLAYER_MUTATION_QUEUED',
+        error: 'Your action is queued and will retry automatically.',
+        retryAfterMs: 300,
+      });
+    }
+    return next();
+  });
+
   app.use((req, res, next) => {
     if (!req.path.startsWith('/api')) return next();
     const originalJson = res.json.bind(res);
@@ -375,18 +416,30 @@ export function createApp() {
       const errorText = body && typeof body === 'object'
         ? String(body.error ?? body.message ?? '')
         : '';
-      const retryableContention =
-        body?.code === 'PLAYER_STATE_CONFLICT' ||
+      // Only a pre-handler admission sentinel is safe to replay automatically.
+      // A WATCH/CAS or transaction conflict can happen after a handler has run;
+      // treating it as queued could grant the same reward twice on client retry.
+      const retryableQueueAdmission =
         body?.code === 'PLAYER_MUTATION_QUEUED' ||
-        body?.error === 'PLAYER_MUTATION_QUEUED' ||
-        (/the game is busy finishing another action|another game action is still finishing/i.test(errorText) ||
-          (res.statusCode === 503 && /busy|still finishing|changed repeatedly|lease lost|could not safely save/i.test(errorText)));
-      if (retryableContention) {
+        body?.error === 'PLAYER_MUTATION_QUEUED';
+      if (retryableQueueAdmission) {
         res.status(503);
         return originalJson(stripPlayerCollection({
           code: 'PLAYER_MUTATION_QUEUED',
           error: 'Your action is queued and will retry automatically.',
           retryAfterMs: 300,
+        }));
+      }
+
+      const requiresStateRefresh =
+        body?.code === 'PLAYER_STATE_CONFLICT' ||
+        /the game is busy finishing another action|another game action is still finishing/i.test(errorText) ||
+        (res.statusCode === 503 && /busy|still finishing|changed repeatedly|lease lost|could not safely save/i.test(errorText));
+      if (requiresStateRefresh) {
+        res.status(503);
+        return originalJson(stripPlayerCollection({
+          code: 'PLAYER_STATE_CONFLICT',
+          error: 'The server could not safely confirm this action because saved state changed during processing. Refresh the game before trying again.',
         }));
       }
       return originalJson(stripPlayerCollection(body));
@@ -483,7 +536,13 @@ export function createApp() {
       reportRedisTransactionFailure(e);
       console.error('Feature gate check failed:', e);
       if (transientContentionError(e)) {
-        return res.status(503).json({ error: 'The game is busy verifying access. Please retry.' });
+        // The feature gate runs before the route handler, so this rejection is
+        // safe for the client to retry without replaying a side effect.
+        return res.status(503).json({
+          code: 'PLAYER_MUTATION_QUEUED',
+          error: 'Your action is queued and will retry automatically.',
+          retryAfterMs: 300,
+        });
       }
       return res.status(500).json({ error: 'Could not verify feature access.' });
     }
@@ -514,6 +573,13 @@ export function createApp() {
       }
     } catch (e) {
       console.error('Game ban check failed:', e);
+      if (transientContentionError(e)) {
+        return res.status(503).json({
+          code: 'PLAYER_MUTATION_QUEUED',
+          error: 'Your action is queued and will retry automatically.',
+          retryAfterMs: 300,
+        });
+      }
       return res.status(503).json({
         error: 'Could not verify game ban status. Please retry.',
       });
@@ -1311,10 +1377,11 @@ export function createApp() {
       });
     }
     if (transientContentionError(e)) {
+      // The handler has already started; never ask the client to replay an
+      // operation whose commit outcome may be ambiguous.
       return res.status(503).json({
-        code: 'PLAYER_MUTATION_QUEUED',
-        error: 'Your action is queued and will retry automatically.',
-        retryAfterMs: 300,
+        code: 'PLAYER_STATE_CONFLICT',
+        error: 'The server could not safely confirm this action because saved state changed during processing. Refresh the game before trying again.',
       });
     }
     return res.status(400).json({ error: e instanceof Error ? e.message : fallback });
