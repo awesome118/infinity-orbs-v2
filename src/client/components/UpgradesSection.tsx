@@ -321,7 +321,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       level: state.upgrades.orbFingers ?? 0,
       currentVal: `+${currentOrbFingersPct.toFixed(1)}% Coins`,
       nextVal: `+${nextOrbFingersPct.toFixed(1)}% Coins`,
-      desc: 'Idle-game synergy: each level increases Coin rewards based on the combined levels of your other upgrades. The bonus grows logarithmically as you invest.',
+      desc: 'Each level increases Coin rewards based on the combined levels of your other upgrades. The bonus grows logarithmically as you invest.',
       cost: upgradeCost('orbFingers', state.upgrades.orbFingers ?? 0),
     },
     {

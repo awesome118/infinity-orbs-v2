@@ -153,3 +153,17 @@ test('gold replaces the brown upgrade accent and mobile dialogs become scrollabl
   assert.ok(css.includes('max-height: min(84dvh, 720px) !important;'));
   assert.ok(css.includes('overscroll-behavior: contain;'));
 });
+
+
+test('desktop layouts use natural page flow and readable wide upgrade cards', () => {
+  const css = read('src/client/mobile-experience.css');
+  const upgrades = read('src/client/components/UpgradesSection.tsx');
+  const desktopPass = css.slice(css.lastIndexOf('2.1.34 desktop breathing-room pass'));
+
+  assert.ok(desktopPass.includes('@media (min-width: 1180px)'));
+  assert.ok(desktopPass.includes('max-width: min(100%, 1720px) !important;'));
+  assert.ok(desktopPass.includes('height: auto !important;'));
+  assert.ok(desktopPass.includes('overflow: visible !important;'));
+  assert.ok(desktopPass.includes('grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)) !important;'));
+  assert.doesNotMatch(upgrades, /Idle-game synergy:/);
+});
