@@ -3473,7 +3473,6 @@ async function createRollTicketPreviews(
 ): Promise<Array<{ index: number; orb: Orb }>> {
   // A click that consumes an accumulated Free Roll batch has a different
   // maximum than one activation. Keep the live reveal authoritative for those.
-  if (Number(state.freeRolls ?? 0) > 0) return [];
   const previewState = JSON.parse(JSON.stringify(state)) as PlayerState;
   const previews: Array<{ index: number; orb: Orb }> = [];
   const end = Math.min(ROLL_TICKET_COUNT, ticket.nextIndex + ROLL_PREDICTION_COUNT);
@@ -3511,6 +3510,7 @@ export async function getRollTicket(): Promise<{
   expiresAt: number;
   seeds: string[];
   predictionBaseRevision: number;
+  predictionStartIndex: number;
   predictions: Array<{ index: number; orb: Orb }>;
 }> {
   return withPlayerMutationLock(async () => {
@@ -3579,6 +3579,7 @@ export async function getRollTicket(): Promise<{
           expiresAt: ticket.expiresAt,
           seeds: ticket.seeds,
           predictionBaseRevision: Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0),
+          predictionStartIndex: ticket.nextIndex,
           predictions,
         };
       } finally {
