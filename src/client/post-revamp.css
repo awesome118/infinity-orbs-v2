@@ -1831,8 +1831,7 @@
 }
 
 /* Inline Frenzy: fit the entire post card into Reddit's clipped preview.
-   Keep the community claim count visible as a one-line activity strip; the
-   full five-player feed remains available in expanded mode. */
+   Keep the claim count and recent claimant names visible in the embedded preview. */
 #root.io-inline-post .io-frenzy-card:not(.io-frenzy-success-card) {
   box-sizing: border-box;
   display: flex;
@@ -1964,7 +1963,38 @@
   height: 13px;
   flex: 0 0 auto;
 }
-#root.io-inline-post .io-frenzy-claimers { display: none; }
+#root.io-inline-post .io-frenzy-claimers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 116px), 1fr));
+  gap: 2px 4px;
+  margin-top: 3px;
+}
+#root.io-inline-post .io-frenzy-claimer {
+  box-sizing: border-box;
+  display: flex;
+  min-width: 0;
+  min-height: 17px;
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: 5px;
+}
+#root.io-inline-post .io-frenzy-claimer-rank {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  border-radius: 3px;
+  font-size: 6px;
+}
+#root.io-inline-post .io-frenzy-claimer strong {
+  min-width: 0;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+  font-size: clamp(7px, 1vw, 8px);
+  line-height: 1.1;
+}
+#root.io-inline-post .io-frenzy-claimer-latest { display: none; }
 #root.io-inline-post .io-frenzy-meta {
   flex: 0 0 auto;
   margin: 3px auto 0;
