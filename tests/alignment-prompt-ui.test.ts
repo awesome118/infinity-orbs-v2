@@ -16,7 +16,7 @@ test('Celestial Alignment ignores stale pending polls after a choice succeeds', 
   assert.ok(main.includes('alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, chosenPendingAt)'));
   assert.ok(main.includes('const pendingWasDismissed = status.pending &&'));
   assert.ok(main.includes('if (pendingWasDismissed) return;'));
-  assert.ok(main.includes('if (!alignmentConfirmationRef.current) setAlignmentPromptVisible(false)'));
+  assert.ok(main.includes('!alignmentConfirmationRef.current && !alignmentChoiceBusy && !alignmentChoiceError'));
 });
 
 test('Celestial Alignment closes the blocking chooser immediately after selection', () => {
