@@ -379,7 +379,8 @@ export function createApp() {
         body?.code === 'PLAYER_STATE_CONFLICT' ||
         body?.code === 'PLAYER_MUTATION_QUEUED' ||
         body?.error === 'PLAYER_MUTATION_QUEUED' ||
-        (res.statusCode === 503 && /busy|still finishing|changed repeatedly|lease lost|could not safely save/i.test(errorText));
+        (/the game is busy finishing another action|another game action is still finishing/i.test(errorText) ||
+          (res.statusCode === 503 && /busy|still finishing|changed repeatedly|lease lost|could not safely save/i.test(errorText)));
       if (retryableContention) {
         res.status(503);
         return originalJson(stripPlayerCollection({
@@ -1284,7 +1285,7 @@ export function createApp() {
 
   const transientContentionError = (error: unknown): boolean => {
     const message = error instanceof Error ? error.message : String(error ?? '');
-    return /max(?:imum)? concurrency|concurrency limit|redis.*transaction|transaction.*failed|PLAYER_MUTATION_LEASE_LOST|another game action is still finishing|combat state changed repeatedly|guild.*changed|shared state changed|data changed before the roll saved|player state changed while saving|player activity changed repeatedly|could not safely save player data|could not create a roll prediction ticket|community event changed while|community progress changed while|daily streak community goal changed while/i.test(message);
+    return /max(?:imum)? concurrency|concurrency limit|redis.*transaction|transaction.*failed|PLAYER_MUTATION_LEASE_LOST|another game action is still finishing|the game is busy finishing another action|combat state changed repeatedly|guild.*changed|shared state changed|data changed before the roll saved|player state changed while saving|player activity changed repeatedly|could not safely save player data|could not create a roll prediction ticket|community event changed while|community progress changed while|daily streak community goal changed while/i.test(message);
   };
 
   const reportRedisTransactionFailure = (error: unknown) => {
