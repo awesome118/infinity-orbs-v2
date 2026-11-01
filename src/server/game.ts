@@ -5576,16 +5576,18 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
     const offlineBefore = s.offlineRolls || 0;
     const offlineAfter = Math.min(cap, offlineBefore + earned);
     s.offlineRolls = offlineAfter;
-    await appendPlayerSpyLog('offline-accrual', {
-      elapsedMs: diff,
-      earnedTicks: earned,
-      tickMs,
-      cap,
-      offlineRollsBefore: offlineBefore,
-      offlineRollsAfter: offlineAfter,
-      wastedTicksFromCap: Math.max(0, offlineBefore + earned - offlineAfter),
-      snapshot: playerSpySnapshot(s),
-    });
+    if (!options.previewOnly) {
+      await appendPlayerSpyLog('offline-accrual', {
+        elapsedMs: diff,
+        earnedTicks: earned,
+        tickMs,
+        cap,
+        offlineRollsBefore: offlineBefore,
+        offlineRollsAfter: offlineAfter,
+        wastedTicksFromCap: Math.max(0, offlineBefore + earned - offlineAfter),
+        snapshot: playerSpySnapshot(s),
+      });
+    }
   }
 
   s.lastSeenAt = now;
