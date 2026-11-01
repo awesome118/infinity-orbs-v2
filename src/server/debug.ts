@@ -49,6 +49,12 @@ import {
   serializePlayerStateForRedis,
 } from './player-save.js';
 import { serializeBoundedLeaderboard } from './redis-bounds.js';
+import {
+  createRedisLargeValueWritePlan,
+  discardRedisLargeValueWritePlan,
+  readRedisLargeValue,
+  retireRedisLargeValue,
+} from './redis-large-values.js';
 import { adminCombatLabAction, getCombatSnapshot, getCombatSnapshotForUser, performCombatBeat } from './combat.js';
 import { COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatBossLuckBonus, combatGearRarityOdds, combatGearStatBudgetMultiplier, combatOrbDamageMultiplier, combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityStrengthPct, combatRuneScaledValue, combatStatsFor, combatTotalBossesBeaten, getEnemyForDungeonDepth, type CombatRuneBonuses, type CombatState } from '../shared/combat.js';
 import { context, redis, reddit } from './devvit-mock.js';
@@ -606,14 +612,16 @@ async function getOrCreateGlobalBoosterCreditGrantManifest(
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const existing = await redis.get(manifestKey);
     if (existing != null) {
-      return parseGlobalBoosterCreditGrantManifest(existing, operationId, scope, amount);
+      const decoded = await readRedisLargeValue(manifestKey, existing);
+      return parseGlobalBoosterCreditGrantManifest(decoded, operationId, scope, amount);
     }
 
     const txn = await redis.watch(manifestKey);
     const watched = await redis.get(manifestKey);
     if (watched != null) {
       await txn.unwatch();
-      return parseGlobalBoosterCreditGrantManifest(watched, operationId, scope, amount);
+      const decoded = await readRedisLargeValue(manifestKey, watched);
+      return parseGlobalBoosterCreditGrantManifest(decoded, operationId, scope, amount);
     }
 
     const players = await listRegisteredPlayerIds();
@@ -632,9 +640,23 @@ async function getOrCreateGlobalBoosterCreditGrantManifest(
       })).filter(player => player.userId.length > 0 && player.username.length > 0),
     };
 
-    await txn.multi();
-    await txn.set(manifestKey, JSON.stringify(manifest));
-    if (await txn.exec() !== null) return manifest;
+    let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+    let writeCommitted = false;
+    try {
+      writePlan = await createRedisLargeValueWritePlan(manifestKey, JSON.stringify(manifest));
+      await txn.multi();
+      await txn.set(manifestKey, writePlan.storedValue);
+      if (await txn.exec() !== null) {
+        writeCommitted = true;
+        await retireRedisLargeValue(manifestKey, watched);
+        return manifest;
+      }
+    } finally {
+      if (!writeCommitted) {
+        await txn.unwatch().catch(() => undefined);
+        if (writePlan) await discardRedisLargeValueWritePlan(writePlan);
+      }
+    }
   }
   throw new Error('Could not persist the Global Booster batch recipient manifest. Retry the same operation ID.');
 }
