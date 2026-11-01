@@ -5547,7 +5547,7 @@ export async function processOfflineFullNotification(
   });
 }
 
-export async function settleOffline(s: PlayerState, options: { skipAutoOfflineClaim?: boolean; skipOfflineNotifications?: boolean; skipAutoStreakClaim?: boolean; skipAutoQuestClaim?: boolean; skipAutoCommunityClaim?: boolean } = {}): Promise<PlayerState> {
+export async function settleOffline(s: PlayerState, options: { skipAutoOfflineClaim?: boolean; skipOfflineNotifications?: boolean; skipAutoStreakClaim?: boolean; skipAutoQuestClaim?: boolean; skipAutoCommunityClaim?: boolean; previewOnly?: boolean } = {}): Promise<PlayerState> {
   const now = Date.now();
   checkPeriodicResets(s, now);
   resetFreeShardBudgetIfNeeded(s, now);
