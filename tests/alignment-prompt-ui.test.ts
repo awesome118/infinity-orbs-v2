@@ -10,7 +10,9 @@ test('Celestial Alignment ignores stale pending polls after a choice succeeds', 
   const main = source('src/client/main.tsx');
 
   assert.ok(main.includes('alignmentDismissedPendingAtRef = useRef(0)'));
-  assert.ok(main.includes('const chosenPendingAt = alignmentStatus?.pendingAt ?? 0'));
+  assert.ok(main.includes('const chosenPendingAt = Math.max('));
+  assert.ok(main.includes('alignmentPendingSeenRef.current'));
+  assert.ok(main.includes('Date.now(),'));
   assert.ok(main.includes('alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, chosenPendingAt)'));
   assert.ok(main.includes('const pendingWasDismissed = status.pending &&'));
   assert.ok(main.includes('if (pendingWasDismissed) return;'));
@@ -24,6 +26,11 @@ test('Celestial Alignment closes the blocking chooser immediately after selectio
   assert.ok(chooseHandler.includes('setAlignmentConfirmation(confirmation);'));
   assert.ok(chooseHandler.includes('setAlignmentConfirmationSeconds(60);'));
   assert.ok(chooseHandler.includes('setAlignmentPromptVisible(false);'));
+  assert.ok(chooseHandler.indexOf('setAlignmentPromptVisible(false);') < chooseHandler.indexOf('const result = await getJson'));
+  assert.ok(chooseHandler.includes('setAlignmentChoiceError(message);'));
+  assert.ok(chooseHandler.includes('setAlignmentPromptVisible(true);'));
+  assert.ok(main.includes('data-testid="celestial-alignment-saving"'));
+  assert.ok(main.includes('role="alert"'));
   assert.ok(main.includes('alignmentPromptVisible && alignmentConfirmation === null && alignmentStatus?.pending'));
   assert.ok(main.includes('pointer-events-none fixed right-4 top-4'));
   assert.ok(main.includes('role="status" aria-live="polite"'));
