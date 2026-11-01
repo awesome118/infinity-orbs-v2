@@ -78,14 +78,14 @@ test('admin sweep isolates force-roll results from multi-roll, critical, and cac
   assert.ok(forceFixtureStart >= 0 && prestigeBranch > forceFixtureStart,
     'single-ball force-roll fixture must be declared outside the optional prestige branch');
   const forceFixture = runner.slice(forceFixtureStart, prestigeBranch);
-  assert.match(forceFixture, /request<any>\\('\\/api\\/dev\\/state', \\{/);
-  assert.match(forceFixture, /highestRarity,/);
-  assert.match(forceFixture, /collection:\\s*\\{\\}/);
-  assert.match(forceFixture, /collectionValue:\\s*0/);
-  assert.match(forceFixture, /lifetimeCollectionValue:\\s*0/);
-  assert.match(forceFixture, /Object\\.keys\\(PRESTIGE_UPGRADES\\)/);
-  assert.match(forceFixture, /celestialVolley:\\s*0/);
-  assert.match(forceFixture, /request\\('\\/api\\/dev\\/global-booster'/);
+  assert.ok(forceFixture.includes("request<any>('/api/dev/state', {"));
+  assert.ok(forceFixture.includes('highestRarity,'));
+  assert.ok(forceFixture.includes('collection: {},'));
+  assert.ok(forceFixture.includes('collectionValue: 0,'));
+  assert.ok(forceFixture.includes('lifetimeCollectionValue: 0,'));
+  assert.ok(forceFixture.includes('Object.keys(PRESTIGE_UPGRADES)'));
+  assert.ok(forceFixture.includes('celestialVolley: 0'));
+  assert.ok(forceFixture.includes("request('/api/dev/global-booster'"));
 
   for (const [label, rarity] of [
     ['API · Force-roll 1/1e15 Paradox', '1_000_000_000_000_000'],

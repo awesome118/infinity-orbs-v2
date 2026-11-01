@@ -234,3 +234,5 @@ jobs:
 # Retry the v2.1.53 dev deployment after moving the force-roll fixture into the Full Test runner's outer scope.
 
 # Retry the v2.1.53 dev deployment after aligning the roll-ticket source contract with the Level 4 fixture and deterministic RNG.
+
+# Retry v2.1.53 dev preflight after replacing malformed admin-fixture regexes with exact source-string assertions.
