@@ -110,7 +110,7 @@ function queueCombatOrbFocusSync(rarity: number, name?: string): void {
   combatFocusSyncQueues.set(scope, next);
 }
 import { withPlayerMutationLock } from './player-lock.js';
-import { beginServerRequest } from './server-monitor.js';
+import { beginServerRequest, recordUpgradeBatchDiagnostic } from './server-monitor.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
@@ -1373,19 +1373,104 @@ export function createApp() {
   });
 
   app.post('/api/upgrade/batch', async (req, res) => {
+    const startedAt = Date.now();
+    const diagnosticId = String(req.body?.diagnosticId ?? '')
+      .replace(/[^a-zA-Z0-9._:-]/g, '')
+      .slice(0, 80);
+    const clientStateRevision = Number.isSafeInteger(req.body?.clientStateRevision)
+      ? Number(req.body.clientStateRevision)
+      : undefined;
+    const ids = req.body?.ids;
+    const requestedIds = Array.isArray(ids)
+      ? ids.filter((id): id is string => typeof id === 'string').slice(0, 100)
+      : [];
+    const validUpgradeIds: UpgradeId[] = [
+      'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
+      'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus',
+      'offlineFoundry', 'orbFingers', 'criticalDividend',
+    ];
+
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100 ||
+        !ids.every(id => typeof id === 'string' && validUpgradeIds.includes(id as UpgradeId))) {
+      recordUpgradeBatchDiagnostic({
+        stage: 'server-rejected',
+        username: context.username,
+        requestId: diagnosticId,
+        upgradeIds: requestedIds,
+        status: 400,
+        durationMs: Date.now() - startedAt,
+        errorCode: 'INVALID_BATCH_IDS',
+        message: 'Batch must contain 1 to 100 valid upgrade IDs.',
+        clientStateRevision,
+      });
+      return res.status(400).json({
+        error: 'Batch must contain 1 to 100 valid upgrade IDs.',
+        ...(diagnosticId ? { diagnosticId } : {}),
+      });
+    }
+
     try {
-      const ids = req.body?.ids;
-      const validUpgradeIds: UpgradeId[] = [
-        'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
-        'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus',
-        'offlineFoundry', 'orbFingers', 'criticalDividend',
-      ];
-      if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100 ||
-          !ids.every(id => typeof id === 'string' && validUpgradeIds.includes(id as UpgradeId))) {
-        return res.status(400).json({ error: 'Batch must contain 1 to 100 valid upgrade IDs.' });
-      }
-      res.json(await buyUpgradeBatch(ids as UpgradeId[]));
-    } catch (e) { badRequest(res, e, 'Upgrade batch failed.'); }
+      const result = await buyUpgradeBatch(ids as UpgradeId[]);
+      const stage = result.purchased.length === ids.length ? 'server-accepted' : 'server-partial';
+      recordUpgradeBatchDiagnostic({
+        stage,
+        username: context.username,
+        requestId: diagnosticId,
+        upgradeIds: requestedIds,
+        status: 200,
+        durationMs: Date.now() - startedAt,
+        message: result.stoppedReason ?? '',
+        clientStateRevision,
+        serverStateRevision: result.state.stateRevision,
+        purchasedCount: result.purchased.length,
+      });
+      res.json({ ...result, ...(diagnosticId ? { diagnosticId } : {}) });
+    } catch (error) {
+      const retryable = error instanceof Error &&
+        (error.message === 'PLAYER_MUTATION_QUEUED' || transientContentionError(error));
+      recordUpgradeBatchDiagnostic({
+        stage: 'server-rejected',
+        username: context.username,
+        requestId: diagnosticId,
+        upgradeIds: requestedIds,
+        status: retryable ? 503 : 400,
+        durationMs: Date.now() - startedAt,
+        errorCode: retryable ? 'PLAYER_MUTATION_QUEUED' : error instanceof Error ? error.name : 'UNKNOWN_ERROR',
+        message: error instanceof Error ? error.message : 'Upgrade batch failed.',
+        clientStateRevision,
+      });
+      badRequest(res, error, 'Upgrade batch failed.');
+    }
+  });
+
+  // The client reports only after it has discarded its optimistic upgrade batch.
+  // This is process-local telemetry: it adds no Redis write to a failed purchase.
+  app.post('/api/diagnostics/upgrade-rollback', (req, res) => {
+    const diagnosticId = String(req.body?.diagnosticId ?? '')
+      .replace(/[^a-zA-Z0-9._:-]/g, '')
+      .slice(0, 80);
+    const validUpgradeIds: UpgradeId[] = [
+      'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
+      'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus',
+      'offlineFoundry', 'orbFingers', 'criticalDividend',
+    ];
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids.filter((id: unknown): id is UpgradeId => typeof id === 'string' && validUpgradeIds.includes(id as UpgradeId)).slice(0, 100)
+      : [];
+    if (!diagnosticId || ids.length === 0) return res.status(204).end();
+
+    recordUpgradeBatchDiagnostic({
+      stage: 'client-rollback',
+      username: context.username,
+      requestId: diagnosticId,
+      upgradeIds: ids,
+      status: req.body?.status,
+      durationMs: req.body?.durationMs,
+      errorCode: req.body?.errorCode,
+      message: req.body?.message,
+      clientStateRevision: req.body?.clientStateRevision,
+    });
+    return res.status(204).end();
   });
 
   app.post('/api/upgrade/all', async (_req, res) => {
