@@ -2510,6 +2510,8 @@ export function cooldownReclaimerEnergyPerActivationMs(s: PlayerState, isAuto = 
   let theoretical = Math.max(floor, BASE_COOLDOWN_MS - speedLevel * 150 - directCooldownReduction);
   let wastedMs = 0;
 
+  // The live cooldown clamps each booster layer to 300ms. Capture only the
+  // amount each layer would shave below that floor, then continue from 300ms.
   const applyClampedSpeed = (multiplier: number) => {
     const target = Math.round(theoretical * multiplier);
     wastedMs += Math.max(0, 300 - target);
@@ -2532,10 +2534,13 @@ export function cooldownReclaimerEnergyPerActivationMs(s: PlayerState, isAuto = 
   const momentum = 1 + ((s.prestigeUpgrades?.unbrokenMomentum ?? 0) > 0
     ? unbrokenMomentumSpeedBonus(s.longestRollingSessionMs)
     : 0);
-  applyClampedSpeed(1 / momentum);
+  // Momentum and Clockwork are applied after the intermediate clamps in the
+  // live cooldown function, so account for their combined final underflow once.
+  theoretical = Math.round(theoretical / momentum);
   if (isAuto && s.alignmentActiveChoice === 'clockwork' && (s.alignmentActiveUntil ?? 0) > Date.now()) {
-    applyClampedSpeed(0.80);
+    theoretical = Math.round(theoretical * 0.80);
   }
+  wastedMs += Math.max(0, 300 - theoretical);
 
   return Math.min(TIME_ENERGY_MAX_MS, Math.max(0, Math.floor(wastedMs * level * 0.10)));
 }
