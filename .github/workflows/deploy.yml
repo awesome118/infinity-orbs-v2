@@ -101,6 +101,7 @@ jobs:
           node --import tsx --test --test-name-pattern="Frenzy claim activity is a retryable post-commit projection" tests/frenzy.test.ts
           node --import tsx --test tests/cosmic-dust-uncapped.test.ts
           node --import tsx --test tests/guild-member-recovery.test.ts
+          # Cover Guild combo timer persistence and weighted rare-Orb task progress.
           node --import tsx --test tests/guild-combo-progress.test.ts
           node --import tsx --test tests/cooldown-time-energy.test.ts tests/guild-loading-regression.test.ts
           node --import tsx --test --test-name-pattern="Guild task set starts with one task of each type|Guild task difficulty and rewards scale upward by tier|Guild task difficulty is driven by tier alone and does not carry Guild XP|Guild task rewards remain capped|Guild tasks retain token rewards but do not model Titan or Guild XP rewards" tests/mechanics.test.ts
