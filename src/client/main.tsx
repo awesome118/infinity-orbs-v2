@@ -3528,7 +3528,7 @@ function App() {
 
       {alignmentChoiceBusy && (
         <div className="pointer-events-none fixed inset-x-0 top-4 z-[91] flex justify-center px-4" role="status" aria-live="polite" data-testid="celestial-alignment-saving">
-          <div className="rounded-xl border border-cyan-400/30 bg-slate-950/95 px-4 py-2 text-xs font-semibold text-cyan-100 shadow-lg">Locking in your Alignment…</div>
+          <div className="rounded-xl border border-cyan-400/30 bg-slate-950/95 px-4 py-2 text-xs font-semibold text-cyan-100 shadow-lg">Your Alignment is queued. It will activate as soon as your current game action finishes…</div>
         </div>
       )}
 
