@@ -5895,7 +5895,7 @@ export async function roll(
       if (!ticketId || !Number.isSafeInteger(requestedTicketIndex)) {
         throw new Error('Invalid roll prediction ticket.');
       }
-      const loaded = await loadRollTicketForUse(ticketId, requestedTicketIndex);
+      const loaded = await loadRollTicketForUse(ticketId, requestedTicketIndex, ticketSeed);
       const nextTicket: RollTicket = {
         ...loaded.ticket,
         nextIndex: loaded.ticket.nextIndex + 1,
