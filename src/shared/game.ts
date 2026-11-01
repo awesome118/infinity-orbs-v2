@@ -544,6 +544,8 @@ export interface GuildComboState {
   tier: number;
   activationProgress: number;
   endsAt: number;
+  /** Sum of all timer duration granted by Guild Task completions in this combo. */
+  totalDurationMs: number;
   lastTickAt?: number;
 }
 
@@ -629,7 +631,7 @@ export function canShowDailyFrenzyPrompt(lastFrenzyAt?: number | string, now = D
 }
 
 export function createInitialGuildCombo(now = Date.now()): GuildComboState {
-  return { tier: 0, activationProgress: 0, endsAt: 0, lastTickAt: now };
+  return { tier: 0, activationProgress: 0, endsAt: 0, totalDurationMs: 0, lastTickAt: now };
 }
 
 export function decayGuildComboState(
@@ -647,6 +649,13 @@ export function decayGuildComboState(
   let endsAt = Math.max(0, Math.floor(Number(state?.endsAt ?? 0) || 0));
   const previousTickAt = Math.max(0, Math.floor(Number(state?.lastTickAt ?? now) || now));
   const elapsed = Math.max(0, now - previousTickAt);
+  // Legacy Guild combos predate the stored duration budget. Their last mutation
+  // timestamp and deadline provide the best available estimate of time granted.
+  const legacyDuration = Math.max(0, endsAt - previousTickAt);
+  let totalDurationMs = Math.max(0, Math.min(
+    Number.MAX_SAFE_INTEGER,
+    Math.floor(Number(state?.totalDurationMs ?? legacyDuration) || 0),
+  ));
 
   if (tier > 0 && endsAt > 0 && elapsed > 0) {
     // Diminishing timer acceleration keeps high-tier combos demanding without making
@@ -655,10 +664,14 @@ export function decayGuildComboState(
   }
 
   if (tier <= 0 || endsAt <= now) {
-    return { tier: 0, activationProgress: 0, endsAt: 0, lastTickAt: now };
+    return { tier: 0, activationProgress: 0, endsAt: 0, totalDurationMs: 0, lastTickAt: now };
   }
 
-  return { tier, activationProgress, endsAt, lastTickAt: now };
+  // Keep the display budget at least as large as the current remaining time.
+  // This also makes migrated legacy snapshots safe when their inferred duration
+  // is smaller than the true still-active deadline.
+  totalDurationMs = Math.max(totalDurationMs, Math.min(Number.MAX_SAFE_INTEGER, endsAt - now));
+  return { tier, activationProgress, endsAt, totalDurationMs, lastTickAt: now };
 }
 
 export function guildComboDurationMs(tier: number, durationMultiplier = 1): number {
@@ -695,8 +708,13 @@ export function activateGuildComboStack(
     }
   }
 
-  const endsAt = Math.max(now, current.endsAt) + guildComboDurationMs(tier, durationMultiplier);
-  return { tier, activationProgress, endsAt, lastTickAt: now };
+  const durationGained = guildComboDurationMs(tier, durationMultiplier);
+  const endsAt = Math.max(now, current.endsAt) + durationGained;
+  const totalDurationMs = Math.min(
+    Number.MAX_SAFE_INTEGER,
+    current.totalDurationMs + durationGained,
+  );
+  return { tier, activationProgress, endsAt, totalDurationMs, lastTickAt: now };
 }
 
 export function guildComboRemainingMs(state: GuildComboState | null | undefined, now = Date.now()): number {
@@ -711,9 +729,11 @@ export function guildComboProgress(state: GuildComboState | null | undefined, no
 }
 
 export function guildComboTimeProgress(state: GuildComboState | null | undefined, now = Date.now()): number {
-  const remaining = guildComboRemainingMs(state, now);
-  if (remaining <= 0) return 0;
-  return Math.round(Math.min(1, remaining / GUILD_COMBO_BASE_DURATION_MS) * 10000) / 100;
+  const current = decayGuildComboState(state, now);
+  const remaining = Math.max(0, current.endsAt - now);
+  const totalGained = Math.max(0, Number(current.totalDurationMs) || 0);
+  if (remaining <= 0 || totalGained <= 0) return 0;
+  return Math.round(Math.min(1, remaining / totalGained) * 10000) / 100;
 }
 
 export function guildComboLuckMultiplier(state: GuildComboState | null | undefined, now = Date.now()): number {
