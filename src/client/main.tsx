@@ -1292,6 +1292,38 @@ function App() {
     void ensureRollTicket().catch(() => null);
   }, [state?.stateRevision, state?.username, ensureRollTicket]);
 
+  // Rebuild previews after an upgrade, prestige, or preference save changes
+  // the player's revision. Ordinary rolls advance the ticket and revision
+  // together, so they keep the remaining already-prepared predictions.
+  useEffect(() => {
+    const current = rollTicketRef.current;
+    const currentRevision = Math.max(0, Math.floor(Number(state?.stateRevision ?? 0)) || 0);
+    if (!current || current.nextIndex >= 50) return;
+    const expectedRevision = current.predictionBaseRevision +
+      Math.max(0, current.nextIndex - current.predictionStartIndex);
+    if (expectedRevision === currentRevision) return;
+
+    let cancelled = false;
+    const ticketId = current.ticketId;
+    const ticketIndex = current.nextIndex;
+    void getJson<NonNullable<typeof current>>('/api/roll-ticket')
+      .then(refreshed => {
+        const latest = rollTicketRef.current;
+        if (
+          !cancelled &&
+          latest?.ticketId === ticketId &&
+          latest.nextIndex === ticketIndex &&
+          refreshed.ticketId === ticketId &&
+          refreshed.nextIndex === ticketIndex &&
+          stateRef.current?.stateRevision === refreshed.predictionBaseRevision
+        ) {
+          rollTicketRef.current = refreshed;
+        }
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [state?.stateRevision]);
+
   // First pass loads the save for the splash; toggling splashEntered reruns
   // refreshAll to fetch the remaining panels once the player presses Play.
   useEffect(() => {
