@@ -3523,7 +3523,7 @@ function App() {
                 ? 'Your complete Luck multiplier is now raised to the power of 1.05.'
                 : alignmentConfirmation.choice === 'goldenOrbit'
                   ? 'All Coins earned are increased by 50%.'
-                  : `Auto Roll cooldown is now ${((alignmentConfirmation.autoCooldownMs ?? 0) / 1000).toFixed(2)}s.`}
+                  : `Auto Roll cooldown is now ${((alignmentConfirmation.autoCooldownMs ?? 0) / 1000).toFixed(2)}s (20% faster; 300ms minimum).`}
             </p>
             <p className="mt-1 text-[10px] text-slate-400">The selected effect remains active for 60 minutes.</p>
             <div
