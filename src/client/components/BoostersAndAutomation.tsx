@@ -24,6 +24,7 @@ import {
   AUTOMATIONS,
   GLOBAL_BOOSTERS,
   decayGlobalBoosterState,
+  normalizeCelestialAlignmentInstances,
   globalBoosterRemainingMs,
   globalBoosterTimeProgress,
   globalBoosterLuckMultiplier,
@@ -148,6 +149,14 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, []);
+
+  const alignmentInstances = normalizeCelestialAlignmentInstances(
+    state.alignmentActiveInstances, state.alignmentActiveChoice, state.alignmentActiveUntil, now,
+  );
+  const alignmentName = (choice: 'starseeker' | 'goldenOrbit' | 'clockwork') =>
+    choice === 'starseeker' ? 'Starseeker · Luck exponent' :
+    choice === 'goldenOrbit' ? 'Golden Orbit · Coin multiplier' :
+    'Clockwork · Auto Roll cooldown';
 
   const onlinePlayersRaw = Number(state.onlinePlayers ?? 1);
   const onlinePlayers = Number.isFinite(onlinePlayersRaw) ? Math.max(1, Math.floor(onlinePlayersRaw)) : 1;
@@ -366,6 +375,29 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
           })}
         </div>
       </section>
+
+      {alignmentInstances.length > 0 && (
+        <section className="rounded-3xl border border-indigo-400/25 bg-gradient-to-br from-slate-900 via-indigo-950/15 to-slate-900 p-5 shadow-xl" data-testid="stacked-alignment-buffs">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-wide text-indigo-200">Celestial Alignment · Active stacks</h3>
+              <p className="mt-1 text-[11px] text-slate-400">Each activation has its own expiry. Matching effects stack multiplicatively.</p>
+            </div>
+            <span className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-black tabular-nums text-indigo-100">{alignmentInstances.length} active</span>
+          </div>
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+            {alignmentInstances.map((instance, index) => (
+              <article key={instance.id} className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-indigo-400/20 bg-slate-950/70 px-3 py-3">
+                <div className="min-w-0">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-indigo-200">{alignmentName(instance.choice)}</div>
+                  <div className="mt-1 text-[10px] text-slate-500">Instance {index + 1} · {new Date(instance.activatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</div>
+                </div>
+                <strong className="shrink-0 font-mono text-sm tabular-nums text-white">{formatDuration(instance.expiresAt - now)}</strong>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="space-y-3">
         <div className="flex items-center gap-2 px-1">

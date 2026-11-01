@@ -2,8 +2,8 @@ import { context, redis } from './devvit-mock.js';
 
 const PLAYER_MUTATION_LOCK_PREFIX = 'io:player-mutation-lock:';
 const PLAYER_MUTATION_LOCK_TTL_MS = 90_000;
-// Cross-runtime callers wait up to 30 seconds for the active player's lease to clear.
-const PLAYER_MUTATION_LOCK_ATTEMPTS = 1_200;
+// Cross-runtime callers wait up to 10 seconds before the HTTP client safely retries admission.
+const PLAYER_MUTATION_LOCK_ATTEMPTS = 400;
 const PLAYER_MUTATION_LOCK_RETRY_MS = 25;
 
 export interface PlayerMutationLockTransaction {

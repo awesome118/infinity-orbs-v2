@@ -1,5 +1,15 @@
 # Infinity Orbs Changelog
 
+### Oversized Save Protection, Queued Mutations, and Stacked Celestial Alignments (2.1.49)
+
+- Split oversized player saves into immutable 64 KiB Redis chunks and atomically switch a compact, checksummed manifest only after all chunks are written. Legacy saves remain readable and migrate on their next save.
+- Route gameplay saves, payment grants/refunds, rarity-flair reads, and the admin player list through the manifest-aware storage format; keep a short grace period before retired chunks expire so in-flight readers are not interrupted.
+- Bound player, payment, save, and Global Booster diagnostic logs by both entry count and serialized size to prevent another unbounded Redis SET.
+- Replace vague busy errors with a machine-readable queue-admission response. Clients retry only when the server confirms the action never started; post-handler conflicts are not blindly replayed.
+- Reduce Celestial Alignment event frequency to a bounded 45–90 minutes. Extend each effect from one hour to two hours, retain each activation separately, and stack matching Starseeker, Golden Orbit, and Clockwork effects.
+- Keep Alignment choices available until selected and display the two-hour effect duration directly in the chooser. Show each active stack and its independent expiry on Roll and Boosters screens.
+- Add regression coverage for chunk integrity and migration, bounded diagnostics, safe mutation retries, Alignment cadence, stack persistence, and independent effect timers.
+
 ### Responsive Fullscreen UX and Immediate Server Dispatch (2.1.48)
 
 - Apply a 100-point responsive pass across Roll, Upgrades, Boosters, Altar, Mastery, Collection, Codex, Quests, Guilds/Social, Progress, Fight, Dungeons, Armory, Forge, Skill Gacha, Arena, Runes, dialogs, navigation, and fullscreen layouts.

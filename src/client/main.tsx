@@ -168,7 +168,7 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const method = String(options?.method ?? 'GET').toUpperCase();
   const isRead = method === 'GET' || method === 'HEAD';
-  const maxAttempts = isRead ? 3 : 1;
+  const maxAttempts = isRead ? 3 : ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) ? 10 : 1;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let receivedNonRetryableHttpError = false;
@@ -181,6 +181,7 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
       const res = await fetch(url, requestOptions);
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
+        const errorCode = typeof errorData.code === 'string' ? errorData.code : '';
         const message =
           typeof errorData.error === 'string'
             ? errorData.error
@@ -209,13 +210,17 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 
         const retryableRead =
           isRead &&
-          (res.status === 408 ||
-            res.status === 429 ||
-            res.status >= 500 ||
+          (res.status === 408 || res.status === 429 || res.status >= 500 ||
             String(message).includes('Player state changed while saving'));
+        const retryableQueuedMutation =
+          !isRead && errorCode === 'PLAYER_MUTATION_QUEUED' && attempt < maxAttempts - 1;
 
-        if (retryableRead && attempt < maxAttempts - 1) {
-          await new Promise(resolve => setTimeout(resolve, 80 * (attempt + 1)));
+        if ((retryableRead && attempt < maxAttempts - 1) || retryableQueuedMutation) {
+          const serverDelay = Number(errorData.retryAfterMs);
+          const delayMs = Number.isFinite(serverDelay) && serverDelay > 0
+            ? Math.min(1_500, serverDelay)
+            : Math.min(1_000, 140 * (attempt + 1));
+          await new Promise(resolve => setTimeout(resolve, delayMs));
           continue;
         }
 
@@ -334,6 +339,7 @@ function App() {
     pendingAt: number;
     activeChoice: CelestialAlignmentChoice | null;
     activeUntil: number;
+    activeInstances: import('../shared/game.js').CelestialAlignmentInstance[];
     nextAt: number;
   } | null>(null);
   const [alignmentPromptVisible, setAlignmentPromptVisible] = useState(false);
@@ -1367,6 +1373,7 @@ function App() {
           pendingAt: number;
           activeChoice: CelestialAlignmentChoice | null;
           activeUntil: number;
+          activeInstances: import('../shared/game.js').CelestialAlignmentInstance[];
           nextAt: number;
         }>('/api/alignment/status', { cache: 'no-store' });
         if (cancelled) return;
@@ -1970,19 +1977,14 @@ function App() {
     if (!state) return;
     const lastRollAt = Number(state.lastRollAt ?? 0);
     if (!Number.isFinite(lastRollAt) || lastRollAt <= 0) return;
-    const activeChoice = alignmentStatus
-      ? alignmentStatus.activeChoice
-      : state.alignmentActiveChoice ?? null;
-    const activeUntil = alignmentStatus
-      ? alignmentStatus.activeUntil
-      : state.alignmentActiveUntil ?? 0;
+    const activeInstances = alignmentStatus?.activeInstances ??
+      state.alignmentActiveInstances ?? [];
     const timingState: PlayerState = {
       ...state,
-      alignmentActiveChoice: activeChoice,
-      alignmentActiveUntil: activeUntil,
+      alignmentActiveInstances: activeInstances,
     };
     setReadyAt(lastRollAt + cooldownMs(timingState, true));
-  }, [state, alignmentStatus?.activeChoice, alignmentStatus?.activeUntil]);
+  }, [state, alignmentStatus?.activeInstances, alignmentStatus?.activeChoice, alignmentStatus?.activeUntil]);
 
   // Auto roll watcher (paced steadily)
   useEffect(() => {
@@ -2501,6 +2503,7 @@ function App() {
         state: PlayerState;
         activeChoice: CelestialAlignmentChoice;
         activeUntil: number;
+        activeInstances: import('../shared/game.js').CelestialAlignmentInstance[];
         nextAt: number;
       }>('/api/alignment/choose', {
         method: 'POST',
@@ -2514,6 +2517,7 @@ function App() {
         pendingAt: 0,
         activeChoice: result.activeChoice,
         activeUntil: result.activeUntil,
+        activeInstances: result.activeInstances ?? result.state.alignmentActiveInstances ?? [],
         nextAt: result.nextAt,
       });
       alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, chosenPendingAt);
@@ -3430,10 +3434,10 @@ function App() {
           >
             <div className="text-[10px] font-black uppercase tracking-[.22em] text-cyan-300">A rare celestial event</div>
             <h2 id="celestial-alignment-title" className="mt-2 text-2xl sm:text-3xl font-black text-white">Celestial Alignment</h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400">The stars have aligned. Choose one effect to guide your next 60 minutes. Your next Alignment appears independently of your rolls.</p>
-            <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-cyan-400/25 bg-cyan-500/5 px-4 py-3" data-testid="celestial-alignment-duration" aria-label="Each selected effect lasts 60 minutes">
-              <span className="text-[10px] font-black uppercase tracking-[.16em] text-cyan-300">Effect timer</span>
-              <strong className="font-mono text-xl tabular-nums text-white">60:00</strong>
+            <p className="mt-2 text-sm leading-relaxed text-slate-400">The stars have aligned. Choose one effect. It lasts 2 hours, and every activation stacks independently with earlier activations.</p>
+            <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-cyan-400/25 bg-cyan-500/5 px-4 py-3" data-testid="celestial-alignment-duration" aria-label="Each selected effect lasts two hours and stacks independently">
+              <span className="text-[10px] font-black uppercase tracking-[.16em] text-cyan-300">Effect duration</span>
+              <strong className="font-mono text-xl tabular-nums text-white">2 hours</strong>
             </div>
             {alignmentChoiceError && <p className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs leading-relaxed text-rose-200" role="alert">Your choice was not saved: {alignmentChoiceError}</p>}
             {alignmentChoiceBusy && (

@@ -371,7 +371,19 @@ export function createApp() {
   app.use((req, res, next) => {
     if (!req.path.startsWith('/api')) return next();
     const originalJson = res.json.bind(res);
-    res.json = ((body: any) => originalJson(stripPlayerCollection(body))) as typeof res.json;
+    res.json = ((body: any) => {
+      // Route-specific catches may not use badRequest(). Normalize the exact
+      // pre-handler lock sentinel here so every endpoint gets the same retry code.
+      if (body && typeof body === 'object' && body.error === 'PLAYER_MUTATION_QUEUED') {
+        res.status(503);
+        return originalJson(stripPlayerCollection({
+          code: 'PLAYER_MUTATION_QUEUED',
+          error: 'Your action is queued and will retry automatically.',
+          retryAfterMs: 300,
+        }));
+      }
+      return originalJson(stripPlayerCollection(body));
+    }) as typeof res.json;
     next();
   });
 
@@ -382,7 +394,7 @@ export function createApp() {
   const MUTATION_LOCK_PREFIX = 'player-mutation-lock:';
   const MUTATION_LOCK_TTL_MS = 2 * 60_000;
   // Give legitimate queued actions enough time to finish behind longer-running saves/rolls.
-  const MUTATION_LOCK_WAIT_MS = 60_000;
+  const MUTATION_LOCK_WAIT_MS = 8_000;
 
   const mutationLockKey = (playerKey: string) => MUTATION_LOCK_PREFIX + playerKey;
 
@@ -446,7 +458,7 @@ export function createApp() {
       }
     }
 
-    throw new Error('Another game action is still finishing. Please retry.');
+    throw new Error('PLAYER_MUTATION_QUEUED');
   };
 
   const releaseMutationLock = async (lockKey: string, owner: string): Promise<void> => {
@@ -518,6 +530,13 @@ export function createApp() {
     } catch (error) {
       releaseLocal();
       if (mutationQueues.get(playerKey) === chain) mutationQueues.delete(playerKey);
+      if (error instanceof Error && error.message === 'PLAYER_MUTATION_QUEUED') {
+        return res.status(503).json({
+          code: 'PLAYER_MUTATION_QUEUED',
+          error: 'Your action is queued and will retry automatically.',
+          retryAfterMs: 300,
+        });
+      }
       return next(error);
     }
   });
@@ -1388,8 +1407,18 @@ export function createApp() {
 
   const badRequest = (res: express.Response, e: unknown, fallback: string) => {
     reportRedisTransactionFailure(e);
+    if (e instanceof Error && e.message === 'PLAYER_MUTATION_QUEUED') {
+      return res.status(503).json({
+        code: 'PLAYER_MUTATION_QUEUED',
+        error: 'Your action is queued and will retry automatically.',
+        retryAfterMs: 300,
+      });
+    }
     if (transientContentionError(e)) {
-      return res.status(503).json({ error: 'The game is busy finishing another action. Please retry.' });
+      return res.status(503).json({
+        code: 'PLAYER_STATE_CONFLICT',
+        error: 'Your latest saved state changed while this action was processing. Refreshing state is safer than replaying it.',
+      });
     }
     return res.status(400).json({ error: e instanceof Error ? e.message : fallback });
   };
@@ -1820,6 +1849,7 @@ export function createApp() {
     if (res.headersSent) return;
     const message = error instanceof Error ? error.message : String(error ?? 'Unknown server error');
     const busy = transientContentionError(error);
+    const queuedBeforeHandler = error instanceof Error && error.message === 'PLAYER_MUTATION_QUEUED';
     console.error('[Unhandled API Error]', {
       timestamp: new Date().toISOString(),
       method: req.method,
@@ -1828,8 +1858,18 @@ export function createApp() {
       message,
       stack: error instanceof Error ? error.stack : undefined,
     });
+    if (queuedBeforeHandler) {
+      return res.status(503).json({
+        code: 'PLAYER_MUTATION_QUEUED',
+        error: 'Your action is queued and will retry automatically.',
+        retryAfterMs: 300,
+      });
+    }
     if (busy) {
-      return res.status(503).json({ error: 'The game is busy finishing another action. Please retry.' });
+      return res.status(503).json({
+        code: 'PLAYER_STATE_CONFLICT',
+        error: 'Player state changed while processing. Refresh the latest state before trying another action.',
+      });
     }
     return res.status(500).json({ error: 'The server hit an unexpected error. Please retry.' });
   });

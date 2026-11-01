@@ -22,6 +22,8 @@ import type { PlayerState, Orb, UpgradeId } from '../../shared/game.js';
 import {
   cooldownMs,
   timeEnergyActivationsAvailable,
+  normalizeCelestialAlignmentInstances,
+  celestialAlignmentStackCount,
   rollsPerActivation,
   luckMultiplier,
   upgradeCost,
@@ -128,7 +130,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
       const rollRemaining = readyAt - current;
       const frenzyRemaining = frenzyCooldownRemaining(state.lastFrenzyAt, current);
       const turboRemaining = (state.turboRollUntil ?? 0) - current;
-      const alignmentRemaining = (state.alignmentActiveUntil ?? 0) - current;
+      const activeAlignmentInstances = normalizeCelestialAlignmentInstances(state.alignmentActiveInstances, state.alignmentActiveChoice, state.alignmentActiveUntil, current);
+      const alignmentRemaining = activeAlignmentInstances.reduce((latest, item) => Math.max(latest, item.expiresAt - current), 0);
       const hasActiveCountdown = rollRemaining > 0 || frenzyRemaining > 0 || turboRemaining > 0 || alignmentRemaining > 0;
       setNow(current);
       if (!hasActiveCountdown) {
@@ -150,7 +153,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       if (timer !== null) window.clearTimeout(timer);
       document.removeEventListener('visibilitychange', syncOnVisibility);
     };
-  }, [readyAt, state.lastFrenzyAt, state.turboRollUntil, state.alignmentActiveUntil]);
+  }, [readyAt, state.lastFrenzyAt, state.turboRollUntil, state.alignmentActiveUntil, state.alignmentActiveInstances, state.alignmentActiveChoice]);
   const [isRevealing, setIsRevealing] = useState(false);
   const [cooldownNotice, setCooldownNotice] = useState<string | null>(null);
   const cooldownNoticeTimerRef = useRef<number | null>(null);
@@ -265,10 +268,13 @@ export const RollSection: React.FC<RollSectionProps> = ({
     return () => { active = false; controller.abort(); };
   }, []);
   // Boss-clear Luck and Rune Luck both participate in the Starseeker exponent.
+  const alignmentInstances = normalizeCelestialAlignmentInstances(
+    state.alignmentActiveInstances, state.alignmentActiveChoice, state.alignmentActiveUntil, now,
+  );
+  const starseekerStacks = celestialAlignmentStackCount(alignmentInstances, 'starseeker', now);
   const rawTotalLuckMultiplier = (luck + bossLuckBonus) * combatRuneLuckMultiplier(runeLuckPct);
-  const totalLuckMultiplier = state.alignmentActiveChoice === 'starseeker' &&
-    (state.alignmentActiveUntil ?? 0) > now
-    ? Math.pow(rawTotalLuckMultiplier, 1.05)
+  const totalLuckMultiplier = starseekerStacks > 0
+    ? Math.pow(rawTotalLuckMultiplier, Math.pow(1.05, starseekerStacks))
     : rawTotalLuckMultiplier;
   const isAutoUnlocked = (state.upgrades.auto ?? 0) > 0;
   const isTurbo = Boolean(state.turboRollUntil && state.turboRollUntil > now);
@@ -988,9 +994,16 @@ export const RollSection: React.FC<RollSectionProps> = ({
             )}
           </div>
         )}
-        {state.alignmentActiveChoice && (state.alignmentActiveUntil ?? 0) > now && (
-          <div className="w-full rounded-xl border border-indigo-400/25 bg-indigo-500/5 px-3 py-2 text-center text-[10px] font-bold uppercase tracking-wider text-indigo-200">
-            {state.alignmentActiveChoice === 'starseeker' ? 'Starseeker · Total Luck ^1.05' : state.alignmentActiveChoice === 'goldenOrbit' ? 'Golden Orbit · +50% Coins' : 'Clockwork · 20% faster Auto Roll'} · {formatAlignmentRemaining((state.alignmentActiveUntil ?? 0) - now)} left
+        {alignmentInstances.length > 0 && (
+          <div className="w-full space-y-1.5" data-testid="active-celestial-alignments">
+            {alignmentInstances.map((instance, index) => (
+              <div key={instance.id} className="flex items-center justify-between gap-3 rounded-xl border border-indigo-400/25 bg-indigo-500/5 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-indigo-200">
+                <span className="min-w-0 truncate">
+                  {instance.choice === 'starseeker' ? 'Starseeker · Total Luck' : instance.choice === 'goldenOrbit' ? 'Golden Orbit · Coins' : 'Clockwork · Auto Roll'} · Stack {index + 1}
+                </span>
+                <strong className="shrink-0 font-mono tabular-nums">{formatAlignmentRemaining(instance.expiresAt - now)} left</strong>
+              </div>
+            ))}
           </div>
         )}
       </div>

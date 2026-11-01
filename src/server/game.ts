@@ -32,9 +32,14 @@ import {
   cooldownReclaimerEnergyPerActivationMs,
   timeEnergyActivationsAvailable,
   TIME_ENERGY_MAX_MS,
-  CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS,
+  CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS,
+  CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS,
   CELESTIAL_ALIGNMENT_DURATION_MS,
   type CelestialAlignmentChoice,
+  type CelestialAlignmentInstance,
+  normalizeCelestialAlignmentInstances,
+  activeCelestialAlignmentInstances,
+  celestialAlignmentStackCount,
   rollsPerActivation,
   luckMultiplier,
   upgradeCost,
@@ -331,6 +336,140 @@ function serializePlayerStateForRedis(state: PlayerState): string {
     : state;
   return JSON.stringify(persistedState);
 }
+
+const PLAYER_SAVE_CHUNK_PREFIX = 'io:player-save-chunk:';
+const PLAYER_SAVE_CHUNK_CHARS = 64 * 1024;
+const PLAYER_SAVE_INLINE_CHARS = 192 * 1024;
+const PLAYER_SAVE_MAX_CHUNKS = 128;
+const PLAYER_SAVE_MAX_CHARS = PLAYER_SAVE_CHUNK_CHARS * PLAYER_SAVE_MAX_CHUNKS;
+type PlayerSaveManifest = {
+  __ioPlayerSaveManifest: 1;
+  token: string;
+  chunkCount: number;
+  length: number;
+  checksum: string;
+  projection: {
+    username?: string; lastSeenAt?: number; level?: number; xp?: number;
+    totalRolls?: number; highestRarity?: number; coins?: number; shards?: number;
+  };
+};
+type PlayerSaveWritePlan = { storedValue: string; chunkKeys: string[] };
+
+function playerSaveChecksum(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) hash = Math.imul(hash ^ value.charCodeAt(index), 0x01000193);
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+function parsePlayerSaveManifest(raw: string | null | undefined): PlayerSaveManifest | null {
+  if (typeof raw !== 'string' || !raw.startsWith('{"__ioPlayerSaveManifest":1')) return null;
+  try {
+    const value = JSON.parse(raw) as Record<string, unknown>;
+    const projection = value.projection && typeof value.projection === 'object' && !Array.isArray(value.projection)
+      ? value.projection as PlayerSaveManifest['projection'] : {};
+    const token = String(value.token ?? '');
+    const chunkCount = Number(value.chunkCount);
+    const length = Number(value.length);
+    const checksum = String(value.checksum ?? '');
+    if (!/^[a-zA-Z0-9-]{8,120}$/.test(token) ||
+        !Number.isSafeInteger(chunkCount) || chunkCount < 1 || chunkCount > PLAYER_SAVE_MAX_CHUNKS ||
+        !Number.isSafeInteger(length) || length < 1 || length > PLAYER_SAVE_MAX_CHARS ||
+        !/^[a-f0-9]{8}$/.test(checksum)) throw new Error('Invalid player-save manifest.');
+    return { __ioPlayerSaveManifest: 1, token, chunkCount, length, checksum, projection };
+  } catch (error) {
+    console.error('[Player Save] Invalid chunk manifest:', error);
+    throw new Error('Your Infinity Orbs save index could not be read safely.');
+  }
+}
+function playerSaveChunkKey(userId: string, token: string, index: number): string {
+  return PLAYER_SAVE_CHUNK_PREFIX + userId + ':' + token + ':' + index;
+}
+async function readStoredPlayerSave(userId: string, storedValue: string | null | undefined): Promise<string | null> {
+  if (storedValue == null) return null;
+  const manifest = parsePlayerSaveManifest(storedValue);
+  if (!manifest) return storedValue;
+  const keys = Array.from({ length: manifest.chunkCount }, (_, index) => playerSaveChunkKey(userId, manifest.token, index));
+  const chunks: string[] = [];
+  for (let offset = 0; offset < keys.length; offset += 8) {
+    const batch = await redis.mGet(keys.slice(offset, offset + 8));
+    if (batch.length !== Math.min(8, keys.length - offset) || batch.some(value => typeof value !== 'string')) {
+      throw new Error('Your Infinity Orbs save is missing a data chunk. No changes were applied.');
+    }
+    chunks.push(...batch as string[]);
+  }
+  const joined = chunks.join('');
+  if (joined.length !== manifest.length || playerSaveChecksum(joined) !== manifest.checksum) {
+    throw new Error('Your Infinity Orbs save failed its integrity check. No changes were applied.');
+  }
+  return joined;
+}
+async function createPlayerSaveWritePlan(userId: string, serialized: string): Promise<PlayerSaveWritePlan> {
+  if (serialized.length <= PLAYER_SAVE_INLINE_CHARS) return { storedValue: serialized, chunkKeys: [] };
+  if (serialized.length > PLAYER_SAVE_MAX_CHARS) {
+    throw new Error('Player save exceeds the supported 8 MiB logical size. No changes were written.');
+  }
+  const token = secureServerToken('playersave');
+  const chunks: string[] = [];
+  for (let offset = 0; offset < serialized.length;) {
+    let end = Math.min(serialized.length, offset + PLAYER_SAVE_CHUNK_CHARS);
+    if (end < serialized.length && serialized.charCodeAt(end - 1) >= 0xd800 && serialized.charCodeAt(end - 1) <= 0xdbff) end -= 1;
+    chunks.push(serialized.slice(offset, end));
+    offset = end;
+  }
+  if (chunks.length > PLAYER_SAVE_MAX_CHUNKS) throw new Error('Player save requires too many Redis records. No changes were written.');
+  const chunkKeys = chunks.map((_, index) => playerSaveChunkKey(userId, token, index));
+  let written = 0;
+  try {
+    for (let index = 0; index < chunks.length; index += 1) {
+      await redis.set(chunkKeys[index], chunks[index]);
+      written += 1;
+    }
+  } catch (error) {
+    for (const keyName of chunkKeys.slice(0, written)) await redis.del(keyName).catch(() => undefined);
+    throw error;
+  }
+  let projection: PlayerSaveManifest['projection'] = {};
+  try {
+    const state = JSON.parse(serialized) as Partial<PlayerState>;
+    projection = {
+      ...(typeof state.username === 'string' ? { username: state.username.slice(0, 100) } : {}),
+      ...(Number.isFinite(state.lastSeenAt) ? { lastSeenAt: Number(state.lastSeenAt) } : {}),
+      ...(Number.isFinite(state.level) ? { level: Number(state.level) } : {}),
+      ...(Number.isFinite(state.xp) ? { xp: Number(state.xp) } : {}),
+      ...(Number.isFinite(state.totalRolls) ? { totalRolls: Number(state.totalRolls) } : {}),
+      ...(Number.isFinite(state.highestRarity) ? { highestRarity: Number(state.highestRarity) } : {}),
+      ...(Number.isFinite(state.coins) ? { coins: Number(state.coins) } : {}),
+      ...(Number.isFinite(state.shards) ? { shards: Number(state.shards) } : {}),
+    };
+  } catch { /* chunk bytes remain authoritative; the projection is for admin lists only */ }
+  const manifest: PlayerSaveManifest = {
+    __ioPlayerSaveManifest: 1, token, chunkCount: chunks.length,
+    length: serialized.length, checksum: playerSaveChecksum(serialized), projection,
+  };
+  return { storedValue: JSON.stringify(manifest), chunkKeys };
+}
+async function discardPlayerSaveWritePlan(plan: PlayerSaveWritePlan): Promise<void> {
+  for (const keyName of plan.chunkKeys) await redis.del(keyName).catch(() => undefined);
+}
+const PLAYER_SAVE_RETIRED_CHUNK_TTL_MS = 10 * 60_000;
+async function cleanupPreviousPlayerSave(userId: string, previousRaw: string | null | undefined): Promise<void> {
+  const previous = parsePlayerSaveManifest(previousRaw);
+  if (!previous) return;
+  const expiration = new Date(Date.now() + PLAYER_SAVE_RETIRED_CHUNK_TTL_MS);
+  for (let index = 0; index < previous.chunkCount; index += 1) {
+    const keyName = playerSaveChunkKey(userId, previous.token, index);
+    try {
+      const chunk = await redis.get(keyName);
+      if (typeof chunk === 'string') await redis.set(keyName, chunk, { expiration });
+    } catch (error) {
+      console.warn('[Player Save] Previous chunk could not be retired; it remains readable:', error);
+    }
+  }
+}
+function playerSaveProjection(raw: string | null | undefined): Partial<PlayerState> | null {
+  if (raw == null) return null;
+  const manifest = parsePlayerSaveManifest(raw);
+  return manifest ? manifest.projection as Partial<PlayerState> : parseStoredJson<Partial<PlayerState>>(raw);
+}
 const GAME_BANS_KEY = 'io:game-bans';
 const ONLINE_PLAYERS_KEY = 'io:online:players';
 const CCU_HOURLY_PREFIX = 'io:ccu:hour:';
@@ -350,7 +489,7 @@ const ROLL_TICKET_KEY_PREFIX = 'io:roll-ticket:';
 const ROLL_TICKET_COUNT = 50;
 const ROLL_TICKET_TTL_MS = 10 * 60_000;
 const PLAYER_SPY_LOG_KEY_PREFIX = 'io:player-spy:v1:';
-const PLAYER_SPY_LOG_LIMIT = 500;
+const PLAYER_SPY_LOG_LIMIT = 160;
 const FOLLOW_SUBSCRIBED_KEY_PREFIX = 'io:follow-prompt-subscribed:v2:';
 const FOLLOW_REWARD_KEY_PREFIX = 'io:follow-prompt-reward:v1:';
 const FOLLOW_ACTION_COUNT_KEY = 'io:follow-prompt-actions:v2';
@@ -362,7 +501,7 @@ const POPUP_EVENTS: GamePopupEvent[] = ['shown', 'accepted', 'dismissed'];
 const FOLLOW_TARGET_SUBREDDIT = 'infinityorbs';
 
 const SAVE_DEBUG_LOG_KEY = 'io:save-debug:v1';
-const SAVE_DEBUG_LOG_LIMIT = 500;
+const SAVE_DEBUG_LOG_LIMIT = 180;
 
 export interface SaveDebugLog {
   timestamp: number;
@@ -445,9 +584,7 @@ async function appendSaveDebugLog(
       }
 
       entries.push(entry);
-      if (entries.length > SAVE_DEBUG_LOG_LIMIT) {
-        entries = entries.slice(-SAVE_DEBUG_LOG_LIMIT);
-      }
+      while (entries.length > 0 && (entries.length > SAVE_DEBUG_LOG_LIMIT || JSON.stringify(entries).length > 700_000)) entries.shift();
 
       await txn.multi();
       await txn.set(SAVE_DEBUG_LOG_KEY, JSON.stringify(entries));
@@ -564,9 +701,7 @@ export async function appendPlayerSpyLog(
       }
 
       entries.push(entry);
-      if (entries.length > PLAYER_SPY_LOG_LIMIT) {
-        entries = entries.slice(-PLAYER_SPY_LOG_LIMIT);
-      }
+      while (entries.length > 0 && (entries.length > PLAYER_SPY_LOG_LIMIT || JSON.stringify(entries).length > 700_000)) entries.shift();
 
       await txn.multi();
       await txn.set(logKey, JSON.stringify(entries));
@@ -642,9 +777,7 @@ export async function appendPaymentDebugLog(stage: string, details: Record<strin
       }
 
       entries.push(entry);
-      if (entries.length > PAYMENT_DEBUG_LOG_LIMIT) {
-        entries = entries.slice(-PAYMENT_DEBUG_LOG_LIMIT);
-      }
+      while (entries.length > 0 && (entries.length > PAYMENT_DEBUG_LOG_LIMIT || JSON.stringify(entries).length > 700_000)) entries.shift();
 
       await txn.multi();
       await txn.set(PAYMENT_DEBUG_LOG_KEY, JSON.stringify(entries));
@@ -679,7 +812,7 @@ export async function clearPaymentDebugLogs(): Promise<void> {
 
 const GLOBAL_BOOSTERS_KEY = 'io:global-boosters:v4';
 const GLOBAL_BOOSTER_DEBUG_LOG_KEY = 'io:global-booster-debug-log:v1';
-const GLOBAL_BOOSTER_DEBUG_LOG_LIMIT = 300;
+const GLOBAL_BOOSTER_DEBUG_LOG_LIMIT = 120;
 
 function summarizeGlobalBoosterRaw(raw: unknown): unknown {
   if (typeof raw !== 'string') return raw;
@@ -718,9 +851,7 @@ export async function appendGlobalBoosterDebugLog(
       }
 
       entries.push(entry);
-      if (entries.length > GLOBAL_BOOSTER_DEBUG_LOG_LIMIT) {
-        entries = entries.slice(-GLOBAL_BOOSTER_DEBUG_LOG_LIMIT);
-      }
+      while (entries.length > 0 && (entries.length > GLOBAL_BOOSTER_DEBUG_LOG_LIMIT || JSON.stringify(entries).length > 700_000)) entries.shift();
 
       await txn.multi();
       await txn.set(GLOBAL_BOOSTER_DEBUG_LOG_KEY, JSON.stringify(entries));
@@ -759,7 +890,7 @@ export async function clearGlobalBoosterDebugLogs(): Promise<void> {
 }
 
 const GLOBAL_BOOSTER_ACTIVATION_LOG_KEY = 'io:global-booster-activation-log:v1';
-const GLOBAL_BOOSTER_ACTIVATION_LOG_LIMIT = 500;
+const GLOBAL_BOOSTER_ACTIVATION_LOG_LIMIT = 180;
 
 export interface GlobalBoosterActivationLogEntry {
   timestamp: number;
@@ -800,9 +931,7 @@ export async function appendGlobalBoosterActivationLog(
       }
 
       entries.push(entry);
-      if (entries.length > GLOBAL_BOOSTER_ACTIVATION_LOG_LIMIT) {
-        entries = entries.slice(-GLOBAL_BOOSTER_ACTIVATION_LOG_LIMIT);
-      }
+      while (entries.length > 0 && (entries.length > GLOBAL_BOOSTER_ACTIVATION_LOG_LIMIT || JSON.stringify(entries).length > 700_000)) entries.shift();
 
       await txn.multi();
       await txn.set(GLOBAL_BOOSTER_ACTIVATION_LOG_KEY, JSON.stringify(entries));
@@ -2044,7 +2173,7 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
     const hasRegistryEntry = Object.prototype.hasOwnProperty.call(records, userId);
     const registry = parseStoredJson<Partial<PlayerRegistryEntry>>(records[userId]) ?? {};
     const legacy = legacyById.get(userId);
-    const save = saves[index] ? parseStoredJson<Partial<PlayerState>>(saves[index]) : null;
+    const save = playerSaveProjection(saves[index]);
 
     // Do not resurrect a wiped account from a stale leaderboard projection.
     // Registry-backed accounts remain visible as before; fallback-only entries
@@ -2431,7 +2560,9 @@ export async function hasReadablePlayerSave(userId: string): Promise<boolean> {
   const id = String(userId ?? '').trim();
   if (!id) return false;
   try {
-    return parsePaymentPlayerState(await redis.get(playerKeyFor(id))) !== null;
+    const storedRaw = await redis.get(playerKeyFor(id));
+    const raw = await readStoredPlayerSave(id, storedRaw);
+    return raw !== null && parsePaymentPlayerState(raw) !== null;
   } catch {
     return false;
   }
@@ -2456,7 +2587,8 @@ return withPlayerMutationLockFor(userId, async () => {
     const txn = await redis.watch(pkey, generationKey);
     const generationRaw = await redis.get(generationKey);
     const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
-    const raw = await redis.get(pkey);
+    const storedRaw = await redis.get(pkey);
+    const raw = await readStoredPlayerSave(userId, storedRaw);
     await appendPaymentDebugLog('grant:redis-read', {
       userId,
       sku,
@@ -2619,25 +2751,34 @@ return withPlayerMutationLockFor(userId, async () => {
       lifetimeShards: state.lifetimeShards,
     });
 
-    await txn.multi();
-    await txn.set(pkey, serializePlayerStateForRedis(state));
-    const committed = await txn.exec();
-    if (committed !== null) {
-      await appendPaymentDebugLog('grant:success', {
+    let writePlan: PlayerSaveWritePlan | null = null;
+    let writeCommitted = false;
+    try {
+      writePlan = await createPlayerSaveWritePlan(userId, serializePlayerStateForRedis(state));
+      await txn.multi();
+      await txn.set(pkey, writePlan.storedValue);
+      const committed = await txn.exec();
+      if (committed !== null) {
+        writeCommitted = true;
+        await cleanupPreviousPlayerSave(userId, storedRaw);
+        await appendPaymentDebugLog('grant:success', {
         userId,
         sku,
         orderId,
         attempt,
         committed: true,
       });
-      return true;
+        return true;
+      }
+    } finally {
+      if (!writeCommitted) {
+        await txn.unwatch().catch(() => undefined);
+        if (writePlan) await discardPlayerSaveWritePlan(writePlan);
+      }
     }
 
     await appendPaymentDebugLog('grant:write-conflict', {
-      userId,
-      sku,
-      orderId,
-      attempt,
+      userId, sku, orderId, attempt,
     });
   }
 
@@ -2657,7 +2798,8 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
       const txn = await redis.watch(pkey, generationKey);
       const generationRaw = await redis.get(generationKey);
       const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
-      const raw = await redis.get(pkey);
+      const storedRaw = await redis.get(pkey);
+      const raw = await readStoredPlayerSave(userId, storedRaw);
       if (raw == null) {
         await txn.unwatch();
         return;
@@ -2748,10 +2890,24 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
         globalBoosterCredits: grantedCredits,
       };
 
-      await txn.multi();
-      await txn.set(pkey, serializePlayerStateForRedis(state));
-      const committed = await txn.exec();
-      if (committed !== null) return;
+      let writePlan: PlayerSaveWritePlan | null = null;
+      let writeCommitted = false;
+      try {
+        writePlan = await createPlayerSaveWritePlan(userId, serializePlayerStateForRedis(state));
+        await txn.multi();
+        await txn.set(pkey, writePlan.storedValue);
+        const committed = await txn.exec();
+        if (committed !== null) {
+          writeCommitted = true;
+          await cleanupPreviousPlayerSave(userId, storedRaw);
+          return;
+        }
+      } finally {
+        if (!writeCommitted) {
+          await txn.unwatch().catch(() => undefined);
+          if (writePlan) await discardPlayerSaveWritePlan(writePlan);
+        }
+      }
     }
 
     throw new Error('Could not safely process the refund.');
@@ -2763,7 +2919,8 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
   const generationKey = saveGenerationKeyFor(userId);
   const generationRaw = await redis.get(generationKey);
   const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
-  const raw = await redis.get(playerKey);
+  const storedRaw = await redis.get(playerKey);
+  const raw = await readStoredPlayerSave(userId, storedRaw);
   const username = context.username ?? `reddit-user-${userId.slice(-8)}`;
   // Passive post previews may read player-specific eligibility without registering
   // an activity visit. Normal gameplay reads preserve the default registration.
@@ -2920,10 +3077,10 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     alignmentNextAt: finiteNonNegativeInteger(parsed.alignmentNextAt, base.alignmentNextAt ?? 0),
     alignmentPendingAt: finiteNonNegativeInteger(parsed.alignmentPendingAt, base.alignmentPendingAt ?? 0),
     alignmentPendingForced: parsed.alignmentPendingForced === true,
+    alignmentActiveInstances: normalizeCelestialAlignmentInstances(parsed.alignmentActiveInstances, parsed.alignmentActiveChoice, parsed.alignmentActiveUntil),
     alignmentActiveUntil: finiteNonNegativeInteger(parsed.alignmentActiveUntil, base.alignmentActiveUntil ?? 0),
     alignmentActiveChoice: ['starseeker', 'goldenOrbit', 'clockwork'].includes(String(parsed.alignmentActiveChoice))
-      ? parsed.alignmentActiveChoice as CelestialAlignmentChoice
-      : null,
+      ? parsed.alignmentActiveChoice as CelestialAlignmentChoice : null,
     lastShareAt: normalizeCooldownTimestamp(parsed.lastShareAt, base.lastShareAt ?? 0),
     level: restoredLevel,
     xp: finiteNonNegativeInteger(parsedXp, base.xp),
@@ -3188,7 +3345,8 @@ async function syncRarityFlair(s: PlayerState): Promise<void> {
   await withPlayerMutationLockFor('flair:' + userId, async () => {
     const flairKey = PLAYER_FLAIR_KEY_PREFIX + userId;
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      const raw = await redis.get(playerKeyFor(userId));
+      const storedRaw = await redis.get(playerKeyFor(userId));
+      const raw = await readStoredPlayerSave(userId, storedRaw);
       const latest = raw == null ? null : parsePlayerStateValue(raw);
       const source = latest ?? s;
       const username = String(context.username ?? source.username ?? '').trim();
@@ -3213,7 +3371,8 @@ async function syncRarityFlair(s: PlayerState): Promise<void> {
 
       // A newer save may have committed while Reddit was processing the update.
       // Re-read before caching; if it changed, retry under the same flair lock.
-      const afterRaw = await redis.get(playerKeyFor(userId));
+      const afterStoredRaw = await redis.get(playerKeyFor(userId));
+      const afterRaw = await readStoredPlayerSave(userId, afterStoredRaw);
       const after = afterRaw == null ? null : parsePlayerStateValue(afterRaw);
       const afterRarity = Math.max(2, Math.floor(Number(after?.highestRarity ?? source.highestRarity ?? 2) || 2));
       const afterOrb = getOrbInfo(afterRarity, (after?.highestRarityIsInfinity ?? source.highestRarityIsInfinity) === true);
@@ -3505,6 +3664,8 @@ export async function save(
     ])];
     const txn = await redis.watch(...watchedKeys);
     let transactionClosed = false;
+    let writePlan: PlayerSaveWritePlan | null = null;
+    let saveCommitted = false;
     try {
     // Devvit's TxClient is a command builder after WATCH/MULTI. Reads must use
     // the Redis client itself, while WATCH keeps these keys protected until EXEC.
@@ -3516,6 +3677,7 @@ export async function save(
       }
     }
     const latestRaw = await redis.get(playerKey);
+    const latestPlayerRaw = await readStoredPlayerSave(userId, latestRaw);
     const generationRaw = await redis.get(generationKey);
     const extraRaws = await Promise.all(extraWrites.map(write => redis.get(write.key)));
 
@@ -3556,7 +3718,8 @@ export async function save(
       // This request began before an admin wipe. Adopt the post-wipe state
       // for any caller that catches the error, but do not report a successful
       // mutation whose rewards/receipt/ticket were never committed.
-      const currentRaw = await redis.get(playerKey);
+      const currentStoredRaw = await redis.get(playerKey);
+      const currentRaw = await readStoredPlayerSave(userId, currentStoredRaw);
       const current = parseStoredJson<PlayerState>(currentRaw);
       const currentGeneration = current
         ? Math.max(0, Math.floor(Number(current.saveGeneration ?? -1)))
@@ -3573,7 +3736,7 @@ export async function save(
       throw new Error('PLAYER_STATE_INVALIDATED_BY_WIPE');
     }
 
-    const latest = latestRaw == null ? null : parsePlayerStateValue(latestRaw);
+    const latest = latestPlayerRaw == null ? null : parsePlayerStateValue(latestPlayerRaw);
     const latestRevision = Math.max(0, Math.floor(Number(latest?.stateRevision ?? 0)) || 0);
     const saveKeyMissing = latestRaw == null;
 
@@ -3630,8 +3793,9 @@ export async function save(
     }
 
     const nextState = { ...s, saveGeneration: generation, stateRevision: expectedRevision + 1 };
+    writePlan = await createPlayerSaveWritePlan(userId, serializePlayerStateForRedis(nextState));
     await txn.multi();
-    await txn.set(playerKey, serializePlayerStateForRedis(nextState));
+    await txn.set(playerKey, writePlan.storedValue);
     for (let index = 0; index < codexWrites.length; index += 1) {
       await txn.hSet(codexWriteKeys[index], codexWrites[index].fields);
     }
@@ -3645,6 +3809,8 @@ export async function save(
     const committed = await txn.exec();
     transactionClosed = true;
     if (committed !== null) {
+      saveCommitted = true;
+      await cleanupPreviousPlayerSave(userId, latestRaw);
       pendingSaveExtraWrites.delete(s);
       pendingCodexRarityWrites.delete(s);
       Object.assign(s, nextState);
@@ -3690,9 +3856,8 @@ export async function save(
     } finally {
       // WATCH must be released even when a Redis read, validation, queued write,
       // or EXEC throws. This is deliberately best-effort after explicit UNWATCH.
-      if (!transactionClosed) {
-        await txn.unwatch().catch(() => undefined);
-      }
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+      if (writePlan && !saveCommitted) await discardPlayerSaveWritePlan(writePlan);
     }
   }
 
@@ -3999,9 +4164,11 @@ export async function applyRolls(
   const baseLuckCandidate = luckMultiplier(luckState) + Math.max(0, communityLuck - 1) + bossLuckBonus;
   const baseLuck = Number.isFinite(baseLuckCandidate) ? Math.max(1, baseLuckCandidate) : Number.MAX_VALUE;
   const rawRuneLuckMultiplier = combatRuneLuckMultiplier(runeBonuses.luckPct);
-  const starseekerActive = s.alignmentActiveChoice === 'starseeker' && (s.alignmentActiveUntil ?? 0) > Date.now();
+  const starseekerStacks = celestialAlignmentStackCount(s.alignmentActiveInstances, 'starseeker');
+  const starseekerExponent = Math.pow(1.05, starseekerStacks);
+  const starseekerActive = starseekerStacks > 0;
   const alignedLuckCandidate = starseekerActive
-    ? Math.pow(baseLuck * rawRuneLuckMultiplier, 1.05)
+    ? Math.pow(baseLuck * rawRuneLuckMultiplier, starseekerExponent)
     : baseLuck;
   const alignedBaseLuck = Number.isFinite(alignedLuckCandidate)
     ? Math.max(1, alignedLuckCandidate)
@@ -4582,9 +4749,9 @@ export async function applyRolls(
   coinsGained = addCoinAmount(topCoins, extraCoins);
 
   // Level passives and other coin modifiers stack multiplicatively by source.
-  const goldenOrbitActive = s.alignmentActiveChoice === 'goldenOrbit' && (s.alignmentActiveUntil ?? 0) > Date.now();
+  const goldenOrbitStacks = celestialAlignmentStackCount(s.alignmentActiveInstances, 'goldenOrbit');
   const coinBonusMul =
-    (goldenOrbitActive ? 1.5 : 1) *
+    Math.pow(1.5, goldenOrbitStacks) *
     levelBenefits.coinsMultiplier *
     (1 + (s.upgrades.coinBonus ?? 0) * 0.15) *
     orbFingersMultiplier(s) *
@@ -6667,43 +6834,44 @@ export async function forceCelestialAlignmentPromptForCurrentUser(): Promise<{ q
 }
 
 function nextCelestialAlignmentAt(now: number): number {
-  const sample = Math.max(Number.EPSILON, Math.min(1 - Number.EPSILON, serverRandom()));
-  const delay = -Math.log(1 - sample) * CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS;
-  return now + Math.max(1, Math.round(delay));
+  const sample = Math.max(0, Math.min(1, serverRandom()));
+  const interval = CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS +
+    Math.round(sample * (CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS - CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS));
+  return now + interval;
 }
 
 export async function getCelestialAlignmentStatus(): Promise<{
-  unlocked: boolean;
-  pending: boolean;
-  pendingAt: number;
-  activeChoice: CelestialAlignmentChoice | null;
-  activeUntil: number;
-  nextAt: number;
+  unlocked: boolean; pending: boolean; pendingAt: number;
+  activeChoice: CelestialAlignmentChoice | null; activeUntil: number;
+  activeInstances: CelestialAlignmentInstance[]; nextAt: number;
 }> {
   return withPlayerMutationLock(async () => {
     const s = await loadRaw();
     const hasMastery = (s.masterySkills?.celestialAlignment ?? 0) > 0;
     const forcedPending = s.alignmentPendingForced === true && (s.alignmentPendingAt ?? 0) > 0;
     const now = Date.now();
+    const activeInstances = activeCelestialAlignmentInstances(s.alignmentActiveInstances, now);
+    let changed = activeInstances.length !== (s.alignmentActiveInstances ?? []).length;
+    if (changed) s.alignmentActiveInstances = activeInstances;
+    const latest = activeInstances[activeInstances.length - 1] ?? null;
+
     if (!hasMastery && !forcedPending) {
-      // Admin-forced test choices bypass mastery, but their 60-minute effect
-      // must remain visible on subsequent status polls without unlocking events.
-      const activeChoice = (s.alignmentActiveUntil ?? 0) > now
-        ? s.alignmentActiveChoice ?? null
-        : null;
+      if (s.alignmentActiveChoice !== (latest?.choice ?? null) || s.alignmentActiveUntil !== (latest?.expiresAt ?? 0)) {
+        s.alignmentActiveChoice = latest?.choice ?? null;
+        s.alignmentActiveUntil = latest?.expiresAt ?? 0;
+        changed = true;
+      }
+      if (changed) await save(s);
       return {
-        unlocked: false,
-        pending: false,
-        pendingAt: 0,
-        activeChoice,
-        activeUntil: activeChoice ? s.alignmentActiveUntil ?? 0 : 0,
-        nextAt: 0,
+        unlocked: false, pending: false, pendingAt: 0,
+        activeChoice: latest?.choice ?? null, activeUntil: latest?.expiresAt ?? 0,
+        activeInstances, nextAt: 0,
       };
     }
-    let changed = false;
-    if ((s.alignmentActiveUntil ?? 0) <= now && s.alignmentActiveChoice) {
-      s.alignmentActiveChoice = null;
-      s.alignmentActiveUntil = 0;
+
+    if (s.alignmentActiveChoice !== (latest?.choice ?? null) || s.alignmentActiveUntil !== (latest?.expiresAt ?? 0)) {
+      s.alignmentActiveChoice = latest?.choice ?? null;
+      s.alignmentActiveUntil = latest?.expiresAt ?? 0;
       changed = true;
     }
     if (!(s.alignmentPendingAt ?? 0) && !(s.alignmentNextAt ?? 0)) {
@@ -6721,8 +6889,9 @@ export async function getCelestialAlignmentStatus(): Promise<{
       unlocked: true,
       pending: (s.alignmentPendingAt ?? 0) > 0,
       pendingAt: s.alignmentPendingAt ?? 0,
-      activeChoice: (s.alignmentActiveUntil ?? 0) > now ? s.alignmentActiveChoice ?? null : null,
-      activeUntil: (s.alignmentActiveUntil ?? 0) > now ? s.alignmentActiveUntil ?? 0 : 0,
+      activeChoice: latest?.choice ?? null,
+      activeUntil: latest?.expiresAt ?? 0,
+      activeInstances,
       nextAt: s.alignmentNextAt ?? 0,
     };
   });
@@ -6730,32 +6899,41 @@ export async function getCelestialAlignmentStatus(): Promise<{
 
 export async function chooseCelestialAlignment(
   choice: CelestialAlignmentChoice,
-): Promise<{ state: PlayerState; activeChoice: CelestialAlignmentChoice; activeUntil: number; nextAt: number }> {
+): Promise<{
+  state: PlayerState; activeChoice: CelestialAlignmentChoice; activeUntil: number;
+  activeInstances: CelestialAlignmentInstance[]; nextAt: number;
+}> {
   return withPlayerMutationLock(async () => {
-    if (!['starseeker', 'goldenOrbit', 'clockwork'].includes(choice)) {
-      throw new Error('Choose a valid Celestial Alignment effect.');
-    }
+    if (!['starseeker', 'goldenOrbit', 'clockwork'].includes(choice)) throw new Error('Choose a valid Celestial Alignment effect.');
     const s = await loadRaw();
     const hasMastery = (s.masterySkills?.celestialAlignment ?? 0) > 0;
     const wasAdminTest = s.alignmentPendingForced === true;
     if (!hasMastery && !wasAdminTest) throw new Error('Celestial Alignment Mastery is required.');
-    if (!(s.alignmentPendingAt ?? 0)) throw new Error('There is no Alignment choice waiting.');
+    const pendingAt = Number(s.alignmentPendingAt ?? 0);
+    if (!(pendingAt > 0)) throw new Error('There is no Alignment choice waiting.');
     const now = Date.now();
-    const activeUntil = now + CELESTIAL_ALIGNMENT_DURATION_MS;
+
+    const activeInstances = activeCelestialAlignmentInstances(s.alignmentActiveInstances, now);
+    const instance: CelestialAlignmentInstance = {
+      id: secureServerToken('alignment'), choice, activatedAt: now,
+      expiresAt: now + CELESTIAL_ALIGNMENT_DURATION_MS,
+    };
+    const nextInstances = [...activeInstances, instance].slice(-100);
+    s.alignmentActiveInstances = nextInstances;
+    s.alignmentActiveChoice = instance.choice;
+    s.alignmentActiveUntil = instance.expiresAt;
     s.alignmentPendingAt = 0;
     s.alignmentPendingForced = false;
-    s.alignmentActiveChoice = choice;
-    s.alignmentActiveUntil = activeUntil;
     s.alignmentNextAt = hasMastery ? nextCelestialAlignmentAt(now) : 0;
-    const username = String(context.username ?? s.username ?? 'Redditor').trim().replace(/^u\//i, '').slice(0, 32) || 'Redditor';
-    // The player's selection is authoritative. Shared choice analytics are a
-    // post-commit projection, so another player's simultaneous choice can never
-    // reject an otherwise valid Alignment activation.
+    const username = String(context.username ?? s.username ?? 'Redditor').trim().replace(/^u\\//i, '').slice(0, 32) || 'Redditor';
     stageSavePostCommitAction(s, async () => {
       await recordCelestialAlignmentChoiceStats(choice, username, now, wasAdminTest);
     });
     await save(s);
-    return { state: s, activeChoice: choice, activeUntil, nextAt: s.alignmentNextAt };
+    return {
+      state: s, activeChoice: instance.choice, activeUntil: instance.expiresAt,
+      activeInstances: nextInstances, nextAt: s.alignmentNextAt,
+    };
   });
 }
 

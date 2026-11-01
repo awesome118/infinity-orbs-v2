@@ -16,12 +16,12 @@ interface ApiResponse extends CombatSnapshot {
   forgeResult?:{item:CombatGear;cost:number;remainingScrap:number};
   arenaResult?:CombatArenaResult;
 }
-type CombatRequestError = Error & { status?: number; retryAfterMs?: number };
+type CombatRequestError = Error & { status?: number; code?: string; retryAfterMs?: number };
 const combatReadRetryDelay=(attempt:number,retryAfterMs=0)=>Math.min(1_500,Math.max(retryAfterMs,120*(2**attempt)));
 async function request<T>(url:string,method='GET',body?:unknown):Promise<T> {
   const verb=String(method||'GET').toUpperCase();
   const isRead=verb==='GET'||verb==='HEAD';
-  const maxAttempts=isRead?3:1;
+  const maxAttempts=isRead?3:10;
   for(let attempt=0;attempt<maxAttempts;attempt+=1) {
     const controller=new AbortController();
     const timeout=window.setTimeout(()=>controller.abort(),isRead?8_000:12_000);
@@ -44,7 +44,13 @@ async function request<T>(url:string,method='GET',body?:unknown):Promise<T> {
           typeof data?.message==='string'?data.message:
           responseText.trim().slice(0,240)||'HTTP '+response.status+' '+response.statusText;
         const error=new Error(message) as CombatRequestError;
-        error.status=response.status;error.retryAfterMs=retryAfterMs;
+        error.status=response.status;
+        error.code=typeof data?.code==='string'?data.code:undefined;
+        error.retryAfterMs=retryAfterMs;
+        if(!isRead&&error.code==='PLAYER_MUTATION_QUEUED'&&attempt<maxAttempts-1){
+          await new Promise(resolve=>window.setTimeout(resolve,Math.min(1_500,retryAfterMs||180*(attempt+1))));
+          continue;
+        }
         throw error;
       }
       if(!data)throw new Error('Combat returned an invalid response. Refresh and retry.');

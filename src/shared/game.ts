@@ -158,7 +158,7 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   },
   celestialAlignment: {
     name: 'Celestial Alignment',
-    desc: 'Unlock random Alignment events, averaging 3 per hour. Choose one 60-minute effect: Starseeker, Golden Orbit, or Clockwork.',
+    desc: 'Unlock a Celestial Alignment event every 45–90 minutes. Choose a 2-hour effect; each activation stacks independently with earlier activations.',
     maxLevel: 1,
     costMultiplier: 4,
   },
@@ -175,9 +175,48 @@ export function timeEnergyActivationsAvailable(timeEnergyMs: number, cooldownMs:
   if (!Number.isFinite(energy) || !Number.isFinite(cooldown) || energy <= 0 || cooldown <= 0) return 0;
   return Math.min(TIME_ENERGY_MAX_ACTIVATIONS_PER_USE, Math.floor(Math.max(0, energy) / Math.max(1, cooldown)));
 }
-export const CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS = 20 * 60 * 1_000;
-export const CELESTIAL_ALIGNMENT_DURATION_MS = 60 * 60 * 1_000;
+export const CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS = 45 * 60 * 1_000;
+export const CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS = 90 * 60 * 1_000;
+export const CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS =
+  (CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS + CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS) / 2;
+export const CELESTIAL_ALIGNMENT_LEGACY_DURATION_MS = 60 * 60 * 1_000;
+export const CELESTIAL_ALIGNMENT_DURATION_MS = 2 * 60 * 60 * 1_000;
 export type CelestialAlignmentChoice = 'starseeker' | 'goldenOrbit' | 'clockwork';
+export interface CelestialAlignmentInstance { id: string; choice: CelestialAlignmentChoice; activatedAt: number; expiresAt: number; }
+const CELESTIAL_ALIGNMENT_CHOICES: readonly CelestialAlignmentChoice[] = ['starseeker', 'goldenOrbit', 'clockwork'];
+
+export function normalizeCelestialAlignmentInstances(value: unknown, legacyChoice?: unknown, legacyUntil?: unknown, now = Date.now()): CelestialAlignmentInstance[] {
+  const source = Array.isArray(value) ? value : [];
+  const instances: CelestialAlignmentInstance[] = [];
+  for (const raw of source.slice(-100)) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const item = raw as Record<string, unknown>;
+    const id = String(item.id ?? '').trim().slice(0, 100);
+    const choice = item.choice as CelestialAlignmentChoice;
+    const activatedAt = Number(item.activatedAt);
+    const expiresAt = Number(item.expiresAt);
+    if (!id || !CELESTIAL_ALIGNMENT_CHOICES.includes(choice) || !Number.isSafeInteger(activatedAt) ||
+        activatedAt <= 0 || !Number.isSafeInteger(expiresAt) || expiresAt <= now || expiresAt <= activatedAt) continue;
+    instances.push({ id, choice, activatedAt, expiresAt });
+  }
+  if (!Array.isArray(value)) {
+    const choice = legacyChoice as CelestialAlignmentChoice;
+    const expiresAt = Number(legacyUntil);
+    if (CELESTIAL_ALIGNMENT_CHOICES.includes(choice) && Number.isSafeInteger(expiresAt) && expiresAt > now) {
+      const activatedAt = Math.max(1, expiresAt - CELESTIAL_ALIGNMENT_LEGACY_DURATION_MS);
+      instances.push({ id: 'legacy-' + activatedAt.toString(36), choice, activatedAt, expiresAt });
+    }
+  }
+  const unique = new Map<string, CelestialAlignmentInstance>();
+  for (const instance of instances) unique.set(instance.id, instance);
+  return [...unique.values()].sort((a, b) => a.activatedAt - b.activatedAt).slice(-100);
+}
+export function activeCelestialAlignmentInstances(value: unknown, now = Date.now()): CelestialAlignmentInstance[] {
+  return normalizeCelestialAlignmentInstances(value, undefined, undefined, now);
+}
+export function celestialAlignmentStackCount(value: unknown, choice: CelestialAlignmentChoice, now = Date.now()): number {
+  return activeCelestialAlignmentInstances(value, now).filter(instance => instance.choice === choice).length;
+}
 
 export const CONSTELLATION_ATLAS_MILESTONE_THRESHOLDS = [5, 10, 20, 35, 50, 75, 100, 150, 225, 325] as const;
 
@@ -1108,6 +1147,7 @@ export interface PlayerState {
   alignmentPendingAt?: number;
   /** True only for a prompt explicitly queued by the admin test console. */
   alignmentPendingForced?: boolean;
+  alignmentActiveInstances?: CelestialAlignmentInstance[];
   alignmentActiveChoice?: CelestialAlignmentChoice | null;
   alignmentActiveUntil?: number;
   lastSeenAt: number;
@@ -1940,6 +1980,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     alignmentNextAt: 0,
     alignmentPendingAt: 0,
     alignmentPendingForced: false,
+    alignmentActiveInstances: [],
     alignmentActiveChoice: null,
     alignmentActiveUntil: 0,
     lastSeenAt: now,
@@ -2487,12 +2528,12 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false): number {
     ? unbrokenMomentumSpeedBonus(s.longestRollingSessionMs)
     : 0);
   cd /= momentumSpeedMultiplier;
-  if (
-    isAuto &&
-    s.alignmentActiveChoice === 'clockwork' &&
-    (s.alignmentActiveUntil ?? 0) > Date.now()
-  ) {
-    cd *= 0.80;
+  if (isAuto) {
+    const canonicalInstances = Array.isArray(s.alignmentActiveInstances)
+      ? s.alignmentActiveInstances
+      : normalizeCelestialAlignmentInstances(undefined, s.alignmentActiveChoice, s.alignmentActiveUntil);
+    const clockworkStacks = celestialAlignmentStackCount(canonicalInstances, 'clockwork');
+    if (clockworkStacks > 0) cd *= Math.pow(0.80, clockworkStacks);
   }
 
   // Chrono Flow compounds with all other effects so endgame Speed investments
