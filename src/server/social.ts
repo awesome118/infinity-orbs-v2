@@ -2,6 +2,7 @@ import { context, redis, reddit } from './devvit-mock.js';
 import { readInBatches } from './redis-batches.js';
 import { combatHighestDepthReached } from '../shared/combat.js';
 import { withPlayerMutationLockFor } from './player-lock.js';
+import { mutateCurrentPlayerState } from './game.js';
 import { createRedisLargeValueWritePlan, readRedisLargeValue, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
 import type {
   Guild,
@@ -2935,81 +2936,50 @@ export async function achievements(s: PlayerState): Promise<Achievement[]> {
 }
 
 export async function claimAchievement(_s: PlayerState, id: string) {
-  return withPlayerMutationLockFor(user(), async () => {
   const achievement = ACHIEVEMENTS.find(a => a.id === id);
   if (!achievement) throw new Error('Achievement not found.');
 
-  const playerKey = `player:${user()}`;
-  const generationKey = `player-generation:${user()}`;
+  const { state, result } = await mutateCurrentPlayerState(current => {
+    current.upgrades = { ...createInitialState().upgrades, ...(current.upgrades ?? {}) };
+    current.claimedAchievements = Array.isArray(current.claimedAchievements)
+      ? current.claimedAchievements
+      : [];
 
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const txn = await redis.watch(playerKey, generationKey);
-    const raw = await redis.get(playerKey);
-    const generationRaw = await redis.get(generationKey);
-    const state = parseStoredJson<PlayerState>(raw);
-    const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
-
-    if (!state) {
-      await txn.unwatch();
-      throw new Error('Player state unavailable.');
-    }
-
-    if (Math.max(0, Math.floor(Number(state.saveGeneration ?? 0))) !== generation) {
-      await txn.unwatch();
-      throw new Error('Your Infinity Orbs save was invalidated by an admin wipe. Please reload.');
-    }
-
-    state.upgrades = { ...createInitialState().upgrades, ...(state.upgrades ?? {}) };
-    state.claimedAchievements = Array.isArray(state.claimedAchievements) ? state.claimedAchievements : [];
-
-    if (!unlocked(achievement, state)) {
-      await txn.unwatch();
+    if (!unlocked(achievement, current)) {
       throw new Error('Achievement is not unlocked yet.');
     }
-    if (state.claimedAchievements.includes(id)) {
-      await txn.unwatch();
+    if (current.claimedAchievements.includes(id)) {
       throw new Error('Achievement reward already claimed.');
     }
 
     if (
-      typeof state.coins !== 'number' || !Number.isFinite(state.coins) || state.coins < 0 ||
-      (state.lifetimeCoins != null && (
-        typeof state.lifetimeCoins !== 'number' ||
-        !Number.isFinite(state.lifetimeCoins) ||
-        state.lifetimeCoins < 0
+      typeof current.coins !== 'number' || !Number.isFinite(current.coins) || current.coins < 0 ||
+      (current.lifetimeCoins != null && (
+        typeof current.lifetimeCoins !== 'number' ||
+        !Number.isFinite(current.lifetimeCoins) ||
+        current.lifetimeCoins < 0
       ))
     ) {
-      await txn.unwatch();
       throw new Error('Player Coin balance is invalid; no achievement reward was applied.');
     }
     if (!Number.isSafeInteger(achievement.rewardCoins) || achievement.rewardCoins < 0) {
-      await txn.unwatch();
       throw new Error('Achievement Coin reward is invalid.');
     }
 
-    const currentCoins = normalizeCoinAmount(state.coins);
+    const currentCoins = normalizeCoinAmount(current.coins);
     const requestedGain = normalizeCoinAmount(achievement.rewardCoins);
     const rewardCoins = Math.min(requestedGain, Number.MAX_VALUE - currentCoins);
-    const lifetimeCoins = normalizeCoinAmount(state.lifetimeCoins ?? currentCoins);
+    const lifetimeCoins = normalizeCoinAmount(current.lifetimeCoins ?? currentCoins);
 
-    state.claimedAchievements.push(id);
-    state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
-    state.coins = addCoinAmount(currentCoins, rewardCoins);
-    state.lifetimeCoins = addCoinAmount(lifetimeCoins, rewardCoins);
-    const rewardShards = grantFreeShards(state, achievement.rewardShards ?? 0);
+    current.claimedAchievements.push(id);
+    current.coins = addCoinAmount(currentCoins, rewardCoins);
+    current.lifetimeCoins = addCoinAmount(lifetimeCoins, rewardCoins);
+    const rewardShards = grantFreeShards(current, achievement.rewardShards ?? 0);
+    return { rewardCoins, rewardShards };
+  });
 
-    await txn.multi();
-    await txn.set(playerKey, JSON.stringify(state));
-    const committed = await txn.exec();
-    if (committed !== null) {
-      return { state, rewardCoins, rewardShards };
-    }
-  }
-
-  throw new Error('Player data changed while claiming the achievement. Please retry.');
-
-    });
-  }
+  return { state, ...result };
+}
 
 export function shareText(s: PlayerState, rarity: number, isInfinity = false) {
   const rarityText = isInfinity ? 'Infinity' : rarity.toLocaleString();
