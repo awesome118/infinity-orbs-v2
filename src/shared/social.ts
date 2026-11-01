@@ -77,8 +77,6 @@ export interface Guild {
   id: string;
   name: string;
   tag: string;
-  level: number;
-  xp: number;
   tokens: number;
   members: GuildMember[];
   createdAt: number;
@@ -219,7 +217,7 @@ export function createGuildTask(
   const base = GUILD_TASK_BASES[type];
 
   const target = Math.max(1, Math.floor(
-    base.target * Math.pow(typeScale, safeTier - 1) ,
+    base.target * Math.pow(typeScale, safeTier - 1),
   ));
   const reward = Math.max(1, Math.floor(
     Math.min(25_000, base.reward * Math.pow(1.22, safeTier - 1)),
