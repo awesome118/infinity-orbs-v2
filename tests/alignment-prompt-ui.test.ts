@@ -114,9 +114,12 @@ test('Alignment statistics are a retryable post-commit projection, not a reason 
   assert.ok(statsWriter.includes('Player choice was saved, but shared choice statistics could not be updated.'));
 });
 
-test('Alignment choice requests wait in the player-action queue instead of timing out after 20 seconds', () => {
+test('Alignment choice requests wait in both player-action queues instead of failing on short contention', () => {
   const app = source('src/server/app.ts');
+  const playerLock = source('src/server/player-lock.ts');
   assert.ok(app.includes('const MUTATION_LOCK_WAIT_MS = 60_000'));
   assert.ok(app.includes('const deadline = Date.now() + MUTATION_LOCK_WAIT_MS'));
   assert.ok(app.includes('await new Promise(resolve => setTimeout(resolve, 100))'));
+  assert.ok(playerLock.includes('const PLAYER_MUTATION_LOCK_ATTEMPTS = 1_200'));
+  assert.ok(playerLock.includes('const PLAYER_MUTATION_LOCK_RETRY_MS = 25'));
 });
