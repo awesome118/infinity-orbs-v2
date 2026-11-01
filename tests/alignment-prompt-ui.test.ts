@@ -29,12 +29,15 @@ test('Alignment chooser is a 60-second offer; each selected effect still lasts t
   assert.ok(shared.includes('CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS = 60 * 1_000'));
   assert.ok(main.includes('data-testid="celestial-alignment-choice-timer"'));
   assert.ok(main.includes('window.setInterval(tick, 250)'));
+  assert.ok(main.includes('alignmentChoiceDeadlineAt'));
+  assert.ok(main.includes('setAlignmentChoiceDeadlineAt(status.pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS)'));
   assert.ok(main.includes('alignmentDismissedPendingAtRef.current = Math.max('));
   assert.ok(main.includes('setAlignmentPromptVisible(false)'));
   assert.ok(main.includes('data-testid="celestial-alignment-duration"'));
   assert.ok(main.includes('>2 hours</strong>'));
   assert.ok(main.includes('Each chosen effect lasts 2 hours'));
-  assert.ok(status.includes('now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS'));
+  assert.ok(status.includes('now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS + CELESTIAL_ALIGNMENT_CHOICE_GRACE_MS'));
+  assert.ok(choice.includes('CELESTIAL_ALIGNMENT_CHOICE_GRACE_MS'));
   assert.ok(choice.includes('The Alignment choice window expired.'));
   assert.ok(choice.includes('const pendingAt = Number(s.alignmentPendingAt ?? 0)'));
 });
@@ -144,11 +147,11 @@ test('API and player mutations share one distributed lock instead of double-lock
   assert.ok(playerLock.includes("throw new Error('PLAYER_MUTATION_QUEUED')"));
 });
 
-test('Celestial Alignment events use a slower bounded 90–180 minute interval, not exponential bursts', () => {
+test('Celestial Alignment events are rare, using a bounded 3–5 hour interval', () => {
   const shared = source('src/shared/game.ts');
   const server = source('src/server/game.ts');
-  assert.match(shared, /CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS = 90 \* 60 \* 1_000/);
-  assert.match(shared, /CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS = 180 \* 60 \* 1_000/);
+  assert.match(shared, /CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS = 3 \* 60 \* 60 \* 1_000/);
+  assert.match(shared, /CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS = 5 \* 60 \* 60 \* 1_000/);
   assert.match(shared, /CELESTIAL_ALIGNMENT_DURATION_MS = 2 \* 60 \* 60 \* 1_000/);
   const scheduler = server.slice(server.indexOf('function nextCelestialAlignmentAt'), server.indexOf('export async function getCelestialAlignmentStatus'));
   assert.match(scheduler, /CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS/);
