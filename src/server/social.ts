@@ -2,6 +2,18 @@ import { context, redis, reddit } from './devvit-mock.js';
 import { readInBatches } from './redis-batches.js';
 import { combatHighestDepthReached } from '../shared/combat.js';
 import { withPlayerMutationLockFor } from './player-lock.js';
+import {
+  cleanupPreviousPlayerSave,
+  createPlayerSaveWritePlan,
+  discardPlayerSaveWritePlan,
+  readStoredPlayerSave,
+  serializePlayerStateForRedis,
+} from './player-save.js';
+import {
+  serializeBoundedLeaderboard,
+  serializeBoundedLeaderboardBoards,
+  serializeBoundedRecentArray,
+} from './redis-bounds.js';
 import type {
   Guild,
   LeaderboardEntry,
@@ -2181,7 +2193,7 @@ export async function recordGlobalChatComment(input: {
       messages.push(message);
       messages.sort((a, b) => a.timestamp - b.timestamp);
       await txn.multi();
-      await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(messages.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
+      await txn.set(GLOBAL_CHAT_KEY, serializeBoundedRecentArray(messages.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
       const committed = await txn.exec();
       closed = true;
       if (committed !== null) return message;
@@ -2217,7 +2229,7 @@ async function purgeChatMessagesForUser(userId: string, targetUsername: string):
     });
 
     await txn.multi();
-    await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(retained.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
+    await txn.set(GLOBAL_CHAT_KEY, serializeBoundedRecentArray(retained.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
     const committed = await txn.exec();
     if (committed !== null) return;
   }
@@ -2544,7 +2556,7 @@ export async function leaderboards(options: { fresh?: boolean } = {}): Promise<L
   leaderboardSnapshotInFlight = snapshotRequest;
   try {
     const boards = await snapshotRequest;
-    await redis.set(LEADERBOARDS_CACHE_KEY, JSON.stringify(boards), {
+    await redis.set(LEADERBOARDS_CACHE_KEY, serializeBoundedLeaderboardBoards(boards as unknown as Record<string, unknown>), {
       expiration: new Date(Date.now() + LEADERBOARDS_CACHE_TTL_MS),
     }).catch(error => {
       console.error('[Leaderboard] Could not cache the current snapshot:', error);
@@ -2741,7 +2753,7 @@ export async function recordLeaderboard(s: PlayerState) {
     } else board.push(next);
     board.sort((a, b) => b.value - a.value);
     await txn.multi();
-    await txn.set(leaderboardKey, JSON.stringify(board.slice(0, 5000)));
+    await txn.set(leaderboardKey, serializeBoundedLeaderboard(board.slice(0, 5000)));
     const committed = await txn.exec();
     if (committed !== null) return;
   }
@@ -2917,7 +2929,8 @@ export async function claimAchievement(_s: PlayerState, id: string) {
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(playerKey, generationKey);
-    const raw = await redis.get(playerKey);
+    const storedRaw = await redis.get(playerKey);
+    const raw = await readStoredPlayerSave(user(), storedRaw);
     const generationRaw = await redis.get(generationKey);
     const state = parseStoredJson<PlayerState>(raw);
     const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
@@ -2971,11 +2984,23 @@ export async function claimAchievement(_s: PlayerState, id: string) {
     state.lifetimeCoins = addCoinAmount(lifetimeCoins, rewardCoins);
     const rewardShards = grantFreeShards(state, achievement.rewardShards ?? 0);
 
-    await txn.multi();
-    await txn.set(playerKey, JSON.stringify(state));
-    const committed = await txn.exec();
-    if (committed !== null) {
-      return { state, rewardCoins, rewardShards };
+    let writePlan: Awaited<ReturnType<typeof createPlayerSaveWritePlan>> | null = null;
+    let committed = false;
+    try {
+      writePlan = await createPlayerSaveWritePlan(user(), serializePlayerStateForRedis(state));
+      await txn.multi();
+      await txn.set(playerKey, writePlan.storedValue);
+      const result = await txn.exec();
+      if (result !== null) {
+        committed = true;
+        await cleanupPreviousPlayerSave(user(), storedRaw);
+        return { state, rewardCoins, rewardShards };
+      }
+    } finally {
+      if (!committed) {
+        await txn.unwatch().catch(() => undefined);
+        if (writePlan) await discardPlayerSaveWritePlan(writePlan);
+      }
     }
   }
 
