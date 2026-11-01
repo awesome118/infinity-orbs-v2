@@ -72,3 +72,21 @@ test('Guild activity logs are removed from the player UI and no longer persisted
   assert.match(social, /delete guild\.chat/);
   assert.doesNotMatch(app, /\/api\/guilds\/chat/);
 });
+
+
+test('Guild directory reads no longer depend on the retired Guild chat-moderation hash', () => {
+  const social = source('src/server/social.ts');
+  const start = social.indexOf('export async function guildInfo()');
+  const end = social.indexOf('export async function getPlayerGuildContext(', start);
+  assert.ok(start >= 0 && end > start);
+  const handler = social.slice(start, end);
+  assert.doesNotMatch(handler, /GUILD_CHAT_MUTES_KEY|hGetAll|filterMutedGuildChat|guild\.chat/);
+  assert.match(handler, /guilds: visibleGuilds/);
+  assert.match(handler, /mine: visibleMine/);
+});
+
+test('Guild page is named in the main navigation', () => {
+  const main = source('src/client/main.tsx');
+  assert.match(main, /renderNavItem\('social', 'Guilds', Users\)/);
+  assert.match(main, /social: 'Guilds'/);
+});

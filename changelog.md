@@ -1,5 +1,13 @@
 # Infinity Orbs Changelog
 
+### Alignment Timer, Sonar Controls, Time Energy Bursts, and Guild Restoration (2.1.46)
+
+- Put the 60:00 effect duration inside the Celestial Alignment chooser, remove the post-selection activation popup, and show a live remaining-time display on the Roll screen.
+- Make Time Energy a cooldown bank: each ordinary manual/Auto Roll reclaims sub-300ms cooldown according to Cooldown Reclaimer level; spend the bank on as many complete rolls as the current cooldown can fund, with partial energy carried over.
+- Expand Sonar Ping settings with a configurable minimum rarity and an optional Starseeker-selection ping, shown only while Sonar Ping is enabled.
+- Remove the redundant main-screen salvage on/off control; purchased Common Salvage remains active automatically.
+- Restore Guild visibility by removing the retired chat-moderation hash dependency from Guild directory reads, and label the navigation entry as Guilds.
+
 ### Upgrade Synergies and Idle-Game Economy (2.1.33)
 
 - Add Orb Fingers, a logarithmic cross-upgrade Coin synergy inspired by classic idle-game production synergies.

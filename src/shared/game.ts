@@ -140,7 +140,7 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   },
   cooldownReclaimer: {
     name: 'Cooldown Reclaimer',
-    desc: 'Recover 10% of cooldown shaved below 300ms as Time Energy per level. Spend 1,000ms to trigger an instant activation.',
+    desc: 'Recover 10% of cooldown shaved below 300ms as Time Energy per level. Bank it to buy multiple instant activations at your current roll cooldown.',
     maxLevel: 10,
     costMultiplier: 2,
   },
@@ -164,8 +164,17 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   },
 };
 
-export const TIME_ENERGY_INSTANT_ACTIVATION_COST_MS = 1_000;
 export const TIME_ENERGY_MAX_MS = 1_000_000_000;
+/** Bound one spend burst like a large Free Roll batch. */
+export const TIME_ENERGY_MAX_ACTIVATIONS_PER_USE = 5_000;
+
+/** Number of complete roll activations a Time Energy balance can currently fund. */
+export function timeEnergyActivationsAvailable(timeEnergyMs: number, cooldownMs: number): number {
+  const energy = Number(timeEnergyMs);
+  const cooldown = Number(cooldownMs);
+  if (!Number.isFinite(energy) || !Number.isFinite(cooldown) || energy <= 0 || cooldown <= 0) return 0;
+  return Math.min(TIME_ENERGY_MAX_ACTIVATIONS_PER_USE, Math.floor(Math.max(0, energy) / Math.max(1, cooldown)));
+}
 export const CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS = 20 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_DURATION_MS = 60 * 60 * 1_000;
 export type CelestialAlignmentChoice = 'starseeker' | 'goldenOrbit' | 'clockwork';

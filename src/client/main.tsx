@@ -339,9 +339,6 @@ function App() {
   const [alignmentPromptVisible, setAlignmentPromptVisible] = useState(false);
   const [alignmentChoiceBusy, setAlignmentChoiceBusy] = useState(false);
   const [alignmentChoiceError, setAlignmentChoiceError] = useState<string | null>(null);
-  const [alignmentConfirmation, setAlignmentConfirmation] = useState<{ choice: CelestialAlignmentChoice; closesAt: number; autoCooldownBeforeMs: number | null; autoCooldownMs: number | null } | null>(null);
-  const [alignmentConfirmationSeconds, setAlignmentConfirmationSeconds] = useState(60);
-  const alignmentConfirmationRef = useRef<{ choice: CelestialAlignmentChoice; closesAt: number; autoCooldownMs: number | null } | null>(null);
   const alignmentDismissedPendingAtRef = useRef(0);
   const alignmentPendingSeenRef = useRef(0);
   const [tab, setTab] = useState<ActiveTab>('roll');
@@ -921,7 +918,7 @@ function App() {
     altar: 'Altar',
     mastery: 'Mastery',
     collection: 'Collection',
-    social: 'Community',
+    social: 'Guilds',
     profile: 'Progress',
     fight: 'Combat',
     dungeons: 'Combat',
@@ -1345,35 +1342,12 @@ function App() {
     };
   }, [splashEntered]);
 
-  // After a choice, show a brief activation confirmation, then dismiss it automatically.
-  useEffect(() => {
-    if (!alignmentConfirmation) return;
-    const closesAt = alignmentConfirmation.closesAt;
-    const updateCountdown = () => {
-      // Ignore a timer from an older confirmation if a newer event replaced it.
-      if (alignmentConfirmationRef.current?.closesAt !== closesAt) return;
-      const remaining = Math.max(0, Math.ceil((closesAt - Date.now()) / 1000));
-      setAlignmentConfirmationSeconds(remaining);
-      if (remaining <= 0) {
-        alignmentConfirmationRef.current = null;
-        setAlignmentConfirmation(null);
-        setAlignmentPromptVisible(false);
-      }
-    };
-    updateCountdown();
-    const interval = window.setInterval(updateCountdown, 250);
-    return () => window.clearInterval(interval);
-  }, [alignmentConfirmation?.closesAt]);
-
   // Alignment appearances are independent server-timed events, not roll procs.
   // Poll only while the game is visible; an unanswered event remains persisted.
   useEffect(() => {
     if (!splashEntered || ((state?.masterySkills?.celestialAlignment ?? 0) <= 0 && !isAdmin)) {
       setAlignmentStatus(null);
       setAlignmentPromptVisible(false);
-      alignmentConfirmationRef.current = null;
-      setAlignmentConfirmation(null);
-      setAlignmentConfirmationSeconds(0);
       alignmentDismissedPendingAtRef.current = 0;
       alignmentPendingSeenRef.current = 0;
       return;
@@ -1401,11 +1375,6 @@ function App() {
         if (pendingWasDismissed) return;
         setAlignmentStatus(status);
         if (status.pending) {
-          if (alignmentConfirmationRef.current) {
-            alignmentConfirmationRef.current = null;
-            setAlignmentConfirmation(null);
-            setAlignmentConfirmationSeconds(0);
-          }
           setAlignmentPromptVisible(true);
           const pendingKey = status.pendingAt || -1;
           if (alignmentPendingSeenRef.current !== pendingKey) {
@@ -1416,7 +1385,7 @@ function App() {
           alignmentPendingSeenRef.current = 0;
           // A status poll can finish while a choice is queued or after an error.
           // Never hide the chooser until the choice has actually committed.
-          if (!alignmentConfirmationRef.current && !alignmentChoiceBusy && !alignmentChoiceError) {
+          if (!alignmentChoiceBusy && !alignmentChoiceError) {
             setAlignmentPromptVisible(false);
           }
         }
@@ -2546,25 +2515,15 @@ function App() {
       });
       alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, chosenPendingAt);
       alignmentPendingSeenRef.current = 0;
-      const clockworkBaseState = choice === 'clockwork'
-        ? { ...result.state, alignmentActiveChoice: null, alignmentActiveUntil: 0 }
-        : null;
-      const confirmation = {
-        choice,
-        closesAt: Date.now() + 60_000,
-        autoCooldownBeforeMs: clockworkBaseState ? cooldownMs(clockworkBaseState, true) : null,
-        autoCooldownMs: choice === 'clockwork' ? cooldownMs(result.state, true) : null,
-      };
-      alignmentConfirmationRef.current = confirmation;
-      setAlignmentConfirmation(confirmation);
-      setAlignmentConfirmationSeconds(60);
+      if (
+        choice === 'starseeker' &&
+        sound.sonarMode &&
+        sound.sonarStarseekerAlerts &&
+        (result.state.prestigeUpgrades?.sonarPing ?? 0) > 0
+      ) {
+        sound.playSonarPing(sound.sonarThreshold);
+      }
       setAlignmentPromptVisible(false);
-      const names: Record<CelestialAlignmentChoice, string> = {
-        starseeker: 'Starseeker',
-        goldenOrbit: 'Golden Orbit',
-        clockwork: 'Clockwork',
-      };
-      showToast(`${names[choice]} aligned for 60 minutes.`, 'success');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Could not activate this Alignment.';
       setAlignmentChoiceError(message);
@@ -3458,7 +3417,7 @@ function App() {
         </div>
       )}
 
-      {alignmentPromptVisible && alignmentConfirmation === null && (alignmentStatus?.pending || alignmentChoiceBusy || alignmentChoiceError !== null) && (
+      {alignmentPromptVisible && (alignmentStatus?.pending || alignmentChoiceBusy || alignmentChoiceError !== null) && (
         <div className="fixed inset-0 z-[90] io-modal-backdrop flex items-center justify-center p-4" data-testid="celestial-alignment-prompt">
           <section
             className="w-full max-w-2xl rounded-3xl border border-cyan-400/30 bg-slate-950/95 p-5 sm:p-7 shadow-[0_0_70px_rgba(56,189,248,.2)]"
@@ -3469,6 +3428,10 @@ function App() {
             <div className="text-[10px] font-black uppercase tracking-[.22em] text-cyan-300">A rare celestial event</div>
             <h2 id="celestial-alignment-title" className="mt-2 text-2xl sm:text-3xl font-black text-white">Celestial Alignment</h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-400">The stars have aligned. Choose one effect to guide your next 60 minutes. Your next Alignment appears independently of your rolls.</p>
+            <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-cyan-400/25 bg-cyan-500/5 px-4 py-3" data-testid="celestial-alignment-duration" aria-label="Each selected effect lasts 60 minutes">
+              <span className="text-[10px] font-black uppercase tracking-[.16em] text-cyan-300">Effect timer</span>
+              <strong className="font-mono text-xl tabular-nums text-white">60:00</strong>
+            </div>
             {alignmentChoiceError && <p className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs leading-relaxed text-rose-200" role="alert">Your choice was not saved: {alignmentChoiceError}</p>}
             {alignmentChoiceBusy && (
               <div className="mt-4 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-center text-xs font-semibold text-cyan-100" role="status" aria-live="polite" data-testid="celestial-alignment-saving">
@@ -3511,46 +3474,6 @@ function App() {
               </button>
             </div>
           </section>
-        </div>
-      )}
-
-      {alignmentConfirmation && (
-        <div className="pointer-events-none fixed right-4 top-4 z-[90] w-[calc(100vw-2rem)] max-w-sm" data-testid="celestial-alignment-confirmation" role="status" aria-live="polite">
-          <div className="pointer-events-auto rounded-2xl border border-emerald-400/30 bg-slate-950/95 p-4 shadow-[0_12px_50px_rgba(0,0,0,.4)]">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-[10px] font-black uppercase tracking-[.18em] text-emerald-300">Alignment activated</div>
-              <strong className="shrink-0 text-lg tabular-nums text-white">
-                {String(Math.floor(alignmentConfirmationSeconds / 60)).padStart(2, '0')}:{String(alignmentConfirmationSeconds % 60).padStart(2, '0')}
-              </strong>
-            </div>
-            <h2 className="mt-2 text-lg font-black text-white">
-              {alignmentConfirmation.choice === 'starseeker' ? 'Starseeker' : alignmentConfirmation.choice === 'goldenOrbit' ? 'Golden Orbit' : 'Clockwork'} is active
-            </h2>
-            <p className="mt-1 text-xs leading-relaxed text-slate-300">
-              {alignmentConfirmation.choice === 'starseeker'
-                ? 'Your complete Luck multiplier is now raised to the power of 1.05.'
-                : alignmentConfirmation.choice === 'goldenOrbit'
-                  ? 'All Coins earned are increased by 50%.'
-                  : alignmentConfirmation.autoCooldownBeforeMs === alignmentConfirmation.autoCooldownMs
-                  ? `Auto Roll is already at the 300ms minimum. Clockwork cannot shorten it further.`
-                  : `Auto Roll cooldown reduced from ${((alignmentConfirmation.autoCooldownBeforeMs ?? 0) / 1000).toFixed(2)}s to ${((alignmentConfirmation.autoCooldownMs ?? 0) / 1000).toFixed(2)}s.`}
-            </p>
-            <p className="mt-1 text-[10px] text-slate-400">The selected effect remains active for 60 minutes.</p>
-            <div
-              className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-800"
-              role="progressbar"
-              aria-label="Alignment confirmation time remaining"
-              aria-valuemin={0}
-              aria-valuemax={60}
-              aria-valuenow={alignmentConfirmationSeconds}
-            >
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-emerald-300 transition-[width] duration-200"
-                style={{ width: `${(alignmentConfirmationSeconds / 60) * 100}%` }}
-              />
-            </div>
-            <div className="mt-1 text-right text-[10px] text-slate-400">This notice closes automatically</div>
-          </div>
         </div>
       )}
 
@@ -3619,7 +3542,7 @@ function App() {
                 {renderNavItem('upgrades', 'Upgrades', Zap)}
                 {renderNavItem('collection', 'Collection', BookOpen)}
                 {renderNavItem('quests', 'Quests', Calendar, streakReady || questsReady)}
-                {renderNavItem('social', 'Community', Users)}
+                {renderNavItem('social', 'Guilds', Users)}
                 {renderNavItem('profile', 'Progress', Star, prestigeReady, 'io-nav-profile-primary')}
               </div>
               <div className="io-nav-trailing">
@@ -3636,7 +3559,7 @@ function App() {
                     {tab === 'altar' && <span className="io-nav-current-page">Altar</span>}
                     {tab === 'mastery' && <span className="io-nav-current-page">Mastery</span>}
                     {tab === 'quests' && <span className="io-nav-current-page">Quests</span>}
-                    {tab === 'social' && <span className="io-nav-current-page">Community</span>}
+                    {tab === 'social' && <span className="io-nav-current-page">Guilds</span>}
                     {tab === 'profile' && <span className="io-nav-current-page">Progress</span>}
                     <ChevronDown className="io-nav-icon io-nav-chevron" aria-hidden="true" />
                   </button>

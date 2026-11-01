@@ -16,28 +16,25 @@ test('Celestial Alignment ignores stale pending polls after a choice succeeds', 
   assert.ok(main.includes('alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, chosenPendingAt)'));
   assert.ok(main.includes('const pendingWasDismissed = status.pending &&'));
   assert.ok(main.includes('if (pendingWasDismissed) return;'));
-  assert.ok(main.includes('!alignmentConfirmationRef.current && !alignmentChoiceBusy && !alignmentChoiceError'));
+  assert.ok(main.includes('if (!alignmentChoiceBusy && !alignmentChoiceError)'));
 });
 
-test('Celestial Alignment closes the blocking chooser immediately after selection', () => {
+test('Celestial Alignment shows the 60-minute timer in the chooser and closes silently after selection', () => {
   const main = source('src/client/main.tsx');
   const chooseHandler = main.slice(main.indexOf('const handleChooseCelestialAlignment'), main.indexOf('// Altar Sacrifice'));
 
-  assert.ok(chooseHandler.includes('setAlignmentConfirmation(confirmation);'));
-  assert.ok(chooseHandler.includes('setAlignmentConfirmationSeconds(60);'));
   assert.ok(chooseHandler.includes('setAlignmentPromptVisible(false);'));
   assert.ok(chooseHandler.indexOf('setAlignmentPromptVisible(false);') > chooseHandler.indexOf('const result = await getJson'));
-  assert.ok(!chooseHandler.includes('setAlignmentPromptVisible(false);\\n    try'));
   assert.ok(chooseHandler.includes('setAlignmentChoiceError(message);'));
   assert.ok(chooseHandler.includes('setAlignmentPromptVisible(true);'));
+  assert.ok(!chooseHandler.includes('aligned for 60 minutes'));
   assert.ok(main.includes('data-testid="celestial-alignment-saving"'));
   assert.ok(main.includes('Your choice is queued. This window will close automatically when your selection is saved.'));
-  assert.ok(!main.includes('fixed inset-x-0 top-4 z-[91]'));
-  assert.ok(main.includes('alignmentPromptVisible && alignmentConfirmation === null && (alignmentStatus?.pending || alignmentChoiceBusy || alignmentChoiceError !== null)'));
-  assert.ok(main.includes('!alignmentConfirmationRef.current && !alignmentChoiceBusy && !alignmentChoiceError'));
-  assert.ok(main.includes('pointer-events-none fixed right-4 top-4'));
-  assert.ok(main.includes('role="status" aria-live="polite"'));
-  assert.ok(!main.includes('alignmentPromptVisible && (alignmentConfirmation !== null || alignmentStatus?.pending)'));
+  assert.ok(main.includes('data-testid="celestial-alignment-duration"'));
+  assert.ok(main.includes('Effect timer'));
+  assert.ok(main.includes('>60:00</strong>'));
+  assert.ok(main.includes('alignmentPromptVisible && (alignmentStatus?.pending || alignmentChoiceBusy || alignmentChoiceError !== null)'));
+  assert.ok(!/alignmentConfirmation|celestial-alignment-confirmation|setAlignmentConfirmation/.test(main));
 });
 
 test('Clockwork reduces real Auto Roll cooldown by 20%, but does not change manual rolls', () => {
@@ -71,15 +68,28 @@ test('Clockwork applies through the Auto Roll request, server cooldown, and live
   assert.ok(client.includes('setReadyAt(lastRollAt + cooldownMs(timingState, true))'));
 });
 
-test('Alignment activation notice remains non-blocking and auto-dismisses after 60 seconds', () => {
+test('Alignment has no post-claim popup and the active duration is a live Roll-screen countdown', () => {
+  const main = source('src/client/main.tsx');
+  const roll = source('src/client/components/RollSection.tsx');
+
+  assert.doesNotMatch(main, /celestial-alignment-confirmation|Alignment activated/);
+  assert.match(roll, /formatAlignmentRemaining\(\(state\.alignmentActiveUntil \?\? 0\) - now\)/);
+  assert.match(roll, /const alignmentRemaining = \(state\.alignmentActiveUntil \?\? 0\) - current/);
+});
+
+test('Sonar Ping reveals configurable rarity and Starseeker options only while enabled', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  const sound = source('src/client/sound.ts');
   const main = source('src/client/main.tsx');
 
-  assert.ok(main.includes('closesAt: Date.now() + 60_000'));
-  assert.ok(main.includes('setAlignmentConfirmationSeconds(60)'));
-  assert.ok(main.includes('const remaining = Math.max(0, Math.ceil((closesAt - Date.now()) / 1000))'));
-  assert.ok(main.includes('setAlignmentConfirmation(null)'));
-  assert.ok(main.includes('autoCooldownBeforeMs === alignmentConfirmation.autoCooldownMs'));
-  assert.ok(main.includes('Clockwork cannot shorten it further.'));
+  assert.match(roll, /hasSonarUpgrade && sonarActive/);
+  assert.match(roll, /sonar-rarity-threshold/);
+  assert.match(roll, /value=\{sonarThreshold\}/);
+  assert.match(roll, /sonarStarseekerAlerts/);
+  assert.match(roll, /sonarThresholdForRoll/);
+  assert.match(sound, /setSonarStarseekerAlerts/);
+  assert.match(main, /choice === 'starseeker'/);
+  assert.match(main, /sound\.sonarStarseekerAlerts/);
 });
 
 test('admin-forced Alignment effects remain visible without unlocking mastery', () => {

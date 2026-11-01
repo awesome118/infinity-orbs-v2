@@ -5,6 +5,7 @@ class SoundFX {
   public enabled = true;
   public sonarMode = false;
   public sonarThreshold = 100;
+  public sonarStarseekerAlerts = false;
   public alignmentSoundEnabled = true;
   private sonarModeListeners = new Set<(active: boolean) => void>();
 
@@ -13,6 +14,7 @@ class SoundFX {
       const saved = localStorage.getItem('orbs_sound_enabled');
       this.enabled = saved !== null ? saved === 'true' : true;
       this.sonarMode = localStorage.getItem('orbs_sonar_mode') === 'true';
+      this.sonarStarseekerAlerts = localStorage.getItem('orbs_sonar_starseeker_alerts') === 'true';
       this.alignmentSoundEnabled = localStorage.getItem('io_alignment_sound') !== 'false';
       const savedThreshold = localStorage.getItem('orbs_sonar_threshold');
       if (savedThreshold) {
@@ -22,6 +24,7 @@ class SoundFX {
       this.enabled = true;
       this.sonarMode = false;
       this.sonarThreshold = 100;
+      this.sonarStarseekerAlerts = false;
       this.alignmentSoundEnabled = true;
     }
   }
@@ -150,6 +153,14 @@ class SoundFX {
       localStorage.setItem('orbs_sonar_threshold', String(threshold));
     } catch {}
     this.playSonarPing(threshold);
+  }
+
+  public setSonarStarseekerAlerts(enabled: boolean) {
+    this.sonarStarseekerAlerts = Boolean(enabled);
+    try {
+      localStorage.setItem('orbs_sonar_starseeker_alerts', String(this.sonarStarseekerAlerts));
+    } catch {}
+    if (this.sonarStarseekerAlerts) this.playSonarPing(this.sonarThreshold);
   }
 
   public playClick() {

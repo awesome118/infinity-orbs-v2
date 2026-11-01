@@ -30,7 +30,7 @@ import {
   PRESTIGE_UPGRADES,
   cooldownMs,
   cooldownReclaimerEnergyPerActivationMs,
-  TIME_ENERGY_INSTANT_ACTIVATION_COST_MS,
+  timeEnergyActivationsAvailable,
   TIME_ENERGY_MAX_MS,
   CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS,
   CELESTIAL_ALIGNMENT_DURATION_MS,
@@ -5640,8 +5640,9 @@ export async function roll(
     if (useTimeEnergy && (s.masterySkills?.cooldownReclaimer ?? 0) <= 0) {
       throw new Error('Cooldown Reclaimer Mastery is required.');
     }
-    if (useTimeEnergy && (s.timeEnergy ?? 0) < TIME_ENERGY_INSTANT_ACTIVATION_COST_MS) {
-      throw new Error(`Requires ${TIME_ENERGY_INSTANT_ACTIVATION_COST_MS.toLocaleString()}ms of Time Energy.`);
+    const timeEnergyActivations = timeEnergyActivationsAvailable(s.timeEnergy ?? 0, cd);
+    if (useTimeEnergy && timeEnergyActivations < 1) {
+      throw new Error(`You need at least ${cd.toLocaleString()}ms of Time Energy for one instant roll. You currently have ${Math.max(0, s.timeEnergy ?? 0).toLocaleString()}ms.`);
     }
     const usingTimeEnergy = useTimeEnergy === true;
     const usingFreeRoll = !usingTimeEnergy && !usingChainPatcher && !isAuto && availableFreeRolls > 0;
@@ -5649,17 +5650,17 @@ export async function roll(
       throw new Error(`Cooldown: ${((cd - now + s.lastRollAt) / 1000).toFixed(1)}s`);
     }
 
-    // A Chain Patcher charge always takes priority over Free Rolls. Otherwise
-    // only an explicit manual "Roll All" request spends the full saved balance.
+    // Time Energy buys as many complete activations as the current cooldown can fund.
+    // Any partial remainder stays banked.
     const freeRollActivations = usingTimeEnergy
-      ? 1
+      ? timeEnergyActivations
       : usingFreeRoll
       ? (useAllFreeRolls ? availableFreeRolls : 1)
       : 1;
     if (usingFreeRoll && freeRollActivations > 5_000) {
       throw new Error('You have too many stored Free Rolls for one batch (maximum 5,000). No rolls were spent.');
     }
-    if (usingTimeEnergy) s.timeEnergy = Math.max(0, (s.timeEnergy ?? 0) - TIME_ENERGY_INSTANT_ACTIVATION_COST_MS);
+    if (usingTimeEnergy) s.timeEnergy = Math.max(0, (s.timeEnergy ?? 0) - (cd * freeRollActivations));
     if (usingFreeRoll) s.freeRolls = availableFreeRolls - freeRollActivations;
     const activations = usingChainPatcher ? 1 : freeRollActivations;
 

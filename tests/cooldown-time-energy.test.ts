@@ -6,7 +6,7 @@ import {
   cooldownMs,
   theoreticalCooldownMs,
   cooldownReclaimerEnergyPerActivationMs,
-  TIME_ENERGY_INSTANT_ACTIVATION_COST_MS,
+  timeEnergyActivationsAvailable,
 } from '../src/shared/game.js';
 
 const NOW = 1_800_000_000_000;
@@ -42,11 +42,33 @@ test('Cooldown Reclaimer returns 10% of total underflow per level, up to 100% at
   state.masterySkills!.cooldownReclaimer = 10;
   assert.equal(cooldownReclaimerEnergyPerActivationMs(state), Math.floor(underflow));
   assert.ok(cooldownReclaimerEnergyPerActivationMs(state) <= 300);
-  assert.equal(TIME_ENERGY_INSTANT_ACTIVATION_COST_MS, 1_000);
+
 });
 
 test('Cooldown Reclaimer does not award Time Energy unless the skill is purchased', () => {
   const state = buildSub300State();
   state.masterySkills!.cooldownReclaimer = 0;
   assert.equal(cooldownReclaimerEnergyPerActivationMs(state), 0);
+});
+
+
+test('Time Energy funds as many whole activations as the current cooldown can afford', () => {
+  assert.equal(timeEnergyActivationsAvailable(4_000, 2_000), 2);
+  assert.equal(timeEnergyActivationsAvailable(3_999, 2_000), 1);
+  assert.equal(timeEnergyActivationsAvailable(1_999, 2_000), 0);
+  assert.equal(timeEnergyActivationsAvailable(4_500, 2_000), 2);
+  assert.equal(timeEnergyActivationsAvailable(1_000_000_000, 300), 5_000);
+  assert.equal(timeEnergyActivationsAvailable(-1, 2_000), 0);
+  assert.equal(timeEnergyActivationsAvailable(4_000, 0), 0);
+});
+
+test('Time Energy requests spend one current cooldown per activation and do not regenerate energy', () => {
+  const server = source('src/server/game.ts');
+  const start = server.indexOf('export async function roll(');
+  const end = server.indexOf('export async function subscribeToSubredditForReward', start);
+  const handler = server.slice(start, end);
+  assert.match(handler, /timeEnergyActivationsAvailable\(s\.timeEnergy \?\? 0, cd\)/);
+  assert.match(handler, /const freeRollActivations = usingTimeEnergy\s*\? timeEnergyActivations/);
+  assert.match(handler, /s\.timeEnergy = Math\.max\(0, \(s\.timeEnergy \?\? 0\) - \(cd \* freeRollActivations\)\)/);
+  assert.match(handler, /if \(!usingTimeEnergy && !usingFreeRoll\)/);
 });

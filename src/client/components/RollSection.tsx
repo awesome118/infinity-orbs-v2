@@ -15,16 +15,15 @@ import {
   BellRing,
   FastForward,
   Radio,
-  Filter,
   Compass,
   Award,
 } from 'lucide-react';
 import type { PlayerState, Orb, UpgradeId } from '../../shared/game.js';
 import {
   cooldownMs,
+  timeEnergyActivationsAvailable,
   rollsPerActivation,
   luckMultiplier,
-  TIME_ENERGY_INSTANT_ACTIVATION_COST_MS,
   upgradeCost,
   getOrbInfo,
   formatRarity,
@@ -78,6 +77,16 @@ function formatFrenzyCooldown(ms: number): string {
   return `${hours}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
+function formatAlignmentRemaining(ms: number): string {
+  const totalSecs = Math.max(0, Math.ceil(ms / 1000));
+  const hours = Math.floor(totalSecs / 3600);
+  const mins = Math.floor((totalSecs % 3600) / 60);
+  const secs = totalSecs % 60;
+  return hours > 0
+    ? `${hours}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+    : `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
 export const RollSection: React.FC<RollSectionProps> = ({
   state,
   lastOrb,
@@ -119,7 +128,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
       const rollRemaining = readyAt - current;
       const frenzyRemaining = frenzyCooldownRemaining(state.lastFrenzyAt, current);
       const turboRemaining = (state.turboRollUntil ?? 0) - current;
-      const hasActiveCountdown = rollRemaining > 0 || frenzyRemaining > 0 || turboRemaining > 0;
+      const alignmentRemaining = (state.alignmentActiveUntil ?? 0) - current;
+      const hasActiveCountdown = rollRemaining > 0 || frenzyRemaining > 0 || turboRemaining > 0 || alignmentRemaining > 0;
       setNow(current);
       if (!hasActiveCountdown) {
         timer = null;
@@ -140,7 +150,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       if (timer !== null) window.clearTimeout(timer);
       document.removeEventListener('visibilitychange', syncOnVisibility);
     };
-  }, [readyAt, state.lastFrenzyAt, state.turboRollUntil]);
+  }, [readyAt, state.lastFrenzyAt, state.turboRollUntil, state.alignmentActiveUntil]);
   const [isRevealing, setIsRevealing] = useState(false);
   const [cooldownNotice, setCooldownNotice] = useState<string | null>(null);
   const cooldownNoticeTimerRef = useRef<number | null>(null);
@@ -150,6 +160,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const [sonarActive, setSonarActive] = useState(() => sound.sonarMode);
   useEffect(() => sound.subscribeSonarMode(setSonarActive), []);
   const [sonarPinging, setSonarPinging] = useState(false);
+  const [sonarThreshold, setSonarThresholdState] = useState(() => sound.sonarThreshold);
+  const [sonarStarseekerAlerts, setSonarStarseekerAlertsState] = useState(() => sound.sonarStarseekerAlerts);
   const [instantRevealActive, setInstantRevealActive] = useState(() => {
     try {
       return localStorage.getItem('orbs_instant_reveal') === 'true';
@@ -169,7 +181,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const hasCooldownReclaimer = (state.masterySkills?.cooldownReclaimer ?? 0) > 0;
   const timeEnergy = Math.max(0, Math.floor(Number(state.timeEnergy ?? 0) || 0));
   const hasInstantUpgrade = (state.prestigeUpgrades?.instantReveal ?? 0) > 0;
-  const hasFilterUpgrade = (state.prestigeUpgrades?.autoFilter ?? 0) > 0;
   const hasResonanceUpgrade = (state.prestigeUpgrades?.resonanceMeter ?? 0) > 0;
   const pityCalibration = Math.max(0, Math.min(5, Math.floor(Number(state.masterySkills?.pityAccelerant) || 0)));
   const pityInterval = Math.max(6, 18 - pityCalibration * 2);
@@ -178,14 +189,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const pityTier = Math.floor(pityDryRolls / pityInterval);
   const pityRollsIntoTier = pityDryRolls % pityInterval;
   const pityProgressPct = (pityRollsIntoTier / pityInterval) * 100;
-
-  const [filterActive, setFilterActive] = useState(() => {
-    try {
-      return localStorage.getItem('orbs_auto_filter') !== 'false';
-    } catch {
-      return true;
-    }
-  });
 
   const [isShaking, setIsShaking] = useState(false);
   const [rewardBurstActive, setRewardBurstActive] = useState(false);
@@ -222,6 +225,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
   // The main Roll button always uses the manual-roll cooldown; Auto Roll timing is tracked by the server response.
   const cd = cooldownMs(state, false);
+  const timeEnergyRollsAvailable = timeEnergyActivationsAvailable(timeEnergy, cd);
+  const timeEnergySpendMs = timeEnergyRollsAvailable * cd;
+  const timeEnergyProgressPct = cd > 0 ? Math.max(0, Math.min(100, (timeEnergy / cd) * 100)) : 0;
   const remain = Math.max(0, readyAt - now);
   const freeRolls = Math.max(0, state.freeRolls ?? 0);
   // Free rolls bypass the normal cooldown, but never skip the deliberate Frenzy release wait.
@@ -306,8 +312,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
     const isNewBest = lastOrb.isInfinity === true
       ? !bestWasInfinityRef.current
       : !bestWasInfinityRef.current && lastOrb.rarity > bestBefore;
-    const nearBestOrb = !isNewBest && !bestWasInfinityRef.current && hasSonarUpgrade && Number.isSafeInteger(bestBefore)
-      ? lastBatch.find(orb => orb.rarity === bestBefore - 1)
+    const sonarThresholdForRoll = Math.max(10, Math.floor(Number(sound.sonarThreshold) || 100));
+    const sonarOrb = !isNewBest && isSilentSonar && Number.isFinite(lastOrb.rarity) && lastOrb.rarity >= sonarThresholdForRoll
+      ? lastOrb
       : undefined;
     let sonarTimer: number | null = null;
 
@@ -316,8 +323,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
     if (hasSonarUpgrade && isNewBest) {
       lastFanfareTimeRef.current = nowTs;
       sound.playNewBestFanfare();
-    } else if (hasSonarUpgrade && nearBestOrb) {
-      sound.playSonarPing(nearBestOrb.rarity);
+    } else if (sonarOrb) {
+      sound.playSonarPing(sonarOrb.rarity);
       setSonarPinging(true);
       sonarTimer = window.setTimeout(() => setSonarPinging(false), 900);
     } else if (!isSilentSonar) {
@@ -738,20 +745,32 @@ export const RollSection: React.FC<RollSectionProps> = ({
         <div id="roll-action-hint" className="roll-action-hint" aria-live="polite">{actionHint}</div>
 
         {hasCooldownReclaimer && (
-          <div className="w-full rounded-xl border border-cyan-500/25 bg-cyan-500/5 p-3 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <div className="text-center sm:text-left">
-              <div className="text-[10px] font-black uppercase tracking-wider text-cyan-300">Time Energy</div>
-              <div className="text-sm font-mono font-bold text-white">{formatNumber(timeEnergy)}ms stored</div>
-              <div className="text-[10px] text-slate-500">1,000ms triggers one instant activation</div>
+          <div className="w-full rounded-xl border border-cyan-500/25 bg-cyan-500/5 p-3 flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
+              <div className="text-center sm:text-left">
+                <div className="text-[10px] font-black uppercase tracking-wider text-cyan-300">Time Energy</div>
+                <div className="text-lg font-mono font-bold text-white">{(timeEnergy / 1000).toFixed(2)}s banked</div>
+                <div className="text-[10px] text-slate-400">
+                  {timeEnergyRollsAvailable > 0
+                    ? `${formatNumber(timeEnergyRollsAvailable)} instant roll${timeEnergyRollsAvailable === 1 ? '' : 's'} ready · ${formatFrenzyCooldown(cd)} per roll`
+                    : `${formatFrenzyCooldown(Math.max(0, cd - timeEnergy))} until the next instant roll`}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void onUseTimeEnergy()}
+                disabled={busy || frenzyArmed || timeEnergyRollsAvailable < 1}
+                className="w-full sm:w-auto rounded-xl border border-cyan-400/35 bg-cyan-500/15 px-4 py-2.5 text-xs font-black text-cyan-100 hover:bg-cyan-500/25 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Spend Time Energy · {formatNumber(timeEnergyRollsAvailable)} roll{timeEnergyRollsAvailable === 1 ? '' : 's'}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => void onUseTimeEnergy()}
-              disabled={busy || frenzyArmed || timeEnergy < TIME_ENERGY_INSTANT_ACTIVATION_COST_MS}
-              className="w-full sm:w-auto rounded-xl border border-cyan-400/35 bg-cyan-500/15 px-4 py-2.5 text-xs font-black text-cyan-100 hover:bg-cyan-500/25 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Instant Roll · 1,000ms
-            </button>
+            <div className="h-1.5 w-full rounded-full bg-slate-900 overflow-hidden border border-slate-800" role="progressbar" aria-label="Progress toward another Time Energy roll" aria-valuemin={0} aria-valuemax={100} aria-valuenow={timeEnergyProgressPct}>
+              <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-emerald-300 transition-[width] duration-200" style={{ width: `${timeEnergyProgressPct}%` }} />
+            </div>
+            <div className="text-[10px] text-slate-500 text-center">
+              Spending uses {formatNumber(timeEnergySpendMs)}ms at your current cooldown. Any partial remainder stays banked.
+            </div>
           </div>
         )}
 
@@ -835,10 +854,10 @@ export const RollSection: React.FC<RollSectionProps> = ({
                   ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/25 ring-1 ring-cyan-500/30'
                   : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
               }`}
-              title="Silent Mode: Mutes standard rolls and alerts with a crystal chime on rare drops"
+              title="Mute ordinary roll sounds and use configured rarity pings instead"
             >
               <BellRing className={`w-3.5 h-3.5 ${sonarActive ? 'text-cyan-400 motion-safe:animate-pulse' : ''}`} />
-              <span>Sonar Ping: {sonarActive ? 'SILENT' : 'OFF'}</span>
+              <span>Sonar Ping: {sonarActive ? 'ON' : 'OFF'}</span>
             </button>
           )}
 
@@ -867,31 +886,53 @@ export const RollSection: React.FC<RollSectionProps> = ({
             </button>
           )}
 
-          {/* Singularity Filter Toggle (Unlocked via Prestige) */}
-          {hasFilterUpgrade && (
-            <button
-              type="button"
-              aria-pressed={filterActive}
-              onClick={() => {
-                const next = !filterActive;
-                setFilterActive(next);
-                try {
-                  localStorage.setItem('orbs_auto_filter', String(next));
-                } catch {}
-                sound.playClick();
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer active:scale-95 ${
-                filterActive
-                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25 ring-1 ring-emerald-500/30'
-                  : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-              title="Salvages Common & Uncommon rolls directly into +25% bonus gold"
-            >
-              <Filter className={`w-3.5 h-3.5 ${filterActive ? 'text-emerald-400' : ''}`} />
-              <span>Filter: {filterActive ? 'SALVAGE' : 'OFF'}</span>
-            </button>
-          )}
+
         </div>
+
+        {hasSonarUpgrade && sonarActive && (
+          <section className="w-full rounded-xl border border-cyan-500/25 bg-cyan-500/5 p-3 space-y-3" data-testid="sonar-ping-options" aria-label="Sonar Ping options">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+              <div className="min-w-0 flex-1">
+                <label htmlFor="sonar-rarity-threshold" className="block text-[10px] font-black uppercase tracking-wider text-cyan-200">Rarity threshold</label>
+                <p className="mt-1 text-[10px] text-slate-400">Ping for any non-record Orb at or above this rarity.</p>
+              </div>
+              <select
+                id="sonar-rarity-threshold"
+                aria-label="Sonar Ping rarity threshold"
+                value={sonarThreshold}
+                onChange={event => {
+                  const next = Math.max(10, Math.floor(Number(event.currentTarget.value) || 100));
+                  setSonarThresholdState(next);
+                  sound.setSonarThreshold(next);
+                }}
+                className="w-full sm:w-auto rounded-lg border border-cyan-500/30 bg-slate-950 px-3 py-2 text-xs font-bold text-cyan-100"
+              >
+                <option value={100}>1 in 100</option>
+                <option value={1000}>1 in 1,000</option>
+                <option value={10000}>1 in 10,000</option>
+                <option value={100000}>1 in 100,000</option>
+                <option value={1000000}>1 in 1,000,000</option>
+              </select>
+            </div>
+            <label className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2 cursor-pointer">
+              <span className="min-w-0">
+                <strong className="block text-xs text-white">Starseeker alert</strong>
+                <span className="block mt-0.5 text-[10px] text-slate-400">Play a Sonar Ping when you choose Starseeker from a Celestial Alignment.</span>
+              </span>
+              <input
+                type="checkbox"
+                aria-label="Starseeker Sonar alert"
+                checked={sonarStarseekerAlerts}
+                onChange={event => {
+                  const next = event.currentTarget.checked;
+                  setSonarStarseekerAlertsState(next);
+                  sound.setSonarStarseekerAlerts(next);
+                }}
+                className="h-4 w-4 shrink-0 accent-cyan-400"
+              />
+            </label>
+          </section>
+        )}
 
         {/* Pity Meter Gauge (Unlocked via Prestige) */}
         {hasResonanceUpgrade && (
@@ -949,7 +990,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
         )}
         {state.alignmentActiveChoice && (state.alignmentActiveUntil ?? 0) > now && (
           <div className="w-full rounded-xl border border-indigo-400/25 bg-indigo-500/5 px-3 py-2 text-center text-[10px] font-bold uppercase tracking-wider text-indigo-200">
-            {state.alignmentActiveChoice === 'starseeker' ? 'Starseeker · Total Luck ^1.05' : state.alignmentActiveChoice === 'goldenOrbit' ? 'Golden Orbit · +50% Coins' : 'Clockwork · 20% faster Auto Roll'} · {Math.max(1, Math.ceil(((state.alignmentActiveUntil ?? 0) - now) / 60_000))}m left
+            {state.alignmentActiveChoice === 'starseeker' ? 'Starseeker · Total Luck ^1.05' : state.alignmentActiveChoice === 'goldenOrbit' ? 'Golden Orbit · +50% Coins' : 'Clockwork · 20% faster Auto Roll'} · {formatAlignmentRemaining((state.alignmentActiveUntil ?? 0) - now)} left
           </div>
         )}
       </div>
