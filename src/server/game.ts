@@ -8,6 +8,7 @@ import * as notificationsModule from '@devvit/notifications';
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
 import { createRollBatchPlan, effectiveWeightAtSample, virtualRollOffsetAtSample, sampleBinomialCount, getRarityBounds, MAX_SIMULATED_ROLLS_PER_REQUEST, MAX_EFFECTIVE_ROLLS_PER_BATCH, MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH, MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH, MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH } from '../shared/roll-batching.js';
+import { createRollRandomSource } from '../shared/roll-rng.js';
 import { combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityEffects, combatTotalBossesBeaten, combatBossLuckBonus } from '../shared/combat.js';
 import {
   createInitialState,
@@ -3438,7 +3439,11 @@ interface RollTicket {
   id: string;
   nextIndex: number;
   expiresAt: number;
+  /** Server-generated seeds are exposed intentionally for instant client previews. */
+  seeds: string[];
 }
+
+const ROLL_PREDICTION_COUNT = 5;
 
 function rollTicketKey(userId = currentUserId()): string {
   return ROLL_TICKET_KEY_PREFIX + userId;
@@ -3450,74 +3455,145 @@ function randomUint32(): number {
   return sample[0];
 }
 
+function createRollSeed(): string {
+  const bytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+}
+
+function validRollSeeds(value: unknown): value is string[] {
+  return Array.isArray(value) &&
+    value.length === ROLL_TICKET_COUNT &&
+    value.every(seed => typeof seed === 'string' && /^[a-f0-9]{64}$/i.test(seed));
+}
+
+async function createRollTicketPreviews(
+  state: PlayerState,
+  ticket: RollTicket,
+): Promise<Array<{ index: number; orb: Orb }>> {
+  // A click that consumes an accumulated Free Roll batch has a different
+  // maximum than one activation. Keep the live reveal authoritative for those.
+  if (Number(state.freeRolls ?? 0) > 0) return [];
+  const previewState = JSON.parse(JSON.stringify(state)) as PlayerState;
+  const previews: Array<{ index: number; orb: Orb }> = [];
+  const end = Math.min(ROLL_TICKET_COUNT, ticket.nextIndex + ROLL_PREDICTION_COUNT);
+
+  for (let index = ticket.nextIndex; index < end; index += 1) {
+    const random = createRollRandomSource(ticket.seeds[index]);
+    const result = await applyRolls(
+      previewState,
+      1,
+      undefined,
+      'online',
+      undefined,
+      random.next,
+      false,
+      undefined,
+      random.nextRarity,
+      true,
+    );
+    previews.push({ index, orb: result.bestOrb });
+
+    // Match the outer roll mutation before forecasting the next ticket index.
+    const now = Date.now();
+    previewState.lastRollAt = now;
+    previewState.lastSeenAt = now;
+    previewState.manualRolls = Math.min(10, (previewState.manualRolls ?? 0) + 1);
+    if (previewState.manualRolls >= 3) previewState.upgrades.auto = 1;
+  }
+  return previews;
+}
+
 export async function getRollTicket(): Promise<{
   ticketId: string;
   nextIndex: number;
   rollsRemaining: number;
   expiresAt: number;
+  seeds: string[];
+  predictionBaseRevision: number;
+  predictions: Array<{ index: number; orb: Orb }>;
 }> {
-  const ticketKey = rollTicketKey();
-  const now = Date.now();
+  return withPlayerMutationLock(async () => {
+    const ticketKey = rollTicketKey();
+    const now = Date.now();
 
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const txn = await redis.watch(ticketKey);
-    let transactionClosed = false;
-    try {
-    const raw = await redis.get(ticketKey);
-    const current = parseStoredJson<RollTicket>(raw);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const txn = await redis.watch(ticketKey);
+      let transactionClosed = false;
+      try {
+        const raw = await redis.get(ticketKey);
+        const current = parseStoredJson<RollTicket>(raw);
+        const validIndex = current &&
+          Number.isSafeInteger(current.nextIndex) &&
+          current.nextIndex >= 0 &&
+          current.nextIndex <= ROLL_TICKET_COUNT;
+        const seeds = validRollSeeds(current?.seeds)
+          ? current.seeds
+          : Array.from({ length: ROLL_TICKET_COUNT }, () => createRollSeed());
 
-    if (
-      current &&
-      typeof current.id === 'string' &&
-      current.id.length > 0 &&
-      current.id.length <= 128 &&
-      Number.isSafeInteger(current.nextIndex) &&
-      current.nextIndex >= 0 &&
-      current.nextIndex < ROLL_TICKET_COUNT &&
-      Number.isSafeInteger(current.expiresAt) &&
-      current.expiresAt > now
-    ) {
-      await txn.unwatch();
-      transactionClosed = true;
-      return {
-        ticketId: current.id,
-        nextIndex: current.nextIndex,
-        rollsRemaining: ROLL_TICKET_COUNT - current.nextIndex,
-        expiresAt: current.expiresAt,
-      };
-    }
+        // Never discard unconsumed revealed outcomes just because a ticket aged
+        // out. Rotate its opaque ticket ID, but retain both the index and seeds.
+        const reusable = Boolean(
+          current &&
+          typeof current.id === 'string' &&
+          current.id.length > 0 &&
+          current.id.length <= 128 &&
+          validIndex &&
+          current.nextIndex < ROLL_TICKET_COUNT,
+        );
+        const ticket: RollTicket = reusable && current
+          ? {
+              id: current.expiresAt > now ? current.id : `rt-${now.toString(36)}-${randomUint32().toString(36)}`,
+              nextIndex: current.nextIndex,
+              expiresAt: current.expiresAt > now ? current.expiresAt : now + ROLL_TICKET_TTL_MS,
+              seeds,
+            }
+          : {
+              id: `rt-${now.toString(36)}-${randomUint32().toString(36)}`,
+              nextIndex: 0,
+              expiresAt: now + ROLL_TICKET_TTL_MS,
+              seeds: Array.from({ length: ROLL_TICKET_COUNT }, () => createRollSeed()),
+            };
 
-    const ticket: RollTicket = {
-      id: `rt-${now.toString(36)}-${randomUint32().toString(36)}`,
-      nextIndex: 0,
-      expiresAt: now + ROLL_TICKET_TTL_MS,
-    };
+        const currentRawMatches = current &&
+          ticket.id === current.id &&
+          ticket.expiresAt === current.expiresAt &&
+          validRollSeeds(current.seeds);
+        if (currentRawMatches) {
+          await txn.unwatch();
+          transactionClosed = true;
+        } else {
+          await txn.multi();
+          await txn.set(ticketKey, JSON.stringify(ticket));
+          const committed = await txn.exec();
+          transactionClosed = true;
+          if (committed === null) continue;
+        }
 
-    await txn.multi();
-    await txn.set(ticketKey, JSON.stringify(ticket));
-    const committed = await txn.exec();
-    transactionClosed = true;
-    if (committed !== null) {
-      return {
-        ticketId: ticket.id,
-        nextIndex: 0,
-        rollsRemaining: ROLL_TICKET_COUNT,
-        expiresAt: ticket.expiresAt,
-      };
-    }
-    } finally {
-      if (!transactionClosed) {
-        await txn.unwatch().catch(() => undefined);
+        const state = await loadRaw();
+        const predictions = await createRollTicketPreviews(state, ticket);
+        return {
+          ticketId: ticket.id,
+          nextIndex: ticket.nextIndex,
+          rollsRemaining: ROLL_TICKET_COUNT - ticket.nextIndex,
+          expiresAt: ticket.expiresAt,
+          seeds: ticket.seeds,
+          predictionBaseRevision: Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0),
+          predictions,
+        };
+      } finally {
+        if (!transactionClosed) await txn.unwatch().catch(() => undefined);
       }
     }
-  }
 
-  throw new Error('Could not create a roll prediction ticket. Please retry.');
+    throw new Error('Could not create a roll prediction ticket. Please retry.');
+  });
 }
 
 async function loadRollTicketForUse(
   ticketId: string,
   ticketIndex: number,
+  requestedSeed?: string,
 ): Promise<{ ticket: RollTicket; raw: string }> {
   const raw = await redis.get(rollTicketKey());
   const ticket = parseStoredJson<RollTicket>(raw);
@@ -3526,7 +3602,8 @@ async function loadRollTicketForUse(
   if (
     typeof ticket.id !== 'string' || !ticket.id ||
     !Number.isSafeInteger(ticket.nextIndex) ||
-    !Number.isSafeInteger(ticket.expiresAt)
+    !Number.isSafeInteger(ticket.expiresAt) ||
+    !validRollSeeds(ticket.seeds)
   ) {
     throw new Error('Roll prediction ticket data is corrupted. Refresh the game.');
   }
@@ -3535,6 +3612,9 @@ async function loadRollTicketForUse(
   if (ticketIndex !== ticket.nextIndex) throw new Error('Roll prediction ticket is out of order. Refresh the game.');
   if (ticketIndex < 0 || ticketIndex >= ROLL_TICKET_COUNT) {
     throw new Error('Roll prediction ticket is exhausted. Refresh the game.');
+  }
+  if (requestedSeed !== ticket.seeds[ticketIndex]) {
+    throw new Error('Roll prediction seed does not match the active ticket.');
   }
 
   return { ticket, raw };
