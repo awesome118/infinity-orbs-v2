@@ -232,3 +232,5 @@ jobs:
 # Explicit user-requested dev-only release v2.1.53 on 2026-11-01; do not install to production.
 
 # Retry the v2.1.53 dev deployment after moving the force-roll fixture into the Full Test runner's outer scope.
+
+# Retry the v2.1.53 dev deployment after aligning the roll-ticket source contract with the Level 4 fixture and deterministic RNG.

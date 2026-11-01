@@ -82,15 +82,17 @@ test('admin collection replacement marks old and incoming Codex keys for persist
   assert.ok(route.includes('markCodexRarityWrite(s, rarityKey)'));
 });
 
-test('admin mechanic sweep follows current nav labels, RNG control, valuation, and rarity gates', () => {
+test('admin mechanic sweep follows unlocked nav, isolated deterministic force-rolls, valuation, and rarity gates', () => {
   const modal = readFileSync(resolve(process.cwd(), 'src/client/components/DevDebugModal.tsx'), 'utf8');
-  assert.ok(modal.includes("getAttribute('aria-label') === 'Guilds'"));
+  assert.ok(modal.includes("getAttribute('aria-label') === 'Upgrades'"));
   assert.ok(modal.includes("getAttribute('aria-label') === 'Roll'"));
-  assert.ok(modal.includes("'/api/dev/force-roll', { rarity: 9, randomValue: 0.999999 }"));
+  assert.ok(modal.includes('const seedSingleBallForceRoll = async'));
+  assert.ok(modal.includes('await seedSingleBallForceRoll(9)'));
+  assert.ok(modal.includes('randomValue: 0.999999'));
   assert.ok(modal.includes('Cosmic Valuation should multiply deterministic Collection Value by 1.05'));
   assert.ok(modal.includes('CONTINUUM_TIERS.length !== 27'));
   assert.ok(modal.includes('visibleContinuumTiers(1_000_000)'));
   assert.ok(modal.includes('visibleContinuumTiers(1e15)'));
-  assert.ok(modal.includes('rarity: 12345, randomValue: 0 }'));
-  assert.ok(modal.includes('rarity: 777, randomValue: 0 }'));
+  assert.ok(modal.includes('rarity: 12345, randomValue: 0.999999'));
+  assert.ok(modal.includes('rarity: 777, randomValue: 0.999999'));
 });
