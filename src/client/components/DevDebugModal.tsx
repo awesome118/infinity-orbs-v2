@@ -1806,6 +1806,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           const message = lastError.message;
           const retryable =
             message.includes('Cooldown:') ||
+            message.includes('Your action is queued') ||
+            message.includes('PLAYER_MUTATION_QUEUED') ||
             message.includes('Roll prediction ticket is') ||
             message.includes('Could not create a roll prediction ticket') ||
             message.includes('Player state changed while saving') ||
