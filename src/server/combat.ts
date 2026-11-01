@@ -1,11 +1,16 @@
 import { context, redis } from './devvit-mock.js';
-import { loadRaw } from './game.js';
+import { createRedisLargeValueWritePlan, readRedisLargeValue, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
+import { loadRaw, readPlayerSaveForUser } from './game.js';
 import { getOrbInfo, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatSkillDefinition, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneAutoSacrificeSettings, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
 import { chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatTurnStep, combatActionTimeline, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatHighestDepthReached, combatBossesBeatenByDepth, combatBossLuckBonus, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, combatGearSpeedBonus, combatGearOtherStatMultiplier, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, combatBeatIntervalMsFor, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, COMBAT_RUNE_RARITIES, DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS, shouldAutoSacrificeRune, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
+async function readCombatStateValue(key:string):Promise<string|null> {
+  const storedValue=await redis.get(key);
+  return readRedisLargeValue(key,storedValue);
+}
 /** Use the platform cryptographic RNG; never fall back to predictable secureRandom(). */
 function secureRandom():number {
   const cryptoApi=globalThis.crypto;
@@ -481,15 +486,33 @@ function snapshot(s:CombatState):CombatSnapshot { return {state:s,enemy:enemySna
 async function mutate<T>(fn:(s:CombatState)=>T):Promise<T> {
   const key=combatKey();
   for(let i=0;i<MAX_CAS_ATTEMPTS;i++){
-    const txn=await redis.watch(key);let closed=false;
-    try { const s=normalizeState(await redis.get(key)),result=fn(s);await txn.multi();await txn.set(key,JSON.stringify(s));const commit=await txn.exec();closed=true;if(commit!==null)return result; }
-    finally { if(!closed)await txn.unwatch().catch(()=>undefined); }
+    const txn=await redis.watch(key);
+    let closed=false,committed=false;
+    let writePlan:Awaited<ReturnType<typeof createRedisLargeValueWritePlan>>|null=null;
+    try {
+      const previousStoredValue=await redis.get(key);
+      const decoded=await readRedisLargeValue(key,previousStoredValue);
+      const s=normalizeState(decoded),result=fn(s);
+      writePlan=await createRedisLargeValueWritePlan(key,JSON.stringify(s));
+      await txn.multi();
+      await txn.set(key,writePlan.storedValue);
+      const commit=await txn.exec();
+      closed=true;
+      if(commit!==null){
+        committed=true;
+        await retireRedisLargeValue(key,previousStoredValue);
+        return result;
+      }
+    } finally {
+      if(!closed)await txn.unwatch().catch(()=>undefined);
+      if(writePlan&&!committed)await discardRedisLargeValueWritePlan(writePlan);
+    }
   }
   throw new Error('Combat state changed repeatedly. Please retry.');
 }
 /** Read the shared Combat Marks wallet for the global HUD without creating/writing combat state. */
 export async function getCombatMarksBalance():Promise<number>{
-  return normalizeState(await redis.get(combatKey())).combatMarks;
+  return normalizeState(await readCombatStateValue(combatKey())).combatMarks;
 }
 export async function getCombatSnapshot():Promise<CombatSnapshot>{
   let coreProgression:{level?:unknown;highestRarity?:unknown;autoScrapLevel?:unknown;autoScrapSettings?:unknown}|null=null;
@@ -500,7 +523,7 @@ export async function getCombatSnapshot():Promise<CombatSnapshot>{
     // Core-game progress is a bonus, not a prerequisite for loading combat.
     console.error('[Combat] Could not refresh core-game attunement; retaining saved values.',error);
   }
-  const current=normalizeState(await redis.get(combatKey()));
+  const current=normalizeState(await readCombatStateValue(combatKey()));
   const nextCoreLevel=coreProgression?finiteInt(coreProgression.level,current.coreLevel,1,1_000_000):current.coreLevel;
   const nextCoreHighestRarity=coreProgression?finiteInt(coreProgression.highestRarity,current.coreHighestRarity,2,Number.MAX_VALUE):current.coreHighestRarity;
   const nextAutoScrapUnlocked=coreProgression?Number(coreProgression.autoScrapLevel)>0:current.autoScrapUnlocked;
@@ -541,7 +564,7 @@ export async function getCombatSnapshotForUser(
 ): Promise<CombatSnapshot & { saveExists: boolean; persistedSave: unknown }> {
   const userId = String(userIdValue ?? '').trim();
   if (!userId || userId.length > 256) throw new Error('A valid player ID is required.');
-  const raw = await redis.get('infinity-orbs:combat:' + userId);
+  const raw = await readCombatStateValue('infinity-orbs:combat:' + userId);
   let persistedSave: unknown = null;
   if (typeof raw === 'string' && raw.trim()) {
     try {
@@ -554,7 +577,7 @@ export async function getCombatSnapshotForUser(
   const state = normalizeState(raw);
   // Keep the diagnostic stats in sync with the player's latest core-game
   // attunement without mutating either persisted save.
-  const rawCore = await redis.get('player:' + userId);
+  const rawCore = await readPlayerSaveForUser(userId, await redis.get('player:' + userId));
   if (typeof rawCore === 'string' && rawCore.trim()) {
     try {
       const parsed: unknown = JSON.parse(rawCore);
@@ -631,7 +654,7 @@ function chooseGuidedSkillId(s:CombatState,enemy:CombatEnemy):CombatSkillId|null
 export async function hasCompletedCombatTutorial():Promise<boolean>{
   // Share the same fail-closed save validation as all combat reads. A damaged
   // save must not masquerade as an unseen tutorial and then be overwritten.
-  return normalizeState(await redis.get(combatKey())).combatTutorialSeen;
+  return normalizeState(await readCombatStateValue(combatKey())).combatTutorialSeen;
 }
 export async function markCombatTutorialSeen():Promise<void>{
   await mutate(s=>{s.combatTutorialSeen=true;return undefined;});
@@ -1541,7 +1564,11 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
     const txn = await redis.watch(ownKey, opponentKey);
     let closed = false;
     try {
-      const [ownRaw, opponentRaw] = await Promise.all([redis.get(ownKey), redis.get(opponentKey)]);
+      const [ownStoredRaw, opponentStoredRaw] = await Promise.all([redis.get(ownKey), redis.get(opponentKey)]);
+      const [ownRaw, opponentRaw] = await Promise.all([
+        readRedisLargeValue(ownKey, ownStoredRaw),
+        readRedisLargeValue(opponentKey, opponentStoredRaw),
+      ]);
       if (!opponentRaw) {
         await txn.unwatch(); closed = true;
         throw new Error('ARENA_OPPONENT_UNAVAILABLE');
@@ -1592,12 +1619,29 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
       ownState.arenaLastMatchAt = now;
       opponentState.arenaLastMatchAt = now;
 
-      await txn.multi();
-      await txn.set(ownKey, JSON.stringify(ownState));
-      await txn.set(opponentKey, JSON.stringify(opponentState));
-      const committed = await txn.exec();
-      closed = true;
-      if (committed === null) continue;
+      let ownWritePlan:Awaited<ReturnType<typeof createRedisLargeValueWritePlan>>|null=null;
+      let opponentWritePlan:Awaited<ReturnType<typeof createRedisLargeValueWritePlan>>|null=null;
+      let stateWritesCommitted=false;
+      try {
+        ownWritePlan=await createRedisLargeValueWritePlan(ownKey,JSON.stringify(ownState));
+        opponentWritePlan=await createRedisLargeValueWritePlan(opponentKey,JSON.stringify(opponentState));
+        await txn.multi();
+        await txn.set(ownKey,ownWritePlan.storedValue);
+        await txn.set(opponentKey,opponentWritePlan.storedValue);
+        const committed=await txn.exec();
+        closed=true;
+        if(committed===null)continue;
+        stateWritesCommitted=true;
+        await Promise.all([
+          retireRedisLargeValue(ownKey,ownStoredRaw),
+          retireRedisLargeValue(opponentKey,opponentStoredRaw),
+        ]);
+      } finally {
+        if(!stateWritesCommitted){
+          if(ownWritePlan)await discardRedisLargeValueWritePlan(ownWritePlan);
+          if(opponentWritePlan)await discardRedisLargeValueWritePlan(opponentWritePlan);
+        }
+      }
 
       const ownProfile = createArenaProfile(userId, arenaName(context.username), ownState, now);
       const nextOpponentProfile = createArenaProfile(
