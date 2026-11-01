@@ -339,6 +339,10 @@ function App() {
   } | null>(null);
   const [alignmentPromptVisible, setAlignmentPromptVisible] = useState(false);
   const [alignmentChoiceBusy, setAlignmentChoiceBusy] = useState(false);
+  const [alignmentConfirmation, setAlignmentConfirmation] = useState<{ choice: CelestialAlignmentChoice; closesAt: number } | null>(null);
+  const [alignmentConfirmationSeconds, setAlignmentConfirmationSeconds] = useState(60);
+  const alignmentConfirmationRef = useRef<{ choice: CelestialAlignmentChoice; closesAt: number } | null>(null);
+  const alignmentDismissedPendingAtRef = useRef(0);
   const alignmentPendingSeenRef = useRef(0);
   const [tab, setTab] = useState<ActiveTab>('roll');
   const [moreNavOpen, setMoreNavOpen] = useState(false);
@@ -1341,12 +1345,36 @@ function App() {
     };
   }, [splashEntered]);
 
+  // After a choice, show a brief activation confirmation, then dismiss it automatically.
+  useEffect(() => {
+    if (!alignmentConfirmation) return;
+    const closesAt = alignmentConfirmation.closesAt;
+    const updateCountdown = () => {
+      // Ignore a timer from an older confirmation if a newer event replaced it.
+      if (alignmentConfirmationRef.current?.closesAt !== closesAt) return;
+      const remaining = Math.max(0, Math.ceil((closesAt - Date.now()) / 1000));
+      setAlignmentConfirmationSeconds(remaining);
+      if (remaining <= 0) {
+        alignmentConfirmationRef.current = null;
+        setAlignmentConfirmation(null);
+        setAlignmentPromptVisible(false);
+      }
+    };
+    updateCountdown();
+    const interval = window.setInterval(updateCountdown, 250);
+    return () => window.clearInterval(interval);
+  }, [alignmentConfirmation?.closesAt]);
+
   // Alignment appearances are independent server-timed events, not roll procs.
   // Poll only while the game is visible; an unanswered event remains persisted.
   useEffect(() => {
     if (!splashEntered || ((state?.masterySkills?.celestialAlignment ?? 0) <= 0 && !isAdmin)) {
       setAlignmentStatus(null);
       setAlignmentPromptVisible(false);
+      alignmentConfirmationRef.current = null;
+      setAlignmentConfirmation(null);
+      setAlignmentConfirmationSeconds(0);
+      alignmentDismissedPendingAtRef.current = 0;
       alignmentPendingSeenRef.current = 0;
       return;
     }
@@ -1365,8 +1393,20 @@ function App() {
           nextAt: number;
         }>('/api/alignment/status', { cache: 'no-store' });
         if (cancelled) return;
-        setAlignmentStatus(status);
-        if (status.pending) {
+        // A status request can finish after the choice POST and return the old pending
+        // timestamp. Never let that stale response reopen an already chosen event.
+        const pendingWasDismissed = status.pending &&
+          alignmentDismissedPendingAtRef.current > 0 &&
+          status.pendingAt <= alignmentDismissedPendingAtRef.current;
+        const pendingNow = status.pending && !pendingWasDismissed;
+        const visibleStatus = pendingWasDismissed ? { ...status, pending: false, pendingAt: 0 } : status;
+        setAlignmentStatus(visibleStatus);
+        if (pendingNow) {
+          if (alignmentConfirmationRef.current) {
+            alignmentConfirmationRef.current = null;
+            setAlignmentConfirmation(null);
+            setAlignmentConfirmationSeconds(0);
+          }
           setAlignmentPromptVisible(true);
           const pendingKey = status.pendingAt || -1;
           if (alignmentPendingSeenRef.current !== pendingKey) {
@@ -1375,7 +1415,8 @@ function App() {
           }
         } else {
           alignmentPendingSeenRef.current = 0;
-          setAlignmentPromptVisible(false);
+          // A clean server response must not close the post-choice confirmation early.
+          if (!alignmentConfirmationRef.current) setAlignmentPromptVisible(false);
         }
       } catch {
         // A failed status read is retried on the next visible poll.
@@ -2448,6 +2489,7 @@ function App() {
 
   const handleChooseCelestialAlignment = async (choice: CelestialAlignmentChoice) => {
     if (alignmentChoiceBusy) return;
+    const chosenPendingAt = alignmentStatus?.pendingAt ?? 0;
     setAlignmentChoiceBusy(true);
     try {
       const result = await getJson<{
@@ -2469,8 +2511,13 @@ function App() {
         activeUntil: result.activeUntil,
         nextAt: result.nextAt,
       });
+      alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, chosenPendingAt);
       alignmentPendingSeenRef.current = 0;
-      setAlignmentPromptVisible(false);
+      const confirmation = { choice, closesAt: Date.now() + 60_000 };
+      alignmentConfirmationRef.current = confirmation;
+      setAlignmentConfirmation(confirmation);
+      setAlignmentConfirmationSeconds(60);
+      setAlignmentPromptVisible(true);
       const names: Record<CelestialAlignmentChoice, string> = {
         starseeker: 'Starseeker',
         goldenOrbit: 'Golden Orbit',
@@ -3385,7 +3432,7 @@ function App() {
         </div>
       )}
 
-      {alignmentPromptVisible && alignmentStatus?.pending && (
+      {alignmentPromptVisible && (alignmentConfirmation !== null || alignmentStatus?.pending) && (
         <div className="fixed inset-0 z-[90] io-modal-backdrop flex items-center justify-center p-4" data-testid="celestial-alignment-prompt">
           <section
             className="w-full max-w-2xl rounded-3xl border border-cyan-400/30 bg-slate-950/95 p-5 sm:p-7 shadow-[0_0_70px_rgba(56,189,248,.2)]"
@@ -3393,10 +3440,46 @@ function App() {
             aria-modal="true"
             aria-labelledby="celestial-alignment-title"
           >
-            <div className="text-[10px] font-black uppercase tracking-[.22em] text-cyan-300">A rare celestial event</div>
-            <h2 id="celestial-alignment-title" className="mt-2 text-2xl sm:text-3xl font-black text-white">Celestial Alignment</h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400">The stars have aligned. Choose one effect to guide your next 60 minutes. Your next Alignment appears independently of your rolls.</p>
-            <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {alignmentConfirmation ? (
+              <div className="py-2 text-center" data-testid="celestial-alignment-confirmation">
+                <div className="text-[10px] font-black uppercase tracking-[.22em] text-emerald-300">Alignment activated</div>
+                <h2 id="celestial-alignment-title" className="mt-3 text-2xl sm:text-3xl font-black text-white">
+                  {alignmentConfirmation.choice === 'starseeker' ? 'Starseeker' : alignmentConfirmation.choice === 'goldenOrbit' ? 'Golden Orbit' : 'Clockwork'} is active
+                </h2>
+                <p className="mt-3 text-sm leading-relaxed text-slate-300">
+                  {alignmentConfirmation.choice === 'starseeker'
+                    ? 'Your complete Luck multiplier is now raised to the power of 1.05.'
+                    : alignmentConfirmation.choice === 'goldenOrbit'
+                      ? 'All Coins earned are increased by 50%.'
+                      : 'Your Auto Roll cooldown is reduced by 20%, respecting the 300ms floor.'}
+                </p>
+                <p className="mt-2 text-xs text-slate-400">Your chosen effect remains active for 60 minutes.</p>
+                <div className="mt-6 flex items-center justify-between gap-4 text-[10px] font-black uppercase tracking-[.14em] text-cyan-200">
+                  <span>Confirmation closes in</span>
+                  <strong className="text-lg tabular-nums text-white">
+                    {String(Math.floor(alignmentConfirmationSeconds / 60)).padStart(2, '0')}:{String(alignmentConfirmationSeconds % 60).padStart(2, '0')}
+                  </strong>
+                </div>
+                <div
+                  className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800"
+                  role="progressbar"
+                  aria-label="Alignment confirmation time remaining"
+                  aria-valuemin={0}
+                  aria-valuemax={60}
+                  aria-valuenow={alignmentConfirmationSeconds}
+                >
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-emerald-300 transition-[width] duration-200"
+                    style={{ width: `${(alignmentConfirmationSeconds / 60) * 100}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="text-[10px] font-black uppercase tracking-[.22em] text-cyan-300">A rare celestial event</div>
+                <h2 id="celestial-alignment-title" className="mt-2 text-2xl sm:text-3xl font-black text-white">Celestial Alignment</h2>
+                <p className="mt-2 text-sm leading-relaxed text-slate-400">The stars have aligned. Choose one effect to guide your next 60 minutes. Your next Alignment appears independently of your rolls.</p>
+                <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
                 type="button"
                 disabled={alignmentChoiceBusy}
@@ -3431,7 +3514,9 @@ function App() {
                 <span className="mt-4 block text-[10px] font-black uppercase tracking-wide text-emerald-200">20% faster Auto Roll</span>
               </button>
             </div>
-            {alignmentChoiceBusy && <div className="mt-4 text-center text-xs text-cyan-200">Locking in your Alignment…</div>}
+                {alignmentChoiceBusy && <div className="mt-4 text-center text-xs text-cyan-200">Locking in your Alignment…</div>}
+              </>
+            )}
           </section>
         </div>
       )}
