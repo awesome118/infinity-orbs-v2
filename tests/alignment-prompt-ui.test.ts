@@ -148,9 +148,9 @@ test('Alignment choice requests wait in both player-action queues instead of fai
 test('Celestial Alignment events use a bounded 90–150 minute interval, not exponential bursts', () => {
   const shared = source('src/shared/game.ts');
   const server = source('src/server/game.ts');
-  assert.match(shared, /CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS = 45 \* 60 \* 1_000/);
-  assert.match(shared, /CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS = 90 \* 60 \* 1_000/);
-  assert.match(shared, /CELESTIAL_ALIGNMENT_DURATION_MS = 2 \* 60 \* 60 \* 1_000/);
+  assert.match(shared, /CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS = 90 \* 60 \* 1_000/);
+  assert.match(shared, /CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS = 150 \* 60 \* 1_000/);
+  assert.match(shared, /CELESTIAL_ALIGNMENT_DURATION_MS = 60 \* 60 \* 1_000/);
   const scheduler = server.slice(server.indexOf('function nextCelestialAlignmentAt'), server.indexOf('export async function getCelestialAlignmentStatus'));
   assert.match(scheduler, /CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS/);
   assert.match(scheduler, /CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS/);
