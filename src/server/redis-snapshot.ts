@@ -1,5 +1,3 @@
-import { redis } from './devvit-mock.js';
-
 export interface RedisSnapshotClient {
   get(key: string): Promise<string | null | undefined>;
   mGet(keys: string[]): Promise<Array<string | null | undefined>>;
