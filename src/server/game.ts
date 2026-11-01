@@ -2183,7 +2183,8 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
     const hasRegistryEntry = Object.prototype.hasOwnProperty.call(records, userId);
     const registry = parseStoredJson<Partial<PlayerRegistryEntry>>(records[userId]) ?? {};
     const legacy = legacyById.get(userId);
-    const save = playerSaveProjection(saves[index]);
+    const storedSave = saves[index];
+    const save = playerSaveProjection(typeof storedSave === 'string' ? storedSave : null);
 
     // Do not resurrect a wiped account from a stale leaderboard projection.
     // Registry-backed accounts remain visible as before; fallback-only entries
@@ -6983,7 +6984,7 @@ export async function chooseCelestialAlignment(
     s.alignmentPendingAt = 0;
     s.alignmentPendingForced = false;
     s.alignmentNextAt = hasMastery ? nextCelestialAlignmentAt(now) : 0;
-    const username = String(context.username ?? s.username ?? 'Redditor').trim().replace(/^u\\//i, '').slice(0, 32) || 'Redditor';
+    const username = String(context.username ?? s.username ?? 'Redditor').trim().replace(/^u\//i, '').slice(0, 32) || 'Redditor';
     stageSavePostCommitAction(s, async () => {
       await recordCelestialAlignmentChoiceStats(choice, username, now, wasAdminTest);
     });
