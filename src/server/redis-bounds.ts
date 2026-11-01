@@ -87,7 +87,10 @@ export function serializeBoundedLeaderboardBoards(
       }
     }
     if (!largestKey || largestLength <= 1) return '{}';
-    (bounded[largestKey] as unknown[]).pop();
+    const largest = bounded[largestKey] as unknown[];
+    // Remove a quarter of the lowest-ranked rows at once rather than repeatedly
+    // serializing thousands of entries one at a time.
+    largest.splice(Math.max(0, largest.length - Math.ceil(largest.length / 4)));
     serialized = JSON.stringify(bounded);
   }
   return serialized;
