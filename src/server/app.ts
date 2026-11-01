@@ -384,7 +384,8 @@ export function createApp() {
   const mutationQueues = new Map<string, Promise<void>>();
   const MUTATION_LOCK_PREFIX = 'player-mutation-lock:';
   const MUTATION_LOCK_TTL_MS = 2 * 60_000;
-  const MUTATION_LOCK_WAIT_MS = 20_000;
+  // Give legitimate queued actions enough time to finish behind longer-running saves/rolls.
+  const MUTATION_LOCK_WAIT_MS = 60_000;
 
   const mutationLockKey = (playerKey: string) => MUTATION_LOCK_PREFIX + playerKey;
 
