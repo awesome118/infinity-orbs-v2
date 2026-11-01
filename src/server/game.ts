@@ -2915,6 +2915,22 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
     throw new Error('Could not safely process the refund.');
   });
 }
+/**
+ * Run a current-player mutation through the same lock and canonical save path
+ * used by gameplay. Callers must not write player:<id> directly: doing so
+ * bypasses large-save chunking, Codex separation, revision checks, and leases.
+ */
+export async function mutateCurrentPlayerState<T>(
+  mutator: (state: PlayerState) => T | Promise<T>,
+): Promise<{ state: PlayerState; result: T }> {
+  return withPlayerMutationLock(async () => {
+    const state = await loadRaw();
+    const result = await mutator(state);
+    await save(state);
+    return { state, result };
+  });
+}
+
 export async function loadRaw(options: { registerActivity?: boolean } = {}): Promise<PlayerState> {
   const userId = currentUserId();
   const playerKey = key();
