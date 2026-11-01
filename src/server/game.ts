@@ -4164,6 +4164,8 @@ export async function applyRolls(
   randomOverride?: () => number,
   exactRarity = false,
   onProgress?: (processedCount: number) => Promise<void> | void,
+  rarityRandomOverride?: () => number,
+  previewOnly = false,
 ): Promise<{ bestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number; rollCount: number }> {
   let bestRarity = 0;
   let bestIsCrit = false;
@@ -4197,6 +4199,7 @@ export async function applyRolls(
   // the loop, so using its live value plus i double-counts the current batch.
   const lifetimeRollsBeforeBatch = s.totalRolls;
   const rng = randomOverride ?? serverRandom;
+  const rarityRng = rarityRandomOverride ?? randomOverride ?? serverRarityRandom;
 
   // Astral Magnetism proc: chance for multi-rolls to pull 2 bonus orbs
   const magnetLevel = s.prestigeUpgrades?.stellarMagnet ?? 0;
@@ -4442,7 +4445,7 @@ export async function applyRolls(
       const rarityFloor = runeRarityFloor * maxCategoryMultiplier;
       const rawRolledRarity = rollContinuum(
         sampleLuck,
-        randomOverride ?? serverRarityRandom,
+        rarityRng,
         rarityMultiplier,
         rarityFloor,
         Math.max(1, Math.floor(Number(s.level) || 1)),
@@ -4921,17 +4924,20 @@ export async function applyRolls(
   }
 
   coinsGained = normalizeCoinAmount(coinsGained);
-  const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
-  let guildEffects: Awaited<ReturnType<typeof prepareGuildRollEffects>>;
-  try {
-    guildEffects = await prepareGuildRollEffects(totalVal, rollCount, bestRarity, pendingGuildWrite);
-  } catch (error) {
-    // Guild task progress is an optional projection, not a dependency for a valid roll.
-    console.error('[Guild] Could not prepare task progress; the player roll will still complete.', error);
-    guildEffects = {};
-  }
-  if (guildEffects.extraWrite) {
-    stageSaveExtraWrite(s, guildEffects.extraWrite);
+  if (!previewOnly) {
+    const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
+    let guildEffects: Awaited<ReturnType<typeof prepareGuildRollEffects>>;
+    try {
+      guildEffects = await prepareGuildRollEffects(totalVal, rollCount, bestRarity, pendingGuildWrite);
+    } catch (error) {
+      // Guild task progress is an optional projection, not a dependency for a valid roll.
+      console.error('[Guild] Could not prepare task progress; the player roll will still complete.', error);
+      guildEffects = {};
+    }
+    if (guildEffects.extraWrite) {
+      stageSaveExtraWrite(s, guildEffects.extraWrite);
+    }
+  
   }
   coinsGained = addCoins(s, coinsGained);
   shardsGained = grantRollShards(s, shardsGained);
@@ -4962,23 +4968,26 @@ export async function applyRolls(
   advanceQuestProgress(s, 'value', totalVal);
   advanceQuestProgress(s, 'unique', uniqueGained);
 
-  const pendingCommunityWrite = getPendingSaveExtraWrite(s, 'io:community_event');
-  try {
-    const communityUpdate = await prepareCommunityRolls(rollCount, pendingCommunityWrite);
-    stageSaveExtraWrite(s, {
-      key: communityUpdate.key,
-      expectedValue: communityUpdate.expectedValue,
-      nextValue: communityUpdate.nextValue,
-      conflictMessage: 'Community event changed before the roll saved. Please retry.',
-      optional: true,
-    });
-  } catch (error) {
-    // The World Event projection is best-effort. A corrupt shared event must
-    // never cause the primary player roll rewards to be discarded. Do not stage
-    // a replacement or clear the raw event: repair remains explicit/admin-only.
-    console.error('[Community Event] Progress not recorded for this roll; preserving shared data.', error);
+  if (!previewOnly) {
+    const pendingCommunityWrite = getPendingSaveExtraWrite(s, 'io:community_event');
+    try {
+      const communityUpdate = await prepareCommunityRolls(rollCount, pendingCommunityWrite);
+      stageSaveExtraWrite(s, {
+        key: communityUpdate.key,
+        expectedValue: communityUpdate.expectedValue,
+        nextValue: communityUpdate.nextValue,
+        conflictMessage: 'Community event changed before the roll saved. Please retry.',
+        optional: true,
+      });
+    } catch (error) {
+      // The World Event projection is best-effort. A corrupt shared event must
+      // never cause the primary player roll rewards to be discarded. Do not stage
+      // a replacement or clear the raw event: repair remains explicit/admin-only.
+      console.error('[Community Event] Progress not recorded for this roll; preserving shared data.', error);
+    }
+  
+  
   }
-
   const bestInfo = getOrbInfo(bestRarity, bestIsInfinity);
   const bestOrb: Orb = {
     rarity: bestRarity,
@@ -4993,64 +5002,66 @@ export async function applyRolls(
   // Scan the sample list iteratively; spreading tens of thousands of values into Math.min/max can overflow the runtime call stack.
   const rarityBounds = getRarityBounds(rarities);
 
-  await appendPlayerSpyLog('roll', {
-    source,
-    forcedRarity: forcedRarity ?? null,
-    requestedRollCount,
-    processedRollCount: rollCount,
-    activationCount,
-    rarityMin: rarityBounds.min,
-    rarityMax: rarityBounds.max,
-    rarityAverage: rarities.length
-      ? Math.round(rarities.reduce((sum, rarity, index) => sum + rarity * rarityWeights[index], 0) / rarityWeights.reduce((sum, weight) => sum + weight, 0))
-      : 0,
-    rarityHistogram: {
-      '2-9': rarities.reduce((sum, r, index) => sum + (r < 10 ? rarityWeights[index] : 0), 0),
-      '10-99': rarities.reduce((sum, r, index) => sum + (r >= 10 && r < 100 ? rarityWeights[index] : 0), 0),
-      '100-999': rarities.reduce((sum, r, index) => sum + (r >= 100 && r < 1_000 ? rarityWeights[index] : 0), 0),
-      '1k-9.9k': rarities.reduce((sum, r, index) => sum + (r >= 1_000 && r < 10_000 ? rarityWeights[index] : 0), 0),
-      '10k-99.9k': rarities.reduce((sum, r, index) => sum + (r >= 10_000 && r < 100_000 ? rarityWeights[index] : 0), 0),
-      '100k-999.9k': rarities.reduce((sum, r, index) => sum + (r >= 100_000 && r < 1_000_000 ? rarityWeights[index] : 0), 0),
-      '1m-9.9m': rarities.reduce((sum, r, index) => sum + (r >= 1_000_000 && r < 10_000_000 ? rarityWeights[index] : 0), 0),
-      '10m+': rarities.reduce((sum, r, index) => sum + (r >= 10_000_000 ? rarityWeights[index] : 0), 0),
-    },
-    sampleRarities: rarities.slice(0, 50),
-    coinsPerRoll: rollCount > 0 ? Math.round(coinsGained / rollCount) : 0,
-    xpPerRoll: rollCount > 0 ? Math.round(xpGained / rollCount) : 0,
-    shardsPerRoll: rollCount > 0 ? Number((shardsGained / rollCount).toFixed(4)) : 0,
-    bestRarity,
-    criticalRolls: Math.max(0, (s.totalCrits ?? 0) - spyBefore.totalCrits),
-    uniqueGained,
-    coinsGained,
-    shardsGained,
-    xpGained,
-    onlineCcu: s.onlinePlayers ?? 1,
-    fakeCcuBonus,
-    luckMultiplier: Math.min(Number.MAX_VALUE, effectiveLuck * batchPlan.compressionWeight * batchPlan.compressionWeight),
-    compressionWeight: batchPlan.compressionWeight,
-    simulatedRollCount: simulationLoopCount,
-    communityLuck,
-    critChance: effectiveCritChance,
-    critMultiplier: cm,
-    codexCollectionKeys: Object.keys(s.collection || {}).length,
-    codexProgress: Math.max(0, Math.floor(Math.log2(Object.keys(s.collection || {}).length + 1))),
-    masteryCelestialSurge: s.masterySkills?.celestialSurge ?? 0,
-    globalBoosters,
-    level: s.level,
-    before: spyBefore,
-    after: {
-      totalRolls: s.totalRolls,
-      totalCrits: s.totalCrits ?? 0,
-      coins: s.coins,
-      shards: s.shards,
-      xp: s.xp,
+  if (!previewOnly) {
+    await appendPlayerSpyLog('roll', {
+      source,
+      forcedRarity: forcedRarity ?? null,
+      requestedRollCount,
+      processedRollCount: rollCount,
+      activationCount,
+      rarityMin: rarityBounds.min,
+      rarityMax: rarityBounds.max,
+      rarityAverage: rarities.length
+        ? Math.round(rarities.reduce((sum, rarity, index) => sum + rarity * rarityWeights[index], 0) / rarityWeights.reduce((sum, weight) => sum + weight, 0))
+        : 0,
+      rarityHistogram: {
+        '2-9': rarities.reduce((sum, r, index) => sum + (r < 10 ? rarityWeights[index] : 0), 0),
+        '10-99': rarities.reduce((sum, r, index) => sum + (r >= 10 && r < 100 ? rarityWeights[index] : 0), 0),
+        '100-999': rarities.reduce((sum, r, index) => sum + (r >= 100 && r < 1_000 ? rarityWeights[index] : 0), 0),
+        '1k-9.9k': rarities.reduce((sum, r, index) => sum + (r >= 1_000 && r < 10_000 ? rarityWeights[index] : 0), 0),
+        '10k-99.9k': rarities.reduce((sum, r, index) => sum + (r >= 10_000 && r < 100_000 ? rarityWeights[index] : 0), 0),
+        '100k-999.9k': rarities.reduce((sum, r, index) => sum + (r >= 100_000 && r < 1_000_000 ? rarityWeights[index] : 0), 0),
+        '1m-9.9m': rarities.reduce((sum, r, index) => sum + (r >= 1_000_000 && r < 10_000_000 ? rarityWeights[index] : 0), 0),
+        '10m+': rarities.reduce((sum, r, index) => sum + (r >= 10_000_000 ? rarityWeights[index] : 0), 0),
+      },
+      sampleRarities: rarities.slice(0, 50),
+      coinsPerRoll: rollCount > 0 ? Math.round(coinsGained / rollCount) : 0,
+      xpPerRoll: rollCount > 0 ? Math.round(xpGained / rollCount) : 0,
+      shardsPerRoll: rollCount > 0 ? Number((shardsGained / rollCount).toFixed(4)) : 0,
+      bestRarity,
+      criticalRolls: Math.max(0, (s.totalCrits ?? 0) - spyBefore.totalCrits),
+      uniqueGained,
+      coinsGained,
+      shardsGained,
+      xpGained,
+      onlineCcu: s.onlinePlayers ?? 1,
+      fakeCcuBonus,
+      luckMultiplier: Math.min(Number.MAX_VALUE, effectiveLuck * batchPlan.compressionWeight * batchPlan.compressionWeight),
+      compressionWeight: batchPlan.compressionWeight,
+      simulatedRollCount: simulationLoopCount,
+      communityLuck,
+      critChance: effectiveCritChance,
+      critMultiplier: cm,
+      codexCollectionKeys: Object.keys(s.collection || {}).length,
+      codexProgress: Math.max(0, Math.floor(Math.log2(Object.keys(s.collection || {}).length + 1))),
+      masteryCelestialSurge: s.masterySkills?.celestialSurge ?? 0,
+      globalBoosters,
       level: s.level,
-      highestRarity: s.highestRarity,
-    },
-    userId: spyUserId,
-  }, spyUserId).catch(error => {
-    console.error('[Player Spy] Background roll log failed:', error);
-  });
+      before: spyBefore,
+      after: {
+        totalRolls: s.totalRolls,
+        totalCrits: s.totalCrits ?? 0,
+        coins: s.coins,
+        shards: s.shards,
+        xp: s.xp,
+        level: s.level,
+        highestRarity: s.highestRarity,
+      },
+      userId: spyUserId,
+    }, spyUserId).catch(error => {
+      console.error('[Player Spy] Background roll log failed:', error);
+    });
+  }
 
   return { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount };
 }
