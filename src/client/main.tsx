@@ -2511,20 +2511,20 @@ function App() {
   const handleChooseCelestialAlignment = async (choice: CelestialAlignmentChoice) => {
     if (alignmentChoiceBusy) return;
     const currentPendingAt = Number(alignmentStatus?.pendingAt ?? 0);
-    if (currentPendingAt > 0 && Date.now() >= currentPendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS) {
+    if (!Number.isSafeInteger(currentPendingAt) || currentPendingAt <= 0) {
+      showToast('The Alignment offer is still syncing. Please try the choice again.', 'warn');
+      return;
+    }
+    if (Date.now() >= currentPendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS) {
       alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, currentPendingAt);
       setAlignmentPromptVisible(false);
       setAlignmentChoiceError(null);
       return;
     }
-    // The chooser can be visible before the first status poll has populated its timestamp.
-    // Use the last observed event time, then a local timestamp as a safe fallback, so a
-    // delayed pre-selection status response cannot reopen this same chooser.
-    const chosenPendingAt = Math.max(
-      alignmentStatus?.pendingAt ?? 0,
-      alignmentPendingSeenRef.current,
-      Date.now(),
-    );
+    // Send only the server-issued offer timestamp as an identity hint. The server
+    // validates it against the saved offer and creates its own receipt timestamp;
+    // browser time is never trusted for the admission decision.
+    const chosenPendingAt = currentPendingAt;
     alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, chosenPendingAt);
     setAlignmentChoiceError(null);
     setAlignmentChoiceBusy(true);
@@ -2540,7 +2540,7 @@ function App() {
       }>('/api/alignment/choose', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ choice }),
+        body: JSON.stringify({ choice, pendingAt: chosenPendingAt }),
       });
       applyPlayerState(result.state);
       setAlignmentStatus({
