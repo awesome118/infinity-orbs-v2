@@ -2408,15 +2408,23 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             // Force a RollSection remount so its local Sonar toggle state follows
             // the sound singleton reset even when the test began on the Roll tab.
             const navButtons = () => Array.from(document.querySelectorAll('button'));
-            const socialNav = navButtons().find(el => el.textContent?.includes('Guilds & Social')) as HTMLButtonElement | undefined;
-            if (!socialNav) throw new Error('Guilds & Social navigation control was not found.');
+            const socialNav = navButtons().find(el =>
+              el.classList.contains('nav-tab') &&
+              el.getAttribute('aria-label') === 'Guilds' &&
+              el.getClientRects().length > 0
+            ) as HTMLButtonElement | undefined;
+            if (!socialNav) throw new Error('Visible Guilds navigation control was not found.');
             socialNav.click();
             await new Promise(resolve => setTimeout(resolve, 100));
 
             // React may replace nav nodes during the tab transition. Always find
             // the current Roll button after switching, never click a stale node.
-            const rollNav = navButtons().find(el => el.textContent?.trim() === 'Roll') as HTMLButtonElement | undefined;
-            if (!rollNav) throw new Error('Roll navigation control was not found after the tab transition.');
+            const rollNav = navButtons().find(el =>
+              el.classList.contains('nav-tab') &&
+              el.getAttribute('aria-label') === 'Roll' &&
+              el.getClientRects().length > 0
+            ) as HTMLButtonElement | undefined;
+            if (!rollNav) throw new Error('Visible Roll navigation control was not found after the tab transition.');
             rollNav.click();
             await new Promise(resolve => setTimeout(resolve, 100));
             await onRefresh();
@@ -2477,12 +2485,20 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             // only reads this preference on mount, so a storage write alone
             // does not reset a control already mounted in the Roll tab.
             const navButtons = () => Array.from(document.querySelectorAll('button'));
-            const socialNav = navButtons().find(el => el.textContent?.includes('Guilds & Social')) as HTMLButtonElement | undefined;
-            if (!socialNav) throw new Error('Guilds & Social navigation control was not found.');
+            const socialNav = navButtons().find(el =>
+              el.classList.contains('nav-tab') &&
+              el.getAttribute('aria-label') === 'Guilds' &&
+              el.getClientRects().length > 0
+            ) as HTMLButtonElement | undefined;
+            if (!socialNav) throw new Error('Visible Guilds navigation control was not found.');
             socialNav.click();
             await new Promise(resolve => setTimeout(resolve, 100));
-            const rollNav = navButtons().find(el => el.textContent?.trim() === 'Roll') as HTMLButtonElement | undefined;
-            if (!rollNav) throw new Error('Roll navigation control was not found after the tab transition.');
+            const rollNav = navButtons().find(el =>
+              el.classList.contains('nav-tab') &&
+              el.getAttribute('aria-label') === 'Roll' &&
+              el.getClientRects().length > 0
+            ) as HTMLButtonElement | undefined;
+            if (!rollNav) throw new Error('Visible Roll navigation control was not found after the tab transition.');
             rollNav.click();
             await new Promise(resolve => setTimeout(resolve, 100));
             await onRefresh();
@@ -2720,7 +2736,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               { supernova: 5 },
               { totalRolls: 10, upgrades: { ...zeroUpgrades, critChance: 20 } },
             );
-            const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValue: 0 });
+            const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValue: 0.999999 });
             if (Number(result.orb?.rarity) <= 45 || !result.orb?.isCrit) {
               throw new Error('Supernova should magnify deterministic critical strength beyond 1/45, got 1/' + result.orb?.rarity + ', crit=' + result.orb?.isCrit + '.');
             }
@@ -2977,10 +2993,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             const base = await request<any>('/api/dev/force-roll', { rarity: 100, randomValue: 0.999999 });
             await setMechanicState({ cosmicValuation: 1 });
             const upgraded = await request<any>('/api/dev/force-roll', { rarity: 100, randomValue: 0.999999 });
-            const gained = Number(upgraded.totalValueGained) - Number(base.totalValueGained);
-            if (gained !== 5) {
-              throw new Error('Cosmic Valuation should add 5 Collection Value to the deterministic roll, got ' + base.totalValueGained + ' → ' + upgraded.totalValueGained + '.');
+            const expected = Math.round(Number(base.totalValueGained) * 1.05);
+            if (Number(upgraded.totalValueGained) !== expected) {
+              throw new Error('Cosmic Valuation should multiply deterministic Collection Value by 1.05 (rounded), expected ' + expected + ', got ' + upgraded.totalValueGained + '.');
             }
+            const gained = Number(upgraded.totalValueGained) - Number(base.totalValueGained);
             return { base, upgraded, gained };
           },
           result => 'Collection Value ' + shortNumber(result.base.totalValueGained, 0) + ' → ' + shortNumber(result.upgraded.totalValueGained, 0) + ' (+5 from Cosmic Valuation)',
@@ -3003,8 +3020,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'Contract · Rarity ladder has 18 tiers',
         async () => {
-          if (CONTINUUM_TIERS.length !== 18) {
-            throw new Error('Expected 18 rarity tiers, found ' + CONTINUUM_TIERS.length + '.');
+          if (CONTINUUM_TIERS.length !== 27) {
+            throw new Error('Expected 27 rarity tiers, found ' + CONTINUUM_TIERS.length + '.');
           }
           for (let i = 1; i < CONTINUUM_TIERS.length; i++) {
             if (!(CONTINUUM_TIERS[i].minRarity > CONTINUUM_TIERS[i - 1].minRarity)) {
@@ -3019,13 +3036,15 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'Contract · Hidden rarity gate',
         async () => {
-          const hidden = visibleContinuumTiers(8);
-          const revealed = visibleContinuumTiers(9);
-          if (hidden.length !== 9) throw new Error('Rarity gate exposed ' + hidden.length + ' tiers before 1/9.');
-          if (revealed.length !== 18) throw new Error('Rarity gate revealed ' + revealed.length + ' tiers at 1/9.');
-          return { hidden, revealed };
+          const initial = visibleContinuumTiers(8);
+          const existing = visibleContinuumTiers(1_000_000);
+          const expanded = visibleContinuumTiers(1e15);
+          if (initial.length !== 9) throw new Error('Rarity gate exposed ' + initial.length + ' initial tiers below the discovery unlock.');
+          if (existing.length !== 18) throw new Error('Discovery gate revealed ' + existing.length + ' tiers at 1/1e6.');
+          if (expanded.length !== 27) throw new Error('Expansion gate revealed ' + expanded.length + ' tiers at 1/1e15.');
+          return { initial, existing, expanded };
         },
-        result => '8 highest → ' + result.hidden.length + ' visible · 9 highest → ' + result.revealed.length + ' visible',
+        result => 'initial=' + result.initial.length + ' · discovery=' + result.existing.length + ' · expansion=' + result.expanded.length + ' tiers',
       );
 
       await step(
@@ -3071,7 +3090,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         'API · Force-roll 1/1e15 Paradox',
         async () => {
           await request('/api/dev/state', { xp: 32_000, highestRarity: 9 });
-          const result = await request<any>('/api/dev/force-roll', { rarity: 1_000_000_000_000_000, randomValue: 0.999999 });
+          const result = await request<any>('/api/dev/force-roll', { rarity: 1_000_000_000_000_000, randomValue: 0 });
           if (result.orb?.tier !== 'Paradox') throw new Error('Expected Paradox, got ' + result.orb?.tier + '.');
           return result;
         },
@@ -3081,7 +3100,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'API · Force-roll 1/1e16 Beyond',
         async () => {
-          const result = await request<any>('/api/dev/force-roll', { rarity: 10_000_000_000_000_000, randomValue: 0.999999 });
+          const result = await request<any>('/api/dev/force-roll', { rarity: 10_000_000_000_000_000, randomValue: 0 });
           if (result.orb?.tier !== 'Beyond') throw new Error('Expected Beyond, got ' + result.orb?.tier + '.');
           return result;
         },
@@ -3091,7 +3110,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         'API · Force-roll 1/1e17 Endless',
         async () => {
-          const result = await request<any>('/api/dev/force-roll', { rarity: 100_000_000_000_000_000, randomValue: 0.999999 });
+          const result = await request<any>('/api/dev/force-roll', { rarity: 100_000_000_000_000_000, randomValue: 0 });
           if (result.orb?.tier !== 'Endless') throw new Error('Expected Endless, got ' + result.orb?.tier + '.');
           return result;
         },
@@ -3423,7 +3442,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       await step(
         "API · Force-roll honors deterministic rarity",
         async () => {
-          const result = await request<any>('/api/dev/force-roll', { rarity: 12345, randomValue: 0.999999 });
+          const result = await request<any>('/api/dev/force-roll', { rarity: 12345, randomValue: 0 });
           if (Number(result.orb?.rarity) !== 12345) throw new Error('Force-roll returned 1/' + result.orb?.rarity + ' instead of 1/12345.');
           return result;
         },
@@ -3457,7 +3476,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         "API · Force-roll persists collection entry",
         async () => {
           await request<any>('/api/dev/state', { xp: 600, level: 4, levelXpFloor: 533, collection: {}, highestRarity: 0, collectionValue: 0 });
-          await request<any>('/api/dev/force-roll', { rarity: 777, randomValue: 0.999999 });
+          await request<any>('/api/dev/force-roll', { rarity: 777, randomValue: 0 });
           const collection = await request<any>('/api/collection?offset=0&limit=100&tier=all&sort=rarity_desc');
           const item = Array.isArray(collection.items)
             ? collection.items.find((entry: any) => Number(entry.rarity) === 777)
