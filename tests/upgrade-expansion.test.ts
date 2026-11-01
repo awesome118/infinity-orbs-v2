@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import {
   createInitialState,
@@ -89,4 +91,13 @@ test('Offline Foundry scales offline Coin payouts and remains capped at ten leve
 
   state.upgrades.offlineFoundry = 100;
   assert.equal(offlineFoundryMultiplier(state), 2);
+});
+
+test('debug upgrade presets initialize, reset, and unlock every standard upgrade', () => {
+  const debug = readFileSync(resolve(process.cwd(), 'src/server/debug.ts'), 'utf8');
+  for (const id of ['offlineFoundry', 'orbFingers', 'criticalDividend']) {
+    assert.ok(debug.includes(id), 'missing debug support for ' + id);
+  }
+  assert.match(debug, /offlineFoundry: 10,\\s*orbFingers: 15,\\s*criticalDividend: 20/);
+  assert.match(debug, /offlineFoundry: 0,\\s*orbFingers: 0,\\s*criticalDividend: 0/);
 });

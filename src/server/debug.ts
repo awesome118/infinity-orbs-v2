@@ -913,8 +913,11 @@ function setMaxProgression(s: Awaited<ReturnType<typeof loadRaw>>): void {
     xpBonus: 20,
     critChance: 20,
     critPower: 20,
-    offlineRate: 20,
+    offlineRate: 8,
     valueBonus: 20,
+    offlineFoundry: 10,
+    orbFingers: 15,
+    criticalDividend: 20,
   };
 
   for (const [id, info] of Object.entries(PRESTIGE_UPGRADES)) {
@@ -2257,13 +2260,15 @@ debugRouter.post('/preset', async (req, res) => {
       s.upgrades = {
         speed: 20, multi: 20, clusterRoll: 20, auto: 1, luck: 20,
         coinBonus: 20, shardChance: 20, xpBonus: 20, critChance: 20,
-        critPower: 20, offlineRate: 20, valueBonus: 20,
+        critPower: 20, offlineRate: 8, valueBonus: 20,
+        offlineFoundry: 10, orbFingers: 15, criticalDividend: 20,
       };
     } else if (preset === 'upgrades-reset') {
       s.upgrades = {
         speed: 0, multi: 0, clusterRoll: 0, auto: 1, luck: 0,
         coinBonus: 0, shardChance: 0, xpBonus: 0, critChance: 0,
         critPower: 0, offlineRate: 0, valueBonus: 0,
+        offlineFoundry: 0, orbFingers: 0, criticalDividend: 0,
       };
     } else if (preset === 'prestige-max') {
       for (const [id, info] of Object.entries(PRESTIGE_UPGRADES)) {
@@ -2353,8 +2358,11 @@ debugRouter.post('/unlock-upgrades', async (_req, res) => {
       xpBonus: 20,
       critChance: 20,
       critPower: 20,
-      offlineRate: 20,
+      offlineRate: 8,
       valueBonus: 20,
+      offlineFoundry: 10,
+      orbFingers: 15,
+      criticalDividend: 20,
     };
     await save(s);
     res.json({ ok: true, state: s });
