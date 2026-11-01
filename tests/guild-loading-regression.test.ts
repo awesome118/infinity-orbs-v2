@@ -44,7 +44,10 @@ test('Production Guild parsing repairs non-authoritative nested state before str
   assert.match(recovery, /delete guild\.chat/);
   assert.match(recovery, /delete guild\.boss/);
   assert.match(recovery, /guild\.perks\[rank\] = clampInteger/);
-  assert.match(recovery, /guild\.combo\.endsAt = clampInteger/);
+  assert.match(recovery, /const comboEndsAt = clampInteger\(guild\.combo\.endsAt,/);
+  assert.match(recovery, /const comboLastTickAt = clampInteger\(guild\.combo\.lastTickAt,/);
+  assert.match(recovery, /guild\.combo\.endsAt = comboEndsAt/);
+  assert.match(recovery, /guild\.combo\.lastTickAt = comboLastTickAt/);
   assert.match(recovery, /clampInteger\(task\.tier, 1, 70, 1\)/);
   assert.doesNotMatch(recovery, /guild\.id\s*=/);
   assert.doesNotMatch(recovery, /member\.role\s*=/);
