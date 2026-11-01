@@ -3471,9 +3471,18 @@ async function createRollTicketPreviews(
   state: PlayerState,
   ticket: RollTicket,
 ): Promise<Array<{ index: number; orb: Orb }>> {
-  // A click that consumes an accumulated Free Roll batch has a different
-  // maximum than one activation. Keep the live reveal authoritative for those.
+  // Auto-claims can change the stats used by a roll. Keep the seed available,
+  // but omit the instant Orb reveal when an automatic reward claim is enabled.
+  const automations = state.automations ?? {};
+  if (
+    automations.autoStreakClaim === true ||
+    automations.autoQuestClaim === true ||
+    automations.autoCommunityClaim === true ||
+    automations.autoOfflineClaim === true
+  ) return [];
+
   const previewState = JSON.parse(JSON.stringify(state)) as PlayerState;
+  await settleOffline(previewState, { previewOnly: true });
   const previews: Array<{ index: number; orb: Orb }> = [];
   const end = Math.min(ROLL_TICKET_COUNT, ticket.nextIndex + ROLL_PREDICTION_COUNT);
 
