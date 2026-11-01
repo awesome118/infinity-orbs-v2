@@ -5883,6 +5883,7 @@ export async function roll(
   ticketIndex?: number,
   useAllFreeRolls = false,
   useTimeEnergy = false,
+  ticketSeed?: string,
 ): Promise<RollResponse> {
   return withPlayerMutationLock(async () => {
     let ticketUse:
