@@ -97,6 +97,7 @@ jobs:
           set -euo pipefail
           npm run preflight:guard
           node --import tsx --test tests/alignment-prompt-ui.test.ts
+          node --import tsx --test tests/player-save-chunking.test.ts tests/player-lock.test.ts
           node --import tsx --test --test-name-pattern="Frenzy claim activity is a retryable post-commit projection" tests/frenzy.test.ts
           node --import tsx --test tests/cosmic-dust-uncapped.test.ts
           node --import tsx --test tests/guild-member-recovery.test.ts

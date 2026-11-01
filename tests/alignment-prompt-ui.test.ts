@@ -154,7 +154,8 @@ test('Celestial Alignment choice appends an independently expiring stack instanc
   const choice = server.slice(server.indexOf('export async function chooseCelestialAlignment'), server.indexOf('export async function synthesizeDust'));
   assert.match(choice, /const nextInstances = \[\.\.\.activeInstances, instance\]/);
   assert.match(choice, /expiresAt: now \+ CELESTIAL_ALIGNMENT_DURATION_MS/);
-  assert.match(choice, /CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS/);
+  assert.match(choice, /const pendingAt = Number\(s\.alignmentPendingAt \?\? 0\)/);
+  assert.doesNotMatch(choice, /CHOICE_WINDOW|choice window expired/i);
   assert.match(choice, /s\.alignmentActiveInstances = nextInstances/);
   assert.doesNotMatch(choice, /s\.alignmentActiveInstances = \[instance\]/);
 });
