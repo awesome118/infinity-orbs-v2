@@ -182,7 +182,19 @@ export const CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS =
 export const CELESTIAL_ALIGNMENT_LEGACY_DURATION_MS = 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_DURATION_MS = 2 * 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS = 60 * 1_000;
+/** A server-side reservation for a choice received before the offer expires. */
+export const CELESTIAL_ALIGNMENT_CHOICE_ADMISSION_TTL_MS = 5 * 60 * 1_000;
+const CELESTIAL_ALIGNMENT_CHOICE_ADMISSION_PREFIX = 'io:alignment-choice-admission:v1:';
 export type CelestialAlignmentChoice = 'starseeker' | 'goldenOrbit' | 'clockwork';
+export interface CelestialAlignmentChoiceAdmission { receivedAt: number; choice: CelestialAlignmentChoice; }
+export function celestialAlignmentChoiceAdmissionKey(userIdValue: unknown, pendingAtValue: unknown): string {
+  const userId = String(userIdValue ?? '').trim();
+  const pendingAt = Number(pendingAtValue);
+  if (!userId || !Number.isSafeInteger(pendingAt) || pendingAt <= 0) {
+    throw new Error('A valid Alignment offer identity is required.');
+  }
+  return CELESTIAL_ALIGNMENT_CHOICE_ADMISSION_PREFIX + encodeURIComponent(userId) + ':' + pendingAt;
+}
 export interface CelestialAlignmentInstance { id: string; choice: CelestialAlignmentChoice; activatedAt: number; expiresAt: number; }
 const CELESTIAL_ALIGNMENT_CHOICES: readonly CelestialAlignmentChoice[] = ['starseeker', 'goldenOrbit', 'clockwork'];
 
