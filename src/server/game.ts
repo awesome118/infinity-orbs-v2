@@ -1,5 +1,6 @@
 import { redis, context, reddit } from './devvit-mock.js';
 import { readInBatches } from './redis-batches.js';
+import { cleanupPreviousRedisSnapshot, createRedisSnapshotWritePlan, discardRedisSnapshotWritePlan, type RedisSnapshotWritePlan } from './redis-snapshot.js';
 import { CODEX_MIGRATION_BATCH_SIZE, CODEX_SHARD_COUNT, CODEX_STORAGE_VERSION, codexShardKey, groupCodexFields } from '../shared/collection-storage.js';
 import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import * as notificationsModule from '@devvit/notifications';
@@ -155,6 +156,8 @@ interface SaveExtraWrite {
   optional?: boolean;
   /** Optional follow-up when an ancillary Guild write conflicts with the player save. */
   onConflict?: () => void | Promise<void>;
+  /** The value is stored through the shared chunk-manifest protocol. */
+  chunkedSnapshot?: boolean;
 }
 
 type SavePostCommitAction = () => Promise<void>;
@@ -330,7 +333,7 @@ async function ensureCodexStorageVersion(userId: string, generation: number, sta
   state.collectionStorageVersion = CODEX_STORAGE_VERSION;
 }
 
-function serializePlayerStateForRedis(state: PlayerState): string {
+export function serializePlayerStateForRedis(state: PlayerState): string {
   const persistedState = state.collectionStorageVersion === CODEX_STORAGE_VERSION
     ? Object.fromEntries(Object.entries(state).filter(([field]) => field !== 'collection'))
     : state;
@@ -353,7 +356,7 @@ type PlayerSaveManifest = {
     totalRolls?: number; highestRarity?: number; coins?: number; shards?: number;
   };
 };
-type PlayerSaveWritePlan = { storedValue: string; chunkKeys: string[] };
+export type PlayerSaveWritePlan = { storedValue: string; chunkKeys: string[] };
 
 function playerSaveChecksum(value: string): string {
   let hash = 0x811c9dc5;
@@ -383,7 +386,7 @@ function parsePlayerSaveManifest(raw: string | null | undefined): PlayerSaveMani
 function playerSaveChunkKey(userId: string, token: string, index: number): string {
   return PLAYER_SAVE_CHUNK_PREFIX + userId + ':' + token + ':' + index;
 }
-async function readStoredPlayerSave(userId: string, storedValue: string | null | undefined): Promise<string | null> {
+export async function readStoredPlayerSave(userId: string, storedValue: string | null | undefined): Promise<string | null> {
   if (storedValue == null) return null;
   const manifest = parsePlayerSaveManifest(storedValue);
   if (!manifest) return storedValue;
@@ -402,7 +405,7 @@ async function readStoredPlayerSave(userId: string, storedValue: string | null |
   }
   return joined;
 }
-async function createPlayerSaveWritePlan(userId: string, serialized: string): Promise<PlayerSaveWritePlan> {
+export async function createPlayerSaveWritePlan(userId: string, serialized: string): Promise<PlayerSaveWritePlan> {
   if (serialized.length <= PLAYER_SAVE_INLINE_CHARS) return { storedValue: serialized, chunkKeys: [] };
   if (serialized.length > PLAYER_SAVE_MAX_CHARS) {
     throw new Error('Player save exceeds the supported 8 MiB logical size. No changes were written.');
@@ -447,11 +450,11 @@ async function createPlayerSaveWritePlan(userId: string, serialized: string): Pr
   };
   return { storedValue: JSON.stringify(manifest), chunkKeys };
 }
-async function discardPlayerSaveWritePlan(plan: PlayerSaveWritePlan): Promise<void> {
+export async function discardPlayerSaveWritePlan(plan: PlayerSaveWritePlan): Promise<void> {
   for (const keyName of plan.chunkKeys) await redis.del(keyName).catch(() => undefined);
 }
 const PLAYER_SAVE_RETIRED_CHUNK_TTL_MS = 10 * 60_000;
-async function cleanupPreviousPlayerSave(userId: string, previousRaw: string | null | undefined): Promise<void> {
+export async function cleanupPreviousPlayerSave(userId: string, previousRaw: string | null | undefined): Promise<void> {
   const previous = parsePlayerSaveManifest(previousRaw);
   if (!previous) return;
   const expiration = new Date(Date.now() + PLAYER_SAVE_RETIRED_CHUNK_TTL_MS);
@@ -3532,6 +3535,8 @@ async function loadRollTicketForUse(
 async function commitOptionalSaveProjection(write: SaveExtraWrite): Promise<void> {
   const txn = await redis.watch(write.key);
   let transactionClosed = false;
+  let snapshotPlan: RedisSnapshotWritePlan | null = null;
+  let snapshotCommitted = false;
   try {
     const current = await redis.get(write.key);
     const actual = current == null ? null : String(current);
@@ -3542,20 +3547,28 @@ async function commitOptionalSaveProjection(write: SaveExtraWrite): Promise<void
       return;
     }
 
+    if (write.chunkedSnapshot) {
+      snapshotPlan = await createRedisSnapshotWritePlan(redis, write.key, write.nextValue);
+    }
     await txn.multi();
+    const storedValue = snapshotPlan?.storedValue ?? write.nextValue;
     if (write.expiration) {
-      await txn.set(write.key, write.nextValue, { expiration: write.expiration });
+      await txn.set(write.key, storedValue, { expiration: write.expiration });
     } else {
-      await txn.set(write.key, write.nextValue);
+      await txn.set(write.key, storedValue);
     }
     const committed = await txn.exec();
     transactionClosed = true;
-    if (committed === null) {
+    if (committed !== null) {
+      snapshotCommitted = true;
+      if (snapshotPlan) await cleanupPreviousRedisSnapshot(redis, write.key, current);
+    } else {
       console.error('[Player Save] Optional projection conflicted at commit; skipped without affecting player state.', write.key);
     }
   } finally {
-    if (!transactionClosed) {
-      await txn.unwatch().catch(() => undefined);
+    if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+    if (snapshotPlan && !snapshotCommitted) {
+      await discardRedisSnapshotWritePlan(redis, snapshotPlan);
     }
   }
 }
@@ -3665,6 +3678,7 @@ export async function save(
     const txn = await redis.watch(...watchedKeys);
     let transactionClosed = false;
     let writePlan: PlayerSaveWritePlan | null = null;
+    const extraSnapshotPlans = new Map<SaveExtraWrite, RedisSnapshotWritePlan>();
     let saveCommitted = false;
     try {
     // Devvit's TxClient is a command builder after WATCH/MULTI. Reads must use
@@ -3794,16 +3808,22 @@ export async function save(
 
     const nextState = { ...s, saveGeneration: generation, stateRevision: expectedRevision + 1 };
     writePlan = await createPlayerSaveWritePlan(userId, serializePlayerStateForRedis(nextState));
+    for (const write of extraWrites) {
+      if (write.chunkedSnapshot) {
+        extraSnapshotPlans.set(write, await createRedisSnapshotWritePlan(redis, write.key, write.nextValue));
+      }
+    }
     await txn.multi();
     await txn.set(playerKey, writePlan.storedValue);
     for (let index = 0; index < codexWrites.length; index += 1) {
       await txn.hSet(codexWriteKeys[index], codexWrites[index].fields);
     }
     for (const write of extraWrites) {
+      const storedValue = extraSnapshotPlans.get(write)?.storedValue ?? write.nextValue;
       if (write.expiration) {
-        await txn.set(write.key, write.nextValue, { expiration: write.expiration });
+        await txn.set(write.key, storedValue, { expiration: write.expiration });
       } else {
-        await txn.set(write.key, write.nextValue);
+        await txn.set(write.key, storedValue);
       }
     }
     const committed = await txn.exec();
@@ -3811,6 +3831,10 @@ export async function save(
     if (committed !== null) {
       saveCommitted = true;
       await cleanupPreviousPlayerSave(userId, latestRaw);
+      for (const [write] of extraSnapshotPlans) {
+        const writeIndex = extraWrites.indexOf(write);
+        await cleanupPreviousRedisSnapshot(redis, write.key, extraRaws[writeIndex]);
+      }
       pendingSaveExtraWrites.delete(s);
       pendingCodexRarityWrites.delete(s);
       Object.assign(s, nextState);
@@ -3858,6 +3882,11 @@ export async function save(
       // or EXEC throws. This is deliberately best-effort after explicit UNWATCH.
       if (!transactionClosed) await txn.unwatch().catch(() => undefined);
       if (writePlan && !saveCommitted) await discardPlayerSaveWritePlan(writePlan);
+      if (!saveCommitted) {
+        for (const plan of extraSnapshotPlans.values()) {
+          await discardRedisSnapshotWritePlan(redis, plan);
+        }
+      }
     }
   }
 
