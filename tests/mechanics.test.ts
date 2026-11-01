@@ -74,7 +74,6 @@ import {
 import {
   createGuildTask,
   createInitialGuildTasks,
-  createInitialGuildBoss,
 } from '../src/shared/social.js';
 
 const NOW = 1_800_000_000_000;
@@ -493,7 +492,7 @@ test('Guild Combo advances beyond tier 10 and remains bounded by the configured 
 });
 
 test('Guild task set starts with one task of each type', () => {
-  const tasks = createInitialGuildTasks(1);
+  const tasks = createInitialGuildTasks();
 
   assert.equal(tasks.length, 3);
   assert.deepEqual(tasks.map(task => task.type).sort(), ['rare', 'rolls', 'value']);
@@ -502,37 +501,35 @@ test('Guild task set starts with one task of each type', () => {
     assert.equal(task.progress, 0);
     assert.ok(task.target > 0);
     assert.ok(task.reward > 0);
-    assert.ok(task.guildXpReward > 0);
   }
 });
 
 test('Guild task difficulty and rewards scale upward by tier', () => {
   for (const type of ['rolls', 'value', 'rare'] as const) {
-    const tier1 = createGuildTask(type, 1, 1);
-    const tier2 = createGuildTask(type, 2, 1);
-    const tier5 = createGuildTask(type, 5, 1);
+    const tier1 = createGuildTask(type, 1);
+    const tier2 = createGuildTask(type, 2);
+    const tier5 = createGuildTask(type, 5);
 
     assert.ok(tier2.target > tier1.target, `${type}: tier 2 target should exceed tier 1`);
     assert.ok(tier5.target > tier2.target, `${type}: tier 5 target should exceed tier 2`);
     assert.ok(tier2.reward > tier1.reward, `${type}: tier 2 token reward should exceed tier 1`);
     assert.ok(tier5.reward > tier2.reward, `${type}: tier 5 token reward should exceed tier 2`);
-    assert.ok(tier2.guildXpReward > tier1.guildXpReward, `${type}: tier 2 XP reward should exceed tier 1`);
   }
 });
 
-test('Guild task targets scale with Guild level', () => {
-  const level1 = createGuildTask('rolls', 4, 1);
-  const level25 = createGuildTask('rolls', 4, 25);
-
-  assert.ok(level25.target > level1.target);
-  assert.equal(level25.tier, level1.tier);
+test('Guild task difficulty is driven by tier alone and does not carry Guild XP', () => {
+  const task = createGuildTask('rolls', 4);
+  assert.equal(task.tier, 4);
+  assert.ok(task.target > createGuildTask('rolls', 1).target);
+  assert.ok(task.reward > createGuildTask('rolls', 1).reward);
+  assert.equal('guildXpReward' in task, false);
 });
 
 test('Guild task rewards remain capped', () => {
-  const extreme = createGuildTask('rolls', 10_000, 10_000);
+  const extreme = createGuildTask('rolls', 10_000);
 
   assert.ok(extreme.reward <= 25_000);
-  assert.ok(extreme.guildXpReward <= 10_000);
+  assert.equal('guildXpReward' in extreme, false);
 });
 
 test('Cosmic Reserve multiplies Luck by unspent Cosmic Dust at 1% per Dust per upgrade level', () => {
@@ -775,11 +772,12 @@ test('primary roll Shard proc chance has a strict 0.25% per-Orb ceiling', () => 
   assert.equal(ROLL_SHARD_PROC_CHANCE_CAP, 0.0025);
 });
 
-test('repeatable Guild Boss Shard rewards are capped at three per clear', () => {
-  assert.equal(createInitialGuildBoss(1).rewardShards, 1);
-  assert.equal(createInitialGuildBoss(2).rewardShards, 2);
-  assert.equal(createInitialGuildBoss(3).rewardShards, 3);
-  assert.equal(createInitialGuildBoss(100).rewardShards, 3);
+test('Guild tasks retain token rewards but do not model Titan or Guild XP rewards', () => {
+  const tasks = createInitialGuildTasks();
+  assert.equal(tasks.length, 3);
+  assert.ok(tasks.every(task => task.reward > 0));
+  assert.ok(tasks.every(task => !('guildXpReward' in task)));
+  assert.ok(tasks.every(task => !('bossDamage' in task)));
 });
 
 
