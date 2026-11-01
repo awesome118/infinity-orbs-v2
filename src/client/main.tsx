@@ -865,7 +865,16 @@ function App() {
   const ensureRollTicket = useCallback(async () => {
     const requestSessionEpoch = authSessionEpochRef.current;
     const current = rollTicketRef.current;
-    if (current && current.nextIndex < 50 && current.expiresAt > Date.now()) {
+    const currentSeedOffset = current
+      ? current.nextIndex - current.predictionStartIndex
+      : -1;
+    if (
+      current &&
+      current.nextIndex < 50 &&
+      current.expiresAt > Date.now() &&
+      currentSeedOffset >= 0 &&
+      currentSeedOffset < current.seeds.length
+    ) {
       return current;
     }
 
