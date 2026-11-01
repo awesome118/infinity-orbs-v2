@@ -6759,8 +6759,8 @@ export async function getCelestialAlignmentStatus(): Promise<{
     const hasMastery = (s.masterySkills?.celestialAlignment ?? 0) > 0;
     const now = Date.now();
     let changed = false;
-    // Existing saves used the more frequent 45–90 minute cadence. Rebase their
-    // next event once so an already-saved near-due timestamp cannot fire early.
+    // One-time migration: player saves with the former 45–90 minute cadence
+    // receive a fresh event timestamp under the slower 90–180 minute schedule.
     if (hasMastery && s.alignmentScheduleVersion !== CELESTIAL_ALIGNMENT_SCHEDULE_VERSION) {
       s.alignmentScheduleVersion = CELESTIAL_ALIGNMENT_SCHEDULE_VERSION;
       if (!(s.alignmentPendingAt ?? 0)) s.alignmentNextAt = nextCelestialAlignmentAt(now);
