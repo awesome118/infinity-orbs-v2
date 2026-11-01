@@ -1428,7 +1428,7 @@ function App() {
     const tick = () => {
       const now = Date.now();
       setAlignmentPromptNow(now);
-      if (now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS && !alignmentChoiceBusy) {
+      if (now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS) {
         alignmentDismissedPendingAtRef.current = Math.max(
           alignmentDismissedPendingAtRef.current,
           pendingAt,
@@ -1441,7 +1441,7 @@ function App() {
     tick();
     const timer = window.setInterval(tick, 250);
     return () => window.clearInterval(timer);
-  }, [alignmentPromptVisible, alignmentStatus?.pending, alignmentStatus?.pendingAt, alignmentChoiceBusy]);
+  }, [alignmentPromptVisible, alignmentStatus?.pending, alignmentStatus?.pendingAt]);
 
   // Refresh live community state while visible; hidden webviews should not poll.
   useEffect(() => {
