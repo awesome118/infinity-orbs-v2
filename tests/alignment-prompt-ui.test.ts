@@ -71,3 +71,16 @@ test('Alignment activation notice remains non-blocking and auto-dismisses after 
   assert.ok(main.includes('autoCooldownBeforeMs === alignmentConfirmation.autoCooldownMs'));
   assert.ok(main.includes('Clockwork cannot shorten it further.'));
 });
+
+test('admin-forced Alignment effects remain visible without unlocking mastery', () => {
+  const server = source('src/server/game.ts');
+  const statusHandler = server.slice(
+    server.indexOf('export async function getCelestialAlignmentStatus'),
+    server.indexOf('export async function chooseCelestialAlignment'),
+  );
+
+  assert.ok(statusHandler.includes('if (!hasMastery && !forcedPending)'));
+  assert.ok(statusHandler.includes('const activeChoice = (s.alignmentActiveUntil ?? 0) > now'));
+  assert.ok(statusHandler.includes('activeUntil: activeChoice ? s.alignmentActiveUntil ?? 0 : 0'));
+  assert.ok(statusHandler.includes('unlocked: false'));
+});
