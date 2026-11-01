@@ -88,6 +88,7 @@ type ServerMonitorEvent = {
   status: number;
   durationMs: number;
   message: string;
+  details?: Record<string, unknown>;
 };
 type ServerMonitorSnapshot = {
   generatedAt: number;
@@ -105,6 +106,15 @@ type ServerMonitorSnapshot = {
     redisCapacityPercent: number;
   };
   limits: { redisCommandsPerSecond: number; redisStorageBytes: number; httpRequestsPerSecond: number | null };
+  upgradeBatches: {
+    serverAttempts: number;
+    serverAccepted: number;
+    serverPartial: number;
+    serverRejected: number;
+    clientRollbacks: number;
+    averageServerDurationMs: number;
+    lastFailureAt: number | null;
+  };
   events: ServerMonitorEvent[];
 };
 type ServerStorageEstimate = {
@@ -4289,6 +4299,26 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             </p>
           </div>
 
+          <div className="rounded-xl border border-slate-800 bg-black/20 p-3 space-y-2">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-200">
+              <Gauge className="w-4 h-4" /> Upgrade batch diagnostics
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 text-[10px]">
+              <div><span className="text-slate-500">Server attempts</span><div className="text-slate-100 font-mono text-base">{(serverMonitor?.upgradeBatches.serverAttempts ?? 0).toLocaleString()}</div></div>
+              <div><span className="text-slate-500">Fully accepted</span><div className="text-emerald-200 font-mono text-base">{(serverMonitor?.upgradeBatches.serverAccepted ?? 0).toLocaleString()}</div></div>
+              <div><span className="text-slate-500">Partial purchases</span><div className="text-amber-200 font-mono text-base">{(serverMonitor?.upgradeBatches.serverPartial ?? 0).toLocaleString()}</div></div>
+              <div><span className="text-slate-500">Server rejections</span><div className="text-rose-200 font-mono text-base">{(serverMonitor?.upgradeBatches.serverRejected ?? 0).toLocaleString()}</div></div>
+              <div><span className="text-slate-500">Client rollbacks</span><div className="text-rose-200 font-mono text-base">{(serverMonitor?.upgradeBatches.clientRollbacks ?? 0).toLocaleString()}</div></div>
+              <div><span className="text-slate-500">Avg server time</span><div className="text-cyan-200 font-mono text-base">{(serverMonitor?.upgradeBatches.averageServerDurationMs ?? 0).toFixed(1)} ms</div></div>
+            </div>
+            <p className="text-[9px] leading-4 text-slate-500">
+              Each batch is correlated across the server response and client rollback. Partial purchases include the server stop reason; rejected requests include the HTTP/error code. Counters and the 250-event feed are process-local and reset when that server process restarts. No Redis writes are added.
+            </p>
+            {serverMonitor?.upgradeBatches.lastFailureAt ? (
+              <div className="text-[9px] text-slate-500">Most recent partial, rejected, or rolled-back batch: {new Date(serverMonitor.upgradeBatches.lastFailureAt).toLocaleString()}</div>
+            ) : null}
+          </div>
+
           <div className="rounded-xl border border-slate-800 bg-black/20 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
               <div>
@@ -4308,6 +4338,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                       {event.message}
                     </div>
                     <div className="mt-0.5 text-[9px] text-slate-600 font-mono">{event.method} {event.path}</div>
+                    {event.details ? (
+                      <div className="mt-1 break-words text-[9px] leading-4 text-slate-500 font-mono">{JSON.stringify(event.details).slice(0, 420)}</div>
+                    ) : null}
                   </div>
                 </div>
               )) : (
