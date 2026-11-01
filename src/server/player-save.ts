@@ -166,11 +166,9 @@ export async function createPlayerSaveWritePlan(
 
   const token = securePlayerSaveToken();
   const chunkKeys = chunks.map((_, index) => playerSaveChunkKey(userId, token, index));
-  let written = 0;
   try {
     for (let index = 0; index < chunks.length; index += 1) {
       await redis.set(chunkKeys[index], chunks[index]);
-      written += 1;
     }
   } catch (error) {
     // A Set can commit even when its response is lost; delete every unique key,
