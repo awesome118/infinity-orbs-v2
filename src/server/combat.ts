@@ -1579,6 +1579,7 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
         readRedisLargeValue(ownKey, ownStoredRaw),
         readRedisLargeValue(opponentKey, opponentStoredRaw),
       ]);
+      if (typeof opponentRaw !== 'string') throw new Error('ARENA_OPPONENT_UNAVAILABLE');
       const ownState = normalizeState(ownRaw);
       let opponentState = normalizeState(opponentRaw);
       // Older Arena saves tracked only the outgoing challenge timestamp. Before
