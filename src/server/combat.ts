@@ -1,4 +1,5 @@
 import { context, redis } from './devvit-mock.js';
+import { createRedisLargeValueWritePlan, readRedisLargeValue, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
 import { loadRaw } from './game.js';
 import { getOrbInfo, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatSkillDefinition, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneAutoSacrificeSettings, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
@@ -403,6 +404,9 @@ function normalizeState(raw:string|null|undefined):CombatState {
   const enemy=getEnemyForDungeonDepth(s.dungeonId,s.depth);s.enemyHp=finiteInt(s.enemyHp,enemy.maxHp,1,enemy.maxHp);
   return s;
 }
+async function readCombatState(key: string): Promise<CombatState> {
+  return normalizeState(await readRedisLargeValue(key, await redis.get(key)));
+}
 function createMajorAbility(qualityValue:number,requestedAbilityId?:CombatMajorAbility['id']):CombatMajorAbility {
   const quality=Math.max(0,Math.min(100,Number(qualityValue)||0));
   const v=(base:number,step:number)=>Math.round((base+quality*step)*1000)/1000;
@@ -482,14 +486,32 @@ async function mutate<T>(fn:(s:CombatState)=>T):Promise<T> {
   const key=combatKey();
   for(let i=0;i<MAX_CAS_ATTEMPTS;i++){
     const txn=await redis.watch(key);let closed=false;
-    try { const s=normalizeState(await redis.get(key)),result=fn(s);await txn.multi();await txn.set(key,JSON.stringify(s));const commit=await txn.exec();closed=true;if(commit!==null)return result; }
-    finally { if(!closed)await txn.unwatch().catch(()=>undefined); }
+    let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+    let writeCommitted = false;
+    try {
+      const storedRaw = await redis.get(key);
+      const s = normalizeState(await readRedisLargeValue(key, storedRaw));
+      const result = fn(s);
+      writePlan = await createRedisLargeValueWritePlan(key, JSON.stringify(s));
+      await txn.multi();
+      await txn.set(key, writePlan.storedValue);
+      const commit = await txn.exec();
+      closed = true;
+      if (commit !== null) {
+        writeCommitted = true;
+        await retireRedisLargeValue(key, storedRaw);
+        return result;
+      }
+    } finally {
+      if (!closed) await txn.unwatch().catch(() => undefined);
+      if (writePlan && !writeCommitted) await discardRedisLargeValueWritePlan(writePlan);
+    }
   }
   throw new Error('Combat state changed repeatedly. Please retry.');
 }
 /** Read the shared Combat Marks wallet for the global HUD without creating/writing combat state. */
 export async function getCombatMarksBalance():Promise<number>{
-  return normalizeState(await redis.get(combatKey())).combatMarks;
+  return (await readCombatState(combatKey())).combatMarks;
 }
 export async function getCombatSnapshot():Promise<CombatSnapshot>{
   let coreProgression:{level?:unknown;highestRarity?:unknown;autoScrapLevel?:unknown;autoScrapSettings?:unknown}|null=null;
@@ -500,7 +522,7 @@ export async function getCombatSnapshot():Promise<CombatSnapshot>{
     // Core-game progress is a bonus, not a prerequisite for loading combat.
     console.error('[Combat] Could not refresh core-game attunement; retaining saved values.',error);
   }
-  const current=normalizeState(await redis.get(combatKey()));
+  const current=await readCombatState(combatKey());
   const nextCoreLevel=coreProgression?finiteInt(coreProgression.level,current.coreLevel,1,1_000_000):current.coreLevel;
   const nextCoreHighestRarity=coreProgression?finiteInt(coreProgression.highestRarity,current.coreHighestRarity,2,Number.MAX_VALUE):current.coreHighestRarity;
   const nextAutoScrapUnlocked=coreProgression?Number(coreProgression.autoScrapLevel)>0:current.autoScrapUnlocked;
@@ -541,7 +563,9 @@ export async function getCombatSnapshotForUser(
 ): Promise<CombatSnapshot & { saveExists: boolean; persistedSave: unknown }> {
   const userId = String(userIdValue ?? '').trim();
   if (!userId || userId.length > 256) throw new Error('A valid player ID is required.');
-  const raw = await redis.get('infinity-orbs:combat:' + userId);
+  const combatSaveKey = 'infinity-orbs:combat:' + userId;
+  const storedRaw = await redis.get(combatSaveKey);
+  const raw = await readRedisLargeValue(combatSaveKey, storedRaw);
   let persistedSave: unknown = null;
   if (typeof raw === 'string' && raw.trim()) {
     try {
@@ -577,7 +601,7 @@ export async function getCombatSnapshotForUser(
 
   const stats = synchronizeCombatStats(state);
   const enemy = enemySnapshot(state);
-  return { state, enemy, stats, saveExists: raw != null, persistedSave };
+  return { state, enemy, stats, saveExists: storedRaw != null, persistedSave };
 }
 
 function grantXp(s:CombatState,amount:number,actions:CombatAction[]):void {
@@ -631,7 +655,7 @@ function chooseGuidedSkillId(s:CombatState,enemy:CombatEnemy):CombatSkillId|null
 export async function hasCompletedCombatTutorial():Promise<boolean>{
   // Share the same fail-closed save validation as all combat reads. A damaged
   // save must not masquerade as an unseen tutorial and then be overwritten.
-  return normalizeState(await redis.get(combatKey())).combatTutorialSeen;
+  return (await readCombatState(combatKey())).combatTutorialSeen;
 }
 export async function markCombatTutorialSeen():Promise<void>{
   await mutate(s=>{s.combatTutorialSeen=true;return undefined;});
@@ -1540,12 +1564,21 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
   for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt += 1) {
     const txn = await redis.watch(ownKey, opponentKey);
     let closed = false;
+    let ownWritePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+    let opponentWritePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+    let writeCommitted = false;
+    let ownStoredRaw: string | null = null;
+    let opponentStoredRaw: string | null = null;
     try {
-      const [ownRaw, opponentRaw] = await Promise.all([redis.get(ownKey), redis.get(opponentKey)]);
-      if (!opponentRaw) {
+      [ownStoredRaw, opponentStoredRaw] = await Promise.all([redis.get(ownKey), redis.get(opponentKey)]);
+      if (!opponentStoredRaw) {
         await txn.unwatch(); closed = true;
         throw new Error('ARENA_OPPONENT_UNAVAILABLE');
       }
+      const [ownRaw, opponentRaw] = await Promise.all([
+        readRedisLargeValue(ownKey, ownStoredRaw),
+        readRedisLargeValue(opponentKey, opponentStoredRaw),
+      ]);
       const ownState = normalizeState(ownRaw);
       let opponentState = normalizeState(opponentRaw);
       // Older Arena saves tracked only the outgoing challenge timestamp. Before
@@ -1592,12 +1625,19 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
       ownState.arenaLastMatchAt = now;
       opponentState.arenaLastMatchAt = now;
 
+      ownWritePlan = await createRedisLargeValueWritePlan(ownKey, JSON.stringify(ownState));
+      opponentWritePlan = await createRedisLargeValueWritePlan(opponentKey, JSON.stringify(opponentState));
       await txn.multi();
-      await txn.set(ownKey, JSON.stringify(ownState));
-      await txn.set(opponentKey, JSON.stringify(opponentState));
+      await txn.set(ownKey, ownWritePlan.storedValue);
+      await txn.set(opponentKey, opponentWritePlan.storedValue);
       const committed = await txn.exec();
       closed = true;
       if (committed === null) continue;
+      writeCommitted = true;
+      await Promise.all([
+        retireRedisLargeValue(ownKey, ownStoredRaw),
+        retireRedisLargeValue(opponentKey, opponentStoredRaw),
+      ]);
 
       const ownProfile = createArenaProfile(userId, arenaName(context.username), ownState, now);
       const nextOpponentProfile = createArenaProfile(
@@ -1617,6 +1657,10 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
       return { ...snapshot(ownState), arenaResult };
     } finally {
       if (!closed) await txn.unwatch().catch(() => undefined);
+      if (!writeCommitted) {
+        if (ownWritePlan) await discardRedisLargeValueWritePlan(ownWritePlan);
+        if (opponentWritePlan) await discardRedisLargeValueWritePlan(opponentWritePlan);
+      }
     }
   }
   throw new Error('Combat state changed repeatedly. Please retry.');
