@@ -992,6 +992,8 @@ export interface PlayerState {
   collectionValue: number;
   lifetimeCollectionValue: number;
   collection: Record<string, number>;
+  /** Versioned external Redis hash storage keeps the growing Codex out of player saves. */
+  collectionStorageVersion?: number;
   collectionCount?: number;
   codexChain?: number;
   codexDevotionLuckPercent?: number;
@@ -1824,6 +1826,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     collectionValue: 0,
     lifetimeCollectionValue: 0,
     collection: {},
+    collectionStorageVersion: 1,
     runeConstellationCharge: 0,
     runeTemporalMomentum: 0,
     chainPatcherNextRarity: 0,

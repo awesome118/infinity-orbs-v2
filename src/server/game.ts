@@ -1,11 +1,12 @@
 import { redis, context, reddit } from './devvit-mock.js';
 import { readInBatches } from './redis-batches.js';
+import { CODEX_MIGRATION_BATCH_SIZE, CODEX_SHARD_COUNT, CODEX_STORAGE_VERSION, codexShardKey, groupCodexFields } from '../shared/collection-storage.js';
 import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
-import { createRollBatchPlan, effectiveWeightAtSample, virtualRollOffsetAtSample, sampleBinomialCount, getRarityBounds, MAX_SIMULATED_ROLLS_PER_BATCH, MAX_EFFECTIVE_ROLLS_PER_BATCH, MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH, MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH, MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH } from '../shared/roll-batching.js';
+import { createRollBatchPlan, effectiveWeightAtSample, virtualRollOffsetAtSample, sampleBinomialCount, getRarityBounds, MAX_SIMULATED_ROLLS_PER_REQUEST, MAX_EFFECTIVE_ROLLS_PER_BATCH, MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH, MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH, MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH } from '../shared/roll-batching.js';
 import { combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityEffects, combatTotalBossesBeaten, combatBossLuckBonus } from '../shared/combat.js';
 import {
   createInitialState,
@@ -147,6 +148,7 @@ type SavePostCommitAction = () => Promise<void>;
 const playerGuildScopes = new WeakMap<PlayerState, string | null>();
 const pendingSaveExtraWrites = new WeakMap<PlayerState, SaveExtraWrite[]>();
 const pendingSavePostCommitActions = new WeakMap<PlayerState, SavePostCommitAction[]>();
+const pendingCodexRarityWrites = new WeakMap<PlayerState, Set<string>>();
 
 function getPendingSaveExtraWrite(s: PlayerState, keyName: string): SaveExtraWrite | undefined {
   return pendingSaveExtraWrites.get(s)?.find(item => item.key === keyName);
@@ -263,6 +265,48 @@ async function withPlayerMutationLocksFor<T>(
 }
 
 const key = () => `player:${currentUserId()}`;
+
+function markCodexRarityWrite(state: PlayerState, rarityKey: string): void {
+  const pending = pendingCodexRarityWrites.get(state) ?? new Set<string>();
+  pending.add(rarityKey);
+  pendingCodexRarityWrites.set(state, pending);
+}
+
+async function readCodexShards(userId: string, generation: number): Promise<Record<string, number>> {
+  const shardRecords = await Promise.all(
+    Array.from({ length: CODEX_SHARD_COUNT }, (_, shard) => redis.hGetAll(codexShardKey(userId, generation, shard))),
+  );
+  const collection: Record<string, number> = {};
+  for (const record of shardRecords) {
+    if (!record || typeof record !== 'object' || Array.isArray(record)) continue;
+    for (const [rarityKey, rawCount] of Object.entries(record as Record<string, unknown>)) {
+      const rarity = Number(rarityKey);
+      const count = Number(rawCount);
+      if ((rarityKey !== 'Infinity' && (!Number.isFinite(rarity) || !Number.isInteger(rarity) || rarity < 2)) ||
+          !Number.isSafeInteger(count) || count < 0) continue;
+      collection[rarityKey] = count;
+    }
+  }
+  return collection;
+}
+
+async function migrateLegacyCodex(userId: string, generation: number, collection: Record<string, number>): Promise<void> {
+  const queued: Array<{ key: string; fields: Record<string, string> }> = [];
+  for (const { shard, fields } of groupCodexFields(Object.entries(collection))) {
+    const entries = Object.entries(fields);
+    for (let offset = 0; offset < entries.length; offset += CODEX_MIGRATION_BATCH_SIZE) {
+      queued.push({
+        key: codexShardKey(userId, generation, shard),
+        fields: Object.fromEntries(entries.slice(offset, offset + CODEX_MIGRATION_BATCH_SIZE)),
+      });
+    }
+  }
+  // HSET is idempotent: a partial migration can safely retry while the old
+  // player save remains authoritative.
+  for (let offset = 0; offset < queued.length; offset += 4) {
+    await Promise.all(queued.slice(offset, offset + 4).map(write => redis.hSet(write.key, write.fields)));
+  }
+}
 const GAME_BANS_KEY = 'io:game-bans';
 const ONLINE_PLAYERS_KEY = 'io:online:players';
 const CCU_HOURLY_PREFIX = 'io:ccu:hour:';
@@ -331,6 +375,7 @@ function saveStatesMatchIgnoringRevision(a: PlayerState, b: PlayerState): boolea
   const normalize = (state: PlayerState): string => {
     const copy = JSON.parse(JSON.stringify(state)) as Record<string, unknown>;
     delete copy.stateRevision;
+    if (state.collectionStorageVersion === CODEX_STORAGE_VERSION) delete copy.collection;
     return JSON.stringify(copy);
   };
   return normalize(a) === normalize(b);
@@ -1994,8 +2039,8 @@ function isValidCollection(value: unknown): value is Record<string, number> {
   if (!isRecordObject(value)) return false;
   return Object.entries(value).every(([rarity, count]) => {
     const numericRarity = Number(rarity);
-    return Number.isFinite(numericRarity) &&
-      Number.isInteger(numericRarity) && numericRarity >= 2 &&
+    return (rarity === 'Infinity' || (Number.isFinite(numericRarity) &&
+      Number.isInteger(numericRarity) && numericRarity >= 2)) &&
       Number.isSafeInteger(count) && Number(count) >= 0;
   });
 }
@@ -2623,6 +2668,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     // Even an unsaved/brand-new account must participate in the same
     // monotonic client/server revision contract as a persisted account.
     s.stateRevision = 0;
+    s.collectionStorageVersion = CODEX_STORAGE_VERSION;
     s.guildPerks = perks;
     s.guildCombo = guildCombo;
     s.globalBoosters = globalBoosters;
@@ -2645,6 +2691,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     fresh.username = username;
     fresh.saveGeneration = generation;
     fresh.stateRevision = 0;
+    fresh.collectionStorageVersion = CODEX_STORAGE_VERSION;
     fresh.guildPerks = perks;
     fresh.guildCombo = guildCombo;
     fresh.globalBoosters = globalBoosters;
@@ -2655,6 +2702,11 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
   }
 
   const base = createInitialState();
+  const needsCodexMigration = parsed.collectionStorageVersion !== CODEX_STORAGE_VERSION;
+  const restoredCollection = needsCodexMigration
+    ? (isValidCollection(parsed.collection) ? parsed.collection : base.collection)
+    : await readCodexShards(userId, generation);
+  if (needsCodexMigration) await migrateLegacyCodex(userId, generation, restoredCollection);
   const cleanParsed = { ...(parsed as PlayerState & Record<string, unknown>) };
   const normalizedPurchasedShards = Math.min(
     normalizeSafeInteger(parsed.purchasedShards, base.purchasedShards ?? 0),
@@ -2767,7 +2819,8 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     prestigeUpgrades: normalizedPrestigeUpgrades,
     combatAutoScrap: normalizeCombatAutoScrapSettings(parsed.combatAutoScrap, base.combatAutoScrap),
     // Malformed nested save shapes are optional progress data, not a reason to poison gameplay math.
-    collection: isValidCollection(parsed.collection) ? parsed.collection : base.collection,
+    collection: restoredCollection,
+    collectionStorageVersion: CODEX_STORAGE_VERSION,
     claimedAchievements: isStringList(parsed.claimedAchievements) ? parsed.claimedAchievements : base.claimedAchievements,
     streak: normalizePlayerStreak(parsed.streak, base.streak),
     // Corrupt quest entries must not make every later roll throw while advancing progress.
@@ -2796,14 +2849,16 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
   // Persist both one-time migrations rather than only changing the read view.
   const cosmicDustCapMigration = finiteNonNegativeInteger(parsed.cosmicDust, base.cosmicDust) > MAX_COSMIC_DUST;
   const levelExpansionMigration = restoredLevel > parsedLevel;
-  if (cosmicDustCapMigration || levelExpansionMigration) {
+  if (cosmicDustCapMigration || levelExpansionMigration || needsCodexMigration) {
     try {
       await save(restored);
     } catch (error) {
       if (levelExpansionMigration) {
         console.error('[Level] Paragon XP migration will retry on the next load.', error);
-      } else {
+      } else if (cosmicDustCapMigration) {
         console.error('[Prestige] Cosmic Dust cap migration will retry on next load.', error);
+      } else {
+        console.error('[Codex] Sharded collection migration will retry on next load.', error);
       }
     }
   }
@@ -3300,11 +3355,18 @@ export async function save(
     const activeLocks = [...mutationUserIds]
       .map(id => getActivePlayerMutationLock(id))
       .filter((item): item is { key: string; token: string } => item !== null);
+    const stateGenerationForCodex = Math.max(0, Math.floor(Number(s.saveGeneration ?? 0)));
+    const dirtyCodexKeys = pendingCodexRarityWrites.get(s) ?? new Set<string>();
+    const codexWrites = s.collectionStorageVersion === CODEX_STORAGE_VERSION && dirtyCodexKeys.size > 0
+      ? groupCodexFields(Array.from(dirtyCodexKeys, rarityKey => [rarityKey, Number(s.collection?.[rarityKey] ?? 0)] as const))
+      : [];
+    const codexWriteKeys = codexWrites.map(write => codexShardKey(userId, stateGenerationForCodex, write.shard));
     const watchedKeys = [...new Set([
       playerKey,
       generationKey,
       ...extraWrites.map(write => write.key),
       ...activeLocks.map(item => item.key),
+      ...codexWriteKeys,
     ])];
     const txn = await redis.watch(...watchedKeys);
     let transactionClosed = false;
@@ -3433,8 +3495,14 @@ export async function save(
     }
 
     const nextState = { ...s, saveGeneration: generation, stateRevision: expectedRevision + 1 };
+    const persistedState = nextState.collectionStorageVersion === CODEX_STORAGE_VERSION
+      ? Object.fromEntries(Object.entries(nextState).filter(([field]) => field !== 'collection'))
+      : nextState;
     await txn.multi();
-    await txn.set(playerKey, JSON.stringify(nextState));
+    await txn.set(playerKey, JSON.stringify(persistedState));
+    for (let index = 0; index < codexWrites.length; index += 1) {
+      await txn.hSet(codexWriteKeys[index], codexWrites[index].fields);
+    }
     for (const write of extraWrites) {
       if (write.expiration) {
         await txn.set(write.key, write.nextValue, { expiration: write.expiration });
@@ -3446,6 +3514,7 @@ export async function save(
     transactionClosed = true;
     if (committed !== null) {
       pendingSaveExtraWrites.delete(s);
+      pendingCodexRarityWrites.delete(s);
       Object.assign(s, nextState);
 
       // Optional projections are deliberately outside the authoritative player
@@ -3720,7 +3789,7 @@ export async function applyRolls(
     ? MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH
     : source === 'offline'
       ? MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH
-      : MAX_SIMULATED_ROLLS_PER_BATCH;
+      : MAX_SIMULATED_ROLLS_PER_REQUEST;
   const batchPlan = createRollBatchPlan(
     baseBatchRollCount,
     protectedOpeningCount,
@@ -4035,6 +4104,7 @@ export async function applyRolls(
     const groupNewRarity = newDiscoveryOrbCount > 0;
     for (const [key, count] of groupRarityCounts) {
       s.collection[key] = (s.collection[key] ?? 0) + count;
+      markCodexRarityWrite(s, key);
     }
     const topBaseFinalValue = isSupernova
       ? supernovaFinalVal

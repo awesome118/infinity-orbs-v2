@@ -3,6 +3,8 @@
  * stands in for several effective Orbs, with the matching squared Luck factor.
  */
 export const MAX_SIMULATED_ROLLS_PER_BATCH = 50_000;
+// Bound changed Codex fields included in one player-save transaction.
+export const MAX_SIMULATED_ROLLS_PER_REQUEST = 4_096;
 export const MAX_EFFECTIVE_ROLLS_PER_BATCH = 500_000;
 // Offline claims write their Codex back into the player save. Keep the number
 // of representative rarities low so a full vault cannot inflate one Redis save
@@ -10,7 +12,7 @@ export const MAX_EFFECTIVE_ROLLS_PER_BATCH = 500_000;
 export const MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH = 4_096;
 // A single Frenzy HTTP request is more expensive than a normal roll batch.
 // Keep its total representative-sample work substantially lower.
-export const MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH = 25_000;
+export const MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH = 4_096;
 export const MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH = 2_500_000;
 
 /**

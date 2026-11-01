@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import {
   MAX_EFFECTIVE_ROLLS_PER_BATCH,
   MAX_SIMULATED_ROLLS_PER_BATCH,
+  MAX_SIMULATED_ROLLS_PER_REQUEST,
   MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH,
   MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH,
   MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH,
@@ -23,20 +24,20 @@ function seededRandom(seed = 123456789): () => number {
   };
 }
 
-test('500,000 effective Orbs are simulated as 50,000 samples at 100x Luck', () => {
-  const plan = createRollBatchPlan(500_000);
-  assert.equal(plan.compressionWeight, 10);
-  assert.equal(plan.simulatedBaseCount, 50_000);
-  assert.equal(plan.simulatedBaseCount * plan.compressionWeight, 500_000);
-  assert.equal(plan.compressionWeight * plan.compressionWeight, 100);
-  assert.ok(plan.simulatedBaseCount <= MAX_SIMULATED_ROLLS_PER_BATCH);
+test('500,000 effective Orbs stay inside the 4,096-sample request budget', () => {
+  const plan = createRollBatchPlan(500_000, 0, true, MAX_SIMULATED_ROLLS_PER_REQUEST);
+  assert.equal(MAX_SIMULATED_ROLLS_PER_REQUEST, 4_096);
   assert.equal(MAX_SIMULATED_ROLLS_PER_BATCH, 50_000);
+  assert.ok(plan.simulatedBaseCount <= MAX_SIMULATED_ROLLS_PER_REQUEST);
+  let effectiveCount = 0;
+  for (let index = 0; index < plan.simulatedBaseCount; index++) effectiveCount += effectiveWeightAtSample(plan, index);
+  assert.equal(effectiveCount, 500_000);
   assert.equal(MAX_EFFECTIVE_ROLLS_PER_BATCH, 500_000);
 });
 
 
 
-test('2.5 million Frenzy Orbs stay within a 25,000-sample request budget', () => {
+test('2.5 million Frenzy Orbs stay within a 4,096-sample request budget', () => {
   const plan = createRollBatchPlan(
     MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH,
     0,
@@ -44,9 +45,9 @@ test('2.5 million Frenzy Orbs stay within a 25,000-sample request budget', () =>
     MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH,
   );
   assert.equal(MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH, 2_500_000);
-  assert.equal(MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH, 25_000);
-  assert.equal(plan.compressionWeight, 100);
-  assert.equal(plan.simulatedBaseCount, 25_000);
+  assert.equal(MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH, 4_096);
+  assert.ok(plan.compressionWeight > 1);
+  assert.ok(plan.simulatedBaseCount <= 4_096);
 
   let effectiveCount = 0;
   for (let index = 0; index < plan.simulatedBaseCount; index++) {
@@ -165,6 +166,7 @@ test('server uses weighted sample counts for Luck, player totals, XP, Coins, and
   assert.match(apply, /lowRarityCoinsEstimate = addCoinAmount/);
   assert.match(apply, /sampleBinomialCount\(sampleWeight, combinedShardChance, rng\)/);
   assert.ok(multiRoll.includes('Math.floor((MAX_EFFECTIVE_ROLLS_PER_BATCH - 2) / ballsPerActivation)'));
+  assert.match(apply, /MAX_SIMULATED_ROLLS_PER_REQUEST/);
   assert.match(apply, /source === 'frenzy'[\\s\\S]{0,100}MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH/);
   assert.match(apply, /MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH/);
   assert.match(frenzy, /MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH, remainingCount/);
