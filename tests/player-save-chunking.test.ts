@@ -92,9 +92,12 @@ test('unbounded shared Guild JSON is stored through an atomic chunk manifest', (
   const social = source('src/server/social.ts');
   const game = source('src/server/game.ts');
 
-  assert.match(large, /LARGE_VALUE_CHUNK_CHARS = 64 \* 1024/);
-  assert.match(large, /LARGE_VALUE_INLINE_CHARS = 192 \* 1024/);
-  assert.match(large, /LARGE_VALUE_MAX_CHUNKS = 128/);
+  assert.match(large, /LARGE_VALUE_CHUNK_BYTES = 48 \* 1024/);
+  assert.match(large, /LARGE_VALUE_INLINE_BYTES = 48 \* 1024/);
+  assert.match(large, /LARGE_VALUE_MAX_CHUNKS = 192/);
+  assert.match(large, /new TextEncoder\(\)\.encode\(serialized\)/);
+  assert.match(large, /byteLength: serializedBytes\.byteLength/);
+  assert.match(large, /LEGACY_LARGE_VALUE_CHUNK_CHARS = 64 \* 1024/);
   assert.match(large, /redis\.mGet\(keys\.slice\(offset, offset \+ 8\)\)/);
   assert.match(large, /checksum\(joined\) !== manifest\.checksum/);
   assert.match(social, /readRedisLargeValue\(GUILDS_KEY/);
@@ -114,6 +117,9 @@ test('achievement claims and admin Booster grants use the shared chunked player-
   assert.match(debug, /readStoredPlayerSave\(id, storedRaw\)/);
   assert.match(debug, /createPlayerSaveWritePlan\(/);
   assert.match(debug, /txn\.set\(playerKey, writePlan\.storedValue\)/);
+  assert.match(debug, /readRedisLargeValue\(manifestKey, existing\)/);
+  assert.match(debug, /createRedisLargeValueWritePlan\(manifestKey, JSON\.stringify\(manifest\)\)/);
+  assert.match(debug, /txn\.set\(manifestKey, writePlan\.storedValue\)/);
   assert.doesNotMatch(social, /txn\.set\(playerKey, JSON\.stringify\(state\)\)/);
   assert.doesNotMatch(debug, /txn\.set\(playerKey, JSON\.stringify\(state\)\)/);
 });
