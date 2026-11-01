@@ -5606,7 +5606,7 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
   const cap = offlineRollCap(s);
   const userId = String(context.userId ?? '').trim();
   const subredditName = String(context.subredditName ?? '').trim();
-  if (!options.skipOfflineNotifications && userId && subredditName && s.offlineRolls >= cap) {
+  if (!options.previewOnly && !options.skipOfflineNotifications && userId && subredditName && s.offlineRolls >= cap) {
     try {
       await withPlayerMutationLockFor(`offline-notification:${userId}`, async () => {
         const sent = await sendOfflineFullNotification(userId, subredditName);
@@ -5692,7 +5692,7 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
         console.error('[Offline Notification] Could not restore a retry after direct-send failure:', recoveryError);
       }
     }
-  } else if (!options.skipOfflineNotifications && userId && subredditName) {
+  } else if (!options.previewOnly && !options.skipOfflineNotifications && userId && subredditName) {
     try {
       await scheduleOfflineFullNotification(
         userId,
