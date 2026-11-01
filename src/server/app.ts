@@ -374,7 +374,7 @@ export function createApp() {
     res.json = ((body: any) => {
       // Route-specific catches may not use badRequest(). Normalize the exact
       // pre-handler lock sentinel here so every endpoint gets the same retry code.
-      if (body && typeof body === 'object' && body.error === 'PLAYER_MUTATION_QUEUED') {
+      if (body && typeof body === 'object' && (body.error === 'PLAYER_MUTATION_QUEUED' || body.error === 'PLAYER_MUTATION_LEASE_LOST')) {
         res.status(503);
         return originalJson(stripPlayerCollection({
           code: 'PLAYER_MUTATION_QUEUED',
@@ -1407,7 +1407,7 @@ export function createApp() {
 
   const badRequest = (res: express.Response, e: unknown, fallback: string) => {
     reportRedisTransactionFailure(e);
-    if (e instanceof Error && e.message === 'PLAYER_MUTATION_QUEUED') {
+    if (e instanceof Error && (e.message === 'PLAYER_MUTATION_QUEUED' || e.message === 'PLAYER_MUTATION_LEASE_LOST')) {
       return res.status(503).json({
         code: 'PLAYER_MUTATION_QUEUED',
         error: 'Your action is queued and will retry automatically.',
@@ -1849,7 +1849,7 @@ export function createApp() {
     if (res.headersSent) return;
     const message = error instanceof Error ? error.message : String(error ?? 'Unknown server error');
     const busy = transientContentionError(error);
-    const queuedBeforeHandler = error instanceof Error && error.message === 'PLAYER_MUTATION_QUEUED';
+    const queuedBeforeHandler = error instanceof Error && (error.message === 'PLAYER_MUTATION_QUEUED' || error.message === 'PLAYER_MUTATION_LEASE_LOST');
     console.error('[Unhandled API Error]', {
       timestamp: new Date().toISOString(),
       method: req.method,
