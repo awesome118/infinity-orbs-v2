@@ -30,7 +30,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.31]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.33]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -100,6 +100,7 @@ jobs:
           node --import tsx --test --test-name-pattern="immersive startup shows save-loading progress and unlocks the radiant Play button only when ready" tests/post-revamp.test.ts
           node --import tsx --test tests/roll-batching.test.ts tests/collection-persistence.test.ts
           node --import tsx --test tests/mobile-layout.test.ts
+          node --import tsx --test tests/upgrade-expansion.test.ts
           npm run build
 
       # Check credentials before invoking any mutating Devvit command.
