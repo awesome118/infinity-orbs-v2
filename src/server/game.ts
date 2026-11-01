@@ -5997,8 +5997,10 @@ export async function roll(
         usingChainPatcher ? rawPatcherRarity : undefined,
         'online',
         usingChainPatcher ? 1 : undefined,
-        undefined,
+        ticketRandom ? ticketRandom.next : undefined,
         usingChainPatcher,
+        undefined,
+        ticketRandom ? ticketRandom.nextRarity : undefined,
       );
       if (!bestOrb || result.bestOrb.rarity > bestOrb.rarity) bestOrb = result.bestOrb;
       batch.push(...result.batch.slice(-200));
