@@ -1,6 +1,7 @@
 import { redis, context, reddit } from './devvit-mock.js';
 import { readInBatches } from './redis-batches.js';
-import { createRedisLargeValueWritePlan, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
+import { createRedisLargeValueWritePlan, readRedisLargeValue, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
+import { serializePlayerStateForRedis, readStoredPlayerSave, createPlayerSaveWritePlan, discardPlayerSaveWritePlan, cleanupPreviousPlayerSave, playerSaveProjection, type PlayerSaveWritePlan } from './player-save-storage.js';
 import { CODEX_MIGRATION_BATCH_SIZE, CODEX_SHARD_COUNT, CODEX_STORAGE_VERSION, codexShardKey, groupCodexFields } from '../shared/collection-storage.js';
 import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import * as notificationsModule from '@devvit/notifications';
@@ -150,6 +151,8 @@ interface SaveExtraWrite {
   key: string;
   expectedValue: string | null;
   nextValue: string;
+  /** Store another player's canonical player-save format in the shared save transaction. */
+  playerSave?: boolean;
   conflictMessage?: string;
   /** Optional absolute Redis expiry for durable side receipts. */
   expiration?: Date;
@@ -332,146 +335,6 @@ async function ensureCodexStorageVersion(userId: string, generation: number, sta
   state.collectionStorageVersion = CODEX_STORAGE_VERSION;
 }
 
-function serializePlayerStateForRedis(state: PlayerState): string {
-  const persistedState = state.collectionStorageVersion === CODEX_STORAGE_VERSION
-    ? Object.fromEntries(Object.entries(state).filter(([field]) => field !== 'collection'))
-    : state;
-  return JSON.stringify(persistedState);
-}
-
-const PLAYER_SAVE_CHUNK_PREFIX = 'io:player-save-chunk:';
-const PLAYER_SAVE_CHUNK_CHARS = 64 * 1024;
-const PLAYER_SAVE_INLINE_CHARS = 192 * 1024;
-const PLAYER_SAVE_MAX_CHUNKS = 128;
-const PLAYER_SAVE_MAX_CHARS = PLAYER_SAVE_CHUNK_CHARS * PLAYER_SAVE_MAX_CHUNKS;
-type PlayerSaveManifest = {
-  __ioPlayerSaveManifest: 1;
-  token: string;
-  chunkCount: number;
-  length: number;
-  checksum: string;
-  projection: {
-    username?: string; lastSeenAt?: number; level?: number; xp?: number;
-    totalRolls?: number; highestRarity?: number; coins?: number; shards?: number;
-  };
-};
-type PlayerSaveWritePlan = { storedValue: string; chunkKeys: string[] };
-
-function playerSaveChecksum(value: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < value.length; index += 1) hash = Math.imul(hash ^ value.charCodeAt(index), 0x01000193);
-  return (hash >>> 0).toString(16).padStart(8, '0');
-}
-function parsePlayerSaveManifest(raw: string | null | undefined): PlayerSaveManifest | null {
-  if (typeof raw !== 'string' || !raw.startsWith('{"__ioPlayerSaveManifest":1')) return null;
-  try {
-    const value = JSON.parse(raw) as Record<string, unknown>;
-    const projection = value.projection && typeof value.projection === 'object' && !Array.isArray(value.projection)
-      ? value.projection as PlayerSaveManifest['projection'] : {};
-    const token = String(value.token ?? '');
-    const chunkCount = Number(value.chunkCount);
-    const length = Number(value.length);
-    const checksum = String(value.checksum ?? '');
-    if (!/^[a-zA-Z0-9-]{8,120}$/.test(token) ||
-        !Number.isSafeInteger(chunkCount) || chunkCount < 1 || chunkCount > PLAYER_SAVE_MAX_CHUNKS ||
-        !Number.isSafeInteger(length) || length < 1 || length > PLAYER_SAVE_MAX_CHARS ||
-        !/^[a-f0-9]{8}$/.test(checksum)) throw new Error('Invalid player-save manifest.');
-    return { __ioPlayerSaveManifest: 1, token, chunkCount, length, checksum, projection };
-  } catch (error) {
-    console.error('[Player Save] Invalid chunk manifest:', error);
-    throw new Error('Your Infinity Orbs save index could not be read safely.');
-  }
-}
-function playerSaveChunkKey(userId: string, token: string, index: number): string {
-  return PLAYER_SAVE_CHUNK_PREFIX + userId + ':' + token + ':' + index;
-}
-async function readStoredPlayerSave(userId: string, storedValue: string | null | undefined): Promise<string | null> {
-  if (storedValue == null) return null;
-  const manifest = parsePlayerSaveManifest(storedValue);
-  if (!manifest) return storedValue;
-  const keys = Array.from({ length: manifest.chunkCount }, (_, index) => playerSaveChunkKey(userId, manifest.token, index));
-  const chunks: string[] = [];
-  for (let offset = 0; offset < keys.length; offset += 8) {
-    const batch = await redis.mGet(keys.slice(offset, offset + 8));
-    if (batch.length !== Math.min(8, keys.length - offset) || batch.some(value => typeof value !== 'string')) {
-      throw new Error('Your Infinity Orbs save is missing a data chunk. No changes were applied.');
-    }
-    chunks.push(...batch as string[]);
-  }
-  const joined = chunks.join('');
-  if (joined.length !== manifest.length || playerSaveChecksum(joined) !== manifest.checksum) {
-    throw new Error('Your Infinity Orbs save failed its integrity check. No changes were applied.');
-  }
-  return joined;
-}
-async function createPlayerSaveWritePlan(userId: string, serialized: string): Promise<PlayerSaveWritePlan> {
-  if (serialized.length <= PLAYER_SAVE_INLINE_CHARS) return { storedValue: serialized, chunkKeys: [] };
-  if (serialized.length > PLAYER_SAVE_MAX_CHARS) {
-    throw new Error('Player save exceeds the supported 8 MiB logical size. No changes were written.');
-  }
-  const token = secureServerToken('playersave');
-  const chunks: string[] = [];
-  for (let offset = 0; offset < serialized.length;) {
-    let end = Math.min(serialized.length, offset + PLAYER_SAVE_CHUNK_CHARS);
-    if (end < serialized.length && serialized.charCodeAt(end - 1) >= 0xd800 && serialized.charCodeAt(end - 1) <= 0xdbff) end -= 1;
-    chunks.push(serialized.slice(offset, end));
-    offset = end;
-  }
-  if (chunks.length > PLAYER_SAVE_MAX_CHUNKS) throw new Error('Player save requires too many Redis records. No changes were written.');
-  const chunkKeys = chunks.map((_, index) => playerSaveChunkKey(userId, token, index));
-  let written = 0;
-  try {
-    for (let index = 0; index < chunks.length; index += 1) {
-      await redis.set(chunkKeys[index], chunks[index]);
-      written += 1;
-    }
-  } catch (error) {
-    for (const keyName of chunkKeys.slice(0, written)) await redis.del(keyName).catch(() => undefined);
-    throw error;
-  }
-  let projection: PlayerSaveManifest['projection'] = {};
-  try {
-    const state = JSON.parse(serialized) as Partial<PlayerState>;
-    projection = {
-      ...(typeof state.username === 'string' ? { username: state.username.slice(0, 100) } : {}),
-      ...(Number.isFinite(state.lastSeenAt) ? { lastSeenAt: Number(state.lastSeenAt) } : {}),
-      ...(Number.isFinite(state.level) ? { level: Number(state.level) } : {}),
-      ...(Number.isFinite(state.xp) ? { xp: Number(state.xp) } : {}),
-      ...(Number.isFinite(state.totalRolls) ? { totalRolls: Number(state.totalRolls) } : {}),
-      ...(Number.isFinite(state.highestRarity) ? { highestRarity: Number(state.highestRarity) } : {}),
-      ...(Number.isFinite(state.coins) ? { coins: Number(state.coins) } : {}),
-      ...(Number.isFinite(state.shards) ? { shards: Number(state.shards) } : {}),
-    };
-  } catch { /* chunk bytes remain authoritative; the projection is for admin lists only */ }
-  const manifest: PlayerSaveManifest = {
-    __ioPlayerSaveManifest: 1, token, chunkCount: chunks.length,
-    length: serialized.length, checksum: playerSaveChecksum(serialized), projection,
-  };
-  return { storedValue: JSON.stringify(manifest), chunkKeys };
-}
-async function discardPlayerSaveWritePlan(plan: PlayerSaveWritePlan): Promise<void> {
-  for (const keyName of plan.chunkKeys) await redis.del(keyName).catch(() => undefined);
-}
-const PLAYER_SAVE_RETIRED_CHUNK_TTL_MS = 10 * 60_000;
-async function cleanupPreviousPlayerSave(userId: string, previousRaw: string | null | undefined): Promise<void> {
-  const previous = parsePlayerSaveManifest(previousRaw);
-  if (!previous) return;
-  const expiration = new Date(Date.now() + PLAYER_SAVE_RETIRED_CHUNK_TTL_MS);
-  for (let index = 0; index < previous.chunkCount; index += 1) {
-    const keyName = playerSaveChunkKey(userId, previous.token, index);
-    try {
-      const chunk = await redis.get(keyName);
-      if (typeof chunk === 'string') await redis.set(keyName, chunk, { expiration });
-    } catch (error) {
-      console.warn('[Player Save] Previous chunk could not be retired; it remains readable:', error);
-    }
-  }
-}
-function playerSaveProjection(raw: string | null | undefined): Partial<PlayerState> | null {
-  if (raw == null) return null;
-  const manifest = parsePlayerSaveManifest(raw);
-  return manifest ? manifest.projection as Partial<PlayerState> : parseStoredJson<Partial<PlayerState>>(raw);
-}
 const GAME_BANS_KEY = 'io:game-bans';
 const ONLINE_PLAYERS_KEY = 'io:online:players';
 const CCU_HOURLY_PREFIX = 'io:ccu:hour:';
@@ -1120,7 +983,8 @@ function parseGameBanRegistry(raw: unknown): Record<string, GameBanRecord> {
 }
 
 async function readGameBans(): Promise<Record<string, GameBanRecord>> {
-  return parseGameBanRegistry(await redis.get(GAME_BANS_KEY));
+  const pointer = await redis.get(GAME_BANS_KEY);
+  return parseGameBanRegistry(await readRedisLargeValue(GAME_BANS_KEY, pointer));
 }
 
 async function mutateGameBans<T>(
@@ -1128,33 +992,41 @@ async function mutateGameBans<T>(
 ): Promise<T> {
   for (let attempt = 0; attempt < 8; attempt++) {
     const txn = await redis.watch(GAME_BANS_KEY);
-    const raw = await redis.get(GAME_BANS_KEY);
-    let bans: Record<string, GameBanRecord>;
+    let transactionClosed = false;
+    let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+    let bansCommitted = false;
+    let previousPointer: string | null = null;
     try {
-      // Only a truly absent key is an empty registry. A present empty string,
-      // malformed JSON, or malformed row must fail closed instead of clearing
-      // bans or letting the request proceed as if every user were unbanned.
-      bans = parseGameBanRegistry(raw);
-    } catch (error) {
-      await txn.unwatch();
-      throw error;
-    }
+      previousPointer = await redis.get(GAME_BANS_KEY);
+      const decoded = await readRedisLargeValue(GAME_BANS_KEY, previousPointer);
+      // A truly absent key is an empty registry. Present malformed data still
+      // fails closed; chunk manifests are verified before parsing or replacing.
+      const bans = parseGameBanRegistry(decoded);
+      const outcome = update(bans);
+      if (!outcome.changed) {
+        await txn.unwatch();
+        transactionClosed = true;
+        return outcome.result;
+      }
 
-    const outcome = update(bans);
-    if (!outcome.changed) {
-      await txn.unwatch();
-      return outcome.result;
+      writePlan = await createRedisLargeValueWritePlan(GAME_BANS_KEY, JSON.stringify(bans));
+      await txn.multi();
+      await txn.set(GAME_BANS_KEY, writePlan.storedValue);
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) {
+        bansCommitted = true;
+        await retireRedisLargeValue(GAME_BANS_KEY, previousPointer);
+        return outcome.result;
+      }
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+      if (writePlan && !bansCommitted) await discardRedisLargeValueWritePlan(writePlan);
     }
-
-    await txn.multi();
-    await txn.set(GAME_BANS_KEY, JSON.stringify(bans));
-    const committed = await txn.exec();
-    if (committed !== null) return outcome.result;
   }
 
   throw new Error('Game ban list changed too frequently. Please retry.');
 }
-
 export async function getGameBanStatus(userId = context.userId ?? ''): Promise<GameBanStatus | null> {
   if (!userId) return null;
   const now = Date.now();
@@ -1707,7 +1579,8 @@ async function prepareFrenzyOwnerRewardWrites(
     redis.get(ownerGenerationKey),
   ]);
   if (raw == null) throw new Error('Frenzy owner save was not found.');
-  const ownerState = parsePlayerStateValue(raw);
+  const decodedOwnerSave = await readStoredPlayerSave(safeOwnerId, raw);
+  const ownerState = parsePlayerStateValue(decodedOwnerSave);
   if (!ownerState) throw new Error('Frenzy owner save could not be read safely.');
 
   const generationText = generationRaw == null ? '0' : String(generationRaw);
@@ -1745,7 +1618,8 @@ async function prepareFrenzyOwnerRewardWrites(
       {
         key: ownerKey,
         expectedValue: String(raw),
-        nextValue: JSON.stringify(nextState),
+        nextValue: serializePlayerStateForRedis(nextState),
+        playerSave: true,
         conflictMessage: 'Frenzy owner save changed. Please retry.',
       },
     ],
@@ -2134,7 +2008,8 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
   // second, older index of players who have shared an Orb. If the registry
   // loses individual fields (or is unexpectedly empty), use those IDs as a
   // recovery source rather than silently rendering an entirely empty list.
-  const legacyRaw = await redis.get('io:leaderboard');
+  const legacyPointer = await redis.get('io:leaderboard');
+  const legacyRaw = await readRedisLargeValue('io:leaderboard', legacyPointer);
   const parsedLegacy = parseStoredJson<unknown>(legacyRaw);
   const legacyById = new Map<string, { username?: unknown; playtimeMs?: unknown }>();
   const legacyWithoutId: Array<Record<string, unknown>> = [];
@@ -3534,48 +3409,51 @@ async function loadRollTicketForUse(
 async function commitOptionalSaveProjection(write: SaveExtraWrite): Promise<void> {
   const txn = await redis.watch(write.key);
   let transactionClosed = false;
-  let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+  let largeWritePlan: RedisLargeValueWritePlan | null = null;
+  let playerWritePlan: PlayerSaveWritePlan | null = null;
   let writeCommitted = false;
+  let previousValue: string | null = null;
+  const playerSaveUserId = write.playerSave && write.key.startsWith('player:')
+    ? write.key.slice('player:'.length) : '';
   try {
     const current = await redis.get(write.key);
-    const actual = current == null ? null : String(current);
-    if (actual !== write.expectedValue) {
+    previousValue = current == null ? null : String(current);
+    if (previousValue !== write.expectedValue) {
       await txn.unwatch();
       transactionClosed = true;
       console.error('[Player Save] Optional projection changed; skipped without affecting player state.', write.key);
       return;
     }
 
-    // Guild state is the only potentially large side projection. Keep its
-    // legacy inline format readable while new large values use small chunks.
-    writePlan = write.key === 'io:guilds'
-      ? await createRedisLargeValueWritePlan(write.key, write.nextValue)
-      : { storedValue: write.nextValue, chunkKeys: [] };
+    let storedValue = write.nextValue;
+    if (playerSaveUserId) {
+      playerWritePlan = await createPlayerSaveWritePlan(playerSaveUserId, write.nextValue);
+      storedValue = playerWritePlan.storedValue;
+    } else if (write.key === 'io:guilds') {
+      largeWritePlan = await createRedisLargeValueWritePlan(write.key, write.nextValue);
+      storedValue = largeWritePlan.storedValue;
+    }
 
     await txn.multi();
-    if (write.expiration) {
-      await txn.set(write.key, writePlan.storedValue, { expiration: write.expiration });
-    } else {
-      await txn.set(write.key, writePlan.storedValue);
-    }
+    if (write.expiration) await txn.set(write.key, storedValue, { expiration: write.expiration });
+    else await txn.set(write.key, storedValue);
     const committed = await txn.exec();
     transactionClosed = true;
     if (committed !== null) {
       writeCommitted = true;
-      await retireRedisLargeValue(write.key, current);
+      if (playerWritePlan) await cleanupPreviousPlayerSave(playerSaveUserId, previousValue);
+      else if (largeWritePlan) await retireRedisLargeValue(write.key, previousValue);
     } else {
-      console.error('[Player Save] Optional projection conflicted at commit; skipped without affecting player state.', write.key);
+      console.error('[Player Save] Optional projection conflicted; skipped without affecting player state.', write.key);
     }
   } finally {
-    if (!transactionClosed) {
-      await txn.unwatch().catch(() => undefined);
-    }
-    if (writePlan && !writeCommitted) {
-      await discardRedisLargeValueWritePlan(writePlan);
+    if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+    if (!writeCommitted) {
+      if (playerWritePlan) await discardPlayerSaveWritePlan(playerWritePlan);
+      if (largeWritePlan) await discardRedisLargeValueWritePlan(largeWritePlan);
     }
   }
 }
-
 export async function save(
   s: PlayerState,
   extraWrite?: SaveExtraWrite | SaveExtraWrite[],
@@ -3683,6 +3561,7 @@ export async function save(
     let writePlan: PlayerSaveWritePlan | null = null;
     let saveCommitted = false;
     const extraWritePlans = new Map<string, Awaited<ReturnType<typeof createRedisLargeValueWritePlan>>>();
+    const extraPlayerSavePlans = new Map<string, PlayerSaveWritePlan>();
     try {
     // Devvit's TxClient is a command builder after WATCH/MULTI. Reads must use
     // the Redis client itself, while WATCH keeps these keys protected until EXEC.
@@ -3728,7 +3607,7 @@ export async function save(
         expectedGeneration: stateGeneration,
         storedGeneration: generation,
         expectedRevision,
-        storedState: latestRaw == null ? null : compactSaveState(parsePlayerStateValue(latestRaw)),
+        storedState: latestPlayerRaw == null ? null : compactSaveState(parsePlayerStateValue(latestPlayerRaw)),
         incomingState: compactSaveState(s),
         caller: saveCaller(),
       }, userId);
@@ -3812,7 +3691,11 @@ export async function save(
     const nextState = { ...s, saveGeneration: generation, stateRevision: expectedRevision + 1 };
     writePlan = await createPlayerSaveWritePlan(userId, serializePlayerStateForRedis(nextState));
     for (const write of extraWrites) {
-      if (write.key === 'io:guilds') {
+      if (write.playerSave && write.key.startsWith('player:')) {
+        const sideUserId = write.key.slice('player:'.length).trim();
+        if (!sideUserId) throw new Error('Invalid player-save side-write key.');
+        extraPlayerSavePlans.set(sideUserId, await createPlayerSaveWritePlan(sideUserId, write.nextValue));
+      } else if (write.key === 'io:guilds') {
         extraWritePlans.set(
           write.key,
           await createRedisLargeValueWritePlan(write.key, write.nextValue),
@@ -3825,7 +3708,9 @@ export async function save(
       await txn.hSet(codexWriteKeys[index], codexWrites[index].fields);
     }
     for (const write of extraWrites) {
-      const nextValue = extraWritePlans.get(write.key)?.storedValue ?? write.nextValue;
+      const sideUserId = write.playerSave && write.key.startsWith('player:') ? write.key.slice('player:'.length) : '';
+      const nextValue = (sideUserId ? extraPlayerSavePlans.get(sideUserId)?.storedValue : undefined)
+        ?? extraWritePlans.get(write.key)?.storedValue ?? write.nextValue;
       if (write.expiration) {
         await txn.set(write.key, nextValue, { expiration: write.expiration });
       } else {
@@ -3839,7 +3724,10 @@ export async function save(
       await cleanupPreviousPlayerSave(userId, latestRaw);
       for (let index = 0; index < extraWrites.length; index += 1) {
         const write = extraWrites[index];
-        if (extraWritePlans.has(write.key)) {
+        const sideUserId = write.playerSave && write.key.startsWith('player:') ? write.key.slice('player:'.length) : '';
+        if (sideUserId && extraPlayerSavePlans.has(sideUserId)) {
+          await cleanupPreviousPlayerSave(sideUserId, extraRaws[index]);
+        } else if (extraWritePlans.has(write.key)) {
           await retireRedisLargeValue(write.key, extraRaws[index]);
         }
       }
@@ -3893,6 +3781,9 @@ export async function save(
       if (!saveCommitted) {
         for (const plan of extraWritePlans.values()) {
           await discardRedisLargeValueWritePlan(plan);
+        }
+        for (const plan of extraPlayerSavePlans.values()) {
+          await discardPlayerSaveWritePlan(plan);
         }
       }
     }

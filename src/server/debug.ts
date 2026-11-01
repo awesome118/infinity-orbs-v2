@@ -44,6 +44,8 @@ import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock
 import { adminCombatLabAction, getCombatSnapshot, getCombatSnapshotForUser, performCombatBeat } from './combat.js';
 import { COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatBossLuckBonus, combatGearRarityOdds, combatGearStatBudgetMultiplier, combatOrbDamageMultiplier, combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityStrengthPct, combatRuneScaledValue, combatStatsFor, combatTotalBossesBeaten, getEnemyForDungeonDepth, type CombatRuneBonuses, type CombatState } from '../shared/combat.js';
 import { context, redis, reddit } from './devvit-mock.js';
+import { createRedisLargeValueWritePlan, readRedisLargeValue, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
+import { readStoredPlayerSave, createPlayerSaveWritePlan, discardPlayerSaveWritePlan, cleanupPreviousPlayerSave, serializePlayerStateForRedis } from './player-save-storage.js';
 import {
   setCommunityEventConfig,
   listGuildChatSpy,
@@ -596,16 +598,25 @@ async function getOrCreateGlobalBoosterCreditGrantManifest(
 ): Promise<GlobalBoosterCreditGrantManifest> {
   const manifestKey = GLOBAL_BOOSTER_CREDIT_BATCH_PREFIX + encodeURIComponent(operationId);
   for (let attempt = 0; attempt < 6; attempt += 1) {
-    const existing = await redis.get(manifestKey);
-    if (existing != null) {
+    const existingPointer = await redis.get(manifestKey);
+    if (existingPointer != null) {
+      const existing = await readRedisLargeValue(manifestKey, existingPointer);
       return parseGlobalBoosterCreditGrantManifest(existing, operationId, scope, amount);
     }
 
     const txn = await redis.watch(manifestKey);
+    let transactionClosed = false;
+    let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+    let manifestCommitted = false;
+    let previousPointer: string | null = null;
+    try {
     const watched = await redis.get(manifestKey);
+    previousPointer = watched == null ? null : String(watched);
     if (watched != null) {
       await txn.unwatch();
-      return parseGlobalBoosterCreditGrantManifest(watched, operationId, scope, amount);
+      transactionClosed = true;
+      const decoded = await readRedisLargeValue(manifestKey, watched);
+      return parseGlobalBoosterCreditGrantManifest(decoded, operationId, scope, amount);
     }
 
     const players = await listRegisteredPlayerIds();
@@ -624,9 +635,20 @@ async function getOrCreateGlobalBoosterCreditGrantManifest(
       })).filter(player => player.userId.length > 0 && player.username.length > 0),
     };
 
+    writePlan = await createRedisLargeValueWritePlan(manifestKey, JSON.stringify(manifest));
     await txn.multi();
-    await txn.set(manifestKey, JSON.stringify(manifest));
-    if (await txn.exec() !== null) return manifest;
+    await txn.set(manifestKey, writePlan.storedValue);
+    const committed = await txn.exec();
+    transactionClosed = true;
+    if (committed !== null) {
+      manifestCommitted = true;
+      await retireRedisLargeValue(manifestKey, previousPointer);
+      return manifest;
+    }
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+      if (writePlan && !manifestCommitted) await discardRedisLargeValueWritePlan(writePlan);
+    }
   }
   throw new Error('Could not persist the Global Booster batch recipient manifest. Retry the same operation ID.');
 }
@@ -654,6 +676,7 @@ async function grantGlobalBoosterCreditsToUser(
       const generationRaw = await redis.get(generationKey);
       const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
       const raw = await redis.get(playerKey);
+      const decodedPlayerSave = await readStoredPlayerSave(id, raw);
       const rawReceipt = await redis.get(receiptKey);
 
       if (rawReceipt != null) {
@@ -689,7 +712,7 @@ async function grantGlobalBoosterCreditsToUser(
 
       let state: Record<string, any>;
       try {
-        state = parseAdminPlayerSave(raw);
+        state = parseAdminPlayerSave(decodedPlayerSave);
       } catch (error) {
         await txn.unwatch();
         throw error;
@@ -731,11 +754,24 @@ async function grantGlobalBoosterCreditsToUser(
       state.stateRevision = currentRevision + 1;
 
       const receipt = JSON.stringify({ amount: safeAmount, before, after, createdAt: Date.now() });
-      await txn.multi();
-      await txn.set(playerKey, JSON.stringify(state));
-      await txn.set(receiptKey, receipt);
-      if (await txn.exec() !== null) {
-        return { userId: id, username: safeUsername, before, after };
+      let writePlan: Awaited<ReturnType<typeof createPlayerSaveWritePlan>> | null = null;
+      let grantCommitted = false;
+      let transactionClosed = false;
+      try {
+        writePlan = await createPlayerSaveWritePlan(id, serializePlayerStateForRedis(state as unknown as PlayerState));
+        await txn.multi();
+        await txn.set(playerKey, writePlan.storedValue);
+        await txn.set(receiptKey, receipt);
+        const committed = await txn.exec();
+        transactionClosed = true;
+        if (committed !== null) {
+          grantCommitted = true;
+          await cleanupPreviousPlayerSave(id, raw);
+          return { userId: id, username: safeUsername, before, after };
+        }
+      } finally {
+        if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+        if (writePlan && !grantCommitted) await discardPlayerSaveWritePlan(writePlan);
       }
     }
 
@@ -780,42 +816,58 @@ async function removeLeaderboardEntry(username: string): Promise<void> {
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const txn = await redis.watch(leaderboardKey);
-    const raw = await redis.get(leaderboardKey);
-    if (raw == null) {
-      await txn.unwatch();
-      return;
-    }
-
-    let parsed: unknown;
+    let transactionClosed = false;
+    let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+    let cleanupCommitted = false;
+    let previousPointer: string | null = null;
     try {
-      parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    } catch {
-      await txn.unwatch();
-      throw new Error('Leaderboard data is corrupted; refusing to replace it during account cleanup.');
-    }
-    if (
-      !Array.isArray(parsed) ||
-      !parsed.every(entry => entry && typeof entry === 'object' && !Array.isArray(entry) && typeof entry.username === 'string')
-    ) {
-      await txn.unwatch();
-      throw new Error('Leaderboard data is malformed; refusing to replace it during account cleanup.');
-    }
+      const raw = await redis.get(leaderboardKey);
+      previousPointer = raw == null ? null : String(raw);
+      if (previousPointer == null) {
+        await txn.unwatch();
+        transactionClosed = true;
+        return;
+      }
+      const decoded = await readRedisLargeValue(leaderboardKey, previousPointer);
+      let parsed: unknown;
+      try {
+        parsed = typeof decoded === 'string' ? JSON.parse(decoded) : decoded;
+      } catch {
+        throw new Error('Leaderboard data is corrupted; refusing to replace it during account cleanup.');
+      }
+      if (
+        !Array.isArray(parsed) ||
+        !parsed.every(entry => entry && typeof entry === 'object' && !Array.isArray(entry) && typeof entry.username === 'string')
+      ) {
+        throw new Error('Leaderboard data is malformed; refusing to replace it during account cleanup.');
+      }
 
-    const board = parsed as Array<{ username: string }>;
-    const next = board.filter(entry => normalizeUsername(entry.username) !== normalized);
-    if (next.length === board.length) {
-      await txn.unwatch();
-      return;
-    }
+      const board = parsed as Array<{ username: string }>;
+      const next = board.filter(entry => normalizeUsername(entry.username) !== normalized);
+      if (next.length === board.length) {
+        await txn.unwatch();
+        transactionClosed = true;
+        return;
+      }
 
-    await txn.multi();
-    await txn.set(leaderboardKey, JSON.stringify(next));
-    if (await txn.exec() !== null) return;
+      writePlan = await createRedisLargeValueWritePlan(leaderboardKey, JSON.stringify(next));
+      await txn.multi();
+      await txn.set(leaderboardKey, writePlan.storedValue);
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) {
+        cleanupCommitted = true;
+        await retireRedisLargeValue(leaderboardKey, previousPointer);
+        return;
+      }
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+      if (writePlan && !cleanupCommitted) await discardRedisLargeValueWritePlan(writePlan);
+    }
   }
 
   throw new Error('Leaderboard changed too frequently during account cleanup. Please retry.');
 }
-
 async function resolveUserId(username: string): Promise<string> {
   if (normalizeUsername(context.username) === normalizeUsername(username) && context.userId) {
     return context.userId;
@@ -834,39 +886,50 @@ async function resetPlayerGenerationAndSave(
   const playerKey = `player:${userId}`;
   const combatStateKey = `infinity-orbs:combat:${userId}`;
 
-  // Reset the main save and its independent Combat save in one transaction.
-  // Watching the combat key prevents a concurrent combat write from being silently overwritten.
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const txn = await redis.watch(generationKey, playerKey, combatStateKey);
-    const rawGeneration = await redis.get(generationKey);
-    const parsedGeneration = Number.parseInt(String(rawGeneration ?? '0'), 10);
-    const currentGeneration =
-      Number.isSafeInteger(parsedGeneration) && parsedGeneration >= 0
-        ? parsedGeneration
-        : 0;
+    let transactionClosed = false;
+    let writePlan: Awaited<ReturnType<typeof createPlayerSaveWritePlan>> | null = null;
+    let resetCommitted = false;
+    let previousPointer: string | null = null;
+    try {
+      const rawGeneration = await redis.get(generationKey);
+      previousPointer = await redis.get(playerKey);
+      const parsedGeneration = Number.parseInt(String(rawGeneration ?? '0'), 10);
+      const currentGeneration =
+        Number.isSafeInteger(parsedGeneration) && parsedGeneration >= 0
+          ? parsedGeneration
+          : 0;
+      if (currentGeneration >= Number.MAX_SAFE_INTEGER) {
+        throw new Error('Player save generation is exhausted and cannot be reset safely.');
+      }
 
-    if (currentGeneration >= Number.MAX_SAFE_INTEGER) {
-      await txn.unwatch();
-      throw new Error('Player save generation is exhausted and cannot be reset safely.');
+      const generation = currentGeneration + 1;
+      const fresh = createInitialState();
+      fresh.username = username;
+      fresh.saveGeneration = generation;
+      fresh.stateRevision = 0;
+      writePlan = await createPlayerSaveWritePlan(userId, serializePlayerStateForRedis(fresh));
+
+      await txn.multi();
+      await txn.set(generationKey, String(generation));
+      await txn.set(playerKey, writePlan.storedValue);
+      await txn.del(combatStateKey);
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) {
+        resetCommitted = true;
+        await cleanupPreviousPlayerSave(userId, previousPointer);
+        return { state: fresh, generation };
+      }
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+      if (writePlan && !resetCommitted) await discardPlayerSaveWritePlan(writePlan);
     }
-
-    const generation = currentGeneration + 1;
-    const fresh = createInitialState();
-    fresh.username = username;
-    fresh.saveGeneration = generation;
-    fresh.stateRevision = 0;
-
-    await txn.multi();
-    await txn.set(generationKey, String(generation));
-    await txn.set(playerKey, JSON.stringify(fresh));
-    await txn.del(combatStateKey);
-    const committed = await txn.exec();
-    if (committed !== null) return { state: fresh, generation };
   }
 
   throw new Error('Player data changed repeatedly while resetting. Please retry.');
 }
-
 async function wipeUser(username: string, clearBanAfterWipe = true): Promise<{ username: string; userId: string; generation: number }> {
   const name = targetUsername(username);
   const userId = await resolveUserId(name);

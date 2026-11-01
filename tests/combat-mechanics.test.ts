@@ -2,6 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { combatMarkMultiplier, addCombatGearToInventory, applyCombatSkillCopy, calculateCombatArenaRatingUpdate, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatAbilityType, combatActionsDue, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeCost, combatGearSpeedBonus, combatGearOtherStatMultiplier, combatGearSpeedShare, combatScrapValue, floorQualityRequirement, combatSkillCopiesForNextRank, combatSkillRankEffectiveness, combatSkillRarityOdds, combatStatsFor, coreProgressionCombatBonus, createCombatState, getEnemyForDepth, getEnemyForDungeonDepth, resolveCombatSkillRarity, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatBossLuckBonus, combatBossesBeatenByDepth, combatTotalBossesBeaten, type CombatGear } from '../src/shared/combat.js';
 
+test('new Delvers initialize in a normal non-boss Undercrypt room', () => {
+  const state=createCombatState();
+  const enemy=getEnemyForDungeonDepth(state.dungeonId,state.depth);
+  assert.equal(state.depth,1);
+  assert.equal(enemy.boss,false,'a fresh Combat save must never initialize into a boss room');
+  assert.equal(state.enemyHp,enemy.maxHp);
+  assert.equal(state.dungeonBossesBeaten.undercrypt,0);
+});
 test('new Delvers start without gear and rely on modest baseline stats', () => {
   const state=createCombatState();
   const stats=combatStatsFor(state);

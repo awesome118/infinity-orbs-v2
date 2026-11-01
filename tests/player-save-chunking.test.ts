@@ -7,19 +7,21 @@ const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf
 
 test('large player saves are chunked below the Redis request ceiling', () => {
   const game = source('src/server/game.ts');
-  assert.match(game, /PLAYER_SAVE_CHUNK_CHARS = 64 \* 1024/);
-  assert.match(game, /PLAYER_SAVE_INLINE_CHARS = 192 \* 1024/);
-  assert.match(game, /PLAYER_SAVE_MAX_CHUNKS = 128/);
-  assert.match(game, /await redis\.set\(chunkKeys\[index\], chunks\[index\]\)/);
+  const storage = source('src/server/player-save-storage.ts');
+  assert.match(storage, /PLAYER_SAVE_CHUNK_CHARS = 64 \* 1024/);
+  assert.match(storage, /PLAYER_SAVE_INLINE_CHARS = 192 \* 1024/);
+  assert.match(storage, /PLAYER_SAVE_MAX_CHUNKS = 128/);
+  assert.match(storage, /await redis\.set\(chunkKeys\[index\], chunks\[index\]\)/);
   assert.doesNotMatch(game, /txn\.set\(playerKey, serializePlayerStateForRedis\(nextState\)\)/);
 });
 
 test('player save chunks are verified and the manifest is swapped atomically', () => {
   const game = source('src/server/game.ts');
-  assert.match(game, /__ioPlayerSaveManifest: 1/);
-  assert.match(game, /async function readStoredPlayerSave/);
-  assert.match(game, /redis\.mGet\(keys\.slice\(offset, offset \+ 8\)\)/);
-  assert.match(game, /playerSaveChecksum\(joined\) !== manifest\.checksum/);
+  const storage = source('src/server/player-save-storage.ts');
+  assert.match(storage, /__ioPlayerSaveManifest: 1/);
+  assert.match(storage, /async function readStoredPlayerSave/);
+  assert.match(storage, /redis\.mGet\(keys\.slice\(offset, offset \+ 8\)\)/);
+  assert.match(storage, /playerSaveChecksum\(joined\) !== manifest\.checksum/);
   assert.match(game, /txn\.set\(playerKey, writePlan\.storedValue\)/);
   assert.match(game, /await cleanupPreviousPlayerSave\(userId, latestRaw\)/);
   assert.match(game, /discardPlayerSaveWritePlan\(writePlan\)/);
@@ -27,8 +29,9 @@ test('player save chunks are verified and the manifest is swapped atomically', (
 
 test('legacy inline saves remain readable and the next oversized save migrates safely', () => {
   const game = source('src/server/game.ts');
-  assert.match(game, /if \(storedValue == null\) return null/);
-  assert.match(game, /if \(!manifest\) return storedValue/);
+  const storage = source('src/server/player-save-storage.ts');
+  assert.match(storage, /if \(storedValue == null\) return null/);
+  assert.match(storage, /if \(!manifest\) return storedValue/);
   assert.match(game, /createPlayerSaveWritePlan\(userId, serializePlayerStateForRedis\(nextState\)\)/);
   assert.match(game, /playerSaveProjection\(saves\[index\]\)/);
 });
@@ -37,6 +40,46 @@ test('payment grants and refunds also use the chunked save protocol', () => {
   const game = source('src/server/game.ts');
   assert.ok((game.match(/txn\.set\(pkey, writePlan\.storedValue\)/g) ?? []).length >= 2);
   assert.match(game, /await cleanupPreviousPlayerSave\(userId, storedRaw\)/);
+});
+
+test('all PlayerState mutation routes use the same chunked player-save manifest', () => {
+  const storage = source('src/server/player-save-storage.ts');
+  const game = source('src/server/game.ts');
+  const social = source('src/server/social.ts');
+  const debug = source('src/server/debug.ts');
+
+  assert.match(storage, /export async function readStoredPlayerSave/);
+  assert.match(storage, /export async function createPlayerSaveWritePlan/);
+  assert.match(storage, /export async function cleanupPreviousPlayerSave/);
+  assert.match(game, /readStoredPlayerSave\(safeOwnerId, raw\)/);
+  assert.match(game, /playerSave: true/);
+  assert.match(game, /extraPlayerSavePlans/);
+  assert.match(game, /readRedisLargeValue\(GAME_BANS_KEY/);
+  assert.match(game, /createRedisLargeValueWritePlan\(GAME_BANS_KEY/);
+  assert.match(social, /readStoredPlayerSave\(userId, previousPointer\)/);
+  assert.match(social, /createPlayerSaveWritePlan\(userId, serializePlayerStateForRedis\(state\)\)/);
+  assert.match(debug, /readStoredPlayerSave\(id, raw\)/);
+  assert.match(debug, /createPlayerSaveWritePlan\(id, serializePlayerStateForRedis/);
+  assert.match(debug, /createPlayerSaveWritePlan\(userId, serializePlayerStateForRedis\(fresh\)\)/);
+  assert.doesNotMatch(social, /txn\.set\(playerKey, JSON\.stringify\(state\)\)/);
+  assert.doesNotMatch(debug, /txn\.set\(playerKey, JSON\.stringify/);
+});
+
+test('large leaderboard and admin batch documents use the shared chunk manifest', () => {
+  const social = source('src/server/social.ts');
+  const debug = source('src/server/debug.ts');
+  const large = source('src/server/redis-large-values.ts');
+
+  assert.match(large, /LARGE_VALUE_CHUNK_CHARS = 64 \* 1024/);
+  assert.match(social, /readRedisLargeValue\(key\('leaderboard'\), legacyPointer\)/);
+  assert.match(social, /createRedisLargeValueWritePlan\(leaderboardKey/);
+  assert.match(social, /readRedisLargeValue\(leaderboardKey/);
+  assert.match(social, /readRedisLargeValue\(GLOBAL_CHAT_KEY/);
+  assert.match(social, /createRedisLargeValueWritePlan\(GLOBAL_CHAT_KEY/);
+  assert.match(debug, /readRedisLargeValue\(manifestKey/);
+  assert.match(debug, /createRedisLargeValueWritePlan\(manifestKey/);
+  assert.match(debug, /readRedisLargeValue\(leaderboardKey/);
+  assert.match(debug, /createRedisLargeValueWritePlan\(leaderboardKey/);
 });
 
 test('diagnostic and activation logs are bounded by count and serialized size', () => {

@@ -2,7 +2,8 @@ import { context, redis, reddit } from './devvit-mock.js';
 import { readInBatches } from './redis-batches.js';
 import { combatHighestDepthReached } from '../shared/combat.js';
 import { withPlayerMutationLockFor } from './player-lock.js';
-import { createRedisLargeValueWritePlan, readRedisLargeValue, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
+import { createRedisLargeValueWritePlan, readRedisLargeValue, retireRedisLargeValue, discardRedisLargeValueWritePlan, type RedisLargeValueWritePlan } from './redis-large-values.js';
+import { readStoredPlayerSave, createPlayerSaveWritePlan, discardPlayerSaveWritePlan, cleanupPreviousPlayerSave, serializePlayerStateForRedis } from './player-save-storage.js';
 import type {
   Guild,
   LeaderboardEntry,
@@ -2170,8 +2171,6 @@ export async function recordGlobalChatComment(input: {
   const targetPostId = normalizeRedditPostId(input.postId);
   const registeredPostId = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
   if (!targetPostId || !registeredPostId || targetPostId !== registeredPostId) return null;
-  // Reddit comment-create events are a separate entry point from the chat API.
-  // Fail closed here too if a legacy/corrupt canonical ID points at a Frenzy post.
   if (await isRegisteredFrenzyPost(registeredPostId)) return null;
 
   const rawId = String(input.commentId ?? '').trim();
@@ -2195,25 +2194,38 @@ export async function recordGlobalChatComment(input: {
   await ensureRedisStringKey(GLOBAL_CHAT_KEY, '[]');
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const txn = await redis.watch(GLOBAL_CHAT_KEY);
-    let closed = false;
+    let transactionClosed = false;
+    let writePlan: RedisLargeValueWritePlan | null = null;
+    let chatCommitted = false;
+    let previousPointer: string | null = null;
     try {
-      const raw = await redis.get(GLOBAL_CHAT_KEY);
+      previousPointer = await redis.get(GLOBAL_CHAT_KEY);
+      const raw = await readRedisLargeValue(GLOBAL_CHAT_KEY, previousPointer);
       const messages = parseGlobalChatList(raw).filter(item => /^t1_[a-z0-9]+$/i.test(String(item.id ?? '').trim()));
       const previous = messages.find(item => item.id === id);
       if (previous) {
         await txn.unwatch();
-        closed = true;
+        transactionClosed = true;
         return previous;
       }
       messages.push(message);
       messages.sort((a, b) => a.timestamp - b.timestamp);
+      writePlan = await createRedisLargeValueWritePlan(
+        GLOBAL_CHAT_KEY,
+        JSON.stringify(messages.slice(-GLOBAL_CHAT_MAX_MESSAGES)),
+      );
       await txn.multi();
-      await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(messages.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
+      await txn.set(GLOBAL_CHAT_KEY, writePlan.storedValue);
       const committed = await txn.exec();
-      closed = true;
-      if (committed !== null) return message;
+      transactionClosed = true;
+      if (committed !== null) {
+        chatCommitted = true;
+        await retireRedisLargeValue(GLOBAL_CHAT_KEY, previousPointer);
+        return message;
+      }
     } finally {
-      if (!closed) await txn.unwatch().catch(() => undefined);
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+      if (writePlan && !chatCommitted) await discardRedisLargeValueWritePlan(writePlan);
     }
   }
   throw new Error('Global Chat changed while recording a Reddit comment. Please retry.');
@@ -2235,18 +2247,37 @@ async function purgeChatMessagesForUser(userId: string, targetUsername: string):
   await ensureRedisStringKey(GLOBAL_CHAT_KEY, '[]');
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(GLOBAL_CHAT_KEY);
-    const raw = await redis.get(GLOBAL_CHAT_KEY);
-    const messages = parseGlobalChatList(raw);
-    const retained = messages.filter(message => {
-      const messageUserId = String(message.userId ?? '').trim();
-      const messageUsername = String(message.username ?? '').trim().replace(/^u\//i, '').toLowerCase();
-      return messageUserId !== userId && messageUsername !== cleanUsername;
-    });
+    let transactionClosed = false;
+    let writePlan: RedisLargeValueWritePlan | null = null;
+    let purgeCommitted = false;
+    let previousPointer: string | null = null;
+    try {
+      previousPointer = await redis.get(GLOBAL_CHAT_KEY);
+      const raw = await readRedisLargeValue(GLOBAL_CHAT_KEY, previousPointer);
+      const messages = parseGlobalChatList(raw);
+      const retained = messages.filter(message => {
+        const messageUserId = String(message.userId ?? '').trim();
+        const messageUsername = String(message.username ?? '').trim().replace(/^u\//i, '').toLowerCase();
+        return messageUserId !== userId && messageUsername !== cleanUsername;
+      });
 
-    await txn.multi();
-    await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(retained.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
-    const committed = await txn.exec();
-    if (committed !== null) return;
+      writePlan = await createRedisLargeValueWritePlan(
+        GLOBAL_CHAT_KEY,
+        JSON.stringify(retained.slice(-GLOBAL_CHAT_MAX_MESSAGES)),
+      );
+      await txn.multi();
+      await txn.set(GLOBAL_CHAT_KEY, writePlan.storedValue);
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) {
+        purgeCommitted = true;
+        await retireRedisLargeValue(GLOBAL_CHAT_KEY, previousPointer);
+        return;
+      }
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+      if (writePlan && !purgeCommitted) await discardRedisLargeValueWritePlan(writePlan);
+    }
   }
 
   throw new Error('Chat changed while applying the mute. Please retry.');
@@ -2432,7 +2463,8 @@ export async function getGlobalChat(): Promise<GlobalChatMessage[]> {
   // context, the sender can still use the registered destination; it refuses
   // to mistake an unregistered Frenzy post for the main Game launcher.
   await resolveGlobalGamePostId().catch(() => null);
-  const raw = await redis.get(GLOBAL_CHAT_KEY);
+  const pointer = await redis.get(GLOBAL_CHAT_KEY);
+  const raw = await readRedisLargeValue(GLOBAL_CHAT_KEY, pointer);
   const parsed = parseGlobalChatList(raw);
 
   // Also filter against the mute registry so a concurrent write can never make
@@ -2588,7 +2620,8 @@ async function buildLeaderboardsSnapshot(): Promise<LeaderboardBoards> {
     ? rawRegistry as Record<string, string>
     : {};
 
-  const legacyRaw = await redis.get(key('leaderboard'));
+  const legacyPointer = await redis.get(key('leaderboard'));
+  const legacyRaw = await readRedisLargeValue(key('leaderboard'), legacyPointer);
   // The legacy projection is retained as a read-only recovery index. If registry
   // fields are missing, its user IDs let us rebuild the visible boards from the
   // durable player saves instead of returning empty leaderboards.
@@ -2604,12 +2637,13 @@ async function buildLeaderboardsSnapshot(): Promise<LeaderboardBoards> {
   }
 
   const userIds = Array.from(new Set([...Object.keys(registry), ...legacyById.keys()]));
-  const [saves, combatSaves] = userIds.length > 0
+  const [savePointers, combatSaves] = userIds.length > 0
     ? await Promise.all([
       readInBatches(userIds.map(id => `player:${id}`), keys => redis.mGet(keys)),
       readInBatches(userIds.map(id => `infinity-orbs:combat:${id}`), keys => redis.mGet(keys)),
     ])
     : [[], []];
+  const saves = await Promise.all(userIds.map((id, index) => readStoredPlayerSave(id, savePointers[index])));
 
   const missingRegistryCount = userIds.filter(userId =>
     !Object.prototype.hasOwnProperty.call(registry, userId),
@@ -2723,7 +2757,8 @@ export async function recordLeaderboard(s: PlayerState) {
   const incomingRevision = Math.max(0, Math.floor(Number(s.stateRevision ?? 0)) || 0);
   // Projection tasks run asynchronously. Prefer the newest durable save when
   // an older callback resumes after a later mutation has already committed.
-  const persistedRaw = await redis.get(`player:${userId}`);
+  const persistedPointer = await redis.get(`player:${userId}`);
+  const persistedRaw = await readStoredPlayerSave(userId, persistedPointer);
   const persisted = parseStoredJson<Partial<PlayerState>>(persistedRaw);
   const persistedRevision = Number(persisted?.stateRevision);
   const source: PlayerState =
@@ -2751,30 +2786,46 @@ export async function recordLeaderboard(s: PlayerState) {
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(leaderboardKey);
-    const raw = await redis.get(leaderboardKey);
-    const board: LeaderboardEntry[] = parseLeaderboardList(raw);
-    const existing = board.find(existing =>
-      next.userId
-        ? existing.userId === next.userId || (!existing.userId && existing.username === name)
-        : existing.username === name,
-    );
-    if (existing) {
-      const existingRevision = Number(existing.stateRevision);
-      // WATCH protects list writes, not source freshness. An earlier async
-      // projection can finish later, so never replace a newer saved revision.
-      if (!Number.isSafeInteger(existingRevision) || existingRevision <= next.stateRevision!) {
-        Object.assign(existing, next);
+    let transactionClosed = false;
+    let writePlan: RedisLargeValueWritePlan | null = null;
+    let leaderboardCommitted = false;
+    let previousPointer: string | null = null;
+    try {
+      const raw = await redis.get(leaderboardKey);
+      previousPointer = raw == null ? null : String(raw);
+      const decoded = await readRedisLargeValue(leaderboardKey, previousPointer);
+      const board: LeaderboardEntry[] = parseLeaderboardList(decoded);
+      const existing = board.find(existing =>
+        next.userId
+          ? existing.userId === next.userId || (!existing.userId && existing.username === name)
+          : existing.username === name,
+      );
+      if (existing) {
+        const existingRevision = Number(existing.stateRevision);
+        // WATCH protects list writes, not source freshness. An earlier async
+        // projection can finish later, so never replace a newer saved revision.
+        if (!Number.isSafeInteger(existingRevision) || existingRevision <= next.stateRevision!) {
+          Object.assign(existing, next);
+        }
+      } else board.push(next);
+      board.sort((a, b) => b.value - a.value);
+      writePlan = await createRedisLargeValueWritePlan(leaderboardKey, JSON.stringify(board.slice(0, 5000)));
+      await txn.multi();
+      await txn.set(leaderboardKey, writePlan.storedValue);
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) {
+        leaderboardCommitted = true;
+        await retireRedisLargeValue(leaderboardKey, previousPointer);
+        return;
       }
-    } else board.push(next);
-    board.sort((a, b) => b.value - a.value);
-    await txn.multi();
-    await txn.set(leaderboardKey, JSON.stringify(board.slice(0, 5000)));
-    const committed = await txn.exec();
-    if (committed !== null) return;
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+      if (writePlan && !leaderboardCommitted) await discardRedisLargeValueWritePlan(writePlan);
+    }
   }
   throw new Error('Leaderboard changed while recording the result. Please retry.');
 }
-
 
 function validateDailyStreakCommunityEvent(event: DailyStreakCommunityEvent): void {
   assertSafeProgressionNumbers('Daily Streak community', event.goal, event.currentProgress, event.tier);
@@ -2936,81 +2987,76 @@ export async function achievements(s: PlayerState): Promise<Achievement[]> {
 
 export async function claimAchievement(_s: PlayerState, id: string) {
   return withPlayerMutationLockFor(user(), async () => {
-  const achievement = ACHIEVEMENTS.find(a => a.id === id);
-  if (!achievement) throw new Error('Achievement not found.');
+    const achievement = ACHIEVEMENTS.find(a => a.id === id);
+    if (!achievement) throw new Error('Achievement not found.');
 
-  const playerKey = `player:${user()}`;
-  const generationKey = `player-generation:${user()}`;
+    const userId = user();
+    const playerKey = `player:${userId}`;
+    const generationKey = `player-generation:${userId}`;
 
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const txn = await redis.watch(playerKey, generationKey);
-    const raw = await redis.get(playerKey);
-    const generationRaw = await redis.get(generationKey);
-    const state = parseStoredJson<PlayerState>(raw);
-    const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const txn = await redis.watch(playerKey, generationKey);
+      let transactionClosed = false;
+      let writePlan: Awaited<ReturnType<typeof createPlayerSaveWritePlan>> | null = null;
+      let claimCommitted = false;
+      let previousPointer: string | null = null;
+      try {
+        previousPointer = await redis.get(playerKey);
+        const raw = await readStoredPlayerSave(userId, previousPointer);
+        const generationRaw = await redis.get(generationKey);
+        const state = parseStoredJson<PlayerState>(raw);
+        const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
 
-    if (!state) {
-      await txn.unwatch();
-      throw new Error('Player state unavailable.');
+        if (!state) throw new Error('Player state unavailable.');
+        if (Math.max(0, Math.floor(Number(state.saveGeneration ?? 0))) !== generation) {
+          throw new Error('Your Infinity Orbs save was invalidated by an admin wipe. Please reload.');
+        }
+
+        state.upgrades = { ...createInitialState().upgrades, ...(state.upgrades ?? {}) };
+        state.claimedAchievements = Array.isArray(state.claimedAchievements) ? state.claimedAchievements : [];
+        if (!unlocked(achievement, state)) throw new Error('Achievement is not unlocked yet.');
+        if (state.claimedAchievements.includes(id)) throw new Error('Achievement reward already claimed.');
+        if (
+          typeof state.coins !== 'number' || !Number.isFinite(state.coins) || state.coins < 0 ||
+          (state.lifetimeCoins != null && (
+            typeof state.lifetimeCoins !== 'number' ||
+            !Number.isFinite(state.lifetimeCoins) ||
+            state.lifetimeCoins < 0
+          ))
+        ) throw new Error('Player Coin balance is invalid; no achievement reward was applied.');
+        if (!Number.isSafeInteger(achievement.rewardCoins) || achievement.rewardCoins < 0) {
+          throw new Error('Achievement Coin reward is invalid.');
+        }
+
+        const currentCoins = normalizeCoinAmount(state.coins);
+        const requestedGain = normalizeCoinAmount(achievement.rewardCoins);
+        const rewardCoins = Math.min(requestedGain, Number.MAX_VALUE - currentCoins);
+        const lifetimeCoins = normalizeCoinAmount(state.lifetimeCoins ?? currentCoins);
+        state.claimedAchievements.push(id);
+        state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
+        state.coins = addCoinAmount(currentCoins, rewardCoins);
+        state.lifetimeCoins = addCoinAmount(lifetimeCoins, rewardCoins);
+        const rewardShards = grantFreeShards(state, achievement.rewardShards ?? 0);
+
+        writePlan = await createPlayerSaveWritePlan(userId, serializePlayerStateForRedis(state));
+        await txn.multi();
+        await txn.set(playerKey, writePlan.storedValue);
+        const committed = await txn.exec();
+        transactionClosed = true;
+        if (committed !== null) {
+          claimCommitted = true;
+          await cleanupPreviousPlayerSave(userId, previousPointer);
+          return { state, rewardCoins, rewardShards };
+        }
+      } finally {
+        if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+        if (writePlan && !claimCommitted) await discardPlayerSaveWritePlan(writePlan);
+      }
     }
 
-    if (Math.max(0, Math.floor(Number(state.saveGeneration ?? 0))) !== generation) {
-      await txn.unwatch();
-      throw new Error('Your Infinity Orbs save was invalidated by an admin wipe. Please reload.');
-    }
-
-    state.upgrades = { ...createInitialState().upgrades, ...(state.upgrades ?? {}) };
-    state.claimedAchievements = Array.isArray(state.claimedAchievements) ? state.claimedAchievements : [];
-
-    if (!unlocked(achievement, state)) {
-      await txn.unwatch();
-      throw new Error('Achievement is not unlocked yet.');
-    }
-    if (state.claimedAchievements.includes(id)) {
-      await txn.unwatch();
-      throw new Error('Achievement reward already claimed.');
-    }
-
-    if (
-      typeof state.coins !== 'number' || !Number.isFinite(state.coins) || state.coins < 0 ||
-      (state.lifetimeCoins != null && (
-        typeof state.lifetimeCoins !== 'number' ||
-        !Number.isFinite(state.lifetimeCoins) ||
-        state.lifetimeCoins < 0
-      ))
-    ) {
-      await txn.unwatch();
-      throw new Error('Player Coin balance is invalid; no achievement reward was applied.');
-    }
-    if (!Number.isSafeInteger(achievement.rewardCoins) || achievement.rewardCoins < 0) {
-      await txn.unwatch();
-      throw new Error('Achievement Coin reward is invalid.');
-    }
-
-    const currentCoins = normalizeCoinAmount(state.coins);
-    const requestedGain = normalizeCoinAmount(achievement.rewardCoins);
-    const rewardCoins = Math.min(requestedGain, Number.MAX_VALUE - currentCoins);
-    const lifetimeCoins = normalizeCoinAmount(state.lifetimeCoins ?? currentCoins);
-
-    state.claimedAchievements.push(id);
-    state.stateRevision = Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0) + 1;
-    state.coins = addCoinAmount(currentCoins, rewardCoins);
-    state.lifetimeCoins = addCoinAmount(lifetimeCoins, rewardCoins);
-    const rewardShards = grantFreeShards(state, achievement.rewardShards ?? 0);
-
-    await txn.multi();
-    await txn.set(playerKey, JSON.stringify(state));
-    const committed = await txn.exec();
-    if (committed !== null) {
-      return { state, rewardCoins, rewardShards };
-    }
-  }
-
-  throw new Error('Player data changed while claiming the achievement. Please retry.');
-
-    });
-  }
-
+    throw new Error('Player data changed while claiming the achievement. Please retry.');
+  });
+}
 export function shareText(s: PlayerState, rarity: number, isInfinity = false) {
   const rarityText = isInfinity ? 'Infinity' : rarity.toLocaleString();
   return `I just found a 1/${rarityText} Orb in Infinity Orbs!\n\nPlayer: ${username()}\nRoll #${s.totalRolls.toLocaleString()} • Collection Value ${s.collectionValue.toLocaleString()}\n\nCan you beat probability?`;
