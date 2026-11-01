@@ -64,6 +64,7 @@ import {
   frenzyCooldownRemaining,
   FRENZY_PROMPT_DELAY_MS,
   FRENZY_OWNER_SHARD_REWARD,
+  CELESTIAL_ALIGNMENT_PROMPT_DURATION_MS,
   rollsPerActivation,
   upgradeCost,
   upgradeUnlockLevel,
@@ -345,6 +346,11 @@ function App() {
   const [alignmentPromptVisible, setAlignmentPromptVisible] = useState(false);
   const [alignmentChoiceBusy, setAlignmentChoiceBusy] = useState(false);
   const [alignmentChoiceError, setAlignmentChoiceError] = useState<string | null>(null);
+  const [alignmentPromptNow, setAlignmentPromptNow] = useState(Date.now());
+  const alignmentPromptRemainingSeconds = Math.max(0, Math.ceil((
+    (alignmentStatus?.pendingAt ?? 0) + CELESTIAL_ALIGNMENT_PROMPT_DURATION_MS - alignmentPromptNow
+  ) / 1_000));
+  const alignmentPromptCountdown = `${Math.floor(alignmentPromptRemainingSeconds / 60)}:${String(alignmentPromptRemainingSeconds % 60).padStart(2, '0')}`;
   const alignmentDismissedPendingAtRef = useRef(0);
   const alignmentPendingSeenRef = useRef(0);
   const [tab, setTab] = useState<ActiveTab>('roll');
@@ -1417,6 +1423,29 @@ function App() {
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [splashEntered, state?.masterySkills?.celestialAlignment, isAdmin, alignmentChoiceBusy, alignmentChoiceError]);
+
+  // The chooser gets a strict 60-second selection window. The server expires
+  // the same pending event, while this timer keeps the modal/countdown responsive.
+  useEffect(() => {
+    const pendingAt = alignmentStatus?.pendingAt ?? 0;
+    if (!alignmentPromptVisible || !alignmentStatus?.pending || pendingAt <= 0) return;
+    const tick = () => {
+      const now = Date.now();
+      setAlignmentPromptNow(now);
+      if (now >= pendingAt + CELESTIAL_ALIGNMENT_PROMPT_DURATION_MS && !alignmentChoiceBusy) {
+        alignmentDismissedPendingAtRef.current = Math.max(
+          alignmentDismissedPendingAtRef.current,
+          pendingAt,
+        );
+        alignmentPendingSeenRef.current = 0;
+        setAlignmentChoiceError(null);
+        setAlignmentPromptVisible(false);
+      }
+    };
+    tick();
+    const timer = window.setInterval(tick, 1_000);
+    return () => window.clearInterval(timer);
+  }, [alignmentPromptVisible, alignmentStatus?.pending, alignmentStatus?.pendingAt, alignmentChoiceBusy]);
 
   // Refresh live community state while visible; hidden webviews should not poll.
   useEffect(() => {
@@ -2533,9 +2562,16 @@ function App() {
       setAlignmentPromptVisible(false);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Could not activate this Alignment.';
-      setAlignmentChoiceError(message);
-      setAlignmentPromptVisible(true);
-      showToast(message, 'warn');
+      const expired = /Alignment choice window expired|no Alignment choice waiting/i.test(message);
+      if (expired) {
+        setAlignmentChoiceError(null);
+        setAlignmentPromptVisible(false);
+        alignmentPendingSeenRef.current = 0;
+      } else {
+        setAlignmentChoiceError(message);
+        setAlignmentPromptVisible(true);
+        showToast(message, 'warn');
+      }
     } finally {
       setAlignmentChoiceBusy(false);
     }
@@ -3434,10 +3470,16 @@ function App() {
           >
             <div className="text-[10px] font-black uppercase tracking-[.22em] text-cyan-300">A rare celestial event</div>
             <h2 id="celestial-alignment-title" className="mt-2 text-2xl sm:text-3xl font-black text-white">Celestial Alignment</h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400">The stars have aligned. Choose one effect. It lasts 2 hours, and every activation stacks independently with earlier activations.</p>
-            <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-cyan-400/25 bg-cyan-500/5 px-4 py-3" data-testid="celestial-alignment-duration" aria-label="Each selected effect lasts two hours and stacks independently">
-              <span className="text-[10px] font-black uppercase tracking-[.16em] text-cyan-300">Effect duration</span>
-              <strong className="font-mono text-xl tabular-nums text-white">2 hours</strong>
+            <p className="mt-2 text-sm leading-relaxed text-slate-400">The stars have aligned. Choose one effect before the selection window closes. It lasts 2 hours, and every activation stacks independently with earlier activations.</p>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-cyan-400/25 bg-cyan-500/5 px-4 py-3" data-testid="celestial-alignment-duration" aria-label="Each selected effect lasts two hours and stacks independently">
+                <span className="text-[10px] font-black uppercase tracking-[.16em] text-cyan-300">Effect duration</span>
+                <strong className="font-mono text-xl tabular-nums text-white">2 hours</strong>
+              </div>
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-400/25 bg-amber-500/5 px-4 py-3" data-testid="celestial-alignment-prompt-countdown" aria-label={`Choose within ${alignmentPromptCountdown}`}>
+                <span className="text-[10px] font-black uppercase tracking-[.16em] text-amber-300">Choose within</span>
+                <strong className="font-mono text-xl tabular-nums text-white">{alignmentPromptCountdown}</strong>
+              </div>
             </div>
             {alignmentChoiceError && <p className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs leading-relaxed text-rose-200" role="alert">Your choice was not saved: {alignmentChoiceError}</p>}
             {alignmentChoiceBusy && (
