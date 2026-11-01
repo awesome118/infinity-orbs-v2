@@ -103,6 +103,7 @@ jobs:
           node --import tsx --test tests/guild-member-recovery.test.ts
           # Cover Guild combo timer persistence and weighted rare-Orb task progress.
           node --import tsx --test tests/guild-combo-progress.test.ts
+          # Guard legacy Guild combo timer normalization and existing Guild loading behavior.
           node --import tsx --test tests/cooldown-time-energy.test.ts tests/guild-loading-regression.test.ts
           node --import tsx --test --test-name-pattern="Guild task set starts with one task of each type|Guild task difficulty and rewards scale upward by tier|Guild task difficulty is driven by tier alone and does not carry Guild XP|Guild task rewards remain capped|Guild tasks retain token rewards but do not model Titan or Guild XP rewards" tests/mechanics.test.ts
           node --import tsx --test --test-name-pattern="Guild parser preserves task/member data while removing legacy levels, XP, Titan, and tax|roll rewards commit atomically with Guild and community progress|corrupt optional Guild roll projections do not cancel normal or Frenzy player payouts|legacy Guild contribution advances each task once and rewards Tokens without XP or Titan" tests/audit-regressions.test.ts
