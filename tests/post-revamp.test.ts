@@ -197,13 +197,15 @@ test('inline Frenzy claim activity stays compact inside the fixed, non-scrollabl
 });
 
 
-test('inline main-game Reddit post fits inside the fixed preview without clipping its contents', () => {
+test('inline main-game Reddit post fills the preview height and anchors the card footer at the bottom', () => {
   const styles = source('src/client/post-revamp.css');
-  assert.match(styles, /#root\.io-inline-post > \.io-public:not\(\.io-public-compact\)/);
-  assert.match(styles, /#root\.io-inline-post \.io-launch-card/);
-  assert.match(styles, /#root\.io-inline-post \.io-launch-orb-stage/);
-  assert.match(styles, /#root\.io-inline-post \.io-launch-steps/);
-  assert.match(styles, /@media \(max-height:\s*640px\)/);
-  assert.match(styles, /height:\s*100% !important/);
-  assert.match(styles, /min-height:\s*0 !important/);
+  assert.match(styles, /#root\\.io-inline-post > \.io-public:not\\(\.io-public-compact\\)/);
+  assert.match(styles, /#root\\.io-inline-post \.io-public-frame\\s*\\{[^}]*display:\\s*flex[^}]*flex-direction:\\s*column[^}]*height:\\s*100%/s);
+  assert.match(styles, /#root\\.io-inline-post \.io-launch-card\\s*\\{[^}]*flex:\\s*1 1 auto[^}]*display:\\s*flex[^}]*flex-direction:\\s*column/s);
+  assert.match(styles, /#root\\.io-inline-post \.io-launch-orb-stage/);
+  assert.match(styles, /#root\\.io-inline-post \.io-launch-steps/);
+  assert.match(styles, /#root\\.io-inline-post \.io-launch-footer\\s*\\{[^}]*margin-top:\\s*auto/);
+  assert.match(styles, /@media \\(max-height:\\s*640px\\)/);
+  assert.match(styles, /height:\\s*100% !important/);
+  assert.match(styles, /min-height:\\s*0 !important/);
 });
