@@ -41,6 +41,13 @@ import {
   forceCelestialAlignmentPromptForCurrentUser,
 } from './game.js';
 import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
+import {
+  cleanupPreviousPlayerSave,
+  createPlayerSaveWritePlan,
+  discardPlayerSaveWritePlan,
+  readStoredPlayerSave,
+  serializePlayerStateForRedis,
+} from './player-save.js';
 import { adminCombatLabAction, getCombatSnapshot, getCombatSnapshotForUser, performCombatBeat } from './combat.js';
 import { COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatBossLuckBonus, combatGearRarityOdds, combatGearStatBudgetMultiplier, combatOrbDamageMultiplier, combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityStrengthPct, combatRuneScaledValue, combatStatsFor, combatTotalBossesBeaten, getEnemyForDungeonDepth, type CombatRuneBonuses, type CombatState } from '../shared/combat.js';
 import { context, redis, reddit } from './devvit-mock.js';
@@ -653,7 +660,8 @@ async function grantGlobalBoosterCreditsToUser(
       const txn = await redis.watch(playerKey, generationKey, receiptKey);
       const generationRaw = await redis.get(generationKey);
       const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
-      const raw = await redis.get(playerKey);
+      const storedRaw = await redis.get(playerKey);
+      const raw = await readStoredPlayerSave(id, storedRaw);
       const rawReceipt = await redis.get(receiptKey);
 
       if (rawReceipt != null) {
@@ -731,11 +739,26 @@ async function grantGlobalBoosterCreditsToUser(
       state.stateRevision = currentRevision + 1;
 
       const receipt = JSON.stringify({ amount: safeAmount, before, after, createdAt: Date.now() });
-      await txn.multi();
-      await txn.set(playerKey, JSON.stringify(state));
-      await txn.set(receiptKey, receipt);
-      if (await txn.exec() !== null) {
-        return { userId: id, username: safeUsername, before, after };
+      let writePlan: Awaited<ReturnType<typeof createPlayerSaveWritePlan>> | null = null;
+      let writeCommitted = false;
+      try {
+        writePlan = await createPlayerSaveWritePlan(
+          id,
+          serializePlayerStateForRedis(state as unknown as PlayerState),
+        );
+        await txn.multi();
+        await txn.set(playerKey, writePlan.storedValue);
+        await txn.set(receiptKey, receipt);
+        if (await txn.exec() !== null) {
+          writeCommitted = true;
+          await cleanupPreviousPlayerSave(id, storedRaw);
+          return { userId: id, username: safeUsername, before, after };
+        }
+      } finally {
+        if (!writeCommitted) {
+          await txn.unwatch().catch(() => undefined);
+          if (writePlan) await discardPlayerSaveWritePlan(writePlan);
+        }
       }
     }
 
