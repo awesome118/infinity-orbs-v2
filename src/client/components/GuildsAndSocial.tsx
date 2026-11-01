@@ -950,7 +950,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                         <div>
                           <h4 className="text-sm font-bold text-white">{g.name}</h4>
                           <span className="text-xs text-slate-400">
-                            Lv {g.level} • {g.members.length}/{10 + Math.min(40, g.perks?.memberCapacityRank ?? 0)} Members
+                            {g.members.length}/{10 + Math.min(40, g.perks?.memberCapacityRank ?? 0)} Members
                           </span>
                         </div>
                       </div>
