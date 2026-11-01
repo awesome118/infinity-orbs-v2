@@ -45,7 +45,8 @@ test('legacy Guild contribution writer cannot create unsafe member counters', ()
   assert.match(body, /const safeValue = capSafeGuildCounter\(value\)/);
   assert.match(body, /member\.contribution = capSafeGuildCounter\(member\.contribution \+ safeValue\)/);
   assert.doesNotMatch(body, /member\.contribution \+= value/);
-  assert.match(body, /guild\.boss\.contributors\[username\(\)\] = capSafeGuildCounter/);
+  assert.match(body, /guild\.tokens = capSafeGuildCounter\(\(guild\.tokens \?\? 0\) \+ reward\)/);
+  assert.doesNotMatch(body, /guild\.boss|guildXpReward|guildXpRank|guild\.level|guild\.xp|taxRate/);
 });
 
 
