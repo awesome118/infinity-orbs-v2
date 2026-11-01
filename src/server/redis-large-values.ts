@@ -229,11 +229,15 @@ export async function retireRedisLargeValue(
 export async function discardRedisLargeValueWritePlan(
   plan: RedisLargeValueWritePlan,
 ): Promise<void> {
-  for (let offset = 0; offset < plan.chunkKeys.length; offset += 32) {
-    try {
-      await redis.del(...plan.chunkKeys.slice(offset, offset + 32));
-    } catch (error) {
-      console.warn('[Redis Large Value] Uncommitted chunks could not be removed:', error);
-    }
+  for (let offset = 0; offset < plan.chunkKeys.length; offset += 8) {
+    await Promise.all(
+      plan.chunkKeys.slice(offset, offset + 8).map(async key => {
+        try {
+          await redis.del(key);
+        } catch (error) {
+          console.warn('[Redis Large Value] Uncommitted chunk could not be removed:', key, error);
+        }
+      }),
+    );
   }
 }
