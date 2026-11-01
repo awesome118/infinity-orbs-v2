@@ -182,6 +182,8 @@ export const CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS =
 export const CELESTIAL_ALIGNMENT_LEGACY_DURATION_MS = 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_DURATION_MS = 2 * 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS = 60 * 1_000;
+/** Save migration marker for the current 90–180 minute event cadence. */
+export const CELESTIAL_ALIGNMENT_SCHEDULE_VERSION = 2;
 export type CelestialAlignmentChoice = 'starseeker' | 'goldenOrbit' | 'clockwork';
 export interface CelestialAlignmentInstance { id: string; choice: CelestialAlignmentChoice; activatedAt: number; expiresAt: number; }
 const CELESTIAL_ALIGNMENT_CHOICES: readonly CelestialAlignmentChoice[] = ['starseeker', 'goldenOrbit', 'clockwork'];
@@ -1144,6 +1146,8 @@ export interface PlayerState {
   timeEnergy?: number;
   /** Next independent random Alignment event timestamp. */
   alignmentNextAt?: number;
+  /** Migration marker for the current Alignment event cadence. */
+  alignmentScheduleVersion?: number;
   /** Timestamp of an unclaimed Alignment prompt; zero means none is pending. */
   alignmentPendingAt?: number;
   /** True only for a prompt explicitly queued by the admin test console. */
@@ -1979,6 +1983,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     lastRollAt: null,
     timeEnergy: 0,
     alignmentNextAt: 0,
+    alignmentScheduleVersion: CELESTIAL_ALIGNMENT_SCHEDULE_VERSION,
     alignmentPendingAt: 0,
     alignmentPendingForced: false,
     alignmentActiveInstances: [],
