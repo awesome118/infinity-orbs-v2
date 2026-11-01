@@ -266,9 +266,15 @@ export function combatRuneEffectText(rune: Pick<CombatRune, 'stat' | 'value' | '
  * Trigger-style Major Abilities use a slower logarithmic curve so leveling makes
  * their mechanics stronger without turning a proc chance into an automatic proc.
  */
-export function combatRuneMajorAbilityStrengthPct(ability:Pick<CombatRuneMajorAbility,'id'|'valuePct'>,levelValue:unknown):number {
+export function combatRuneMajorAbilityStrengthPct(
+  ability:Pick<CombatRuneMajorAbility,'id'|'valuePct'>,
+  levelValue:unknown,
+  rarity:CombatRuneRarity,
+):number {
   const raw=Number(ability.valuePct);
-  const value=Number.isFinite(raw)?Math.max(0,raw):0;
+  // Rarity scales the starting Major Ability power before Rune-level progression.
+  // This also upgrades already-saved Runes without rewriting their stored ability data.
+  const value=Number.isFinite(raw)?Math.max(0,raw)*combatRuneMajorAbilityMultiplier(rarity):0;
   const level=Number.isFinite(Number(levelValue))?Math.max(1,Math.floor(Number(levelValue))):1;
   if(ability.id==='fateweaver'||ability.id==='midas-engine'||ability.id==='memory-well'){
     const scaled=value*combatRuneLevelMultiplier(level);
@@ -281,9 +287,9 @@ function runeMajorBonusRollCount(strengthPct:number,level:number):number {
   return Math.min(10,Math.max(1,1+Math.floor(strengthPct/20)+Math.floor(Math.log2(level)/6)));
 }
 /** Render the actual proc mechanic in a Rune tooltip instead of a generic percentage. */
-export function combatRuneMajorAbilitySummary(ability:CombatRuneMajorAbility,levelValue:unknown):string {
+export function combatRuneMajorAbilitySummary(ability:CombatRuneMajorAbility,levelValue:unknown,rarity:CombatRuneRarity):string {
   const level=Number.isFinite(Number(levelValue))?Math.max(1,Math.floor(Number(levelValue))):1;
-  const power=combatRuneMajorAbilityStrengthPct(ability,level);
+  const power=combatRuneMajorAbilityStrengthPct(ability,level,rarity);
   const pct=(value:number)=>String(Math.round(value*10)/10)+'%';
   const rolls=runeMajorBonusRollCount(power,level);
   switch(ability.id){
@@ -326,11 +332,12 @@ export function combatRuneMajorAbilityEffects(runesValue:unknown,equippedValue:u
   for(const raw of runesValue){
     if(!raw||typeof raw!=='object'||Array.isArray(raw))continue;
     const rune=raw as Partial<CombatRune>;
-    if(typeof rune.id!=='string'||!equipped.has(rune.id)||!rune.majorAbility||typeof rune.majorAbility!=='object')continue;
+    if(typeof rune.id!=='string'||!equipped.has(rune.id)||!rune.majorAbility||typeof rune.majorAbility!=='object'||
+       !rune.rarity||!COMBAT_RUNE_RARITIES.includes(rune.rarity))continue;
     const ability=rune.majorAbility;
     if(!ability.id||!Number.isFinite(Number(ability.valuePct))||Number(ability.valuePct)<=0)continue;
     const level=Number.isFinite(Number(rune.level))?Math.max(1,Math.floor(Number(rune.level))):1;
-    const power=combatRuneMajorAbilityStrengthPct(ability,level);
+    const power=combatRuneMajorAbilityStrengthPct(ability,level,rune.rarity);
     switch(ability.id){
       case 'echo-chamber':
         effects.echoChamberPct=add(effects.echoChamberPct,power);
@@ -406,9 +413,10 @@ export function combatRuneBonuses(runesValue: unknown, equippedValue: unknown): 
     if (value <= 0) continue;
     bonuses[rune.stat] = safeAdd(bonuses[rune.stat], rune.stat === 'shardChancePct' ? Math.min(100, value) : value);
     const ability = rune.majorAbility;
-    if (ability && Number.isFinite(Number(ability.valuePct)) && Number(ability.valuePct) > 0 &&
+    if (ability && rune.rarity && COMBAT_RUNE_RARITIES.includes(rune.rarity) &&
+        Number.isFinite(Number(ability.valuePct)) && Number(ability.valuePct) > 0 &&
         (ability.id === 'fateweaver' || ability.id === 'midas-engine' || ability.id === 'memory-well')) {
-      const abilityValue = combatRuneMajorAbilityStrengthPct(ability, rune.level);
+      const abilityValue = combatRuneMajorAbilityStrengthPct(ability, rune.level, rune.rarity);
       if (ability.id === 'fateweaver') bonuses.luckPct = safeAdd(bonuses.luckPct, abilityValue);
       else if (ability.id === 'midas-engine') bonuses.coinGainPct = safeAdd(bonuses.coinGainPct, abilityValue);
       else if (ability.id === 'memory-well') bonuses.xpGainPct = safeAdd(bonuses.xpGainPct, abilityValue);
