@@ -2007,7 +2007,7 @@ function App() {
       alignmentActiveUntil: activeUntil,
     };
     setReadyAt(lastRollAt + cooldownMs(timingState, true));
-  }, [state, alignmentStatus]);
+  }, [state, alignmentStatus?.activeChoice, alignmentStatus?.activeUntil]);
 
   // Auto roll watcher (paced steadily)
   useEffect(() => {
