@@ -1319,6 +1319,7 @@ const FRENZY_CLAIM_PROGRESS_PREFIX = 'io:frenzy:claim-progress:';
 const FRENZY_CLAIM_PROGRESS_TTL_MS = 3 * 60_000;
 const FRENZY_THANK_YOU_PREFIX = 'io:frenzy:thank-you:';
 const FRENZY_CLAIMERS_PREFIX = 'io:frenzy:claimers:v1:';
+const FRENZY_CLAIMER_PROJECTION_RECEIPT_PREFIX = 'io:frenzy:claimer-projection-receipt:v1:';
 
 function frenzyClaimersKey(postId: string): string {
   return FRENZY_CLAIMERS_PREFIX + encodeURIComponent(postId);
@@ -1348,6 +1349,77 @@ function parseFrenzyClaimersRecord(raw: string | null): FrenzyClaimersRecord {
   } catch {
     return { count: 0, players: [] };
   }
+}
+
+function frenzyClaimerProjectionReceiptKey(postId: string, userId: string): string {
+  return FRENZY_CLAIMER_PROJECTION_RECEIPT_PREFIX +
+    encodeURIComponent(postId) + ':' + encodeURIComponent(userId);
+}
+
+/**
+ * Claim activity is a display projection, not part of reward settlement.
+ * Update it after the durable player receipt/rewards commit, retrying concurrent
+ * claimers with WATCH/EXEC. A per-claim projection receipt prevents double counts.
+ */
+async function recordFrenzyClaimer(
+  postId: string,
+  userId: string,
+  username: string,
+  claimedAt: number,
+  expiresAt: Date,
+): Promise<void> {
+  const claimersKey = frenzyClaimersKey(postId);
+  const projectionReceiptKey = frenzyClaimerProjectionReceiptKey(postId, userId);
+  const maxAttempts = 24;
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    let txn: Awaited<ReturnType<typeof redis.watch>> | null = null;
+    let transactionClosed = false;
+    try {
+      txn = await redis.watch(claimersKey, projectionReceiptKey);
+      const [previousRaw, projectionReceipt] = await Promise.all([
+        redis.get(claimersKey),
+        redis.get(projectionReceiptKey),
+      ]);
+      if (projectionReceipt != null) {
+        await txn.unwatch();
+        transactionClosed = true;
+        return;
+      }
+
+      const previous = parseFrenzyClaimersRecord(previousRaw);
+      const next: FrenzyClaimersRecord = {
+        count: previous.count + 1,
+        players: [
+          { userId, username, claimedAt },
+          ...previous.players.filter(player => player.userId !== userId),
+        ].slice(0, 5),
+      };
+
+      await txn.multi();
+      await txn.set(claimersKey, JSON.stringify(next), { expiration: expiresAt });
+      await txn.set(projectionReceiptKey, '1', { expiration: expiresAt });
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) return;
+    } catch (error) {
+      lastError = error;
+    } finally {
+      if (txn && !transactionClosed) {
+        await txn.unwatch().catch(() => undefined);
+      }
+    }
+
+    if (attempt < maxAttempts - 1) {
+      await new Promise(resolve => setTimeout(resolve, Math.min(10 * (attempt + 1), 100)));
+    }
+  }
+
+  console.warn(
+    '[Frenzy Claim] Reward was saved, but the live claim activity projection could not be updated.',
+    lastError,
+  );
 }
 
 function frenzyHandoffKey(userId: string): string {
@@ -7501,20 +7573,24 @@ export async function claimOrbFrenzy(options: {
   // Write a distinct idempotency receipt for this claimant. The post itself remains
   // unchanged, so any number of other players can claim it while each player can
   // only claim it once. WATCH/EXEC verifies the post didn't change during rewards.
-  const claimersKey = frenzyClaimersKey(postId);
-  const previousClaimersRaw = await redis.get(claimersKey);
-  const previousClaimers = parseFrenzyClaimersRecord(previousClaimersRaw);
   const claimantUsername = String(context.username ?? s.username ?? 'Redditor')
     .trim()
     .replace(/^u\//i, '')
     .slice(0, 32) || 'Redditor';
-  const nextClaimers: FrenzyClaimersRecord = {
-    count: previousClaimers.count + 1,
-    players: [
-      { userId: claimantId, username: claimantUsername, claimedAt: now },
-      ...previousClaimers.players.filter(player => player.userId !== claimantId),
-    ].slice(0, 5),
-  };
+  const claimProjectionExpiresAt = new Date(
+    frenzyPostExpiresAt(createdAt) + FRENZY_POST_RECEIPT_RETENTION_MS,
+  );
+  // This runs only after the atomic claimant receipt, reward, and owner reward save.
+  // Claim activity can lag briefly, but it can never invalidate a successful claim.
+  stageSavePostCommitAction(s, async () => {
+    await recordFrenzyClaimer(
+      postId,
+      claimantId,
+      claimantUsername,
+      now,
+      claimProjectionExpiresAt,
+    );
+  });
 
   await save(s, [
     {
@@ -7530,13 +7606,6 @@ export async function claimOrbFrenzy(options: {
       nextValue: raw,
       expiration: new Date(frenzyPostExpiresAt(createdAt) + FRENZY_POST_RECEIPT_RETENTION_MS),
       conflictMessage: 'This Frenzy changed before your claim could be committed.',
-    },
-    {
-      key: claimersKey,
-      expectedValue: previousClaimersRaw,
-      nextValue: JSON.stringify(nextClaimers),
-      expiration: new Date(frenzyPostExpiresAt(createdAt) + FRENZY_POST_RECEIPT_RETENTION_MS),
-      conflictMessage: 'Frenzy claim activity changed. Please retry.',
     },
     ...ownerRewardWrites,
   ]);
