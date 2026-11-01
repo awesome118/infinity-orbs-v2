@@ -4,6 +4,12 @@ import {
   claimOrbFrenzy,
   loadRaw,
   save,
+  createPlayerSaveWritePlan,
+  serializePlayerStateForRedis,
+  readStoredPlayerSave,
+  cleanupPreviousPlayerSave,
+  discardPlayerSaveWritePlan,
+  type PlayerSaveWritePlan,
   listPlayers,
   startOrbFrenzy,
   getGameBanStatus,
@@ -653,7 +659,8 @@ async function grantGlobalBoosterCreditsToUser(
       const txn = await redis.watch(playerKey, generationKey, receiptKey);
       const generationRaw = await redis.get(generationKey);
       const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
-      const raw = await redis.get(playerKey);
+      const storedRaw = await redis.get(playerKey);
+      const raw = await readStoredPlayerSave(id, storedRaw);
       const rawReceipt = await redis.get(receiptKey);
 
       if (rawReceipt != null) {
@@ -731,11 +738,27 @@ async function grantGlobalBoosterCreditsToUser(
       state.stateRevision = currentRevision + 1;
 
       const receipt = JSON.stringify({ amount: safeAmount, before, after, createdAt: Date.now() });
-      await txn.multi();
-      await txn.set(playerKey, JSON.stringify(state));
-      await txn.set(receiptKey, receipt);
-      if (await txn.exec() !== null) {
-        return { userId: id, username: safeUsername, before, after };
+      let writePlan: PlayerSaveWritePlan | null = null;
+      let transactionClosed = false;
+      let saveCommitted = false;
+      try {
+        writePlan = await createPlayerSaveWritePlan(
+          id,
+          serializePlayerStateForRedis(state as PlayerState),
+        );
+        await txn.multi();
+        await txn.set(playerKey, writePlan.storedValue);
+        await txn.set(receiptKey, receipt);
+        const committed = await txn.exec();
+        transactionClosed = true;
+        if (committed !== null) {
+          saveCommitted = true;
+          await cleanupPreviousPlayerSave(id, storedRaw);
+          return { userId: id, username: safeUsername, before, after };
+        }
+      } finally {
+        if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+        if (writePlan && !saveCommitted) await discardPlayerSaveWritePlan(writePlan);
       }
     }
 
