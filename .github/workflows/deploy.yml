@@ -202,3 +202,5 @@ jobs:
 # 2026-10-31: use a literal source-window check for effective roll caps.
 
 # Payment/refund paths retain the compact sharded Codex save format.
+
+# Explicit user request 2026-11-01: deploy v2.1.38 Celestial Alignment fix to r/infinity_orbs_dev only.
