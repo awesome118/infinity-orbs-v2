@@ -10,6 +10,11 @@ import {
   serializePlayerStateForRedis,
 } from './player-save.js';
 import { createRedisLargeValueWritePlan, readRedisLargeValue, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
+import {
+  serializeBoundedLeaderboard,
+  serializeBoundedLeaderboardBoards,
+  serializeBoundedRecentArray,
+} from './redis-bounds.js';
 import type {
   Guild,
   LeaderboardEntry,
@@ -2215,7 +2220,7 @@ export async function recordGlobalChatComment(input: {
       messages.push(message);
       messages.sort((a, b) => a.timestamp - b.timestamp);
       await txn.multi();
-      await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(messages.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
+      await txn.set(GLOBAL_CHAT_KEY, serializeBoundedRecentArray(messages.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
       const committed = await txn.exec();
       closed = true;
       if (committed !== null) return message;
@@ -2251,7 +2256,7 @@ async function purgeChatMessagesForUser(userId: string, targetUsername: string):
     });
 
     await txn.multi();
-    await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(retained.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
+    await txn.set(GLOBAL_CHAT_KEY, serializeBoundedRecentArray(retained.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
     const committed = await txn.exec();
     if (committed !== null) return;
   }
@@ -2578,7 +2583,7 @@ export async function leaderboards(options: { fresh?: boolean } = {}): Promise<L
   leaderboardSnapshotInFlight = snapshotRequest;
   try {
     const boards = await snapshotRequest;
-    await redis.set(LEADERBOARDS_CACHE_KEY, JSON.stringify(boards), {
+    await redis.set(LEADERBOARDS_CACHE_KEY, serializeBoundedLeaderboardBoards(boards as unknown as Record<string, unknown>), {
       expiration: new Date(Date.now() + LEADERBOARDS_CACHE_TTL_MS),
     }).catch(error => {
       console.error('[Leaderboard] Could not cache the current snapshot:', error);
@@ -2775,7 +2780,7 @@ export async function recordLeaderboard(s: PlayerState) {
     } else board.push(next);
     board.sort((a, b) => b.value - a.value);
     await txn.multi();
-    await txn.set(leaderboardKey, JSON.stringify(board.slice(0, 5000)));
+    await txn.set(leaderboardKey, serializeBoundedLeaderboard(board.slice(0, 5000)));
     const committed = await txn.exec();
     if (committed !== null) return;
   }
