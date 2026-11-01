@@ -161,6 +161,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const prevOrbRef = useRef<Orb | null>(null);
   const lastFanfareTimeRef = useRef<number>(0);
   const bestRarityForSoundRef = useRef<number>(Math.max(2, Number(state.highestRarity) || 2));
+  const bestWasInfinityRef = useRef(state.highestRarityIsInfinity === true);
   const [alignmentSoundEnabled, setAlignmentSoundEnabled] = useState(() => sound.alignmentSoundEnabled);
 
   const hasSonarUpgrade = (state.prestigeUpgrades?.sonarPing ?? 0) > 0;
@@ -303,10 +304,10 @@ export const RollSection: React.FC<RollSectionProps> = ({
     const isSilentSonar = hasSonarUpgrade && sound.sonarMode;
     const bestBefore = bestRarityForSoundRef.current;
     const isNewBest = lastOrb.isInfinity === true
-      ? state.highestRarityIsInfinity !== true
-      : lastOrb.rarity > bestBefore;
-    const nearBestOrb = !isNewBest && hasSonarUpgrade
-      ? lastBatch.find(orb => Math.abs(orb.rarity - (bestBefore - 1)) <= Math.max(1e-9, Math.abs(bestBefore) * 1e-12))
+      ? !bestWasInfinityRef.current
+      : !bestWasInfinityRef.current && lastOrb.rarity > bestBefore;
+    const nearBestOrb = !isNewBest && !bestWasInfinityRef.current && hasSonarUpgrade && Number.isSafeInteger(bestBefore)
+      ? lastBatch.find(orb => orb.rarity === bestBefore - 1)
       : undefined;
     let sonarTimer: number | null = null;
 
@@ -351,6 +352,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       Number(state.highestRarity ?? 0) || 0,
       lastOrb.rarity,
     );
+    if (lastOrb.isInfinity === true) bestWasInfinityRef.current = true;
 
     return () => {
       if (revealTimer !== null) window.clearTimeout(revealTimer);
@@ -364,7 +366,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
       bestRarityForSoundRef.current,
       Number(state.highestRarity ?? 0) || 0,
     );
-  }, [state.highestRarity]);
+    bestWasInfinityRef.current = state.highestRarityIsInfinity === true;
+  }, [state.highestRarity, state.highestRarityIsInfinity]);
 
   const displayOrb = lastOrb;
   const orbInfo = displayOrb ? getOrbInfo(displayOrb.rarity, displayOrb.isInfinity) : null;
