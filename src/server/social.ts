@@ -257,11 +257,13 @@ function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index
     } else {
       guild.combo.tier = clampInteger(guild.combo.tier, 0, GUILD_COMBO_MAX_TIER, 0);
       guild.combo.activationProgress = clampInteger(guild.combo.activationProgress, 0, 3, 0);
-      guild.combo.endsAt = clampInteger(guild.combo.endsAt, 0, Number.MAX_SAFE_INTEGER, 0);
-      guild.combo.lastTickAt = clampInteger(guild.combo.lastTickAt, 0, Number.MAX_SAFE_INTEGER, 0);
+      const comboEndsAt = clampInteger(guild.combo.endsAt, 0, Number.MAX_SAFE_INTEGER, 0);
+      const comboLastTickAt = clampInteger(guild.combo.lastTickAt, 0, Number.MAX_SAFE_INTEGER, 0);
+      guild.combo.endsAt = comboEndsAt;
+      guild.combo.lastTickAt = comboLastTickAt;
       const legacyDuration = Math.max(
         0,
-        guild.combo.endsAt - (guild.combo.lastTickAt > 0 ? guild.combo.lastTickAt : Date.now()),
+        comboEndsAt - (comboLastTickAt > 0 ? comboLastTickAt : Date.now()),
       );
       guild.combo.totalDurationMs = clampInteger(
         guild.combo.totalDurationMs,
