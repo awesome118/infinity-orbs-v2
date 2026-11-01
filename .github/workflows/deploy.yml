@@ -259,3 +259,5 @@ jobs:
 # Explicitly requested bottom-flush main game inline post edge fix v2.1.62.
 
 # Regression test source binding fix for bottom-flush main post v2.1.62.
+
+# Explicit dev-only rerun after admin Rune stat inspection receives the Rune rarity for Major Ability scaling; 2.1.62 on 2026-11-01.
