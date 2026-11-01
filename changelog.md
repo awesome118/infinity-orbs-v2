@@ -1,5 +1,12 @@
 # Infinity Orbs Changelog
 
+### Alignment Window, Queue Admission, and Redis Save Safety (2.1.50)
+
+- Space Celestial Alignment events 90–150 minutes apart to reduce repeated interruptions. The chooser counts down from 60 seconds and closes automatically at zero; expired prompts are also cleared server-side.
+- Keep each chosen Alignment active for 60 minutes. Every activation remains an independent stack with its own expiry, and each instance is listed in the Boosters menu.
+- Return a structured `PLAYER_MUTATION_QUEUED` response when a player-action lock cannot be acquired before timeout. Clients retry only this pre-handler response, never an action that may already have committed.
+- Preserve oversized-player-save protection with 64 KiB Redis chunks, an integrity-checked manifest swap, and bounded diagnostic records.
+
 ### Oversized Save Protection, Queued Mutations, and Stacked Celestial Alignments (2.1.49)
 
 - Split oversized player saves into immutable 64 KiB Redis chunks and atomically switch a compact, checksummed manifest only after all chunks are written. Legacy saves remain readable and migrate on their next save.
