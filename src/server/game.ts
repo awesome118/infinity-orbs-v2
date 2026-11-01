@@ -36,6 +36,7 @@ import {
   CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS,
   CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS,
   CELESTIAL_ALIGNMENT_DURATION_MS,
+  CELESTIAL_ALIGNMENT_PROMPT_DURATION_MS,
   type CelestialAlignmentChoice,
   type CelestialAlignmentInstance,
   normalizeCelestialAlignmentInstances,
@@ -6877,19 +6878,30 @@ export async function getCelestialAlignmentStatus(): Promise<{
   return withPlayerMutationLock(async () => {
     const s = await loadRaw();
     const hasMastery = (s.masterySkills?.celestialAlignment ?? 0) > 0;
-    const forcedPending = s.alignmentPendingForced === true && (s.alignmentPendingAt ?? 0) > 0;
     const now = Date.now();
     const activeInstances = activeCelestialAlignmentInstances(s.alignmentActiveInstances, now);
     let changed = activeInstances.length !== (s.alignmentActiveInstances ?? []).length;
     if (changed) s.alignmentActiveInstances = activeInstances;
     const latest = activeInstances[activeInstances.length - 1] ?? null;
 
+    if (s.alignmentActiveChoice !== (latest?.choice ?? null) || s.alignmentActiveUntil !== (latest?.expiresAt ?? 0)) {
+      s.alignmentActiveChoice = latest?.choice ?? null;
+      s.alignmentActiveUntil = latest?.expiresAt ?? 0;
+      changed = true;
+    }
+
+    const pendingAt = Number(s.alignmentPendingAt ?? 0);
+    if (pendingAt > 0 && now - pendingAt >= CELESTIAL_ALIGNMENT_PROMPT_DURATION_MS) {
+      // Expire the opportunity on the server as well as in the client UI so
+      // a dismissed prompt cannot reappear on the next five-second poll.
+      s.alignmentPendingAt = 0;
+      s.alignmentPendingForced = false;
+      s.alignmentNextAt = hasMastery ? nextCelestialAlignmentAt(now) : 0;
+      changed = true;
+    }
+    const forcedPending = s.alignmentPendingForced === true && (s.alignmentPendingAt ?? 0) > 0;
+
     if (!hasMastery && !forcedPending) {
-      if (s.alignmentActiveChoice !== (latest?.choice ?? null) || s.alignmentActiveUntil !== (latest?.expiresAt ?? 0)) {
-        s.alignmentActiveChoice = latest?.choice ?? null;
-        s.alignmentActiveUntil = latest?.expiresAt ?? 0;
-        changed = true;
-      }
       if (changed) await save(s);
       return {
         unlocked: false, pending: false, pendingAt: 0,
@@ -6898,11 +6910,6 @@ export async function getCelestialAlignmentStatus(): Promise<{
       };
     }
 
-    if (s.alignmentActiveChoice !== (latest?.choice ?? null) || s.alignmentActiveUntil !== (latest?.expiresAt ?? 0)) {
-      s.alignmentActiveChoice = latest?.choice ?? null;
-      s.alignmentActiveUntil = latest?.expiresAt ?? 0;
-      changed = true;
-    }
     if (!(s.alignmentPendingAt ?? 0) && !(s.alignmentNextAt ?? 0)) {
       s.alignmentNextAt = nextCelestialAlignmentAt(now);
       changed = true;
@@ -6941,6 +6948,13 @@ export async function chooseCelestialAlignment(
     const pendingAt = Number(s.alignmentPendingAt ?? 0);
     if (!(pendingAt > 0)) throw new Error('There is no Alignment choice waiting.');
     const now = Date.now();
+    if (now - pendingAt >= CELESTIAL_ALIGNMENT_PROMPT_DURATION_MS) {
+      s.alignmentPendingAt = 0;
+      s.alignmentPendingForced = false;
+      s.alignmentNextAt = hasMastery ? nextCelestialAlignmentAt(now) : 0;
+      await save(s);
+      throw new Error('The Alignment choice window expired. Wait for the next event.');
+    }
 
     const activeInstances = activeCelestialAlignmentInstances(s.alignmentActiveInstances, now);
     const instance: CelestialAlignmentInstance = {
