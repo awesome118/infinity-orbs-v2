@@ -45,5 +45,5 @@ test('roll ticket preview simulation runs outside the player mutation lock', () 
   const previewStart = ticketHandler.indexOf('await createRollTicketPreviews');
   assert.ok(lockCallbackEnd >= 0 && previewStart > lockCallbackEnd,
     'preview simulation must run after the player mutation lock is released');
-  assert.match(ticketHandler, /catch \(error\) \{\\s*console\\.error\(\['Roll Ticket'\]/);
+  assert.match(ticketHandler, /catch \(error\) \{\s*console\.error\(\['Roll Ticket'\]/);
 });
