@@ -204,7 +204,9 @@ export function createPlayerMutationLockRuntime(
         await new Promise(resolve => setTimeout(resolve, retryDelayMs));
       }
 
-      throw new Error('Player state is busy. Please retry.');
+      // This timeout happens before the protected callback starts, so replay is safe.
+      // Use the same coded admission response as the HTTP mutation queue.
+      throw new Error('PLAYER_MUTATION_QUEUED');
     } finally {
       release();
 
