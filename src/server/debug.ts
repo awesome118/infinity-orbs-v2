@@ -2405,20 +2405,22 @@ debugRouter.post('/preset', async (req, res) => {
 
 debugRouter.post('/reset-cooldown', async (_req, res) => {
   try {
-    await withPlayerMutationLock(async () => {
+    // Commit the reset and invalidate the old ticket under one player lock.
+    // Issue the replacement ticket after releasing it: getRollTicket() takes
+    // the same lock internally, so calling it from inside this callback would
+    // deadlock the player's mutation queue.
+    const state = await withPlayerMutationLock(async () => {
       const s = await loadRaw();
       s.lastRollAt = 0;
-      // Persist the cleared cooldown before invalidating the old ticket. The
-      // returned ticket is issued only after that reset commits, so the admin
-      // runner can use one response rather than racing two HTTP requests.
       await save(s);
 
       const userId = String(context.userId ?? '').trim();
       if (userId) await redis.del('io:roll-ticket:' + userId);
-
-      const ticket = await getRollTicket();
-      res.json({ ok: true, state: s, ...ticket });
+      return s;
     });
+
+    const ticket = await getRollTicket();
+    res.json({ ok: true, state, ...ticket });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
