@@ -9,6 +9,7 @@ const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
 import { createRollBatchPlan, effectiveWeightAtSample, virtualRollOffsetAtSample, sampleBinomialCount, getRarityBounds, MAX_SIMULATED_ROLLS_PER_REQUEST, MAX_EFFECTIVE_ROLLS_PER_BATCH, MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH, MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH, MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH } from '../shared/roll-batching.js';
 import { createRollRandomSource } from '../shared/roll-rng.js';
+import { countGuildTaskRareOrbs } from '../shared/social.js';
 import { combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityEffects, combatTotalBossesBeaten, combatBossLuckBonus } from '../shared/combat.js';
 import {
   createInitialState,
@@ -4949,9 +4950,10 @@ export async function applyRolls(
   coinsGained = normalizeCoinAmount(coinsGained);
   if (!previewOnly) {
     const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
+    const rareOrbCount = countGuildTaskRareOrbs(rarities, rarityWeights);
     let guildEffects: Awaited<ReturnType<typeof prepareGuildRollEffects>>;
     try {
-      guildEffects = await prepareGuildRollEffects(totalVal, rollCount, bestRarity, pendingGuildWrite);
+      guildEffects = await prepareGuildRollEffects(totalVal, rollCount, bestRarity, pendingGuildWrite, rareOrbCount);
     } catch (error) {
       // Guild task progress is an optional projection, not a dependency for a valid roll.
       console.error('[Guild] Could not prepare task progress; the player roll will still complete.', error);
