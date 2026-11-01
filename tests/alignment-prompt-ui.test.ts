@@ -91,3 +91,32 @@ test('admin-forced Alignment effects remain visible without unlocking mastery', 
   assert.ok(statusHandler.includes('activeUntil: activeChoice ? s.alignmentActiveUntil ?? 0 : 0'));
   assert.ok(statusHandler.includes('unlocked: false'));
 });
+
+test('Alignment statistics are a retryable post-commit projection, not a reason to reject a saved choice', () => {
+  const server = source('src/server/game.ts');
+  const choiceHandler = server.slice(
+    server.indexOf('export async function chooseCelestialAlignment'),
+    server.indexOf('export async function synthesizeDust'),
+  );
+  const statsWriter = server.slice(
+    server.indexOf('async function recordCelestialAlignmentChoiceStats'),
+    server.indexOf('export async function forceCelestialAlignmentPromptForCurrentUser'),
+  );
+
+  assert.ok(choiceHandler.includes('stageSavePostCommitAction(s, async () =>'));
+  assert.ok(choiceHandler.includes('await recordCelestialAlignmentChoiceStats(choice, username, now, wasAdminTest)'));
+  assert.ok(choiceHandler.indexOf('stageSavePostCommitAction(s') < choiceHandler.indexOf('await save(s)'));
+  assert.ok(!choiceHandler.includes('Alignment choice statistics changed during your selection'));
+  assert.ok(statsWriter.includes('const maxAttempts = 16'));
+  assert.ok(statsWriter.includes('redis.watch(CELESTIAL_ALIGNMENT_CHOICE_STATS_KEY)'));
+  assert.ok(statsWriter.includes('if (committed !== null) return;'));
+  assert.ok(statsWriter.includes('const alreadyRecorded = previous.recent.some'));
+  assert.ok(statsWriter.includes('Player choice was saved, but shared choice statistics could not be updated.'));
+});
+
+test('Alignment choice requests wait in the player-action queue instead of timing out after 20 seconds', () => {
+  const app = source('src/server/app.ts');
+  assert.ok(app.includes('const MUTATION_LOCK_WAIT_MS = 60_000'));
+  assert.ok(app.includes('const deadline = Date.now() + MUTATION_LOCK_WAIT_MS'));
+  assert.ok(app.includes('await new Promise(resolve => setTimeout(resolve, 100))'));
+});
