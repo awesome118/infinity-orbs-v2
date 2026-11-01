@@ -195,3 +195,15 @@ test('inline Frenzy claim activity stays compact inside the fixed, non-scrollabl
   assert.ok(globalStyles.includes('overflow: clip;'));
   assert.doesNotMatch(styles, /#root\.io-inline-post \.io-frenzy-claimers\s*\{[^}]*overflow(?:-y)?:\s*(?:auto|scroll)/s);
 });
+
+
+test('inline main-game Reddit post fits inside the fixed preview without clipping its contents', () => {
+  const styles = source('src/client/post-revamp.css');
+  assert.match(styles, /#root\.io-inline-post > \.io-public:not\(\.io-public-compact\)/);
+  assert.match(styles, /#root\.io-inline-post \.io-launch-card/);
+  assert.match(styles, /#root\.io-inline-post \.io-launch-orb-stage/);
+  assert.match(styles, /#root\.io-inline-post \.io-launch-steps/);
+  assert.match(styles, /@media \(max-height:\s*640px\)/);
+  assert.match(styles, /height:\s*100% !important/);
+  assert.match(styles, /min-height:\s*0 !important/);
+});

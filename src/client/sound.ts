@@ -5,7 +5,8 @@ class SoundFX {
   public enabled = true;
   public sonarMode = false;
   public sonarThreshold = 100;
-  public sonarStarseekerAlerts = false;
+  public sonarAlertMode: 'near-best' | 'new-best' = 'near-best';
+  public sonarAlignmentSoundsAllowed = false;
   public alignmentSoundEnabled = true;
   private sonarModeListeners = new Set<(active: boolean) => void>();
 
@@ -14,7 +15,8 @@ class SoundFX {
       const saved = localStorage.getItem('orbs_sound_enabled');
       this.enabled = saved !== null ? saved === 'true' : true;
       this.sonarMode = localStorage.getItem('orbs_sonar_mode') === 'true';
-      this.sonarStarseekerAlerts = localStorage.getItem('orbs_sonar_starseeker_alerts') === 'true';
+      this.sonarAlertMode = localStorage.getItem('orbs_sonar_alert_mode') === 'new-best' ? 'new-best' : 'near-best';
+      this.sonarAlignmentSoundsAllowed = localStorage.getItem('orbs_sonar_alignment_sounds') === 'true';
       this.alignmentSoundEnabled = localStorage.getItem('io_alignment_sound') !== 'false';
       const savedThreshold = localStorage.getItem('orbs_sonar_threshold');
       if (savedThreshold) {
@@ -24,7 +26,8 @@ class SoundFX {
       this.enabled = true;
       this.sonarMode = false;
       this.sonarThreshold = 100;
-      this.sonarStarseekerAlerts = false;
+      this.sonarAlertMode = 'near-best';
+      this.sonarAlignmentSoundsAllowed = false;
       this.alignmentSoundEnabled = true;
     }
   }
@@ -155,12 +158,14 @@ class SoundFX {
     this.playSonarPing(threshold);
   }
 
-  public setSonarStarseekerAlerts(enabled: boolean) {
-    this.sonarStarseekerAlerts = Boolean(enabled);
-    try {
-      localStorage.setItem('orbs_sonar_starseeker_alerts', String(this.sonarStarseekerAlerts));
-    } catch {}
-    if (this.sonarStarseekerAlerts) this.playSonarPing(this.sonarThreshold);
+  public setSonarAlertMode(mode: 'near-best' | 'new-best'): void {
+    this.sonarAlertMode = mode === 'new-best' ? 'new-best' : 'near-best';
+    try { localStorage.setItem('orbs_sonar_alert_mode', this.sonarAlertMode); } catch {}
+  }
+
+  public setSonarAlignmentSoundsAllowed(enabled: boolean): void {
+    this.sonarAlignmentSoundsAllowed = Boolean(enabled);
+    try { localStorage.setItem('orbs_sonar_alignment_sounds', String(this.sonarAlignmentSoundsAllowed)); } catch {}
   }
 
   public playClick() {
@@ -201,7 +206,7 @@ class SoundFX {
       this.tone(ctx, 783.99, now + 0.18, 0.95, 0.075, 'sine', 659.25);
       this.tone(ctx, 1_046.5, now + 0.43, 1.18, 0.065, 'triangle', 880);
       this.tone(ctx, 1_568, now + 0.82, 0.8, 0.024, 'sine');
-    }, true);
+    }, this.sonarAlignmentSoundsAllowed);
   }
 
   /** A rarity-scaled sonar mark, retained while Silent Sonar mode is active. */

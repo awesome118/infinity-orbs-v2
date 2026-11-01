@@ -2532,11 +2532,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         await step(
           'Mechanic · Sonar Ping Rare Trigger',
           async () => {
-            // Sonar pings are reserved for qualifying non-record drops; keep the fixture's best above the forced Orb.
-            await request('/api/dev/state', { highestRarity: 1_000 });
+            // Near-best mode pings an Orb within 10% of the best, while still below the record.
+            await request('/api/dev/state', { highestRarity: 110 });
             await onRefresh();
             await new Promise(resolve => setTimeout(resolve, 50));
-            sound.setSonarThreshold(100);
+            sound.setSonarAlertMode('near-best');
             sound.setSonarMode(true);
             const forced = await request<any>('/api/dev/force-roll', { rarity: 100, randomValue: 0.999999 });
             onForceRollResult?.(forced);
@@ -2797,7 +2797,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               { supernova: 5 },
               { totalRolls: 10, upgrades: { ...zeroUpgrades, critChance: 20 } },
             );
-            const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValue: 0.999999 });
+            const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValue: 0, exactRarity: false });
             if (Number(result.orb?.rarity) <= 45 || !result.orb?.isCrit) {
               throw new Error('Supernova should magnify deterministic critical strength beyond 1/45, got 1/' + result.orb?.rarity + ', crit=' + result.orb?.isCrit + '.');
             }
@@ -2841,7 +2841,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           'Mechanic · Lucky Floor',
           async () => {
             await setMechanicState({ luckyFloor: 5 });
-            const result = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999 });
+            const result = await request<any>('/api/dev/force-roll', { rarity: 2, randomValue: 0.999999, exactRarity: false });
             if (Number(result.orb?.rarity) < 7) {
               throw new Error('Lucky Floor produced 1/' + result.orb?.rarity + '; expected at least 1/7.');
             }

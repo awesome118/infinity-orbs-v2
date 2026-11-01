@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookOpen, Coins, Gem, RefreshCw, Sparkles, Star, ShieldCheck } from 'lucide-react';
 import type { CombatRune, CombatRuneRarity, CombatRuneStat, CombatSnapshot } from '../../shared/combat.js';
 import {
+  COMBAT_RUNE_RARITIES,
   combatRuneBonuses,
   combatRuneEffectText,
   shouldAutoSacrificeRune,
@@ -24,7 +25,7 @@ async function request<T>(url:string,method='GET',body?:unknown):Promise<T>{
     throw error;
   }finally{clearTimeout(timeout);}
 }
-const RARITY_ORDER:Record<string,number>={Cosmic:7,Mythic:6,Legendary:5,Epic:4,Rare:3,Uncommon:2,Common:1};
+const RARITY_ORDER:Record<string,number>={Transcendent:10,Celestial:9,Astral:8,Cosmic:7,Mythic:6,Legendary:5,Epic:4,Rare:3,Uncommon:2,Common:1};
 const STAT_LABEL:Record<CombatRuneStat,string>={luckPct:'Orb Luck',coinGainPct:'Coin gain',shardChancePct:'Shard chance',xpGainPct:'XP gain'};
 const STAT_ICON:Record<CombatRuneStat,React.ReactNode>={luckPct:<Sparkles size={25}/>,coinGainPct:<Coins size={25}/>,shardChancePct:<Gem size={25}/>,xpGainPct:<BookOpen size={25}/>};
 const pct=(value:number,decimals=2)=>{
@@ -43,7 +44,7 @@ interface SacrificeResponse extends CombatSnapshot {
 interface AutoSacrificeResponse extends CombatSnapshot {
   runeAutoSacrificeResult?:{runesSacrificed:number;totalXp:number};
 }
-const RUNE_RARITIES:CombatRuneRarity[]=['Common','Uncommon','Rare','Epic','Legendary','Mythic','Cosmic'];
+const RUNE_RARITIES:CombatRuneRarity[]=COMBAT_RUNE_RARITIES;
 
 export const RunesSection:React.FC=()=>{
   const [snapshot,setSnapshot]=useState<CombatSnapshot|null>(null);

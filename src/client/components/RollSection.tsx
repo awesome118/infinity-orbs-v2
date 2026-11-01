@@ -163,8 +163,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const [sonarActive, setSonarActive] = useState(() => sound.sonarMode);
   useEffect(() => sound.subscribeSonarMode(setSonarActive), []);
   const [sonarPinging, setSonarPinging] = useState(false);
-  const [sonarThreshold, setSonarThresholdState] = useState(() => sound.sonarThreshold);
-  const [sonarStarseekerAlerts, setSonarStarseekerAlertsState] = useState(() => sound.sonarStarseekerAlerts);
+  const [sonarAlertMode, setSonarAlertModeState] = useState(() => sound.sonarAlertMode);
+  const [sonarAlignmentSoundsAllowed, setSonarAlignmentSoundsAllowedState] = useState(() => sound.sonarAlignmentSoundsAllowed);
   const [instantRevealActive, setInstantRevealActive] = useState(() => {
     try {
       return localStorage.getItem('orbs_instant_reveal') === 'true';
@@ -267,15 +267,16 @@ export const RollSection: React.FC<RollSectionProps> = ({
       });
     return () => { active = false; controller.abort(); };
   }, []);
-  // Boss-clear Luck and Rune Luck both participate in the Starseeker exponent.
+  // Starseeker raises ordinary Luck only. Rune Luck stays a separate multiplier.
   const alignmentInstances = normalizeCelestialAlignmentInstances(
     state.alignmentActiveInstances, state.alignmentActiveChoice, state.alignmentActiveUntil, now,
   );
   const starseekerStacks = celestialAlignmentStackCount(alignmentInstances, 'starseeker', now);
-  const rawTotalLuckMultiplier = (luck + bossLuckBonus) * combatRuneLuckMultiplier(runeLuckPct);
-  const totalLuckMultiplier = starseekerStacks > 0
-    ? Math.pow(rawTotalLuckMultiplier, Math.pow(1.05, starseekerStacks))
-    : rawTotalLuckMultiplier;
+  const starseekerBaseLuck = luck + bossLuckBonus;
+  const alignedBaseLuck = starseekerStacks > 0
+    ? Math.pow(starseekerBaseLuck, Math.pow(1.05, starseekerStacks))
+    : starseekerBaseLuck;
+  const totalLuckMultiplier = alignedBaseLuck * combatRuneLuckMultiplier(runeLuckPct);
   const isAutoUnlocked = (state.upgrades.auto ?? 0) > 0;
   const isTurbo = Boolean(state.turboRollUntil && state.turboRollUntil > now);
   const turboReductionPercent = (state.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 35 : 25;
@@ -318,8 +319,10 @@ export const RollSection: React.FC<RollSectionProps> = ({
     const isNewBest = lastOrb.isInfinity === true
       ? !bestWasInfinityRef.current
       : !bestWasInfinityRef.current && lastOrb.rarity > bestBefore;
-    const sonarThresholdForRoll = Math.max(10, Math.floor(Number(sound.sonarThreshold) || 100));
-    const sonarOrb = !isNewBest && isSilentSonar && Number.isFinite(lastOrb.rarity) && lastOrb.rarity >= sonarThresholdForRoll
+    const nearBestRarity = Math.ceil(Math.max(2, bestBefore) * 0.9);
+    const sonarOrb = !isNewBest && sound.sonarAlertMode === 'near-best' && isSilentSonar &&
+      !bestWasInfinityRef.current && Number.isFinite(lastOrb.rarity) &&
+      lastOrb.rarity >= nearBestRarity && lastOrb.rarity < bestBefore
       ? lastOrb
       : undefined;
     let sonarTimer: number | null = null;
@@ -897,47 +900,48 @@ export const RollSection: React.FC<RollSectionProps> = ({
         </div>
 
         {hasSonarUpgrade && sonarActive && (
-          <section className="w-full rounded-xl border border-cyan-500/25 bg-cyan-500/5 p-3 space-y-3" data-testid="sonar-ping-options" aria-label="Sonar Ping options">
+          <section className="w-full rounded-xl border border-cyan-500/25 bg-cyan-500/5 p-2.5 sm:p-3 space-y-2" data-testid="sonar-ping-options" aria-label="Sonar Ping options">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
               <div className="min-w-0 flex-1">
-                <label htmlFor="sonar-rarity-threshold" className="block text-[10px] font-black uppercase tracking-wider text-cyan-200">Rarity threshold</label>
-                <p className="mt-1 text-[10px] text-slate-400">Ping for any non-record Orb at or above this rarity.</p>
+                <label htmlFor="sonar-alert-mode" className="block text-[10px] font-black uppercase tracking-wider text-cyan-200">Sonar alert trigger</label>
+                <p className="mt-1 text-[10px] leading-snug text-slate-400">Choose when the Sonar Ping alerts on a rare Orb. New records always play the longer celebration.</p>
               </div>
               <select
-                id="sonar-rarity-threshold"
-                aria-label="Sonar Ping rarity threshold"
-                value={sonarThreshold}
+                id="sonar-alert-mode"
+                aria-label="Sonar Ping alert trigger"
+                data-testid="sonar-alert-mode"
+                value={sonarAlertMode}
                 onChange={event => {
-                  const next = Math.max(10, Math.floor(Number(event.currentTarget.value) || 100));
-                  setSonarThresholdState(next);
-                  sound.setSonarThreshold(next);
+                  const next = event.currentTarget.value === 'new-best' ? 'new-best' : 'near-best';
+                  setSonarAlertModeState(next);
+                  sound.setSonarAlertMode(next);
                 }}
                 className="w-full sm:w-auto rounded-lg border border-cyan-500/30 bg-slate-950 px-3 py-2 text-xs font-bold text-cyan-100"
               >
-                <option value={100}>1 in 100</option>
-                <option value={1000}>1 in 1,000</option>
-                <option value={10000}>1 in 10,000</option>
-                <option value={100000}>1 in 100,000</option>
-                <option value={1000000}>1 in 1,000,000</option>
+                <option value="near-best">At least 1/10th below a new best</option>
+                <option value="new-best">New best</option>
               </select>
             </div>
-            <label className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2 cursor-pointer">
-              <span className="min-w-0">
-                <strong className="block text-xs text-white">Starseeker alert</strong>
-                <span className="block mt-0.5 text-[10px] text-slate-400">Play a Sonar Ping when you choose Starseeker from a Celestial Alignment.</span>
-              </span>
-              <input
-                type="checkbox"
-                aria-label="Starseeker Sonar alert"
-                checked={sonarStarseekerAlerts}
-                onChange={event => {
-                  const next = event.currentTarget.checked;
-                  setSonarStarseekerAlertsState(next);
-                  sound.setSonarStarseekerAlerts(next);
-                }}
-                className="h-4 w-4 shrink-0 accent-cyan-400"
-              />
-            </label>
+            {hasAlignmentUpgrade && (
+              <label className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2 cursor-pointer">
+                <span className="min-w-0">
+                  <strong className="block text-xs text-white">Celestial Alignment sounds</strong>
+                  <span className="block mt-0.5 text-[10px] leading-snug text-slate-400">Let Alignment prompt sounds play through Sonar Ping’s all-sounds blocker.</span>
+                </span>
+                <input
+                  type="checkbox"
+                  aria-label="Allow Celestial Alignment sounds through Sonar Ping"
+                  data-testid="sonar-alignment-sounds-toggle"
+                  checked={sonarAlignmentSoundsAllowed}
+                  onChange={event => {
+                    const next = event.currentTarget.checked;
+                    setSonarAlignmentSoundsAllowedState(next);
+                    sound.setSonarAlignmentSoundsAllowed(next);
+                  }}
+                  className="h-4 w-4 shrink-0 accent-cyan-400"
+                />
+              </label>
+            )}
           </section>
         )}
 
@@ -973,7 +977,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
             <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
             <span className="text-slate-200 font-semibold">Record alerts</span>
             <div className="min-w-0 flex-1 text-[10px] leading-relaxed text-slate-400">
-              Ping when an Orb is exactly one rarity below your best. A new best plays the longer five-second celebration instead.
+              {sonarAlertMode === 'near-best' ? 'Ping non-record Orbs that reach 90% of your current best rarity.' : 'Only a new all-time best triggers a Sonar alert.'} New bests always play the longer five-second celebration.
             </div>
             {hasAlignmentUpgrade && (
               <button
@@ -990,7 +994,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
                     : 'border-slate-700 bg-slate-900 text-slate-400'
                 }`}
               >
-                Alignment sound · {alignmentSoundEnabled ? 'ON' : 'OFF'}
+                Alignment alerts · {alignmentSoundEnabled ? 'ON' : 'OFF'}
               </button>
             )}
           </div>

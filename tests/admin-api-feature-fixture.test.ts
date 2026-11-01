@@ -144,9 +144,11 @@ test('admin force-roll preserves the requested rarity and Sonar checks match the
   const forceEnd = debug.indexOf("\ndebugRouter.post('/frenzy/start'", forceStart);
   assert.ok(forceStart >= 0 && forceEnd > forceStart, 'admin force-roll route must exist');
   const forceRoute = debug.slice(forceStart, forceEnd);
+  assert.match(forceRoute, /const exactRarity = req\.body\?\.exactRarity !== false/,
+    'force-rolls default to exact rarity but allow explicit non-exact mechanic tests');
   assert.match(
     forceRoute,
-    /applyRolls\(s,\s*1,\s*forcedRarity,\s*source,\s*undefined,\s*randomOverride,\s*true\)/,
+    /applyRolls\(s,\s*1,\s*forcedRarity,\s*source,\s*undefined,\s*randomOverride,\s*exactRarity\)/,
     'admin force-rolls must use exact-rarity mode so crits cannot alter deterministic fixtures',
   );
 
@@ -170,6 +172,7 @@ test('admin force-roll preserves the requested rarity and Sonar checks match the
   const triggerEnd = runner.indexOf("\n        await step(", triggerStart + 1);
   assert.ok(triggerStart >= 0 && triggerEnd > triggerStart, 'Sonar trigger test must exist');
   const triggerStep = runner.slice(triggerStart, triggerEnd);
-  assert.match(triggerStep, /highestRarity:\s*1_000/);
+  assert.match(triggerStep, /highestRarity:\s*110/);
+  assert.match(triggerStep, /sound\.setSonarAlertMode\('near-best'\)/);
   assert.match(triggerStep, /await onRefresh\(\)/);
 });

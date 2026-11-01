@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { cooldownMs, createInitialState, normalizeCelestialAlignmentInstances, celestialAlignmentStackCount, CELESTIAL_ALIGNMENT_DURATION_MS } from '../src/shared/game.js';
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
+const mainAlignmentChoice = () => source('src/client/main.tsx');
 
 test('Celestial Alignment ignores stale pending polls after a choice succeeds', () => {
   const main = source('src/client/main.tsx');
@@ -83,19 +84,37 @@ test('Alignment has no post-claim popup and the active duration is a live Roll-s
   assert.match(roll, /alignmentInstances\.map\(\(instance, index\)/);
 });
 
-test('Sonar Ping reveals configurable rarity and Starseeker options only while enabled', () => {
+test('Sonar Ping selects near-record or new-best triggers and has a Celestial Alignment sound bypass', () => {
   const roll = source('src/client/components/RollSection.tsx');
   const sound = source('src/client/sound.ts');
   const main = source('src/client/main.tsx');
 
   assert.match(roll, /hasSonarUpgrade && sonarActive/);
-  assert.match(roll, /sonar-rarity-threshold/);
-  assert.match(roll, /value=\{sonarThreshold\}/);
-  assert.match(roll, /sonarStarseekerAlerts/);
-  assert.match(roll, /sonarThresholdForRoll/);
-  assert.match(sound, /setSonarStarseekerAlerts/);
-  assert.match(main, /choice === 'starseeker'/);
-  assert.match(main, /sound\.sonarStarseekerAlerts/);
+  assert.match(roll, /sonar-alert-mode/);
+  assert.match(roll, /value=\{sonarAlertMode\}/);
+  assert.match(roll, /At least 1\/10th below a new best/);
+  assert.match(roll, /value="new-best"/);
+  assert.match(roll, /Math\.ceil\(Math\.max\(2, bestBefore\) \* 0\.9\)/);
+  assert.match(roll, /lastOrb\.rarity < bestBefore/);
+  assert.match(roll, /sonarAlignmentSoundsAllowed/);
+  assert.match(roll, /setSonarAlignmentSoundsAllowed/);
+  assert.match(sound, /setSonarAlertMode/);
+  assert.match(sound, /setSonarAlignmentSoundsAllowed/);
+  assert.match(sound, /this\.withAudio\(\(ctx, now\) => \{[\s\S]*?\}, this\.sonarAlignmentSoundsAllowed\)/);
+  assert.doesNotMatch(main, /sonarStarseekerAlerts/);
+  assert.doesNotMatch(main, /choice === 'starseeker'[\s\S]{0,240}playSonarPing/);
+});
+
+test('Starseeker amplifies ordinary Luck but never exponentiates Rune Luck', () => {
+  const roll = source('src/client/components/RollSection.tsx');
+  const server = source('src/server/game.ts');
+  assert.match(roll, /Math\.pow\(starseekerBaseLuck, Math\.pow\(1\.05, starseekerStacks\)\)/);
+  assert.match(roll, /alignedBaseLuck \* combatRuneLuckMultiplier\(runeLuckPct\)/);
+  assert.match(server, /Math\.pow\(baseLuck, starseekerExponent\)/);
+  assert.match(server, /const runeLuckMultiplier = rawRuneLuckMultiplier/);
+  assert.doesNotMatch(server, /Math\.pow\(baseLuck \* rawRuneLuckMultiplier/);
+  assert.doesNotMatch(server, /starseekerActive \? 1 : rawRuneLuckMultiplier/);
+  assert.match(mainAlignmentChoice(), /Rune Luck is applied separately and is not amplified/);
 });
 
 test('admin-forced Alignment effects remain visible without unlocking mastery', () => {

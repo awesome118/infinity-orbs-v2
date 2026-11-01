@@ -15,9 +15,30 @@ export const DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS: CombatAutoScrapSettings = { ena
 export type CombatRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Mythic';
 
 
-export type CombatRuneRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Legendary' | 'Mythic' | 'Cosmic';
+export type CombatRuneRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Legendary' | 'Mythic' | 'Cosmic' | 'Astral' | 'Celestial' | 'Transcendent';
 export type CombatRuneStat = 'luckPct' | 'coinGainPct' | 'shardChancePct' | 'xpGainPct';
-export const COMBAT_RUNE_RARITIES: CombatRuneRarity[] = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Mythic', 'Cosmic'];
+export const COMBAT_RUNE_RARITIES: CombatRuneRarity[] = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Mythic', 'Cosmic', 'Astral', 'Celestial', 'Transcendent'];
+/** Cumulative cryptographic drop thresholds; each new tier is exactly 10× rarer than the previous one. */
+export const COMBAT_RUNE_RARITY_ROLL_THRESHOLDS: Record<CombatRuneRarity, number> = {
+  Common: 1,
+  Uncommon: .3500555,
+  Rare: .1200555,
+  Epic: .0350555,
+  Legendary: .0100555,
+  Mythic: .0025555,
+  Cosmic: .0005555,
+  Astral: .0000555,
+  Celestial: .0000055,
+  Transcendent: .0000005,
+};
+export function combatRuneRarityFromRoll(value: unknown): CombatRuneRarity {
+  const raw = Number(value);
+  const roll = Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 1;
+  for (const rarity of [...COMBAT_RUNE_RARITIES].reverse()) {
+    if (roll < COMBAT_RUNE_RARITY_ROLL_THRESHOLDS[rarity]) return rarity;
+  }
+  return 'Common';
+}
 export interface CombatRuneAutoSacrificeSettings {
   enabled: boolean;
   maxRarity: CombatRuneRarity;
@@ -122,18 +143,22 @@ export const COMBAT_RUNE_INVENTORY_CAP = 200;
 export const COMBAT_RUNE_EFFECT_MULTIPLIER_CAP = 1_000_000;
 const COMBAT_RUNE_RARITY_MULTIPLIER: Record<CombatRuneRarity, number> = {
   Common: 1, Uncommon: 1.35, Rare: 1.9, Epic: 2.8, Legendary: 4.4, Mythic: 7, Cosmic: 13,
+  Astral: 20, Celestial: 30, Transcendent: 45,
 };
 const COMBAT_RUNE_BASE_VALUE: Record<CombatRuneStat, number> = {
   luckPct: .6, coinGainPct: 1.5, shardChancePct: .035, xpGainPct: 1.5,
 };
 const COMBAT_RUNE_MAJOR_ABILITY_CHANCE: Record<CombatRuneRarity, number> = {
   Common: .005, Uncommon: .02, Rare: .07, Epic: .18, Legendary: .35, Mythic: .50, Cosmic: .70,
+  Astral: .80, Celestial: .90, Transcendent: .95,
 };
 const COMBAT_RUNE_MAJOR_ABILITY_QUALITY: Record<CombatRuneRarity, number> = {
   Common: 5, Uncommon: 25, Rare: 40, Epic: 60, Legendary: 75, Mythic: 90, Cosmic: 100,
+  Astral: 100, Celestial: 100, Transcendent: 100,
 };
 const COMBAT_RUNE_MAJOR_ABILITY_MULTIPLIER: Record<CombatRuneRarity, number> = {
   Common: .5, Uncommon: .7, Rare: .85, Epic: 1, Legendary: 1.2, Mythic: 1.45, Cosmic: 1.8,
+  Astral: 2.1, Celestial: 2.4, Transcendent: 2.8,
 };
 export function combatRuneMajorAbilityChance(rarity: CombatRuneRarity): number {
   return COMBAT_RUNE_MAJOR_ABILITY_CHANCE[rarity];
@@ -204,7 +229,7 @@ export function combatRuneLevelFromExperience(experienceValue: unknown): number 
 }
 /** Large rarity-weighted XP grant for consuming a Rune; deeper drops and higher-level donors are worth more. */
 export function combatRuneSacrificeExperience(rune: Pick<CombatRune, 'rarity' | 'level' | 'sourceDepth'>): number {
-  const base = ({ Common: 100, Uncommon: 250, Rare: 650, Epic: 1_700, Legendary: 4_500, Mythic: 12_000, Cosmic: 32_000 } as Record<string, number>)[String(rune.rarity)];
+  const base = ({ Common: 100, Uncommon: 250, Rare: 650, Epic: 1_700, Legendary: 4_500, Mythic: 12_000, Cosmic: 32_000, Astral: 320_000, Celestial: 3_200_000, Transcendent: 32_000_000 } as Record<string, number>)[String(rune.rarity)];
   if (!Number.isFinite(base) || base <= 0) return 1;
   const rawLevel = Number(rune.level);
   const level = Number.isFinite(rawLevel) ? Math.max(1, Math.floor(rawLevel)) : 1;

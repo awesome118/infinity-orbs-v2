@@ -4313,20 +4313,19 @@ export async function applyRolls(
   const luckState = luckCcu === (s.onlinePlayers ?? 1) ? s : { ...s, onlinePlayers: luckCcu };
   // Community and boss-clear Luck are additive sources. Boss clears stack only with
   // themselves (1.01^n), and their bonus is added to ordinary Luck rather than multiplying it.
-  // Rune Luck remains an explicit rarity multiplier, so a 10x Rune still multiplies rolled rarity.
+  // Rune Luck remains an explicit rarity multiplier, separate from Starseeker.
   const baseLuckCandidate = luckMultiplier(luckState) + Math.max(0, communityLuck - 1) + bossLuckBonus;
   const baseLuck = Number.isFinite(baseLuckCandidate) ? Math.max(1, baseLuckCandidate) : Number.MAX_VALUE;
   const rawRuneLuckMultiplier = combatRuneLuckMultiplier(runeBonuses.luckPct);
   const starseekerStacks = celestialAlignmentStackCount(s.alignmentActiveInstances, 'starseeker');
   const starseekerExponent = Math.pow(1.05, starseekerStacks);
-  const starseekerActive = starseekerStacks > 0;
-  const alignedLuckCandidate = starseekerActive
-    ? Math.pow(baseLuck * rawRuneLuckMultiplier, starseekerExponent)
+  const alignedLuckCandidate = starseekerStacks > 0
+    ? Math.pow(baseLuck, starseekerExponent)
     : baseLuck;
   const alignedBaseLuck = Number.isFinite(alignedLuckCandidate)
     ? Math.max(1, alignedLuckCandidate)
     : Number.MAX_VALUE;
-  const runeLuckMultiplier = starseekerActive ? 1 : rawRuneLuckMultiplier;
+  const runeLuckMultiplier = rawRuneLuckMultiplier;
 
   // Apex Fortune Mastery: chance on multi-roll to double the luck of that activation
   const apexChance = Math.min(0.45, (s.masterySkills?.apexFortune ?? 0) * 0.03);

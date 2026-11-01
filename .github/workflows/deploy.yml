@@ -3,7 +3,7 @@ name: Deploy Devvit
 # Explicit user-requested responsive, fullscreen and immediate-dispatch overhaul (2026-11-01): deploy v2.1.49 to r/infinity_orbs_dev only.
 # Uses a 25,000-sample cap for up to 2.5 million effective Orbs in one weighted Frenzy roll pass.
 # Retains iterative rarity bounds; production review/install remains separate.
-# The version-specific push marker is reserved for explicitly requested development deployments. Current marker: 2.1.57.
+# The version-specific push marker is reserved for explicitly requested development deployments. Current marker: 2.1.58.
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
 # Regression test asserts auth is checked before upload and the session ID reaches every Devvit CLI step.
@@ -30,7 +30,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.57]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.58]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -100,6 +100,7 @@ jobs:
           node --import tsx --test tests/player-save-chunking.test.ts tests/player-lock.test.ts
           node --import tsx --test --test-name-pattern="Frenzy claim activity is a retryable post-commit projection" tests/frenzy.test.ts
           node --import tsx --test tests/cosmic-dust-uncapped.test.ts
+          node --import tsx --test tests/combat-runes.test.ts
           node --import tsx --test tests/guild-member-recovery.test.ts
           # Cover Guild combo timer persistence and weighted rare-Orb task progress.
           node --import tsx --test tests/guild-combo-progress.test.ts
@@ -108,7 +109,7 @@ jobs:
           node --import tsx --test --test-name-pattern="Guild task set starts with one task of each type|Guild task difficulty and rewards scale upward by tier|Guild task difficulty is driven by tier alone and does not carry Guild XP|Guild task rewards remain capped|Guild tasks retain token rewards but do not model Titan or Guild XP rewards" tests/mechanics.test.ts
           node --import tsx --test --test-name-pattern="Guild parser preserves task/member data while removing legacy levels, XP, Titan, and tax|roll rewards commit atomically with Guild and community progress|corrupt optional Guild roll projections do not cancel normal or Frenzy player payouts|legacy Guild contribution advances each task once and rewards Tokens without XP or Titan" tests/audit-regressions.test.ts
           npm run type-check
-          node --import tsx --test --test-name-pattern="immersive startup shows save-loading progress and unlocks the radiant Play button only when ready|inline Frenzy claim activity stays compact inside the fixed, non-scrollable post preview" tests/post-revamp.test.ts
+          node --import tsx --test --test-name-pattern="immersive startup shows save-loading progress and unlocks the radiant Play button only when ready|inline Frenzy claim activity stays compact inside the fixed, non-scrollable post preview|inline main-game Reddit post fits inside the fixed preview without clipping its contents" tests/post-revamp.test.ts
           node --import tsx --test tests/roll-batching.test.ts tests/collection-persistence.test.ts
           node --import tsx --test tests/mobile-layout.test.ts
           # Keep the max, reset, and unlock debug presets in sync with the upgrade registry.
@@ -244,3 +245,5 @@ jobs:
 # Explicit user-requested dev-only deployment of Devvit expanded-view Codex sizing and shifting Epic row colors v2.1.55 on 2026-11-01.
 
 # Explicit user-requested dev-only deployment of deterministic force-roll and Sonar test fixes v2.1.57 on 2026-11-01.
+
+# Explicit user-requested dev-only deployment of Starseeker/Sonar updates and new Rune rarity tiers v2.1.58 on 2026-11-01; production remains separate.

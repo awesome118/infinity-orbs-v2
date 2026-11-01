@@ -2769,14 +2769,6 @@ function App() {
       });
       alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, chosenPendingAt);
       alignmentPendingSeenRef.current = 0;
-      if (
-        choice === 'starseeker' &&
-        sound.sonarMode &&
-        sound.sonarStarseekerAlerts &&
-        (result.state.prestigeUpgrades?.sonarPing ?? 0) > 0
-      ) {
-        sound.playSonarPing(sound.sonarThreshold);
-      }
       setAlignmentPromptVisible(false);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Could not activate this Alignment.';
@@ -3720,7 +3712,7 @@ function App() {
               >
                 <div className="text-xs font-black uppercase tracking-wider text-cyan-300">Discovery</div>
                 <strong className="mt-2 block text-lg text-white">Starseeker</strong>
-                <p className="mt-2 text-xs leading-relaxed text-slate-300">Raises your complete Luck multiplier to the power of 1.05, including Rune Luck.</p>
+                <p className="mt-2 text-xs leading-relaxed text-slate-300">Raises ordinary Luck to the power of 1.05. Rune Luck is applied separately and is not amplified.</p>
                 <span className="mt-4 block text-[10px] font-black uppercase tracking-wide text-cyan-200">Total Luck ^1.05</span>
               </button>
               <button
