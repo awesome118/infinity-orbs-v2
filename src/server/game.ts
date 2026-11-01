@@ -5593,7 +5593,15 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
   s.lastSeenAt = now;
 
   // Process automation after newly earned offline rolls have been added.
-  await processAutomation(s, options);
+  await processAutomation(s, options.previewOnly
+    ? {
+        ...options,
+        skipAutoOfflineClaim: true,
+        skipAutoStreakClaim: true,
+        skipAutoQuestClaim: true,
+        skipAutoCommunityClaim: true,
+      }
+    : options);
 
   const cap = offlineRollCap(s);
   const userId = String(context.userId ?? '').trim();
